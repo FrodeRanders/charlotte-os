@@ -22,11 +22,9 @@ use crate::{
 
 /// The framebuffer terminal console.
 ///
-/// A usable linear framebuffer is not guaranteed to be present: the bootloader
-/// may not have been given one (e.g. a headless configuration, or a platform
-/// where firmware exposes no Graphics Output Protocol). In that case this holds
-/// `None` and callers fall back to the serial console, rather than the kernel
-/// faulting while trying to draw to a nonexistent framebuffer.
+/// The context is `None` when the bootloader provides no usable framebuffer
+/// or terminal initialization fails. Writes then return without drawing;
+/// the logging layer decides whether to use another console.
 pub struct FlantermConsole {
     ctx: Option<Box<flanterm_context>>,
 }

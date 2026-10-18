@@ -80,7 +80,7 @@ fn lookup(ns_connection: u64, name: u64) -> u64 {
 
 /// Write `bytes` to the object store at `object_id` (create-at, set size,
 /// move-write, flush). `ERR_EXISTS` is success: the artifact is already
-/// present and is simply overwritten with the new content.
+/// present and is overwritten with the new content.
 fn store_artifact(obj_conn: u64, object_id: u64, bytes: &[u8]) -> bool {
     let create = ipc_scalar_call(obj_conn, objstore::OP_CREATE_AT, object_id);
     if create == 0 {

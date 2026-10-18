@@ -1176,11 +1176,9 @@ fn submit_timer_with_observer(
 /// thread, and returns a capability that completes **when the worker thread
 /// exits**.
 ///
-/// This is the ABI's intended asynchronous-completion mechanism (see
-/// `scheduler/threads/mod.rs:63-69`): the returned capability is registered as
-/// an exit-observer of the worker thread, so the worker simply performs its work
-/// and returns — the thread exiting *is* the completion event, which fires the
-/// capability and wakes any waiter. The worker does not touch the capability.
+/// An exit observer completes the capability and wakes waiters when the
+/// worker exits. The worker performs its work and returns without handling
+/// the completion capability itself.
 ///
 /// `result` is the terminal result posted when the worker exits.
 pub fn submit_worker(

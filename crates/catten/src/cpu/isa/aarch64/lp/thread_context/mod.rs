@@ -1,8 +1,7 @@
 //! # AArch64 Thread Context
 //!
-//! A thread's context is the minimal machine state required to suspend it and
-//! later resume it as if nothing had happened. On AArch64 (as on x86-64) the
-//! kernel performs cooperative, callee-saved-register context switches in
+//! A thread's context holds the machine state needed to suspend and resume it.
+//! On AArch64 (as on x86-64), the kernel switches callee-saved registers in
 //! [`switch_ctx`](crate::cpu::isa::lp::ops::switch_ctx): the outgoing thread
 //! pushes the callee-saved registers onto its own kernel stack, and the
 //! incoming thread pops the same frame. Because of this, "creating" a thread
@@ -10,10 +9,8 @@
 //! `switch_ctx` would have produced, so that the very first switch into the
 //! thread lands on a trampoline with the right registers loaded.
 //!
-//! This design is what makes threads cheap enough to spawn freely, which is a
-//! cornerstone of Catten's async-first model: blocking is expressed by parking
-//! a thread on an observable event, and completion is delivered by waking it,
-//! rather than by heavyweight thread-pool machinery.
+//! Blocking parks a thread on an observable event. A notification makes it
+//! runnable again; the scheduler restores its context when it next runs.
 
 use core::sync::atomic::{
     AtomicU8,

@@ -85,9 +85,8 @@ impl CpuInfoIfce for CpuInfo {
                 cpuid_results[2].ecx,
                 cpuid_results[2].edx,
             ]));
-            // Convert the byte vector to a String, assuming it is valid UTF-8
-            // Note: This is safe because the cpuid results are guaranteed to be valid UTF-8
-            // as per the AMD64 Architecture Programmer's Manual.
+            // Decode the model bytes as UTF-8 and trim trailing NULs.
+            // Invalid UTF-8 causes this lookup to panic.
             String::from_utf8(utf8).unwrap().trim_end_matches("\0").into()
         }
     }

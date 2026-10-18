@@ -390,7 +390,7 @@ pub extern "C" fn irq_dispatcher() {
             // capability layer masks the source, marks its interrupt object
             // pending, and posts a coalesced readiness wake to the driver's
             // completion queue (architecture doc §10.2, Phase 8). An
-            // unclaimed INTID is simply acknowledged below.
+            // unclaimed INTID is acknowledged below.
             let _ = crate::device::deliver_interrupt(intid);
         }
     }

@@ -448,7 +448,8 @@ fn scheduled_cancellation() {
             break;
         }
         assert!(scheduler::monotonic_millis() < deadline, "grant cancellation never registered");
-        scheduler::sleep_millis(1); // Bounded fixture observation, not cleanup polling.
+        // Poll fixture registration within the five-second deadline above.
+        scheduler::sleep_millis(1);
     }
     assert!(matches!(MASTER_THREAD_TABLE.read().get(tid).unwrap().state, ThreadState::Blocked(_)));
     assert_eq!(

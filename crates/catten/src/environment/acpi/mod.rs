@@ -1,37 +1,18 @@
 #![allow(dead_code)]
-//! The Advanced Configuration and Power Interface (ACPI) Subsystem
+//! # Advanced Configuration and Power Interface (ACPI)
 //!
-//! The Advanced Configuration and Power Interface (ACPI) is an open industry specification that
-//! defines a flexible and extensible interface for hardware discovery, configuration, power
-//! management, and monitoring. ACPI provides a standardized way for the operating system to
-//! interact with the underlying hardware, allowing it to manage power states, configure devices,
-//! and perform other system-level tasks in a platform-independent manner.
+//! ACPI describes hardware configuration, discovery and power management through
+//! System Description Tables (SDTs) and ACPI Machine Language (AML) bytecode.
 //!
-//! It provides information in two different forms:
+//! This module locates the XSDT, collects the physical addresses of other tables,
+//! and defines their shared headers. The `sdt` submodule contains table parsers;
+//! `aml` is currently a placeholder.
 //!
-//! - System Description Tables (SDTs)
-//! - ACPI Machine Language (AML) bytecode tables
-//!
-//! This module is split into two submodules, `sdt` and `aml`, which contain code for working with
-//! each of these forms of information respectively and their inline documentation contains more
-//! detailed information about how each of them works and how Catten uses them.
-//!
-//! This top level module contains code for finding and parsing the XSDT to find the physical
-//! addresses of other ACPI tables, as well as some common data structures and utilities for working
-//! with the headers that are common to all ACPI tables.
-//!
-//! The primary reference needed to understand and work with this module is the [ACPI specification](https://uefi.org/specs/ACPI/6.6/).
-//! In addition to the specification the source code of [uACPI](https://github.com/uACPI/uACPI) a portable C language
-//! ACPI implementation made to be robust enough to handle buggy firmware can be very helpful to
-//! understand how to work with ACPI and handle various edge cases and quirks of real world
-//! firmware.
-//!
-//! It should be noted however that the Catten kernel does not and will not integrate uACPI or any
-//! other third party ACPI implementation. Accordingly this subsystem is to be developed entirely
-//! independently in manually written Rust and in such a way as to be tightly integrated with the
-//! rest of the kernel. Features will be added as they are needed and the implementation will
-//! generally assume that target system firmware appropriately conforms to the latest published ACPI
-//! specification.
+//! The main reference is the [ACPI specification](https://uefi.org/specs/ACPI/6.6/).
+//! The [uACPI source](https://github.com/uACPI/uACPI) can also help explain firmware
+//! quirks and edge cases. We implement the subsystem in Rust within the kernel
+//! and add features as we need them. Our current support assumes conforming
+//! firmware; handling firmware quirks remains limited.
 
 use alloc::{
     format,
@@ -299,10 +280,9 @@ fn parse_xsdt(xsdt_addr: PAddr) -> HashMap<AcpiTableType, Vec<PAddr>> {
              been corrupted."
         );
     }
-    // Note: HHDM pointers are extremely unsafe as they live entirely outside of Rust's memory model
-    // Try to keep their use read-only and never use the HHDM to access data that can be accessed
-    // through proper memory mappings. ACPI tables and Device Tree Nodes are an acceptable use case
-    // because they are only ever read from.
+    // HHDM pointers bypass Rust's ownership tracking. Keep access read-only
+    // here, and use an owned mapping when one is available. These firmware
+    // table reads still require valid backing and correct pointer alignment.
     let xsdt_data_ptr = unsafe {
         NonNull::new_unchecked((xsdt_addr + size_of::<SdtHeader>()).into_hhdm_mut::<u64>())
     };

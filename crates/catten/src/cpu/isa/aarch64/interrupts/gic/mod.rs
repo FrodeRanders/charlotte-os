@@ -13,11 +13,10 @@
 //!   where interrupts are acknowledged (`ICC_IAR1_EL1`), completed (`ICC_EOIR1_EL1`), and generated
 //!   as IPIs (`ICC_SGI1R_EL1`).
 //!
-//! The MMIO base addresses are, for now, the fixed QEMU `virt` defaults. Once
-//! the device tree layer is implemented they should be discovered from the
-//! `/intc` node rather than hard-coded. See the ARM Generic Interrupt
-//! Controller Architecture Specification, GIC architecture version 3 and
-//! version 4.
+//! MMIO base addresses come from the ACPI MADT when available, with QEMU
+//! `virt` defaults as a fallback. Device-tree discovery is still missing.
+//! See the ARM Generic Interrupt Controller Architecture Specification,
+//! GIC architecture version 3 and version 4.
 
 use core::{
     arch::asm,

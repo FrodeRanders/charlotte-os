@@ -1,27 +1,23 @@
 //! Authoritative completion state for deferred kernel self-tests.
 //!
-//! The selftest suite's tests that need a running scheduler or a real EL0
-//! domain run as *deferred verifiers*: each is a kernel thread registered
-//! with one bit in a per-test bitmap. This module tracks which tests are
-//! registered (`EXPECTED`), which have passed (`PASSED`) or failed
-//! (`FAILED`), and — once [`finalize_and_start_coordinator`] is called after
-//! boot — runs a coordinator thread that prints periodic `SELFTEST WAITING`
-//! summaries and, when every registered test has resolved, a single
-//! authoritative `SELFTEST COMPLETE` line with pass/fail/pending counts and
-//! bitmaps.
+//! Tests that need a running scheduler or an EL0 domain use deferred verifiers:
+//! each is a kernel thread registered with one bit in a per-test bitmap.
+//! This module tracks registered tests (`EXPECTED`), passes (`PASSED`) and
+//! failures (`FAILED`). After setup, [`finalize_and_start_coordinator`] starts
+//! a thread that prints periodic `SELFTEST WAITING` summaries. It emits a final
+//! `SELFTEST COMPLETE` line when all tests pass or any test fails, including
+//! pass/fail/pending counts and bitmaps.
 //!
-//! Why: boot-path tests cannot block on asynchronous results (the scheduler
-//! is not running), so the verdict must come from a thread that yields. The
-//! coordinator deliberately avoids timer-based sleeps so the authoritative
-//! result is never itself dependent on the timer-wake path under test.
+//! Synchronous boot-path tests run before the scheduler can provide asynchronous
+//! results. The coordinator runs as a scheduled thread and waits on result
+//! changes, with a one-second watchdog for periodic progress reports.
 //!
-//! Expected outcome: `register_boot_suite` registers the 17 boot tests (plus
-//! any feature-gated network tests), every verifier reports exactly once via
-//! [`pass`]/[`fail`] (asserting it was registered and has not already
-//! resolved), and the coordinator terminates with `failed=0 pending=0` — on
-//! virt/TCG and sbsa-ref this is `passed=17 failed=0 pending=0`. The HVF
-//! compatibility suite omits the NVMe and persistent-Raft results because
-//! protected DMA is unavailable there, and expects 15 passes.
+//! `register_boot_suite` selects tests for the architecture and enabled features.
+//! Each verifier reports once through [`pass`]/[`fail`], which check that its
+//! test was registered and has not already resolved. A passing run ends with
+//! `failed=0 pending=0` and a pass count matching that set. HVF compatibility
+//! builds omit NVMe and persistent-Raft results because protected DMA is
+//! unavailable there; isolated fixtures register their own subsets.
 //!
 //! A panic in a verifier is routed through [`fail_verifier_thread`] (installed
 //! by the panic handler) so a crashing verifier atomically fails its own bit
@@ -403,8 +399,8 @@ pub fn fail_verifier_thread(tid: u64, generation: u64) {
 
 /// Freeze the expected test set and start the sole authoritative reporter.
 ///
-/// Call this after all boot-time deferred tests have been admitted, immediately
-/// before the bootstrap processor yields to the scheduler.
+/// Call this after all boot-time deferred tests have been admitted. Boot code
+/// invokes it at the end of scheduled test setup.
 pub fn finalize_and_start_coordinator() {
     FINALIZED.store(true, Ordering::Release);
     spawn_thread(KERNEL_ASID, coordinator);

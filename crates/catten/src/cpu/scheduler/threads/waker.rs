@@ -1,7 +1,8 @@
 //! Thread waker — the observer that re-admits a blocked thread.
 //!
-//! A [`Waker`] is a lightweight `(ThreadId, ThreadGeneration)` pair
-//! registered on an observable event (timer, completion, endpoint, CQ).
+//! A [`Waker`] identifies a thread by `(ThreadId, ThreadGeneration)` and holds
+//! its wait registration and early-notification state. It is registered on an
+//! observable event (timer, completion, endpoint, CQ).
 //! When the event fires, [`Waker::notify`] calls `submit_woken_wait`,
 //! which transitions the thread from `Blocked` to `Ready` and re-admits
 //! it to its affinity LP. Re-admission validates both the thread generation

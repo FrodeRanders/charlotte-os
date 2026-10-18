@@ -8,19 +8,14 @@
 //!
 //! ### Why these stubs use hand-written assembly
 //!
-//! This is a deliberately narrow syscall-ABI test. The EL0 stubs
-//! included below run with **no runtime at all** — no crt0, no heap, no panic
-//! handler, no config-page parsing — and drive the kernel purely through raw
-//! `svc` traps and fixed virtual addresses. A failure therefore isolates the
-//! kernel's syscall dispatch and IPC/capability code as the *only* variable under
-//! test. Loading a Rust ELF would layer the whole `catten-rt` runtime on top,
-//! so a bug in crt0, the panic handler or config-page parsing could mask or
-//! mimic a syscall-ABI bug. The higher-level EL0 tests (`el0_uart`,
-//! `el0_nvme`, `el0_raft`, `el0_service`, `el0_sitas`, ...) already load
-//! Rust-compiled ELFs via `load_domain`; hand-written assembly is deliberately
-//! kept only for the syscall-level smoke tests. The stubs are kept in Rust
-//! source through `global_asm!(include_str!(...))` so they compile with the
-//! kernel rather than being a build-system artifact.
+//! The stubs use raw syscall traps and fixed virtual addresses, with no crt0,
+//! heap, panic handler or config-page parsing. This keeps the userspace runtime
+//! out of the test and helps narrow failures to the trap and IPC paths, though
+//! those paths still depend on scheduling and memory management.
+//!
+//! Higher-level EL0 tests (`el0_uart`, `el0_nvme`, `el0_raft`, `el0_service`,
+//! `el0_sitas`, ...) load Rust-compiled ELFs via `load_domain`. These assembly
+//! stubs compile with the kernel through `global_asm!(include_str!(...))`.
 
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 use crate::cpu::isa::interface::memory::AddressSpaceInterface;

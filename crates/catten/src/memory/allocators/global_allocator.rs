@@ -39,8 +39,7 @@ use crate::{
 // Store-backed service images are cached on first use. A deploy-test boot can
 // therefore retain roughly 2.4 MiB of signed ELF data in addition to the
 // kernel's ordinary boot allocations. Claim enough arena up front that this
-// expected working set does not force heap growth in the middle of the highly
-// concurrent service-start storm.
+// expected working set fits while services start concurrently.
 const INITIAL_HEAP_SIZE: usize = mebibytes(8);
 // A pre-mapped growth reserve immediately after the initial heap. The
 // ExtendOnOom acquire extends the talc's range *within* this reserve, so it

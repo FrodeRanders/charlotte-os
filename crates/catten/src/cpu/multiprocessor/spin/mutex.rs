@@ -15,10 +15,10 @@ use crate::cpu::isa::lp::ops::{
 
 pub type Mutex<T> = lock_api::Mutex<MutexCore, T>;
 
-/// # A spinlock-based mutex that disables interrupts on the calling processor while locked.
-/// This lock is suitable for providing mutual exclusion during critical sections but it should be
-/// used with caution to avoid deadlocks between LPs. It prevents self deadlocks by
-/// masking maskable interrupts for the complete ownership interval.
+/// Spinlock that masks interrupts on the owning logical processor.
+///
+/// Masking prevents interrupt handlers from reentering a lock held on the same
+/// LP. Callers must still follow lock ordering to avoid deadlocks between LPs.
 ///
 /// It guards the frame allocator, the address-space table, the kernel address
 /// space, domain-authority and lifecycle state, the scratch-window allocator,

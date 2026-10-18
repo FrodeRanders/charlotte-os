@@ -136,7 +136,7 @@ pub(crate) fn verify(root: AddressSpaceHandle) {
 }
 
 // Called immediately before the real allocator, mapper and physical rollback.
-// Reentry proves the scheduler guard did not merely leave for an earlier hook.
+// Reacquiring the table checks that its guard is released at each work phase.
 pub(crate) fn phase(root: AddressSpaceHandle, bit: usize) {
     if !matches(root) {
         return;

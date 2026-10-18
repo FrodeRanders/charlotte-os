@@ -1,9 +1,9 @@
 //! Experimental endpoint IPC.
 //!
-//! This is the first Xous-inspired cross-protection-domain IPC substrate. It is
-//! deliberately scalar-only: endpoints, connections, pending calls, and reply
-//! tokens are separate from completion capabilities and from the LP-indexed
-//! mailbox smoke ABI.
+//! Xous-inspired messaging between protection domains, with scalar payloads
+//! and capability attachments. Endpoints, connections, pending calls and reply
+//! tokens have their own ownership and admission rules. Completion capabilities
+//! and the LP-indexed mailbox smoke ABI are separate interfaces.
 
 use alloc::{
     collections::BTreeMap,

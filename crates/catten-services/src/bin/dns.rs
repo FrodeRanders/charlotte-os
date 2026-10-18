@@ -4808,11 +4808,11 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 .lookup_owner(&publication.name, &node_name)
                 .is_some_and(|entry| entry.generation == publication.generation);
             // A publication becomes stale only when the catalog has moved past
-            // its generation (a replacement or migration) or when this dns
-            // itself tore the endpoint down. An absent entry is NOT stale by
-            // itself: for a follower the activate may simply still be
-            // replicating when the leader's register reply arrives, and
-            // cleaning up there would unregister a live local service.
+            // its generation (a replacement or migration) or when this DNS
+            // instance tore the endpoint down. An absent entry alone leaves
+            // its status uncertain: activation may still be replicating to a
+            // follower when the leader's register reply arrives. Cleanup at
+            // that point could unregister a live local service.
             let superseded = catalog
                 .lookup_owner(&publication.name, &node_name)
                 .is_some_and(|entry| entry.generation != publication.generation);

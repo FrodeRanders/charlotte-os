@@ -4,9 +4,7 @@
 //! inter-processor interrupts, AArch64 provides *broadcast* TLB maintenance
 //! instructions. A `TLBI ...IS` (Inner Shareable) executed on one core
 //! invalidates the matching entries on every core in the inner shareable
-//! domain in hardware. This matches the async-first spirit of the system: we
-//! lean on the mechanism the hardware already provides rather than emulating a
-//! synchronous cross-core handshake in software.
+//! domain. We use these instructions with barriers to wait for completion.
 //!
 //! The required barrier sequence for a break-before-make style invalidation is:
 //! - `DSB ISH`  ensure prior page table stores are observed before invalidation

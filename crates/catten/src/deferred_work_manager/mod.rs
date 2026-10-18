@@ -1,16 +1,9 @@
 //! # Deferred Work Manager
 //!
-//! Interrupt service routines do not ever block or spin as both are deadlock hazards. Instead they
-//! submit work to the Deferred Work Manager, which is a lock-free queue. The Deferred Work Manager
-//! is then responsible for ensuring the work is completed. Since most if not all work submitted
-//! will come from interrupt context, the DWM does not ever attempt to return a status or any data
-//! back to the calling context which is assumed to no longer exist.
-//!
-//! The DWM is a threadpool with a lockless MPMC queue which accepts predefined tasks which include
-//! their arguments. The DWM executes the tasks without any ordering guarantees however it does
-//! guarantee that a task will be executed at some point in the future. It is optimized to maximize
-//! throughput and makes no latency guarantees. For latency sensitive tasks a dedicated kernel
-//! thread should be used instead.
+//! Placeholder for work deferred from interrupt handlers to kernel threads.
+//! `DeferredTask` currently has no variants. The manager holds an unbounded
+//! MPMC queue, and each spawned worker attempts to take one task before exiting.
+//! There is no persistent worker loop or completion reporting yet.
 
 use concurrent_queue::ConcurrentQueue;
 use spin::LazyLock;

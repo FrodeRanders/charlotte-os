@@ -14,8 +14,8 @@
 //!
 //! The waiter and driver run as scheduled kernel threads, mirroring the
 //! `cq_wait_checked` self-test: every release condition is also observed by the
-//! wait's fast path if it is posted before the waiter blocks, so the flow is
-//! robust to scheduling order.
+//! wait's fast path if it is posted before the waiter blocks. Either thread
+//! may run first.
 
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 use core::sync::atomic::{

@@ -36,7 +36,7 @@ impl Idt {
 
         gate.addr0 = u16::try_from(isr_addr & 0xffff).unwrap();
         gate.segment_selector = segment_selector;
-        // the IST is not always used, 0 indiacates that RSP0 will be used instead of the IST
+        // An index of zero disables IST stack selection for this gate.
         gate.reserved_ist_index = ist_index.unwrap_or(0u8) & 0b111;
         gate.flags = if is_trap {
             0b1111u8

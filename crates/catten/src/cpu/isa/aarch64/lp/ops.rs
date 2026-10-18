@@ -587,9 +587,9 @@ pub unsafe extern "C" fn user_trampoline() -> ! {
 ///
 /// The idle thread runs only when its LP has no other runnable thread. It waits
 /// for an interrupt; the IRQ handler's tail (`cond_yield_lp`) switches to any
-/// thread that has since become runnable, so when execution resumes here there
-/// was simply nothing to run and we wait again. Interrupts are (re-)enabled on
-/// each iteration so the quantum timer and IPIs can wake the LP.
+/// thread that has since become runnable. When the idle thread resumes, it
+/// waits again. Interrupts are enabled on each iteration so the quantum timer
+/// and IPIs can wake the LP.
 pub extern "C" fn lp_idle_loop() {
     loop {
         if crate::cpu::isa::lp::ops::get_lp_id() == 0 {

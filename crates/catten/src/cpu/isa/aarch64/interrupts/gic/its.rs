@@ -4,7 +4,7 @@
 //! `(device, event)` pair to an LPI with `MAPTI`, and a device write to
 //! `GITS_TRANSLATER` raises the LPI. QEMU derives the device ID from the PCI
 //! Requester ID of the write and treats the write *data* as the event ID, so
-//! the MSI message for a device is simply `{ address: GITS_TRANSLATER,
+//! the MSI message for a device is `{ address: GITS_TRANSLATER,
 //! data: event_id }`.
 //!
 //! QEMU `sbsa-ref` exposes an ITS at `0x44081000`; the `virt` board does not

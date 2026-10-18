@@ -10,15 +10,9 @@
 
 //! # Catten
 //!
-//! Catten is an operating system kernel developed as a component of CharlotteOS, an
-//! experimental modern operating system.It is responsible for initializing the hardware,
-//! providing common abstractions for all hardware resources, and managing the execution of
-//! user-space applications and the environment in which they run. It is a crucial part of the
-//! operating system, as it provides the foundation on which the rest of the system is built and it
-//! touches every hardware and software component of the system on which it is used. While it is
-//! developed as a component of CharlotteOS, it is designed to be modular and flexible, and thus
-//! useful in other operating systems, embedded firmware, and other types of software systems
-//! as well.
+//! Catten is the kernel of CharlotteOS, an experimental operating system.
+//! It initializes hardware, manages memory and threads, and provides the
+//! capability interfaces used by userspace services and applications.
 
 #[cfg(all(feature = "hvf_compat", feature = "live_upgrade_test"))]
 compile_error!(
@@ -98,14 +92,14 @@ static YIELD_BARRIER: LazyLock<Barrier> = LazyLock::new(|| Barrier::new(get_lp_c
 /// Limine base revision 6 enters a kernel at **EL2 with VHE** when the boot
 /// firmware hands off at EL2 (e.g. QEMU `sbsa-ref`, ARM servers). This kernel
 /// targets EL1/EL0, so the entry descends to EL1 before `bsp_main`: the MMU and
-/// interrupt setup all program EL1 system registers, and EL2 (an optional
-/// hypervisor level) is not where the OS wants to live.
+/// interrupt setup program EL1 system registers. EL2 is the optional
+/// hypervisor level.
 ///
 /// On EL2 entry, Limine has already built the kernel's page tables and left
 /// them in the VHE-redirected EL2 register bank (`TTBR0_EL1`/`TTBR1_EL1`/...).
 /// We capture that state, clear `HCR_EL2.E2H` so the `*_EL1` names address the
 /// real EL1 bank, program EL1's MMU, and `eret` down to EL1h. On EL1 entry
-/// (virt) we simply continue.
+/// (virt), execution continues at EL1.
 ///
 /// # Safety
 /// This is the raw EL1/EL2 entry point invoked by the bootloader (Limine):
@@ -157,9 +151,9 @@ pub unsafe extern "C" fn _start() -> ! {
     );
 }
 
-/// This is the bootstrap processor's entry point into the kernel. The `bsp_main` function is
-/// called by the bootloader after setting up the environment. It is made C ABI compatible so
-/// that it can be called by Limine or any other Limine Boot Protocol compliant bootloader.
+/// Bootstrap processor entry after the bootloader sets up the environment.
+/// On AArch64, `_start` first establishes EL1 execution. This entry uses the
+/// C ABI expected by the Limine boot protocol.
 #[unsafe(no_mangle)]
 pub extern "C" fn bsp_main() -> ! {
     crate::log::init_timestamp_epoch();

@@ -1,14 +1,11 @@
 //! # Kernel Logging Macros
 //!
-//! This module provides convenient macros for logging messages to the kernel
-//! log. They will be updated as the kernel develops to provide more
-//! functionality and use an actual kernel log that will reside in memory and be
-//! stored in a file.
+//! These macros write to the kernel's console backends. An in-memory log
+//! buffer and persistent log storage are not implemented yet.
 //!
 //! Output backends:
-//! - On AArch64 a PL011 UART serial console ([`serial`]) is always available, including as an early
-//!   console before the rest of the system is up, since Limine maps the platform MMIO into the HHDM
-//!   from the first instruction.
+//! - The serial console ([`serial`]) uses a PL011 UART on AArch64 and a 16550-compatible UART on
+//!   x86-64. Both support early boot logging.
 //! - When the `display` feature is enabled a framebuffer terminal ([`flanterm`]) is used for the
 //!   ordinary `log!`/`logln!` macros.
 //!
@@ -150,10 +147,8 @@ pub fn panic_write(args: core::fmt::Arguments<'_>) {
     }
 }
 
-/// Early, dependency-light log output. On AArch64 this writes to the PL011
-/// serial console, which is usable from the very first instruction of the
-/// kernel; on other architectures it is currently a no-op pending an equivalent
-/// early console.
+/// Early serial output through the PL011 on AArch64 or the 16550-compatible
+/// UART on x86-64. This preserves the caller's interrupt state.
 #[macro_export]
 macro_rules! early_log {
     ($text:expr $(, $arg:expr)*) => {{
@@ -197,10 +192,10 @@ macro_rules! early_logln {
 /// Write already-formatted log output to the active console backend.
 ///
 /// Backend selection:
-/// - With the `display` feature, output goes to the framebuffer terminal when a usable framebuffer
-///   is present. On AArch64, if the framebuffer terminal is unavailable (no framebuffer from the
-///   bootloader), output falls back to the PL011 serial console so logs are never silently lost.
-/// - Without the `display` feature, AArch64 uses the serial console.
+/// - With `display`, a usable framebuffer receives output alongside serial. If the framebuffer is
+///   unavailable, AArch64 falls back to serial; x86-64 currently returns without emitting ordinary
+///   log output in that case.
+/// - Without `display`, both architectures use serial.
 #[doc(hidden)]
 pub fn _write_args(args: core::fmt::Arguments, newline: bool) {
     use core::fmt::Write;

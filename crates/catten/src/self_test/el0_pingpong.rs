@@ -17,14 +17,12 @@
 //!
 //! ### Why this test uses hand-written assembly
 //!
-//! Like [`super::el0_ipc`], this is a narrowly scoped syscall-ABI test: the
-//! two stubs run at EL0 with no runtime (no crt0, heap, panic handler or
-//! config-page parsing), driving the kernel purely through raw syscall traps and
-//! fixed virtual addresses. A failure isolates syscall dispatch, mailbox and
-//! completion-kernel code as the only variable under test. Higher-level EL0
-//! tests load Rust-compiled ELFs via `load_domain`; assembly is deliberately
-//! kept for this syscall-level smoke test, and embedded in Rust source via
-//! `global_asm!(include_str!(...))`.
+//! Like [`super::el0_ipc`], the two stubs run at EL0 using raw syscall traps
+//! and fixed virtual addresses, with no crt0, heap, panic handler or config-page
+//! parsing. This exercises syscall dispatch, mailboxes and completions without
+//! the userspace runtime, while still depending on scheduling and memory
+//! management. Higher-level EL0 tests load Rust-compiled ELFs via `load_domain`.
+//! These stubs compile with the kernel through `global_asm!(include_str!(...))`.
 
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 use crate::completion;

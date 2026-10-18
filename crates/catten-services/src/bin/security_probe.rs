@@ -684,7 +684,8 @@ fn main(ctx: Context) -> ! {
     }
     check((4..=128).contains(&cancel_watches.len()), 33);
     let cleanup_budget = Deadline::after(5_000);
-    drop(cancel_watches); // Endpoint remains live: Drop must cancel, not await its death.
+    // The endpoint stays live while Drop cancels these subscriptions.
+    drop(cancel_watches);
     check(!cleanup_budget.expired(), 34);
     for _ in 0..128 {
         drop(cancel_connection.watch_closed().unwrap_or_else(|_| catten_rt::domain_abort()));

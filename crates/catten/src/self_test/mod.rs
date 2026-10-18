@@ -1,33 +1,29 @@
 //! # Kernel Self-Test Subsystem
 //!
-//! Whitebox integration tests that run after Catten has initialized itself,
-//! meant to validate the kernel and aid development and troubleshooting.
-//! Almost every subsystem except drivers has coverage here. The suite is
-//! compiled into the kernel and invoked from `run_self_tests` on the boot
-//! path; it is also the canonical smoke test used by `scripts/run-aarch64.sh`
-//! to prove a boot image (virt or `--sbsa-ref`) is healthy.
+//! Integration tests compiled into the kernel to help us check changes and
+//! investigate failures. Boot code runs synchronous tests before scheduler
+//! activation, then admits the deferred tests from a scheduled kernel thread.
+//! `scripts/run-aarch64.sh` uses their results for its boot smoke test.
 //!
-//! Self-test fixtures keep process-global `static mut` state and run one
-//! verifier at a time, so the `static_mut_refs` lint is allowed within this
-//! tree only; production kernel code uses `SyncUnsafeCell` accessors instead.
+//! Some fixtures keep process-global `static mut` state. This test tree allows
+//! the `static_mut_refs` lint; each fixture must still synchronize access and
+//! keep its referenced state alive. Production code uses `SyncUnsafeCell`
+//! accessors for this kind of shared storage.
 #![allow(static_mut_refs)]
 //!
 //! ## Execution model
 //!
-//! The tests split into two phases, because most of the kernel's *async*
-//! machinery requires the scheduler to be running while self-tests start on
-//! the boot path before the BSP ever yields:
+//! Tests that need asynchronous results run after scheduler activation:
 //!
-//! - **Synchronous, boot-path tests** run inline from `run_self_tests` and complete before
-//!   `finalize_and_start_coordinator` is called. These exercise kernel APIs that return directly:
-//!   the physical/virtual memory allocators, memory-object capability tables, the
-//!   completion-capability table, the kernel-side IPC endpoint ABI, syscall dispatch, the bounded
-//!   IPI queue, shard-local state/mailboxes, and running-statistics math.
+//! - **Synchronous, boot-path tests** run inline from `run_synchronous_self_tests` before scheduler
+//!   activation. These exercise kernel APIs that return directly: the physical/virtual memory
+//!   allocators, memory-object capability tables, the completion-capability table, the kernel-side
+//!   IPC endpoint ABI, syscall dispatch, the bounded IPI queue, shard-local state/mailboxes, and
+//!   running-statistics math.
 //! - **Deferred verifiers** are kernel threads registered via [`results::spawn_verifier`] that run
-//!   once the scheduler is active. Each owns one bit in the authoritative [`results`] bitmap and
-//!   reports success/failure through [`results::pass`] / [`results::fail`]. These cover everything
-//!   that needs a real scheduler, real user address spaces, real EL0 execution, a live GIC, or a
-//!   second guest on the network.
+//!   once the scheduler is active. Each owns one bit in the [`results`] bitmap and reports
+//!   success/failure through [`results::pass`] / [`results::fail`]. They exercise scheduling, user
+//!   address spaces, EL0 execution, interrupt delivery and communication with other guests.
 //!
 //! ## Test matrix (grouped by subsystem)
 //!
@@ -110,20 +106,19 @@
 //!
 //! ## Results and expected outcome
 //!
-//! [`results`] is the authoritative completion tracker. The boot suite
-//! registers 17 tests; each network feature adds one more. A deferred
-//! coordinator thread prints periodic `SELFTEST WAITING` summaries and, when
-//! every registered test has either passed or failed, a single final line:
+//! [`results`] tracks completion. The registered set depends on the architecture
+//! and enabled features; isolated fixtures select their own subsets. A deferred
+//! coordinator prints `SELFTEST WAITING` summaries. It emits a final line when
+//! all registered tests pass or any test fails, for example:
 //!
 //! ```text
 //! SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x1ffff ...
 //! ```
 //!
-//! **Expected outcome on both virt/TCG and sbsa-ref: `passed=17 failed=0
-//! pending=0`** (the bitmap `0x1ffff` covers the 17 registered boot tests).
-//! `run_self_tests` itself returns after the synchronous tests; the final
-//! authoritative verdict is produced by the coordinator thread and observed
-//! by `scripts/run-aarch64.sh` under `--timeout`.
+//! A passing run has `failed=0 pending=0`, with the pass count and bitmap matching
+//! the registered set. Returning from test setup leaves deferred results pending;
+//! `scripts/run-aarch64.sh` waits for the coordinator's final verdict under
+//! `--timeout`. The verdict covers the registered scenarios.
 
 #[cfg(all(
     feature = "security_test",

@@ -17,16 +17,13 @@
 //! register), and returns to EL0. The stub then writes `0xDEAD` and the
 //! returned cap to the result page.
 //!
-//! Because self-tests run on the boot path *before* `yield_lp()`, the spawned
-//! user thread cannot run inline. A companion kernel thread
-//! ([`verify_el0_result`]) is spawned to poll the result page (via its HHDM
-//! alias) once the scheduler is active and assert the sentinel and returned
-//! cap, panicking on mismatch or timeout.
+//! A companion kernel thread ([`verify_el0_result`]) polls the result page
+//! through its HHDM alias, checks the sentinel and returned capability, and
+//! panics on mismatch or timeout. Both threads run under the scheduler.
 //!
-//! **Why the stub is hand-written assembly:** like the sibling syscall-level
-//! tests (`el0_ipc`, `el0_pingpong`), the stub runs at EL0 with no runtime —
-//! no crt0, heap, panic handler or config-page parsing — so the first EL0
-//! exercise isolates the syscall dispatch path as the only variable under test.
+//! The stub uses hand-written assembly to exercise syscall dispatch without
+//! crt0, a heap, a panic handler or config-page parsing. As with `el0_ipc` and
+//! `el0_pingpong`, a failure can still involve scheduling or memory management.
 
 use core::sync::atomic::{
     AtomicUsize,
@@ -290,11 +287,8 @@ pub fn test_el0_syscall_round_trip() {
     logln!("User thread spawned with tid={} asid={} vaddr={:?}", tid, asid, vaddr);
     EL0_USER_ASID.store(asid + 1, Ordering::Release);
 
-    // The verification thread runs after `yield_lp()` (self-tests run on the
-    // boot path before the scheduler is entered), polls the result page via
-    // HHDM, and asserts the sentinel + returned cap. It panics on timeout or
-    // mismatch, so a broken EL0/submit path fails the boot rather than
-    // silently logging success.
+    // The verifier polls the result page through HHDM and checks the sentinel
+    // and returned capability. A timeout or mismatch fails its registered test.
     let vtid = crate::self_test::results::spawn_verifier(
         crate::self_test::results::TestId::El0,
         verify_el0_result,

@@ -1,15 +1,15 @@
 //! Self-test: the wake-aware, blocking CQ wait used by the sitas reactor.
 //!
-//! Proves that a kernel thread blocked in [`completion::wait_on_cq`] is
+//! Checks that a kernel thread blocked in [`completion::wait_on_cq`] is
 //! released by a posted completion, by an explicit [`completion::wake`] with
 //! no completion entry, by a per-queue wake on a second shard queue, and —
 //! for a CQ-bound endpoint — by an incoming IPC message (the unified shard
 //! wait of architecture doc §7 / Phase 7).
 //!
 //! The waiter and driver run as scheduled kernel threads (the same deferred
-//! pattern the EL0 blocking-receive test uses); the flows are robust to
-//! scheduling order because all release conditions are also observed by the
-//! wait's fast path if they are posted before the waiter blocks.
+//! pattern the EL0 blocking-receive test uses). The wait's fast path also
+//! observes release conditions posted before the waiter blocks, so either
+//! thread may run first.
 
 use core::sync::atomic::{
     AtomicU32,
