@@ -904,6 +904,21 @@ mod inner {
             logln!("[dns] echo publish result = {register:?}");
             echo_generation = register.unwrap_or(0);
             assert!(echo_generation >= 1, "[dns] echo publish must return its generation");
+            // Serialized kernel ABI fixture: DNS placement lookup grants no
+            // connection authority. Observe the result once and close its call.
+            let lookup = ipc::scalar_call(KERNEL_ASID, dns_conn, DNS_OP_LOOKUP, ECHO_NAME)
+                .expect("[dns] fenced local lookup submission");
+            ipc::wait_reply(KERNEL_ASID, lookup).expect("[dns] fenced local lookup wait");
+            let reply = ipc::poll_reply(KERNEL_ASID, lookup)
+                .expect("[dns] fenced local lookup observation")
+                .expect("[dns] fenced local lookup ready");
+            assert_eq!(reply.result, DNS_RESULT_LOCAL);
+            assert!(
+                reply.memory.is_none() && reply.cap.is_none(),
+                "DNS local placement must not grant capability authority"
+            );
+            ipc::close_cap(KERNEL_ASID, lookup).expect("[dns] fenced lookup call close");
+            logln!("[dns] fenced local placement returned without capability authority.");
             let local_generation = generation_request(
                 kernel_ns,
                 LONG_ECHO_NAME,

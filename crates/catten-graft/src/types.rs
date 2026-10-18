@@ -180,6 +180,7 @@ pub const ERR_TOO_LARGE: i64 = -5;
 pub const ERR_READ_BARRIER: i64 = -6;
 pub const ERR_NOT_COMMITTED: i64 = -7;
 pub const ERR_CONFIG_IN_PROGRESS: i64 = -8;
+pub const ERR_RESOURCE_LIMIT: i64 = -9;
 
 /// Leaves room for Raft metadata and peer IDs in CharlotteOS's one-page IPC
 /// transport object.

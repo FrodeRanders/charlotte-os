@@ -351,15 +351,16 @@ run_expected_violation CharlotteRaftResponse \
     CharlotteRaftResponse_invalid_unsafe.cfg \
     AcknowledgementsHaveProof UnsafeInvalidCredit
 run_model CharlotteRaftRead CharlotteRaftRead_small.cfg \
-    Elect ReceiveOldPrefix CommitCurrent ApplyCurrent Read \
-    RejectBeforeCommit RejectBeforeApply ExpireContact StepDown
+    Elect AdmitRead CaptureReply ReceiveOldPrefix CommitQuorum DeliverReply Apply Read RejectRead \
+    CancelRead ChangeLeader StepDown ChangeEpoch ReplaceDomain
 run_expected_violation CharlotteRaftRead CharlotteRaftRead_commit_unsafe.cfg \
     ReadHasCurrentCommit UnsafeReadBeforeCommit
 run_expected_violation CharlotteRaftRead CharlotteRaftRead_apply_unsafe.cfg \
     ReadHasAppliedCommit UnsafeReadBeforeApply
-# Known implementation gap: contact delivery can revive an obsolete leader.
-run_expected_violation CharlotteRaftRead CharlotteRaftRead_delayed_lease_gap.cfg \
-    ReadHasAuthority Read
+run_expected_violation CharlotteRaftRead CharlotteRaftRead_lease_unsafe.cfg \
+    ReadHasFenceProof UnsafeReceiveLease
+run_expected_violation CharlotteRaftRead CharlotteRaftRead_binding_unsafe.cfg \
+    ReadBoundToAdmission UnsafeReadBinding
 run_model CharlotteRaftMembership CharlotteRaftMembership_small.cfg \
     Elect ElectNextOnly SubmitJoint Replicate CommitJoint SubmitFinalize \
     RejectLaggingFinalize CommitFinalize Crash Restart

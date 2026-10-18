@@ -121,7 +121,7 @@ provide.
 \section{What is modeled}
 
 The current suite checks thirty-five safe configurations across thirty-three
-specifications. It also checks 104 expected-counterexample
+specifications. It also checks 105 expected-counterexample
 configurations. The models are divided by state ownership and failure boundary
 so that each remains reviewable.
 The Raft models are deliberately layered: election, log replication,
@@ -253,9 +253,9 @@ different proof obligations.
     confirmed replication progress & An old prefix acknowledgement cannot commit
     a replacement; reordered replies and backoff preserve confirmed progress. \\
 \hline
-\tlbreak{Charlotte}{RaftRead} & Election-prefix commit, application and query
-    admission & A read requires a current-term commit and application through
-    that commit. Quorum contact timing is an external assumption. \\
+\tlbreak{Charlotte}{RaftRead} & Per-read log fences, delayed replies, ownership
+    binding and query completion & Reads require a fresh quorum-confirmed index,
+    application and exact node/domain, term and membership episode. \\
 \hline
 \tlbreak{Charlotte}{RaftMembership} & Voters/learners, joint consensus,
     finalization, decommissioning & Both voter majorities are required while
@@ -583,46 +583,53 @@ before correction. Transport authenticity, request correlation, removal epochs
 and the timing assumptions of the existing quorum-contact read gate remain
 outside this proof.
 
-\subsection{A new leader commits before reading}
+\subsection{Each read carries a fresh quorum fence}
 
-An exact-term acknowledgement can confirm only an inherited older-term prefix.
-Charlotte previously counted that recent contact as sufficient to read before
-its election no-op committed. A host regression reproduced the admission. The
-query gate now requires a nonzero current-term commit and application through
-that commit. Term lookup includes a compacted snapshot anchor; single-voter
-leaders commit their election no-op locally.
+A recent reply cannot prove that a leader still has authority. The host audit
+reproduced this with three nodes: n2 and n3 committed value 2, then an honest
+term-one reply reached isolated n1 and reopened its receive-time query gate.
+n1 returned value 1. Current-term commitment alone did not prevent that read.
 
-\tlbreak{Charlotte}{RaftRead} checks these prerequisites in 20 distinct states.
-Its two counterexamples remove the commit and application guards. Java and C++
-already check application progress in their core gates; the inspected upstream
-core gates do not explicitly require a current-term commit. Their runtime paths
-differ, and no upstream failure was reproduced. Contact remains a receive-time
-observation: delayed same-term replies, lease timing and request correlation
-still need separate work before claiming complete read linearizability.
+The query API now admits each request before appending a fresh no-op log entry.
+Its \texttt{PendingRead} owner captures exact node/domain identity, term, index
+and membership epoch. The reactor retains it while processing quorum traffic.
+Readiness observes commitment and application without executing the query;
+completion rechecks those conditions and consumes the owner once. Earlier
+acknowledgements cannot confirm its new index. Compaction preserves the proof
+through a newer committed current-term anchor.
 
-\subsection{Elapsed time and delayed authority evidence}
+DNS keeps the original monotonic deadline and typed reply destination with the
+fence. It admits bounded queue storage before publication. Placement lookup
+returns metadata; a local result carries no connection authority. Ordinary NS
+lookup strips delegation rights, so DNS does not attempt to re-mint that grant
+for a different caller. Invocation starts only after confirmed routing and
+another deadline check, using the existing owned NS lookup/call phases on the
+shared CQ.
+Timeout or drop abandons the query while its no-op may still commit; it cannot
+execute or replay the business call. Readiness-binding rejection aborts with
+accepted work live. No extra per-read timer or blocking reactor wait is added.
 
-The service reactors previously counted one 25 ms tick after waking, even if
-seconds had passed. They now convert the kernel monotonic counter from a fixed
-epoch, sampling after waits and before inbound or scheduled work. Fractional
-counter ticks accumulate correctly. Invalid or regressing samples abort with
-pending work live; timer notifications no longer manufacture elapsed time.
+\tlbreak{Charlotte}{RaftRead} explores 9,916 distinct states, including delayed
+replies and external leader replacement unseen by the old node. Four controls
+remove commitment, application, fresh-fence or owner-binding checks. The former
+stale-read host schedule now rejects. A quorum may have confirmed a fence after
+admission and replied before a later election; the read proof concerns that
+confirmation within the request, rather than authority at delivery time.
 
-That correction does not make receive-time contact a safe read lease. A host
-witness elects n2 with n3 and commits value 2. Isolated n1 first rejects a read
-because its old contact expired. An honest delayed term-one reply then refreshes
-its contact, and n1 returns value 1. This is a reproduced application-level stale
-read in the host consensus core, without a native packet-delay or upstream
-execution claim.
+The shared no-op wire grammar is unchanged. Each read adds a durable log entry
+and quorum commit, with corresponding storage and latency costs. No performance,
+Jepsen or mixed Charlotte/Graft execution claim is made. Bounded status/ingress
+observations retain receive-time freshness separately; this is not general lease
+qualification.
 
-The diagnostic \texttt{DelayedLease} configuration extends
-\tlbreak{Charlotte}{RaftRead} with reply capture, external leader replacement
-and delayed delivery. Its ordinary \texttt{Read} action violates
-\tlbreak{ReadHas}{Authority} while both commit/application prerequisites hold.
-It removes no source guard. The safe 20-state instance excludes this external
-authority change and retains its narrower prerequisite claim. Request-specific
-quorum confirmation remains required; shortening a receive-time window alone
-does not establish that confirmation.
+\subsection{Elapsed time comes from the kernel counter}
+
+The reactors previously counted one 25 ms tick after waking even if seconds had
+passed. They now convert a kernel-monotonic counter from one fixed epoch,
+sampling after waits and before inbound or scheduled work. Fractional ticks
+accumulate; invalid or regressing samples abort with pending work live. Timers
+wake the service without manufacturing elapsed time. Clock conversion, resource
+readiness delivery and physical cleanup remain outside the read model.
 
 \subsection{Rejected application snapshots leave known ground intact}
 
@@ -936,8 +943,11 @@ present conformance obligations:
 \tlbreak{UnsafeFinalize}{OldOnly} & FINALIZE commits without the new voter majority. &
     \tlbreak{FinalizationHas}{BothQuorums} \\
 \hline
-Read after delayed contact & A delayed reply revives an obsolete leader's read gate (known source gap). &
-    \tlbreak{ReadHas}{Authority} \\
+\tlbreak{UnsafeReceive}{Lease} & The retired receive-time query gate admits an obsolete leader. &
+    \tlbreak{ReadHasFence}{Proof} \\
+\hline
+\tlbreak{UnsafeRead}{Binding} & A query consumes another node/domain, term or membership episode. &
+    \tlbreak{ReadBoundTo}{Admission} \\
 \hline
 \tlbreak{UnsafeReadBefore}{Commit} & A new leader reads before committing in its term. &
     \tlbreak{ReadHasCurrent}{Commit} \\
@@ -1019,8 +1029,7 @@ Flat session allocation & Retry and restart epochs alias one wire session. &
 \end{longtable}
 \normalsize
 
-The check suite expects all 104 negative configurations, including the known
-lease gap, to fail for the named
+The check suite expects all 105 negative configurations to fail for the named
 reason. If one unexpectedly satisfies its invariant, the regression harness
 has lost sensitivity and the suite fails.
 
@@ -1071,7 +1080,7 @@ Alternatively, \texttt{TLA2TOOLS\_JAR} may name the tools archive. The script:
         positive successor count;
     \item rejects structural TLC warnings about variables, \texttt{EXCEPT}
         expressions, or incomplete successor states;
-    \item runs 104 negative configurations and requires each one to fail on
+    \item runs 105 negative configurations and requires each one to fail on
         the named invariant after exercising the named unsafe action; and
     \item writes checkpoints and traces into a temporary directory so generated
         state does not become part of the source tree.
@@ -1207,10 +1216,5 @@ A practical review checklist is:
     \item Record deliberate omissions and avoid converting a safety result into
         an unsupported liveness or availability claim.
 \end{enumerate}
-
-Used this way, TLA+ is part of the engineering control system for CharlotteOS.
-It preserves the reasoning behind a safety fence, makes regressions executable,
-and forces the model, manual, code, and tests to describe the same
-functionality.
 
 \endinput

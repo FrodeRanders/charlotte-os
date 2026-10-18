@@ -1,115 +1,146 @@
 ------------------------- MODULE CharlotteRaftRead -------------------------
-\* Read prerequisites after an election with an inherited term-one prefix.
-\* Quorum contact is an input, not proof of a valid time lease or authority.
+\* Fresh per-read log fences. Quorum/log/election validity is assumed from
+\* the other Raft layers. External authority may change without local notice.
 EXTENDS Naturals
 CONSTANT Unsafe
-\* DelayedLease enables an implemented receive-time contact counterexample.
-VARIABLES term, leader, contact, commit, commitTerm, applied,
-          readAccepted, readTerm, readCommit, readCommitTerm, readApplied, changedLeader, delayedContact, readAuthority
-vars == <<term, leader, contact, commit, commitTerm, applied,
-          readAccepted, readTerm, readCommit, readCommitTerm, readApplied, changedLeader, delayedContact, readAuthority>>
+Max(a, b) == IF a > b THEN a ELSE b
+VARIABLES term, leader, changedLeader, domain, epoch, lastIndex, commit, applied,
+          contact, delayedIndex, pending, fence, ownerTerm, ownerDomain, ownerEpoch,
+          fenceProof, readAccepted, readCurrent, readApplied, readProof, readBound
+vars == <<term, leader, changedLeader, domain, epoch, lastIndex, commit, applied,
+          contact, delayedIndex, pending, fence, ownerTerm, ownerDomain, ownerEpoch,
+          fenceProof, readAccepted, readCurrent, readApplied, readProof, readBound>>
 
 Init ==
-    /\ changedLeader = FALSE /\ delayedContact = FALSE /\ readAuthority = TRUE
-    /\ term = 1 /\ leader = FALSE /\ contact = FALSE
-    /\ commit \in 0..1 /\ commitTerm = (IF commit = 0 THEN 0 ELSE 1)
-    /\ applied = commit
-    /\ readAccepted = FALSE /\ readTerm = 0 /\ readCommit = 0
-    /\ readCommitTerm = 0 /\ readApplied = 0
+    /\ term = 1 /\ leader = FALSE /\ changedLeader = FALSE
+    /\ domain = 1 /\ epoch = 1 /\ lastIndex = 1 /\ commit \in 0..1 /\ applied = commit
+    /\ contact = FALSE /\ delayedIndex = 0 /\ pending = FALSE /\ fence = 0
+    /\ ownerTerm = 0 /\ ownerDomain = 0 /\ ownerEpoch = 0 /\ fenceProof = FALSE
+    /\ readAccepted = FALSE /\ readCurrent = TRUE /\ readApplied = TRUE
+    /\ readProof = TRUE /\ readBound = TRUE
 
 Elect ==
-    /\ term = 1 /\ term' = 2 /\ leader' = TRUE /\ contact' = FALSE
-    \* The leader appends its term-two no-op, but has not committed it.
-    /\ UNCHANGED <<commit, commitTerm, applied,
-                    readAccepted, readTerm, readCommit, readCommitTerm, readApplied, changedLeader, delayedContact, readAuthority>>
+    /\ term = 1 /\ term' = 2 /\ leader' = TRUE /\ lastIndex' = 2
+    /\ UNCHANGED <<changedLeader, domain, epoch, commit, applied, contact, delayedIndex,
+                    pending, fence, ownerTerm, ownerDomain, ownerEpoch, fenceProof,
+                    readAccepted, readCurrent, readApplied, readProof, readBound>>
+
+AdmitRead ==
+    /\ leader /\ term = 2 /\ ~pending /\ lastIndex < 4
+    /\ pending' = TRUE /\ fence' = lastIndex + 1 /\ lastIndex' = lastIndex + 1
+    /\ ownerTerm' = term /\ ownerDomain' = domain /\ ownerEpoch' = epoch /\ fenceProof' = FALSE
+    /\ UNCHANGED <<term, leader, changedLeader, domain, epoch, commit, applied,
+                    contact, delayedIndex, readAccepted, readCurrent, readApplied, readProof, readBound>>
+
+\* A quorum has replicated this index while this node still has authority.
+\* Capture may precede delivery. Proof for a future read cannot be inherited.
+CaptureReply ==
+    /\ leader /\ term = 2 /\ ~changedLeader /\ delayedIndex = 0
+    /\ \E index \in 2..lastIndex :
+        /\ delayedIndex' = index
+        /\ fenceProof' = (fenceProof \/ (pending /\ index >= fence))
+    /\ UNCHANGED <<term, leader, changedLeader, domain, epoch, lastIndex, commit, applied,
+                    contact, pending, fence, ownerTerm, ownerDomain, ownerEpoch,
+                    readAccepted, readCurrent, readApplied, readProof, readBound>>
 
 ReceiveOldPrefix ==
-    /\ term = 2 /\ leader /\ ~changedLeader /\ contact' = TRUE
-    \* Exact-term success can acknowledge only the inherited prefix.
-    /\ UNCHANGED <<term, leader, commit, commitTerm, applied,
-                    readAccepted, readTerm, readCommit, readCommitTerm, readApplied, changedLeader, delayedContact, readAuthority>>
+    /\ leader /\ term = 2 /\ ~changedLeader /\ contact' = TRUE
+    /\ UNCHANGED <<term, leader, changedLeader, domain, epoch, lastIndex, commit, applied,
+                    delayedIndex, pending, fence, ownerTerm, ownerDomain, ownerEpoch, fenceProof,
+                    readAccepted, readCurrent, readApplied, readProof, readBound>>
 
-CommitCurrent ==
-    /\ term = 2 /\ leader /\ commit < 2
-    \* A qualified current-term quorum acknowledges the election no-op.
-    /\ commit' = 2 /\ commitTerm' = 2 /\ contact' = TRUE
-    /\ UNCHANGED <<term, leader, applied,
-                    readAccepted, readTerm, readCommit, readCommitTerm, readApplied, changedLeader, delayedContact, readAuthority>>
+CommitQuorum ==
+    /\ leader /\ term = 2 /\ ~changedLeader /\ commit < lastIndex
+    /\ commit' = lastIndex /\ contact' = TRUE
+    /\ fenceProof' = (fenceProof \/ (pending /\ lastIndex >= fence))
+    /\ UNCHANGED <<term, leader, changedLeader, domain, epoch, lastIndex, applied,
+                    delayedIndex, pending, fence, ownerTerm, ownerDomain, ownerEpoch,
+                    readAccepted, readCurrent, readApplied, readProof, readBound>>
 
-ApplyCurrent ==
-    /\ commit = 2 /\ applied < commit /\ applied' = commit
-    /\ UNCHANGED <<term, leader, contact, commit, commitTerm,
-                    readAccepted, readTerm, readCommit, readCommitTerm, readApplied, changedLeader, delayedContact, readAuthority>>
+DeliverReply ==
+    /\ leader /\ term = 2 /\ delayedIndex > 0
+    /\ commit' = Max(commit, delayedIndex) /\ delayedIndex' = 0 /\ contact' = TRUE
+    /\ UNCHANGED <<term, leader, changedLeader, domain, epoch, lastIndex, applied,
+                    pending, fence, ownerTerm, ownerDomain, ownerEpoch, fenceProof,
+                    readAccepted, readCurrent, readApplied, readProof, readBound>>
 
-ReadWith(skipCommit, skipApply) ==
-    /\ leader /\ contact
-    /\ (skipCommit \/ (commit > 0 /\ commitTerm = term))
-    /\ (skipApply \/ applied = commit)
-    /\ readAccepted' = TRUE /\ readTerm' = term /\ readCommit' = commit
-    /\ readCommitTerm' = commitTerm /\ readApplied' = applied
-    /\ readAuthority' = ~changedLeader
-    /\ UNCHANGED <<term, leader, contact, commit, commitTerm, applied,
-                    changedLeader, delayedContact>>
+Apply ==
+    /\ applied < commit /\ applied' = commit
+    /\ UNCHANGED <<term, leader, changedLeader, domain, epoch, lastIndex, commit,
+                    contact, delayedIndex, pending, fence, ownerTerm, ownerDomain, ownerEpoch,
+                    fenceProof, readAccepted, readCurrent, readApplied, readProof, readBound>>
 
-Read == /\ leader /\ ReadWith(FALSE, FALSE)
-UnsafeReadBeforeCommit ==
-    /\ Unsafe = "Commit" /\ ReadWith(TRUE, FALSE)
-UnsafeReadBeforeApply ==
-    /\ Unsafe = "Apply" /\ ReadWith(FALSE, TRUE)
+Bound == term = ownerTerm /\ domain = ownerDomain /\ epoch = ownerEpoch
+CurrentCommit == term = 2 /\ commit >= 2
+Ready == pending /\ leader /\ Bound /\ CurrentCommit /\ commit >= fence /\ applied = commit
 
-RejectBeforeCommit ==
-    /\ leader /\ contact /\ commitTerm # term /\ UNCHANGED vars
-RejectBeforeApply ==
-    /\ leader /\ contact /\ commitTerm = term /\ applied < commit /\ UNCHANGED vars
+ReadWith(mode) ==
+    /\ pending /\ leader
+    /\ (mode = "Binding" \/ Bound)
+    /\ (mode = "Commit" \/ CurrentCommit)
+    /\ (mode \in {"Commit", "Lease"} \/ commit >= fence)
+    /\ (mode = "Apply" \/ applied = commit)
+    /\ (mode \notin {"Commit", "Lease"} \/ contact)
+    /\ pending' = FALSE /\ readAccepted' = TRUE
+    /\ readCurrent' = CurrentCommit /\ readApplied' = (applied = commit)
+    /\ readProof' = fenceProof /\ readBound' = Bound
+    /\ UNCHANGED <<term, leader, changedLeader, domain, epoch, lastIndex, commit, applied,
+                    contact, delayedIndex, fence, ownerTerm, ownerDomain, ownerEpoch, fenceProof>>
 
-ExpireContact ==
-    /\ contact /\ contact' = FALSE
-    /\ UNCHANGED <<term, leader, commit, commitTerm, applied,
-                    readAccepted, readTerm, readCommit, readCommitTerm, readApplied, changedLeader, delayedContact, readAuthority>>
+Read == /\ pending /\ ReadWith("None")
+RejectRead == /\ pending /\ ~Ready /\ UNCHANGED vars
+CancelRead ==
+    /\ pending /\ pending' = FALSE
+    /\ UNCHANGED <<term, leader, changedLeader, domain, epoch, lastIndex, commit, applied,
+                    contact, delayedIndex, fence, ownerTerm, ownerDomain, ownerEpoch, fenceProof,
+                    readAccepted, readCurrent, readApplied, readProof, readBound>>
+
+ChangeLeader ==
+    /\ leader /\ ~changedLeader /\ changedLeader' = TRUE /\ contact' = FALSE
+    \* The isolated node has not observed the newer leader's term.
+    /\ UNCHANGED <<term, leader, domain, epoch, lastIndex, commit, applied,
+                    delayedIndex, pending, fence, ownerTerm, ownerDomain, ownerEpoch, fenceProof,
+                    readAccepted, readCurrent, readApplied, readProof, readBound>>
 
 StepDown ==
-    /\ leader /\ term' = 3 /\ leader' = FALSE /\ contact' = FALSE
-    /\ UNCHANGED <<commit, commitTerm, applied,
-                    readAccepted, readTerm, readCommit, readCommitTerm, readApplied, changedLeader, delayedContact, readAuthority>>
+    /\ leader /\ leader' = FALSE /\ term' = 3 /\ contact' = FALSE
+    /\ UNCHANGED <<changedLeader, domain, epoch, lastIndex, commit, applied,
+                    delayedIndex, pending, fence, ownerTerm, ownerDomain, ownerEpoch, fenceProof,
+                    readAccepted, readCurrent, readApplied, readProof, readBound>>
 
-\* Honest response created before a different quorum elects a new leader.
-CaptureDelayedContact ==
-    /\ Unsafe = "DelayedLease" /\ leader /\ commit = 2 /\ applied = 2
-    /\ ~changedLeader /\ ~delayedContact /\ delayedContact' = TRUE
-    /\ UNCHANGED <<term, leader, contact, commit, commitTerm, applied,
-                    readAccepted, readTerm, readCommit, readCommitTerm, readApplied,
-                    changedLeader, readAuthority>>
+ChangeEpoch ==
+    /\ epoch = 1 /\ epoch' = 2
+    /\ UNCHANGED <<term, leader, changedLeader, domain, lastIndex, commit, applied,
+                    contact, delayedIndex, pending, fence, ownerTerm, ownerDomain, ownerEpoch, fenceProof,
+                    readAccepted, readCurrent, readApplied, readProof, readBound>>
 
-ElectOtherLeader ==
-    /\ Unsafe = "DelayedLease" /\ delayedContact /\ ~changedLeader
-    \* The old node remains unaware; its local term/role do not change.
-    /\ changedLeader' = TRUE /\ contact' = FALSE
-    /\ UNCHANGED <<term, leader, commit, commitTerm, applied,
-                    readAccepted, readTerm, readCommit, readCommitTerm, readApplied,
-                    delayedContact, readAuthority>>
+ReplaceDomain ==
+    /\ domain = 1 /\ domain' = 2
+    \* A different node/domain can have identical scalar terms and indices.
+    /\ UNCHANGED <<term, leader, changedLeader, epoch, lastIndex, commit, applied,
+                    contact, delayedIndex, pending, fence, ownerTerm, ownerDomain, ownerEpoch, fenceProof,
+                    readAccepted, readCurrent, readApplied, readProof, readBound>>
 
-DeliverDelayedContact ==
-    /\ Unsafe = "DelayedLease" /\ changedLeader /\ delayedContact
-    /\ leader /\ delayedContact' = FALSE /\ contact' = TRUE
-    /\ UNCHANGED <<term, leader, commit, commitTerm, applied,
-                    readAccepted, readTerm, readCommit, readCommitTerm, readApplied,
-                    changedLeader, readAuthority>>
-
-Next == Elect \/ ReceiveOldPrefix \/ CommitCurrent \/ ApplyCurrent \/ Read
-        \/ RejectBeforeCommit \/ RejectBeforeApply \/ ExpireContact \/ StepDown
-        \/ UnsafeReadBeforeCommit \/ UnsafeReadBeforeApply
-        \/ CaptureDelayedContact \/ ElectOtherLeader \/ DeliverDelayedContact
+UnsafeReadBeforeCommit == /\ Unsafe = "Commit" /\ ReadWith("Commit")
+UnsafeReadBeforeApply == /\ Unsafe = "Apply" /\ ReadWith("Apply")
+UnsafeReceiveLease == /\ Unsafe = "Lease" /\ changedLeader /\ ReadWith("Lease")
+UnsafeReadBinding == /\ Unsafe = "Binding" /\ ReadWith("Binding")
+Next == Elect \/ AdmitRead \/ CaptureReply \/ ReceiveOldPrefix \/ CommitQuorum \/ DeliverReply \/ Apply
+        \/ Read \/ RejectRead \/ CancelRead \/ ChangeLeader \/ StepDown \/ ChangeEpoch \/ ReplaceDomain
+        \/ UnsafeReadBeforeCommit \/ UnsafeReadBeforeApply \/ UnsafeReceiveLease \/ UnsafeReadBinding
 Spec == Init /\ [][Next]_vars
-
 TypeOK ==
-    /\ changedLeader \in BOOLEAN /\ delayedContact \in BOOLEAN /\ readAuthority \in BOOLEAN
-    /\ term \in 1..3 /\ leader \in BOOLEAN /\ contact \in BOOLEAN
-    /\ commit \in 0..2 /\ commitTerm \in 0..2 /\ applied \in 0..2
-    /\ readAccepted \in BOOLEAN /\ readTerm \in 0..3
-    /\ readCommit \in 0..2 /\ readCommitTerm \in 0..2 /\ readApplied \in 0..2
-ReadHasCurrentCommit == readAccepted => (readCommit > 0 /\ readCommitTerm = readTerm)
-ReadHasAppliedCommit == readAccepted => readApplied = readCommit
-\* Diagnostic only: current source does not establish this stronger property.
-ReadHasAuthority == readAccepted => readAuthority
+    /\ term \in 1..3 /\ leader \in BOOLEAN /\ changedLeader \in BOOLEAN
+    /\ domain \in 1..2 /\ epoch \in 1..2 /\ lastIndex \in 1..4
+    /\ commit \in 0..4 /\ applied \in 0..4 /\ delayedIndex \in 0..4
+    /\ contact \in BOOLEAN /\ pending \in BOOLEAN /\ fence \in 0..4
+    /\ ownerTerm \in 0..3 /\ ownerDomain \in 0..2 /\ ownerEpoch \in 0..2
+    /\ fenceProof \in BOOLEAN /\ readAccepted \in BOOLEAN /\ readCurrent \in BOOLEAN
+    /\ readApplied \in BOOLEAN /\ readProof \in BOOLEAN /\ readBound \in BOOLEAN
+ReadHasCurrentCommit == readAccepted => readCurrent
+ReadHasAppliedCommit == readAccepted => readApplied
+ReadHasFenceProof == readAccepted => readProof
+ReadBoundToAdmission == readAccepted => readBound
 Invariants == TypeOK /\ ReadHasCurrentCommit /\ ReadHasAppliedCommit
+              /\ ReadHasFenceProof /\ ReadBoundToAdmission
 =============================================================================

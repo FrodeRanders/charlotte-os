@@ -250,18 +250,23 @@ client API is shown in \autoref{sec:reconnecting-client}:
 
 
 \begin{lstlisting}[style=rustCode]
-// Name service:
-let full_connection = name_service.lookup("driver.nic.v1")?;
-// full_connection has SEND | CALL | MINT_CONNECTION rights
+// The registrar retains the publisher's mintable connection:
+let source = registration_connection.as_ref();
+// Ordinary lookup returns SEND | CALL and cannot supply this source.
 
-// Delegate to a client with reduced rights:
-connection_delegate(full_connection, client_domain, SEND | CALL)?;
-// client_domain now holds a connection with SEND | CALL only
+// After authorizing the client, attenuate its reply:
+reply.reply_connection_ref(
+    source, IpcRights::SEND | IpcRights::CALL, generation,
+)?;
+// The client receives SEND | CALL only.
 \end{lstlisting}
 
 The kernel mediates. The name service never sees raw endpoint identities; it
-holds connection capabilities, which it re-delegates. Each delegation step can
-only reduce rights.
+holds the publisher's mintable connection grant. Ordinary lookup removes
+minting authority, so a client cannot re-delegate that returned connection.
+Each authorized delegation step can only reduce rights. DNS placement lookup
+returns catalog metadata; application authority comes from the local name or
+policy grant path.
 
 \section{Service identity and discovery}
 

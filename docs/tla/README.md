@@ -65,7 +65,7 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all thirty-five complete fast configurations and 104 expected-failure
+- runs all thirty-five complete fast configurations and 105 expected-failure
   IPC-transaction, IPC-publication, endpoint-observer, name-publication, boot-trust, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
   checked-wait, domain-abort, address-space, root-retirement, hardware-ASID, interrupt-route, service-lifecycle, DMA, DMA-operation, authorization,
   Raft-join, Raft-response, snapshot-restore, cluster-ingress, and reliable-message regression configurations;
@@ -797,27 +797,25 @@ required counterexamples. Transport authenticity, request correlation and read
 lease timing remain separate. The [source regression and evidence](../reports/audits/2026-10-18-raft-response-fencing.md)
 record the unsafe commit before correction and the passing repeat.
 
-`CharlotteRaftRead.tla` checks read prerequisites after an election with an
-inherited older-term prefix. Recent quorum contact cannot substitute for a
-committed current-term entry, and application must reach that commit before a
-query. Its finite instance explores 20 distinct states, with positive coverage
-for accepted reads and both rejection paths. Two controls remove the commit and
-application guards. The [read-prerequisite review](../reports/audits/2026-10-18-raft-read-prerequisites.md)
-records the reproduced source failure. Contact is an external input: this model
-does not establish lease timing, delayed same-term response safety, request
-correlation or complete linearizability. Log/election proofs and actual snapshot
-term lookup remain separate layers and Rust checks.
+`CharlotteRaftRead.tla` now checks fresh per-read log fences, including delayed
+replies and an external leader replacement unseen by the old node. Admission
+appends a new no-op; a prior acknowledgement cannot prove its index. A captured
+quorum acknowledgement of that fence can arrive later, so the proof concerns
+confirmation after admission rather than authority at reply-delivery time.
+The safe instance explores 9,916 distinct states. All fourteen required actions
+have positive coverage, including cancellation, application lag, membership
+change and domain replacement. Four controls remove current-term commitment,
+application, fresh-fence or owner-binding guards. The old receive-time policy
+is now a weakened control, not an accepted known source failure.
 
-The read model also retains a **known implementation gap** in
-`CharlotteRaftRead_delayed_lease_gap.cfg`. It captures an honest reply, lets
-another quorum replace the leader without notifying the old node, then delivers
-the reply. The ordinary `Read` action violates `ReadHasAuthority` while the
-commit/application prerequisites still hold. This configuration removes no
-source guard; the safe 20-state prerequisite instance excludes that environment
-and makes no authority claim. The [clock and lease-gap review](../reports/audits/2026-10-18-raft-clock-lease-gap.md)
-includes a three-node host witness that returns an old value after a newer write
-commits. Kernel-monotonic service clocks fix elapsed-time accounting, not this
-receive-time authority gap.
+The [read-fence review](../reports/audits/2026-10-19-raft-read-fences.md) records
+the former three-node stale-read schedule rejecting its fresh fence, and the
+owned DNS reactor phases. Node/domain identity, term and membership epoch bind
+each owner; completion consumes it once. Compaction preserves a committed proof.
+Quorum/log/election correctness remains an assumption from the other models.
+Allocation, physical cleanup, byte codecs and readiness delivery are outside
+this projection. Bounded status/ingress observations retain receive-time
+freshness separately; no general lease qualification is claimed.
 
 `CharlotteSnapshotRestore.tla` checks the application acceptance boundary
 separately. Unsupported headers and malformed later sections leave application

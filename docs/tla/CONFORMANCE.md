@@ -577,42 +577,38 @@ The model represents peer identity and role as voter/learner sets. Peer
 addresses, protobuf encoding, transport retries, and temporal availability are
 outside this abstraction. Pre-membership join admission is checked separately.
 
-## Raft read prerequisites
+## Raft per-read fences
 
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
-| `Elect` | `become_leader` | Abstract election with an inherited older-term prefix and a new, uncommitted election no-op. Election legitimacy is assumed from the election model. |
-| `ReceiveOldPrefix` | exact-term successful append response below the new no-op | Records contact without committing a current-term entry. The source regression exercises this distinction. |
-| `CommitCurrent` | `advance_commit_index` | Abstract current-term quorum commit; quorum and log correctness are separate models. |
-| `ApplyCurrent` | `apply_committed_entries` | Abstract application progress. Rust normally completes this loop before reactor access; the model separates it to check the read gate explicitly. |
-| `Read`, `RejectBeforeCommit`, `RejectBeforeApply` | `can_serve_linearizable_read`, `handle_client_query` | Requires leadership, contact, a nonzero current-term commit and exact application through that commit. `term_at` also resolves a compacted snapshot anchor. Leader-side `can_serve_bounded_read` uses this same gate. |
-| `ExpireContact`, `StepDown` | existing contact expiry and role gate | Abstract eligibility loss; recorded read proofs refer to the instant of admission. |
-| `UnsafeReadBeforeCommit`, `UnsafeReadBeforeApply` | omitted prerequisite controls | Violate `ReadHasCurrentCommit` and `ReadHasAppliedCommit` respectively. |
+| `Elect` | `become_leader` | Abstract election with inherited state and an uncommitted no-op. Election validity remains a separate proof. |
+| `AdmitRead` | `begin_read`, `PendingRead` | Prepares query and exact domain identity, then appends a fresh no-op. The owner captures term, index and membership epoch. Rust uses a lazy fallible `Arc` identity; it is not reconstructed from scalar IDs. |
+| `CaptureReply`, `ReceiveOldPrefix`, `DeliverReply` | append response creation/delivery and existing term/progress fencing | Separates reply creation from delivery. A response below a new fence cannot commit it. A quorum that already confirmed the fence after admission may reply later. The ghost proof records this distinction. |
+| `CommitQuorum`, `Apply` | `advance_commit_index`, `apply_committed` | Abstract current-term quorum commit and application; quorum/log validity comes from other models. |
+| `Read`, `RejectRead` | `read_ready`, consuming `handle_client_query(PendingRead)` | Requires the same node/domain, term and membership epoch, commitment through the fresh index and application through current commit. Readiness never executes the query. Compacted fences use the current committed anchor's term. |
+| `CancelRead` | drop/timeout of a pending read | Abandons query/result authority. Its replicated no-op may commit later; no business query executes or replays. |
+| `ChangeLeader`, `StepDown` | unknown external election / locally observed term change | The unknown change cannot make an old response prove a new index. Observed step-down rejects the captured owner. |
+| `ChangeEpoch`, `ReplaceDomain` | membership change, different node instance or `begin_joining` | Captured identity rejects even when scalar indices coincide. Arc ownership prevents an old token matching a reused allocation. |
+| `UnsafeReadBeforeCommit`, `UnsafeReadBeforeApply` | omitted prerequisite controls | Violate `ReadHasCurrentCommit` and `ReadHasAppliedCommit`. |
+| `UnsafeReceiveLease`, `UnsafeReadBinding` | retired receive-time query gate / omitted owner checks | Violate `ReadHasFenceProof` and `ReadBoundToAdmission`. |
 
-The [dated review](../reports/audits/2026-10-18-raft-read-prerequisites.md)
-retains the failing host assertion and upstream core/runtime extracts. The
-20-state projection checks necessary read prerequisites. Quorum contact is an
-input, not a proof of a safe lease: delayed same-term responses, election/clock
-timing, request correlation and full read linearizability remain open. Follower
-bounded-staleness reads are outside this model and unchanged by the correction.
+The [read-fence review](../reports/audits/2026-10-19-raft-read-fences.md) records
+9,916 safe states, fourteen required actions and all four controls. DNS retains
+each request, fence and original monotonic deadline in one bounded operation.
+Placement lookup returns metadata, with no local capability grant or attempted
+re-delegation of an NS-returned SEND/CALL connection. Invocations begin only
+after routing and deadline checks, using the existing owned NS lookup/call
+phases on the shared CQ. Queue admission precedes the no-op; rejected invocation
+readiness binding retains its established fail-closed policy. There is no
+new per-read timer or blocking reply wait. Existing raw transport/readiness
+contexts remain separate qualification work.
 
-The [clock/lease-gap follow-up](../reports/audits/2026-10-18-raft-clock-lease-gap.md)
-adds a diagnostic schedule to the same read model. `CaptureDelayedContact`
-represents an honest reply created before another quorum elects a leader;
-`ElectOtherLeader` changes external authority while the isolated node retains
-its local term/role; `DeliverDelayedContact` refreshes that node's receive-time
-contact. Its ordinary `Read` action then violates `ReadHasAuthority`. This is a
-known source gap, not a weakened implementation guard. The safe prerequisite
-configuration disables those external transitions and retains its narrower
-claim. A matching host witness executes both state machines and the delayed
-reply; upstream execution and native packet delay are not claimed.
-
-`MonotonicClock` and `raft_clock::refresh` now supply both service reactors with
-kernel-counter elapsed time before inbound processing, transport completions and
-scheduled work. The read model does not prove the counter conversion, atomic
-sampling/read admission or clock/election assumptions. Rust checks exercise
-pause accounting, fractional conversion, rejection and overflow. Timer/CQ
-notifications wake the reactors; they no longer count as elapsed time.
+The former `ReadHasAuthority` diagnostic is retained in historical evidence.
+The current model checks quorum proof after request admission; it does not
+require the old node to know about a later election at response time. Clock
+conversion, syscall readiness, heap admission and byte decoding remain outside
+the model. Status/ingress bounded observations still use receive-time freshness;
+this batch does not qualify those leases.
 
 ## Raft pre-membership join admission
 

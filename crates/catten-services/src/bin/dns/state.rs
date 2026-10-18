@@ -47,8 +47,7 @@ pub(super) struct PendingLocalCall {
 
 pub(super) enum PendingQueryKind {
     Lookup {
-        reply: u64,
-        name: Vec<u8>,
+        reply: Option<catten_rt::owned::ReplyToken>,
     },
     Call {
         reply: Option<catten_rt::owned::ReplyToken>,

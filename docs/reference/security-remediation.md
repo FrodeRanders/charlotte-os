@@ -560,13 +560,22 @@ historical AMD causality, the retained Intel scheduled-close/ingress failure and
 broader cleanup acceptance remain open. SEC-18 remains partial; finding counts
 are unchanged.
 
+The [Raft per-read fence correction](../reports/audits/2026-10-19-raft-read-fences.md)
+replaces the catalog query lease with a fresh no-op commit for each admitted
+read. Exact node/domain, term, membership and application checks consume one
+query owner; DNS retains original deadlines and owned reply/lookup phases while
+servicing Raft traffic. The former stale-read host schedule now rejects, and
+four model controls retain missing-fence/binding/prerequisite failures. Bounded
+status/ingress freshness, raw transport readiness and broader admission remain
+separate; numbered finding dispositions are unchanged.
+
 The [Raft clock/lease-gap review](../reports/audits/2026-10-18-raft-clock-lease-gap.md)
 replaces wake-count time with checked kernel-monotonic elapsed time in both
 reactors. It also reproduces a stale application read after a delayed same-term
-reply refreshes an obsolete leader. That independent receive-time lease gap is
-retained as a host witness and TLA+ diagnostic counterexample; request-specific
-read barriers remain required. No read-safety or numbered finding closure is
-claimed by the clock correction.
+reply refreshes an obsolete leader. That historical gap is retained as host/model
+evidence and subsequently corrected for catalog queries by the per-read fence
+batch above. No read-safety or numbered finding closure is claimed by the clock
+correction.
 
 The [Raft read-prerequisite review](../reports/audits/2026-10-18-raft-read-prerequisites.md)
 reproduces query admission before a newly elected leader commits in its term.

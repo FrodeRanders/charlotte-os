@@ -2136,6 +2136,9 @@ pub mod dns {
     /// connection. Missing local publication rejects; catalog-only events use
     /// the explicit memory-carried OP_EVENT_FIRE operation.
     pub const OP_REGISTER: u32 = 1;
+    /// Quorum-fenced placement observation: RESULT_LOCAL carries no capability;
+    /// RESULT_REMOTE carries the hosting node identity in moved memory. Invoke
+    /// through OP_CALL or obtain authority from the appropriate local grant path.
     pub const OP_LOOKUP: u32 = 2;
     pub const OP_STATUS: u32 = 3;
     pub const OP_SHUTDOWN: u32 = 4;

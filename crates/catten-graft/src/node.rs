@@ -58,6 +58,17 @@ pub struct PendingSnapshot {
     pub data: Vec<u8>,
 }
 
+/// One query admitted before its fresh log fence. Consuming this owner queries
+/// at most once; dropping it abandons only the read, not the replicated no-op.
+#[must_use]
+pub struct PendingRead {
+    domain: Arc<()>,
+    term: u64,
+    index: u64,
+    membership_epoch: u64,
+    query: Vec<u8>,
+}
+
 pub struct RaftNode {
     pub me: Peer,
     pub state: NodeState,
@@ -112,6 +123,9 @@ pub struct RaftNode {
     /// Distinct voter IDs that granted a vote in `current_term`.
     /// This is reset for every election and whenever the node steps down.
     granted_votes: BTreeSet<String>,
+    // Lazy, fallible identity retained by pending reads across node retirement.
+    // Domain replacement invalidates every earlier read even if indices match.
+    read_domain: Option<Arc<()>>,
 }
 
 pub struct RaftNodeConfig {
@@ -247,6 +261,7 @@ impl RaftNode {
             current_millis,
             rand_state,
             granted_votes: BTreeSet::new(),
+            read_domain: None,
         })
     }
 
@@ -286,6 +301,7 @@ impl RaftNode {
             snapshot_index: standalone_snapshot_index,
         }));
         self.transport.reset();
+        self.read_domain = None;
         self.log_store.reset();
         if let Some(ref machine) = self.state_machine {
             machine.reset();
@@ -1379,12 +1395,10 @@ impl RaftNode {
         self.applied_command_results.get(&index).map(Vec::as_slice)
     }
 
-    /// Check the implemented prerequisites and receive-time quorum freshness.
-    /// This gate still admits the stale read in `audit_receive_lease`; callers
-    /// need a request-specific quorum barrier to establish read authority.
-    pub fn can_serve_linearizable_read(&self) -> bool {
+    /// Receive-time freshness for bounded observations; grants no query authority.
+    fn has_recent_quorum_contact(&self) -> bool {
         // Committing in this term establishes the inherited committed prefix.
-        // Apply that prefix before querying it, including a compacted anchor.
+        // Apply that prefix before bounded observation, including a compacted anchor.
         // Recent contact is a separate gate; a delayed same-term response can
         // refresh it after another quorum replaces this leader.
         if self.state != NodeState::Leader
@@ -1406,12 +1420,12 @@ impl RaftNode {
 
     /// Whether local committed state is backed by recent cluster evidence.
     ///
-    /// Leaders use the query gate, including its known delayed-reply gap.
+    /// Leaders use receive-time quorum freshness, which grants no query authority.
     /// Followers require a successful log match from the recognized leader;
     /// rejected heartbeats do not count. Both are receive-time observations.
     pub fn can_serve_bounded_read(&self, max_follower_age_millis: u64) -> bool {
         if self.state == NodeState::Leader {
-            return self.can_serve_linearizable_read();
+            return self.has_recent_quorum_contact();
         }
         self.state == NodeState::Follower
             && !self.joining
@@ -1437,18 +1451,77 @@ impl RaftNode {
         }
     }
 
-    pub fn handle_client_query(&self, query: Vec<u8>) -> Result<Vec<u8>, (i64, Option<String>)> {
-        if self.state != NodeState::Leader {
-            return Err((ERR_NOT_LEADER, self.known_leader_id.clone()));
+    /// Admit one read before appending a fresh no-op in the shared Raft grammar.
+    /// Existing contact or an earlier request's acknowledgement cannot commit
+    /// this new index. The caller retains the owner while servicing Raft traffic.
+    pub fn begin_read(&mut self, query: Vec<u8>, current_millis: u64) -> Result<PendingRead, i64> {
+        self.begin_read_with(query, current_millis, || {
+            Arc::try_new(()).map_err(|_| crate::types::ERR_RESOURCE_LIMIT)
+        })
+    }
+
+    fn begin_read_with(
+        &mut self,
+        query: Vec<u8>,
+        current_millis: u64,
+        prepare_domain: impl FnOnce() -> Result<Arc<()>, i64>,
+    ) -> Result<PendingRead, i64> {
+        if self.state != NodeState::Leader
+            || self.joining
+            || self.decommissioned
+            || !self.cluster_configuration.is_voter(&self.me.id)
+        {
+            return Err(ERR_NOT_LEADER);
         }
-        if !self.can_serve_linearizable_read() {
-            return Err((ERR_READ_BARRIER, self.known_leader_id.clone()));
+        if query.len() > MAX_COMMAND_BYTES || self.log_store.last_index() == u64::MAX {
+            return Err(ERR_TOO_LARGE);
+        }
+        if self.read_domain.is_none() {
+            self.read_domain = Some(prepare_domain()?);
+        }
+        let read = PendingRead {
+            domain: self.read_domain.as_ref().unwrap().clone(),
+            term: self.current_term,
+            index: self.log_store.last_index() + 1,
+            membership_epoch: self.membership_epoch,
+            query,
+        };
+        self.current_millis = current_millis;
+        self.log_store.append(alloc::vec![LogEntry::noop(self.current_term, self.me.id.clone())]);
+        self.advance_commit_index();
+        Ok(read)
+    }
+
+    /// Observe progress without executing the query or consuming its owner.
+    pub fn read_ready(&self, read: &PendingRead) -> Result<bool, i64> {
+        if self.state != NodeState::Leader
+            || self.current_term != read.term
+            || self.joining
+            || self.decommissioned
+        {
+            return Err(ERR_NOT_LEADER);
+        }
+        if self.membership_epoch != read.membership_epoch
+            || !self.read_domain.as_ref().is_some_and(|domain| Arc::ptr_eq(domain, &read.domain))
+        {
+            return Err(ERR_READ_BARRIER);
+        }
+        Ok(self.commit_index >= read.index
+            && self.last_applied == self.commit_index
+            && self.log_store.term_at(self.commit_index) == read.term)
+    }
+
+    pub fn handle_client_query(&self, read: PendingRead) -> Result<Vec<u8>, (i64, Option<String>)> {
+        match self.read_ready(&read) {
+            Ok(true) => {}
+            Ok(false) => return Err((ERR_READ_BARRIER, self.known_leader_id.clone())),
+            Err(code) => return Err((code, self.known_leader_id.clone())),
         }
 
         if let Some(ref sm) = self.state_machine
             && let Some(qs) = sm.as_queryable()
         {
-            return Ok(qs.query(&query));
+            return Ok(qs.query(&read.query));
         }
 
         Ok(Vec::new())
@@ -1564,6 +1637,129 @@ mod tests {
         node
     }
 
+    fn acknowledge(node: &mut RaftNode, peer: &str, index: u64) {
+        node.handle_append_entries_response(
+            peer,
+            AppendEntriesResponse {
+                peer_id: peer.to_string(),
+                term: node.current_term,
+                success: true,
+                match_index: index,
+            },
+            node.millis(),
+        );
+    }
+
+    struct CountingQueries(Arc<spin::Mutex<u64>>);
+
+    impl StateMachine for CountingQueries {
+        fn apply(&self, _term: u64, _command: &[u8]) {}
+
+        fn reset(&self) {}
+
+        fn as_queryable(&self) -> Option<&dyn crate::state_machine::QueryableStateMachine> {
+            Some(self)
+        }
+    }
+
+    impl crate::state_machine::QueryableStateMachine for CountingQueries {
+        fn query(&self, query: &[u8]) -> Vec<u8> {
+            *self.0.lock() += 1;
+            query.to_vec()
+        }
+    }
+
+    #[test]
+    fn each_read_needs_its_own_committed_fence_and_executes_once() {
+        let mut node = elected_three_node_leader();
+        let queries = Arc::new(spin::Mutex::new(0));
+        node.state_machine = Some(Box::new(CountingQueries(queries.clone())));
+        acknowledge(&mut node, "n2", 1);
+        let first = node.begin_read(vec![10], 202).unwrap();
+        let second = node.begin_read(vec![20], 202).unwrap();
+        assert_eq!((first.index, second.index), (2, 3));
+        acknowledge(&mut node, "n2", 1);
+        assert_eq!(node.read_ready(&first), Ok(false));
+        assert_eq!(node.read_ready(&second), Ok(false));
+        acknowledge(&mut node, "n2", 2);
+        assert_eq!(node.read_ready(&first), Ok(true));
+        assert_eq!(node.read_ready(&second), Ok(false));
+        assert_eq!(*queries.lock(), 0, "observing readiness does not execute a query");
+        assert_eq!(node.handle_client_query(first), Ok(vec![10]));
+        assert_eq!(*queries.lock(), 1);
+        drop(second);
+        acknowledge(&mut node, "n2", 3);
+        assert_eq!(node.commit_index, 3, "abandonment does not roll back the no-op");
+        assert_eq!(*queries.lock(), 1, "abandoned reads never execute later");
+    }
+
+    #[test]
+    fn read_fence_rejects_unapplied_commit_and_survives_compaction() {
+        let mut node = elected_three_node_leader();
+        let read = node.begin_read(Vec::new(), 202).unwrap();
+        acknowledge(&mut node, "n2", read.index);
+        node.last_applied -= 1;
+        assert_eq!(node.read_ready(&read), Ok(false));
+        node.last_applied = node.commit_index;
+        node.submit_command(vec![1], 203).unwrap();
+        let tail = node.log_store.last_index();
+        acknowledge(&mut node, "n2", tail);
+        node.log_store.install_snapshot(node.commit_index, node.current_term, Vec::new());
+        assert_eq!(
+            node.log_store.term_at(read.index),
+            0,
+            "the fence is below the compacted anchor"
+        );
+        assert_eq!(node.read_ready(&read), Ok(true));
+        assert_eq!(node.handle_client_query(read), Ok(Vec::new()));
+    }
+
+    #[test]
+    fn read_fence_is_bound_to_node_domain_term_and_membership() {
+        let mut node = node_with_voters(&["n1"]);
+        node.start_election(200);
+        let read = node.begin_read(Vec::new(), 201).unwrap();
+        let mut other = node_with_voters(&["n1"]);
+        other.start_election(200);
+        let _other_read = other.begin_read(Vec::new(), 201).unwrap();
+        assert_eq!(other.read_ready(&read), Err(crate::types::ERR_READ_BARRIER));
+        node.membership_epoch += 1;
+        assert_eq!(node.read_ready(&read), Err(crate::types::ERR_READ_BARRIER));
+        node.membership_epoch -= 1;
+        node.step_down(node.current_term + 1, 202);
+        assert_eq!(node.read_ready(&read), Err(crate::types::ERR_NOT_LEADER));
+        node.start_election(500);
+        assert_eq!(node.read_ready(&read), Err(crate::types::ERR_NOT_LEADER));
+        let read = node.begin_read(Vec::new(), 501).unwrap();
+        node.begin_joining("n2".to_string(), 502);
+        assert_eq!(node.read_ready(&read), Err(crate::types::ERR_NOT_LEADER));
+        assert!(node.read_domain.is_none());
+    }
+
+    #[test]
+    fn read_preparation_failure_and_premature_finish_do_not_query_or_append() {
+        let mut node = elected_three_node_leader();
+        let tail = node.log_store.last_index();
+        assert!(matches!(
+            node.begin_read_with(Vec::new(), 202, || Err(crate::types::ERR_RESOURCE_LIMIT)),
+            Err(crate::types::ERR_RESOURCE_LIMIT)
+        ));
+        assert_eq!(node.log_store.last_index(), tail);
+        assert!(node.read_domain.is_none());
+        let queries = Arc::new(spin::Mutex::new(0));
+        node.state_machine = Some(Box::new(CountingQueries(queries.clone())));
+        let read = node.begin_read(vec![1], 202).unwrap();
+        assert_eq!(
+            node.handle_client_query(read),
+            Err((crate::types::ERR_READ_BARRIER, Some("n1".to_string())))
+        );
+        assert_eq!(*queries.lock(), 0);
+        node.step_down(node.current_term + 1, 203);
+        let tail = node.log_store.last_index();
+        assert!(matches!(node.begin_read(Vec::new(), 204), Err(crate::types::ERR_NOT_LEADER)));
+        assert_eq!(node.log_store.last_index(), tail);
+    }
+
     #[test]
     fn leader_read_waits_for_current_term_commit_despite_recent_quorum_contact() {
         let mut node = node_with_voters(&["n1", "n2", "n3"]);
@@ -1596,17 +1792,13 @@ mod tests {
         );
         assert_eq!(node.last_follower_contact_millis.get("n2"), Some(&202));
         assert_eq!(node.commit_index, 0);
-        assert!(!node.can_serve_linearizable_read());
+        assert!(!node.has_recent_quorum_contact());
         assert!(!node.can_serve_bounded_read(1_000));
-        assert_eq!(
-            node.handle_client_query(Vec::new()),
-            Err((crate::types::ERR_READ_BARRIER, Some("n1".to_string())))
-        );
         // Even a known, applied older-term commit cannot replace the new
         // term's commitment. The inherited entry is a no-op in this fixture.
         node.commit_index = 1;
         node.last_applied = 1;
-        assert!(!node.can_serve_linearizable_read());
+        assert!(!node.has_recent_quorum_contact());
         node.handle_append_entries_response(
             "n2",
             AppendEntriesResponse {
@@ -1619,8 +1811,7 @@ mod tests {
         );
         assert_eq!(node.commit_index, 2);
         assert_eq!(node.last_applied, 2);
-        assert!(node.can_serve_linearizable_read());
-        assert_eq!(node.handle_client_query(Vec::new()), Ok(Vec::new()));
+        assert!(node.has_recent_quorum_contact());
     }
 
     #[test]
@@ -1636,27 +1827,27 @@ mod tests {
             },
             202,
         );
-        assert!(node.can_serve_linearizable_read());
+        assert!(node.has_recent_quorum_contact());
         // Isolate the application gate: the synchronous apply loop normally
         // closes this interval before returning to the service reactor.
         node.last_applied = 0;
-        assert!(!node.can_serve_linearizable_read());
+        assert!(!node.has_recent_quorum_contact());
         node.last_applied = node.commit_index;
         node.log_store.install_snapshot(node.commit_index, node.current_term, Vec::new());
         assert!(node.log_store.entry_at(node.commit_index).is_none());
-        assert!(node.can_serve_linearizable_read());
+        assert!(node.has_recent_quorum_contact());
         node.set_millis(952);
-        assert!(!node.can_serve_linearizable_read(), "committing does not bypass contact expiry");
+        assert!(!node.has_recent_quorum_contact(), "committing does not bypass contact expiry");
     }
 
     #[test]
     fn single_voter_read_requires_its_election_noop() {
         let mut node = node_with_voters(&["n1"]);
-        assert!(!node.can_serve_linearizable_read());
+        assert!(!node.has_recent_quorum_contact());
         node.start_election(200);
         assert_eq!(node.commit_index, 1);
         assert_eq!(node.last_applied, 1);
-        assert!(node.can_serve_linearizable_read());
+        assert!(node.has_recent_quorum_contact());
     }
 
     #[test]
@@ -1672,12 +1863,12 @@ mod tests {
             },
             202,
         );
-        assert!(node.can_serve_linearizable_read());
+        assert!(node.has_recent_quorum_contact());
         let mut clock = crate::clock::MonotonicClock::new(1_000, 1_000).unwrap();
         assert_eq!(clock.sample(1_202, 1_000), Ok(node.millis()));
         // The next notification follows a five-second reactor pause.
         node.set_millis(clock.sample(6_202, 1_000).unwrap());
-        assert!(!node.can_serve_linearizable_read());
+        assert!(!node.has_recent_quorum_contact());
         node.state = NodeState::Follower;
         assert!(node.check_timeout(), "election time also includes the pause");
     }
@@ -1729,10 +1920,10 @@ mod tests {
         assert_eq!(node.state, NodeState::Follower);
         assert!(node.known_leader_id.is_none());
         assert!(node.last_follower_contact_millis.is_empty());
-        assert!(!node.can_serve_linearizable_read());
+        assert!(!node.has_recent_quorum_contact());
         assert!(!node.can_serve_bounded_read(750));
         assert_eq!(node.submit_command(vec![0xff], 206), Err(crate::types::ERR_NOT_LEADER));
-        assert_eq!(node.handle_client_query(Vec::new()), Err((crate::types::ERR_NOT_LEADER, None)));
+        assert!(matches!(node.begin_read(Vec::new(), 206), Err(crate::types::ERR_NOT_LEADER)));
         assert_eq!(node.current_term, term);
         assert_eq!(node.voted_for.as_deref(), Some("n1"));
         assert_eq!(node.persistent_state.voted_for().as_deref(), Some("n1"));
@@ -1896,7 +2087,7 @@ mod tests {
         assert_eq!(node.last_applied, 0);
         assert_eq!(node.match_index.get("n2"), Some(&0));
         assert_eq!(node.next_index.get("n2").copied(), next_index);
-        assert!(!node.can_serve_linearizable_read());
+        assert!(!node.has_recent_quorum_contact());
         // An actual response from this term can acknowledge the replacement.
         node.handle_append_entries_response(
             "n2",

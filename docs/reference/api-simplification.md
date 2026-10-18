@@ -185,3 +185,15 @@ replaces the private owning candidate-preparation helper with a borrowed complet
 transaction. Production and fixtures share that one contract and consuming finish.
 Public waiter interfaces/errors, runtime ABI, wire/storage grammars and numbered
 batches are unchanged.
+
+The [19 October read-fence replacement](../reports/audits/2026-10-19-raft-read-fences.md)
+removes the synchronous receive-time `can_serve_linearizable_read` query path.
+Queries now require `begin_read`, borrowed `read_ready`, and consuming
+`handle_client_query(PendingRead)`. DNS removes its blocking raw lookup helper,
+adopts lookup/call transactions before scalar fallback guards, and retains typed
+reply authority across local/relayed routing. OP_LOOKUP returns placement
+metadata, eliminating attempted re-delegation of non-mintable NS lookup grants;
+local results carry no capability. Shared protobuf, no-op grammar,
+storage versions and runtime ABI remain unchanged. Bounded observations and
+raw transport adapters remain candidates for separate qualification; no numbered
+protocol-format batch is added.

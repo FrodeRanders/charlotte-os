@@ -1,7 +1,6 @@
-//! Executable witness for the open receive-time lease gap.
+//! Regression for the former receive-time lease stale read.
 //!
-//! This succeeds only when the counterexample is reproduced. It is an audit
-//! control, not an application example or a claim that this behavior is safe.
+//! A fresh per-read log fence must reject the delayed old response.
 //! Run on the host, outside the kernel's Cargo build-std configuration.
 use std::sync::{
     Arc,
@@ -122,17 +121,21 @@ fn main() {
     assert!(reply.success);
     next.handle_append_entries_response("n3", reply, 1_002);
     assert!(next.is_committed(second));
-    assert_eq!(next.handle_client_query(Vec::new()), Ok(vec![2]));
+    let read = next.begin_read(Vec::new(), 1_003).unwrap();
+    let reply = replicate(&next, &mut third, 1_004);
+    next.handle_append_entries_response("n3", reply, 1_004);
+    assert_eq!(next.handle_client_query(read), Ok(vec![2]));
     println!("new leader n2: term={} committed={} value=2", next.current_term, second);
 
     old.set_millis(5_000);
-    assert!(!old.can_serve_linearizable_read());
-    println!("old leader n1 at 5000ms: expired contact rejects read");
+    let read = old.begin_read(Vec::new(), 5_000).unwrap();
+    assert_eq!(old.read_ready(&read), Ok(false));
+    println!("old leader n1 at 5000ms: fresh read fence remains pending");
     old.handle_append_entries_response("n2", delayed, 5_001);
-    let result = old.handle_client_query(Vec::new());
-    assert_eq!(result, Ok(vec![1]), "receive-time counterexample no longer reproduced");
+    assert_eq!(old.read_ready(&read), Ok(false));
+    let result = old.handle_client_query(read);
+    assert_eq!(result, Err((catten_graft::types::ERR_READ_BARRIER, Some("n1".to_string()))));
     println!(
-        "COUNTEREXAMPLE: n1 at 5001ms, term={}, committed={}, returned=1 after value=2 committed",
-        old.current_term, old.commit_index,
+        "PASS: delayed term-one reply cannot commit the fresh read fence; stale query rejected"
     );
 }

@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Raft per-read quorum fences](audits/2026-10-19-raft-read-fences.md) — Replaces the query lease; the former stale read rejects, with owned asynchronous DNS routing and four model controls.
+
 - [Raft elapsed time and reproduced lease gap](audits/2026-10-18-raft-clock-lease-gap.md) — Corrects reactor clock accounting; an honest delayed reply still enables a stale application read.
 
 - [Raft read prerequisites](audits/2026-10-18-raft-read-prerequisites.md) — Rejects reads before current-term commit/application; timing and correlation remain open.

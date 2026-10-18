@@ -6,32 +6,14 @@ use alloc::{
     vec::Vec,
 };
 
-use catten_graft::{
-    node::RaftNode,
-    state_machine::{
-        QueryableStateMachine,
-        StateMachine,
-    },
+use catten_graft::state_machine::{
+    QueryableStateMachine,
+    StateMachine,
 };
 use catten_services::{
     dns,
-    name_catalog::{
-        CatalogEntry,
-        NameCatalog,
-        decode_query_result,
-        encode_lookup_query,
-    },
+    name_catalog::NameCatalog,
 };
-
-/// Query the catalog only after the Raft read barrier admits the request.
-pub(super) fn linearizable_entry(
-    node: &RaftNode,
-    name: &[u8],
-) -> Result<Option<CatalogEntry>, i64> {
-    node.handle_client_query(encode_lookup_query(name))
-        .map(|bytes| decode_query_result(&bytes))
-        .map_err(|_| dns::ERR_NOT_LEADER)
-}
 
 pub(super) fn persistent_namespace(cluster_id: &[u8], node_id: &[u8]) -> u64 {
     // Stable FNV-1a over the cluster/node tuple. This selects an object-store

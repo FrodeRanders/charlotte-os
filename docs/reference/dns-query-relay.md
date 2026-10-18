@@ -1,7 +1,7 @@
 # Correlated DNS catalog-query relay
 
 Followers resolve lookups and remote-call destinations through the leader's
-existing Graft read barrier. They do not promote their local applied catalog
+fresh per-read Graft log fence. They do not promote their local applied catalog
 into routing authority. The query record retains caller DNS session, query ID
 and exact expected leader; replies retain status, service generation and owner.
 
@@ -31,8 +31,9 @@ only tags 1--6, so these retired frames do not become a different control RPC.
 
 The follower captures its monotonic deadline before preparation. Only a
 successfully encoded body enters the existing pending-query record and
-transport. The original name moves into that record; a redundant clone is
-removed. Preparation rejection returns the existing invalid/oversized or
+transport. Invocation routing retains the original name in that record; a
+placement-only query needs its correlation and deadline after encoding.
+Preparation rejection returns the existing invalid/oversized or
 resource-limit status without pending publication or an outgoing query.
 If reply preparation fails, the leader sends no partial response or synthetic
 owner. It records that rejection once; the caller retains its original query,
@@ -72,3 +73,12 @@ The linked mixed-architecture fixture checks real follower queries, expected
 peer/session/generation fences, remote invocation, exact variant pins and
 endpoint retraction. Actual results and limits are recorded in
 [batch evidence](../reports/audits/2026-10-14-protocol-simplification-dns-query-relay.md).
+
+The [per-read fence correction](../reports/audits/2026-10-19-raft-read-fences.md)
+keeps the leader's request and original deadline live until its fresh no-op
+commits and applies. Local DNS OP_LOOKUP returns placement metadata without a
+capability; remote placement returns node identity in moved memory. Ordinary NS
+lookup grants are non-delegable SEND/CALL authority and are used directly by
+owned invocation, rather than re-minted for a different caller. The native
+fixture checks the local reply has no attachments. Application grant policy
+remains at its existing authority boundary.

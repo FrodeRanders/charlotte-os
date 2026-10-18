@@ -136,7 +136,11 @@ pub(super) fn expire_queries(queries: &mut Vec<PendingQuery>) {
         }
         let query = queries.swap_remove(index);
         let reply = match query.kind {
-            PendingQueryKind::Call {
+            PendingQueryKind::Lookup {
+                reply,
+                ..
+            }
+            | PendingQueryKind::Call {
                 reply,
                 ..
             } => {
@@ -145,11 +149,7 @@ pub(super) fn expire_queries(queries: &mut Vec<PendingQuery>) {
                 }
                 continue;
             }
-            PendingQueryKind::Lookup {
-                reply,
-                ..
-            }
-            | PendingQueryKind::Deploy {
+            PendingQueryKind::Deploy {
                 reply,
             }
             | PendingQueryKind::Release {

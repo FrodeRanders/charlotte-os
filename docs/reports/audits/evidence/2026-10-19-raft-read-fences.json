@@ -1,0 +1,1784 @@
+{
+  "schema": "charlotte-raft-read-fences-evidence-v1",
+  "report_date": "2026-10-19 Europe/Stockholm; work began 2026-10-18",
+  "reviewed_revision": "f489c8f21d295dc0880b89250123ee15318f42c8",
+  "tooling": {
+    "release": "TLA+ Tools v1.7.4",
+    "tlc": "2.19, revision 5a47802",
+    "jar_sha256": "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88",
+    "java": "Azul OpenJDK 25.0.3; CI Java 17"
+  },
+  "verification": {
+    "fresh_safe_cases": 1,
+    "fresh_expected_counterexamples": 4,
+    "fresh_harness_exit": 0,
+    "fresh_harness_sha256": "51a1a284892e384615ec3a7c65d7edf424a3c0f6ac234ca15af6ae6ad33c162b",
+    "fresh_output_sha256": "584d9d7ea5723025b6e3540c857cba60a135c21763f9751a28e55c1919e133a6",
+    "derivation": "Exact final check.sh functions and its complete read block, with script_dir set to repository path and temporary deletion trap replaced by evidence-directory print.",
+    "configured_modules": 33,
+    "configured_safe_cases": 35,
+    "configured_negative_cases": 105,
+    "fresh_single_full_suite_run_claimed": false
+  },
+  "baseline": {
+    "evidence_file": "2026-10-18-raft-clock-lease-gap.json",
+    "evidence_sha256": "620d4908a8decb2ec88941e2197af1ba8b9d90dcb50b9aac0eef08c1771a7249",
+    "unchanged_model_config_inputs_rechecked": 170,
+    "all_hashes_match": true,
+    "reused_cases": 135,
+    "harness_matches_prior_after_restoring_only_read_block": true
+  },
+  "checked_input_sha256": {
+    "docs/tla/CharlotteAddressSpace.tla": "94e8ae476eab11029c39513fa66197793b05f0a6ca1655b751497a6e518d0284",
+    "docs/tla/CharlotteAddressSpace_small.cfg": "25feef19bf1dc780d8cece87801b7590b0bce68aa884c7459f7a9a65866d35eb",
+    "docs/tla/CharlotteAddressSpace_unsafe.cfg": "4be0b588a5b44ff54ac273701331a622b9f2bfd241b4a428be8acaf98a5337cf",
+    "docs/tla/CharlotteAuthorization.tla": "d5e14f9e9eb674522b6446235d24e322507959a2baf0219d22912ab3c7929515",
+    "docs/tla/CharlotteAuthorization_generation_unsafe.cfg": "4f23d40ea610f3e457a4d3e8107d111c9d4bdbadd421a83d946c371677b105db",
+    "docs/tla/CharlotteAuthorization_policy_unsafe.cfg": "4f0e81b15fa4c54d4e10216d4b23f84ed3ce85fd801c0c271ca0486717750779",
+    "docs/tla/CharlotteAuthorization_policy_version_unsafe.cfg": "369762db357baf735d3464b0c1f309b9a2c6ff1c2f22bb19c28ef1d91361be2a",
+    "docs/tla/CharlotteAuthorization_principal_unsafe.cfg": "c3f4c2815588d123d723e6f3aa12360a08c5c93d1dc9730e31bca4c6590525bf",
+    "docs/tla/CharlotteAuthorization_rights_unsafe.cfg": "9d82cd883cb9b68ba02cc926d9019d591c0edaceb9568416744dc3b7a882221f",
+    "docs/tla/CharlotteAuthorization_small.cfg": "2ddfd048b004e053686223171bcfcbbeb94d1ef4f4d53cc2c63b2276738ea15b",
+    "docs/tla/CharlotteBootTrust.tla": "cad787631097b7d870db5c33d923347cc5af9cb0220331aa317d17c2b89ac646",
+    "docs/tla/CharlotteBootTrust_authenticate_unsafe.cfg": "611d53f8615472e6958a8901a1ecd1b0011801228e319577633e070780b3d328",
+    "docs/tla/CharlotteBootTrust_boundary_unsafe.cfg": "8e415118debd8e9a467bce69e30d890b8ee024cc71d00cec360c9f5e8acb4c70",
+    "docs/tla/CharlotteBootTrust_contract.cfg": "46363cde40899130188ea50dea6f0aceff8b7bac675291d52862998170a82e57",
+    "docs/tla/CharlotteBootTrust_development_unsafe.cfg": "996e72ecbf931c6e5891f6ebaa7a6e6bc807b9ab01917a3a5d6161afc4b1849f",
+    "docs/tla/CharlotteBootTrust_enrollment_unsafe.cfg": "95b4dee9697707dc39edbe8ac6c94a4c49cfe3a0cd10c05c3d4084a0163f3395",
+    "docs/tla/CharlotteBootTrust_failure_unsafe.cfg": "2310166ce6c6c0bb4f93c1e4ee384c07b959920d8c29d109fc100b1107d74d15",
+    "docs/tla/CharlotteBootTrust_fixture.cfg": "023562d632e18920d8d51cac7cee5f5d9159aad42c423782d6d833b37e5b19df",
+    "docs/tla/CharlotteBootTrust_manifest_unsafe.cfg": "6989bfd31e1eb9c7f433017cc1c2a780af10a0d9f7bdc8d1cadaec20f8abb3c6",
+    "docs/tla/CharlotteBootTrust_overwrite_unsafe.cfg": "311a8f4022eb40cba78628ec14a7a32a324b7218084fdead778d7add6d9bbfc8",
+    "docs/tla/CharlotteBootTrust_recipient_unsafe.cfg": "6dc6e0759a42289cbbd65888842c40efbea1b8e1207cb36458adfbef8248122f",
+    "docs/tla/CharlotteBootTrust_stale_unsafe.cfg": "aec488139f350badb5164942bc4bbe05b58bc1178c7a713bdf086defddd6b88b",
+    "docs/tla/CharlotteBootTrust_uninstalled_unsafe.cfg": "99362ddbc2c34acd714b36f30f2e037ff17138e1b9845e9d6881242654be8a7f",
+    "docs/tla/CharlotteCQ.tla": "1557db52418f0e4d47a737951b4a1d9cae5dfb44329b228bbd749da22a4bdd04",
+    "docs/tla/CharlotteCQ_buffer_unsafe.cfg": "9c5a49c335ba999c468e18651ee9a60bfb336d7ea32db783de562f8c897bf5ac",
+    "docs/tla/CharlotteCQ_mini.cfg": "e1b7eafb8fbc246c9122055672615be144e3b43ed869c9dbe41ba4d7d101125f",
+    "docs/tla/CharlotteCapability.tla": "4e94c107f21e7486cfe23c232c2b1930557af27df89c45cf75f29f4ddd098f1a",
+    "docs/tla/CharlotteCapability_small.cfg": "6a0cf36f3f4845ea37d901eb3ddbbf603445789ba18081ef7646c3f7ea36c8e3",
+    "docs/tla/CharlotteCheckedWait.tla": "0a94737e26b40c49939af7233d765ef4c76523608e39bf1b21818ac344c129b7",
+    "docs/tla/CharlotteCheckedWait_deadline_unsafe.cfg": "ed16d0f4d9759d76eafa780f56f6be83a95e7ae4721e0535aa8249afcbc0e5d2",
+    "docs/tla/CharlotteCheckedWait_park_unsafe.cfg": "0851785424eb552b590f5b191e31a0b3ec38ff8f6ee2a437803cc47a0e60fbbc",
+    "docs/tla/CharlotteCheckedWait_rejection_unsafe.cfg": "d73cdb7ac12b71fc3413a87343adecbd23a3ed3fbe29d8f5bd12d024e7b10188",
+    "docs/tla/CharlotteCheckedWait_replay_unsafe.cfg": "48df5cf72013a629118216d005481a2bef0c8e6fbee23e29664470affbec15c1",
+    "docs/tla/CharlotteCheckedWait_result_unsafe.cfg": "609274f19fcbd3f2d1a259f03c98bd8670ee2790a2de9c1b127cc935a51139c5",
+    "docs/tla/CharlotteCheckedWait_small.cfg": "5c114d9f0027dc3382a9b0ba9516b8dbc88eed5dde9b1067ebd8eecaace13e04",
+    "docs/tla/CharlotteCheckedWait_timeout_unsafe.cfg": "92699d7f09749d4f7f05ecc0e5e11605d79a0d02b715f4814eb5e0e590c36477",
+    "docs/tla/CharlotteClusterIngress.tla": "4660b215db89bb5d67b8433091eff5bb0052c993152e5423c657b9909aa6ac13",
+    "docs/tla/CharlotteClusterIngress_history_unsafe.cfg": "b35cd382b188843b7ae065053d0095c1fd55c41b6695410e8d8824e2a7820926",
+    "docs/tla/CharlotteClusterIngress_readiness_unsafe.cfg": "811add7d3dc380ff4f5feb31c33ba002ca72fa6ebc3b45e4116b5427fdec0656",
+    "docs/tla/CharlotteClusterIngress_small.cfg": "402c878db4ccef9c752c84c9beee894d823a8bf0d5f669d62de57734f2063360",
+    "docs/tla/CharlotteClusterIngress_stale_snapshot_unsafe.cfg": "ed01b5382c1dc5aa11eee36b853a7cf72e5193f586d5e9075e6c73adb22127a2",
+    "docs/tla/CharlotteDMA.tla": "5c732aed07fa1f79463d4ca30d2aa7fc7e7c58f46c1e0a64f9445298867cd9fc",
+    "docs/tla/CharlotteDMA_small.cfg": "55befa332f585191e5078b4085601f1ea9439a02f24c042d14e2bc7ae3009e93",
+    "docs/tla/CharlotteDMA_unsafe.cfg": "8b5f798d0723b8d9640eae2f9fb4c8a20383b49552d501943826fb55ad25b2ac",
+    "docs/tla/CharlotteDmaOperation.tla": "2839f7d90627b32049ac677bd0040474df313f1dc862090e1d9373817787e682",
+    "docs/tla/CharlotteDmaOperation_abandon_unsafe.cfg": "ffb8ec7166354bd94c8b53dca935d7cd0f1332aa1d922ed625c09476b6716d10",
+    "docs/tla/CharlotteDmaOperation_access_unsafe.cfg": "5a7b9512acaf0c030ed76a2c9c834b244ad06e4742db5fea72f09e1ae4182c88",
+    "docs/tla/CharlotteDmaOperation_cell_unsafe.cfg": "afca9bcf0e4ebf495043761e5a75e5f707c2f015b7596471a97e4c078e88123b",
+    "docs/tla/CharlotteDmaOperation_confirmation_unsafe.cfg": "fe466b9e71056adebe75475a3ccced1a5fa41d428694013c3924e76e14f35ea5",
+    "docs/tla/CharlotteDmaOperation_context_unsafe.cfg": "ad3c3e24b3cfdd57d6dc07851a0c73d3de6ebd123b545facbdd0ab2bf8e62999",
+    "docs/tla/CharlotteDmaOperation_cpu_unsafe.cfg": "16d1450ba672e9366eeed68a17c018d1a1988bee2bcd286ea87a4883ef3031ef",
+    "docs/tla/CharlotteDmaOperation_drop_unsafe.cfg": "b12da60b76b0b776895ba9a2b267fed4f777f9fad6561c023fbbedb290c224b8",
+    "docs/tla/CharlotteDmaOperation_map_unsafe.cfg": "bed6cdfaf7f0df9d4ba31d5f8d5005f287bcbbacd82a291986fb9771fee74a27",
+    "docs/tla/CharlotteDmaOperation_preparation_unsafe.cfg": "6fd8ba8d7238d6cc415a8dcc300d10154fd02f7bc1833605bcc612357804ce13",
+    "docs/tla/CharlotteDmaOperation_public_unsafe.cfg": "6684e9fcb141fa7ab6fa1df96918a7df1c490c62f765e2b4296c325e05b463c2",
+    "docs/tla/CharlotteDmaOperation_readiness_unsafe.cfg": "e4153638e5f59bbf1728ed2f338ade189844ad1c7254aec8751e6cfc754cb57f",
+    "docs/tla/CharlotteDmaOperation_rearm_unsafe.cfg": "3e124e8f8d7cc95794c56b1f615fcd1e30b4000aae7c9207a35f54e99f933503",
+    "docs/tla/CharlotteDmaOperation_remap_unsafe.cfg": "a97e1f454c658a35aeaac53d1ce06552fe0a95ffae5522fff19e3512a7896362",
+    "docs/tla/CharlotteDmaOperation_small.cfg": "5cd7d31f47748b790b12b903fd5fdd309106400aa6a5511e6991fc06664ddc95",
+    "docs/tla/CharlotteEndpointObservers.tla": "42415be276a5a31546337c473cfb89300cee102664809905169eb713efb140b6",
+    "docs/tla/CharlotteEndpointObservers_small.cfg": "8a972975c5d21bc23df1d1529258c455d35f5278ad6f209c19349dfbe6c11e14",
+    "docs/tla/CharlotteEndpointObservers_unsafe.cfg": "c85058ca46cb9ed10c39c38742cdb1c2895571fc6247de2fbaedcd488aff89a2",
+    "docs/tla/CharlotteHardwareAsid.tla": "2074acb290a98b6113874dbb3a6c93bb213698d5731153acd0f099b996644928",
+    "docs/tla/CharlotteHardwareAsid_small.cfg": "f4ef9b3536f735756f09f04bd0297b4f74d54ce03a6725806b5475b26b72d8ef",
+    "docs/tla/CharlotteHardwareAsid_unsafe.cfg": "4cc26e9851630ffbd7b8f3de981304bda0e3be2d06bf16c2e71cd6d286d852c9",
+    "docs/tla/CharlotteIPC.tla": "cafa97f897a33d496eb5c1ce2da877e6546ec66f9202d20f6ab33280a49ad857",
+    "docs/tla/CharlotteIPC_small.cfg": "7b5369411db55b2a2e8ea88245bdffc3dfbeb4867528f59c9e6e659a27931570",
+    "docs/tla/CharlotteInterruptRoute.tla": "9e6fdc9caff46461273a279b2a76153c6f22c7c97152999a92a93b46e281b0b4",
+    "docs/tla/CharlotteInterruptRoute_small.cfg": "d2d75e070eab33d10fd0cc38a3d60f53788637dfac9dfe505df0702f8f98f24e",
+    "docs/tla/CharlotteInterruptRoute_unsafe.cfg": "58e087639848e1cae282cd413caf77b3fffd0b912ebdde3728c6d05820f8bf10",
+    "docs/tla/CharlotteIpcPublication.tla": "67d87012aaed9bed5eec8df42b68f46359153a618d43a9b0befcb6b92e009432",
+    "docs/tla/CharlotteIpcPublication_batch_unsafe.cfg": "f21d1ad0c3c4ae9110851d914f55df4e08a5583db20fb9a1c3524c8158f3af1f",
+    "docs/tla/CharlotteIpcPublication_cancel_unsafe.cfg": "fb3cb26ea11333c4341a9569f3d1eea6757d28d2bed3a8bab006c8930187cd6d",
+    "docs/tla/CharlotteIpcPublication_connection_unsafe.cfg": "aaca3189ab479abf22b273882ca92fdf23602696a91aba0c1ff316bd46e1beae",
+    "docs/tla/CharlotteIpcPublication_memory_unsafe.cfg": "157e67d386164b1789334327b7c329b5cc2f133203867a7f2f3738688616133d",
+    "docs/tla/CharlotteIpcPublication_observe_unsafe.cfg": "958ce487bbee6ff56aae8a9a40df99593537a6b64320f4a5641a262ce245b0f9",
+    "docs/tla/CharlotteIpcPublication_readiness_unsafe.cfg": "dbc976896ed54d43217106ac32f920a93ef1ea9be8821e71b926d16ca6a02a27",
+    "docs/tla/CharlotteIpcPublication_refund_unsafe.cfg": "6aad7a123d8d50f7604ea78ed9f3106e05c5d95559c6dda0e83948f533abdc57",
+    "docs/tla/CharlotteIpcPublication_restore_unsafe.cfg": "a96f0da36e15eda49e0698ed30b3f373425fac45e76d11f8f8b034e5866ac5dd",
+    "docs/tla/CharlotteIpcPublication_rollback_unsafe.cfg": "e835593816f7502ac984d59d370237950b166a938774ec5a45a5686afbab6313",
+    "docs/tla/CharlotteIpcPublication_serial_unsafe.cfg": "32130b6ce3d0d01be1df08a89b7dd38d9a7d476ad31cd3605df48376eb1a5650",
+    "docs/tla/CharlotteIpcPublication_small.cfg": "4c6da1ebeb79eeefa62bb0dbb9d26184956c1fdd6d097a5de41b120275d67d87",
+    "docs/tla/CharlotteIpcTransaction.tla": "bfc596a22480fae309c31732670b60024085014ec084d998dbbf8affd40fed7c",
+    "docs/tla/CharlotteIpcTransaction_rollback_unsafe.cfg": "89326400847cf5ac0fd76e7c68eb2f32385d551cd38ce201c70dd6a5a6b7fe99",
+    "docs/tla/CharlotteIpcTransaction_small.cfg": "67e0efe832fbadf7258296297af6afa293da1a78edcdb464a14cf9a70280a471",
+    "docs/tla/CharlotteIpcTransaction_timeout_unsafe.cfg": "5c748b860dec8df3fb253e6aefcaa8138835fac61dc0b6ea48c8a089cb2b4c00",
+    "docs/tla/CharlotteNamePublication.tla": "64e06c4d4eba6c9af622cc8433bcb27e97a9c55655f4151a9f4d4e0faf9728f1",
+    "docs/tla/CharlotteNamePublication_abort_unsafe.cfg": "e271ebbf4cb0a504119c836cbdc42dcab8d6039a85209439f0dfa9c1d6f90a8c",
+    "docs/tla/CharlotteNamePublication_deferred_unsafe.cfg": "d1c9e007af1d13797dd43395aef321c857bb869285cbf9e13f9259b6b0ebf705",
+    "docs/tla/CharlotteNamePublication_disposal_unsafe.cfg": "9962dfc20c9bb6e4e7bdc54a2ac6a68dae04a701427004a494b54f9aaee02865",
+    "docs/tla/CharlotteNamePublication_exhausted_unsafe.cfg": "a942fbefc77918b1ad9ee416f77bd0357a1205e9cd831c1110e30e193d4deca2",
+    "docs/tla/CharlotteNamePublication_exhaustion.cfg": "9276ebe1529abbd3863d389066d633d0440adce13c69cccbdf7c8facc4c81cc6",
+    "docs/tla/CharlotteNamePublication_hint_unsafe.cfg": "8484b3ae8b8c58ceeee38e3e4bf4bee13056b420883c04924393984f85af2c09",
+    "docs/tla/CharlotteNamePublication_public_unsafe.cfg": "e569ee4d0b6f3bb86c05785a6574565195ef0d73a64edd9074cf61e18710443f",
+    "docs/tla/CharlotteNamePublication_quota_unsafe.cfg": "75624b9f524283872e18b0ec2d36c49e9b7b70a78d10e0b9248450c6eb10ee36",
+    "docs/tla/CharlotteNamePublication_replacement_unsafe.cfg": "02b0c2abe35eacfa067a22403296400228c8fff7e6531450bc428aa9bb3a8c8c",
+    "docs/tla/CharlotteNamePublication_retire_unsafe.cfg": "435a962cad50daf5e8c928c23bb0034a7b1f88f8b0d46b8e9018eb3b521b1748",
+    "docs/tla/CharlotteNamePublication_serial_unsafe.cfg": "beb2131c7c79377259741ca89e909273e0bde7bf43f7cb1e1413f182c911ad30",
+    "docs/tla/CharlotteNamePublication_small.cfg": "df05aff71bceb53c288f9e29ec0f64fd4efd5d17face5d1884fdc0a339b7dd88",
+    "docs/tla/CharlotteNamePublication_stale_unsafe.cfg": "23470b9661034062398a56368f0ff5980ecbe731f4f764da51b4e4de5ee89ac3",
+    "docs/tla/CharlotteNamePublication_watch_unsafe.cfg": "acff70f0762e23fa9ba9411edba9e5b9464a5ac9f6ba54f94ac03af10f9c020b",
+    "docs/tla/CharlotteNamePublication_wrap_unsafe.cfg": "d857d5368be2ca80b990b0b6d476da2d24ba8e5719116b19ce30a138794241a3",
+    "docs/tla/CharlottePlacementControl.tla": "2c93a5cf0a91d5babd0d4fbb863ea0d0c64eeda82a9bfc8d2467e19ba17e2515",
+    "docs/tla/CharlottePlacementControl_dwell_unsafe.cfg": "c1ffcc9f00441a11bd727cb812389a12dab91898d0764081e763693abaf55e8a",
+    "docs/tla/CharlottePlacementControl_reserve_unsafe.cfg": "969d1b58a2debd681a1beea9a4b69585f0f04f3e563eb78ddf32ef5396382733",
+    "docs/tla/CharlottePlacementControl_small.cfg": "ea702173e19534cf9f0967fe2f5a46bc5ea0e25a78c6a0a66ecd96da6e514cf8",
+    "docs/tla/CharlotteRaft.tla": "6ab1ef702a12515a8299263af5d5216115dd976dfee7d69e6b394c4c1fc94d80",
+    "docs/tla/CharlotteRaftJoin.tla": "4436022e36d4ed88690e3ba1dbd995bcb7bbaf60acd2c9da10063bb5cb221486",
+    "docs/tla/CharlotteRaftJoin_restart_unsafe.cfg": "9ae634438f5cfcd525ef79f229861ed5f16b09ded70282aa2d672670291b95eb",
+    "docs/tla/CharlotteRaftJoin_small.cfg": "645defb0cbba7276f412504af6ae1edd648bb75dc612bfec0c4466de5e15c833",
+    "docs/tla/CharlotteRaftJoin_unsafe.cfg": "e9e87d139447a922465906760b61028efcfdeb06e08fc0657111127bb1d3f3e1",
+    "docs/tla/CharlotteRaftLog.tla": "f1264ced4451c6498bbc23877475805613a798d4baa4dc7b92a16804f4d1266b",
+    "docs/tla/CharlotteRaftLog_small.cfg": "d0922611874d0a0c3aad1302c79cbeb2964b28047f5a4d62828c4b83ba44addb",
+    "docs/tla/CharlotteRaftMembership.tla": "ee283cee5f5c54cbd98a0ef002dbe2d8592f1dbda13c11a31c3dd118e30e3f4d",
+    "docs/tla/CharlotteRaftMembership_beforecatchup_unsafe.cfg": "1bebd17d6742862ea1b42603110142ab7ecfce3181a38486f900b42494c5662c",
+    "docs/tla/CharlotteRaftMembership_learnerleader_unsafe.cfg": "e03b850a627f57c6a67221bab01809966fd326845479bdc9ff9cb739c80152f8",
+    "docs/tla/CharlotteRaftMembership_oldonly_unsafe.cfg": "66c4d2ee02c6f971fb8529c3f27c6a484240e7e88787c4089e284967b569c818",
+    "docs/tla/CharlotteRaftMembership_small.cfg": "c4949302102f62fe00a4d7b2144ad348bd0ac07a14f7e49819eb9d45a3c55a3c",
+    "docs/tla/CharlotteRaftRead.tla": "ba501b11cfb8f5b1b49783164821f8f9919f7bebd005750d588af53bc55bf4a6",
+    "docs/tla/CharlotteRaftRead_apply_unsafe.cfg": "43cba1003d8bd416c940a67210311278e210565b7699d24a6b335e8cfc358231",
+    "docs/tla/CharlotteRaftRead_binding_unsafe.cfg": "eae17e21a319cc8ca76e862f0e5e8c426bb067b4df995128155e0bd859aae816",
+    "docs/tla/CharlotteRaftRead_commit_unsafe.cfg": "dc43808ad84e9c1f980a81124b59560f5e3494489c9b1c70f2cba87715ca87b7",
+    "docs/tla/CharlotteRaftRead_lease_unsafe.cfg": "04027533e5b606ff3995f03b3534135a005ced922ceff5b42d55813f2c7d7b53",
+    "docs/tla/CharlotteRaftRead_small.cfg": "d8356638da42d1a5f9e2bf70e011584a4d8e155f81401747b993c5df58f3c786",
+    "docs/tla/CharlotteRaftResponse.tla": "3d18cf384a8769934d40b538d1b66a62c347f24429e03e347076c359972fa3fa",
+    "docs/tla/CharlotteRaftResponse_backoff_unsafe.cfg": "9a72a7d3759a03c6515d0f345ef67bbb015881ae50f906b36259173c1618ec55",
+    "docs/tla/CharlotteRaftResponse_invalid_unsafe.cfg": "955dbde49aea1b4811db506ec61c662d3650272d7ec982c8d5b8d3506a36ed0f",
+    "docs/tla/CharlotteRaftResponse_oldterm_unsafe.cfg": "ca31d6e2a4e4a1545c2a541d583bdd30e68ff7c16857397c307745383f1cd4fe",
+    "docs/tla/CharlotteRaftResponse_regress_unsafe.cfg": "fec5226e58addf76e4676b34d144bb9f85785a3b725ecf88b420ef6e4161e192",
+    "docs/tla/CharlotteRaftResponse_small.cfg": "d8356638da42d1a5f9e2bf70e011584a4d8e155f81401747b993c5df58f3c786",
+    "docs/tla/CharlotteRaftSnapshot.tla": "3ecd5c17fdb200227c0de9608b732df5ae18c648acdcf4619d607eff3a7639d8",
+    "docs/tla/CharlotteRaftSnapshot_small.cfg": "0ea7a243aab5cdeace57a0ef990237f8893614d30afc06427d98ce0425baafb1",
+    "docs/tla/CharlotteRaft_small.cfg": "48294c1cddc1d440a1e2d70a80fd6ea9da8ade2d20ff0f1f4f54b85e8843bb9b",
+    "docs/tla/CharlotteReliableMessage.tla": "3a17cb197cbf7818717940a30cf6930f41a3b5e6fe16b8dfe4cfa52851e51f6a",
+    "docs/tla/CharlotteReliableMessage_identity_unsafe.cfg": "4cbb48be424584a73181c7c5495e31faf41c3b967405092b520a41b9503678da",
+    "docs/tla/CharlotteReliableMessage_regression_unsafe.cfg": "49dbe795212fe69495d4c927592dce59074306c5b30c254d6d4bf8f43bd6ce8b",
+    "docs/tla/CharlotteReliableMessage_small.cfg": "85adbd3bb065b8da79a7d8dfe58fd5e4b530f10d26015f83952c4a82e22edea5",
+    "docs/tla/CharlotteRemoteCall.tla": "36de513b3ffbfa1e9cbd74bac0404fc1ef66cd5400c7b536a9da18c1be2b1c55",
+    "docs/tla/CharlotteRemoteCall_small.cfg": "56d4993c70c7c7f9a5d5ec478240776ee12e00432adf8402a6cc291bc7fe9601",
+    "docs/tla/CharlotteRootRetirement.tla": "817ce0b352e358ab901f6392354d4a42ca294274080e5f1b979d1105f563d87e",
+    "docs/tla/CharlotteRootRetirement_abandon_unsafe.cfg": "693f4eeb72902cd536fb1fa185b05e7daec0f0fd50f9fe655f1dcbd9396c7202",
+    "docs/tla/CharlotteRootRetirement_lease_unsafe.cfg": "185baa2c91ce27fd6872e654ee522f6b3770f467e0eead8557bb26c60c95c889",
+    "docs/tla/CharlotteRootRetirement_physical_unsafe.cfg": "fa20b8c4b353156b8f39c48362bc3ea995377e31d81a69f742300ca41077edab",
+    "docs/tla/CharlotteRootRetirement_refund_unsafe.cfg": "c01d5c13fbee34239773c05eb0a33db1d5c31dfaa2ecf9a8de25853de659faed",
+    "docs/tla/CharlotteRootRetirement_release_unsafe.cfg": "47ca560b0c4fba4952c7009e3fb6af8c5c3cde906a7bb943d70aea4113dbada5",
+    "docs/tla/CharlotteRootRetirement_small.cfg": "9ee0187ad3b152ba75044f87f71788bb9bd1f5d2af8ebf0a1b1389c487b593d1",
+    "docs/tla/CharlotteScheduler.tla": "a58ef1f0f39ebb06d7b5d09568071891b51ecc327ca097b018155026c2acab5e",
+    "docs/tla/CharlotteScheduler_domain_abort_unsafe.cfg": "53332baa166196b745e9c8a9ae53ca6f0df3675120de0ff4fa4c9b8d7c24ee56",
+    "docs/tla/CharlotteScheduler_small.cfg": "f48844b2897340be11b29446d9fe763fe5ac12eb09a4d98128ed8567adffb047",
+    "docs/tla/CharlotteScheduler_unsafe.cfg": "d8816f8c15bd9c50ccb9421ba88b5aba6c2b737b03d8f71bddbb8791cf8165c5",
+    "docs/tla/CharlotteServiceLifecycle.tla": "5cab06543727b1373ae1ba9a342217f93a275fb3058cc33c3408c6f6fc39dee0",
+    "docs/tla/CharlotteServiceLifecycle_small.cfg": "e44daeaa25b96571f91e1f440ef61865ca2cfe7ac2908e3761a0c17a24fc1762",
+    "docs/tla/CharlotteServiceLifecycle_unsafe.cfg": "dfbae5bdd1af4274cec07f6501be0724140ff96343be816b836d7458262e1e74",
+    "docs/tla/CharlotteSnapshotRestore.tla": "c71563b3814d1f58b6bee72dac6bfd78e76d55d50895dad5c70372002f42eb88",
+    "docs/tla/CharlotteSnapshotRestore_application_unsafe.cfg": "983d4959987c263293f339a66848e2d2160c8d47314b1006fcc965139f78c041",
+    "docs/tla/CharlotteSnapshotRestore_durable_unsafe.cfg": "08aab0735de4db738b699997e9c1e9db496a2c5627c71ead888bb9755dae2321",
+    "docs/tla/CharlotteSnapshotRestore_exposure_unsafe.cfg": "6aae5eb519c5d5e67c5cb64be07b8b64f3f82635236f0854f9d6797d00f193ad",
+    "docs/tla/CharlotteSnapshotRestore_join_unsafe.cfg": "f9e148560d035b72c231e971fabe1e0281db21539b1886d86a6aacc16bd6b079",
+    "docs/tla/CharlotteSnapshotRestore_membership_unsafe.cfg": "6de0ef827f05f5e144f88fb97473f5b8f1b15b49df87d253c6a58565d571a3b6",
+    "docs/tla/CharlotteSnapshotRestore_ordering_unsafe.cfg": "5c773fbf7a6930b96ee72c86b0a06ecba3fae85b6e51b05e03164059052eb6f5",
+    "docs/tla/CharlotteSnapshotRestore_progress_unsafe.cfg": "8e8ff5e47b8a3d60cab8d400802ff594af6320666274ce7366482045f136a854",
+    "docs/tla/CharlotteSnapshotRestore_small.cfg": "d8356638da42d1a5f9e2bf70e011584a4d8e155f81401747b993c5df58f3c786",
+    "docs/tla/CharlotteStackGrowth.tla": "36dce6679dd969bd14136bb79c5c2cff8cec8df6479f0d33458ab196324a4a5f",
+    "docs/tla/CharlotteStackGrowth_grow_unsafe.cfg": "bef8d583b177e41bc58ef6312d0726129b58aa62f0539fe0e3b2b3dc4cf99e74",
+    "docs/tla/CharlotteStackGrowth_leak_unsafe.cfg": "d3df7e3d6e69ea109cb6b9ee06c57cf54c9d6d4ac92ede12b7497066093857d6",
+    "docs/tla/CharlotteStackGrowth_small.cfg": "1931995ce026befe604d6225a63e43cf5afbc336881c9141222af8943076baf9",
+    "docs/tla/CharlotteThreadJoin.tla": "3e61029e5fa352c6b065f0edd165a94f132095fb1c0d79c31b57d6761653b0e6",
+    "docs/tla/CharlotteThreadJoin_small.cfg": "64bf35e8eea699f9f8d1f1fd51c4c8c8b3f0e123a32912015546ea891563c819",
+    "docs/tla/CharlotteThreadJoin_unsafe.cfg": "1caa3d988aea11eefcc695c7524337b2ceac2ccfa8daa7620732affb6fc577d7",
+    "docs/tla/CharlotteThreadJoin_wrap_unsafe.cfg": "6304719f640bb360f0aa8f7c85face93526dea4e490f9de314dcc46bdf62eed9",
+    "docs/tla/CharlotteTimedWait.tla": "8739f35fb3eb7d97b5e9b41c786ada3f1f74d7bfd9d285fbb332bd457e06078e",
+    "docs/tla/CharlotteTimedWait_small.cfg": "a3d3b0fcaf80d4030a515699c0f02d29b6951f4e4170774df1c83cb558aba1d2",
+    "docs/tla/CharlotteTimedWait_unsafe.cfg": "1ffdb5d33dd8d1280de6aa281c33a646b6bfa111f6f3ac8eb82b9800c8833be6",
+    "docs/tla/check.sh": "f2a083570bfd6dcf00422cef1f3c72c76d1236aacfad18a639ba8dee22e16b6c"
+  },
+  "reviewed_source_sha256": {
+    "crates/catten-graft/src/node.rs": "887af751c07970bc4a29aa3e237473f979a23d4b10fd3f503c4645ffa8527e08",
+    "crates/catten-graft/src/lib.rs": "e34421e29bd9b7c16e1d353525194b855857800229e9466c7d67d0f147cc6f1a",
+    "crates/catten-graft/src/types.rs": "f2fc38634bcf9053fac2f48cf474e985075fa4519ea52b152ec1c88829fa1565",
+    "crates/catten-graft/examples/audit_receive_lease.rs": "e59137394edaa3e0228ea4ddcb52531c71247921eb491d11fc861b7471032afb",
+    "crates/catten-services/src/lib.rs": "992a683244b1d223575eb712e59266fbaea63a2ab80fa8a4c10e8831fecf4e36",
+    "crates/catten-services/src/bin/dns.rs": "9ce3e5c28bbcfdedb0a92b13ba29b8d3ac2a39b375010f3021011ccb024c2c34",
+    "crates/catten-services/src/bin/dns/reads.rs": "6342ca7dc9626035c669a3b058dd0608bae5ffa6fd88a51da8b644472002eba3",
+    "crates/catten-services/src/bin/dns/state.rs": "e8b41cbd4341c2ed76c0a45310a3cf40f6496f294758b29e49ce9350c12e1436",
+    "crates/catten-services/src/bin/dns/reactor.rs": "d2484787b6db6b46186f81fbe5962b88ee2cfbf429efb6b7136c9c7f63d12913",
+    "crates/catten-services/src/bin/dns/catalog.rs": "8950192fe079bf6180dee9e0e695dfe030028fe6405fa3ba87f096dd54061b15",
+    "crates/catten/src/self_test/el0_dns.rs": "158a9dfb24d3d887b6939a7ed13e3690092bd27f7900931c7c8b45326be94782"
+  },
+  "cases": [
+    {
+      "module": "CharlotteRaftRead",
+      "config": "CharlotteRaftRead_small.cfg",
+      "expected_counterexample": false,
+      "log_sha256": "22c4e890ce26cf68e5a275a8d62c77d6742226c89609b3bca9dff27438375c43",
+      "generated_states": 38300,
+      "distinct_states": 9916,
+      "action_coverage": {
+        "Init": {
+          "new_successors": 2,
+          "total_successors": 2
+        },
+        "Elect": {
+          "new_successors": 7,
+          "total_successors": 8
+        },
+        "AdmitRead": {
+          "new_successors": 263,
+          "total_successors": 1134
+        },
+        "CaptureReply": {
+          "new_successors": 190,
+          "total_successors": 1729
+        },
+        "ReceiveOldPrefix": {
+          "new_successors": 38,
+          "total_successors": 2576
+        },
+        "CommitQuorum": {
+          "new_successors": 312,
+          "total_successors": 1445
+        },
+        "DeliverReply": {
+          "new_successors": 155,
+          "total_successors": 3576
+        },
+        "Apply": {
+          "new_successors": 395,
+          "total_successors": 5670
+        },
+        "Read": {
+          "new_successors": 41,
+          "total_successors": 156
+        },
+        "RejectRead": {
+          "new_successors": 0,
+          "total_successors": 3644
+        },
+        "CancelRead": {
+          "new_successors": 878,
+          "total_successors": 3744
+        },
+        "ChangeLeader": {
+          "new_successors": 958,
+          "total_successors": 2576
+        },
+        "StepDown": {
+          "new_successors": 2204,
+          "total_successors": 5364
+        },
+        "ChangeEpoch": {
+          "new_successors": 1913,
+          "total_successors": 3338
+        },
+        "ReplaceDomain": {
+          "new_successors": 2560,
+          "total_successors": 3338
+        },
+        "UnsafeReadBeforeCommit": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeReadBeforeApply": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeReceiveLease": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeReadBinding": {
+          "new_successors": 0,
+          "total_successors": 0
+        }
+      },
+      "exit_status": 0,
+      "depth": 15
+    },
+    {
+      "module": "CharlotteRaftRead",
+      "config": "CharlotteRaftRead_commit_unsafe.cfg",
+      "expected_counterexample": true,
+      "log_sha256": "ea61678858bd25f768cdb72383ea5418a52af5e8ea50dc11c4d5217c7e97012e",
+      "generated_states": 595,
+      "distinct_states": 309,
+      "action_coverage": {
+        "Init": {
+          "new_successors": 4,
+          "total_successors": 4
+        },
+        "Elect": {
+          "new_successors": 6,
+          "total_successors": 9
+        },
+        "AdmitRead": {
+          "new_successors": 24,
+          "total_successors": 45
+        },
+        "CaptureReply": {
+          "new_successors": 16,
+          "total_successors": 53
+        },
+        "ReceiveOldPrefix": {
+          "new_successors": 24,
+          "total_successors": 63
+        },
+        "CommitQuorum": {
+          "new_successors": 24,
+          "total_successors": 47
+        },
+        "DeliverReply": {
+          "new_successors": 5,
+          "total_successors": 29
+        },
+        "Apply": {
+          "new_successors": 9,
+          "total_successors": 19
+        },
+        "Read": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "RejectRead": {
+          "new_successors": 0,
+          "total_successors": 32
+        },
+        "CancelRead": {
+          "new_successors": 22,
+          "total_successors": 32
+        },
+        "ChangeLeader": {
+          "new_successors": 36,
+          "total_successors": 62
+        },
+        "StepDown": {
+          "new_successors": 49,
+          "total_successors": 74
+        },
+        "ChangeEpoch": {
+          "new_successors": 40,
+          "total_successors": 68
+        },
+        "ReplaceDomain": {
+          "new_successors": 48,
+          "total_successors": 71
+        },
+        "UnsafeReadBeforeCommit": {
+          "new_successors": 4,
+          "total_successors": 5
+        },
+        "UnsafeReadBeforeApply": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeReceiveLease": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeReadBinding": {
+          "new_successors": 0,
+          "total_successors": 0
+        }
+      },
+      "exit_status": "nonzero, verified by harness",
+      "violated_invariant": "ReadHasCurrentCommit",
+      "trace": [
+        "State 1: <Initial predicate>",
+        "/\\ pending = FALSE",
+        "/\\ readApplied = TRUE",
+        "/\\ domain = 1",
+        "/\\ epoch = 1",
+        "/\\ term = 1",
+        "/\\ readAccepted = FALSE",
+        "/\\ readProof = TRUE",
+        "/\\ applied = 0",
+        "/\\ readCurrent = TRUE",
+        "/\\ fenceProof = FALSE",
+        "/\\ lastIndex = 1",
+        "/\\ ownerEpoch = 0",
+        "/\\ fence = 0",
+        "/\\ delayedIndex = 0",
+        "/\\ commit = 0",
+        "/\\ readBound = TRUE",
+        "/\\ leader = FALSE",
+        "/\\ contact = FALSE",
+        "/\\ ownerTerm = 0",
+        "/\\ changedLeader = FALSE",
+        "/\\ ownerDomain = 0",
+        "",
+        "State 2: <Elect line 23, col 5 to line 26, col 82 of module CharlotteRaftRead>",
+        "/\\ pending = FALSE",
+        "/\\ readApplied = TRUE",
+        "/\\ domain = 1",
+        "/\\ epoch = 1",
+        "/\\ term = 2",
+        "/\\ readAccepted = FALSE",
+        "/\\ readProof = TRUE",
+        "/\\ applied = 0",
+        "/\\ readCurrent = TRUE",
+        "/\\ fenceProof = FALSE",
+        "/\\ lastIndex = 2",
+        "/\\ ownerEpoch = 0",
+        "/\\ fence = 0",
+        "/\\ delayedIndex = 0",
+        "/\\ commit = 0",
+        "/\\ readBound = TRUE",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ ownerTerm = 0",
+        "/\\ changedLeader = FALSE",
+        "/\\ ownerDomain = 0",
+        "",
+        "State 3: <AdmitRead line 29, col 5 to line 33, col 105 of module CharlotteRaftRead>",
+        "/\\ pending = TRUE",
+        "/\\ readApplied = TRUE",
+        "/\\ domain = 1",
+        "/\\ epoch = 1",
+        "/\\ term = 2",
+        "/\\ readAccepted = FALSE",
+        "/\\ readProof = TRUE",
+        "/\\ applied = 0",
+        "/\\ readCurrent = TRUE",
+        "/\\ fenceProof = FALSE",
+        "/\\ lastIndex = 3",
+        "/\\ ownerEpoch = 1",
+        "/\\ fence = 3",
+        "/\\ delayedIndex = 0",
+        "/\\ commit = 0",
+        "/\\ readBound = TRUE",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ ownerTerm = 2",
+        "/\\ changedLeader = FALSE",
+        "/\\ ownerDomain = 1",
+        "",
+        "State 4: <ReceiveOldPrefix line 47, col 5 to line 50, col 82 of module CharlotteRaftRead>",
+        "/\\ pending = TRUE",
+        "/\\ readApplied = TRUE",
+        "/\\ domain = 1",
+        "/\\ epoch = 1",
+        "/\\ term = 2",
+        "/\\ readAccepted = FALSE",
+        "/\\ readProof = TRUE",
+        "/\\ applied = 0",
+        "/\\ readCurrent = TRUE",
+        "/\\ fenceProof = FALSE",
+        "/\\ lastIndex = 3",
+        "/\\ ownerEpoch = 1",
+        "/\\ fence = 3",
+        "/\\ delayedIndex = 0",
+        "/\\ commit = 0",
+        "/\\ readBound = TRUE",
+        "/\\ leader = TRUE",
+        "/\\ contact = TRUE",
+        "/\\ ownerTerm = 2",
+        "/\\ changedLeader = FALSE",
+        "/\\ ownerDomain = 1",
+        "",
+        "State 5: <UnsafeReadBeforeCommit line 124, col 27 to line 124, col 68 of module CharlotteRaftRead>",
+        "/\\ pending = FALSE",
+        "/\\ readApplied = TRUE",
+        "/\\ domain = 1",
+        "/\\ epoch = 1",
+        "/\\ term = 2",
+        "/\\ readAccepted = TRUE",
+        "/\\ readProof = FALSE",
+        "/\\ applied = 0",
+        "/\\ readCurrent = FALSE",
+        "/\\ fenceProof = FALSE",
+        "/\\ lastIndex = 3",
+        "/\\ ownerEpoch = 1",
+        "/\\ fence = 3",
+        "/\\ delayedIndex = 0",
+        "/\\ commit = 0",
+        "/\\ readBound = TRUE",
+        "/\\ leader = TRUE",
+        "/\\ contact = TRUE",
+        "/\\ ownerTerm = 2",
+        "/\\ changedLeader = FALSE",
+        "/\\ ownerDomain = 1",
+        ""
+      ]
+    },
+    {
+      "module": "CharlotteRaftRead",
+      "config": "CharlotteRaftRead_apply_unsafe.cfg",
+      "expected_counterexample": true,
+      "log_sha256": "d4c9b453c11360e3fab12bc8daf595cd10d1a3fbc7b188c7cb2b95df99631dce",
+      "generated_states": 761,
+      "distinct_states": 370,
+      "action_coverage": {
+        "Init": {
+          "new_successors": 4,
+          "total_successors": 4
+        },
+        "Elect": {
+          "new_successors": 8,
+          "total_successors": 9
+        },
+        "AdmitRead": {
+          "new_successors": 23,
+          "total_successors": 51
+        },
+        "CaptureReply": {
+          "new_successors": 23,
+          "total_successors": 71
+        },
+        "ReceiveOldPrefix": {
+          "new_successors": 24,
+          "total_successors": 80
+        },
+        "CommitQuorum": {
+          "new_successors": 30,
+          "total_successors": 63
+        },
+        "DeliverReply": {
+          "new_successors": 7,
+          "total_successors": 38
+        },
+        "Apply": {
+          "new_successors": 11,
+          "total_successors": 20
+        },
+        "Read": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "RejectRead": {
+          "new_successors": 0,
+          "total_successors": 50
+        },
+        "CancelRead": {
+          "new_successors": 27,
+          "total_successors": 50
+        },
+        "ChangeLeader": {
+          "new_successors": 46,
+          "total_successors": 79
+        },
+        "StepDown": {
+          "new_successors": 63,
+          "total_successors": 94
+        },
+        "ChangeEpoch": {
+          "new_successors": 36,
+          "total_successors": 77
+        },
+        "ReplaceDomain": {
+          "new_successors": 64,
+          "total_successors": 87
+        },
+        "UnsafeReadBeforeCommit": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeReadBeforeApply": {
+          "new_successors": 6,
+          "total_successors": 8
+        },
+        "UnsafeReceiveLease": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeReadBinding": {
+          "new_successors": 0,
+          "total_successors": 0
+        }
+      },
+      "exit_status": "nonzero, verified by harness",
+      "violated_invariant": "ReadHasAppliedCommit",
+      "trace": [
+        "State 1: <Initial predicate>",
+        "/\\ pending = FALSE",
+        "/\\ readApplied = TRUE",
+        "/\\ domain = 1",
+        "/\\ epoch = 1",
+        "/\\ term = 1",
+        "/\\ readAccepted = FALSE",
+        "/\\ readProof = TRUE",
+        "/\\ applied = 0",
+        "/\\ readCurrent = TRUE",
+        "/\\ fenceProof = FALSE",
+        "/\\ lastIndex = 1",
+        "/\\ ownerEpoch = 0",
+        "/\\ fence = 0",
+        "/\\ delayedIndex = 0",
+        "/\\ commit = 0",
+        "/\\ readBound = TRUE",
+        "/\\ leader = FALSE",
+        "/\\ contact = FALSE",
+        "/\\ ownerTerm = 0",
+        "/\\ changedLeader = FALSE",
+        "/\\ ownerDomain = 0",
+        "",
+        "State 2: <Elect line 23, col 5 to line 26, col 82 of module CharlotteRaftRead>",
+        "/\\ pending = FALSE",
+        "/\\ readApplied = TRUE",
+        "/\\ domain = 1",
+        "/\\ epoch = 1",
+        "/\\ term = 2",
+        "/\\ readAccepted = FALSE",
+        "/\\ readProof = TRUE",
+        "/\\ applied = 0",
+        "/\\ readCurrent = TRUE",
+        "/\\ fenceProof = FALSE",
+        "/\\ lastIndex = 2",
+        "/\\ ownerEpoch = 0",
+        "/\\ fence = 0",
+        "/\\ delayedIndex = 0",
+        "/\\ commit = 0",
+        "/\\ readBound = TRUE",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ ownerTerm = 0",
+        "/\\ changedLeader = FALSE",
+        "/\\ ownerDomain = 0",
+        "",
+        "State 3: <AdmitRead line 29, col 5 to line 33, col 105 of module CharlotteRaftRead>",
+        "/\\ pending = TRUE",
+        "/\\ readApplied = TRUE",
+        "/\\ domain = 1",
+        "/\\ epoch = 1",
+        "/\\ term = 2",
+        "/\\ readAccepted = FALSE",
+        "/\\ readProof = TRUE",
+        "/\\ applied = 0",
+        "/\\ readCurrent = TRUE",
+        "/\\ fenceProof = FALSE",
+        "/\\ lastIndex = 3",
+        "/\\ ownerEpoch = 1",
+        "/\\ fence = 3",
+        "/\\ delayedIndex = 0",
+        "/\\ commit = 0",
+        "/\\ readBound = TRUE",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ ownerTerm = 2",
+        "/\\ changedLeader = FALSE",
+        "/\\ ownerDomain = 1",
+        "",
+        "State 4: <CommitQuorum line 53, col 5 to line 58, col 82 of module CharlotteRaftRead>",
+        "/\\ pending = TRUE",
+        "/\\ readApplied = TRUE",
+        "/\\ domain = 1",
+        "/\\ epoch = 1",
+        "/\\ term = 2",
+        "/\\ readAccepted = FALSE",
+        "/\\ readProof = TRUE",
+        "/\\ applied = 0",
+        "/\\ readCurrent = TRUE",
+        "/\\ fenceProof = TRUE",
+        "/\\ lastIndex = 3",
+        "/\\ ownerEpoch = 1",
+        "/\\ fence = 3",
+        "/\\ delayedIndex = 0",
+        "/\\ commit = 3",
+        "/\\ readBound = TRUE",
+        "/\\ leader = TRUE",
+        "/\\ contact = TRUE",
+        "/\\ ownerTerm = 2",
+        "/\\ changedLeader = FALSE",
+        "/\\ ownerDomain = 1",
+        "",
+        "State 5: <UnsafeReadBeforeApply line 125, col 26 to line 125, col 65 of module CharlotteRaftRead>",
+        "/\\ pending = FALSE",
+        "/\\ readApplied = FALSE",
+        "/\\ domain = 1",
+        "/\\ epoch = 1",
+        "/\\ term = 2",
+        "/\\ readAccepted = TRUE",
+        "/\\ readProof = TRUE",
+        "/\\ applied = 0",
+        "/\\ readCurrent = TRUE",
+        "/\\ fenceProof = TRUE",
+        "/\\ lastIndex = 3",
+        "/\\ ownerEpoch = 1",
+        "/\\ fence = 3",
+        "/\\ delayedIndex = 0",
+        "/\\ commit = 3",
+        "/\\ readBound = TRUE",
+        "/\\ leader = TRUE",
+        "/\\ contact = TRUE",
+        "/\\ ownerTerm = 2",
+        "/\\ changedLeader = FALSE",
+        "/\\ ownerDomain = 1",
+        ""
+      ]
+    },
+    {
+      "module": "CharlotteRaftRead",
+      "config": "CharlotteRaftRead_lease_unsafe.cfg",
+      "expected_counterexample": true,
+      "log_sha256": "357f7ff6a24c4de672abdb037ff60c6d602b7bad6c9a547c28ad470e8876d56c",
+      "generated_states": 7668,
+      "distinct_states": 2619,
+      "action_coverage": {
+        "Init": {
+          "new_successors": 4,
+          "total_successors": 4
+        },
+        "Elect": {
+          "new_successors": 8,
+          "total_successors": 10
+        },
+        "AdmitRead": {
+          "new_successors": 158,
+          "total_successors": 429
+        },
+        "CaptureReply": {
+          "new_successors": 131,
+          "total_successors": 614
+        },
+        "ReceiveOldPrefix": {
+          "new_successors": 52,
+          "total_successors": 682
+        },
+        "CommitQuorum": {
+          "new_successors": 141,
+          "total_successors": 469
+        },
+        "DeliverReply": {
+          "new_successors": 51,
+          "total_successors": 531
+        },
+        "Apply": {
+          "new_successors": 94,
+          "total_successors": 571
+        },
+        "Read": {
+          "new_successors": 15,
+          "total_successors": 34
+        },
+        "RejectRead": {
+          "new_successors": 0,
+          "total_successors": 711
+        },
+        "CancelRead": {
+          "new_successors": 312,
+          "total_successors": 732
+        },
+        "ChangeLeader": {
+          "new_successors": 320,
+          "total_successors": 682
+        },
+        "StepDown": {
+          "new_successors": 554,
+          "total_successors": 985
+        },
+        "ChangeEpoch": {
+          "new_successors": 407,
+          "total_successors": 650
+        },
+        "ReplaceDomain": {
+          "new_successors": 372,
+          "total_successors": 578
+        },
+        "UnsafeReadBeforeCommit": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeReadBeforeApply": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeReceiveLease": {
+          "new_successors": 2,
+          "total_successors": 7
+        },
+        "UnsafeReadBinding": {
+          "new_successors": 0,
+          "total_successors": 0
+        }
+      },
+      "exit_status": "nonzero, verified by harness",
+      "violated_invariant": "ReadHasFenceProof",
+      "trace": [
+        "State 1: <Initial predicate>",
+        "/\\ pending = FALSE",
+        "/\\ readApplied = TRUE",
+        "/\\ domain = 1",
+        "/\\ epoch = 1",
+        "/\\ term = 1",
+        "/\\ readAccepted = FALSE",
+        "/\\ readProof = TRUE",
+        "/\\ applied = 1",
+        "/\\ readCurrent = TRUE",
+        "/\\ fenceProof = FALSE",
+        "/\\ lastIndex = 1",
+        "/\\ ownerEpoch = 0",
+        "/\\ fence = 0",
+        "/\\ delayedIndex = 0",
+        "/\\ commit = 1",
+        "/\\ readBound = TRUE",
+        "/\\ leader = FALSE",
+        "/\\ contact = FALSE",
+        "/\\ ownerTerm = 0",
+        "/\\ changedLeader = FALSE",
+        "/\\ ownerDomain = 0",
+        "",
+        "State 2: <ChangeEpoch line 112, col 5 to line 115, col 82 of module CharlotteRaftRead>",
+        "/\\ pending = FALSE",
+        "/\\ readApplied = TRUE",
+        "/\\ domain = 1",
+        "/\\ epoch = 2",
+        "/\\ term = 1",
+        "/\\ readAccepted = FALSE",
+        "/\\ readProof = TRUE",
+        "/\\ applied = 1",
+        "/\\ readCurrent = TRUE",
+        "/\\ fenceProof = FALSE",
+        "/\\ lastIndex = 1",
+        "/\\ ownerEpoch = 0",
+        "/\\ fence = 0",
+        "/\\ delayedIndex = 0",
+        "/\\ commit = 1",
+        "/\\ readBound = TRUE",
+        "/\\ leader = FALSE",
+        "/\\ contact = FALSE",
+        "/\\ ownerTerm = 0",
+        "/\\ changedLeader = FALSE",
+        "/\\ ownerDomain = 0",
+        "",
+        "State 3: <Elect line 23, col 5 to line 26, col 82 of module CharlotteRaftRead>",
+        "/\\ pending = FALSE",
+        "/\\ readApplied = TRUE",
+        "/\\ domain = 1",
+        "/\\ epoch = 2",
+        "/\\ term = 2",
+        "/\\ readAccepted = FALSE",
+        "/\\ readProof = TRUE",
+        "/\\ applied = 1",
+        "/\\ readCurrent = TRUE",
+        "/\\ fenceProof = FALSE",
+        "/\\ lastIndex = 2",
+        "/\\ ownerEpoch = 0",
+        "/\\ fence = 0",
+        "/\\ delayedIndex = 0",
+        "/\\ commit = 1",
+        "/\\ readBound = TRUE",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ ownerTerm = 0",
+        "/\\ changedLeader = FALSE",
+        "/\\ ownerDomain = 0",
+        "",
+        "State 4: <AdmitRead line 29, col 5 to line 33, col 105 of module CharlotteRaftRead>",
+        "/\\ pending = TRUE",
+        "/\\ readApplied = TRUE",
+        "/\\ domain = 1",
+        "/\\ epoch = 2",
+        "/\\ term = 2",
+        "/\\ readAccepted = FALSE",
+        "/\\ readProof = TRUE",
+        "/\\ applied = 1",
+        "/\\ readCurrent = TRUE",
+        "/\\ fenceProof = FALSE",
+        "/\\ lastIndex = 3",
+        "/\\ ownerEpoch = 2",
+        "/\\ fence = 3",
+        "/\\ delayedIndex = 0",
+        "/\\ commit = 1",
+        "/\\ readBound = TRUE",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ ownerTerm = 2",
+        "/\\ changedLeader = FALSE",
+        "/\\ ownerDomain = 1",
+        "",
+        "State 5: <CaptureReply line 38, col 5 to line 44, col 82 of module CharlotteRaftRead>",
+        "/\\ pending = TRUE",
+        "/\\ readApplied = TRUE",
+        "/\\ domain = 1",
+        "/\\ epoch = 2",
+        "/\\ term = 2",
+        "/\\ readAccepted = FALSE",
+        "/\\ readProof = TRUE",
+        "/\\ applied = 1",
+        "/\\ readCurrent = TRUE",
+        "/\\ fenceProof = FALSE",
+        "/\\ lastIndex = 3",
+        "/\\ ownerEpoch = 2",
+        "/\\ fence = 3",
+        "/\\ delayedIndex = 2",
+        "/\\ commit = 1",
+        "/\\ readBound = TRUE",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ ownerTerm = 2",
+        "/\\ changedLeader = FALSE",
+        "/\\ ownerDomain = 1",
+        "",
+        "State 6: <ChangeLeader line 99, col 5 to line 103, col 82 of module CharlotteRaftRead>",
+        "/\\ pending = TRUE",
+        "/\\ readApplied = TRUE",
+        "/\\ domain = 1",
+        "/\\ epoch = 2",
+        "/\\ term = 2",
+        "/\\ readAccepted = FALSE",
+        "/\\ readProof = TRUE",
+        "/\\ applied = 1",
+        "/\\ readCurrent = TRUE",
+        "/\\ fenceProof = FALSE",
+        "/\\ lastIndex = 3",
+        "/\\ ownerEpoch = 2",
+        "/\\ fence = 3",
+        "/\\ delayedIndex = 2",
+        "/\\ commit = 1",
+        "/\\ readBound = TRUE",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ ownerTerm = 2",
+        "/\\ changedLeader = TRUE",
+        "/\\ ownerDomain = 1",
+        "",
+        "State 7: <DeliverReply line 61, col 5 to line 65, col 82 of module CharlotteRaftRead>",
+        "/\\ pending = TRUE",
+        "/\\ readApplied = TRUE",
+        "/\\ domain = 1",
+        "/\\ epoch = 2",
+        "/\\ term = 2",
+        "/\\ readAccepted = FALSE",
+        "/\\ readProof = TRUE",
+        "/\\ applied = 1",
+        "/\\ readCurrent = TRUE",
+        "/\\ fenceProof = FALSE",
+        "/\\ lastIndex = 3",
+        "/\\ ownerEpoch = 2",
+        "/\\ fence = 3",
+        "/\\ delayedIndex = 0",
+        "/\\ commit = 2",
+        "/\\ readBound = TRUE",
+        "/\\ leader = TRUE",
+        "/\\ contact = TRUE",
+        "/\\ ownerTerm = 2",
+        "/\\ changedLeader = TRUE",
+        "/\\ ownerDomain = 1",
+        "",
+        "State 8: <Apply line 68, col 5 to line 71, col 94 of module CharlotteRaftRead>",
+        "/\\ pending = TRUE",
+        "/\\ readApplied = TRUE",
+        "/\\ domain = 1",
+        "/\\ epoch = 2",
+        "/\\ term = 2",
+        "/\\ readAccepted = FALSE",
+        "/\\ readProof = TRUE",
+        "/\\ applied = 2",
+        "/\\ readCurrent = TRUE",
+        "/\\ fenceProof = FALSE",
+        "/\\ lastIndex = 3",
+        "/\\ ownerEpoch = 2",
+        "/\\ fence = 3",
+        "/\\ delayedIndex = 0",
+        "/\\ commit = 2",
+        "/\\ readBound = TRUE",
+        "/\\ leader = TRUE",
+        "/\\ contact = TRUE",
+        "/\\ ownerTerm = 2",
+        "/\\ changedLeader = TRUE",
+        "/\\ ownerDomain = 1",
+        "",
+        "State 9: <UnsafeReceiveLease line 126, col 23 to line 126, col 79 of module CharlotteRaftRead>",
+        "/\\ pending = FALSE",
+        "/\\ readApplied = TRUE",
+        "/\\ domain = 1",
+        "/\\ epoch = 2",
+        "/\\ term = 2",
+        "/\\ readAccepted = TRUE",
+        "/\\ readProof = FALSE",
+        "/\\ applied = 2",
+        "/\\ readCurrent = TRUE",
+        "/\\ fenceProof = FALSE",
+        "/\\ lastIndex = 3",
+        "/\\ ownerEpoch = 2",
+        "/\\ fence = 3",
+        "/\\ delayedIndex = 0",
+        "/\\ commit = 2",
+        "/\\ readBound = TRUE",
+        "/\\ leader = TRUE",
+        "/\\ contact = TRUE",
+        "/\\ ownerTerm = 2",
+        "/\\ changedLeader = TRUE",
+        "/\\ ownerDomain = 1",
+        ""
+      ]
+    },
+    {
+      "module": "CharlotteRaftRead",
+      "config": "CharlotteRaftRead_binding_unsafe.cfg",
+      "expected_counterexample": true,
+      "log_sha256": "c9f977f371525367ce86f23fcf7ee27f3d3ea9c6e66c28157ca56d7244e2b6d7",
+      "generated_states": 4056,
+      "distinct_states": 1493,
+      "action_coverage": {
+        "Init": {
+          "new_successors": 4,
+          "total_successors": 4
+        },
+        "Elect": {
+          "new_successors": 7,
+          "total_successors": 9
+        },
+        "AdmitRead": {
+          "new_successors": 103,
+          "total_successors": 229
+        },
+        "CaptureReply": {
+          "new_successors": 74,
+          "total_successors": 359
+        },
+        "ReceiveOldPrefix": {
+          "new_successors": 36,
+          "total_successors": 374
+        },
+        "CommitQuorum": {
+          "new_successors": 82,
+          "total_successors": 261
+        },
+        "DeliverReply": {
+          "new_successors": 21,
+          "total_successors": 239
+        },
+        "Apply": {
+          "new_successors": 41,
+          "total_successors": 230
+        },
+        "Read": {
+          "new_successors": 7,
+          "total_successors": 18
+        },
+        "RejectRead": {
+          "new_successors": 0,
+          "total_successors": 332
+        },
+        "CancelRead": {
+          "new_successors": 157,
+          "total_successors": 342
+        },
+        "ChangeLeader": {
+          "new_successors": 159,
+          "total_successors": 372
+        },
+        "StepDown": {
+          "new_successors": 254,
+          "total_successors": 498
+        },
+        "ChangeEpoch": {
+          "new_successors": 249,
+          "total_successors": 385
+        },
+        "ReplaceDomain": {
+          "new_successors": 297,
+          "total_successors": 398
+        },
+        "UnsafeReadBeforeCommit": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeReadBeforeApply": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeReceiveLease": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeReadBinding": {
+          "new_successors": 4,
+          "total_successors": 38
+        }
+      },
+      "exit_status": "nonzero, verified by harness",
+      "violated_invariant": "ReadBoundToAdmission",
+      "trace": [
+        "State 1: <Initial predicate>",
+        "/\\ pending = FALSE",
+        "/\\ readApplied = TRUE",
+        "/\\ domain = 1",
+        "/\\ epoch = 1",
+        "/\\ term = 1",
+        "/\\ readAccepted = FALSE",
+        "/\\ readProof = TRUE",
+        "/\\ applied = 1",
+        "/\\ readCurrent = TRUE",
+        "/\\ fenceProof = FALSE",
+        "/\\ lastIndex = 1",
+        "/\\ ownerEpoch = 0",
+        "/\\ fence = 0",
+        "/\\ delayedIndex = 0",
+        "/\\ commit = 1",
+        "/\\ readBound = TRUE",
+        "/\\ leader = FALSE",
+        "/\\ contact = FALSE",
+        "/\\ ownerTerm = 0",
+        "/\\ changedLeader = FALSE",
+        "/\\ ownerDomain = 0",
+        "",
+        "State 2: <Elect line 23, col 5 to line 26, col 82 of module CharlotteRaftRead>",
+        "/\\ pending = FALSE",
+        "/\\ readApplied = TRUE",
+        "/\\ domain = 1",
+        "/\\ epoch = 1",
+        "/\\ term = 2",
+        "/\\ readAccepted = FALSE",
+        "/\\ readProof = TRUE",
+        "/\\ applied = 1",
+        "/\\ readCurrent = TRUE",
+        "/\\ fenceProof = FALSE",
+        "/\\ lastIndex = 2",
+        "/\\ ownerEpoch = 0",
+        "/\\ fence = 0",
+        "/\\ delayedIndex = 0",
+        "/\\ commit = 1",
+        "/\\ readBound = TRUE",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ ownerTerm = 0",
+        "/\\ changedLeader = FALSE",
+        "/\\ ownerDomain = 0",
+        "",
+        "State 3: <AdmitRead line 29, col 5 to line 33, col 105 of module CharlotteRaftRead>",
+        "/\\ pending = TRUE",
+        "/\\ readApplied = TRUE",
+        "/\\ domain = 1",
+        "/\\ epoch = 1",
+        "/\\ term = 2",
+        "/\\ readAccepted = FALSE",
+        "/\\ readProof = TRUE",
+        "/\\ applied = 1",
+        "/\\ readCurrent = TRUE",
+        "/\\ fenceProof = FALSE",
+        "/\\ lastIndex = 3",
+        "/\\ ownerEpoch = 1",
+        "/\\ fence = 3",
+        "/\\ delayedIndex = 0",
+        "/\\ commit = 1",
+        "/\\ readBound = TRUE",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ ownerTerm = 2",
+        "/\\ changedLeader = FALSE",
+        "/\\ ownerDomain = 1",
+        "",
+        "State 4: <CommitQuorum line 53, col 5 to line 58, col 82 of module CharlotteRaftRead>",
+        "/\\ pending = TRUE",
+        "/\\ readApplied = TRUE",
+        "/\\ domain = 1",
+        "/\\ epoch = 1",
+        "/\\ term = 2",
+        "/\\ readAccepted = FALSE",
+        "/\\ readProof = TRUE",
+        "/\\ applied = 1",
+        "/\\ readCurrent = TRUE",
+        "/\\ fenceProof = TRUE",
+        "/\\ lastIndex = 3",
+        "/\\ ownerEpoch = 1",
+        "/\\ fence = 3",
+        "/\\ delayedIndex = 0",
+        "/\\ commit = 3",
+        "/\\ readBound = TRUE",
+        "/\\ leader = TRUE",
+        "/\\ contact = TRUE",
+        "/\\ ownerTerm = 2",
+        "/\\ changedLeader = FALSE",
+        "/\\ ownerDomain = 1",
+        "",
+        "State 5: <Apply line 68, col 5 to line 71, col 94 of module CharlotteRaftRead>",
+        "/\\ pending = TRUE",
+        "/\\ readApplied = TRUE",
+        "/\\ domain = 1",
+        "/\\ epoch = 1",
+        "/\\ term = 2",
+        "/\\ readAccepted = FALSE",
+        "/\\ readProof = TRUE",
+        "/\\ applied = 3",
+        "/\\ readCurrent = TRUE",
+        "/\\ fenceProof = TRUE",
+        "/\\ lastIndex = 3",
+        "/\\ ownerEpoch = 1",
+        "/\\ fence = 3",
+        "/\\ delayedIndex = 0",
+        "/\\ commit = 3",
+        "/\\ readBound = TRUE",
+        "/\\ leader = TRUE",
+        "/\\ contact = TRUE",
+        "/\\ ownerTerm = 2",
+        "/\\ changedLeader = FALSE",
+        "/\\ ownerDomain = 1",
+        "",
+        "State 6: <ReplaceDomain line 118, col 5 to line 122, col 82 of module CharlotteRaftRead>",
+        "/\\ pending = TRUE",
+        "/\\ readApplied = TRUE",
+        "/\\ domain = 2",
+        "/\\ epoch = 1",
+        "/\\ term = 2",
+        "/\\ readAccepted = FALSE",
+        "/\\ readProof = TRUE",
+        "/\\ applied = 3",
+        "/\\ readCurrent = TRUE",
+        "/\\ fenceProof = TRUE",
+        "/\\ lastIndex = 3",
+        "/\\ ownerEpoch = 1",
+        "/\\ fence = 3",
+        "/\\ delayedIndex = 0",
+        "/\\ commit = 3",
+        "/\\ readBound = TRUE",
+        "/\\ leader = TRUE",
+        "/\\ contact = TRUE",
+        "/\\ ownerTerm = 2",
+        "/\\ changedLeader = FALSE",
+        "/\\ ownerDomain = 1",
+        "",
+        "State 7: <UnsafeReadBinding line 127, col 22 to line 127, col 65 of module CharlotteRaftRead>",
+        "/\\ pending = FALSE",
+        "/\\ readApplied = TRUE",
+        "/\\ domain = 2",
+        "/\\ epoch = 1",
+        "/\\ term = 2",
+        "/\\ readAccepted = TRUE",
+        "/\\ readProof = TRUE",
+        "/\\ applied = 3",
+        "/\\ readCurrent = TRUE",
+        "/\\ fenceProof = TRUE",
+        "/\\ lastIndex = 3",
+        "/\\ ownerEpoch = 1",
+        "/\\ fence = 3",
+        "/\\ delayedIndex = 0",
+        "/\\ commit = 3",
+        "/\\ readBound = FALSE",
+        "/\\ leader = TRUE",
+        "/\\ contact = TRUE",
+        "/\\ ownerTerm = 2",
+        "/\\ changedLeader = FALSE",
+        "/\\ ownerDomain = 1",
+        ""
+      ]
+    }
+  ],
+  "failed_runs": [
+    {
+      "case": "charlotte-raft-fence-build-initial.log",
+      "meaning": "Draft used nonexistent Connection.borrow and OwnedMemory.map_read_write methods and retained unused imports; corrected APIs/imports.",
+      "exit_status": 101,
+      "log_sha256": "b29a9a05ed41b99e0b30872bcfa81c65e79f08898160f60db9d9298672b26beb",
+      "diagnostics": [
+        "    |     ^^^^^^^^^^^^",
+        "",
+        "error[E0599]: no method named `borrow` found for reference `&Connection` in the current scope",
+        "   --> crates/catten-services/src/bin/dns/reads.rs:423:48",
+        "    |",
+        "423 | ...                   connection.borrow(),",
+        "    |                                  ^^^^^^",
+        "    |",
+        "    = help: items from traits can only be used if the trait is in scope",
+        "help: trait `Borrow` which provides `borrow` is implemented but not in scope; perhaps you want to import it",
+        "    |",
+        "  3 + use core::borrow::Borrow;",
+        "    |",
+        "help: there is a method `borrow_mut` with a similar name",
+        "    |",
+        "423 |                                     connection.borrow_mut(),",
+        "    |                                                      ++++",
+        "",
+        "error[E0599]: no method named `map_read_write` found for struct `OwnedMemory` in the current scope",
+        "   --> crates/catten-services/src/bin/dns/reads.rs:445:34",
+        "    |",
+        "445 |         let mut mapping = memory.map_read_write().map_err(|_| dns::ERR_RESOURCE_LIMIT)?;",
+        "    |                                  ^^^^^^^^^^^^^^ method not found in `OwnedMemory`",
+        "",
+        "For more information about this error, try `rustc --explain E0599`.",
+        "warning: `catten-services` (bin \"dns\") generated 2 warnings",
+        "error: could not compile `catten-services` (bin \"dns\") due to 2 previous errors; 2 warnings emitted",
+        "warning: build failed, waiting for other jobs to finish..."
+      ]
+    },
+    {
+      "case": "charlotte-raft-fence-tlc.log",
+      "meaning": "First draft omitted old-prefix contact; current-term omission control unexpectedly satisfied its invariant. Harness rejected lost sensitivity.",
+      "exit_status": 1,
+      "log_sha256": "75c96743e69af3e19f4197e51c1033370f209ea5ef889600755f6df2505069a1",
+      "diagnostics": [
+        "33852 states generated, 9612 distinct states found, 0 states left on queue.",
+        "error: negative model unexpectedly satisfied ReadHasCurrentCommit",
+        "Finished computing initial states: 2 distinct states generated at 2026-10-18 23:42:12.",
+        "47328 states generated, 13428 distinct states found, 0 states left on queue."
+      ]
+    },
+    {
+      "case": "charlotte-raft-fence-bundle-check-final.log",
+      "meaning": "Staged DNS ELF failed byte-for-byte freshness check. Sequential rebuild/sign/check and repeat native run follow; cause not established.",
+      "exit_status": 1,
+      "log_sha256": "e7684a57aa5bc9d948f30a9bc597de2969caebd29a2f7d12c88668225c9b57b4",
+      "diagnostics": [
+        "   Compiling catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services)",
+        "    Finished `release` profile [optimized] target(s) in 9.83s",
+        "error: staged AArch64 dns.elf is stale",
+        "run scripts/build-catten-services.sh --embed"
+      ]
+    },
+    {
+      "case": "charlotte-raft-fence-manual-complete1.log",
+      "meaning": "Manual command used repository-root cwd and could not find charlotte.tex; corrected builds use docs/manual-v2.",
+      "exit_status": 1,
+      "log_sha256": "2d39f73c17c9ca539a493d1ed672c4f5276f6bd220706f0d0ae96b1a874632d8",
+      "diagnostics": [
+        "This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026/MacPorts 2026.78235_5) (preloaded format=pdflatex)",
+        "entering extended mode",
+        "! I can't find file `charlotte.tex'.",
+        "<*> charlotte.tex",
+        "                 ",
+        "(Press Enter to retry, or Control-D to exit)",
+        "Please type another input file name",
+        "! Emergency stop.",
+        "<*> charlotte.tex",
+        "                 ",
+        "!  ==> Fatal error occurred, no output PDF file produced!",
+        "Transcript written on /private/tmp/charlotte-raft-fence-manual/texput.log."
+      ]
+    },
+    {
+      "case": "charlotte-raft-fence-manual-complete2.log",
+      "meaning": "Second command from the same wrong-cwd manual attempt also failed to find input.",
+      "exit_status": 1,
+      "log_sha256": "2d39f73c17c9ca539a493d1ed672c4f5276f6bd220706f0d0ae96b1a874632d8",
+      "diagnostics": [
+        "This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026/MacPorts 2026.78235_5) (preloaded format=pdflatex)",
+        "entering extended mode",
+        "! I can't find file `charlotte.tex'.",
+        "<*> charlotte.tex",
+        "                 ",
+        "(Press Enter to retry, or Control-D to exit)",
+        "Please type another input file name",
+        "! Emergency stop.",
+        "<*> charlotte.tex",
+        "                 ",
+        "!  ==> Fatal error occurred, no output PDF file produced!",
+        "Transcript written on /private/tmp/charlotte-raft-fence-manual/texput.log."
+      ]
+    }
+  ],
+  "host_validation": [
+    {
+      "command": "cargo test --locked --manifest-path <repo>/crates/catten-graft/Cargo.toml --lib (outside root Cargo configuration)",
+      "exit_status": 0,
+      "passed": 51,
+      "failed": 0,
+      "log_sha256": "281c5ddd99a775bf49e582547fce61c2b7ff88bb218ad40bab09c39ce425b563"
+    },
+    {
+      "command": "cargo test --locked --manifest-path <repo>/crates/catten-services/Cargo.toml --lib (outside root Cargo configuration)",
+      "exit_status": 0,
+      "passed": 145,
+      "failed": 0,
+      "log_sha256": "497340932f618631b689a54dce568d3b4adcf1cb0d47336e4e5a1ffa7312b261"
+    }
+  ],
+  "checks": {
+    "clippy": {
+      "command": "cargo clippy --locked --manifest-path <repo>/crates/catten-graft/Cargo.toml --all-targets -- -D warnings (outside root Cargo configuration)",
+      "exit_status": 0,
+      "log_sha256": "f0fc9d73bd1156a769bcdb7c7a804eea9d6fdac26721bf40acd6ac22fa841230"
+    },
+    "dns_clippy": {
+      "command": "cargo clippy --locked --manifest-path crates/catten-services/Cargo.toml --target crates/catten-services/aarch64-unknown-none.json --target-dir crates/catten-services/target --release -Z build-std=core,alloc --bin dns -- -D warnings",
+      "exit_status": 0,
+      "log_sha256": "593b8ed4ebe78b855391f7cb3e2b4af354260ec69daa9679436d4a1ce3a6d778"
+    },
+    "bundle_build": {
+      "command": "scripts/build-catten-services.sh --embed",
+      "exit_status": 0,
+      "log_sha256": "c22b5b8bd9482a2484e7f3066e8cedd1d9253c6b027f934ab3addd661aa37e25"
+    },
+    "bundle_check": {
+      "command": "scripts/build-catten-services.sh --check",
+      "exit_status": 0,
+      "log_sha256": "a3f09908c72ace651ed29df0893777f32c07cd3148e8926c737ca81a1172a7da"
+    }
+  },
+  "limits": [
+    "One durable no-op/quorum commit per read; no performance or latency qualification.",
+    "Bounded status/ingress freshness retains receive-time observations; no general lease qualification.",
+    "Exact Arc domain/term/epoch binding, application and compaction checked by Rust; quorum/log/election/persistence validity assumed from other layers.",
+    "No native delayed-packet, allocation/mapping fault, invocation CQ binding rejection or pending-read timeout/drop injection.",
+    "General metadata allocation, raw transport ownership/readiness, physical cleanup and authenticated network identity remain open.",
+    "No new Graft Jepsen/upstream execution or mixed Charlotte/Graft cluster."
+  ],
+  "corrected_stale_read_witness": {
+    "command": "cargo run --locked --manifest-path <repo>/crates/catten-graft/Cargo.toml --example audit_receive_lease (outside root Cargo configuration)",
+    "exit_status": 0,
+    "exit_meaning": "Former stale-read schedule is rejected; the old delayed reply cannot commit the newly admitted read fence.",
+    "fixture_sha256": "e59137394edaa3e0228ea4ddcb52531c71247921eb491d11fc861b7471032afb",
+    "log_sha256": "1f06389fcefba2feacd0ae39aa8d76c2cdad42027564753ddec95d223829c599",
+    "diagnostics": [
+      "new leader n2: term=2 committed=4 value=2",
+      "old leader n1 at 5000ms: fresh read fence remains pending",
+      "PASS: delayed term-one reply cannot commit the fresh read fence; stale query rejected"
+    ]
+  },
+  "failed_native_pair": {
+    "result": {
+      "events": [
+        {
+          "event": "runner_started",
+          "utc": "2026-10-18T21:47:22.444129+00:00",
+          "instance": "rmfence2-a2",
+          "pid": 87889,
+          "arguments": [
+            "scripts/run-aarch64.sh",
+            "debug",
+            "--dns-test",
+            "--instance",
+            "rmfence2-a2",
+            "--mac",
+            "52:54:00:12:34:01",
+            "--fresh-storage",
+            "--timeout",
+            "180",
+            "--net-listen",
+            "12447"
+          ]
+        },
+        {
+          "event": "listener_ready",
+          "utc": "2026-10-18T21:48:19.604228+00:00"
+        },
+        {
+          "event": "runner_started",
+          "utc": "2026-10-18T21:48:19.605806+00:00",
+          "instance": "rmfence2-b2",
+          "pid": 88696,
+          "arguments": [
+            "scripts/run-aarch64.sh",
+            "debug",
+            "--dns-test",
+            "--instance",
+            "rmfence2-b2",
+            "--mac",
+            "52:54:00:12:34:02",
+            "--fresh-storage",
+            "--timeout",
+            "180",
+            "--net-connect",
+            "127.0.0.1:12447"
+          ]
+        },
+        {
+          "event": "runners_finished",
+          "utc": "2026-10-18T21:49:49.244552+00:00",
+          "exit_statuses": [
+            1,
+            1
+          ]
+        }
+      ],
+      "exit_statuses": [
+        1,
+        1
+      ]
+    },
+    "result_sha256": "995cd0d176b2ea7716dc5114fa68dc4692eff56a10a1c3e1de32f98bc89b7ef4",
+    "meaning": "Draft expected a delegated local NS connection. Leader lookup produced IPC cancellation -3 instead of local 0; peer later timed out in full-name echo convergence. Final API is placement-only without widening NS rights.",
+    "verification_limit": "The exact failed mint status and complete failed-draft service ELF/source fingerprints were not captured before replacement; kernel fingerprints, full log hashes, assertions and relevant source contracts are retained.",
+    "guests": [
+      {
+        "instance": "rmfence2-a2",
+        "exit_status": 1,
+        "kernel_sha256": "233c7eda4129983d06f78089c2b3d1a0089d9ff239f79c6b10b7374ef5fa7895",
+        "runner_log_sha256": "701458687f1f2883a476ac4fbb7abfa3081ec842dd13295d226ea2164c491df8",
+        "serial_log_sha256": "8c2426236d25078060bf0fe7741f965ecc8d08125d0b17c1fccfbcb72f5b3cb4",
+        "diagnostics": [
+          "Kernel panic:",
+          "panicked at crates/catten/src/self_test/el0_dns.rs:1031:27:",
+          "self-test deadline expired while waiting for EL0 dns full-name echo convergence",
+          "Kernel backtrace (raw return addresses; text=0xffffffff80000000..0xffffffff8043e7bc, sp=0xffff8100002da8c0, fp=0xffff8100002da940):",
+          "  #00 0xffffffff802d3424",
+          "  #01 0xffffffff803a0efc",
+          "  #02 0xffffffff80038e6c",
+          "  #03 0xffffffff80000a5c"
+        ]
+      },
+      {
+        "instance": "rmfence2-b2",
+        "exit_status": 1,
+        "kernel_sha256": "233c7eda4129983d06f78089c2b3d1a0089d9ff239f79c6b10b7374ef5fa7895",
+        "runner_log_sha256": "595efea0ca1f414daef6fe068b3a13a73c1f386d1dcb6126e402ec786e0cf6b2",
+        "serial_log_sha256": "b190ce0870cde351bf12ca066d937a390c569a3ee73ca5df1b4a994d005a6e26",
+        "diagnostics": [
+          "Kernel panic:",
+          "panicked at crates/catten/src/self_test/el0_dns.rs:915:13:",
+          "assertion `left == right` failed",
+          "  left: -3",
+          " right: 0",
+          "Kernel backtrace (raw return addresses; text=0xffffffff80000000..0xffffffff8043e7bc, sp=0xffff8100002da810, fp=0xffff8100002da890):",
+          "  #00 0xffffffff802d3424",
+          "  #01 0xffffffff803a0efc"
+        ]
+      }
+    ]
+  },
+  "delegation_source_contracts": [
+    {
+      "path": "crates/catten-services/src/bin/ns.rs",
+      "sha256": "f5e006e802eb977f8c2ee8d0c3c37a75a7daa72614e9a41ec7b0b8ec15dc59ea",
+      "first_line": 316,
+      "last_line": 327,
+      "excerpt": "fn reply_connection_or_error(reply: u64, connection: u64, generation: i64) {\n    let status = unsafe {\n        ipc_reply_connection(reply, connection, IpcRights::SEND | IpcRights::CALL, generation)\n    };\n    if status != 0 {\n        // A registration without MINT_CONNECTION cannot be handed to a\n        // lookup caller. Do not strand the retained reply token: report a\n        // protocol error so the caller can discard/retry it.\n        unsafe {\n            ipc_reply(reply, ns::ERR_INVALID);\n        }\n    }"
+    },
+    {
+      "path": "crates/catten/src/ipc/mod.rs",
+      "sha256": "ba6287b686c1f339587d8ff7c5a5c1d842086d4a23db0602974836a5ca8f9aef",
+      "first_line": 976,
+      "last_line": 1004,
+      "excerpt": "///\n/// Both endpoint caps and connection caps qualify, provided they carry\n/// `MINT_CONNECTION`. Connection caps allow re-delegation with rights\n/// attenuation: the minted rights are the intersection of the requested\n/// rights and the source cap's rights.\nfn mintable_endpoint(\n    ipc: &IpcRegistry,\n    asid: AddressSpaceId,\n    cap: CapabilityId,\n    requested: ConnectionRights,\n) -> Result<(EndpointId, ConnectionRights), IpcError> {\n    let (endpoint, source_rights) = match ipc.cap(asid, cap)? {\n        Capability::Endpoint {\n            endpoint,\n            rights,\n        }\n        | Capability::Connection {\n            endpoint,\n            rights,\n        } => (endpoint, rights),\n        _ => return Err(IpcError::WrongType),\n    };\n    if !source_rights.contains(ConnectionRights::MINT_CONNECTION) {\n        return Err(IpcError::PermissionDenied);\n    }\n    if ipc.endpoints.get(&endpoint).is_some_and(|endpoint| endpoint.closing) {\n        return Err(IpcError::Pending);\n    }\n    Ok((endpoint, requested.intersection(source_rights)))"
+    },
+    {
+      "path": "crates/catten-rt/src/owned/ipc.rs",
+      "sha256": "ca68efa9790d121cc7ccb1cd4f794ae150c30fa1ca14312c3b5c4a948a02d6ed",
+      "first_line": 945,
+      "last_line": 963,
+      "excerpt": "    /// Reply with an attenuated connection minted from a re-delegable\n    /// connection. This is the mediation counterpart to `reply_connection`:\n    /// a controller need not own the target service's endpoint.\n    pub fn reply_connection_ref(\n        mut self,\n        connection: ConnectionRef<'_>,\n        rights: IpcRights,\n        result: i64,\n    ) -> Result<(), IpcError> {\n        let reply = self.cap.take().expect(\"reply token already consumed\");\n        let status = kernel::ipc_reply_connection(reply, connection.cap, rights, result);\n        if status == catten_syscall::ipc_status::OK {\n            Ok(())\n        } else {\n            let _ = kernel::ipc_close(reply);\n            Err(IpcError::Status(status))\n        }\n    }\n}"
+    }
+  ],
+  "upstream_comparison": {
+    "revision": "1a818d416a40330bea2055e03f61580679baa9f6",
+    "status": "clean, read only",
+    "meaning": "Shared no-op grammar unchanged. Prior evidence retains core/runtime source extracts; no upstream execution or mixed-cluster validation in this batch."
+  },
+  "native_validation": {
+    "command": "CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_SKIP_EMBED_BUILD=1 scripts/run-aarch64.sh debug --dns-test --instance <rmfence4-a2|rmfence4-b2> --mac <52:54:00:12:34:01|52:54:00:12:34:02> --fresh-storage --timeout 180 <--net-listen 12449|--net-connect 127.0.0.1:12449>",
+    "second_guest_environment": "CATTEN_SKIP_KERNEL_BUILD=1; exact same built kernel",
+    "coordination": "Bounded host-only lsof listener inspection; no TCP readiness connection. Both guest runners awaited with a bounded host budget.",
+    "coordinator_sha256": "f4622c1c8e66c923cbd757d54399e76fd4b21060967ac36f9c3785e57b6e753a",
+    "result_sha256": "f3e8a02728992341cfb25ea3346196861d5b4bede284e83861a75f49b168f443",
+    "result": {
+      "events": [
+        {
+          "event": "runner_started",
+          "utc": "2026-10-18T22:02:30.287785+00:00",
+          "instance": "rmfence4-a2",
+          "pid": 96423,
+          "arguments": [
+            "scripts/run-aarch64.sh",
+            "debug",
+            "--dns-test",
+            "--instance",
+            "rmfence4-a2",
+            "--mac",
+            "52:54:00:12:34:01",
+            "--fresh-storage",
+            "--timeout",
+            "180",
+            "--net-listen",
+            "12449"
+          ]
+        },
+        {
+          "event": "listener_ready",
+          "utc": "2026-10-18T22:03:28.274320+00:00"
+        },
+        {
+          "event": "runner_started",
+          "utc": "2026-10-18T22:03:28.276237+00:00",
+          "instance": "rmfence4-b2",
+          "pid": 97263,
+          "arguments": [
+            "scripts/run-aarch64.sh",
+            "debug",
+            "--dns-test",
+            "--instance",
+            "rmfence4-b2",
+            "--mac",
+            "52:54:00:12:34:02",
+            "--fresh-storage",
+            "--timeout",
+            "180",
+            "--net-connect",
+            "127.0.0.1:12449"
+          ]
+        },
+        {
+          "event": "runners_finished",
+          "utc": "2026-10-18T22:04:22.155671+00:00",
+          "exit_statuses": [
+            0,
+            0
+          ]
+        }
+      ],
+      "exit_statuses": [
+        0,
+        0
+      ]
+    },
+    "guests": [
+      {
+        "instance": "rmfence4-a2",
+        "runner_exit_status": 0,
+        "kernel_sha256": "c3b6fb3bcb78c89dd05a354d982ee0100f71c5cfa21c9e677004ddde8ba63b7e",
+        "runner_log_sha256": "612b929a97390cdec8ebbc930cbf4b06e9ce6d1467cfee9de1852d2439ad7ef7",
+        "serial_log_sha256": "c459b603894cc5451acfcb6c7d5a907bee70b0dc2779fa1c8b5014d6939046be",
+        "diagnostics": [
+          "[+    14.661292] [disco] discovered 1 peer(s) on the network.",
+          "[+    28.028871] [dns] full-name echo result = 43",
+          "[+    30.358419] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0xfffff failed_bitmap=0x0 pending_bitmap=0x0"
+        ]
+      },
+      {
+        "instance": "rmfence4-b2",
+        "runner_exit_status": 0,
+        "kernel_sha256": "c3b6fb3bcb78c89dd05a354d982ee0100f71c5cfa21c9e677004ddde8ba63b7e",
+        "runner_log_sha256": "9f3da84136fa0b0ff0eb4314dcbd86132c4ec64be002ca80b12fd6f7e3cd2856",
+        "serial_log_sha256": "dad97f314592fc848d487e218cf4f628dc599a81674cb61d8432db03ca95646f",
+        "diagnostics": [
+          "[+    13.384737] [disco] discovered 1 peer(s) on the network.",
+          "[+    25.882818] [dns] fenced local placement returned without capability authority.",
+          "[+    26.910286] [dns] full-name echo result = 43",
+          "[+    28.543762] [dns] NS retired DNS-owned full-name and Echo-owned short-name publications after endpoint death without a fixture removal",
+          "[+    28.546433] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0xfffff failed_bitmap=0x0 pending_bitmap=0x0"
+        ]
+      }
+    ],
+    "limits": [
+      "Two QEMU AArch64 guests with fresh storage; no physical hardware claim.",
+      "Native delayed packets, allocation/mapping faults, waiter-binding rejection and timeout/drop of the new read phases were not injected.",
+      "No mixed Charlotte/Graft cluster, upstream execution or new Jepsen result."
+    ]
+  },
+  "verified_bundle": {
+    "command_sequence": [
+      "scripts/build-catten-services.sh --embed",
+      "scripts/build-catten-services.sh --check",
+      "paired native run with CATTEN_SKIP_EMBED_BUILD=1"
+    ],
+    "sequence": "The failed stale-ELF check was followed by a sequential build/sign/check before this final native repeat. Every staged file still matches this captured verified manifest after both runs.",
+    "staged_file_count": 41,
+    "file_sha256": {
+      "agent.elf": "f081554904f507757008b4191c67aef3b5f527891df5b90634209097144d8526",
+      "cclient.elf": "eabfb6a219396f084ac316e8d565e8c4fbf28b4184cbecd2dc0dee205a0afb3e",
+      "client.elf": "e4352ce9d6c6fe49a825b6db944ed832445cf939e77297c9f3b4cd96bcd30f49",
+      "clusterctl.elf": "ce9673030af0a2f57fc9d6a64d4a42ade36a9c12e1ac3bb4c47d5f37f58267e8",
+      "deployd.elf": "5cb4368cf4e2d59fb49625c31b4e16fe43ef95a6014e59166912da4d000fdc09",
+      "disco.elf": "a6b170d30b6b8b50aaf02686016eba19d6ac77eff5beae8a687a53ac3e33307a",
+      "dns.elf": "72fda26cbc1b408ce967a648f0f4089b78219c5ad843dbfdf6455349065c0058",
+      "echo.elf": "8c6376c7cffd19941c855eb572923f9917b93fc6d861054aa7ff2ca64e4a34d3",
+      "frouter.elf": "c02e73da6ea1bddbf712ed7820833618dd392f9b89b56d4459482546b3400b68",
+      "fs.elf": "6ef9175ecbab7da6783673c353801744435a6962912f032e2d521030797b8c89",
+      "grantctl.elf": "44e60875e85485debe48a17a7195d52a8e0c7f0fc90586fd38ecdeb9dd235957",
+      "greet.elf": "5aa196a560a1d96310d027a577e7b7aa4a3f4b3945246b2efd3dd5a20251f4e8",
+      "httpd.elf": "a1df110edab1b5549c4910a7263c69f4ab29e4fadf5c489112005447a15ead0d",
+      "kafka.elf": "5bb76412222e560e24e679f0ba12fadea03991a74176b8635a918993a19dbfe9",
+      "kafka_fence_smoke.elf": "39d628a5a2856b4562512b0191eef2ca39b846286fda2de236c457df9742eb69",
+      "kafka_smoke.elf": "4684ea5ec4968f81e45b3ba4e3160dbd257ea4d47d1ccb887087b170ea225ab7",
+      "kafka_step.elf": "b082ed244568985acb10b1e5b075259b2b1900730a6e29a152ee68d6f480ba3c",
+      "kafka_step_input.elf": "889d40948865f2c4251f2f2659b7dd6294555426a1a7312d366be1e393ffbde6",
+      "kafka_step_proc.elf": "4394deeb08b058e9322b9ff3cf845575c6dcc6e2d23a9d59400c333ac7f3f73a",
+      "nclient.elf": "6b7f614ebced9ea722446e331b6a5a4f980101d4bf6d85e11cc64debb0ce4919",
+      "net.elf": "ef428842ec8d382488d26ea2b7f1c20f3d6951dd58136b68c6720e675c8fe580",
+      "ns.elf": "10ed64e5b68275abd413606b2a86c564f923867ee9b5b67798592e22a6d972b1",
+      "nvme.elf": "8c60f8f649481c558db4fafc5e2e25e4226d6b3142e402462c874f30c6ff4846",
+      "nvme_client.elf": "d8b3ce038ed86a31418996e5585e69f0cb3b27b132c125d7c0b95e91be539587",
+      "objstore.elf": "14ebcd101f39e019d56b4dc770815ad6eca03607e0568b8684bfa080b9af2cea",
+      "objstore_client.elf": "2386460fb9587e29db2255e84c208b98096887ac02c1f8958e06e4d006a533d4",
+      "observe.elf": "8872b58e1cf74a8517047a5fb05f99378391159974079877490d4ec739a8e8e1",
+      "raft.elf": "da6cc344a46a4928fe3e1cc20f7494014bd347926eaf25068d3c18022aa7b4c1",
+      "rclient.elf": "abd929c3aebdea624d703c55386d28707bad2b3dae1a267074cbb5dc3ed854ab",
+      "relmsg.elf": "27312ab0253caa8e8bda232dc00ec969598079a6f4835c7da3bd8268c32a605b",
+      "rng.elf": "9f1256d45ac33f5ad6f254aaa0fc7d91d6c9748299116a1df84e6ad4725a9ab4",
+      "s3.elf": "10044aa00f29f1e866964a50ce7e2317d158a9fa39604d2420595c19e3785523",
+      "s3_smoke.elf": "3b94e5112e850fc0976191a04c634a1dc0676fb361e237a76ca750b5e9e57055",
+      "security_probe.elf": "0dde2c3b6935bfd603ce81acdf535b8134c6993e6bbbfa75deb3b9a64a97e018",
+      "servicemgr.elf": "152ab24cc394bfd2cb99609b7bacedbb3334c842dac413ea039626e7a21da3bc",
+      "shutdown_probe.elf": "fea129342eea8752f50e6bbd1bc14d939aaa8fc1d5166a44f4ccd2cb8e33e2cd",
+      "sitas-user.elf": "a01b596eab01adc9f8bf7ac45228b1b21da9dcdb00b9e38799850358d01ed564",
+      "tcpclient.elf": "a302ae9569b052731fdeb308ab7870221b8ae5dbdd0cba12219672c13786ee88",
+      "tcpip.elf": "de5cc35926961bf4afcb3c1fcd1f231b0bbdcf5dd70236e6a18d53b5bbc7a053",
+      "time.elf": "8acbe8799ac834a82e4c7e03dd5c15f861226f121fbf14d76a93efdc94905a69",
+      "uart.elf": "c08105fdc5f52305fe5274515a06e319a99d9cd96dd4b7df8660856049ea173c"
+    },
+    "manifest_sha256": "a879a5e4fa56873b62305ff17039bf6ea98fbd22084638a294f7c6592ec52d10",
+    "verification": "check exit 0; Staged AArch64 service bundle signatures verified."
+  },
+  "manual_validation": {
+    "command": "pdflatex -interaction=nonstopmode -halt-on-error -output-directory=/private/tmp/charlotte-raft-fence-manual charlotte.tex (two corrected final passes from docs/manual-v2)",
+    "exit_statuses": [
+      0,
+      0
+    ],
+    "page_count": 233,
+    "pdf_sha256": "852eccc423b05571f303f0d39977c979a35fd7613b926f43e51da1e0f17e89b5",
+    "final_pass_log_sha256": "f49096e29f027e572f45d2a354299c3b44fb80e55a6b332723793f725b3f0b06",
+    "previous_pass_log_sha256": "ab5ad18bf1db51444eb616e818c6ca14c7c25f2b8f07aadf434b27ba86074581",
+    "source_sha256": {
+      "docs/manual-v2/chapters/05-endpoints.tex": "22b4e777d1480ac7885120ac15144da19691cff10e037308850659a013491999",
+      "docs/manual-v2/chapters/21-formal-safeguards.tex": "206442506357ce26ebd9dc4b9acd6ad024a1e1419d4ba9a4451fc47b49082753"
+    },
+    "visual_review": "Delegation pages 41\u201344 and Chapter 21 pages 196\u2013215 reviewed in the preceding 234-page render. Removing its two-line closing paragraph eliminates the final orphan page. The final 233-page render rechecked contents 14\u201316, Chapter 21 last page 214 and following Glossary page 215; no clipping, overlap or orphan conclusion. Earlier Chapter 21 and delegation content unchanged by that final deletion.",
+    "reviewed_raster_sha256": {
+      "chapter-208.png": "b60211a0f4f92447801aa845d0fbda9fa7693f07a1f46716b4a5506d490fba93",
+      "chapter-209.png": "fb6a1b04aa279687cc756f087b5885441cbec93911822c2406bab9a2aa4bd51d",
+      "chapter-196.png": "caeeb9f33346c901c5f782e5b163c8043acdaa6bd803e49e7984dbfa50050e12",
+      "chapter-197.png": "5126373d9b563cfbd03377d468fbf9d80eeaaf4c05486127bb548aa1961eb271",
+      "chapter-207.png": "09ff0b5d3787ad11be7111ccc5187dbe5098f862607e3a7338eb7f2a8aca2052",
+      "chapter-213.png": "aa98069991d2412ad99d80b4fe00eb670e0d28b74b67186f9a6f99d047b7f4ec",
+      "chapter-212.png": "84122bbe69c673269a7acd94d915c1893681ec0d61abf89e6d3d6055892e54cf",
+      "chapter-206.png": "90c5f4e629747833227110f1a89e8367384e991a0db0fce329f620cd37ee699c",
+      "chapter-210.png": "2539ccc17f2cb80d08ab382f6f93496a14490981c1cd8147082372c860721c39",
+      "chapter-204.png": "6ca331eb4535e10f1a8d1247567b8d797c1d884c69ef1dfa4526d07113231527",
+      "chapter-199.png": "2e69a3af30845ce0f3e87831dd455b9f91eed3bb67717779678af34deb6de969",
+      "chapter-198.png": "4a4240ad218ebc3ef6eb0483be38a3792c3a86d32f9b9401ac4b96e2ae6d3332",
+      "chapter-205.png": "3b51cedfb65796b01a81563a7073e2c6af1c6ac3a130aa4f9afd3dbd5a7ef4ce",
+      "chapter-211.png": "5708856abb714600880e36bea8ebd0f54c7ecf97a8e6def34300eff6d126ad1e",
+      "chapter-215.png": "45efbf116515b4f310896926dbaaca5b5e5b68041ae3e06e16c718e4b720ae8f",
+      "chapter-201.png": "fe970cef7f24e921bd020f47e6b3b1f8aee64b9476d157c79317fc9b3de38041",
+      "chapter-200.png": "20e8c25cbfcf00fa9c8abf5e0dc994b406f3f0805aaf195fb0c686c42e5e2a2f",
+      "chapter-214.png": "abe094cd4923acb7ca820348268752199e287f5d73485efd8507ee3875bf96c9",
+      "chapter-202.png": "85298b21c9e41aac36c78b6f4896c2cfa58a922fdac63a2f15d63dfa14a9143d",
+      "chapter-203.png": "b6e5ad42dc17af2674bfcd26e87243ee4b7b69147eb02dc5ffa2cd45ba0c95d4",
+      "delegation-041.png": "7da8c4098f1ceb6c8ce33858b30967c1b3b4ed5e3f4325d596493df1ea3aca5c",
+      "delegation-043.png": "0abf8200ef1a50b14732f5e08f9299a9c357cd506ccd0ee07e9e3ca268b9bdc4",
+      "delegation-042.png": "4be779ba3b9481135c8bb1a4b1a54a069feb0f4ebf812bdce1b3d8819096fb1b",
+      "delegation-044.png": "53c10279a84bbf19cc529008a6d7177cfd79508c30971e26718fd5bf40fc30de",
+      "final-contents-014.png": "b5339de5eed5771498898f213b17423f5f7a205c05b774778497d3cb74599648",
+      "final-contents-015.png": "2c7d0cc5b3b780a0bedc0a6bf957ebac3839e7441a012023c948d29b625c7536",
+      "final-contents-016.png": "8f43413896bd51af9bc202a1fbf5f85233d3b5cf4718ea5ea5fdb3dbdfb5adbb",
+      "final-tail-214.png": "afbaf06f57aea4bed6f75a6336f67ca9e21aab4ea04346af08e4711d0c0f6c2f",
+      "final-tail-215.png": "6591d37e4672bc099bbf84a7f3834533ea1a66ef1fe554e1ce5b044293a3b810"
+    },
+    "tracked_user_pdf_sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f",
+    "tracked_user_pdf_changed": false
+  },
+  "documentation_validation": {
+    "local_markdown_targets_checked": 635,
+    "all_exist": true,
+    "file_sha256": {
+      "docs/reference/api-simplification.md": "e7cc7822de43a4d7b6d551a85d516b576c191758e546bbbe86b4bb61a69d2555",
+      "docs/reference/cleanup-recovery.md": "0ee91cce21adbb2e12b0237a7bcb2ae7ff6c7a51b1bc305b182533c3dd676f29",
+      "docs/reference/dns-query-relay.md": "a3405887f20316880347466df5224b24de7af00bb1f3aae2e3017aa02a525f48",
+      "docs/reference/raft-conformance.md": "46ab1301e8bf41a23d69d0f3beca198c68978654f099902b012a4894402906ee",
+      "docs/reference/security-remediation.md": "99d3d9694e59274fb81fece3ceae061d326d949b10a203598a142b53f3c27102",
+      "docs/reports/README.md": "7d5624bb91b88e2f0ab9773b05dc5e1430a2a78593977d7c44b651911cfaac26",
+      "docs/tla/CONFORMANCE.md": "73326e93ad1b7b6608a4a8e7424561dcb866eb548ab28d00ddd0c8c7c931ceff",
+      "docs/tla/README.md": "4189349f488e47ef63c6626789f2aeaa3b33de4b12a9b36be260bdc1ed8545ad",
+      "docs/reports/audits/2026-10-19-raft-read-fences.md": "e76748a88d8ded6f0869339b72e1ec4d0a9152f6f0a1183307f3e6da05678be0"
+    },
+    "clarification": "Historical audit source/evidence unchanged. The new report and living conformance/manual/reference text describe the corrected read gate and remaining bounded-observation gap."
+  },
+  "final_checks": {
+    "workspace_fmt": "cargo fmt --all -- --check: passed",
+    "diff_whitespace": "git diff --check: passed",
+    "shell_syntax": "bash -n docs/tla/check.sh scripts/build-catten-services.sh scripts/run-aarch64.sh: passed",
+    "source_and_model_fingerprints_rechecked": true,
+    "staged_bundle_fingerprints_rechecked": true,
+    "upstream_checkout_still_clean": true
+  }
+}

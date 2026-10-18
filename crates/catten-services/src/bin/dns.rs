@@ -72,11 +72,9 @@ use catten_services::{
         CatalogEntry,
         NameCatalog,
         NodeCapacityEntry,
-        decode_query_result,
         encode_activate,
         encode_deployment_result,
         encode_ingress_policy,
-        encode_lookup_query,
         encode_node_capacity,
         encode_reassign,
         encode_register,
@@ -121,13 +119,10 @@ use catten_syscall::{
     ipc_endpoint_create,
     ipc_recv,
     ipc_reply,
-    ipc_reply_connection,
-    ipc_reply_move,
     ipc_reply_poll_with_memory,
     ipc_scalar_call,
     ipc_scalar_call_connection,
     ipc_status,
-    memory_alloc,
     memory_close,
     memory_map_any,
     memory_size,
@@ -149,19 +144,17 @@ mod local_calls;
 mod message_memory;
 #[path = "dns/reactor.rs"]
 mod reactor;
+#[path = "dns/reads.rs"]
+mod reads;
 #[path = "dns/state.rs"]
 mod state;
 #[path = "dns/transport.rs"]
 mod transport;
 
-use catalog::{
-    linearizable_entry,
-    persistent_namespace,
-};
+use catalog::persistent_namespace;
 use local_calls::begin_local_call;
 use message_memory::{
     packed_name,
-    read_call_request,
     read_deployment_descriptor,
     read_deployment_registration,
     read_generation,
@@ -221,60 +214,6 @@ const MAX_IN_FLIGHT_CALLS: usize = 64;
 const DEDUP_WINDOW: usize = 128;
 
 const AUTO_UNREGISTER_RETRY_MS: u64 = 1_000;
-
-fn reply_lookup(
-    ns_conn: u64,
-    reply: u64,
-    name: &[u8],
-    entry: Option<CatalogEntry>,
-    local_node: &[u8],
-) {
-    if reply == 0 {
-        return;
-    }
-    let Some(entry) = entry else {
-        ipc_reply(reply, dns::ERR_NOT_FOUND);
-        return;
-    };
-    if entry.node == local_node {
-        let lookup = ipc_scalar_call(ns_conn, ns::OP_TRY_LOOKUP, catten_services::name(name));
-        let (generation, connection) = if lookup != 0 {
-            unsafe { wait_reply(lookup) }
-        } else {
-            (0, 0)
-        };
-        if generation >= 1 && connection != 0 {
-            ipc_reply_connection(
-                reply,
-                connection,
-                IpcRights::SEND | IpcRights::CALL,
-                dns::RESULT_LOCAL,
-            );
-        } else {
-            ipc_reply(reply, dns::RESULT_LOCAL);
-        }
-        return;
-    }
-
-    let cap = memory_alloc(1);
-    let (list_scratch_9_map_status, list_scratch_9_vaddr) = memory_map_any(cap, true);
-    if cap != 0 && list_scratch_9_map_status == 0 {
-        unsafe {
-            core::ptr::copy_nonoverlapping(
-                entry.node.as_ptr(),
-                list_scratch_9_vaddr as *mut u8,
-                entry.node.len(),
-            );
-        }
-        memory_unmap(cap);
-        ipc_reply_move(reply, cap, dns::RESULT_REMOTE);
-    } else {
-        if cap != 0 {
-            memory_close(cap);
-        }
-        ipc_reply(reply, dns::ERR_NOT_FOUND);
-    }
-}
 
 fn fatal(stage: u64) -> ! {
     catten_syscall::el0_log(0x444e_5300, stage);
@@ -1797,6 +1736,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let mut next_reply_ordinal: BTreeMap<alloc::string::String, u64> = BTreeMap::new();
     let mut next_call_id: u64 = 1;
     let mut pending_queries: Vec<PendingQuery> = Vec::new();
+    let mut pending_reads = reads::Reads::default();
     let mut pending_local_unregistrations: Vec<
         catten_services::publication_generation::Unregistration,
     > = Vec::new();
@@ -1862,6 +1802,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             .map(|call| call.operation.remaining_ms())
             .chain(pending_local_unregistrations.iter().map(|operation| operation.remaining_ms()))
             .chain(pending_queries.iter().map(|query| query.deadline.remaining_ms()))
+            .chain(pending_reads.remaining_ms())
             .chain(in_flight_calls.iter().map(|call| call.deadline.remaining_ms()))
             .fold(clock_watchdog.remaining_ms(), core::cmp::min);
         catten_services::reactor::wait(Some(wait_ms), 0);
@@ -2242,25 +2183,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                         dns::status::REMOTE_QUERIES_SERVED,
                                         remote_queries_served,
                                     );
-                                    let (status, entry) =
-                                        match node.handle_client_query(encode_lookup_query(&name)) {
-                                            Ok(bytes) => (0, decode_query_result(&bytes)),
-                                            Err(_) => (dns::ERR_NOT_LEADER, None),
-                                        };
-                                    match catten_services::rquery::encode_reply(
-                                        session,
-                                        query_id,
-                                        status,
-                                        entry.as_ref().map_or(0, |value| value.generation),
-                                        entry.as_ref().map_or(&[][..], |value| value.node.as_slice()),
-                                    ) {
-                                        Ok(reply) => transport.send_message(
-                                            &source_peer, catten_services::rquery::TAG_REPLY, reply,
-                                        ),
-                                        // No partial response or retry. The caller retains its
-                                        // original correlated query and observation deadline.
-                                        Err(error) => catten_rt::logln!("[dns] query reply preparation rejected: {:?}", error),
-                                    }
+                                    pending_reads.remote_query(&mut node, &transport,
+                                        source_peer, session, query_id, name);
+
                                 }
                             }
                             Some(catten_services::rquery::TAG_REPLY) => {
@@ -2292,17 +2217,14 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                                 deployment_generation: 0,
                                             });
                                     match query.kind {
-                                        PendingQueryKind::Lookup {
-                                            reply,
-                                            name,
-                                        } => {
+                                        PendingQueryKind::Lookup { reply } => {
                                             if status == 0 {
-                                                reply_lookup(
-                                                    ns_conn, reply, &name, entry, &node_name,
-                                                );
-                                            } else if reply != 0 {
-                                                ipc_reply(reply, status);
-                                            }
+                                                reads::resolved_lookup(reply, entry, query.deadline,
+                                                    &mut reads::Routes { names, node_name: &node_name, transport: &transport,
+                                                        local: &mut pending_local_calls, remote: &mut in_flight_calls,
+                                                        next_call_id: &mut next_call_id, session: dns_session });
+                                            } else if let Some(reply) = reply { let _ = reply.reply(status); }
+
                                         }
                                         PendingQueryKind::Call {
                                             mut reply,
@@ -3152,6 +3074,20 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
                 continue;
             }
+            if message.is_ok() && matches!(message.opcode, dns::OP_LOOKUP | dns::OP_CALL) {
+                served += 1;
+                config::write_u32_release(dns::status::IPC_REQUESTS_SERVED, served);
+                pending_reads.client(
+                    &mut node,
+                    message,
+                    &transport,
+                    &node_name,
+                    &mut pending_queries,
+                    &mut next_query_id,
+                    dns_session,
+                );
+                continue;
+            }
             let _attachments = catten_services::RequestAttachments::memory_only(message.memory);
             if message.status == ipc_status::NO_MESSAGE {
                 break;
@@ -3922,69 +3858,6 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     continue;
                 }
 
-                dns::OP_LOOKUP => {
-                    if message.memory != 0 {
-                        memory_close(message.memory);
-                    }
-                    let name = packed_name(message.arg0);
-                    let result = if name.is_empty() {
-                        dns::ERR_TOO_LARGE
-                    } else if node.state == NodeState::Leader {
-                        match linearizable_entry(&node, &name) {
-                            Ok(entry) => {
-                                reply_lookup(ns_conn, message.reply, &name, entry, &node_name);
-                                continue;
-                            }
-                            Err(code) => code,
-                        }
-                    } else {
-                        let Some(leader) = node.known_leader_id.clone() else {
-                            if message.reply != 0 {
-                                ipc_reply(message.reply, dns::ERR_NOT_LEADER);
-                            }
-                            continue;
-                        };
-                        if pending_queries.len() >= MAX_IN_FLIGHT_CALLS
-                            || !transport.has_peer(&leader)
-                        {
-                            dns::ERR_BUSY
-                        } else {
-                            let query_id = next_query_id;
-                            next_query_id = next_query_id.wrapping_add(1).max(1);
-                            let deadline =
-                                catten_services::deadline::Deadline::after(REMOTE_CALL_TIMEOUT_MS);
-                            match catten_services::rquery::encode_request(
-                                dns_session,
-                                query_id,
-                                &node_name,
-                                &name,
-                            ) {
-                                Ok(request) => {
-                                    pending_queries.push(PendingQuery {
-                                        query_id,
-                                        expected_leader: leader.clone(),
-                                        deadline,
-                                        kind: PendingQueryKind::Lookup {
-                                            reply: message.reply,
-                                            name,
-                                        },
-                                    });
-                                    transport.send_message(
-                                        &leader,
-                                        catten_services::rquery::TAG_REQUEST,
-                                        request,
-                                    );
-                                    continue;
-                                }
-                                Err(error) => error.status(),
-                            }
-                        }
-                    };
-                    if message.reply != 0 {
-                        ipc_reply(message.reply, result);
-                    }
-                }
-
                 dns::OP_RAFT_FRAME => {
                     let frame_len = usize::try_from(message.arg0).unwrap_or(0);
                     let mut result = dns::ERR_BAD_OPCODE;
@@ -4145,146 +4018,6 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         | ((catalog.registered_count() as i64) << 32);
                     if message.reply != 0 {
                         ipc_reply(message.reply, result);
-                    }
-                }
-
-                dns::OP_CALL => {
-                    let deadline =
-                        catten_services::deadline::Deadline::after(REMOTE_CALL_TIMEOUT_MS);
-                    let Some(mut client) = read_call_request(message) else {
-                        continue;
-                    };
-                    let name = core::mem::take(&mut client.name);
-                    let (opcode, arg) = (client.opcode, client.arg);
-                    let result = if deadline.expired() {
-                        dns::ERR_NOT_LEADER
-                    } else if node.state != NodeState::Leader {
-                        let Some(leader) = node.known_leader_id.clone() else {
-                            if let Some(reply) = client.reply.take() {
-                                let _ = reply.reply(dns::ERR_NOT_LEADER);
-                            }
-                            continue;
-                        };
-                        if pending_queries.len() >= MAX_IN_FLIGHT_CALLS
-                            || !transport.has_peer(&leader)
-                        {
-                            dns::ERR_BUSY
-                        } else {
-                            let query_id = next_query_id;
-                            next_query_id = next_query_id.wrapping_add(1).max(1);
-                            match catten_services::rquery::encode_request(
-                                dns_session,
-                                query_id,
-                                &node_name,
-                                &name,
-                            ) {
-                                Ok(_) if deadline.expired() => dns::ERR_NOT_LEADER,
-                                Ok(request) => {
-                                    pending_queries.push(PendingQuery {
-                                        query_id,
-                                        expected_leader: leader.clone(),
-                                        deadline,
-                                        kind: PendingQueryKind::Call {
-                                            reply: client.reply.take(),
-                                            name,
-                                            opcode,
-                                            arg,
-                                        },
-                                    });
-                                    transport.send_message(
-                                        &leader,
-                                        catten_services::rquery::TAG_REQUEST,
-                                        request,
-                                    );
-                                    continue;
-                                }
-                                Err(error) => error.status(),
-                            }
-                        }
-                    } else {
-                        match linearizable_entry(&node, &name) {
-                            Ok(Some(owner)) if owner.node == node_name => {
-                                if pending_local_calls.len() >= MAX_IN_FLIGHT_CALLS {
-                                    dns::ERR_BUSY
-                                } else if pending_local_calls.try_reserve(1).is_err() {
-                                    dns::ERR_RESOURCE_LIMIT
-                                } else {
-                                    match begin_local_call(
-                                        names,
-                                        &name,
-                                        opcode,
-                                        arg,
-                                        deadline,
-                                        LocalCallDestination::Client {
-                                            reply: client.reply.take(),
-                                        },
-                                    ) {
-                                        Ok(call) => {
-                                            pending_local_calls.push(call);
-                                            continue;
-                                        }
-                                        Err((
-                                            result,
-                                            LocalCallDestination::Client {
-                                                reply,
-                                            },
-                                        )) => {
-                                            client.reply = reply;
-                                            result
-                                        }
-                                        Err(_) => unreachable!(),
-                                    }
-                                }
-                            }
-                            Ok(Some(owner)) => {
-                                // Remote: relay to the hosting node's dns over
-                                // the reliable message layer.
-                                let owner_str =
-                                    core::str::from_utf8(&owner.node).unwrap_or("").to_string();
-                                if let Some(_mac) = transport.mac_for_peer(&owner_str) {
-                                    if in_flight_calls.len() >= MAX_IN_FLIGHT_CALLS {
-                                        dns::ERR_BUSY
-                                    } else {
-                                        let call_id = next_call_id;
-                                        next_call_id = next_call_id.wrapping_add(1).max(1);
-                                        match catten_services::rcall::encode_request(
-                                            dns_session,
-                                            call_id,
-                                            &node_name,
-                                            &name,
-                                            owner.generation,
-                                            opcode,
-                                            arg,
-                                        ) {
-                                            Ok(_) if deadline.expired() => dns::ERR_NOT_LEADER,
-                                            Ok(request) => {
-                                                in_flight_calls.push(InFlightCall {
-                                                    call_id,
-                                                    expected_peer: owner_str.clone(),
-                                                    expected_generation: owner.generation,
-                                                    reply: client.reply.take(),
-                                                    deadline,
-                                                });
-                                                transport.send_message(
-                                                    &owner_str,
-                                                    catten_services::rcall::TAG_REQUEST,
-                                                    request,
-                                                );
-                                                continue; // only an accepted remote reply completes this call
-                                            }
-                                            Err(error) => error.status(),
-                                        }
-                                    }
-                                } else {
-                                    dns::ERR_NOT_FOUND
-                                }
-                            }
-                            Ok(None) => dns::ERR_NOT_FOUND,
-                            Err(code) => code,
-                        }
-                    };
-                    if let Some(reply) = client.reply.take() {
-                        let _ = reply.reply(result);
                     }
                 }
 
@@ -4899,6 +4632,18 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             publication_index += 1;
         }
 
+        pending_reads.drive(
+            &node,
+            &mut reads::Routes {
+                names,
+                node_name: &node_name,
+                transport: &transport,
+                local: &mut pending_local_calls,
+                remote: &mut in_flight_calls,
+                next_call_id: &mut next_call_id,
+                session: dns_session,
+            },
+        );
         drive_local_calls(
             &mut pending_local_calls,
             &mut completed_calls,
