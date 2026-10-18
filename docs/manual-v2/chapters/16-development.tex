@@ -35,15 +35,16 @@ This chapter gives the current build, boot, test, and code-reading workflow.
 
 \section{Build targets}
 
-CharlotteOS supports three architectures via custom target JSON specs in
+CharlotteOS has custom target JSON specs for three architectures in
 \repodir|target_specs|:
 
 \begin{longtable}{|p{5.8cm}|p{6.4cm}|}
 \hline
 \textbf{Target spec} & \textbf{Status} \\
 \hline
-AArch64 custom target & Original development target; all
-    features and self-tests pass \\
+AArch64 custom target & Primary development target; reference TCG boot,
+    services and opt-in integration fixtures have recorded validation.
+    Feature combinations and physical platforms need their own qualification \\
 x86-64 custom target & Four-LP ring-3 service, storage, IOMMU,
     discovery, distributed DNS, smoltcp TCP/IP, HTTP, deployment, migration,
     UTC time, and dynamic-membership paths pass under QEMU TCG; UEFI, VT-d,
@@ -61,12 +62,18 @@ and
 \repofiletext|target_specs/x86_64-unknown-none-catten.json|{the x86-64 target specification}.
 
 \begin{verbatim}
+BUNDLES="$PWD/target/embedded-services"
 # AArch64 (headless, serial console only):
+scripts/build-catten-services.sh --embed
+scripts/build-catten-user.sh --embed
+export CATTEN_AARCH64_SERVICE_BUNDLE="$BUNDLES/aarch64-unknown-none"
 cargo build --package catten \
   --target target_specs/aarch64-unknown-none-catten.json \
   --no-default-features --features acpi
 
 # x86-64:
+scripts/build-catten-services-x86_64.sh
+export CATTEN_X86_64_SERVICE_BUNDLE="$BUNDLES/x86_64-unknown-none"
 cargo build --package catten \
   --target target_specs/x86_64-unknown-none-catten.json \
   --no-default-features --features acpi
@@ -78,27 +85,24 @@ PL011 UART; x86-64: 16550 COM1).
 
 \subsection{Userspace service programs}
 
-Service binaries are built separately because they target \texttt{no\_std} /
-\texttt{no\_main} with custom EL0 targets that depend on build-std:
+Service binaries use custom \texttt{no\_std}/\texttt{no\_main} targets and
+build-std. The helpers build, sign and stage the bundles consumed by the kernel:
 
 \begin{verbatim}
 # AArch64 EL0 service programs:
-cargo build --release \
-  --manifest-path crates/catten-services/Cargo.toml \
-  --target crates/catten-services/aarch64-unknown-none.json \
-  -Z build-std=core,alloc
+scripts/build-catten-services.sh --embed
 
 # x86-64 ring-3 service programs:
-cargo build --release \
-  --manifest-path crates/catten-services/Cargo.toml \
-  --target crates/catten-services/x86_64-unknown-none.json \
-  -Z build-std=core,alloc
+scripts/build-catten-services-x86_64.sh
 
 # Sitas user binary (requires external sitas crates):
-cargo +nightly build --package catten-user \
-  --target aarch64-unknown-none.json \
-  -Zbuild-std=core,alloc
+scripts/build-catten-user.sh --embed
 \end{verbatim}
+
+Run from the repository root with the pinned toolchain. The Sitas helper needs
+the sibling checkout described in \repofile|docs/guides/userspace-development.md|.
+The boot runners prepare these inputs automatically; a bare kernel Cargo build
+needs the corresponding bundle environment variable shown above.
 
 \section{Booting in QEMU}
 
@@ -294,17 +298,22 @@ path. We still need the wider self-test suite.
 GitHub Actions (\repofile|.github/workflows/ci.yml|):
 
 \begin{enumerate}
-    \item Checks formatting for the workspace and standalone EL0/tool crates.
-    \item Runs warning-denied Clippy for the workspace, AArch64 services, and
-        signing tool.
+    \item Checks formatting for the complete workspace, including separately
+        targeted EL0 and host-tool packages.
+    \item Runs warning-denied Clippy for both kernel targets, AArch64 services,
+        and the signing tool.
     \item Runs host-testable library suites and the signing self-test.
+    \item Runs bounded TLA+ safety models and their negative regressions with
+        a pinned TLC artifact.
     \item Builds AArch64 and x86-64 kernels and the AArch64 service bundle.
-    \item On pushes to \texttt{main}, boots the four-LP AArch64 QEMU suite and
-        verifies its required success markers.
+    \item Boots four-LP AArch64 and x86-64 QEMU suites on macOS TCG and verifies
+        their required success markers. The AArch64 job includes the security
+        fixture.
 \end{enumerate}
 
-The workflow runs on pushes and pull requests for its configured branches; the
-QEMU boot job is restricted to pushes to \texttt{main}.
+The workflow runs on pushes and pull requests for its configured branches;
+the boot matrix has no additional main-only condition. This describes the checked-in
+workflow, not the result of a new hosted CI run.
 
 \section{Codebase reading guide}
 
@@ -321,8 +330,8 @@ For new contributors, the recommended reading order:
     \item \repofile|crates/catten/src/demo.rs|: the end-to-end async demo.
     \item \repodir|crates/catten/src/cpu/scheduler|: threads, wakers,
         \texttt{RoundRobin}, \texttt{block\_thread}.
-    \item \repodir|crates/catten/src/cpu/multiprocessor|: SMP facilities including IPI,
-        \texttt{PerLp<T>}, \texttt{ShardLocal<T>}, shard mailboxes.
+    \item \repodir|crates/catten/src/cpu/multiprocessor|: SMP facilities,
+        per-LP state, typed mailboxes and IPI dispatch.
     \item \repodir|crates/catten/src/cpu/isa|: ISA abstraction layer.
         Start with \repodirtext|crates/catten/src/cpu/isa/interface|{\texttt{interface/}}
         (traits), then

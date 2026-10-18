@@ -3,7 +3,8 @@
 
 CharlotteOS has a tested prototype for replacing a reference service while
 transferring its state. We describe this as \textbf{restart-with-state}:
-in-flight requests may fail during handoff and clients must re-lookup and retry.
+in-flight requests may fail during handoff. Clients reacquire a connection and
+apply their protocol's outcome/replay policy before continuing.
 
 \section{The four primitives}
 
@@ -17,9 +18,9 @@ service:
         receiver gains it. This is the vehicle for service state.
 
     \item Generation tracking: the userspace name service records an
-        instance generation that increments on restart. A stale connection
-        returns \texttt{EndpointClosed}; a new lookup returns the replacement
-        generation and connection.
+        publication generation. Rebinding a name does not revoke a still-live
+        old endpoint. Once that endpoint closes, its connections reject; a new
+        lookup can return the replacement generation and connection.
 
     \item EndpointClose and Cancelled: when a service domain exits,
         the kernel closes its endpoint. Queued requests that were never
@@ -40,13 +41,15 @@ service:
 \architecturefigure{handoff-protocol}
     {The live-upgrade handoff: the supervisor drains and transfers the old
     service's state, spawns the replacement with the handoff state and a fresh
-    generation, and stale clients re-look up and retry.}
+    generation; clients reacquire a connection and decide whether replay is safe.}
     {fig:handoff-protocol}
 
-The old service receives an \texttt{OP\_HANDOFF} request (typically from the
-supervisor or a service manager). It drains any in-flight work, serializes its
-mutable state into memory objects, moves those objects to the supervisor's
-address space, and replies ``ready'' before exiting.
+The reference echo service receives \texttt{OP\_HANDOFF} from the userspace
+service manager. Its single serving loop serializes its counter into an unmapped
+memory object and returns that object through a consuming moved-memory reply
+before exiting. The manager unregisters the old publication before requesting
+replacement launch. A general service needs its own admission/drain protocol;
+this counter handoff does not establish that arbitrary in-flight work is drained.
 
 The supervisor then spawns the new service instance with an extended bootstrap
 contract containing the name service connection and handoff state. The new
@@ -120,17 +123,20 @@ The old service must handle \texttt{OP\_HANDOFF}:
 OP_HANDOFF => {
     // Stop accepting new work.
     // Serialize all mutable state into memory objects.
-    // Move those objects to the supervisor's address space
-    //   (the supervisor passes its ASID in the handoff call).
-    // Reply "ready", then exit.
+    // Unmap the state before transferring it.
+    // Consume reply authority with reply_move(state, result).
+    // Leave the owning serving scope, then exit.
 }
 \end{lstlisting}
 
-The new service reads the extended bootstrap contract:
+The following sketch describes the launch inputs, rather than an ownership-safe
+application listing. The current reference implementation is
+\repofile|crates/catten-services/src/bin/echo.rs|; handoff memory is adopted once
+at that documented launch boundary, while the bootstrap connection is borrowed.
 
 \begin{lstlisting}[style=rustCode]
 fn main(ctx: Context) -> ! {
-    let ns_connection = ctx.bootstrap_cap();
+    let ns_connection = ctx.bootstrap_connection();
     let state_count = ctx.handoff_count();
     let state = ctx.handoff_state_cap();
 
@@ -141,28 +147,23 @@ fn main(ctx: Context) -> ! {
 
 \section{What clients see}
 
-A client holding a stale connection from the previous generation sees a clean
-failure and retries:
+A closed old endpoint rejects further calls. Queued, undelivered calls return
+the endpoint-closed result; delivered calls that lose their server before a
+reply return cancellation. A timeout or cancelled reply does not prove that a
+delivered request had no effect. Name rebinding alone supplies no such proof.
 
-\begin{lstlisting}[style=rustCode]
-// Before upgrade:
-let conn = ns.lookup("payroll")?;       // generation 3
-payroll.call(OP_CALCULATE, employee_id); // in-flight
-
-// During upgrade: call completes as EndpointClosed.
-// Client retries:
-let conn = ns.lookup("payroll")?;       // generation 4
-payroll.call(OP_CALCULATE, employee_id); // reaches new instance
-\end{lstlisting}
-
-The new instance receives the old instance's state. The client observes a failed
-request, performs a new lookup, and retries. Protocols must decide when a retry is
-safe.
+The copyable client in \autoref{sec:reconnecting-client} keeps business progress
+outside its session connection, maps endpoint closure to an application-defined
+restart decision, and preserves one operation deadline across reconnection.
+It stops on an uncertain accepted call. Its read-only business operation can be
+repeated safely; a mutating protocol needs durable request identity, duplicate
+suppression and outcome reconciliation before replay. Grant-mediated discovery
+must also authorize the replacement publication.
 
 \section{Restart-with-state vs.\ zero-downtime}
 
 This design is \textbf{restart-with-state}: in-flight requests to the old
-instance fail during the handoff window, and clients must retry. It is
+instance can fail during the handoff window, and clients need a recovery policy. It is
 potentially suitable for services whose protocols define retry and state
 recovery. No general latency bound has been measured, and clients must
 explicitly handle transient failures through name-service re-lookup.
@@ -183,8 +184,9 @@ True zero-downtime would require one of:
 
 The live upgrade path is the graceful variant of the crash-recovery path
 already exercised by the UART driver test (\autoref{chap:userspace-drivers}). In both cases, the
-supervisor reclaims device authority, invalidates stale connections, and
-spawns a new instance with a bumped generation. The difference is that live
+supervisor arranges a replacement and a fresh publication. Driver recovery also
+requires confirmed device quiescence/reset before grants can be reused;
+uncertain cleanup may retain backing and prevent restart. The difference is that live
 upgrade transfers state explicitly through memory objects before the old
 instance exits, rather than starting the new instance from scratch.
 
@@ -198,7 +200,7 @@ instance exits, rather than starting the new instance from scratch.
 
     \item The upgrade sequence is explicit: the old service drains
         in-flight work, serializes state, and exits. The new service starts
-        and registers. Clients retry. A hard time bound is not currently
+        and registers. Clients reconcile failed work. A hard time bound is not currently
         enforced or benchmarked.
 
     \item Failure recovery has an ownership model: if the new service

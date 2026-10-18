@@ -20,6 +20,18 @@
 > future implementation should target and records the decision-gate answers for
 > Phase 2. The Rust in §9 sketches the types; it is not compiled kernel code.
 
+Current ABI pointers (source comparison, 2026-10-18):
+[checked CQ wait](../reference/cq-wait.md),
+[IPC receive](../reference/ipc-receive.md),
+[CQ admission](../reference/completion-queue-budgets.md) and the
+[owned client skeleton](../guides/reconnecting-clients.md). A CQ wait returns
+readiness/deadline/admission status, not a result vector or an overflow-pending
+error. Overflow uses preallocated, admitted retention. The generic bounded IPI
+queue still has a legacy force-push eviction path, without reserved mandatory
+slots; current x86 synchronous shootdown uses a separate epoch/acknowledgement
+channel. These pointers supersede proposal details below, without changing the
+historical decision record.
+
 ---
 
 ## 1. The thesis, stated as an ABI question

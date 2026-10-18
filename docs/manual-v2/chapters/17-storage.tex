@@ -249,9 +249,12 @@ and validation limits.
 
 The host build produces an architecture-qualified service bundle and blesses
 every ELF according to
-\repofile|crates/catten-services/artifact-policy.tsv|. AArch64 embeds only the
-set needed to reach storage (name service, NVMe, object store, UART, and the
-system observer); \repofile|scripts/make-nvme-image.py| writes the remaining
+\repofile|crates/catten-services/artifact-policy.tsv|. AArch64 embeds naming,
+storage, UART, observation and grant mediation, plus the boot entropy/network
+driver images needed to prepare grants before starting storage. The exact sets
+are listed in \autoref{chap:cluster-vision} and
+\repofile|crates/catten/src/service/store.rs|;
+\repofile|scripts/make-nvme-image.py| writes the remaining
 services into an initial version-4 object-store image. The QEMU x86-64 runner
 can use the same host-preseeded model.
 

@@ -432,13 +432,18 @@ this chapter.
 
 \section{Current bootstrap and node model}
 
-The implemented kernel embeds five signed bootstrap services:
-\texttt{ns}, \texttt{nvme}, \texttt{objstore}, \texttt{uart}, and
-\texttt{observe}. They establish naming, reach persistent storage, and
-provide the early console and observation paths. Other staged services are
-loaded on first use from the signed bundle in the initial NVMe object-store
-image and cached in kernel memory. Service binaries therefore no longer
-generally need to be linked into the kernel image.
+The ordinary AArch64 kernel embeds eight signed bootstrap services:
+\texttt{ns}, \texttt{nvme}, \texttt{rng}, \texttt{net}, \texttt{objstore},
+\texttt{uart}, \texttt{observe}, and \texttt{grantctl}. All boot hardware-driver
+images must be available while grants are prepared, before any sibling driver
+thread starts. Otherwise preparation could wait on its own unstarted storage
+driver. Other staged services load on first use from the signed bundle in the
+initial object-store image and remain cached in kernel memory.
+
+The x86-64 configuration embeds its larger tested service set as well as staging
+it on disk. AArch64 HVF compatibility and selected test features add recovery or
+fixture images. \repofile|crates/catten/src/service/store.rs| defines these
+configuration-specific sets; eight is not a cross-platform total.
 
 This establishes the minimal-node bootstrap shape. The current
 \texttt{--deploy-test} serial command loop remains a kernel-side validation and
@@ -672,8 +677,10 @@ and the serving node. Leadership movement changes the advertiser without
 making browser polling part of consensus or requiring the leader to terminate
 every connection.
 
-Membership presently supplies stable node identities and authenticated
-Ethernet routes, rather than management IP addresses. The dashboard therefore does
+Discovery supplies identity-to-MAC routes, and Raft commits membership. These
+routes have no cryptographic peer authentication; session and expected-peer
+checks reject mismatched messages but do not establish a peer's identity.
+Neither supplies management IP addresses. The dashboard therefore does
 not manufacture drill-down links from MAC addresses. A future signed, leased
 management-endpoint record can support an authenticated
 \path{/cluster/nodes/{node-key}/metrics} proxy, keeping node drill-down

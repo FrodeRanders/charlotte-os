@@ -141,20 +141,15 @@ X'' or ``write to physical address Y.'' Without an IOMMU, this is a safety
 gap: a malicious or buggy driver could program the device to DMA into kernel
 memory or another domain's pages.
 
-The implementation has two platform levels:
+The current storage/network driver path requires a supported IOMMU/SMMU.
+It skips or rejects protected-DMA startup when that facility is unavailable;
+there is no supported trusted-driver physical-address fallback. This is why
+HVF compatibility boot omits storage rather than weakening DMA isolation.
 
-\begin{itemize}
-    \item Without IOMMU: the driver is trusted with DMA. It still
-        receives only the MMIO and interrupt it needs, and it still runs in
-        a separate address space, so a CPU-side bug cannot read kernel memory.
-        But a DMA programming bug can violate memory isolation.
-    \item With IOMMU/SMMU: the DMA domain capability binds the
-        device to a specific IOMMU translation table. The driver can only
-        DMA into pages explicitly pinned into its DMA domain. The kernel
-        validates every pin/unpin through the capability. The IOMMU hardware
-        prevents even a malicious driver from using that device to DMA outside
-        its domain.
-\end{itemize}
+A DMA-domain capability binds the device to its requester-specific translation
+table. The driver maps explicitly owned memory through that domain; the kernel
+checks the capability and retains a backing pin. Isolation still depends on the
+backend, firmware topology and actual hardware honoring those translations.
 
 On the implemented AArch64 ACPI path, \texttt{dma\_map(domain, memory,
 direction)} returns an IOVA and \texttt{dma\_unmap(domain, iova)}
@@ -166,8 +161,9 @@ by the kernel.
 
 On x86-64, ACPI DMAR selects Intel VT-d and IVRS selects AMD-Vi. Both backends
 create per-requester DMA domains, validate domain and requester limits, map and
-unmap IOVAs, perform synchronous IOTLB invalidation, and roll back partial
-attachment failures before frames can be reused. QEMU boots validate NVMe,
+unmap IOVAs, and require synchronous IOTLB invalidation before pin release.
+Partial attachment failure retains its complete operation if rollback cannot
+be confirmed; an error is not permission to reuse frames. QEMU boots validate NVMe,
 AHCI, virtio-blk, and virtio-net through these domains. VT-d supports
 \texttt{INCLUDE\_PCI\_ALL} units and directly attached endpoint scopes;
 multi-hop bridge scopes remain rejected. AMD-Vi fault events are polled until

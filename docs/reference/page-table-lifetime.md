@@ -69,9 +69,12 @@ can prevent a recipient from servicing its IPI.
 
 SEC-18 now has an owning [kernel data-retirement boundary](kernel-frame-retirement.md):
 range cleanup detaches before post-guard invalidation/release, and x86 failed IPI
-delivery cannot count as acknowledgement. Several x86 user/device/lifecycle
-invalidation callers still retain other masking guards. Their retirement phases
-and complete cross-LP teardown safety remain open.
+delivery cannot count as acknowledgement. Checked x86 rendezvous rejects masked
+post-bootstrap callers and uses bounded epoch-qualified acknowledgement.
+Mapping/loan/device retirement composes exact-root owners and leaves its local
+guards before invalidation. Wider outer-guard/destructor contexts and complete
+physical-platform quiescence remain qualification work; see
+[hardware quiescence](hardware-quiescence.md).
 
 Memory-object cleanup also has a [retirement pin](memory-object-retirement.md)
 independent of DMA/copy retention. Final unpin cannot bypass its invalidation
@@ -82,8 +85,9 @@ leases permit physical completion outside lifecycle/IPC serialization.
 hierarchy into a software-slot-leasing owner. Its final invalidation/destruction
 runs after lifecycle/table guards are gone; ARM invalidates the captured hardware
 tag rather than a detached table entry. The slot is reusable only after physical
-destruction. Failure/abandonment retains hierarchy, charges and slot. Earlier
-mapping/IPC/device lock-held invalidations and full quiescence remain open.
+destruction. Failure/abandonment retains hierarchy, charges and slot. These local
+boundaries do not qualify arbitrary enclosing IRQ contexts or provide recovery
+for abandoned owners.
 
 ## Verification
 

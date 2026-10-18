@@ -2,7 +2,10 @@
 \label{chap:sitas-executor}
 
 The sitas executor drives futures on one shard and parks on the shard's completion
-queue when no task is ready.
+queue when no task is ready. The short loop, future and channel listings below
+explain that architecture; they are not complete runtime APIs. The deployed
+integration and mailbox-index example live in
+\repofile|crates/catten-user/src/main.rs| and its companion Sitas checkout.
 
 \section{One executor per shard}
 

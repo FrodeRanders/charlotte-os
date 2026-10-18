@@ -12,12 +12,14 @@ hardware-facing mechanism}:
 
 \begin{itemize}
     \item Timer expiry.
-    \item DMA completion (disk read finished, packet transmitted).
-    \item IRQ-derived device completion (data available on UART).
-    \item Asynchronous page operations.
-    \item Waiting for thread or process exit.
-    \item Kernel-managed asynchronous object work.
+    \item Thread-exit and endpoint-close observation.
+    \item Driver IRQ readiness, followed by inspection of the device's own
+        completion state (for example a disk or network used ring).
+    \item Kernel worker completion and the prototype buffer read/write operations.
 \end{itemize}
+
+These are the current mechanisms. There is no general asynchronous page-operation
+API or CQ entry that by itself proves DMA quiescence.
 
 Use endpoint IPC (\autoref{chap:endpoints}) when one protection domain invokes another.
 Confusing these two paths leads to architectural mistakes: a service call is not a
@@ -63,19 +65,18 @@ assigns each side its own fields:
 userspace CQ ring is full.}
 \end{quote}
 
-This is an architectural invariant, so when the ring is full, the
-kernel has several options:
+The implementation preallocates a kernel backlog and bounds accepted operations
+by submission admission. A retained detached result keeps its original slot
+until delivery; a capability-backed result remains tied to its live completion
+owner. Closing that owner may discard its redundant queued notification.
+Queue registration separately admits backlog bytes and any heap-backed ring.
+New submissions reject at capacity. A checked CQ wait reports readiness,
+deadline, or wait-admission failure; ring pressure is not a wait error.
 
-\begin{itemize}
-    \item Retain overflow in a per-domain kernel backlog: entries that
-        cannot fit in the ring wait in a kernel-side buffer. When userspace
-        drains the ring, the backlog drains into it.
-    \item Stop accepting new submissions: the kernel may return
-        \texttt{WouldBlock} on \texttt{submit}, applying backpressure at the
-        submission point rather than at the completion point.
-    \item Propagate \texttt{WouldBlock}: the CQ's wait operation can
-        indicate that the ring is full and must be drained.
-\end{itemize}
+Advancing the userspace tail alone does not run kernel backlog reconciliation.
+Completion production and kernel poll/wait paths refill the ring after space
+becomes available. Consumers must enter the checked wait/reconciliation path
+when the mapped ring is empty, rather than spin on it.
 
 The overflow counter is pressure telemetry: it tells the consumer that it is
 falling behind.
@@ -720,10 +721,10 @@ it on terminal completion.
         another shard's executor to deliver a completion. Wakes are targeted,
         bounded, and proportional to the actual work.
 
-    \item The CQ ring is zero-syscall in the common case: draining entries,
-        processing results, and continuing the loop require no kernel
-        transitions. A syscall occurs only when the ring is empty and the shard
-        must block.
+    \item Reading mapped CQ entries needs no syscall. Observing a particular
+        operation's result or returned resources can still require its typed
+        poll/wait API. An empty ring needs kernel reconciliation before parking;
+        it does not prove that no retained backlog exists.
 
     \item Cancellation has explicit states. These determine when the caller
         can reclaim the buffer. Uncertain cancellation must retain ownership;

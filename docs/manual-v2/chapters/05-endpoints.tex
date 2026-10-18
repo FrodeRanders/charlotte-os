@@ -231,9 +231,9 @@ A reply token is:
         to its own \texttt{ServiceRestarted} recovery decision. The kernel
         must finish required loan cleanup before publishing that terminal result;
         uncertain cleanup can leave the call pending.
-    \item Optionally delegable: a server may forward a reply token
-        to another service, allowing a chain of services to contribute to
-        a single reply.
+    \item The receiving service owns the reply token. It can call a second
+        service while retaining that authority and the new pending call.
+        General reply-token delegation is not exposed by the current API.
 \end{itemize}
 
 \architecturefigure[0.93\linewidth]{capability-safe-ipc}
@@ -252,7 +252,7 @@ client API is shown in \autoref{sec:reconnecting-client}:
 \begin{lstlisting}[style=rustCode]
 // Name service:
 let full_connection = name_service.lookup("driver.nic.v1")?;
-// full_connection has SEND | CALL | DELEGATE rights
+// full_connection has SEND | CALL | MINT_CONNECTION rights
 
 // Delegate to a client with reduced rights:
 connection_delegate(full_connection, client_domain, SEND | CALL)?;

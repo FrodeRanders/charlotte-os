@@ -104,9 +104,11 @@ authorize reuse before translation invalidation has completed. Kernel-range
 cleanup now retains removed data in an owning retirement receipt, releases its
 arena/page-table guards, then invalidates before recycling. Failed preparation
 retains its installed prefix through the same boundary. Forgotten or incomplete
-cleanup quarantines backing. On x86, failed IPI delivery stops the initiator
-rather than counting as acknowledgement. User/domain lifecycle locking and
-recoverable shootdown failure remain hardening work.
+cleanup quarantines backing. On x86, checked invalidation uses bounded,
+epoch-qualified acknowledgement and rejects masked post-bootstrap initiators.
+Failed delivery cannot count as acknowledgement. Retained owners permit
+invalidation retry only before physical release starts; broader caller-context
+qualification and recovery of abandoned owners remain hardening work.
 
 Memory-object mappings carry a separate retirement pin through invalidation.
 The final DMA or copy unpin cannot release backing during that interval, and
@@ -120,8 +122,13 @@ guard before detaching leaves. The retained pin supplies borrowed frame identiti
 in fixed stack batches, so ordinary unmap, loan revocation and domain cleanup no
 longer nest the object registry across address-space table walks. Larger objects
 use successive batches without allocating a teardown snapshot. These owners
-still depend on lifecycle or IPC serialization for the
-address-space identity; they do not yet resolve the x86 lock-held rendezvous gap.
+retain exact-generation root operations through physical completion. Loan
+revocation, IPC reply/cancellation and staged namespace close compose those
+owners so invalidation leaves their local lifecycle/IPC guards first. An
+unrelated outer masking guard can still prevent progress; this local separation
+does not qualify every caller or destructor. See
+\repofile|docs/reference/live-address-space-operations.md| and
+\repofile|docs/reference/hardware-quiescence.md|.
 
 Scratch reservation metadata is prepared fallibly before publishing a virtual
 range. A sorted list records live extents; gaps are implicit, so release removes
@@ -215,7 +222,13 @@ does not resolve remaining lock-held invalidations or general metadata admission
 
 \section{Four transfer modes}
 
-CharlotteOS defines four transfer modes, enforced by the MMU:
+CharlotteOS defines four transfer modes. Transfer publishes capability authority;
+the receiver maps the delivered object separately. Queued attachments and
+unobserved returned objects stay inaccessible until receive/result observation.
+Moves and write loans require unmapped source backing. Read loans permit existing
+read-only mappings, but reject writable mappings. The owning runtime separates
+\texttt{OwnedMemory} from \texttt{MappedMemory} so normal callers unmap before
+moving or lending rather than relying on an implicit mapping change.
 
 \subsection{Copy}
 
@@ -225,8 +238,9 @@ unmodified.
 \begin{itemize}
     \item \textbf{Use when:} the data is small, the sender needs to keep using it,
         or the receiver is not trusted with the original.
-    \item \textbf{Kernel work:} allocate new physical frames, copy the contents,
-        map them into the receiver's address space.
+    \item \textbf{Kernel work:} allocate charged private frames, copy a protected
+        source snapshot and publish a destination memory capability. The
+        receiver maps its copy when needed.
     \item \textbf{Semantics:} simplest; both domains can read their respective
         copies independently.
 \end{itemize}
@@ -244,32 +258,31 @@ reach zero; physical frames are freed only after the registry lock is released.
 
 \subsection{Move}
 
-Ownership transfers to the receiver. The sender loses all mappings and all
-capability rights. The receiver becomes the new owner, responsible for subsequent
+Ownership transfers to the receiver. The source must already be unmapped; the
+sender's capability is consumed. The receiver becomes the new owner, responsible for subsequent
 transfer or destruction.
 
 \begin{itemize}
     \item \textbf{Use when:} the sender is finished with the data and wants to
         hand it off without copying.
-    \item \textbf{Kernel work:} validate sender ownership, prepare receiver
-        mappings, remove sender mappings, perform TLB invalidation, commit
-        ownership, publish the IPC message.
-    \item \textbf{Semantics:} physical pages never move. Mappings change. After
-        the move, any attempt by the sender to access the (now unmapped) virtual
-        addresses faults.
+    \item \textbf{Kernel work:} validate ownership and unmapped/unpinned state,
+        reserve destination authority, escrow the source and commit the
+        capability transfer with IPC publication.
+    \item \textbf{Semantics:} physical pages stay in place. The sender's old
+        capability cannot map them again; the receiver owns subsequent access.
 \end{itemize}
 
 \subsection{BorrowRead}
 
-The receiver gets a temporary read-only mapping. The sender retains ownership.
-The borrow is revoked when the receiver replies (or the call is cancelled, or
-the server dies).
+The receiver gets temporary read-only mapping authority. The sender retains
+ownership. Confirmed reply/cancellation cleanup revokes the loan, including
+any receiver mapping; failed cleanup retains its fence and backing.
 
 \begin{itemize}
     \item \textbf{Use when:} the receiver needs to inspect data but must not
         modify it.
-    \item \textbf{Kernel work:} map the pages into the receiver's address space
-        with read-only permissions. Track the borrow so it can be revoked.
+    \item \textbf{Kernel work:} publish a read-only borrower capability and track
+        its revocation contract. A later receiver mapping must be read-only.
     \item \textbf{Semantics:} writable aliases in the receiver are forbidden by
         the page-table permissions. The receiver cannot write even through unsafe
         code. Revocation at reply time unmaps the pages.
@@ -277,20 +290,21 @@ the server dies).
 
 \subsection{BorrowWrite}
 
-The receiver gets a temporary exclusive writable mapping. The sender's access is
-revoked for the duration of the borrow. When the receiver replies, sender access
-is restored.
+The receiver gets exclusive writable mapping authority while the sender retains
+ownership. The source must be unmapped before admission; the active loan rejects
+new lender access. Confirmed revocation ends that restriction. A reply or timeout
+without successful cleanup cannot restore access.
 
 \begin{itemize}
     \item \textbf{Use when:} the receiver needs to write into a buffer the sender
         will later read (e.g., a read-into-user-buffer pattern). This is
         \emph{mutable lending}.
-    \item \textbf{Kernel work:} map the pages writable into the receiver,
-        temporarily revoke (unmap or read-protect) sender access, track the
-        borrow for reply-time revocation.
+    \item \textbf{Kernel work:} validate unmapped, exclusive source state,
+        publish borrower authority and retain the revocation contract. The
+        receiver may map writable until confirmed cleanup revokes it.
     \item \textbf{Semantics:} the hardware enforces mutual exclusion. The sender
-        cannot access the pages while they are lent out. Unsafe
-        Rust can violate this; the MMU will fault.
+        cannot map the pages while they are lent out. Access through a revoked
+        mapping faults even from unsafe Rust; a stale pointer grants no authority.
 \end{itemize}
 
 Borrowed-memory replies, including returned connections or memory, retain both

@@ -73,10 +73,10 @@ The signed value is bounded to zero through 300,000 milliseconds. Structure
 lifecycle-aware code so its owning serving scope returns before calling the
 divergent exit primitive; see [Cooperative shutdown](shutdown.md).
 
-## Launch ABI v2
+## Launch ABI 2.2
 
 Before calling `main`, crt0 validates a fixed-width header in the mapped launch
-page. Version 2.0 contains an eight-byte magic value, ABI major and minor
+page. Version 2.2 contains an eight-byte magic value, ABI major and minor
 versions, header size, config-page size, feature flags, bounded manifest and
 capability-vector locations, and the declared heap, input-buffer, default
 completion-queue, and mutable status layouts. An invalid or out-of-bounds layout
@@ -86,6 +86,9 @@ sibling threads running with an invalid launch contract.
 The kernel and runtime import this representation from the shared no-std
 `charlotte-launch` crate. Compile-time size assertions keep the header and
 capability record layouts stable across both sides of the boundary.
+This launch-page version is separate from runtime syscall ABI 3, which signed
+executable variants must match exactly. The source constants in
+`charlotte-launch` define both contracts.
 
 The manifest is a bounded vector of named, typed records. Keys are stable
 packed names of up to eight bytes; values may be unsigned integers, signed
@@ -143,7 +146,10 @@ by both thread joins and timed completion waits.
 
 ## Authenticated service lookup
 
-Security-sensitive service discovery uses the name service's authorized
+Ordinary deployed applications acquire named connections through their
+bootstrap grant controller using the signed deployment descriptor; the
+[reconnecting client](reconnecting-clients.md) shows this path with owned
+resources and bounded recovery scopes. Trusted mediators use the name service's authorized
 protocol rather than public bootstrap lookup or a caller-provided identity.
 The former bearer-key opcodes 5/6 are retired and reject as unsupported.
 All receive syscalls supply the sender's exact address-space generation,

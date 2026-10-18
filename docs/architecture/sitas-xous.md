@@ -22,6 +22,14 @@
 
 ## 0. Current implementation status
 
+Source comparison refreshed 2026-10-18. This is a design/redirection document;
+short API listings later in it describe the intended shape and are not a
+copyable SDK. Use the [manual's implementation appendix](../manual-v2/charlotte.pdf),
+[owned-resource guide](../guides/resource-ownership.md) and
+[reconnecting client](../guides/reconnecting-clients.md) for current application
+contracts. The [documentation sweep](../reports/audits/2026-10-18-documentation-reality-sweep.md)
+records the checked boundaries and remaining verification limits.
+
 The architecture described in this document is substantially implemented
 and boot-validated on QEMU (`-M virt,gic-version=3`, Apple Silicon HVF
 or TCG).  Below is a phase-by-phase summary; detailed commit evidence
@@ -37,7 +45,7 @@ is in the repository history and earlier revisions of this document.
 | 6 | CQ subsystem normalisation: operation IDs, detached submission, CQ_WAIT_CHECKED/CQ_WAKE, per-shard CQ partitioning, bounded overflow retention, §8.2 32-byte richer completion records | Done |
 | 7 | Sitas endpoint/CQ backend: endpoint readiness binding, unified shard wait (`CQ_WAIT_CHECKED`), `ShardExecutor` (budgeted polling, task wakeup from drained events), spin-free `ShardParker` integration, per-shard CQ rings, `kv::spin_recv` retired | Done |
 | 8 | Userspace UART driver: delegated MMIO + IRQ, EL0 MMIO writes, interrupt-driven deferred reads, driver crash → device reset → outstanding-op reconciliation → generation-2 restart | Done |
-| 9 | Virtio-net driver: PCI discovery, translated legacy register aperture + MSI-X delegation, SMMU DMA domain, feature negotiation, MAC/link read, virtqueue setup, and EL0 frame submission. Protocol crates extracted. Smoltcp 0.13 adapter + TCP/IP service binary compile. The driver smoke path is runtime-validated under QEMU TCG; receive, completion reclamation, batching, and the TCP/IP service remain incomplete. | Driver smoke path TCG-validated; full data path pending |
+| 9 | Virtio-net: PCI/MSI-X and protected DMA, RX/TX and used-ring reclamation; frame routing, reliable messaging, distributed DNS and smoltcp TCP/IP services. General buffer-pool/batching optimization and broader hardware qualification remain open. | Focused QEMU TCG network and cluster fixtures |
 | 10 | Kernel concurrency and scheduler lifecycle: interrupt-safe registries, deferred stack reclamation, LP-affine waits, migration constraints, sustained-window rebalancing, true idle/WFI, lock-free debugger snapshots | Implemented; intermittent SMP timer/lifecycle validation remains |
 | 11 | Userspace startup ABI: ELF `_start`, `entry!(main)`, typed `Context`, fixed-width/versioned launch header, explicit startup input | Done |
 
@@ -51,19 +59,20 @@ is in the repository history and earlier revisions of this document.
 6. ✓ Terminal CQ results survive ring overflow (non-lossy backlog)
 7. ✓ Coalesced remote shard wakes (idempotent scheduler fix)
 8. ✓ Userspace UART driver with only delegated MMIO + IRQ
-9. ✓ Restart invalidates stale connections + device reset + op reconciliation
+9. ✓ UART crash fixture closes the old endpoint, resets its device and reconciles operations before replacement. Name rebinding alone does not revoke a live endpoint.
 
 10, 11, 12 are partially met or pending (see §21).
 
 ### What's next
 
-- **Criterion 10** — extend the TCG-validated virtio-net initialization and
-  transmit-submission path with receive parsing, used-ring reclamation,
-  batching/buffer pools, and the deployed TCP/IP service.
-- **TCP/IP service** — deploy the smoltcp adapter as a native EL0
-  service consuming frames from the NIC driver endpoint.
-- **Network service stack** — build the reliable-message layer, RPC,
-  and distributed-object services per the networking architecture doc.
+- Extend hardware qualification and buffer-pool/batching policy beyond the
+  current virtio-net/E1000E fixtures.
+- Complete cryptographic peer authentication and the production trust/custody
+  boundaries; reliable-message sequencing and discovery routes do not supply them.
+- Develop general remote capability delegation beyond the scalar DNS invocation
+  path, with explicit ownership and failure semantics.
+- Continue general heap/principal admission and qualification of enclosing
+  cleanup/IRQ contexts; current family quotas are not a complete resource ledger.
 
 All code from Phases 1–8 and 10–11 is committed and boot-validated in
 CharlotteOS. Sitas integration changes are maintained in the companion Sitas
@@ -468,7 +477,8 @@ It is:
 -   bound to the caller's pending call;
 -   consumable exactly once;
 -   invalidated by cancellation, caller death, or endpoint teardown;
--   optionally delegable when explicitly allowed.
+-   owned by the receiving service. General reply-token delegation is a design
+    extension, not a current userspace API.
 
 ### 3.9 Resource capability
 
@@ -1518,7 +1528,9 @@ A service manager should:
 -   reset devices before driver restart;
 -   reconcile or fail outstanding calls.
 
-Stale client connections should fail with a clear error such as:
+The following proposed error vocabulary is illustrative. Current runtime errors
+use typed status values; `ServiceRestarted` in the compiled client example is
+an application policy decision for endpoint closure, not a kernel enum variant:
 
 ``` rust
 enum IpcError {
@@ -1776,7 +1788,8 @@ manifest values through `Context`; raw offsets are not the intended application 
 
 ### Remaining work
 
-Launch ABI v2.0 now uses the shared no-std `charlotte-launch` crate. It declares
+Launch ABI 2.2 uses the shared no-std `charlotte-launch` crate. This launch-page
+version is separate from runtime syscall ABI 3. It declares
 heap, input, and default-CQ layouts and carries a bounded typed initial
 capability vector. Both the kernel and crt0 consume the same fixed-width
 structures, and capability presence no longer relies on a nonzero handle.
@@ -1788,8 +1801,10 @@ guard-page stride.
 
 The following parts of the target contract are still incomplete:
 
--   selectable/customizable heap policy rather than the declared default arena;
--   equivalent user-stack/guard-page validation on the x86-64 path;
+-   aggregate heap/principal admission beyond the current adaptive per-root
+    backing pools and signed stack/thread limits;
+-   wider physical-platform qualification of the existing stack/guard and
+    retirement mechanisms on both architectures;
 -   replacement of the remaining raw status-page test instrumentation with
     typed diagnostics or ordinary service/completion protocols.
 
@@ -2350,13 +2365,12 @@ Current status:
     registers with direct EL0 MMIO writes, completes an interrupt-driven
     deferred read (§7.2), and acknowledges a delegated device interrupt
     from EL0.
--   Criterion 10 is partially runtime-validated under QEMU TCG: PCI discovery,
-    MSI-X delegation, SMMU-backed queues, feature negotiation, MAC/link reads,
-    `DRIVER_OK`, and an EL0 transmit submission pass. HVF remains unsuitable
-    for this EL0-MMIO path. Receive parsing, TX completion reclamation,
-    batching, and an end-to-end TCP/IP exchange are not yet claimed.
+-   Criterion 10 has QEMU TCG coverage for PCI/MSI-X, protected-DMA queues,
+    RX/TX, TX descriptor reclamation and end-to-end TCP/IP. HVF remains
+    unsuitable for direct EL0 MMIO. General batching/buffer-pool optimization
+    and broader hardware qualification remain open.
 -   Criterion 11 is substantially strengthened but remains open as a complete
-    ABI audit. Launch ABI v2.0 is shared, versioned, bounded, and fixed-width,
+    ABI audit. Launch ABI 2.2 is shared, versioned, bounded, and fixed-width,
     including typed manifest and capability records; crt0
     validates it before calling `main(Context)`.
     Completion, IPC, and protocol records are designed as fixed-width wire

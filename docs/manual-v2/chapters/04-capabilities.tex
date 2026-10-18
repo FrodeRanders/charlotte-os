@@ -16,14 +16,14 @@ Capabilities have four key properties:
 
 \begin{itemize}
     \item Unforgeable: a process cannot create a capability through
-        computation. Capabilities enter a domain only through the bootstrap
-        contract or through IPC delegation.
+        computation. The kernel must issue it through an authorized creation,
+        bootstrap, or delegation operation.
     \item Scoped: a capability is valid only in the domain that holds it.
         Capability index 3 in domain A refers to a different object (or nothing)
         than capability index 3 in domain B.
     \item Righted: a capability carries a rights mask specifying which
-        operations are permitted. An endpoint capability might carry only
-        \texttt{SEND | CALL} rights without granting \texttt{RECEIVE}.
+        operations are permitted. A client connection might carry only
+        \texttt{SEND | CALL} rights without connection-minting authority.
     \item Revocable: when a kernel object is destroyed, all capabilities
         referencing it become invalid. Subsequent use returns an error.
 \end{itemize}
@@ -35,23 +35,22 @@ Capabilities have four key properties:
 
 \section{Object types and their rights}
 
-CharlotteOS defines a fixed set of kernel object types, each with its own rights
-model. A capability carries both a type tag and a rights mask.
+The unified namespace records six authority families. Their payload registries
+distinguish subtypes and enforce the relevant rights or ownership checks. The
+table gives current operations; only the named IPC and memory masks are rights
+bits. A CQ identifier is a domain-local queue selector, rather than a separate
+capability kind, and timers produce completion capabilities.
 
 \begin{longtable}{|p{2.8cm}|p{3.5cm}|p{5.9cm}|}
 \hline
-\textbf{Type} & \textbf{Example rights} & \textbf{What it authorizes} \\
+\textbf{Family} & \textbf{Checks or operations} & \textbf{What it authorizes} \\
 \hline
-Endpoint & RECEIVE, MINT\_CONNECTION & Server-side IPC receive queue \\
-Connection & SEND, CALL, DELEGATE & Client-side authority to invoke a service \\
-ReplyToken & COMPLETE, DELEGATE & One-shot completion of a pending call \\
-CompletionQueue & SUBMIT, WAIT, DRAIN & Submission to / waiting on a CQ \\
-MemoryObject & MAP, UNMAP, MOVE, LEND, COPY & Page-backed memory ownership and access \\
-Interrupt & ACK, MASK, BIND\_TO\_CQ & Hardware interrupt handling \\
-MmioRegion & MAP\_DEVICE & Device register access (MMIO) \\
-DmaDomain & PIN, UNPIN & DMA buffer management \\
-Device & RESET, CONFIGURE & Device lifecycle management \\
-Timer & ARM, CANCEL, BIND\_TO\_CQ & Timer operations \\
+IPC & SEND, CALL, RECEIVE, MINT\_\allowbreak CONNECTION & Endpoint, connection, pending-call and one-shot reply authority \\
+Memory & MAP\_READ, MAP\_WRITE, TRANSFER & Page-backed objects; transfer mode also checks ownership, mappings and loans \\
+Completion & Poll, wait, cancel, close & Submitted operation, timer or event-watch result \\
+Device & Typed map, bind, acknowledge and DMA operations & MMIO region, interrupt or DMA domain; no general Device reset capability \\
+Mailbox & Typed send or receive & Domain-local LP word queue \\
+SystemObserver & Authorized telemetry read & Non-secret system-wide kernel snapshot \\
 \hline
 \end{longtable}
 
@@ -60,8 +59,8 @@ Timer & ARM, CANCEL, BIND\_TO\_CQ & Timer operations \\
 Capabilities can be \textbf{delegated} to another protection domain through IPC.
 When delegating, the sender may \textbf{attenuate} the rights: the receiver gets a
 subset of the rights the sender held. A service manager that holds a connection
-with \texttt{SEND | CALL | DELEGATE} rights can delegate a client-facing
-connection with only \texttt{SEND | CALL}, keeping \texttt{DELEGATE} for itself.
+with \texttt{SEND | CALL | MINT\_CONNECTION} rights can delegate a client-facing
+connection with only \texttt{SEND | CALL}, keeping minting authority for itself.
 
 Delegation happens in the kernel, mediated by the IPC path. The sender specifies
 the target domain, the capability to delegate, and the reduced rights mask. The
@@ -70,25 +69,35 @@ rights being transferred.
 
 \section{Generation-safe lookup}
 
-Capability tables use generation counters to prevent use-after-free through stale
-indices. When a capability is revoked, the table slot is freed and its generation
-is incremented. Any attempt to use an old index with a stale generation returns
-\texttt{InvalidCapability} rather than accessing a different object that happened
-to be allocated at the same index.
+Capability values are opaque serials consumed monotonically within one namespace.
+Closing an entry does not make its serial available again; exhaustion rejects
+creation instead of wrapping. Lookup checks the owning namespace and object
+family. A removed serial therefore cannot name a later object in that namespace.
+
+Address-space slots have a separate generation. A replacement namespace can reuse
+numeric values, so pending kernel owners capture the original namespace identity
+and root generation. A scalar ASID or handle alone cannot authorize delayed
+cleanup. These rules are implemented in \repofile|crates/catten/src/capability.rs|
+and its \repofiletext|crates/catten/src/capability/record.rs|{record preparation}.
 
 \section{Bootstrap: how capabilities enter a domain}
 
 A newly created protection domain starts with an empty capability table. It
 receives its initial capabilities through the \textbf{config-page contract}: a
 mapped page that the supervisor populates with typed entries before the domain
-begins execution. The bootstrap contract delivers at minimum:
+begins execution. The records depend on the launch policy:
 
 \begin{itemize}
-    \item A connection to the name service (for service lookup).
-    \item For driver domains: device capabilities (MmioRegion, Interrupt).
-    \item For service domains: an endpoint on which to listen.
-    \item A default CQ handle for submission and waiting.
+    \item Ordinary deployed applications borrow a grant-controller connection
+        and their immutable signed deployment descriptor through \texttt{Context}.
+    \item Trusted platform services may receive a name-service connection.
+    \item Drivers receive the selected MMIO, interrupt and DMA grants.
+    \item Services normally create and own their listening endpoint.
 \end{itemize}
+
+The launch header separately describes the default CQ mapping. Launch-owned
+connections are borrowed through \texttt{Context}; applications must not adopt
+them as new owners. \autoref{sec:reconnecting-client} shows a complete client.
 
 After bootstrap, additional capabilities arrive through IPC: the name service
 delegates service connections; the supervisor delegates device grants; other
@@ -122,8 +131,10 @@ services delegate whatever the protocol authorizes.
         clamped to 1,024, and 8,192 events across the node. Ordinary domains may
         use 6,144 of those events, leaving a share for kernel-designated
         platform work. A cancelled event stays charged until its LP removes
-        the queue node. These limits do not yet cover the complete capability
-        namespace or every kind of kernel allocation.
+        the queue node. Shared capability-record admission additionally covers
+        all six families: 4,096 records per namespace, 65,536 per node and
+        49,152 for ordinary domains. These bounds do not account for every
+        kernel allocation or aggregate principal usage.
 \end{enumerate}
 
 Timer cancellation produces a terminal cancelled result without waiting for

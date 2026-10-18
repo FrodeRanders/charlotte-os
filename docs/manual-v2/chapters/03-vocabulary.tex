@@ -70,8 +70,8 @@ A \textbf{capability} is an unforgeable reference to a kernel object, carrying
 rights. It answers: ``May I perform this operation?''
 
 Capabilities are scoped to a protection domain's capability table. A process
-cannot fabricate a capability; it can only receive one through the bootstrap
-contract or through IPC.
+cannot fabricate a capability; the kernel issues one through an authorized
+creation, bootstrap, or delegation operation.
 
 \section{Endpoint}
 
@@ -118,14 +118,17 @@ call. It is:
     \item Bound to the caller's pending call.
     \item Consumable exactly once.
     \item Invalidated by cancellation, caller death, or endpoint teardown.
-    \item Optionally delegable when explicitly allowed.
+    \item Owned by the receiving service; the current userspace API does not
+        provide general reply-token delegation.
 \end{itemize}
 
 \section{Resource capability}
 
 A \textbf{resource capability} authorizes operations on a kernel-managed object
 such as a memory object, endpoint, connection, interrupt, MMIO region, DMA domain,
-device, completion queue, or timer.
+or a completion for an operation or timer. The unified namespace also holds
+mailbox and system-observer authority. CQ identifiers select domain-local
+queues and are not a separate capability family.
 
 \section{Operation and completion queue}
 

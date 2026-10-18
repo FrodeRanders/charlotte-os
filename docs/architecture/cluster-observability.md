@@ -54,8 +54,10 @@ complete inventory.
 
 The initial dashboard links `/` on the member that served the cluster request.
 The replicated membership and discovery protocols currently carry stable node
-identities and authenticated Ethernet routes rather than management IPv4
-addresses.
+identities and identity-to-MAC routes rather than management IPv4 addresses.
+Raft commits membership, but discovery and reliable messaging do not
+cryptographically authenticate peers. Expected-peer and session checks provide
+correlation within the current trusted-network boundary.
 For that reason `nodes[].management_endpoint` is explicitly `null`; the UI
 does not guess an address from a MAC or a QEMU convention.
 

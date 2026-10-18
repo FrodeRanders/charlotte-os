@@ -8,6 +8,10 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Manual and living-documentation source comparison](audits/2026-10-18-documentation-reality-sweep.md) — Corrects capability/API, recovery, admission, trust, bootstrap and build/CI claims; records the source scope and verification limits.
+
+- [Principal history preparation](audits/2026-10-18-principal-history-preparation.md) — Prepares admitted history storage before root publication and retains its original metadata through retirement.
+
 - [Signed-authority slot preparation](audits/2026-10-18-root-authority-preparation.md) — Prepares identity storage with the root; exact generation installation and receipt retention through invalidation.
 
 - [Root policy and telemetry metadata preparation](audits/2026-10-18-root-policy-preparation.md) — Fallible limit/usage nodes before publication; exact nodes retained in the root retirement receipt through invalidation.

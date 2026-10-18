@@ -133,12 +133,15 @@ interrupt context), CharlotteOS uses \rusttype{PerLp<T>}: a boxed slice of
 per-LP cells, each wrapped in a lock. Access is:
 
 \begin{lstlisting}[style=rustCode]
-per_lp_data.with(|lp_data| { lp_data.do_something(); });
+{
+    let mut lp_data = per_lp_data.get_mut();
+    lp_data.do_something();
+} // Release the guard before blocking or yielding.
 \end{lstlisting}
 
-The \texttt{with} closure acquires the lock for the current LP, calls the closure,
-and releases the lock. This is interrupt-safe (the lock masks interrupts during
-the critical section on architectures where that is necessary).
+\texttt{get} returns a read guard and \texttt{get\_mut} a write guard for the
+current LP. The guard retains the lock until scope exit. This is interrupt-safe
+(the lock masks interrupts during the critical section where necessary).
 
 Use \rusttype{PerLp<T>} for data that is:
 \begin{itemize}
@@ -175,9 +178,12 @@ The closure must not:
     \item Store the \texttt{\&mut T} reference anywhere (it must not escape).
     \item Send it to another thread or LP.
     \item Cross an \texttt{.await} point.
-    \item Panic or unwind (the borrow flag would remain set, deadlocking future
-        access).
 \end{itemize}
+
+A scoped \texttt{BorrowGuard} clears the flag on ordinary return and on unwind
+where unwinding is enabled. The kernel's aborting panic policy does not promise
+normal scope cleanup after a panic. This mechanism is a re-entrancy check, not a
+poisoned-state recovery policy.
 
 \section{Ownership and placement consequences}
 

@@ -1,7 +1,10 @@
 \chapter{Implementation Status}
 
-This appendix is a snapshot of built and verified behavior. Source, tests, and
-repository history remain authoritative.
+This appendix describes mechanisms and their recorded validation separately.
+The documentation/source comparison was refreshed on 18 October 2026; it did not
+repeat every runtime fixture. Scope and source anchors are recorded in
+the \repofiletext|docs/reports/audits/2026-10-18-documentation-reality-sweep.md|{dated source comparison}.
+Source, tests, and repository history remain authoritative.
 
 \section{Implementation phases}
 
@@ -26,10 +29,10 @@ repository history remain authoritative.
     per-shard CQ rings & Done \\
 8 & Userspace UART driver: delegated MMIO + IRQ, EL0 MMIO writes,
     interrupt-driven deferred reads, crash recovery & Done \\
-9 & Virtio-net driver: PCI discovery, MSI-X and IOMMU/SMMU delegation, feature
-    negotiation, MAC/link read, virtqueue setup, and EL0 transmit submission.
-    Smoltcp 0.13 adapter + TCP/IP service binary compile, and the frame
-    demultiplexer routes IPv4/ARP to the tcpip service. &
+9 & Virtio-net driver: PCI/MSI-X and protected DMA, RX/TX, used-ring
+    descriptor reclamation, frame demultiplexing and smoltcp 0.13 TCP/IP.
+    Broader hardware qualification and buffer-pool/batching optimization remain
+    open. &
     Focused two-guest TCG network suite \\
 10 & Lock-free device interrupt delivery (deferred wake), idempotent scheduler
     wakes, sustained-window load rebalancing & Done \\
@@ -74,7 +77,9 @@ repository history remain authoritative.
     \item Terminal CQ results survive ring overflow (non-lossy backlog): \textbf{Verified.}
     \item Coalesced remote shard wakes (idempotent scheduler fix): \textbf{Verified.}
     \item Userspace UART driver with only delegated MMIO + IRQ: \textbf{Verified.}
-    \item Restart invalidates stale connections + device reset + op reconciliation: \textbf{Verified.}
+    \item UART crash fixture: endpoint closure, device reset and operation
+        reconciliation before replacement: \textbf{Verified in that fixture.}
+        Name rebinding alone does not revoke connections to a live old endpoint.
     \item Virtio-net data path with batched packet buffers: \textbf{Runtime-validated on macOS QEMU TCG.}
     \item Fixed-width stable ABI representations (32-byte CQ entries): \textbf{Implemented; not formally audited.}
     \item Capability misuse and cancellation race adversarial tests: \textbf{Partial; six IPC error-path tests.}
@@ -181,12 +186,23 @@ repository history remain authoritative.
         describe validation coverage rather than an architectural limit.
 
     \item \textbf{CI:} GitHub Actions builds both architectures with
-        \texttt{-D warnings}, QEMU boot gate on AArch64.
+        \texttt{-D warnings}, QEMU boot gates on AArch64 and x86-64, plus
+        host tests and bounded formal-model checks.
 \end{itemize}
 
 \section{Known limitations}
 
 \begin{itemize}
+    \item \textbf{Production trust and peer security:} production images remain
+        disabled. Signed boot-policy verification and a kernel handoff exist,
+        but platform authentication, rollback-resistant installation and private
+        key custody are unfinished. Development boot uses public fixture trust.
+        Discovery/reliable-message peer routes lack cryptographic authentication;
+        session correlation and committed Raft membership do not supply it.
+        Time synchronization is also not an authenticated security-time source.
+        The security ledger remains 29 corrected in scope, six partial and three
+        open findings out of 38; see
+        \repofile|docs/reference/security-remediation.md|.
     \item \textbf{External data-service compatibility:} S3 is fixture-tested
         with RustFS, while Dell EMC ECS namespace support is implemented but
         not yet qualified against an ECS installation. Kafka is limited to
@@ -261,12 +277,11 @@ repository history remain authoritative.
         not enabled; TLB shootdowns conservatively reload CR3. SMEP is enabled.
         VT-d multi-hop bridge scopes are rejected, and AMD-Vi fault delivery is
         polled until post-topology MSI setup is implemented.
-    \item \textbf{Virtio-net runtime:} initialization and transmit submission
-        are runtime-validated on macOS under QEMU TCG. HVF remains unsuitable
-        for direct EL0 device MMIO. The receive/transmit data path, frame
-        demultiplexing, reliable messages, distributed name service, and the
-        TCP/IP service are validated; TX reclamation and batching remain
-        incomplete.
+    \item \textbf{Virtio-net runtime:} the receive/transmit data path, used-ring
+        TX descriptor reclamation, frame demultiplexing, reliable messages,
+        distributed name service and TCP/IP have QEMU TCG fixture coverage.
+        HVF remains unsuitable for direct EL0 device MMIO. Broader hardware
+        qualification, buffer-pool and batching optimization remain open.
     \item \textbf{General process loader:} the ELF loader is fixed-address for
         reference service images. General argv/env/auxv-style setup is not
         implemented.
@@ -276,9 +291,10 @@ repository history remain authoritative.
         separate domain/node admission and retain their charge through
         deferred cancellation. Endpoint records and preallocated queue backing
         have domain/node admission with staged-growth rollback and original
-        generation charges retained through delegation. Aggregate limits for the full capability
-        namespace, general observer metadata, weak-only backing and
-        kernel metadata remain incomplete.
+        generation charges retained through delegation. Shared record admission
+        covers all six capability families (4,096 per namespace, 65,536 per
+        node, 49,152 ordinary). General observer/control-block bytes and kernel
+        heap accounting, and aggregate principal limits, remain incomplete.
         Completion records now have separate domain/node admission, retained
         through strong references and undelivered detached results.
         CQ registration and kernel-owned backing have count/byte admission,
@@ -319,8 +335,13 @@ repository history remain authoritative.
         of usable RAM and reserved platform headroom. Partial linked trees and
         cached empty branches remain charged until confirmed physical teardown.
         Trusted platform classification precedes root allocation; failed release
-        retains the original charge. Shared kernel/IOMMU tables, stacks and
-        general metadata remain separate admission work.
+        retains the original charge. Fresh shared kernel tables have a separate
+        one-sixty-fourth-RAM node pool; inherited boot tables remain outside it.
+        IOMMU tables/queues use a one-thirty-second-RAM pool with domain and unit
+        ceilings. Runtime stacks reserve their maximum user/kernel extent in a
+        separate one-eighth-RAM pool, retaining that charge through uncertain
+        cleanup. These independent pools do not form a complete RAM ledger.
+        General metadata and aggregate principal admission remain open.
     \item \textbf{Cross-machine Raft boundary:} two TCG guests share a private
         QEMU LAN (stream backend on AArch64, socket backend on x86-64); the
         reliable-message frame transport and remote Raft peer routing are
@@ -352,8 +373,12 @@ repository history remain authoritative.
         CLS2 signature and logical-name checks are implemented. Rollback and key
         rotation policy, multiple state objects in the reference manager, and
         manager-owned teardown remain future work.
-    \item \textbf{Resource bounds:} endpoint queues and rings are bounded, but
-        the non-lossy CQ overflow backlog has no hard memory bound.
+    \item \textbf{Resource bounds:} endpoint queues, rings and CQ overflow
+        retention have family admission limits; physical ring mappings keep
+        their own backing owners. General heap and aggregate principal limits
+        remain incomplete. The generic IPI queue has no reserved mandatory
+        slots: legacy force-push may evict an older entry. Current x86 synchronous
+        shootdown instead uses its checked epoch channel.
 \end{itemize}
 
 \endinput

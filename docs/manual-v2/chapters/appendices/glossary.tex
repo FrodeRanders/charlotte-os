@@ -13,9 +13,10 @@
     \item[Capability] An unforgeable per-domain handle that names a kernel
         object and carries rights. Answers: ``May I perform this operation?''
 
-    \item[Capability table] A per-AS sparse table mapping capability indices
-        to kernel objects. Used for the thread table, address-space table,
-        and per-domain capability table.
+    \item[Capability table] A per-domain namespace mapping opaque serials to
+        one of six authority families. A serial is not reused within that
+        namespace. Thread and address-space slot tables have separate
+        generation-qualified identities.
 
     \item[Completion] The terminal result of an asynchronous operation. The
         kernel tracks operation state and delivers results through polling,
@@ -45,8 +46,9 @@
         memory into the kernel's virtual address space, provided by the
         bootloader (Limine).
 
-    \item[IdTable] A sparse \texttt{Vec<Option<T>{>}} with ID recycling. Used for
-        the thread table, address-space table, and capability table.
+    \item[IdTable] A sparse \texttt{Vec<Option<T>{>}} with generation-qualified
+        slot reuse, used for threads and address spaces. The unified capability
+        namespace instead uses admitted map nodes and consumed serials.
 
     \item[IOMMU / SMMU] I/O Memory Management Unit. Hardware that enforces DMA
         access permissions from devices, analogous to the MMU for CPU access.

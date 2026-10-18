@@ -558,15 +558,16 @@ The following behaviour is implemented and exercised:
 - a driver restart resets the device before resources are re-granted;
 - submitted operations, borrowed memory, and DMA buffers are reconciled;
 - the replacement receives freshly minted bootstrap capabilities;
-- name-service generation tracking makes stale connections fail
-  deterministically;
+- endpoint closure makes connections to the old instance fail; name-service
+  generation tracking identifies the replacement publication;
 - clients can re-look up the name to obtain a connection to the new instance.
 
-The manual uses `ServiceRestarted` for the service-level stale-generation
-condition and, in the live-upgrade chapter, describes the lower-level outcomes
-as `EndpointClosed` for undelivered queued calls and `Cancelled` for delivered
-calls whose server exits before replying. The API should document precisely
-where these lower-level results are translated into the service-level error.
+The manual's [reconnecting client](../guides/reconnecting-clients.md) defines
+`ServiceRestarted` as an application recovery decision for endpoint closure;
+the runtime has no variant with that name. Undelivered queued calls return the
+endpoint-closed result; delivered calls whose server exits before replying
+return cancellation. Rebinding a name does not revoke a still-live old endpoint,
+and an uncertain accepted call does not authorize automatic replay.
 
 #### Restart-with-state
 

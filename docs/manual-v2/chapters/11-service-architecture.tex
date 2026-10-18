@@ -7,18 +7,19 @@ policy remain in userspace; privileged code manages lifecycle and resources.
 \section{Protection domains as failure boundaries}
 
 A protection domain (\autoref{chap:vocabulary}) is the unit of both authority and failure. When
-a service crashes:
+a service crashes, retirement stops its threads and closes admission before
+physical cleanup:
 
 \begin{itemize}
     \item Its capability table is destroyed, invalidating its handles: client
         connections to the closed endpoint fail through the IPC lifecycle.
-    \item Its memory mappings are removed: outstanding borrows are revoked; the
-        kernel unmaps the pages from the (dead) borrower and restores the lender's
-        access.
-    \item Its threads are aborted: any thread blocked on a CQ or endpoint is
-        woken with a terminal error.
-    \item Its device grants are recovered: the supervisor regains ownership of
-        any MMIO region and interrupt objects the domain held.
+    \item Borrowed mappings are revoked before lender access can return.
+        Failed invalidation or cancellation retains the loan fence and backing.
+    \item Its threads are aborted on their owning LPs; reaping and exact-root
+        operation drain must complete before stack or address-space reuse.
+    \item Device teardown requires its own quiescence/invalidation proof.
+        Failed or uncertain cleanup retains grants, pins and original charges
+        rather than making them available to a replacement.
 \end{itemize}
 
 The MMU and capability checks are intended to contain the fault to that domain;
@@ -39,19 +40,21 @@ Its operations are:
     \item[Grant] Populate the domain's config-page with the bootstrap
         capabilities it needs:
         \begin{itemize}
-            \item A connection to the name service (for service lookup).
+            \item For deployed applications, a grant-controller connection
+                and immutable signed descriptor; trusted platform services may
+                instead receive a name-service connection.
             \item For driver domains: an \texttt{MmioRegion} capability, an
-                \texttt{Interrupt} capability.
-            \item For service domains: an \texttt{Endpoint} capability on which
-                to listen.
-            \item A default CQ handle.
+                \texttt{Interrupt} capability and a protected DMA domain as needed.
+            \item A default CQ layout in the launch header. Services normally
+                create their listening endpoint through the owned runtime API.
         \end{itemize}
     \item[Spawn] Create the initial thread with the domain's entry
         point and its affinity LP.
     \item[Monitor] Register to be notified when the domain exits.
-    \item[Teardown] on exit, reclaim all capabilities, revoke
-        mappings, reconcile outstanding operations, and make the address-space
-        ID available for reuse.
+    \item[Teardown] Close admission, stop threads and retain an owning transaction
+        through mapping, IPC and device cleanup. Only confirmed completion
+        permits physical release and address-space-slot reuse; abandonment can
+        retain the entire root indefinitely.
 \end{description}
 
 Grants are minted kernel-side by the supervisor and never through a syscall. A
@@ -136,7 +139,7 @@ At steady state, a CharlotteOS system consists of:
     \item The supervisor (kernel-side): domain lifecycle, ELF
         loading, device enumeration.
     \item  The node name service (one userspace instance): the
-        shared registry for service registration, lookup, access-key gating,
+        shared registry for service registration, principal-policy lookup,
         and generation tracking.
     \item Service processes: one or more per logical function, such as a
         NIC driver, TCP/IP stack, UTC time service, filesystem, Raft consensus,

@@ -29,3 +29,9 @@ directly through marked `lstinputlisting` ranges. Keep the range markers intact
 when editing the example; its source must compile without additions to the
 listings. Build and host-test commands, prerequisites and recovery limits are in
 the [client guide](../guides/reconnecting-clients.md).
+
+The [18 October 2026 source comparison](../reports/audits/2026-10-18-documentation-reality-sweep.md)
+records the latest manual sweep, corrections and verification limits. Short
+architectural listings are explanatory sketches unless identified as included,
+compiled source. Keep current API and validation claims tied to source or dated
+evidence; a PDF rebuild is not a fresh runtime qualification.

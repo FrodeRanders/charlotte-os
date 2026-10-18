@@ -962,7 +962,8 @@ Each owning DNS process retains a kernel completion watch on the local service
 connection. Endpoint closure signals that completion; the raw watch/CQ
 qualification remains separate. The owner then proposes an
 owner-and-generation-fenced tombstone locally when it is leader, or sends an
-authenticated retraction to the known leader. Retraction is idempotent and
+correlated retraction to the known leader. The current peer/MAC and session
+checks do not cryptographically authenticate that peer. Retraction is idempotent and
 retried at low frequency across leadership changes; it cannot remove a
 replacement generation.
 

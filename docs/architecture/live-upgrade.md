@@ -3,7 +3,8 @@
 CharlotteOS has a tested reference implementation of restart-with-state.
 The old service hands off one memory object; the replacement restores it,
 creates a fresh endpoint and registers a new name-service generation. Clients
-holding old connections re-look up and retry. This does not promise uninterrupted
+holding closed old connections reacquire authority and apply protocol-specific
+recovery. Name rebinding does not revoke a still-live old endpoint. This does not promise uninterrupted
 in-flight requests or arbitrary-service upgrade compatibility.
 
 ## Running reference path
@@ -17,7 +18,9 @@ in-flight requests or arbitrary-service upgrade compatibility.
    transfers the single state object and supplies its bootstrap capabilities.
 5. The replacement reads the state, creates an endpoint and registers the same
    logical name. The name service publishes the new connection/generation.
-6. Clients retry failed requests against the replacement.
+6. Clients reacquire a connection to the replacement. They replay only when
+   the protocol establishes that it is safe; accepted unanswered work may
+   already have changed state.
 
 The existing service-manager/echo self-test exercises this path. State transfer
 uses the same memory-object ownership primitives as ordinary IPC, with the
@@ -70,6 +73,11 @@ readiness. Queued requests complete as `EndpointClosed` when their endpoint
 exits; delivered calls whose server exits without replying complete as
 `Cancelled`. Applications still need retry policy, including a decision about
 operations whose side effects may already have happened.
+
+The [reconnecting client skeleton](../guides/reconnecting-clients.md) keeps
+business progress outside the session, preserves its operation deadline and
+stops on uncertain accepted work. Use it as the application starting point;
+the reference manager still contains raw ABI paths awaiting ownership conversion.
 
 ## Remaining work
 

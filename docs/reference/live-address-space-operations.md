@@ -65,8 +65,10 @@ Timeout returns `OperationDrainTimedOut`; dropping the request retains the
 closing flag, root, tag, slot and accounts, even if the last operation later
 completes. A ready request can complete with a zero waiting budget. Neither
 timeout nor another close request can force recovery. Final invalidation can
-still stall in the current x86 rendezvous; this timeout bounds the **lease-drain
-polling interval**, not all teardown or hardware waiting.
+reject through the bounded x86 epoch-qualified rendezvous; this timeout bounds
+the **lease-drain polling interval**, not all teardown or hardware waiting.
+Rejected invalidation retains backing. See [hardware quiescence](hardware-quiescence.md)
+for invalidation retry before physical release and the masked-caller restrictions.
 
 The fence covers **operation-lease admission only**. Existing non-lease resource
 paths retain their current guards and admission until logical cleanup. Begin

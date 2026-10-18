@@ -2,7 +2,8 @@
 \label{chap:programming-model}
 
 This chapter summarizes the kernel and userspace rules for the asynchronous,
-shard-per-core model.
+shard-per-core model. Short kernel listings explain the model and omit setup;
+\autoref{sec:reconnecting-client} provides the compiled userspace starting point.
 
 \section{Invariants}
 
@@ -11,7 +12,7 @@ The design relies on these rules:
 \subsection{Only the owning LP mutates its state}
 
 Per-LP data is accessed only from the LP that owns it. Cross-LP mutation goes
-through message dispatch (\texttt{ShardMailbox<M>}, IPI closure, or IPI RPC),
+through message dispatch (\texttt{ShardSender<M>}, IPI closure, or IPI RPC),
 never through a shared lock acquired from a foreign LP.
 
 \subsection{Messages are owned values}
@@ -30,8 +31,11 @@ re-entrancy flag).
 
 \subsection{Work stays on its assigned LP}
 
-A thread spawned on LP $N$ stays on LP $N$. To submit work to another LP, use
-\texttt{try\_run\_on\_lp(target, closure)} or \texttt{ShardSender::try\_send}.
+A pinned thread stays on its assigned LP. Certified Ready-thread migration is
+a separate kernel policy with architecture-specific ownership restrictions
+(\autoref{chap:shards-and-lps}); pinned userspace shards remain ineligible.
+To submit work to another LP, use
+\texttt{try\_run\_on\_lp} or \texttt{ShardSender::try\_send}.
 
 \subsection{Observability returns owned snapshots}
 
@@ -47,13 +51,12 @@ Lock-wrapped per-LP container. Use for data accessed from interrupt handlers,
 IPI handlers, or multiple LPs:
 
 \begin{lstlisting}[style=rustCode]
-// Declaration:
-static SCHEDULER: PerLp<RoundRobin> = PerLp::new();
-
-// Access:
-SCHEDULER.with(|scheduler| {
-    scheduler.submit_ready_thread(tid);
-});
+// Initialize after the LP count is available.
+let counters = PerLp::new(|| 0u64);
+{
+    let mut counter = counters.get_mut();
+    *counter += 1;
+} // Release before any blocking operation.
 \end{lstlisting}
 
 The lock masks interrupts during the critical section on architectures that
@@ -64,25 +67,26 @@ require it.
 Lock-free per-LP container for single-LP, thread-only data:
 
 \begin{lstlisting}[style=rustCode]
-// Declaration:
-static MAILBOX: ShardLocal<ShardMailbox<Command>> = ShardLocal::new();
-
-// Access from the owning LP's thread context only:
-MAILBOX.with(|mb| {
-    mb.try_send(Command::Ping)?;
+// One value per LP, initialized after topology discovery.
+let counters = ShardLocal::new(|| 0u64);
+// Access from the owning LP's thread context only.
+counters.with(|counter| {
+    *counter += 1;
 });
 \end{lstlisting}
 
 Panics on wrong-LP access or re-entrant access.
 
-\subsection{\texttt{ShardMailbox<M>}}
+\subsection{\texttt{ShardMailboxSet<M>}}
 
 A typed, bounded per-LP queue has cloneable \texttt{ShardSender<M>} producers and
-one \texttt{ShardReceiver<M>} consumer per LP, accessed through
-\texttt{ShardLocal}:
+one \texttt{ShardReceiver<M>} consumer per LP. The kernel-side
+\texttt{ShardMailboxSet<M>} creates the per-LP queues:
 
 \begin{lstlisting}[style=rustCode]
-let sender: ShardSender<Command> = mailbox.sender();
+let mailboxes = ShardMailboxSet::<Command>::new(256);
+let sender = mailboxes.sender_to(target_lp);
+let mut receiver = mailboxes.receiver_for_current_lp();
 // Returns Err(data) if full.
 sender.try_send(Command::Process { data })?;
 \end{lstlisting}
@@ -94,6 +98,9 @@ reserve for kernel-designated platform domains. An over-limit open returns
 zero; closing handles restores capacity. Receiver lookup returns the existing
 per-LP capability without another charge or independent ownership. These
 record counts do not account for the separate 256-word-per-LP queue backing.
+That backing has its own captured-generation queue-set and requested-byte
+admission in the same mailbox family account; see
+\repofile|docs/reference/mailbox-capability-budgets.md|.
 Opens are serialized with domain retirement and checked against the exact
 generation, so a delayed open cannot publish into a reused ASID.
 
@@ -150,8 +157,10 @@ and mapping errors unwind the unstarted preparation, returning frames and CQs.
 Layout validation uses fixed storage for at most 64 program headers, reserves
 the full adaptive heap window, and plans image plus runtime pages before
 namespace creation. These backing limits exclude translation-table frames.
-Allocator bytes, empty namespace metadata, stacks and
-page tables remain separate accounting requirements. The implementation contract
+Stacks, private translation tables and fresh shared kernel tables have separate
+admission pools; those pools are not charged to the image account. General
+allocator bytes, aggregate principal usage and some namespace/account metadata
+remain incomplete. The implementation contract
 and migration scope are recorded in
 \texttt{docs/reference/capability-admission.md} and
 \texttt{docs/reference/heap-admission.md} and
@@ -357,7 +366,7 @@ When writing code that uses sitas on CharlotteOS:
     \item \textbf{Choose the right container:} \texttt{PerLp<T>} for
         interrupt-accessed or cross-LP data; \texttt{ShardLocal<T>} for
         single-LP, thread-only data.
-    \item \textbf{Choose the right channel:} \texttt{ShardMailbox<M>} for typed
+    \item \textbf{Choose the right channel:} \texttt{ShardMailboxSet<M>} for typed
         cross-LP communication within the kernel. \texttt{ShardSender/Receiver}
         for typed cross-shard communication within userspace. Endpoint IPC
         for cross-domain communication.
@@ -380,40 +389,41 @@ When writing code that uses sitas on CharlotteOS:
 
 \section{The syscall ABI}
 
-The userspace--kernel boundary exposes these operations:
+Application code uses typed owners over the syscall boundary:
 
 \begin{description}
-    \item[\texttt{submit(op\_code, buffer) -> OperationId}] Start an async
-        operation. Returns immediately. Buffer ownership transfers to the kernel.
-
-    \item[\texttt{wait(cq\_id) -> Vec<CompletionEntry>}] Block until a
-        completion arrives on the given CQ. Returns all pending entries.
-
-    \item[\texttt{poll(op\_id) -> Option<Completed>}] Non-blocking check.
-        Returns \texttt{None} while in flight.
-
-    \item[\texttt{cancel(op\_id) -> CancelState}] Request cancellation. May
-        complete asynchronously.
-
-    \item[\texttt{close(op\_id)}] Release an operation ID after its terminal
-        completion was observed.
+    \item[\texttt{Completion::submit} and \texttt{Completion::timer}]
+        Return an owning completion or a submission error. Buffer-backed reads
+        use \texttt{ReadOperation}, which retains the buffer borrow.
+    \item[\texttt{Completion::poll} and \texttt{wait\_timeout}]
+        Observe the exact operation. A timeout or rejected wait admission retains
+        the owner; neither is a terminal result.
+    \item[\texttt{catten\_rt::cq::wait}]
+        Waits on one CQ with an optional millisecond budget. It returns readiness
+        or deadline, or an explicit wait error; it returns no vector of entries.
+        Drain the mapped ring separately and observe resources through their owners.
+    \item[Owned cancellation and release]
+        \texttt{ReadOperation} and \texttt{Completion} retain their cleanup policy;
+        cancellation cannot release an uncertain buffer merely because a timer expired.
 \end{description}
 
-For IPC:
+For IPC, \texttt{Endpoint::create(interface, version, capacity)} returns an owned
+server endpoint. Its minting methods return owned connections with selected
+\texttt{IpcRights}. Calling a connection returns a \texttt{PendingCall}, not
+the server's reply token. Receive creates an \texttt{IncomingMessage} containing
+the server-side one-shot \texttt{ReplyToken}. Its consuming reply methods finish
+that authority. Memory moves consume their owners; loans borrow them through the
+pending call's terminal cleanup. The complete example in
+\autoref{sec:reconnecting-client} uses these APIs.
 
-\begin{description}
-    \item[\texttt{endpoint\_create(interface, capacity) -> EndpointCap}]
-    \item[\texttt{connection\_mint(endpoint, rights) -> ConnectionCap}]
-    \item[\texttt{scalar\_send(connection, opcode, arg)}]
-    \item[\texttt{scalar\_call(connection, opcode, arg) -> ReplyToken}]
-    \item[\texttt{memory\_send(connection, opcode, attachments)}]
-    \item[\texttt{reply(token, result)}]
-    \item[\texttt{receive(endpoint) -> Message}]
-\end{description}
-
-The full ABI is described in
-\repofile|docs/architecture/async-syscall-abi.md| and implemented in
-\repofile|crates/catten/src/syscall/mod.rs|.
+The raw register ABI lives in the
+\repofiletext|crates/catten-syscall/src/lib.rs|{syscall SDK} and
+\repofiletext|crates/catten/src/syscall/mod.rs|{kernel dispatcher}. The
+\repofiletext|docs/reference/ipc-receive.md|{receive contract} and
+\repofiletext|docs/reference/cq-wait.md|{checked CQ wait contract} describe their
+current records and outcomes; the
+\repofiletext|docs/architecture/async-syscall-abi.md|{ABI evolution note} preserves
+the broader design history.
 
 \section{Enforcement and audit}
 
