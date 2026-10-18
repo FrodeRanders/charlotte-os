@@ -9,6 +9,16 @@ legacy queue backing and unified authority namespace with their original charges
 Final metadata release leaves lifecycle/subsystem guards and follows confirmed
 root invalidation, before root backing and slot completion.
 
+Per-principal stack/heap history now has fallibly prepared storage before root
+publication. Final sampling only updates that existing boot-lifetime record.
+A duplicate principal leaves an unused candidate in the root's signed-authority
+slot; this candidate follows the same closing and final-root owner through failed
+invalidation. Confirmed invalidation explicitly releases it with the detached
+metadata after local guards, before root backing and slot completion. Published
+history survives root retirement for use by later generations. General heap and
+aggregate principal admission remain separate; see the
+[principal-history audit](../reports/audits/2026-10-18-principal-history-preparation.md).
+
 ## Owned cleanup and root retirement
 
 Under lifecycle serialization, close validates the exact handle and checks its

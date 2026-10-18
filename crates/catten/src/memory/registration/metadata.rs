@@ -18,6 +18,7 @@ struct Resources {
     limits: Option<PreparedEntry<LimitsRecord>>,
     usage: Option<PreparedEntry<UsageRecord>>,
     authority: Option<PreparedEntry<AuthorityRecord>>,
+    history: Option<usage::PreparingHistory>,
 }
 
 /// Abandonment retains every partial allocation without allocator work.
@@ -34,6 +35,7 @@ impl PreparingMetadata {
             limits: None,
             usage: None,
             authority: None,
+            history: None,
         }));
         let result = (|| {
             before(1)?;
@@ -42,7 +44,9 @@ impl PreparingMetadata {
             owner.0.usage = Some(PreparedEntry::try_new()?);
             before(3)?;
             owner.0.authority = Some(PreparedEntry::try_new()?);
-            before(4)
+            before(4)?;
+            owner.0.history = Some(usage::PreparingHistory::try_new()?);
+            before(5)
         })();
         if let Err(error) = result {
             owner.cancel_unpublished();
@@ -88,12 +92,16 @@ impl PreparingMetadata {
             DomainAuthoritySlot {
                 handle,
                 authority: None,
+                history: self.0.history.take().unwrap(),
             },
         );
     }
 
     /// Ordinary unused preparation, after allocator and local publication guards.
     pub(in crate::memory) fn cancel_unpublished(mut self) {
+        if let Some(history) = self.0.history.take() {
+            history.cancel_unpublished();
+        }
         drop(self.0.authority.take());
         drop(self.0.usage.take());
         drop(self.0.limits.take());
@@ -141,7 +149,7 @@ impl RetiredMetadata {
 
     pub(in crate::memory) fn release(self) {
         super::super::retirement::metadata_tests::policy_boundary();
-        self.authority.release();
+        self.authority.release_with(|(_, slot)| slot.history.cancel_unpublished());
         self.usage.release();
         self.limits.release();
     }

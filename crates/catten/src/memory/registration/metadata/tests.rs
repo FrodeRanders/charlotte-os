@@ -23,37 +23,47 @@ pub(super) fn run() {
         }
         limits.take(&1).unwrap().release();
         usage.take(&1).unwrap().release();
-        authority.take(&1).unwrap().release();
+        authority.take(&1).unwrap().release_with(|(_, slot)| slot.history.cancel_unpublished());
     }
     assert!(limits.iter().next().is_none());
     assert!(usage.iter().next().is_none());
     assert!(authority.iter().next().is_none());
     generation_reuse();
     authority_generation_reuse();
+    usage::test_principal_history();
 
     // Partial preparation fallback; complete fallback is tested by the parent
-    // registration owner. Retain three empty nodes across the partial phases,
-    // with no root/charge. This adds two to the earlier single-node control.
-    for stage in 1..=2 {
+    // registration owner. Retain ten empty nodes across four partial phases,
+    // without publishing a root or principal.
+    for stage in 1..=4 {
         let mut owner = PreparingMetadata(ManuallyDrop::new(Resources {
             limits: Some(PreparedEntry::try_new().unwrap()),
             usage: None,
             authority: None,
+            history: None,
         }));
-        if stage == 2 {
+        if stage >= 2 {
             owner.0.usage = Some(PreparedEntry::try_new().unwrap());
+        }
+        if stage >= 3 {
+            owner.0.authority = Some(PreparedEntry::try_new().unwrap());
+        }
+        if stage == 4 {
+            owner.0.history = Some(usage::PreparingHistory::try_new().unwrap());
         }
         let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
         let _table = ADDRESS_SPACE_TABLE.lock();
         let _limits = DOMAIN_LIMITS.lock();
         let _usage = usage::DOMAIN_USAGE.lock();
         let _authority = DOMAIN_AUTHORITIES.lock();
-        let _heap = PRIMARY_ALLOCATOR.lock();
-        drop(owner);
+        usage::with_principal_history_locked(|| {
+            let _heap = PRIMARY_ALLOCATOR.lock();
+            drop(owner);
+        });
     }
     crate::logln!(
-        "[root policy preparation] 256 phase rejections, 64 heap-held publications, exact \
-         generation reuse and guarded partial retention passed; three standalone empty nodes \
+        "[root policy preparation] 320 phase rejections, 64 heap-held publications, exact \
+         generation reuse and guarded partial retention passed; ten standalone empty nodes \
          retained"
     );
 }
@@ -61,7 +71,7 @@ pub(super) fn run() {
 // The root stays inline on rejection; no failure-path boxing.
 #[allow(clippy::result_large_err)]
 fn rejection() {
-    for reject in 1..=4 {
+    for reject in 1..=5 {
         for _ in 0..64 {
             let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
             let roots = ADDRESS_SPACE_TABLE.lock().iter().filter(|e| e.is_some()).count();
@@ -81,6 +91,7 @@ fn rejection() {
                         assert!(DOMAIN_LIMITS.try_lock().is_some());
                         assert!(usage::DOMAIN_USAGE.try_lock().is_some());
                         assert!(DOMAIN_AUTHORITIES.try_lock().is_some());
+                        assert!(usage::principal_history_available());
                         assert!(PRIMARY_ALLOCATOR.try_lock().is_some());
                         assert!(budget::tests::ledger_available());
                         drop(root);
@@ -93,6 +104,7 @@ fn rejection() {
                         assert!(DOMAIN_LIMITS.try_lock().is_some());
                         assert!(usage::DOMAIN_USAGE.try_lock().is_some());
                         assert!(DOMAIN_AUTHORITIES.try_lock().is_some());
+                        assert!(usage::principal_history_available());
                         assert!(PRIMARY_ALLOCATOR.try_lock().is_some());
                         if stage == reject {
                             Err(AllocError)

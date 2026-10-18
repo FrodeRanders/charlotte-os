@@ -344,10 +344,12 @@ fn test_quarantine(abandon: bool) {
         let _limits = memory::DOMAIN_LIMITS.lock();
         let _usage = memory::usage::DOMAIN_USAGE.lock();
         let _authority = memory::DOMAIN_AUTHORITIES.lock();
-        let _heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
-        // RetiredEntry's ManuallyDrop owns the resource even though the
-        // receipt's ordinary metadata is dropped. No address-space destructor.
-        drop(retired);
+        memory::usage::with_principal_history_locked(|| {
+            let _heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
+            // RetiredEntry's ManuallyDrop retains the root and its unused
+            // history candidate without an address-space destructor.
+            drop(retired);
+        });
     } else {
         assert_eq!(
             retired.release_with(|_, handle| {

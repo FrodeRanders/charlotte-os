@@ -208,6 +208,15 @@ principal:
 - signed deployment descriptors still win — they never pass through the
   adaptive path.
 
+Stack and heap history share one boot-lifetime record per signed principal.
+The kernel prepares a candidate node with each unpublished root. Signed identity
+installation links it for a new principal; for an existing principal, the unused
+candidate stays with the root until confirmed final invalidation permits metadata
+disposal. Retirement updates existing counters without allocating. This makes
+preparation fallible, but does not yet bound aggregate history/kernel-heap bytes
+or establish progress under hostile pressure. See the
+[preparation audit](../reports/audits/2026-10-18-principal-history-preparation.md).
+
 Growth is damped by memory pressure. The frame allocator maintains an exact
 free-frame count on every bitmap transition, and the supervisor withholds
 history-based growth whenever free frames fall below one sixteenth of usable

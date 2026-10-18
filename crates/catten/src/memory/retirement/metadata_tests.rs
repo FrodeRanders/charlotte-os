@@ -40,6 +40,7 @@ fn check_context() {
         || super::super::DOMAIN_AUTHORITIES.try_lock().is_some(),
         "root signed authority metadata",
     );
+    available(super::super::usage::principal_history_available, "principal history metadata");
 }
 pub(crate) fn boundary(authority: bool) {
     if !ACTIVE.load(Ordering::Acquire) {

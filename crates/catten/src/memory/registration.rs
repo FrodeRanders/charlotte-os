@@ -121,8 +121,10 @@ pub(super) fn test_abandonment() {
         let _authority = DOMAIN_AUTHORITIES.lock();
         budget::tests::with_ledger_locked(|| {
             let allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
-            let _heap = allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
-            drop(owner);
+            usage::with_principal_history_locked(|| {
+                let _heap = allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
+                drop(owner);
+            });
             assert_eq!(allocator.free_frames(), free);
             assert_eq!(table.iter().filter(|entry| entry.is_some()).count(), occupied);
         });

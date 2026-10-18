@@ -79,6 +79,7 @@ pub struct DomainAuthority {
 struct DomainAuthoritySlot {
     handle: AddressSpaceHandle,
     authority: Option<DomainAuthority>,
+    history: usage::PreparingHistory,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -104,6 +105,7 @@ impl DomainAuthoritySlot {
         if self.authority.is_some() {
             return Err(DomainAuthorityError::AlreadyInstalled);
         }
+        self.history.publish(principal);
         self.authority = Some(DomainAuthority {
             address_space: handle,
             principal,

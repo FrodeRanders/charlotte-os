@@ -11,10 +11,10 @@
 //! entries are ignored rather than asserted: teardown races must not panic a
 //! kernel merely because a late release arrived after the domain was reaped.
 
-use alloc::{
-    collections::BTreeMap,
-    vec::Vec,
-};
+use alloc::vec::Vec;
+
+mod principal_history;
+pub(super) use principal_history::PreparingHistory;
 
 use crate::memory::{
     AddressSpaceHandle,
@@ -66,19 +66,6 @@ pub(super) type DomainUsageTable = crate::klib::collections::retirement_list::Ad
 
 pub(super) static DOMAIN_USAGE: LazyLock<Mutex<DomainUsageTable>> =
     LazyLock::new(|| Mutex::new(DomainUsageTable::new()));
-
-/// Highest touched stack high-water mark observed for one service principal,
-/// across address-space generations within this boot. The table is what lets
-/// the launch path size the next generation from the previous one; it is
-/// deliberately in-memory and cold-starts at the default policy after reboot.
-static PRINCIPAL_STACK_HIGH_WATER: LazyLock<Mutex<BTreeMap<u64, u64>>> =
-    LazyLock::new(|| Mutex::new(BTreeMap::new()));
-
-/// Highest heap peak observed for one service principal, across address-space
-/// generations within this boot. Like the stack table it is deliberately
-/// in-memory: a reboot cold-starts at the default capacity.
-static PRINCIPAL_HEAP_PEAK: LazyLock<Mutex<BTreeMap<u64, u64>>> =
-    LazyLock::new(|| Mutex::new(BTreeMap::new()));
 
 fn with_usage(asid: AddressSpaceId, update: impl FnOnce(&mut DomainUsage)) {
     let mut table = DOMAIN_USAGE.lock();
@@ -141,15 +128,13 @@ pub(crate) fn remember_principal_heap_peak(principal: u64, peak_bytes: u64) {
     if peak_bytes == 0 {
         return;
     }
-    let mut table = PRINCIPAL_HEAP_PEAK.lock();
-    let entry = table.entry(principal).or_insert(0);
-    *entry = (*entry).max(peak_bytes);
+    principal_history::remember_heap(principal, peak_bytes);
 }
 
 /// Highest heap peak recorded for `principal`, or zero when the principal has
 /// not run yet in this boot.
 pub(crate) fn principal_heap_peak(principal: u64) -> u64 {
-    PRINCIPAL_HEAP_PEAK.lock().get(&principal).copied().unwrap_or(0)
+    principal_history::heap_peak(principal)
 }
 
 /// One domain's published heap record.
@@ -244,13 +229,23 @@ pub(crate) fn remember_principal_stack_high_water(principal: u64, pages: u64) {
     if pages == 0 {
         return;
     }
-    let mut table = PRINCIPAL_STACK_HIGH_WATER.lock();
-    let entry = table.entry(principal).or_insert(0);
-    *entry = (*entry).max(pages);
+    principal_history::remember_stack(principal, pages);
 }
 
 /// Highest stack high-water mark recorded for `principal`, or zero when the
 /// principal has not run yet in this boot.
 pub(crate) fn principal_stack_high_water(principal: u64) -> u64 {
-    PRINCIPAL_STACK_HIGH_WATER.lock().get(&principal).copied().unwrap_or(0)
+    principal_history::stack_high_water(principal)
+}
+
+pub(super) fn test_principal_history() {
+    principal_history::tests::run();
+}
+
+pub(super) fn with_principal_history_locked<R>(work: impl FnOnce() -> R) -> R {
+    principal_history::with_locked(work)
+}
+
+pub(super) fn principal_history_available() -> bool {
+    principal_history::available()
 }

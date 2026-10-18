@@ -138,8 +138,9 @@ unpublished root, capability namespace and account metadata. The exact generatio
 is bound under publication serialization; runtime sponsor lookup is allocation-free.
 Kernel sponsorship is prepared before schedulers/APs start. Closed old accounts
 remain until their original memory charges end; detached metadata disposes after
-the local ledger guard. General heap/aggregate limits, principal high-water registries
-and enclosing caller/IRQ/destructor contexts remain open R7/R18 work.
+the local ledger guard. General heap/aggregate limits and enclosing
+caller/IRQ/destructor contexts remain open R7/R18 work. Principal history
+preparation is covered below.
 
 The [root policy/telemetry follow-up](../reports/audits/2026-10-18-root-policy-preparation.md)
 prepares the existing launch-limit and domain-usage nodes before root publication,
@@ -148,16 +149,27 @@ only relinks admitted nodes. Sealed cleanup transfers both nodes through the
 existing closing/final-root receipt; invalidation rejection retains them and
 confirmed invalidation disposes them after local guards, before backing/slot
 completion. No new registry, custody authority or numbered disposition change.
-Principal high-water/snapshot allocations, aggregate budgets, list hold-time
-pressure and wider destructor contexts remain open.
+Snapshot allocations, aggregate budgets, list hold-time pressure and wider
+destructor contexts remain open; principal history preparation is covered below.
 
 The [signed-authority slot follow-up](../reports/audits/2026-10-18-root-authority-preparation.md)
 prepares its storage with that same root transaction. Empty slots grant no identity;
 the signed loader fills the exact assigned generation without allocation, rejecting
 zero principals, duplicates and stale generations before mutation. Sealed cleanup
 carries the populated slot in the same final-root receipt through invalidation.
-Authority-node disposal is post-guard; high-water maps, aggregate budgets and wider
-caller/IRQ contexts remain open. This does not change platform trust or enrollment.
+Authority-node disposal is post-guard; aggregate budgets and wider caller/IRQ
+contexts remain open. This does not change platform trust or enrollment.
+
+The [principal-history preparation follow-up](../reports/audits/2026-10-18-principal-history-preparation.md)
+replaces the two infallible stack/heap history maps with one shared admitted
+record per signed principal. Every root prepares a candidate before publication;
+identity installation either links it without allocation or keeps it in that
+root's authority slot. Retirement only updates existing counters. Unused storage
+follows C02/C03 through invalidation and explicit post-guard disposal. Published
+history remains for the boot lifetime so restarts preserve their sizing inputs.
+This addresses the high-water insertion gap above; total principal/history heap
+bytes, telemetry snapshots, hostile-pressure hold times and outer contexts remain
+open. Finding dispositions are unchanged.
 
 SEC-07 remains partial until all of the following deliverables are accepted:
 
