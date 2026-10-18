@@ -75,7 +75,7 @@ fresh shared runtime kernel tables have a separate node pool. Inherited boot
 tables/stacks, IOMMU tables, general kernel heap and comprehensive metadata
 accounting remain open.
 
-\paragraph{Stack capacity admission.}
+\subsection{Stack capacity admission.}
 Before backing allocation, each runtime user-thread slot reserves its configured
 maximum user pages plus sixteen kernel pages in a separate node stack pool.
 The pool uses one eighth of usable RAM; ordinary domains may consume three
@@ -87,7 +87,7 @@ both ranges; failed or abandoned cleanup retains the entire maximum charge and
 slot even if other pages were freed. Kernel-only threads reserve sixteen pages
 from trusted admission. Inherited boot/CPU stacks remain outside this runtime pool.
 
-\paragraph{Translation-table lifetime.}
+\subsection{Translation-table lifetime.}
 Removing a page mapping clears the leaf while retaining empty intermediate
 tables in their owning hierarchy. Subsequent mappings reuse those tables;
 quiescent address-space teardown releases the complete private tree. Hardware
