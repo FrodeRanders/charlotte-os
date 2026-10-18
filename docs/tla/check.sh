@@ -350,6 +350,13 @@ run_expected_violation CharlotteRaftResponse \
 run_expected_violation CharlotteRaftResponse \
     CharlotteRaftResponse_invalid_unsafe.cfg \
     AcknowledgementsHaveProof UnsafeInvalidCredit
+run_model CharlotteRaftRead CharlotteRaftRead_small.cfg \
+    Elect ReceiveOldPrefix CommitCurrent ApplyCurrent Read \
+    RejectBeforeCommit RejectBeforeApply ExpireContact StepDown
+run_expected_violation CharlotteRaftRead CharlotteRaftRead_commit_unsafe.cfg \
+    ReadHasCurrentCommit UnsafeReadBeforeCommit
+run_expected_violation CharlotteRaftRead CharlotteRaftRead_apply_unsafe.cfg \
+    ReadHasAppliedCommit UnsafeReadBeforeApply
 run_model CharlotteRaftMembership CharlotteRaftMembership_small.cfg \
     Elect ElectNextOnly SubmitJoint Replicate CommitJoint SubmitFinalize \
     RejectLaggingFinalize CommitFinalize Crash Restart

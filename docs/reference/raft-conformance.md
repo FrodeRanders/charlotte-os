@@ -16,7 +16,7 @@ NVMe object store at the platform boundary.
 | Replication and commit | Responses require a matching admitted source and exact current term; success cannot exceed the local tail or reduce confirmed progress, and backoff retains that floor. The leader counts itself once, counts configured voters, requires a current-term entry and uses the candidate index's configuration. |
 | Membership changes | `JOIN`, `JOINT`, and `FINALIZE` are shared protobuf internal commands. Direct local membership mutation is rejected. Automatic FINALIZE waits for the committed JOINT fence and every proposed remote voter/learner to catch up, restoring Graft Java/Rust behavior. Its commit still requires both voter majorities. |
 | Learners and removal | Learners replicate but neither campaign nor vote. Finalization makes a non-voter a follower immediately, preserving its existing-term vote. Removed nodes become decommissioned; retained learners remain members. |
-| Reads | The current query gate requires leadership and recent receive-time quorum contact. Exact-term response fencing rejects stale-term credit; lease duration, delayed same-term responses and election/clock assumptions still need qualification before claiming linearizability. |
+| Reads | The current query gate requires leadership, a nonzero current-term commit, application through that commit and recent receive-time quorum contact. Exact-term response fencing rejects stale-term credit; lease duration, delayed same-term responses and election/clock assumptions still need qualification before claiming linearizability. |
 | Snapshots | Snapshots carry current and next membership, peer roles/addresses, and application state in the shared JSON envelope. Application restore must succeed before startup exposes a node or network installation publishes snapshot progress/membership. |
 | Wire contract | Vote, append, snapshot, peer, and internal-command messages use field-compatible `raft.proto` protobuf payloads. |
 | Liveness | Capability RPCs have bounded deadlines and at most one outstanding call per peer/RPC type/term. Append batches are reduced to the largest payload fitting the current one-page IPC attachment. |
@@ -97,3 +97,21 @@ Consensus reviews must compare core **and runtime** behavior across the referenc
 implementations. Capture each deliberate difference and its regression before
 claiming parity. A matching single handler or passing local model is not a mixed
 cluster test. Read-lease timing and request correlation remain separate work.
+
+## Read prerequisites after election
+
+The [18 October read review](../reports/audits/2026-10-18-raft-read-prerequisites.md)
+reproduces a leader accepting the query gate after quorum contact below its
+uncommitted election no-op. The gate now also requires a current-term commit
+and application through that commit. Snapshot anchors use the ordinary term
+lookup, so compaction preserves admission. Single-voter elections commit and
+apply their no-op before reads become eligible. Leader-side bounded reads use
+the same guard; follower bounded-staleness policy is unchanged.
+
+Java and C++ already check application progress in the inspected core gates.
+The inspected Java, C++ and Rust core gates do not explicitly require a
+current-term commit. Their runtime refresh and query paths differ; this static
+comparison does not establish a reproduced upstream failure. The new Charlotte
+checks are necessary prerequisites, with two executable negative controls.
+Receive-time contact can still be refreshed by a delayed same-term response;
+complete read-lease correctness and request correlation remain open.

@@ -577,6 +577,25 @@ The model represents peer identity and role as voter/learner sets. Peer
 addresses, protobuf encoding, transport retries, and temporal availability are
 outside this abstraction. Pre-membership join admission is checked separately.
 
+## Raft read prerequisites
+
+| TLA+ action | Rust implementation | Correspondence |
+|---|---|---|
+| `Elect` | `become_leader` | Abstract election with an inherited older-term prefix and a new, uncommitted election no-op. Election legitimacy is assumed from the election model. |
+| `ReceiveOldPrefix` | exact-term successful append response below the new no-op | Records contact without committing a current-term entry. The source regression exercises this distinction. |
+| `CommitCurrent` | `advance_commit_index` | Abstract current-term quorum commit; quorum and log correctness are separate models. |
+| `ApplyCurrent` | `apply_committed_entries` | Abstract application progress. Rust normally completes this loop before reactor access; the model separates it to check the read gate explicitly. |
+| `Read`, `RejectBeforeCommit`, `RejectBeforeApply` | `can_serve_linearizable_read`, `handle_client_query` | Requires leadership, contact, a nonzero current-term commit and exact application through that commit. `term_at` also resolves a compacted snapshot anchor. Leader-side `can_serve_bounded_read` uses this same gate. |
+| `ExpireContact`, `StepDown` | existing contact expiry and role gate | Abstract eligibility loss; recorded read proofs refer to the instant of admission. |
+| `UnsafeReadBeforeCommit`, `UnsafeReadBeforeApply` | omitted prerequisite controls | Violate `ReadHasCurrentCommit` and `ReadHasAppliedCommit` respectively. |
+
+The [dated review](../reports/audits/2026-10-18-raft-read-prerequisites.md)
+retains the failing host assertion and upstream core/runtime extracts. The
+20-state projection checks necessary read prerequisites. Quorum contact is an
+input, not a proof of a safe lease: delayed same-term responses, election/clock
+timing, request correlation and full read linearizability remain open. Follower
+bounded-staleness reads are outside this model and unchanged by the correction.
+
 ## Raft pre-membership join admission
 
 | TLA+ action | Rust implementation | Correspondence |

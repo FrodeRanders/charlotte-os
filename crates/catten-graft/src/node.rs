@@ -995,8 +995,8 @@ impl RaftNode {
 
     /// Promote a joiner into the joint configuration once it has caught up
     /// to its committed JOIN fence. The joint phase then auto-finalizes via
-    /// [`maybe_auto_finalize_joint_configuration`] once a joint majority
-    /// acknowledges the joint entry.
+    /// [`maybe_auto_finalize_joint_configuration`] once every proposed remote
+    /// member reaches the committed joint fence. Commit needs both voter quorums.
     fn maybe_promote_pending_joiners(&mut self, current_millis: u64) {
         if self.state != NodeState::Leader
             || self.pending_joiners.is_empty()
@@ -1380,7 +1380,15 @@ impl RaftNode {
     }
 
     pub fn can_serve_linearizable_read(&self) -> bool {
-        if self.state != NodeState::Leader {
+        // Committing in this term establishes the inherited committed prefix.
+        // Apply that prefix before querying it, including a compacted anchor.
+        // Recent contact is a separate gate; its timing contract still needs
+        // qualification for delayed same-term responses.
+        if self.state != NodeState::Leader
+            || self.commit_index == 0
+            || self.log_store.term_at(self.commit_index) != self.current_term
+            || self.last_applied != self.commit_index
+        {
             return false;
         }
         let mut contacted = BTreeSet::new();
@@ -1551,6 +1559,101 @@ mod tests {
         );
         assert_eq!(node.state, NodeState::Leader);
         node
+    }
+
+    #[test]
+    fn leader_read_waits_for_current_term_commit_despite_recent_quorum_contact() {
+        let mut node = node_with_voters(&["n1", "n2", "n3"]);
+        // Inherit an older leader's prefix without its final commit notice.
+        // The election no-op must commit before reads can use that state.
+        node.log_store.append(vec![LogEntry::noop(1, "n2".to_string())]);
+        node.current_term = 1;
+        node.persistent_state.set_current_term(1);
+        node.start_election(200);
+        node.handle_vote_response(
+            "n2",
+            VoteResponse {
+                peer_id: "n2".to_string(),
+                term: 2,
+                vote_granted: true,
+            },
+            201,
+        );
+        assert_eq!(node.state, NodeState::Leader);
+        assert_eq!(node.log_store.last_index(), 2);
+        node.handle_append_entries_response(
+            "n2",
+            AppendEntriesResponse {
+                peer_id: "n2".to_string(),
+                term: 2,
+                success: true,
+                match_index: 1,
+            },
+            202,
+        );
+        assert_eq!(node.last_follower_contact_millis.get("n2"), Some(&202));
+        assert_eq!(node.commit_index, 0);
+        assert!(!node.can_serve_linearizable_read());
+        assert!(!node.can_serve_bounded_read(1_000));
+        assert_eq!(
+            node.handle_client_query(Vec::new()),
+            Err((crate::types::ERR_READ_BARRIER, Some("n1".to_string())))
+        );
+        // Even a known, applied older-term commit cannot replace the new
+        // term's commitment. The inherited entry is a no-op in this fixture.
+        node.commit_index = 1;
+        node.last_applied = 1;
+        assert!(!node.can_serve_linearizable_read());
+        node.handle_append_entries_response(
+            "n2",
+            AppendEntriesResponse {
+                peer_id: "n2".to_string(),
+                term: 2,
+                success: true,
+                match_index: 2,
+            },
+            203,
+        );
+        assert_eq!(node.commit_index, 2);
+        assert_eq!(node.last_applied, 2);
+        assert!(node.can_serve_linearizable_read());
+        assert_eq!(node.handle_client_query(Vec::new()), Ok(Vec::new()));
+    }
+
+    #[test]
+    fn leader_read_requires_applied_commit_and_survives_compaction() {
+        let mut node = elected_three_node_leader();
+        node.handle_append_entries_response(
+            "n2",
+            AppendEntriesResponse {
+                peer_id: "n2".to_string(),
+                term: node.current_term,
+                success: true,
+                match_index: 1,
+            },
+            202,
+        );
+        assert!(node.can_serve_linearizable_read());
+        // Isolate the application gate: the synchronous apply loop normally
+        // closes this interval before returning to the service reactor.
+        node.last_applied = 0;
+        assert!(!node.can_serve_linearizable_read());
+        node.last_applied = node.commit_index;
+        node.log_store.install_snapshot(node.commit_index, node.current_term, Vec::new());
+        assert!(node.log_store.entry_at(node.commit_index).is_none());
+        assert!(node.can_serve_linearizable_read());
+        node.set_millis(952);
+        assert!(!node.can_serve_linearizable_read(), "committing does not bypass contact expiry");
+    }
+
+    #[test]
+    fn single_voter_read_requires_its_election_noop() {
+        let mut node = node_with_voters(&["n1"]);
+        assert!(!node.can_serve_linearizable_read());
+        node.start_election(200);
+        assert_eq!(node.commit_index, 1);
+        assert_eq!(node.last_applied, 1);
+        assert!(node.can_serve_linearizable_read());
     }
 
     #[test]

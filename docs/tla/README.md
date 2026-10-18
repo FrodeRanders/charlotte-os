@@ -1,6 +1,6 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains finite, executable specifications for thirty-two
+This directory contains finite, executable specifications for thirty-three
 CharlotteOS subsystems:
 
 | Subsystem | Module | Fast configuration |
@@ -29,6 +29,7 @@ CharlotteOS subsystems:
 | Raft election and durable voting | `CharlotteRaft.tla` | `CharlotteRaft_small.cfg` |
 | Raft log replication and commit safety | `CharlotteRaftLog.tla` | `CharlotteRaftLog_small.cfg` |
 | Raft delayed responses and confirmed progress | `CharlotteRaftResponse.tla` | `CharlotteRaftResponse_small.cfg` |
+| Raft read commit/application prerequisites | `CharlotteRaftRead.tla` | `CharlotteRaftRead_small.cfg` |
 | Raft joint membership and decommissioning | `CharlotteRaftMembership.tla` | `CharlotteRaftMembership_small.cfg` |
 | Raft pre-membership join admission | `CharlotteRaftJoin.tla` | `CharlotteRaftJoin_small.cfg` |
 | Raft snapshot installation and recovery | `CharlotteRaftSnapshot.tla` | `CharlotteRaftSnapshot_small.cfg` |
@@ -64,7 +65,7 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all thirty-four complete fast configurations and 101 expected-failure
+- runs all thirty-five complete fast configurations and 103 expected-failure
   IPC-transaction, IPC-publication, endpoint-observer, name-publication, boot-trust, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
   checked-wait, domain-abort, address-space, root-retirement, hardware-ASID, interrupt-route, service-lifecycle, DMA, DMA-operation, authorization,
   Raft-join, Raft-response, snapshot-restore, cluster-ingress, and reliable-message regression configurations;
@@ -795,6 +796,17 @@ learner and pending-joiner projection explores 49,395 distinct states, with four
 required counterexamples. Transport authenticity, request correlation and read
 lease timing remain separate. The [source regression and evidence](../reports/audits/2026-10-18-raft-response-fencing.md)
 record the unsafe commit before correction and the passing repeat.
+
+`CharlotteRaftRead.tla` checks read prerequisites after an election with an
+inherited older-term prefix. Recent quorum contact cannot substitute for a
+committed current-term entry, and application must reach that commit before a
+query. Its finite instance explores 20 distinct states, with positive coverage
+for accepted reads and both rejection paths. Two controls remove the commit and
+application guards. The [read-prerequisite review](../reports/audits/2026-10-18-raft-read-prerequisites.md)
+records the reproduced source failure. Contact is an external input: this model
+does not establish lease timing, delayed same-term response safety, request
+correlation or complete linearizability. Log/election proofs and actual snapshot
+term lookup remain separate layers and Rust checks.
 
 `CharlotteSnapshotRestore.tla` checks the application acceptance boundary
 separately. Unsupported headers and malformed later sections leave application

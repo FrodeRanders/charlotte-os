@@ -560,6 +560,13 @@ historical AMD causality, the retained Intel scheduled-close/ingress failure and
 broader cleanup acceptance remain open. SEC-18 remains partial; finding counts
 are unchanged.
 
+The [Raft read-prerequisite review](../reports/audits/2026-10-18-raft-read-prerequisites.md)
+reproduces query admission before a newly elected leader commits in its term.
+The gate now requires a current-term commit and application through that commit,
+with a finite read model and two negative controls. This does not resolve
+receive-time lease timing, delayed same-term responses or request correlation;
+numbered finding dispositions remain unchanged.
+
 The [Graft membership/parity follow-up](../reports/audits/2026-10-18-raft-membership-parity.md)
 compares all three upstream implementations and the Jepsen scenario definitions.
 It restores the automatic proposed-member catch-up gate and corrects retained
