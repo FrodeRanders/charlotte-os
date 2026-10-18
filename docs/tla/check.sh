@@ -20,14 +20,15 @@ run_model() {
     local module="$1"
     local config="$2"
     shift 2
-    local log="${model_dir}/${module}.log"
+    local run_id="${module}-${config%.cfg}"
+    local log="${model_dir}/${run_id}.log"
 
     echo ">>> TLC ${module} (${config})"
     if ! java -XX:+UseParallelGC -cp "${tools_jar}" tlc2.TLC \
             "${module}" \
             -config "${config}" \
             -workers auto \
-            -metadir "${model_dir}/${module}-states" \
+            -metadir "${model_dir}/${run_id}-states" \
             -coverage 1 >"${log}" 2>&1; then
         cat "${log}" >&2
         exit 1
@@ -100,10 +101,70 @@ run_expected_violation CharlotteIpcTransaction \
 run_expected_violation CharlotteIpcTransaction \
     CharlotteIpcTransaction_timeout_unsafe.cfg \
     TimeoutRetainsLoan UnsafeTimeoutRelease
+run_model CharlotteIpcPublication CharlotteIpcPublication_small.cfg \
+    Begin PrepareRecord RejectStorage Reserve RejectReservation PrepareMemory \
+    PrepareConnection Commit RejectCommit FinishPreparation AbortPreparation \
+    Readiness PrepareReceive RejectReceive ReceiveWriteFailed CommitReceive \
+    ObserveReply RepeatObservation Use ApplicationClose CancelHidden Fill \
+    RetireNamespace DetachNamespace ReplaceNamespace ReleaseRetired Abandon
+run_expected_violation CharlotteIpcPublication CharlotteIpcPublication_memory_unsafe.cfg \
+    UseRequiresDelivery UnsafeUseMemory
+run_expected_violation CharlotteIpcPublication CharlotteIpcPublication_connection_unsafe.cfg \
+    UseRequiresDelivery UnsafeUseConnection
+run_expected_violation CharlotteIpcPublication CharlotteIpcPublication_batch_unsafe.cfg \
+    AtomicPublication UnsafePublishPrefix
+run_expected_violation CharlotteIpcPublication CharlotteIpcPublication_serial_unsafe.cfg \
+    SerialsConsumed UnsafeReuseSerial
+run_expected_violation CharlotteIpcPublication CharlotteIpcPublication_cancel_unsafe.cfg \
+    ReplacementIntact UnsafeCancelSuccessor
+run_expected_violation CharlotteIpcPublication CharlotteIpcPublication_restore_unsafe.cfg \
+    ReplacementIntact UnsafeRestoreSuccessor
+run_expected_violation CharlotteIpcPublication CharlotteIpcPublication_refund_unsafe.cfg \
+    RetainedNodesCharged UnsafeRefundRetained
+run_expected_violation CharlotteIpcPublication CharlotteIpcPublication_readiness_unsafe.cfg \
+    VisibleRequiresDelivery UnsafeReadinessDelivers
+run_expected_violation CharlotteIpcPublication CharlotteIpcPublication_observe_unsafe.cfg \
+    ObservedCloseStaysClosed UnsafeRepublishObserved
+run_expected_violation CharlotteIpcPublication CharlotteIpcPublication_rollback_unsafe.cfg \
+    RollbackRestoresCapturedSource UnsafeRollbackNeedsAdmission
 run_model CharlotteEndpointObservers CharlotteEndpointObservers_small.cfg \
     ArmReadiness ArmCloseWatch Send Receive Close ObserveClose
 run_expected_violation CharlotteEndpointObservers CharlotteEndpointObservers_unsafe.cfg \
     CloseSignalImpliesClosed UnsafeMessageWake
+run_model CharlotteNamePublication CharlotteNamePublication_small.cfg \
+    Begin RejectBeforeWatch PrepareWatch RejectPolicy PublishPolicy Install \
+    Lookup QueueLookup ResolveDeferred FinishInstall CloseEndpoint CqHint \
+    ObservePending ObserveUnrelated RetireDeath RetireExplicit RejectRetirement \
+    CancelWatch CloseSource WatchError WaitRejected LifecycleAbort PublicationAbort
+run_model CharlotteNamePublication CharlotteNamePublication_exhaustion.cfg \
+    Begin PrepareWatch PublishPolicy Install FinishInstall ExhaustionRetire \
+    CancelWatch CloseSource RejectExhausted
+run_expected_violation CharlotteNamePublication CharlotteNamePublication_public_unsafe.cfg \
+    PublicIssuance UnsafePublicLookup
+run_expected_violation CharlotteNamePublication CharlotteNamePublication_deferred_unsafe.cfg \
+    PublicIssuance UnsafeDeferredLookup
+run_expected_violation CharlotteNamePublication CharlotteNamePublication_replacement_unsafe.cfg \
+    ReplacementProtected UnsafePublicReplacement
+run_expected_violation CharlotteNamePublication CharlotteNamePublication_watch_unsafe.cfg \
+    BeforeWatchUnchanged UnsafeMutationBeforeWatch
+run_expected_violation CharlotteNamePublication CharlotteNamePublication_hint_unsafe.cfg \
+    DeathNeedsExactResult UnsafeHintRetires
+run_expected_violation CharlotteNamePublication CharlotteNamePublication_stale_unsafe.cfg \
+    DeathNeedsExactResult UnsafeStaleHint
+run_expected_violation CharlotteNamePublication CharlotteNamePublication_disposal_unsafe.cfg \
+    WatchRetainsSource UnsafeCloseSourceFirst
+run_expected_violation CharlotteNamePublication CharlotteNamePublication_quota_unsafe.cfg \
+    LiveBound UnsafeNewAtCapacity
+run_expected_violation CharlotteNamePublication CharlotteNamePublication_abort_unsafe.cfg \
+    AbortRetainsOwners UnsafeAbortDisposes
+run_expected_violation CharlotteNamePublication CharlotteNamePublication_retire_unsafe.cfg \
+    RetirementAuthorized UnsafeUnauthorizedRetire
+run_expected_violation CharlotteNamePublication CharlotteNamePublication_wrap_unsafe.cfg \
+    GenerationNotReused UnsafeGenerationWrap
+run_expected_violation CharlotteNamePublication CharlotteNamePublication_exhausted_unsafe.cfg \
+    PolicyGenerationRepresentable UnsafePublishExhausted
+run_expected_violation CharlotteNamePublication CharlotteNamePublication_serial_unsafe.cfg \
+    GrantGenerationCoherent UnsafeLookupDuringPublish
 run_model CharlotteCQ CharlotteCQ_mini.cfg \
     Complete Fail CancelOp DrainOne DrainAll ObserveResult CqWait CqWake TimerFire
 run_expected_violation CharlotteCQ CharlotteCQ_buffer_unsafe.cfg \
@@ -112,6 +173,22 @@ run_model CharlotteTimedWait CharlotteTimedWait_small.cfg \
     ArmWait PublishWork DeliverWake TimerFire Consume
 run_expected_violation CharlotteTimedWait CharlotteTimedWait_unsafe.cfg \
     TimeoutObservedNoWork UnsafeTimerFire
+run_model CharlotteCheckedWait CharlotteCheckedWait_small.cfg \
+    BeginWait PrepareWatchdog RejectWatchdog PrepareSource RejectSource \
+    Register PublishPark PublishTerminal ChangeEpisode Wake UnrelatedWake \
+    Recheck ObserveTerminal AdvanceTime Abandon
+run_expected_violation CharlotteCheckedWait CharlotteCheckedWait_rejection_unsafe.cfg \
+    PendingRetainsOwnerAndLoan UnsafeRejectedRelease
+run_expected_violation CharlotteCheckedWait CharlotteCheckedWait_replay_unsafe.cfg \
+    OneSubmission UnsafeReplay
+run_expected_violation CharlotteCheckedWait CharlotteCheckedWait_deadline_unsafe.cfg \
+    DeadlineUnchanged UnsafeRestartDeadline
+run_expected_violation CharlotteCheckedWait CharlotteCheckedWait_result_unsafe.cfg \
+    ResultNeedsTerminalProof UnsafeWakeAdoptsResult
+run_expected_violation CharlotteCheckedWait CharlotteCheckedWait_park_unsafe.cfg \
+    ParkedTerminalHasWake UnsafeParkWithoutRecheck
+run_expected_violation CharlotteCheckedWait CharlotteCheckedWait_timeout_unsafe.cfg \
+    TimeoutRespectsDeadline UnsafeAdmissionTimeout
 run_model CharlotteScheduler CharlotteScheduler_small.cfg \
     Spawn Admit Dispatch Preempt Block Wake SwitchOff Migrate \
     RequestRemoteAbort RetireRemoteAbort AbortNotRunning SelfAbort Reap \
@@ -138,6 +215,20 @@ run_model CharlotteAddressSpace CharlotteAddressSpace_small.cfg \
     Allocate CaptureHandle CloseExact
 run_expected_violation CharlotteAddressSpace CharlotteAddressSpace_unsafe.cfg \
     ReplacementSurvivesStaleHandle UnsafeStaleClose
+run_model CharlotteRootRetirement CharlotteRootRetirement_small.cfg \
+    Allocate Acquire FinishOperation AbandonOperation BeginClose ClosePending \
+    FinishCleanup Detach BeginInvalidation InvalidationFailed RetainForRetry \
+    ClaimRetry InvalidationSucceeded StartPhysical FinishPhysical Abandon
+run_expected_violation CharlotteRootRetirement CharlotteRootRetirement_lease_unsafe.cfg \
+    LeasesRetainRoot UnsafeDetachWithLease
+run_expected_violation CharlotteRootRetirement CharlotteRootRetirement_release_unsafe.cfg \
+    PhysicalRequiresInvalidation UnsafeReleaseBeforeInvalidation
+run_expected_violation CharlotteRootRetirement CharlotteRootRetirement_physical_unsafe.cfg \
+    PhysicalOnce UnsafeRetryPhysical
+run_expected_violation CharlotteRootRetirement CharlotteRootRetirement_abandon_unsafe.cfg \
+    TerminalAbandonment UnsafeAdoptAbandoned
+run_expected_violation CharlotteRootRetirement CharlotteRootRetirement_refund_unsafe.cfg \
+    BackingCharged UnsafeRefundPartial
 run_model CharlotteHardwareAsid CharlotteHardwareAsid_small.cfg \
     Allocate CacheTranslation Retire Invalidate
 run_expected_violation CharlotteHardwareAsid CharlotteHardwareAsid_unsafe.cfg \
@@ -179,6 +270,40 @@ run_model CharlotteDMA CharlotteDMA_small.cfg \
     CloseMemory ExitDriver ReclaimMemory
 run_expected_violation CharlotteDMA CharlotteDMA_unsafe.cfg \
     ExclusiveDmaHasNoCpuAuthority UnsafeBeginExclusiveMap
+run_model CharlotteDmaOperation CharlotteDmaOperation_small.cfg \
+    BeginMap ClaimMap PrepareInterest RejectSourcePreparation RejectContext \
+    LinkInterest ReadyDuringPreparation RejectWaiter Park ObserveClosedSource \
+    RestoreUnit NotifySource CompetingClaim AbandonExternal CleanupUnstarted \
+    FinishMap CompleteMapPublic RejectMapPublicCompletion BeginUnmap \
+    RejectUnmapAdmission ClaimUnmap FinishUnmap CompleteUnmapPublic \
+    RejectUnmapPublicCompletion CpuUnmapFailure CpuUnmapSuccess \
+    FailedSharedCpuUnmap FreshCpuMap PrepareLocalDrop DropLocal ReleaseBacking RejectRootClose Abandon
+run_expected_violation CharlotteDmaOperation CharlotteDmaOperation_cell_unsafe.cfg \
+    ClaimNeedsCompleteUnit UnsafeClaimDetachedCell
+run_expected_violation CharlotteDmaOperation CharlotteDmaOperation_readiness_unsafe.cfg \
+    ReadinessIsNotCompletion UnsafeReadinessCompletes
+run_expected_violation CharlotteDmaOperation CharlotteDmaOperation_preparation_unsafe.cfg \
+    PreclaimRetainsPreparation UnsafeRejectDropsPreparation
+run_expected_violation CharlotteDmaOperation CharlotteDmaOperation_map_unsafe.cfg \
+    MapSubmittedOnce UnsafeReplayMap
+run_expected_violation CharlotteDmaOperation CharlotteDmaOperation_rearm_unsafe.cfg \
+    StartedFailureNotRearmed UnsafeRearmStartedUnmap
+run_expected_violation CharlotteDmaOperation CharlotteDmaOperation_drop_unsafe.cfg \
+    UncertainAttemptNotResubmitted UnsafeDropResubmits
+run_expected_violation CharlotteDmaOperation CharlotteDmaOperation_confirmation_unsafe.cfg \
+    ConfirmationSticky UnsafeForgetDmaConfirmation
+run_expected_violation CharlotteDmaOperation CharlotteDmaOperation_access_unsafe.cfg \
+    FailedSharedRestricted UnsafeFailedSharedAccess
+run_expected_violation CharlotteDmaOperation CharlotteDmaOperation_cpu_unsafe.cfg \
+    PossibleDmaRetainsBacking UnsafeCpuUnmapDischargesDma
+run_expected_violation CharlotteDmaOperation CharlotteDmaOperation_abandon_unsafe.cfg \
+    AbandonmentRetainsOwner UnsafeAbandonReleases
+run_expected_violation CharlotteDmaOperation CharlotteDmaOperation_context_unsafe.cfg \
+    WaitNeedsQualifiedContext UnsafeWaitMasked
+run_expected_violation CharlotteDmaOperation CharlotteDmaOperation_public_unsafe.cfg \
+    PublicRejectionRetainsAttempt UnsafeFinalBusyRearms
+run_expected_violation CharlotteDmaOperation CharlotteDmaOperation_remap_unsafe.cfg \
+    CpuOwnerNeedsNoDma UnsafeCoherentRemap
 run_model CharlotteRaft CharlotteRaft_small.cfg \
     StartElection GrantVote BecomeLeader ObserveHigherTerm Crash Restart
 run_model CharlotteRaftLog CharlotteRaftLog_small.cfg \

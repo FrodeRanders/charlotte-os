@@ -875,7 +875,10 @@ fn map_locked_with_cleanup(
         if object.destroy_when_unpinned || object.retirement_pins != 0 {
             return Err(MemoryObjectError::LendingActive);
         }
-        if object.exclusive_dma_pins != 0 || writable && object.copy_pins != 0 {
+        // Coherent DMA may retain an existing volatile CPU mapping. A fresh
+        // mapping could expose Rust references after a failed shared transfer
+        // consumed its restricted mapping owner, so every DMA pin fences it.
+        if object.dma_pins != 0 || writable && object.copy_pins != 0 {
             return Err(MemoryObjectError::LendingActive);
         }
         check_map_lend_state(object, asid, writable)?;

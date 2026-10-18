@@ -1,0 +1,2377 @@
+{
+  "schema": "charlotte-ipc-publication-model-evidence-v1",
+  "reviewed_revision": "1c6963a2887d7d69472af9179374f81ecd0750d4",
+  "tooling": {
+    "release": "TLA+ Tools v1.7.4",
+    "tlc_version": "2.19 (2024-08-08), revision 5a47802",
+    "jar_sha256": "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88",
+    "java_version": "openjdk version \"25.0.3\" 2026-04-21 LTS\nOpenJDK Runtime Environment Zulu25.34+17-CA (build 25.0.3+9-LTS)\nOpenJDK 64-Bit Server VM Zulu25.34+17-CA (build 25.0.3+9-LTS, mixed mode, sharing)",
+    "host": "macOS-26.7.1-arm64-arm-64bit",
+    "ci_java_major": 17
+  },
+  "verification": {
+    "command": "docs/tla/check.sh /path/to/verified/tla2tools.jar",
+    "runner_exit": 0,
+    "safe_configurations": 27,
+    "expected_counterexamples": 51,
+    "generated_states_sum": 113894515,
+    "distinct_states_sum": 17689055,
+    "all_safe_queues_empty": true,
+    "required_actions_exercised": true,
+    "summary_output_sha256": "b61486b1fcf3eb5001f5488ba6a6e352b3133bb60be9441a6917fb8341a02407"
+  },
+  "authoring_failures": [
+    {
+      "stage": "semantic analysis, before exploration",
+      "model": "CharlotteIpcPublication",
+      "diagnostic": "Unknown operator: ns in the dependent variable bound of SerialsConsumed.",
+      "resolution": "Use nested quantifiers. Earlier draft inputs were not separately archived; this manifest hashes final checked inputs only."
+    }
+  ],
+  "checked_input_sha256": {
+    "docs/tla/CharlotteAddressSpace.tla": "94e8ae476eab11029c39513fa66197793b05f0a6ca1655b751497a6e518d0284",
+    "docs/tla/CharlotteAddressSpace_small.cfg": "25feef19bf1dc780d8cece87801b7590b0bce68aa884c7459f7a9a65866d35eb",
+    "docs/tla/CharlotteAddressSpace_unsafe.cfg": "4be0b588a5b44ff54ac273701331a622b9f2bfd241b4a428be8acaf98a5337cf",
+    "docs/tla/CharlotteAuthorization.tla": "d5e14f9e9eb674522b6446235d24e322507959a2baf0219d22912ab3c7929515",
+    "docs/tla/CharlotteAuthorization_generation_unsafe.cfg": "4f23d40ea610f3e457a4d3e8107d111c9d4bdbadd421a83d946c371677b105db",
+    "docs/tla/CharlotteAuthorization_policy_unsafe.cfg": "4f0e81b15fa4c54d4e10216d4b23f84ed3ce85fd801c0c271ca0486717750779",
+    "docs/tla/CharlotteAuthorization_policy_version_unsafe.cfg": "369762db357baf735d3464b0c1f309b9a2c6ff1c2f22bb19c28ef1d91361be2a",
+    "docs/tla/CharlotteAuthorization_principal_unsafe.cfg": "c3f4c2815588d123d723e6f3aa12360a08c5c93d1dc9730e31bca4c6590525bf",
+    "docs/tla/CharlotteAuthorization_rights_unsafe.cfg": "9d82cd883cb9b68ba02cc926d9019d591c0edaceb9568416744dc3b7a882221f",
+    "docs/tla/CharlotteAuthorization_small.cfg": "2ddfd048b004e053686223171bcfcbbeb94d1ef4f4d53cc2c63b2276738ea15b",
+    "docs/tla/CharlotteCQ.tla": "1557db52418f0e4d47a737951b4a1d9cae5dfb44329b228bbd749da22a4bdd04",
+    "docs/tla/CharlotteCQ_buffer_unsafe.cfg": "9c5a49c335ba999c468e18651ee9a60bfb336d7ea32db783de562f8c897bf5ac",
+    "docs/tla/CharlotteCQ_mini.cfg": "e1b7eafb8fbc246c9122055672615be144e3b43ed869c9dbe41ba4d7d101125f",
+    "docs/tla/CharlotteCapability.tla": "4e94c107f21e7486cfe23c232c2b1930557af27df89c45cf75f29f4ddd098f1a",
+    "docs/tla/CharlotteCapability_small.cfg": "6a0cf36f3f4845ea37d901eb3ddbbf603445789ba18081ef7646c3f7ea36c8e3",
+    "docs/tla/CharlotteCheckedWait.tla": "0a94737e26b40c49939af7233d765ef4c76523608e39bf1b21818ac344c129b7",
+    "docs/tla/CharlotteCheckedWait_deadline_unsafe.cfg": "ed16d0f4d9759d76eafa780f56f6be83a95e7ae4721e0535aa8249afcbc0e5d2",
+    "docs/tla/CharlotteCheckedWait_park_unsafe.cfg": "0851785424eb552b590f5b191e31a0b3ec38ff8f6ee2a437803cc47a0e60fbbc",
+    "docs/tla/CharlotteCheckedWait_rejection_unsafe.cfg": "d73cdb7ac12b71fc3413a87343adecbd23a3ed3fbe29d8f5bd12d024e7b10188",
+    "docs/tla/CharlotteCheckedWait_replay_unsafe.cfg": "48df5cf72013a629118216d005481a2bef0c8e6fbee23e29664470affbec15c1",
+    "docs/tla/CharlotteCheckedWait_result_unsafe.cfg": "609274f19fcbd3f2d1a259f03c98bd8670ee2790a2de9c1b127cc935a51139c5",
+    "docs/tla/CharlotteCheckedWait_small.cfg": "5c114d9f0027dc3382a9b0ba9516b8dbc88eed5dde9b1067ebd8eecaace13e04",
+    "docs/tla/CharlotteCheckedWait_timeout_unsafe.cfg": "92699d7f09749d4f7f05ecc0e5e11605d79a0d02b715f4814eb5e0e590c36477",
+    "docs/tla/CharlotteClusterIngress.tla": "4660b215db89bb5d67b8433091eff5bb0052c993152e5423c657b9909aa6ac13",
+    "docs/tla/CharlotteClusterIngress_history_unsafe.cfg": "b35cd382b188843b7ae065053d0095c1fd55c41b6695410e8d8824e2a7820926",
+    "docs/tla/CharlotteClusterIngress_readiness_unsafe.cfg": "811add7d3dc380ff4f5feb31c33ba002ca72fa6ebc3b45e4116b5427fdec0656",
+    "docs/tla/CharlotteClusterIngress_small.cfg": "402c878db4ccef9c752c84c9beee894d823a8bf0d5f669d62de57734f2063360",
+    "docs/tla/CharlotteClusterIngress_stale_snapshot_unsafe.cfg": "ed01b5382c1dc5aa11eee36b853a7cf72e5193f586d5e9075e6c73adb22127a2",
+    "docs/tla/CharlotteDMA.tla": "ae5c4a1ba1d21143432aa6064e1779163fc718d82fa2ddbe4298b4575e74c6d9",
+    "docs/tla/CharlotteDMA_small.cfg": "55befa332f585191e5078b4085601f1ea9439a02f24c042d14e2bc7ae3009e93",
+    "docs/tla/CharlotteDMA_unsafe.cfg": "8b5f798d0723b8d9640eae2f9fb4c8a20383b49552d501943826fb55ad25b2ac",
+    "docs/tla/CharlotteEndpointObservers.tla": "42415be276a5a31546337c473cfb89300cee102664809905169eb713efb140b6",
+    "docs/tla/CharlotteEndpointObservers_small.cfg": "8a972975c5d21bc23df1d1529258c455d35f5278ad6f209c19349dfbe6c11e14",
+    "docs/tla/CharlotteEndpointObservers_unsafe.cfg": "c85058ca46cb9ed10c39c38742cdb1c2895571fc6247de2fbaedcd488aff89a2",
+    "docs/tla/CharlotteHardwareAsid.tla": "2074acb290a98b6113874dbb3a6c93bb213698d5731153acd0f099b996644928",
+    "docs/tla/CharlotteHardwareAsid_small.cfg": "f4ef9b3536f735756f09f04bd0297b4f74d54ce03a6725806b5475b26b72d8ef",
+    "docs/tla/CharlotteHardwareAsid_unsafe.cfg": "4cc26e9851630ffbd7b8f3de981304bda0e3be2d06bf16c2e71cd6d286d852c9",
+    "docs/tla/CharlotteIPC.tla": "cafa97f897a33d496eb5c1ce2da877e6546ec66f9202d20f6ab33280a49ad857",
+    "docs/tla/CharlotteIPC_small.cfg": "7b5369411db55b2a2e8ea88245bdffc3dfbeb4867528f59c9e6e659a27931570",
+    "docs/tla/CharlotteInterruptRoute.tla": "9e6fdc9caff46461273a279b2a76153c6f22c7c97152999a92a93b46e281b0b4",
+    "docs/tla/CharlotteInterruptRoute_small.cfg": "d2d75e070eab33d10fd0cc38a3d60f53788637dfac9dfe505df0702f8f98f24e",
+    "docs/tla/CharlotteInterruptRoute_unsafe.cfg": "58e087639848e1cae282cd413caf77b3fffd0b912ebdde3728c6d05820f8bf10",
+    "docs/tla/CharlotteIpcPublication.tla": "67d87012aaed9bed5eec8df42b68f46359153a618d43a9b0befcb6b92e009432",
+    "docs/tla/CharlotteIpcPublication_batch_unsafe.cfg": "f21d1ad0c3c4ae9110851d914f55df4e08a5583db20fb9a1c3524c8158f3af1f",
+    "docs/tla/CharlotteIpcPublication_cancel_unsafe.cfg": "fb3cb26ea11333c4341a9569f3d1eea6757d28d2bed3a8bab006c8930187cd6d",
+    "docs/tla/CharlotteIpcPublication_connection_unsafe.cfg": "aaca3189ab479abf22b273882ca92fdf23602696a91aba0c1ff316bd46e1beae",
+    "docs/tla/CharlotteIpcPublication_memory_unsafe.cfg": "157e67d386164b1789334327b7c329b5cc2f133203867a7f2f3738688616133d",
+    "docs/tla/CharlotteIpcPublication_observe_unsafe.cfg": "958ce487bbee6ff56aae8a9a40df99593537a6b64320f4a5641a262ce245b0f9",
+    "docs/tla/CharlotteIpcPublication_readiness_unsafe.cfg": "dbc976896ed54d43217106ac32f920a93ef1ea9be8821e71b926d16ca6a02a27",
+    "docs/tla/CharlotteIpcPublication_refund_unsafe.cfg": "6aad7a123d8d50f7604ea78ed9f3106e05c5d95559c6dda0e83948f533abdc57",
+    "docs/tla/CharlotteIpcPublication_restore_unsafe.cfg": "a96f0da36e15eda49e0698ed30b3f373425fac45e76d11f8f8b034e5866ac5dd",
+    "docs/tla/CharlotteIpcPublication_rollback_unsafe.cfg": "e835593816f7502ac984d59d370237950b166a938774ec5a45a5686afbab6313",
+    "docs/tla/CharlotteIpcPublication_serial_unsafe.cfg": "32130b6ce3d0d01be1df08a89b7dd38d9a7d476ad31cd3605df48376eb1a5650",
+    "docs/tla/CharlotteIpcPublication_small.cfg": "4c6da1ebeb79eeefa62bb0dbb9d26184956c1fdd6d097a5de41b120275d67d87",
+    "docs/tla/CharlotteIpcTransaction.tla": "bfc596a22480fae309c31732670b60024085014ec084d998dbbf8affd40fed7c",
+    "docs/tla/CharlotteIpcTransaction_rollback_unsafe.cfg": "89326400847cf5ac0fd76e7c68eb2f32385d551cd38ce201c70dd6a5a6b7fe99",
+    "docs/tla/CharlotteIpcTransaction_small.cfg": "67e0efe832fbadf7258296297af6afa293da1a78edcdb464a14cf9a70280a471",
+    "docs/tla/CharlotteIpcTransaction_timeout_unsafe.cfg": "5c748b860dec8df3fb253e6aefcaa8138835fac61dc0b6ea48c8a089cb2b4c00",
+    "docs/tla/CharlottePlacementControl.tla": "2c93a5cf0a91d5babd0d4fbb863ea0d0c64eeda82a9bfc8d2467e19ba17e2515",
+    "docs/tla/CharlottePlacementControl_dwell_unsafe.cfg": "c1ffcc9f00441a11bd727cb812389a12dab91898d0764081e763693abaf55e8a",
+    "docs/tla/CharlottePlacementControl_reserve_unsafe.cfg": "969d1b58a2debd681a1beea9a4b69585f0f04f3e563eb78ddf32ef5396382733",
+    "docs/tla/CharlottePlacementControl_small.cfg": "ea702173e19534cf9f0967fe2f5a46bc5ea0e25a78c6a0a66ecd96da6e514cf8",
+    "docs/tla/CharlotteRaft.tla": "6ab1ef702a12515a8299263af5d5216115dd976dfee7d69e6b394c4c1fc94d80",
+    "docs/tla/CharlotteRaftJoin.tla": "4436022e36d4ed88690e3ba1dbd995bcb7bbaf60acd2c9da10063bb5cb221486",
+    "docs/tla/CharlotteRaftJoin_restart_unsafe.cfg": "9ae634438f5cfcd525ef79f229861ed5f16b09ded70282aa2d672670291b95eb",
+    "docs/tla/CharlotteRaftJoin_small.cfg": "645defb0cbba7276f412504af6ae1edd648bb75dc612bfec0c4466de5e15c833",
+    "docs/tla/CharlotteRaftJoin_unsafe.cfg": "e9e87d139447a922465906760b61028efcfdeb06e08fc0657111127bb1d3f3e1",
+    "docs/tla/CharlotteRaftLog.tla": "f1264ced4451c6498bbc23877475805613a798d4baa4dc7b92a16804f4d1266b",
+    "docs/tla/CharlotteRaftLog_small.cfg": "d0922611874d0a0c3aad1302c79cbeb2964b28047f5a4d62828c4b83ba44addb",
+    "docs/tla/CharlotteRaftMembership.tla": "c25a25ca001a24f0dc4944bed2c36b046f92d2e57abd0f9526554ba9ee2b46a4",
+    "docs/tla/CharlotteRaftMembership_small.cfg": "f1729e757e37e9ac065e419b7ed3cb4c276f936cf7943e984d64428055bdbb9f",
+    "docs/tla/CharlotteRaftSnapshot.tla": "3ecd5c17fdb200227c0de9608b732df5ae18c648acdcf4619d607eff3a7639d8",
+    "docs/tla/CharlotteRaftSnapshot_small.cfg": "0ea7a243aab5cdeace57a0ef990237f8893614d30afc06427d98ce0425baafb1",
+    "docs/tla/CharlotteRaft_small.cfg": "48294c1cddc1d440a1e2d70a80fd6ea9da8ade2d20ff0f1f4f54b85e8843bb9b",
+    "docs/tla/CharlotteReliableMessage.tla": "3a17cb197cbf7818717940a30cf6930f41a3b5e6fe16b8dfe4cfa52851e51f6a",
+    "docs/tla/CharlotteReliableMessage_identity_unsafe.cfg": "4cbb48be424584a73181c7c5495e31faf41c3b967405092b520a41b9503678da",
+    "docs/tla/CharlotteReliableMessage_regression_unsafe.cfg": "49dbe795212fe69495d4c927592dce59074306c5b30c254d6d4bf8f43bd6ce8b",
+    "docs/tla/CharlotteReliableMessage_small.cfg": "85adbd3bb065b8da79a7d8dfe58fd5e4b530f10d26015f83952c4a82e22edea5",
+    "docs/tla/CharlotteRemoteCall.tla": "36de513b3ffbfa1e9cbd74bac0404fc1ef66cd5400c7b536a9da18c1be2b1c55",
+    "docs/tla/CharlotteRemoteCall_small.cfg": "56d4993c70c7c7f9a5d5ec478240776ee12e00432adf8402a6cc291bc7fe9601",
+    "docs/tla/CharlotteRootRetirement.tla": "817ce0b352e358ab901f6392354d4a42ca294274080e5f1b979d1105f563d87e",
+    "docs/tla/CharlotteRootRetirement_abandon_unsafe.cfg": "693f4eeb72902cd536fb1fa185b05e7daec0f0fd50f9fe655f1dcbd9396c7202",
+    "docs/tla/CharlotteRootRetirement_lease_unsafe.cfg": "185baa2c91ce27fd6872e654ee522f6b3770f467e0eead8557bb26c60c95c889",
+    "docs/tla/CharlotteRootRetirement_physical_unsafe.cfg": "fa20b8c4b353156b8f39c48362bc3ea995377e31d81a69f742300ca41077edab",
+    "docs/tla/CharlotteRootRetirement_refund_unsafe.cfg": "c01d5c13fbee34239773c05eb0a33db1d5c31dfaa2ecf9a8de25853de659faed",
+    "docs/tla/CharlotteRootRetirement_release_unsafe.cfg": "47ca560b0c4fba4952c7009e3fb6af8c5c3cde906a7bb943d70aea4113dbada5",
+    "docs/tla/CharlotteRootRetirement_small.cfg": "9ee0187ad3b152ba75044f87f71788bb9bd1f5d2af8ebf0a1b1389c487b593d1",
+    "docs/tla/CharlotteScheduler.tla": "a58ef1f0f39ebb06d7b5d09568071891b51ecc327ca097b018155026c2acab5e",
+    "docs/tla/CharlotteScheduler_domain_abort_unsafe.cfg": "53332baa166196b745e9c8a9ae53ca6f0df3675120de0ff4fa4c9b8d7c24ee56",
+    "docs/tla/CharlotteScheduler_small.cfg": "f48844b2897340be11b29446d9fe763fe5ac12eb09a4d98128ed8567adffb047",
+    "docs/tla/CharlotteScheduler_unsafe.cfg": "d8816f8c15bd9c50ccb9421ba88b5aba6c2b737b03d8f71bddbb8791cf8165c5",
+    "docs/tla/CharlotteServiceLifecycle.tla": "5cab06543727b1373ae1ba9a342217f93a275fb3058cc33c3408c6f6fc39dee0",
+    "docs/tla/CharlotteServiceLifecycle_small.cfg": "e44daeaa25b96571f91e1f440ef61865ca2cfe7ac2908e3761a0c17a24fc1762",
+    "docs/tla/CharlotteServiceLifecycle_unsafe.cfg": "dfbae5bdd1af4274cec07f6501be0724140ff96343be816b836d7458262e1e74",
+    "docs/tla/CharlotteStackGrowth.tla": "36dce6679dd969bd14136bb79c5c2cff8cec8df6479f0d33458ab196324a4a5f",
+    "docs/tla/CharlotteStackGrowth_grow_unsafe.cfg": "bef8d583b177e41bc58ef6312d0726129b58aa62f0539fe0e3b2b3dc4cf99e74",
+    "docs/tla/CharlotteStackGrowth_leak_unsafe.cfg": "d3df7e3d6e69ea109cb6b9ee06c57cf54c9d6d4ac92ede12b7497066093857d6",
+    "docs/tla/CharlotteStackGrowth_small.cfg": "1931995ce026befe604d6225a63e43cf5afbc336881c9141222af8943076baf9",
+    "docs/tla/CharlotteThreadJoin.tla": "3e61029e5fa352c6b065f0edd165a94f132095fb1c0d79c31b57d6761653b0e6",
+    "docs/tla/CharlotteThreadJoin_small.cfg": "64bf35e8eea699f9f8d1f1fd51c4c8c8b3f0e123a32912015546ea891563c819",
+    "docs/tla/CharlotteThreadJoin_unsafe.cfg": "1caa3d988aea11eefcc695c7524337b2ceac2ccfa8daa7620732affb6fc577d7",
+    "docs/tla/CharlotteThreadJoin_wrap_unsafe.cfg": "6304719f640bb360f0aa8f7c85face93526dea4e490f9de314dcc46bdf62eed9",
+    "docs/tla/CharlotteTimedWait.tla": "8739f35fb3eb7d97b5e9b41c786ada3f1f74d7bfd9d285fbb332bd457e06078e",
+    "docs/tla/CharlotteTimedWait_small.cfg": "a3d3b0fcaf80d4030a515699c0f02d29b6951f4e4170774df1c83cb558aba1d2",
+    "docs/tla/CharlotteTimedWait_unsafe.cfg": "1ffdb5d33dd8d1280de6aa281c33a646b6bfa111f6f3ac8eb82b9800c8833be6",
+    "docs/tla/check.sh": "01fca454a8589aef0fa118ad12f203c345b042c630c1746d4d9504fcec6c1a56"
+  },
+  "reviewed_source_sha256": {
+    "crates/catten/src/capability.rs": "2b6a2672485cce09569274a81aae5fcea34e3d3f09a4c9d5330b7117e11599f6",
+    "crates/catten/src/capability/record.rs": "837135ae8b710cdc4d171d1590eb54febcc63db1598d654baafcf14e66841cda",
+    "crates/catten/src/capability/budget.rs": "7ae3e3d02256b47af3e35dca15bcd0292d041006b43a11b08ad4ab42ead7a848",
+    "crates/catten/src/memory/object.rs": "21ad105c7c111b27d5fda7021fd2b76e8955fa7d1c7d267beafe68b9c372a4f3",
+    "crates/catten/src/ipc/mod.rs": "ba6287b686c1f339587d8ff7c5a5c1d842086d4a23db0602974836a5ca8f9aef",
+    "crates/catten/src/ipc/reply.rs": "facaad29b089e4d433631af58830873b59d2e23dccb089522d042a1b7e4f0bf8",
+    "crates/catten/src/ipc/attachments.rs": "56b98be2e936ca477f5be1a18293f6fe7b227047f80da8fccac66cfc26a90c55",
+    "crates/catten/src/ipc/delivery_tests.rs": "1ea2523dfb240313cc3baec9018c9ec31fccd41e14d7eaf9ebec009bdafea4d6",
+    "crates/catten/src/ipc/delivery_tests/connection.rs": "e45c36e7096fe42e1358aa42fc748e77b36d794e6924af61e119f49f69218c42"
+  },
+  "cases": [
+    {
+      "module": "CharlotteIPC",
+      "configuration": "CharlotteIPC_small.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "MemoryCreate": {
+          "distinct_successors": 61232,
+          "total_successors": 181122
+        },
+        "ScalarCallMove": {
+          "distinct_successors": 1875,
+          "total_successors": 2432
+        },
+        "ScalarCallBorrowRead": {
+          "distinct_successors": 9296,
+          "total_successors": 13328
+        },
+        "ScalarCallBorrowWrite": {
+          "distinct_successors": 9257,
+          "total_successors": 13280
+        },
+        "ScalarCallCopy": {
+          "distinct_successors": 905,
+          "total_successors": 1280
+        },
+        "Receive": {
+          "distinct_successors": 3242,
+          "total_successors": 553920
+        },
+        "ReplyReturnMemory": {
+          "distinct_successors": 14190,
+          "total_successors": 25152
+        },
+        "EndpointClose": {
+          "distinct_successors": 118565,
+          "total_successors": 984050
+        },
+        "DomainTeardown": {
+          "distinct_successors": 205122,
+          "total_successors": 2508306
+        }
+      },
+      "generated_states": 6118645,
+      "distinct_states": 1254153,
+      "states_left": 0,
+      "depth": 13
+    },
+    {
+      "module": "CharlotteIpcTransaction",
+      "configuration": "CharlotteIpcTransaction_small.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "BeginVector": {
+          "distinct_successors": 1,
+          "total_successors": 1
+        },
+        "TransferMove": {
+          "distinct_successors": 4,
+          "total_successors": 16
+        },
+        "BeginBorrow": {
+          "distinct_successors": 4,
+          "total_successors": 8
+        },
+        "AttachConnection": {
+          "distinct_successors": 7,
+          "total_successors": 8
+        },
+        "Commit": {
+          "distinct_successors": 1,
+          "total_successors": 1
+        },
+        "FailAndRollback": {
+          "distinct_successors": 1,
+          "total_successors": 28
+        },
+        "Deliver": {
+          "distinct_successors": 1,
+          "total_successors": 2
+        },
+        "WaitTimeout": {
+          "distinct_successors": 2,
+          "total_successors": 2
+        },
+        "Reply": {
+          "distinct_successors": 2,
+          "total_successors": 2
+        },
+        "ObserveReply": {
+          "distinct_successors": 2,
+          "total_successors": 2
+        }
+      },
+      "generated_states": 71,
+      "distinct_states": 26,
+      "states_left": 0,
+      "depth": 11
+    },
+    {
+      "module": "CharlotteIpcTransaction",
+      "configuration": "CharlotteIpcTransaction_rollback_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeRollback": {
+          "distinct_successors": 2,
+          "total_successors": 8
+        }
+      },
+      "violated_invariant": "RollbackRestoresAll",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteIpcTransaction",
+      "configuration": "CharlotteIpcTransaction_timeout_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeTimeoutRelease": {
+          "distinct_successors": 2,
+          "total_successors": 5
+        }
+      },
+      "violated_invariant": "TimeoutRetainsLoan",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteIpcPublication",
+      "configuration": "CharlotteIpcPublication_small.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "Begin": {
+          "distinct_successors": 6,
+          "total_successors": 24
+        },
+        "PrepareRecord": {
+          "distinct_successors": 14,
+          "total_successors": 311478
+        },
+        "RejectStorage": {
+          "distinct_successors": 1824,
+          "total_successors": 311478
+        },
+        "Reserve": {
+          "distinct_successors": 1070,
+          "total_successors": 5646
+        },
+        "RejectReservation": {
+          "distinct_successors": 2313,
+          "total_successors": 305832
+        },
+        "PrepareMemory": {
+          "distinct_successors": 105,
+          "total_successors": 6690
+        },
+        "PrepareConnection": {
+          "distinct_successors": 119,
+          "total_successors": 6690
+        },
+        "Commit": {
+          "distinct_successors": 48,
+          "total_successors": 48
+        },
+        "RejectCommit": {
+          "distinct_successors": 363,
+          "total_successors": 83400
+        },
+        "FinishPreparation": {
+          "distinct_successors": 500,
+          "total_successors": 75504
+        },
+        "AbortPreparation": {
+          "distinct_successors": 3321,
+          "total_successors": 1463040
+        },
+        "Readiness": {
+          "distinct_successors": 164,
+          "total_successors": 246484
+        },
+        "PrepareReceive": {
+          "distinct_successors": 1325,
+          "total_successors": 2160
+        },
+        "RejectReceive": {
+          "distinct_successors": 294,
+          "total_successors": 178528
+        },
+        "ReceiveWriteFailed": {
+          "distinct_successors": 720,
+          "total_successors": 2160
+        },
+        "CommitReceive": {
+          "distinct_successors": 1188,
+          "total_successors": 2160
+        },
+        "ObserveReply": {
+          "distinct_successors": 87,
+          "total_successors": 1088
+        },
+        "RepeatObservation": {
+          "distinct_successors": 1113,
+          "total_successors": 755552
+        },
+        "Use": {
+          "distinct_successors": 4988,
+          "total_successors": 51328
+        },
+        "ApplicationClose": {
+          "distinct_successors": 10072,
+          "total_successors": 102656
+        },
+        "CancelHidden": {
+          "distinct_successors": 1221,
+          "total_successors": 417464
+        },
+        "Fill": {
+          "distinct_successors": 5405,
+          "total_successors": 20055
+        },
+        "RetireNamespace": {
+          "distinct_successors": 836075,
+          "total_successors": 2303390
+        },
+        "DetachNamespace": {
+          "distinct_successors": 919258,
+          "total_successors": 2305646
+        },
+        "ReplaceNamespace": {
+          "distinct_successors": 676562,
+          "total_successors": 1681171
+        },
+        "ReleaseRetired": {
+          "distinct_successors": 5160421,
+          "total_successors": 24624640
+        },
+        "Abandon": {
+          "distinct_successors": 6145,
+          "total_successors": 857940
+        }
+      },
+      "generated_states": 36122253,
+      "distinct_states": 7634722,
+      "states_left": 0,
+      "depth": 42
+    },
+    {
+      "module": "CharlotteIpcPublication",
+      "configuration": "CharlotteIpcPublication_memory_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeUseMemory": {
+          "distinct_successors": 2,
+          "total_successors": 3
+        }
+      },
+      "violated_invariant": "UseRequiresDelivery",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteIpcPublication",
+      "configuration": "CharlotteIpcPublication_connection_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeUseConnection": {
+          "distinct_successors": 1,
+          "total_successors": 2
+        }
+      },
+      "violated_invariant": "UseRequiresDelivery",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteIpcPublication",
+      "configuration": "CharlotteIpcPublication_batch_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafePublishPrefix": {
+          "distinct_successors": 2,
+          "total_successors": 3
+        }
+      },
+      "violated_invariant": "AtomicPublication",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteIpcPublication",
+      "configuration": "CharlotteIpcPublication_serial_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeReuseSerial": {
+          "distinct_successors": 3,
+          "total_successors": 4
+        }
+      },
+      "violated_invariant": "SerialsConsumed",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteIpcPublication",
+      "configuration": "CharlotteIpcPublication_cancel_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeCancelSuccessor": {
+          "distinct_successors": 2,
+          "total_successors": 3
+        }
+      },
+      "violated_invariant": "ReplacementIntact",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteIpcPublication",
+      "configuration": "CharlotteIpcPublication_restore_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeRestoreSuccessor": {
+          "distinct_successors": 2,
+          "total_successors": 3
+        }
+      },
+      "violated_invariant": "ReplacementIntact",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteIpcPublication",
+      "configuration": "CharlotteIpcPublication_refund_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeRefundRetained": {
+          "distinct_successors": 3,
+          "total_successors": 4
+        }
+      },
+      "violated_invariant": "RetainedNodesCharged",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteIpcPublication",
+      "configuration": "CharlotteIpcPublication_readiness_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeReadinessDelivers": {
+          "distinct_successors": 1,
+          "total_successors": 2
+        }
+      },
+      "violated_invariant": "VisibleRequiresDelivery",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteIpcPublication",
+      "configuration": "CharlotteIpcPublication_observe_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeRepublishObserved": {
+          "distinct_successors": 1,
+          "total_successors": 2
+        }
+      },
+      "violated_invariant": "ObservedCloseStaysClosed",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteIpcPublication",
+      "configuration": "CharlotteIpcPublication_rollback_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeRollbackNeedsAdmission": {
+          "distinct_successors": 1,
+          "total_successors": 2
+        }
+      },
+      "violated_invariant": "RollbackRestoresCapturedSource",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteEndpointObservers",
+      "configuration": "CharlotteEndpointObservers_small.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "ArmReadiness": {
+          "distinct_successors": 4,
+          "total_successors": 6
+        },
+        "ArmCloseWatch": {
+          "distinct_successors": 3,
+          "total_successors": 6
+        },
+        "Send": {
+          "distinct_successors": 4,
+          "total_successors": 4
+        },
+        "Receive": {
+          "distinct_successors": 0,
+          "total_successors": 12
+        },
+        "Close": {
+          "distinct_successors": 8,
+          "total_successors": 12
+        },
+        "ObserveClose": {
+          "distinct_successors": 0,
+          "total_successors": 4
+        }
+      },
+      "generated_states": 45,
+      "distinct_states": 20,
+      "states_left": 0,
+      "depth": 5
+    },
+    {
+      "module": "CharlotteEndpointObservers",
+      "configuration": "CharlotteEndpointObservers_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeMessageWake": {
+          "distinct_successors": 4,
+          "total_successors": 5
+        }
+      },
+      "violated_invariant": "CloseSignalImpliesClosed",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteCQ",
+      "configuration": "CharlotteCQ_mini.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "Complete": {
+          "distinct_successors": 17096,
+          "total_successors": 43728
+        },
+        "Fail": {
+          "distinct_successors": 9155,
+          "total_successors": 43728
+        },
+        "CancelOp": {
+          "distinct_successors": 1118,
+          "total_successors": 5466
+        },
+        "DrainOne": {
+          "distinct_successors": 4268,
+          "total_successors": 295152
+        },
+        "DrainAll": {
+          "distinct_successors": 794,
+          "total_successors": 295152
+        },
+        "ObserveResult": {
+          "distinct_successors": 103902,
+          "total_successors": 197863
+        },
+        "CqWait": {
+          "distinct_successors": 20354,
+          "total_successors": 301592
+        },
+        "CqWake": {
+          "distinct_successors": 276,
+          "total_successors": 1066
+        },
+        "TimerFire": {
+          "distinct_successors": 1357,
+          "total_successors": 2202
+        }
+      },
+      "generated_states": 1586249,
+      "distinct_states": 302659,
+      "states_left": 0,
+      "depth": 12
+    },
+    {
+      "module": "CharlotteCQ",
+      "configuration": "CharlotteCQ_buffer_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeCancelReleasesBuffer": {
+          "distinct_successors": 5,
+          "total_successors": 6
+        }
+      },
+      "violated_invariant": "NonTerminalBufferRemainsLoaned",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteTimedWait",
+      "configuration": "CharlotteTimedWait_small.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "ArmWait": {
+          "distinct_successors": 3,
+          "total_successors": 3
+        },
+        "PublishWork": {
+          "distinct_successors": 3,
+          "total_successors": 3
+        },
+        "DeliverWake": {
+          "distinct_successors": 3,
+          "total_successors": 3
+        },
+        "TimerFire": {
+          "distinct_successors": 3,
+          "total_successors": 6
+        },
+        "Consume": {
+          "distinct_successors": 2,
+          "total_successors": 6
+        }
+      },
+      "generated_states": 22,
+      "distinct_states": 15,
+      "states_left": 0,
+      "depth": 8
+    },
+    {
+      "module": "CharlotteTimedWait",
+      "configuration": "CharlotteTimedWait_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeTimerFire": {
+          "distinct_successors": 3,
+          "total_successors": 7
+        }
+      },
+      "violated_invariant": "TimeoutObservedNoWork",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteCheckedWait",
+      "configuration": "CharlotteCheckedWait_small.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "BeginWait": {
+          "distinct_successors": 4,
+          "total_successors": 108
+        },
+        "PrepareWatchdog": {
+          "distinct_successors": 3,
+          "total_successors": 36
+        },
+        "RejectWatchdog": {
+          "distinct_successors": 6,
+          "total_successors": 36
+        },
+        "PrepareSource": {
+          "distinct_successors": 2,
+          "total_successors": 36
+        },
+        "RejectSource": {
+          "distinct_successors": 8,
+          "total_successors": 36
+        },
+        "Register": {
+          "distinct_successors": 25,
+          "total_successors": 36
+        },
+        "PublishPark": {
+          "distinct_successors": 20,
+          "total_successors": 64
+        },
+        "PublishTerminal": {
+          "distinct_successors": 335,
+          "total_successors": 460
+        },
+        "ChangeEpisode": {
+          "distinct_successors": 15,
+          "total_successors": 74
+        },
+        "Wake": {
+          "distinct_successors": 0,
+          "total_successors": 46
+        },
+        "UnrelatedWake": {
+          "distinct_successors": 3,
+          "total_successors": 36
+        },
+        "Recheck": {
+          "distinct_successors": 70,
+          "total_successors": 108
+        },
+        "ObserveTerminal": {
+          "distinct_successors": 58,
+          "total_successors": 252
+        },
+        "AdvanceTime": {
+          "distinct_successors": 234,
+          "total_successors": 636
+        },
+        "Abandon": {
+          "distinct_successors": 82,
+          "total_successors": 550
+        }
+      },
+      "generated_states": 2515,
+      "distinct_states": 866,
+      "states_left": 0,
+      "depth": 13
+    },
+    {
+      "module": "CharlotteCheckedWait",
+      "configuration": "CharlotteCheckedWait_rejection_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeRejectedRelease": {
+          "distinct_successors": 4,
+          "total_successors": 5
+        }
+      },
+      "violated_invariant": "PendingRetainsOwnerAndLoan",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteCheckedWait",
+      "configuration": "CharlotteCheckedWait_replay_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeReplay": {
+          "distinct_successors": 4,
+          "total_successors": 5
+        }
+      },
+      "violated_invariant": "OneSubmission",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteCheckedWait",
+      "configuration": "CharlotteCheckedWait_deadline_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeRestartDeadline": {
+          "distinct_successors": 2,
+          "total_successors": 3
+        }
+      },
+      "violated_invariant": "DeadlineUnchanged",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteCheckedWait",
+      "configuration": "CharlotteCheckedWait_result_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeWakeAdoptsResult": {
+          "distinct_successors": 4,
+          "total_successors": 5
+        }
+      },
+      "violated_invariant": "ResultNeedsTerminalProof",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteCheckedWait",
+      "configuration": "CharlotteCheckedWait_park_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeParkWithoutRecheck": {
+          "distinct_successors": 2,
+          "total_successors": 3
+        }
+      },
+      "violated_invariant": "ParkedTerminalHasWake",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteCheckedWait",
+      "configuration": "CharlotteCheckedWait_timeout_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeAdmissionTimeout": {
+          "distinct_successors": 8,
+          "total_successors": 9
+        }
+      },
+      "violated_invariant": "TimeoutRespectsDeadline",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteScheduler",
+      "configuration": "CharlotteScheduler_small.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "Spawn": {
+          "distinct_successors": 24466,
+          "total_successors": 88560
+        },
+        "Admit": {
+          "distinct_successors": 36745,
+          "total_successors": 88560
+        },
+        "Dispatch": {
+          "distinct_successors": 51725,
+          "total_successors": 109440
+        },
+        "Preempt": {
+          "distinct_successors": 0,
+          "total_successors": 109440
+        },
+        "Block": {
+          "distinct_successors": 48474,
+          "total_successors": 566424
+        },
+        "Wake": {
+          "distinct_successors": 40345,
+          "total_successors": 102816
+        },
+        "SwitchOff": {
+          "distinct_successors": 0,
+          "total_successors": 196992
+        },
+        "Migrate": {
+          "distinct_successors": 0,
+          "total_successors": 49200
+        },
+        "RequestRemoteAbort": {
+          "distinct_successors": 85814,
+          "total_successors": 196992
+        },
+        "RetireRemoteAbort": {
+          "distinct_successors": 98769,
+          "total_successors": 421776
+        },
+        "AbortNotRunning": {
+          "distinct_successors": 92537,
+          "total_successors": 265680
+        },
+        "SelfAbort": {
+          "distinct_successors": 55377,
+          "total_successors": 196992
+        },
+        "Reap": {
+          "distinct_successors": 16713,
+          "total_successors": 615168
+        },
+        "BeginDomainAbort": {
+          "distinct_successors": 169853,
+          "total_successors": 934560
+        },
+        "DestroyAddressSpace": {
+          "distinct_successors": 99153,
+          "total_successors": 365976
+        }
+      },
+      "generated_states": 4308577,
+      "distinct_states": 819972,
+      "states_left": 0,
+      "depth": 22
+    },
+    {
+      "module": "CharlotteScheduler",
+      "configuration": "CharlotteScheduler_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeRemoteAbort": {
+          "distinct_successors": 7,
+          "total_successors": 8
+        }
+      },
+      "violated_invariant": "ReapOnlyOffCpu",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteScheduler",
+      "configuration": "CharlotteScheduler_domain_abort_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeSpawnDuringAbort": {
+          "distinct_successors": 4,
+          "total_successors": 5
+        }
+      },
+      "violated_invariant": "AbortingThreadsDoomed",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteStackGrowth",
+      "configuration": "CharlotteStackGrowth_small.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "Fault": {
+          "distinct_successors": 82,
+          "total_successors": 180
+        },
+        "Grow": {
+          "distinct_successors": 44,
+          "total_successors": 96
+        },
+        "Kill": {
+          "distinct_successors": 8,
+          "total_successors": 36
+        },
+        "Exit": {
+          "distinct_successors": 13,
+          "total_successors": 60
+        }
+      },
+      "generated_states": 373,
+      "distinct_states": 148,
+      "states_left": 0,
+      "depth": 14
+    },
+    {
+      "module": "CharlotteStackGrowth",
+      "configuration": "CharlotteStackGrowth_grow_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeGrowOverBudget": {
+          "distinct_successors": 6,
+          "total_successors": 7
+        }
+      },
+      "violated_invariant": "CommittedWithinBudget",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteStackGrowth",
+      "configuration": "CharlotteStackGrowth_leak_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeKillWithoutRelease": {
+          "distinct_successors": 8,
+          "total_successors": 9
+        }
+      },
+      "violated_invariant": "DeadDomainsReleaseFrames",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteThreadJoin",
+      "configuration": "CharlotteThreadJoin_small.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "Spawn": {
+          "distinct_successors": 5,
+          "total_successors": 5
+        },
+        "RejectExhaustedSpawn": {
+          "distinct_successors": 7,
+          "total_successors": 7
+        },
+        "CaptureHandle": {
+          "distinct_successors": 2,
+          "total_successors": 2
+        },
+        "Exit": {
+          "distinct_successors": 9,
+          "total_successors": 9
+        },
+        "ObserveJoin": {
+          "distinct_successors": 4,
+          "total_successors": 11
+        },
+        "Reap": {
+          "distinct_successors": 11,
+          "total_successors": 11
+        }
+      },
+      "generated_states": 46,
+      "distinct_states": 39,
+      "states_left": 0,
+      "depth": 10
+    },
+    {
+      "module": "CharlotteThreadJoin",
+      "configuration": "CharlotteThreadJoin_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeObserveJoin": {
+          "distinct_successors": 6,
+          "total_successors": 14
+        }
+      },
+      "violated_invariant": "ObserverMatchesCapturedHandle",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteThreadJoin",
+      "configuration": "CharlotteThreadJoin_wrap_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeSpawnWrap": {
+          "distinct_successors": 8,
+          "total_successors": 12
+        }
+      },
+      "violated_invariant": "GenerationNeverReused",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteAddressSpace",
+      "configuration": "CharlotteAddressSpace_small.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "Allocate": {
+          "distinct_successors": 11,
+          "total_successors": 20
+        },
+        "CaptureHandle": {
+          "distinct_successors": 6,
+          "total_successors": 10
+        },
+        "CloseExact": {
+          "distinct_successors": 7,
+          "total_successors": 10
+        }
+      },
+      "generated_states": 41,
+      "distinct_states": 25,
+      "states_left": 0,
+      "depth": 9
+    },
+    {
+      "module": "CharlotteAddressSpace",
+      "configuration": "CharlotteAddressSpace_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeStaleClose": {
+          "distinct_successors": 1,
+          "total_successors": 2
+        }
+      },
+      "violated_invariant": "ReplacementSurvivesStaleHandle",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteRootRetirement",
+      "configuration": "CharlotteRootRetirement_small.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "Allocate": {
+          "distinct_successors": 29,
+          "total_successors": 29
+        },
+        "Acquire": {
+          "distinct_successors": 36,
+          "total_successors": 56
+        },
+        "FinishOperation": {
+          "distinct_successors": 82,
+          "total_successors": 280
+        },
+        "AbandonOperation": {
+          "distinct_successors": 52,
+          "total_successors": 280
+        },
+        "BeginClose": {
+          "distinct_successors": 145,
+          "total_successors": 152
+        },
+        "ClosePending": {
+          "distinct_successors": 90,
+          "total_successors": 112
+        },
+        "FinishCleanup": {
+          "distinct_successors": 273,
+          "total_successors": 273
+        },
+        "Detach": {
+          "distinct_successors": 91,
+          "total_successors": 91
+        },
+        "BeginInvalidation": {
+          "distinct_successors": 91,
+          "total_successors": 91
+        },
+        "InvalidationFailed": {
+          "distinct_successors": 182,
+          "total_successors": 182
+        },
+        "RetainForRetry": {
+          "distinct_successors": 182,
+          "total_successors": 182
+        },
+        "ClaimRetry": {
+          "distinct_successors": 91,
+          "total_successors": 91
+        },
+        "InvalidationSucceeded": {
+          "distinct_successors": 182,
+          "total_successors": 182
+        },
+        "StartPhysical": {
+          "distinct_successors": 182,
+          "total_successors": 182
+        },
+        "FinishPhysical": {
+          "distinct_successors": 364,
+          "total_successors": 364
+        },
+        "Abandon": {
+          "distinct_successors": 905,
+          "total_successors": 1185
+        }
+      },
+      "generated_states": 3733,
+      "distinct_states": 2978,
+      "states_left": 0,
+      "depth": 33
+    },
+    {
+      "module": "CharlotteRootRetirement",
+      "configuration": "CharlotteRootRetirement_lease_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeDetachWithLease": {
+          "distinct_successors": 8,
+          "total_successors": 9
+        }
+      },
+      "violated_invariant": "LeasesRetainRoot",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteRootRetirement",
+      "configuration": "CharlotteRootRetirement_release_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeReleaseBeforeInvalidation": {
+          "distinct_successors": 8,
+          "total_successors": 10
+        }
+      },
+      "violated_invariant": "PhysicalRequiresInvalidation",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteRootRetirement",
+      "configuration": "CharlotteRootRetirement_physical_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeRetryPhysical": {
+          "distinct_successors": 8,
+          "total_successors": 9
+        }
+      },
+      "violated_invariant": "PhysicalOnce",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteRootRetirement",
+      "configuration": "CharlotteRootRetirement_abandon_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeAdoptAbandoned": {
+          "distinct_successors": 8,
+          "total_successors": 9
+        }
+      },
+      "violated_invariant": "TerminalAbandonment",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteRootRetirement",
+      "configuration": "CharlotteRootRetirement_refund_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeRefundPartial": {
+          "distinct_successors": 8,
+          "total_successors": 9
+        }
+      },
+      "violated_invariant": "BackingCharged",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteHardwareAsid",
+      "configuration": "CharlotteHardwareAsid_small.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "Allocate": {
+          "distinct_successors": 11,
+          "total_successors": 16
+        },
+        "CacheTranslation": {
+          "distinct_successors": 11,
+          "total_successors": 32
+        },
+        "Retire": {
+          "distinct_successors": 5,
+          "total_successors": 32
+        },
+        "Invalidate": {
+          "distinct_successors": 0,
+          "total_successors": 28
+        }
+      },
+      "generated_states": 109,
+      "distinct_states": 28,
+      "states_left": 0,
+      "depth": 7
+    },
+    {
+      "module": "CharlotteHardwareAsid",
+      "configuration": "CharlotteHardwareAsid_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeAllocate": {
+          "distinct_successors": 3,
+          "total_successors": 5
+        }
+      },
+      "violated_invariant": "NoDirtyTagReuse",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteInterruptRoute",
+      "configuration": "CharlotteInterruptRoute_small.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "Bind": {
+          "distinct_successors": 3,
+          "total_successors": 3
+        },
+        "QueueWake": {
+          "distinct_successors": 2,
+          "total_successors": 2
+        },
+        "Unbind": {
+          "distinct_successors": 5,
+          "total_successors": 5
+        },
+        "DrainSafe": {
+          "distinct_successors": 0,
+          "total_successors": 6
+        }
+      },
+      "generated_states": 17,
+      "distinct_states": 11,
+      "states_left": 0,
+      "depth": 6
+    },
+    {
+      "module": "CharlotteInterruptRoute",
+      "configuration": "CharlotteInterruptRoute_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "DrainUnsafe": {
+          "distinct_successors": 1,
+          "total_successors": 4
+        }
+      },
+      "violated_invariant": "NoStaleWakeDelivery",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteServiceLifecycle",
+      "configuration": "CharlotteServiceLifecycle_small.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "StageTrusted": {
+          "distinct_successors": 5,
+          "total_successors": 43328
+        },
+        "StageUntrusted": {
+          "distinct_successors": 12063,
+          "total_successors": 22864
+        },
+        "RejectUntrustedLoad": {
+          "distinct_successors": 11264,
+          "total_successors": 20464
+        },
+        "Load": {
+          "distinct_successors": 2578,
+          "total_successors": 17056
+        },
+        "Start": {
+          "distinct_successors": 2568,
+          "total_successors": 6800
+        },
+        "Prepare": {
+          "distinct_successors": 570,
+          "total_successors": 2896
+        },
+        "PublishLocal": {
+          "distinct_successors": 645,
+          "total_successors": 1536
+        },
+        "Activate": {
+          "distinct_successors": 544,
+          "total_successors": 1536
+        },
+        "RejectStaleActivate": {
+          "distinct_successors": 107,
+          "total_successors": 325224
+        },
+        "Lookup": {
+          "distinct_successors": 639,
+          "total_successors": 6720
+        },
+        "ClearLookup": {
+          "distinct_successors": 0,
+          "total_successors": 45776
+        },
+        "FencedUnregister": {
+          "distinct_successors": 2687,
+          "total_successors": 18928
+        },
+        "RejectStaleUnregister": {
+          "distinct_successors": 865,
+          "total_successors": 37856
+        },
+        "CleanupLocal": {
+          "distinct_successors": 2443,
+          "total_successors": 36784
+        },
+        "RequestStop": {
+          "distinct_successors": 7262,
+          "total_successors": 23680
+        },
+        "Exit": {
+          "distinct_successors": 0,
+          "total_successors": 18064
+        },
+        "DomainAbort": {
+          "distinct_successors": 8211,
+          "total_successors": 23680
+        },
+        "Reap": {
+          "distinct_successors": 9687,
+          "total_successors": 18064
+        },
+        "Teardown": {
+          "distinct_successors": 12093,
+          "total_successors": 18064
+        }
+      },
+      "generated_states": 689321,
+      "distinct_states": 74232,
+      "states_left": 0,
+      "depth": 37
+    },
+    {
+      "module": "CharlotteServiceLifecycle",
+      "configuration": "CharlotteServiceLifecycle_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeStaleUnregister": {
+          "distinct_successors": 8,
+          "total_successors": 9
+        }
+      },
+      "violated_invariant": "ReplacementSurvivesStaleUnregister",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteCapability",
+      "configuration": "CharlotteCapability_small.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "Allocate": {
+          "distinct_successors": 88859,
+          "total_successors": 1372500
+        },
+        "Remove": {
+          "distinct_successors": 137467,
+          "total_successors": 3940200
+        },
+        "DelegateCopy": {
+          "distinct_successors": 0,
+          "total_successors": 466344
+        },
+        "BeginMove": {
+          "distinct_successors": 711335,
+          "total_successors": 777600
+        },
+        "CommitMove": {
+          "distinct_successors": 0,
+          "total_successors": 110808
+        },
+        "RollbackMove": {
+          "distinct_successors": 0,
+          "total_successors": 777600
+        },
+        "CloseAddressSpace": {
+          "distinct_successors": 2347,
+          "total_successors": 783432
+        }
+      },
+      "generated_states": 8228485,
+      "distinct_states": 940009,
+      "states_left": 0,
+      "depth": 13
+    },
+    {
+      "module": "CharlotteAuthorization",
+      "configuration": "CharlotteAuthorization_small.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "PublishService": {
+          "distinct_successors": 3,
+          "total_successors": 11694
+        },
+        "ReplaceService": {
+          "distinct_successors": 3099,
+          "total_successors": 13497
+        },
+        "UnpublishService": {
+          "distinct_successors": 7106,
+          "total_successors": 32454
+        },
+        "SetPolicy": {
+          "distinct_successors": 9727,
+          "total_successors": 27700
+        },
+        "IssueTicket": {
+          "distinct_successors": 1573,
+          "total_successors": 2724
+        },
+        "CancelTicket": {
+          "distinct_successors": 9308,
+          "total_successors": 22480
+        },
+        "Redeem": {
+          "distinct_successors": 3077,
+          "total_successors": 3680
+        },
+        "CloseCapability": {
+          "distinct_successors": 20811,
+          "total_successors": 30368
+        }
+      },
+      "generated_states": 144598,
+      "distinct_states": 54705,
+      "states_left": 0,
+      "depth": 12
+    },
+    {
+      "module": "CharlotteAuthorization",
+      "configuration": "CharlotteAuthorization_policy_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeSetPolicy": {
+          "distinct_successors": 8,
+          "total_successors": 9
+        }
+      },
+      "violated_invariant": "PolicyMutationAuthorized",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteAuthorization",
+      "configuration": "CharlotteAuthorization_principal_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeRedeemOtherPrincipal": {
+          "distinct_successors": 8,
+          "total_successors": 9
+        }
+      },
+      "violated_invariant": "MintBoundToPrincipal",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteAuthorization",
+      "configuration": "CharlotteAuthorization_policy_version_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeRedeemStalePolicy": {
+          "distinct_successors": 7,
+          "total_successors": 8
+        }
+      },
+      "violated_invariant": "MintUsesCurrentPolicy",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteAuthorization",
+      "configuration": "CharlotteAuthorization_generation_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeRedeemStaleBinding": {
+          "distinct_successors": 8,
+          "total_successors": 9
+        }
+      },
+      "violated_invariant": "MintTargetsCurrentBinding",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteAuthorization",
+      "configuration": "CharlotteAuthorization_rights_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeAmplifyRights": {
+          "distinct_successors": 8,
+          "total_successors": 9
+        }
+      },
+      "violated_invariant": "NoRightsAmplification",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteDMA",
+      "configuration": "CharlotteDMA_small.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "CreateMemory": {
+          "distinct_successors": 13,
+          "total_successors": 88484
+        },
+        "CreateDomain": {
+          "distinct_successors": 16409,
+          "total_successors": 122472
+        },
+        "CpuMap": {
+          "distinct_successors": 797,
+          "total_successors": 1794516
+        },
+        "CpuUnmap": {
+          "distinct_successors": 0,
+          "total_successors": 1794516
+        },
+        "BeginLoan": {
+          "distinct_successors": 4119,
+          "total_successors": 353936
+        },
+        "EndLoan": {
+          "distinct_successors": 0,
+          "total_successors": 2392688
+        },
+        "BeginMap": {
+          "distinct_successors": 39509,
+          "total_successors": 411072
+        },
+        "CommitMap": {
+          "distinct_successors": 70114,
+          "total_successors": 411072
+        },
+        "QuarantineMap": {
+          "distinct_successors": 0,
+          "total_successors": 411072
+        },
+        "FailMap": {
+          "distinct_successors": 0,
+          "total_successors": 1849328
+        },
+        "RevokeMap": {
+          "distinct_successors": 161675,
+          "total_successors": 1278400
+        },
+        "ReleasePin": {
+          "distinct_successors": 0,
+          "total_successors": 1849328
+        },
+        "BeginDestroy": {
+          "distinct_successors": 363454,
+          "total_successors": 942912
+        },
+        "AcknowledgeDestroy": {
+          "distinct_successors": 302948,
+          "total_successors": 1038104
+        },
+        "QuarantineDestroy": {
+          "distinct_successors": 628177,
+          "total_successors": 1038104
+        },
+        "FinalizeDomain": {
+          "distinct_successors": 0,
+          "total_successors": 277264
+        },
+        "CloseMemory": {
+          "distinct_successors": 15827,
+          "total_successors": 88484
+        },
+        "ExitDriver": {
+          "distinct_successors": 486022,
+          "total_successors": 3149758
+        },
+        "ReclaimMemory": {
+          "distinct_successors": 3817,
+          "total_successors": 39868
+        }
+      },
+      "generated_states": 19331379,
+      "distinct_states": 2092882,
+      "states_left": 0,
+      "depth": 26
+    },
+    {
+      "module": "CharlotteDMA",
+      "configuration": "CharlotteDMA_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeBeginExclusiveMap": {
+          "distinct_successors": 5,
+          "total_successors": 7
+        }
+      },
+      "violated_invariant": "ExclusiveDmaHasNoCpuAuthority",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteRaft",
+      "configuration": "CharlotteRaft_small.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "StartElection": {
+          "distinct_successors": 363,
+          "total_successors": 9918
+        },
+        "GrantVote": {
+          "distinct_successors": 450,
+          "total_successors": 5982
+        },
+        "BecomeLeader": {
+          "distinct_successors": 639,
+          "total_successors": 3645
+        },
+        "ObserveHigherTerm": {
+          "distinct_successors": 1334,
+          "total_successors": 12552
+        },
+        "Crash": {
+          "distinct_successors": 11632,
+          "total_successors": 41544
+        },
+        "Restart": {
+          "distinct_successors": 8419,
+          "total_successors": 26970
+        }
+      },
+      "generated_states": 100612,
+      "distinct_states": 22838,
+      "states_left": 0,
+      "depth": 13
+    },
+    {
+      "module": "CharlotteRaftLog",
+      "configuration": "CharlotteRaftLog_small.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "Elect": {
+          "distinct_successors": 1677,
+          "total_successors": 8388
+        },
+        "AppendLeader": {
+          "distinct_successors": 1681,
+          "total_successors": 11568
+        },
+        "ReplicateOne": {
+          "distinct_successors": 7487,
+          "total_successors": 84120
+        },
+        "CommitLeader": {
+          "distinct_successors": 3546,
+          "total_successors": 10848
+        },
+        "PropagateCommit": {
+          "distinct_successors": 4772,
+          "total_successors": 12504
+        },
+        "Crash": {
+          "distinct_successors": 74562,
+          "total_successors": 207684
+        },
+        "Restart": {
+          "distinct_successors": 28514,
+          "total_successors": 159036
+        }
+      },
+      "generated_states": 494149,
+      "distinct_states": 122240,
+      "states_left": 0,
+      "depth": 17
+    },
+    {
+      "module": "CharlotteRaftMembership",
+      "configuration": "CharlotteRaftMembership_small.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "Elect": {
+          "distinct_successors": 380,
+          "total_successors": 5048
+        },
+        "SubmitJoint": {
+          "distinct_successors": 86,
+          "total_successors": 8816
+        },
+        "Replicate": {
+          "distinct_successors": 389,
+          "total_successors": 844
+        },
+        "CommitJoint": {
+          "distinct_successors": 118,
+          "total_successors": 228
+        },
+        "SubmitFinalize": {
+          "distinct_successors": 84,
+          "total_successors": 152
+        },
+        "CommitFinalize": {
+          "distinct_successors": 55,
+          "total_successors": 126
+        },
+        "Crash": {
+          "distinct_successors": 3392,
+          "total_successors": 9884
+        },
+        "Restart": {
+          "distinct_successors": 1151,
+          "total_successors": 7084
+        }
+      },
+      "generated_states": 32183,
+      "distinct_states": 5656,
+      "states_left": 0,
+      "depth": 13
+    },
+    {
+      "module": "CharlotteRaftJoin",
+      "configuration": "CharlotteRaftJoin_small.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "Elect": {
+          "distinct_successors": 1,
+          "total_successors": 4
+        },
+        "BeginJoining": {
+          "distinct_successors": 12,
+          "total_successors": 72
+        },
+        "Crash": {
+          "distinct_successors": 275,
+          "total_successors": 780
+        },
+        "Restart": {
+          "distinct_successors": 0,
+          "total_successors": 780
+        },
+        "SubmitJoin": {
+          "distinct_successors": 30,
+          "total_successors": 40
+        },
+        "CommitJoin": {
+          "distinct_successors": 43,
+          "total_successors": 80
+        },
+        "ReplicateToJoiner": {
+          "distinct_successors": 112,
+          "total_successors": 224
+        },
+        "SubmitJoint": {
+          "distinct_successors": 15,
+          "total_successors": 16
+        },
+        "CommitJoint": {
+          "distinct_successors": 31,
+          "total_successors": 32
+        }
+      },
+      "generated_states": 2029,
+      "distinct_states": 520,
+      "states_left": 0,
+      "depth": 13
+    },
+    {
+      "module": "CharlotteRaftJoin",
+      "configuration": "CharlotteRaftJoin_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeReplicateToJoiner": {
+          "distinct_successors": 7,
+          "total_successors": 8
+        }
+      },
+      "violated_invariant": "JoiningAcceptsOnlySelectedAnchor",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteRaftJoin",
+      "configuration": "CharlotteRaftJoin_restart_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeRestartForgetsAdmission": {
+          "distinct_successors": 6,
+          "total_successors": 7
+        }
+      },
+      "violated_invariant": "RestartPreservesAdmission",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteRaftSnapshot",
+      "configuration": "CharlotteRaftSnapshot_small.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "AppendLog": {
+          "distinct_successors": 82,
+          "total_successors": 66276
+        },
+        "Commit": {
+          "distinct_successors": 22462,
+          "total_successors": 70900
+        },
+        "BeginReceive": {
+          "distinct_successors": 25985,
+          "total_successors": 4212384
+        },
+        "ReceiveChunk": {
+          "distinct_successors": 93867,
+          "total_successors": 95520
+        },
+        "PersistSnapshot": {
+          "distinct_successors": 1757,
+          "total_successors": 52032
+        },
+        "ActivateSnapshot": {
+          "distinct_successors": 479,
+          "total_successors": 65472
+        },
+        "DiscardStale": {
+          "distinct_successors": 0,
+          "total_successors": 346141
+        },
+        "Crash": {
+          "distinct_successors": 537,
+          "total_successors": 144633
+        },
+        "Restart": {
+          "distinct_successors": 0,
+          "total_successors": 537
+        }
+      },
+      "generated_states": 5053896,
+      "distinct_states": 145170,
+      "states_left": 0,
+      "depth": 12
+    },
+    {
+      "module": "CharlotteClusterIngress",
+      "configuration": "CharlotteClusterIngress_small.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "PublishReady": {
+          "distinct_successors": 223,
+          "total_successors": 170448
+        },
+        "WithdrawReady": {
+          "distinct_successors": 106,
+          "total_successors": 132576
+        },
+        "ReplaceDeployment": {
+          "distinct_successors": 238,
+          "total_successors": 202424
+        },
+        "CommitDrain": {
+          "distinct_successors": 297,
+          "total_successors": 229984
+        },
+        "BeginJoint": {
+          "distinct_successors": 388,
+          "total_successors": 234040
+        },
+        "FinalizeJoint": {
+          "distinct_successors": 83,
+          "total_successors": 30736
+        },
+        "LearnRoute": {
+          "distinct_successors": 10396,
+          "total_successors": 4068348
+        },
+        "ForgetRoute": {
+          "distinct_successors": 567863,
+          "total_successors": 4068348
+        },
+        "InstallSnapshot": {
+          "distinct_successors": 610576,
+          "total_successors": 8926060
+        },
+        "StartNewFlow": {
+          "distinct_successors": 458595,
+          "total_successors": 581456
+        },
+        "ExpireLease": {
+          "distinct_successors": 2419015,
+          "total_successors": 3911880
+        },
+        "ExistingFlowPacket": {
+          "distinct_successors": 0,
+          "total_successors": 1591328
+        },
+        "DropStaleNewFlow": {
+          "distinct_successors": 0,
+          "total_successors": 3047176
+        },
+        "DropUnretainedFlow": {
+          "distinct_successors": 0,
+          "total_successors": 138080
+        },
+        "DropWithdrawnFlow": {
+          "distinct_successors": 0,
+          "total_successors": 195808
+        },
+        "DropDepartedBackend": {
+          "distinct_successors": 0,
+          "total_successors": 49584
+        },
+        "EndFlow": {
+          "distinct_successors": 0,
+          "total_successors": 1729408
+        }
+      },
+      "generated_states": 29725501,
+      "distinct_states": 4068348,
+      "states_left": 0,
+      "depth": 17
+    },
+    {
+      "module": "CharlotteClusterIngress",
+      "configuration": "CharlotteClusterIngress_stale_snapshot_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeStartStaleFlow": {
+          "distinct_successors": 1,
+          "total_successors": 2
+        }
+      },
+      "violated_invariant": "NewFlowsRequireFreshLease",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteClusterIngress",
+      "configuration": "CharlotteClusterIngress_history_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeFallbackExistingPacket": {
+          "distinct_successors": 1,
+          "total_successors": 2
+        }
+      },
+      "violated_invariant": "FlowBackendStable",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteClusterIngress",
+      "configuration": "CharlotteClusterIngress_readiness_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeAdmitStaleReadiness": {
+          "distinct_successors": 3,
+          "total_successors": 4
+        }
+      },
+      "violated_invariant": "CommittedPoliciesAreDerived",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlottePlacementControl",
+      "configuration": "CharlottePlacementControl_small.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "Observe": {
+          "distinct_successors": 11065,
+          "total_successors": 1458000
+        },
+        "SelectCandidate": {
+          "distinct_successors": 6168,
+          "total_successors": 77652
+        },
+        "Tick": {
+          "distinct_successors": 25465,
+          "total_successors": 145800
+        },
+        "PressureMove": {
+          "distinct_successors": 2127,
+          "total_successors": 8100
+        },
+        "RemoveEligibility": {
+          "distinct_successors": 43395,
+          "total_successors": 97200
+        },
+        "ForcedMove": {
+          "distinct_successors": 1808,
+          "total_successors": 21870
+        },
+        "Admit": {
+          "distinct_successors": 55771,
+          "total_successors": 137700
+        }
+      },
+      "generated_states": 1946323,
+      "distinct_states": 145800,
+      "states_left": 0,
+      "depth": 25
+    },
+    {
+      "module": "CharlottePlacementControl",
+      "configuration": "CharlottePlacementControl_dwell_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeEarlyPressureMove": {
+          "distinct_successors": 2,
+          "total_successors": 3
+        }
+      },
+      "violated_invariant": "PressureRespectsStability",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlottePlacementControl",
+      "configuration": "CharlottePlacementControl_reserve_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "UnsafeAdmit": {
+          "distinct_successors": 3,
+          "total_successors": 4
+        }
+      },
+      "violated_invariant": "ReservationsPreserveReserve",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteRemoteCall",
+      "configuration": "CharlotteRemoteCall_small.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "Start": {
+          "distinct_successors": 17,
+          "total_successors": 144
+        },
+        "ReplaceTarget": {
+          "distinct_successors": 83,
+          "total_successors": 648
+        },
+        "Execute": {
+          "distinct_successors": 49,
+          "total_successors": 72
+        },
+        "RejectStale": {
+          "distinct_successors": 23,
+          "total_successors": 72
+        },
+        "QueueReply": {
+          "distinct_successors": 73,
+          "total_successors": 108
+        },
+        "DuplicateRequest": {
+          "distinct_successors": 0,
+          "total_successors": 216
+        },
+        "DeliverReply": {
+          "distinct_successors": 76,
+          "total_successors": 108
+        },
+        "Timeout": {
+          "distinct_successors": 181,
+          "total_successors": 432
+        },
+        "SettleTransport": {
+          "distinct_successors": 85,
+          "total_successors": 432
+        },
+        "RetireUncertainSession": {
+          "distinct_successors": 232,
+          "total_successors": 864
+        },
+        "Evict": {
+          "distinct_successors": 152,
+          "total_successors": 216
+        }
+      },
+      "generated_states": 3313,
+      "distinct_states": 972,
+      "states_left": 0,
+      "depth": 15
+    },
+    {
+      "module": "CharlotteReliableMessage",
+      "configuration": "CharlotteReliableMessage_small.cfg",
+      "kind": "safe",
+      "required_action_coverage": {
+        "AbandonSession": {
+          "distinct_successors": 9,
+          "total_successors": 9
+        },
+        "RestartService": {
+          "distinct_successors": 5,
+          "total_successors": 5
+        },
+        "AcceptCurrentSession": {
+          "distinct_successors": 6,
+          "total_successors": 15
+        }
+      },
+      "generated_states": 30,
+      "distinct_states": 21,
+      "states_left": 0,
+      "depth": 5
+    },
+    {
+      "module": "CharlotteReliableMessage",
+      "configuration": "CharlotteReliableMessage_identity_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "RestartService": {
+          "distinct_successors": 4,
+          "total_successors": 5
+        }
+      },
+      "violated_invariant": "SessionIdentityUnique",
+      "expected_violation_observed": true
+    },
+    {
+      "module": "CharlotteReliableMessage",
+      "configuration": "CharlotteReliableMessage_regression_unsafe.cfg",
+      "kind": "expected_counterexample",
+      "required_action_coverage": {
+        "AcceptDelayedSession": {
+          "distinct_successors": 13,
+          "total_successors": 39
+        }
+      },
+      "violated_invariant": "ReceiveSessionMonotonic",
+      "expected_violation_observed": true
+    }
+  ],
+  "new_model_negative_traces": [
+    {
+      "configuration": "CharlotteIpcPublication_batch_unsafe.cfg",
+      "violated_invariant": "AtomicPublication",
+      "trace_actions": [
+        "Initial predicate",
+        "Begin",
+        "PrepareRecord",
+        "PrepareRecord",
+        "Reserve",
+        "Reserve",
+        "PrepareMemory",
+        "PrepareConnection",
+        "UnsafePublishPrefix"
+      ],
+      "checker_output_sha256": "c9562384b0624e99e4792f442a5ecbbc82c506111f4bee45790da771c600f321"
+    },
+    {
+      "configuration": "CharlotteIpcPublication_cancel_unsafe.cfg",
+      "violated_invariant": "ReplacementIntact",
+      "trace_actions": [
+        "Initial predicate",
+        "Begin",
+        "PrepareRecord",
+        "Reserve",
+        "RetireNamespace",
+        "DetachNamespace",
+        "ReplaceNamespace",
+        "UnsafeCancelSuccessor"
+      ],
+      "checker_output_sha256": "2208373afb1a33ad38442ed11a4e532c74a4b3be27e204c47960aca1f6777741"
+    },
+    {
+      "configuration": "CharlotteIpcPublication_connection_unsafe.cfg",
+      "violated_invariant": "UseRequiresDelivery",
+      "trace_actions": [
+        "Initial predicate",
+        "Begin",
+        "PrepareRecord",
+        "PrepareRecord",
+        "Reserve",
+        "Reserve",
+        "PrepareMemory",
+        "PrepareConnection",
+        "Commit",
+        "UnsafeUseConnection"
+      ],
+      "checker_output_sha256": "d687ed727cfd6c701eae716fedee20a289239a183e85fcea3a66ec6a0a84c3ca"
+    },
+    {
+      "configuration": "CharlotteIpcPublication_memory_unsafe.cfg",
+      "violated_invariant": "UseRequiresDelivery",
+      "trace_actions": [
+        "Initial predicate",
+        "Begin",
+        "PrepareRecord",
+        "PrepareRecord",
+        "Reserve",
+        "PrepareMemory",
+        "Reserve",
+        "PrepareConnection",
+        "Commit",
+        "UnsafeUseMemory"
+      ],
+      "checker_output_sha256": "64ff76d511bfc3363decd910892b4a8d3c47e40375b7e31af99dbe503d593c8d"
+    },
+    {
+      "configuration": "CharlotteIpcPublication_observe_unsafe.cfg",
+      "violated_invariant": "ObservedCloseStaysClosed",
+      "trace_actions": [
+        "Initial predicate",
+        "Begin",
+        "PrepareRecord",
+        "Reserve",
+        "PrepareRecord",
+        "Reserve",
+        "PrepareMemory",
+        "PrepareConnection",
+        "Commit",
+        "FinishPreparation",
+        "ObserveReply",
+        "ApplicationClose",
+        "UnsafeRepublishObserved"
+      ],
+      "checker_output_sha256": "f89e0b029e65a5e974adad847fd7e14ae0551722db10a8930dae9aa4d26213d5"
+    },
+    {
+      "configuration": "CharlotteIpcPublication_readiness_unsafe.cfg",
+      "violated_invariant": "VisibleRequiresDelivery",
+      "trace_actions": [
+        "Initial predicate",
+        "Begin",
+        "PrepareRecord",
+        "PrepareRecord",
+        "Reserve",
+        "Reserve",
+        "PrepareMemory",
+        "PrepareConnection",
+        "Commit",
+        "Readiness",
+        "UnsafeReadinessDelivers"
+      ],
+      "checker_output_sha256": "6de5a6d3ba63dc3c0f30be76d0ba4905da04c5cedbf867a6746651c1d5435eb5"
+    },
+    {
+      "configuration": "CharlotteIpcPublication_refund_unsafe.cfg",
+      "violated_invariant": "RetainedNodesCharged",
+      "trace_actions": [
+        "Initial predicate",
+        "RetireNamespace",
+        "DetachNamespace",
+        "UnsafeRefundRetained"
+      ],
+      "checker_output_sha256": "7a77fb149fc7daca2a28e9205f33035f68887d646e3edf74c42f77f9f93aa802"
+    },
+    {
+      "configuration": "CharlotteIpcPublication_restore_unsafe.cfg",
+      "violated_invariant": "ReplacementIntact",
+      "trace_actions": [
+        "Initial predicate",
+        "Begin",
+        "PrepareRecord",
+        "Reserve",
+        "PrepareMemory",
+        "RetireNamespace",
+        "DetachNamespace",
+        "ReplaceNamespace",
+        "UnsafeRestoreSuccessor"
+      ],
+      "checker_output_sha256": "75c79d59cb5da43271b99ea4f8fe441fa4b0885b69ab70bed9dd5f5b264ff1f6"
+    },
+    {
+      "configuration": "CharlotteIpcPublication_rollback_unsafe.cfg",
+      "violated_invariant": "RollbackRestoresCapturedSource",
+      "trace_actions": [
+        "Initial predicate",
+        "Begin",
+        "PrepareRecord",
+        "Reserve",
+        "PrepareMemory",
+        "Fill",
+        "UnsafeRollbackNeedsAdmission"
+      ],
+      "checker_output_sha256": "7adeb57d1dbcfb33ec809e51e54112b2a82711a3df371f73d77948d491b16ac1"
+    },
+    {
+      "configuration": "CharlotteIpcPublication_serial_unsafe.cfg",
+      "violated_invariant": "SerialsConsumed",
+      "trace_actions": [
+        "Initial predicate",
+        "Begin",
+        "PrepareRecord",
+        "Reserve",
+        "AbortPreparation",
+        "UnsafeReuseSerial"
+      ],
+      "checker_output_sha256": "27831d54c6d00d3b8a41680d45161dedf33a8012f174611ed0f152cfe4de7933"
+    }
+  ],
+  "bounds": {
+    "numeric_namespace_roles": 2,
+    "namespace_budget_instances_per_role": 2,
+    "serials_per_namespace": 4,
+    "records_per_namespace": 3,
+    "node_record_limit": 6,
+    "concurrent_transactions": 1,
+    "attachment_kinds": [
+      "owning memory",
+      "delegated connection"
+    ],
+    "request_memory_modes": [
+      "move",
+      "copy"
+    ],
+    "reply_memory_modes": [
+      "move"
+    ]
+  },
+  "limits": [
+    "Finite safety evidence, without liveness or a machine-checked Rust refinement proof.",
+    "Namespace labels represent exact budget-instance identity. Detachment assumes confirmed payload retirement; no production root lease bypass.",
+    "Loans, physical backing outcomes, actual allocator/lock/IRQ behavior, platform headroom, rights, endpoint references and complete call/reply metadata admission are omitted.",
+    "Active reservation/escrow Drop and containing destructors remain separately qualified contexts.",
+    "No new Rust, native boot, multi-node or hardware tests were run; SEC-07/18 remain partial."
+  ],
+  "documentation_validation": {
+    "final_latex_passes": 2,
+    "pdflatex_exit_codes": [
+      0,
+      0
+    ],
+    "temporary_pdf_pages": 227,
+    "temporary_pdf_sha256": "5c6dc43701ed970d3afda729d7eb11414da5f0130ac8296894b81598d5e192fe",
+    "chapter_21_sha256": "30e2e601d6a02cc6b44e17322565fde1b9bfcdc403985cd70d942a22e93e6f3f",
+    "rendered_review_pages": [
+      198,
+      199,
+      200,
+      201,
+      202,
+      203,
+      204,
+      205,
+      206
+    ],
+    "final_review_render_dpi": 110,
+    "tracked_pdf_preserved_sha256": "8e22e237efece7feb389c1898738000c8508753882b8339cd920c33c05012789",
+    "manual_inventory_matches_all_safe_models": true,
+    "checked_local_markdown_links": 403,
+    "bash_syntax_check_exit": 0,
+    "git_diff_check_exit": 0,
+    "limits": "Temporary complete-manual build includes pre-existing user Chapter 6 edits. Only changed/affected formal chapter pages were visually reviewed; other chapters retain their existing box warnings."
+  }
+}

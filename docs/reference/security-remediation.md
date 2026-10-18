@@ -560,6 +560,22 @@ historical AMD causality, the retained Intel scheduled-close/ingress failure and
 broader cleanup acceptance remain open. SEC-18 remains partial; finding counts
 are unchanged.
 
+The [NS publication model and generation correction](../reports/audits/2026-10-18-name-publication-model.md)
+checks public/policy issuance, admitted watch ownership, exact death retirement
+and fail-closed owner retention. It also reproduces and corrects publication
+beyond the positive signed NS generation range before policy mutation.
+The C18 model assumes kernel producer/identity authenticity and trusted launch
+budget preparation; actual allocation/destructor contexts and physical cleanup
+remain open. Finding counts and SEC-07/18 status do not change.
+
+The [coherent-DMA remap correction](../reports/audits/2026-10-18-coherent-dma-remap-fence.md)
+closes a remaining path from consuming failed shared-DMA CPU teardown to a
+fresh safe CPU mapping. Every retained DMA pin now fences fresh mapping,
+including read-only access. A controlled ARM regression failed before the
+change; ARM/SMMUv3 and Intel/VT-d runs passed afterwards. Existing coherent
+mappings retain their volatile protocol. This narrows C18's restriction boundary;
+SEC-18 and wider cleanup/context qualification remain partial.
+
 The [timed completion outcome correction](../reports/audits/2026-10-12-completion-wait-outcomes.md)
 continues C16/C18 and G2/G7: kernel callers distinguish admission rejection from
 deadline expiry, and the syscall reparks on unrelated notifications through the

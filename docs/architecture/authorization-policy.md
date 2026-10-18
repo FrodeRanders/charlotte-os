@@ -48,6 +48,11 @@ capacity. Domain bindings are the one exception: at capacity the oldest
 occupancy is retired, because any live domain is re-provisioned from its next
 kernel-authenticated envelope before it is authorized.
 
+Service generations stop at `i64::MAX`, matching the positive NS result and
+retirement-record range. Exhaustion rejects before policy mutation and preserves
+active bindings and tombstones. The [NS publication review](../reports/audits/2026-10-18-name-publication-model.md)
+checks that boundary alongside publication classes and death-watch ownership.
+
 The local `ns` service now hosts this engine. `OP_REGISTER_AUTHORIZED` requires
 the kernel-authenticated service-manager role, `OP_SET_POLICY` requires the
 policy-administrator role, and `OP_LOOKUP_AUTHORIZED` performs a default-deny

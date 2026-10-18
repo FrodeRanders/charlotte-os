@@ -64,7 +64,7 @@ CpuMap(driver, mem) ==
     /\ memoryState[mem] = "Live"
     /\ memoryOwner[mem] = driver
     /\ ~cpuMapped[mem]
-    /\ \A dom \in Domain : mappingMode[dom][mem] # "Exclusive"
+    /\ \A dom \in Domain : mappings[dom][mem] = "None"
     /\ cpuMapped' = [cpuMapped EXCEPT ![mem] = TRUE]
     /\ UNCHANGED <<driverOpen, domainState, domainOwner, domainStream,
                    streamDomain, memoryState, memoryOwner, mappings,

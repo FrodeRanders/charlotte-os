@@ -79,9 +79,9 @@ struct Registration {
     /// service manager) may request retirement. NS's owned endpoint-death
     /// producer independently retires its exact current publication.
     registrar: Option<PrincipalId>,
-    /// Whether this entry was published through the authorized opcode and has
-    /// a matching `PolicyStore` binding. Public bootstrap publication is a
-    /// separate namespace that authorized lookups must not resolve.
+    /// Whether this entry requires policy-mediated lookup and rejects public
+    /// replacement. Both publication classes have a `PolicyStore` binding;
+    /// authorized lookup still checks its caller and requested rights.
     authorized: bool,
 }
 

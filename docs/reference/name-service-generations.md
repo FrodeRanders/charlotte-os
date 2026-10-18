@@ -57,6 +57,12 @@ published endpoint. Caller cleanup returns no-match unless its original
 registrar/manager and generation checks succeed. Neither a catalog tombstone
 nor endpoint death grants DNS manager rights.
 
+Service publication now stops at `i64::MAX`, matching both positive NS return
+values and retirement records. The policy store checks that bound before
+changing its generation, ceiling or active state; exhaustion preserves the live
+binding or tombstone. The [18 October review](../reports/audits/2026-10-18-name-publication-model.md)
+records the reproduced boundary failure and correction.
+
 ## NS-owned endpoint-death producer
 
 At registration's unique receive boundary, NS adopts the incoming connection
@@ -160,3 +166,16 @@ that distinct name before serving; DNS then owns its NS publication. Lookup and
 publication use one original five-second budget with owned calls and no retry.
 Wrong manifest types reject. The native leader fixture supplies this entry;
 ordinary echo launches keep only their existing local registrations.
+
+## Formal publication projection
+
+[`CharlotteNamePublication`](../tla/CharlotteNamePublication.tla) covers public
+issuance/replacement gates, watch-before-mutation admission, serialized policy
+and registry publication, current-watch confirmation, logical retirement and
+watch-before-source disposal. A matching stale CQ hint cannot substitute for the
+current producer's result. Rejected waits and unexpected observations retain the
+registry through abort. Two finite instances and thirteen negative controls are
+recorded in the [model review](../reports/audits/2026-10-18-name-publication-model.md).
+Kernel authentication, actual watch admission, trusted 65-slot preparation,
+allocation/destructor contexts and physical completion remain assumptions;
+this supplies no native capacity-saturation or liveness qualification.

@@ -41,6 +41,7 @@ fn invalidate(asid: usize, base: VAddr, pages: usize) -> bool {
 }
 
 pub(crate) fn run(mut create: impl FnMut(&str) -> usize) {
+    test_coherent_dma_remap(&mut create);
     revocation::tests::run(&mut create);
     test_detached_backing(&mut create);
     test_batched_detach(&mut create);
@@ -55,6 +56,42 @@ pub(crate) fn run(mut create: impl FnMut(&str) -> usize) {
          authority, scratch rejection, partial detach, failed barrier, Drop quarantine and \
          foreign-leaf preservation passed (twelve reserved data pages including loan revocation \
          and detached backing)"
+    );
+}
+
+fn test_coherent_dma_remap(create: &mut impl FnMut(&str) -> usize) {
+    for (reads, writes) in [(true, false), (false, true), (true, true)] {
+        let owner = create("coherent DMA CPU remap fence");
+        let handle = current_address_space_handle(owner).unwrap();
+        let cap = allocate(owner, 1).unwrap();
+        // Shared DMA starts with its CPU mapping already installed. Retaining
+        // that mapping permits the adapter's existing volatile protocol.
+        map_any(owner, cap, true).unwrap();
+        let first = pin_for_dma(owner, cap, reads, writes, false).unwrap();
+        let second = pin_for_dma(owner, cap, reads, writes, false).unwrap();
+        unmap(owner, cap).unwrap();
+        let before = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+        for writable in [false, true] {
+            assert_eq!(map_any(owner, cap, writable), Err(MemoryObjectError::LendingActive));
+        }
+        assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), before);
+        assert_eq!(budget::used(handle), amount(1));
+        unpin_dma(first);
+        for writable in [false, true] {
+            assert_eq!(map_any(owner, cap, writable), Err(MemoryObjectError::LendingActive));
+        }
+        unpin_dma(second);
+        for writable in [false, true] {
+            map_any(owner, cap, writable).unwrap();
+            unmap(owner, cap).unwrap();
+        }
+        close_cap(owner, cap).unwrap();
+        assert_eq!(budget::used(handle), budget::Amount::default());
+        close_test_address_space(owner).unwrap();
+    }
+    crate::logln!(
+        "[DMA CPU remap fence] existing shared mapping, read/write remap rejection, three \
+         directions, two coherent pins, last-unpin reuse and original charge cleanup passed"
     );
 }
 

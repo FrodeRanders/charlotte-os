@@ -169,6 +169,11 @@ pub struct ServiceBinding {
     pub active: bool,
 }
 
+/// NS returns generations as positive signed results and accepts that same
+/// range in retirement requests. Publication must reject before mutating policy
+/// when the next generation cannot cross this transport boundary.
+pub const MAX_SERVICE_GENERATION: u64 = i64::MAX as u64;
+
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct TicketId(u64);
 
@@ -465,6 +470,7 @@ impl PolicyStore {
             Some(binding) => binding
                 .generation
                 .checked_add(1)
+                .filter(|next| *next <= MAX_SERVICE_GENERATION)
                 .ok_or(AuthorizationError::ServiceGenerationExhausted)?,
             None => 1,
         };
@@ -918,5 +924,70 @@ pub mod wire {
         bytes[32..40].copy_from_slice(&target_asid.to_le_bytes());
         bytes[GRANT_HEADER_LEN..len].copy_from_slice(service);
         Some(len)
+    }
+}
+
+#[cfg(test)]
+mod generation_tests {
+    use super::*;
+
+    const SERVICE: &[u8] = b"driver.nic.v1";
+
+    fn store() -> (PolicyStore, DomainIdentity) {
+        let manager = DomainIdentity::new(1, 1).unwrap();
+        let mut store = PolicyStore::new();
+        store
+            .provision_identity_from_supervisor(
+                manager,
+                PrincipalId::new(1).unwrap(),
+                Roles::SERVICE_MANAGER,
+            )
+            .unwrap();
+        (store, manager)
+    }
+
+    #[test]
+    fn last_transport_generation_publishes_once_then_preserves_the_binding() {
+        let (mut store, manager) = store();
+        store.services.insert(
+            SERVICE.to_vec(),
+            ServiceBinding {
+                generation: MAX_SERVICE_GENERATION - 1,
+                ceiling: AuthorizationRights::CLIENT,
+                active: true,
+            },
+        );
+        let last = store.publish_service(manager, SERVICE, AuthorizationRights::CALL).unwrap();
+        assert_eq!(last.generation, MAX_SERVICE_GENERATION);
+        assert_eq!(i64::try_from(last.generation), Ok(i64::MAX));
+        assert_eq!(
+            store.publish_service(manager, SERVICE, AuthorizationRights::CLIENT),
+            Err(AuthorizationError::ServiceGenerationExhausted)
+        );
+        assert_eq!(store.service(SERVICE), Some(last));
+    }
+
+    #[test]
+    fn exhausted_active_bindings_and_tombstones_reject_without_mutation() {
+        for generation in [MAX_SERVICE_GENERATION, MAX_SERVICE_GENERATION + 1, u64::MAX] {
+            for active in [false, true] {
+                let (mut store, manager) = store();
+                let binding = ServiceBinding {
+                    generation,
+                    ceiling: if active {
+                        AuthorizationRights::CLIENT
+                    } else {
+                        AuthorizationRights::NONE
+                    },
+                    active,
+                };
+                store.services.insert(SERVICE.to_vec(), binding);
+                assert_eq!(
+                    store.publish_service(manager, SERVICE, AuthorizationRights::CALL),
+                    Err(AuthorizationError::ServiceGenerationExhausted)
+                );
+                assert_eq!(store.service(SERVICE), Some(binding));
+            }
+        }
     }
 }

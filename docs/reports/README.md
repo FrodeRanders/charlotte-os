@@ -8,6 +8,15 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [NS publication and endpoint-death model](audits/2026-10-18-name-publication-model.md) — Public/policy gates, admitted watch ownership, exact death retirement and corrected signed generation exhaustion.
+
+- [Coherent-DMA CPU remap fence](audits/2026-10-18-coherent-dma-remap-fence.md) — Reproduced and closed fresh CPU mapping while coherent DMA pins remain; ARM and Intel execution evidence.
+- [DMA operation and readiness model](audits/2026-10-18-dma-operation-model.md) — Complete unit claims, map/unmap admission versus completion, restricted failure owners and non-replayable cleanup.
+
+- [Capability and IPC publication model](audits/2026-10-18-ipc-publication-model.md) — Captured record admission, source escrow, hidden delivery, namespace reuse and detached metadata charges.
+
+- [Security model synchronization](audits/2026-10-18-security-model-sync.md) — Root-retirement and fallible-wait safety models, required counterexamples and remaining formal coverage gaps.
+
 - [Telemetry snapshot preparation and status-page lifetime](audits/2026-10-18-telemetry-snapshot-preparation.md) — Bounded fallible capture/encoding, exact-generation heap reads and borrowed closing-root sampling.
 
 - [Manual and living-documentation source comparison](audits/2026-10-18-documentation-reality-sweep.md) — Corrects capability/API, recovery, admission, trust, bootstrap and build/CI claims; records the source scope and verification limits.

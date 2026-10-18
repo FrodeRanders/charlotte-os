@@ -58,6 +58,23 @@ owner. Hardware uncertainty, pin quarantine, unmap's typed admission versus
 completion distinction and confirmed physical release remain unchanged.
 Readiness is neither DMA completion nor authority to destroy or reuse backing.
 
+## Formal ownership projection
+
+[`CharlotteDmaOperation`](../tla/CharlotteDmaOperation.tla) now supplements the
+earlier pinning model with fixed-unit admission, source preparation/wake races,
+captured owner retention, typed unmap rejection versus completion and restricted
+runtime failure owners. The
+[model review](../reports/audits/2026-10-18-dma-operation-model.md) records its
+finite bounds, thirteen required counterexamples and full-suite results.
+
+Hardware acknowledgements, root/sponsor capture and physical release remain
+assumptions; the model does not qualify actual allocator/IRQ/guard contexts,
+grant creation/cancellation, unmap readiness or quarantine recovery. The accompanying [CPU-remap correction](../reports/audits/2026-10-18-coherent-dma-remap-fence.md)
+blocks every fresh CPU mapping while any DMA pin remains. This includes
+`OwnedMemory` returned by consuming a failed shared mapping. Existing coherent
+CPU mappings are installed before pinning and retain their volatile-access
+contract. No new cleanup authority is introduced.
+
 ## Evidence and limits
 
 Private-slot controls use the real public operation and two-page memory pin

@@ -1,25 +1,30 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains finite, executable specifications for twenty-four
+This directory contains finite, executable specifications for twenty-nine
 CharlotteOS subsystems:
 
 | Subsystem | Module | Fast configuration |
 |---|---|---|
 | Endpoint IPC and memory transfer | `CharlotteIPC.tla` | `CharlotteIPC_small.cfg` |
 | IPC attachment rollback and reply waits | `CharlotteIpcTransaction.tla` | `CharlotteIpcTransaction_small.cfg` |
+| Captured capability admission and hidden IPC delivery | `CharlotteIpcPublication.tla` | `CharlotteIpcPublication_small.cfg` |
 | Endpoint readiness and close observers | `CharlotteEndpointObservers.tla` | `CharlotteEndpointObservers_small.cfg` |
+| Local NS publication classes and exact death watches | `CharlotteNamePublication.tla` | `CharlotteNamePublication_small.cfg`, `CharlotteNamePublication_exhaustion.cfg` |
 | Completion queues and waits | `CharlotteCQ.tla` | `CharlotteCQ_mini.cfg` |
 | Timed-wait wake races | `CharlotteTimedWait.tla` | `CharlotteTimedWait_small.cfg` |
+| Fallible checked waits and retained operations | `CharlotteCheckedWait.tla` | `CharlotteCheckedWait_small.cfg` |
 | Scheduler thread lifecycle | `CharlotteScheduler.tla` | `CharlotteScheduler_small.cfg` |
 | Generation-bound thread joins | `CharlotteThreadJoin.tla` | `CharlotteThreadJoin_small.cfg` |
 | Demand-grown stack budgets | `CharlotteStackGrowth.tla` | `CharlotteStackGrowth_small.cfg` |
 | Reusable ASID generation identity | `CharlotteAddressSpace.tla` | `CharlotteAddressSpace_small.cfg` |
+| Root leases, retirement and failed cleanup | `CharlotteRootRetirement.tla` | `CharlotteRootRetirement_small.cfg` |
 | AArch64 hardware-ASID recycling | `CharlotteHardwareAsid.tla` | `CharlotteHardwareAsid_small.cfg` |
 | Deferred interrupt-route reuse | `CharlotteInterruptRoute.tla` | `CharlotteInterruptRoute_small.cfg` |
 | Service publication and teardown | `CharlotteServiceLifecycle.tla` | `CharlotteServiceLifecycle_small.cfg` |
 | Unified tagged capability namespace | `CharlotteCapability.tla` | `CharlotteCapability_small.cfg` |
 | Authorization policy and capability issuance | `CharlotteAuthorization.tla` | `CharlotteAuthorization_small.cfg` |
 | DMA pinning and SMMUv3 teardown | `CharlotteDMA.tla` | `CharlotteDMA_small.cfg` |
+| DMA unit admission and uncertain map/unmap ownership | `CharlotteDmaOperation.tla` | `CharlotteDmaOperation_small.cfg` |
 | Raft election and durable voting | `CharlotteRaft.tla` | `CharlotteRaft_small.cfg` |
 | Raft log replication and commit safety | `CharlotteRaftLog.tla` | `CharlotteRaftLog_small.cfg` |
 | Raft joint membership and decommissioning | `CharlotteRaftMembership.tla` | `CharlotteRaftMembership_small.cfg` |
@@ -36,9 +41,14 @@ implementation. In particular, an action is atomic in TLA+ by definition.
 Establishing that a Rust operation implements the same atomic transition will
 require identified linearization points and a refinement argument.
 
-The latest implementation-to-model audit is
-[`WEEKLY_SYNC_2026-09-06.md`](WEEKLY_SYNC_2026-09-06.md); the action-level map
-is [`CONFORMANCE.md`](CONFORMANCE.md).
+The latest scoped implementation-to-model review is the
+[18 October NS publication synchronization](../reports/audits/2026-10-18-name-publication-model.md).
+The preceding [DMA operation synchronization](../reports/audits/2026-10-18-dma-operation-model.md).
+Earlier October reviews cover
+[IPC publication](../reports/audits/2026-10-18-ipc-publication-model.md) and
+[root retirement and checked waits](../reports/audits/2026-10-18-security-model-sync.md).
+The earlier [6 September review](WEEKLY_SYNC_2026-09-06.md) covers cluster
+ingress. The action-level map is [`CONFORMANCE.md`](CONFORMANCE.md).
 
 ## Running the models
 
@@ -50,9 +60,9 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all twenty-three complete fast configurations plus expected-failure
-  IPC-transaction, endpoint-observer, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
-  domain-abort, address-space, hardware-ASID, interrupt-route, service-lifecycle, DMA, authorization,
+- runs all thirty complete fast configurations and seventy-seven expected-failure
+  IPC-transaction, IPC-publication, endpoint-observer, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
+  checked-wait, domain-abort, address-space, root-retirement, hardware-ASID, interrupt-route, service-lifecycle, DMA, DMA-operation, authorization,
   Raft-join, cluster-ingress, and reliable-message regression configurations;
 - enables TLC action coverage;
 - places checkpoints and traces in a temporary directory;
@@ -73,6 +83,10 @@ java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
+  CharlotteIpcPublication -config CharlotteIpcPublication_small.cfg \
+  -workers auto -coverage 1
+
+java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   CharlotteEndpointObservers -config CharlotteEndpointObservers_small.cfg \
   -workers auto -coverage 1
 
@@ -81,6 +95,10 @@ java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   CharlotteTimedWait -config CharlotteTimedWait_small.cfg \
+  -workers auto -coverage 1
+
+java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
+  CharlotteCheckedWait -config CharlotteCheckedWait_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
@@ -96,6 +114,10 @@ java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   CharlotteAddressSpace -config CharlotteAddressSpace_small.cfg \
+  -workers auto -coverage 1
+
+java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
+  CharlotteRootRetirement -config CharlotteRootRetirement_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
@@ -123,6 +145,10 @@ java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
+  CharlotteDmaOperation -config CharlotteDmaOperation_small.cfg \
+  -workers auto -coverage 1
+
+java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   CharlotteRaft -config CharlotteRaft_small.cfg \
   -workers auto -coverage 1
 
@@ -144,6 +170,10 @@ java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   CharlotteClusterIngress -config CharlotteClusterIngress_small.cfg \
+  -workers auto -coverage 1
+
+java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
+  CharlottePlacementControl -config CharlottePlacementControl_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
@@ -276,6 +306,42 @@ The model exposed these protocol requirements:
 These are specification findings. They are not, by themselves, proof that all
 corresponding implementation paths are correct.
 
+## Capability and IPC publication model
+
+`CharlotteIpcPublication.tla` separates shared capability authority from payload
+delivery. One transaction prepares owning memory and a delegated connection,
+validates the whole batch, then publishes both as hidden attachments in a
+request queue or an unobserved reply. Application lookup remains unavailable
+until receive commit or first reply observation. Readiness does not deliver
+either resource. Failed receive admission and result writing preserve the
+queued attachments; repeated reply observation cannot revive a resource the
+caller has already closed. Hidden cancellation consumes the container's grants
+and never restores a committed move to the sender.
+
+Prepared storage, staged admission, move escrow, a backing pin and private copy
+backing remain distinct. Unstarted rollback restores the exact source entry
+without fresh admission, including at the source namespace's record ceiling.
+Authority removal detaches charged records; explicit post-guard disposal
+refunds their captured accounts. A retiring source can be restored for teardown,
+while a removed/replaced namespace cannot be recreated by a late token.
+
+The finite instance has two numeric namespaces, two generations each, four
+serial values, a three-record namespace limit and a six-record node limit.
+Successors install unrelated sentinel payloads at reused handles 1 and 2.
+Ten separate unsafe configurations exercise guessed memory/connection use,
+partial batch publication, serial reuse, successor corruption by late
+cancellation/restoration, premature retained-node refund, delivery from
+readiness, repeated publication, and rollback that needs fresh admission.
+
+The model uses move/copy owning memory; loan revocation stays in the earlier
+transaction model and concrete tests. It omits physical backing/byte budgets,
+platform headroom, rights attenuation, actual allocator/lock/IRQ contexts,
+endpoint reference counts, and multiple concurrent transactions. Receive's
+speculative authority is opaque while IPC is exclusively borrowed. Namespace
+detachment assumes confirmed payload retirement; it does not prove root
+quiescence or cancellation of hardware access. No liveness or complete Rust
+refinement proof follows from this bounded projection.
+
 ## Completion-queue model
 
 `CharlotteCQ.tla` models:
@@ -336,6 +402,51 @@ configuration to violate `CloseSignalImpliesClosed`: an ordinary message wakes
 the close watcher while the endpoint remains open. The repaired configuration
 is checked positively, and the IPC kernel self-test follows the same concrete
 trace by sending a message while a close watch is armed.
+
+## Checked-wait model
+
+`CharlotteCheckedWait.tla` begins with one accepted operation and its live
+memory borrow. It splits watchdog/source preparation, admission rejection,
+registration, the final park recheck, wake delivery, and result observation.
+Time can advance during preparation. An unrelated wake or a changed source
+episode returns to the same operation with its original absolute deadline.
+Rejected admission and timeout retain the pending owner and loan. A completed
+result's returned resource remains hidden until explicit observation.
+
+The small instance uses a two-tick budget and two source epochs. Six negative
+configurations check premature release on admission rejection, replay after
+timeout, deadline extension, adoption from a wake, parking without the final
+recheck, and classifying admission rejection as timeout. Abandonment retains
+the complete operation and any subscription storage. It supplies no recovery
+or physical cleanup permission.
+
+The model assumes a qualified scheduled caller and producer notification when
+the captured source episode ends. It omits IRQ/lock mechanics, sponsor quotas,
+subscription allocator internals, and the outer domain-abort policy. It checks
+safety, without assuming eventual completion or eventual admission.
+
+## Root-retirement model
+
+`CharlotteRootRetirement.tla` follows one reusable ASID through two generations,
+with two possible operation leases and a bounded invalidation retry count.
+Staged close fences new ordinary leases, preserves existing and abandoned
+leases, and detaches only after device, IPC and memory cleanup have completed.
+Failed invalidation retains root, slot, metadata and original charges together.
+Custody transfers that complete owner before an explicit retry; abandonment
+has no continuation that reconstructs authority from diagnostic identity.
+
+After acknowledged invalidation, metadata is released before one physical
+walk. Successful release refunds the backing charge. A rejected physical
+release retains the original charge and cannot be retried, while slot
+completion allows the next generation to be allocated. Five negative
+configurations weaken lease retention, invalidation ordering, physical
+once-only release, terminal abandonment and retained-charge accounting.
+
+Thread quiescence, hardware acknowledgements and subsystem completion are
+explicit boundary assumptions. The model does not prove their producers,
+allocation under guards, intermediate frame-walk interruption, registry ticket
+reuse, aggregate budgets or restart authorization. The older
+`CharlotteAddressSpace` model continues to check stale-handle rejection.
 
 ## Scheduler lifecycle model
 
@@ -464,9 +575,44 @@ invariant. The complete fast configuration explores 144,598 generated states,
 The design and implementation sequence are described in
 [`../architecture/authorization-policy.md`](../architecture/authorization-policy.md). The local
 name service now implements the co-located decision-and-delegation path using
-kernel-authenticated domain generations and principals. The older keyed name
-lookup remains a quarantined compatibility protocol and does not conform to
-the principal-based contract.
+kernel-authenticated domain generations and principals. Bearer-key name
+lookup opcodes are retired. Public bootstrap naming cannot resolve or replace
+policy-published services. Publication classes and endpoint-death watch
+admission are still outside this authorization model.
+
+## Local name publication model
+
+`CharlotteNamePublication.tla` follows the local registry's connection and
+persistent endpoint-death watch through preparation, policy publication,
+registry replacement, deferred lookup and logical retirement. Public lookup
+cannot issue a policy-published connection, including when lookup was queued
+before publication. Public replacement requires the same nonzero registrar and
+an existing public entry. Authorized lookup consumes an abstract successful
+policy decision; both publication classes have policy-store bindings, so an
+authorized lookup is not categorically forbidden for public entries.
+
+Watch admission precedes policy mutation. The current entry remains authoritative
+on preparation rejection. Requests cannot interleave between policy publication
+and registry installation. Live capacity includes one spare preparation watch
+for a replacement; watch disposal precedes source close. CQ hints deliberately
+may alias any current watch. Only its own confirmed close result can retire its
+captured entry, while unexpected results or rejected waits retain owners through
+terminal abort. Explicit retirement checks the exact generation and authenticated
+registrar or manager; tombstones keep their generation.
+
+Two bounded instances keep checks practical: two names, two principals and two
+candidates exercise publication/lookup/watch interleavings at live capacity one;
+a separate three-candidate projection reaches generation exhaustion at two.
+It omits lookup/watch interleavings already checked in the first instance.
+Thirteen negative configurations cover the removed guards. The accompanying
+source regression fixes publication beyond the positive `i64` NS result range.
+
+Kernel identity and watch-result authenticity, trusted launch budget preparation,
+full-name parsing, actual allocation/IRQ/destructor behavior and physical cleanup
+remain boundary assumptions. Capacity one does not represent scan ordering
+among several simultaneously live watches. No liveness, 64-entry native saturation or composed
+Rust refinement proof is claimed. The [review](../reports/audits/2026-10-18-name-publication-model.md)
+records source correspondence, checked bounds, counterexamples and evidence.
 
 ## DMA and SMMUv3 model
 
@@ -491,6 +637,43 @@ uncertain invalidation, and quarantines a domain on teardown failure.
 
 `CharlotteDMA_unsafe.cfg` deliberately creates an exclusive pin without the
 ownership precondition and must violate `ExclusiveDmaHasNoCpuAuthority`.
+
+## DMA operation model
+
+`CharlotteDmaOperation.tla` supplements the pinning model with one map and its
+owned unmap/CPU teardown. Map admission retains the original root, public
+capability claim, pending pin and source storage through fallible preparation
+and waiting. The same fixed unit must supply both its actual engine and domain
+cell. A producer can restore availability before registration, or another
+claim can win before wake delivery; every wake rechecks the unit. Busy masked,
+nonscheduled and rejecting callers fail admission. An immediate ready claim
+needs no readiness wait. An abandoned holder stays fenced.
+
+Map errors grant no replay permission. For unmap, only typed pre-claim busy
+rejection rearms the same owner. Started maintenance errors and rejected final
+public completion retain the recorded attempt; Drop cannot submit it again.
+Backend acknowledgement is separate from successful public completion.
+Confirmed DMA completion survives a later CPU-unmap failure, so retrying CPU
+teardown performs no additional DMA unmap. Failed shared preparation retains
+its CPU mapping without volatile or Rust access. Local CPU teardown cannot
+discharge an uncertain DMA pin or original backing charge. A fresh CPU mapping
+requires all DMA pins to be gone; an existing coherent mapping keeps its
+volatile-access contract.
+
+The bounded instance explores shared/exclusive memory, four caller contexts,
+three unit-availability epochs and at most two unmap submissions. Thirteen unsafe
+configurations check incomplete-unit claims, false completion from readiness,
+premature preparation disposal, map replay, started/final-error unmap rearming,
+Drop resubmission, forgotten confirmation, failed-shared access, CPU-only
+release of uncertain backing, abandonment, masked waiting and fresh CPU remapping
+while a coherent pin remains.
+
+Exact root/sponsor capture, typed backend acknowledgements and confirmed
+physical release are boundary inputs. The model omits actual MMIO/cache/IRQ
+mechanics, byte and metadata admission, multiple simultaneous public operations,
+grant creation/cancellation, and reset-based quarantine recovery. The older
+`CharlotteDMA` model continues to check stream ownership and CPU/loan exclusion.
+Neither is a composed Rust refinement proof or a liveness result.
 
 ## Raft election model
 
@@ -611,7 +794,7 @@ graceful path that keeps established flows and blocks new ones.
 Three negative configurations preserve the cross-layer hazards:
 
 - `CharlotteClusterIngress_stale_snapshot_unsafe.cfg` admits a new SYN through
-  an old snapshot after current policy withdraws its selected backend;
+  an old snapshot after its freshness lease expires;
 - `CharlotteClusterIngress_history_unsafe.cfg` evicts an epoch still named by
   a flow and then remaps that flow through the current snapshot; and
 - `CharlotteClusterIngress_readiness_unsafe.cfg` treats readiness from an old
@@ -677,9 +860,10 @@ is exhausted.
 
 ## Relationship to formal verification
 
-The models answer “are ownership transitions formally specified?” only at the
-abstract protocol level: the desired transition is written as one atomic TLA+
-action and checked against bounded safety invariants.
+The models specify ownership transitions at the abstract protocol level.
+Selected operations are split into preparation, publication, waiting and
+retirement phases; each individual action remains atomic in TLA+ and is
+checked against bounded safety invariants.
 
 They do not yet answer “does the kernel implement that transition atomically?”
 [`CONFORMANCE.md`](CONFORMANCE.md) documents, for every modeled operation:

@@ -5,7 +5,19 @@ action represents. “Direct” means the action follows the current Rust state
 transition while omitting data irrelevant to the checked invariant.
 “Abstract” means several concrete operations are deliberately collapsed.
 
-This is a reviewable correspondence map, not a refinement proof.
+This is a reviewable correspondence map, not a refinement proof. The
+[18 October security synchronization](../reports/audits/2026-10-18-security-model-sync.md)
+adds focused root-retirement and checked-wait projections. The subsequent
+[IPC publication review](../reports/audits/2026-10-18-ipc-publication-model.md)
+adds captured admission, escrow and hidden delivery. Remaining omissions in
+other models are still open qualification work. The subsequent
+[DMA operation review](../reports/audits/2026-10-18-dma-operation-model.md)
+adds fixed-unit admission and kernel/runtime map/unmap failure ownership.
+
+The [NS publication review](../reports/audits/2026-10-18-name-publication-model.md)
+adds the serialized local registry, public/policy issuance boundary, prepared
+watch ownership and exact death retirement. It also corrects publication
+exhaustion at NS's signed-result limit.
 
 ## IPC
 
@@ -60,6 +72,39 @@ The retained unsafe rollback leaves one target-registry entry and its abstract
 connection attachment after failure. The retained unsafe timeout releases a
 loan while the pending call remains live. Both are required counterexamples in
 the model runner.
+
+### Captured admission and hidden delivery
+
+`CharlotteIpcPublication` supplements the older atomic IPC and capability
+models. Its single `st` record contains one transaction, the exact original
+namespace/account identities, admitted records and detached charged nodes.
+The generation labels distinguish namespace-budget instances; concrete tokens
+also validate the retained budget's identity, not just a scalar generation.
+`authority = Live` alone is insufficient for ordinary use: payload `delivery`
+must also be visible. `source` and `target` retain their captured generation
+when `current` advances to an unrelated successor at the same numeric ASID.
+
+| TLA+ action | Rust implementation | Correspondence |
+|---|---|---|
+| `PrepareRecord`, `RejectStorage`, `Reserve`, `RejectReservation` | `PreparingRecord`, `PreparedReservation`, `reserve_prepared_captured` | Abstract fallible storage and record admission before payload publication. A successful reservation consumes its serial and original account charge; ordinary rejection publishes nothing. Allocator bytes, platform class and exact root admission are omitted. |
+| `PrepareMemory` / `PrepareConnection` | `PreparedTransfer`, `SourceEscrow`, `PreparedConnection` | Abstract move/copy preparation and an already delivered minting source. Move authority enters escrow; a pin retains backing, and copy preparation owns private backing. Read/write loans, mappings, copy contents and explicit source-close claim waits are outside this projection. |
+| `Commit` / `RejectCommit` | `publish_batch`, `commit_undelivered_transfers_with_authority`, `PreparedCall::commit_retained`; returned output publication in `PreparedReply` | The model checks validation of the complete mixed batch before joint authority/payload publication. Both output grants remain pending delivery. Concrete participating registry guards bridge the remaining allocation-free payload writes. A call's own pending/reply records, queue admission and fallible loan revocation are omitted. |
+| `FinishPreparation` | consuming prepared-transfer completion/Drop after committed payload installation | Ends transient pins and unused preparation before the destination can receive/use the grants. The memory registry's local hold has ended; the enclosing IPC serialization remains a separate context. Detached source authority is explicitly disposed afterwards. |
+| `AbortPreparation` | prepared-transfer cancellation, `SourceEscrow::rollback`, `Reservation` cancellation | Restores only an existing captured source slot, without fresh quota, including retired-but-present teardown authority. Cancels staged destinations into detached metadata, ends private preparation and retains serial consumption. Removed namespaces remain absent. Actual field Drop, backing-release rejection and outer guards are not proved. |
+| `PrepareReceive`, `RejectReceive`, `ReceiveWriteFailed`, `CommitReceive` | `PreparedReceive::new`, result writing, speculative reply cleanup and `commit` | IPC's exclusive borrow hides speculative reply authority; the model represents it as staged. Rejection leaves the queued attachments hidden. Successful dequeue publishes the memory and connection together. Result bytes, one-way sends and root leases are omitted. |
+| `Readiness`, `ObserveReply`, `RepeatObservation` | reply/CQ readiness, first `poll_reply` observation, later stored-result reads | A readiness hint leaves grants hidden. First observation delivers both once. Repeat observation changes no authority, including after application close. Applications must still use owned wrappers to avoid adopting the same returned numeric values twice. |
+| `Use` / `ApplicationClose` | ordinary memory/IPC lookup and typed close | Both family payloads reject pending delivery even when unified authority exists. Close after delivery detaches its record; cancellation of the original call cannot reclaim already observed output. Child delegation and attenuation are outside this model. |
+| `CancelHidden` | queued cancellation/endpoint cleanup and unobserved-result cancellation | Only the container's hidden output grants are consumed. A committed move is never restored to its sender. Confirmed payload retirement is assumed; loan cancellation, endpoint reference accounting and fallible physical release remain separate obligations. |
+| `RetireNamespace`, `DetachNamespace`, `ReplaceNamespace` | budget retirement, complete namespace detachment and exact-generation registration | Retiring admission prevents fresh publication; existing escrow may restore for teardown. Detached nodes retain original charges. A new namespace may reuse scalar handles but old tokens cannot alter it. These adversarial namespace schedules abstract family-level fixture boundaries; they do not authorize bypassing a live root lease. |
+| `ReleaseRetired` | `RetiredRecord::release`, namespace disposal, `SourceEscrow::finish_retired` | Node disposal precedes refund to the exact captured account. A committed move's detached source remains with its transient pin until preparation finishes. Physical backing charges and process-wide heap budgets are omitted. |
+| `Fill` / `Abandon` | admitted pressure fixtures / terminal preparation retention | Ordinary records can fill the source account while escrow is live. Abandonment retains preparation; the model does not qualify active reservation/escrow Drop beneath arbitrary outer guards. |
+
+Ten separately weakened specifications check both payload families' hidden
+lookup, batch atomicity, consumed serials, exact successor protection, detached
+node charges, readiness/result separation, repeated observation and rollback
+at the namespace ceiling. This adds a bounded projection of C18 and selected
+publication boundaries used by C07–C11; it supplies no physical cleanup proof.
+The older models' omission statements below still apply to those older models.
 
 ## Endpoint observers
 
@@ -120,6 +165,28 @@ generation via `classify_timed_wait`, used by `wait_on_cq` and
 timeout. (`block_until` rechecks the caller's condition, not the generation.)
 `CharlotteTimedWait_unsafe.cfg` omits that recheck and must violate
 `TimeoutObservedNoWork`.
+
+### Fallible checked waits
+
+`CharlotteCheckedWait` starts after request acceptance. `owner` and `loan`
+represent the still-held operation and its buffer borrow; `submissions` stays
+one throughout. `epoch` represents an exact source/claim episode, distinct from
+the enclosing operation's terminal result. It is not a reusable ASID or TID.
+
+| TLA+ action | Rust implementation | Correspondence |
+|---|---|---|
+| `BeginWait`, `PrepareWatchdog`, `PrepareSource` | `try_block_until_with_constraint`, timer `prepare_watchdog`, scheduler `prepare_wait`, and source `try_register_waiter` | Abstract admission phases with one original deadline. Time advances independently during preparation. Sponsor identity, quota amounts, weak observers, candidate nodes and partial allocator construction are omitted. |
+| `RejectWatchdog` / `RejectSource` | `Error::WaitRegistrationFailed`; kernel completion `WaitAdmissionFailed`; ABI `WAIT_ADMISSION_FAILED` or IPC `RESOURCE_LIMIT` | Abstract unstarted wait rejection: explicitly dispose unused local wait storage while retaining the accepted operation and loan. The model keeps rejection distinct from timeout; rejection does not cancel or replay the operation. Concrete condition rechecks can return ready instead of rejection. |
+| `Register` / `PublishPark` | scheduler `publish_wait`, the condition recheck in `try_block_until_with_constraint` | Abstract lost-wake boundary: register against a captured episode, recheck terminal state, early hint, changed episode and remaining time before parking. Concrete waker/thread-generation validation, IRQ policy and physical context switching are not proved. |
+| `PublishTerminal` / `ChangeEpisode` | operation producer completion; checked IPC claim completion/rollback and source closure | Boundary assumption: a terminal result is durable, and an ended source episode notifies its registered interest. Changing a claim episode preserves the enclosing pending operation. This does not prove producer-LP deferred delivery or particular hardware completion. |
+| `Wake`, `UnrelatedWake`, `Recheck` | wake/watchdog delivery and the scheduler's absolute-deadline loop | Every wake releases unused wait storage and rechecks the operation. A hint cannot adopt returned resources, establish quiescence or authorize replay. Rejection may be followed by another wait only while retaining the same operation. |
+| `ObserveTerminal` | owned completion observation or `PendingCall::finish` after reply wait | Abstract confirmed terminal observation transfers returned authority once and ends the borrow. CQ readiness alone never performs this action. Cancellation is represented only after confirmation. |
+| `Abandon` | inert preparation/operation retention; containing fail-closed policy | Retains the existing owner, loan and any wait storage. Concrete runtime Drop may attempt cancellation or abort the domain; those typed policies, active token disposal and outer guards remain outside this projection. |
+
+The six negative configurations require their respective unsafe actions to
+violate owner/loan retention, single submission, fixed deadline, result
+qualification, park recheck and timeout classification. This is a safety model;
+finite admission, producer progress and eventual disposal are not established.
 
 ## Deliberately omitted behavior
 
@@ -191,6 +258,34 @@ the never-issued property is preserved. The safe model exercises
 | Address-space `CloseExact` | `close_user_address_space_handle`; generation checks, lifecycle serialization, `RetiredAddressSpace` and `RetiredEntry` | Direct for rejecting stale handles. Logical subsystem cleanup remains lifecycle-serialized; a detached root leases its slot through post-guard invalidation/destruction before reuse. The atomic model omits this intermediate invisible-but-leased state, completion metadata, failed invalidation and quarantine. Public live map/unmap, explicit device close and direct loan revocation now retain operation leases through their own finish. |
 | Hardware-ASID `Allocate` / `Retire` / `Invalidate` | AArch64 hardware-ASID allocator and TLB invalidation | Abstract: page-table contents are omitted; tag reuse is allowed only after invalidation removes stale translations. |
 | Interrupt-route `Bind` / `QueueWake` / `Unbind` / `DrainSafe` | device interrupt binding, route generation, deferred wake drain | Abstract generation-fencing check for one route. The implementation now has independent atomic mailboxes with retained watermarks and a guarded CQ preparation step; mailbox capacity, atomic claim/publication, binding exhaustion and controller MMIO are not modeled here. |
+
+### Root-retirement projection
+
+`CharlotteRootRetirement` supplements the atomic `CharlotteAddressSpace` close.
+`slot` is the generation currently holding one reusable numeric ASID;
+per-generation records preserve terminal backing/charge history after reuse.
+Two abstract pages represent complete versus partially rejected physical
+release. `metadata` groups detached mailbox/queue, authority, limit, usage and
+signed-identity storage; individual family counters and principal history are
+not independently modeled.
+
+| TLA+ action | Rust implementation | Correspondence |
+|---|---|---|
+| `Allocate` | `PreparingRegistration`/registration publication and `PreparingMetadata` | Abstract successful root publication with its original metadata and charge. Fallible construction and signed identity installation remain outside the model. |
+| `Acquire`, `FinishOperation`, `AbandonOperation` | `AddressSpaceOperation::acquire`, consuming `release`, inert `SlotLease` fallback | Captures the exact generation. Closing rejects new ordinary acquisition; abandoned leases retain their count. Special peer leases borrowed from a closing owner are omitted. |
+| `BeginClose` / `ClosePending` | `ClosingAddressSpace::begin`, `RetirementProgress::Pending` | Fences new ordinary operation admission while retaining older leases and the complete closing owner. Thread quiescence is assumed before entry. Immediate busy-close rejection is covered by Rust fixtures, outside this projection. |
+| `FinishCleanup` / `Detach` | `ClosingAddressSpace::prepare_retirement`, subsystem completion and root extraction | Devices precede IPC, then memory; zero leases and confirmed subsystem completion precede detachment. Each typed subsystem proof is an input, not proved by this model. Cleanup failure/abandonment retains the fence and owner. |
+| `BeginInvalidation`, `InvalidationFailed`, `RetainForRetry`, `ClaimRetry` | `RetiredAddressSpace::release_retry_with_physical`, `recovery::retain`, `Registry::claim` and `Attempt` | Complete root/slot/metadata/original charges survive failure and owner transfer. Retry requires custody and no physical start. The bound counts whole invalidation invocations, abstracting initial versus controller attempts; fixed registry capacity, ticket serials, IRQ rejection and inner x86 acknowledgement epochs are omitted. |
+| `InvalidationSucceeded` / `StartPhysical` | confirmed invalidation, explicit metadata release, `RetiredEntry::release_value_with` | Hardware acknowledgement precedes detached metadata disposal and physical teardown. The model assumes genuine acknowledgement and post-guard context; it does not prove hardware or allocator behavior. |
+| `FinishPhysical` | `release_retired_with`, account retention/refund, `finish_retirement` | Successful physical release refunds the backing charge. Partial rejection retains the whole original charge with terminal backing, while the now-quiescent software slot can complete. No partial physical walk is replayed. Individual frame outcomes and interruption inside the walk are omitted. |
+| `Abandon` | consuming cleanup error, rejected custody admission, or inert root/attempt fallback before physical start | Retains all represented fields with no controller re-adoption. Abandonment after physical start/status-publication races remains outside this projection. |
+
+Five separate negative specifications expose detachment with live leases,
+release without invalidation, physical retry after partial release, adoption of
+an abandoned owner, and refund of retained backing. These supplement C01–C03
+in the [cleanup coverage map](../reference/cleanup-recovery.md); they do not
+qualify other owner families or close SEC-07/18. Existing omission statements
+below refer to the older atomic models and to unmodeled concrete phases.
 
 This lifetime model abstracts hardware walk/TLB quiescence. Concrete kernel
 ranges now retain removed data in `RetiredKernelRange` through post-guard
@@ -346,12 +441,12 @@ code never performs an indefinite CQ wait plus a detached timer.
 |---|---|---|
 | `CreateMemory` | `memory::object::allocate` | Abstract: frame count and physical addresses are omitted. |
 | `CreateDomain` | `device::grant_dma_domain`, `smmu::create_domain` | Direct for unique requester-stream ownership and domain authority. Page-table allocation is omitted. |
-| `CpuMap` / `CpuUnmap` | `memory::object::map`, `unmap` | Abstract boolean projection of CPU page mappings. Exclusive DMA blocks mapping; concrete virtual addresses and permissions are omitted. |
+| `CpuMap` / `CpuUnmap` | `memory::object::map`, `unmap` | Abstract boolean projection of CPU page mappings. Any retained DMA pin blocks a fresh mapping; an existing coherent mapping remains valid. Concrete virtual addresses and permissions are omitted. |
 | `BeginLoan` / `EndLoan` | `lend_read`, `lend_write`, `revoke_lend` | Abstract projection of IPC memory loans. A new loan is rejected while any DMA pin exists. |
 | `BeginMap(..., "Coherent")` | unsafe `dma_map`, `memory::object::pin_for_dma` | The raw coherent-sharing path may coexist with CPU mappings or a previously established loan; synchronization remains the unsafe caller's obligation. It cannot coexist with an exclusive pin. |
 | `BeginMap(..., "Exclusive")` | safe `dma_map_exclusive`, `OwnedMemory::begin_dma` | Direct ownership transfer: requires no CPU mappings, loans, or other DMA pins. The mode remains exclusive until acknowledged unmap and pin release. |
 | `CommitMap` | `Domain::map`, `invalidate_asid`, successful return from `smmu::map` | Abstract: per-page PTE installation and IOVA arithmetic are collapsed. Publication occurs only after invalidation succeeds. A second mapping of the same memory object in one domain is rejected, preserving the model's per-domain uniqueness. |
-| `FailMap` | partial-PTE cleanup and `memory::object::unpin_dma` | Direct rollback for failures before complete PTE installation, including unknown-domain lookup. |
+| `FailMap` | confirmed partial-PTE cleanup or unstarted rejection, then `memory::object::unpin_dma` | Abstract confirmed rollback only. An error or an incomplete installation does not by itself prove rollback; uncertain started maintenance retains its pin. Admission/completion ownership is split in `CharlotteDmaOperation` below. |
 | `QuarantineMap` | failed `invalidate_asid` after `Domain::map` | Direct safety policy: the unpublished internal mapping retains its pin because hardware translation state is uncertain. A later acknowledged domain destroy reclaims it. |
 | `RevokeMap` / `ReleasePin` | `Domain::clear_mapping`, `invalidate_asid`, then `unpin_dma` | Direct ordering: translation removal is acknowledged before the object becomes reclaimable. |
 | `BeginDestroy` | `smmu::destroy_domain` before the aborting STE is acknowledged | Abstract in-progress management state under the SMMU lock. |
@@ -363,6 +458,37 @@ code never performs an indefinite CQ wait plus a detached timer.
 `ExclusiveDmaHasNoCpuAuthority` checks that an exclusive pin cannot overlap a
 CPU mapping, IPC loan, or second DMA pin. `CharlotteDMA_unsafe.cfg` removes the
 exclusive precondition and must produce a counterexample.
+
+### DMA operation and readiness projection
+
+`CharlotteDmaOperation` follows one successful or failed map and its possible
+unmap/CPU teardown. Its `root`, `claim`, `pin`, `sourceStorage` and `interest`
+represent separate owners; `unit` holds the actual backend domain/engine
+while their installed cells are absent. `backendAck` is distinct from the
+runtime's `dmaConfirmed`. The captured root/pin/sponsor identity is a fixed
+input, not an additional address-space reuse proof.
+
+| TLA+ action | Rust implementation | Correspondence |
+|---|---|---|
+| `BeginMap` | `map_with`, `DmaOperation::begin`, original `PendingPin` installation | Abstract successful public admission with the same captured root/classification and memory pin. Early direction/capability/pin allocation failures are outside this projection. |
+| `PrepareInterest`, `LinkInterest`, `ReadyDuringPreparation` | `domain_creation::readiness::admit_with`, `Source::prepare` and borrowed `Owner::interest` | Storage leaves local backend guards before preparation; readiness is rechecked before linking the exact source episode. The model assumes qualified post-guard execution and does not prove allocator or notification-list internals. |
+| `RejectSourcePreparation`, `RejectContext`, `RejectWaiter`, `CleanupUnstarted` | source/waiter admission failure, qualified scheduler/IRQ checks and ordinary unstarted-pin cleanup | Failure retains the public root/claim and pin until explicit cleanup; source/interest disposal precedes public root completion. Masked ready paths may claim immediately, while busy waiting requires qualified context. No IRQ state is enabled by the model. |
+| `Park`, `RestoreUnit`, `NotifySource`, `ObserveClosedSource`, `CompetingClaim` | owned unit subscription, complete unit restoration and producer-LP deferred delivery | Notification closes an old source episode after restoration. A competing claimant can win before wake; the original owner rechecks without rerunning work. Actual scheduler/lost-wake mechanics are abstracted separately in checked-wait models. |
+| `ClaimMap` / `FinishMap` | backend admission callback returning `MappingMaintenance`, mapping maintenance and `Records::publish`/`quarantine`/ordinary rollback | Requires the actual engine and recorded domain cell together; work runs once. Confirmed rollback releases its pin, uncertain completion retains it in the registered backend. Hardware acknowledgements and backend-specific page walks are assumed inputs. |
+| `CompleteMapPublic` / `RejectMapPublicCompletion` | `DmaOperation::complete`, `MapError`, runtime `begin_dma` / `map_shared_dma` | Ordinary completion releases the public claim/root after backend restoration. Rejected public completion retains them and returns no usable map success. A map error never creates replay authority. Failed shared preparation retains a restricted mapping even after ordinary pin rollback. |
+| `BeginUnmap` | `DmaUnmap::finish` records `Retained` before calling `kernel::dma_unmap` | Both explicit finish and initial Drop fallback record their attempt before entry. The model bounds total submissions and tracks which attempt remains uncertain. |
+| `RejectUnmapAdmission` / `ClaimUnmap` | typed `UnmapError::Admission` versus actual backend domain/engine extraction | Only pre-claim `OperationInFlight` can become ABI `OPERATION_IN_FLIGHT`. Unmap uses the rejecting path; this model introduces no unmap readiness or polling. |
+| `FinishUnmap`, `CompleteUnmapPublic`, `RejectUnmapPublicCompletion` | typed backend completion, `unmap_with`, runtime `DmaUnmap` | Backend success releases the DMA pin; ABI success records runtime confirmation. Completion errors, including busy-looking backend/final-claim failures, do not rearm. Ordinary backend errors may release the public root while retaining quarantined pins and original backing charges. |
+| `CpuUnmapFailure` / `CpuUnmapSuccess` | `SharedDmaMemory::finish`; exclusive `DmaTransfer::finish` returns unmapped memory directly | Confirmed DMA completion persists through failed CPU teardown. Shared retry performs only CPU unmap; exclusive return needs no CPU unmap call. The model's `Owned` state is an unmapped CPU owner, not an exposed Rust slice. |
+| `FailedSharedCpuUnmap`, `PrepareLocalDrop`, `DropLocal`, `ReleaseBacking` | `FailedSharedDmaMemory::unmap`, runtime Drop, kernel pinned-memory retention | Local teardown can close CPU access and request memory close without discharging an uncertain DMA pin. Confirmed release is an input; allocator failure and actual field-destructor ordering remain outside the model. |
+| `FreshCpuMap` | `memory::object::map_locked_with_cleanup` after `FailedSharedDmaMemory::unmap` | Every DMA pin fences a fresh CPU mapping, including coherent pins retained after uncertain map failure. Existing coherent CPU mappings precede pinning. The [remap regression](../reports/audits/2026-10-18-coherent-dma-remap-fence.md) reproduced the missing gate before correction. |
+| `RejectRootClose` / `Abandon` / `AbandonExternal` | operation leases, inert `DmaOperation` / `Maintenance` / `PendingPin` fallback, abandoned unit holder | Existing complete owners and fences remain retained. The abstract diagnostic close probe grants no quiescence or recovery permission. Grant creation/cancellation and wider root/IRQ contexts remain separate. |
+
+Thirteen required negative specifications cover readiness, context, retained
+owners, map replay, unmap admission/completion classification and local CPU
+cleanup, including a fresh CPU mapping after consuming the restricted wrapper. This projects selected C13/C14/C18 boundaries in
+[cleanup/recovery](../reference/cleanup-recovery.md). It does not qualify a new
+custody family or close SEC-07/18; older pinning-model omissions remain relevant.
 
 ## Raft election and durable voting
 
@@ -569,16 +695,16 @@ The target-independent state machine is implemented and host-tested in
 `charlotte-authorization` and the co-located production path is wired into
 `ns`. The signed loader derives a stable principal from authenticated artifact
 metadata, installs its exact address-space generation and roles in a
-kernel-only table, and IPC enqueue snapshots those values for the explicit
-authenticated receive ABI. The legacy receive syscalls retain their original
-register contract. The name service synchronizes that exact identity into its policy
+kernel-only table, and IPC enqueue snapshots those values for the authenticated
+twelve-register receive ABI (71–73); retired nine-register receives reject.
+The name service synchronizes that exact identity into its policy
 store, evaluates default-deny rules, delegates only requested rights, and
 records bounded audit entries. The design contract is in
 [`../architecture/authorization-policy.md`](../architecture/authorization-policy.md).
 
 | TLA+ action | Intended CharlotteOS implementation | Correspondence |
 |---|---|---|
-| `PublishService` / `ReplaceService` / `UnpublishService` | `PolicyStore::publish_service` / `unpublish_service`, `ns::OP_REGISTER_AUTHORIZED`, and generation-fenced unregister | Direct for kernel-authenticated service-manager role, rights ceiling, checked generation, and stale-unpublish rejection. `OP_UNREGISTER` requires an authenticated service-manager sender. `OP_UNREGISTER_GENERATION` requires the authenticated sender's stable principal to match the principal recorded at registration (so a node reconciler retires its own entries across restarts), or a service-manager sender. Legacy registration is mirrored into the same binding store for compatibility, but it may only replace an active entry created by the same stable principal and can never displace an authorized publication. Distributed policy replication is not implemented. |
+| `PublishService` / `ReplaceService` / `UnpublishService` | `PolicyStore::publish_service` / `unpublish_service`, `ns::OP_REGISTER_AUTHORIZED`, and generation-fenced unregister | Direct for kernel-authenticated service-manager role, rights ceiling, checked generation, and stale-unpublish rejection. `OP_UNREGISTER` requires an authenticated service-manager sender. `OP_UNREGISTER_GENERATION` requires the authenticated sender's stable principal to match the principal recorded at registration, or a service-manager sender. Public bootstrap registration shares policy-store generation bookkeeping, but NS records its separate publication class: public lookup cannot resolve an authorized entry, authorized lookup cannot resolve a public entry, and public replacement requires the same stable registrar and cannot displace an authorized publication. That class distinction and fallible endpoint-death watch admission are outside this model. Distributed policy replication is not implemented. |
 | `SetPolicy` | `PolicyStore::set_policy`, `ns::OP_SET_POLICY` | Direct for authenticated administrator role, exact subject/service rule, optimistic version fence, explicit deny, and exhaustion failure. State and its bounded audit are currently volatile. |
 | `IssueTicket` | `PolicyStore::issue_ticket` | Direct in the engine for exact generation-aware identity, requested rights, current rule and binding, attenuation, bounded outstanding decisions, and default deny. The co-located runtime path uses `authorize_now` instead of exporting a ticket. |
 | `CancelTicket` | `PolicyStore::cancel_ticket` | Direct for subject-bound removal. Expiry is not implemented. A co-located adapter can keep decisions internal by using `authorize_now`. |
@@ -607,3 +733,31 @@ The two negative configurations (`UnsafeGrowOverBudget` and
 pass the signed or adaptive budget, and a killed domain must return every
 committed frame before its slot is reused. `FreeReservePreserved` additionally
 checks that successful growth cannot consume the pressure reserve.
+
+## Local NS publication and death watches
+
+`CharlotteNamePublication` supplements authorization and endpoint-observer models.
+Names and authenticated principals are distinct atoms. One registry mutation runs
+at a time; kernel endpoint closure and CQ hints can occur during it. All real CQ
+hints may alias a current watch in the projection, so a stale matching hint still
+requires the current producer's own result. This is a stress abstraction, not a
+claim that concrete completion IDs are reused or that arbitrary CQ results prove
+death. `closed` is an authentic per-publication producer outcome input.
+
+| Action | Implementation | Correspondence and boundary |
+|---|---|---|
+| `Begin`, `RejectBeforeWatch`, `PrepareWatch` | `ns::register`, `Publication::prepare`, `publication_admitted` | Candidate source is owned before watch admission; rejection preserves current policy/registry. Public replacement checks its existing class and nonzero registrar. Actual fallible allocation and kernel watch registration internals are abstracted. |
+| `PublishPolicy`, `RejectPolicy`, `RejectExhausted` | `PolicyStore::publish_service` | Role and generation checks precede policy mutation. The signed-result ceiling is `MAX_SERVICE_GENERATION`; rejected active or tombstone state stays intact. Tree limits/allocations and name decoding are omitted. |
+| `Install`, `FinishInstall` | `registry.insert`, replacement Drop | Registry insertion is the replacement linearization point. No request runs between policy publication and insertion. Post-insertion deferred replies precede old-owner disposal. Abort during the private intermediate phase retains owners and permits no further issuance. |
+| `Lookup`, `QueueLookup`, `ResolveDeferred` | `try_lookup`, `lookup_or_defer`, `register` waitlist firing, authorization helpers | Immediate and deferred public paths reject policy-published entries. Authorized decisions are input outcomes from the separate authorization model; a public entry may also be authorized by policy. Results snapshot their generation at issuance, without promising later revocation of an issued connection. One lookup/waiter is modeled. |
+| `CqHint`, `ObservePending`, `ObserveUnrelated`, `RetireDeath` | `Completion::matches_cq` / `poll`, `Publication::observe`, `retire_closed` | Hints give no death authority. Current publication's own confirmed endpoint-close result authorizes logical unpublication of its full identity/generation. Actual completion result authenticity and kernel wake registration are assumptions. |
+| `RetireExplicit`, `ExhaustionRetire`, `RejectRetirement` | `unregister_generation`, `retirement_allowed`, policy unpublish | Exact positive generation plus nonzero captured actor and registrar/manager authorization. No lookup-derived retirement authority. Decoding, identity provisioning and physical teardown are outside this projection. |
+| `CancelWatch`, `CloseSource` | `Publication` watch-before-connection field order | Disposes the watch before source close for unused candidates, replacement and retirement. No physical-release proof or destructor-context qualification. |
+| `WatchError`, `WaitRejected`, `LifecycleAbort`, `PublicationAbort` | fail-closed `domain_abort` paths | Retains existing connection/watch/registry owners. No replay, fabricated death, cooperative cleanup acknowledgement or physical release. Private publication abort also covers terminal interruption between policy and registry; actual allocator failure behavior is not proved. |
+
+The general instance has two names/principals/candidates and live limit one.
+A separate three-candidate exhaustion projection omits lookups/hints/endpoint
+closure/abort and reaches the generation-two boundary. Thirteen required negative
+configurations weaken the guarded actions. The 64+1 trusted launch budget,
+aggregate metadata accounting, raw receive/transport ownership, full-name wire
+parsing, outer contexts and physical cleanup remain separate C18 work.

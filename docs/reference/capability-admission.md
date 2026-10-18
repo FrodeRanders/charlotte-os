@@ -397,6 +397,22 @@ exhaustive concurrent-retirement proof. The existing TLA+ serial-authority
 model does not model these admission lifetimes.
 
 
+## Formal publication coverage
+
+[`CharlotteIpcPublication`](../tla/CharlotteIpcPublication.tla) now supplements
+the serial-authority model with bounded captured reservation/escrow lifetimes,
+move/copy plus connection publication, hidden request/reply attachments,
+receive failure, first observation and exact-account metadata disposal. Its
+replacement namespaces reuse numeric handles to test late cleanup isolation;
+pressure also exercises source rollback without fresh admission. The
+[model review and execution evidence](../reports/audits/2026-10-18-ipc-publication-model.md)
+record its bounds and ten required counterexamples.
+
+This projection assumes confirmed payload retirement and omits loans, actual
+allocator/IRQ/guard mechanics, physical backing charges, platform headroom and
+multiple concurrent transactions. It does not replace the concrete fixtures
+above or qualify remaining SEC-07/18 contexts.
+
 ## IPC connection delivery visibility
 
 `PreparedConnection::install` marks queued and returned connection grants as
