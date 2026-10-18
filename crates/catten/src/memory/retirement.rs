@@ -189,7 +189,7 @@ impl ClosingAddressSpace {
         }
         // The closing transaction continues to own every detached field before
         // final slot extraction. Interruption cannot run metadata destructors.
-        self.metadata = Some(super::finish_user_address_space_cleanup(self.handle));
+        self.metadata = Some(super::finish_user_address_space_cleanup(&self));
         self.mailboxes = Some(
             crate::syscall::mailbox_retirement::detach(self.handle, &_lifecycle)
                 .expect("sealed root lost its exact mailbox namespace"),

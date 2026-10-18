@@ -14,6 +14,7 @@
 use alloc::vec::Vec;
 
 mod principal_history;
+mod snapshot_tests;
 pub(super) use principal_history::PreparingHistory;
 
 use crate::memory::{
@@ -152,11 +153,42 @@ pub(crate) struct HeapStatus {
 
 /// Read the domain's published heap accounting, or `None` when the status page
 /// does not carry a valid record.
-pub(crate) fn domain_heap_status(asid: AddressSpaceId) -> Option<HeapStatus> {
+pub(crate) fn domain_heap_status(handle: AddressSpaceHandle) -> Option<HeapStatus> {
+    let root = super::operation::AddressSpaceOperation::acquire(handle).ok()?;
+    let result = read_heap_status(handle);
+    root.release().ok()?;
+    result
+}
+
+/// Final sampling borrows the sealed closing root; ordinary operation admission
+/// is already closed. The caller retains lifecycle through metadata detachment.
+pub(super) fn closing_heap_status(
+    root: &super::retirement::ClosingAddressSpace,
+) -> Option<HeapStatus> {
+    read_heap_status(root.handle())
+}
+
+fn read_heap_status(handle: AddressSpaceHandle) -> Option<HeapStatus> {
+    use super::{
+        ADDRESS_SPACE_TABLE,
+        AddressSpaceInterface,
+    };
+    let mut spaces = ADDRESS_SPACE_TABLE.lock();
+    if spaces.generation(handle.id()).ok()? != handle.generation() {
+        return None;
+    }
     let frame = {
         let table = DOMAIN_USAGE.lock();
-        table.get(&asid)?.1.status_frame?
+        let (captured, usage) = table.get(&handle.id())?;
+        if *captured != handle {
+            return None;
+        }
+        usage.status_frame?
     };
+    let space = spaces.get_mut(handle.id()).ok()?;
+    if space.translate_address(charlotte_launch::STATUS_VADDR.into()).ok()? != frame {
+        return None;
+    }
     use charlotte_launch::heap_status;
     let base: *const u8 = frame.into();
     let read = |offset: usize| unsafe { (base.add(offset) as *const u64).read_volatile() };
@@ -220,8 +252,35 @@ pub(crate) fn domain_usage(asid: AddressSpaceId) -> Option<DomainUsageSnapshot> 
 }
 
 /// Snapshot every live domain's accounting.
-pub(crate) fn all_domain_usage() -> Vec<(AddressSpaceId, DomainUsageSnapshot)> {
-    DOMAIN_USAGE.lock().iter().map(|(asid, (_, usage))| (*asid, usage.snapshot)).collect()
+pub(crate) fn try_domain_usage(
+    asid: Option<AddressSpaceId>,
+    budget: &mut crate::klib::collections::snapshot::Budget,
+) -> Result<Vec<(AddressSpaceHandle, DomainUsageSnapshot)>, crate::klib::collections::snapshot::Error>
+{
+    let count = DOMAIN_USAGE
+        .lock()
+        .iter()
+        .filter(|(id, _)| asid.is_none_or(|id_asid| **id == id_asid))
+        .count();
+    let mut output = budget.prepare(count)?;
+    capture_domain_usage(asid, &mut output)?;
+    Ok(output.into_vec())
+}
+
+pub(crate) fn capture_domain_usage(
+    asid: Option<AddressSpaceId>,
+    output: &mut crate::klib::collections::snapshot::Buffer<(
+        AddressSpaceHandle,
+        DomainUsageSnapshot,
+    )>,
+) -> Result<(), crate::klib::collections::snapshot::Error> {
+    let table = DOMAIN_USAGE.lock();
+    for (id, (handle, usage)) in table.iter() {
+        if asid.is_none_or(|selected| selected == *id) {
+            output.push((*handle, usage.snapshot))?;
+        }
+    }
+    Ok(())
 }
 
 /// Remember a retired generation's stack high-water mark for its principal.
@@ -248,4 +307,8 @@ pub(super) fn with_principal_history_locked<R>(work: impl FnOnce() -> R) -> R {
 
 pub(super) fn principal_history_available() -> bool {
     principal_history::available()
+}
+
+pub(crate) fn test_snapshot_heap() {
+    snapshot_tests::run();
 }

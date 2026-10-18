@@ -1,0 +1,454 @@
+{
+  "date": "2026-10-18",
+  "baseline": "b31a5b3f3496c081722ba88637d4f0d6ad37969e",
+  "source_uncommitted_at_validation": true,
+  "scope": "SEC-07 R7-1/R7-2 and SEC-18 C02/C18/G1/G4; bounded telemetry scratch and exact-generation status reads. Finding dispositions unchanged.",
+  "final_rust_sha256": {
+    "crates/catten/src/cpu/scheduler/threads/mod.rs": "40c725673adc7ff217dd90538cedbbcd4f47d2cf8ab7eeca77e2198afd4da4bc",
+    "crates/catten/src/klib/collections/mod.rs": "db9cf1bfd4aeb2aca754094be795862a802285b9715331d2230bfc13cf8bfbcc",
+    "crates/catten/src/memory/mod.rs": "b1b1f8c8b486a0ede3beba960f5eaf0581cb0cd946f6a48b06ac67855b08a175",
+    "crates/catten/src/memory/retirement.rs": "ecb69e4f29a5e2d5abf349eaef6c509b4a60c6a83d7d588fdf0418c8eedf37b5",
+    "crates/catten/src/memory/usage.rs": "cb980ae0c458123d7fd8180bf5d9b244d2f0455838d45ed35ced4d1c599c0b41",
+    "crates/catten/src/self_test/syscall.rs": "5b555a6e7c027a928251baba63a15b504de167dc4a63f7d8eed164ec666f93ae",
+    "crates/catten/src/syscall/mod.rs": "77986a583cb6bee56f85f381fc162735a6c16b59042efc3591ac4e05514f3eb3",
+    "crates/catten/src/klib/collections/snapshot.rs": "be6a3d06c4e3856255a5e19b64980383ab95afc8cfcf2d30c774fc7c90de929d",
+    "crates/catten/src/memory/usage/snapshot_tests.rs": "9bf937c103d164f5895a7fb9ad3fd7ae289979c82a319a6b36cc5cc4892d1bdf",
+    "crates/catten/src/syscall/statistics.rs": "28536ab393f5f67ab083a155f360f3c6af2c3033c508e3eb42ca06834fc87937"
+  },
+  "tooling_sha256": {
+    "scripts/run-host-tests.sh": "cea6dc0b62f5f78db0533461ea35110e76af028ffb7846d72ad95d9f860ee07d",
+    "scripts/run-aarch64.sh": "b2d89b80a48eb6fe7a3442cd315f12ae7272d6ba0684c471263a5bbd08a07db5",
+    "scripts/run-x86_64.sh": "72b24722e3cc9db0cccb55857fe91cc86bb83f381f06f32c25b912448fdbea54",
+    "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+    "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+    "scripts/check-kernel-asm-sections.py": "21943e564c4be97a474f53e97c1db79e43f8507ee92a1f7a3b9f5027a0a85ac4"
+  },
+  "checks": {
+    "host_runner_exit": 0,
+    "host_rust_tests": {
+      "passed": 517,
+      "failed": 0,
+      "ignored": 4,
+      "harness_summaries": 59
+    },
+    "additional_host_controls": "Signing/tooling/Python and cluster-sign self-tests passed.",
+    "aarch64_strict_clippy_exit": 0,
+    "x86_64_strict_clippy_exit": 0,
+    "cargo_fmt_check_exit": 0,
+    "git_diff_check_exit": 0,
+    "final_rust_hashes_verified": true,
+    "local_documentation_links_checked": 554,
+    "local_documentation_links_missing": 0
+  },
+  "validation_commands": {
+    "host": "bash scripts/run-host-tests.sh",
+    "aarch64_clippy": "CATTEN_AARCH64_SERVICE_BUNDLE=$PWD/target/embedded-services/aarch64-unknown-none cargo clippy --locked --package catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+    "x86_64_clippy": "CATTEN_X86_64_SERVICE_BUNDLE=$PWD/target/embedded-services/x86_64-unknown-none cargo clippy --locked --package catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+    "format": "cargo fmt --all -- --check",
+    "bundles": [
+      "scripts/build-catten-services.sh --embed",
+      "scripts/build-catten-services-x86_64.sh"
+    ]
+  },
+  "runs": [
+    {
+      "profile": "AArch64 / SMMUv3",
+      "phase": "initial",
+      "command": "scripts/run-aarch64.sh debug --smp 4 --no-network --fresh-storage --instance telemetry-snapshot-arm --timeout 180",
+      "environment": {},
+      "runner_exit": 0,
+      "diagnostic_id": "aarch64-8yqrxbr2",
+      "diagnostic_result": "complete",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "prepared_utc": "2026-10-18T10:36:53Z",
+      "kernel_elf_sha256": "dff3609cc55aa6ebe581fcb04440b64d0495e1bcf8ef0f5eb142310fe60bb845",
+      "boot_image_sha256": "672c97bf87df29c266cf5a15da68470dbe8ebd7d767286c8ced7e768a9cf1171",
+      "initial_disk_sha256": "600d93db8cfa4ea82d0e3507abc1d5b810825e96e2a27754fef207c147b32897",
+      "bundle_inventory": "76f019f19f820d362c837daa0b6d798f4aab3aca482d882e8fd06494d3cd3802",
+      "diagnostic_manifest_sha256": "9a6a231a874bd990558b42ee05a8a8e128dba28dad6972a10b7f206d30a8bf53",
+      "uart_sha256": "fb8b0c2795e4ed5126a1de9d6875486922d87367641a80f7de9f83e448ab5f20",
+      "deferred": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0,
+        "completed_at_guest_seconds": "13.611274"
+      },
+      "controls": {
+        "rejected_calls": 256,
+        "phase_repetitions": 64,
+        "phases": 4,
+        "output_capability_and_frame_counts_preserved": true
+      },
+      "markers": [
+        "[+     9.002186] [telemetry snapshot] 256 preparation/publication rejections, heap-held captures, checked sizing and generation-qualified heap reads passed",
+        "[+    13.611274] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x1ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "http_probe_passes": [],
+      "http_transport_diagnostics": []
+    },
+    {
+      "profile": "x86 / Intel VT-d",
+      "phase": "initial",
+      "command": "scripts/run-x86_64.sh debug --smp 4 --no-network --fresh-storage --instance telemetry-snapshot-intel --block nvme --iommu intel --timeout 180",
+      "environment": {},
+      "runner_exit": 0,
+      "diagnostic_id": "x86_64-4r_dg81n",
+      "diagnostic_result": "complete",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "prepared_utc": "2026-10-18T10:35:52Z",
+      "kernel_elf_sha256": "d6f122618eecb705ada223fb10a8c7cf5b0161b376bb1002f2faf10afcca9246",
+      "boot_image_sha256": "a162e8909603b283d7e9f4ee20eb03ad9236039dbdc1a5fdaea3b87d72b5b54f",
+      "initial_disk_sha256": "97487b9494773d251aafa33cd90557baabf279c5a90fd337c42d625ded98a126",
+      "bundle_inventory": "515fdbe8dab8e9a6a81dc1ffc51cc64d4c91868386540145963ac8321d4da7d8",
+      "diagnostic_manifest_sha256": "517bf2af671a7e692738888afebb92e7a8e3c941222c18fda26daf77e1517f7b",
+      "uart_sha256": "b572d11cb7ddb9ea7dd409bd2a7eaa1305cefba5e24c38edb78c38302cfe1324",
+      "deferred": {
+        "passed": 15,
+        "failed": 0,
+        "pending": 0,
+        "completed_at_guest_seconds": "18.722619"
+      },
+      "controls": {
+        "rejected_calls": 256,
+        "phase_repetitions": 64,
+        "phases": 4,
+        "output_capability_and_frame_counts_preserved": true
+      },
+      "markers": [
+        "[+    15.814034] [telemetry snapshot] 256 preparation/publication rejections, heap-held captures, checked sizing and generation-qualified heap reads passed",
+        "[+    18.722619] SELFTEST COMPLETE: passed=15 failed=0 pending=0 passed_bitmap=0x1bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "http_probe_passes": [],
+      "http_transport_diagnostics": []
+    },
+    {
+      "profile": "x86 / AMD-Vi",
+      "phase": "initial",
+      "command": "scripts/run-x86_64.sh debug --smp 4 --no-network --fresh-storage --instance telemetry-snapshot-amd --block nvme --iommu amd --timeout 180",
+      "environment": {},
+      "runner_exit": 0,
+      "diagnostic_id": "x86_64-4dz0ojho",
+      "diagnostic_result": "complete",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "prepared_utc": "2026-10-18T10:37:54Z",
+      "kernel_elf_sha256": "d6f122618eecb705ada223fb10a8c7cf5b0161b376bb1002f2faf10afcca9246",
+      "boot_image_sha256": "8c6679a050cdd1cc1e17155c82397405d953ecf83fdd934980378a519da22562",
+      "initial_disk_sha256": "97487b9494773d251aafa33cd90557baabf279c5a90fd337c42d625ded98a126",
+      "bundle_inventory": "515fdbe8dab8e9a6a81dc1ffc51cc64d4c91868386540145963ac8321d4da7d8",
+      "diagnostic_manifest_sha256": "ba94afee595c25ee968b639d52883043dc3086650dcbe89a95f786c4aade0908",
+      "uart_sha256": "0c370d5084004da97e2859f5f2bbbd8b541675892099f00ef6adbbe4d762c2f6",
+      "deferred": {
+        "passed": 15,
+        "failed": 0,
+        "pending": 0,
+        "completed_at_guest_seconds": "14.212363"
+      },
+      "controls": {
+        "rejected_calls": 256,
+        "phase_repetitions": 64,
+        "phases": 4,
+        "output_capability_and_frame_counts_preserved": true
+      },
+      "markers": [
+        "[+    11.500689] [telemetry snapshot] 256 preparation/publication rejections, heap-held captures, checked sizing and generation-qualified heap reads passed",
+        "[+    14.212363] SELFTEST COMPLETE: passed=15 failed=0 pending=0 passed_bitmap=0x1bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "http_probe_passes": [],
+      "http_transport_diagnostics": []
+    },
+    {
+      "profile": "AArch64 / SMMUv3 HTTP",
+      "phase": "initial",
+      "command": "scripts/run-aarch64.sh debug --smp 4 --http-test --fresh-storage --instance telemetry-http-arm --timeout 180",
+      "environment": {
+        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "CATTEN_HTTP_HOST_PORT": "18080",
+        "CATTEN_DEPLOY_HOST_PORT": "18081"
+      },
+      "runner_exit": 0,
+      "diagnostic_id": "aarch64-wdd0y0f5",
+      "diagnostic_result": "complete",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "prepared_utc": "2026-10-18T10:39:50Z",
+      "kernel_elf_sha256": "e973b48c39af1170a289bfed02d41cc5a68b7295976f492a48d93222e073c34b",
+      "boot_image_sha256": "fe1cd310a5a8df0c0dd1884cc6cab6d07758b93cc7921f4c9f870dc642695c5c",
+      "initial_disk_sha256": "600d93db8cfa4ea82d0e3507abc1d5b810825e96e2a27754fef207c147b32897",
+      "bundle_inventory": "76f019f19f820d362c837daa0b6d798f4aab3aca482d882e8fd06494d3cd3802",
+      "diagnostic_manifest_sha256": "2387314aa92839725c4b57afcab3ca447ba7d8831795036cc63712e3d48ae8bd",
+      "uart_sha256": "9dfe1a3b250892d6da532f98a0d54d098b9674aec6120651ae97ec0688dde10a",
+      "deferred": {
+        "passed": 19,
+        "failed": 0,
+        "pending": 0,
+        "completed_at_guest_seconds": "15.789835"
+      },
+      "controls": {
+        "rejected_calls": 256,
+        "phase_repetitions": 64,
+        "phases": 4,
+        "output_capability_and_frame_counts_preserved": true
+      },
+      "markers": [
+        "[+     8.391637] [telemetry snapshot] 256 preparation/publication rejections, heap-held captures, checked sizing and generation-qualified heap reads passed",
+        "[+    15.789835] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x23ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "http_probe_passes": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.09s; ingress recovered"
+      ],
+      "http_transport_diagnostics": [
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 2/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 2/2"
+      ]
+    },
+    {
+      "profile": "x86 / Intel VT-d HTTP",
+      "phase": "initial",
+      "command": "scripts/run-x86_64.sh debug --smp 4 --http-test --fresh-storage --instance telemetry-http-intel --iommu intel --timeout 180",
+      "environment": {
+        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "CATTEN_HTTP_HOST_PORT": "18082",
+        "CATTEN_DEPLOY_HOST_PORT": "18083"
+      },
+      "runner_exit": 0,
+      "diagnostic_id": "x86_64-tl_zv5gu",
+      "diagnostic_result": "complete",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "prepared_utc": "2026-10-18T10:40:48Z",
+      "kernel_elf_sha256": "34874b3e53fcf7f000e648747c6b2405002bc1e6c374eab38f3a42ed7a510be2",
+      "boot_image_sha256": "5d66a5a735e0b7eba2755bdd58fcf4f63bc4c847db8de5f42630cae3c961deb1",
+      "initial_disk_sha256": "97487b9494773d251aafa33cd90557baabf279c5a90fd337c42d625ded98a126",
+      "bundle_inventory": "515fdbe8dab8e9a6a81dc1ffc51cc64d4c91868386540145963ac8321d4da7d8",
+      "diagnostic_manifest_sha256": "6b3a2e2a91af6129bc83d45282d7e32b99b99e1902a3c909f8f82f250bd7a345",
+      "uart_sha256": "a84f0e347222e6aa1d3a79dc92ad5cc4d5c057b6b8c77fa6828c483abadede35",
+      "deferred": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0,
+        "completed_at_guest_seconds": "18.412262"
+      },
+      "controls": {
+        "rejected_calls": 256,
+        "phase_repetitions": 64,
+        "phases": 4,
+        "output_capability_and_frame_counts_preserved": true
+      },
+      "markers": [
+        "[+    11.754526] [telemetry snapshot] 256 preparation/publication rejections, heap-held captures, checked sizing and generation-qualified heap reads passed",
+        "[+    18.412262] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x23bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "http_probe_passes": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.18s; ingress recovered"
+      ],
+      "http_transport_diagnostics": [
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 2/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 2/2"
+      ]
+    },
+    {
+      "profile": "AArch64 / SMMUv3",
+      "phase": "final fixture isolation",
+      "command": "scripts/run-aarch64.sh debug --smp 4 --no-network --fresh-storage --instance telemetry-final-arm --timeout 180",
+      "environment": {
+        "CATTEN_SKIP_EMBED_BUILD": "1"
+      },
+      "runner_exit": 0,
+      "diagnostic_id": "aarch64-aq08m8ob",
+      "diagnostic_result": "complete",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "prepared_utc": "2026-10-18T10:45:55Z",
+      "kernel_elf_sha256": "0f4390f36152d5c41540ca1bb36a9d55bc7601e6ab2ea73f3e432f3be9b414e3",
+      "boot_image_sha256": "389bfbb977f893f8c5d05c8b26219ac4c3359d99b8e4e9147c43703c84c560dd",
+      "initial_disk_sha256": "600d93db8cfa4ea82d0e3507abc1d5b810825e96e2a27754fef207c147b32897",
+      "bundle_inventory": "76f019f19f820d362c837daa0b6d798f4aab3aca482d882e8fd06494d3cd3802",
+      "diagnostic_manifest_sha256": "2e1ee20b748be29b258a381f85fd091beb5a82a2ccd43b6183a5d7b1546f68f2",
+      "uart_sha256": "a450684e358fa96813d833262ae7203f422a02d33979edec43eca7034ea9ab1a",
+      "deferred": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0,
+        "completed_at_guest_seconds": "12.132098"
+      },
+      "controls": {
+        "rejected_calls": 256,
+        "phase_repetitions": 64,
+        "phases": 4,
+        "output_capability_and_frame_counts_preserved": true
+      },
+      "markers": [
+        "[+     7.647296] [telemetry snapshot] 256 preparation/publication rejections, heap-held captures, checked sizing and generation-qualified heap reads passed",
+        "[+    12.132098] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x1ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "http_probe_passes": [],
+      "http_transport_diagnostics": []
+    },
+    {
+      "profile": "x86 / Intel VT-d",
+      "phase": "final fixture isolation",
+      "command": "scripts/run-x86_64.sh debug --smp 4 --no-network --fresh-storage --instance telemetry-final-intel --iommu intel --timeout 180",
+      "environment": {
+        "CATTEN_SKIP_EMBED_BUILD": "1"
+      },
+      "runner_exit": 0,
+      "diagnostic_id": "x86_64-zl0v8rz1",
+      "diagnostic_result": "complete",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "prepared_utc": "2026-10-18T10:46:50Z",
+      "kernel_elf_sha256": "2eb637f66ffd78b33fffe910350eb3e9557e16afd0062c8c2848af5b5013eda4",
+      "boot_image_sha256": "28c2c2c3f366a290ddd265d649efd7c198dc695b6d5b126a1962b78f41c8ba9d",
+      "initial_disk_sha256": "97487b9494773d251aafa33cd90557baabf279c5a90fd337c42d625ded98a126",
+      "bundle_inventory": "515fdbe8dab8e9a6a81dc1ffc51cc64d4c91868386540145963ac8321d4da7d8",
+      "diagnostic_manifest_sha256": "5edb9d90343414b5db829029a8380dbab2337fd4d4a53b00e2cb37e9f6c46491",
+      "uart_sha256": "a88f0a0a2f3d3377178a28565a5e618e46c4d1237e598deacb097458148bb7da",
+      "deferred": {
+        "passed": 15,
+        "failed": 0,
+        "pending": 0,
+        "completed_at_guest_seconds": "15.652730"
+      },
+      "controls": {
+        "rejected_calls": 256,
+        "phase_repetitions": 64,
+        "phases": 4,
+        "output_capability_and_frame_counts_preserved": true
+      },
+      "markers": [
+        "[+    12.954811] [telemetry snapshot] 256 preparation/publication rejections, heap-held captures, checked sizing and generation-qualified heap reads passed",
+        "[+    15.652730] SELFTEST COMPLETE: passed=15 failed=0 pending=0 passed_bitmap=0x1bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "http_probe_passes": [],
+      "http_transport_diagnostics": []
+    }
+  ],
+  "bundle_inventories": {
+    "76f019f19f820d362c837daa0b6d798f4aab3aca482d882e8fd06494d3cd3802": {
+      "arch": "aarch64",
+      "count": 41,
+      "elf_sha256": {
+        "agent.elf": "3056cafe80662aa9a3286148a79a1b21fcce83dea2cc715875ad5e850350bdf4",
+        "cclient.elf": "d11a4899844532ab013eb1a72026b9f27df7e9b2104708bcfedd4cb9993603d0",
+        "client.elf": "7967a2b97502cccd14da1da8db6e008d34e3cef83a4f247d510521a8a6d5e8d0",
+        "clusterctl.elf": "471f93f21fe1b023162f28ea35f48ae92eea69da74f26a9dc52b483aaa5f1cd3",
+        "deployd.elf": "be01ab8f5ede59c5a369117d3f228f7ada7a4c5e9eda1f68f5c88486fc103ef7",
+        "disco.elf": "55d20a8ddeac1d7ea4f9be7a012b2337026cf8687e2c864634dcefbe34d357d9",
+        "dns.elf": "438d3dfbe33e61f61ec9a0127ac7fd5c931d0b561cea371f66ea6656af62930f",
+        "echo.elf": "b802e0b48b6d702fd79374b5e6f3becb21a9edaa151a2bb1ea0ab2bec0c7035b",
+        "frouter.elf": "7a6e7a48c63a3744929190c52ac8c4c13189e04a874c905a3a4794ad3b1bf7a2",
+        "fs.elf": "7187a33826e3e62706847dba9ff007047f071859117bf5374d08b449a5eddf1c",
+        "grantctl.elf": "1ae9fc289499dcd4f9e2a396ba14661325722feeabf7721162a6a4f596e0bbb5",
+        "greet.elf": "eed2c88a36b94b0812c7b2e6782a38eed08d66bfc7329402cb279fc6c69fd64a",
+        "httpd.elf": "77493d3056c8fa720a3f8df88fa28873b29929b72bae08d350d52e1a35f1bd1f",
+        "kafka.elf": "43f9163713f7957b7cfd97f44be76e2a2230fe361593453a2840ec71514569aa",
+        "kafka_fence_smoke.elf": "d92f0412d979070042ae73ed6ec088bf7d5e91abf1935ab044da149124b6569b",
+        "kafka_smoke.elf": "4f049af9e330b6a212dd427088c9586c044e6176989056f45ea9e7268ed74d01",
+        "kafka_step.elf": "c1ec93baf36c62b0ff4789534d728b1aa7ee3c286c698db5fba7cf7bed305580",
+        "kafka_step_input.elf": "f2f241bc91fd294fb0b41dd81d43f13b08c76712f04fa9c815aff81d8b72e26f",
+        "kafka_step_proc.elf": "4725cc1dea80963ae967206919a42de854d534d35aaae4aabbf4cbcaebf84144",
+        "nclient.elf": "2fe2c6277a856fcf5af72ca4bcbd94a789a2f5dd78ee7c7514a9d08de6c3d0c2",
+        "net.elf": "2adb539affc013fca4ce7694ba0a5626de67b5b49602ff29cab2ecec936cf116",
+        "ns.elf": "9208b738ccf4387c9bc613197bf3e518893a6c131f304b8f7660faba9adf68f7",
+        "nvme.elf": "d8690c20426eeb838786900ec33d924f960b9572cb81bd32ec4dc4def922d189",
+        "nvme_client.elf": "b6535d8748f007a30509fb7e7ec9370c36a2c7d4538d231cf503562060ca9138",
+        "objstore.elf": "b9838dff983d5215ef8e1ae699ceb2028fe812c49267966536eb24bea14117f0",
+        "objstore_client.elf": "437d09698a14bed86f74c19582dd7e424e49e76d7cc599f5ed60474e2e45bcd6",
+        "observe.elf": "8a18e19b951d324bd93da7c4cc26a68c788356d6e34325d771692ad256b13a48",
+        "raft.elf": "044aa120f90978efdaf9fd08387fea81355183cfcd9f676602d0f59addf3f9e4",
+        "rclient.elf": "9ef269c04623ad6ae8a5d2854af38362511a7a97508e12c923d029c2ab26ef0c",
+        "relmsg.elf": "b2225be466b5ee9e0e74b35d194450f889585d2f1c10221375cdd568a5a0d0a8",
+        "rng.elf": "add0bd0c85847f0663fb49c3ae915164499feffbbb4cea5e07c9830c1a2c2df1",
+        "s3.elf": "683e0ff4889c0ab86249122c91c36761a1059d80fa3dcb232f5ae5172378aaf7",
+        "s3_smoke.elf": "9ce790f750034621f23bd9fb820377269d1d0ea85a9eea9e72d821edc3807c48",
+        "security_probe.elf": "9e6122f735496e0cd907478fc4824bf109629dbe081294c02ef7dc967320e1ef",
+        "servicemgr.elf": "ca0d2ef12a99976ca6829aeba2b1724f74a0a50a45b53730e56eafbb35c43e2d",
+        "shutdown_probe.elf": "dc3093f1ce383b4026e73875ab8de80861bc955c0df8c4262f9e393e9cebee19",
+        "sitas-user.elf": "a01b596eab01adc9f8bf7ac45228b1b21da9dcdb00b9e38799850358d01ed564",
+        "tcpclient.elf": "b612770680a5d7dc8f03e0ffeee7287a2d47f7699ffb1521ded36d3d23f61b31",
+        "tcpip.elf": "5de736c9e935cc71595f6abd95ad380e2445d635cebbbb6614e79dab588c29f0",
+        "time.elf": "8e289ea94f26208229125f7b306b7c51ce8262783a38438f493835ed6010e196",
+        "uart.elf": "57e44f1f1e99848fa2a53f0af8c9aa0472b49729aee94fd23c5cbccad1c2b281"
+      }
+    },
+    "515fdbe8dab8e9a6a81dc1ffc51cc64d4c91868386540145963ac8321d4da7d8": {
+      "arch": "x86_64",
+      "count": 37,
+      "elf_sha256": {
+        "agent.elf": "b7375b95087e0eb46796ab2d6c675db788ff991744c2444c585371449cf3395d",
+        "ahci.elf": "3e4344b3c53adde6cd91cf838906a920a581057fcf8de3bbc48e8be45c11aafc",
+        "client.elf": "44d0852773cd48d729f335a68b1f681d2aa983a821736318dd13e319a5795f9b",
+        "clusterctl.elf": "5e87e941e6bdb4ad02ec0a69cb601edb1af62b6653970b2be172746f3c4de834",
+        "deployd.elf": "0e4f5e0b192b5ce0f84f24b2ae1ec4e9b8ac4ddc2799d7eaef81c21dddfd32d1",
+        "disco.elf": "88bd619efc127d2fe481d449e94c792d3488d5f95158b906633436b74fab8b90",
+        "dns.elf": "8f5b00c426d574a982ca2ef85c8ccdd2ff6ef779728bb46fcc6a34bf9a7cd6de",
+        "e1000e.elf": "c8e9bebeafdf9f8b0d32d6f07fd68f1a17fa036940d56b7b7cb21ea211901fa1",
+        "echo.elf": "83adc49fd4234c046c7d72f9148a0b233bead05a6fb3c2bb1292da744ded8172",
+        "frouter.elf": "001b63fa7359ee57ef31ae4b38ecb68cd248fb09f231427f479777b0902f66f0",
+        "fs.elf": "b587f59055075060e42c62cbfc4882bcba50200550c3e42698202535611cf21b",
+        "grantctl.elf": "acf58927975559a2e1a2c9b36892e6375207eb3f348781c76279a293a2c4b53f",
+        "greet.elf": "4edf42202d40a8ebd183afe3f04841630081d51bfc03b86e0e8f42a327230d6c",
+        "httpd.elf": "876f561b0a4b69e58517b0c2448a7dde20de1e1b67f5189aadc1bbfb6ed335f5",
+        "kafka.elf": "7e57ae071924849ed6f0246c475052371c2e1294f382d8e624a4c8728f0d9320",
+        "kafka_smoke.elf": "7a768e7b8a75838f55ad486bbcf7560eeaf128002bc8c87cb790f0ff99534b05",
+        "nclient.elf": "f6a22479afe8da2409d2930cf6351e3517970e53aafc34fa2480348a08d796e9",
+        "net.elf": "f85febe194194c7f5509db85e3136e8ae300a3668c40f70debce71700ed2b1af",
+        "ns.elf": "b07ab747c98e81a8e862dbd72977a013db8f25e63a9bfbaa4317ea2dbc4d8958",
+        "nvme.elf": "f08238aa856c9c6899386ea913c82e98c84557a663349de5cccac75cfb2948b8",
+        "nvme_client.elf": "00c75391e22c299810dac1125e837b4a1d2aa84e8580ae67ab3413af4a32f371",
+        "objstore.elf": "cc82e639356c8e4f4eef697909d5dcc360ac5312b18cb3794952a482169a91e8",
+        "objstore_client.elf": "13b8680ae786ca5319c40b18b096812a82a8006920923e2011546348654bffab",
+        "observe.elf": "69604c81cfe270a82be7f5f17ce4ab1d80890d0f627fc1755b1e0c829805f934",
+        "raft.elf": "9750b8e5497f915bf10ae15c426d9953329cf1d632ff08349b674826ee62ab83",
+        "rclient.elf": "f0840bd3235d9eae10fd10132bfc5ba30cba14bfab8b510b44a1fe3c5a12aa98",
+        "relmsg.elf": "7fdb5ac75381f17ca9ac7b70e42a338f22b5dccb4f67ca30f3a50f4c42e04029",
+        "rng.elf": "f5a1f35a73dadde7348de0490f3a16a03ebac897819ed47bf69ef1b10f298cb6",
+        "s3.elf": "ad6834b47093dd802780fe6fd5838e61db31bb4fc1b48391a1c4bdc28f69609c",
+        "s3_smoke.elf": "f11ce36a2e229e9c4bb52079d31edfa8fb3c2ff40daffd3d83633a0630fae135",
+        "security_probe.elf": "b00745d90749e27a5599f2a598236f1392daef1a4b6b3d85dff03ec17e7f5174",
+        "servicemgr.elf": "770a415553c599ce79a777a785ea67a595798a5efaa71c0a4c10d422e59917f6",
+        "shutdown_probe.elf": "0533a4fb2c89c9ec010af8ccd49fdf0460ca90f52df72bee5842ef54c6e0fc7b",
+        "tcpclient.elf": "29d93ca437f446bb9b08cfd535c74d75ea355244ccdcfe296f44692766ccf4d4",
+        "tcpip.elf": "c2342d18f4c592ec5d8314d82caef4942c5d06b8ff41699e179bcc34abcfd230",
+        "time.elf": "81a5be27b4a59732f84afad2a66c2f48cb5d8600dd2391de10362412017ae83b",
+        "virtio_blk.elf": "4d929ec86faa2bb93af9c592aecedfe595b58c0ecbfef923c8fd7823a795260a"
+      }
+    }
+  },
+  "failed_native_runs": [],
+  "verification_limits": [
+    "Five initial profiles preceded the fixture-only synthetic-peak reset. All production Rust was unchanged; the final two profiles recheck both architectures after that isolation refinement.",
+    "The earlier untracked fixture source was not frozen separately; its executed kernels and diagnostic manifests are hash-identified. The complete final Rust set is frozen above.",
+    "Deterministic preparation/write rejection is not actual allocator exhaustion, concurrent race reproduction, global heap/principal admission or physical-platform qualification.",
+    "Concurrent manual heading/PDF edits were preserved and excluded from this audit source scope."
+  ]
+}

@@ -11,6 +11,11 @@ statistics. It is intentionally split into three layers:
 
 This is a foundation, not yet a complete machine-wide monitoring system.
 
+Kernel capture now uses [bounded, fallible snapshot scratch](telemetry-snapshots.md)
+outside source registry guards and generation-qualified status-page reads.
+The per-request 1 MiB scratch limit is separate from output memory-object
+admission and does not establish aggregate heap or principal limits.
+
 Version 8 also adds eight final-root recovery words to the thread snapshot
 header: awaiting retry, running, retry limit, recovered, quarantined, abandoned,
 rejected admission count and registry capacity. Counts describe the fixed

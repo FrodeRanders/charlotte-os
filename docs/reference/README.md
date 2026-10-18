@@ -61,6 +61,8 @@ should be updated with the implementation when those contracts change.
   owned object-store transport and future format-migration requirements.
 - [Observability](observability.md) — capability-preserving runtime statistics,
   snapshot interfaces, and the node/cluster keyholes.
+- [Bounded telemetry snapshots](telemetry-snapshots.md) — Fallible capture scratch,
+  exact-root status reads and unchanged snapshot ABI.
 - [smoltcp adapter](smoltcp-adapter.md) — frame routing, adapter behavior, and
   the userspace TCP/IP service.
 - [UTC time service](time-service.md) — default launch behavior, internal IPC

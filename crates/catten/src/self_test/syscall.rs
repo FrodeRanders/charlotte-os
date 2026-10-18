@@ -834,7 +834,6 @@ pub fn test_syscall_dispatch() {
         assert!(pressure.regs[2] <= 1000, "NODE_PRESSURE CPU load must be a permille value");
     }
 
-    #[cfg(target_arch = "aarch64")]
     {
         use catten_syscall::{
             THREAD_STATISTICS_HEADER_U64S,
@@ -843,6 +842,7 @@ pub fn test_syscall_dispatch() {
             thread_statistics_header as header,
         };
 
+        syscall::statistics::test_capture(memory_owner);
         let mut f = synthetic_trap_frame_in(memory_owner, 0, 0, 0, 0);
         syscall::syscall_dispatch(&mut f, call_no::THREAD_STATISTICS);
         let statistics_cap = f.regs[0];

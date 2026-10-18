@@ -846,18 +846,44 @@ pub(crate) use growth::{
 /// The filter is intentional: an eventual userspace export syscall can expose
 /// the caller's own scheduler data without granting ambient visibility into
 /// other protection domains.
-pub fn statistics_for_asid(asid: AddressSpaceId) -> Vec<ThreadStatisticsSnapshot> {
-    MASTER_THREAD_TABLE
+pub(crate) fn statistics_for_asid(
+    asid: AddressSpaceId,
+) -> Result<Vec<ThreadStatisticsSnapshot>, crate::klib::collections::snapshot::Error> {
+    let mut budget = crate::klib::collections::snapshot::Budget::new(
+        crate::klib::collections::snapshot::MAX_WORKING_BYTES,
+    );
+    try_statistics(Some(asid), &mut budget)
+}
+
+pub(crate) fn try_statistics(
+    asid: Option<AddressSpaceId>,
+    budget: &mut crate::klib::collections::snapshot::Budget,
+) -> Result<Vec<ThreadStatisticsSnapshot>, crate::klib::collections::snapshot::Error> {
+    let count = MASTER_THREAD_TABLE
         .read()
         .iter()
-        .enumerate()
-        .filter_map(|(tid, thread)| {
-            thread
-                .as_ref()
-                .filter(|thread| thread.asid == asid)
-                .map(|thread| thread.statistics_snapshot(tid))
+        .filter(|entry| {
+            entry.as_ref().is_some_and(|thread| asid.is_none_or(|id| thread.asid == id))
         })
-        .collect()
+        .count();
+    let mut output = budget.prepare(count)?;
+    capture_statistics(asid, &mut output)?;
+    Ok(output.into_vec())
+}
+
+pub(crate) fn capture_statistics(
+    asid: Option<AddressSpaceId>,
+    output: &mut crate::klib::collections::snapshot::Buffer<ThreadStatisticsSnapshot>,
+) -> Result<(), crate::klib::collections::snapshot::Error> {
+    let table = MASTER_THREAD_TABLE.read();
+    for (tid, entry) in table.iter().enumerate() {
+        if let Some(thread) =
+            entry.as_ref().filter(|thread| asid.is_none_or(|id| thread.asid == id))
+        {
+            output.push(thread.statistics_snapshot(tid))?;
+        }
+    }
+    Ok(())
 }
 
 /// Return the number of scheduler-table entries currently owned by an address
@@ -887,18 +913,6 @@ pub(crate) fn cpu_busy_ticks() -> u128 {
         },
     );
     u128::from(RETIRED_CPU_BUSY_TICKS.load(Ordering::Relaxed)).saturating_add(live)
-}
-
-/// Snapshot all scheduler-visible threads. Callers must enforce the
-/// system-observer capability before invoking this function.
-#[allow(dead_code)]
-pub(crate) fn system_statistics() -> Vec<ThreadStatisticsSnapshot> {
-    MASTER_THREAD_TABLE
-        .read()
-        .iter()
-        .enumerate()
-        .filter_map(|(tid, thread)| thread.as_ref().map(|thread| thread.statistics_snapshot(tid)))
-        .collect()
 }
 
 impl Thread {

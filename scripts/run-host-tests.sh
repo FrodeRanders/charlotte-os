@@ -47,6 +47,12 @@ mkdir -p "$repo_root/target/host-self-tests"
     -o "$repo_root/target/host-self-tests/retirement-list-tests"
 "$repo_root/target/host-self-tests/retirement-list-tests"
 
+# Diagnostic capture prepares bounded scratch before entering source guards.
+"$host_rustc" --edition=2024 --test \
+    "$repo_root/crates/catten/src/klib/collections/snapshot.rs" \
+    -o "$repo_root/target/host-self-tests/snapshot-tests"
+"$repo_root/target/host-self-tests/snapshot-tests"
+
 # Scheduler FIFO links are inline in their existing exact thread owners.
 # Exercise production splices/rejection/abandonment with allocation tracing.
 "$host_rustc" --edition=2024 --test \

@@ -532,8 +532,9 @@ fn begin_user_address_space_cleanup(handle: AddressSpaceHandle) {
 // Caller retains lifecycle, has drained cleanup leases and sealed admission.
 // IPC loan cleanup and namespace removal have already completed outside locks.
 fn finish_user_address_space_cleanup(
-    handle: AddressSpaceHandle,
+    closing: &retirement::ClosingAddressSpace,
 ) -> registration::metadata::RetiredMetadata {
+    let handle = closing.handle();
     let asid = handle.id();
     object::close_scratch_address_space(asid);
     crate::completion::close_address_space(asid);
@@ -553,7 +554,7 @@ fn finish_user_address_space_cleanup(
                 usage.stack_pages_used_high_water,
             );
         }
-        if let Some(status) = usage::domain_heap_status(asid) {
+        if let Some(status) = usage::closing_heap_status(closing) {
             usage::remember_principal_heap_peak(principal, status.peak_bytes);
         }
     }

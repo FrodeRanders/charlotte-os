@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Telemetry snapshot preparation and status-page lifetime](audits/2026-10-18-telemetry-snapshot-preparation.md) — Bounded fallible capture/encoding, exact-generation heap reads and borrowed closing-root sampling.
+
 - [Manual and living-documentation source comparison](audits/2026-10-18-documentation-reality-sweep.md) — Corrects capability/API, recovery, admission, trust, bootstrap and build/CI claims; records the source scope and verification limits.
 
 - [Principal history preparation](audits/2026-10-18-principal-history-preparation.md) — Prepares admitted history storage before root publication and retains its original metadata through retirement.

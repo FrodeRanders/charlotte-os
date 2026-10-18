@@ -173,6 +173,16 @@ open. Finding dispositions are unchanged.
 
 SEC-07 remains partial until all of the following deliverables are accepted:
 
+The [telemetry snapshot follow-up](../reports/audits/2026-10-18-telemetry-snapshot-preparation.md)
+removes infallible thread/domain capture and encoding vectors from the statistics
+syscall. One bounded request budget prepares scratch outside source guards;
+capture growth and allocation rejection return unavailable without a prefix or
+an output capability. Heap sampling retains the captured root generation and
+validates its status mapping; retirement borrows its existing closing owner.
+This qualifies those R7-1/R7-2 and C02/C18 boundaries, not aggregate heap/principal
+admission, all downstream metadata, outer syscall contexts or pressure progress.
+Finding dispositions remain unchanged.
+
 | Deliverable | Completion evidence |
 | --- | --- |
 | R7-1: allocation inventory | Enumerate application-triggerable kernel allocation sites and identify their byte/count limits, sponsor, lifetime owner, rejection behavior and reserve classification. Include thread nodes, scheduler queues/migration storage, registry entries, namespace/sponsor metadata, callback captures and allocator bookkeeping. Explicitly justify bounded boot-only exclusions. |

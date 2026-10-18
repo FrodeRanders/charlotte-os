@@ -24,6 +24,7 @@ mod mailbox_queue;
 pub(crate) mod mailbox_retirement;
 pub(crate) mod mailbox_tests;
 mod mailbox_words;
+pub(crate) mod statistics;
 
 pub use catten_syscall::SyscallNumber;
 
@@ -522,147 +523,7 @@ fn hardware_random_u64() -> Option<u64> {
 }
 
 fn sys_thread_statistics(frame: &mut TrapFrame) {
-    use catten_syscall::{
-        OBSERVABILITY_NONE,
-        THREAD_STATISTICS_DOMAIN_RECORD_U64S,
-        THREAD_STATISTICS_HEADER_U64S,
-        THREAD_STATISTICS_MAGIC,
-        THREAD_STATISTICS_RECORD_U64S,
-        THREAD_STATISTICS_VERSION,
-        thread_domain_record as domain_record,
-        thread_statistics_header as header,
-        thread_statistics_record as record,
-    };
-
-    let asid = caller_asid(frame);
-    let observer_cap = frame.regs[1];
-    let observer = observer_cap != 0
-        && crate::capability::contains(
-            asid,
-            observer_cap,
-            crate::capability::ObjectKind::SystemObserver,
-        );
-    if observer_cap != 0 && !observer {
-        frame.regs[0] = 0;
-        frame.regs[1] = 0;
-        return;
-    }
-    let snapshots = if observer {
-        crate::cpu::scheduler::threads::system_statistics()
-    } else {
-        crate::cpu::scheduler::threads::statistics_for_asid(asid)
-    };
-    let domains: alloc::vec::Vec<_> = if observer {
-        crate::memory::usage::all_domain_usage()
-    } else {
-        crate::memory::usage::domain_usage(asid)
-            .map(|usage| alloc::vec![(asid, usage)])
-            .unwrap_or_default()
-    };
-    let exact_len = (THREAD_STATISTICS_HEADER_U64S
-        + snapshots.len() * THREAD_STATISTICS_RECORD_U64S
-        + domains.len() * THREAD_STATISTICS_DOMAIN_RECORD_U64S)
-        * core::mem::size_of::<u64>();
-    let pages = exact_len.div_ceil(4096);
-    let Ok(cap) = object::allocate(asid, pages) else {
-        frame.regs[0] = 0;
-        frame.regs[1] = 0;
-        return;
-    };
-
-    let cpu_busy_ticks = if observer {
-        crate::cpu::scheduler::threads::cpu_busy_ticks()
-    } else {
-        snapshots
-            .iter()
-            .fold(0u128, |sum, snapshot| sum.saturating_add(snapshot.runtime_ticks.total))
-    };
-    let mut bytes = alloc::vec::Vec::with_capacity(exact_len);
-    let mut header_words = [0; THREAD_STATISTICS_HEADER_U64S];
-    header_words[header::MAGIC] = THREAD_STATISTICS_MAGIC;
-    header_words[header::VERSION] = THREAD_STATISTICS_VERSION;
-    header_words[header::LOGICAL_PROCESSORS] = crate::cpu::multiprocessor::get_lp_count() as u64;
-    header_words[header::CPU_BUSY_TICKS] = u64::try_from(cpu_busy_ticks).unwrap_or(u64::MAX);
-    header_words[header::RECORD_BYTES] =
-        (THREAD_STATISTICS_RECORD_U64S * core::mem::size_of::<u64>()) as u64;
-    header_words[header::RECORD_COUNT] = snapshots.len() as u64;
-    header_words[header::COUNTER_FREQUENCY_HZ] = crate::cpu::scheduler::counter_frequency_hz();
-    header_words[header::MONOTONIC_TICKS] = crate::cpu::scheduler::monotonic_ticks();
-    {
-        let allocator = crate::memory::PHYSICAL_FRAME_ALLOCATOR.lock();
-        header_words[header::FREE_FRAMES] = allocator.free_frames() as u64;
-        header_words[header::USABLE_FRAMES] =
-            allocator.usable_bytes() / crate::cpu::isa::memory::paging::PAGE_SIZE as u64;
-    }
-    header_words[header::DOMAIN_RECORD_BYTES] =
-        (THREAD_STATISTICS_DOMAIN_RECORD_U64S * core::mem::size_of::<u64>()) as u64;
-    header_words[header::DOMAIN_RECORD_COUNT] = domains.len() as u64;
-    let recovery = crate::memory::retirement::recovery::status_words(observer);
-    header_words[header::ROOT_RECOVERY_AWAITING..=header::ROOT_RECOVERY_CAPACITY]
-        .copy_from_slice(&recovery);
-    for value in header_words {
-        push_u64(&mut bytes, value);
-    }
-    for snapshot in snapshots {
-        let statistics = snapshot.runtime_ticks;
-        let mut record_words = [0; THREAD_STATISTICS_RECORD_U64S];
-        record_words[record::TID] = snapshot.tid as u64;
-        record_words[record::GENERATION] = snapshot.generation;
-        record_words[record::ASID] = snapshot.asid as u64;
-        record_words[record::STATE] = snapshot.state as u64;
-        record_words[record::AFFINITY_LP] =
-            snapshot.affinity_lp.map_or(OBSERVABILITY_NONE, u64::from);
-        record_words[record::PINNED_LP] = snapshot.pinned_lp.map_or(OBSERVABILITY_NONE, u64::from);
-        record_words[record::DISPATCH_COUNT] = snapshot.dispatch_count;
-        record_words[record::SAMPLE_COUNT] = statistics.count;
-        record_words[record::MIN_TICKS] = statistics.min.unwrap_or(OBSERVABILITY_NONE);
-        record_words[record::MAX_TICKS] = statistics.max.unwrap_or(OBSERVABILITY_NONE);
-        record_words[record::TOTAL_TICKS_LOW] = statistics.total as u64;
-        record_words[record::TOTAL_TICKS_HIGH] = (statistics.total >> 64) as u64;
-        record_words[record::SUM_OF_SQUARES_LOW] = statistics.sum_of_squares as u64;
-        record_words[record::SUM_OF_SQUARES_HIGH] = (statistics.sum_of_squares >> 64) as u64;
-        record_words[record::SATURATED] = u64::from(statistics.saturated);
-        record_words[record::CURRENT_SLICE_STARTED_AT] =
-            snapshot.current_slice_started_at.unwrap_or(OBSERVABILITY_NONE);
-        record_words[record::STACK_RESERVED_PAGES] = snapshot.stack_reserved_pages;
-        record_words[record::STACK_COMMITTED_PAGES] = snapshot.stack_committed_pages;
-        record_words[record::STACK_USED_PAGES] = snapshot.stack_used_pages;
-        for value in record_words {
-            push_u64(&mut bytes, value);
-        }
-    }
-    for (domain_asid, usage) in domains {
-        let mut record_words = [0; THREAD_STATISTICS_DOMAIN_RECORD_U64S];
-        record_words[domain_record::ASID] = domain_asid as u64;
-        record_words[domain_record::OWNED_FRAMES] = usage.owned_frames;
-        record_words[domain_record::USER_STACK_PAGES] = usage.user_stack_pages;
-        record_words[domain_record::USER_STACK_PAGES_HIGH_WATER] =
-            usage.user_stack_pages_high_water;
-        record_words[domain_record::STACK_PAGES_USED_HIGH_WATER] =
-            usage.stack_pages_used_high_water;
-        record_words[domain_record::THREADS] = usage.threads;
-        record_words[domain_record::THREADS_HIGH_WATER] = usage.threads_high_water;
-        if let Some(heap) = crate::memory::usage::domain_heap_status(domain_asid) {
-            record_words[domain_record::HEAP_STATUS_VALID] = 1;
-            record_words[domain_record::HEAP_CAPACITY_BYTES] = heap.capacity_bytes;
-            record_words[domain_record::HEAP_ALLOCATED_BYTES] = heap.allocated_bytes;
-            record_words[domain_record::HEAP_PEAK_BYTES] = heap.peak_bytes;
-            record_words[domain_record::HEAP_ALLOCATIONS] = heap.allocations;
-            record_words[domain_record::HEAP_TOTAL_ALLOCATED_BYTES] = heap.total_allocated_bytes;
-            record_words[domain_record::HEAP_LOCK_SPINS] = heap.lock_spins;
-        }
-        for value in record_words {
-            push_u64(&mut bytes, value);
-        }
-    }
-    if object::write_bytes(asid, cap, &bytes).is_err() {
-        let _ = object::close_cap(asid, cap);
-        frame.regs[0] = 0;
-        frame.regs[1] = 0;
-        return;
-    }
-    frame.regs[0] = cap;
-    frame.regs[1] = exact_len as u64;
+    statistics::capture(frame);
 }
 
 fn caller_asid(frame: &TrapFrame) -> crate::memory::AddressSpaceId {
