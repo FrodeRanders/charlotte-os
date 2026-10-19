@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/*", "tools/cluster-sign"]
+members = ["crates/*", "tools/cluster-sign", "tests/transport"]
 # EL0 bundles and host tools need different targets and build workflows. Keep
 # them as workspace members so repository-wide tooling (notably rustfmt) sees
 # every package, but do not include them in an unqualified root build.

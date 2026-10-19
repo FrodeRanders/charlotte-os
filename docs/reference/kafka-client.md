@@ -321,8 +321,19 @@ retains that complete frame and lends its authentication range through
 `auth_bytes()`; the former independent `auth_bytes` vector is removed. The
 owner implements neither `Clone` nor `Debug`. The connector releases
 its first request/reply buffers when challenge handling returns the final
-SCRAM phase. Transport accumulation and TLS receive copies before this frame
-boundary remain separate work. See the [frame report](../reports/audits/2026-10-19-security-sasl-frames.md).
+SCRAM phase. See the [frame report](../reports/audits/2026-10-19-security-sasl-frames.md).
+
+The broker transport now retains `FrameReceiver` and owned receive chunks.
+It validates the inline four-byte header before reserving the complete reply,
+then copies into that allocation without growth. Consumed chunk ranges erase;
+coalesced replies retain their remaining bytes in the same chunk owner.
+Completed frame ownership continues through routing into the parser. A failed
+or interrupted read fences the receiver until reset; the connector discards
+its old stream and resets on send/read failure and before new authentication.
+This adds no request replay permission. TLS/plain chunks also erase on ordinary
+release; the shared TLS helper creates its owner before calling the reader.
+Library record/key-schedule state and kernel socket backing remain separate
+qualification. See the [receive report](../reports/audits/2026-10-19-security-receive-owners.md).
 
 The profile supports `None`, `ScramSha256`, `MtlsP256`, or
 `ScramSha256AndMtlsP256`. The mTLS variants carry one DER-encoded X.509 client

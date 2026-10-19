@@ -560,6 +560,13 @@ before copying and retain their owner during encoding. Actual transport
 accumulation and TLS receive copies still remain; SEC-15 stays partial and
 finding counts are unchanged.
 
+The [receive-owner follow-up](../reports/audits/2026-10-19-security-receive-owners.md)
+then owns TLS/plain local chunks and Kafka frame assembly through routing and
+parsing. One reservation replaces accumulator growth; partial failures retain
+an erasing owner and fence re-entry until stream discard/reset. The shared S3
+adapter keeps the new buffer type. S3 HTTP growth, library state, kernel backing
+and forced termination remain open; SEC-15 stays partial.
+
 | Order | Finding and acceptance criterion |
 | --- | --- |
 | 1 | **SEC-04:** Authenticate bootstrap policy and the executable boot chain from a protected platform root. Provision independent artifact, deployment and operational authorities and a distinct recipient key; exclude every development fixture. Keep the recipient private key behind a privileged custody boundary, with recovery/rotation rules and rollback-resistant policy state. Test substituted boot images/policies, role reuse, downgrade, enrollment and custody failure. Production must remain disabled until those tests pass. |

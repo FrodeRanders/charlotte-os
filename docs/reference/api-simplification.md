@@ -257,3 +257,14 @@ Clone/Debug implementations are removed. Header/final-length methods remain
 shared with the ordinary encoder. No borrowed-input parser or plain request
 compatibility wrapper remains. Kafka wire fields and version numbers are
 unchanged, including nullable authentication bytes and broker-error metadata.
+
+The [receive-owner follow-up](../reports/audits/2026-10-19-security-receive-owners.md)
+returns TLS/plain local chunks and Kafka routed replies as zeroizing owners.
+The broker's growable accumulator/split-copy path is replaced by `FrameReceiver`,
+which owns its partial frame and existing chunk together. Header validation
+precedes full-frame reservation; cached bytes are consumed before more input.
+Empty, excessive or failed input fences the episode until reset. New-stream
+startup resets before authentication. S3 keeps the shared owner type through
+its buffers; no plain-return compatibility adapter remains. Wire grammars and
+version numbers are unchanged. The cross-layer host test package belongs to
+the root workspace and uses service libraries without freestanding entry points.

@@ -384,7 +384,7 @@ struct BrokerTransport<'connection> {
     ca_der: Vec<u8>,
     authentication: ConnectorAuthentication,
     stream: Option<BrokerStream<'connection>>,
-    received: Vec<u8>,
+    received: wire::frame::FrameReceiver,
     ever_connected: bool,
     unreported_reconnects: u32,
 }
@@ -404,7 +404,7 @@ impl BrokerStream<'_> {
         }
     }
 
-    fn receive(&mut self) -> Result<Vec<u8>, i64> {
+    fn receive(&mut self) -> Result<Zeroizing<Vec<u8>>, i64> {
         match self {
             Self::Plain(socket) => {
                 let chunk = socket
@@ -413,7 +413,9 @@ impl BrokerStream<'_> {
                     .ok_or(protocol::ERR_TRANSPORT)?;
                 let (memory, len) = chunk.into_parts();
                 let mapping = memory.map_read_only().map_err(|_| protocol::ERR_TRANSPORT)?;
-                Ok(mapping.as_slice()[..len].to_vec())
+                let mut bytes = Zeroizing::new(Vec::with_capacity(len));
+                bytes.extend_from_slice(&mapping.as_slice()[..len]);
+                Ok(bytes)
             }
             Self::Tls(stream) => stream.receive().map_err(|_| protocol::ERR_TRANSPORT),
         }
@@ -441,7 +443,7 @@ impl<'connection> BrokerTransport<'connection> {
             ca_der: ca_der.to_vec(),
             authentication,
             stream: None,
-            received: Vec::new(),
+            received: wire::frame::FrameReceiver::new(),
             ever_connected: false,
             unreported_reconnects: 0,
         }
@@ -451,6 +453,8 @@ impl<'connection> BrokerTransport<'connection> {
         if self.stream.is_some() {
             return Ok(());
         }
+        // A new stream starts with no bytes from the previous connection.
+        self.received.reset();
         let socket = socket::OwnedSocket::open(self.tcp, socket::DOMAIN_TCP)
             .map_err(|_| protocol::ERR_TRANSPORT)?;
         socket.connect_ipv4(self.ip, self.port).map_err(|_| protocol::ERR_TRANSPORT)?;
@@ -517,14 +521,14 @@ impl<'connection> BrokerTransport<'connection> {
             && let Err(error) = self.authenticate(&credentials)
         {
             self.stream.take();
-            self.received.clear();
+            self.received.reset();
             return Err(error);
         }
         if self.ever_connected {
             self.unreported_reconnects = self.unreported_reconnects.wrapping_add(1);
         }
         self.ever_connected = true;
-        self.received.clear();
+        self.received.reset();
         Ok(())
     }
 
@@ -532,7 +536,7 @@ impl<'connection> BrokerTransport<'connection> {
         core::mem::take(&mut self.unreported_reconnects)
     }
 
-    fn request(&mut self, request: &[u8]) -> Result<Vec<u8>, i64> {
+    fn request(&mut self, request: &[u8]) -> Result<Zeroizing<Vec<u8>>, i64> {
         self.connect()?;
         self.request_connected(request)
     }
@@ -564,7 +568,7 @@ impl<'connection> BrokerTransport<'connection> {
             let client_first = scram.client_first();
             let request = wire::sasl_authenticate_request(correlation, CLIENT_ID, &client_first)
                 .map_err(map_wire)?;
-            let response = Zeroizing::new(self.request_connected(&request)?);
+            let response = self.request_connected(&request)?;
             let server_first =
                 wire::parse_sasl_authenticate(response, correlation).map_err(map_wire)?;
             if server_first.error != wire::NO_ERROR {
@@ -579,7 +583,7 @@ impl<'connection> BrokerTransport<'connection> {
         let request =
             wire::sasl_authenticate_request(correlation, CLIENT_ID, client_final.message())
                 .map_err(map_wire)?;
-        let response = Zeroizing::new(self.request_connected(&request)?);
+        let response = self.request_connected(&request)?;
         let server_final =
             wire::parse_sasl_authenticate(response, correlation).map_err(map_wire)?;
         if server_final.error != wire::NO_ERROR {
@@ -590,10 +594,11 @@ impl<'connection> BrokerTransport<'connection> {
             .map_err(|_| protocol::ERR_AUTHENTICATION)
     }
 
-    fn request_connected(&mut self, request: &[u8]) -> Result<Vec<u8>, i64> {
+    fn request_connected(&mut self, request: &[u8]) -> Result<Zeroizing<Vec<u8>>, i64> {
         let stream = self.stream.as_mut().ok_or(protocol::ERR_TRANSPORT)?;
         if stream.send_all(request).is_err() {
             self.stream.take();
+            self.received.reset();
             return Err(protocol::ERR_TRANSPORT);
         }
         let result = self.read_frame();
@@ -601,35 +606,20 @@ impl<'connection> BrokerTransport<'connection> {
             // A late reply must not be mistaken for the response to a later
             // correlation ID. Reconnect after every incomplete exchange.
             self.stream.take();
-            self.received.clear();
+            self.received.reset();
         }
         result
     }
 
-    fn read_frame(&mut self) -> Result<Vec<u8>, i64> {
-        loop {
-            if self.received.len() >= 4 {
-                let payload = i32::from_be_bytes(
-                    self.received[..4].try_into().map_err(|_| protocol::ERR_PROTOCOL)?,
-                );
-                if payload < 4 || payload as usize > wire::MAX_FRAME_LEN {
-                    self.stream.take();
-                    return Err(protocol::ERR_PROTOCOL);
-                }
-                let frame_len = payload as usize + 4;
-                if self.received.len() >= frame_len {
-                    let remainder = self.received.split_off(frame_len);
-                    let frame = core::mem::replace(&mut self.received, remainder);
-                    return Ok(frame);
-                }
-            }
-            let stream = self.stream.as_mut().ok_or(protocol::ERR_TRANSPORT)?;
-            self.received.extend_from_slice(&stream.receive()?);
-            if self.received.len() > wire::MAX_FRAME_LEN + 4 {
-                self.stream.take();
-                return Err(protocol::ERR_TOO_LARGE);
-            }
-        }
+    fn read_frame(&mut self) -> Result<Zeroizing<Vec<u8>>, i64> {
+        let stream = self.stream.as_mut().ok_or(protocol::ERR_TRANSPORT)?;
+        self.received.read_frame(|| stream.receive()).map_err(|error| match error {
+            wire::frame::ReceiveError::Transport(error) => error,
+            wire::frame::ReceiveError::Protocol(_) => protocol::ERR_PROTOCOL,
+            wire::frame::ReceiveError::ChunkTooLarge => protocol::ERR_TOO_LARGE,
+            wire::frame::ReceiveError::EmptyChunk => protocol::ERR_TRANSPORT,
+            wire::frame::ReceiveError::Poisoned => protocol::ERR_PROTOCOL,
+        })
     }
 }
 
@@ -759,7 +749,7 @@ impl<'connection> BrokerSession<'connection> {
         self.metadata_refreshed_ms.map_or(0, |refreshed| now_ms.saturating_sub(refreshed))
     }
 
-    fn exchange_any(&mut self, request: &[u8]) -> Result<Vec<u8>, i64> {
+    fn exchange_any(&mut self, request: &[u8]) -> Result<Zeroizing<Vec<u8>>, i64> {
         let bootstrap = self.bootstrap.request(request);
         self.reconnects = self.reconnects.wrapping_add(self.bootstrap.take_reconnects());
         let mut last_error = match bootstrap {
@@ -787,7 +777,7 @@ impl<'connection> BrokerSession<'connection> {
         Err(last_error.unwrap_or(protocol::ERR_TRANSPORT))
     }
 
-    fn exchange_node(&mut self, node: i32, request: Vec<u8>) -> Result<Vec<u8>, i64> {
+    fn exchange_node(&mut self, node: i32, request: Vec<u8>) -> Result<Zeroizing<Vec<u8>>, i64> {
         let transport = self.brokers.get_mut(&node).ok_or(protocol::ERR_DENIED)?;
         let result = transport.request(&request);
         self.reconnects = self.reconnects.wrapping_add(transport.take_reconnects());
@@ -1035,7 +1025,7 @@ impl<'connection> BrokerSession<'connection> {
         coordinator: Coordinator,
         node: i32,
         request: Vec<u8>,
-    ) -> Result<Option<Vec<u8>>, i64> {
+    ) -> Result<Option<Zeroizing<Vec<u8>>>, i64> {
         match self.exchange_node(node, request) {
             Ok(response) => Ok(Some(response)),
             Err(error) if error == protocol::ERR_TRANSPORT || error == protocol::ERR_TIMEOUT => {

@@ -8,6 +8,7 @@
 
 extern crate alloc;
 
+pub mod frame;
 pub mod scram;
 
 use alloc::{

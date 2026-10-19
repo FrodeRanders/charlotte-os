@@ -75,7 +75,10 @@ use charlotte_s3::{
         sign,
     },
 };
-use zeroize::Zeroizing;
+use zeroize::{
+    Zeroize,
+    Zeroizing,
+};
 catten_rt::entry!(main);
 
 const MAX_OPERATIONS: usize = 8;
@@ -241,7 +244,7 @@ impl Transport<'_> {
         }
     }
 
-    fn receive(&mut self) -> Result<Vec<u8>, ()> {
+    fn receive(&mut self) -> Result<Zeroizing<Vec<u8>>, ()> {
         match self {
             Self::Plain(socket) => receive_plain(socket).ok_or(()),
             Self::Tls(stream) => stream.receive().map_err(|_| ()),
@@ -302,20 +305,23 @@ fn connect<'connection>(
     }
 }
 
-fn receive_plain(socket: &socket::OwnedSocket<'_>) -> Option<Vec<u8>> {
+fn receive_plain(socket: &socket::OwnedSocket<'_>) -> Option<Zeroizing<Vec<u8>>> {
     let chunk = socket.receive_timeout(RECEIVE_ATTEMPTS, RECEIVE_RETRY_MS).ok()??;
     let (memory, len) = chunk.into_parts();
     let mapping = memory.map_read_only().ok()?;
-    Some(mapping.as_slice()[..len].to_vec())
+    let mut bytes = Zeroizing::new(Vec::with_capacity(len));
+    bytes.extend_from_slice(&mapping.as_slice()[..len]);
+    Some(bytes)
 }
 
-fn read_head(socket: &mut Transport<'_>) -> Option<(ResponseHead, Vec<u8>)> {
-    let mut bytes = Vec::new();
+fn read_head(socket: &mut Transport<'_>) -> Option<(ResponseHead, Zeroizing<Vec<u8>>)> {
+    let mut bytes = Zeroizing::new(Vec::new());
     for _ in 0..MAX_HEAD_READS {
         bytes.extend_from_slice(&socket.receive().ok()?);
         match ResponseHead::parse(&bytes) {
             Ok((head, body_offset)) => {
-                let body = bytes.split_off(body_offset);
+                let mut body = Zeroizing::new(Vec::with_capacity(bytes.len() - body_offset));
+                body.extend_from_slice(&bytes[body_offset..]);
                 return Some((head, body));
             }
             Err(HttpError::Incomplete) => {}
@@ -458,19 +464,21 @@ struct GetState<'connection> {
     owner: ClientIdentity,
     last_activity: u64,
     body: Body,
-    buffered: Vec<u8>,
+    buffered: Zeroizing<Vec<u8>>,
     offset: usize,
 }
 
 impl GetState<'_> {
-    fn next(&mut self) -> Result<Option<Vec<u8>>, ()> {
+    fn next(&mut self) -> Result<Option<Zeroizing<Vec<u8>>>, ()> {
         loop {
             if self.offset < self.buffered.len() {
                 let end = (self.offset + protocol::MAX_CHUNK_LEN).min(self.buffered.len());
-                let result = self.buffered[self.offset..end].to_vec();
+                let mut result = Zeroizing::new(Vec::with_capacity(end - self.offset));
+                result.extend_from_slice(&self.buffered[self.offset..end]);
+                self.buffered[self.offset..end].zeroize();
                 self.offset = end;
                 if self.offset == self.buffered.len() {
-                    self.buffered.clear();
+                    self.buffered.zeroize();
                     self.offset = 0;
                 }
                 if let Body::Length(remaining) = &mut self.body {
@@ -585,7 +593,7 @@ impl<'connection> Service<'connection> {
         }
         let body = if response.chunked {
             let mut decoder = ChunkedDecoder::new();
-            let mut decoded = Vec::new();
+            let mut decoded = Zeroizing::new(Vec::new());
             decoder.decode(&initial_body, &mut decoded).map_err(|_| protocol::ERR_PROTOCOL)?;
             self.gets.insert(
                 id,

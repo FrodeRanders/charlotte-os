@@ -26,6 +26,9 @@ records a retained-storage reproduction and the correction's validation.
 | Base64 quantum digits and packed words | Local zeroizing array/word owners | Drop on each iteration or early rejection. Scalar expression/compiler copies remain outside the guarantee. |
 | Encoded SASL authentication request | `Zeroizing<Encoder>` during construction, then `Zeroizing<Vec<u8>>` | Validate the complete frame before allocation/copying; reserve once and transfer the same buffer. Drop erases a completed request or any partial guarded construction. |
 | Parsed SASL authentication reply | `SaslAuthenticate` retains the complete `Zeroizing<Vec<u8>>` and a validated byte range | Parsing consumes the input on every outcome. `auth_bytes()` borrows from that same frame; no independent auth-byte allocation remains. Drop erases the complete accepted/rejected frame. |
+| TLS/plain local receive chunk | `read_owned_chunk` and the socket adapters construct `Zeroizing<Vec<u8>>` before filling | The owner crosses the receive boundary directly; success, EOF/error and ordinary cancellation/drop retain erasing storage. The generic helper rejects an impossible producer count. Pinned TLS errors before copying; fault-reader coverage is a stronger helper contract. |
+| Kafka partial header/frame and unconsumed chunk | One `FrameReceiver` in the existing broker transport | Inline header validation precedes one full-frame reservation. Consumed chunk ranges erase after copying; complete frame ownership transfers directly. Error/interruption fences subsequent reads until explicit reset after stream discard. Reset/Drop erases the containing buffers. |
+| S3 local HTTP/body buffers | Zeroizing header/body/chunk owners | TLS and plain receive adapters share the owned chunk contract. Final local buffers erase on ordinary release. HTTP/header/chunked-decoder growth can still leave older copies. |
 | HPKE X25519 private key and shared secret | The selected `x25519-dalek` `StaticSecret` and `SharedSecret` owners inside HPKE | The direct dependency requires `zeroize`, which HPKE's disabled defaults omitted. Production trait bounds require both owners to implement `ZeroizeOnDrop`. Drop erases their named 32-byte fields. |
 | Generated recipient private bytes | Returned `Zeroizing<[u8; 32]>`, created as an owner before serialization | Transfers directly to the signing tool; ordinary return/error drops the owner. Public recipient bytes remain an array. Explicit caller copies still need their own policy. |
 | Failed HPKE authentication output | Caller-owned output slice | `operations::open` uses `Zeroize` on the attempted plaintext prefix after AEAD rejection. Earlier validation errors do not modify output; the caller owns successful plaintext and unused capacity. |
@@ -56,8 +59,8 @@ not promise ordinary Rust Drop. Heap/page teardown has its separate contract.
 
 The pinned P-256 `SecretKey` and ECDSA `SigningKey` implementations have
 erasing scalar destructors. This source observation does not qualify the full
-TLS parser or session. Kafka transport accumulation and TLS receive copies,
-TLS key schedules, HPKE deserialization scratch and cipher contexts, host-tool
+TLS parser or session. S3 HTTP accumulation/formatting copies, TLS record
+consumption/key schedules, HPKE deserialization scratch and cipher contexts, host-tool
 copies and the rest of the connector memory inventory remain
 separate SEC-15 work. No cryptographic algorithm, wire format, transport policy,
 production custody, physical-release proof or retry authority is added here.
@@ -90,5 +93,13 @@ The [SASL frame follow-up](../reports/audits/2026-10-19-security-sasl-frames.md)
 removes the parser's independent authentication copy, including copies made
 before late trailer rejection. Requests preflight the complete frame bound and
 start under an erasing owner. The connector scopes the first request/reply to
-challenge handling. Transport buffers before the frame enters this owner still
-need separate qualification; this is not end-to-end plaintext erasure.
+challenge handling. The receive-owner follow-up below covers the preceding local transport
+buffers. Library and kernel backing still need separate qualification.
+
+The [receive-owner follow-up](../reports/audits/2026-10-19-security-receive-owners.md)
+replaces Kafka's growable accumulator with the existing transport's one owning
+frame receiver, and keeps TLS/plain receive chunks under erasing ownership.
+Partial reset/drop and completed output release are observed with public
+fixtures. The S3 caller retains the same chunk owner policy, while its growth
+paths remain explicit gaps. Native byte ownership does not prove kernel socket
+backing cleanup, library record retirement or erasure after forced termination.

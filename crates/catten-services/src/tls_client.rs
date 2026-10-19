@@ -48,6 +48,7 @@ use rand_core::{
     CryptoRng,
     RngCore,
 };
+use zeroize::Zeroizing;
 
 use crate::{
     entropy,
@@ -222,19 +223,9 @@ impl<'connection> OwnedTlsStream<'connection> {
         connection.flush().map_err(|_| StreamError)
     }
 
-    pub fn receive(&mut self) -> Result<Vec<u8>, StreamError> {
-        let mut bytes = vec![0; self.receive_chunk_len];
-        let len = self
-            .connection
-            .as_mut()
-            .ok_or(StreamError)?
-            .read(&mut bytes)
-            .map_err(|_| StreamError)?;
-        if len == 0 {
-            return Err(StreamError);
-        }
-        bytes.truncate(len);
-        Ok(bytes)
+    pub fn receive(&mut self) -> Result<Zeroizing<Vec<u8>>, StreamError> {
+        let connection = self.connection.as_mut().ok_or(StreamError)?;
+        read_owned_chunk(connection, self.receive_chunk_len)
     }
 
     pub fn close(mut self) -> Result<(), StreamError> {
@@ -246,6 +237,22 @@ impl<'connection> OwnedTlsStream<'connection> {
         let socket_result = io.socket.close().map_err(|_| StreamError);
         tls_result.and(socket_result)
     }
+}
+
+/// Read plaintext into an erasing owner before exposing the destination to its
+/// producer. Success transfers that owner; error or EOF drops the same buffer.
+/// The caller supplies the existing producer wait policy and chunk bound.
+pub fn read_owned_chunk(
+    reader: &mut impl Read,
+    chunk_len: usize,
+) -> Result<Zeroizing<Vec<u8>>, StreamError> {
+    let mut bytes = Zeroizing::new(vec![0; chunk_len]);
+    let len = reader.read(&mut bytes).map_err(|_| StreamError)?;
+    if len == 0 || len > bytes.len() {
+        return Err(StreamError);
+    }
+    bytes.truncate(len);
+    Ok(bytes)
 }
 
 impl Drop for OwnedTlsStream<'_> {

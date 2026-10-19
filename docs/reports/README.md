@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [SEC-15 receive owners](audits/2026-10-19-security-receive-owners.md) — Owns TLS/plain receive chunks and Kafka partial frames, removes frame growth, and fences failed source episodes.
+
 - [SEC-15 SASL frame ownership](audits/2026-10-19-security-sasl-frames.md) — Removes reply authentication copies, consumes complete frames on rejection, and validates request size before guarded encoding.
 
 - [SEC-15 Base64 scratch](audits/2026-10-19-security-base64-scratch.md) — Reproduced decoded-prefix retention on rejection and decoder growth; helpers now create and transfer zeroizing output owners.

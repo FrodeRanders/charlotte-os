@@ -209,3 +209,15 @@ Not yet implemented:
 - temporary session credentials;
 - parsed S3 XML error bodies; and
 - automatic retry/backoff and connection pooling.
+
+## Local receive-buffer lifetime
+
+TLS receive returns `Zeroizing<Vec<u8>>`, constructed before plaintext is read.
+The plain socket adapter uses the same local owner policy. HTTP/body buffers
+retain zeroizing owners through ordinary use and rejection; consumed local
+body ranges are erased after copying into their next owner. This does not
+cover earlier reallocations in header accumulation or chunked decoding,
+request formatting, library record/key-schedule state, or kernel socket
+backing. The [receive-owner report](../reports/audits/2026-10-19-security-receive-owners.md)
+records the bounds and native regression evidence. Public S3 framing and
+capability transfer are unchanged.
