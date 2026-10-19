@@ -26,12 +26,25 @@ use hpke::{
     kem::X25519HkdfSha256,
 };
 use rand_core::CryptoRng;
+use zeroize::{
+    Zeroize,
+    ZeroizeOnDrop,
+    Zeroizing,
+};
 
 use crate::sha256;
 
 type Kem = X25519HkdfSha256;
 type Kdf = HkdfSha256;
 type Aead = ChaCha20Poly1305;
+
+// These are the owners inside HPKE's selected X25519 implementation. Reject
+// a dependency feature change that would leave either Drop without erasure.
+const _: () = {
+    const fn require_erasing_drop<T: ZeroizeOnDrop>() {}
+    require_erasing_drop::<x25519_dalek::StaticSecret>();
+    require_erasing_drop::<x25519_dalek::SharedSecret>();
+};
 
 pub const MAGIC: &[u8; 8] = b"COPSENC1";
 pub const VERSION: u16 = 1;
@@ -178,11 +191,24 @@ fn context_digest(bytes: &[u8], profile_name: &[u8]) -> [u8; 32] {
     hash.finalize()
 }
 
-pub fn generate_recipient_keypair(rng: &mut impl CryptoRng) -> ([u8; 32], [u8; 32]) {
+/// Generate a recipient keypair, retaining private bytes in an erasing owner
+/// from serialization through transfer to the caller.
+///
+/// Moving the private owner ends access through the previous binding:
+///
+/// ```compile_fail,E0382
+/// fn example(rng: &mut impl rand_core::CryptoRng) {
+///     let (private, _) = charlotte_launch::operations::generate_recipient_keypair(rng);
+///     let transferred = private;
+///     drop(transferred);
+///     let _ = charlotte_launch::operations::recipient_public_key(&private);
+/// }
+/// ```
+pub fn generate_recipient_keypair(rng: &mut impl CryptoRng) -> (Zeroizing<[u8; 32]>, [u8; 32]) {
     let (private_key, public_key) = Kem::gen_keypair_with_rng(rng);
-    let mut private_bytes = [0u8; 32];
+    let mut private_bytes = Zeroizing::new([0u8; 32]);
     let mut public_bytes = [0u8; 32];
-    private_key.write_exact(&mut private_bytes);
+    private_key.write_exact(&mut private_bytes[..]);
     public_key.write_exact(&mut public_bytes);
     (private_bytes, public_bytes)
 }
@@ -397,7 +423,7 @@ pub fn open(
     let plaintext = &mut output[..envelope.ciphertext.len()];
     plaintext.copy_from_slice(envelope.ciphertext);
     if receiver.open_inout_detached(InOutBuf::from(&mut *plaintext), &context, &tag).is_err() {
-        plaintext.fill(0);
+        plaintext.zeroize();
         return Err(OpenError::Authentication);
     }
     Ok(plaintext.len())

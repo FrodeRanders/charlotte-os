@@ -409,7 +409,6 @@ fn operations_recipient_generate(args: &[String]) -> Result<()> {
     let public_path = args.get(1).ok_or_else(|| "missing public-key output path".to_owned())?;
     let mut rng = UnwrapErr(getrandom::SysRng);
     let (private_key, public_key) = operations::generate_recipient_keypair(&mut rng);
-    let private_key = Zeroizing::new(private_key);
     write_new_hex_key(private_path, &*private_key, true)?;
     if let Err(error) = write_new_hex_key(public_path, &public_key, false) {
         let _ = fs::remove_file(private_path);
@@ -2599,6 +2598,34 @@ mod tests {
         let new_private = directory.path("rollback.hex");
         assert!(signing_generate(&[new_private.clone(), public]).is_err());
         assert!(!std::path::Path::new(&new_private).exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn recipient_generation_writes_matching_restricted_keys_and_preserves_outputs() {
+        let directory = TestDirectory::new();
+        let private = directory.path("recipient.hex");
+        let public = directory.path("recipient.pub");
+        operations_recipient_generate(&[private.clone(), public.clone()]).unwrap();
+        assert_eq!(fs::metadata(&private).unwrap().mode() & 0o777, 0o600);
+        let secret = read_private_key(&private, 32).unwrap();
+        let expected =
+            operations::recipient_public_key(secret.as_slice().try_into().unwrap()).unwrap();
+        assert_eq!(read_hex_key(&public, 32, "public key").unwrap(), expected);
+
+        assert!(operations_recipient_generate(&[private.clone(), public.clone()]).is_err());
+        assert_eq!(read_private_key(&private, 32).unwrap().as_slice(), secret.as_slice());
+        assert_eq!(read_hex_key(&public, 32, "public key").unwrap(), expected);
+
+        let rollback = directory.path("rollback.hex");
+        assert!(operations_recipient_generate(&[rollback.clone(), public.clone()]).is_err());
+        assert!(!std::path::Path::new(&rollback).exists());
+        assert_eq!(read_hex_key(&public, 32, "public key").unwrap(), expected);
+        let missing_parent = directory.path("absent/recipient.hex");
+        let unused_public = directory.path("unused.pub");
+        assert!(operations_recipient_generate(&[missing_parent, unused_public.clone()]).is_err());
+        assert!(!std::path::Path::new(&unused_public).exists());
+        assert!(operations_recipient_generate(&[]).is_err());
     }
 
     #[cfg(unix)]

@@ -1,7 +1,8 @@
 # Secret-derived state lifetimes
 
-This is the current SEC-15 inventory for Charlotte's SHA-256, HMAC, SigV4 and
-SCRAM derivation helpers. It is a bounded part of the wider secret-copy review.
+This is the current SEC-15 inventory for Charlotte's SHA-256, HMAC, SigV4,
+SCRAM and HPKE recipient helpers. It is a bounded part of the wider secret-copy
+review.
 The [execution report](../reports/audits/2026-10-19-security-hash-state-erasure.md)
 records a retained-storage reproduction and the correction's validation.
 
@@ -21,12 +22,17 @@ records a retained-storage reproduction and the correction's validation.
 | SCRAM exchange-local password and initial transcript | Initial `Client` phase, with zeroizing password/transcript buffers | Consuming server-challenge processing drops the initial phase on success or rejection, before the next transport exchange. The caller's configured credentials keep their separate lifetime. |
 | SCRAM client/server keys and stored key | Local zeroizing derivation owners | Drop when challenge processing returns. |
 | SCRAM proof and expected server signature | One `ClientFinal` owner | Proof bytes are borrowed for encoding. Consuming final verification or ordinary cancellation drops both fields; even early length/UTF-8 rejection consumes the phase. |
+| HPKE X25519 private key and shared secret | The selected `x25519-dalek` `StaticSecret` and `SharedSecret` owners inside HPKE | The direct dependency requires `zeroize`, which HPKE's disabled defaults omitted. Production trait bounds require both owners to implement `ZeroizeOnDrop`. Drop erases their named 32-byte fields. |
+| Generated recipient private bytes | Returned `Zeroizing<[u8; 32]>`, created as an owner before serialization | Transfers directly to the signing tool; ordinary return/error drops the owner. Public recipient bytes remain an array. Explicit caller copies still need their own policy. |
+| Failed HPKE authentication output | Caller-owned output slice | `operations::open` uses `Zeroize` on the attempted plaintext prefix after AEAD rejection. Earlier validation errors do not modify output; the caller owns successful plaintext and unused capacity. |
 
 Finalization pads the same SHA owner, avoiding the former second full hash-state
 copy. The public SHA digest API still returns an array. The shared HMAC API
 returns an owner so its secret-derived outputs do not cross that helper boundary
-as unprotected arrays. All of these paths are allocation-free except the
-existing connector buffers and SCRAM salt/authentication-message storage.
+as unprotected arrays. The hash and key-result owners are allocation-free.
+Existing connector buffers,
+SCRAM salt/authentication-message storage and third-party HPKE contexts keep
+their own allocation contracts.
 
 ## Evidence and limits
 
@@ -44,8 +50,10 @@ spill, CPU register/cache, crash dump or caller-owned input/output. Destructors
 also need execution: panic-abort, forced domain termination and power loss do
 not promise ordinary Rust Drop. Heap/page teardown has its separate contract.
 
-TLS session/key-schedule storage, TLS identity parsing, HPKE/library scratch,
-host-tool secret copies and the rest of the connector memory inventory remain
+The pinned P-256 `SecretKey` and ECDSA `SigningKey` implementations have
+erasing scalar destructors. This source observation does not qualify the full
+TLS parser or session. TLS key schedules, HPKE deserialization scratch and cipher
+contexts, host-tool copies and the rest of the connector memory inventory remain
 separate SEC-15 work. No cryptographic algorithm, wire format, transport policy,
 production custody, physical-release proof or retry authority is added here.
 
@@ -55,3 +63,11 @@ replaces it with these two consuming owners. Rust compile-fail controls reject
 phase reuse; runtime error cases and a TLS/mTLS/SCRAM broker fault run cover
 the actual caller. This is ownership/lifetime evidence, without a new memory-
 forensics guarantee or erasure claim for forced termination.
+
+The [HPKE erasure follow-up](../reports/audits/2026-10-19-security-hpke-erasure.md)
+records two failing retained-storage controls on the former feature graph and
+passing debug/optimized repeats after enabling erasure. Removing the feature
+from an isolated build fails both production trait bounds. A separate compile
+control rejects implicit reuse of a moved generated private owner. These checks
+cover named storage and the API boundary; they do not promise erasure of every
+library/compiler copy or establish recipient-key custody.

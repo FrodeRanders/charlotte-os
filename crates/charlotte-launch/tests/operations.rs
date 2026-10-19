@@ -10,6 +10,7 @@ use ed25519_compact::{
     Signature,
 };
 use rand_core::UnwrapErr;
+use zeroize::Zeroizing;
 
 fn sign(envelope: &mut [u8], pair: &KeyPair) {
     let digest = operations::signature_digest(envelope).expect("valid unsigned envelope");
@@ -21,7 +22,7 @@ fn sign(envelope: &mut [u8], pair: &KeyPair) {
 
 struct Fixture {
     envelope: Vec<u8>,
-    recipient_private: [u8; 32],
+    recipient_private: Zeroizing<[u8; 32]>,
     operational: KeyPair,
     cluster_id: [u8; 32],
     release_digest: [u8; 32],
@@ -64,6 +65,14 @@ fn fixture() -> Fixture {
         release_digest,
         plaintext,
     }
+}
+
+#[test]
+fn generated_private_key_transfers_an_erasing_owner() {
+    let mut rng = UnwrapErr(getrandom::SysRng);
+    let (private, public): (Zeroizing<[u8; 32]>, [u8; 32]) =
+        operations::generate_recipient_keypair(&mut rng);
+    assert_eq!(operations::recipient_public_key(&private).unwrap(), public);
 }
 
 #[test]

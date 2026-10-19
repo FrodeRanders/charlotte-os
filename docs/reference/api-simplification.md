@@ -234,3 +234,10 @@ returns one `ClientFinal` containing proof/verifier owners; consuming final
 handling retires it on every outcome. The connector encodes borrowed proof
 bytes from that phase. No mutable compatibility adapter remains. Kafka framing,
 SCRAM bytes and persistent records are unchanged.
+
+The [HPKE erasure follow-up](../reports/audits/2026-10-19-security-hpke-erasure.md)
+changes `operations::generate_recipient_keypair` to return private bytes as
+`Zeroizing<[u8; 32]>`, beginning before serialization. Its caller keeps that
+owner directly; the plain-array return and late wrapping are removed. Public
+bytes remain arrays. The HPKE suite, envelope grammar and stored key format
+are unchanged; no compatibility adapter or format-number change is needed.

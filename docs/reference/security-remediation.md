@@ -540,6 +540,13 @@ connector already returned on authentication errors; this strengthens its
 library contract and shortens the transient copy's lifetime. Wider credential
 and third-party state remain open.
 
+The [HPKE erasure follow-up](../reports/audits/2026-10-19-security-hpke-erasure.md)
+corrects a dependency feature gap: HPKE disabled X25519 defaults and the selected
+private/shared owners retained their fields after Drop. Erasure is now explicit
+and guarded at build time. Generated recipient private bytes also transfer as
+a zeroizing owner. SEC-15 remains partial; library scratch, TLS session state,
+compiler copies and recipient custody retain their separate acceptance work.
+
 | Order | Finding and acceptance criterion |
 | --- | --- |
 | 1 | **SEC-04:** Authenticate bootstrap policy and the executable boot chain from a protected platform root. Provision independent artifact, deployment and operational authorities and a distinct recipient key; exclude every development fixture. Keep the recipient private key behind a privileged custody boundary, with recovery/rotation rules and rollback-resistant policy state. Test substituted boot images/policies, role reuse, downgrade, enrollment and custody failure. Production must remain disabled until those tests pass. |
