@@ -216,8 +216,21 @@ TLS receive returns `Zeroizing<Vec<u8>>`, constructed before plaintext is read.
 The plain socket adapter uses the same local owner policy. HTTP/body buffers
 retain zeroizing owners through ordinary use and rejection; consumed local
 body ranges are erased after copying into their next owner. This does not
-cover earlier reallocations in header accumulation or chunked decoding,
-request formatting, library record/key-schedule state, or kernel socket
-backing. The [receive-owner report](../reports/audits/2026-10-19-security-receive-owners.md)
+cover request formatting, response metadata copies, library record/key-schedule
+state, or kernel socket backing. The [receive-owner report](../reports/audits/2026-10-19-security-receive-owners.md)
 records the bounds and native regression evidence. Public S3 framing and
 capability transfer are unchanged.
+
+`ResponseHeadBuffer` reserves `MAX_RESPONSE_HEAD` (16 KiB) once, copies only
+header bytes, and returns the current chunk's body suffix in an erasing owner.
+The service retains its existing 16-read admission bound and transport wait
+policy. A head ending exactly at the limit is accepted; an unterminated head
+that fills it rejects. Completion or rejection fences further pushes.
+
+`ChunkedDecoder::decode` returns `Zeroizing<Vec<u8>>`, reserved to the current
+input length before decoding. The service replaces its drained body owner with
+that result instead of appending across calls. Its 128-byte framing scratch
+erases after consumption and on Drop. Malformed framing drops the current
+output and fences that decoder; the containing GET operation is removed on
+read failure. These owners grant no request replay or physical cleanup proof.
+See the [response-buffer report](../reports/audits/2026-10-19-security-s3-response-buffers.md).

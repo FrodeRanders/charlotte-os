@@ -10,8 +10,13 @@ publish = false
 name = "receive_erasure"
 path = "receive_erasure.rs"
 
+[[test]]
+name = "s3_response_erasure"
+path = "s3_response_erasure.rs"
+
 [dev-dependencies]
 catten-services = { path = "../../crates/catten-services" }
 charlotte-kafka = { path = "../../crates/charlotte-kafka" }
+charlotte-s3 = { path = "../../crates/charlotte-s3" }
 embedded-io = { version = "0.7", default-features = false }
 zeroize = { version = "1.9", default-features = false, features = ["alloc"] }

@@ -1,8 +1,16 @@
 //! Bounded HTTP/1.1 response-head and chunk framing parser.
 
-use alloc::string::{
-    String,
-    ToString,
+use alloc::{
+    string::{
+        String,
+        ToString,
+    },
+    vec::Vec,
+};
+
+use zeroize::{
+    Zeroize,
+    Zeroizing,
 };
 
 pub const MAX_RESPONSE_HEAD: usize = 16 * 1024;
@@ -28,6 +36,9 @@ pub struct ResponseHead {
     pub version_id: Option<String>,
     pub request_id: Option<String>,
 }
+
+/// Parsed response metadata and the first owned body fragment.
+pub type ResponseStart = (ResponseHead, Zeroizing<Vec<u8>>);
 
 impl ResponseHead {
     /// Parse a response head and return it with the offset of the first body
@@ -98,6 +109,56 @@ fn find_head_end(bytes: &[u8]) -> Option<usize> {
     bytes.windows(4).position(|window| window == b"\r\n\r\n").map(|offset| offset + 4)
 }
 
+/// One bounded response head, without accumulation reallocations. The caller
+/// supplies bounded transport chunks and retains its existing read/deadline
+/// policy. A completed head or rejection consumes this parsing episode.
+pub struct ResponseHeadBuffer {
+    bytes: Zeroizing<Vec<u8>>,
+    finished: bool,
+}
+
+impl Default for ResponseHeadBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ResponseHeadBuffer {
+    pub fn new() -> Self {
+        Self {
+            bytes: Zeroizing::new(Vec::with_capacity(MAX_RESPONSE_HEAD)),
+            finished: false,
+        }
+    }
+
+    /// Copy only the header prefix into the reserved buffer. On completion,
+    /// return the current chunk's body suffix in its own erasing allocation.
+    pub fn push(&mut self, input: &[u8]) -> Result<Option<ResponseStart>, Error> {
+        if self.finished {
+            return Err(Error::InvalidHeader);
+        }
+        self.finished = true;
+        for (offset, byte) in input.iter().enumerate() {
+            if self.bytes.len() == MAX_RESPONSE_HEAD {
+                return Err(Error::HeadTooLarge);
+            }
+            self.bytes.push(*byte);
+            if self.bytes.ends_with(b"\r\n\r\n") {
+                let (head, _) = ResponseHead::parse(&self.bytes)?;
+                let suffix = &input[offset + 1..];
+                let mut body = Zeroizing::new(Vec::with_capacity(suffix.len()));
+                body.extend_from_slice(suffix);
+                return Ok(Some((head, body)));
+            }
+        }
+        if self.bytes.len() == MAX_RESPONSE_HEAD {
+            return Err(Error::HeadTooLarge);
+        }
+        self.finished = false;
+        Ok(None)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ChunkState {
     Size,
@@ -108,11 +169,13 @@ enum ChunkState {
 }
 
 /// Incremental HTTP chunked-transfer decoder. Input may be split at any byte;
-/// decoded output is appended to `output` and framing bytes are discarded.
+/// each call returns its own erasing output, reserved before decoding. Framing
+/// scratch erases on consumption/Drop. Rejection fences further decoding.
 pub struct ChunkedDecoder {
     state: ChunkState,
-    line: [u8; 128],
+    line: Zeroizing<[u8; 128]>,
     line_len: usize,
+    failed: bool,
 }
 
 impl Default for ChunkedDecoder {
@@ -122,11 +185,12 @@ impl Default for ChunkedDecoder {
 }
 
 impl ChunkedDecoder {
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             state: ChunkState::Size,
-            line: [0; 128],
+            line: Zeroizing::new([0; 128]),
             line_len: 0,
+            failed: false,
         }
     }
 
@@ -134,11 +198,19 @@ impl ChunkedDecoder {
         self.state == ChunkState::Complete
     }
 
-    pub fn decode(
-        &mut self,
-        mut input: &[u8],
-        output: &mut alloc::vec::Vec<u8>,
-    ) -> Result<(), Error> {
+    pub fn decode(&mut self, input: &[u8]) -> Result<Zeroizing<Vec<u8>>, Error> {
+        if self.failed {
+            return Err(Error::InvalidChunk);
+        }
+        self.failed = true;
+        // Framing removal cannot produce more bytes than this input chunk.
+        let mut output = Zeroizing::new(Vec::with_capacity(input.len()));
+        self.decode_inner(input, &mut output)?;
+        self.failed = false;
+        Ok(output)
+    }
+
+    fn decode_inner(&mut self, mut input: &[u8], output: &mut Vec<u8>) -> Result<(), Error> {
         while !input.is_empty() && !self.is_complete() {
             match self.state {
                 ChunkState::Size | ChunkState::Trailers => {
@@ -154,6 +226,7 @@ impl ChunkedDecoder {
                         let line_len = self.line_len - 2;
                         if self.state == ChunkState::Trailers {
                             self.line_len = 0;
+                            self.line.zeroize();
                             if line_len == 0 {
                                 self.state = ChunkState::Complete;
                             }
@@ -164,6 +237,7 @@ impl ChunkedDecoder {
                         let size_text = line.split(';').next().ok_or(Error::InvalidChunk)?.trim();
                         let size = usize::from_str_radix(size_text, 16)
                             .map_err(|_| Error::InvalidChunk)?;
+                        self.line.zeroize();
                         self.line_len = 0;
                         self.state = if size == 0 {
                             ChunkState::Trailers
@@ -192,6 +266,7 @@ impl ChunkedDecoder {
                         if &self.line[..2] != b"\r\n" {
                             return Err(Error::InvalidChunk);
                         }
+                        self.line.zeroize();
                         self.line_len = 0;
                         self.state = ChunkState::Size;
                     }
@@ -232,9 +307,42 @@ mod tests {
             b"ki\r\n5\r\np".as_slice(),
             b"edia\r\n0\r\nX-Test: yes\r\n\r\n".as_slice(),
         ] {
-            decoder.decode(part, &mut output).unwrap();
+            output.extend_from_slice(&decoder.decode(part).unwrap());
         }
         assert!(decoder.is_complete());
         assert_eq!(output, b"Wikipedia");
+    }
+
+    #[test]
+    fn chunk_framing_scratch_erases_after_consumption() {
+        let mut decoder = ChunkedDecoder::new();
+        assert!(decoder.decode(b"8;ZZZZZZZZ\r\n").unwrap().is_empty());
+        assert!(decoder.line.iter().all(|byte| *byte == 0));
+        assert_eq!(decoder.decode(b"ZZZZZZZZ\r\n").unwrap().as_slice(), b"ZZZZZZZZ");
+        assert!(decoder.line.iter().all(|byte| *byte == 0));
+        assert!(decoder.decode(b"0\r\nX-Public: ZZZZZZZZ\r\n\r\n").unwrap().is_empty());
+        assert!(decoder.is_complete());
+        assert!(decoder.line.iter().all(|byte| *byte == 0));
+    }
+
+    #[test]
+    fn rejected_chunk_scratch_erases_before_retained_storage_release() {
+        use core::{
+            mem::MaybeUninit,
+            ptr,
+        };
+
+        let mut storage = MaybeUninit::new(ChunkedDecoder::new());
+        let decoder = storage.as_mut_ptr();
+        // SAFETY: the slot contains one initialized owner. Capture only its
+        // initialized line bytes, destroy it once, then inspect those bytes
+        // while the MaybeUninit slot still retains the backing storage.
+        unsafe {
+            assert_eq!((*decoder).decode(b"ZZZZZZZZ\r\n").err(), Some(Error::InvalidChunk));
+            let line = (*decoder).line.as_ptr();
+            assert!((0..8).all(|i| ptr::read_volatile(line.add(i)) == b'Z'));
+            ptr::drop_in_place(decoder);
+            assert!((0..8).all(|i| ptr::read_volatile(line.add(i)) == 0));
+        }
     }
 }

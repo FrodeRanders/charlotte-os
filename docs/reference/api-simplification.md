@@ -268,3 +268,11 @@ startup resets before authentication. S3 keeps the shared owner type through
 its buffers; no plain-return compatibility adapter remains. Wire grammars and
 version numbers are unchanged. The cross-layer host test package belongs to
 the root workspace and uses service libraries without freestanding entry points.
+
+The [S3 response-buffer follow-up](../reports/audits/2026-10-19-security-s3-response-buffers.md)
+replaces the public append-to-caller decoder API with one owned output per
+call. `ChunkedDecoder::decode` reserves from input length, returns an erasing
+owner and fences rejection. Its callers and fixtures use that single API;
+no append compatibility entry point remains. `ResponseHeadBuffer` supplies
+bounded head accumulation without growth. HTTP wire grammar and S3 operation
+IDs are unchanged; this changes local parsing ownership and terminal fencing.

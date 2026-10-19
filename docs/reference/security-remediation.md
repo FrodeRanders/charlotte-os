@@ -567,6 +567,13 @@ an erasing owner and fence re-entry until stream discard/reset. The shared S3
 adapter keeps the new buffer type. S3 HTTP growth, library state, kernel backing
 and forced termination remain open; SEC-15 stays partial.
 
+The [S3 response-buffer follow-up](../reports/audits/2026-10-19-security-s3-response-buffers.md)
+then removes header and chunk-decoder output growth. Decoding returns its
+reserved erasing owner; framing scratch erases after consumption and on Drop.
+Malformed input fences that parsing episode. Request formatting/metadata copies,
+library state, physical memory and forced termination remain separate; SEC-15
+remains partial and overall finding counts are unchanged.
+
 | Order | Finding and acceptance criterion |
 | --- | --- |
 | 1 | **SEC-04:** Authenticate bootstrap policy and the executable boot chain from a protected platform root. Provision independent artifact, deployment and operational authorities and a distinct recipient key; exclude every development fixture. Keep the recipient private key behind a privileged custody boundary, with recovery/rotation rules and rollback-resistant policy state. Test substituted boot images/policies, role reuse, downgrade, enrollment and custody failure. Production must remain disabled until those tests pass. |

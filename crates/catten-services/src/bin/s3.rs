@@ -61,8 +61,8 @@ use charlotte_protocol_s3::{
 use charlotte_s3::{
     http::{
         ChunkedDecoder,
-        Error as HttpError,
         ResponseHead,
+        ResponseHeadBuffer,
     },
     sigv4::{
         Credentials,
@@ -315,17 +315,11 @@ fn receive_plain(socket: &socket::OwnedSocket<'_>) -> Option<Zeroizing<Vec<u8>>>
 }
 
 fn read_head(socket: &mut Transport<'_>) -> Option<(ResponseHead, Zeroizing<Vec<u8>>)> {
-    let mut bytes = Zeroizing::new(Vec::new());
+    let mut buffer = ResponseHeadBuffer::new();
     for _ in 0..MAX_HEAD_READS {
-        bytes.extend_from_slice(&socket.receive().ok()?);
-        match ResponseHead::parse(&bytes) {
-            Ok((head, body_offset)) => {
-                let mut body = Zeroizing::new(Vec::with_capacity(bytes.len() - body_offset));
-                body.extend_from_slice(&bytes[body_offset..]);
-                return Some((head, body));
-            }
-            Err(HttpError::Incomplete) => {}
-            Err(_) => return None,
+        let chunk = socket.receive().ok()?;
+        if let Some(response) = buffer.push(&chunk).ok()? {
+            return Some(response);
         }
     }
     None
@@ -495,7 +489,7 @@ impl GetState<'_> {
                 Body::Chunked(decoder) if decoder.is_complete() => return Ok(None),
                 Body::Chunked(decoder) => {
                     let raw = self.socket.receive()?;
-                    decoder.decode(&raw, &mut self.buffered).map_err(|_| ())?;
+                    self.buffered = decoder.decode(&raw).map_err(|_| ())?;
                 }
             }
         }
@@ -593,8 +587,7 @@ impl<'connection> Service<'connection> {
         }
         let body = if response.chunked {
             let mut decoder = ChunkedDecoder::new();
-            let mut decoded = Zeroizing::new(Vec::new());
-            decoder.decode(&initial_body, &mut decoded).map_err(|_| protocol::ERR_PROTOCOL)?;
+            let decoded = decoder.decode(&initial_body).map_err(|_| protocol::ERR_PROTOCOL)?;
             self.gets.insert(
                 id,
                 GetState {

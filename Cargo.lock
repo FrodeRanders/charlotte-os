@@ -402,6 +402,7 @@ version = "0.1.0"
 dependencies = [
  "catten-services",
  "charlotte-kafka",
+ "charlotte-s3",
  "embedded-io",
  "zeroize",
 ]

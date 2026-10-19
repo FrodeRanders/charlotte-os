@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [SEC-15 S3 response buffers](audits/2026-10-19-security-s3-response-buffers.md) — Removes header/decoder output growth and erases consumed or abandoned chunk-framing scratch.
+
 - [SEC-15 receive owners](audits/2026-10-19-security-receive-owners.md) — Owns TLS/plain receive chunks and Kafka partial frames, removes frame growth, and fences failed source episodes.
 
 - [SEC-15 SASL frame ownership](audits/2026-10-19-security-sasl-frames.md) — Removes reply authentication copies, consumes complete frames on rejection, and validates request size before guarded encoding.
