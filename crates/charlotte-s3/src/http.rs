@@ -24,6 +24,105 @@ pub enum Error {
     ConflictingLength,
     UnsupportedTransferEncoding,
     InvalidChunk,
+    RequestTooLarge,
+}
+
+/// Borrowed fields for one HTTP/1.1 request. The caller retains authorization
+/// through serialization/send. This encoder owns Connection and Content-Length.
+pub struct RequestHead<'a> {
+    pub method: &'a str,
+    pub path: &'a str,
+    pub headers: &'a [crate::sigv4::Header<'a>],
+    pub content_length: Option<u64>,
+}
+
+/// Validate wire fields and reserve the complete header before copying. The
+/// returned owner erases on normal send success, rejection or abandonment.
+pub fn request_head(request: &RequestHead<'_>) -> Result<Zeroizing<Vec<u8>>, Error> {
+    if request.method.is_empty()
+        || !request.method.bytes().all(token_byte)
+        || !request.path.starts_with('/')
+        || request.path.bytes().any(|byte| !byte.is_ascii() || byte <= b' ' || byte == 0x7f)
+    {
+        return Err(Error::InvalidHeader);
+    }
+    let mut host = false;
+    for (index, header) in request.headers.iter().enumerate() {
+        if header.name.is_empty()
+            || !header.name.bytes().all(token_byte)
+            || header.value.bytes().any(|byte| (byte < b' ' && byte != b'\t') || byte == 0x7f)
+            || ["content-length", "connection", "transfer-encoding"]
+                .iter()
+                .any(|name| header.name.eq_ignore_ascii_case(name))
+            || request.headers[..index]
+                .iter()
+                .any(|earlier| earlier.name.eq_ignore_ascii_case(header.name))
+        {
+            return Err(Error::InvalidHeader);
+        }
+        if header.name.eq_ignore_ascii_case("host") && header.value.trim().is_empty() {
+            return Err(Error::InvalidHeader);
+        }
+        host |= header.name.eq_ignore_ascii_case("host");
+    }
+    if !host {
+        return Err(Error::InvalidHeader);
+    }
+    // Decimal length formatting uses initialized local storage with no heap copy.
+    let mut digits = [0u8; 20];
+    let mut start = digits.len();
+    if let Some(mut length) = request.content_length {
+        loop {
+            start -= 1;
+            digits[start] = b'0' + (length % 10) as u8;
+            length /= 10;
+            if length == 0 {
+                break;
+            }
+        }
+    }
+    let mut len = request.method.len();
+    let mut add = |count: usize| -> Result<(), Error> {
+        len = len.checked_add(count).ok_or(Error::RequestTooLarge)?;
+        Ok(())
+    };
+    add(1)?;
+    add(request.path.len())?;
+    add(b" HTTP/1.1\r\n".len())?;
+    for header in request.headers {
+        add(header.name.len())?;
+        add(b": ".len())?;
+        add(header.value.len())?;
+        add(b"\r\n".len())?;
+    }
+    if request.content_length.is_some() {
+        add(b"Content-Length: ".len())?;
+        add(digits.len() - start)?;
+        add(b"\r\n".len())?;
+    }
+    add(b"Connection: close\r\n\r\n".len())?;
+    let mut output = Zeroizing::new(Vec::with_capacity(len));
+    output.extend_from_slice(request.method.as_bytes());
+    output.push(b' ');
+    output.extend_from_slice(request.path.as_bytes());
+    output.extend_from_slice(b" HTTP/1.1\r\n");
+    for header in request.headers {
+        output.extend_from_slice(header.name.as_bytes());
+        output.extend_from_slice(b": ");
+        output.extend_from_slice(header.value.as_bytes());
+        output.extend_from_slice(b"\r\n");
+    }
+    if request.content_length.is_some() {
+        output.extend_from_slice(b"Content-Length: ");
+        output.extend_from_slice(&digits[start..]);
+        output.extend_from_slice(b"\r\n");
+    }
+    output.extend_from_slice(b"Connection: close\r\n\r\n");
+    Ok(output)
+}
+
+fn token_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

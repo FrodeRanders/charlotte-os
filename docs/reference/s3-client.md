@@ -216,7 +216,7 @@ TLS receive returns `Zeroizing<Vec<u8>>`, constructed before plaintext is read.
 The plain socket adapter uses the same local owner policy. HTTP/body buffers
 retain zeroizing owners through ordinary use and rejection; consumed local
 body ranges are erased after copying into their next owner. This does not
-cover request formatting, response metadata copies, library record/key-schedule
+cover canonical signing/path/query metadata, response metadata copies, library record/key-schedule
 state, or kernel socket backing. The [receive-owner report](../reports/audits/2026-10-19-security-receive-owners.md)
 records the bounds and native regression evidence. Public S3 framing and
 capability transfer are unchanged.
@@ -234,3 +234,22 @@ erases after consumption and on Drop. Malformed framing drops the current
 output and fences that decoder; the containing GET operation is removed on
 read failure. These owners grant no request replay or physical cleanup proof.
 See the [response-buffer report](../reports/audits/2026-10-19-security-s3-response-buffers.md).
+
+## Authorization and request-header lifetime
+
+`Signature` retains authorization and hexadecimal signature text as
+`Zeroizing<String>` and has no aggregate Debug formatter. Their owners exist
+before construction, with complete reservations. Canonical request,
+string-to-sign and signed-header metadata keep their separate plain-string
+lifetimes; this does not qualify the whole signing path.
+
+`request_head` borrows method, encoded path and headers and returns one
+`Zeroizing<Vec<u8>>`. It checks field syntax, rejects control characters,
+duplicate names and caller-supplied Connection/Content-Length/Transfer-Encoding,
+and requires a nonempty Host before allocating output. Content-Length and
+Connection are emitted by the serializer. S3 retains its returned owner through
+sending; success, failure and ordinary abandonment erase that local buffer.
+Existing launch profiles already validate wire-bound values; the new check
+strengthens the serializer boundary without establishing a production injection
+path. Valid service header bytes and SigV4 output are preserved. See the
+[request-owner report](../reports/audits/2026-10-19-security-s3-request-owners.md).

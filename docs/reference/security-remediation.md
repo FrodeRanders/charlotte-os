@@ -574,6 +574,14 @@ Malformed input fences that parsing episode. Request formatting/metadata copies,
 library state, physical memory and forced termination remain separate; SEC-15
 remains partial and overall finding counts are unchanged.
 
+The [S3 request-owner follow-up](../reports/audits/2026-10-19-security-s3-request-owners.md)
+owns signature/authorization text and the serialized request head, reserves
+before writing and removes aggregate signature Debug formatting. The serializer
+independently rejects invalid wire fields; existing profile validation already
+rejects those inputs. Canonical signing/path/query/response-metadata copies,
+library state and physical memory remain separate; SEC-15 stays partial with
+unchanged overall counts.
+
 | Order | Finding and acceptance criterion |
 | --- | --- |
 | 1 | **SEC-04:** Authenticate bootstrap policy and the executable boot chain from a protected platform root. Provision independent artifact, deployment and operational authorities and a distinct recipient key; exclude every development fixture. Keep the recipient private key behind a privileged custody boundary, with recovery/rotation rules and rollback-resistant policy state. Test substituted boot images/policies, role reuse, downgrade, enrollment and custody failure. Production must remain disabled until those tests pass. |

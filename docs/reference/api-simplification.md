@@ -276,3 +276,11 @@ owner and fences rejection. Its callers and fixtures use that single API;
 no append compatibility entry point remains. `ResponseHeadBuffer` supplies
 bounded head accumulation without growth. HTTP wire grammar and S3 operation
 IDs are unchanged; this changes local parsing ownership and terminal fencing.
+
+The [S3 request-owner follow-up](../reports/audits/2026-10-19-security-s3-request-owners.md)
+changes authorization/signature fields to erasing owners and removes the
+aggregate Debug implementation. The service's private growable formatter is
+replaced by the library's borrowed `RequestHead` and owned `request_head`
+serializer. No plain-output compatibility formatter remains. Valid S3 request
+bytes/signatures are unchanged; malformed fields reject before header output
+allocation. Launch profiles retain their earlier validation boundary.

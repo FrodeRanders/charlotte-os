@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [SEC-15 S3 request owners](audits/2026-10-19-security-s3-request-owners.md) — Owns authorization/signature text and reserves the complete erasing HTTP request header.
+
 - [SEC-15 S3 response buffers](audits/2026-10-19-security-s3-response-buffers.md) — Removes header/decoder output growth and erases consumed or abandoned chunk-framing scratch.
 
 - [SEC-15 receive owners](audits/2026-10-19-security-receive-owners.md) — Owns TLS/plain receive chunks and Kafka partial frames, removes frame growth, and fences failed source episodes.

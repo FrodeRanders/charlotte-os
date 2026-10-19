@@ -22,6 +22,7 @@ pub enum Error {
     InvalidTimestamp,
     InvalidHeader,
     InvalidPath,
+    TooLarge,
 }
 
 #[derive(Clone, Copy)]
@@ -106,13 +107,19 @@ pub struct Request<'a> {
     pub timestamp: Timestamp,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+/// Authorization and signature text retain erasing owners. Canonical request
+/// metadata keeps its separate lifetime. The aggregate has no debug formatter.
+///
+/// ```compile_fail
+/// fn requires_debug<T: core::fmt::Debug>() {}
+/// requires_debug::<charlotte_s3::sigv4::Signature>();
+/// ```
 pub struct Signature {
-    pub authorization: String,
+    pub authorization: Zeroizing<String>,
     pub canonical_request: String,
     pub string_to_sign: String,
     pub signed_headers: String,
-    pub signature: String,
+    pub signature: Zeroizing<String>,
 }
 
 pub fn sign(request: &Request<'_>, credentials: Credentials<'_>) -> Result<Signature, Error> {
@@ -148,11 +155,8 @@ pub fn sign(request: &Request<'_>, credentials: Credentials<'_>) -> Result<Signa
     let region_key = hmac_sha256(&*date_key, request.region.as_bytes());
     let service_key = hmac_sha256(&*region_key, request.service.as_bytes());
     let signing_key = hmac_sha256(&*service_key, b"aws4_request");
-    let signature = hex_lower(&hmac_sha256(&*signing_key, string_to_sign.as_bytes())[..]);
-    let authorization = format!(
-        "AWS4-HMAC-SHA256 Credential={}/{}, SignedHeaders={}, Signature={}",
-        credentials.access_key, scope, signed_headers, signature
-    );
+    let signature = signature_hex(&hmac_sha256(&*signing_key, string_to_sign.as_bytes()));
+    let authorization = authorization(credentials.access_key, &scope, &signed_headers, &signature)?;
     Ok(Signature {
         authorization,
         canonical_request,
@@ -160,6 +164,43 @@ pub fn sign(request: &Request<'_>, credentials: Credentials<'_>) -> Result<Signa
         signed_headers,
         signature,
     })
+}
+
+fn signature_hex(bytes: &[u8; 32]) -> Zeroizing<String> {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut text = Zeroizing::new(String::with_capacity(64));
+    for byte in bytes {
+        text.push(HEX[(byte >> 4) as usize] as char);
+        text.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    text
+}
+
+fn authorization(
+    access_key: &str,
+    scope: &str,
+    signed_headers: &str,
+    signature: &str,
+) -> Result<Zeroizing<String>, Error> {
+    let parts = [
+        "AWS4-HMAC-SHA256 Credential=",
+        access_key,
+        "/",
+        scope,
+        ", SignedHeaders=",
+        signed_headers,
+        ", Signature=",
+        signature,
+    ];
+    let len = parts
+        .iter()
+        .try_fold(0usize, |len, part| len.checked_add(part.len()))
+        .ok_or(Error::TooLarge)?;
+    let mut text = Zeroizing::new(String::with_capacity(len));
+    for part in parts {
+        text.push_str(part);
+    }
+    Ok(text)
 }
 
 /// S3 URI encoding: retain `/`, encode bytes outside the unreserved set, and
@@ -344,7 +385,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            signature.signature,
+            signature.signature.as_str(),
             "34e97fe1de869a653fb4f8170b09370b65eda55bc5c5ba8ffd8b47100c677f68"
         );
         assert_eq!(signature.signed_headers, "host;x-amz-content-sha256;x-amz-date");

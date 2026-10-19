@@ -17,7 +17,9 @@ records a retained-storage reproduction and the correction's validation.
 | SHA digest | Returned `[u8; 32]` | Caller owns the output. Public artifact digests need no secret owner; secret-derived callers wrap the output in zeroizing storage. |
 | Normalized HMAC key, long-key digest, inner/outer pads and inner digest | Local zeroizing owners in the shared `hmac_sha256` helper | Drop after the derivation. Both hash contexts also erase their state. |
 | HMAC result | Returned `Zeroizing<[u8; 32]>` | Ownership continues through derivation or encoding; Drop erases it. No plain-array HMAC helper remains in S3 or SCRAM. |
-| SigV4 `AWS4`-prefixed secret and date/region/service/signing keys | Existing zeroizing prefix buffer and shared HMAC result owners | Retained through request signing, then dropped. The returned signature/authorization strings are intentional protocol output. |
+| SigV4 `AWS4`-prefixed secret and date/region/service/signing keys | Existing zeroizing prefix buffer and shared HMAC result owners | Retained through request signing, then dropped. Returned signature/authorization text keeps erasing owners through its protocol-output lifetime. |
+| SigV4 hexadecimal signature and authorization | `Signature` fields are `Zeroizing<String>`; constructed before encoding/concatenation with complete reservations | Drop erases either field, including serialization rejection. No aggregate Debug formatter remains. Canonical request/string-to-sign/header metadata retains its separate plain-string lifetime. |
+| Serialized S3 HTTP request head | `request_head` returns `Zeroizing<Vec<u8>>` directly to `signed_head` and its sender | Validate wire fields and checked total length before reserving/copying. The complete header uses one allocation without growth; ordinary send success/failure or abandonment drops the same owner. This does not erase kernel/TLS copies. |
 | SCRAM PBKDF2 current block and accumulated result | Zeroizing owners; PBKDF2 returns its result owner | Replacing the current block drops its old owner. The accumulated result transfers directly to the exchange. |
 | SCRAM exchange-local password and initial transcript | Initial `Client` phase, with zeroizing password/transcript buffers | Consuming server-challenge processing drops the initial phase on success or rejection, before the next transport exchange. The caller's configured credentials keep their separate lifetime. |
 | SCRAM client/server keys and stored key | Local zeroizing derivation owners | Drop when challenge processing returns. |
@@ -59,7 +61,7 @@ not promise ordinary Rust Drop. Heap/page teardown has its separate contract.
 
 The pinned P-256 `SecretKey` and ECDSA `SigningKey` implementations have
 erasing scalar destructors. This source observation does not qualify the full
-TLS parser or session. S3 request-formatting/response-metadata copies, TLS record
+TLS parser or session. S3 canonical signing/path/query/response-metadata copies, TLS record
 consumption/key schedules, HPKE deserialization scratch and cipher contexts, host-tool
 copies and the rest of the connector memory inventory remain
 separate SEC-15 work. No cryptographic algorithm, wire format, transport policy,
@@ -111,3 +113,11 @@ decoder. Baseline controls preserve the already-erasing final heap buffers and
 observe their growth, plus retained framing scratch. The correction narrows
 these local byte lifetimes; request formatting, response metadata, TLS internals
 and physical memory remain separate boundaries.
+
+The [S3 request-owner follow-up](../reports/audits/2026-10-19-security-s3-request-owners.md)
+owns signature/authorization text from construction and the complete serialized
+HTTP header through sending. Three baseline release controls retain fixture
+bytes; corrected controls erase them. Header construction reserves once and
+rejects invalid wire fields before output allocation. Existing launch profiles
+already validate those values. Canonical signing metadata, path/query helpers,
+response metadata and lower-layer copies retain separate lifetimes.

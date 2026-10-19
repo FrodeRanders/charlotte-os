@@ -20,7 +20,6 @@ use alloc::{
     },
     vec::Vec,
 };
-use core::fmt::Write;
 
 use catten_rt::{
     Context,
@@ -61,8 +60,10 @@ use charlotte_protocol_s3::{
 use charlotte_s3::{
     http::{
         ChunkedDecoder,
+        RequestHead,
         ResponseHead,
         ResponseHeadBuffer,
+        request_head,
     },
     sigv4::{
         Credentials,
@@ -330,7 +331,7 @@ fn signed_head(
     request: &OwnedRequest,
     method: &str,
     timestamp: Timestamp,
-) -> Option<Vec<u8>> {
+) -> Option<Zeroizing<Vec<u8>>> {
     let path = profile.object_path(&request.key)?;
     let encoded_path = canonical_uri(&path).ok()?;
     let authority = profile.authority();
@@ -347,9 +348,9 @@ fn signed_head(
     } else {
         Some(format!("bytes={}-{}", request.range_start, request.range_end - 1))
     };
-    let mut headers = Vec::with_capacity(6);
+    let mut headers = Vec::with_capacity(7);
     headers.push(Header {
-        name: "host",
+        name: "Host",
         value: &authority,
     });
     headers.push(Header {
@@ -368,13 +369,13 @@ fn signed_head(
     }
     if let Some(range) = range.as_deref() {
         headers.push(Header {
-            name: "range",
+            name: "Range",
             value: range,
         });
     }
     if request.flags & protocol::FLAG_IF_NONE_MATCH != 0 {
         headers.push(Header {
-            name: "if-none-match",
+            name: "If-None-Match",
             value: "*",
         });
     }
@@ -396,27 +397,20 @@ fn signed_head(
     )
     .ok()?;
 
-    let mut output = String::new();
-    let _ = write!(
-        output,
-        "{} {} HTTP/1.1\r\nHost: {}\r\nx-amz-content-sha256: {}\r\nx-amz-date: \
-         {}\r\nAuthorization: {}\r\n",
-        method, encoded_path, authority, payload_hash, amz_date, signature.authorization
+    headers.insert(
+        3,
+        Header {
+            name: "Authorization",
+            value: &signature.authorization,
+        },
     );
-    if let Some(namespace) = profile.namespace.as_deref() {
-        let _ = write!(output, "x-emc-namespace: {}\r\n", namespace);
-    }
-    if let Some(range) = range {
-        let _ = write!(output, "Range: {}\r\n", range);
-    }
-    if request.flags & protocol::FLAG_IF_NONE_MATCH != 0 {
-        output.push_str("If-None-Match: *\r\n");
-    }
-    if method == "PUT" {
-        let _ = write!(output, "Content-Length: {}\r\n", request.content_length);
-    }
-    output.push_str("Connection: close\r\n\r\n");
-    Some(output.into_bytes())
+    request_head(&RequestHead {
+        method,
+        path: &encoded_path,
+        headers: &headers,
+        content_length: (method == "PUT").then_some(request.content_length),
+    })
+    .ok()
 }
 
 fn remote_error(status: u16) -> i64 {
