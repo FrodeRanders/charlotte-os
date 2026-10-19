@@ -31,7 +31,7 @@ class SecureBootResults(unittest.TestCase):
         for expectation in secure.CASES.values():
             self.assertFalse(secure.observed_result(b"", expectation))
             self.assertFalse(secure.observed_result(b"QEMU failed to start\n", expectation))
-        for expectation in ("InvalidSignature", "RevisionRollback", "uninstalled policy revision"):
+        for expectation in ("InvalidSignature", "RevisionRollback", "UninstalledRevision"):
             with self.assertRaises(secure.TestFailure):
                 secure.observed_result(b"Kernel panic:\nunrelated allocator failure\n", expectation)
 
@@ -59,6 +59,17 @@ class SecureBootResults(unittest.TestCase):
                 secure.observed_result(message + published, "RevisionRollback")
         with self.assertRaises(secure.TestFailure):
             secure.observed_result(SUCCESS + b"Kernel panic:\n", "success")
+
+    def test_successor_requires_the_shared_exact_boot_verifier_rejection(self):
+        expected = secure.CASES["policy-next"]
+        self.assertEqual(expected, "UninstalledRevision")
+        message = b"Kernel panic:\n[boot trust fixture] verification rejected: UninstalledRevision\n"
+        self.assertTrue(secure.observed_result(message, expected))
+        with self.assertRaises(secure.TestFailure):
+            secure.observed_result(message.replace(b"UninstalledRevision", b"uninstalled policy revision"), expected)
+        for published in (b"[launch] steady-state service set published.\n", b"[boot trust fixture] verified signed module\n"):
+            with self.assertRaises(secure.TestFailure):
+                secure.observed_result(message + published, expected)
 
 
 if __name__ == "__main__":

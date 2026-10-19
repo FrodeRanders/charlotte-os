@@ -31,10 +31,13 @@ CASES = {
     "policy-signature": "InvalidSignature",
     "policy-rollback": "RevisionRollback",
     "policy-conflict": "RevisionConflict",
-    "policy-next": "uninstalled policy revision",
+    "policy-next": "UninstalledRevision",
     "missing-module": "policy module",
     "duplicate-module": "exactly one policy module",
 }
+# Fixed test-only media bound, including FAT metadata and the signed loader.
+# The current debug kernel no longer fits alongside them in a 64 MiB volume.
+BOOT_IMAGE_MIB = 128
 
 
 class TestFailure(RuntimeError):
@@ -208,8 +211,8 @@ def main():
              "-key", certificates["db"][0], "-in", enrolled_loader, "-out", signed_loader], preparation)
         run([signer, "verify", "-CAfile", certificates["db"][1], "-in", signed_loader], preparation)
         base_image = private / "base.img"
-        run(["bash", "-c", 'source "$1/scripts/lib/boot-common.sh"; catten_boot_create_uefi_image "$2" 64 "$3" "$4" "$5" CATOS',
-             "secure-test", ROOT, base_image, signed_loader, kernel, config], preparation)
+        run(["bash", "-c", 'source "$1/scripts/lib/boot-common.sh"; catten_boot_create_uefi_image "$2" "$3" "$4" "$5" "$6" CATOS',
+             "secure-test", ROOT, base_image, str(BOOT_IMAGE_MIB), signed_loader, kernel, config], preparation)
         run(["mcopy", "-i", base_image, policy, "::/boot-policy.bin"], preparation)
         data_image = private / "data.img"
         for case in selected:

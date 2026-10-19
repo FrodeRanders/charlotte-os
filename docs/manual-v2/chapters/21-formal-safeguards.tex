@@ -354,10 +354,11 @@ the implementation cannot enforce. The practical design is recorded in
 \subsection{Boot verification and installation are separate}
 
 \tlbreak{CharlotteBoot}{Trust} distinguishes a signed verification receipt from
-boot authority. The shared verifier accepts either the exact installed record
-or its direct successor with the accepted digest as predecessor. The x86 boot
-fixture requires the exact compiled installed revision and digest before
-preparing its recipient-key owner. One-shot kernel publication then supplies
+boot authority. Installation verification accepts the current record or its
+direct successor. Shared \texttt{verify\_for\_boot} instead requires the exact
+installed revision and digest, rejecting enrollment and uninstalled successors.
+Kernel preparation requires a \tlbreak{Verified}{BootPolicy} receipt from this
+check. The x86 fixture uses the same path. One-shot publication supplies
 the public policy used by both service manifests and the operational gate.
 A duplicate publication returns its unused preparation; development trust is
 selected explicitly and is never a fallback after verification failure.

@@ -59,6 +59,95 @@ fn verify(
     )
 }
 
+fn verify_for_boot(
+    bytes: &[u8],
+    expected: &PolicyExpectation,
+) -> Result<signed_policy::VerifiedBootPolicy, PolicyError> {
+    signed_policy::verify_for_boot(
+        bytes,
+        &BootstrapKey::new(*pair(31).pk).unwrap(),
+        &candidate(7).public().cluster_id,
+        expected,
+    )
+}
+
+#[test]
+fn boot_requires_the_exact_installed_record_even_when_successors_verify() {
+    let current = sign(&candidate(7), [0; 32]);
+    let accepted = verify(&current, &PolicyExpectation::enrollment(7).unwrap()).unwrap();
+    let installed = accepted.installed_expectation().unwrap();
+    let boot = verify_for_boot(&current, &installed).unwrap();
+    assert_eq!(boot.policy(), accepted.policy());
+    assert_eq!(boot.digest(), accepted.digest());
+
+    let next = sign(&candidate(8), accepted.digest());
+    let successor = verify(&next, &installed).unwrap();
+    assert_eq!(verify_for_boot(&next, &installed), Err(PolicyError::UninstalledRevision));
+
+    let mut fork = *candidate(8).public();
+    fork.operations_key = *pair(24).pk;
+    let fork = ProductionTrustCandidate::validate(fork, &fork.cluster_id, 1).unwrap();
+    let fork = sign(&fork, accepted.digest());
+    assert!(verify(&fork, &installed).is_ok());
+    assert_eq!(verify_for_boot(&fork, &installed), Err(PolicyError::UninstalledRevision));
+    assert_eq!(verify_for_boot(&current, &installed).unwrap(), boot);
+
+    // Only the caller's independently advanced exact state selects the successor.
+    // Deriving this public test value does not implement protected installation.
+    let advanced = successor.installed_expectation().unwrap();
+    assert_eq!(verify_for_boot(&next, &advanced).unwrap().digest(), successor.digest());
+    assert_eq!(verify_for_boot(&current, &advanced), Err(PolicyError::RevisionRollback));
+    assert_eq!(verify_for_boot(&fork, &advanced), Err(PolicyError::RevisionConflict));
+}
+
+#[test]
+fn boot_rejects_enrollment_and_preserves_authentication_checks() {
+    let bytes = sign(&candidate(7), [0; 32]);
+    let enrollment = PolicyExpectation::enrollment(7).unwrap();
+    assert!(verify(&bytes, &enrollment).is_ok());
+    assert_eq!(verify_for_boot(&bytes, &enrollment), Err(PolicyError::InvalidExpectation));
+    let installed = verify(&bytes, &enrollment).unwrap().installed_expectation().unwrap();
+    let bootstrap = BootstrapKey::new(*pair(31).pk).unwrap();
+    assert!(
+        signed_policy::verify_for_boot(
+            &bytes,
+            &bootstrap,
+            &trust::cluster_id(b"foreign-cluster").unwrap(),
+            &installed,
+        )
+        .is_err()
+    );
+    assert_eq!(
+        signed_policy::verify_for_boot(
+            &bytes,
+            &BootstrapKey::new(*pair(32).pk).unwrap(),
+            &candidate(7).public().cluster_id,
+            &installed,
+        ),
+        Err(PolicyError::WrongBootstrapKey)
+    );
+    let mut changed = bytes;
+    changed[signed_policy::SIGNATURE_OFFSET] ^= 1;
+    assert_eq!(verify_for_boot(&changed, &installed), Err(PolicyError::InvalidSignature));
+    assert_eq!(
+        verify_for_boot(&bytes[..bytes.len() - 1], &installed),
+        Err(PolicyError::MalformedRecord)
+    );
+    let mut extended = bytes.to_vec();
+    extended.push(0);
+    assert_eq!(verify_for_boot(&extended, &installed), Err(PolicyError::MalformedRecord));
+}
+
+#[test]
+fn boot_can_select_the_final_revision_without_wrapping() {
+    let bytes = sign(&candidate(u64::MAX), [0; 32]);
+    let verified = verify(&bytes, &PolicyExpectation::enrollment(u64::MAX).unwrap()).unwrap();
+    let installed = verified.installed_expectation().unwrap();
+    assert_eq!(verify_for_boot(&bytes, &installed).unwrap().digest(), verified.digest());
+    let previous = sign(&candidate(u64::MAX - 1), [0; 32]);
+    assert_eq!(verify_for_boot(&previous, &installed), Err(PolicyError::RevisionRollback));
+}
+
 #[test]
 fn kernel_boot_handoff_fixture_is_reproducible_public_test_material() {
     // These deterministic seeds and recipient value are publicly known test
@@ -122,6 +211,15 @@ fn kernel_boot_handoff_fixture_is_reproducible_public_test_material() {
                 verified.installed_expectation().unwrap()
             );
         }
+        assert_eq!(
+            signed_policy::verify_for_boot(
+                fixture,
+                &BootstrapKey::new(*pair(31).pk).unwrap(),
+                &public.cluster_id,
+                &verified.installed_expectation().unwrap(),
+            ),
+            Err(error.unwrap_or(PolicyError::UninstalledRevision))
+        );
     }
 }
 

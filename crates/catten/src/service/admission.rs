@@ -6,7 +6,7 @@
 use charlotte_launch::trust::{
     self,
     AdmissionTrust,
-    signed_policy::VerifiedPolicy,
+    signed_policy::VerifiedBootPolicy,
 };
 use zeroize::Zeroizing;
 
@@ -34,9 +34,9 @@ impl PreparedBootTrust {
 
     /// The caller must authenticate the boot chain, commit protected policy
     /// state and obtain the key from custody before calling this boundary.
-    /// A VerifiedPolicy alone proves none of those platform conditions.
+    /// The exact-state boot receipt proves none of those platform conditions.
     pub(crate) fn verified(
-        policy: VerifiedPolicy,
+        policy: VerifiedBootPolicy,
         cluster: &[u8],
         recipient: Zeroizing<[u8; 32]>,
     ) -> Result<Self, PreparationError> {

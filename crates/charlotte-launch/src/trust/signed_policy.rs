@@ -39,6 +39,7 @@ pub enum PolicyError {
     RevisionConflict,
     RevisionGap,
     WrongPredecessor,
+    UninstalledRevision,
 }
 
 /// A canonical, non-fixture signing key. The caller must independently obtain
@@ -91,8 +92,7 @@ enum Expectation {
 }
 
 /// Acceptance state supplied independently by the caller. The signed record
-/// cannot establish this state. Production callers must retain it in rollback-resistant storage
-/// and
+/// cannot establish it. Production callers need rollback-resistant storage and
 /// must never fall back to enrollment after a failed installed-state check.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PolicyExpectation(Expectation);
@@ -198,13 +198,37 @@ impl VerifiedPolicy {
     }
 
     /// Domain-separated digest of all signed fields, excluding the signature.
-    /// Record this with the sequence only after authorized installation.
+    /// A future installer must commit this with the sequence before boot use.
     pub fn digest(&self) -> [u8; 32] {
         self.digest
     }
 
+    /// Proposed exact state derived from these bytes; calling this method does
+    /// not read or commit installed state.
     pub fn installed_expectation(&self) -> Result<PolicyExpectation, PolicyError> {
         PolicyExpectation::installed(self.policy.public().sequence, self.digest)
+    }
+}
+
+/// A signed record matching the caller's exact installed sequence and digest.
+///
+/// Only `verify_for_boot` constructs this receipt. Enrollment and successor
+/// verification produce `VerifiedPolicy` instead. Neither receipt proves that
+/// the supplied anchor/state came from protected storage, or that a concurrent
+/// installer cannot change that state before publication. The boot adapter must
+/// authenticate and serialize that enclosing context.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct VerifiedBootPolicy {
+    verified: VerifiedPolicy,
+}
+
+impl VerifiedBootPolicy {
+    pub fn policy(&self) -> &ProductionTrustCandidate {
+        self.verified.policy()
+    }
+
+    pub fn digest(&self) -> [u8; 32] {
+        self.verified.digest()
     }
 }
 
@@ -264,8 +288,9 @@ pub fn set_signature(bytes: &mut [u8], signature: &[u8; SIGNATURE_LEN]) -> Resul
     Ok(())
 }
 
-/// Verify before use. The caller must pin `bootstrap`, cluster and expectation
-/// independently of these bytes; there is no self-selected key or default floor.
+/// Verify for enrollment or installation, including an immediate successor.
+/// Boot uses `verify_for_boot`. The caller must pin the key, cluster and
+/// expectation independently; the record supplies no key or default floor.
 pub fn verify(
     bytes: &[u8],
     bootstrap: &BootstrapKey,
@@ -290,5 +315,27 @@ pub fn verify(
     Ok(VerifiedPolicy {
         policy,
         digest,
+    })
+}
+
+/// Verify already-installed boot authority relative to independent caller state.
+/// Enrollment rejects; a valid successor remains an installation candidate until
+/// its exact state is committed and supplied here. No state is written by this
+/// function, and no error selects a different expectation or development mode.
+pub fn verify_for_boot(
+    bytes: &[u8],
+    bootstrap: &BootstrapKey,
+    expected_cluster: &[u8; 32],
+    installed: &PolicyExpectation,
+) -> Result<VerifiedBootPolicy, PolicyError> {
+    if !matches!(installed.0, Expectation::Installed { .. }) {
+        return Err(PolicyError::InvalidExpectation);
+    }
+    let verified = verify(bytes, bootstrap, expected_cluster, installed)?;
+    if verified.installed_expectation()? != *installed {
+        return Err(PolicyError::UninstalledRevision);
+    }
+    Ok(VerifiedBootPolicy {
+        verified,
     })
 }

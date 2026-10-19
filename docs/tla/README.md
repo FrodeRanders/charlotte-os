@@ -590,8 +590,10 @@ admission are still outside this authorization model.
 
 `CharlotteBootTrust.tla` distinguishes authenticating a policy from authorizing
 its use at boot. The shared verifier accepts either the exact installed record
-or a signed direct successor naming its predecessor. The current boot fixture
-accepts only its compiled installed revision/digest. Preparing the recipient
+or a signed direct successor naming its predecessor. Shared `verify_for_boot`
+accepts only the exact installed revision/digest, producing `VerifiedBootPolicy`
+for kernel preparation. The current boot fixture uses that shared check with
+compiled public state. Preparing the recipient
 owner checks its public binding; publication is one-shot, and manifests borrow
 the kernel gate's published view. Development trust is an explicit configuration,
 never a verification fallback.
@@ -614,6 +616,9 @@ independent manifests, wrong recipient, unauthenticated receipts, publication
 after failed commit and an unavailable protected boundary. Real cryptography,
 firmware, atomic storage, erasure/custody and physical lifetime are omitted.
 See the [review and evidence](../reports/audits/2026-10-18-boot-trust-model.md).
+The [exact boot-receipt follow-up](../reports/audits/2026-10-19-security-boot-receipts.md)
+rechecks these unchanged models after moving the fixture-local comparison into
+the shared API and narrowing the kernel constructor's input.
 
 ## Local name publication model
 

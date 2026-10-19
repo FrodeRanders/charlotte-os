@@ -132,6 +132,12 @@ atomically; concurrent reuse of an old expectation is unsafe. Firmware/kernel
 authentication and recipient-key custody are still missing, so production
 builds remain disabled. See the [wire contract and integration gates](../reference/bootstrap-trust-policy.md).
 
+Boot adapters use the separate `signed_policy::verify_for_boot` API and its
+`VerifiedBootPolicy` receipt. It requires the exact independently supplied
+installed revision/digest and rejects enrollment or an uninstalled successor.
+The CLI's `trust-policy-verify` remains enrollment/installation verification;
+its success does not produce boot authority or commit protected state.
+
 ## Build-script migration
 
 Replace the retired secret-valued environment variable with a path:

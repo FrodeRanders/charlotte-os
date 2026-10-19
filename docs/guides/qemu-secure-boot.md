@@ -13,7 +13,7 @@ QEMU x86 with Secure Boot edk2 code and a matching empty vars template, mtools
 and the repository Rust toolchain. Stage the usual x86 service bundle first:
 
 ```sh
-scripts/build-catten-services-x86_64.sh --embed
+scripts/build-catten-services-x86_64.sh
 scripts/prepare-secure-boot-tools.sh
 
 python3 scripts/run-secure-boot-test.py \
@@ -57,10 +57,11 @@ for the whole matrix, and checks its executable/read-only trampoline sections.
 This feature supports only the x86 fixture. It requires exactly one Limine
 module named `charlotte.boot-trust-test`, exactly 328 bytes long, and verifies
 its `CBTRUST1` signature/cluster against compiled public test authority. Expected
-revision 7 and its exact digest are pinned in the test kernel. A valid successor
-is rejected as **uninstalled**, since boot consumes installed state rather than
-committing a new policy revision. There is no enrollment or development fallback
-when a module/state check fails.
+revision 7 and its exact digest are pinned in the test kernel. Shared
+`verify_for_boot` produces the distinct receipt required by the kernel handoff;
+a valid successor rejects with `UninstalledRevision`. Boot consumes installed
+state without committing a new policy revision. There is no enrollment or
+development fallback when a module/state check fails.
 
 The selected recipient is the publicly known test value `[77; 32]`. The public
 policy fixtures are reproducible from seeds documented by the shared-protocol
@@ -75,6 +76,8 @@ on success, rejection, timeout or interruption. Temporary keys/images are remove
 when the owner exits. Retained evidence contains public certificates, enrollment
 metadata, configuration, digests and logs, plus `results.json` only when every
 selected case passes. Existing evidence directories are never overwritten.
+The disposable FAT boot image is fixed at 128 MiB so the current debug kernel,
+signed loader and filesystem metadata fit within the fixture's media bound.
 
 ## Required execution evidence
 
@@ -86,7 +89,7 @@ selected case passes. Existing evidence directories are never overwritten.
 | Altered kernel / policy module | Limine rejects the appropriate URI's BLAKE2B digest before kernel entry. |
 | Bad policy signature inside newly signed outer packaging | Kernel reports `InvalidSignature` before trust/service publication. |
 | Correctly signed old / conflicting current policy | Kernel reports `RevisionRollback` / `RevisionConflict` before publication. |
-| Correctly signed direct successor | Kernel reports an uninstalled revision before publication. |
+| Correctly signed direct successor | Shared boot verifier reports `UninstalledRevision` before publication. |
 | Missing / duplicate module in authorized configuration | Kernel rejects absent or ambiguous module identity before publication. |
 
 The inner-policy cases deliberately authorize the changed outer configuration

@@ -514,6 +514,14 @@ Relevant contracts: [hardware quiescence](hardware-quiescence.md),
 
 ## Production security milestones
 
+The [exact boot-receipt follow-up](../reports/audits/2026-10-19-security-boot-receipts.md)
+moves the fixture's exact installed-state check into shared `verify_for_boot`.
+The kernel requires its distinct `VerifiedBootPolicy`; a generic enrollment or
+rotation receipt cannot be passed directly to preparation. The existing native
+fixture already rejected uninstalled successors. This strengthens the common
+API contract without implementing protected state, serialization or custody;
+SEC-04 remains partial and production remains disabled.
+
 The next priority is trust and authenticated communication. Work on SEC-07/18
 continues against the finite criteria above; it does not substitute for these
 missing boundaries.

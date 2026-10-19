@@ -204,3 +204,11 @@ leader ID, RPC term, boundary, offset and bytes together; callers use the existi
 snapshot handler. No external callers used the mutable buffer. Wire/protobuf,
 snapshot envelope and persistent formats remain unchanged, without an older
 unbound receive path or a new numbered format batch.
+
+The [SEC-04 boot-receipt boundary](../reports/audits/2026-10-19-security-boot-receipts.md)
+requires `VerifiedBootPolicy` at `PreparedBootTrust::verified`. Shared
+`verify_for_boot` supplies the exact-installed check; the fixture's separate
+comparison is removed. Enrollment/rotation keep `verify` and `VerifiedPolicy`.
+There is no conversion or fallback between these receipts. The successor-rejection
+diagnostic is now `UninstalledRevision`, with fixture/parser tests updated.
+Public record grammar, CLI modes, runtime ABI and production refusal are unchanged.

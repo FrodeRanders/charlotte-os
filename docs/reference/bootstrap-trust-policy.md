@@ -73,9 +73,33 @@ Failure to read or update installed state must fail closed; it must never
 silently retry as enrollment. Bootstrap-key rotation/revocation needs a separate
 protected-anchor transition and is not implemented by this wire format.
 
+## Exact boot selection
+
+`verify_for_boot` uses the same signature, key, cluster and lineage checks, then
+requires the exact installed sequence and digest. An enrollment expectation
+rejects with `InvalidExpectation`. A valid direct successor rejects with
+`UninstalledRevision`; rollback, conflicting digests and malformed records retain
+their existing errors. No failure retries verification under a different mode.
+
+Success returns `VerifiedBootPolicy`. Its fields are private, and there is no
+conversion from the broader `VerifiedPolicy`. The kernel handoff accepts this
+boot receipt, so enrollment/rotation verification cannot be passed to it directly.
+For an adapter with independently authenticated and serialized inputs:
+
+```rust
+let installed = PolicyExpectation::installed(sequence, accepted_digest)?;
+let boot = signed_policy::verify_for_boot(record, &bootstrap, &cluster, &installed)?;
+```
+
+This function reads or writes no storage. Caller-supplied state remains a trust
+input; constructing an expectation from candidate bytes does not prove
+installation. A future protected adapter must retain the installation/publication
+fence through recipient acquisition and one-shot kernel publication. The receipt
+does not establish that fence, key custody or rollback resistance.
+
 ## Kernel handoff
 
-`service::admission::PreparedBootTrust::verified` consumes a `VerifiedPolicy`
+`service::admission::PreparedBootTrust::verified` consumes a `VerifiedBootPolicy`
 and a `Zeroizing<[u8; 32]>` recipient-key owner. It checks the launch cluster
 and derived recipient public key before publication. Failure wipes the
 unpublished private owner; it never selects development trust. The separate
@@ -113,6 +137,8 @@ The [disposable x86 QEMU Secure Boot fixture](../guides/qemu-secure-boot.md)
 now exercises signed EFI/config/kernel/module loading and the kernel handoff.
 Its boot selector accepts only the exact compiled installed test revision/digest;
 an otherwise valid successor cannot publish before its state is installed.
+That check now uses the shared `verify_for_boot` boundary instead of a separate
+fixture-local assertion.
 The fixture uses public test enrollment/state/recipient material and retains
 development platform-service roots. It is not a production boot selector,
 persistent-state adapter or custody provider.

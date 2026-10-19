@@ -17,12 +17,12 @@ const BOOTSTRAP_PUBLIC: [u8; 32] = [
     253, 57, 84, 235, 142, 14, 251, 139, 220, 165, 222,
 ];
 
-fn verified() -> VerifiedPolicy {
-    signed_policy::verify(
+fn verified() -> VerifiedBootPolicy {
+    signed_policy::verify_for_boot(
         POLICY,
         &BootstrapKey::new(BOOTSTRAP_PUBLIC).unwrap(),
         &trust::cluster_id(CLUSTER).unwrap(),
-        &PolicyExpectation::enrollment(7).unwrap(),
+        &PolicyExpectation::installed(7, signed_policy::signature_digest(POLICY).unwrap()).unwrap(),
     )
     .unwrap()
 }

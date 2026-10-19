@@ -36,21 +36,13 @@ pub(crate) fn prepare() -> PreparedBootTrust {
     let expected_digest = signed_policy::signature_digest(include_bytes!("test-policy.bin"))
         .expect("valid compiled public fixture");
     let expected = PolicyExpectation::installed(7, expected_digest).unwrap();
-    let verified = signed_policy::verify(
+    let verified = signed_policy::verify_for_boot(
         bytes,
         &BootstrapKey::new(BOOTSTRAP_PUBLIC).unwrap(),
         &charlotte_launch::trust::cluster_id(CLUSTER).unwrap(),
         &expected,
     )
     .unwrap_or_else(|error| panic!("[boot trust fixture] verification rejected: {error:?}"));
-    // Boot consumes already-installed state. The shared verifier also admits
-    // a direct successor for an installer, but boot must not publish it before
-    // the matching protected state commit (not implemented by this fixture).
-    assert_eq!(
-        verified.installed_expectation().unwrap(),
-        expected,
-        "[boot trust fixture] uninstalled policy revision"
-    );
     let prepared = PreparedBootTrust::verified(verified, CLUSTER, Zeroizing::new([77; 32]))
         .unwrap_or_else(|_| panic!("[boot trust fixture] recipient mismatch"));
     crate::logln!("[boot trust fixture] verified signed module: revision=7");
