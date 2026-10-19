@@ -292,6 +292,11 @@ Profile usernames and passwords are bounded to 256 and 1,024 printable ASCII
 bytes respectively; this deliberately avoids silently applying an incomplete
 Unicode SASLprep implementation.
 
+SCRAM now shares HMAC with SigV4. HMAC and PBKDF2 return zeroizing result owners;
+the shared SHA context and compression scratch also erase on ordinary teardown.
+The [secret-state inventory](secret-state-lifetimes.md) distinguishes these
+owned fields from caller inputs, scalar/compiler copies and third-party state.
+
 The profile supports `None`, `ScramSha256`, `MtlsP256`, or
 `ScramSha256AndMtlsP256`. The mTLS variants carry one DER-encoded X.509 client
 certificate and its DER-encoded SEC1 P-256 private key. The connector signs the

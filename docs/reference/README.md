@@ -3,6 +3,8 @@
 These documents explain current code-facing contracts and invariants. They
 should be updated with the implementation when those contracts change.
 
+- [Secret-derived hash state](secret-state-lifetimes.md) — owned SHA/HMAC/SigV4/SCRAM
+  storage, ordinary erasure and remaining limits.
 - [API and protocol simplification](api-simplification.md) — current-only internal
   contracts, removal order, completed batches and remaining candidates.
 - [DNS registration/retraction](dns-registration-relay.md) — full-name current

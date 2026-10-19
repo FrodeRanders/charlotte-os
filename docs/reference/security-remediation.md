@@ -526,6 +526,12 @@ The next priority is trust and authenticated communication. Work on SEC-07/18
 continues against the finite criteria above; it does not substitute for these
 missing boundaries.
 
+The [SEC-15 hash-state follow-up](../reports/audits/2026-10-19-security-hash-state-erasure.md)
+adds erasure of shared SHA state/compression scratch and one owned HMAC result
+path for SigV4 and SCRAM. The [bounded inventory](secret-state-lifetimes.md)
+retains library state, scalar/compiler copies and wider connector/tool lifetimes
+as open work. SEC-15 remains partial; finding counts are unchanged.
+
 | Order | Finding and acceptance criterion |
 | --- | --- |
 | 1 | **SEC-04:** Authenticate bootstrap policy and the executable boot chain from a protected platform root. Provision independent artifact, deployment and operational authorities and a distinct recipient key; exclude every development fixture. Keep the recipient private key behind a privileged custody boundary, with recovery/rotation rules and rollback-resistant policy state. Test substituted boot images/policies, role reuse, downgrade, enrollment and custody failure. Production must remain disabled until those tests pass. |

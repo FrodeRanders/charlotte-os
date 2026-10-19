@@ -1,8 +1,15 @@
 //! FIPS 180-4 SHA-256, hand-rolled so the kernel and the EL0 services share
-//! one implementation with no allocation and no dependency footprint.
+//! one allocation-free implementation. Owned state and compression scratch use
+//! zeroize because HMAC callers also hash key material here.
 //!
 //! Used by the ELF signature-note verification (`super::signature_note`):
 //! the artifact hash that a cluster signature covers.
+
+use zeroize::{
+    Zeroize,
+    ZeroizeOnDrop,
+    Zeroizing,
+};
 
 /// The SHA-256 state: 8 state words plus the 64-byte input block buffer.
 ///
@@ -14,6 +21,23 @@ pub struct Sha256 {
     buffer_len: usize,
     total_len: u64,
 }
+
+impl Zeroize for Sha256 {
+    fn zeroize(&mut self) {
+        self.state.zeroize();
+        self.buffer.zeroize();
+        self.buffer_len.zeroize();
+        self.total_len.zeroize();
+    }
+}
+
+impl Drop for Sha256 {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
+impl ZeroizeOnDrop for Sha256 {}
 
 const K: [u32; 64] = [
     0x428a_2f98,
@@ -115,15 +139,13 @@ impl Sha256 {
             self.buffer_len += take;
             data = &data[take..];
             if self.buffer_len == 64 {
-                let block = self.buffer;
-                self.compress(&block);
+                Self::compress(&mut self.state, &self.buffer);
+                self.buffer.zeroize();
                 self.buffer_len = 0;
             }
         }
         while data.len() >= 64 {
-            let mut block = [0u8; 64];
-            block.copy_from_slice(&data[..64]);
-            self.compress(&block);
+            Self::compress(&mut self.state, data[..64].try_into().unwrap());
             data = &data[64..];
         }
         if !data.is_empty() {
@@ -132,28 +154,24 @@ impl Sha256 {
         }
     }
 
-    pub fn finalize(self) -> [u8; 32] {
+    /// Consume and erase this state, returning the digest to its caller. A
+    /// secret-derived digest needs its own zeroizing owner at that boundary.
+    pub fn finalize(mut self) -> [u8; 32] {
         let bit_len = self.total_len.wrapping_mul(8);
-        let mut padded = Sha256 {
-            state: self.state,
-            buffer: self.buffer,
-            buffer_len: self.buffer_len,
-            total_len: self.total_len,
-        };
-        padded.update(&[0x80]);
-        while padded.buffer_len != 56 {
-            padded.update(&[0x00]);
+        self.update(&[0x80]);
+        while self.buffer_len != 56 {
+            self.update(&[0x00]);
         }
-        padded.update(&bit_len.to_be_bytes());
+        self.update(&bit_len.to_be_bytes());
         let mut digest = [0u8; 32];
-        for (index, word) in padded.state.iter().enumerate() {
+        for (index, word) in self.state.iter().enumerate() {
             digest[index * 4..index * 4 + 4].copy_from_slice(&word.to_be_bytes());
         }
         digest
     }
 
-    fn compress(&mut self, block: &[u8; 64]) {
-        let mut w = [0u32; 64];
+    fn compress(state: &mut [u32; 8], block: &[u8; 64]) {
+        let mut w = Zeroizing::new([0u32; 64]);
         for (index, word) in w.iter_mut().enumerate().take(16) {
             *word = u32::from_be_bytes(block[index * 4..index * 4 + 4].try_into().unwrap());
         }
@@ -167,41 +185,32 @@ impl Sha256 {
             w[index] = w[index - 16].wrapping_add(s0).wrapping_add(w[index - 7]).wrapping_add(s1);
         }
 
-        let mut a = self.state[0];
-        let mut b = self.state[1];
-        let mut c = self.state[2];
-        let mut d = self.state[3];
-        let mut e = self.state[4];
-        let mut f = self.state[5];
-        let mut g = self.state[6];
-        let mut h = self.state[7];
+        let mut work = Zeroizing::new(*state);
 
         for index in 0..64 {
-            let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
-            let ch = (e & f) ^ (!e & g);
-            let temp1 =
-                h.wrapping_add(s1).wrapping_add(ch).wrapping_add(K[index]).wrapping_add(w[index]);
-            let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
-            let maj = (a & b) ^ (a & c) ^ (b & c);
+            let s1 = work[4].rotate_right(6) ^ work[4].rotate_right(11) ^ work[4].rotate_right(25);
+            let ch = (work[4] & work[5]) ^ (!work[4] & work[6]);
+            let temp1 = work[7]
+                .wrapping_add(s1)
+                .wrapping_add(ch)
+                .wrapping_add(K[index])
+                .wrapping_add(w[index]);
+            let s0 = work[0].rotate_right(2) ^ work[0].rotate_right(13) ^ work[0].rotate_right(22);
+            let maj = (work[0] & work[1]) ^ (work[0] & work[2]) ^ (work[1] & work[2]);
             let temp2 = s0.wrapping_add(maj);
-            h = g;
-            g = f;
-            f = e;
-            e = d.wrapping_add(temp1);
-            d = c;
-            c = b;
-            b = a;
-            a = temp1.wrapping_add(temp2);
+            work[7] = work[6];
+            work[6] = work[5];
+            work[5] = work[4];
+            work[4] = work[3].wrapping_add(temp1);
+            work[3] = work[2];
+            work[2] = work[1];
+            work[1] = work[0];
+            work[0] = temp1.wrapping_add(temp2);
         }
 
-        self.state[0] = self.state[0].wrapping_add(a);
-        self.state[1] = self.state[1].wrapping_add(b);
-        self.state[2] = self.state[2].wrapping_add(c);
-        self.state[3] = self.state[3].wrapping_add(d);
-        self.state[4] = self.state[4].wrapping_add(e);
-        self.state[5] = self.state[5].wrapping_add(f);
-        self.state[6] = self.state[6].wrapping_add(g);
-        self.state[7] = self.state[7].wrapping_add(h);
+        for (state, work) in state.iter_mut().zip(work.iter()) {
+            *state = state.wrapping_add(*work);
+        }
     }
 }
 
@@ -210,6 +219,32 @@ pub fn digest(data: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(data);
     hasher.finalize()
+}
+
+/// HMAC-SHA-256 with owned, erased key normalization, pads and intermediate
+/// digests. The result keeps its zeroizing owner through further derivation.
+pub fn hmac_sha256(key: &[u8], message: &[u8]) -> Zeroizing<[u8; 32]> {
+    let mut block = Zeroizing::new([0u8; 64]);
+    if key.len() > block.len() {
+        let hashed_key = Zeroizing::new(digest(key));
+        block[..32].copy_from_slice(&hashed_key[..]);
+    } else {
+        block[..key.len()].copy_from_slice(key);
+    }
+    let mut inner_pad = Zeroizing::new([0x36u8; 64]);
+    let mut outer_pad = Zeroizing::new([0x5cu8; 64]);
+    for index in 0..block.len() {
+        inner_pad[index] ^= block[index];
+        outer_pad[index] ^= block[index];
+    }
+    let mut inner = Sha256::new();
+    inner.update(&inner_pad[..]);
+    inner.update(message);
+    let inner_digest = Zeroizing::new(inner.finalize());
+    let mut outer = Sha256::new();
+    outer.update(&outer_pad[..]);
+    outer.update(&inner_digest[..]);
+    Zeroizing::new(outer.finalize())
 }
 
 /// Digest of `data` with the byte range `[skip_start, skip_start + skip_len)`
@@ -238,3 +273,37 @@ pub const TEST_VECTOR_ABC: [u8; 32] = [
     0xba, 0x78, 0x16, 0xbf, 0x8f, 0x01, 0xcf, 0xea, 0x41, 0x41, 0x40, 0xde, 0x5d, 0xae, 0x22, 0x23,
     0xb0, 0x03, 0x61, 0xa3, 0x96, 0x17, 0x7a, 0x9c, 0xb4, 0x10, 0xff, 0x61, 0xf2, 0x00, 0x15, 0xad,
 ];
+
+#[cfg(test)]
+mod erasure_tests {
+    use core::{
+        mem::MaybeUninit,
+        ptr,
+    };
+
+    use super::*;
+
+    #[test]
+    fn unfinished_drop_erases_named_fields_in_retained_storage() {
+        for len in [65, 1, 55, 63, 64, 127, 129, 0] {
+            let input = [0x36; 129];
+            let mut storage = MaybeUninit::new(Sha256::new());
+            let value = storage.as_mut_ptr();
+            // Retain the allocation after destruction and read only initialized
+            // scalar/array fields. Never read padding, adopt a second owner or
+            // inspect freed memory. The fixture bytes are public.
+            unsafe {
+                (*value).update(&input[..len]);
+                let state = ptr::addr_of!((*value).state);
+                let buffer = ptr::addr_of!((*value).buffer);
+                let buffer_len = ptr::addr_of!((*value).buffer_len);
+                let total_len = ptr::addr_of!((*value).total_len);
+                ptr::drop_in_place(value);
+                assert_eq!(ptr::read_volatile(state), [0; 8]);
+                assert_eq!(ptr::read_volatile(buffer), [0; 64]);
+                assert_eq!(ptr::read_volatile(buffer_len), 0);
+                assert_eq!(ptr::read_volatile(total_len), 0);
+            }
+        }
+    }
+}

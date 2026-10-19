@@ -121,6 +121,11 @@ callers until that bounded wait ends.
 
 ## TLS security boundary
 
+SigV4 and SCRAM share one HMAC implementation with zeroizing result owners.
+Its SHA state, partial block and compression scratch erase on ordinary teardown;
+finalization uses the same hash owner. The [secret-state inventory](secret-state-lifetimes.md)
+records the scope and the remaining library/compiler-copy limits.
+
 Setting `s3_tls=1` selects the owned TLS transport and never downgrades to
 plaintext. It currently implements TLS 1.3 with AES-128-GCM-SHA-256 using
 `embedded-tls`. SNI and hostname verification both use `s3_host`; chain and

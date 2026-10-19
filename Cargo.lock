@@ -324,6 +324,7 @@ dependencies = [
  "getrandom",
  "hpke",
  "rand_core 0.10.1",
+ "zeroize",
 ]
 
 [[package]]

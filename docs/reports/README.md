@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [SEC-15 hash-state erasure](audits/2026-10-19-security-hash-state-erasure.md) — Reproduced unfinished SHA state retention, erased owned hash scratch, and shared owned HMAC results across SigV4/SCRAM.
+
 - [SEC-04 early platform artifact authority — 19 October 2026](audits/2026-10-19-security-platform-artifact-authority.md): one selected key before platform loading, wrong-root NS/NVMe controls, and extended boot-trust models; protected state and custody remain open.
 
 - [SEC-04 exact boot-verification receipts](audits/2026-10-19-security-boot-receipts.md) — Shared exact-installed verification and a distinct kernel input, retaining production refusal and protected-state/custody limits.

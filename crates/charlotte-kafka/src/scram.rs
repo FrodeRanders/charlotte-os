@@ -7,8 +7,8 @@ use alloc::{
 };
 
 use charlotte_launch::sha256::{
-    Sha256,
     digest,
+    hmac_sha256,
 };
 use zeroize::Zeroizing;
 
@@ -123,17 +123,16 @@ impl Client {
         auth_message.push(b',');
         auth_message.extend_from_slice(&final_without_proof);
 
-        let salted_password = Zeroizing::new(pbkdf2_sha256(&self.password, &salt, iterations));
-        let client_key = Zeroizing::new(hmac_sha256(&salted_password[..], b"Client Key"));
+        let salted_password = pbkdf2_sha256(&self.password, &salt, iterations);
+        let client_key = hmac_sha256(&salted_password[..], b"Client Key");
         let stored_key = Zeroizing::new(digest(&client_key[..]));
-        let client_signature = Zeroizing::new(hmac_sha256(&stored_key[..], &auth_message));
+        let client_signature = hmac_sha256(&stored_key[..], &auth_message);
         let mut proof = Zeroizing::new([0u8; 32]);
         for index in 0..proof.len() {
             proof[index] = client_key[index] ^ client_signature[index];
         }
-        let server_key = Zeroizing::new(hmac_sha256(&salted_password[..], b"Server Key"));
-        self.expected_server_signature =
-            Some(Zeroizing::new(hmac_sha256(&server_key[..], &auth_message)));
+        let server_key = hmac_sha256(&salted_password[..], b"Server Key");
+        self.expected_server_signature = Some(hmac_sha256(&server_key[..], &auth_message));
 
         let proof = Zeroizing::new(base64_encode(&proof[..], true));
         let mut client_final =
@@ -177,43 +176,19 @@ fn escape_username(username: &str) -> String {
     escaped
 }
 
-fn pbkdf2_sha256(password: &[u8], salt: &[u8], iterations: u32) -> [u8; 32] {
+fn pbkdf2_sha256(password: &[u8], salt: &[u8], iterations: u32) -> Zeroizing<[u8; 32]> {
     let mut salt_block = Zeroizing::new(Vec::with_capacity(salt.len() + 4));
     salt_block.extend_from_slice(salt);
     salt_block.extend_from_slice(&1u32.to_be_bytes());
-    let mut current = Zeroizing::new(hmac_sha256(password, &salt_block));
+    let mut current = hmac_sha256(password, &salt_block);
     let mut result = Zeroizing::new(*current);
     for _ in 1..iterations {
-        *current = hmac_sha256(password, &current[..]);
+        current = hmac_sha256(password, &current[..]);
         for index in 0..result.len() {
             result[index] ^= current[index];
         }
     }
-    *result
-}
-
-fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
-    let mut block = Zeroizing::new([0u8; 64]);
-    if key.len() > block.len() {
-        let hashed_key = Zeroizing::new(digest(key));
-        block[..32].copy_from_slice(&hashed_key[..]);
-    } else {
-        block[..key.len()].copy_from_slice(key);
-    }
-    let mut inner_pad = Zeroizing::new([0x36u8; 64]);
-    let mut outer_pad = Zeroizing::new([0x5cu8; 64]);
-    for index in 0..block.len() {
-        inner_pad[index] ^= block[index];
-        outer_pad[index] ^= block[index];
-    }
-    let mut inner = Sha256::new();
-    inner.update(&inner_pad[..]);
-    inner.update(message);
-    let inner_digest = Zeroizing::new(inner.finalize());
-    let mut outer = Sha256::new();
-    outer.update(&outer_pad[..]);
-    outer.update(&inner_digest[..]);
-    outer.finalize()
+    result
 }
 
 pub fn base64_encode(bytes: &[u8], padding: bool) -> String {

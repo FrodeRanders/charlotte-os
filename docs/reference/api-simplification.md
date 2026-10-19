@@ -220,3 +220,10 @@ selected in the existing boot slot before platform startup. Composition takes
 its preparation once; publication requires the selected public policy/digest.
 Explicit authorized scoped/deployment-key APIs remain. No old-key fallback,
 wire-format change or new numbered format batch is added.
+
+The [SEC-15 hash-state follow-up](../reports/audits/2026-10-19-security-hash-state-erasure.md)
+removes S3/SCRAM's duplicate HMAC helpers in favor of shared
+`charlotte_launch::sha256::hmac_sha256`, returning `Zeroizing<[u8; 32]>`.
+SCRAM PBKDF2 also returns its existing result owner. Plain-array helper returns
+and compatibility wrappers are removed; SHA's public digest output stays an
+array. Algorithms, wire formats and persistent records are unchanged.

@@ -1,0 +1,860 @@
+{
+  "schema": 1,
+  "report_date": "2026-10-19",
+  "reviewed_revision": "710b8bb",
+  "classification": "SEC-15 partial; local named-storage hardening only",
+  "reviewed_source_sha256": {
+    "Cargo.lock": "6a09ea7454ebe0b229bdf6433231a8efc0bfd5bd7df1652e19acc9cfcb9165e4",
+    "crates/charlotte-kafka/src/scram.rs": "6f535b020329ef93d0f1e8638b9e158e500fb41b2d3b1316ce6cbff8ce7a124c",
+    "crates/charlotte-launch/Cargo.toml": "34a4d48a82a59d633b146a4b3633bcacf11c4f9efdb2ca592a1a5cc421a6ccfb",
+    "crates/charlotte-launch/src/sha256.rs": "b0583e16bd7afcf983ebdd14f93e7e39ed6b61e1c7b504434926391a0cf4f867",
+    "crates/charlotte-launch/tests/sha256.rs": "2ea7a8b3f149e9bdc51f5bfc23dca166a04d73341a9c303f3e15d428bc04d10c",
+    "crates/charlotte-s3/src/sigv4.rs": "9f0367914f0b01c4fb1c657718021fb0bbf6e6fc104c3728d7a7f67565e5ef65",
+    "docs/reference/README.md": "8e839c3b65b5c3e06dc68b2b2689f3bea7e0a824b88f16e19fb9828105fac54e",
+    "docs/reference/api-simplification.md": "5ea65d1bad2a0ffe8ab06703f9b869f8bb1c95db1b166a38b67036a84c398644",
+    "docs/reference/cleanup-recovery.md": "a6173a0a0ba58d4862b315740977d8806e95d1cedff2196d3732821c39f12adf",
+    "docs/reference/kafka-client.md": "7e7ccf05f38feab1e660aa2369693a76baa50cb5e9567064926f649480b19c96",
+    "docs/reference/s3-client.md": "cab23d2f19299e808f7548ce6b2acdc27f2cb23d24cf0c268959e655c885a9d7",
+    "docs/reference/secret-state-lifetimes.md": "b53900fc995fbce5a4f30b7cc1ff54d0e7c5555554ec1bdd1f27ed031fa53b60",
+    "docs/reference/security-remediation.md": "1f85ea50a63e853d3c6c10acaef860dfa992c3b38cad20060ffbe3cbb00eb894",
+    "docs/reports/README.md": "9e81f8608bfa70fbc42ca8d650ebae8e5c452a1b2f56b71426eaef941a3eac72",
+    "docs/reports/audits/2026-10-19-security-hash-state-erasure.md": "42e043c2c0d5b2a39c997546821ece9ddeddc2795eea92008cefe8f9409d69fb"
+  },
+  "baseline_reproduction": {
+    "baseline_revision": "710b8bb",
+    "baseline_sha_module_sha256": "9d1347a9fa406e834167e04d54952d421caff617452f51030255fd373e1386d0",
+    "tracked_test_location": "crates/charlotte-launch/src/sha256.rs::erasure_tests",
+    "injected_test_sha256": "fcbc2557542e253b1a9a7ea15e9db5e6d9882b6f5087eb619d1dff123bb3fd63",
+    "command": "rustc --edition=2024 --test -O <baseline-sha-module-plus-current-erasure-tests> -o <control>; <control>",
+    "refined_control": {
+      "input": "public byte 0x36 repeated 65 times",
+      "exit_status": 101,
+      "source_sha256": "b9fdc7b692689cdf11d8e4b1d6659094952d20a7246b8bd247e4d4a6fc7f1d76",
+      "log_sha256": "a5b4eb18e544adf7ba141258e05a250bca6552ed0eaf7435f4a6c9702068f0b8",
+      "diagnostics": [
+        "unfinished_drop_erases_named_fields_in_retained_storage FAILED",
+        "retained state: [4099202733, 2535792975, 2430268064, 3742509290, 1692759311, 2744271233, 2185925419, 4175449650]",
+        "expected: [0, 0, 0, 0, 0, 0, 0, 0]"
+      ]
+    },
+    "initial_control": {
+      "input": "empty initial hash first",
+      "exit_status": 101,
+      "source_sha256": "e073943ab9825e4a25b85489d76707e12c1464dde2022a5284ff4b7d5f0e6e42",
+      "log_sha256": "e4a567cd252a9b14bb49d2393903a21c95eb2ae96e73b4585051d6f43862bf40",
+      "diagnostics": [
+        "retained state: [1779033703, 3144134277, 1013904242, 2773480762, 1359893119, 2600822924, 528734635, 1541459225]"
+      ],
+      "scope": "Public initial constants; the refined control establishes compressed-state retention."
+    },
+    "scope": "Storage remains allocated; only initialized named array/scalar fields are read, no padding, freed memory or second owner."
+  },
+  "host_validation": {
+    "release_affected_libraries": {
+      "exit_status": 0,
+      "log_sha256": "00c97114cd44f1458e4aef98ae7c8de69520cae5c4832efa705396281d16bce4",
+      "tests_passed": 79,
+      "breakdown": {
+        "charlotte-launch": 59,
+        "charlotte-s3": 6,
+        "charlotte-kafka": 14
+      }
+    },
+    "debug_launch": {
+      "exit_status": 0,
+      "log_sha256": "d5fc9896f76e8495bbf423cf70ec6fc9b2b585572e0479bf50f03c179f83c006",
+      "tests_passed": 59
+    },
+    "debug_s3": {
+      "exit_status": 0,
+      "log_sha256": "41faacc55ae283e2a6ab913a4873bef0bf220340819f25b9a060e6f2b8ea81f5",
+      "tests_passed": 6
+    },
+    "debug_kafka": {
+      "exit_status": 0,
+      "log_sha256": "a5d8bf4faab39d0f59292664bbb20dc5edc05a60237bcf66860a8d7e45e15c5c",
+      "tests_passed": 14
+    },
+    "signer": {
+      "exit_status": 0,
+      "log_sha256": "cb16a272e15b78abf8d269a50c5096b16573e7225d2cea316159075af68b321d",
+      "tests_passed": 18
+    },
+    "strict_clippy_all_affected_targets": {
+      "exit_status": 0,
+      "log_sha256": "073b952146781c3dbb43988e4a02d825606b78540f6d96128967681ca67df07a"
+    },
+    "workspace_fmt": {
+      "exit_status": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "independent_reference": {
+      "generator_source": "import hashlib, hmac, json\nfrom pathlib import Path\nsha = [(n, hashlib.sha256(bytes(i % 251 for i in range(n))).hexdigest())\n       for n in [0,1,7,31,55,56,63,64,65,119,120,127,128,129,257,1024]]\nmessage = bytes(i % 251 for i in range(129))\nmac = [(n, hmac.new(bytes(i % 251 for i in range(n)), message, 'sha256').hexdigest())\n       for n in [0,1,32,63,64,65,131]]\nsource = Path('crates/charlotte-launch/tests/sha256.rs').read_text()\nfor _, digest in sha + mac:\n    assert digest in source, digest\nprint('All 23 checked-in SHA/HMAC vectors match independent Python hashlib/hmac.')\nprint(json.dumps({'sha256':sha,'hmac_sha256':mac},indent=2))\n",
+      "generator_sha256": "aaf08d3b02bb50ed59e661f5a307978163db3589ea56f1890d2231b55e662ac4",
+      "log_sha256": "65a45cec197748e9bf39395ddace3c27327761de8d506a388fd6154ecf3c6ec3",
+      "vectors": {
+        "sha256": [
+          [
+            0,
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          ],
+          [
+            1,
+            "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+          ],
+          [
+            7,
+            "57355ac3303c148f11aef7cb179456b9232cde33a818dfda2c2fcb9325749a6b"
+          ],
+          [
+            31,
+            "4f23c2ca8c5c962e50cd31e221bfb6d0adca19111dca8e0c62598ff146dd19c4"
+          ],
+          [
+            55,
+            "463eb28e72f82e0a96c0a4cc53690c571281131f672aa229e0d45ae59b598b59"
+          ],
+          [
+            56,
+            "da2ae4d6b36748f2a318f23e7ab1dfdf45acdc9d049bd80e59de82a60895f562"
+          ],
+          [
+            63,
+            "29af2686fd53374a36b0846694cc342177e428d1647515f078784d69cdb9e488"
+          ],
+          [
+            64,
+            "fdeab9acf3710362bd2658cdc9a29e8f9c757fcf9811603a8c447cd1d9151108"
+          ],
+          [
+            65,
+            "4bfd2c8b6f1eec7a2afeb48b934ee4b2694182027e6d0fc075074f2fabb31781"
+          ],
+          [
+            119,
+            "da18797ed7c3a777f0847f429724a2d8cd5138e6ed2895c3fa1a6d39d18f7ec6"
+          ],
+          [
+            120,
+            "f52b23db1fbb6ded89ef42a23ce0c8922c45f25c50b568a93bf1c075420bbb7c"
+          ],
+          [
+            127,
+            "92ca0fa6651ee2f97b884b7246a562fa71250fedefe5ebf270d31c546bfea976"
+          ],
+          [
+            128,
+            "471fb943aa23c511f6f72f8d1652d9c880cfa392ad80503120547703e56a2be5"
+          ],
+          [
+            129,
+            "5099c6a56203f9687f7d33f4bfdf576d31dc91f6b695ecea38b2770c87631135"
+          ],
+          [
+            257,
+            "a2c6cad2ffa699b14538231fef914f45d30440389e6f8d79091efba836165a2b"
+          ],
+          [
+            1024,
+            "2bce1ba628720664be4b9fdd77aae0678e5f0f3f02fc6ff641ec879094f6a404"
+          ]
+        ],
+        "hmac_sha256": [
+          [
+            0,
+            "c3ad09df1d5ade409091a67f747147417c38c0b15efaca8c195e7f76a3cbc519"
+          ],
+          [
+            1,
+            "c3ad09df1d5ade409091a67f747147417c38c0b15efaca8c195e7f76a3cbc519"
+          ],
+          [
+            32,
+            "52cc48f5d76260a9df98c5e171fea39acc0aad5f5833899b5313a47965e71fad"
+          ],
+          [
+            63,
+            "f2d68b260aebd26969043402f5d297f7fe973800125c44f8fa63d3e59c100500"
+          ],
+          [
+            64,
+            "335e54597fb47ebfcffcaaa3a1711076bc8952532d562bf31c9bd3101de46dfa"
+          ],
+          [
+            65,
+            "dd6235fb28670d7f90d31c390b2c15014ae42adeabbc338d3a15cffe8e1f9103"
+          ],
+          [
+            131,
+            "893bdd6587edcb87b6da3f631ccf344b762361e772f4cf487b0cc0d599d7f654"
+          ]
+        ]
+      }
+    }
+  },
+  "failed_host_invocations": [
+    {
+      "stage": "initial cargo test argument parsing",
+      "exit_status": 1,
+      "diagnostic": "the argument '--manifest-path <PATH>' cannot be used multiple times",
+      "scope": "Rejected before compilation/tests. Complete original tool output was not saved as a log; this excerpt records the observed error. Corrected invocation passed."
+    }
+  ],
+  "builds": {
+    "arm_services": {
+      "exit_status": 0,
+      "log_sha256": "fd9465ce7d221fc331e84950140e5da4768f65e7019836e37cdb97732040b760"
+    },
+    "x86_services": {
+      "exit_status": 0,
+      "log_sha256": "0e1c064a1fe7b04b86aa9bd169fb5196e8e9a1ede81a5e5cfa1435c6210d7ede"
+    },
+    "arm_source_signature_freshness": {
+      "exit_status": 0,
+      "log_sha256": "96bff5a233ed54488e2907bec2d80512254e5cb2b6d7aaaf855d7787c895f63e"
+    }
+  },
+  "bundles": {
+    "aarch64-unknown-none": {
+      "file_count": 41,
+      "file_sha256": {
+        "agent.elf": "9d2015fc0785c06233ad53f7d37cb2962581e7c896f20830575dcad01ca60e76",
+        "cclient.elf": "4ae7e59ffc801811d66707b37fa737a0f0986442cabd724a7b57887a8ef32de7",
+        "client.elf": "c7a377bb5336e5f2640f1a2302d3bcf7666076cf5ae9b5bc0e4a66430c04cca4",
+        "clusterctl.elf": "692dac40c643044d996cf78ba65d21437ac7acee4d31a7ec9ba666ab365615c5",
+        "deployd.elf": "fa56ca606ca0786c768b2f61d78dded95480e97190b4e1c74ebbbdb4a0041121",
+        "disco.elf": "83f90f611204937f13e01fe7fbf8edb30bd673094cbebb10cf5cdd0c5b2f559d",
+        "dns.elf": "9f156c17e9f7b8d0e3f326a205ac2320aa8337071a57dad761110e02ca8c3674",
+        "echo.elf": "3ad259ce7567448139b8dd7b72a5e8d96a07b668dcef82710da973563ad87837",
+        "frouter.elf": "94e23b26bcb17d5fec2a79b80b1de2f1364b82f1b8b62f5971e1f900fb264c75",
+        "fs.elf": "d1daa8a8735080ba69f973dd0800eca3cc1a93e46bc7de6f12f1b78a1a86420e",
+        "grantctl.elf": "b3907044a68285e01fa0f301b29588fbe9be6fef636b2b49c074b22faea4b5ea",
+        "greet.elf": "c945f01a2fa7485678912859737eb23b5d4d578205f387caa9f6ab40eb9f8f2c",
+        "httpd.elf": "16b944316753beb293d88d5a013a5cd1a4c00edfa712519207169827d961626c",
+        "kafka.elf": "47193b0949b3f653a010b24d37f51c4edcfc7a6620b35556c96fceaaf811035d",
+        "kafka_fence_smoke.elf": "a27d269a6bf1801f4a0630f130600a11f11ee8c90e84b2720c9cebce0866d272",
+        "kafka_smoke.elf": "b799645a67d0f6f0f6c93f804d4c57a48d667f0160fface840e89cdafb0619b7",
+        "kafka_step.elf": "45ebdc76ad9f9fdecb3be363f9f506541acbd3ef66c3d103bcbc2cdc7d58c23a",
+        "kafka_step_input.elf": "757631df1f84464ceb81fcb18f269bd399a2ba5c717cbc67254a2f901c35247b",
+        "kafka_step_proc.elf": "e8b5636692fa7bbd9971480d57a6bd376c228d2c79e449ac970409678734d0a3",
+        "nclient.elf": "1782f8ac013e5e2fe50a1ae13d33e7faf8e7a0e7be0a9b75c22f1403e027b270",
+        "net.elf": "234d8be8da636730bb94bbf1b6c02c97b94e9bec70a80bb36e9329a60b876932",
+        "ns.elf": "30ff3c5a2510162d724c72a81c6e9850d209ca79f0974a7a47fe095ad1f9e559",
+        "nvme.elf": "83afdcafe0328ee6bb890e8e86fd27f6971352b39618b36411627f2ad162bb3c",
+        "nvme_client.elf": "48a9510b6b9e1035cdd3ecf7b7f50291a7395ebfeada39d1d9e4debb53b1c47f",
+        "objstore.elf": "8f18e3a6b0435a8d062760fa8a11a16ab7f402416f4fd7601c1aa064d22d07f2",
+        "objstore_client.elf": "1c0f9e55d3a76da2632dc180ebb8dd2c1c37a218589c1b7427f888677ddbc7a2",
+        "observe.elf": "c65ed1bcbe820699492975e51995530d1af31aadb1bbef97be2003d6cad39e35",
+        "raft.elf": "33c4509850a0b4e6caff2e6388cd51e69264aa741a3c6ea65e6dc2533a730e80",
+        "rclient.elf": "39bd3ebac984c12224bcb2d425a3b0e413898ee7531b9180a2b06a369ee7f895",
+        "relmsg.elf": "48e4c9b89a3c6cec41a7650a44ae2f805669c1dfe4af53d5a33663cb7a92dba0",
+        "rng.elf": "278651b754fca070e63baa3cfa7b486de831aad47d751ce4ad7abf9e56bb9405",
+        "s3.elf": "76b48c6b3d6f247dfdaf366312b197de71a69e854d3374f2a41cf55d4206da8e",
+        "s3_smoke.elf": "153aa15ff57f9c01a5ed90dc126598c9bbfaa085459fac3bc021acd5377f7af9",
+        "security_probe.elf": "9f1c94822db2309fea518f75b8a1bfa83da67d79d424cf95eb175498e64f81e8",
+        "servicemgr.elf": "039d7ad9e68f2b6c7b0c37bafc7f5a33f92395aed3f26e0a5fedee0334663457",
+        "shutdown_probe.elf": "45a93e91e4e3a291638991a51182719a261ce1956cf60059819faea4ec0cf6cf",
+        "sitas-user.elf": "a01b596eab01adc9f8bf7ac45228b1b21da9dcdb00b9e38799850358d01ed564",
+        "tcpclient.elf": "833cd9a43150856e13f2bf659a5697e140c397bde4e4703fec04fd8ef7ce9ff4",
+        "tcpip.elf": "f5b7f7bf0fa21fb9c68ddb7647603d6b881560e14e604b75b329f03d85f1a7c8",
+        "time.elf": "df8823050dd74055b8ae3904276b1d708c80a599bc40f13f57432db039764548",
+        "uart.elf": "1ff339f3c4407546e53909fa5b14999ecd262ae4ba760653a276cc54fffd0359"
+      }
+    },
+    "x86_64-unknown-none": {
+      "file_count": 37,
+      "file_sha256": {
+        "agent.elf": "0a5a5b6536b8de8cbc48a87ae4cbc01d75e167e776e08eef4d5c13593881ad12",
+        "ahci.elf": "a49bc3578fc2234849455f3e2782714ade3f167e6753ab0d54fb3d092562ab45",
+        "client.elf": "b9beb44678b735f68f327c4a25cbdd5a1534152ff99d342cbf5e49d61ed25d28",
+        "clusterctl.elf": "f7f088fc867ee3be0e402e1845d6df280c6c76d511f3b03aa53bb733fba6f8f2",
+        "deployd.elf": "9a2332cfb12735626dc69355c6eabaaf1ddaf095afdc20e97f2d9beae264dd30",
+        "disco.elf": "b0a6be3242a717c957231ab2e5a4464fb100eb5ad7612af504375666fbc705c6",
+        "dns.elf": "67a9cac72e97d1250fb76c98bbead1c6d072f7975fe5b38c861da1c38aea9a10",
+        "e1000e.elf": "688553a5359ba4981c007be71b1d3b9373413f2bc8b1d136f0830de31d3db5d8",
+        "echo.elf": "5234f66f34c851ca00e11d6f90a1cd795cbc518c10acb114546d78b6ba09352b",
+        "frouter.elf": "4c937b2118da94dbae5f6bb8d4eabac72309062a4596789df32e60bbbaead0f5",
+        "fs.elf": "fc8bf573701d0a476805fb17995c976c5df36f8897afaaac4f85ae38b70db3f6",
+        "grantctl.elf": "44071c80266cbea1d0791010a7b9e503fb8148de515b82e726a036e5a30e0b45",
+        "greet.elf": "a6ab588198856ada5e435188fd3a1d5419c904f8e15a231dcc45225946975995",
+        "httpd.elf": "dda252c0a29a66a48fcf16a5a61c477398d37fe2a79acc417211d7913e8a7fa8",
+        "kafka.elf": "4e2ff3c68f556e713f126f7a822db863990bd3f97111260b623dbd46ea35b220",
+        "kafka_smoke.elf": "a3ae5c7456b9ceb700068b0b65028a7818293f0a805e1c392d372637f6273c58",
+        "nclient.elf": "d879b2ef997f4d1b566ee54843af71cc4dbdfa46f28db9181cc781cae98068f6",
+        "net.elf": "2138a80b4a456546fb33727d690b140cb8807a5ce3cc3b3043742caf381e2362",
+        "ns.elf": "c5c7c54cad458a8660c951434de8680c0dbf168ba3c3a6f78b641c47cd333815",
+        "nvme.elf": "7bfd08937a2eb611435c39e0ea865f4e522e6d9f6a33ec0feed2edc86ba66eec",
+        "nvme_client.elf": "3523e7a2a09c991775816e3dc49c829baac63b58375932a4ed839b3e5862dc75",
+        "objstore.elf": "ca6a5abafa3c807dd6ca842671f68f59f3f340a00e8663658b665c3aee21b063",
+        "objstore_client.elf": "3fb3b904af1005eceb6ff1640dd25012cdc433ce353aaf0a7008747b8c8f2056",
+        "observe.elf": "76fb4d43aa740c168ff6c889685b449ea28df473db0bdd977834bc18aafc785a",
+        "raft.elf": "4660c148b5db665838f7cb449b8f9f710a62fc61ff6ce4e49d26c188b3d39623",
+        "rclient.elf": "56a833c4e36faf2b5320dfb3c163870387059dc3181a11fc42468dfd8600dc4c",
+        "relmsg.elf": "fa18c86b6a72223daee8325736dd0523d89d15313945315b335662db0178fe29",
+        "rng.elf": "61ca684b780a17564ff1df0a47c47e201dfbf19df0ac5931635de781ed0dfde0",
+        "s3.elf": "bef99d3fc5062ae145d7b65a55f5a0a0f6ff0fdfa7edf6e47da1b871e584afce",
+        "s3_smoke.elf": "f50105ed6e594f2d3cf89beb3f796ea7ff146b851e9054c3dc4b614f98284457",
+        "security_probe.elf": "ca5dee95eded3133bbade055c957609cbcf45bcb962181ded6422de940d561b1",
+        "servicemgr.elf": "5d7f3c0f4eb11256864c2e59910245ecbcb861220b3127825e5c191b3d235e4a",
+        "shutdown_probe.elf": "37bc28bfa586b48f23f7223fbc6b6d30c0c8a3313a62ee3a042fc462ed88d960",
+        "tcpclient.elf": "fe3300a1ea2e9bc2388ae65c0a2ffcfda3825826c995ed2c30d3a9a7960f969c",
+        "tcpip.elf": "136dd7e68518d4827bc5588eab679bd085587da34ee94e7e620c6feaeefccfb3",
+        "time.elf": "057c42f7023fd92605534909ea0c3e7eaf9259a5088547ad770965253a5d5e05",
+        "virtio_blk.elf": "a35dcd90586b5401becbd41d56a6e05c8ba20ca7a912c114c646244a0f7d003d"
+      }
+    }
+  },
+  "secure_boot_native": {
+    "exit_status": 0,
+    "results": {
+      "test_only": true,
+      "firmware_sha256": "32807682a9e5c0e2d192ecb6077941d4be8bcfa6b9cd6e60830c3a9f48c0555a",
+      "kernel_blake2b": "3e8775393bc9fab817fd71cf14863d8635829aad4ebc0cc600ab4954b46b44e4fc02b3a001231874ff765ba839cfe3010778738f8ac69f9f6acd107d99fa002b",
+      "policy_blake2b": "872e9d9d87e969ef96f0f4ff8a0840d10aa036d276158d4d684a8873d506202b834b286d648c35a79bfad905dd773384293d5cd7ceeba152baaee741eb335ba2",
+      "config_blake2b": "ca7eea1253441fbf21e7cca4faba20cd2b55124097f25f842d35435b220fcd0c1f4924b928aa5cb6284dcf195ef4007494f9e81b9f4ab22067d46231ed62b949",
+      "kernel_variants_blake2b": {
+        "selected-root": "3e8775393bc9fab817fd71cf14863d8635829aad4ebc0cc600ab4954b46b44e4fc02b3a001231874ff765ba839cfe3010778738f8ac69f9f6acd107d99fa002b",
+        "platform-ns-root": "bb76cb15e9b6f74a096a27e799e307c566a88e19eff26bdeb6f60f1c977439f4dcce9e927cef282861f38bd0b6d2423fce856680ebc79aa04aa89645e5732e66",
+        "platform-driver-root": "4efa2103aa075390810086860aeef9c499de5f26f400604e22371776c4baa72ad5ee87c54d0b13367e0afd9eb43e1afb48455609057cd9da0f77af93819c7ea1"
+      },
+      "platform_bundle_sha256": {
+        "agent.elf": "fd7a0bfa6d32098e28e57501355563249c351ec87fd58fd7ffaa5badee5e9e86",
+        "ahci.elf": "ae924a47cd66cf135579c04d10286220adca90d54b818d74a831c0cad27a26fa",
+        "client.elf": "c90de03af84a4715a8c779e404036a1978b5002bb7f25ea52f84ee18445cd142",
+        "clusterctl.elf": "16248d110f4955dcd9cecc1235ff0a656f7376003153dfa24bdfe58c5ba69f23",
+        "deployd.elf": "d7f419510c84cd2e39b8b3e87c0e7f74b6ec90ed4e3dd6e329829204650ee94f",
+        "disco.elf": "85da9395bfac21662d3013f6470ee63ab73ee3a2b64aecb151d5fb7e49f7d826",
+        "dns.elf": "6de87b7ef2e5dc0a7b31b472eaa212e2a761fbda3f9df42727bc44da5f5e86e4",
+        "e1000e.elf": "a8074744049a57392237234d4a96a262afe42f2d1bb60c1965614898a546c3ed",
+        "echo.elf": "541be5e007adaf5e0ea32f1c13e5bd93d53be06f04c9c2f6422ad54795d5050d",
+        "frouter.elf": "1767750f313c5acc7fb7a77c01c7544c9ab360251dccf4727e77445d904a9136",
+        "fs.elf": "a4940333504c64f00808c5b19f849d3b2fa70507cad900a0c03231a7cd97c6d9",
+        "grantctl.elf": "2bbdcc8647c77d110051d711a0b32d3fad961eeba8e5e8767f0c60e065ddc87c",
+        "greet.elf": "9ba47d0f73d2259a5d88e0cf42ed6617ae56dd3e3bd60f68620e2cf5d83086da",
+        "httpd.elf": "819b33986e580ceab7f89b7b4bc5191493ea96bb210e5f58bf0d30b3e44b582d",
+        "kafka.elf": "f76d8c22b69cabe64230fbaf340ff95f47e47d81532baf35d8a46d65699fe5e9",
+        "kafka_smoke.elf": "69b14c5625dcc6239047439a11e2afbc6d5c2e0597901b99e431ba86d40f1e90",
+        "nclient.elf": "68fd8af1bb5a723c7af9b8fae5dd3c6debae4c871a964dff479a965e760da504",
+        "net.elf": "0925682222e7204d6682dfc460ae9e7c4746fa63a411fca83ec4ace0593697f2",
+        "ns.elf": "49a10ecc31aa7c07be41951a8057310e640983e031915a170b3e9d72aa667dbc",
+        "nvme.elf": "863d2f7be584c7ce42a01db344776cd098b8906e85f9562ac8a7ec9db66c11de",
+        "nvme_client.elf": "7efc6e59160605d5342bfd7337ee47cde914b47f27d9a17f7b795b9e1e22a670",
+        "objstore.elf": "36ca0868b4d6974d49d0bc55ca1243d699e80963fe4d03881955849b840f84d5",
+        "objstore_client.elf": "9f07829583885925df445001dbf24cf7512d149a60f24e8801daf91a24734023",
+        "observe.elf": "3eb94e54c9b54244fedc2bc0ecc3c2e9de5e859d37103eaa174c345d718dbc63",
+        "raft.elf": "00682b90e6020d98c30c548cbf751a4bcf2f4f30051aa2d0788ae2977c501d2d",
+        "rclient.elf": "52be9231ae521b6971240b21be0d5251ba87ea1696b77601c11cc43e5403c107",
+        "relmsg.elf": "ca035ca7eed49a46ddb6e917b9d628ae48dc3627323b9d3a755bf3a686088250",
+        "rng.elf": "384f2f42859731e9ad8464b9e8f4d5c0054288a49cdfcd564dddd0891ec59911",
+        "s3.elf": "3d8baea6f9e054d83eb249a2e39eb2307593e04a70dfdbb16340f13f6406824f",
+        "s3_smoke.elf": "c6a2c7ff241559237098d6e7d041d1cb8243fe3fafcda72765b1dd0bd7960bf2",
+        "security_probe.elf": "036b8c70fdc68441a5b4dee38ed0950c5d8696172cbd6deb081835084ac1c7ae",
+        "servicemgr.elf": "749aee68f9ef6b92ca40d6c593031e58b6192aa4fa08fc6a0423a636fbed1677",
+        "shutdown_probe.elf": "d34f88de48ef3ed9c1bf56315780ea48fbf8db98f44980779da04f500f2292ba",
+        "tcpclient.elf": "bb7b0107c9efa3a13cd155a6508b3611aabd47af74742af5b0df47f23f233284",
+        "tcpip.elf": "1948604a8446330a60d8958ce0a6f300559619bed9190258ab652a9730d145f1",
+        "time.elf": "0e9f2909fc26528c023f2df1a5061c8ddb498d5f750bc05de9f0dbd0ec9fdacd",
+        "virtio_blk.elf": "afa83fc8ca3ff0271e88bc3c9efab8bc9a9348501bfbba05f7afb0ca42360a2b"
+      },
+      "signed_loader_sha256": "f591f0840338afbba3d0911eb1516147aecf5e6c3f7c9c0d335713885267b054",
+      "results": [
+        {
+          "case": "valid-intel",
+          "evidence": "success",
+          "passed": true
+        },
+        {
+          "case": "valid-amd",
+          "evidence": "success",
+          "passed": true
+        },
+        {
+          "case": "unsigned-loader",
+          "evidence": "firmware",
+          "passed": true
+        },
+        {
+          "case": "foreign-loader",
+          "evidence": "firmware",
+          "passed": true
+        },
+        {
+          "case": "tampered-loader",
+          "evidence": "firmware",
+          "passed": true
+        },
+        {
+          "case": "config-tamper",
+          "evidence": "config",
+          "passed": true
+        },
+        {
+          "case": "kernel-tamper",
+          "evidence": "kernel-hash",
+          "passed": true
+        },
+        {
+          "case": "policy-tamper",
+          "evidence": "policy-hash",
+          "passed": true
+        },
+        {
+          "case": "policy-signature",
+          "evidence": "InvalidSignature",
+          "passed": true
+        },
+        {
+          "case": "policy-rollback",
+          "evidence": "RevisionRollback",
+          "passed": true
+        },
+        {
+          "case": "policy-conflict",
+          "evidence": "RevisionConflict",
+          "passed": true
+        },
+        {
+          "case": "policy-next",
+          "evidence": "UninstalledRevision",
+          "passed": true
+        },
+        {
+          "case": "missing-module",
+          "evidence": "policy module",
+          "passed": true
+        },
+        {
+          "case": "duplicate-module",
+          "evidence": "exactly one policy module",
+          "passed": true
+        },
+        {
+          "case": "platform-ns-root",
+          "evidence": "platform-ns-root",
+          "passed": true
+        },
+        {
+          "case": "platform-driver-root",
+          "evidence": "platform-driver-root",
+          "passed": true
+        }
+      ]
+    },
+    "results_sha256": "543917259f0cbe53bc25654dad8c45b02adabab371700612f0d2c5412d026387",
+    "runner_log_sha256": "701c770e0fe50ea892cc6779bb92f0728794f636bff507c3c28baa15b492f327",
+    "preparation_log_sha256": "efa8e8e58315a29bdd49a3daa5341fb7d3aefc4c2642c821156bfabd3bd0a129",
+    "case_results": [
+      {
+        "case": "valid-intel",
+        "evidence": "success",
+        "passed": true,
+        "serial_sha256": "b4d66b9ae7d6ca7d768c5a3850ae0aad567737cb077a3cdc7d82dbb8eb3ffbe7",
+        "qemu_log_sha256": "a08f2f6f0b557ef2b9aca338127db89d2065e86c0f7ae4771cbe17e13bec3767",
+        "diagnostics": [
+          "[+     0.092913] [boot trust fixture] verified signed module: revision=7",
+          "[+     0.093508] [boot trust] artifact authority selected before platform services",
+          "[+    13.964559] [boot trust] signed handoff, cluster/recipient rejection, shared manifest/gate policy and one-shot publication passed; early artifact selection retained",
+          "[+    16.465553] SELFTEST COMPLETE: passed=15 failed=0 pending=0 passed_bitmap=0x1bbff failed_bitmap=0x0 pending_bitmap=0x0"
+        ]
+      },
+      {
+        "case": "valid-amd",
+        "evidence": "success",
+        "passed": true,
+        "serial_sha256": "2059792ec821366c34ac6bb3c587a9a18ba3b781d54c5f122ad5766194ef9908",
+        "qemu_log_sha256": "a08f2f6f0b557ef2b9aca338127db89d2065e86c0f7ae4771cbe17e13bec3767",
+        "diagnostics": [
+          "[+     0.076898] [boot trust fixture] verified signed module: revision=7",
+          "[+     0.077472] [boot trust] artifact authority selected before platform services",
+          "[+    11.990152] [boot trust] signed handoff, cluster/recipient rejection, shared manifest/gate policy and one-shot publication passed; early artifact selection retained",
+          "[+    14.389249] SELFTEST COMPLETE: passed=15 failed=0 pending=0 passed_bitmap=0x1bbff failed_bitmap=0x0 pending_bitmap=0x0"
+        ]
+      },
+      {
+        "case": "unsigned-loader",
+        "evidence": "firmware",
+        "passed": true,
+        "serial_sha256": "226b774b9fb529bad69add38b65aeedf8f5b6ca5a5b98e6201a7db900e70380c",
+        "qemu_log_sha256": "a08f2f6f0b557ef2b9aca338127db89d2065e86c0f7ae4771cbe17e13bec3767",
+        "diagnostics": [
+          "BdsDxe: failed to load Boot0001 \"UEFI QEMU QEMU USB HARDDRIVE 1-0000:00:02.0-1\" from PciRoot(0x0)/Pci(0x2,0x0)/USB(0x0,0x0): Access Denied"
+        ]
+      },
+      {
+        "case": "foreign-loader",
+        "evidence": "firmware",
+        "passed": true,
+        "serial_sha256": "226b774b9fb529bad69add38b65aeedf8f5b6ca5a5b98e6201a7db900e70380c",
+        "qemu_log_sha256": "a08f2f6f0b557ef2b9aca338127db89d2065e86c0f7ae4771cbe17e13bec3767",
+        "diagnostics": [
+          "BdsDxe: failed to load Boot0001 \"UEFI QEMU QEMU USB HARDDRIVE 1-0000:00:02.0-1\" from PciRoot(0x0)/Pci(0x2,0x0)/USB(0x0,0x0): Access Denied"
+        ]
+      },
+      {
+        "case": "tampered-loader",
+        "evidence": "firmware",
+        "passed": true,
+        "serial_sha256": "226b774b9fb529bad69add38b65aeedf8f5b6ca5a5b98e6201a7db900e70380c",
+        "qemu_log_sha256": "a08f2f6f0b557ef2b9aca338127db89d2065e86c0f7ae4771cbe17e13bec3767",
+        "diagnostics": [
+          "BdsDxe: failed to load Boot0001 \"UEFI QEMU QEMU USB HARDDRIVE 1-0000:00:02.0-1\" from PciRoot(0x0)/Pci(0x2,0x0)/USB(0x0,0x0): Access Denied"
+        ]
+      },
+      {
+        "case": "config-tamper",
+        "evidence": "config",
+        "passed": true,
+        "serial_sha256": "ff015232619c71e2dc11e98f9e0723022e2485a56fb30c463e6cbd40a911de03",
+        "qemu_log_sha256": "a08f2f6f0b557ef2b9aca338127db89d2065e86c0f7ae4771cbe17e13bec3767",
+        "diagnostics": []
+      },
+      {
+        "case": "kernel-tamper",
+        "evidence": "kernel-hash",
+        "passed": true,
+        "serial_sha256": "926dc5fd8de656d8e11d9db8b0a72ab40073b61f9bb0d7072e20b0d7b7ab5a96",
+        "qemu_log_sha256": "a08f2f6f0b557ef2b9aca338127db89d2065e86c0f7ae4771cbe17e13bec3767",
+        "diagnostics": []
+      },
+      {
+        "case": "policy-tamper",
+        "evidence": "policy-hash",
+        "passed": true,
+        "serial_sha256": "5302e9ed4d4891a7a4812316c16f3190d3db1a82aff642706552bc413825bd1b",
+        "qemu_log_sha256": "a08f2f6f0b557ef2b9aca338127db89d2065e86c0f7ae4771cbe17e13bec3767",
+        "diagnostics": []
+      },
+      {
+        "case": "policy-signature",
+        "evidence": "InvalidSignature",
+        "passed": true,
+        "serial_sha256": "51ca314787ddfb0360a09f1cf6f6f2257718637f468e55535db2f784d4cbd8d9",
+        "qemu_log_sha256": "a08f2f6f0b557ef2b9aca338127db89d2065e86c0f7ae4771cbe17e13bec3767",
+        "diagnostics": [
+          "Kernel panic:",
+          "[boot trust fixture] verification rejected: InvalidSignature"
+        ]
+      },
+      {
+        "case": "policy-rollback",
+        "evidence": "RevisionRollback",
+        "passed": true,
+        "serial_sha256": "cde12d81a60f166d27af11fb3a9e939fba75911d1b048cc6646f9a930cde7ad8",
+        "qemu_log_sha256": "a08f2f6f0b557ef2b9aca338127db89d2065e86c0f7ae4771cbe17e13bec3767",
+        "diagnostics": [
+          "Kernel panic:",
+          "[boot trust fixture] verification rejected: RevisionRollback"
+        ]
+      },
+      {
+        "case": "policy-conflict",
+        "evidence": "RevisionConflict",
+        "passed": true,
+        "serial_sha256": "7913e871724ea6179aef5b8cf299a6ef1a59e7626d5c4dd58fcf2a2b08df5489",
+        "qemu_log_sha256": "a08f2f6f0b557ef2b9aca338127db89d2065e86c0f7ae4771cbe17e13bec3767",
+        "diagnostics": [
+          "Kernel panic:",
+          "[boot trust fixture] verification rejected: RevisionConflict"
+        ]
+      },
+      {
+        "case": "policy-next",
+        "evidence": "UninstalledRevision",
+        "passed": true,
+        "serial_sha256": "77b7d0f598e3991a0489af78a86149e51a8061c0b40ed2396868e536242aa225",
+        "qemu_log_sha256": "a08f2f6f0b557ef2b9aca338127db89d2065e86c0f7ae4771cbe17e13bec3767",
+        "diagnostics": [
+          "Kernel panic:",
+          "[boot trust fixture] verification rejected: UninstalledRevision"
+        ]
+      },
+      {
+        "case": "missing-module",
+        "evidence": "policy module",
+        "passed": true,
+        "serial_sha256": "7effeba52480904384eab068af38a19d291354fbc6dc74166f3acddff73dbc81",
+        "qemu_log_sha256": "a08f2f6f0b557ef2b9aca338127db89d2065e86c0f7ae4771cbe17e13bec3767",
+        "diagnostics": [
+          "Kernel panic:",
+          "[boot trust fixture] missing policy module response"
+        ]
+      },
+      {
+        "case": "duplicate-module",
+        "evidence": "exactly one policy module",
+        "passed": true,
+        "serial_sha256": "97c7b1cb3eef16c9b55312144a14af03e49832320555cf40d94f0fff5e8ad8c8",
+        "qemu_log_sha256": "a08f2f6f0b557ef2b9aca338127db89d2065e86c0f7ae4771cbe17e13bec3767",
+        "diagnostics": [
+          "Kernel panic:",
+          "assertion `left == right` failed: [boot trust fixture] exactly one policy module required"
+        ]
+      },
+      {
+        "case": "platform-ns-root",
+        "evidence": "platform-ns-root",
+        "passed": true,
+        "serial_sha256": "3ac024baef0736d365fd55690254c1ee896567a2bdf1dccf0f3c206d854ca781",
+        "qemu_log_sha256": "a08f2f6f0b557ef2b9aca338127db89d2065e86c0f7ae4771cbe17e13bec3767",
+        "diagnostics": [
+          "[+     0.086070] [boot trust fixture] verified signed module: revision=7",
+          "[+     0.086696] [boot trust] artifact authority selected before platform services",
+          "Kernel panic:",
+          "[loader] name-service load failed: SignatureVerificationFailed"
+        ]
+      },
+      {
+        "case": "platform-driver-root",
+        "evidence": "platform-driver-root",
+        "passed": true,
+        "serial_sha256": "a365f17110c20e63bcef608976aa0b11d8767a663356471f8b16a9703ef1b80d",
+        "qemu_log_sha256": "a08f2f6f0b557ef2b9aca338127db89d2065e86c0f7ae4771cbe17e13bec3767",
+        "diagnostics": [
+          "[+     0.084695] [boot trust fixture] verified signed module: revision=7",
+          "[+     0.085365] [boot trust] artifact authority selected before platform services",
+          "Kernel panic:",
+          "[loader] domain load failed: SignatureVerificationFailed"
+        ]
+      }
+    ],
+    "private_owner_removed": true,
+    "public_evidence_sha256": {
+      "db.crt": "8c74731836f5843092bfc91ccc4ecca9c293f89a84bcf7895c7e23217ec9ce83",
+      "enrollment.json": "b0c2230c63828292506758d42fb93100f7e996761aa59489a51ad31490e7e414",
+      "results.json": "543917259f0cbe53bc25654dad8c45b02adabab371700612f0d2c5412d026387",
+      "foreign.crt": "7fc6cf8dc80f5f3f93ce928b1febd16c35473cddcf133bc0dfe9cd87693a0048",
+      "limine.conf": "f75b660ce55e93bc3bebed40e9b5aa28ecc396d10fa374c22746f94f60cf4ac6",
+      "kek.crt": "eb833339fc84f59e929a4c3639902e217a5225a8575bbe8b63c64a50531d7aa7",
+      "pk.crt": "6a504c7eff9cde4e8774b5cbf1281f9025d2ef5bcd85d11189a839f983767b5b"
+    },
+    "limits": "Public disposable enrollment only. Baseline signed EFI SHA-256 and variant kernel BLAKE2b digests are retained; per-negative-case signed EFI digests are not captured by this unchanged harness."
+  },
+  "arm_native": {
+    "exit_status": 0,
+    "kernel_sha256": "2cd468975fbf4124288b322f05b5ee55570aa6d1ca5b5b7780d2f25ff75d0ca6",
+    "runner_log_sha256": "77846d94fc83e44689a19d4932b2eb9ec26ed29b68b53facdf7a2ab6d103ecc7",
+    "serial_sha256": "f9a086ebf9fa2b7a124b4108b0f32945c851cb6a8993e212337d88ce37dfacf4",
+    "diagnostics": [
+      "[+     0.020914] [boot trust] artifact authority selected before platform services",
+      "[+     7.938066] [boot trust] signed handoff, cluster/recipient rejection, shared manifest/gate policy and one-shot publication passed; early artifact selection retained",
+      "[+    12.075177] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x1ffff failed_bitmap=0x0 pending_bitmap=0x0"
+    ],
+    "scope": "Normal development boot, no ARM Secure Boot or erasure-forensics qualification."
+  },
+  "formal": {
+    "fresh_tlc_cases": 0,
+    "all_180_inputs_match_preceding_evidence": true,
+    "checked_input_sha256": {
+      "docs/tla/CharlotteAddressSpace.tla": "94e8ae476eab11029c39513fa66197793b05f0a6ca1655b751497a6e518d0284",
+      "docs/tla/CharlotteAddressSpace_small.cfg": "25feef19bf1dc780d8cece87801b7590b0bce68aa884c7459f7a9a65866d35eb",
+      "docs/tla/CharlotteAddressSpace_unsafe.cfg": "4be0b588a5b44ff54ac273701331a622b9f2bfd241b4a428be8acaf98a5337cf",
+      "docs/tla/CharlotteAuthorization.tla": "d5e14f9e9eb674522b6446235d24e322507959a2baf0219d22912ab3c7929515",
+      "docs/tla/CharlotteAuthorization_generation_unsafe.cfg": "4f23d40ea610f3e457a4d3e8107d111c9d4bdbadd421a83d946c371677b105db",
+      "docs/tla/CharlotteAuthorization_policy_unsafe.cfg": "4f0e81b15fa4c54d4e10216d4b23f84ed3ce85fd801c0c271ca0486717750779",
+      "docs/tla/CharlotteAuthorization_policy_version_unsafe.cfg": "369762db357baf735d3464b0c1f309b9a2c6ff1c2f22bb19c28ef1d91361be2a",
+      "docs/tla/CharlotteAuthorization_principal_unsafe.cfg": "c3f4c2815588d123d723e6f3aa12360a08c5c93d1dc9730e31bca4c6590525bf",
+      "docs/tla/CharlotteAuthorization_rights_unsafe.cfg": "9d82cd883cb9b68ba02cc926d9019d591c0edaceb9568416744dc3b7a882221f",
+      "docs/tla/CharlotteAuthorization_small.cfg": "2ddfd048b004e053686223171bcfcbbeb94d1ef4f4d53cc2c63b2276738ea15b",
+      "docs/tla/CharlotteBootTrust.tla": "c9edb0a6f74bc3d0dac70ea14eae1eee59e15774356bbad191d55f5467882a29",
+      "docs/tla/CharlotteBootTrust_authenticate_unsafe.cfg": "611d53f8615472e6958a8901a1ecd1b0011801228e319577633e070780b3d328",
+      "docs/tla/CharlotteBootTrust_boundary_unsafe.cfg": "8e415118debd8e9a467bce69e30d890b8ee024cc71d00cec360c9f5e8acb4c70",
+      "docs/tla/CharlotteBootTrust_contract.cfg": "46363cde40899130188ea50dea6f0aceff8b7bac675291d52862998170a82e57",
+      "docs/tla/CharlotteBootTrust_development_unsafe.cfg": "996e72ecbf931c6e5891f6ebaa7a6e6bc807b9ab01917a3a5d6161afc4b1849f",
+      "docs/tla/CharlotteBootTrust_enrollment_unsafe.cfg": "95b4dee9697707dc39edbe8ac6c94a4c49cfe3a0cd10c05c3d4084a0163f3395",
+      "docs/tla/CharlotteBootTrust_failure_unsafe.cfg": "2310166ce6c6c0bb4f93c1e4ee384c07b959920d8c29d109fc100b1107d74d15",
+      "docs/tla/CharlotteBootTrust_fixture.cfg": "023562d632e18920d8d51cac7cee5f5d9159aad42c423782d6d833b37e5b19df",
+      "docs/tla/CharlotteBootTrust_manifest_unsafe.cfg": "6989bfd31e1eb9c7f433017cc1c2a780af10a0d9f7bdc8d1cadaec20f8abb3c6",
+      "docs/tla/CharlotteBootTrust_overwrite_unsafe.cfg": "311a8f4022eb40cba78628ec14a7a32a324b7218084fdead778d7add6d9bbfc8",
+      "docs/tla/CharlotteBootTrust_platform_unsafe.cfg": "68b37ab0eb83682fa55e89ec62ae39c123b48dfce1abbd6f1bca86e4dfb239a7",
+      "docs/tla/CharlotteBootTrust_recipient_unsafe.cfg": "6dc6e0759a42289cbbd65888842c40efbea1b8e1207cb36458adfbef8248122f",
+      "docs/tla/CharlotteBootTrust_selection_unsafe.cfg": "a8eb3675ee03bc1c5a459c522ab94a26ce40a5abbefed662cde4776cadea0990",
+      "docs/tla/CharlotteBootTrust_stale_unsafe.cfg": "aec488139f350badb5164942bc4bbe05b58bc1178c7a713bdf086defddd6b88b",
+      "docs/tla/CharlotteBootTrust_uninstalled_unsafe.cfg": "99362ddbc2c34acd714b36f30f2e037ff17138e1b9845e9d6881242654be8a7f",
+      "docs/tla/CharlotteCQ.tla": "1557db52418f0e4d47a737951b4a1d9cae5dfb44329b228bbd749da22a4bdd04",
+      "docs/tla/CharlotteCQ_buffer_unsafe.cfg": "9c5a49c335ba999c468e18651ee9a60bfb336d7ea32db783de562f8c897bf5ac",
+      "docs/tla/CharlotteCQ_mini.cfg": "e1b7eafb8fbc246c9122055672615be144e3b43ed869c9dbe41ba4d7d101125f",
+      "docs/tla/CharlotteCapability.tla": "4e94c107f21e7486cfe23c232c2b1930557af27df89c45cf75f29f4ddd098f1a",
+      "docs/tla/CharlotteCapability_small.cfg": "6a0cf36f3f4845ea37d901eb3ddbbf603445789ba18081ef7646c3f7ea36c8e3",
+      "docs/tla/CharlotteCheckedWait.tla": "0a94737e26b40c49939af7233d765ef4c76523608e39bf1b21818ac344c129b7",
+      "docs/tla/CharlotteCheckedWait_deadline_unsafe.cfg": "ed16d0f4d9759d76eafa780f56f6be83a95e7ae4721e0535aa8249afcbc0e5d2",
+      "docs/tla/CharlotteCheckedWait_park_unsafe.cfg": "0851785424eb552b590f5b191e31a0b3ec38ff8f6ee2a437803cc47a0e60fbbc",
+      "docs/tla/CharlotteCheckedWait_rejection_unsafe.cfg": "d73cdb7ac12b71fc3413a87343adecbd23a3ed3fbe29d8f5bd12d024e7b10188",
+      "docs/tla/CharlotteCheckedWait_replay_unsafe.cfg": "48df5cf72013a629118216d005481a2bef0c8e6fbee23e29664470affbec15c1",
+      "docs/tla/CharlotteCheckedWait_result_unsafe.cfg": "609274f19fcbd3f2d1a259f03c98bd8670ee2790a2de9c1b127cc935a51139c5",
+      "docs/tla/CharlotteCheckedWait_small.cfg": "5c114d9f0027dc3382a9b0ba9516b8dbc88eed5dde9b1067ebd8eecaace13e04",
+      "docs/tla/CharlotteCheckedWait_timeout_unsafe.cfg": "92699d7f09749d4f7f05ecc0e5e11605d79a0d02b715f4814eb5e0e590c36477",
+      "docs/tla/CharlotteClusterIngress.tla": "4660b215db89bb5d67b8433091eff5bb0052c993152e5423c657b9909aa6ac13",
+      "docs/tla/CharlotteClusterIngress_history_unsafe.cfg": "b35cd382b188843b7ae065053d0095c1fd55c41b6695410e8d8824e2a7820926",
+      "docs/tla/CharlotteClusterIngress_readiness_unsafe.cfg": "811add7d3dc380ff4f5feb31c33ba002ca72fa6ebc3b45e4116b5427fdec0656",
+      "docs/tla/CharlotteClusterIngress_small.cfg": "402c878db4ccef9c752c84c9beee894d823a8bf0d5f669d62de57734f2063360",
+      "docs/tla/CharlotteClusterIngress_stale_snapshot_unsafe.cfg": "ed01b5382c1dc5aa11eee36b853a7cf72e5193f586d5e9075e6c73adb22127a2",
+      "docs/tla/CharlotteDMA.tla": "5c732aed07fa1f79463d4ca30d2aa7fc7e7c58f46c1e0a64f9445298867cd9fc",
+      "docs/tla/CharlotteDMA_small.cfg": "55befa332f585191e5078b4085601f1ea9439a02f24c042d14e2bc7ae3009e93",
+      "docs/tla/CharlotteDMA_unsafe.cfg": "8b5f798d0723b8d9640eae2f9fb4c8a20383b49552d501943826fb55ad25b2ac",
+      "docs/tla/CharlotteDmaOperation.tla": "2839f7d90627b32049ac677bd0040474df313f1dc862090e1d9373817787e682",
+      "docs/tla/CharlotteDmaOperation_abandon_unsafe.cfg": "ffb8ec7166354bd94c8b53dca935d7cd0f1332aa1d922ed625c09476b6716d10",
+      "docs/tla/CharlotteDmaOperation_access_unsafe.cfg": "5a7b9512acaf0c030ed76a2c9c834b244ad06e4742db5fea72f09e1ae4182c88",
+      "docs/tla/CharlotteDmaOperation_cell_unsafe.cfg": "afca9bcf0e4ebf495043761e5a75e5f707c2f015b7596471a97e4c078e88123b",
+      "docs/tla/CharlotteDmaOperation_confirmation_unsafe.cfg": "fe466b9e71056adebe75475a3ccced1a5fa41d428694013c3924e76e14f35ea5",
+      "docs/tla/CharlotteDmaOperation_context_unsafe.cfg": "ad3c3e24b3cfdd57d6dc07851a0c73d3de6ebd123b545facbdd0ab2bf8e62999",
+      "docs/tla/CharlotteDmaOperation_cpu_unsafe.cfg": "16d1450ba672e9366eeed68a17c018d1a1988bee2bcd286ea87a4883ef3031ef",
+      "docs/tla/CharlotteDmaOperation_drop_unsafe.cfg": "b12da60b76b0b776895ba9a2b267fed4f777f9fad6561c023fbbedb290c224b8",
+      "docs/tla/CharlotteDmaOperation_map_unsafe.cfg": "bed6cdfaf7f0df9d4ba31d5f8d5005f287bcbbacd82a291986fb9771fee74a27",
+      "docs/tla/CharlotteDmaOperation_preparation_unsafe.cfg": "6fd8ba8d7238d6cc415a8dcc300d10154fd02f7bc1833605bcc612357804ce13",
+      "docs/tla/CharlotteDmaOperation_public_unsafe.cfg": "6684e9fcb141fa7ab6fa1df96918a7df1c490c62f765e2b4296c325e05b463c2",
+      "docs/tla/CharlotteDmaOperation_readiness_unsafe.cfg": "e4153638e5f59bbf1728ed2f338ade189844ad1c7254aec8751e6cfc754cb57f",
+      "docs/tla/CharlotteDmaOperation_rearm_unsafe.cfg": "3e124e8f8d7cc95794c56b1f615fcd1e30b4000aae7c9207a35f54e99f933503",
+      "docs/tla/CharlotteDmaOperation_remap_unsafe.cfg": "a97e1f454c658a35aeaac53d1ce06552fe0a95ffae5522fff19e3512a7896362",
+      "docs/tla/CharlotteDmaOperation_small.cfg": "5cd7d31f47748b790b12b903fd5fdd309106400aa6a5511e6991fc06664ddc95",
+      "docs/tla/CharlotteEndpointObservers.tla": "42415be276a5a31546337c473cfb89300cee102664809905169eb713efb140b6",
+      "docs/tla/CharlotteEndpointObservers_small.cfg": "8a972975c5d21bc23df1d1529258c455d35f5278ad6f209c19349dfbe6c11e14",
+      "docs/tla/CharlotteEndpointObservers_unsafe.cfg": "c85058ca46cb9ed10c39c38742cdb1c2895571fc6247de2fbaedcd488aff89a2",
+      "docs/tla/CharlotteHardwareAsid.tla": "2074acb290a98b6113874dbb3a6c93bb213698d5731153acd0f099b996644928",
+      "docs/tla/CharlotteHardwareAsid_small.cfg": "f4ef9b3536f735756f09f04bd0297b4f74d54ce03a6725806b5475b26b72d8ef",
+      "docs/tla/CharlotteHardwareAsid_unsafe.cfg": "4cc26e9851630ffbd7b8f3de981304bda0e3be2d06bf16c2e71cd6d286d852c9",
+      "docs/tla/CharlotteIPC.tla": "cafa97f897a33d496eb5c1ce2da877e6546ec66f9202d20f6ab33280a49ad857",
+      "docs/tla/CharlotteIPC_small.cfg": "7b5369411db55b2a2e8ea88245bdffc3dfbeb4867528f59c9e6e659a27931570",
+      "docs/tla/CharlotteInterruptRoute.tla": "9e6fdc9caff46461273a279b2a76153c6f22c7c97152999a92a93b46e281b0b4",
+      "docs/tla/CharlotteInterruptRoute_small.cfg": "d2d75e070eab33d10fd0cc38a3d60f53788637dfac9dfe505df0702f8f98f24e",
+      "docs/tla/CharlotteInterruptRoute_unsafe.cfg": "58e087639848e1cae282cd413caf77b3fffd0b912ebdde3728c6d05820f8bf10",
+      "docs/tla/CharlotteIpcPublication.tla": "67d87012aaed9bed5eec8df42b68f46359153a618d43a9b0befcb6b92e009432",
+      "docs/tla/CharlotteIpcPublication_batch_unsafe.cfg": "f21d1ad0c3c4ae9110851d914f55df4e08a5583db20fb9a1c3524c8158f3af1f",
+      "docs/tla/CharlotteIpcPublication_cancel_unsafe.cfg": "fb3cb26ea11333c4341a9569f3d1eea6757d28d2bed3a8bab006c8930187cd6d",
+      "docs/tla/CharlotteIpcPublication_connection_unsafe.cfg": "aaca3189ab479abf22b273882ca92fdf23602696a91aba0c1ff316bd46e1beae",
+      "docs/tla/CharlotteIpcPublication_memory_unsafe.cfg": "157e67d386164b1789334327b7c329b5cc2f133203867a7f2f3738688616133d",
+      "docs/tla/CharlotteIpcPublication_observe_unsafe.cfg": "958ce487bbee6ff56aae8a9a40df99593537a6b64320f4a5641a262ce245b0f9",
+      "docs/tla/CharlotteIpcPublication_readiness_unsafe.cfg": "dbc976896ed54d43217106ac32f920a93ef1ea9be8821e71b926d16ca6a02a27",
+      "docs/tla/CharlotteIpcPublication_refund_unsafe.cfg": "6aad7a123d8d50f7604ea78ed9f3106e05c5d95559c6dda0e83948f533abdc57",
+      "docs/tla/CharlotteIpcPublication_restore_unsafe.cfg": "a96f0da36e15eda49e0698ed30b3f373425fac45e76d11f8f8b034e5866ac5dd",
+      "docs/tla/CharlotteIpcPublication_rollback_unsafe.cfg": "e835593816f7502ac984d59d370237950b166a938774ec5a45a5686afbab6313",
+      "docs/tla/CharlotteIpcPublication_serial_unsafe.cfg": "32130b6ce3d0d01be1df08a89b7dd38d9a7d476ad31cd3605df48376eb1a5650",
+      "docs/tla/CharlotteIpcPublication_small.cfg": "4c6da1ebeb79eeefa62bb0dbb9d26184956c1fdd6d097a5de41b120275d67d87",
+      "docs/tla/CharlotteIpcTransaction.tla": "bfc596a22480fae309c31732670b60024085014ec084d998dbbf8affd40fed7c",
+      "docs/tla/CharlotteIpcTransaction_rollback_unsafe.cfg": "89326400847cf5ac0fd76e7c68eb2f32385d551cd38ce201c70dd6a5a6b7fe99",
+      "docs/tla/CharlotteIpcTransaction_small.cfg": "67e0efe832fbadf7258296297af6afa293da1a78edcdb464a14cf9a70280a471",
+      "docs/tla/CharlotteIpcTransaction_timeout_unsafe.cfg": "5c748b860dec8df3fb253e6aefcaa8138835fac61dc0b6ea48c8a089cb2b4c00",
+      "docs/tla/CharlotteNamePublication.tla": "64e06c4d4eba6c9af622cc8433bcb27e97a9c55655f4151a9f4d4e0faf9728f1",
+      "docs/tla/CharlotteNamePublication_abort_unsafe.cfg": "e271ebbf4cb0a504119c836cbdc42dcab8d6039a85209439f0dfa9c1d6f90a8c",
+      "docs/tla/CharlotteNamePublication_deferred_unsafe.cfg": "d1c9e007af1d13797dd43395aef321c857bb869285cbf9e13f9259b6b0ebf705",
+      "docs/tla/CharlotteNamePublication_disposal_unsafe.cfg": "9962dfc20c9bb6e4e7bdc54a2ac6a68dae04a701427004a494b54f9aaee02865",
+      "docs/tla/CharlotteNamePublication_exhausted_unsafe.cfg": "a942fbefc77918b1ad9ee416f77bd0357a1205e9cd831c1110e30e193d4deca2",
+      "docs/tla/CharlotteNamePublication_exhaustion.cfg": "9276ebe1529abbd3863d389066d633d0440adce13c69cccbdf7c8facc4c81cc6",
+      "docs/tla/CharlotteNamePublication_hint_unsafe.cfg": "8484b3ae8b8c58ceeee38e3e4bf4bee13056b420883c04924393984f85af2c09",
+      "docs/tla/CharlotteNamePublication_public_unsafe.cfg": "e569ee4d0b6f3bb86c05785a6574565195ef0d73a64edd9074cf61e18710443f",
+      "docs/tla/CharlotteNamePublication_quota_unsafe.cfg": "75624b9f524283872e18b0ec2d36c49e9b7b70a78d10e0b9248450c6eb10ee36",
+      "docs/tla/CharlotteNamePublication_replacement_unsafe.cfg": "02b0c2abe35eacfa067a22403296400228c8fff7e6531450bc428aa9bb3a8c8c",
+      "docs/tla/CharlotteNamePublication_retire_unsafe.cfg": "435a962cad50daf5e8c928c23bb0034a7b1f88f8b0d46b8e9018eb3b521b1748",
+      "docs/tla/CharlotteNamePublication_serial_unsafe.cfg": "beb2131c7c79377259741ca89e909273e0bde7bf43f7cb1e1413f182c911ad30",
+      "docs/tla/CharlotteNamePublication_small.cfg": "df05aff71bceb53c288f9e29ec0f64fd4efd5d17face5d1884fdc0a339b7dd88",
+      "docs/tla/CharlotteNamePublication_stale_unsafe.cfg": "23470b9661034062398a56368f0ff5980ecbe731f4f764da51b4e4de5ee89ac3",
+      "docs/tla/CharlotteNamePublication_watch_unsafe.cfg": "acff70f0762e23fa9ba9411edba9e5b9464a5ac9f6ba54f94ac03af10f9c020b",
+      "docs/tla/CharlotteNamePublication_wrap_unsafe.cfg": "d857d5368be2ca80b990b0b6d476da2d24ba8e5719116b19ce30a138794241a3",
+      "docs/tla/CharlottePlacementControl.tla": "2c93a5cf0a91d5babd0d4fbb863ea0d0c64eeda82a9bfc8d2467e19ba17e2515",
+      "docs/tla/CharlottePlacementControl_dwell_unsafe.cfg": "c1ffcc9f00441a11bd727cb812389a12dab91898d0764081e763693abaf55e8a",
+      "docs/tla/CharlottePlacementControl_reserve_unsafe.cfg": "969d1b58a2debd681a1beea9a4b69585f0f04f3e563eb78ddf32ef5396382733",
+      "docs/tla/CharlottePlacementControl_small.cfg": "ea702173e19534cf9f0967fe2f5a46bc5ea0e25a78c6a0a66ecd96da6e514cf8",
+      "docs/tla/CharlotteRaft.tla": "6ab1ef702a12515a8299263af5d5216115dd976dfee7d69e6b394c4c1fc94d80",
+      "docs/tla/CharlotteRaftJoin.tla": "4436022e36d4ed88690e3ba1dbd995bcb7bbaf60acd2c9da10063bb5cb221486",
+      "docs/tla/CharlotteRaftJoin_restart_unsafe.cfg": "9ae634438f5cfcd525ef79f229861ed5f16b09ded70282aa2d672670291b95eb",
+      "docs/tla/CharlotteRaftJoin_small.cfg": "645defb0cbba7276f412504af6ae1edd648bb75dc612bfec0c4466de5e15c833",
+      "docs/tla/CharlotteRaftJoin_unsafe.cfg": "e9e87d139447a922465906760b61028efcfdeb06e08fc0657111127bb1d3f3e1",
+      "docs/tla/CharlotteRaftLog.tla": "f1264ced4451c6498bbc23877475805613a798d4baa4dc7b92a16804f4d1266b",
+      "docs/tla/CharlotteRaftLog_small.cfg": "d0922611874d0a0c3aad1302c79cbeb2964b28047f5a4d62828c4b83ba44addb",
+      "docs/tla/CharlotteRaftMembership.tla": "ee283cee5f5c54cbd98a0ef002dbe2d8592f1dbda13c11a31c3dd118e30e3f4d",
+      "docs/tla/CharlotteRaftMembership_beforecatchup_unsafe.cfg": "1bebd17d6742862ea1b42603110142ab7ecfce3181a38486f900b42494c5662c",
+      "docs/tla/CharlotteRaftMembership_learnerleader_unsafe.cfg": "e03b850a627f57c6a67221bab01809966fd326845479bdc9ff9cb739c80152f8",
+      "docs/tla/CharlotteRaftMembership_oldonly_unsafe.cfg": "66c4d2ee02c6f971fb8529c3f27c6a484240e7e88787c4089e284967b569c818",
+      "docs/tla/CharlotteRaftMembership_small.cfg": "c4949302102f62fe00a4d7b2144ad348bd0ac07a14f7e49819eb9d45a3c55a3c",
+      "docs/tla/CharlotteRaftRead.tla": "ba501b11cfb8f5b1b49783164821f8f9919f7bebd005750d588af53bc55bf4a6",
+      "docs/tla/CharlotteRaftRead_apply_unsafe.cfg": "43cba1003d8bd416c940a67210311278e210565b7699d24a6b335e8cfc358231",
+      "docs/tla/CharlotteRaftRead_binding_unsafe.cfg": "eae17e21a319cc8ca76e862f0e5e8c426bb067b4df995128155e0bd859aae816",
+      "docs/tla/CharlotteRaftRead_commit_unsafe.cfg": "dc43808ad84e9c1f980a81124b59560f5e3494489c9b1c70f2cba87715ca87b7",
+      "docs/tla/CharlotteRaftRead_lease_unsafe.cfg": "04027533e5b606ff3995f03b3534135a005ced922ceff5b42d55813f2c7d7b53",
+      "docs/tla/CharlotteRaftRead_small.cfg": "d8356638da42d1a5f9e2bf70e011584a4d8e155f81401747b993c5df58f3c786",
+      "docs/tla/CharlotteRaftResponse.tla": "3d18cf384a8769934d40b538d1b66a62c347f24429e03e347076c359972fa3fa",
+      "docs/tla/CharlotteRaftResponse_backoff_unsafe.cfg": "9a72a7d3759a03c6515d0f345ef67bbb015881ae50f906b36259173c1618ec55",
+      "docs/tla/CharlotteRaftResponse_invalid_unsafe.cfg": "955dbde49aea1b4811db506ec61c662d3650272d7ec982c8d5b8d3506a36ed0f",
+      "docs/tla/CharlotteRaftResponse_oldterm_unsafe.cfg": "ca31d6e2a4e4a1545c2a541d583bdd30e68ff7c16857397c307745383f1cd4fe",
+      "docs/tla/CharlotteRaftResponse_regress_unsafe.cfg": "fec5226e58addf76e4676b34d144bb9f85785a3b725ecf88b420ef6e4161e192",
+      "docs/tla/CharlotteRaftResponse_small.cfg": "d8356638da42d1a5f9e2bf70e011584a4d8e155f81401747b993c5df58f3c786",
+      "docs/tla/CharlotteRaftSnapshot.tla": "3ecd5c17fdb200227c0de9608b732df5ae18c648acdcf4619d607eff3a7639d8",
+      "docs/tla/CharlotteRaftSnapshot_small.cfg": "0ea7a243aab5cdeace57a0ef990237f8893614d30afc06427d98ce0425baafb1",
+      "docs/tla/CharlotteRaftStream.tla": "9569b70cc70a89633d88c2b1605b685ed8269aeb835ef11919325905b800e338",
+      "docs/tla/CharlotteRaftStream_offset_unsafe.cfg": "69eff1ae0d71551616c20ca9453f5037cc655ff676343d2a0ef5c3adfe6ec35d",
+      "docs/tla/CharlotteRaftStream_owner_unsafe.cfg": "d4d8ff4cad3ee145ee09909d9aef43cf97d52f169f2f8675f768a386bb5b12d5",
+      "docs/tla/CharlotteRaftStream_small.cfg": "1cbf9e0476239a905305c0bafff90221959624090d88d60b1a96e88ea41a1cdc",
+      "docs/tla/CharlotteRaft_small.cfg": "48294c1cddc1d440a1e2d70a80fd6ea9da8ade2d20ff0f1f4f54b85e8843bb9b",
+      "docs/tla/CharlotteReliableMessage.tla": "3a17cb197cbf7818717940a30cf6930f41a3b5e6fe16b8dfe4cfa52851e51f6a",
+      "docs/tla/CharlotteReliableMessage_identity_unsafe.cfg": "4cbb48be424584a73181c7c5495e31faf41c3b967405092b520a41b9503678da",
+      "docs/tla/CharlotteReliableMessage_regression_unsafe.cfg": "49dbe795212fe69495d4c927592dce59074306c5b30c254d6d4bf8f43bd6ce8b",
+      "docs/tla/CharlotteReliableMessage_small.cfg": "85adbd3bb065b8da79a7d8dfe58fd5e4b530f10d26015f83952c4a82e22edea5",
+      "docs/tla/CharlotteRemoteCall.tla": "36de513b3ffbfa1e9cbd74bac0404fc1ef66cd5400c7b536a9da18c1be2b1c55",
+      "docs/tla/CharlotteRemoteCall_small.cfg": "56d4993c70c7c7f9a5d5ec478240776ee12e00432adf8402a6cc291bc7fe9601",
+      "docs/tla/CharlotteRootRetirement.tla": "817ce0b352e358ab901f6392354d4a42ca294274080e5f1b979d1105f563d87e",
+      "docs/tla/CharlotteRootRetirement_abandon_unsafe.cfg": "693f4eeb72902cd536fb1fa185b05e7daec0f0fd50f9fe655f1dcbd9396c7202",
+      "docs/tla/CharlotteRootRetirement_lease_unsafe.cfg": "185baa2c91ce27fd6872e654ee522f6b3770f467e0eead8557bb26c60c95c889",
+      "docs/tla/CharlotteRootRetirement_physical_unsafe.cfg": "fa20b8c4b353156b8f39c48362bc3ea995377e31d81a69f742300ca41077edab",
+      "docs/tla/CharlotteRootRetirement_refund_unsafe.cfg": "c01d5c13fbee34239773c05eb0a33db1d5c31dfaa2ecf9a8de25853de659faed",
+      "docs/tla/CharlotteRootRetirement_release_unsafe.cfg": "47ca560b0c4fba4952c7009e3fb6af8c5c3cde906a7bb943d70aea4113dbada5",
+      "docs/tla/CharlotteRootRetirement_small.cfg": "9ee0187ad3b152ba75044f87f71788bb9bd1f5d2af8ebf0a1b1389c487b593d1",
+      "docs/tla/CharlotteScheduler.tla": "a58ef1f0f39ebb06d7b5d09568071891b51ecc327ca097b018155026c2acab5e",
+      "docs/tla/CharlotteScheduler_domain_abort_unsafe.cfg": "53332baa166196b745e9c8a9ae53ca6f0df3675120de0ff4fa4c9b8d7c24ee56",
+      "docs/tla/CharlotteScheduler_small.cfg": "f48844b2897340be11b29446d9fe763fe5ac12eb09a4d98128ed8567adffb047",
+      "docs/tla/CharlotteScheduler_unsafe.cfg": "d8816f8c15bd9c50ccb9421ba88b5aba6c2b737b03d8f71bddbb8791cf8165c5",
+      "docs/tla/CharlotteServiceLifecycle.tla": "5cab06543727b1373ae1ba9a342217f93a275fb3058cc33c3408c6f6fc39dee0",
+      "docs/tla/CharlotteServiceLifecycle_small.cfg": "e44daeaa25b96571f91e1f440ef61865ca2cfe7ac2908e3761a0c17a24fc1762",
+      "docs/tla/CharlotteServiceLifecycle_unsafe.cfg": "dfbae5bdd1af4274cec07f6501be0724140ff96343be816b836d7458262e1e74",
+      "docs/tla/CharlotteSnapshotRestore.tla": "c71563b3814d1f58b6bee72dac6bfd78e76d55d50895dad5c70372002f42eb88",
+      "docs/tla/CharlotteSnapshotRestore_application_unsafe.cfg": "983d4959987c263293f339a66848e2d2160c8d47314b1006fcc965139f78c041",
+      "docs/tla/CharlotteSnapshotRestore_durable_unsafe.cfg": "08aab0735de4db738b699997e9c1e9db496a2c5627c71ead888bb9755dae2321",
+      "docs/tla/CharlotteSnapshotRestore_exposure_unsafe.cfg": "6aae5eb519c5d5e67c5cb64be07b8b64f3f82635236f0854f9d6797d00f193ad",
+      "docs/tla/CharlotteSnapshotRestore_join_unsafe.cfg": "f9e148560d035b72c231e971fabe1e0281db21539b1886d86a6aacc16bd6b079",
+      "docs/tla/CharlotteSnapshotRestore_membership_unsafe.cfg": "6de0ef827f05f5e144f88fb97473f5b8f1b15b49df87d253c6a58565d571a3b6",
+      "docs/tla/CharlotteSnapshotRestore_ordering_unsafe.cfg": "5c773fbf7a6930b96ee72c86b0a06ecba3fae85b6e51b05e03164059052eb6f5",
+      "docs/tla/CharlotteSnapshotRestore_progress_unsafe.cfg": "8e8ff5e47b8a3d60cab8d400802ff594af6320666274ce7366482045f136a854",
+      "docs/tla/CharlotteSnapshotRestore_small.cfg": "d8356638da42d1a5f9e2bf70e011584a4d8e155f81401747b993c5df58f3c786",
+      "docs/tla/CharlotteStackGrowth.tla": "36dce6679dd969bd14136bb79c5c2cff8cec8df6479f0d33458ab196324a4a5f",
+      "docs/tla/CharlotteStackGrowth_grow_unsafe.cfg": "bef8d583b177e41bc58ef6312d0726129b58aa62f0539fe0e3b2b3dc4cf99e74",
+      "docs/tla/CharlotteStackGrowth_leak_unsafe.cfg": "d3df7e3d6e69ea109cb6b9ee06c57cf54c9d6d4ac92ede12b7497066093857d6",
+      "docs/tla/CharlotteStackGrowth_small.cfg": "1931995ce026befe604d6225a63e43cf5afbc336881c9141222af8943076baf9",
+      "docs/tla/CharlotteThreadJoin.tla": "3e61029e5fa352c6b065f0edd165a94f132095fb1c0d79c31b57d6761653b0e6",
+      "docs/tla/CharlotteThreadJoin_small.cfg": "64bf35e8eea699f9f8d1f1fd51c4c8c8b3f0e123a32912015546ea891563c819",
+      "docs/tla/CharlotteThreadJoin_unsafe.cfg": "1caa3d988aea11eefcc695c7524337b2ceac2ccfa8daa7620732affb6fc577d7",
+      "docs/tla/CharlotteThreadJoin_wrap_unsafe.cfg": "6304719f640bb360f0aa8f7c85face93526dea4e490f9de314dcc46bdf62eed9",
+      "docs/tla/CharlotteTimedWait.tla": "8739f35fb3eb7d97b5e9b41c786ada3f1f74d7bfd9d285fbb332bd457e06078e",
+      "docs/tla/CharlotteTimedWait_small.cfg": "a3d3b0fcaf80d4030a515699c0f02d29b6951f4e4170774df1c83cb558aba1d2",
+      "docs/tla/CharlotteTimedWait_unsafe.cfg": "1ffdb5d33dd8d1280de6aa281c33a646b6bfa111f6f3ac8eb82b9800c8833be6",
+      "docs/tla/check.sh": "3a6139ef7a9949e067d06d676f9c36af5bff1aedf93143c07f956a37eee7cda7"
+    },
+    "baseline_evidence": "docs/reports/audits/evidence/2026-10-19-security-platform-artifact-authority.json",
+    "baseline_evidence_sha256": "515e342264ea529fd563b290a89c7e0853775c193eb3c355b697f4c7bbdc3fd6",
+    "configured_modules": 34,
+    "configured_safe_cases": 36,
+    "configured_negative_cases": 109,
+    "mapping_limit": "Byte-level erasure and cryptographic internals are outside these models; no transition or proof claim changed."
+  },
+  "preserved_user_work": {
+    "path": "docs/manual-v2/charlotte.pdf",
+    "sha256": "3ebde3bbe4678ea406b74a67980d33dbd053e7053b4e160ce124001217a5481d",
+    "changed_by_this_batch": false,
+    "manual_sources_changed": false
+  },
+  "limits": [
+    "No demonstrated cross-domain secret read.",
+    "Named storage on tested host only; scalar temporaries, moves/spills and CPU copies are not covered.",
+    "Panic-abort, forced domain termination and power loss do not promise Drop.",
+    "Third-party TLS/HPKE state, identity parsing and wider host-tool/connector copies remain open.",
+    "No fresh external S3/Kafka/TLS interoperability or performance qualification.",
+    "No production trust/custody or protected-state implementation."
+  ],
+  "final_checks": {
+    "workspace_fmt": "cargo fmt --all -- --check: passed",
+    "diff_whitespace": "git diff --check: passed",
+    "documentation_validation": {
+      "local_targets_checked": 651,
+      "missing": []
+    },
+    "reviewed_source_and_model_fingerprints_rechecked": true,
+    "user_pdf_preserved_sha256": "3ebde3bbe4678ea406b74a67980d33dbd053e7053b4e160ce124001217a5481d"
+  }
+}
