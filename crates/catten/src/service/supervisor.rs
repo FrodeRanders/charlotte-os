@@ -1474,6 +1474,9 @@ pub fn elf_for_selector(selector: u64) -> Option<&'static [u8]> {
 /// established by the signature note. No match against a kernel-embedded
 /// copy is required; signing replaced the old hash-equality constraint.
 pub(crate) fn persistent_elf_is_trusted(image: &[u8]) -> bool {
-    charlotte_launch::signature_note::verify_elf(image, &charlotte_launch::CLUSTER_PUBLIC_KEY)
+    let Some(key) = super::admission::platform_artifact_key() else {
+        return false;
+    };
+    charlotte_launch::signature_note::verify_elf(image, &key)
         == charlotte_launch::signature_note::VerifyOutcome::Valid
 }

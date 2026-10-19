@@ -97,6 +97,7 @@ pub struct LoadedDomain {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DomainLoadError {
+    BootTrustUnavailable,
     AddressSpace(AddressSpaceRegistrationError),
     SignatureVerificationFailed,
     CompletionQueue(crate::completion::CqOpenError),
@@ -514,9 +515,10 @@ pub fn load_domain(image: &[u8]) -> LoadedDomain {
 /// publication/events. No live sponsor is replaced and neither artifact roles
 /// nor untrusted manifest input select this platform/resource policy.
 pub(in crate::service) fn load_name_service_domain(image: &[u8]) -> LoadedDomain {
+    let key = super::admission::platform_artifact_key().expect("boot artifact authority missing");
     try_load_domain_with_capacity(
         image,
-        &charlotte_launch::CLUSTER_PUBLIC_KEY,
+        &key,
         true,
         charlotte_protocol_ns::MAX_LIVE_PUBLICATIONS + 1,
         |_| Ok(()),
@@ -527,13 +529,17 @@ pub(in crate::service) fn load_name_service_domain(image: &[u8]) -> LoadedDomain
 /// Load an ordinary domain while reporting signature, backing, mapping,
 /// hardware-ASID and CQ preparation failures to runtime creation callers.
 pub fn try_load_domain(image: &[u8]) -> Result<LoadedDomain, DomainLoadError> {
-    try_load_domain_with_key(image, &charlotte_launch::CLUSTER_PUBLIC_KEY)
+    let key =
+        super::admission::platform_artifact_key().ok_or(DomainLoadError::BootTrustUnavailable)?;
+    try_load_domain_with_key(image, &key)
 }
 
 /// Trusted ambient supervisor path only. Scoped/syscall launches retain
 /// ordinary admission; neither artifact roles nor manifest fields choose it.
 pub(crate) fn try_load_platform_domain(image: &[u8]) -> Result<LoadedDomain, DomainLoadError> {
-    try_load_domain_with_policy(image, &charlotte_launch::CLUSTER_PUBLIC_KEY, true)
+    let key =
+        super::admission::platform_artifact_key().ok_or(DomainLoadError::BootTrustUnavailable)?;
+    try_load_domain_with_policy(image, &key, true)
 }
 
 pub fn try_load_domain_with_key(

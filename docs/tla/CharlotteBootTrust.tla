@@ -29,7 +29,8 @@ Init == \E mode \in Modes, initial \in {"None", "A"} :
         expected |-> "None", verified |-> "None", prepared |-> "None",
         recipient |-> "None", boot |-> "None", bootReceipt |-> "None",
         bootRecipient |-> "None", publications |-> 0, epoch |-> 1,
-        consumer |-> "None",
+        consumer |-> "None", selected |-> "None", platformAuthorities |-> {},
+        bootstrapLoaded |-> FALSE, platformLoaded |-> FALSE,
         commitFailed |-> FALSE, rejected |-> FALSE, observedFailure |-> FALSE]
 
 CanUseProtected == s.mode = "Fixture" \/ (s.mode = "Contract" /\ ProtectedBoundary)
@@ -54,12 +55,14 @@ RejectRecord(p) ==
 
 \* Conditional, atomic rollback-resistant CAS, not an implemented file write.
 CommitPolicy ==
+    /\ s.selected = "None"
     /\ s.mode = "Contract" /\ ProtectedBoundary /\ s.boot = "None"
     /\ s.stage = "Verified" /\ s.persistent = s.expected /\ s.verified # s.persistent
     /\ s' = [s EXCEPT !.persistent = s.verified, !.committed = @ \cup {s.verified},
         !.everInstalled = TRUE, !.stage = "Idle", !.expected = "None",
         !.verified = "None", !.commitFailed = FALSE]
 CommitFailure ==
+    /\ s.selected = "None"
     /\ s.mode = "Contract" /\ ProtectedBoundary /\ s.boot = "None"
     /\ s.stage = "Verified" /\ s.persistent = s.expected /\ s.verified # s.persistent
     /\ ~s.commitFailed
@@ -67,6 +70,7 @@ CommitFailure ==
 \* An interrupted conditional commit may have atomically taken effect. The
 \* caller cannot publish or reuse its receipt until a fresh protected read.
 CommitInterrupted(tookEffect) ==
+    /\ s.selected = "None"
     /\ s.mode = "Contract" /\ ProtectedBoundary /\ s.boot = "None"
     /\ s.stage = "Verified" /\ s.persistent = s.expected /\ s.verified # s.persistent
     /\ tookEffect \in BOOLEAN
@@ -76,6 +80,7 @@ CommitInterrupted(tookEffect) ==
         !.stage = "Blocked", !.commitFailed = TRUE]
 \* Another authorized installer can win after our expectation was captured.
 CompetingCommit(p) ==
+    /\ s.selected = "None"
     /\ s.mode = "Contract" /\ ProtectedBoundary /\ s.boot = "None"
     /\ s.persistent = "A" /\ p \in {"B", "C"}
     /\ s' = [s EXCEPT !.persistent = p, !.committed = @ \cup {p}, !.everInstalled = TRUE]
@@ -94,12 +99,28 @@ PrepareDevelopment ==
     /\ s.mode = "Development" /\ s.stage = "Idle"
     /\ s' = [s EXCEPT !.stage = "Prepared", !.prepared = "Development", !.recipient = "Correct"]
 
+\* Public artifact authority is selected once, before the bootstrap name
+\* service can load. Key custody stays in the existing preparation owner.
+SelectAuthority ==
+    /\ s.stage = "Prepared" /\ s.selected = "None"
+    /\ s.prepared = s.persistent \/ (s.mode = "Development" /\ s.prepared = "Development")
+    /\ s' = [s EXCEPT !.selected = s.prepared]
+LoadBootstrap ==
+    /\ s.selected # "None" /\ ~s.bootstrapLoaded
+    /\ s' = [s EXCEPT !.bootstrapLoaded = TRUE,
+        !.platformAuthorities = @ \cup {s.selected}]
+LoadPlatform ==
+    /\ s.boot # "None" /\ ~s.platformLoaded
+    /\ s' = [s EXCEPT !.platformLoaded = TRUE,
+        !.platformAuthorities = @ \cup {s.selected}]
+
 PublishMutation(policy) ==
     s' = [s EXCEPT !.boot = policy, !.bootReceipt = s.persistent,
         !.bootRecipient = s.recipient, !.publications = @ + 1,
         !.prepared = "None", !.verified = "None", !.recipient = "None", !.stage = "Idle"]
 Publish ==
     /\ s.stage = "Prepared" /\ s.boot = "None"
+    /\ s.selected = s.prepared /\ s.bootstrapLoaded
     /\ IF s.mode = "Development" THEN s.prepared = "Development"
        ELSE CanUseProtected /\ s.prepared = s.persistent
     /\ PublishMutation(s.prepared)
@@ -121,7 +142,8 @@ Reboot ==
     /\ s' = [s EXCEPT !.stage = "Idle", !.expected = "None", !.verified = "None",
         !.prepared = "None", !.recipient = "None", !.boot = "None",
         !.bootReceipt = "None", !.bootRecipient = "None", !.publications = 0,
-        !.consumer = "None", !.epoch = @ + 1,
+        !.consumer = "None", !.selected = "None", !.platformAuthorities = {},
+        !.bootstrapLoaded = FALSE, !.platformLoaded = FALSE, !.epoch = @ + 1,
         !.commitFailed = FALSE, !.rejected = FALSE]
 
 Next ==
@@ -131,7 +153,8 @@ Next ==
     \/ (\E b \in BOOLEAN : CommitInterrupted(b))
     \/ (\E p \in {"B", "C"} : CompetingCommit(p))
     \/ (\E k \in {"Correct", "Wrong"} : AcquireRecipient(k))
-    \/ PrepareSigned \/ RejectRecipient \/ PrepareDevelopment \/ Publish
+    \/ PrepareSigned \/ RejectRecipient \/ PrepareDevelopment
+    \/ SelectAuthority \/ LoadBootstrap \/ LoadPlatform \/ Publish
     \/ RejectPublication \/ BorrowView \/ DropPreparation \/ Reboot
 Spec == Init /\ [][Next]_vars
 
@@ -170,6 +193,13 @@ UnsafeUnsupportedProduction ==
     /\ s.recipient = "Correct" /\ s.boot = "None" /\ s.verified = s.persistent
     /\ PublishMutation(s.verified)
 
+UnsafePlatformFallback ==
+    /\ s.selected \notin {"None", "Development"}
+    /\ s' = [s EXCEPT !.platformAuthorities = @ \cup {"Development"}]
+UnsafeSelectionOverwrite ==
+    /\ s.selected = "A"
+    /\ s' = [s EXCEPT !.selected = "B"]
+
 UnsafeUninstalledSpec == Init /\ [][Next \/ UnsafeUninstalledPublish]_vars
 UnsafeStaleSpec == Init /\ [][Next \/ UnsafeStaleCommit]_vars
 UnsafeEnrollmentSpec == Init /\ [][Next \/ UnsafeEnrollmentFallback]_vars
@@ -180,6 +210,8 @@ UnsafeAuthenticateSpec == Init /\ [][Next \/ UnsafeAuthenticate]_vars
 UnsafeDevelopmentSpec == Init /\ [][Next \/ UnsafeDevelopmentFallback]_vars
 UnsafeFailureSpec == Init /\ [][Next \/ UnsafeFailedCommitPublishes]_vars
 UnsafeBoundarySpec == Init /\ [][Next \/ UnsafeUnsupportedProduction]_vars
+UnsafePlatformSpec == Init /\ [][Next \/ UnsafePlatformFallback]_vars
+UnsafeSelectionSpec == Init /\ [][Next \/ UnsafeSelectionOverwrite]_vars
 
 TypeOK ==
     /\ s.mode \in Modes /\ s.persistent \in Authentic \cup {"None"}
@@ -187,6 +219,8 @@ TypeOK ==
     /\ s.stage \in {"Idle", "Expected", "Blocked", "Verified", "KeyOwned", "Prepared"}
     /\ s.expected \in Authentic \cup {"None"} /\ s.verified \in Records \cup {"None"}
     /\ s.prepared \in PolicyIds /\ s.boot \in PolicyIds /\ s.consumer \in PolicyIds
+    /\ s.selected \in PolicyIds /\ s.platformAuthorities \subseteq PolicyIds
+    /\ s.bootstrapLoaded \in BOOLEAN /\ s.platformLoaded \in BOOLEAN
     /\ s.bootReceipt \in Authentic \cup {"None"} /\ s.publications \in 0..1
     /\ s.recipient \in {"None", "Correct", "Wrong"}
     /\ s.bootRecipient \in {"None", "Correct", "Wrong"}
@@ -204,7 +238,13 @@ RecipientBound == (s.prepared # "None" => s.recipient = "Correct") /\
     (s.boot # "None" => s.bootRecipient = "Correct")
 ExplicitDevelopment == s.prepared = "Development" \/ s.boot = "Development" => s.mode = "Development"
 ConditionalBoundary == s.mode = "Contract" /\ s.boot # "None" => ProtectedBoundary
+SelectedAuthorityMatchesState == s.selected # "None" =>
+    IF s.mode = "Development" THEN s.selected = "Development" ELSE s.selected = s.persistent
+PlatformImagesUseSelectedAuthority == s.platformAuthorities \subseteq {s.selected}
+PublicationUsesSelectedAuthority == s.boot # "None" => s.boot = s.selected /\ s.bootstrapLoaded
 Invariants == TypeOK /\ VerifiedAuthenticated /\ InstalledBeforePublication
     /\ NoForkedInstallation /\ NoRollback /\ NoEnrollmentFallback /\ OnePublicationPerBoot
     /\ SharedPolicy /\ RecipientBound /\ ExplicitDevelopment /\ ConditionalBoundary
+    /\ SelectedAuthorityMatchesState /\ PlatformImagesUseSelectedAuthority
+    /\ PublicationUsesSelectedAuthority
 =============================================================================

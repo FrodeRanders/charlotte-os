@@ -1,0 +1,1513 @@
+{
+  "schema": 1,
+  "report_date": "2026-10-19",
+  "reviewed_revision": "6a7c77cf",
+  "classification": "SEC-04 partial; production disabled",
+  "reviewed_source_sha256": {
+    "crates/catten/src/main.rs": "96470ff3c8bfcbe6fdfb05c3e7ff39655ae5519e8f8fcc95b3eb15f1460df69f",
+    "crates/catten/src/self_test/el0_sitas.rs": "c7e98a944bd6d53b536116480eecebb7b4ea7eaf3d7dffcd7c38568c6d4a349c",
+    "crates/catten/src/service/admission.rs": "8300c0a183d69b4c57c3b3fc53ddd1a404a0dde7f7633c9656e21d58eef843a4",
+    "crates/catten/src/service/admission/tests.rs": "2db240b52e244a181651c35dca80e392cadb1386e606169a1d4a1b1db37e6587",
+    "crates/catten/src/service/launch.rs": "6f055bda440853d73ff17ed22b4c989888dd0df1291fa80f2f178db8ca58c41c",
+    "crates/catten/src/service/loader.rs": "c67d150837be0d021655a4944ff9e1f20fbabeb3298292b66f5d9819cd4bd8b7",
+    "crates/catten/src/service/loader/admission_tests.rs": "81463a233e5abf8b0ed134f7c02c114caa19a3845f0c0a0dea3c2dc02c1e4d3b",
+    "crates/catten/src/service/store.rs": "9e64eadd5caa7ba79a43dae0333035b7f60e2f61bbbac60f9763124893ff9bfa",
+    "crates/catten/src/service/supervisor.rs": "9273436e82f2a1cdac3d5c3edd19711577f702cfd33743720f201e3171c0cec3",
+    "docs/guides/qemu-secure-boot.md": "7c7812695ac5217f0492fe871a9b490fa88d4e36554dee06cce7eeba8e2324c3",
+    "docs/guides/signing-and-trust.md": "9a0e643611697d0f4385b4f6ac0347506868b13a0f8f832f1525462139f8ca74",
+    "docs/guides/testing.md": "c7ef59d70c1f58d475d42f3bbaaaecac2779bcb3860ce514f602592535aced90",
+    "docs/manual-v2/chapters/21-formal-safeguards.tex": "a72d5846d568011b143ed3bea01313457df4d1d0f893feca6695a436645cf352",
+    "docs/reference/api-simplification.md": "3d2be3e132b36d29e5302ab11e306686bba202bdc852a47a2674f8f41a7e8c63",
+    "docs/reference/bootstrap-trust-policy.md": "157028929d35566fe446674a5ab5905858877ba74902ca741c2c350b84941d74",
+    "docs/reference/cleanup-recovery.md": "f2c0003dee2683d73c1ad0352cb41db6ee4f024955852e21d19aa7beede8e6e1",
+    "docs/reference/security-remediation.md": "10f23b73bd53ab6e35c09845b7c5c14aa9d3754150e6246af30957a3266492ac",
+    "docs/reports/README.md": "9c366c1920ab798527e911c5fb7734481f184cb3f3f52cc0d193d64c34c8c94d",
+    "docs/reports/audits/2026-10-19-security-platform-artifact-authority.md": "6e8ef1c58d31d9131a9b4a1ef7f7f69de1dec1386748b3fa716ab33d2b1b2830",
+    "docs/tla/CONFORMANCE.md": "fa1d7af1d77b6c177122930826eddb27cfa0b26c626885d21598b794c28cc3fb",
+    "docs/tla/CharlotteBootTrust.tla": "c9edb0a6f74bc3d0dac70ea14eae1eee59e15774356bbad191d55f5467882a29",
+    "docs/tla/CharlotteBootTrust_platform_unsafe.cfg": "68b37ab0eb83682fa55e89ec62ae39c123b48dfce1abbd6f1bca86e4dfb239a7",
+    "docs/tla/CharlotteBootTrust_selection_unsafe.cfg": "a8eb3675ee03bc1c5a459c522ab94a26ce40a5abbefed662cde4776cadea0990",
+    "docs/tla/README.md": "c0424a02e8dcf4d6c957be9d9b6579ee42c0a5cb6df5499d4ff9d7d0d92b185b",
+    "docs/tla/check.sh": "3a6139ef7a9949e067d06d676f9c36af5bff1aedf93143c07f956a37eee7cda7",
+    "scripts/run-secure-boot-test.py": "31c4379313b4c89b39ee2f62a2e7f339b3e4190274becc6ed80195df0aac01be",
+    "scripts/tests/test-secure-boot-results.py": "03f23fd648d060b6b21e669ac50bb44e6e972e926c7cbc7b2c9488fbbfd3bd68"
+  },
+  "host_validation": {
+    "secure_boot_parser": {
+      "log_sha256": "c6b9b1f09add0403cc07e90bfdf272129b1ddfa2f8f7675ea8218862f2516371",
+      "exit_status": 0,
+      "tests_passed": 6
+    },
+    "clippy_x86_kernel": {
+      "log_sha256": "9c6e65b732d164c21643ec943199d29debf3dcbdada1fc39d9cd9aa0a26c041b",
+      "exit_status": 0
+    },
+    "clippy_arm_kernel": {
+      "log_sha256": "1134f1187f76ed3aa3c1985b6bab2e3ca3da0f2adfbd61e8e1b1c19d27a9d949",
+      "exit_status": 0
+    },
+    "signing_policy_controls": {
+      "log_sha256": "eb9da94e31fc71d0a103b4134c6129330f7734325053d62544a4f869ea5548bd",
+      "exit_status": 0,
+      "diagnostics": "signing policy tests pass (defaults, fail-closed modes, traced retired variable, early runner/build rejection)"
+    },
+    "workspace_fmt": {
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exit_status": 0
+    }
+  },
+  "builds": {
+    "arm_services": {
+      "log_sha256": "dd4acf304e2d7da5d2d7fec77468640b7e3416149a04e210e80e8d93bc5f2b5d",
+      "exit_status": 0
+    },
+    "arm_freshness_signatures": {
+      "log_sha256": "c48bbd42bad309699700382d722cec9b9df6d2fac30df879d14b75fbc6e76977",
+      "exit_status": 0
+    }
+  },
+  "bundles": {
+    "aarch64-unknown-none": {
+      "file_sha256": {
+        "agent.elf": "e5a8430de09b0f3079739e092f438bbe8e0e5c684d625582398f3283b96734bc",
+        "cclient.elf": "eabfb6a219396f084ac316e8d565e8c4fbf28b4184cbecd2dc0dee205a0afb3e",
+        "client.elf": "e4352ce9d6c6fe49a825b6db944ed832445cf939e77297c9f3b4cd96bcd30f49",
+        "clusterctl.elf": "e0c4a696fd28f09c2b4ec86d44532b80ed338f3e74647b6f4a6e7545ae15e6fd",
+        "deployd.elf": "d8f7e1793101df9aee1e24652cd546c4556040da8ce4e2486e73ca58196511c3",
+        "disco.elf": "a6b170d30b6b8b50aaf02686016eba19d6ac77eff5beae8a687a53ac3e33307a",
+        "dns.elf": "d2a588c2a209035d26a3457b7124cfdf5366444b6d233e6af25fa90efc4de25c",
+        "echo.elf": "8c6376c7cffd19941c855eb572923f9917b93fc6d861054aa7ff2ca64e4a34d3",
+        "frouter.elf": "c02e73da6ea1bddbf712ed7820833618dd392f9b89b56d4459482546b3400b68",
+        "fs.elf": "6ef9175ecbab7da6783673c353801744435a6962912f032e2d521030797b8c89",
+        "grantctl.elf": "2d0c103bcf74b0940217655010e7564199c075dd2717b003c0071a50afe36422",
+        "greet.elf": "5aa196a560a1d96310d027a577e7b7aa4a3f4b3945246b2efd3dd5a20251f4e8",
+        "httpd.elf": "a1df110edab1b5549c4910a7263c69f4ab29e4fadf5c489112005447a15ead0d",
+        "kafka.elf": "5e9e5eee1e72b3a4df5fd5a66b9dc7f1a15864aa1ec0a63fd82e28b40aedfec1",
+        "kafka_fence_smoke.elf": "39d628a5a2856b4562512b0191eef2ca39b846286fda2de236c457df9742eb69",
+        "kafka_smoke.elf": "4684ea5ec4968f81e45b3ba4e3160dbd257ea4d47d1ccb887087b170ea225ab7",
+        "kafka_step.elf": "b31468ed046bbb47bb1da7add95161aaf78cb89807835c7ff7a26e5f805ffdda",
+        "kafka_step_input.elf": "889d40948865f2c4251f2f2659b7dd6294555426a1a7312d366be1e393ffbde6",
+        "kafka_step_proc.elf": "4394deeb08b058e9322b9ff3cf845575c6dcc6e2d23a9d59400c333ac7f3f73a",
+        "nclient.elf": "6b7f614ebced9ea722446e331b6a5a4f980101d4bf6d85e11cc64debb0ce4919",
+        "net.elf": "ef428842ec8d382488d26ea2b7f1c20f3d6951dd58136b68c6720e675c8fe580",
+        "ns.elf": "625134cd55e7c1617367561b6c7b78580d7782606a5f6e68a4bf5e93b5931726",
+        "nvme.elf": "8c60f8f649481c558db4fafc5e2e25e4226d6b3142e402462c874f30c6ff4846",
+        "nvme_client.elf": "d8b3ce038ed86a31418996e5585e69f0cb3b27b132c125d7c0b95e91be539587",
+        "objstore.elf": "77b473098c544266582d65c9c0bae290f7d78a63ff4b1448171f5a2c1d7a2047",
+        "objstore_client.elf": "2386460fb9587e29db2255e84c208b98096887ac02c1f8958e06e4d006a533d4",
+        "observe.elf": "8872b58e1cf74a8517047a5fb05f99378391159974079877490d4ec739a8e8e1",
+        "raft.elf": "9fc0dd3b77ba2edff7914bcdf9834ecbeb9afcdb9215774810b08a418f5679c5",
+        "rclient.elf": "abd929c3aebdea624d703c55386d28707bad2b3dae1a267074cbb5dc3ed854ab",
+        "relmsg.elf": "27312ab0253caa8e8bda232dc00ec969598079a6f4835c7da3bd8268c32a605b",
+        "rng.elf": "9f1256d45ac33f5ad6f254aaa0fc7d91d6c9748299116a1df84e6ad4725a9ab4",
+        "s3.elf": "cac4b03caa2d86a371557931d65498d5d683dac77305a2bfbc054165e4074628",
+        "s3_smoke.elf": "e264c2aa65f068377683497d64df1f646ceeace2cdcac754bc9a8f5186d44e4b",
+        "security_probe.elf": "01ce38fe73c2da46ea27c034d808e5b3c04008769cffcb60be1d70af3232f5f7",
+        "servicemgr.elf": "152ab24cc394bfd2cb99609b7bacedbb3334c842dac413ea039626e7a21da3bc",
+        "shutdown_probe.elf": "fea129342eea8752f50e6bbd1bc14d939aaa8fc1d5166a44f4ccd2cb8e33e2cd",
+        "sitas-user.elf": "a01b596eab01adc9f8bf7ac45228b1b21da9dcdb00b9e38799850358d01ed564",
+        "tcpclient.elf": "a302ae9569b052731fdeb308ab7870221b8ae5dbdd0cba12219672c13786ee88",
+        "tcpip.elf": "ba7971118e9eb9202374c6d930bdb5424b171a1b4f9bb34f9c7c99bba216142d",
+        "time.elf": "8acbe8799ac834a82e4c7e03dd5c15f861226f121fbf14d76a93efdc94905a69",
+        "uart.elf": "c08105fdc5f52305fe5274515a06e319a99d9cd96dd4b7df8660856049ea173c"
+      },
+      "file_count": 41,
+      "matches_preceding_batch": true
+    },
+    "x86_64-unknown-none": {
+      "file_sha256": {
+        "agent.elf": "bb1a32778f0cd91f444bd8e259d747a093216df846507233dc9701928688083a",
+        "ahci.elf": "1d6bc8c21e87cf407f7e69d90a2cf6864001067df7ae81303a73fdb2386a3ad1",
+        "client.elf": "b39a5b65682aef5ddbf036f4fd28f8ddf10b253de8e7f462fb759ab8c21d84a9",
+        "clusterctl.elf": "e61c89c713d0003998eca19795e9c49248105a44ce50fddd706efb54f4b5db94",
+        "deployd.elf": "069d35669b1a8201d9a1b0c76b6c259155c4d0c37276cc95d9730dc66b29a11d",
+        "disco.elf": "9a0034e984b9f2ee830761aa76e2354a23309e577610dfb744084db836e8498f",
+        "dns.elf": "c0541b7df5b4a4d175c3a28fd968c3d7dfc7ce78c0064d055fc04d82e0a4b018",
+        "e1000e.elf": "849bb3f36feba3b16ad53a2f21cbbb8490ea4a22b21a2194a896a54e981753bd",
+        "echo.elf": "1f97a913f03e10cf711ef54ddcfb57bb015c9e7d8efa2ba411abd6928c2ca075",
+        "frouter.elf": "ad5893bc0975fef8ea9c7be5d10adcbe1a97ef23d835aeb38ad2773deb59270d",
+        "fs.elf": "775eae53dccae95934f56451d3b7272796208c109abc06cfc91a9270aa358ae8",
+        "grantctl.elf": "3cac10abadecba08db552ad3fd1ad80c5a9396429db9bc2a72c9f8da1f39df30",
+        "greet.elf": "ef1b37efe9279bc7f621d988de140ec305ee0f819badeeff73c5c210d5e43f11",
+        "httpd.elf": "d66712c70fb7deacb4ae5c6a728d099e97b9f8d870557f338714cc2774227254",
+        "kafka.elf": "9088ae6973b078afbc5afa931b7bdb20ced240d354017fcdc00dd77699d16fda",
+        "kafka_smoke.elf": "b1a661062d107be7021f93b4d881bdb10867f93daf37f76551b7d2c038441c2c",
+        "nclient.elf": "9690abcdd7eb06d94e46a8e29f7f235a1525235664d7ff5acf2544f3df3be246",
+        "net.elf": "22e898b9d79669e7320526ff967f3bed0106834510876f19856d2f0c6385b12d",
+        "ns.elf": "6239d3be2f0d4a8e8608a654ad626f4c7fc3a10c65e2415a6f0c4244f0fd6868",
+        "nvme.elf": "ca593c17fc8cd55cd75dbbcd63846315b243a5000663b37e18a5bbe4b647eb03",
+        "nvme_client.elf": "24c35a57c299919ba5753b990335bb7b0887b98bfc1ffa31566b0ab96922b46c",
+        "objstore.elf": "45c78df677404ebb6f4b20fa2c1c28f4921d5bf0b274863c54a7f524a6982ebf",
+        "objstore_client.elf": "90fb70737df77b2721a4b24b118b58fb7240866fcdf6818309b53a710a6d139a",
+        "observe.elf": "89425004fdf5423913f29f4f6c5fb3fca4c290c43855c2c016e1fe86a54e53d7",
+        "raft.elf": "f92b8da2efa8d1cd6e28ec2677fb3fdd9ceff44f9342746ccb45b3d96de15e94",
+        "rclient.elf": "d2134e71080f235e8d57b2ba9bb3324d42c149ead19f4920fb3b5dd20ff89869",
+        "relmsg.elf": "ba55948686aa3f6e8a5ad3963644b2f13fcc3a544fb4c58b73bec1fda6e95144",
+        "rng.elf": "5389476974b3794f1ecb9ea94e2d8a9c4da990c99b1faa8619a48d9d4d22df34",
+        "s3.elf": "978ff13e33b08abeced8b5b3541d34a918479c778e2dc51527d38eed2a350387",
+        "s3_smoke.elf": "6874aeb889b7ddd3c208b34a6536dc457c69f290dfe364d297a2c2bb8826d4bc",
+        "security_probe.elf": "6e65a26dcf8c1fe87e19d57108c418b2c3059ac558961db1d5a4445306747e59",
+        "servicemgr.elf": "422184fb6d5d9d49cde235e2989a9026fe30b2b6931b22c099a31bd6ff08bf96",
+        "shutdown_probe.elf": "8cd800e4c17bbbab4cee6c9bfb15c640660de996ca133255d401108adebda372",
+        "tcpclient.elf": "9ccbd7617923aaacaa9d8dd94f00a6ba2a190264516461ccf881b3246d349375",
+        "tcpip.elf": "99a123c84b73db9432b0be71847d6688c1543aa562735adca2a0c47c2764f2ea",
+        "time.elf": "0258b9d92e020e78062838e6454e710f99796973a071e06d96d683756806b1cf",
+        "virtio_blk.elf": "96ee045fdcdd0a2c7d0735bde7b9bc7a962f0e51fbb7b5e5dd85d90b3f51eb1a"
+      },
+      "file_count": 37,
+      "matches_preceding_batch": true
+    }
+  },
+  "secure_boot_native": {
+    "command": "python3 scripts/run-secure-boot-test.py --firmware-code /opt/homebrew/share/qemu/edk2-x86_64-secure-code.fd --vars-template /opt/homebrew/share/qemu/edk2-i386-vars.fd --output <fresh-owner> --timeout 120",
+    "exit_status": 0,
+    "boot_image_mib": 128,
+    "results": {
+      "test_only": true,
+      "firmware_sha256": "32807682a9e5c0e2d192ecb6077941d4be8bcfa6b9cd6e60830c3a9f48c0555a",
+      "kernel_blake2b": "9272fb943cd967f5006685d461c4bee1274d174c504db836c6e9c12112f0981dd69b0e0fd215338a27619fd2b71de4e950acaf64bcc2c4d6f2b2b92f331983c8",
+      "policy_blake2b": "872e9d9d87e969ef96f0f4ff8a0840d10aa036d276158d4d684a8873d506202b834b286d648c35a79bfad905dd773384293d5cd7ceeba152baaee741eb335ba2",
+      "config_blake2b": "e90aac7edda4b4cfb8da70bf8cc5e37e36d75a34d57072f33da74a579a3d29e3427e443ea51ccc66e6bf5f665281bf1c6d44f5c77a2132bafbc1f54fdb0cb42c",
+      "kernel_variants_blake2b": {
+        "selected-root": "9272fb943cd967f5006685d461c4bee1274d174c504db836c6e9c12112f0981dd69b0e0fd215338a27619fd2b71de4e950acaf64bcc2c4d6f2b2b92f331983c8",
+        "platform-ns-root": "6e99d3f5b4d9e2c51fa701d6dcd19b9fb72c25769a93e7e72ab3cbd0a8696ce7834b9ef2aefe6e0d563fc9c9aac31b6174fe91d4a895370ab9208acc9f9a7c59",
+        "platform-driver-root": "efd9700a2102693de1de7ae38e1a8e8e097ea086fd0ba4ab533a4db521888f563d17803635292bb517363ee2a5292372f1a1fc54aec9cc7adf9b1f2cb6631ef7"
+      },
+      "platform_bundle_sha256": {
+        "agent.elf": "6f1fb17282400e385c014537bd97331b8d5aa085772c589f1a4cffe7dbd048a3",
+        "ahci.elf": "2212bd799eb210ac8998fc4d4eae61f8d55d8ee83f28eda451047ac785633c12",
+        "client.elf": "f5a4473b346909bdc8d966498b4faa5d8bde9e40067bf9778d1de98aa673748b",
+        "clusterctl.elf": "794130cc205fce0cdae214f705b398d87688b393f627fe3a9683948692c4caa6",
+        "deployd.elf": "a0e67011408119b0c9be9e2d5e0b1c4fe56e111435bcce7955edea5731560e16",
+        "disco.elf": "ca32431135df01d112dbca330009572d9004f31f22f5e2fba2d0f1d49dc59c30",
+        "dns.elf": "8d39ebd0e0bfcf4cbd955c8788b8e7bb8ff97b3a1b1f5169fed0547dd5d1f95e",
+        "e1000e.elf": "292cb964fa6b873ca8fe44cc9625a09e88e988deb224481314b3d5e09bfdf27c",
+        "echo.elf": "52b074b0420ef28ccfefc8e7e917ca34209ad1306f0c20045eb4a82d658420e3",
+        "frouter.elf": "64c43fe16603cd16b61b8e73ab12f2a0e6317e0ea0e81d7b5becb03097b99832",
+        "fs.elf": "09207cb590d520b93333b6055655d4e02c9bab2ea3fbc92444fbe78cd9de0453",
+        "grantctl.elf": "9e5934af4c848e41d2911f6ea405946d55363710aacc4f2572d288a7dde53cd6",
+        "greet.elf": "f808406ba9e6008481ad7ed0045c1ce39760398875f1f329461b6f5f1042bfe1",
+        "httpd.elf": "30508ced09b93ea29f791ea3744efcd75ac80da6d350af4ab1cfd60f398e0020",
+        "kafka.elf": "371285a28f4e634f2453865dab0f4bd06dca48e76f854ca8577c3559df9391ec",
+        "kafka_smoke.elf": "e7d7a01202ee4b981e24f920a894b101a131a444ffb82cb72fd33853aad6e3ea",
+        "nclient.elf": "f89d327f843774f5076068ca72c01dc7ed2c995115ccf76e14fd905d55896061",
+        "net.elf": "3bc2d2c2d5ca81ce4c1f4278735c95cbd834a5f573cfae26088edd3193ea27e0",
+        "ns.elf": "040cba13b039d75d56e2a4a2b56eb00c652fe9a97c50396e06a7920debeb0df3",
+        "nvme.elf": "070d66a84c1a938073791a8ab7d649d950e7c2117ff0bf63c8d8d78eed0f66e1",
+        "nvme_client.elf": "d7374344cb13047951c3821dd6e1bbd380f2f532e9ad5381ba8dfafc176d9c1b",
+        "objstore.elf": "0a22a626b86a2f012c6cf0adb1cdfaed72be8f7e07c0104b065bd393e4700920",
+        "objstore_client.elf": "b77dfe43f9c3bd23a386241cd91501a697252b30f51dc1c48ac373d13781811b",
+        "observe.elf": "a00c8d7aa43c01d7e166b8085028b64556a9242b0acda313760462250107ec8a",
+        "raft.elf": "0e2c48b8fc8278ba95a9190e5d3dddc8abfa4dd323bea39cbd0356e416191f7b",
+        "rclient.elf": "188338fbb10f2cfd7a5616bbb1a8034aa92225523e77fc79a0b34b59ea011b39",
+        "relmsg.elf": "7bd445f8876064dcf4a5c4e2bb7ec354d09b601b284a081bb88e0e4ac5b79d72",
+        "rng.elf": "472d5b4568f640bbf08301d2b12c880106a47e8827217c7feb63e66e9404de0f",
+        "s3.elf": "0115cb2f901a1a0cded4ec62c6224ab869dbdb35a4591fb51a8f4c70aa942ea8",
+        "s3_smoke.elf": "eafc54e18ae957cf5cc78c4caafbdded7725295863be0954d5036981e7ca8009",
+        "security_probe.elf": "d8ca3d71eb703da1f4ad2c8724957f4d60935c9492d75643cf9d5d228cf0dade",
+        "servicemgr.elf": "74d5c185f34528ca404d331172ed3df5e6d526fb602b6d73ea25d19198665048",
+        "shutdown_probe.elf": "a72954ad9ef987c7e89056b3ec56edfdc38ca15fe4094977ff9bee8b9a76e0bc",
+        "tcpclient.elf": "252a30d2b7be3c0113eba8fb31b682020ddd240ef098b9c28ae27e51ac84b329",
+        "tcpip.elf": "e77e86c8f7316fd2c7bd98def2428202c8ebade9d561b28ef1a5b68d79667f59",
+        "time.elf": "6a874cc40da3ce47c2296c472ff349af217a5e7bdb11813d14c5165f56c2498a",
+        "virtio_blk.elf": "a4695048d7272b69595565b79d38fbc44a8ecf04732736a1af3fde99a3910991"
+      },
+      "signed_loader_sha256": "45301b84a8f20d797f50a7030f24b9bb1698cebde7d8a3be1c09bb38c2fa00c2",
+      "results": [
+        {
+          "case": "valid-intel",
+          "evidence": "success",
+          "passed": true
+        },
+        {
+          "case": "valid-amd",
+          "evidence": "success",
+          "passed": true
+        },
+        {
+          "case": "unsigned-loader",
+          "evidence": "firmware",
+          "passed": true
+        },
+        {
+          "case": "foreign-loader",
+          "evidence": "firmware",
+          "passed": true
+        },
+        {
+          "case": "tampered-loader",
+          "evidence": "firmware",
+          "passed": true
+        },
+        {
+          "case": "config-tamper",
+          "evidence": "config",
+          "passed": true
+        },
+        {
+          "case": "kernel-tamper",
+          "evidence": "kernel-hash",
+          "passed": true
+        },
+        {
+          "case": "policy-tamper",
+          "evidence": "policy-hash",
+          "passed": true
+        },
+        {
+          "case": "policy-signature",
+          "evidence": "InvalidSignature",
+          "passed": true
+        },
+        {
+          "case": "policy-rollback",
+          "evidence": "RevisionRollback",
+          "passed": true
+        },
+        {
+          "case": "policy-conflict",
+          "evidence": "RevisionConflict",
+          "passed": true
+        },
+        {
+          "case": "policy-next",
+          "evidence": "UninstalledRevision",
+          "passed": true
+        },
+        {
+          "case": "missing-module",
+          "evidence": "policy module",
+          "passed": true
+        },
+        {
+          "case": "duplicate-module",
+          "evidence": "exactly one policy module",
+          "passed": true
+        },
+        {
+          "case": "platform-ns-root",
+          "evidence": "platform-ns-root",
+          "passed": true
+        },
+        {
+          "case": "platform-driver-root",
+          "evidence": "platform-driver-root",
+          "passed": true
+        }
+      ]
+    },
+    "results_sha256": "50697785d91d121cb91f1371d39c274976cf37c36ea632afb57a18bfbb360b11",
+    "runner_log_sha256": "4ebd6edba94766608a1df3c3d3593157b854c424c383b31021715fc2a75e4dfa",
+    "preparation_log_sha256": "e27b7d0c8cec70c44abceb4471ff7189b2b57f5dbd2007ce8a42b39eae660657",
+    "case_results": [
+      {
+        "case": "valid-intel",
+        "evidence": "success",
+        "passed": true,
+        "serial_sha256": "0c00374524d04c293efefeda002ab40d33b64bd92e2cbe165b6439cc9e3558a4",
+        "qemu_log_sha256": "5871a40fe8129c836d759acf4330f0a5a78c12facab1aa68f18b73ad10dcf394",
+        "diagnostics": [
+          "[+     0.087990] [boot trust fixture] verified signed module: revision=7",
+          "[+     0.088560] [boot trust] artifact authority selected before platform services",
+          "[+     0.125662] [node] name service started (asid=1, tid=4)",
+          "[+    12.083234] [boot trust] signed handoff, cluster/recipient rejection, shared manifest/gate policy and one-shot publication passed; early artifact selection retained",
+          "[+    14.486365] SELFTEST COMPLETE: passed=15 failed=0 pending=0 passed_bitmap=0x1bbff failed_bitmap=0x0 pending_bitmap=0x0"
+        ]
+      },
+      {
+        "case": "valid-amd",
+        "evidence": "success",
+        "passed": true,
+        "serial_sha256": "1e75789bc7cbf7f7f6d40a714f391d86f603757d965ecb156419617ac108bba5",
+        "qemu_log_sha256": "5871a40fe8129c836d759acf4330f0a5a78c12facab1aa68f18b73ad10dcf394",
+        "diagnostics": [
+          "[+     0.077060] [boot trust fixture] verified signed module: revision=7",
+          "[+     0.077608] [boot trust] artifact authority selected before platform services",
+          "[+     0.115261] [node] name service started (asid=1, tid=4)",
+          "[+    12.399611] [boot trust] signed handoff, cluster/recipient rejection, shared manifest/gate policy and one-shot publication passed; early artifact selection retained",
+          "[+    14.772724] SELFTEST COMPLETE: passed=15 failed=0 pending=0 passed_bitmap=0x1bbff failed_bitmap=0x0 pending_bitmap=0x0"
+        ]
+      },
+      {
+        "case": "unsigned-loader",
+        "evidence": "firmware",
+        "passed": true,
+        "serial_sha256": "226b774b9fb529bad69add38b65aeedf8f5b6ca5a5b98e6201a7db900e70380c",
+        "qemu_log_sha256": "5871a40fe8129c836d759acf4330f0a5a78c12facab1aa68f18b73ad10dcf394",
+        "diagnostics": [
+          "BdsDxe: failed to load Boot0001 \"UEFI QEMU QEMU USB HARDDRIVE 1-0000:00:02.0-1\" from PciRoot(0x0)/Pci(0x2,0x0)/USB(0x0,0x0): Access Denied"
+        ]
+      },
+      {
+        "case": "foreign-loader",
+        "evidence": "firmware",
+        "passed": true,
+        "serial_sha256": "226b774b9fb529bad69add38b65aeedf8f5b6ca5a5b98e6201a7db900e70380c",
+        "qemu_log_sha256": "5871a40fe8129c836d759acf4330f0a5a78c12facab1aa68f18b73ad10dcf394",
+        "diagnostics": [
+          "BdsDxe: failed to load Boot0001 \"UEFI QEMU QEMU USB HARDDRIVE 1-0000:00:02.0-1\" from PciRoot(0x0)/Pci(0x2,0x0)/USB(0x0,0x0): Access Denied"
+        ]
+      },
+      {
+        "case": "tampered-loader",
+        "evidence": "firmware",
+        "passed": true,
+        "serial_sha256": "226b774b9fb529bad69add38b65aeedf8f5b6ca5a5b98e6201a7db900e70380c",
+        "qemu_log_sha256": "5871a40fe8129c836d759acf4330f0a5a78c12facab1aa68f18b73ad10dcf394",
+        "diagnostics": [
+          "BdsDxe: failed to load Boot0001 \"UEFI QEMU QEMU USB HARDDRIVE 1-0000:00:02.0-1\" from PciRoot(0x0)/Pci(0x2,0x0)/USB(0x0,0x0): Access Denied"
+        ]
+      },
+      {
+        "case": "config-tamper",
+        "evidence": "config",
+        "passed": true,
+        "serial_sha256": "fa703bad336f28e2482ea7414acb016f5ac130e2d457579dcedeee6d21ec5151",
+        "qemu_log_sha256": "5871a40fe8129c836d759acf4330f0a5a78c12facab1aa68f18b73ad10dcf394",
+        "diagnostics": []
+      },
+      {
+        "case": "kernel-tamper",
+        "evidence": "kernel-hash",
+        "passed": true,
+        "serial_sha256": "41147560208a667cb61bdd3ea9fa802c174739ba2483527d093b23e70c384b21",
+        "qemu_log_sha256": "5871a40fe8129c836d759acf4330f0a5a78c12facab1aa68f18b73ad10dcf394",
+        "diagnostics": []
+      },
+      {
+        "case": "policy-tamper",
+        "evidence": "policy-hash",
+        "passed": true,
+        "serial_sha256": "5302e9ed4d4891a7a4812316c16f3190d3db1a82aff642706552bc413825bd1b",
+        "qemu_log_sha256": "5871a40fe8129c836d759acf4330f0a5a78c12facab1aa68f18b73ad10dcf394",
+        "diagnostics": []
+      },
+      {
+        "case": "policy-signature",
+        "evidence": "InvalidSignature",
+        "passed": true,
+        "serial_sha256": "148af43c9d3adee9d5d6d6ce798c4277e4c85f2421789b80434f7b69004f2b88",
+        "qemu_log_sha256": "5871a40fe8129c836d759acf4330f0a5a78c12facab1aa68f18b73ad10dcf394",
+        "diagnostics": [
+          "Kernel panic:",
+          "[boot trust fixture] verification rejected: InvalidSignature"
+        ]
+      },
+      {
+        "case": "policy-rollback",
+        "evidence": "RevisionRollback",
+        "passed": true,
+        "serial_sha256": "6f7d00e850dfad19c192fe66e5cec1578fde4668aed6e53d383aff2d7fb70c11",
+        "qemu_log_sha256": "5871a40fe8129c836d759acf4330f0a5a78c12facab1aa68f18b73ad10dcf394",
+        "diagnostics": [
+          "Kernel panic:",
+          "[boot trust fixture] verification rejected: RevisionRollback"
+        ]
+      },
+      {
+        "case": "policy-conflict",
+        "evidence": "RevisionConflict",
+        "passed": true,
+        "serial_sha256": "fadba4a0d11146e5a017ec3d514e7b6512175c474cd2c7caa26311ae780da855",
+        "qemu_log_sha256": "5871a40fe8129c836d759acf4330f0a5a78c12facab1aa68f18b73ad10dcf394",
+        "diagnostics": [
+          "Kernel panic:",
+          "[boot trust fixture] verification rejected: RevisionConflict"
+        ]
+      },
+      {
+        "case": "policy-next",
+        "evidence": "UninstalledRevision",
+        "passed": true,
+        "serial_sha256": "a6fa7c55c6a7bfb99418ae3c78e04d4b13de2de284fcf8531c21187c1f79d202",
+        "qemu_log_sha256": "5871a40fe8129c836d759acf4330f0a5a78c12facab1aa68f18b73ad10dcf394",
+        "diagnostics": [
+          "Kernel panic:",
+          "[boot trust fixture] verification rejected: UninstalledRevision"
+        ]
+      },
+      {
+        "case": "missing-module",
+        "evidence": "policy module",
+        "passed": true,
+        "serial_sha256": "176ff5c2e7addd8d34ec66e8e8c226e03b0dd219798dfb94e1fbe03728973002",
+        "qemu_log_sha256": "5871a40fe8129c836d759acf4330f0a5a78c12facab1aa68f18b73ad10dcf394",
+        "diagnostics": [
+          "Kernel panic:",
+          "[boot trust fixture] missing policy module response"
+        ]
+      },
+      {
+        "case": "duplicate-module",
+        "evidence": "exactly one policy module",
+        "passed": true,
+        "serial_sha256": "8dcc8df8f73e7d53fe7f939a3affba7434e80052d0dc169bd2fc26f97647be4d",
+        "qemu_log_sha256": "5871a40fe8129c836d759acf4330f0a5a78c12facab1aa68f18b73ad10dcf394",
+        "diagnostics": [
+          "Kernel panic:",
+          "assertion `left == right` failed: [boot trust fixture] exactly one policy module required"
+        ]
+      },
+      {
+        "case": "platform-ns-root",
+        "evidence": "platform-ns-root",
+        "passed": true,
+        "serial_sha256": "5e674609145a40218e3695fb4d355c9a22faa2cbdeac38d92282aa9b5eaee696",
+        "qemu_log_sha256": "5871a40fe8129c836d759acf4330f0a5a78c12facab1aa68f18b73ad10dcf394",
+        "diagnostics": [
+          "[+     0.080819] [boot trust fixture] verified signed module: revision=7",
+          "[+     0.081368] [boot trust] artifact authority selected before platform services",
+          "Kernel panic:",
+          "[loader] name-service load failed: SignatureVerificationFailed"
+        ]
+      },
+      {
+        "case": "platform-driver-root",
+        "evidence": "platform-driver-root",
+        "passed": true,
+        "serial_sha256": "85f6cf44b614b273942971acfe61f47db7676854e1172aa01154850afd8ffeb7",
+        "qemu_log_sha256": "5871a40fe8129c836d759acf4330f0a5a78c12facab1aa68f18b73ad10dcf394",
+        "diagnostics": [
+          "[+     0.081420] [boot trust fixture] verified signed module: revision=7",
+          "[+     0.082007] [boot trust] artifact authority selected before platform services",
+          "[+     0.119655] [node] name service started (asid=1, tid=4)",
+          "Kernel panic:",
+          "[loader] domain load failed: SignatureVerificationFailed"
+        ]
+      }
+    ],
+    "private_owner_removed": true,
+    "public_inputs_sha256": {
+      "db.crt": "6224bdbe66968af823fa8d04bf90f8421b99fa6f6cb38be0c634535c25474f50",
+      "enrollment.json": "455090f477d5266e4d637a72df1879f6cfa1961caebc7159740a69495fe66b3e",
+      "foreign.crt": "b5f38ad408b8451849134a39d63bd673836e56a578b0fd9c7e2c9ceed61434e9",
+      "kek.crt": "b6014c44ac71eec9e6bb9ff7ac23286588377a1a09dbc07b65b7a50b20c21002",
+      "limine.conf": "fe6c916f88b255a48eeadaf0949dd5b27bc9b1a968395509f744a121e0398d3f",
+      "pk.crt": "44b975431b11c7180097767e535a146d0bf2ada3c99aa498c7d191742feda71c",
+      "results.json": "50697785d91d121cb91f1371d39c274976cf37c36ea632afb57a18bfbb360b11"
+    },
+    "earlier_passing_matrix": {
+      "results": {
+        "test_only": true,
+        "firmware_sha256": "32807682a9e5c0e2d192ecb6077941d4be8bcfa6b9cd6e60830c3a9f48c0555a",
+        "kernel_blake2b": "9272fb943cd967f5006685d461c4bee1274d174c504db836c6e9c12112f0981dd69b0e0fd215338a27619fd2b71de4e950acaf64bcc2c4d6f2b2b92f331983c8",
+        "policy_blake2b": "872e9d9d87e969ef96f0f4ff8a0840d10aa036d276158d4d684a8873d506202b834b286d648c35a79bfad905dd773384293d5cd7ceeba152baaee741eb335ba2",
+        "config_blake2b": "e90aac7edda4b4cfb8da70bf8cc5e37e36d75a34d57072f33da74a579a3d29e3427e443ea51ccc66e6bf5f665281bf1c6d44f5c77a2132bafbc1f54fdb0cb42c",
+        "kernel_variants_blake2b": {
+          "selected-root": "9272fb943cd967f5006685d461c4bee1274d174c504db836c6e9c12112f0981dd69b0e0fd215338a27619fd2b71de4e950acaf64bcc2c4d6f2b2b92f331983c8",
+          "platform-ns-root": "6e99d3f5b4d9e2c51fa701d6dcd19b9fb72c25769a93e7e72ab3cbd0a8696ce7834b9ef2aefe6e0d563fc9c9aac31b6174fe91d4a895370ab9208acc9f9a7c59",
+          "platform-driver-root": "efd9700a2102693de1de7ae38e1a8e8e097ea086fd0ba4ab533a4db521888f563d17803635292bb517363ee2a5292372f1a1fc54aec9cc7adf9b1f2cb6631ef7"
+        },
+        "platform_bundle_sha256": {
+          "agent.elf": "6f1fb17282400e385c014537bd97331b8d5aa085772c589f1a4cffe7dbd048a3",
+          "ahci.elf": "2212bd799eb210ac8998fc4d4eae61f8d55d8ee83f28eda451047ac785633c12",
+          "client.elf": "f5a4473b346909bdc8d966498b4faa5d8bde9e40067bf9778d1de98aa673748b",
+          "clusterctl.elf": "794130cc205fce0cdae214f705b398d87688b393f627fe3a9683948692c4caa6",
+          "deployd.elf": "a0e67011408119b0c9be9e2d5e0b1c4fe56e111435bcce7955edea5731560e16",
+          "disco.elf": "ca32431135df01d112dbca330009572d9004f31f22f5e2fba2d0f1d49dc59c30",
+          "dns.elf": "8d39ebd0e0bfcf4cbd955c8788b8e7bb8ff97b3a1b1f5169fed0547dd5d1f95e",
+          "e1000e.elf": "292cb964fa6b873ca8fe44cc9625a09e88e988deb224481314b3d5e09bfdf27c",
+          "echo.elf": "52b074b0420ef28ccfefc8e7e917ca34209ad1306f0c20045eb4a82d658420e3",
+          "frouter.elf": "64c43fe16603cd16b61b8e73ab12f2a0e6317e0ea0e81d7b5becb03097b99832",
+          "fs.elf": "09207cb590d520b93333b6055655d4e02c9bab2ea3fbc92444fbe78cd9de0453",
+          "grantctl.elf": "9e5934af4c848e41d2911f6ea405946d55363710aacc4f2572d288a7dde53cd6",
+          "greet.elf": "f808406ba9e6008481ad7ed0045c1ce39760398875f1f329461b6f5f1042bfe1",
+          "httpd.elf": "30508ced09b93ea29f791ea3744efcd75ac80da6d350af4ab1cfd60f398e0020",
+          "kafka.elf": "371285a28f4e634f2453865dab0f4bd06dca48e76f854ca8577c3559df9391ec",
+          "kafka_smoke.elf": "e7d7a01202ee4b981e24f920a894b101a131a444ffb82cb72fd33853aad6e3ea",
+          "nclient.elf": "f89d327f843774f5076068ca72c01dc7ed2c995115ccf76e14fd905d55896061",
+          "net.elf": "3bc2d2c2d5ca81ce4c1f4278735c95cbd834a5f573cfae26088edd3193ea27e0",
+          "ns.elf": "040cba13b039d75d56e2a4a2b56eb00c652fe9a97c50396e06a7920debeb0df3",
+          "nvme.elf": "070d66a84c1a938073791a8ab7d649d950e7c2117ff0bf63c8d8d78eed0f66e1",
+          "nvme_client.elf": "d7374344cb13047951c3821dd6e1bbd380f2f532e9ad5381ba8dfafc176d9c1b",
+          "objstore.elf": "0a22a626b86a2f012c6cf0adb1cdfaed72be8f7e07c0104b065bd393e4700920",
+          "objstore_client.elf": "b77dfe43f9c3bd23a386241cd91501a697252b30f51dc1c48ac373d13781811b",
+          "observe.elf": "a00c8d7aa43c01d7e166b8085028b64556a9242b0acda313760462250107ec8a",
+          "raft.elf": "0e2c48b8fc8278ba95a9190e5d3dddc8abfa4dd323bea39cbd0356e416191f7b",
+          "rclient.elf": "188338fbb10f2cfd7a5616bbb1a8034aa92225523e77fc79a0b34b59ea011b39",
+          "relmsg.elf": "7bd445f8876064dcf4a5c4e2bb7ec354d09b601b284a081bb88e0e4ac5b79d72",
+          "rng.elf": "472d5b4568f640bbf08301d2b12c880106a47e8827217c7feb63e66e9404de0f",
+          "s3.elf": "0115cb2f901a1a0cded4ec62c6224ab869dbdb35a4591fb51a8f4c70aa942ea8",
+          "s3_smoke.elf": "eafc54e18ae957cf5cc78c4caafbdded7725295863be0954d5036981e7ca8009",
+          "security_probe.elf": "d8ca3d71eb703da1f4ad2c8724957f4d60935c9492d75643cf9d5d228cf0dade",
+          "servicemgr.elf": "74d5c185f34528ca404d331172ed3df5e6d526fb602b6d73ea25d19198665048",
+          "shutdown_probe.elf": "a72954ad9ef987c7e89056b3ec56edfdc38ca15fe4094977ff9bee8b9a76e0bc",
+          "tcpclient.elf": "252a30d2b7be3c0113eba8fb31b682020ddd240ef098b9c28ae27e51ac84b329",
+          "tcpip.elf": "e77e86c8f7316fd2c7bd98def2428202c8ebade9d561b28ef1a5b68d79667f59",
+          "time.elf": "6a874cc40da3ce47c2296c472ff349af217a5e7bdb11813d14c5165f56c2498a",
+          "virtio_blk.elf": "a4695048d7272b69595565b79d38fbc44a8ecf04732736a1af3fde99a3910991"
+        },
+        "signed_loader_sha256": "5111c0b676d6bf5269c684168e3358175e350ac0aff0c03941a90c985b8c771d",
+        "results": [
+          {
+            "case": "valid-intel",
+            "evidence": "success",
+            "passed": true
+          },
+          {
+            "case": "valid-amd",
+            "evidence": "success",
+            "passed": true
+          },
+          {
+            "case": "unsigned-loader",
+            "evidence": "firmware",
+            "passed": true
+          },
+          {
+            "case": "foreign-loader",
+            "evidence": "firmware",
+            "passed": true
+          },
+          {
+            "case": "tampered-loader",
+            "evidence": "firmware",
+            "passed": true
+          },
+          {
+            "case": "config-tamper",
+            "evidence": "config",
+            "passed": true
+          },
+          {
+            "case": "kernel-tamper",
+            "evidence": "kernel-hash",
+            "passed": true
+          },
+          {
+            "case": "policy-tamper",
+            "evidence": "policy-hash",
+            "passed": true
+          },
+          {
+            "case": "policy-signature",
+            "evidence": "InvalidSignature",
+            "passed": true
+          },
+          {
+            "case": "policy-rollback",
+            "evidence": "RevisionRollback",
+            "passed": true
+          },
+          {
+            "case": "policy-conflict",
+            "evidence": "RevisionConflict",
+            "passed": true
+          },
+          {
+            "case": "policy-next",
+            "evidence": "UninstalledRevision",
+            "passed": true
+          },
+          {
+            "case": "missing-module",
+            "evidence": "policy module",
+            "passed": true
+          },
+          {
+            "case": "duplicate-module",
+            "evidence": "exactly one policy module",
+            "passed": true
+          },
+          {
+            "case": "platform-ns-root",
+            "evidence": "platform-ns-root",
+            "passed": true
+          },
+          {
+            "case": "platform-driver-root",
+            "evidence": "platform-driver-root",
+            "passed": true
+          }
+        ]
+      },
+      "reason_for_final_repeat": "Final source fingerprint after comment clarification; same runtime behavior.",
+      "results_sha256": "3137ef50072128401ec743fd814ae42b69562f58734447d54820bb1b67659ddd"
+    },
+    "limits": [
+      "Public test fixture only.",
+      "Exact baseline signed EFI SHA-256 and all kernel-variant BLAKE2b digests are retained; per-negative-case signed EFI digests were not captured before temporary-owner disposal."
+    ]
+  },
+  "arm_native": {
+    "exit_status": 0,
+    "kernel_sha256": "919a653b5d73865929a418b751b4edd9edc800c797e1e35dfff4edc5f16f6849",
+    "runner_log_sha256": "758384530d677cc021c2dbc4519e9ac5723371d2ffcd0f2c700d095dad26ecc9",
+    "serial_sha256": "09c0abd47c8243a2ad60a349e7413267dcce2b96d81cf65e661f043f3cf9811e",
+    "diagnostics": [
+      "[+     0.018492] [boot trust] artifact authority selected before platform services",
+      "[+     0.104420] [node] name service started (asid=1, tid=4)",
+      "[+     8.076160] [boot trust] signed handoff, cluster/recipient rejection, shared manifest/gate policy and one-shot publication passed; early artifact selection retained",
+      "[+    12.157302] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x1ffff failed_bitmap=0x0 pending_bitmap=0x0"
+    ],
+    "scope": "Normal development boot; no ARM Secure Boot claim."
+  },
+  "failed_runs": [
+    {
+      "stage": "initial ARM cargo check",
+      "exit_status": 101,
+      "diagnostics": [
+        "environment variable CATTEN_AARCH64_SERVICE_BUNDLE not defined at compile time",
+        "could not compile catten due to 8 previous errors"
+      ],
+      "verification_limit": "Complete original tool output was not saved as a separate log; the excerpt records the observed configuration rejection. The configured repeat passed."
+    },
+    {
+      "stage": "sandboxed scoped TLC",
+      "exit_status": 1,
+      "log_sha256": "6eab8b755d78e0a4b5eefbb1544cfff95b5b952105ca53d1b5119042f80e07a1",
+      "diagnostics": [
+        "java.rmi.server.ExportException: Listen failed on port: 0",
+        "java.net.SocketException: Operation not permitted"
+      ],
+      "scope": "Host socket admission; no model result inferred."
+    },
+    {
+      "stage": "sandboxed ARM QEMU",
+      "exit_status": 1,
+      "log_sha256": "a88017152a5cdead5f711b126465cb6a338f8bc6da25ca3b1a290d999c5b610d",
+      "diagnostics": [
+        "Failed to bind socket to /tmp/ctdiag-j2x1wpgw/qmp.sock: Operation not permitted",
+        "QEMU exited before the 120s test window elapsed"
+      ],
+      "scope": "Before guest execution; fresh authorized instance passed."
+    }
+  ],
+  "formal": {
+    "fresh_safe_cases": 2,
+    "fresh_expected_counterexamples": 12,
+    "harness_exit_status": 0,
+    "cases": [
+      {
+        "config": "CharlotteBootTrust_authenticate_unsafe.cfg",
+        "log_sha256": "1ddca2a44954cb69a965e599cc40679e8596d15678c45652b5d2139d2aaf4c3b",
+        "expected_counterexample": true,
+        "diagnostics": [
+          "VerifiedAuthenticated"
+        ],
+        "action_coverage": [
+          "<Init line 23, col 1 to line 23, col 4 of module CharlotteBootTrust>: 2:2",
+          "<ReadInstalled line 37, col 1 to line 37, col 13 of module CharlotteBootTrust>: 4:5",
+          "<ReadEnrollment line 41, col 1 to line 41, col 14 of module CharlotteBootTrust>: 0:0",
+          "<ReadFailure line 46, col 1 to line 46, col 11 of module CharlotteBootTrust>: 2:4",
+          "<Verify line 49, col 1 to line 49, col 9 of module CharlotteBootTrust>: 12:15",
+          "<RejectRecord line 52, col 1 to line 52, col 15 of module CharlotteBootTrust>: 4:25",
+          "<CommitPolicy line 57, col 1 to line 57, col 12 of module CharlotteBootTrust>: 0:0",
+          "<CommitFailure line 64, col 1 to line 64, col 13 of module CharlotteBootTrust>: 0:0",
+          "<CommitInterrupted line 72, col 1 to line 72, col 29 of module CharlotteBootTrust>: 0:0",
+          "<CompetingCommit line 82, col 1 to line 82, col 18 of module CharlotteBootTrust>: 0:0",
+          "<AcquireRecipient line 88, col 1 to line 88, col 26 of module CharlotteBootTrust>: 22:22",
+          "<PrepareSigned line 91, col 1 to line 91, col 13 of module CharlotteBootTrust>: 2:2",
+          "<RejectRecipient line 95, col 1 to line 95, col 15 of module CharlotteBootTrust>: 3:3",
+          "<PrepareDevelopment line 98, col 1 to line 98, col 18 of module CharlotteBootTrust>: 0:0",
+          "<SelectAuthority line 104, col 1 to line 104, col 15 of module CharlotteBootTrust>: 1:1",
+          "<LoadBootstrap line 108, col 1 to line 108, col 13 of module CharlotteBootTrust>: 0:0",
+          "<LoadPlatform line 112, col 1 to line 112, col 12 of module CharlotteBootTrust>: 0:0",
+          "<Publish line 121, col 1 to line 121, col 7 of module CharlotteBootTrust>: 0:0",
+          "<RejectPublication line 127, col 1 to line 127, col 17 of module CharlotteBootTrust>: 0:0",
+          "<BorrowView line 131, col 1 to line 131, col 10 of module CharlotteBootTrust>: 0:0",
+          "<DropPreparation line 134, col 1 to line 134, col 15 of module CharlotteBootTrust>: 1:31",
+          "<Reboot line 140, col 1 to line 140, col 6 of module CharlotteBootTrust>: 2:25",
+          "<UnsafeAuthenticate line 180, col 1 to line 180, col 18 of module CharlotteBootTrust>: 4:5"
+        ],
+        "states": {
+          "generated": 127,
+          "distinct": 58,
+          "queue": 20
+        },
+        "depth": 7
+      },
+      {
+        "config": "CharlotteBootTrust_boundary_unsafe.cfg",
+        "log_sha256": "38c7d28a0e3736be4d4155ec0f1716bc89c0e1c7416cdbeb7f66976314841525",
+        "expected_counterexample": true,
+        "diagnostics": [
+          "ConditionalBoundary"
+        ],
+        "action_coverage": [
+          "<Init line 23, col 1 to line 23, col 4 of module CharlotteBootTrust>: 4:4",
+          "<ReadInstalled line 37, col 1 to line 37, col 13 of module CharlotteBootTrust>: 4:6",
+          "<ReadEnrollment line 41, col 1 to line 41, col 14 of module CharlotteBootTrust>: 0:0",
+          "<ReadFailure line 46, col 1 to line 46, col 11 of module CharlotteBootTrust>: 2:5",
+          "<Verify line 49, col 1 to line 49, col 9 of module CharlotteBootTrust>: 12:13",
+          "<RejectRecord line 52, col 1 to line 52, col 15 of module CharlotteBootTrust>: 4:20",
+          "<CommitPolicy line 57, col 1 to line 57, col 12 of module CharlotteBootTrust>: 0:0",
+          "<CommitFailure line 64, col 1 to line 64, col 13 of module CharlotteBootTrust>: 0:0",
+          "<CommitInterrupted line 72, col 1 to line 72, col 29 of module CharlotteBootTrust>: 0:0",
+          "<CompetingCommit line 82, col 1 to line 82, col 18 of module CharlotteBootTrust>: 0:0",
+          "<AcquireRecipient line 88, col 1 to line 88, col 26 of module CharlotteBootTrust>: 24:25",
+          "<PrepareSigned line 91, col 1 to line 91, col 13 of module CharlotteBootTrust>: 0:0",
+          "<RejectRecipient line 95, col 1 to line 95, col 15 of module CharlotteBootTrust>: 12:12",
+          "<PrepareDevelopment line 98, col 1 to line 98, col 18 of module CharlotteBootTrust>: 0:0",
+          "<SelectAuthority line 104, col 1 to line 104, col 15 of module CharlotteBootTrust>: 0:0",
+          "<LoadBootstrap line 108, col 1 to line 108, col 13 of module CharlotteBootTrust>: 0:0",
+          "<LoadPlatform line 112, col 1 to line 112, col 12 of module CharlotteBootTrust>: 0:0",
+          "<Publish line 121, col 1 to line 121, col 7 of module CharlotteBootTrust>: 0:0",
+          "<RejectPublication line 127, col 1 to line 127, col 17 of module CharlotteBootTrust>: 0:0",
+          "<BorrowView line 131, col 1 to line 131, col 10 of module CharlotteBootTrust>: 0:0",
+          "<DropPreparation line 134, col 1 to line 134, col 15 of module CharlotteBootTrust>: 1:59",
+          "<Reboot line 140, col 1 to line 140, col 6 of module CharlotteBootTrust>: 3:33",
+          "<UnsafeUnsupportedProduction line 191, col 1 to line 191, col 27 of module CharlotteBootTrust>: 4:5"
+        ],
+        "states": {
+          "generated": 172,
+          "distinct": 68,
+          "queue": 0
+        },
+        "depth": 7
+      },
+      {
+        "config": "CharlotteBootTrust_contract.cfg",
+        "log_sha256": "22051ef7d2a8da87d7bcb2c4804d85a7198c2ac4f11c1561f07d3079ca4fd13d",
+        "expected_counterexample": false,
+        "diagnostics": [],
+        "action_coverage": [
+          "<Init line 23, col 1 to line 23, col 4 of module CharlotteBootTrust>: 2:2",
+          "<ReadInstalled line 37, col 1 to line 37, col 13 of module CharlotteBootTrust>: 95:192",
+          "<ReadEnrollment line 41, col 1 to line 41, col 14 of module CharlotteBootTrust>: 2:4",
+          "<ReadFailure line 46, col 1 to line 46, col 11 of module CharlotteBootTrust>: 61:192",
+          "<Verify line 49, col 1 to line 49, col 9 of module CharlotteBootTrust>: 136:196",
+          "<RejectRecord line 52, col 1 to line 52, col 15 of module CharlotteBootTrust>: 73:780",
+          "<CommitPolicy line 57, col 1 to line 57, col 12 of module CharlotteBootTrust>: 2:12",
+          "<CommitFailure line 64, col 1 to line 64, col 13 of module CharlotteBootTrust>: 12:12",
+          "<CommitInterrupted line 72, col 1 to line 72, col 29 of module CharlotteBootTrust>: 12:24",
+          "<CompetingCommit line 82, col 1 to line 82, col 18 of module CharlotteBootTrust>: 59:164",
+          "<AcquireRecipient line 88, col 1 to line 88, col 26 of module CharlotteBootTrust>: 309:392",
+          "<PrepareSigned line 91, col 1 to line 91, col 13 of module CharlotteBootTrust>: 58:112",
+          "<RejectRecipient line 95, col 1 to line 95, col 15 of module CharlotteBootTrust>: 147:196",
+          "<PrepareDevelopment line 98, col 1 to line 98, col 18 of module CharlotteBootTrust>: 0:0",
+          "<SelectAuthority line 104, col 1 to line 104, col 15 of module CharlotteBootTrust>: 16:16",
+          "<LoadBootstrap line 108, col 1 to line 108, col 13 of module CharlotteBootTrust>: 64:168",
+          "<LoadPlatform line 112, col 1 to line 112, col 12 of module CharlotteBootTrust>: 129:416",
+          "<Publish line 121, col 1 to line 121, col 7 of module CharlotteBootTrust>: 16:16",
+          "<RejectPublication line 127, col 1 to line 127, col 17 of module CharlotteBootTrust>: 53:72",
+          "<BorrowView line 131, col 1 to line 131, col 10 of module CharlotteBootTrust>: 189:416",
+          "<DropPreparation line 134, col 1 to line 134, col 15 of module CharlotteBootTrust>: 105:1352",
+          "<Reboot line 140, col 1 to line 140, col 6 of module CharlotteBootTrust>: 8:774"
+        ],
+        "states": {
+          "generated": 5508,
+          "distinct": 1548,
+          "queue": 0
+        },
+        "depth": 20
+      },
+      {
+        "config": "CharlotteBootTrust_development_unsafe.cfg",
+        "log_sha256": "ef60cdb91023f690954be9b1998892df59720b926d078d5aef353ddca670892a",
+        "expected_counterexample": true,
+        "diagnostics": [
+          "ExplicitDevelopment"
+        ],
+        "action_coverage": [
+          "<Init line 23, col 1 to line 23, col 4 of module CharlotteBootTrust>: 2:2",
+          "<ReadInstalled line 37, col 1 to line 37, col 13 of module CharlotteBootTrust>: 4:5",
+          "<ReadEnrollment line 41, col 1 to line 41, col 14 of module CharlotteBootTrust>: 0:0",
+          "<ReadFailure line 46, col 1 to line 46, col 11 of module CharlotteBootTrust>: 2:5",
+          "<Verify line 49, col 1 to line 49, col 9 of module CharlotteBootTrust>: 12:12",
+          "<RejectRecord line 52, col 1 to line 52, col 15 of module CharlotteBootTrust>: 4:20",
+          "<CommitPolicy line 57, col 1 to line 57, col 12 of module CharlotteBootTrust>: 0:0",
+          "<CommitFailure line 64, col 1 to line 64, col 13 of module CharlotteBootTrust>: 0:0",
+          "<CommitInterrupted line 72, col 1 to line 72, col 29 of module CharlotteBootTrust>: 0:0",
+          "<CompetingCommit line 82, col 1 to line 82, col 18 of module CharlotteBootTrust>: 0:0",
+          "<AcquireRecipient line 88, col 1 to line 88, col 26 of module CharlotteBootTrust>: 16:16",
+          "<PrepareSigned line 91, col 1 to line 91, col 13 of module CharlotteBootTrust>: 1:1",
+          "<RejectRecipient line 95, col 1 to line 95, col 15 of module CharlotteBootTrust>: 3:3",
+          "<PrepareDevelopment line 98, col 1 to line 98, col 18 of module CharlotteBootTrust>: 0:0",
+          "<SelectAuthority line 104, col 1 to line 104, col 15 of module CharlotteBootTrust>: 1:1",
+          "<LoadBootstrap line 108, col 1 to line 108, col 13 of module CharlotteBootTrust>: 1:1",
+          "<LoadPlatform line 112, col 1 to line 112, col 12 of module CharlotteBootTrust>: 0:0",
+          "<Publish line 121, col 1 to line 121, col 7 of module CharlotteBootTrust>: 0:0",
+          "<RejectPublication line 127, col 1 to line 127, col 17 of module CharlotteBootTrust>: 0:0",
+          "<BorrowView line 131, col 1 to line 131, col 10 of module CharlotteBootTrust>: 0:0",
+          "<DropPreparation line 134, col 1 to line 134, col 15 of module CharlotteBootTrust>: 2:27",
+          "<Reboot line 140, col 1 to line 140, col 6 of module CharlotteBootTrust>: 2:22",
+          "<UnsafeDevelopmentFallback line 183, col 1 to line 183, col 25 of module CharlotteBootTrust>: 6:7"
+        ],
+        "states": {
+          "generated": 116,
+          "distinct": 55,
+          "queue": 19
+        },
+        "depth": 7
+      },
+      {
+        "config": "CharlotteBootTrust_enrollment_unsafe.cfg",
+        "log_sha256": "d0907d0aaee5c23841a8804c3c7d82fea67373354e601f82eaea284261794275",
+        "expected_counterexample": true,
+        "diagnostics": [
+          "NoEnrollmentFallback"
+        ],
+        "action_coverage": [
+          "<Init line 23, col 1 to line 23, col 4 of module CharlotteBootTrust>: 4:4",
+          "<ReadInstalled line 37, col 1 to line 37, col 13 of module CharlotteBootTrust>: 6:7",
+          "<ReadEnrollment line 41, col 1 to line 41, col 14 of module CharlotteBootTrust>: 2:2",
+          "<ReadFailure line 46, col 1 to line 46, col 11 of module CharlotteBootTrust>: 2:7",
+          "<Verify line 49, col 1 to line 49, col 9 of module CharlotteBootTrust>: 7:7",
+          "<RejectRecord line 52, col 1 to line 52, col 15 of module CharlotteBootTrust>: 3:17",
+          "<CommitPolicy line 57, col 1 to line 57, col 12 of module CharlotteBootTrust>: 1:4",
+          "<CommitFailure line 64, col 1 to line 64, col 13 of module CharlotteBootTrust>: 4:4",
+          "<CommitInterrupted line 72, col 1 to line 72, col 29 of module CharlotteBootTrust>: 4:8",
+          "<CompetingCommit line 82, col 1 to line 82, col 18 of module CharlotteBootTrust>: 25:40",
+          "<AcquireRecipient line 88, col 1 to line 88, col 26 of module CharlotteBootTrust>: 16:22",
+          "<PrepareSigned line 91, col 1 to line 91, col 13 of module CharlotteBootTrust>: 1:1",
+          "<RejectRecipient line 95, col 1 to line 95, col 15 of module CharlotteBootTrust>: 3:3",
+          "<PrepareDevelopment line 98, col 1 to line 98, col 18 of module CharlotteBootTrust>: 0:0",
+          "<SelectAuthority line 104, col 1 to line 104, col 15 of module CharlotteBootTrust>: 0:0",
+          "<LoadBootstrap line 108, col 1 to line 108, col 13 of module CharlotteBootTrust>: 0:0",
+          "<LoadPlatform line 112, col 1 to line 112, col 12 of module CharlotteBootTrust>: 0:0",
+          "<Publish line 121, col 1 to line 121, col 7 of module CharlotteBootTrust>: 0:0",
+          "<RejectPublication line 127, col 1 to line 127, col 17 of module CharlotteBootTrust>: 0:0",
+          "<BorrowView line 131, col 1 to line 131, col 10 of module CharlotteBootTrust>: 0:0",
+          "<DropPreparation line 134, col 1 to line 134, col 15 of module CharlotteBootTrust>: 7:32",
+          "<Reboot line 140, col 1 to line 140, col 6 of module CharlotteBootTrust>: 6:36",
+          "<UnsafeEnrollmentFallback line 169, col 1 to line 169, col 24 of module CharlotteBootTrust>: 3:4"
+        ],
+        "states": {
+          "generated": 189,
+          "distinct": 92,
+          "queue": 50
+        },
+        "depth": 5
+      },
+      {
+        "config": "CharlotteBootTrust_failure_unsafe.cfg",
+        "log_sha256": "ff4f41723be36d673d82a949e03179e31a0800642e75a13a486f2715d35b3f1c",
+        "expected_counterexample": true,
+        "diagnostics": [
+          "InstalledBeforePublication"
+        ],
+        "action_coverage": [
+          "<Init line 23, col 1 to line 23, col 4 of module CharlotteBootTrust>: 4:4",
+          "<ReadInstalled line 37, col 1 to line 37, col 13 of module CharlotteBootTrust>: 12:12",
+          "<ReadEnrollment line 41, col 1 to line 41, col 14 of module CharlotteBootTrust>: 2:4",
+          "<ReadFailure line 46, col 1 to line 46, col 11 of module CharlotteBootTrust>: 5:12",
+          "<Verify line 49, col 1 to line 49, col 9 of module CharlotteBootTrust>: 13:17",
+          "<RejectRecord line 52, col 1 to line 52, col 15 of module CharlotteBootTrust>: 7:48",
+          "<CommitPolicy line 57, col 1 to line 57, col 12 of module CharlotteBootTrust>: 1:6",
+          "<CommitFailure line 64, col 1 to line 64, col 13 of module CharlotteBootTrust>: 5:6",
+          "<CommitInterrupted line 72, col 1 to line 72, col 29 of module CharlotteBootTrust>: 5:10",
+          "<CompetingCommit line 82, col 1 to line 82, col 18 of module CharlotteBootTrust>: 20:40",
+          "<AcquireRecipient line 88, col 1 to line 88, col 26 of module CharlotteBootTrust>: 24:24",
+          "<PrepareSigned line 91, col 1 to line 91, col 13 of module CharlotteBootTrust>: 1:1",
+          "<RejectRecipient line 95, col 1 to line 95, col 15 of module CharlotteBootTrust>: 5:5",
+          "<PrepareDevelopment line 98, col 1 to line 98, col 18 of module CharlotteBootTrust>: 0:0",
+          "<SelectAuthority line 104, col 1 to line 104, col 15 of module CharlotteBootTrust>: 1:1",
+          "<LoadBootstrap line 108, col 1 to line 108, col 13 of module CharlotteBootTrust>: 0:0",
+          "<LoadPlatform line 112, col 1 to line 112, col 12 of module CharlotteBootTrust>: 0:0",
+          "<Publish line 121, col 1 to line 121, col 7 of module CharlotteBootTrust>: 0:0",
+          "<RejectPublication line 127, col 1 to line 127, col 17 of module CharlotteBootTrust>: 0:0",
+          "<BorrowView line 131, col 1 to line 131, col 10 of module CharlotteBootTrust>: 0:0",
+          "<DropPreparation line 134, col 1 to line 134, col 15 of module CharlotteBootTrust>: 6:47",
+          "<Reboot line 140, col 1 to line 140, col 6 of module CharlotteBootTrust>: 7:48",
+          "<UnsafeFailedCommitPublishes line 186, col 1 to line 186, col 27 of module CharlotteBootTrust>: 2:3"
+        ],
+        "states": {
+          "generated": 279,
+          "distinct": 118,
+          "queue": 55
+        },
+        "depth": 6
+      },
+      {
+        "config": "CharlotteBootTrust_fixture.cfg",
+        "log_sha256": "870d065cb7f2873e6015cd1257c6e7871845dd30558d71ea67d06a6ba0ac41ae",
+        "expected_counterexample": false,
+        "diagnostics": [],
+        "action_coverage": [
+          "<Init line 23, col 1 to line 23, col 4 of module CharlotteBootTrust>: 2:2",
+          "<ReadInstalled line 37, col 1 to line 37, col 13 of module CharlotteBootTrust>: 26:44",
+          "<ReadEnrollment line 41, col 1 to line 41, col 14 of module CharlotteBootTrust>: 0:0",
+          "<ReadFailure line 46, col 1 to line 46, col 11 of module CharlotteBootTrust>: 15:44",
+          "<Verify line 49, col 1 to line 49, col 9 of module CharlotteBootTrust>: 62:84",
+          "<RejectRecord line 52, col 1 to line 52, col 15 of module CharlotteBootTrust>: 22:140",
+          "<CommitPolicy line 57, col 1 to line 57, col 12 of module CharlotteBootTrust>: 0:0",
+          "<CommitFailure line 64, col 1 to line 64, col 13 of module CharlotteBootTrust>: 0:0",
+          "<CommitInterrupted line 72, col 1 to line 72, col 29 of module CharlotteBootTrust>: 0:0",
+          "<CompetingCommit line 82, col 1 to line 82, col 18 of module CharlotteBootTrust>: 0:0",
+          "<AcquireRecipient line 88, col 1 to line 88, col 26 of module CharlotteBootTrust>: 121:168",
+          "<PrepareSigned line 91, col 1 to line 91, col 13 of module CharlotteBootTrust>: 13:28",
+          "<RejectRecipient line 95, col 1 to line 95, col 15 of module CharlotteBootTrust>: 57:84",
+          "<PrepareDevelopment line 98, col 1 to line 98, col 18 of module CharlotteBootTrust>: 6:14",
+          "<SelectAuthority line 104, col 1 to line 104, col 15 of module CharlotteBootTrust>: 6:6",
+          "<LoadBootstrap line 108, col 1 to line 108, col 13 of module CharlotteBootTrust>: 9:70",
+          "<LoadPlatform line 112, col 1 to line 112, col 12 of module CharlotteBootTrust>: 46:164",
+          "<Publish line 121, col 1 to line 121, col 7 of module CharlotteBootTrust>: 6:6",
+          "<RejectPublication line 127, col 1 to line 127, col 17 of module CharlotteBootTrust>: 18:24",
+          "<BorrowView line 131, col 1 to line 131, col 10 of module CharlotteBootTrust>: 100:164",
+          "<DropPreparation line 134, col 1 to line 134, col 15 of module CharlotteBootTrust>: 26:480",
+          "<Reboot line 140, col 1 to line 140, col 6 of module CharlotteBootTrust>: 3:269"
+        ],
+        "states": {
+          "generated": 1791,
+          "distinct": 538,
+          "queue": 0
+        },
+        "depth": 17
+      },
+      {
+        "config": "CharlotteBootTrust_manifest_unsafe.cfg",
+        "log_sha256": "565d2c6a5c6d3c7da379a5371e496c28f7148e0025e6db91161e127680401364",
+        "expected_counterexample": true,
+        "diagnostics": [
+          "SharedPolicy"
+        ],
+        "action_coverage": [
+          "<Init line 23, col 1 to line 23, col 4 of module CharlotteBootTrust>: 2:2",
+          "<ReadInstalled line 37, col 1 to line 37, col 13 of module CharlotteBootTrust>: 16:19",
+          "<ReadEnrollment line 41, col 1 to line 41, col 14 of module CharlotteBootTrust>: 0:0",
+          "<ReadFailure line 46, col 1 to line 46, col 11 of module CharlotteBootTrust>: 8:18",
+          "<Verify line 49, col 1 to line 49, col 9 of module CharlotteBootTrust>: 29:34",
+          "<RejectRecord line 52, col 1 to line 52, col 15 of module CharlotteBootTrust>: 10:55",
+          "<CommitPolicy line 57, col 1 to line 57, col 12 of module CharlotteBootTrust>: 0:0",
+          "<CommitFailure line 64, col 1 to line 64, col 13 of module CharlotteBootTrust>: 0:0",
+          "<CommitInterrupted line 72, col 1 to line 72, col 29 of module CharlotteBootTrust>: 0:0",
+          "<CompetingCommit line 82, col 1 to line 82, col 18 of module CharlotteBootTrust>: 0:0",
+          "<AcquireRecipient line 88, col 1 to line 88, col 26 of module CharlotteBootTrust>: 43:47",
+          "<PrepareSigned line 91, col 1 to line 91, col 13 of module CharlotteBootTrust>: 4:6",
+          "<RejectRecipient line 95, col 1 to line 95, col 15 of module CharlotteBootTrust>: 14:14",
+          "<PrepareDevelopment line 98, col 1 to line 98, col 18 of module CharlotteBootTrust>: 0:0",
+          "<SelectAuthority line 104, col 1 to line 104, col 15 of module CharlotteBootTrust>: 4:5",
+          "<LoadBootstrap line 108, col 1 to line 108, col 13 of module CharlotteBootTrust>: 18:28",
+          "<LoadPlatform line 112, col 1 to line 112, col 12 of module CharlotteBootTrust>: 6:9",
+          "<Publish line 121, col 1 to line 121, col 7 of module CharlotteBootTrust>: 4:5",
+          "<RejectPublication line 127, col 1 to line 127, col 17 of module CharlotteBootTrust>: 0:0",
+          "<BorrowView line 131, col 1 to line 131, col 10 of module CharlotteBootTrust>: 5:9",
+          "<DropPreparation line 134, col 1 to line 134, col 15 of module CharlotteBootTrust>: 10:100",
+          "<Reboot line 140, col 1 to line 140, col 6 of module CharlotteBootTrust>: 2:64",
+          "<UnsafeIndependentManifest line 174, col 1 to line 174, col 25 of module CharlotteBootTrust>: 8:10"
+        ],
+        "states": {
+          "generated": 409,
+          "distinct": 182,
+          "queue": 58
+        },
+        "depth": 12
+      },
+      {
+        "config": "CharlotteBootTrust_overwrite_unsafe.cfg",
+        "log_sha256": "3a28ae500299f811a8877ecd693fe2fd2f063d3df48cef612313c19d57891e0b",
+        "expected_counterexample": true,
+        "diagnostics": [
+          "OnePublicationPerBoot"
+        ],
+        "action_coverage": [
+          "<Init line 23, col 1 to line 23, col 4 of module CharlotteBootTrust>: 4:4",
+          "<ReadInstalled line 37, col 1 to line 37, col 13 of module CharlotteBootTrust>: 10:10",
+          "<ReadEnrollment line 41, col 1 to line 41, col 14 of module CharlotteBootTrust>: 0:0",
+          "<ReadFailure line 46, col 1 to line 46, col 11 of module CharlotteBootTrust>: 4:10",
+          "<Verify line 49, col 1 to line 49, col 9 of module CharlotteBootTrust>: 20:21",
+          "<RejectRecord line 52, col 1 to line 52, col 15 of module CharlotteBootTrust>: 7:35",
+          "<CommitPolicy line 57, col 1 to line 57, col 12 of module CharlotteBootTrust>: 0:0",
+          "<CommitFailure line 64, col 1 to line 64, col 13 of module CharlotteBootTrust>: 0:0",
+          "<CommitInterrupted line 72, col 1 to line 72, col 29 of module CharlotteBootTrust>: 0:0",
+          "<CompetingCommit line 82, col 1 to line 82, col 18 of module CharlotteBootTrust>: 0:0",
+          "<AcquireRecipient line 88, col 1 to line 88, col 26 of module CharlotteBootTrust>: 28:28",
+          "<PrepareSigned line 91, col 1 to line 91, col 13 of module CharlotteBootTrust>: 4:4",
+          "<RejectRecipient line 95, col 1 to line 95, col 15 of module CharlotteBootTrust>: 12:12",
+          "<PrepareDevelopment line 98, col 1 to line 98, col 18 of module CharlotteBootTrust>: 6:15",
+          "<SelectAuthority line 104, col 1 to line 104, col 15 of module CharlotteBootTrust>: 6:7",
+          "<LoadBootstrap line 108, col 1 to line 108, col 13 of module CharlotteBootTrust>: 8:13",
+          "<LoadPlatform line 112, col 1 to line 112, col 12 of module CharlotteBootTrust>: 6:14",
+          "<Publish line 121, col 1 to line 121, col 7 of module CharlotteBootTrust>: 3:4",
+          "<RejectPublication line 127, col 1 to line 127, col 17 of module CharlotteBootTrust>: 3:6",
+          "<BorrowView line 131, col 1 to line 131, col 10 of module CharlotteBootTrust>: 10:14",
+          "<DropPreparation line 134, col 1 to line 134, col 15 of module CharlotteBootTrust>: 10:87",
+          "<Reboot line 140, col 1 to line 140, col 6 of module CharlotteBootTrust>: 2:50",
+          "<UnsafeOverwrite line 172, col 1 to line 172, col 15 of module CharlotteBootTrust>: 8:9"
+        ],
+        "states": {
+          "generated": 330,
+          "distinct": 149,
+          "queue": 32
+        },
+        "depth": 11
+      },
+      {
+        "config": "CharlotteBootTrust_platform_unsafe.cfg",
+        "log_sha256": "b7ad582e9072ce571cb8bdae7b7e7d6cbead786ffda162fb29fc8a6bcf4b5c7a",
+        "expected_counterexample": true,
+        "diagnostics": [
+          "PlatformImagesUseSelectedAuthority"
+        ],
+        "action_coverage": [
+          "<Init line 23, col 1 to line 23, col 4 of module CharlotteBootTrust>: 2:2",
+          "<ReadInstalled line 37, col 1 to line 37, col 13 of module CharlotteBootTrust>: 5:6",
+          "<ReadEnrollment line 41, col 1 to line 41, col 14 of module CharlotteBootTrust>: 0:0",
+          "<ReadFailure line 46, col 1 to line 46, col 11 of module CharlotteBootTrust>: 3:5",
+          "<Verify line 49, col 1 to line 49, col 9 of module CharlotteBootTrust>: 15:16",
+          "<RejectRecord line 52, col 1 to line 52, col 15 of module CharlotteBootTrust>: 5:25",
+          "<CommitPolicy line 57, col 1 to line 57, col 12 of module CharlotteBootTrust>: 0:0",
+          "<CommitFailure line 64, col 1 to line 64, col 13 of module CharlotteBootTrust>: 0:0",
+          "<CommitInterrupted line 72, col 1 to line 72, col 29 of module CharlotteBootTrust>: 0:0",
+          "<CompetingCommit line 82, col 1 to line 82, col 18 of module CharlotteBootTrust>: 0:0",
+          "<AcquireRecipient line 88, col 1 to line 88, col 26 of module CharlotteBootTrust>: 24:25",
+          "<PrepareSigned line 91, col 1 to line 91, col 13 of module CharlotteBootTrust>: 4:5",
+          "<RejectRecipient line 95, col 1 to line 95, col 15 of module CharlotteBootTrust>: 12:12",
+          "<PrepareDevelopment line 98, col 1 to line 98, col 18 of module CharlotteBootTrust>: 0:0",
+          "<SelectAuthority line 104, col 1 to line 104, col 15 of module CharlotteBootTrust>: 4:5",
+          "<LoadBootstrap line 108, col 1 to line 108, col 13 of module CharlotteBootTrust>: 6:7",
+          "<LoadPlatform line 112, col 1 to line 112, col 12 of module CharlotteBootTrust>: 0:0",
+          "<Publish line 121, col 1 to line 121, col 7 of module CharlotteBootTrust>: 2:2",
+          "<RejectPublication line 127, col 1 to line 127, col 17 of module CharlotteBootTrust>: 0:0",
+          "<BorrowView line 131, col 1 to line 131, col 10 of module CharlotteBootTrust>: 0:0",
+          "<DropPreparation line 134, col 1 to line 134, col 15 of module CharlotteBootTrust>: 6:69",
+          "<Reboot line 140, col 1 to line 140, col 6 of module CharlotteBootTrust>: 2:39",
+          "<UnsafePlatformFallback line 196, col 1 to line 196, col 22 of module CharlotteBootTrust>: 8:9"
+        ],
+        "states": {
+          "generated": 217,
+          "distinct": 97,
+          "queue": 16
+        },
+        "depth": 9
+      },
+      {
+        "config": "CharlotteBootTrust_recipient_unsafe.cfg",
+        "log_sha256": "cf73c27c376df4844d8984c72993dac0f4bf878aafe8161aeef886d17dd654af",
+        "expected_counterexample": true,
+        "diagnostics": [
+          "RecipientBound"
+        ],
+        "action_coverage": [
+          "<Init line 23, col 1 to line 23, col 4 of module CharlotteBootTrust>: 2:2",
+          "<ReadInstalled line 37, col 1 to line 37, col 13 of module CharlotteBootTrust>: 14:17",
+          "<ReadEnrollment line 41, col 1 to line 41, col 14 of module CharlotteBootTrust>: 0:0",
+          "<ReadFailure line 46, col 1 to line 46, col 11 of module CharlotteBootTrust>: 6:16",
+          "<Verify line 49, col 1 to line 49, col 9 of module CharlotteBootTrust>: 25:31",
+          "<RejectRecord line 52, col 1 to line 52, col 15 of module CharlotteBootTrust>: 9:50",
+          "<CommitPolicy line 57, col 1 to line 57, col 12 of module CharlotteBootTrust>: 0:0",
+          "<CommitFailure line 64, col 1 to line 64, col 13 of module CharlotteBootTrust>: 0:0",
+          "<CommitInterrupted line 72, col 1 to line 72, col 29 of module CharlotteBootTrust>: 0:0",
+          "<CompetingCommit line 82, col 1 to line 82, col 18 of module CharlotteBootTrust>: 0:0",
+          "<AcquireRecipient line 88, col 1 to line 88, col 26 of module CharlotteBootTrust>: 43:46",
+          "<PrepareSigned line 91, col 1 to line 91, col 13 of module CharlotteBootTrust>: 4:5",
+          "<RejectRecipient line 95, col 1 to line 95, col 15 of module CharlotteBootTrust>: 13:14",
+          "<PrepareDevelopment line 98, col 1 to line 98, col 18 of module CharlotteBootTrust>: 0:0",
+          "<SelectAuthority line 104, col 1 to line 104, col 15 of module CharlotteBootTrust>: 4:4",
+          "<LoadBootstrap line 108, col 1 to line 108, col 13 of module CharlotteBootTrust>: 13:22",
+          "<LoadPlatform line 112, col 1 to line 112, col 12 of module CharlotteBootTrust>: 9:11",
+          "<Publish line 121, col 1 to line 121, col 7 of module CharlotteBootTrust>: 4:4",
+          "<RejectPublication line 127, col 1 to line 127, col 17 of module CharlotteBootTrust>: 0:0",
+          "<BorrowView line 131, col 1 to line 131, col 10 of module CharlotteBootTrust>: 10:12",
+          "<DropPreparation line 134, col 1 to line 134, col 15 of module CharlotteBootTrust>: 14:98",
+          "<Reboot line 140, col 1 to line 140, col 6 of module CharlotteBootTrust>: 2:61",
+          "<UnsafeWrongRecipient line 177, col 1 to line 177, col 20 of module CharlotteBootTrust>: 5:6"
+        ],
+        "states": {
+          "generated": 390,
+          "distinct": 176,
+          "queue": 58
+        },
+        "depth": 11
+      },
+      {
+        "config": "CharlotteBootTrust_selection_unsafe.cfg",
+        "log_sha256": "2a877b2abb3a60bbea1fe462e0b2ecff38e5b21d1fd8f6d7078bd93269ce1173",
+        "expected_counterexample": true,
+        "diagnostics": [
+          "SelectedAuthorityMatchesState"
+        ],
+        "action_coverage": [
+          "<Init line 23, col 1 to line 23, col 4 of module CharlotteBootTrust>: 2:2",
+          "<ReadInstalled line 37, col 1 to line 37, col 13 of module CharlotteBootTrust>: 7:8",
+          "<ReadEnrollment line 41, col 1 to line 41, col 14 of module CharlotteBootTrust>: 0:0",
+          "<ReadFailure line 46, col 1 to line 46, col 11 of module CharlotteBootTrust>: 5:7",
+          "<Verify line 49, col 1 to line 49, col 9 of module CharlotteBootTrust>: 15:16",
+          "<RejectRecord line 52, col 1 to line 52, col 15 of module CharlotteBootTrust>: 5:25",
+          "<CommitPolicy line 57, col 1 to line 57, col 12 of module CharlotteBootTrust>: 0:0",
+          "<CommitFailure line 64, col 1 to line 64, col 13 of module CharlotteBootTrust>: 0:0",
+          "<CommitInterrupted line 72, col 1 to line 72, col 29 of module CharlotteBootTrust>: 0:0",
+          "<CompetingCommit line 82, col 1 to line 82, col 18 of module CharlotteBootTrust>: 0:0",
+          "<AcquireRecipient line 88, col 1 to line 88, col 26 of module CharlotteBootTrust>: 24:25",
+          "<PrepareSigned line 91, col 1 to line 91, col 13 of module CharlotteBootTrust>: 4:5",
+          "<RejectRecipient line 95, col 1 to line 95, col 15 of module CharlotteBootTrust>: 12:12",
+          "<PrepareDevelopment line 98, col 1 to line 98, col 18 of module CharlotteBootTrust>: 0:0",
+          "<SelectAuthority line 104, col 1 to line 104, col 15 of module CharlotteBootTrust>: 4:5",
+          "<LoadBootstrap line 108, col 1 to line 108, col 13 of module CharlotteBootTrust>: 2:6",
+          "<LoadPlatform line 112, col 1 to line 112, col 12 of module CharlotteBootTrust>: 1:1",
+          "<Publish line 121, col 1 to line 121, col 7 of module CharlotteBootTrust>: 1:1",
+          "<RejectPublication line 127, col 1 to line 127, col 17 of module CharlotteBootTrust>: 0:0",
+          "<BorrowView line 131, col 1 to line 131, col 10 of module CharlotteBootTrust>: 1:1",
+          "<DropPreparation line 134, col 1 to line 134, col 15 of module CharlotteBootTrust>: 5:64",
+          "<Reboot line 140, col 1 to line 140, col 6 of module CharlotteBootTrust>: 2:41",
+          "<UnsafeSelectionOverwrite line 199, col 1 to line 199, col 24 of module CharlotteBootTrust>: 8:9"
+        ],
+        "states": {
+          "generated": 218,
+          "distinct": 97,
+          "queue": 19
+        },
+        "depth": 9
+      },
+      {
+        "config": "CharlotteBootTrust_stale_unsafe.cfg",
+        "log_sha256": "667e7f8f44f40574590b211390e4c028401013def292182c0e517403e6491d17",
+        "expected_counterexample": true,
+        "diagnostics": [
+          "NoForkedInstallation"
+        ],
+        "action_coverage": [
+          "<Init line 23, col 1 to line 23, col 4 of module CharlotteBootTrust>: 4:4",
+          "<ReadInstalled line 37, col 1 to line 37, col 13 of module CharlotteBootTrust>: 14:19",
+          "<ReadEnrollment line 41, col 1 to line 41, col 14 of module CharlotteBootTrust>: 2:3",
+          "<ReadFailure line 46, col 1 to line 46, col 11 of module CharlotteBootTrust>: 11:18",
+          "<Verify line 49, col 1 to line 49, col 9 of module CharlotteBootTrust>: 22:32",
+          "<RejectRecord line 52, col 1 to line 52, col 15 of module CharlotteBootTrust>: 12:90",
+          "<CommitPolicy line 57, col 1 to line 57, col 12 of module CharlotteBootTrust>: 1:10",
+          "<CommitFailure line 64, col 1 to line 64, col 13 of module CharlotteBootTrust>: 10:10",
+          "<CommitInterrupted line 72, col 1 to line 72, col 29 of module CharlotteBootTrust>: 10:20",
+          "<CompetingCommit line 82, col 1 to line 82, col 18 of module CharlotteBootTrust>: 50:76",
+          "<AcquireRecipient line 88, col 1 to line 88, col 26 of module CharlotteBootTrust>: 42:46",
+          "<PrepareSigned line 91, col 1 to line 91, col 13 of module CharlotteBootTrust>: 1:1",
+          "<RejectRecipient line 95, col 1 to line 95, col 15 of module CharlotteBootTrust>: 7:7",
+          "<PrepareDevelopment line 98, col 1 to line 98, col 18 of module CharlotteBootTrust>: 0:0",
+          "<SelectAuthority line 104, col 1 to line 104, col 15 of module CharlotteBootTrust>: 1:1",
+          "<LoadBootstrap line 108, col 1 to line 108, col 13 of module CharlotteBootTrust>: 0:0",
+          "<LoadPlatform line 112, col 1 to line 112, col 12 of module CharlotteBootTrust>: 0:0",
+          "<Publish line 121, col 1 to line 121, col 7 of module CharlotteBootTrust>: 0:0",
+          "<RejectPublication line 127, col 1 to line 127, col 17 of module CharlotteBootTrust>: 0:0",
+          "<BorrowView line 131, col 1 to line 131, col 10 of module CharlotteBootTrust>: 0:0",
+          "<DropPreparation line 134, col 1 to line 134, col 15 of module CharlotteBootTrust>: 8:83",
+          "<Reboot line 140, col 1 to line 140, col 6 of module CharlotteBootTrust>: 8:80",
+          "<UnsafeStaleCommit line 164, col 1 to line 164, col 17 of module CharlotteBootTrust>: 2:3"
+        ],
+        "states": {
+          "generated": 483,
+          "distinct": 203,
+          "queue": 98
+        },
+        "depth": 6
+      },
+      {
+        "config": "CharlotteBootTrust_uninstalled_unsafe.cfg",
+        "log_sha256": "ea1698f0ea5ac4aefb354afcfdb052d77c038afc597ddb1be308f92abca8b3b3",
+        "expected_counterexample": true,
+        "diagnostics": [
+          "InstalledBeforePublication"
+        ],
+        "action_coverage": [
+          "<Init line 23, col 1 to line 23, col 4 of module CharlotteBootTrust>: 2:2",
+          "<ReadInstalled line 37, col 1 to line 37, col 13 of module CharlotteBootTrust>: 5:6",
+          "<ReadEnrollment line 41, col 1 to line 41, col 14 of module CharlotteBootTrust>: 0:0",
+          "<ReadFailure line 46, col 1 to line 46, col 11 of module CharlotteBootTrust>: 3:5",
+          "<Verify line 49, col 1 to line 49, col 9 of module CharlotteBootTrust>: 12:14",
+          "<RejectRecord line 52, col 1 to line 52, col 15 of module CharlotteBootTrust>: 4:20",
+          "<CommitPolicy line 57, col 1 to line 57, col 12 of module CharlotteBootTrust>: 0:0",
+          "<CommitFailure line 64, col 1 to line 64, col 13 of module CharlotteBootTrust>: 0:0",
+          "<CommitInterrupted line 72, col 1 to line 72, col 29 of module CharlotteBootTrust>: 0:0",
+          "<CompetingCommit line 82, col 1 to line 82, col 18 of module CharlotteBootTrust>: 0:0",
+          "<AcquireRecipient line 88, col 1 to line 88, col 26 of module CharlotteBootTrust>: 24:25",
+          "<PrepareSigned line 91, col 1 to line 91, col 13 of module CharlotteBootTrust>: 4:4",
+          "<RejectRecipient line 95, col 1 to line 95, col 15 of module CharlotteBootTrust>: 11:11",
+          "<PrepareDevelopment line 98, col 1 to line 98, col 18 of module CharlotteBootTrust>: 0:0",
+          "<SelectAuthority line 104, col 1 to line 104, col 15 of module CharlotteBootTrust>: 2:2",
+          "<LoadBootstrap line 108, col 1 to line 108, col 13 of module CharlotteBootTrust>: 1:2",
+          "<LoadPlatform line 112, col 1 to line 112, col 12 of module CharlotteBootTrust>: 0:0",
+          "<Publish line 121, col 1 to line 121, col 7 of module CharlotteBootTrust>: 1:1",
+          "<RejectPublication line 127, col 1 to line 127, col 17 of module CharlotteBootTrust>: 0:0",
+          "<BorrowView line 131, col 1 to line 131, col 10 of module CharlotteBootTrust>: 0:0",
+          "<DropPreparation line 134, col 1 to line 134, col 15 of module CharlotteBootTrust>: 3:55",
+          "<Reboot line 140, col 1 to line 140, col 6 of module CharlotteBootTrust>: 2:33",
+          "<UnsafeUninstalledPublish line 161, col 1 to line 161, col 24 of module CharlotteBootTrust>: 7:8"
+        ],
+        "states": {
+          "generated": 180,
+          "distinct": 80,
+          "queue": 14
+        },
+        "depth": 8
+      }
+    ],
+    "scoped_harness_sha256": "04237c789a7822fb3cc22daf6e2c933669d9d9b19f0f4a95e52402b882555700",
+    "scoped_output_sha256": "be7d788ac245e9302b153052ace6de72a2c2eba6d4d5a516407e41c8730784ef",
+    "tools_jar_sha256": "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88",
+    "baseline_evidence": "docs/reports/audits/evidence/2026-10-19-security-boot-receipts.json",
+    "baseline_evidence_sha256": "847de9248967043e06143902d90c109c8ec3b664badb4f3d45d75e043e89a703",
+    "checked_input_sha256": {
+      "docs/tla/CharlotteAddressSpace.tla": "94e8ae476eab11029c39513fa66197793b05f0a6ca1655b751497a6e518d0284",
+      "docs/tla/CharlotteAddressSpace_small.cfg": "25feef19bf1dc780d8cece87801b7590b0bce68aa884c7459f7a9a65866d35eb",
+      "docs/tla/CharlotteAddressSpace_unsafe.cfg": "4be0b588a5b44ff54ac273701331a622b9f2bfd241b4a428be8acaf98a5337cf",
+      "docs/tla/CharlotteAuthorization.tla": "d5e14f9e9eb674522b6446235d24e322507959a2baf0219d22912ab3c7929515",
+      "docs/tla/CharlotteAuthorization_generation_unsafe.cfg": "4f23d40ea610f3e457a4d3e8107d111c9d4bdbadd421a83d946c371677b105db",
+      "docs/tla/CharlotteAuthorization_policy_unsafe.cfg": "4f0e81b15fa4c54d4e10216d4b23f84ed3ce85fd801c0c271ca0486717750779",
+      "docs/tla/CharlotteAuthorization_policy_version_unsafe.cfg": "369762db357baf735d3464b0c1f309b9a2c6ff1c2f22bb19c28ef1d91361be2a",
+      "docs/tla/CharlotteAuthorization_principal_unsafe.cfg": "c3f4c2815588d123d723e6f3aa12360a08c5c93d1dc9730e31bca4c6590525bf",
+      "docs/tla/CharlotteAuthorization_rights_unsafe.cfg": "9d82cd883cb9b68ba02cc926d9019d591c0edaceb9568416744dc3b7a882221f",
+      "docs/tla/CharlotteAuthorization_small.cfg": "2ddfd048b004e053686223171bcfcbbeb94d1ef4f4d53cc2c63b2276738ea15b",
+      "docs/tla/CharlotteBootTrust.tla": "c9edb0a6f74bc3d0dac70ea14eae1eee59e15774356bbad191d55f5467882a29",
+      "docs/tla/CharlotteBootTrust_authenticate_unsafe.cfg": "611d53f8615472e6958a8901a1ecd1b0011801228e319577633e070780b3d328",
+      "docs/tla/CharlotteBootTrust_boundary_unsafe.cfg": "8e415118debd8e9a467bce69e30d890b8ee024cc71d00cec360c9f5e8acb4c70",
+      "docs/tla/CharlotteBootTrust_contract.cfg": "46363cde40899130188ea50dea6f0aceff8b7bac675291d52862998170a82e57",
+      "docs/tla/CharlotteBootTrust_development_unsafe.cfg": "996e72ecbf931c6e5891f6ebaa7a6e6bc807b9ab01917a3a5d6161afc4b1849f",
+      "docs/tla/CharlotteBootTrust_enrollment_unsafe.cfg": "95b4dee9697707dc39edbe8ac6c94a4c49cfe3a0cd10c05c3d4084a0163f3395",
+      "docs/tla/CharlotteBootTrust_failure_unsafe.cfg": "2310166ce6c6c0bb4f93c1e4ee384c07b959920d8c29d109fc100b1107d74d15",
+      "docs/tla/CharlotteBootTrust_fixture.cfg": "023562d632e18920d8d51cac7cee5f5d9159aad42c423782d6d833b37e5b19df",
+      "docs/tla/CharlotteBootTrust_manifest_unsafe.cfg": "6989bfd31e1eb9c7f433017cc1c2a780af10a0d9f7bdc8d1cadaec20f8abb3c6",
+      "docs/tla/CharlotteBootTrust_overwrite_unsafe.cfg": "311a8f4022eb40cba78628ec14a7a32a324b7218084fdead778d7add6d9bbfc8",
+      "docs/tla/CharlotteBootTrust_platform_unsafe.cfg": "68b37ab0eb83682fa55e89ec62ae39c123b48dfce1abbd6f1bca86e4dfb239a7",
+      "docs/tla/CharlotteBootTrust_recipient_unsafe.cfg": "6dc6e0759a42289cbbd65888842c40efbea1b8e1207cb36458adfbef8248122f",
+      "docs/tla/CharlotteBootTrust_selection_unsafe.cfg": "a8eb3675ee03bc1c5a459c522ab94a26ce40a5abbefed662cde4776cadea0990",
+      "docs/tla/CharlotteBootTrust_stale_unsafe.cfg": "aec488139f350badb5164942bc4bbe05b58bc1178c7a713bdf086defddd6b88b",
+      "docs/tla/CharlotteBootTrust_uninstalled_unsafe.cfg": "99362ddbc2c34acd714b36f30f2e037ff17138e1b9845e9d6881242654be8a7f",
+      "docs/tla/CharlotteCQ.tla": "1557db52418f0e4d47a737951b4a1d9cae5dfb44329b228bbd749da22a4bdd04",
+      "docs/tla/CharlotteCQ_buffer_unsafe.cfg": "9c5a49c335ba999c468e18651ee9a60bfb336d7ea32db783de562f8c897bf5ac",
+      "docs/tla/CharlotteCQ_mini.cfg": "e1b7eafb8fbc246c9122055672615be144e3b43ed869c9dbe41ba4d7d101125f",
+      "docs/tla/CharlotteCapability.tla": "4e94c107f21e7486cfe23c232c2b1930557af27df89c45cf75f29f4ddd098f1a",
+      "docs/tla/CharlotteCapability_small.cfg": "6a0cf36f3f4845ea37d901eb3ddbbf603445789ba18081ef7646c3f7ea36c8e3",
+      "docs/tla/CharlotteCheckedWait.tla": "0a94737e26b40c49939af7233d765ef4c76523608e39bf1b21818ac344c129b7",
+      "docs/tla/CharlotteCheckedWait_deadline_unsafe.cfg": "ed16d0f4d9759d76eafa780f56f6be83a95e7ae4721e0535aa8249afcbc0e5d2",
+      "docs/tla/CharlotteCheckedWait_park_unsafe.cfg": "0851785424eb552b590f5b191e31a0b3ec38ff8f6ee2a437803cc47a0e60fbbc",
+      "docs/tla/CharlotteCheckedWait_rejection_unsafe.cfg": "d73cdb7ac12b71fc3413a87343adecbd23a3ed3fbe29d8f5bd12d024e7b10188",
+      "docs/tla/CharlotteCheckedWait_replay_unsafe.cfg": "48df5cf72013a629118216d005481a2bef0c8e6fbee23e29664470affbec15c1",
+      "docs/tla/CharlotteCheckedWait_result_unsafe.cfg": "609274f19fcbd3f2d1a259f03c98bd8670ee2790a2de9c1b127cc935a51139c5",
+      "docs/tla/CharlotteCheckedWait_small.cfg": "5c114d9f0027dc3382a9b0ba9516b8dbc88eed5dde9b1067ebd8eecaace13e04",
+      "docs/tla/CharlotteCheckedWait_timeout_unsafe.cfg": "92699d7f09749d4f7f05ecc0e5e11605d79a0d02b715f4814eb5e0e590c36477",
+      "docs/tla/CharlotteClusterIngress.tla": "4660b215db89bb5d67b8433091eff5bb0052c993152e5423c657b9909aa6ac13",
+      "docs/tla/CharlotteClusterIngress_history_unsafe.cfg": "b35cd382b188843b7ae065053d0095c1fd55c41b6695410e8d8824e2a7820926",
+      "docs/tla/CharlotteClusterIngress_readiness_unsafe.cfg": "811add7d3dc380ff4f5feb31c33ba002ca72fa6ebc3b45e4116b5427fdec0656",
+      "docs/tla/CharlotteClusterIngress_small.cfg": "402c878db4ccef9c752c84c9beee894d823a8bf0d5f669d62de57734f2063360",
+      "docs/tla/CharlotteClusterIngress_stale_snapshot_unsafe.cfg": "ed01b5382c1dc5aa11eee36b853a7cf72e5193f586d5e9075e6c73adb22127a2",
+      "docs/tla/CharlotteDMA.tla": "5c732aed07fa1f79463d4ca30d2aa7fc7e7c58f46c1e0a64f9445298867cd9fc",
+      "docs/tla/CharlotteDMA_small.cfg": "55befa332f585191e5078b4085601f1ea9439a02f24c042d14e2bc7ae3009e93",
+      "docs/tla/CharlotteDMA_unsafe.cfg": "8b5f798d0723b8d9640eae2f9fb4c8a20383b49552d501943826fb55ad25b2ac",
+      "docs/tla/CharlotteDmaOperation.tla": "2839f7d90627b32049ac677bd0040474df313f1dc862090e1d9373817787e682",
+      "docs/tla/CharlotteDmaOperation_abandon_unsafe.cfg": "ffb8ec7166354bd94c8b53dca935d7cd0f1332aa1d922ed625c09476b6716d10",
+      "docs/tla/CharlotteDmaOperation_access_unsafe.cfg": "5a7b9512acaf0c030ed76a2c9c834b244ad06e4742db5fea72f09e1ae4182c88",
+      "docs/tla/CharlotteDmaOperation_cell_unsafe.cfg": "afca9bcf0e4ebf495043761e5a75e5f707c2f015b7596471a97e4c078e88123b",
+      "docs/tla/CharlotteDmaOperation_confirmation_unsafe.cfg": "fe466b9e71056adebe75475a3ccced1a5fa41d428694013c3924e76e14f35ea5",
+      "docs/tla/CharlotteDmaOperation_context_unsafe.cfg": "ad3c3e24b3cfdd57d6dc07851a0c73d3de6ebd123b545facbdd0ab2bf8e62999",
+      "docs/tla/CharlotteDmaOperation_cpu_unsafe.cfg": "16d1450ba672e9366eeed68a17c018d1a1988bee2bcd286ea87a4883ef3031ef",
+      "docs/tla/CharlotteDmaOperation_drop_unsafe.cfg": "b12da60b76b0b776895ba9a2b267fed4f777f9fad6561c023fbbedb290c224b8",
+      "docs/tla/CharlotteDmaOperation_map_unsafe.cfg": "bed6cdfaf7f0df9d4ba31d5f8d5005f287bcbbacd82a291986fb9771fee74a27",
+      "docs/tla/CharlotteDmaOperation_preparation_unsafe.cfg": "6fd8ba8d7238d6cc415a8dcc300d10154fd02f7bc1833605bcc612357804ce13",
+      "docs/tla/CharlotteDmaOperation_public_unsafe.cfg": "6684e9fcb141fa7ab6fa1df96918a7df1c490c62f765e2b4296c325e05b463c2",
+      "docs/tla/CharlotteDmaOperation_readiness_unsafe.cfg": "e4153638e5f59bbf1728ed2f338ade189844ad1c7254aec8751e6cfc754cb57f",
+      "docs/tla/CharlotteDmaOperation_rearm_unsafe.cfg": "3e124e8f8d7cc95794c56b1f615fcd1e30b4000aae7c9207a35f54e99f933503",
+      "docs/tla/CharlotteDmaOperation_remap_unsafe.cfg": "a97e1f454c658a35aeaac53d1ce06552fe0a95ffae5522fff19e3512a7896362",
+      "docs/tla/CharlotteDmaOperation_small.cfg": "5cd7d31f47748b790b12b903fd5fdd309106400aa6a5511e6991fc06664ddc95",
+      "docs/tla/CharlotteEndpointObservers.tla": "42415be276a5a31546337c473cfb89300cee102664809905169eb713efb140b6",
+      "docs/tla/CharlotteEndpointObservers_small.cfg": "8a972975c5d21bc23df1d1529258c455d35f5278ad6f209c19349dfbe6c11e14",
+      "docs/tla/CharlotteEndpointObservers_unsafe.cfg": "c85058ca46cb9ed10c39c38742cdb1c2895571fc6247de2fbaedcd488aff89a2",
+      "docs/tla/CharlotteHardwareAsid.tla": "2074acb290a98b6113874dbb3a6c93bb213698d5731153acd0f099b996644928",
+      "docs/tla/CharlotteHardwareAsid_small.cfg": "f4ef9b3536f735756f09f04bd0297b4f74d54ce03a6725806b5475b26b72d8ef",
+      "docs/tla/CharlotteHardwareAsid_unsafe.cfg": "4cc26e9851630ffbd7b8f3de981304bda0e3be2d06bf16c2e71cd6d286d852c9",
+      "docs/tla/CharlotteIPC.tla": "cafa97f897a33d496eb5c1ce2da877e6546ec66f9202d20f6ab33280a49ad857",
+      "docs/tla/CharlotteIPC_small.cfg": "7b5369411db55b2a2e8ea88245bdffc3dfbeb4867528f59c9e6e659a27931570",
+      "docs/tla/CharlotteInterruptRoute.tla": "9e6fdc9caff46461273a279b2a76153c6f22c7c97152999a92a93b46e281b0b4",
+      "docs/tla/CharlotteInterruptRoute_small.cfg": "d2d75e070eab33d10fd0cc38a3d60f53788637dfac9dfe505df0702f8f98f24e",
+      "docs/tla/CharlotteInterruptRoute_unsafe.cfg": "58e087639848e1cae282cd413caf77b3fffd0b912ebdde3728c6d05820f8bf10",
+      "docs/tla/CharlotteIpcPublication.tla": "67d87012aaed9bed5eec8df42b68f46359153a618d43a9b0befcb6b92e009432",
+      "docs/tla/CharlotteIpcPublication_batch_unsafe.cfg": "f21d1ad0c3c4ae9110851d914f55df4e08a5583db20fb9a1c3524c8158f3af1f",
+      "docs/tla/CharlotteIpcPublication_cancel_unsafe.cfg": "fb3cb26ea11333c4341a9569f3d1eea6757d28d2bed3a8bab006c8930187cd6d",
+      "docs/tla/CharlotteIpcPublication_connection_unsafe.cfg": "aaca3189ab479abf22b273882ca92fdf23602696a91aba0c1ff316bd46e1beae",
+      "docs/tla/CharlotteIpcPublication_memory_unsafe.cfg": "157e67d386164b1789334327b7c329b5cc2f133203867a7f2f3738688616133d",
+      "docs/tla/CharlotteIpcPublication_observe_unsafe.cfg": "958ce487bbee6ff56aae8a9a40df99593537a6b64320f4a5641a262ce245b0f9",
+      "docs/tla/CharlotteIpcPublication_readiness_unsafe.cfg": "dbc976896ed54d43217106ac32f920a93ef1ea9be8821e71b926d16ca6a02a27",
+      "docs/tla/CharlotteIpcPublication_refund_unsafe.cfg": "6aad7a123d8d50f7604ea78ed9f3106e05c5d95559c6dda0e83948f533abdc57",
+      "docs/tla/CharlotteIpcPublication_restore_unsafe.cfg": "a96f0da36e15eda49e0698ed30b3f373425fac45e76d11f8f8b034e5866ac5dd",
+      "docs/tla/CharlotteIpcPublication_rollback_unsafe.cfg": "e835593816f7502ac984d59d370237950b166a938774ec5a45a5686afbab6313",
+      "docs/tla/CharlotteIpcPublication_serial_unsafe.cfg": "32130b6ce3d0d01be1df08a89b7dd38d9a7d476ad31cd3605df48376eb1a5650",
+      "docs/tla/CharlotteIpcPublication_small.cfg": "4c6da1ebeb79eeefa62bb0dbb9d26184956c1fdd6d097a5de41b120275d67d87",
+      "docs/tla/CharlotteIpcTransaction.tla": "bfc596a22480fae309c31732670b60024085014ec084d998dbbf8affd40fed7c",
+      "docs/tla/CharlotteIpcTransaction_rollback_unsafe.cfg": "89326400847cf5ac0fd76e7c68eb2f32385d551cd38ce201c70dd6a5a6b7fe99",
+      "docs/tla/CharlotteIpcTransaction_small.cfg": "67e0efe832fbadf7258296297af6afa293da1a78edcdb464a14cf9a70280a471",
+      "docs/tla/CharlotteIpcTransaction_timeout_unsafe.cfg": "5c748b860dec8df3fb253e6aefcaa8138835fac61dc0b6ea48c8a089cb2b4c00",
+      "docs/tla/CharlotteNamePublication.tla": "64e06c4d4eba6c9af622cc8433bcb27e97a9c55655f4151a9f4d4e0faf9728f1",
+      "docs/tla/CharlotteNamePublication_abort_unsafe.cfg": "e271ebbf4cb0a504119c836cbdc42dcab8d6039a85209439f0dfa9c1d6f90a8c",
+      "docs/tla/CharlotteNamePublication_deferred_unsafe.cfg": "d1c9e007af1d13797dd43395aef321c857bb869285cbf9e13f9259b6b0ebf705",
+      "docs/tla/CharlotteNamePublication_disposal_unsafe.cfg": "9962dfc20c9bb6e4e7bdc54a2ac6a68dae04a701427004a494b54f9aaee02865",
+      "docs/tla/CharlotteNamePublication_exhausted_unsafe.cfg": "a942fbefc77918b1ad9ee416f77bd0357a1205e9cd831c1110e30e193d4deca2",
+      "docs/tla/CharlotteNamePublication_exhaustion.cfg": "9276ebe1529abbd3863d389066d633d0440adce13c69cccbdf7c8facc4c81cc6",
+      "docs/tla/CharlotteNamePublication_hint_unsafe.cfg": "8484b3ae8b8c58ceeee38e3e4bf4bee13056b420883c04924393984f85af2c09",
+      "docs/tla/CharlotteNamePublication_public_unsafe.cfg": "e569ee4d0b6f3bb86c05785a6574565195ef0d73a64edd9074cf61e18710443f",
+      "docs/tla/CharlotteNamePublication_quota_unsafe.cfg": "75624b9f524283872e18b0ec2d36c49e9b7b70a78d10e0b9248450c6eb10ee36",
+      "docs/tla/CharlotteNamePublication_replacement_unsafe.cfg": "02b0c2abe35eacfa067a22403296400228c8fff7e6531450bc428aa9bb3a8c8c",
+      "docs/tla/CharlotteNamePublication_retire_unsafe.cfg": "435a962cad50daf5e8c928c23bb0034a7b1f88f8b0d46b8e9018eb3b521b1748",
+      "docs/tla/CharlotteNamePublication_serial_unsafe.cfg": "beb2131c7c79377259741ca89e909273e0bde7bf43f7cb1e1413f182c911ad30",
+      "docs/tla/CharlotteNamePublication_small.cfg": "df05aff71bceb53c288f9e29ec0f64fd4efd5d17face5d1884fdc0a339b7dd88",
+      "docs/tla/CharlotteNamePublication_stale_unsafe.cfg": "23470b9661034062398a56368f0ff5980ecbe731f4f764da51b4e4de5ee89ac3",
+      "docs/tla/CharlotteNamePublication_watch_unsafe.cfg": "acff70f0762e23fa9ba9411edba9e5b9464a5ac9f6ba54f94ac03af10f9c020b",
+      "docs/tla/CharlotteNamePublication_wrap_unsafe.cfg": "d857d5368be2ca80b990b0b6d476da2d24ba8e5719116b19ce30a138794241a3",
+      "docs/tla/CharlottePlacementControl.tla": "2c93a5cf0a91d5babd0d4fbb863ea0d0c64eeda82a9bfc8d2467e19ba17e2515",
+      "docs/tla/CharlottePlacementControl_dwell_unsafe.cfg": "c1ffcc9f00441a11bd727cb812389a12dab91898d0764081e763693abaf55e8a",
+      "docs/tla/CharlottePlacementControl_reserve_unsafe.cfg": "969d1b58a2debd681a1beea9a4b69585f0f04f3e563eb78ddf32ef5396382733",
+      "docs/tla/CharlottePlacementControl_small.cfg": "ea702173e19534cf9f0967fe2f5a46bc5ea0e25a78c6a0a66ecd96da6e514cf8",
+      "docs/tla/CharlotteRaft.tla": "6ab1ef702a12515a8299263af5d5216115dd976dfee7d69e6b394c4c1fc94d80",
+      "docs/tla/CharlotteRaftJoin.tla": "4436022e36d4ed88690e3ba1dbd995bcb7bbaf60acd2c9da10063bb5cb221486",
+      "docs/tla/CharlotteRaftJoin_restart_unsafe.cfg": "9ae634438f5cfcd525ef79f229861ed5f16b09ded70282aa2d672670291b95eb",
+      "docs/tla/CharlotteRaftJoin_small.cfg": "645defb0cbba7276f412504af6ae1edd648bb75dc612bfec0c4466de5e15c833",
+      "docs/tla/CharlotteRaftJoin_unsafe.cfg": "e9e87d139447a922465906760b61028efcfdeb06e08fc0657111127bb1d3f3e1",
+      "docs/tla/CharlotteRaftLog.tla": "f1264ced4451c6498bbc23877475805613a798d4baa4dc7b92a16804f4d1266b",
+      "docs/tla/CharlotteRaftLog_small.cfg": "d0922611874d0a0c3aad1302c79cbeb2964b28047f5a4d62828c4b83ba44addb",
+      "docs/tla/CharlotteRaftMembership.tla": "ee283cee5f5c54cbd98a0ef002dbe2d8592f1dbda13c11a31c3dd118e30e3f4d",
+      "docs/tla/CharlotteRaftMembership_beforecatchup_unsafe.cfg": "1bebd17d6742862ea1b42603110142ab7ecfce3181a38486f900b42494c5662c",
+      "docs/tla/CharlotteRaftMembership_learnerleader_unsafe.cfg": "e03b850a627f57c6a67221bab01809966fd326845479bdc9ff9cb739c80152f8",
+      "docs/tla/CharlotteRaftMembership_oldonly_unsafe.cfg": "66c4d2ee02c6f971fb8529c3f27c6a484240e7e88787c4089e284967b569c818",
+      "docs/tla/CharlotteRaftMembership_small.cfg": "c4949302102f62fe00a4d7b2144ad348bd0ac07a14f7e49819eb9d45a3c55a3c",
+      "docs/tla/CharlotteRaftRead.tla": "ba501b11cfb8f5b1b49783164821f8f9919f7bebd005750d588af53bc55bf4a6",
+      "docs/tla/CharlotteRaftRead_apply_unsafe.cfg": "43cba1003d8bd416c940a67210311278e210565b7699d24a6b335e8cfc358231",
+      "docs/tla/CharlotteRaftRead_binding_unsafe.cfg": "eae17e21a319cc8ca76e862f0e5e8c426bb067b4df995128155e0bd859aae816",
+      "docs/tla/CharlotteRaftRead_commit_unsafe.cfg": "dc43808ad84e9c1f980a81124b59560f5e3494489c9b1c70f2cba87715ca87b7",
+      "docs/tla/CharlotteRaftRead_lease_unsafe.cfg": "04027533e5b606ff3995f03b3534135a005ced922ceff5b42d55813f2c7d7b53",
+      "docs/tla/CharlotteRaftRead_small.cfg": "d8356638da42d1a5f9e2bf70e011584a4d8e155f81401747b993c5df58f3c786",
+      "docs/tla/CharlotteRaftResponse.tla": "3d18cf384a8769934d40b538d1b66a62c347f24429e03e347076c359972fa3fa",
+      "docs/tla/CharlotteRaftResponse_backoff_unsafe.cfg": "9a72a7d3759a03c6515d0f345ef67bbb015881ae50f906b36259173c1618ec55",
+      "docs/tla/CharlotteRaftResponse_invalid_unsafe.cfg": "955dbde49aea1b4811db506ec61c662d3650272d7ec982c8d5b8d3506a36ed0f",
+      "docs/tla/CharlotteRaftResponse_oldterm_unsafe.cfg": "ca31d6e2a4e4a1545c2a541d583bdd30e68ff7c16857397c307745383f1cd4fe",
+      "docs/tla/CharlotteRaftResponse_regress_unsafe.cfg": "fec5226e58addf76e4676b34d144bb9f85785a3b725ecf88b420ef6e4161e192",
+      "docs/tla/CharlotteRaftResponse_small.cfg": "d8356638da42d1a5f9e2bf70e011584a4d8e155f81401747b993c5df58f3c786",
+      "docs/tla/CharlotteRaftSnapshot.tla": "3ecd5c17fdb200227c0de9608b732df5ae18c648acdcf4619d607eff3a7639d8",
+      "docs/tla/CharlotteRaftSnapshot_small.cfg": "0ea7a243aab5cdeace57a0ef990237f8893614d30afc06427d98ce0425baafb1",
+      "docs/tla/CharlotteRaftStream.tla": "9569b70cc70a89633d88c2b1605b685ed8269aeb835ef11919325905b800e338",
+      "docs/tla/CharlotteRaftStream_offset_unsafe.cfg": "69eff1ae0d71551616c20ca9453f5037cc655ff676343d2a0ef5c3adfe6ec35d",
+      "docs/tla/CharlotteRaftStream_owner_unsafe.cfg": "d4d8ff4cad3ee145ee09909d9aef43cf97d52f169f2f8675f768a386bb5b12d5",
+      "docs/tla/CharlotteRaftStream_small.cfg": "1cbf9e0476239a905305c0bafff90221959624090d88d60b1a96e88ea41a1cdc",
+      "docs/tla/CharlotteRaft_small.cfg": "48294c1cddc1d440a1e2d70a80fd6ea9da8ade2d20ff0f1f4f54b85e8843bb9b",
+      "docs/tla/CharlotteReliableMessage.tla": "3a17cb197cbf7818717940a30cf6930f41a3b5e6fe16b8dfe4cfa52851e51f6a",
+      "docs/tla/CharlotteReliableMessage_identity_unsafe.cfg": "4cbb48be424584a73181c7c5495e31faf41c3b967405092b520a41b9503678da",
+      "docs/tla/CharlotteReliableMessage_regression_unsafe.cfg": "49dbe795212fe69495d4c927592dce59074306c5b30c254d6d4bf8f43bd6ce8b",
+      "docs/tla/CharlotteReliableMessage_small.cfg": "85adbd3bb065b8da79a7d8dfe58fd5e4b530f10d26015f83952c4a82e22edea5",
+      "docs/tla/CharlotteRemoteCall.tla": "36de513b3ffbfa1e9cbd74bac0404fc1ef66cd5400c7b536a9da18c1be2b1c55",
+      "docs/tla/CharlotteRemoteCall_small.cfg": "56d4993c70c7c7f9a5d5ec478240776ee12e00432adf8402a6cc291bc7fe9601",
+      "docs/tla/CharlotteRootRetirement.tla": "817ce0b352e358ab901f6392354d4a42ca294274080e5f1b979d1105f563d87e",
+      "docs/tla/CharlotteRootRetirement_abandon_unsafe.cfg": "693f4eeb72902cd536fb1fa185b05e7daec0f0fd50f9fe655f1dcbd9396c7202",
+      "docs/tla/CharlotteRootRetirement_lease_unsafe.cfg": "185baa2c91ce27fd6872e654ee522f6b3770f467e0eead8557bb26c60c95c889",
+      "docs/tla/CharlotteRootRetirement_physical_unsafe.cfg": "fa20b8c4b353156b8f39c48362bc3ea995377e31d81a69f742300ca41077edab",
+      "docs/tla/CharlotteRootRetirement_refund_unsafe.cfg": "c01d5c13fbee34239773c05eb0a33db1d5c31dfaa2ecf9a8de25853de659faed",
+      "docs/tla/CharlotteRootRetirement_release_unsafe.cfg": "47ca560b0c4fba4952c7009e3fb6af8c5c3cde906a7bb943d70aea4113dbada5",
+      "docs/tla/CharlotteRootRetirement_small.cfg": "9ee0187ad3b152ba75044f87f71788bb9bd1f5d2af8ebf0a1b1389c487b593d1",
+      "docs/tla/CharlotteScheduler.tla": "a58ef1f0f39ebb06d7b5d09568071891b51ecc327ca097b018155026c2acab5e",
+      "docs/tla/CharlotteScheduler_domain_abort_unsafe.cfg": "53332baa166196b745e9c8a9ae53ca6f0df3675120de0ff4fa4c9b8d7c24ee56",
+      "docs/tla/CharlotteScheduler_small.cfg": "f48844b2897340be11b29446d9fe763fe5ac12eb09a4d98128ed8567adffb047",
+      "docs/tla/CharlotteScheduler_unsafe.cfg": "d8816f8c15bd9c50ccb9421ba88b5aba6c2b737b03d8f71bddbb8791cf8165c5",
+      "docs/tla/CharlotteServiceLifecycle.tla": "5cab06543727b1373ae1ba9a342217f93a275fb3058cc33c3408c6f6fc39dee0",
+      "docs/tla/CharlotteServiceLifecycle_small.cfg": "e44daeaa25b96571f91e1f440ef61865ca2cfe7ac2908e3761a0c17a24fc1762",
+      "docs/tla/CharlotteServiceLifecycle_unsafe.cfg": "dfbae5bdd1af4274cec07f6501be0724140ff96343be816b836d7458262e1e74",
+      "docs/tla/CharlotteSnapshotRestore.tla": "c71563b3814d1f58b6bee72dac6bfd78e76d55d50895dad5c70372002f42eb88",
+      "docs/tla/CharlotteSnapshotRestore_application_unsafe.cfg": "983d4959987c263293f339a66848e2d2160c8d47314b1006fcc965139f78c041",
+      "docs/tla/CharlotteSnapshotRestore_durable_unsafe.cfg": "08aab0735de4db738b699997e9c1e9db496a2c5627c71ead888bb9755dae2321",
+      "docs/tla/CharlotteSnapshotRestore_exposure_unsafe.cfg": "6aae5eb519c5d5e67c5cb64be07b8b64f3f82635236f0854f9d6797d00f193ad",
+      "docs/tla/CharlotteSnapshotRestore_join_unsafe.cfg": "f9e148560d035b72c231e971fabe1e0281db21539b1886d86a6aacc16bd6b079",
+      "docs/tla/CharlotteSnapshotRestore_membership_unsafe.cfg": "6de0ef827f05f5e144f88fb97473f5b8f1b15b49df87d253c6a58565d571a3b6",
+      "docs/tla/CharlotteSnapshotRestore_ordering_unsafe.cfg": "5c773fbf7a6930b96ee72c86b0a06ecba3fae85b6e51b05e03164059052eb6f5",
+      "docs/tla/CharlotteSnapshotRestore_progress_unsafe.cfg": "8e8ff5e47b8a3d60cab8d400802ff594af6320666274ce7366482045f136a854",
+      "docs/tla/CharlotteSnapshotRestore_small.cfg": "d8356638da42d1a5f9e2bf70e011584a4d8e155f81401747b993c5df58f3c786",
+      "docs/tla/CharlotteStackGrowth.tla": "36dce6679dd969bd14136bb79c5c2cff8cec8df6479f0d33458ab196324a4a5f",
+      "docs/tla/CharlotteStackGrowth_grow_unsafe.cfg": "bef8d583b177e41bc58ef6312d0726129b58aa62f0539fe0e3b2b3dc4cf99e74",
+      "docs/tla/CharlotteStackGrowth_leak_unsafe.cfg": "d3df7e3d6e69ea109cb6b9ee06c57cf54c9d6d4ac92ede12b7497066093857d6",
+      "docs/tla/CharlotteStackGrowth_small.cfg": "1931995ce026befe604d6225a63e43cf5afbc336881c9141222af8943076baf9",
+      "docs/tla/CharlotteThreadJoin.tla": "3e61029e5fa352c6b065f0edd165a94f132095fb1c0d79c31b57d6761653b0e6",
+      "docs/tla/CharlotteThreadJoin_small.cfg": "64bf35e8eea699f9f8d1f1fd51c4c8c8b3f0e123a32912015546ea891563c819",
+      "docs/tla/CharlotteThreadJoin_unsafe.cfg": "1caa3d988aea11eefcc695c7524337b2ceac2ccfa8daa7620732affb6fc577d7",
+      "docs/tla/CharlotteThreadJoin_wrap_unsafe.cfg": "6304719f640bb360f0aa8f7c85face93526dea4e490f9de314dcc46bdf62eed9",
+      "docs/tla/CharlotteTimedWait.tla": "8739f35fb3eb7d97b5e9b41c786ada3f1f74d7bfd9d285fbb332bd457e06078e",
+      "docs/tla/CharlotteTimedWait_small.cfg": "a3d3b0fcaf80d4030a515699c0f02d29b6951f4e4170774df1c83cb558aba1d2",
+      "docs/tla/CharlotteTimedWait_unsafe.cfg": "1ffdb5d33dd8d1280de6aa281c33a646b6bfa111f6f3ac8eb82b9800c8833be6",
+      "docs/tla/check.sh": "3a6139ef7a9949e067d06d676f9c36af5bff1aedf93143c07f956a37eee7cda7"
+    },
+    "input_count": 180,
+    "unchanged_baseline_inputs": 176,
+    "modified_baseline_inputs": [
+      "docs/tla/CharlotteBootTrust.tla",
+      "docs/tla/check.sh"
+    ],
+    "new_inputs": [
+      "docs/tla/CharlotteBootTrust_platform_unsafe.cfg",
+      "docs/tla/CharlotteBootTrust_selection_unsafe.cfg"
+    ],
+    "reused_unchanged_cases": 131,
+    "configured_modules": 34,
+    "configured_safe_cases": 36,
+    "configured_negative_cases": 109,
+    "fresh_single_full_suite_run_claimed": false,
+    "mapping_limit": "Image verification is symbolic; bootstrap flag compresses pre-publication images. Installation serialization after selection remains an unimplemented protected contract."
+  },
+  "manual_validation": {
+    "page_count": 234,
+    "exit_statuses": [
+      0,
+      0
+    ],
+    "pdf_sha256": "180f0d7480d59bb30912d0186890697c562a46c75ea002c1796586452806d209",
+    "pass_logs_sha256": [
+      "ff4401d792a931a144d13d4afd6f3674e912e488366a37f24fffd2db7d0906f4",
+      "1bda250037122e2eedc0d38f4b5b65d342b6ef19c5f0f383347d4eb7b0158ac6"
+    ],
+    "chapter_21_overfull_boxes": 0,
+    "changed_pages_visually_reviewed": [
+      198,
+      199,
+      201,
+      202,
+      203,
+      204,
+      205,
+      206,
+      207,
+      208,
+      209,
+      210,
+      211,
+      212,
+      213,
+      214
+    ],
+    "unchanged_chapter_rasters_compared_to_prior_visual_review": [
+      196,
+      197,
+      200,
+      215
+    ],
+    "reviewed_raster_sha256": {
+      "verified-chapter-196.png": "d2b0f5259c36f06300042ea007335f4787bcd5a8628576405710ce3438a9bb4a",
+      "verified-chapter-197.png": "cdde3e7874f059d7a58ceb54e714d96200aad1bdfc6dbc195a5122471943c50f",
+      "verified-chapter-198.png": "6e2f27a6509b87f969db4ff103e997fc128412b83d7e27a298ef86873e639f17",
+      "verified-chapter-199.png": "2cae2a06fbc2220ab2d4b0902bc84bb9e21cebf554262cd36799e9642ef4bd0a",
+      "verified-chapter-200.png": "5af8bca3c6c9609dc8524dc27c89ce973da2df554af39eafcbc637a96353d40c",
+      "verified-chapter-201.png": "399b2d56bcee4651cdca8392b6869417b68509cf8824e7c8a208a29aa244a59a",
+      "verified-chapter-202.png": "0e45e6f982bafc02b0622cd5c9f664e75276ea568fc9f663b5fac32b3d7826e0",
+      "verified-chapter-203.png": "4a6bfffca2e3f8de9d3fdd383d4579d989cd06d6a04f13b953b73853adaf408a",
+      "verified-chapter-204.png": "b1a0e7c99b60725af742b6cac6404bb299e60e1e7f168a0d912bbbdddeab9309",
+      "verified-chapter-205.png": "e16fae6053c2ce00c30d2148726fa9ff094b3be2c3166dbf38692c6b1d90437c",
+      "verified-chapter-206.png": "1c2778f09c5e1b77460d96d0d35e1759bc68e6220d1d8404902ae29b5a5695df",
+      "verified-chapter-207.png": "990a7d7598ae231a9e5a6fb28eb252d0fd87514921b1c252de0a016f434c8d43",
+      "verified-chapter-208.png": "e9fd9832233098f4f9790fc0d23fbcd262a171d527ef65bc3660be1d19869cd8",
+      "verified-chapter-209.png": "c5f9c27dda2ebe837ccc5e298150dd0b62b1a8db104649647878f98713d47e8d",
+      "verified-chapter-210.png": "4465a616d5b9ee4e5f1e6f179bdaecf3fb098212a391443f65cac80f53d1588b",
+      "verified-chapter-211.png": "4fdbcc08b5670f4531a2b79b45db983971501102dff787286dfa5b3af13e7e7f",
+      "verified-chapter-212.png": "05e5535acd334a0a237822d1796698c4797a4ddac8c6566cce54e5c77a43c372",
+      "verified-chapter-213.png": "8d559aef0f5b4b7cce761dead7bd6aa70a67632240d7bc9bf7e7e31f56e78351",
+      "verified-chapter-214.png": "1646b940da94cfba1f165218fde617cc83ff128203a75a4cb781587e35abbff4",
+      "verified-chapter-215.png": "c32017eea5989352e7fd9a8a78cd7be41c5a15d9c1588693b94f8c2bb9e7dc64"
+    },
+    "tracked_user_pdf_sha256": "3ebde3bbe4678ea406b74a67980d33dbd053e7053b4e160ce124001217a5481d",
+    "tracked_user_pdf_changed": true,
+    "tracked_user_pdf_baseline_sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f",
+    "concurrent_update": {
+      "observed_sha256": "3ebde3bbe4678ea406b74a67980d33dbd053e7053b4e160ce124001217a5481d",
+      "observed_mtime_local": "2026-10-19 09:39:51",
+      "validation_pdf_mtime_local": "2026-10-19 09:35:22",
+      "handling": "Preserved without writes; excluded from this audit source fingerprint set. Validation commands used an explicit temporary output directory. The updater identity was not established."
+    }
+  },
+  "limits": [
+    "No baseline unsafe native boot was reproduced; original mismatch is a source-review finding.",
+    "No TPM backend or usable UEFI runtime-services adapter exists in this tree.",
+    "No protected installer, rollback-resistant state, custody or production selector is implemented.",
+    "No new capability cleanup, physical completion, recovery registry or custody boundary.",
+    "Historical reports remain unchanged."
+  ],
+  "final_checks": {
+    "workspace_fmt": "cargo fmt --all -- --check: passed",
+    "diff_whitespace": "git diff --check: passed",
+    "shell_syntax": "bash -n docs/tla/check.sh scripts/sign-service-elfs.sh: passed",
+    "python_syntax": "ast.parse of changed runner and parser tests: passed",
+    "documentation_validation": {
+      "checked_local_targets": 739,
+      "missing": []
+    },
+    "source_and_model_fingerprints_rechecked": true,
+    "concurrent_tracked_pdf_preserved": true
+  }
+}

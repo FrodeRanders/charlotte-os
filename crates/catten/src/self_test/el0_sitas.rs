@@ -257,7 +257,10 @@ fn load_user_elf(asid: usize, image: &[u8]) -> usize {
     // path must enforce the same gate so a tampered `sitas-user` ELF is never
     // mapped, keeping every EL0 image behind the cluster signature boundary.
     if !matches!(
-        charlotte_launch::signature_note::verify_elf(image, &charlotte_launch::CLUSTER_PUBLIC_KEY),
+        charlotte_launch::signature_note::verify_elf(
+            image,
+            &crate::service::admission::platform_artifact_key().expect("boot artifact authority"),
+        ),
         charlotte_launch::signature_note::VerifyOutcome::Valid,
     ) {
         panic!("[sitas] refusing to load an ELF that is not validly signed by the cluster");

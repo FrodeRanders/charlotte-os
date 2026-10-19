@@ -105,9 +105,16 @@ and derived recipient public key before publication. Failure wipes the
 unpublished private owner; it never selects development trust. The separate
 `development` constructor is used explicitly by today's development boot.
 
-Publication consumes the preparation into one immutable kernel slot and returns
-a private-field `BootTrust` view. A second publication rejects, including the
-same policy, a signed replacement or development trust, and returns its complete
+After memory initialization, the BSP selects the preparation into the existing
+boot slot before APs or platform services start. The slot retains its zeroizing
+recipient owner and immutable public policy/digest. Platform ELF verification,
+store validation and persistent-image checks use that selected artifact key;
+missing selection rejects without a development-key fallback.
+
+Service composition takes the preparation once, leaving its public authority
+intact. Publication checks that same policy/digest and consumes the owner into
+the installed slot, returning a private-field `BootTrust` view. A second
+publication rejects, including the same policy, a signed replacement or development trust, and returns its complete
 preparation owner after unlocking. There is no runtime replacement/reset API.
 Policy rotation therefore requires a future protected restart/installation
 boundary; it cannot overwrite an already running node's authority.
@@ -122,16 +129,18 @@ zeroizing temporary copy after the policy guard is released.
 `launch_steady_state_with_trust(cluster, prepared)` is the consuming service
 composition entry point for a future trusted boot adapter. It rejects a foreign
 cluster before publication/service composition and returns the preparation owner
-when publication is already complete. Today's scheduler boot wrapper explicitly
-passes development preparation to that same composition function.
+when publication is already complete. Today's scheduler boot wrapper takes the
+early-selected preparation and passes it to that same composition function.
+Selection alone exposes neither operational policy nor recipient callbacks.
 
 This handoff authenticates no platform input by itself. Its future trusted
 caller must authenticate the executable chain and enrollment context, commit
 rollback-resistant state and obtain the private owner from custody before
 calling it. A receipt checked against attacker-selected root/state cannot
-establish those conditions. Initial platform service loading still uses the
-compiled development root; there is no production launch selector yet. The
-captured name-service handle also does not replace shutdown/root leases.
+establish those conditions. Initial platform service loading now follows the
+selected policy artifact root, including the name service before final
+publication. There is still no production launch selector. The captured
+name-service handle also does not replace shutdown/root leases.
 
 The [disposable x86 QEMU Secure Boot fixture](../guides/qemu-secure-boot.md)
 now exercises signed EFI/config/kernel/module loading and the kernel handoff.
@@ -139,8 +148,10 @@ Its boot selector accepts only the exact compiled installed test revision/digest
 an otherwise valid successor cannot publish before its state is installed.
 That check now uses the shared `verify_for_boot` boundary instead of a separate
 fixture-local assertion.
-The fixture uses public test enrollment/state/recipient material and retains
-development platform-service roots. It is not a production boot selector,
+The fixture uses public test enrollment/state/recipient material and an isolated
+platform bundle signed by its selected public test artifact root. Images signed
+by the development key reject at the name-service/NVMe loader gate. It is not a
+production boot selector,
 persistent-state adapter or custody provider.
 
 ## Protected integration still required
@@ -152,9 +163,10 @@ SEC-04 remains partial until an adapter provides all of these boundaries:
 2. Read rollback-resistant acceptance state, verify this record, and commit its
    exact revision/digest atomically before publishing its role authority. Recover
    power loss without accepting either an older state or a half-installed policy.
-3. Connect protected installation to the one-shot kernel handoff and carry
-   authenticated authority through initial platform service loading as well as
-   agent/cluster launch. Remove development roots from the production path.
+3. Connect protected installation to early authority selection and the one-shot
+   kernel handoff. The common platform-loading path now uses the selected key;
+   production still needs authenticated, non-fixture inputs and a fence through
+   loading/publication. Remove development roots from that production path.
    A public-key validation result or host-file verification alone cannot create
    that authority.
 4. Bind recipient-key custody/release to the authenticated platform and policy;
@@ -179,7 +191,8 @@ installation contract. The latter assumes atomic rollback-resistant state and
 trusted platform/custody inputs; those boundaries remain unimplemented. It
 covers stale competing expectations, failed/interrupted commit, qualified reads
 after recovery has settled/fenced original writers, and reboot before/after commit, without turning verification into
-installation authority. Ten required counterexamples, source correspondence and
-limits are in the [model review](../reports/audits/2026-10-18-boot-trust-model.md).
+installation authority. The [model review](../reports/audits/2026-10-18-boot-trust-model.md)
+and [early authority follow-up](../reports/audits/2026-10-19-security-platform-artifact-authority.md)
+record twelve required counterexamples, source correspondence and limits.
 Production remains disabled; a passing contract instance is no enrollment,
 protected-storage, custody or physical-lifetime qualification.

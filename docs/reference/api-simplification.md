@@ -212,3 +212,11 @@ comparison is removed. Enrollment/rotation keep `verify` and `VerifiedPolicy`.
 There is no conversion or fallback between these receipts. The successor-rejection
 diagnostic is now `UninstalledRevision`, with fixture/parser tests updated.
 Public record grammar, CLI modes, runtime ABI and production refusal are unchanged.
+
+The [early artifact-authority follow-up](../reports/audits/2026-10-19-security-platform-artifact-authority.md)
+removes the fixed development-key path from ordinary/platform ELF loading,
+store verification and persistent-image checks. They require the immutable key
+selected in the existing boot slot before platform startup. Composition takes
+its preparation once; publication requires the selected public policy/digest.
+Explicit authorized scoped/deployment-key APIs remain. No old-key fallback,
+wire-format change or new numbered format batch is added.

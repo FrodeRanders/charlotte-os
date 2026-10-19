@@ -549,15 +549,19 @@ verification is not a replacement for those gates; finding states are unchanged.
 The kernel now has a consuming, one-shot boot-policy handoff. DNS/deployment
 manifests and the final kernel gate share its immutable public policy; recipient
 key mismatch and later policy replacement reject. Development selection remains
-explicit. The protected installer/boot selector, initial platform-service roots
-and recipient custody are still missing; **SEC-04 remains partial**.
+explicit. The protected installer/production boot selector and recipient
+custody are still missing; **SEC-04 remains partial**.
 
 An [x86 QEMU Secure Boot matrix](../guides/qemu-secure-boot.md) now exercises
 firmware-to-Limine/config/kernel/policy integrity and signed-module consumption
 under disposable test authority. Boot requires the exact installed test state,
 rejecting stale/conflicting/uninstalled policies before publication. This is
 execution evidence for that test chain; production enrollment, persistent
-anti-rollback state, non-fixture platform-service roots and custody remain open.
+anti-rollback state, production platform-service roots and custody remain open.
+The [early artifact-authority follow-up](../reports/audits/2026-10-19-security-platform-artifact-authority.md)
+now selects one policy before platform loading. The fixture uses its selected
+test key for the whole bundle and rejects development-signed NS/NVMe
+substitutions. This corrects key routing without supplying production enrollment.
 
 The [DMA-map failure ownership follow-up](../reports/audits/2026-10-12-dma-map-failure-ownership.md)
 continues C13/C18 and G2/G3/G7: per-call diagnostics retain map rejection rather

@@ -147,9 +147,12 @@ unset CLUSTER_SIGN_PRIVATE_KEY
 export CLUSTER_SIGN_KEY_FILE=/secure/signing/artifact.hex
 ```
 
-Bundled platform services must still match the current compiled bootstrap
-root. Normally leave this variable unset for the demonstration build, which
-reads `tools/cluster-sign/dev-key.hex` directly. Never extract a real key into
+Bundled platform services must match the artifact authority selected before
+platform loading. Normal development boot selects the compiled development
+policy, so leave this variable unset for that demonstration build; it reads
+`tools/cluster-sign/dev-key.hex` directly. The Secure Boot fixture signs an
+isolated bundle under its policy artifact key. Setting a host signing path does
+not itself select a kernel policy or provide production enrollment. Never extract a real key into
 a shell variable, `$(...)`, an argument or a CI log. The scripts refuse the
 old variable without expanding its value, including under shell tracing.
 

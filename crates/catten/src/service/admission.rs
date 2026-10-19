@@ -1,7 +1,7 @@
 //! One immutable admission policy per boot, shared by service manifests and
 //! the kernel's final operational launch gate. This trusted kernel handoff covers
-//! policy publication only. Protected enrollment, persistent installation and
-//! key custody need separate support.
+//! early artifact selection and policy publication only. Protected enrollment, persistent
+//! installation and key custody need separate support.
 
 use charlotte_launch::trust::{
     self,
@@ -13,8 +13,8 @@ use zeroize::Zeroizing;
 use super::supervisor::NameServiceHandle;
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
 
-/// Prepared policy and exclusive recipient-key owner. No authority is
-/// installed until this owner is consumed by the one-shot boot publication.
+/// Prepared policy and exclusive recipient-key owner. Operational authority is
+/// installed when this owner is consumed by the one-shot boot publication.
 pub(crate) struct PreparedBootTrust {
     public: AdmissionTrust,
     verified_digest: Option<[u8; 32]>,
@@ -112,16 +112,102 @@ struct InstalledTrust {
     recipient: Zeroizing<[u8; 32]>,
 }
 
-static BOOT_TRUST: Mutex<Option<InstalledTrust>> = Mutex::new(None);
+struct SelectedPolicy {
+    cluster: &'static [u8],
+    public: AdmissionTrust,
+    verified_digest: Option<[u8; 32]>,
+}
+
+/// One boot slot carries the preparation through early platform loading and
+/// final publication. Taking its key owner leaves the selected public identity
+/// intact; neither a missing owner nor rejected publication selects a fallback.
+struct BootState {
+    selected: Option<SelectedPolicy>,
+    prepared: Option<PreparedBootTrust>,
+    installed: Option<InstalledTrust>,
+}
+
+impl BootState {
+    const fn empty() -> Self {
+        Self {
+            selected: None,
+            prepared: None,
+            installed: None,
+        }
+    }
+}
+
+static BOOT_TRUST: Mutex<BootState> = Mutex::new(BootState::empty());
+
+/// BSP-only selection, after memory initialization and before APs or platform
+/// services start. Verification/key preparation runs outside the slot guard.
+pub(crate) fn initialize_boot_policy() {
+    #[cfg(not(feature = "boot_trust_test"))]
+    let (cluster, prepared) =
+        (b"charlotte".as_slice(), PreparedBootTrust::development(b"charlotte"));
+    #[cfg(feature = "boot_trust_test")]
+    let (cluster, prepared) = (boot_fixture::CLUSTER, boot_fixture::prepare());
+    select_into(&BOOT_TRUST, cluster, prepared)
+        .unwrap_or_else(|_| panic!("boot policy already selected or cluster mismatch"));
+    crate::logln!("[boot trust] artifact authority selected before platform services");
+}
+
+#[allow(clippy::result_large_err)] // Return the complete inline key owner after unlock.
+fn select_into(
+    slot: &Mutex<BootState>,
+    cluster: &'static [u8],
+    prepared: PreparedBootTrust,
+) -> Result<(), PreparedBootTrust> {
+    if !prepared.matches_cluster(cluster) {
+        return Err(prepared);
+    }
+    let mut state = slot.lock();
+    if state.selected.is_some() {
+        return Err(prepared);
+    }
+    state.selected = Some(SelectedPolicy {
+        cluster,
+        public: prepared.public,
+        verified_digest: prepared.verified_digest,
+    });
+    state.prepared = Some(prepared);
+    Ok(())
+}
+
+fn take_from(slot: &Mutex<BootState>) -> Option<(&'static [u8], PreparedBootTrust)> {
+    let mut state = slot.lock();
+    let cluster = state.selected.as_ref()?.cluster;
+    Some((cluster, state.prepared.take()?))
+}
+
+pub(crate) fn take_boot_preparation() -> Option<(&'static [u8], PreparedBootTrust)> {
+    take_from(&BOOT_TRUST)
+}
+
+fn artifact_key_from(slot: &Mutex<BootState>) -> Option<[u8; 32]> {
+    slot.lock().selected.as_ref().map(|policy| policy.public.artifact_key)
+}
+
+/// Immutable authority selected before the first domain. This public key does
+/// not expose operational policy/key custody before final boot publication.
+pub(crate) fn platform_artifact_key() -> Option<[u8; 32]> {
+    artifact_key_from(&BOOT_TRUST)
+}
 
 #[allow(clippy::result_large_err)] // Return the inline owner without allocating under the guard.
 fn publish_into(
-    slot: &Mutex<Option<InstalledTrust>>,
+    slot: &Mutex<BootState>,
     prepared: PreparedBootTrust,
     name_service: NameServiceHandle,
 ) -> Result<BootTrust, PreparedBootTrust> {
-    let mut installed = slot.lock();
-    if installed.is_some() {
+    let mut state = slot.lock();
+    if state.prepared.is_some()
+        || state.installed.is_some()
+        || !state.selected.as_ref().is_some_and(|selected| {
+            selected.public == prepared.public
+                && selected.verified_digest == prepared.verified_digest
+        })
+    {
         return Err(prepared);
     }
     let view = BootTrust {
@@ -130,7 +216,7 @@ fn publish_into(
         name_service,
     };
     let result = view.snapshot();
-    *installed = Some(InstalledTrust {
+    state.installed = Some(InstalledTrust {
         view,
         recipient: prepared.recipient,
     });
@@ -138,7 +224,7 @@ fn publish_into(
 }
 
 pub(crate) fn configured_admission_trust() -> Option<AdmissionTrust> {
-    BOOT_TRUST.lock().as_ref().map(|policy| policy.view.public)
+    BOOT_TRUST.lock().installed.as_ref().map(|policy| policy.view.public)
 }
 
 pub(crate) fn with_operational_launch_trust<T>(
@@ -148,12 +234,12 @@ pub(crate) fn with_operational_launch_trust<T>(
 }
 
 fn with_installed_trust<T>(
-    slot: &Mutex<Option<InstalledTrust>>,
+    slot: &Mutex<BootState>,
     f: impl FnOnce(&AdmissionTrust, &[u8; 32], &NameServiceHandle) -> T,
 ) -> Option<T> {
     let (view, recipient) = {
         let installed = slot.lock();
-        let installed = installed.as_ref()?;
+        let installed = installed.installed.as_ref()?;
         (installed.view.snapshot(), Zeroizing::new(*installed.recipient))
     };
     // Cryptography, spawning and destruction of this temporary key owner are

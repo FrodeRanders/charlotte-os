@@ -34,6 +34,8 @@ CASES = {
     "policy-next": "UninstalledRevision",
     "missing-module": "policy module",
     "duplicate-module": "exactly one policy module",
+    "platform-ns-root": "platform-ns-root",
+    "platform-driver-root": "platform-driver-root",
 }
 # Fixed test-only media bound, including FAT metadata and the signed loader.
 # The current debug kernel no longer fits alongside them in a 64 MiB volume.
@@ -55,6 +57,10 @@ def observed_result(raw, expected):
                 raise TestFailure("kernel suite did not use the signed policy module")
             if "[boot trust] signed handoff" not in text:
                 raise TestFailure("boot trust assertions did not run")
+            selected = text.find("[boot trust] artifact authority selected before platform services")
+            started = text.find("[node] name service started")
+            if selected < 0 or started <= selected:
+                raise TestFailure("platform services did not follow artifact authority selection")
             return True
         return False
     if expected in ("firmware", "config", "kernel-hash", "policy-hash"):
@@ -66,6 +72,19 @@ def observed_result(raw, expected):
             return "CHECKSUM MISMATCH FOR CONFIG FILE" in text
         resource = "/catten" if expected == "kernel-hash" else "/boot-policy.bin"
         return "PANIC" in text and "Blake2b hash for URI" in text and resource in text and "does not match" in text
+    if expected in ("platform-ns-root", "platform-driver-root"):
+        if "[launch] steady-state service set published." in text:
+            raise TestFailure("wrong-root platform image reached service publication")
+        if expected == "platform-ns-root" and "[node] name service started" in text:
+            raise TestFailure("wrong-root name service started")
+        if "Kernel panic:" not in text:
+            return False
+        gate = "name-service" if expected == "platform-ns-root" else "domain"
+        if ("[boot trust fixture] verified signed module: revision=7" not in text
+                or "[boot trust] artifact authority selected before platform services" not in text
+                or f"[loader] {gate} load failed: SignatureVerificationFailed" not in text):
+            raise TestFailure("platform image rejected for an unrelated reason")
+        return True
     if "[launch] steady-state service set published." in text or "[boot trust fixture] verified signed module" in text:
         raise TestFailure("unaccepted policy reached trust/service publication")
     if "Kernel panic:" in text:
@@ -157,14 +176,7 @@ def main():
     run([ROOT / "scripts/verify-limine.sh"], preparation)
     environment = os.environ.copy()
     environment["CATTEN_TRUST_MODE"] = "development"
-    environment["CATTEN_X86_64_SERVICE_BUNDLE"] = str(ROOT / "target/embedded-services/x86_64-unknown-none")
-    with preparation.open("ab") as log:
-        subprocess.run(["cargo", "build", "--locked", "-p", "catten", "--target",
-                        "target_specs/x86_64-unknown-none-catten.json", "--no-default-features",
-                        "--features", "acpi,boot_trust_test"], cwd=ROOT, env=environment,
-                       stdout=log, stderr=log, check=True)
-    kernel = ROOT / "target/x86_64-unknown-none-catten/debug/catten"
-    run(["python3", ROOT / "scripts/check-kernel-asm-sections.py", kernel], preparation)
+    development_bundle = ROOT / "target/embedded-services/x86_64-unknown-none"
     policy_dir = ROOT / "crates/catten/src/service/admission"
     policy = policy_dir / "test-policy.bin"
     results = []
@@ -173,12 +185,48 @@ def main():
     with tempfile.TemporaryDirectory(prefix="private.", dir=output) as temporary:
         private = Path(temporary)
         private.chmod(0o700)
-        # Cargo may later build another feature set into the same target path.
-        # Keep this matrix's exact kernel bytes through signing and every case.
-        snapshot = private / "kernel-snapshot"
-        shutil.copyfile(kernel, snapshot)
-        kernel = snapshot
-        run(["python3", ROOT / "scripts/check-kernel-asm-sections.py", kernel], preparation)
+        bundle = private / "platform-bundle"
+        shutil.copytree(development_bundle, bundle)
+        # Public test seed 20 is the artifact root in test-policy.bin. Keep
+        # its restricted signing file and the re-signed bundle in this owner;
+        # the ordinary development bundle is never modified.
+        artifact_key = private / "artifact-key.hex"
+        run([tools / "venv/bin/python", "-c", """
+import os, sys
+from pathlib import Path
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+seed = bytes([20]) * 32
+public = Ed25519PrivateKey.from_private_bytes(seed).public_key().public_bytes_raw()
+assert public == Path(sys.argv[2]).read_bytes()[136:168]
+with os.fdopen(os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') as output:
+    output.write((seed + public).hex() + '\\n')
+""", artifact_key, policy], preparation)
+        signing_environment = environment.copy()
+        signing_environment["CLUSTER_SIGN_KEY_FILE"] = str(artifact_key)
+        with preparation.open("ab") as log:
+            subprocess.run([ROOT / "scripts/sign-service-elfs.sh", bundle], cwd=ROOT,
+                           env=signing_environment, stdout=log, stderr=log, check=True)
+
+        def build_kernel(source_bundle, name):
+            environment["CATTEN_X86_64_SERVICE_BUNDLE"] = str(source_bundle)
+            with preparation.open("ab") as log:
+                subprocess.run(["cargo", "build", "--locked", "-p", "catten", "--target",
+                                "target_specs/x86_64-unknown-none-catten.json", "--no-default-features",
+                                "--features", "acpi,boot_trust_test"], cwd=ROOT, env=environment,
+                               stdout=log, stderr=log, check=True)
+            snapshot = private / name
+            shutil.copyfile(ROOT / "target/x86_64-unknown-none-catten/debug/catten", snapshot)
+            run(["python3", ROOT / "scripts/check-kernel-asm-sections.py", snapshot], preparation)
+            return snapshot
+
+        kernel = build_kernel(bundle, "kernel-snapshot")
+        kernels = {"selected-root": kernel}
+        for case, service in (("platform-ns-root", "ns"), ("platform-driver-root", "nvme")):
+            if case in selected:
+                wrong_bundle = private / case
+                shutil.copytree(bundle, wrong_bundle)
+                shutil.copyfile(development_bundle / f"{service}.elf", wrong_bundle / f"{service}.elf")
+                kernels[case] = build_kernel(wrong_bundle, f"{case}-kernel")
         certificates = {}
         for role in ("pk", "kek", "db", "foreign"):
             key, cert = private / f"{role}.key", output / f"{role}.crt"
@@ -249,7 +297,7 @@ def main():
                     stream.seek(-1, 2)
                     stream.write(bytes([byte[0] ^ 1]))
                 run(["mcopy", "-o", "-i", image, changed, "::/catten"], preparation)
-            elif case.startswith("policy-") or case.endswith("-module"):
+            elif case.startswith("policy-") or case.endswith("-module") or case.startswith("platform-"):
                 if case in ("policy-tamper", "policy-signature"):
                     changed = bytearray(case_policy.read_bytes())
                     changed[-1] ^= 1
@@ -263,7 +311,9 @@ def main():
                     # proves the kernel's signature/state checks independently.
                     modules = 0 if case == "missing-module" else 2 if case == "duplicate-module" else 1
                     changed_config = private / "authorized.conf"
-                    changed_config.write_bytes(configuration(blake2(kernel), blake2(case_policy), modules))
+                    case_kernel = kernels.get(case, kernel)
+                    changed_config.write_bytes(configuration(blake2(case_kernel), blake2(case_policy), modules))
+                    run(["mcopy", "-o", "-i", image, case_kernel, "::/catten"], preparation)
                     unsigned = private / "authorized.EFI"
                     shutil.copyfile(ROOT / "limine-binary/BOOTX64.EFI", unsigned)
                     run([enroll, "enroll-config", unsigned, blake2(changed_config)], preparation)
@@ -276,7 +326,7 @@ def main():
                     run(["mcopy", "-o", "-i", image, changed_config, "::/limine.conf"], preparation)
             if case.startswith("valid-") or not data_image.exists():
                 run(["python3", ROOT / "scripts/make-nvme-image.py", data_image,
-                     ROOT / "target/embedded-services/x86_64-unknown-none"], preparation)
+                     bundle], preparation)
             qemu = [args.qemu, "-machine", "q35,smm=on", "-cpu", "max", "-smp", "4", "-m", "512M",
                     "-global", "driver=cfi.pflash01,property=secure,value=on",
                     "-drive", f"if=pflash,format=raw,unit=0,file={args.firmware_code.resolve()},readonly=on",
@@ -291,6 +341,10 @@ def main():
             print(f"PASS {case}: {CASES[case]}", flush=True)
         summary = {"test_only": True, "firmware_sha256": hashlib.sha256(args.firmware_code.read_bytes()).hexdigest(),
                    "kernel_blake2b": blake2(kernel), "policy_blake2b": blake2(policy), "config_blake2b": blake2(config),
+                   "kernel_variants_blake2b": {name: blake2(path) for name, path in kernels.items()},
+                   "platform_bundle_sha256": {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+                                               for path in sorted(bundle.glob("*.elf"))},
+                   "signed_loader_sha256": hashlib.sha256(signed_loader.read_bytes()).hexdigest(),
                    "results": results}
         (output / "results.json").write_text(json.dumps(summary, indent=2) + "\n")
     print(f"All {len(results)} Secure Boot cases passed; private keys and VM artifacts removed.", flush=True)

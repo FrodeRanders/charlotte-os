@@ -167,11 +167,13 @@ run_expected_violation CharlotteNamePublication CharlotteNamePublication_serial_
     GrantGenerationCoherent UnsafeLookupDuringPublish
 run_model CharlotteBootTrust CharlotteBootTrust_fixture.cfg \
     ReadInstalled ReadFailure Verify RejectRecord AcquireRecipient PrepareSigned \
-    RejectRecipient PrepareDevelopment Publish RejectPublication BorrowView DropPreparation Reboot
+    RejectRecipient PrepareDevelopment SelectAuthority LoadBootstrap LoadPlatform \
+    Publish RejectPublication BorrowView DropPreparation Reboot
 run_model CharlotteBootTrust CharlotteBootTrust_contract.cfg \
     ReadInstalled ReadEnrollment ReadFailure Verify RejectRecord CommitPolicy \
     CommitFailure CommitInterrupted CompetingCommit AcquireRecipient PrepareSigned \
-    RejectRecipient Publish RejectPublication BorrowView DropPreparation Reboot
+    RejectRecipient SelectAuthority LoadBootstrap LoadPlatform \
+    Publish RejectPublication BorrowView DropPreparation Reboot
 run_expected_violation CharlotteBootTrust CharlotteBootTrust_uninstalled_unsafe.cfg \
     InstalledBeforePublication UnsafeUninstalledPublish
 run_expected_violation CharlotteBootTrust CharlotteBootTrust_stale_unsafe.cfg \
@@ -192,6 +194,10 @@ run_expected_violation CharlotteBootTrust CharlotteBootTrust_failure_unsafe.cfg 
     InstalledBeforePublication UnsafeFailedCommitPublishes
 run_expected_violation CharlotteBootTrust CharlotteBootTrust_boundary_unsafe.cfg \
     ConditionalBoundary UnsafeUnsupportedProduction
+run_expected_violation CharlotteBootTrust CharlotteBootTrust_platform_unsafe.cfg \
+    PlatformImagesUseSelectedAuthority UnsafePlatformFallback
+run_expected_violation CharlotteBootTrust CharlotteBootTrust_selection_unsafe.cfg \
+    SelectedAuthorityMatchesState UnsafeSelectionOverwrite
 run_model CharlotteCQ CharlotteCQ_mini.cfg \
     Complete Fail CancelOp DrainOne DrainAll ObserveResult CqWait CqWake TimerFire
 run_expected_violation CharlotteCQ CharlotteCQ_buffer_unsafe.cfg \

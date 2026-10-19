@@ -66,7 +66,7 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all thirty-six complete fast configurations and 107 expected-failure
+- runs all thirty-six complete fast configurations and 109 expected-failure
   IPC-transaction, IPC-publication, endpoint-observer, name-publication, boot-trust, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
   checked-wait, domain-abort, address-space, root-retirement, hardware-ASID, interrupt-route, service-lifecycle, DMA, DMA-operation, authorization,
   Raft-join, Raft-response, Raft-stream, snapshot-restore, cluster-ingress, and reliable-message regression configurations;
@@ -594,9 +594,10 @@ or a signed direct successor naming its predecessor. Shared `verify_for_boot`
 accepts only the exact installed revision/digest, producing `VerifiedBootPolicy`
 for kernel preparation. The current boot fixture uses that shared check with
 compiled public state. Preparing the recipient
-owner checks its public binding; publication is one-shot, and manifests borrow
-the kernel gate's published view. Development trust is an explicit configuration,
-never a verification fallback.
+owner checks its public binding. Authority selection precedes bootstrap loading;
+platform images and final one-shot publication use that same selected policy.
+Manifests borrow the kernel gate's published view. Development trust is an
+explicit configuration, never a verification fallback.
 
 The fixture/development instance checks those implemented handoff boundaries.
 A separate **conditional contract** assumes a protected pinned context, atomic
@@ -610,15 +611,21 @@ is a model input, not a supported production selector. Production remains disabl
 
 Both instances use two boot epochs and eight finite record classes, including
 signed siblings, a bad predecessor/gap and invalid authentication. Initial
-enrollment has a fixed floor of one. Ten negative controls cover uninstalled
+enrollment has a fixed floor of one. Twelve negative controls cover uninstalled
 publication, stale commit, enrollment/development fallback, slot overwrite,
 independent manifests, wrong recipient, unauthenticated receipts, publication
-after failed commit and an unavailable protected boundary. Real cryptography,
-firmware, atomic storage, erasure/custody and physical lifetime are omitted.
+after failed commit, an unavailable protected boundary, development-signed
+platform fallback and selection overwrite. The conditional contract fences
+installation once artifact authority is selected, before bootstrap loading.
+Real cryptography, firmware, atomic storage, erasure/custody and physical
+lifetime are omitted.
 See the [review and evidence](../reports/audits/2026-10-18-boot-trust-model.md).
 The [exact boot-receipt follow-up](../reports/audits/2026-10-19-security-boot-receipts.md)
-rechecks these unchanged models after moving the fixture-local comparison into
+rechecked the then-unchanged models after moving the fixture-local comparison into
 the shared API and narrowing the kernel constructor's input.
+
+The [early artifact-authority follow-up](../reports/audits/2026-10-19-security-platform-artifact-authority.md)
+adds selection/bootstrap/platform transitions and two required controls.
 
 ## Local name publication model
 

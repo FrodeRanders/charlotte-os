@@ -976,12 +976,8 @@ pub extern "C" fn launch_steady_state() {
     logln!(
         "[security] DEVELOPMENT image: public fixture trust; not suitable for real credentials."
     );
-    #[cfg(not(feature = "boot_trust_test"))]
-    let (cluster, prepared) =
-        (b"charlotte".as_slice(), super::admission::PreparedBootTrust::development(b"charlotte"));
-    #[cfg(feature = "boot_trust_test")]
-    let (cluster, prepared) =
-        (super::admission::boot_fixture::CLUSTER, super::admission::boot_fixture::prepare());
+    let (cluster, prepared) = super::admission::take_boot_preparation()
+        .expect("boot preparation unavailable or already consumed");
     launch_steady_state_with_trust(cluster, prepared)
         .unwrap_or_else(|_| panic!("boot admission trust rejected"));
 }

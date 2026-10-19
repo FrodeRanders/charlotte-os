@@ -121,7 +121,7 @@ provide.
 \section{What is modeled}
 
 The current suite checks thirty-six safe configurations across thirty-four
-specifications. It also checks 107 expected-counterexample
+specifications. It also checks 109 expected-counterexample
 configurations. The models are divided by state ownership and failure boundary
 so that each remains reviewable.
 The Raft models are deliberately layered: election, log replication,
@@ -222,7 +222,8 @@ different proof obligations.
 \tlbreak{CharlotteBoot}{Trust} & Verifier, exact installed fixture, one-shot
     handoff and conditional protected installation & Signed verification does
     not install policy; boot uses committed identity; the slot cannot be replaced;
-    future commit/reboot ordering assumes protected atomic state. \\
+    bootstrap and later images use one selected authority; future commit/reboot
+    ordering assumes protected atomic state. \\
 \hline
 \tlbreak{Charlotte}{DMA} & CPU mapping, IPC loans, coherent/exclusive SMMU
     mapping, invalidation, quarantine, driver exit, pin reclamation & Unique
@@ -358,15 +359,20 @@ boot authority. Installation verification accepts the current record or its
 direct successor. Shared \texttt{verify\_for\_boot} instead requires the exact
 installed revision and digest, rejecting enrollment and uninstalled successors.
 Kernel preparation requires a \tlbreak{Verified}{BootPolicy} receipt from this
-check. The x86 fixture uses the same path. One-shot publication supplies
-the public policy used by both service manifests and the operational gate.
+check. The x86 fixture uses the same path. Before the first platform domain,
+the BSP selects its artifact authority into the existing boot slot. Bootstrap
+and later platform images use that key; missing selection rejects. Composition
+takes the preparation once, leaving public authority intact, and publication
+requires the same policy and digest. It supplies the public policy used by
+both service manifests and the operational gate.
 A duplicate publication returns its unused preparation; development trust is
 selected explicitly and is never a fallback after verification failure.
 
 The model has two configurations. The first projects those implemented fixture
 and development paths. The second is a conditional contract for the missing
 protected installer: it assumes an authenticated context, atomic rollback-resistant
-state commit and serialization against boot publication. Two signed successors
+state commit and serialization through early authority selection and boot
+publication. Once selection starts platform loading, installation is fenced. Two signed successors
 may verify against one old expectation; only one can commit it. An interrupted
 commit may leave the whole old or new record durable, so the caller must read
 protected state again before publishing. Recovery must first settle or fence the
@@ -375,8 +381,9 @@ while discarding volatile verification and publication state.
 
 These assumptions describe work still needed for production. The model adds
 no installer, firmware authentication, persistent-state adapter, key custody or
-production selector. Its ten negative controls expose the weakened ordering,
-identity and handoff guards. Byte-level cryptography, actual storage atomicity,
+production selector. Its twelve negative controls expose the weakened ordering,
+identity and handoff guards, including development-signed platform fallback
+and authority overwrite. Byte-level cryptography, actual storage atomicity,
 erasure, outer contexts and physical lifetime remain outside the projection.
 
 \subsection{Local publication owns its death watch}
@@ -890,6 +897,12 @@ present conformance obligations:
 \tlbreak{UnsafeUninstalled}{Publish} & A valid successor publishes before its
     installed-state commit. & \tlbreak{InstalledBefore}{Publication} \\
 \hline
+\tlbreak{UnsafePlatform}{Fallback} & A platform image uses the development key
+    after signed-policy selection. & \tlbreak{PlatformImagesUse}{SelectedAuthority} \\
+\hline
+\tlbreak{UnsafeSelection}{Overwrite} & Selected artifact authority changes
+    within one boot. & \tlbreak{SelectedAuthority}{MatchesState} \\
+\hline
 \texttt{UnsafeStaleCommit} & A second installer reuses a stale expectation. &
     \texttt{NoForkedInstallation} \\
 \hline
@@ -1045,7 +1058,7 @@ Flat session allocation & Retry and restart epochs alias one wire session. &
 \end{longtable}
 \normalsize
 
-The check suite expects all 107 negative configurations to fail for the named
+The check suite expects all 109 negative configurations to fail for the named
 reason. If one unexpectedly satisfies its invariant, the regression harness
 has lost sensitivity and the suite fails.
 
@@ -1096,7 +1109,7 @@ Alternatively, \texttt{TLA2TOOLS\_JAR} may name the tools archive. The script:
         positive successor count;
     \item rejects structural TLC warnings about variables, \texttt{EXCEPT}
         expressions, or incomplete successor states;
-    \item runs 107 negative configurations and requires each one to fail on
+    \item runs 109 negative configurations and requires each one to fail on
         the named invariant after exercising the named unsafe action; and
     \item writes checkpoints and traces into a temporary directory so generated
         state does not become part of the source tree.

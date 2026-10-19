@@ -179,6 +179,7 @@ pub extern "C" fn bsp_main() -> ! {
     }
     early_logln!("BSP assigned ID 0.");
     init::bsp_init();
+    crate::service::admission::initialize_boot_policy();
     // Construct global queues that can later be reached from interrupt or
     // preemptible runtime context while execution is still BSP-only. Their
     // `spin::LazyLock` once state must never become another spin dependency on

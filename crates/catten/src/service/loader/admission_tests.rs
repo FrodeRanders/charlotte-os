@@ -72,7 +72,7 @@ pub fn test_admission() {
     assert!(matches!(
         try_load_domain_with_preparation(
             image,
-            &charlotte_launch::CLUSTER_PUBLIC_KEY,
+            &crate::service::admission::platform_artifact_key().unwrap(),
             false,
             |handle| {
                 prepared.set(Some(handle));

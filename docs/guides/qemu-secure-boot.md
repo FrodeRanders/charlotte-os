@@ -65,8 +65,11 @@ development fallback when a module/state check fails.
 
 The selected recipient is the publicly known test value `[77; 32]`. The public
 policy fixtures are reproducible from seeds documented by the shared-protocol
-host test; these are not production credentials. Initial platform-service loading
-still uses development artifact roots. The compiled test expectation is not
+host test; these are not production credentials. The harness copies the staged
+bundle into its temporary owner and re-signs it with public test seed 20, whose
+artifact key is in the signed policy. The normal staged bundle stays unchanged.
+The BSP selects that authority before starting the name service; platform
+loading and store validation keep it through final publication. The compiled test expectation is not
 persistent anti-rollback state: replacing the whole signed old boot chain/store
 remains outside this fixture's protection.
 
@@ -83,7 +86,7 @@ signed loader and filesystem metadata fit within the fixture's media bound.
 
 | Case | Required outcome |
 | --- | --- |
-| Valid Intel VT-d / AMD-Vi | Signed module selected, installed public policy/digest agree, boot-trust assertions run and the full 15-check kernel suite passes. |
+| Valid Intel VT-d / AMD-Vi | Signed module selected before the name service starts, installed public policy/digest agree, boot-trust assertions run and the full 15-check kernel suite passes. |
 | Unsigned / foreign-signed / altered EFI | Firmware rejects the USB boot image with `Access Denied` or `Security Violation`; kernel entry never occurs. |
 | Altered configuration | Enrolled config checksum mismatch; kernel entry never occurs. |
 | Altered kernel / policy module | Limine rejects the appropriate URI's BLAKE2B digest before kernel entry. |
@@ -91,6 +94,7 @@ signed loader and filesystem metadata fit within the fixture's media bound.
 | Correctly signed old / conflicting current policy | Kernel reports `RevisionRollback` / `RevisionConflict` before publication. |
 | Correctly signed direct successor | Shared boot verifier reports `UninstalledRevision` before publication. |
 | Missing / duplicate module in authorized configuration | Kernel rejects absent or ambiguous module identity before publication. |
+| Development-signed name service / NVMe under selected test policy | Separately built, outer-authorized kernel rejects the embedded image with `SignatureVerificationFailed`; the name-service case cannot start NS, and neither reaches steady-state publication. |
 
 The inner-policy cases deliberately authorize the changed outer configuration
 under the test EFI signer, retaining the same pinned kernel, to test kernel

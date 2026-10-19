@@ -244,11 +244,11 @@ pub fn service_elf(name: &'static [u8]) -> Option<&'static [u8]> {
 }
 
 fn verified_for_name(name: &[u8], image: &[u8]) -> bool {
-    charlotte_launch::signature_note::verify_elf_for_name(
-        image,
-        &charlotte_launch::CLUSTER_PUBLIC_KEY,
-        name,
-    ) == charlotte_launch::signature_note::VerifyOutcome::Valid
+    let Some(key) = super::admission::platform_artifact_key() else {
+        return false;
+    };
+    charlotte_launch::signature_note::verify_elf_for_name(image, &key, name)
+        == charlotte_launch::signature_note::VerifyOutcome::Valid
 }
 
 /// Outcome of an idempotent embedded-service seed pass.

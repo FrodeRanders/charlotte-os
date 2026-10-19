@@ -68,7 +68,9 @@ creates fresh, independent artifact and deployment signing roots in a private
 directory under ignored `target/security-test`. Private key files are mode 0600;
 only public keys, signed descriptors and the signed probe ELF enter the test
 kernel. These roots test the configurable launcher path; they do not provision
-production trust or replace the bundled platform-service development root.
+production trust. The Secure Boot fixture now uses an isolated platform bundle
+signed by its selected public test artifact key; ordinary development boot
+still selects the development policy.
 
 The application receives its admitted descriptor and grant-controller
 connection, without a name-service connection. A second valid descriptor names

@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [SEC-04 early platform artifact authority — 19 October 2026](audits/2026-10-19-security-platform-artifact-authority.md): one selected key before platform loading, wrong-root NS/NVMe controls, and extended boot-trust models; protected state and custody remain open.
+
 - [SEC-04 exact boot-verification receipts](audits/2026-10-19-security-boot-receipts.md) — Shared exact-installed verification and a distinct kernel input, retaining production refusal and protected-state/custody limits.
 
 - [Raft snapshot continuation ownership](audits/2026-10-19-raft-snapshot-streams.md) — Reproduces mixed-stream installation, binds buffered chunks to leader/term, and adds owner/offset model controls.
