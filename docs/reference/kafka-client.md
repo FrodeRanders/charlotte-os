@@ -312,7 +312,17 @@ returns `Zeroizing<String>`; decoding reserves its complete output bound once
 and returns `Zeroizing<Vec<u8>>`. Late decode rejection drops the same prefix
 owner. Nonce/proof/verifier callers retain the returned owner directly. Local
 quantum digits and packed words also have erasing owners. This does not cover
-all SASL frame or transport copies; see the [scratch report](../reports/audits/2026-10-19-security-base64-scratch.md).
+transport copies; see the [scratch report](../reports/audits/2026-10-19-security-base64-scratch.md).
+
+`sasl_authenticate_request` validates the complete payload bound before copying
+and returns `Zeroizing<Vec<u8>>` from one reserved allocation. Reply parsing
+consumes a `Zeroizing<Vec<u8>>` on success or rejection. `SaslAuthenticate`
+retains that complete frame and lends its authentication range through
+`auth_bytes()`; the former independent `auth_bytes` vector is removed. The
+owner implements neither `Clone` nor `Debug`. The connector releases
+its first request/reply buffers when challenge handling returns the final
+SCRAM phase. Transport accumulation and TLS receive copies before this frame
+boundary remain separate work. See the [frame report](../reports/audits/2026-10-19-security-sasl-frames.md).
 
 The profile supports `None`, `ScramSha256`, `MtlsP256`, or
 `ScramSha256AndMtlsP256`. The mTLS variants carry one DER-encoded X.509 client

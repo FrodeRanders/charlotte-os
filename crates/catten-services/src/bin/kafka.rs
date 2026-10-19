@@ -559,35 +559,34 @@ impl<'connection> BrokerTransport<'connection> {
         let scram = wire::scram::Client::new(&credentials.username, &credentials.password, &nonce)
             .map_err(|_| protocol::ERR_AUTHENTICATION)?;
 
-        let correlation = 2;
-        let client_first = scram.client_first();
-        let request = Zeroizing::new(
-            wire::sasl_authenticate_request(correlation, CLIENT_ID, &client_first)
-                .map_err(map_wire)?,
-        );
-        let response = self.request_connected(&request)?;
-        let server_first =
-            wire::parse_sasl_authenticate(&response, correlation).map_err(map_wire)?;
-        if server_first.error != wire::NO_ERROR {
-            return Err(protocol::ERR_AUTHENTICATION);
-        }
-        let client_final = scram
-            .receive_server_first(&server_first.auth_bytes)
-            .map_err(|_| protocol::ERR_AUTHENTICATION)?;
+        let client_final = {
+            let correlation = 2;
+            let client_first = scram.client_first();
+            let request = wire::sasl_authenticate_request(correlation, CLIENT_ID, &client_first)
+                .map_err(map_wire)?;
+            let response = Zeroizing::new(self.request_connected(&request)?);
+            let server_first =
+                wire::parse_sasl_authenticate(response, correlation).map_err(map_wire)?;
+            if server_first.error != wire::NO_ERROR {
+                return Err(protocol::ERR_AUTHENTICATION);
+            }
+            scram
+                .receive_server_first(server_first.auth_bytes())
+                .map_err(|_| protocol::ERR_AUTHENTICATION)?
+        };
 
         let correlation = 3;
-        let request = Zeroizing::new(
+        let request =
             wire::sasl_authenticate_request(correlation, CLIENT_ID, client_final.message())
-                .map_err(map_wire)?,
-        );
-        let response = self.request_connected(&request)?;
+                .map_err(map_wire)?;
+        let response = Zeroizing::new(self.request_connected(&request)?);
         let server_final =
-            wire::parse_sasl_authenticate(&response, correlation).map_err(map_wire)?;
+            wire::parse_sasl_authenticate(response, correlation).map_err(map_wire)?;
         if server_final.error != wire::NO_ERROR {
             return Err(protocol::ERR_AUTHENTICATION);
         }
         client_final
-            .receive_server_final(&server_final.auth_bytes)
+            .receive_server_final(server_final.auth_bytes())
             .map_err(|_| protocol::ERR_AUTHENTICATION)
     }
 

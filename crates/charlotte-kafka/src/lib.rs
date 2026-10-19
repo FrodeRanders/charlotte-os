@@ -14,6 +14,12 @@ use alloc::{
     string::String,
     vec::Vec,
 };
+use core::ops::Range;
+
+use zeroize::{
+    Zeroize,
+    Zeroizing,
+};
 
 pub mod api {
     pub const PRODUCE: i16 = 0;
@@ -133,11 +139,19 @@ pub struct SaslHandshake {
     pub mechanisms: Vec<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// One owned SASL reply frame. Authentication bytes are borrowed from this
+/// erasing owner; parsing never creates an independent authentication copy.
 pub struct SaslAuthenticate {
     pub error: i16,
-    pub auth_bytes: Vec<u8>,
     pub session_lifetime_ms: i64,
+    frame: Zeroizing<Vec<u8>>,
+    auth_range: Range<usize>,
+}
+
+impl SaslAuthenticate {
+    pub fn auth_bytes(&self) -> &[u8] {
+        &self.frame[self.auth_range.clone()]
+    }
 }
 
 impl ApiVersions {
@@ -251,6 +265,12 @@ struct Encoder {
     bytes: Vec<u8>,
 }
 
+impl Zeroize for Encoder {
+    fn zeroize(&mut self) {
+        self.bytes.zeroize();
+    }
+}
+
 impl Encoder {
     fn request(
         api_key: i16,
@@ -261,12 +281,22 @@ impl Encoder {
         let mut encoder = Self {
             bytes: Vec::new(),
         };
-        encoder.i32(0);
-        encoder.i16(api_key);
-        encoder.i16(api_version);
-        encoder.i32(correlation);
-        encoder.string(client_id)?;
+        encoder.request_header(api_key, api_version, correlation, client_id)?;
         Ok(encoder)
+    }
+
+    fn request_header(
+        &mut self,
+        api_key: i16,
+        api_version: i16,
+        correlation: i32,
+        client_id: &[u8],
+    ) -> Result<(), Error> {
+        self.i32(0);
+        self.i16(api_key);
+        self.i16(api_version);
+        self.i32(correlation);
+        self.string(client_id)
     }
 
     fn flexible_request(
@@ -281,12 +311,17 @@ impl Encoder {
     }
 
     fn finish(mut self) -> Result<Vec<u8>, Error> {
+        self.finish_frame()?;
+        Ok(self.bytes)
+    }
+
+    fn finish_frame(&mut self) -> Result<(), Error> {
         let payload = self.bytes.len().checked_sub(4).ok_or(Error::Invalid)?;
         if payload > MAX_FRAME_LEN || payload > i32::MAX as usize {
             return Err(Error::TooLarge);
         }
         self.bytes[..4].copy_from_slice(&(payload as i32).to_be_bytes());
-        Ok(self.bytes)
+        Ok(())
     }
 
     fn i8(&mut self, value: i8) {
@@ -615,34 +650,65 @@ pub fn parse_sasl_handshake(frame: &[u8], correlation: i32) -> Result<SaslHandsh
     })
 }
 
+/// Validate the complete frame size before copying authentication bytes, then
+/// encode into one erasing owner without growing its allocation.
 pub fn sasl_authenticate_request(
     correlation: i32,
     client_id: &[u8],
     auth_bytes: &[u8],
-) -> Result<Vec<u8>, Error> {
-    let mut encoder = Encoder::request(
+) -> Result<Zeroizing<Vec<u8>>, Error> {
+    if client_id.len() > MAX_STRING_LEN || client_id.len() > i16::MAX as usize {
+        return Err(Error::TooLarge);
+    }
+    // API key/version, correlation, client-ID length, authentication length.
+    const FIXED_PAYLOAD_LEN: usize = 2 + 2 + 4 + 2 + 4;
+    let payload = FIXED_PAYLOAD_LEN
+        .checked_add(client_id.len())
+        .and_then(|len| len.checked_add(auth_bytes.len()))
+        .filter(|len| *len <= MAX_FRAME_LEN && *len <= i32::MAX as usize)
+        .ok_or(Error::TooLarge)?;
+    let frame_len = payload.checked_add(4).ok_or(Error::TooLarge)?;
+    let mut encoder = Zeroizing::new(Encoder {
+        bytes: Vec::with_capacity(frame_len),
+    });
+    encoder.request_header(
         api::SASL_AUTHENTICATE,
         version::SASL_AUTHENTICATE,
         correlation,
         client_id,
     )?;
     encoder.bytes(auth_bytes)?;
-    encoder.finish()
+    encoder.finish_frame()?;
+    Ok(Zeroizing::new(core::mem::take(&mut encoder.bytes)))
 }
 
-pub fn parse_sasl_authenticate(frame: &[u8], correlation: i32) -> Result<SaslAuthenticate, Error> {
-    let mut decoder = response(frame, correlation)?;
+/// Consume a reply frame on success or rejection. The returned reply retains
+/// that same owner and lends its validated authentication range.
+///
+/// ```compile_fail,E0382
+/// let frame = zeroize::Zeroizing::new(vec![0u8; 8]);
+/// let _ = charlotte_kafka::parse_sasl_authenticate(frame, 7);
+/// drop(frame); // Rejection consumed the input owner too.
+/// ```
+pub fn parse_sasl_authenticate(
+    frame: Zeroizing<Vec<u8>>,
+    correlation: i32,
+) -> Result<SaslAuthenticate, Error> {
+    let mut decoder = response(&frame, correlation)?;
     let error = decoder.i16()?;
     let _error_message = decoder.nullable_string()?;
-    let auth_bytes = decoder.bytes()?.unwrap_or_default().to_vec();
+    let auth_bytes = decoder.bytes()?.unwrap_or_default();
+    let auth_end = 4 + decoder.offset;
+    let auth_range = auth_end - auth_bytes.len()..auth_end;
     let session_lifetime_ms = decoder.i64()?;
     if !decoder.done() {
         return Err(Error::Invalid);
     }
     Ok(SaslAuthenticate {
         error,
-        auth_bytes,
         session_lifetime_ms,
+        frame,
+        auth_range,
     })
 }
 

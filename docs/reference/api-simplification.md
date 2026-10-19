@@ -248,3 +248,12 @@ helper. Proof, verifier and nonce callers keep those owners directly; their
 late wrapping is removed. The decoder reserves the whole output bound before
 copying. There is no plain-return compatibility wrapper. Padding behavior,
 accepted grammar, Kafka framing and persistent records are unchanged.
+
+The [SASL frame follow-up](../reports/audits/2026-10-19-security-sasl-frames.md)
+returns authentication requests in `Zeroizing<Vec<u8>>` and makes reply parsing
+consume the same input-owner type. The reply retains its entire frame and
+exposes `auth_bytes()` as a borrow; the copied public vector and its derived
+Clone/Debug implementations are removed. Header/final-length methods remain
+shared with the ordinary encoder. No borrowed-input parser or plain request
+compatibility wrapper remains. Kafka wire fields and version numbers are
+unchanged, including nullable authentication bytes and broker-error metadata.

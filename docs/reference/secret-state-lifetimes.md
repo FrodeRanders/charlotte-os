@@ -24,6 +24,8 @@ records a retained-storage reproduction and the correction's validation.
 | SCRAM proof and expected server signature | One `ClientFinal` owner | Proof bytes are borrowed for encoding. Consuming final verification or ordinary cancellation drops both fields; even early length/UTF-8 rejection consumes the phase. |
 | SCRAM Base64 encoded proof/nonce and decoded salt/server verifier | Helpers construct `Zeroizing<String>` / `Zeroizing<Vec<u8>>` before writing and return those owners | Reserve the complete output bound once. Ordinary Drop erases successful output; rejection inside decoding erases its existing prefix. The decoder has no growth copies. |
 | Base64 quantum digits and packed words | Local zeroizing array/word owners | Drop on each iteration or early rejection. Scalar expression/compiler copies remain outside the guarantee. |
+| Encoded SASL authentication request | `Zeroizing<Encoder>` during construction, then `Zeroizing<Vec<u8>>` | Validate the complete frame before allocation/copying; reserve once and transfer the same buffer. Drop erases a completed request or any partial guarded construction. |
+| Parsed SASL authentication reply | `SaslAuthenticate` retains the complete `Zeroizing<Vec<u8>>` and a validated byte range | Parsing consumes the input on every outcome. `auth_bytes()` borrows from that same frame; no independent auth-byte allocation remains. Drop erases the complete accepted/rejected frame. |
 | HPKE X25519 private key and shared secret | The selected `x25519-dalek` `StaticSecret` and `SharedSecret` owners inside HPKE | The direct dependency requires `zeroize`, which HPKE's disabled defaults omitted. Production trait bounds require both owners to implement `ZeroizeOnDrop`. Drop erases their named 32-byte fields. |
 | Generated recipient private bytes | Returned `Zeroizing<[u8; 32]>`, created as an owner before serialization | Transfers directly to the signing tool; ordinary return/error drops the owner. Public recipient bytes remain an array. Explicit caller copies still need their own policy. |
 | Failed HPKE authentication output | Caller-owned output slice | `operations::open` uses `Zeroize` on the attempted plaintext prefix after AEAD rejection. Earlier validation errors do not modify output; the caller owns successful plaintext and unused capacity. |
@@ -54,7 +56,7 @@ not promise ordinary Rust Drop. Heap/page teardown has its separate contract.
 
 The pinned P-256 `SecretKey` and ECDSA `SigningKey` implementations have
 erasing scalar destructors. This source observation does not qualify the full
-TLS parser or session. Kafka SASL frame encoding/parsing and transport copies,
+TLS parser or session. Kafka transport accumulation and TLS receive copies,
 TLS key schedules, HPKE deserialization scratch and cipher contexts, host-tool
 copies and the rest of the connector memory inventory remain
 separate SEC-15 work. No cryptographic algorithm, wire format, transport policy,
@@ -83,3 +85,10 @@ The corrected probes observe erasure and no growth. Encoding already reserved
 its output and its production callers wrapped the result; returning the owner
 strengthens that helper boundary. Full allocator/physical erasure and the
 remaining Kafka frame copies are separate work.
+
+The [SASL frame follow-up](../reports/audits/2026-10-19-security-sasl-frames.md)
+removes the parser's independent authentication copy, including copies made
+before late trailer rejection. Requests preflight the complete frame bound and
+start under an erasing owner. The connector scopes the first request/reply to
+challenge handling. Transport buffers before the frame enters this owner still
+need separate qualification; this is not end-to-end plaintext erasure.
