@@ -33,13 +33,38 @@ pub enum Error {
     SignatureMismatch,
 }
 
-/// One SCRAM exchange. Secret material and derived keys are erased when the
-/// exchange completes or an error path drops it.
+/// Initial SCRAM phase. Consuming the server challenge releases the password
+/// copy on success or rejection. The returned phase owns only the proof and
+/// expected server signature.
+///
+/// A rejected challenge consumes this phase too:
+/// ```compile_fail,E0382
+/// use charlotte_kafka::scram::Client;
+/// let client = Client::new("user", b"public-fixture", "nonce").unwrap();
+/// let _ = client.receive_server_first(b"malformed");
+/// let _ = client.client_first(); // The initial phase was consumed.
+/// ```
 pub struct Client {
     password: Zeroizing<Vec<u8>>,
     nonce: String,
     client_first_bare: Zeroizing<Vec<u8>>,
-    expected_server_signature: Option<Zeroizing<[u8; 32]>>,
+}
+
+/// A prepared proof and one server-final verification. This owner contains no
+/// password or initial transcript and cannot begin another exchange.
+///
+/// Success and every rejection consume the verifier:
+/// ```compile_fail,E0382
+/// use charlotte_kafka::scram::Client;
+/// let initial = Client::new("user", b"public-fixture", "client").unwrap();
+/// let final_phase = initial
+///     .receive_server_first(b"r=client-server,s=c2FsdA==,i=4096").unwrap();
+/// let _ = final_phase.receive_server_final(b"malformed");
+/// let _ = final_phase.receive_server_final(b"v=another"); // Already consumed.
+/// ```
+pub struct ClientFinal {
+    message: Zeroizing<Vec<u8>>,
+    expected_server_signature: Zeroizing<[u8; 32]>,
 }
 
 impl Client {
@@ -62,7 +87,6 @@ impl Client {
             password: Zeroizing::new(password.to_vec()),
             nonce: String::from(nonce),
             client_first_bare,
-            expected_server_signature: None,
         })
     }
 
@@ -73,7 +97,7 @@ impl Client {
         message
     }
 
-    pub fn receive_server_first(&mut self, message: &[u8]) -> Result<Zeroizing<Vec<u8>>, Error> {
+    pub fn receive_server_first(self, message: &[u8]) -> Result<ClientFinal, Error> {
         if message.is_empty() || message.len() > MAX_SERVER_MESSAGE_BYTES {
             return Err(Error::InvalidServerMessage);
         }
@@ -132,7 +156,7 @@ impl Client {
             proof[index] = client_key[index] ^ client_signature[index];
         }
         let server_key = hmac_sha256(&salted_password[..], b"Server Key");
-        self.expected_server_signature = Some(hmac_sha256(&server_key[..], &auth_message));
+        let expected_server_signature = hmac_sha256(&server_key[..], &auth_message);
 
         let proof = Zeroizing::new(base64_encode(&proof[..], true));
         let mut client_final =
@@ -140,14 +164,25 @@ impl Client {
         client_final.extend_from_slice(&final_without_proof);
         client_final.extend_from_slice(b",p=");
         client_final.extend_from_slice(proof.as_bytes());
-        Ok(client_final)
+        Ok(ClientFinal {
+            message: client_final,
+            expected_server_signature,
+        })
+    }
+}
+
+impl ClientFinal {
+    /// Borrow the proof bytes while this phase owns them. Request encoding
+    /// must copy them into its own zeroizing transport buffer.
+    pub fn message(&self) -> &[u8] {
+        &self.message
     }
 
-    pub fn receive_server_final(&mut self, message: &[u8]) -> Result<(), Error> {
+    pub fn receive_server_final(self, message: &[u8]) -> Result<(), Error> {
         if message.is_empty() || message.len() > MAX_SERVER_MESSAGE_BYTES {
             return Err(Error::InvalidServerMessage);
         }
-        let expected = self.expected_server_signature.take().ok_or(Error::InvalidServerMessage)?;
+        let expected = &self.expected_server_signature;
         let text = core::str::from_utf8(message).map_err(|_| Error::InvalidServerMessage)?;
         if text.starts_with("e=") {
             return Err(Error::ServerRejected);
@@ -298,7 +333,7 @@ mod tests {
 
     #[test]
     fn scram_sha_256_matches_rfc_7677_exchange() {
-        let mut client = Client::new("user", b"pencil", "rOprNGfwEbeRWgbNEkqO").unwrap();
+        let client = Client::new("user", b"pencil", "rOprNGfwEbeRWgbNEkqO").unwrap();
         assert_eq!(&*client.client_first(), b"n,,n=user,r=rOprNGfwEbeRWgbNEkqO");
         let final_message = client
             .receive_server_first(
@@ -306,28 +341,70 @@ mod tests {
             )
             .unwrap();
         assert_eq!(
-            &*final_message,
+            final_message.message(),
             b"c=biws,r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,p=dHzbZapWIk4jUhN+Ute9ytag9zjfMHgsqmmiz7AndVQ="
         );
-        client.receive_server_final(b"v=6rriTRBi23WpRR/wtup+mMhUZUn/dB5nLTJRsjl95G4=").unwrap();
+        final_message
+            .receive_server_final(b"v=6rriTRBi23WpRR/wtup+mMhUZUn/dB5nLTJRsjl95G4=")
+            .unwrap();
     }
 
     #[test]
     fn rejects_nonce_downgrade_and_excessive_work() {
-        let mut client = Client::new("user", b"secret", "client").unwrap();
-        assert_eq!(
-            client.receive_server_first(b"r=other,s=c2FsdA==,i=4096"),
-            Err(Error::InvalidNonce)
-        );
-        assert_eq!(
-            client.receive_server_first(b"r=client-server,s=c2FsdA==,i=1000001"),
-            Err(Error::IterationLimit)
-        );
+        for (message, expected) in [
+            (b"r=other,s=c2FsdA==,i=4096".as_slice(), Error::InvalidNonce),
+            (b"r=client-server,s=c2FsdA==,i=1000001", Error::IterationLimit),
+        ] {
+            let client = Client::new("user", b"public-fixture", "client").unwrap();
+            assert_eq!(client.receive_server_first(message).err(), Some(expected));
+        }
+    }
 
-        let mut client = Client::new("user", b"secret", "client").unwrap();
-        client.receive_server_first(b"r=client-server,s=c2FsdA==,i=4096").unwrap();
+    #[test]
+    fn rejects_malformed_challenges_with_one_consumed_initial_owner() {
+        for (message, expected) in [
+            (b"".as_slice(), Error::InvalidServerMessage),
+            (b"\xff", Error::InvalidServerMessage),
+            (b"m=extension", Error::UnsupportedExtension),
+            (b"r=client-server,r=client-server,s=c2FsdA==,i=4096", Error::InvalidServerMessage),
+            (b"r=client-server,s=!,i=4096", Error::InvalidServerMessage),
+            (b"r=client-server,s=,i=4096", Error::InvalidServerMessage),
+            (b"r=client-server,s=c2FsdA==,i=0", Error::IterationLimit),
+        ] {
+            let client = Client::new("user", b"public-fixture", "client").unwrap();
+            assert_eq!(client.receive_server_first(message).err(), Some(expected));
+        }
+        let client = Client::new("user", b"public-fixture", "client").unwrap();
         assert_eq!(
-            client.receive_server_final(&vec![b'x'; MAX_SERVER_MESSAGE_BYTES + 1]),
+            client.receive_server_first(&vec![b'x'; MAX_SERVER_MESSAGE_BYTES + 1]).err(),
+            Some(Error::InvalidServerMessage)
+        );
+    }
+
+    fn final_phase() -> ClientFinal {
+        Client::new("user", b"pencil", "rOprNGfwEbeRWgbNEkqO").unwrap()
+            .receive_server_first(b"r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,s=W22ZaJ0SNY7soEsUEjb6gQ==,i=4096")
+            .unwrap()
+    }
+
+    #[test]
+    fn every_final_rejection_consumes_the_proof_and_verifier() {
+        for (message, expected) in [
+            (b"".as_slice(), Error::InvalidServerMessage),
+            (b"\xff", Error::InvalidServerMessage),
+            (b"e=invalid-proof", Error::ServerRejected),
+            (b"v=!!!!", Error::InvalidServerMessage),
+            (b"v=AAAA", Error::SignatureMismatch),
+            (b"v=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", Error::SignatureMismatch),
+            (
+                b"v=6rriTRBi23WpRR/wtup+mMhUZUn/dB5nLTJRsjl95G4=,extra=x",
+                Error::InvalidServerMessage,
+            ),
+        ] {
+            assert_eq!(final_phase().receive_server_final(message), Err(expected));
+        }
+        assert_eq!(
+            final_phase().receive_server_final(&vec![b'x'; MAX_SERVER_MESSAGE_BYTES + 1]),
             Err(Error::InvalidServerMessage)
         );
     }

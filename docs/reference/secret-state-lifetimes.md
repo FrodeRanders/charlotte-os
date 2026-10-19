@@ -1,4 +1,4 @@
-# Secret-derived hash state
+# Secret-derived state lifetimes
 
 This is the current SEC-15 inventory for Charlotte's SHA-256, HMAC, SigV4 and
 SCRAM derivation helpers. It is a bounded part of the wider secret-copy review.
@@ -18,7 +18,9 @@ records a retained-storage reproduction and the correction's validation.
 | HMAC result | Returned `Zeroizing<[u8; 32]>` | Ownership continues through derivation or encoding; Drop erases it. No plain-array HMAC helper remains in S3 or SCRAM. |
 | SigV4 `AWS4`-prefixed secret and date/region/service/signing keys | Existing zeroizing prefix buffer and shared HMAC result owners | Retained through request signing, then dropped. The returned signature/authorization strings are intentional protocol output. |
 | SCRAM PBKDF2 current block and accumulated result | Zeroizing owners; PBKDF2 returns its result owner | Replacing the current block drops its old owner. The accumulated result transfers directly to the exchange. |
-| SCRAM client/server keys, stored key, proof and expected server signature | Existing exchange/local zeroizing owners | Local derivations drop at function return; the expected signature is consumed by final verification or drops with the client. The password remains owned until the client drops. |
+| SCRAM exchange-local password and initial transcript | Initial `Client` phase, with zeroizing password/transcript buffers | Consuming server-challenge processing drops the initial phase on success or rejection, before the next transport exchange. The caller's configured credentials keep their separate lifetime. |
+| SCRAM client/server keys and stored key | Local zeroizing derivation owners | Drop when challenge processing returns. |
+| SCRAM proof and expected server signature | One `ClientFinal` owner | Proof bytes are borrowed for encoding. Consuming final verification or ordinary cancellation drops both fields; even early length/UTF-8 rejection consumes the phase. |
 
 Finalization pads the same SHA owner, avoiding the former second full hash-state
 copy. The public SHA digest API still returns an array. The shared HMAC API
@@ -46,3 +48,10 @@ TLS session/key-schedule storage, TLS identity parsing, HPKE/library scratch,
 host-tool secret copies and the rest of the connector memory inventory remain
 separate SEC-15 work. No cryptographic algorithm, wire format, transport policy,
 production custody, physical-release proof or retry authority is added here.
+
+The [SCRAM phase follow-up](../reports/audits/2026-10-19-security-scram-phases.md)
+reproduces password/verifier retention in the former mutable exchange and
+replaces it with these two consuming owners. Rust compile-fail controls reject
+phase reuse; runtime error cases and a TLS/mTLS/SCRAM broker fault run cover
+the actual caller. This is ownership/lifetime evidence, without a new memory-
+forensics guarantee or erasure claim for forced termination.

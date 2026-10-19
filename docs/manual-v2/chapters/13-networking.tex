@@ -767,6 +767,12 @@ and an ECDSA P-256 private key; both mechanisms may be required together. The
 bounded SCRAM exchange validates broker challenges, minimum and maximum
 iteration counts, and the server signature. Passwords, client private keys,
 and derived keys use zeroizing owners and remain outside the application ABI.
+
+The SCRAM exchange uses consuming phases. Processing the server challenge
+releases the exchange's password copy; one final phase owns the proof and
+expected server signature through success or rejection. Neither phase can
+be reused after its consuming transition.
+
 The opt-in AArch64 test uses a three-broker Apache Kafka fixture over TLS with
 required mTLS and SCRAM. It places three-replica input and output routes on
 different leaders and verifies idempotent production, read-committed

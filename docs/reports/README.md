@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [SEC-15 SCRAM phase ownership](audits/2026-10-19-security-scram-phases.md) — Consuming challenge/final phases release transient secrets and prevent reuse after rejection, with host and broker-fault execution evidence.
+
 - [SEC-15 hash-state erasure](audits/2026-10-19-security-hash-state-erasure.md) — Reproduced unfinished SHA state retention, erased owned hash scratch, and shared owned HMAC results across SigV4/SCRAM.
 
 - [SEC-04 early platform artifact authority — 19 October 2026](audits/2026-10-19-security-platform-artifact-authority.md): one selected key before platform loading, wrong-root NS/NVMe controls, and extended boot-trust models; protected state and custody remain open.

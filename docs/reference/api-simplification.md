@@ -227,3 +227,10 @@ removes S3/SCRAM's duplicate HMAC helpers in favor of shared
 SCRAM PBKDF2 also returns its existing result owner. Plain-array helper returns
 and compatibility wrappers are removed; SHA's public digest output stays an
 array. Algorithms, wire formats and persistent records are unchanged.
+
+The [SCRAM phase follow-up](../reports/audits/2026-10-19-security-scram-phases.md)
+removes the mutable, reusable exchange API. Consuming initial challenge handling
+returns one `ClientFinal` containing proof/verifier owners; consuming final
+handling retires it on every outcome. The connector encodes borrowed proof
+bytes from that phase. No mutable compatibility adapter remains. Kafka framing,
+SCRAM bytes and persistent records are unchanged.

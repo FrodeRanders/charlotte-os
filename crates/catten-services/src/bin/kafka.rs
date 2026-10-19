@@ -556,9 +556,8 @@ impl<'connection> BrokerTransport<'connection> {
         tls_client::fill_entropy(self.entropy, &mut *nonce_bytes)
             .map_err(|_| protocol::ERR_AUTHENTICATION)?;
         let nonce = Zeroizing::new(wire::scram::base64_encode(&nonce_bytes[..], false));
-        let mut scram =
-            wire::scram::Client::new(&credentials.username, &credentials.password, &nonce)
-                .map_err(|_| protocol::ERR_AUTHENTICATION)?;
+        let scram = wire::scram::Client::new(&credentials.username, &credentials.password, &nonce)
+            .map_err(|_| protocol::ERR_AUTHENTICATION)?;
 
         let correlation = 2;
         let client_first = scram.client_first();
@@ -578,7 +577,7 @@ impl<'connection> BrokerTransport<'connection> {
 
         let correlation = 3;
         let request = Zeroizing::new(
-            wire::sasl_authenticate_request(correlation, CLIENT_ID, &client_final)
+            wire::sasl_authenticate_request(correlation, CLIENT_ID, client_final.message())
                 .map_err(map_wire)?,
         );
         let response = self.request_connected(&request)?;
@@ -587,7 +586,7 @@ impl<'connection> BrokerTransport<'connection> {
         if server_final.error != wire::NO_ERROR {
             return Err(protocol::ERR_AUTHENTICATION);
         }
-        scram
+        client_final
             .receive_server_final(&server_final.auth_bytes)
             .map_err(|_| protocol::ERR_AUTHENTICATION)
     }

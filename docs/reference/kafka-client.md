@@ -297,6 +297,16 @@ the shared SHA context and compression scratch also erase on ordinary teardown.
 The [secret-state inventory](secret-state-lifetimes.md) distinguishes these
 owned fields from caller inputs, scalar/compiler copies and third-party state.
 
+The exchange has two consuming phases. `Client::receive_server_first(self, ...)`
+releases its password/transcript owner on success or rejection and returns
+`ClientFinal` on success. That phase owns its proof bytes and expected server
+signature together. `message()` only borrows the proof for encoding;
+`receive_server_final(self, ...)` consumes both fields on every outcome,
+including empty or oversized input. Reconnect begins with a new `Client`.
+The configured credential owner remains available for future connections; only
+the exchange-local copy ends at challenge processing. See the
+[phase-ownership report](../reports/audits/2026-10-19-security-scram-phases.md).
+
 The profile supports `None`, `ScramSha256`, `MtlsP256`, or
 `ScramSha256AndMtlsP256`. The mTLS variants carry one DER-encoded X.509 client
 certificate and its DER-encoded SEC1 P-256 private key. The connector signs the
