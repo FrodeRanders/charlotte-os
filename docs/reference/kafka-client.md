@@ -307,6 +307,13 @@ The configured credential owner remains available for future connections; only
 the exchange-local copy ends at challenge processing. See the
 [phase-ownership report](../reports/audits/2026-10-19-security-scram-phases.md).
 
+Base64 helpers construct their zeroizing output owners before writing. Encoding
+returns `Zeroizing<String>`; decoding reserves its complete output bound once
+and returns `Zeroizing<Vec<u8>>`. Late decode rejection drops the same prefix
+owner. Nonce/proof/verifier callers retain the returned owner directly. Local
+quantum digits and packed words also have erasing owners. This does not cover
+all SASL frame or transport copies; see the [scratch report](../reports/audits/2026-10-19-security-base64-scratch.md).
+
 The profile supports `None`, `ScramSha256`, `MtlsP256`, or
 `ScramSha256AndMtlsP256`. The mTLS variants carry one DER-encoded X.509 client
 certificate and its DER-encoded SEC1 P-256 private key. The connector signs the

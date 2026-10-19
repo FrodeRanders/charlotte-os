@@ -555,7 +555,7 @@ impl<'connection> BrokerTransport<'connection> {
         let mut nonce_bytes = Zeroizing::new([0u8; 24]);
         tls_client::fill_entropy(self.entropy, &mut *nonce_bytes)
             .map_err(|_| protocol::ERR_AUTHENTICATION)?;
-        let nonce = Zeroizing::new(wire::scram::base64_encode(&nonce_bytes[..], false));
+        let nonce = wire::scram::base64_encode(&nonce_bytes[..], false);
         let scram = wire::scram::Client::new(&credentials.username, &credentials.password, &nonce)
             .map_err(|_| protocol::ERR_AUTHENTICATION)?;
 

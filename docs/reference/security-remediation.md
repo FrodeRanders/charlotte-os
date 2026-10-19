@@ -547,6 +547,12 @@ and guarded at build time. Generated recipient private bytes also transfer as
 a zeroizing owner. SEC-15 remains partial; library scratch, TLS session state,
 compiler copies and recipient custody retain their separate acceptance work.
 
+The [Base64 scratch follow-up](../reports/audits/2026-10-19-security-base64-scratch.md)
+then puts the SCRAM helper output under zeroizing ownership before decoding or
+encoding. Late rejection erases its prefix, and one reservation removes decoder
+growth. Existing successful callers already wrapped their results; frame and
+transport copies still need their own review. SEC-15 remains partial.
+
 | Order | Finding and acceptance criterion |
 | --- | --- |
 | 1 | **SEC-04:** Authenticate bootstrap policy and the executable boot chain from a protected platform root. Provision independent artifact, deployment and operational authorities and a distinct recipient key; exclude every development fixture. Keep the recipient private key behind a privileged custody boundary, with recovery/rotation rules and rollback-resistant policy state. Test substituted boot images/policies, role reuse, downgrade, enrollment and custody failure. Production must remain disabled until those tests pass. |

@@ -241,3 +241,10 @@ changes `operations::generate_recipient_keypair` to return private bytes as
 owner directly; the plain-array return and late wrapping are removed. Public
 bytes remain arrays. The HPKE suite, envelope grammar and stored key format
 are unchanged; no compatibility adapter or format-number change is needed.
+
+The [Base64 scratch follow-up](../reports/audits/2026-10-19-security-base64-scratch.md)
+returns SCRAM encoded/decoded output as zeroizing owners, beginning inside each
+helper. Proof, verifier and nonce callers keep those owners directly; their
+late wrapping is removed. The decoder reserves the whole output bound before
+copying. There is no plain-return compatibility wrapper. Padding behavior,
+accepted grammar, Kafka framing and persistent records are unchanged.

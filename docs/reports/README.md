@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [SEC-15 Base64 scratch](audits/2026-10-19-security-base64-scratch.md) — Reproduced decoded-prefix retention on rejection and decoder growth; helpers now create and transfer zeroizing output owners.
+
 - [SEC-15 HPKE erasure](audits/2026-10-19-security-hpke-erasure.md) — Reproduced missing X25519 Drop erasure, required its dependency feature, and transferred generated private bytes in a zeroizing owner.
 
 - [SEC-15 SCRAM phase ownership](audits/2026-10-19-security-scram-phases.md) — Consuming challenge/final phases release transient secrets and prevent reuse after rejection, with host and broker-fault execution evidence.

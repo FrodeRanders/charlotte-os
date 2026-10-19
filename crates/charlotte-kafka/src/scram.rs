@@ -1,8 +1,9 @@
 //! Bounded SCRAM-SHA-256 client state for Kafka SASL authentication.
 
+#[cfg(test)]
+use alloc::vec;
 use alloc::{
     string::String,
-    vec,
     vec::Vec,
 };
 
@@ -158,7 +159,7 @@ impl Client {
         let server_key = hmac_sha256(&salted_password[..], b"Server Key");
         let expected_server_signature = hmac_sha256(&server_key[..], &auth_message);
 
-        let proof = Zeroizing::new(base64_encode(&proof[..], true));
+        let proof = base64_encode(&proof[..], true);
         let mut client_final =
             Zeroizing::new(Vec::with_capacity(final_without_proof.len() + 3 + proof.len()));
         client_final.extend_from_slice(&final_without_proof);
@@ -191,7 +192,7 @@ impl ClientFinal {
         if encoded.contains(',') {
             return Err(Error::InvalidServerMessage);
         }
-        let signature = Zeroizing::new(base64_decode(encoded)?);
+        let signature = base64_decode(encoded)?;
         if signature.len() != expected.len() || !constant_time_eq(&signature, &expected[..]) {
             return Err(Error::SignatureMismatch);
         }
@@ -226,22 +227,26 @@ fn pbkdf2_sha256(password: &[u8], salt: &[u8], iterations: u32) -> Zeroizing<[u8
     result
 }
 
-pub fn base64_encode(bytes: &[u8], padding: bool) -> String {
+/// Encode into an erasing owner, reserving the complete output before copying
+/// input bytes. Callers retain this owner while borrowing its protocol text.
+pub fn base64_encode(bytes: &[u8], padding: bool) -> Zeroizing<String> {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut result = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    let mut result = Zeroizing::new(String::with_capacity(bytes.len().div_ceil(3) * 4));
     for chunk in bytes.chunks(3) {
-        let value = u32::from(chunk[0]) << 16
-            | u32::from(*chunk.get(1).unwrap_or(&0)) << 8
-            | u32::from(*chunk.get(2).unwrap_or(&0));
-        result.push(ALPHABET[((value >> 18) & 0x3f) as usize] as char);
-        result.push(ALPHABET[((value >> 12) & 0x3f) as usize] as char);
+        let value = Zeroizing::new(
+            u32::from(chunk[0]) << 16
+                | u32::from(*chunk.get(1).unwrap_or(&0)) << 8
+                | u32::from(*chunk.get(2).unwrap_or(&0)),
+        );
+        result.push(ALPHABET[((*value >> 18) & 0x3f) as usize] as char);
+        result.push(ALPHABET[((*value >> 12) & 0x3f) as usize] as char);
         if chunk.len() > 1 {
-            result.push(ALPHABET[((value >> 6) & 0x3f) as usize] as char);
+            result.push(ALPHABET[((*value >> 6) & 0x3f) as usize] as char);
         } else if padding {
             result.push('=');
         }
         if chunk.len() > 2 {
-            result.push(ALPHABET[(value & 0x3f) as usize] as char);
+            result.push(ALPHABET[(*value & 0x3f) as usize] as char);
         } else if padding {
             result.push('=');
         }
@@ -249,17 +254,20 @@ pub fn base64_encode(bytes: &[u8], padding: bool) -> String {
     result
 }
 
-fn base64_decode(value: &str) -> Result<Vec<u8>, Error> {
+fn base64_decode(value: &str) -> Result<Zeroizing<Vec<u8>>, Error> {
     if value.is_empty() || value.len() % 4 == 1 {
         return Err(Error::InvalidServerMessage);
     }
-    let mut output = vec![];
+    // Each four-character quantum produces at most three bytes. Reserving the
+    // whole bound prevents growth from leaving earlier decoded allocations.
+    // The owner also wipes a decoded prefix when a later quantum rejects.
+    let mut output = Zeroizing::new(Vec::with_capacity(value.len().div_ceil(4) * 3));
     let bytes = value.as_bytes();
     let mut offset = 0;
     while offset < bytes.len() {
         let remaining = bytes.len() - offset;
         let count = remaining.min(4);
-        let mut digits = [0u8; 4];
+        let mut digits = Zeroizing::new([0u8; 4]);
         let mut padding = 0;
         for index in 0..count {
             if bytes[offset + index] == b'=' {
@@ -277,16 +285,18 @@ fn base64_decode(value: &str) -> Result<Vec<u8>, Error> {
         if count < 2 || padding > 2 || count < 4 && padding != 0 {
             return Err(Error::InvalidServerMessage);
         }
-        let packed = u32::from(digits[0]) << 18
-            | u32::from(digits[1]) << 12
-            | u32::from(digits[2]) << 6
-            | u32::from(digits[3]);
-        output.push((packed >> 16) as u8);
+        let packed = Zeroizing::new(
+            u32::from(digits[0]) << 18
+                | u32::from(digits[1]) << 12
+                | u32::from(digits[2]) << 6
+                | u32::from(digits[3]),
+        );
+        output.push((*packed >> 16) as u8);
         if count > 2 && padding < 2 {
-            output.push((packed >> 8) as u8);
+            output.push((*packed >> 8) as u8);
         }
         if count > 3 && padding == 0 {
-            output.push(packed as u8);
+            output.push(*packed as u8);
         }
         offset += count;
     }
@@ -326,9 +336,40 @@ mod tests {
     fn base64_round_trip_and_padding() {
         for value in [b"f".as_slice(), b"fo", b"foo", b"SCRAM-SHA-256"] {
             let encoded = base64_encode(value, true);
-            assert_eq!(base64_decode(&encoded).unwrap(), value);
+            assert_eq!(base64_decode(&encoded).unwrap().as_slice(), value);
         }
-        assert_eq!(base64_encode(b"foo", false), "Zm9v");
+        assert_eq!(&*base64_encode(b"foo", false), "Zm9v");
+    }
+
+    #[test]
+    fn base64_matches_rfc_4648_examples_with_and_without_padding() {
+        assert!(base64_encode(b"", true).is_empty());
+        for (plain, encoded) in [
+            ("f", "Zg=="),
+            ("fo", "Zm8="),
+            ("foo", "Zm9v"),
+            ("foob", "Zm9vYg=="),
+            ("fooba", "Zm9vYmE="),
+            ("foobar", "Zm9vYmFy"),
+        ] {
+            assert_eq!(base64_encode(plain.as_bytes(), true).as_str(), encoded);
+            let unpadded = encoded.trim_end_matches('=');
+            assert_eq!(base64_encode(plain.as_bytes(), false).as_str(), unpadded);
+            for text in [encoded, unpadded] {
+                assert_eq!(base64_decode(text).unwrap().as_slice(), plain.as_bytes());
+            }
+        }
+    }
+
+    #[test]
+    fn base64_preserves_all_quantum_boundaries_through_the_salt_limit() {
+        let bytes: Vec<u8> = (0..MAX_SALT_BYTES).map(|index| index as u8).collect();
+        for len in 1..=MAX_SALT_BYTES {
+            for padding in [false, true] {
+                let encoded = base64_encode(&bytes[..len], padding);
+                assert_eq!(base64_decode(&encoded).unwrap().as_slice(), &bytes[..len]);
+            }
+        }
     }
 
     #[test]
@@ -409,3 +450,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod erasure_tests;
