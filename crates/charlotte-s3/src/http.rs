@@ -1,12 +1,7 @@
 //! Bounded HTTP/1.1 response-head and chunk framing parser.
 
-use alloc::{
-    string::{
-        String,
-        ToString,
-    },
-    vec::Vec,
-};
+use alloc::vec::Vec;
+use core::ops::Range;
 
 use zeroize::{
     Zeroize,
@@ -125,56 +120,78 @@ fn token_byte(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte)
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// One consumed response frame and validated metadata ranges within it.
+/// Metadata accessors borrow this owner; no independent metadata copies remain.
+///
+/// ```compile_fail
+/// fn requires_debug<T: core::fmt::Debug>() {}
+/// requires_debug::<charlotte_s3::http::ResponseHead>();
+/// ```
+/// ```compile_fail
+/// fn requires_clone<T: Clone>() {}
+/// requires_clone::<charlotte_s3::http::ResponseHead>();
+/// ```
 pub struct ResponseHead {
     pub status: u16,
     pub content_length: Option<u64>,
     pub chunked: bool,
     pub connection_close: bool,
-    pub etag: Option<String>,
-    pub version_id: Option<String>,
-    pub request_id: Option<String>,
+    bytes: Zeroizing<Vec<u8>>,
+    body_offset: usize,
+    etag: Option<Range<usize>>,
+    version_id: Option<Range<usize>>,
+    request_id: Option<Range<usize>>,
 }
 
 /// Parsed response metadata and the first owned body fragment.
 pub type ResponseStart = (ResponseHead, Zeroizing<Vec<u8>>);
 
 impl ResponseHead {
-    /// Parse a response head and return it with the offset of the first body
-    /// byte. Callers retain bytes following that offset as the first body
-    /// fragment.
-    pub fn parse(bytes: &[u8]) -> Result<(Self, usize), Error> {
-        if bytes.len() > MAX_RESPONSE_HEAD && find_head_end(bytes).is_none() {
-            return Err(Error::HeadTooLarge);
-        }
-        let end = find_head_end(bytes).ok_or(Error::Incomplete)?;
+    /// Consume one response buffer on success or rejection. Body bytes following
+    /// the head remain borrowed through `body_prefix`; arbitrary body bytes need
+    /// not be UTF-8. The transport accumulator supplies a header-only buffer.
+    pub fn parse(bytes: Zeroizing<Vec<u8>>) -> Result<Self, Error> {
+        let end = find_head_end(&bytes).ok_or(
+            if bytes.len() > MAX_RESPONSE_HEAD {
+                Error::HeadTooLarge
+            } else {
+                Error::Incomplete
+            },
+        )?;
         if end > MAX_RESPONSE_HEAD {
             return Err(Error::HeadTooLarge);
         }
-        let text = core::str::from_utf8(&bytes[..end - 4]).map_err(|_| Error::InvalidHeader)?;
+        let mut response = Self {
+            status: 0,
+            content_length: None,
+            chunked: false,
+            connection_close: false,
+            bytes,
+            body_offset: end,
+            etag: None,
+            version_id: None,
+            request_id: None,
+        };
+        let text =
+            core::str::from_utf8(&response.bytes[..end - 4]).map_err(|_| Error::InvalidHeader)?;
         let mut lines = text.split("\r\n");
         let status_line = lines.next().ok_or(Error::InvalidStatus)?;
         let mut status_parts = status_line.split_ascii_whitespace();
         if status_parts.next() != Some("HTTP/1.1") {
             return Err(Error::InvalidStatus);
         }
-        let status = status_parts
+        response.status = status_parts
             .next()
             .and_then(|value| value.parse::<u16>().ok())
             .filter(|value| (100..=599).contains(value))
             .ok_or(Error::InvalidStatus)?;
-        let mut response = Self {
-            status,
-            content_length: None,
-            chunked: false,
-            connection_close: false,
-            etag: None,
-            version_id: None,
-            request_id: None,
-        };
+        let mut line_start = status_line.len() + 2;
         for line in lines {
-            let (name, value) = line.split_once(':').ok_or(Error::InvalidHeader)?;
-            let value = value.trim_matches([' ', '\t']);
+            let (name, raw_value) = line.split_once(':').ok_or(Error::InvalidHeader)?;
+            let leading = raw_value.len() - raw_value.trim_start_matches([' ', '\t']).len();
+            let value = raw_value.trim_matches([' ', '\t']);
+            let start = line_start + name.len() + 1 + leading;
+            let range = start..start + value.len();
             if name.eq_ignore_ascii_case("content-length") {
                 let length = value.parse::<u64>().map_err(|_| Error::InvalidHeader)?;
                 if response.content_length.replace(length).is_some() {
@@ -188,19 +205,45 @@ impl ResponseHead {
             } else if name.eq_ignore_ascii_case("connection") {
                 response.connection_close = value.eq_ignore_ascii_case("close");
             } else if name.eq_ignore_ascii_case("etag") {
-                response.etag = Some(value.trim_matches('"').to_string());
+                let unquoted = value.trim_matches('"');
+                let quotes = value.len() - value.trim_start_matches('"').len();
+                response.etag = Some(start + quotes..start + quotes + unquoted.len());
             } else if name.eq_ignore_ascii_case("x-amz-version-id") {
-                response.version_id = Some(value.to_string());
+                response.version_id = Some(range);
             } else if name.eq_ignore_ascii_case("x-amz-request-id")
                 || name.eq_ignore_ascii_case("x-emc-request-id")
             {
-                response.request_id = Some(value.to_string());
+                response.request_id = Some(range);
             }
+            line_start += line.len() + 2;
         }
         if response.chunked && response.content_length.is_some() {
             return Err(Error::ConflictingLength);
         }
-        Ok((response, end))
+        Ok(response)
+    }
+
+    pub fn etag(&self) -> Option<&str> {
+        self.metadata(self.etag.as_ref())
+    }
+
+    pub fn version_id(&self) -> Option<&str> {
+        self.metadata(self.version_id.as_ref())
+    }
+
+    pub fn request_id(&self) -> Option<&str> {
+        self.metadata(self.request_id.as_ref())
+    }
+
+    pub fn body_prefix(&self) -> &[u8] {
+        &self.bytes[self.body_offset..]
+    }
+
+    fn metadata(&self, range: Option<&Range<usize>>) -> Option<&str> {
+        range.map(|range| {
+            core::str::from_utf8(&self.bytes[range.clone()])
+                .expect("validated response metadata range")
+        })
     }
 }
 
@@ -243,7 +286,8 @@ impl ResponseHeadBuffer {
             }
             self.bytes.push(*byte);
             if self.bytes.ends_with(b"\r\n\r\n") {
-                let (head, _) = ResponseHead::parse(&self.bytes)?;
+                let header = core::mem::replace(&mut self.bytes, Zeroizing::new(Vec::new()));
+                let head = ResponseHead::parse(header)?;
                 let suffix = &input[offset + 1..];
                 let mut body = Zeroizing::new(Vec::with_capacity(suffix.len()));
                 body.extend_from_slice(suffix);
@@ -388,12 +432,12 @@ mod tests {
     #[test]
     fn parses_s3_response_and_preserves_body_offset() {
         let bytes = b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\nETag: \"abc\"\r\nX-Amz-Request-Id: req-1\r\n\r\nhello";
-        let (head, offset) = ResponseHead::parse(bytes).unwrap();
+        let head = ResponseHead::parse(Zeroizing::new(bytes.to_vec())).unwrap();
         assert_eq!(head.status, 200);
         assert_eq!(head.content_length, Some(5));
-        assert_eq!(head.etag.as_deref(), Some("abc"));
-        assert_eq!(head.request_id.as_deref(), Some("req-1"));
-        assert_eq!(&bytes[offset..], b"hello");
+        assert_eq!(head.etag(), Some("abc"));
+        assert_eq!(head.request_id(), Some("req-1"));
+        assert_eq!(head.body_prefix(), b"hello");
     }
 
     #[test]

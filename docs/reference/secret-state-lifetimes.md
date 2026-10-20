@@ -32,6 +32,7 @@ records a retained-storage reproduction and the correction's validation.
 | TLS/plain local receive chunk | `read_owned_chunk` and the socket adapters construct `Zeroizing<Vec<u8>>` before filling | The owner crosses the receive boundary directly; success, EOF/error and ordinary cancellation/drop retain erasing storage. The generic helper rejects an impossible producer count. Pinned TLS errors before copying; fault-reader coverage is a stronger helper contract. |
 | Kafka partial header/frame and unconsumed chunk | One `FrameReceiver` in the existing broker transport | Inline header validation precedes one full-frame reservation. Consumed chunk ranges erase after copying; complete frame ownership transfers directly. Error/interruption fences subsequent reads until explicit reset after stream discard. Reset/Drop erases the containing buffers. |
 | S3 local HTTP/body buffers | Zeroizing header/body/chunk owners | TLS and plain receive adapters share the owned chunk contract. `ResponseHeadBuffer` reserves the 16 KiB head limit before copying. Each decoder call reserves its input-length output bound once and returns its erasing owner. Consumed framing scratch and final local buffers erase; formatting/metadata copies retain separate lifetimes. |
+| Parsed S3 ETag/version/request metadata | `ResponseHead` consumes one `Zeroizing<Vec<u8>>` and stores validated ranges | Accessors lend UTF-8 views from the same owner. Parse rejection or ordinary Drop erases the complete input; there are no independent metadata strings. Superseded/ignored header bytes remain in that bounded owner until Drop. Metadata exported into IPC/client memory has its own lifetime. |
 | HPKE X25519 private key and shared secret | The selected `x25519-dalek` `StaticSecret` and `SharedSecret` owners inside HPKE | The direct dependency requires `zeroize`, which HPKE's disabled defaults omitted. Production trait bounds require both owners to implement `ZeroizeOnDrop`. Drop erases their named 32-byte fields. |
 | Generated recipient private bytes | Returned `Zeroizing<[u8; 32]>`, created as an owner before serialization | Transfers directly to the signing tool; ordinary return/error drops the owner. Public recipient bytes remain an array. Explicit caller copies still need their own policy. |
 | Failed HPKE authentication output | Caller-owned output slice | `operations::open` uses `Zeroize` on the attempted plaintext prefix after AEAD rejection. Earlier validation errors do not modify output; the caller owns successful plaintext and unused capacity. |
@@ -62,7 +63,7 @@ not promise ordinary Rust Drop. Heap/page teardown has its separate contract.
 
 The pinned P-256 `SecretKey` and ECDSA `SigningKey` implementations have
 erasing scalar destructors. This source observation does not qualify the full
-TLS parser or session. S3 caller-owned raw path/request/profile data and response-metadata copies, TLS record
+TLS parser or session. S3 caller-owned raw path/request/profile data and exported metadata copies, TLS record
 consumption/key schedules, HPKE deserialization scratch and cipher contexts, host-tool
 copies and the rest of the connector memory inventory remain
 separate SEC-15 work. No cryptographic algorithm, wire format, transport policy,
@@ -131,3 +132,11 @@ ranges, and URI construction no longer grows. A Python standard-library
 reference checks complete canonical/signature bytes. Original caller inputs,
 public timestamp/payload-hex helpers, response metadata, TLS internals and
 physical memory retain separate contracts.
+
+The [response-metadata follow-up](../reports/audits/2026-10-20-security-s3-metadata-owners.md)
+removes independent ETag/version/request-ID allocations and consumes the input
+on every parse outcome. The accumulator moves its existing header owner into
+the parsed response, and the service borrows metadata for wire encoding.
+Success, late rejection and replacement controls observe no metadata copies and
+erasure of the input owner. Original request/profile data, exported metadata,
+lower-layer memory and physical release remain separate boundaries.

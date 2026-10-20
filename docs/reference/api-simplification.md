@@ -291,3 +291,11 @@ returns owned canonical URI/query text and owned `Signature` metadata fields.
 helper remains. Temporary encoded/normalized entries and joined text use the
 same owner policy. Callers and fixtures compile against the current API.
 SigV4 canonical bytes and valid HTTP requests are unchanged.
+
+The [response-metadata follow-up](../reports/audits/2026-10-20-security-s3-metadata-owners.md)
+replaces borrowed-input `ResponseHead::parse` and its returned offset with a
+consuming parser and borrowed metadata/body accessors. Independent String
+fields and aggregate Clone/Debug/comparison derives are removed. The existing
+accumulator transfers its header owner; the service borrows views for metadata
+encoding. No compatibility parser remains. HTTP grammar, trimming, repeated
+metadata behavior, parser error statuses and public S3 wire records are unchanged.

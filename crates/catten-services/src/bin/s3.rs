@@ -425,9 +425,9 @@ fn metadata_memory(head: &ResponseHead) -> Option<(OwnedMemory, usize)> {
     let metadata = ObjectMetadata {
         status: head.status,
         content_length: head.content_length.unwrap_or(0),
-        etag: head.etag.as_deref().unwrap_or_default().as_bytes(),
-        version_id: head.version_id.as_deref().unwrap_or_default().as_bytes(),
-        request_id: head.request_id.as_deref().unwrap_or_default().as_bytes(),
+        etag: head.etag().unwrap_or_default().as_bytes(),
+        version_id: head.version_id().unwrap_or_default().as_bytes(),
+        request_id: head.request_id().unwrap_or_default().as_bytes(),
     };
     let memory = OwnedMemory::allocate(1).ok()?;
     let mut mapping = memory.map_writable().ok()?;

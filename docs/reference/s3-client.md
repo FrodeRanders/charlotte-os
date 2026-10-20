@@ -216,7 +216,7 @@ TLS receive returns `Zeroizing<Vec<u8>>`, constructed before plaintext is read.
 The plain socket adapter uses the same local owner policy. HTTP/body buffers
 retain zeroizing owners through ordinary use and rejection; consumed local
 body ranges are erased after copying into their next owner. This does not
-cover original caller path/request/profile data, response metadata copies, library record/key-schedule
+cover original caller path/request/profile data, exported IPC/client metadata copies, library record/key-schedule
 state, or kernel socket backing. The [receive-owner report](../reports/audits/2026-10-19-security-receive-owners.md)
 records the bounds and native regression evidence. Public S3 framing and
 capability transfer are unchanged.
@@ -262,3 +262,20 @@ fields are checked before normalization copies. Sorting, ASCII whitespace
 folding and percent-encoding bytes are preserved. Original caller inputs,
 profile/raw request paths and response metadata keep their separate lifetimes.
 See the [canonical-signing report](../reports/audits/2026-10-20-security-s3-canonical-owners.md).
+
+## Parsed response metadata
+
+`ResponseHead::parse` consumes `Zeroizing<Vec<u8>>` and returns one response
+owner on success. `etag()`, `version_id()` and `request_id()` borrow validated
+UTF-8 ranges from it. `body_prefix()` borrows any bytes following the header;
+those bytes may be binary. The transport accumulator supplies only its header
+owner and returns the body suffix separately. No independent metadata strings
+are allocated, and the aggregate has no Clone/Debug/comparison derives.
+
+The service lends those views to its existing metadata encoder. Parse rejection
+or ordinary Drop erases the complete retained input. Replacement keeps the
+existing last-value-wins rule; superseded and ignored bytes stay in that owner
+until Drop. A parsed production response now retains its bounded header storage
+through metadata use. IPC/client copies, original request/profile data and
+kernel/TLS backing keep their own lifetimes. See the
+[metadata-owner report](../reports/audits/2026-10-20-security-s3-metadata-owners.md).
