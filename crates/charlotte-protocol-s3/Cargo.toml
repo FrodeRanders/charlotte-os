@@ -3,3 +3,6 @@ name = "charlotte-protocol-s3"
 version = "0.1.0"
 edition = "2024"
 description = "CharlotteOS capability-oriented S3 service wire protocol"
+
+[dependencies]
+zeroize = { version = "1.9", default-features = false, features = ["alloc"] }

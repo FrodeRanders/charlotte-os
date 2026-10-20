@@ -24,18 +24,18 @@ fn profile<'a>() -> Profile<'a> {
 fn immutable_profile_round_trips() {
     let profile = profile();
     let encoded = profile.encode().unwrap();
-    assert_eq!(Profile::decode(&encoded), Some(profile));
+    assert!(Profile::decode(&encoded) == Some(profile));
 }
 
 #[test]
 fn immutable_profile_rejects_unknown_flags_and_padding() {
     let mut encoded = profile().encode().unwrap();
     encoded[16..18].copy_from_slice(&(PROFILE_FLAG_TLS | 0x8000).to_le_bytes());
-    assert_eq!(Profile::decode(&encoded), None);
+    assert!(Profile::decode(&encoded).is_none());
 
     let mut encoded = profile().encode().unwrap();
     encoded[52] = 1;
-    assert_eq!(Profile::decode(&encoded), None);
+    assert!(Profile::decode(&encoded).is_none());
 }
 
 #[test]

@@ -307,3 +307,17 @@ using the shared protocol decoder and an erasing key owner. `key()` borrows and
 private plain key/path implementation are removed. The service supplies its
 validated profile fields and preserves the existing IPC mapping boundary.
 Wire formats, request limits/flags and path-policy bytes remain unchanged.
+
+The [profile-owner follow-up](../reports/audits/2026-10-20-security-s3-profile-owners.md) replaces the service's private field-copy
+profile with `charlotte_s3::profile::OwnedProfile`. One immutable erasing frame
+lends typed views; the view's `authority` formatter returns a reserved erasing
+string. The old plain field copies/authority formatter are removed without a
+compatibility path. Current CHS3PF1 validation, launch-memory mapping scope,
+rights, TLS configuration and HTTP authority bytes are preserved.
+
+The [profile-encoding follow-up](../reports/audits/2026-10-20-security-s3-profile-encoding.md) changes wire `Profile::encode` to return
+an erasing byte owner and removes aggregate profile Debug. The kernel caller
+uses that owner directly; fixtures compare profiles without formatting their
+credentials. No plain-output compatibility encoder remains. CHS3PF1 grammar,
+validation and launch-memory ownership are preserved. The protocol crate adds
+an edge to the existing pinned zeroize dependency; no third-party version changes.

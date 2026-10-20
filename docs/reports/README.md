@@ -8,6 +8,10 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [SEC-15 S3 profile encoding](audits/2026-10-20-security-s3-profile-encoding.md) — Returns the credential-bearing frame under an erasing owner and removes aggregate profile Debug.
+
+- [SEC-15 S3 profile owners](audits/2026-10-20-security-s3-profile-owners.md) — Keeps the service-local profile in one erasing frame and owns reserved HTTP authority text.
+
 - [SEC-15 request-key/raw-path owners](audits/2026-10-20-security-s3-path-owners.md) — Owns the decoded key and reserved raw path while preserving the IPC mapping boundary and path rules.
 
 - [SEC-15 response metadata owners](audits/2026-10-20-security-s3-metadata-owners.md) — Consumes the response header and lends metadata ranges, removing independent metadata string copies.

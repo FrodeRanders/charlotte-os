@@ -374,6 +374,9 @@ version = "0.1.0"
 [[package]]
 name = "charlotte-protocol-s3"
 version = "0.1.0"
+dependencies = [
+ "zeroize",
+]
 
 [[package]]
 name = "charlotte-protocol-time"

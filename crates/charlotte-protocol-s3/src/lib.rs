@@ -13,6 +13,8 @@ use alloc::{
     vec::Vec,
 };
 
+use zeroize::Zeroizing;
+
 pub const INTERFACE: u64 = u64::from_le_bytes(*b"S3\0\0\0\0\0\0");
 pub const VERSION: u32 = 1;
 pub const NAME: u64 = u64::from_le_bytes(*b"s3\0\0\0\0\0\0");
@@ -25,7 +27,14 @@ pub const PROFILE_HEADER_LEN: usize = 64;
 pub const MAX_PROFILE_LEN: usize = 64 * 1024;
 pub const PROFILE_FLAG_TLS: u16 = 1 << 0;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Borrowed launch configuration, including credentials. Individual fields
+/// remain available for use; omit aggregate Debug to avoid credential dumps.
+///
+/// ```compile_fail
+/// fn requires_debug<T: core::fmt::Debug>() {}
+/// requires_debug::<charlotte_protocol_s3::Profile<'_>>();
+/// ```
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub struct Profile<'a> {
     pub endpoint_ipv4: [u8; 4],
     pub host: &'a [u8],
@@ -79,9 +88,11 @@ impl Profile<'_> {
             .filter(|len| *len <= MAX_PROFILE_LEN)
     }
 
-    pub fn encode(&self) -> Option<Vec<u8>> {
+    /// Validate before allocating and retain the encoded credentials in an
+    /// erasing owner from the first write through launch or rejection.
+    pub fn encode(&self) -> Option<Zeroizing<Vec<u8>>> {
         let len = self.encoded_len()?;
-        let mut output = vec![0; len];
+        let mut output = Zeroizing::new(vec![0; len]);
         output[..8].copy_from_slice(&PROFILE_MAGIC);
         output[8..10].copy_from_slice(&PROFILE_VERSION.to_le_bytes());
         output[10..12].copy_from_slice(&(PROFILE_HEADER_LEN as u16).to_le_bytes());
@@ -477,7 +488,7 @@ mod tests {
             },
         ] {
             let encoded = profile.encode().unwrap();
-            assert_eq!(Profile::decode(&encoded), Some(profile));
+            assert!(Profile::decode(&encoded) == Some(profile));
         }
     }
 

@@ -306,7 +306,9 @@ Static provisioning and operational pickup both supply the complete immutable
 \texttt{CHS3PF1} profile through read-only launch memory. The service rejects
 missing or malformed profiles; it no longer reads per-field manifest aliases
 or synthesizes region and port defaults. The shared profile codec is the single
-validation boundary. Its existing secret buffer remains zeroizing.
+validation boundary. Encoded profiles and the service's local profile snapshot
+use erasing owners. The original read-only launch memory follows the kernel's
+separate teardown policy.
 
 RustFS is the current integration fixture. Dell EMC ECS is an intended managed
 store and the adapter can emit its namespace header, but it has not yet been

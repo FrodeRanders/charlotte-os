@@ -14,10 +14,7 @@ use alloc::{
     boxed::Box,
     collections::BTreeMap,
     format,
-    string::{
-        String,
-        ToString,
-    },
+    string::ToString,
     vec::Vec,
 };
 
@@ -62,6 +59,7 @@ use charlotte_s3::{
         ResponseHeadBuffer,
         request_head,
     },
+    profile::OwnedProfile as Profile,
     request::OwnedRequest,
     sigv4::{
         Credentials,
@@ -87,61 +85,10 @@ const SEND_RETRY_MS: u64 = 10;
 const RECEIVE_ATTEMPTS: usize = 3_000;
 const RECEIVE_RETRY_MS: u64 = 10;
 const MAX_HEAD_READS: usize = 16;
-struct Profile {
-    ip: [u8; 4],
-    host: String,
-    port: u16,
-    tls: bool,
-    ca_der: Vec<u8>,
-    region: String,
-    bucket: String,
-    prefix: String,
-    access_key: String,
-    secret_key: Zeroizing<Vec<u8>>,
-    namespace: Option<String>,
-    rights: u64,
-}
-
-impl Profile {
-    fn from_context(ctx: &Context) -> Option<Self> {
-        let memory = ctx.profile_memory()?;
-        let mapping = memory.map_read_only().ok()?;
-        Self::from_wire(mapping.as_slice())
-    }
-
-    fn from_wire(bytes: &[u8]) -> Option<Self> {
-        let profile = charlotte_protocol_s3::Profile::decode(bytes)?;
-        Some(Self {
-            ip: profile.endpoint_ipv4,
-            host: core::str::from_utf8(profile.host).ok()?.into(),
-            port: profile.port,
-            tls: profile.tls,
-            ca_der: profile.ca_certificate_der.to_vec(),
-            region: core::str::from_utf8(profile.region).ok()?.into(),
-            bucket: core::str::from_utf8(profile.bucket).ok()?.into(),
-            prefix: core::str::from_utf8(profile.prefix).ok()?.into(),
-            access_key: core::str::from_utf8(profile.access_key).ok()?.into(),
-            secret_key: Zeroizing::new(profile.secret_key.to_vec()),
-            namespace: if profile.namespace.is_empty() {
-                None
-            } else {
-                Some(core::str::from_utf8(profile.namespace).ok()?.into())
-            },
-            rights: profile.rights,
-        })
-    }
-
-    fn has(&self, right: u64) -> bool {
-        self.rights & right != 0
-    }
-
-    fn authority(&self) -> String {
-        if (self.tls && self.port == 443) || (!self.tls && self.port == 80) {
-            self.host.clone()
-        } else {
-            format!("{}:{}", self.host, self.port)
-        }
-    }
+fn decode_profile(ctx: &Context) -> Option<Profile> {
+    let memory = ctx.profile_memory()?;
+    let mapping = memory.map_read_only().ok()?;
+    Profile::decode(mapping.as_slice())
 }
 
 fn decode_request(memory: Option<OwnedMemory>, exact_len: u64) -> Option<OwnedRequest> {
@@ -229,14 +176,15 @@ fn connect<'connection>(
     unix_seconds: u64,
 ) -> Result<Transport<'connection>, ()> {
     let socket = socket::OwnedSocket::open(tcp, socket::DOMAIN_TCP).map_err(|_| ())?;
+    let profile = profile.view();
     socket.connect_ipv4(profile.ip, profile.port).map_err(|_| ())?;
     if profile.tls {
         let result = tls_client::OwnedTlsStream::open(
             socket,
             entropy,
             tls_client::OpenConfig {
-                server_name: &profile.host,
-                ca_certificate_der: &profile.ca_der,
+                server_name: profile.host,
+                ca_certificate_der: profile.ca_der,
                 client_certificate_der: None,
                 client_private_key_der: None,
                 unix_seconds,
@@ -294,9 +242,10 @@ fn signed_head(
     method: &str,
     timestamp: Timestamp,
 ) -> Option<Zeroizing<Vec<u8>>> {
-    let path = request.object_path(&profile.bucket, &profile.prefix)?;
+    let profile = profile.view();
+    let path = request.object_path(profile.bucket, profile.prefix)?;
     let encoded_path = canonical_uri(&path).ok()?;
-    let authority = profile.authority();
+    let authority = profile.authority()?;
     let amz_date = timestamp.amz_date().ok()?;
     let payload_hash = if method == "PUT" {
         hex_lower(&request.payload_sha256)
@@ -323,7 +272,7 @@ fn signed_head(
         name: "x-amz-date",
         value: &amz_date,
     });
-    if let Some(namespace) = profile.namespace.as_deref() {
+    if let Some(namespace) = profile.namespace {
         headers.push(Header {
             name: "x-emc-namespace",
             value: namespace,
@@ -348,13 +297,13 @@ fn signed_head(
             query: &[],
             headers: &headers,
             payload_sha256: &payload_hash,
-            region: &profile.region,
+            region: profile.region,
             service: "s3",
             timestamp,
         },
         Credentials {
-            access_key: &profile.access_key,
-            secret_key: &profile.secret_key,
+            access_key: profile.access_key,
+            secret_key: profile.secret_key,
         },
     )
     .ok()?;
@@ -884,9 +833,10 @@ fn handle_message(service: &mut Service<'_>, mut message: catten_rt::owned::Inco
         }
         protocol::OP_STATUS => {
             // Packed without credentials: rights (low 32), TLS bit, port.
-            let summary = (service.profile.rights & 0xffff_ffff)
-                | ((service.profile.tls as u64) << 32)
-                | ((service.profile.port as u64) << 40);
+            let profile = service.profile.view();
+            let summary = (profile.rights & 0xffff_ffff)
+                | ((profile.tls as u64) << 32)
+                | ((profile.port as u64) << 40);
             let _ = reply.reply(summary as i64);
         }
         _ => {
@@ -899,7 +849,7 @@ fn handle_message(service: &mut Service<'_>, mut message: catten_rt::owned::Inco
 
 fn serve(ctx: &Context) -> ShutdownRequest {
     config::write::<u32>(status::STAGE, 1);
-    let profile = Profile::from_context(ctx).unwrap_or_else(|| fail(0xe001));
+    let profile = decode_profile(ctx).unwrap_or_else(|| fail(0xe001));
     let ns_connection = ctx.bootstrap_connection().unwrap_or_else(|| fail(0xe002));
     let (_, tcp_connection) =
         wait_for_registered_name_owned(ns_connection, socket::NAME).unwrap_or_else(|| fail(0xe003));
@@ -926,15 +876,16 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     {
         fail(0xe007);
     }
+    let view = profile.view();
     catten_rt::logln!(
         "[s3] serving endpoint={}:{} bucket={} prefix={} region={} tls={} rights={:#x}",
-        profile.host,
-        profile.port,
-        profile.bucket,
-        profile.prefix,
-        profile.region,
-        profile.tls,
-        profile.rights
+        view.host,
+        view.port,
+        view.bucket,
+        view.prefix,
+        view.region,
+        view.tls,
+        view.rights
     );
     config::write::<u32>(status::STAGE, 2);
 

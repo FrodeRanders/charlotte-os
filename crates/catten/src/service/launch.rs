@@ -820,24 +820,22 @@ fn launch_deployment_plane(
 /// provisioning path. Multiple instances may eventually publish distinct
 /// policy-selected names; the current protocol name supports one instance.
 pub fn launch_s3_profile(ns: &NameServiceHandle, profile: &S3Profile<'_>) -> ServiceDomain {
-    let encoded = zeroize::Zeroizing::new(
-        charlotte_protocol_s3::Profile {
-            endpoint_ipv4: profile.endpoint_ipv4,
-            host: profile.host,
-            port: profile.port,
-            tls: profile.tls,
-            ca_certificate_der: profile.ca_certificate_der.unwrap_or(&[]),
-            region: profile.region,
-            bucket: profile.bucket,
-            prefix: profile.prefix,
-            access_key: profile.access_key,
-            secret_key: profile.secret_key,
-            namespace: profile.namespace.unwrap_or(&[]),
-            rights: profile.rights,
-        }
-        .encode()
-        .expect("valid S3 launch profile"),
-    );
+    let encoded = charlotte_protocol_s3::Profile {
+        endpoint_ipv4: profile.endpoint_ipv4,
+        host: profile.host,
+        port: profile.port,
+        tls: profile.tls,
+        ca_certificate_der: profile.ca_certificate_der.unwrap_or(&[]),
+        region: profile.region,
+        bucket: profile.bucket,
+        prefix: profile.prefix,
+        access_key: profile.access_key,
+        secret_key: profile.secret_key,
+        namespace: profile.namespace.unwrap_or(&[]),
+        rights: profile.rights,
+    }
+    .encode()
+    .expect("valid S3 launch profile");
     crate::service::supervisor::spawn_with_read_only_profile_and_limits(
         crate::service::store::service_elf(b"s3").expect("[launch] s3.elf"),
         ns,

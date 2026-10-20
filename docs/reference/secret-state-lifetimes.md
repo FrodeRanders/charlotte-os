@@ -34,6 +34,8 @@ records a retained-storage reproduction and the correction's validation.
 | S3 local HTTP/body buffers | Zeroizing header/body/chunk owners | TLS and plain receive adapters share the owned chunk contract. `ResponseHeadBuffer` reserves the 16 KiB head limit before copying. Each decoder call reserves its input-length output bound once and returns its erasing owner. Consumed framing scratch and final local buffers erase; formatting/metadata copies retain separate lifetimes. |
 | Parsed S3 ETag/version/request metadata | `ResponseHead` consumes one `Zeroizing<Vec<u8>>` and stores validated ranges | Accessors lend UTF-8 views from the same owner. Parse rejection or ordinary Drop erases the complete input; there are no independent metadata strings. Superseded/ignored header bytes remain in that bounded owner until Drop. Metadata exported into IPC/client memory has its own lifetime. |
 | Decoded S3 request key and raw object path | `request::OwnedRequest` keeps a `Zeroizing<Vec<u8>>`; `object_path` returns `Zeroizing<String>` | Wire validation precedes key allocation; owners exist before copying. Full key/path reservations avoid growth. Path rejection leaves the key with its request owner until Drop. Original IPC mapping lifetime and caller inputs are unchanged; bucket/prefix still come from the validated launch profile. |
+| Service-local S3 launch profile and HTTP authority | `profile::OwnedProfile` retains one `Zeroizing<Vec<u8>>`; `ProfileView` borrows fields and returns a `Zeroizing<String>` authority | Complete current wire validation precedes snapshot allocation. The owner exists before copying; snapshot and authority reserve without growth. Local Drop erases the frame, including credentials and scope fields. Original launch memory, startup log output and host provisioning copies retain separate lifetimes. |
+| Encoded S3 launch profile | `charlotte_protocol_s3::Profile::encode` returns `Zeroizing<Vec<u8>>` | Full validation and frame sizing precede allocation. The owner is installed before credential writes and retains the original single allocation through launch or abandonment. Borrowed wire `Profile` has no aggregate Debug implementation. Caller inputs, explicit field/output copies and launch-memory backing keep separate policies. |
 | HPKE X25519 private key and shared secret | The selected `x25519-dalek` `StaticSecret` and `SharedSecret` owners inside HPKE | The direct dependency requires `zeroize`, which HPKE's disabled defaults omitted. Production trait bounds require both owners to implement `ZeroizeOnDrop`. Drop erases their named 32-byte fields. |
 | Generated recipient private bytes | Returned `Zeroizing<[u8; 32]>`, created as an owner before serialization | Transfers directly to the signing tool; ordinary return/error drops the owner. Public recipient bytes remain an array. Explicit caller copies still need their own policy. |
 | Failed HPKE authentication output | Caller-owned output slice | `operations::open` uses `Zeroize` on the attempted plaintext prefix after AEAD rejection. Earlier validation errors do not modify output; the caller owns successful plaintext and unused capacity. |
@@ -148,3 +150,20 @@ copying and reserves the complete erasing raw path. Three baseline release
 controls fail; corrected controls erase on success and path rejection, with no
 path growth. The unused request Clone derive is removed. Original caller/IPC
 buffers, profile data and lower-layer memory retain separate contracts.
+
+The [profile-owner follow-up](../reports/audits/2026-10-20-security-s3-profile-owners.md) removes the service's independent plain
+profile field copies. The secret-key copy already had an erasing owner; the
+complete frame now shares that policy, including access identity and scope
+fields. Views borrow without allocating, and HTTP authority text has its own
+reserved erasing owner. Three baseline controls expose host/access-key/authority
+retention while the baseline secret-key control passes. Original launch input,
+provisioning tools, deliberately logged endpoint/scope fields and lower-layer
+memory remain separate SEC-15 work.
+
+The [profile-encoding follow-up](../reports/audits/2026-10-20-security-s3-profile-encoding.md) makes erasing ownership part of the
+wire encoder's return type. The kernel caller already wrapped this output; it
+now borrows the returned owner directly while preparing launch memory. Bare
+baseline output fails two release controls, while the original kernel wrapper
+passes. Aggregate wire-profile Debug is removed; individual fields and encoded
+bytes can still be deliberately copied or formatted. This does not qualify
+caller inputs, every provisioning tool or physical launch-memory teardown.

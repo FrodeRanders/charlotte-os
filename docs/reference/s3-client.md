@@ -296,3 +296,49 @@ signing authority. Rejected paths keep their key owner until ordinary Drop.
 Original IPC/caller buffers, profile/configuration data and kernel/TLS backing
 retain their separate lifetimes. See the
 [path-owner report](../reports/audits/2026-10-20-security-s3-path-owners.md).
+
+## Service-local launch-profile lifetime
+
+`charlotte_s3::profile::OwnedProfile::decode` validates the complete current
+CHS3PF1 record before allocating one `Zeroizing<Vec<u8>>` snapshot. It reserves
+the full frame and installs the owner before copying. Credentials, endpoint,
+bucket/prefix, namespace and public CA bytes share that local lifetime. The
+former independent field copies are removed; the secret-key copy already had
+an erasing owner.
+
+`view()` reuses the wire decoder to lend typed fields without allocation or a
+self-referential structure. The retained frame is private and immutable. The
+owner and view have no aggregate Debug implementation; the owner has no Clone
+implementation. Borrowed individual fields can still be explicitly copied or
+logged. `ProfileView::authority` returns an erasing string with room reserved
+for the host and optional decimal port. Default-port omission and signed HTTP
+bytes are preserved.
+
+The runtime adapter still borrows the launch-owned profile through `Context`,
+copies before releasing the read-only mapping and retains no mapping through
+networking. Validation, rights checks, TLS configuration and startup logging
+are unchanged. Local Drop erases/frees bytes without capability or remote
+teardown. The original launch memory and its kernel teardown, provisioning
+copies, emitted endpoint/scope logs, third-party TLS state and physical memory
+keep separate contracts. Ordinary Drop requires execution. See the
+[profile-owner report](../reports/audits/2026-10-20-security-s3-profile-owners.md) for controls and execution evidence.
+
+## Encoded launch-profile lifetime
+
+`charlotte_protocol_s3::Profile::encode` returns
+`Option<Zeroizing<Vec<u8>>>`. It validates all fields and the complete bounded
+size before allocating one zero-filled frame, installs its erasing owner and
+then writes the header and credential-bearing fields. Ordinary Drop erases the
+same frame on success or abandonment; no plain-output encoder remains.
+
+The kernel's `launch_s3_profile` already wrapped the old plain return value.
+It now takes the encoder's owner directly and borrows its bytes while preparing
+the read-only launch memory. Its allocation, launch path and release scope are
+preserved. CHS3PF1 bytes and validation rules are unchanged.
+
+The borrowed wire `Profile` keeps its borrowed Copy/Clone/equality behavior and
+has no aggregate Debug implementation. Explicit field/output copying or
+formatting remains possible. Caller buffers, provisioning/log output and the
+kernel's launch-memory backing retain separate release contracts. The
+[profile-encoding report](../reports/audits/2026-10-20-security-s3-profile-encoding.md) distinguishes the helper's former bare-output
+gap from the kernel caller's existing erasing wrapper.
