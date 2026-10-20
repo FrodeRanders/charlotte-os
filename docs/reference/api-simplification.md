@@ -335,3 +335,9 @@ formatter and writes directly into the existing reserved transcript. The initial
 phase's nonce changes to an erasing owner; its public constructor and consuming
 phase API stay the same. No scratch/compatibility formatter remains. Existing
 nonce policy, UTF-8 username/escape bytes and proof/verifier behavior are preserved.
+
+The [host key-file follow-up](../reports/audits/2026-10-20-security-host-key-encoding.md) replaces the key writer's generic hex plus
+newline append with `encode_key_file`, which returns one reserved erasing owner.
+No plain-output key-file fallback remains; generic public digest/identity hex
+formatting keeps its existing use. File syntax, commands, private-file policy
+and exclusive creation are unchanged. The helper is private to the host tool.

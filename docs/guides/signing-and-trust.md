@@ -40,7 +40,9 @@ cluster-sign elf-sign app.elf app /secure/signing/artifact.hex service 1 1 0 -
 Generation uses exclusive creation and never replaces an existing key. Private
 bytes are not printed; only output paths and public identity are reported.
 Recipient generation keeps serialized private bytes in a zeroizing Rust owner
-through file writing, including error returns. The selected X25519 private and
+through file writing, including error returns. Hexadecimal file text reserves
+its full length, including the newline, in an erasing owner before copying.
+The selected X25519 private and
 shared owners also require erasing Drop. See the [bounded memory inventory](../reference/secret-state-lifetimes.md)
 for the remaining copy and termination limits.
 

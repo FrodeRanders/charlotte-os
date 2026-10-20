@@ -43,3 +43,11 @@ explicit `--size-mib` still overrides it; insufficient capacity rejects through
 atomic staging without replacing prior output. This boot container is separate
 from persistent data-store sizing and does not reformat existing data disks.
 See the [preserved capacity failure and correction](../reports/audits/2026-10-16-observer-entry-construction.md).
+
+Key generation encodes the complete lowercase-hex record and its trailing
+newline in one reserved erasing buffer. The existing file writer borrows that
+owner through creation/write; ordinary success or rejection drops the same
+owner. The former newline append caused output growth after hex encoding.
+Private modes, exclusive creation, rollback, file-only readers and output
+messages are unchanged. Source key owners, disk/OS buffers and host custody
+retain their separate policies. See the [key-file report](../reports/audits/2026-10-20-security-host-key-encoding.md).

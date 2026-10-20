@@ -39,6 +39,7 @@ records a retained-storage reproduction and the correction's validation.
 | Encoded Kafka launch profile | `charlotte_protocol_kafka::Profile::encode` returns `Zeroizing<Vec<u8>>` | Validate all fields and the complete bounded size before allocating one frame; the owner exists before credential writes. The kernel borrows it through its existing launch scope. Profile and Authentication omit aggregate Debug. Caller inputs, explicit copies, connector-local profile copies and original launch backing remain separate. |
 | HPKE X25519 private key and shared secret | The selected `x25519-dalek` `StaticSecret` and `SharedSecret` owners inside HPKE | The direct dependency requires `zeroize`, which HPKE's disabled defaults omitted. Production trait bounds require both owners to implement `ZeroizeOnDrop`. Drop erases their named 32-byte fields. |
 | Generated recipient private bytes | Returned `Zeroizing<[u8; 32]>`, created as an owner before serialization | Transfers directly to the signing tool; ordinary return/error drops the owner. Public recipient bytes remain an array. Explicit caller copies still need their own policy. |
+| Host key-file hexadecimal text | `cluster-sign`'s `encode_key_file` returns `Zeroizing<String>` | Reserve the complete lowercase hex plus newline before copying. The writer borrows that owner through file creation/write and ordinary rejection. No newline growth or plain-output key-file formatter remains. Original key owners, files/OS buffers and other host-tool copies retain separate policies. |
 | Failed HPKE authentication output | Caller-owned output slice | `operations::open` uses `Zeroize` on the attempted plaintext prefix after AEAD rejection. Earlier validation errors do not modify output; the caller owns successful plaintext and unused capacity. |
 
 Finalization pads the same SHA owner, avoiding the former second full hash-state
@@ -187,3 +188,12 @@ independent Python reference in both versions. Nonces and usernames are SCRAM
 wire metadata; this extends local lifetime protection without making them
 confidential on the wire or adding replay authority. Source inputs and the
 caller's existing zeroizing nonce retain their own lifetimes.
+
+The [host key-file follow-up](../reports/audits/2026-10-20-security-host-key-encoding.md) reserves the trailing newline along with
+hexadecimal key text. The old writer already erased its final owner, but appending
+the newline caused one growth for 32-byte and 64-byte keys. The new helper owns
+the complete record before writing and returns it directly to the same file
+writer. Probes observe no growth and final erasure; they do not inspect retired
+reallocation storage or prove movement. Real CLI tests preserve private modes,
+exclusive creation, rollback and output privacy. File/OS buffers, source keys,
+other host-tool copies and custody remain separate.

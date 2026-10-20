@@ -1118,7 +1118,8 @@ never the private bytes. Changing the signing file does not change the
 kernel's bootstrap root. Signing commands read private files through bounded,
 zeroizing buffers and enforce owner-only Unix permissions, except for the
 exact publicly known fixtures. Key generation writes a new mode-0600 file
-without printing private material.
+without printing private material. Hexadecimal key text and its trailing newline
+share one reserved erasing buffer through file writing.
 
 Build output and boot logs explicitly identify the current images as
 development images. The build refuses production trust mode

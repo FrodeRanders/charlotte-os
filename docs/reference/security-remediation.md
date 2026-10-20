@@ -631,6 +631,13 @@ bytes are preserved. Usernames/nonces remain wire metadata, and original inputs,
 configured credentials, TLS state and physical memory retain separate policies.
 SEC-15 and overall finding counts remain unchanged.
 
+The [host key-file follow-up](../reports/audits/2026-10-20-security-host-key-encoding.md) removes a newline-triggered growth from
+credential-bearing generated-key text. The writer already erased its final
+buffer; it now receives a complete reserved erasing record. CLI tests preserve
+file modes, exclusivity, rollback and output privacy. Retired storage, source
+keys, OS/file buffers, host custody and other copies remain separate; SEC-15
+and overall finding counts stay unchanged.
+
 | Order | Finding and acceptance criterion |
 | --- | --- |
 | 1 | **SEC-04:** Authenticate bootstrap policy and the executable boot chain from a protected platform root. Provision independent artifact, deployment and operational authorities and a distinct recipient key; exclude every development fixture. Keep the recipient private key behind a privileged custody boundary, with recovery/rotation rules and rollback-resistant policy state. Test substituted boot images/policies, role reuse, downgrade, enrollment and custody failure. Production must remain disabled until those tests pass. |

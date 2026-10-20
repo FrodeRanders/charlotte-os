@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [SEC-15 host key-file encoding](audits/2026-10-20-security-host-key-encoding.md) — Reserves the complete erasing hex-plus-newline buffer for key generation, avoiding output growth.
+
 - [SEC-15 SCRAM initial owners](audits/2026-10-20-security-scram-initial-owners.md) — Removes escaped-username scratch and owns the phase-local nonce through consuming transitions.
 
 - [SEC-15 Kafka profile encoding](audits/2026-10-20-security-kafka-profile-encoding.md) — Returns the credential-bearing frame under an erasing owner and removes aggregate profile/authentication Debug.

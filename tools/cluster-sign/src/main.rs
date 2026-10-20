@@ -4,6 +4,7 @@
 //! SHA-256, and verifier.  Host tooling and the kernel therefore cannot drift
 //! into subtly different interpretations of the signed byte stream.
 
+mod key_encoding;
 mod trust_policy;
 
 #[cfg(unix)]
@@ -391,8 +392,8 @@ fn write_new_file(path: &str, bytes: &[u8], secret: bool) -> Result<()> {
 }
 
 fn write_new_hex_key(path: &str, bytes: &[u8], secret: bool) -> Result<()> {
-    let mut encoded = Zeroizing::new(hex_encode(bytes));
-    encoded.push('\n');
+    let encoded = key_encoding::encode_key_file(bytes)
+        .ok_or_else(|| "key file encoding is too large".to_owned())?;
     write_new_file(path, encoded.as_bytes(), secret)
 }
 
