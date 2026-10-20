@@ -624,6 +624,13 @@ former result and now uses the returned owner directly. Original caller inputs,
 explicit copies, connector-local profile data, digest/scalar intermediates and
 launch backing remain separate; SEC-15 and overall finding counts are unchanged.
 
+The [SCRAM initial-owner follow-up](../reports/audits/2026-10-20-security-scram-initial-owners.md) removes the growable plain escaped
+username and puts the initial phase's nonce copy under erasing ownership. Checked
+transcript sizing precedes allocation; consuming phase transitions and wire/proof
+bytes are preserved. Usernames/nonces remain wire metadata, and original inputs,
+configured credentials, TLS state and physical memory retain separate policies.
+SEC-15 and overall finding counts remain unchanged.
+
 | Order | Finding and acceptance criterion |
 | --- | --- |
 | 1 | **SEC-04:** Authenticate bootstrap policy and the executable boot chain from a protected platform root. Provision independent artifact, deployment and operational authorities and a distinct recipient key; exclude every development fixture. Keep the recipient private key behind a privileged custody boundary, with recovery/rotation rules and rollback-resistant policy state. Test substituted boot images/policies, role reuse, downgrade, enrollment and custody failure. Production must remain disabled until those tests pass. |

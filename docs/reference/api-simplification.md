@@ -329,3 +329,9 @@ automatic credential formatting. No plain-output compatibility encoder remains.
 CHKAFP7 bytes, digest, validation and launch-memory ownership are preserved.
 The protocol crate adds an edge to the existing pinned zeroize dependency,
 without a third-party version change.
+
+The [SCRAM initial-owner follow-up](../reports/audits/2026-10-20-security-scram-initial-owners.md) removes the private escaped-username
+formatter and writes directly into the existing reserved transcript. The initial
+phase's nonce changes to an erasing owner; its public constructor and consuming
+phase API stay the same. No scratch/compatibility formatter remains. Existing
+nonce policy, UTF-8 username/escape bytes and proof/verifier behavior are preserved.

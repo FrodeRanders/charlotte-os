@@ -471,3 +471,24 @@ TLS state, digest/scalar intermediates and physical memory retain separate
 contracts. Drop requires execution. See the
 [profile-encoding report](../reports/audits/2026-10-20-security-kafka-profile-encoding.md) for baseline controls, the independent wire
 fixture and native regression evidence.
+
+## SCRAM initial-phase lifetime
+
+`charlotte_kafka::scram::Client::new` computes the complete escaped username and
+initial-transcript byte lengths before allocation. It writes comma/equal escapes
+directly into the reserved erasing transcript; the separate escaped-username
+string is removed. Original UTF-8 bytes and SCRAM transcript/proof bytes are
+preserved. Empty inputs and invalid nonce bytes retain their existing rejection
+policy. Checked length overflow rejects as `InvalidCredential`; this is no
+aggregate heap-admission or fallible-allocation guarantee.
+
+The phase now owns its nonce as `Zeroizing<String>`. Password and nonce owners
+exist before their bytes are copied. The constructor uses three allocations,
+without growth: transcript, password and nonce. Ordinary Drop or a consuming
+server-challenge transition releases all three, including rejection. The final
+phase retains its existing proof/verifier policy. The service's original
+configured credentials and generated nonce have their separate lifetimes.
+Nonces and usernames remain SCRAM wire metadata. No new secrecy, authentication,
+replay or remote-cleanup authority follows from local erasure. See the
+[initial-owner report](../reports/audits/2026-10-20-security-scram-initial-owners.md) for release controls, the Python reference and
+native regression evidence.

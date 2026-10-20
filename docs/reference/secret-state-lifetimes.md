@@ -22,7 +22,7 @@ records a retained-storage reproduction and the correction's validation.
 | Canonical SigV4 URI/query, normalized headers, request and transcript | Helpers create `Zeroizing<String>` before copying, including each encoded query/normalized header entry and the scope/hash text | Compute checked complete lengths before reserving; ordinary Drop erases final outputs and temporary copies. `canonical_query` returns `Result<Zeroizing<String>, Error>`. Names/values remain borrowed from caller inputs before copying; original raw paths/profile/request data have separate lifetimes. |
 | Serialized S3 HTTP request head | `request_head` returns `Zeroizing<Vec<u8>>` directly to `signed_head` and its sender | Validate wire fields and checked total length before reserving/copying. The complete header uses one allocation without growth; ordinary send success/failure or abandonment drops the same owner. This does not erase kernel/TLS copies. |
 | SCRAM PBKDF2 current block and accumulated result | Zeroizing owners; PBKDF2 returns its result owner | Replacing the current block drops its old owner. The accumulated result transfers directly to the exchange. |
-| SCRAM exchange-local password and initial transcript | Initial `Client` phase, with zeroizing password/transcript buffers | Consuming server-challenge processing drops the initial phase on success or rejection, before the next transport exchange. The caller's configured credentials keep their separate lifetime. |
+| SCRAM exchange-local password, nonce and initial transcript | Initial `Client` phase, with zeroizing password/nonce/transcript buffers | Checked complete transcript sizing precedes construction. Username escaping writes directly into that transcript without a separate string. Consuming server-challenge processing drops the initial phase on success or rejection, before the next transport exchange. The caller's configured credentials/nonce keep their separate lifetimes. |
 | SCRAM client/server keys and stored key | Local zeroizing derivation owners | Drop when challenge processing returns. |
 | SCRAM proof and expected server signature | One `ClientFinal` owner | Proof bytes are borrowed for encoding. Consuming final verification or ordinary cancellation drops both fields; even early length/UTF-8 rejection consumes the phase. |
 | SCRAM Base64 encoded proof/nonce and decoded salt/server verifier | Helpers construct `Zeroizing<String>` / `Zeroizing<Vec<u8>>` before writing and return those owners | Reserve the complete output bound once. Ordinary Drop erases successful output; rejection inside decoding erases its existing prefix. The decoder has no growth copies. |
@@ -177,3 +177,13 @@ lose aggregate Debug without changing their borrowed credential fields or the
 four authentication choices. Caller inputs, explicit copies, connector-local
 metadata/credentials, digest/scalar intermediates and launch-memory teardown
 remain separate SEC-15 boundaries.
+
+The [SCRAM initial-owner follow-up](../reports/audits/2026-10-20-security-scram-initial-owners.md) removes the growable escaped-username
+scratch and protects the phase's nonce copy. The transcript reserves its complete
+escaped UTF-8 byte length, and password/nonce owners exist before copying. The
+constructor uses three allocations; the baseline uses four, with an un-erased
+escaped username and nonce. A complete escaped-username exchange matches an
+independent Python reference in both versions. Nonces and usernames are SCRAM
+wire metadata; this extends local lifetime protection without making them
+confidential on the wire or adding replay authority. Source inputs and the
+caller's existing zeroizing nonce retain their own lifetimes.

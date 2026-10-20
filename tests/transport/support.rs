@@ -27,11 +27,12 @@ struct Probe {
     input_offset: usize,
     copy: usize,
     copy_offset: usize,
+    copy_ordinal: usize,
     observed: Observation,
 }
 thread_local! {
     static PROBE: Cell<Probe> = const { Cell::new(Probe {
-        active: false, input: 0, input_offset: 0, copy: 0, copy_offset: 0,
+        active: false, input: 0, input_offset: 0, copy: 0, copy_offset: 0, copy_ordinal: 0,
         observed: Observation { allocations: 0, growths: 0, input_releases: 0,
             input_erased: false, copy_releases: 0, copy_erased: false },
     }) };
@@ -50,7 +51,7 @@ unsafe impl GlobalAlloc for ObservedAllocator {
             let mut p = cell.get();
             if p.active && !allocation.is_null() {
                 p.observed.allocations += 1;
-                if p.copy == 0 {
+                if p.observed.allocations == p.copy_ordinal {
                     p.copy = allocation.addr();
                 }
                 cell.set(p);
@@ -84,19 +85,25 @@ unsafe impl GlobalAlloc for ObservedAllocator {
                 for (target, offset, input) in
                     [(p.input, p.input_offset, true), (p.copy, p.copy_offset, false)]
                 {
-                    if target != 0
-                        && allocation.addr() == target
-                        && layout.size() >= offset + PREFIX
-                    {
-                        let erased = (0..PREFIX).all(|i| unsafe {
-                            ptr::read_volatile(allocation.add(offset + i)) == 0
-                        });
+                    if target != 0 && allocation.addr() == target {
+                        if layout.size() >= offset + PREFIX {
+                            let erased = (0..PREFIX).all(|i| unsafe {
+                                ptr::read_volatile(allocation.add(offset + i)) == 0
+                            });
+                            if input {
+                                p.observed.input_releases += 1;
+                                p.observed.input_erased = erased;
+                            } else {
+                                p.observed.copy_releases += 1;
+                                p.observed.copy_erased = erased;
+                            }
+                        }
+                        // The selected allocation is ending. Never inspect a
+                        // later allocation that happens to reuse its address.
                         if input {
-                            p.observed.input_releases += 1;
-                            p.observed.input_erased = erased;
+                            p.input = 0;
                         } else {
-                            p.observed.copy_releases += 1;
-                            p.observed.copy_erased = erased;
+                            p.copy = 0;
                         }
                     }
                 }
@@ -113,6 +120,19 @@ pub fn observe(
     copy_offset: usize,
     operation: impl FnOnce(),
 ) -> Observation {
+    observe_nth(1, input, input_offset, copy_offset, operation)
+}
+
+/// Select a known initialized fixture allocation by its construction order.
+/// The caller must establish its field offset and lifetime before observing.
+pub fn observe_nth(
+    copy_ordinal: usize,
+    input: usize,
+    input_offset: usize,
+    copy_offset: usize,
+    operation: impl FnOnce(),
+) -> Observation {
+    assert!(copy_ordinal > 0);
     struct Reset;
     impl Drop for Reset {
         fn drop(&mut self) {
@@ -127,6 +147,7 @@ pub fn observe(
             input,
             input_offset,
             copy_offset,
+            copy_ordinal,
             ..Probe::default()
         });
     });

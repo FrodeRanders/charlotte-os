@@ -47,7 +47,7 @@ pub enum Error {
 /// ```
 pub struct Client {
     password: Zeroizing<Vec<u8>>,
-    nonce: String,
+    nonce: Zeroizing<String>,
     client_first_bare: Zeroizing<Vec<u8>>,
 }
 
@@ -77,16 +77,37 @@ impl Client {
         {
             return Err(Error::InvalidCredential);
         }
-        let escaped = escape_username(username);
-        let mut client_first_bare =
-            Zeroizing::new(Vec::with_capacity(2 + escaped.len() + 3 + nonce.len()));
+        let escaped_len = username.bytes().try_fold(0usize, |len, byte| {
+            len.checked_add(
+                if matches!(byte, b',' | b'=') {
+                    3
+                } else {
+                    1
+                },
+            )
+        });
+        let first_len = escaped_len
+            .and_then(|len| len.checked_add(5)) // "n=" and ",r="
+            .and_then(|len| len.checked_add(nonce.len()))
+            .ok_or(Error::InvalidCredential)?;
+        let mut client_first_bare = Zeroizing::new(Vec::with_capacity(first_len));
         client_first_bare.extend_from_slice(b"n=");
-        client_first_bare.extend_from_slice(escaped.as_bytes());
+        for byte in username.bytes() {
+            match byte {
+                b',' => client_first_bare.extend_from_slice(b"=2C"),
+                b'=' => client_first_bare.extend_from_slice(b"=3D"),
+                _ => client_first_bare.push(byte),
+            }
+        }
         client_first_bare.extend_from_slice(b",r=");
         client_first_bare.extend_from_slice(nonce.as_bytes());
+        let mut owned_password = Zeroizing::new(Vec::with_capacity(password.len()));
+        owned_password.extend_from_slice(password);
+        let mut owned_nonce = Zeroizing::new(String::with_capacity(nonce.len()));
+        owned_nonce.push_str(nonce);
         Ok(Self {
-            password: Zeroizing::new(password.to_vec()),
-            nonce: String::from(nonce),
+            password: owned_password,
+            nonce: owned_nonce,
             client_first_bare,
         })
     }
@@ -120,7 +141,7 @@ impl Client {
             }
         }
         let combined_nonce = combined_nonce.ok_or(Error::InvalidServerMessage)?;
-        if !combined_nonce.starts_with(&self.nonce)
+        if !combined_nonce.starts_with(self.nonce.as_str())
             || combined_nonce.len() <= self.nonce.len()
             || !combined_nonce.bytes().all(|byte| (0x21..=0x7e).contains(&byte) && byte != b',')
         {
@@ -198,18 +219,6 @@ impl ClientFinal {
         }
         Ok(())
     }
-}
-
-fn escape_username(username: &str) -> String {
-    let mut escaped = String::with_capacity(username.len());
-    for character in username.chars() {
-        match character {
-            ',' => escaped.push_str("=2C"),
-            '=' => escaped.push_str("=3D"),
-            _ => escaped.push(character),
-        }
-    }
-    escaped
 }
 
 fn pbkdf2_sha256(password: &[u8], salt: &[u8], iterations: u32) -> Zeroizing<[u8; 32]> {
