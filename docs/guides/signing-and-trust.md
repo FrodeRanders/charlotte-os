@@ -57,6 +57,17 @@ encode 32. Unix owner/mode checks do not audit ACLs, backup copies, host memory
 or a hostile signing workstation. Real private-key file handling on non-Unix
 hosts is refused until ACL enforcement exists.
 
+## Plaintext operational profiles
+
+`operations-seal` takes a nonempty regular plaintext file of at most 64 KiB.
+On Unix, it rejects symlinks, directories and FIFOs using one opened descriptor.
+Its bounded erasing buffer owns plaintext from the first copied byte through
+sealing or read failure, including interrupted reads. Keep the source file and
+its parent directories under the operator's access policy: the command does
+not add private-key-style owner/mode checks for profile inputs. The byte limit
+does not provide an I/O deadline or a snapshot against concurrent writes.
+See the [profile-input audit](../reports/audits/2026-10-20-security-host-profile-input.md) for tests and remaining host-copy limits.
+
 ## Public trust-policy preflight
 
 Prepare an unsigned `CTRUST1` public policy using the four public files above:

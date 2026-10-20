@@ -341,3 +341,9 @@ newline append with `encode_key_file`, which returns one reserved erasing owner.
 No plain-output key-file fallback remains; generic public digest/identity hex
 formatting keeps its existing use. File syntax, commands, private-file policy
 and exclusive creation are unchanged. The helper is private to the host tool.
+
+The [host profile-input follow-up](../reports/audits/2026-10-20-security-host-profile-input.md) replaces the private unbounded
+`fs::read` expression in `operations-seal` with one bounded erasing input owner.
+There is no alternate plaintext reader. Unix no-follow regular-file admission
+and early size rejection apply to the same command; arguments, COPSENC1 bytes,
+cryptography and runtime APIs are unchanged. The helper stays private to the tool.

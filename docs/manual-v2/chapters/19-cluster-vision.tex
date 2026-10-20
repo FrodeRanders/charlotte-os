@@ -376,7 +376,12 @@ this chapter.
         an immutable release and its deployment descriptors, while operations
         independently signs HPKE-encrypted S3 or Kafka connector profiles bound
         to that exact release, target connector, cluster, expiry, and central
-        object-store key. The leader verifies both authorities and trusted UTC,
+        object-store key. The host sealing tool accepts a nonempty regular
+        plaintext file of at most 64 KiB and retains one bounded erasing
+        destination through reads and sealing, including partial read failure.
+        Unix input opens reject symlinks and non-regular sources; source-file
+        permissions and host custody remain the operator's responsibility.
+        The leader verifies both authorities and trusted UTC,
         then places only compact references and replay fences in Raft. On the
         assigned node, the authorized agent retrieves the digest-pinned
         ciphertext through a bootstrap S3 capability and moves a bounded pickup

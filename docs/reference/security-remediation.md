@@ -638,6 +638,13 @@ file modes, exclusivity, rollback and output privacy. Retired storage, source
 keys, OS/file buffers, host custody and other copies remain separate; SEC-15
 and overall finding counts stay unchanged.
 
+The [host profile-input follow-up](../reports/audits/2026-10-20-security-host-profile-input.md) owns plaintext before fallible reads,
+using a fixed 64 KiB-plus-sentinel destination. Unix file admission rejects
+symlinks and non-regular sources; existing empty/oversized rejection moves
+ahead of reading. Partial-read controls and an actual CLI envelope roundtrip
+pass. Host custody, OS/file copies and filesystem failure qualification remain
+separate; SEC-15 stays partial and overall finding counts are unchanged.
+
 | Order | Finding and acceptance criterion |
 | --- | --- |
 | 1 | **SEC-04:** Authenticate bootstrap policy and the executable boot chain from a protected platform root. Provision independent artifact, deployment and operational authorities and a distinct recipient key; exclude every development fixture. Keep the recipient private key behind a privileged custody boundary, with recovery/rotation rules and rollback-resistant policy state. Test substituted boot images/policies, role reuse, downgrade, enrollment and custody failure. Production must remain disabled until those tests pass. |

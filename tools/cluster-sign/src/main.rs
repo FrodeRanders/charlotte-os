@@ -5,6 +5,7 @@
 //! into subtly different interpretations of the signed byte stream.
 
 mod key_encoding;
+mod profile_input;
 mod trust_policy;
 
 #[cfg(unix)]
@@ -498,9 +499,8 @@ fn operations_seal(args: &[String]) -> Result<()> {
     let operational_secret = SecretKey::from_slice(&operational_secret_bytes)
         .map_err(|_| "invalid operational Ed25519 secret key".to_owned())?;
     let profile_path = args.get(9).ok_or_else(|| "missing plaintext profile path".to_owned())?;
-    let profile = Zeroizing::new(
-        fs::read(profile_path).map_err(|error| format!("read {profile_path}: {error}"))?,
-    );
+    let profile = profile_input::read_file(profile_path)
+        .map_err(|error| format!("read {profile_path}: {error}"))?;
     let operational_public = operational_secret.public_key();
     let operational_public: &[u8; 32] =
         operational_public.as_ref().try_into().map_err(|_| "invalid public key".to_owned())?;
@@ -512,13 +512,13 @@ fn operations_seal(args: &[String]) -> Result<()> {
         release_digest,
         profile_name: profile_name.as_bytes(),
     };
-    let len = operations::encoded_len(&fields, profile.len())
+    let len = operations::encoded_len(&fields, profile.as_bytes().len())
         .map_err(|error| format!("invalid operational envelope: {error:?}"))?;
     let mut envelope = vec![0u8; len];
     let mut rng = UnwrapErr(getrandom::SysRng);
     operations::seal_unsigned(
         &fields,
-        &profile,
+        profile.as_bytes(),
         &recipient_public,
         operational_public,
         &mut rng,
@@ -539,7 +539,7 @@ fn operations_seal(args: &[String]) -> Result<()> {
          recipient={} signing-key={} ciphertext={} bytes",
         hex_encode(&operations::recipient_key_id(&recipient_public)),
         hex_encode(&operations::signing_key_id(operational_public)),
-        profile.len()
+        profile.as_bytes().len()
     );
     Ok(())
 }

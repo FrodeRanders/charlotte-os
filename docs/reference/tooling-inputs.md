@@ -51,3 +51,13 @@ owner. The former newline append caused output growth after hex encoding.
 Private modes, exclusive creation, rollback, file-only readers and output
 messages are unchanged. Source key owners, disk/OS buffers and host custody
 retain their separate policies. See the [key-file report](../reports/audits/2026-10-20-security-host-key-encoding.md).
+
+`operations-seal` reads plaintext from a nonempty regular file of at most
+64 KiB. On Unix it opens once with no-follow and nonblocking flags, then checks
+the opened descriptor before reading; symlinks, directories and FIFOs reject.
+One fixed erasing destination, including an extra limit-detection byte, retains
+partial reads through error or success. Empty/oversized profiles already failed
+later envelope validation; they now reject before reading. Input permissions
+and ACLs remain the operator's responsibility. This byte bound supplies no I/O
+deadline or snapshot against concurrent file mutation. Arguments, envelope bytes
+and exclusive output creation are unchanged. See the [profile-input report](../reports/audits/2026-10-20-security-host-profile-input.md).
