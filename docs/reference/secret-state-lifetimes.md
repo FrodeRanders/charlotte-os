@@ -33,6 +33,7 @@ records a retained-storage reproduction and the correction's validation.
 | Kafka partial header/frame and unconsumed chunk | One `FrameReceiver` in the existing broker transport | Inline header validation precedes one full-frame reservation. Consumed chunk ranges erase after copying; complete frame ownership transfers directly. Error/interruption fences subsequent reads until explicit reset after stream discard. Reset/Drop erases the containing buffers. |
 | S3 local HTTP/body buffers | Zeroizing header/body/chunk owners | TLS and plain receive adapters share the owned chunk contract. `ResponseHeadBuffer` reserves the 16 KiB head limit before copying. Each decoder call reserves its input-length output bound once and returns its erasing owner. Consumed framing scratch and final local buffers erase; formatting/metadata copies retain separate lifetimes. |
 | Parsed S3 ETag/version/request metadata | `ResponseHead` consumes one `Zeroizing<Vec<u8>>` and stores validated ranges | Accessors lend UTF-8 views from the same owner. Parse rejection or ordinary Drop erases the complete input; there are no independent metadata strings. Superseded/ignored header bytes remain in that bounded owner until Drop. Metadata exported into IPC/client memory has its own lifetime. |
+| Decoded S3 request key and raw object path | `request::OwnedRequest` keeps a `Zeroizing<Vec<u8>>`; `object_path` returns `Zeroizing<String>` | Wire validation precedes key allocation; owners exist before copying. Full key/path reservations avoid growth. Path rejection leaves the key with its request owner until Drop. Original IPC mapping lifetime and caller inputs are unchanged; bucket/prefix still come from the validated launch profile. |
 | HPKE X25519 private key and shared secret | The selected `x25519-dalek` `StaticSecret` and `SharedSecret` owners inside HPKE | The direct dependency requires `zeroize`, which HPKE's disabled defaults omitted. Production trait bounds require both owners to implement `ZeroizeOnDrop`. Drop erases their named 32-byte fields. |
 | Generated recipient private bytes | Returned `Zeroizing<[u8; 32]>`, created as an owner before serialization | Transfers directly to the signing tool; ordinary return/error drops the owner. Public recipient bytes remain an array. Explicit caller copies still need their own policy. |
 | Failed HPKE authentication output | Caller-owned output slice | `operations::open` uses `Zeroize` on the attempted plaintext prefix after AEAD rejection. Earlier validation errors do not modify output; the caller owns successful plaintext and unused capacity. |
@@ -63,7 +64,7 @@ not promise ordinary Rust Drop. Heap/page teardown has its separate contract.
 
 The pinned P-256 `SecretKey` and ECDSA `SigningKey` implementations have
 erasing scalar destructors. This source observation does not qualify the full
-TLS parser or session. S3 caller-owned raw path/request/profile data and exported metadata copies, TLS record
+TLS parser or session. Original caller/IPC request inputs, profile data and exported metadata copies, TLS record
 consumption/key schedules, HPKE deserialization scratch and cipher contexts, host-tool
 copies and the rest of the connector memory inventory remain
 separate SEC-15 work. No cryptographic algorithm, wire format, transport policy,
@@ -140,3 +141,10 @@ the parsed response, and the service borrows metadata for wire encoding.
 Success, late rejection and replacement controls observe no metadata copies and
 erasure of the input owner. Original request/profile data, exported metadata,
 lower-layer memory and physical release remain separate boundaries.
+
+The [request-key/raw-path follow-up](../reports/audits/2026-10-20-security-s3-path-owners.md)
+moves the byte-only decoded request into the S3 library, protects its key before
+copying and reserves the complete erasing raw path. Three baseline release
+controls fail; corrected controls erase on success and path rejection, with no
+path growth. The unused request Clone derive is removed. Original caller/IPC
+buffers, profile data and lower-layer memory retain separate contracts.

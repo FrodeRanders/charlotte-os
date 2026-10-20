@@ -32,3 +32,7 @@ path = "s3_canonical_erasure.rs"
 [[test]]
 name = "s3_metadata_erasure"
 path = "s3_metadata_erasure.rs"
+
+[[test]]
+name = "s3_path_erasure"
+path = "s3_path_erasure.rs"

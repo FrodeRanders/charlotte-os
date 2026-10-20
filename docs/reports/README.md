@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [SEC-15 request-key/raw-path owners](audits/2026-10-20-security-s3-path-owners.md) — Owns the decoded key and reserved raw path while preserving the IPC mapping boundary and path rules.
+
 - [SEC-15 response metadata owners](audits/2026-10-20-security-s3-metadata-owners.md) — Consumes the response header and lends metadata ranges, removing independent metadata string copies.
 
 - [SEC-15 canonical signing owners](audits/2026-10-20-security-s3-canonical-owners.md) — Owns and reserves canonical URI/query/header copies and returned signing metadata.

@@ -216,7 +216,7 @@ TLS receive returns `Zeroizing<Vec<u8>>`, constructed before plaintext is read.
 The plain socket adapter uses the same local owner policy. HTTP/body buffers
 retain zeroizing owners through ordinary use and rejection; consumed local
 body ranges are erased after copying into their next owner. This does not
-cover original caller path/request/profile data, exported IPC/client metadata copies, library record/key-schedule
+cover original caller/IPC request inputs, profile data, exported metadata copies and library record/key-schedule
 state, or kernel socket backing. The [receive-owner report](../reports/audits/2026-10-19-security-receive-owners.md)
 records the bounds and native regression evidence. Public S3 framing and
 capability transfer are unchanged.
@@ -279,3 +279,20 @@ until Drop. A parsed production response now retains its bounded header storage
 through metadata use. IPC/client copies, original request/profile data and
 kernel/TLS backing keep their own lifetimes. See the
 [metadata-owner report](../reports/audits/2026-10-20-security-s3-metadata-owners.md).
+
+## Local request-key and raw-path lifetime
+
+`charlotte_s3::request::OwnedRequest::decode` uses the existing complete wire
+validation before copying a key into `Zeroizing<Vec<u8>>`. Scalars and flags
+keep their existing values. The service's IPC memory mapping still ends at the
+same decode boundary; the request keeps an independent key snapshot. It has no
+Clone implementation, and `key()` only lends a slice.
+
+`object_path` takes bucket/prefix fields from the validated launch profile and
+returns a fully reserved `Zeroizing<String>`. It preserves the existing UTF-8,
+leading-slash, NUL and dot-segment key checks, prefix trimming and concatenated
+bytes. Percent encoding remains a separate owned step. It grants no object or
+signing authority. Rejected paths keep their key owner until ordinary Drop.
+Original IPC/caller buffers, profile/configuration data and kernel/TLS backing
+retain their separate lifetimes. See the
+[path-owner report](../reports/audits/2026-10-20-security-s3-path-owners.md).

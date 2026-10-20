@@ -299,3 +299,11 @@ fields and aggregate Clone/Debug/comparison derives are removed. The existing
 accumulator transfers its header owner; the service borrows views for metadata
 encoding. No compatibility parser remains. HTTP grammar, trimming, repeated
 metadata behavior, parser error statuses and public S3 wire records are unchanged.
+
+The [request-key/raw-path follow-up](../reports/audits/2026-10-20-security-s3-path-owners.md)
+moves the private byte-only request into `charlotte_s3::request::OwnedRequest`,
+using the shared protocol decoder and an erasing key owner. `key()` borrows and
+`object_path` returns a reserved erasing owner. The unused Clone derive and
+private plain key/path implementation are removed. The service supplies its
+validated profile fields and preserves the existing IPC mapping boundary.
+Wire formats, request limits/flags and path-policy bytes remain unchanged.

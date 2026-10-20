@@ -53,10 +53,7 @@ use charlotte_launch::{
     s3_status as status,
     sha256::Sha256,
 };
-use charlotte_protocol_s3::{
-    ObjectMetadata,
-    ObjectRequest,
-};
+use charlotte_protocol_s3::ObjectMetadata;
 use charlotte_s3::{
     http::{
         ChunkedDecoder,
@@ -65,6 +62,7 @@ use charlotte_s3::{
         ResponseHeadBuffer,
         request_head,
     },
+    request::OwnedRequest,
     sigv4::{
         Credentials,
         EMPTY_PAYLOAD_SHA256,
@@ -137,20 +135,6 @@ impl Profile {
         self.rights & right != 0
     }
 
-    fn object_path(&self, key: &[u8]) -> Option<String> {
-        let key = core::str::from_utf8(key).ok()?;
-        if key.starts_with('/') || key.as_bytes().contains(&0) || unsafe_path_segments(key) {
-            return None;
-        }
-        let mut path = format!("/{}/", self.bucket);
-        if !self.prefix.is_empty() {
-            path.push_str(self.prefix.trim_end_matches('/'));
-            path.push('/');
-        }
-        path.push_str(key);
-        Some(path)
-    }
-
     fn authority(&self) -> String {
         if (self.tls && self.port == 443) || (!self.tls && self.port == 80) {
             self.host.clone()
@@ -160,20 +144,6 @@ impl Profile {
     }
 }
 
-fn unsafe_path_segments(path: &str) -> bool {
-    path.split('/').any(|segment| segment == "." || segment == "..")
-}
-
-#[derive(Clone)]
-struct OwnedRequest {
-    flags: u16,
-    content_length: u64,
-    range_start: u64,
-    range_end: u64,
-    payload_sha256: [u8; 32],
-    key: Vec<u8>,
-}
-
 fn decode_request(memory: Option<OwnedMemory>, exact_len: u64) -> Option<OwnedRequest> {
     let memory = memory?;
     let exact_len = usize::try_from(exact_len).ok()?;
@@ -181,15 +151,7 @@ fn decode_request(memory: Option<OwnedMemory>, exact_len: u64) -> Option<OwnedRe
     if exact_len > mapping.len() {
         return None;
     }
-    let request = ObjectRequest::decode(&mapping.as_slice()[..exact_len])?;
-    Some(OwnedRequest {
-        flags: request.flags,
-        content_length: request.content_length,
-        range_start: request.range_start,
-        range_end: request.range_end,
-        payload_sha256: request.payload_sha256,
-        key: request.key.to_vec(),
-    })
+    OwnedRequest::decode(&mapping.as_slice()[..exact_len])
 }
 
 fn fail(code: u32) -> ! {
@@ -332,7 +294,7 @@ fn signed_head(
     method: &str,
     timestamp: Timestamp,
 ) -> Option<Zeroizing<Vec<u8>>> {
-    let path = profile.object_path(&request.key)?;
+    let path = request.object_path(&profile.bucket, &profile.prefix)?;
     let encoded_path = canonical_uri(&path).ok()?;
     let authority = profile.authority();
     let amz_date = timestamp.amz_date().ok()?;

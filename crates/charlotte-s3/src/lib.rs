@@ -10,4 +10,5 @@
 extern crate alloc;
 
 pub mod http;
+pub mod request;
 pub mod sigv4;
