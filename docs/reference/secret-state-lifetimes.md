@@ -36,6 +36,7 @@ records a retained-storage reproduction and the correction's validation.
 | Decoded S3 request key and raw object path | `request::OwnedRequest` keeps a `Zeroizing<Vec<u8>>`; `object_path` returns `Zeroizing<String>` | Wire validation precedes key allocation; owners exist before copying. Full key/path reservations avoid growth. Path rejection leaves the key with its request owner until Drop. Original IPC mapping lifetime and caller inputs are unchanged; bucket/prefix still come from the validated launch profile. |
 | Service-local S3 launch profile and HTTP authority | `profile::OwnedProfile` retains one `Zeroizing<Vec<u8>>`; `ProfileView` borrows fields and returns a `Zeroizing<String>` authority | Complete current wire validation precedes snapshot allocation. The owner exists before copying; snapshot and authority reserve without growth. Local Drop erases the frame, including credentials and scope fields. Original launch memory, startup log output and host provisioning copies retain separate lifetimes. |
 | Encoded S3 launch profile | `charlotte_protocol_s3::Profile::encode` returns `Zeroizing<Vec<u8>>` | Full validation and frame sizing precede allocation. The owner is installed before credential writes and retains the original single allocation through launch or abandonment. Borrowed wire `Profile` has no aggregate Debug implementation. Caller inputs, explicit field/output copies and launch-memory backing keep separate policies. |
+| Encoded Kafka launch profile | `charlotte_protocol_kafka::Profile::encode` returns `Zeroizing<Vec<u8>>` | Validate all fields and the complete bounded size before allocating one frame; the owner exists before credential writes. The kernel borrows it through its existing launch scope. Profile and Authentication omit aggregate Debug. Caller inputs, explicit copies, connector-local profile copies and original launch backing remain separate. |
 | HPKE X25519 private key and shared secret | The selected `x25519-dalek` `StaticSecret` and `SharedSecret` owners inside HPKE | The direct dependency requires `zeroize`, which HPKE's disabled defaults omitted. Production trait bounds require both owners to implement `ZeroizeOnDrop`. Drop erases their named 32-byte fields. |
 | Generated recipient private bytes | Returned `Zeroizing<[u8; 32]>`, created as an owner before serialization | Transfers directly to the signing tool; ordinary return/error drops the owner. Public recipient bytes remain an array. Explicit caller copies still need their own policy. |
 | Failed HPKE authentication output | Caller-owned output slice | `operations::open` uses `Zeroize` on the attempted plaintext prefix after AEAD rejection. Earlier validation errors do not modify output; the caller owns successful plaintext and unused capacity. |
@@ -167,3 +168,12 @@ baseline output fails two release controls, while the original kernel wrapper
 passes. Aggregate wire-profile Debug is removed; individual fields and encoded
 bytes can still be deliberately copied or formatted. This does not qualify
 caller inputs, every provisioning tool or physical launch-memory teardown.
+
+The [Kafka profile-encoding follow-up](../reports/audits/2026-10-20-security-kafka-profile-encoding.md) applies the same returned-owner
+contract to CHKAFP7. Three bare-output baseline controls retain password or
+private-key bytes on release; the existing kernel wrapper erases both. The
+kernel caller now uses the returned owner directly. Profile and Authentication
+lose aggregate Debug without changing their borrowed credential fields or the
+four authentication choices. Caller inputs, explicit copies, connector-local
+metadata/credentials, digest/scalar intermediates and launch-memory teardown
+remain separate SEC-15 boundaries.

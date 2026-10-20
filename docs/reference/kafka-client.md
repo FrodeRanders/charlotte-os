@@ -62,8 +62,9 @@ choices and retired formats reject before broker connection. There are no
 optional/critical extension sections or skipped authentication material.
 The encoder copies borrowed credentials directly into the final profile;
 there is no second temporary credential-section allocation. The trusted
-launcher retains its existing zeroizing encoded-buffer owner, and the
-connector retains its existing zeroizing password/private-key copies.
+launcher borrows the encoder's returned zeroizing owner through its existing
+launch scope, and the connector retains its existing zeroizing password/private-key
+copies.
 
 ### Current profile wire contract
 
@@ -445,3 +446,28 @@ its volumes are removed on exit. Set `CATTEN_KAFKA_IMAGE` to exercise another
 compatible Kafka image. The switch adds the fixture, test trust anchor, and
 verifier; the ordinary network, DHCP, TCP/IP, entropy, and time services are
 not test-only functionality.
+
+## Encoded launch-profile lifetime
+
+`charlotte_protocol_kafka::Profile::encode` returns
+`Result<Zeroizing<Vec<u8>>, ProfileError>`. Validation and the complete checked
+frame size precede allocation. The encoder installs the erasing owner before
+writing any credentials, retains its existing single zero-filled frame and
+returns the owner directly. No plain-output compatibility encoder remains.
+The kernel's `launch_kafka_profile` already wrapped the former plain result;
+it now uses the returned owner without another wrapper, allocation or copy.
+The owner stays live while the launcher prepares the read-only profile memory.
+
+The borrowed `Authentication` and `Profile` types have no aggregate Debug
+implementation. Existing borrowed Copy/Clone/equality behavior remains; profile
+Clone still allocates its metadata vectors while borrowing credential fields.
+Individual fields and encoded bytes can still be explicitly copied or formatted.
+This does not qualify every diagnostic/provisioning path. CHKAFP7 bytes, integrity
+digest, authentication choices, bounds and rejection behavior are unchanged.
+
+Ordinary Drop erases the encoded frame after launch or abandonment. Its source
+credentials, original launch memory, connector-local profile copies, third-party
+TLS state, digest/scalar intermediates and physical memory retain separate
+contracts. Drop requires execution. See the
+[profile-encoding report](../reports/audits/2026-10-20-security-kafka-profile-encoding.md) for baseline controls, the independent wire
+fixture and native regression evidence.

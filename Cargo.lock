@@ -353,6 +353,7 @@ name = "charlotte-protocol-kafka"
 version = "0.1.0"
 dependencies = [
  "charlotte-launch",
+ "zeroize",
 ]
 
 [[package]]

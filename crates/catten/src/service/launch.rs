@@ -880,56 +880,54 @@ pub fn launch_kafka_profile(ns: &NameServiceHandle, profile: &KafkaProfile<'_>) 
                 rights: endpoint.rights,
             })
             .collect();
-    let encoded = zeroize::Zeroizing::new(
-        charlotte_protocol_kafka::Profile {
-            instance_name: profile.instance_name,
-            authority_endpoints,
-            endpoint_ipv4: profile.endpoint_ipv4,
-            host: profile.host,
-            port: profile.port,
-            broker_endpoints: brokers,
-            tls: profile.tls,
-            ca_certificate_der: profile.ca_certificate_der.unwrap_or(&[]),
-            topic: profile.topic,
-            partition: i32::try_from(profile.partition).expect("Kafka partition exceeds i32"),
-            produce_routes: routes,
-            max_produce_routes: profile.max_produce_routes,
-            group: profile.group,
-            transactional_id: profile.transactional_id,
-            authentication: match profile.authentication {
-                KafkaAuthentication::None => charlotte_protocol_kafka::Authentication::None,
-                KafkaAuthentication::ScramSha256 {
-                    username,
-                    password,
-                } => charlotte_protocol_kafka::Authentication::ScramSha256 {
-                    username,
-                    password,
-                },
-                KafkaAuthentication::MtlsP256 {
-                    certificate_der,
-                    private_key_der,
-                } => charlotte_protocol_kafka::Authentication::MtlsP256 {
-                    certificate_der,
-                    private_key_der,
-                },
-                KafkaAuthentication::ScramSha256AndMtlsP256 {
-                    username,
-                    password,
-                    certificate_der,
-                    private_key_der,
-                } => charlotte_protocol_kafka::Authentication::ScramSha256AndMtlsP256 {
-                    username,
-                    password,
-                    certificate_der,
-                    private_key_der,
-                },
+    let encoded = charlotte_protocol_kafka::Profile {
+        instance_name: profile.instance_name,
+        authority_endpoints,
+        endpoint_ipv4: profile.endpoint_ipv4,
+        host: profile.host,
+        port: profile.port,
+        broker_endpoints: brokers,
+        tls: profile.tls,
+        ca_certificate_der: profile.ca_certificate_der.unwrap_or(&[]),
+        topic: profile.topic,
+        partition: i32::try_from(profile.partition).expect("Kafka partition exceeds i32"),
+        produce_routes: routes,
+        max_produce_routes: profile.max_produce_routes,
+        group: profile.group,
+        transactional_id: profile.transactional_id,
+        authentication: match profile.authentication {
+            KafkaAuthentication::None => charlotte_protocol_kafka::Authentication::None,
+            KafkaAuthentication::ScramSha256 {
+                username,
+                password,
+            } => charlotte_protocol_kafka::Authentication::ScramSha256 {
+                username,
+                password,
             },
-            rights: profile.rights,
-            transaction_timeout_ms: profile.transaction_timeout_ms,
-        }
-        .encode()
-        .expect("invalid Kafka profile"),
-    );
+            KafkaAuthentication::MtlsP256 {
+                certificate_der,
+                private_key_der,
+            } => charlotte_protocol_kafka::Authentication::MtlsP256 {
+                certificate_der,
+                private_key_der,
+            },
+            KafkaAuthentication::ScramSha256AndMtlsP256 {
+                username,
+                password,
+                certificate_der,
+                private_key_der,
+            } => charlotte_protocol_kafka::Authentication::ScramSha256AndMtlsP256 {
+                username,
+                password,
+                certificate_der,
+                private_key_der,
+            },
+        },
+        rights: profile.rights,
+        transaction_timeout_ms: profile.transaction_timeout_ms,
+    }
+    .encode()
+    .expect("invalid Kafka profile");
     crate::service::supervisor::spawn_with_read_only_profile_and_limits(
         crate::service::store::service_elf(b"kafka").expect("[launch] kafka.elf"),
         ns,

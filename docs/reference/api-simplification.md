@@ -321,3 +321,11 @@ uses that owner directly; fixtures compare profiles without formatting their
 credentials. No plain-output compatibility encoder remains. CHS3PF1 grammar,
 validation and launch-memory ownership are preserved. The protocol crate adds
 an edge to the existing pinned zeroize dependency; no third-party version changes.
+
+The [Kafka profile-encoding follow-up](../reports/audits/2026-10-20-security-kafka-profile-encoding.md) changes `Profile::encode` to return
+an erasing byte owner and removes aggregate Debug from Profile/Authentication.
+The kernel caller takes that owner directly; fixtures compare profiles without
+automatic credential formatting. No plain-output compatibility encoder remains.
+CHKAFP7 bytes, digest, validation and launch-memory ownership are preserved.
+The protocol crate adds an edge to the existing pinned zeroize dependency,
+without a third-party version change.

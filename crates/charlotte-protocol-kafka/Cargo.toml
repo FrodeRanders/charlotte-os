@@ -6,3 +6,4 @@ description = "CharlotteOS capability-oriented Kafka service wire protocol"
 
 [dependencies]
 charlotte-launch = { path = "../charlotte-launch" }
+zeroize = { version = "1.9", default-features = false, features = ["alloc"] }

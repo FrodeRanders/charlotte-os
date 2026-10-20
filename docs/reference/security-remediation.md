@@ -617,6 +617,13 @@ Aggregate wire-profile Debug is removed. Explicit copies, caller inputs,
 provisioning/logging and launch-memory backing remain separate; SEC-15 stays
 partial with unchanged finding counts.
 
+The [Kafka profile-encoding follow-up](../reports/audits/2026-10-20-security-kafka-profile-encoding.md) makes the encoder return the
+credential-bearing CHKAFP7 frame under erasing ownership and removes aggregate
+Debug from Profile and Authentication. The kernel caller already wrapped its
+former result and now uses the returned owner directly. Original caller inputs,
+explicit copies, connector-local profile data, digest/scalar intermediates and
+launch backing remain separate; SEC-15 and overall finding counts are unchanged.
+
 | Order | Finding and acceptance criterion |
 | --- | --- |
 | 1 | **SEC-04:** Authenticate bootstrap policy and the executable boot chain from a protected platform root. Provision independent artifact, deployment and operational authorities and a distinct recipient key; exclude every development fixture. Keep the recipient private key behind a privileged custody boundary, with recovery/rotation rules and rollback-resistant policy state. Test substituted boot images/policies, role reuse, downgrade, enrollment and custody failure. Production must remain disabled until those tests pass. |

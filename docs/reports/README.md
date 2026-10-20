@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [SEC-15 Kafka profile encoding](audits/2026-10-20-security-kafka-profile-encoding.md) — Returns the credential-bearing frame under an erasing owner and removes aggregate profile/authentication Debug.
+
 - [SEC-15 S3 profile encoding](audits/2026-10-20-security-s3-profile-encoding.md) — Returns the credential-bearing frame under an erasing owner and removes aggregate profile Debug.
 
 - [SEC-15 S3 profile owners](audits/2026-10-20-security-s3-profile-owners.md) — Keeps the service-local profile in one erasing frame and owns reserved HTTP authority text.

@@ -683,8 +683,11 @@ none, SCRAM-SHA-256, P-256 mTLS, or both. Four explicit
 lengths delimit the username, password, client certificate, and private key;
 fields for disabled mechanisms must be empty. Unknown choices, missing required
 material, retired profiles, and trailing data reject before broker connection.
-The encoder copies borrowed fields directly into the existing zeroizing launch
-buffer without a separate credential-section allocation. Authentication policy
+The encoder returns the complete frame under an erasing owner, installed before
+copying borrowed credentials. The launcher borrows that owner through profile
+memory preparation; no separate credential-section allocation is needed. The
+profile and authentication types omit aggregate Debug formatting. Individual
+fields and output bytes can still be copied or logged. Authentication policy
 and secret ownership remain behind the connector's read-only launch capability.
 The profile has no optional authentication sections or compatibility fallback.
 

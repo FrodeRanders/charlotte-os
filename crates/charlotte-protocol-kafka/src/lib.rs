@@ -143,7 +143,14 @@ pub struct AuthorityEndpoint<'a> {
 
 /// Connector-only Kafka authentication material. This is part of the
 /// read-only launch profile and never appears in the application IPC ABI.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Credential fields stay borrowed. Aggregate Debug is unavailable because it
+/// would include passwords and private keys.
+///
+/// ```compile_fail
+/// fn requires_debug<T: core::fmt::Debug>() {}
+/// requires_debug::<charlotte_protocol_kafka::Authentication<'_>>();
+/// ```
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum Authentication<'a> {
     None,
     ScramSha256 {
@@ -194,7 +201,12 @@ impl ProduceRoute<'_> {
 
 /// Immutable launch profile carried in a kernel-enforced read-only memory
 /// capability. All variable-length data is covered by the SHA-256 digest.
-#[derive(Clone, Debug, Eq, PartialEq)]
+///
+/// ```compile_fail
+/// fn requires_debug<T: core::fmt::Debug>() {}
+/// requires_debug::<charlotte_protocol_kafka::Profile<'_>>();
+/// ```
+#[derive(Clone, Eq, PartialEq)]
 pub struct Profile<'a> {
     /// Stable connector instance identity used for status and diagnostics.
     /// Applications use one of `authority_endpoints`, never this label.
@@ -237,7 +249,9 @@ pub enum ProfileError {
 }
 
 impl Profile<'_> {
-    pub fn encode(&self) -> Result<Vec<u8>, ProfileError> {
+    /// Validate and size the whole frame before allocating. The erasing owner
+    /// exists before credentials are written and transfers directly to callers.
+    pub fn encode(&self) -> Result<zeroize::Zeroizing<Vec<u8>>, ProfileError> {
         validate_profile(self)?;
         let route_bytes = self.produce_routes.iter().try_fold(0usize, |total, route| {
             total.checked_add(PROFILE_ROUTE_HEADER_LEN + route.topic.len())
@@ -267,7 +281,7 @@ impl Profile<'_> {
         if total_len > MAX_PROFILE_BYTES || total_len > u32::MAX as usize {
             return Err(ProfileError::TooLarge);
         }
-        let mut output = alloc::vec![0; total_len];
+        let mut output = zeroize::Zeroizing::new(alloc::vec![0; total_len]);
         output[0..8].copy_from_slice(&PROFILE_MAGIC);
         put_u16(&mut output, 8, PROFILE_VERSION);
         put_u16(&mut output, 10, PROFILE_HEADER_LEN as u16);
@@ -1026,10 +1040,10 @@ mod tests {
             transaction_timeout_ms: 60_000,
         };
         let encoded = profile.encode().unwrap();
-        assert_eq!(Profile::decode(&encoded).unwrap(), profile);
+        assert!(Profile::decode(&encoded).unwrap() == profile);
         let mut corrupt = encoded;
         *corrupt.last_mut().unwrap() ^= 1;
-        assert_eq!(Profile::decode(&corrupt), Err(ProfileError::DigestMismatch));
+        assert!(Profile::decode(&corrupt) == Err(ProfileError::DigestMismatch));
 
         let mut invalid_name = profile;
         invalid_name.authority_endpoints[0].service_name = b"kafka/orders/bad name";
@@ -1062,7 +1076,7 @@ mod tests {
             profile.ca_certificate_der = b"ca";
             profile.authentication = authentication;
             let encoded = profile.encode().unwrap();
-            assert_eq!(Profile::decode(&encoded).unwrap(), profile);
+            assert!(Profile::decode(&encoded).unwrap() == profile);
         }
     }
 
@@ -1076,7 +1090,7 @@ mod tests {
             let mut encoded = plain.clone();
             put_u16(&mut encoded, 90, kind);
             refresh_profile_digest(&mut encoded);
-            assert_eq!(Profile::decode(&encoded), Err(ProfileError::UnsupportedAuthentication));
+            assert!(Profile::decode(&encoded) == Err(ProfileError::UnsupportedAuthentication));
         }
         profile.authentication = Authentication::ScramSha256AndMtlsP256 {
             username: b"worker",
@@ -1094,14 +1108,14 @@ mod tests {
             let mut encoded = full.clone();
             put_u16(&mut encoded, 90, kind);
             refresh_profile_digest(&mut encoded);
-            assert_eq!(Profile::decode(&encoded), Err(ProfileError::InvalidField));
+            assert!(Profile::decode(&encoded) == Err(ProfileError::InvalidField));
         }
         // Selecting a supported mode does not synthesize absent material.
         for kind in [AUTH_SCRAM_SHA_256, AUTH_MTLS_P256, AUTH_SCRAM_SHA_256_AND_MTLS_P256] {
             let mut encoded = plain.clone();
             put_u16(&mut encoded, 90, kind);
             refresh_profile_digest(&mut encoded);
-            assert_eq!(Profile::decode(&encoded), Err(ProfileError::InvalidField));
+            assert!(Profile::decode(&encoded) == Err(ProfileError::InvalidField));
         }
     }
 
@@ -1119,7 +1133,7 @@ mod tests {
         let len = retired.len() as u32;
         put_u32(&mut retired, 12, len);
         refresh_profile_digest(&mut retired);
-        assert_eq!(Profile::decode(&retired), Err(ProfileError::InvalidHeader));
+        assert!(Profile::decode(&retired) == Err(ProfileError::InvalidHeader));
 
         // The retired decoder skipped this optional unknown section. The new
         // decoder rejects the entire retired format, including critical form.
@@ -1143,21 +1157,21 @@ mod tests {
             let len = encoded.len() as u32;
             put_u32(&mut encoded, 12, len);
             refresh_profile_digest(&mut encoded);
-            assert_eq!(Profile::decode(&encoded), Err(ProfileError::InvalidHeader));
+            assert!(Profile::decode(&encoded) == Err(ProfileError::InvalidHeader));
         }
         // Relabelling old bytes cannot make the retired layout current.
         retired[..8].copy_from_slice(&PROFILE_MAGIC);
         put_u16(&mut retired, 8, PROFILE_VERSION);
         refresh_profile_digest(&mut retired);
-        assert_eq!(Profile::decode(&retired), Err(ProfileError::InvalidHeader));
+        assert!(Profile::decode(&retired) == Err(ProfileError::InvalidHeader));
         for version in 1..PROFILE_VERSION {
             let mut encoded = current.clone();
             put_u16(&mut encoded, 8, version);
             refresh_profile_digest(&mut encoded);
-            assert_eq!(Profile::decode(&encoded), Err(ProfileError::UnsupportedVersion));
+            assert!(Profile::decode(&encoded) == Err(ProfileError::UnsupportedVersion));
             encoded[6] = b'0' + version as u8;
             refresh_profile_digest(&mut encoded);
-            assert_eq!(Profile::decode(&encoded), Err(ProfileError::InvalidHeader));
+            assert!(Profile::decode(&encoded) == Err(ProfileError::InvalidHeader));
         }
     }
 
@@ -1169,16 +1183,16 @@ mod tests {
         }
         let mut extended = encoded.clone();
         extended.push(0);
-        assert_eq!(Profile::decode(&extended), Err(ProfileError::InvalidHeader));
+        assert!(Profile::decode(&extended) == Err(ProfileError::InvalidHeader));
         let len = extended.len() as u32;
         put_u32(&mut extended, 12, len);
         refresh_profile_digest(&mut extended);
-        assert_eq!(Profile::decode(&extended), Err(ProfileError::InvalidField));
+        assert!(Profile::decode(&extended) == Err(ProfileError::InvalidField));
         for offset in 108..PROFILE_HEADER_LEN {
             let mut reserved = encoded.clone();
             reserved[offset] = 1;
             refresh_profile_digest(&mut reserved);
-            assert_eq!(Profile::decode(&reserved), Err(ProfileError::InvalidHeader));
+            assert!(Profile::decode(&reserved) == Err(ProfileError::InvalidHeader));
         }
         for offset in [92, 94, 100, 104] {
             let mut corrupt = encoded.clone();

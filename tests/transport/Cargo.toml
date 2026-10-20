@@ -44,3 +44,7 @@ path = "s3_profile_erasure.rs"
 [[test]]
 name = "s3_profile_wire_erasure"
 path = "s3_profile_wire_erasure.rs"
+
+[[test]]
+name = "kafka_profile_erasure"
+path = "kafka_profile_erasure.rs"
