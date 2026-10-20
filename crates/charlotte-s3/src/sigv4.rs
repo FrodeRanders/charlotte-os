@@ -5,7 +5,6 @@ use alloc::{
     string::String,
     vec::Vec,
 };
-use core::fmt::Write;
 
 use charlotte_launch::sha256::{
     digest,
@@ -107,8 +106,8 @@ pub struct Request<'a> {
     pub timestamp: Timestamp,
 }
 
-/// Authorization and signature text retain erasing owners. Canonical request
-/// metadata keeps its separate lifetime. The aggregate has no debug formatter.
+/// Signing output and canonical metadata retain erasing owners. Caller inputs
+/// keep their separate lifetimes. The aggregate has no debug formatter.
 ///
 /// ```compile_fail
 /// fn requires_debug<T: core::fmt::Debug>() {}
@@ -116,9 +115,9 @@ pub struct Request<'a> {
 /// ```
 pub struct Signature {
     pub authorization: Zeroizing<String>,
-    pub canonical_request: String,
-    pub string_to_sign: String,
-    pub signed_headers: String,
+    pub canonical_request: Zeroizing<String>,
+    pub string_to_sign: Zeroizing<String>,
+    pub signed_headers: Zeroizing<String>,
     pub signature: Zeroizing<String>,
 }
 
@@ -133,20 +132,26 @@ pub fn sign(request: &Request<'_>, credentials: Credentials<'_>) -> Result<Signa
     let date = request.timestamp.date()?;
     let amz_date = request.timestamp.amz_date()?;
     let canonical_uri = canonical_uri(request.path)?;
-    let canonical_query = canonical_query(request.query);
+    let canonical_query = canonical_query(request.query)?;
     let (canonical_headers, signed_headers) = canonical_headers(request.headers)?;
-    let canonical_request = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}",
+    let canonical_request = concat_owned(&[
         request.method,
-        canonical_uri,
-        canonical_query,
-        canonical_headers,
-        signed_headers,
-        request.payload_sha256
-    );
-    let scope = format!("{}/{}/{}/aws4_request", date, request.region, request.service);
-    let canonical_hash = hex_lower(&digest(canonical_request.as_bytes()));
-    let string_to_sign = format!("AWS4-HMAC-SHA256\n{}\n{}\n{}", amz_date, scope, canonical_hash);
+        "\n",
+        &canonical_uri,
+        "\n",
+        &canonical_query,
+        "\n",
+        &canonical_headers,
+        "\n",
+        &signed_headers,
+        "\n",
+        request.payload_sha256,
+    ])?;
+    let scope = concat_owned(&[&date, "/", request.region, "/", request.service, "/aws4_request"])?;
+    let canonical_digest = Zeroizing::new(digest(canonical_request.as_bytes()));
+    let canonical_hash = hex_digest(&canonical_digest);
+    let string_to_sign =
+        concat_owned(&["AWS4-HMAC-SHA256\n", &amz_date, "\n", &scope, "\n", &canonical_hash])?;
 
     let mut first_key = Zeroizing::new(Vec::with_capacity(4 + credentials.secret_key.len()));
     first_key.extend_from_slice(b"AWS4");
@@ -155,7 +160,7 @@ pub fn sign(request: &Request<'_>, credentials: Credentials<'_>) -> Result<Signa
     let region_key = hmac_sha256(&*date_key, request.region.as_bytes());
     let service_key = hmac_sha256(&*region_key, request.service.as_bytes());
     let signing_key = hmac_sha256(&*service_key, b"aws4_request");
-    let signature = signature_hex(&hmac_sha256(&*signing_key, string_to_sign.as_bytes()));
+    let signature = hex_digest(&hmac_sha256(&*signing_key, string_to_sign.as_bytes()));
     let authorization = authorization(credentials.access_key, &scope, &signed_headers, &signature)?;
     Ok(Signature {
         authorization,
@@ -166,7 +171,7 @@ pub fn sign(request: &Request<'_>, credentials: Credentials<'_>) -> Result<Signa
     })
 }
 
-fn signature_hex(bytes: &[u8; 32]) -> Zeroizing<String> {
+fn hex_digest(bytes: &[u8; 32]) -> Zeroizing<String> {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut text = Zeroizing::new(String::with_capacity(64));
     for byte in bytes {
@@ -192,6 +197,10 @@ fn authorization(
         ", Signature=",
         signature,
     ];
+    concat_owned(&parts)
+}
+
+fn concat_owned(parts: &[&str]) -> Result<Zeroizing<String>, Error> {
     let len = parts
         .iter()
         .try_fold(0usize, |len, part| len.checked_add(part.len()))
@@ -205,22 +214,32 @@ fn authorization(
 
 /// S3 URI encoding: retain `/`, encode bytes outside the unreserved set, and
 /// use uppercase hex. Input paths must be absolute.
-pub fn canonical_uri(path: &str) -> Result<String, Error> {
+pub fn canonical_uri(path: &str) -> Result<Zeroizing<String>, Error> {
     if !path.starts_with('/') {
         return Err(Error::InvalidPath);
     }
-    Ok(uri_encode(path.as_bytes(), false))
+    uri_encode(path.as_bytes(), false)
 }
 
-pub fn canonical_query(query: &[Query<'_>]) -> String {
-    let mut encoded: Vec<(String, String)> = query
+pub fn canonical_query(query: &[Query<'_>]) -> Result<Zeroizing<String>, Error> {
+    let mut encoded = Vec::with_capacity(query.len());
+    for item in query {
+        encoded.push((
+            uri_encode(item.name.as_bytes(), true)?,
+            uri_encode(item.value.as_bytes(), true)?,
+        ));
+    }
+    encoded.sort_unstable_by(|left, right| {
+        left.0.as_str().cmp(right.0.as_str()).then_with(|| left.1.as_str().cmp(right.1.as_str()))
+    });
+    let len = encoded
         .iter()
-        .map(|item| {
-            (uri_encode(item.name.as_bytes(), true), uri_encode(item.value.as_bytes(), true))
+        .try_fold(0usize, |len, (name, value)| {
+            len.checked_add(name.len())?.checked_add(1)?.checked_add(value.len())
         })
-        .collect();
-    encoded.sort_unstable();
-    let mut result = String::new();
+        .and_then(|len| len.checked_add(encoded.len().saturating_sub(1)))
+        .ok_or(Error::TooLarge)?;
+    let mut result = Zeroizing::new(String::with_capacity(len));
     for (index, (name, value)) in encoded.iter().enumerate() {
         if index != 0 {
             result.push('&');
@@ -229,52 +248,102 @@ pub fn canonical_query(query: &[Query<'_>]) -> String {
         result.push('=');
         result.push_str(value);
     }
-    result
+    Ok(result)
 }
 
-fn canonical_headers(headers: &[Header<'_>]) -> Result<(String, String), Error> {
-    let mut normalized = Vec::with_capacity(headers.len());
-    for header in headers {
+type CanonicalHeaders = (Zeroizing<String>, Zeroizing<String>);
+
+fn canonical_headers(headers: &[Header<'_>]) -> Result<CanonicalHeaders, Error> {
+    // Reject invalid shapes before copying any header values. Normalized owners
+    // still cover every later construction error and ordinary return.
+    for (index, header) in headers.iter().enumerate() {
         if header.name.is_empty()
             || header.name.bytes().any(|byte| !byte.is_ascii_alphanumeric() && byte != b'-')
+            || headers[..index].iter().any(|prior| prior.name.eq_ignore_ascii_case(header.name))
         {
             return Err(Error::InvalidHeader);
         }
-        normalized.push((header.name.to_ascii_lowercase(), fold_whitespace(header.value)));
     }
-    normalized.sort_unstable_by(|left, right| left.0.cmp(&right.0));
-    if normalized.windows(2).any(|pair| pair[0].0 == pair[1].0) {
-        return Err(Error::InvalidHeader);
+    for required in ["host", "x-amz-content-sha256", "x-amz-date"] {
+        if !headers.iter().any(|header| header.name.eq_ignore_ascii_case(required)) {
+            return Err(Error::InvalidHeader);
+        }
     }
-    let mut canonical = String::new();
-    let mut names = String::new();
+    let mut normalized = Vec::with_capacity(headers.len());
+    for header in headers {
+        let mut name = Zeroizing::new(String::with_capacity(header.name.len()));
+        for byte in header.name.bytes() {
+            name.push(byte.to_ascii_lowercase() as char);
+        }
+        normalized.push((name, fold_whitespace(header.value)?));
+    }
+    normalized.sort_unstable_by(|left, right| left.0.as_str().cmp(right.0.as_str()));
+    let canonical_len = normalized
+        .iter()
+        .try_fold(0usize, |len, (name, value)| {
+            len.checked_add(name.len())?.checked_add(1)?.checked_add(value.len())?.checked_add(1)
+        })
+        .ok_or(Error::TooLarge)?;
+    let names_len = normalized
+        .iter()
+        .try_fold(0usize, |len, (name, _)| len.checked_add(name.len()))
+        .and_then(|len| len.checked_add(normalized.len().saturating_sub(1)))
+        .ok_or(Error::TooLarge)?;
+    let mut canonical = Zeroizing::new(String::with_capacity(canonical_len));
+    let mut names = Zeroizing::new(String::with_capacity(names_len));
     for (index, (name, value)) in normalized.iter().enumerate() {
         if index != 0 {
             names.push(';');
         }
         names.push_str(name);
-        let _ = writeln!(canonical, "{}:{}", name, value);
-    }
-    for required in ["host", "x-amz-content-sha256", "x-amz-date"] {
-        if !normalized.iter().any(|(name, _)| name == required) {
-            return Err(Error::InvalidHeader);
-        }
+        canonical.push_str(name);
+        canonical.push(':');
+        canonical.push_str(value);
+        canonical.push('\n');
     }
     Ok((canonical, names))
 }
 
-fn fold_whitespace(value: &str) -> String {
-    value.split_ascii_whitespace().collect::<Vec<_>>().join(" ")
+fn fold_whitespace(value: &str) -> Result<Zeroizing<String>, Error> {
+    let mut len = 0usize;
+    for (index, part) in value.split_ascii_whitespace().enumerate() {
+        len = len
+            .checked_add(usize::from(index != 0))
+            .and_then(|len| len.checked_add(part.len()))
+            .ok_or(Error::TooLarge)?;
+    }
+    let mut result = Zeroizing::new(String::with_capacity(len));
+    for (index, part) in value.split_ascii_whitespace().enumerate() {
+        if index != 0 {
+            result.push(' ');
+        }
+        result.push_str(part);
+    }
+    Ok(result)
 }
 
-fn uri_encode(bytes: &[u8], encode_slash: bool) -> String {
+fn uri_encode(bytes: &[u8], encode_slash: bool) -> Result<Zeroizing<String>, Error> {
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
-    let mut result = String::with_capacity(bytes.len());
+    let unescaped = |byte: u8| {
+        byte.is_ascii_alphanumeric()
+            || matches!(byte, b'-' | b'_' | b'.' | b'~')
+            || (byte == b'/' && !encode_slash)
+    };
+    let len = bytes
+        .iter()
+        .try_fold(0usize, |len, byte| {
+            len.checked_add(
+                if unescaped(*byte) {
+                    1
+                } else {
+                    3
+                },
+            )
+        })
+        .ok_or(Error::TooLarge)?;
+    let mut result = Zeroizing::new(String::with_capacity(len));
     for byte in bytes {
-        if byte.is_ascii_alphanumeric()
-            || matches!(*byte, b'-' | b'_' | b'.' | b'~')
-            || (*byte == b'/' && !encode_slash)
-        {
+        if unescaped(*byte) {
             result.push(*byte as char);
         } else {
             result.push('%');
@@ -282,7 +351,7 @@ fn uri_encode(bytes: &[u8], encode_slash: bool) -> String {
             result.push(HEX[(byte & 0x0f) as usize] as char);
         }
     }
-    result
+    Ok(result)
 }
 
 pub fn hex_lower(bytes: &[u8]) -> String {
@@ -328,7 +397,7 @@ mod tests {
 
     #[test]
     fn s3_encoding_preserves_path_separators() {
-        assert_eq!(canonical_uri("/my bucket/a+b/%").unwrap(), "/my%20bucket/a%2Bb/%25");
+        assert_eq!(canonical_uri("/my bucket/a+b/%").unwrap().as_str(), "/my%20bucket/a%2Bb/%25");
         assert_eq!(
             canonical_query(&[
                 Query {
@@ -339,7 +408,9 @@ mod tests {
                     name: "list-type",
                     value: "2"
                 },
-            ]),
+            ])
+            .unwrap()
+            .as_str(),
             "list-type=2&prefix=a%2Fb%20c"
         );
     }
@@ -388,7 +459,7 @@ mod tests {
             signature.signature.as_str(),
             "34e97fe1de869a653fb4f8170b09370b65eda55bc5c5ba8ffd8b47100c677f68"
         );
-        assert_eq!(signature.signed_headers, "host;x-amz-content-sha256;x-amz-date");
+        assert_eq!(signature.signed_headers.as_str(), "host;x-amz-content-sha256;x-amz-date");
     }
 
     #[test]
@@ -409,7 +480,7 @@ mod tests {
         ];
         let (canonical, names) = canonical_headers(&headers).unwrap();
         assert!(canonical.starts_with("host:example.test\n"));
-        assert_eq!(names, "host;x-amz-content-sha256;x-amz-date");
+        assert_eq!(names.as_str(), "host;x-amz-content-sha256;x-amz-date");
         assert_eq!(
             Timestamp {
                 year: 2026,

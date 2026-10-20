@@ -216,7 +216,7 @@ TLS receive returns `Zeroizing<Vec<u8>>`, constructed before plaintext is read.
 The plain socket adapter uses the same local owner policy. HTTP/body buffers
 retain zeroizing owners through ordinary use and rejection; consumed local
 body ranges are erased after copying into their next owner. This does not
-cover canonical signing/path/query metadata, response metadata copies, library record/key-schedule
+cover original caller path/request/profile data, response metadata copies, library record/key-schedule
 state, or kernel socket backing. The [receive-owner report](../reports/audits/2026-10-19-security-receive-owners.md)
 records the bounds and native regression evidence. Public S3 framing and
 capability transfer are unchanged.
@@ -239,9 +239,8 @@ See the [response-buffer report](../reports/audits/2026-10-19-security-s3-respon
 
 `Signature` retains authorization and hexadecimal signature text as
 `Zeroizing<String>` and has no aggregate Debug formatter. Their owners exist
-before construction, with complete reservations. Canonical request,
-string-to-sign and signed-header metadata keep their separate plain-string
-lifetimes; this does not qualify the whole signing path.
+before construction, with complete reservations. Canonical copies now follow
+the owned policy below; this does not qualify the whole signing path.
 
 `request_head` borrows method, encoded path and headers and returns one
 `Zeroizing<Vec<u8>>`. It checks field syntax, rejects control characters,
@@ -253,3 +252,13 @@ Existing launch profiles already validate wire-bound values; the new check
 strengthens the serializer boundary without establishing a production injection
 path. Valid service header bytes and SigV4 output are preserved. See the
 [request-owner report](../reports/audits/2026-10-19-security-s3-request-owners.md).
+
+Canonical helpers now return erasing owners as well: `canonical_uri` and
+`canonical_query` return `Result<Zeroizing<String>, Error>`, and `Signature`'s
+canonical request, string-to-sign and signed-header fields retain those owners.
+URI/query encoding, normalized header entries and joined text compute checked
+complete sizes before reserving/copying. Header names, duplicates and required
+fields are checked before normalization copies. Sorting, ASCII whitespace
+folding and percent-encoding bytes are preserved. Original caller inputs,
+profile/raw request paths and response metadata keep their separate lifetimes.
+See the [canonical-signing report](../reports/audits/2026-10-20-security-s3-canonical-owners.md).

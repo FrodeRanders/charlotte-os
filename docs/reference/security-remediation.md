@@ -582,6 +582,13 @@ rejects those inputs. Canonical signing/path/query/response-metadata copies,
 library state and physical memory remain separate; SEC-15 stays partial with
 unchanged overall counts.
 
+The [canonical-signing follow-up](../reports/audits/2026-10-20-security-s3-canonical-owners.md)
+then owns URI/query/header canonicalization copies and returned signing
+metadata. Complete reservations precede writing; invalid header shapes reject
+before normalization copies. Caller inputs/raw paths, response metadata,
+library state and physical memory remain separate. SEC-15 remains partial;
+overall counts are unchanged.
+
 | Order | Finding and acceptance criterion |
 | --- | --- |
 | 1 | **SEC-04:** Authenticate bootstrap policy and the executable boot chain from a protected platform root. Provision independent artifact, deployment and operational authorities and a distinct recipient key; exclude every development fixture. Keep the recipient private key behind a privileged custody boundary, with recovery/rotation rules and rollback-resistant policy state. Test substituted boot images/policies, role reuse, downgrade, enrollment and custody failure. Production must remain disabled until those tests pass. |

@@ -284,3 +284,10 @@ replaced by the library's borrowed `RequestHead` and owned `request_head`
 serializer. No plain-output compatibility formatter remains. Valid S3 request
 bytes/signatures are unchanged; malformed fields reject before header output
 allocation. Launch profiles retain their earlier validation boundary.
+
+The [canonical-signing follow-up](../reports/audits/2026-10-20-security-s3-canonical-owners.md)
+returns owned canonical URI/query text and owned `Signature` metadata fields.
+`canonical_query` now returns a checked `Result`; no bare-string compatibility
+helper remains. Temporary encoded/normalized entries and joined text use the
+same owner policy. Callers and fixtures compile against the current API.
+SigV4 canonical bytes and valid HTTP requests are unchanged.
