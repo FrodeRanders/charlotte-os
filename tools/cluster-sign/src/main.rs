@@ -7,6 +7,7 @@
 mod file_hash;
 mod http_client;
 mod key_encoding;
+mod key_input;
 mod profile_input;
 mod rollout;
 mod trust_policy;
@@ -62,6 +63,10 @@ use http_client::Deadline;
 use http_client::{
     read_framed_http_response,
     HTTP_RESPONSE_LIMIT,
+};
+use key_input::{
+    normalize_key_text,
+    MAX_KEY_FILE_BYTES,
 };
 use rand_core::UnwrapErr;
 use zeroize::Zeroizing;
@@ -376,20 +381,6 @@ fn read_hex_key(path: &str, length: usize, label: &str) -> Result<Vec<u8>> {
     parse_fixed_hex(&encoded, length, label)
 }
 
-// Normalize commented key files. Public fixtures share this file-only path;
-// their known contents are exempt from private-file permission restrictions.
-fn development_fixture_hex(contents: &str) -> String {
-    // Reserve once so filtering a private file cannot leave earlier growth
-    // allocations containing fragments of its secret text.
-    let mut encoded = String::with_capacity(contents.len());
-    for line in contents.lines().map(str::trim) {
-        if !line.is_empty() && !line.starts_with('#') {
-            encoded.push_str(line);
-        }
-    }
-    encoded
-}
-
 fn is_development_secret(encoded: &str) -> bool {
     [
         include_str!("../dev-key.hex"),
@@ -397,11 +388,10 @@ fn is_development_secret(encoded: &str) -> bool {
         include_str!("../dev-recipient-key.hex"),
     ]
     .iter()
-    .any(|fixture| encoded.eq_ignore_ascii_case(&development_fixture_hex(fixture)))
+    .any(|fixture| encoded.eq_ignore_ascii_case(&normalize_key_text(fixture)))
 }
 
 fn read_private_key(path: &str, length: usize) -> Result<Zeroizing<Vec<u8>>> {
-    const MAX_KEY_FILE_BYTES: u64 = 4096;
     let mut options = OpenOptions::new();
     options.read(true);
     // Inspect the opened descriptor so a path change cannot swap the checked file.
@@ -410,19 +400,13 @@ fn read_private_key(path: &str, length: usize) -> Result<Zeroizing<Vec<u8>>> {
     options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
     let file = options.open(path).map_err(|_| "cannot open private-key file".to_owned())?;
     let metadata = file.metadata().map_err(|_| "cannot inspect private-key file".to_owned())?;
-    if !metadata.is_file() || metadata.len() > MAX_KEY_FILE_BYTES {
+    if !metadata.is_file() || metadata.len() > MAX_KEY_FILE_BYTES as u64 {
         return Err("private key must be a regular file of at most 4096 bytes".to_owned());
     }
-    let mut contents = Zeroizing::new(Vec::with_capacity(MAX_KEY_FILE_BYTES as usize + 1));
-    file.take(MAX_KEY_FILE_BYTES + 1)
-        .read_to_end(&mut contents)
-        .map_err(|_| "cannot read private-key file".to_owned())?;
-    if contents.len() as u64 > MAX_KEY_FILE_BYTES {
-        return Err("private-key file exceeds 4096 bytes".to_owned());
-    }
+    let contents = key_input::read_text(file).map_err(str::to_owned)?;
     let text =
         std::str::from_utf8(&contents).map_err(|_| "private-key file is not UTF-8".to_owned())?;
-    let encoded = Zeroizing::new(development_fixture_hex(text));
+    let encoded = normalize_key_text(text);
     if !is_development_secret(&encoded) {
         #[cfg(unix)]
         {
@@ -2419,7 +2403,7 @@ mod tests {
         invalid[3] = "foreign".into();
         assert!(trust_policy::sign(&invalid).is_err());
         invalid = args.clone();
-        let fixture = Zeroizing::new(development_fixture_hex(include_str!("../dev-key.hex")));
+        let fixture = normalize_key_text(include_str!("../dev-key.hex"));
         invalid[2] = fixture.to_string();
         let error = trust_policy::sign(&invalid).unwrap_err();
         assert!(!error.contains(fixture.as_str()));
@@ -2548,7 +2532,7 @@ mod tests {
             "0".repeat(4097),
             // Publicly known fixture tests private-length rejection without
             // creating a secret in an ordinary String.
-            development_fixture_hex(include_str!("../dev-key.hex")),
+            normalize_key_text(include_str!("../dev-key.hex")).to_string(),
         ];
         for key in cases {
             fs::write(&args[3], key).unwrap();
@@ -2608,11 +2592,12 @@ mod tests {
             include_str!("../dev-operations-key.hex"),
             include_str!("../dev-recipient-key.hex"),
         ] {
-            for encoded in
-                [development_fixture_hex(fixture), development_fixture_hex(fixture).to_uppercase()]
-            {
+            for encoded in [
+                normalize_key_text(fixture),
+                Zeroizing::new(normalize_key_text(fixture).to_uppercase()),
+            ] {
                 let error = read_signing_key(&encoded).err().unwrap();
-                assert!(!error.contains(&encoded));
+                assert!(!error.contains(encoded.as_str()));
             }
         }
     }

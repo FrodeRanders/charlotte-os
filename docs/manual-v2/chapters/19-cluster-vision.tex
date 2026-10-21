@@ -1168,7 +1168,11 @@ kernel's bootstrap root. Signing commands read private files through bounded,
 zeroizing buffers and enforce owner-only Unix permissions, except for the
 exact publicly known fixtures. Key generation writes a new mode-0600 file
 without printing private material. Hexadecimal key text and its trailing newline
-share one reserved erasing buffer through file writing.
+share one reserved erasing buffer through file writing. Private-key input
+retains an erasing vector through partial reads and errors; its full capacity
+is cleared on ordinary Drop. Normalized key text returns with its own erasing
+owner through permission checks and decoding. Source files, OS buffers and
+forced termination have separate lifetimes.
 Public-key file arguments share one bounded reader and hex parser across
 operational, ingress-policy and trust-policy commands. The complete file,
 including comments, is limited to 4096 bytes; Unix opens reject final-component

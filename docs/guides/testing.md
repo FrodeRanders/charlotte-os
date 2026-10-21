@@ -24,7 +24,7 @@ The runner currently covers:
 | `charlotte-smoltcp` | receive-queue bounds and clock progression |
 | `charlotte-launch` | checked user-address mapping ranges, alias/kernel/null rejection and overflow boundaries |
 | `catten-services` | shared authorization/client logic, resource adapters and total monotonic deadlines |
-| `cluster-sign` | restricted key-file handling, digest, signed metadata, and placement-policy self-tests |
+| `cluster-sign` | restricted key-file handling, private-key read-error/normalization erasure, digest, signed metadata, and placement-policy self-tests |
 
 The script invokes Cargo from a temporary directory. This is necessary because
 the repository's `.cargo/config.toml` asks Cargo to rebuild `core`, `alloc`, and

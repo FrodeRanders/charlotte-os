@@ -9,6 +9,14 @@ existing permission exemption; filenames do not confer that exemption.
 secret-valued variable still rejects without expanding its contents.
 See [signing and trust](../guides/signing-and-trust.md).
 
+Private-key text reserves 4096 bytes plus a growth-detection byte before reading.
+The pinned erasing vector clears its full capacity, including a dirty tail after
+a read error. Normalization now returns its own erasing text owner; callers
+retain that owner through permission checks and decoding. Fault-reader probes
+verify the existing read behavior without claiming an earlier input leak.
+Files, OS copies and forced termination keep separate lifetimes. See the
+[private-key input report](../reports/audits/2026-10-21-security-private-key-input.md).
+
 Public-key file arguments use the trust-policy reader's 4096-byte bound and
 regular-file checks across operational and ingress-policy commands as well.
 On Unix, one no-follow/nonblocking open rejects final-component symlinks,

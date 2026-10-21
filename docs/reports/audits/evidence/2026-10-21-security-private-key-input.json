@@ -1,0 +1,244 @@
+{
+  "schema": "charlotte.security.private-key-input.v1",
+  "report_date": "2026-10-21",
+  "reviewed_revision": "758a90ac2db13a739676bfc7f1d58d6b46b73049",
+  "classification": {
+    "corrected": 29,
+    "partial": 6,
+    "open": 3,
+    "production_trust": "disabled"
+  },
+  "review": {
+    "suspected_read_error_tail_leak": "Ruled out: pinned zeroize Vec implementation clears full capacity. Original read algorithm and original caller wrapper pass controls. No earlier command-path leak is established.",
+    "contract_change": "normalize_key_text installs Zeroizing<String> before copying and returns it directly; original private-key caller immediately wrapped its former String result.",
+    "read_algorithm": "Unchanged 4097-byte reservation, Read::take bound and read_to_end under Zeroizing<Vec<u8>>; extracted for direct production-helper tests.",
+    "admission": "Captured regular descriptor, no-follow/nonblocking Unix flags, 4096-byte file limit, real-key mode/owner gate, public fixture exemption, UTF-8/exact hex validation unchanged.",
+    "ownership": "Same C18 host file/byte-owner scope; no Charlotte capability/root, guard, wait, registry, custody, cleanup/retry or physical authority change.",
+    "wire_or_cli_change": false
+  },
+  "baseline": {
+    "source_origin": "tools/cluster-sign/src/main.rs at reviewed_revision",
+    "extract": "Read body from Zeroizing<Vec> allocation through oversize check; original development_fixture_hex helper renamed only for fixture linkage. Reader error type adapted from String to static str; size constant changed u64 to usize, casts moved at read bound. Algorithm unchanged.",
+    "package_manifest": "[package]\nname=\"key-input-baseline\"\nversion=\"0.0.0\"\nedition=\"2021\"\n[workspace]\n[dependencies]\nzeroize=\"=1.9.0\"\n",
+    "extracted_source": "use std::io::Read;\nuse zeroize::Zeroizing;\npub(super) const MAX_KEY_FILE_BYTES: usize = 4096;\npub(super) fn read_text(reader: impl Read) -> Result<Zeroizing<Vec<u8>>, &'static str> {\n    let mut contents = Zeroizing::new(Vec::with_capacity(MAX_KEY_FILE_BYTES + 1));\n    reader.take(MAX_KEY_FILE_BYTES as u64 + 1)\n        .read_to_end(&mut contents)\n        .map_err(|_| \"cannot read private-key file\")?;\n    if contents.len() > MAX_KEY_FILE_BYTES {\n        return Err(\"private-key file exceeds 4096 bytes\");\n    }\n    Ok(contents)\n}\npub(super) fn normalize_key_text(contents: &str) -> String {\n    // Reserve once so filtering a private file cannot leave earlier growth\n    // allocations containing fragments of its secret text.\n    let mut encoded = String::with_capacity(contents.len());\n    for line in contents.lines().map(str::trim) {\n        if !line.is_empty() && !line.starts_with('#') {\n            encoded.push_str(line);\n        }\n    }\n    encoded\n}\n",
+    "harness_origin": "tools/cluster-sign/tests/key_input.rs, hash in reviewed_source_sha256",
+    "harness_adaptation": [
+      "Replace normalized output annotation Zeroizing<String> with String.",
+      "Replace consuming reject parameter Zeroizing<String> with String.",
+      "Point the support module path at the tracked tests/transport/support.rs.",
+      "Add original_caller_wrapper_erases_normalized_text, wrapping normalize_key_text(\"ZZZZZZZZ\") in Zeroizing::new inside observe(0,0,0,...) before ordinary Drop."
+    ],
+    "fixture_sha256": {
+      "src/key_input.rs": "22b9edffe7e63ac1bda9c7d983683e3bc69f453e46261572d5fc357a3c5108ef",
+      "tests/key_input.rs": "8c51f0eda3f40b9f486fe479279d775e424674f246f6964a4c726b3e0c2a9aeb",
+      "Cargo.toml": "8dff74df47b722a93e62733f34664b779b5989dbcf685798d77c71d1d5ab70cf",
+      "Cargo.lock": "0ac188a9d70928c411472bb05913061b81214c863a1a7d3d0192644436845d88"
+    },
+    "interpretation": "Bare helper results retain public fixture bytes; original caller wrapper and read fault controls pass. Expected helper failures are not original command-path failures.",
+    "profiles": {
+      "debug": {
+        "command": "cargo test --manifest-path <isolated-baseline>/Cargo.toml --offline --test key_input",
+        "exit_status": 101,
+        "passed": 7,
+        "expected_failures": 2,
+        "diagnostics": [
+          "test dirty_error_and_eof_erase_unreported_destination ... ok",
+          "test accepted_input_keeps_one_erasing_allocation ... ok",
+          "test original_caller_wrapper_erases_normalized_text ... ok",
+          "test consuming_normalized_text_on_rejection_erases_same_allocation ... FAILED",
+          "test normalization_returns_owner_without_growth_and_preserves_grammar ... FAILED",
+          "test partial_error_erases_accepted_prefix ... ok",
+          "test pinned_zeroize_erases_initialized_bytes_beyond_vector_length ... ok",
+          "test interrupted_read_preserves_owner_and_accepted_bytes ... ok",
+          "test sentinel_rejects_growth_without_reallocation_or_excess_reading ... ok",
+          "public fixture text retained: Observation { allocations: 1, growths: 0, input_releases: 0, input_erased: false, copy_releases: 1, copy_erased: false }",
+          "public fixture text retained: Observation { allocations: 1, growths: 0, input_releases: 0, input_erased: false, copy_releases: 1, copy_erased: false }",
+          "test result: FAILED. 7 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+        ]
+      },
+      "release": {
+        "command": "cargo test --manifest-path <isolated-baseline>/Cargo.toml --offline --release --test key_input",
+        "exit_status": 101,
+        "passed": 7,
+        "expected_failures": 2,
+        "diagnostics": [
+          "test accepted_input_keeps_one_erasing_allocation ... ok",
+          "test dirty_error_and_eof_erase_unreported_destination ... ok",
+          "test consuming_normalized_text_on_rejection_erases_same_allocation ... FAILED",
+          "test interrupted_read_preserves_owner_and_accepted_bytes ... ok",
+          "test original_caller_wrapper_erases_normalized_text ... ok",
+          "test partial_error_erases_accepted_prefix ... ok",
+          "test normalization_returns_owner_without_growth_and_preserves_grammar ... FAILED",
+          "test pinned_zeroize_erases_initialized_bytes_beyond_vector_length ... ok",
+          "test sentinel_rejects_growth_without_reallocation_or_excess_reading ... ok",
+          "public fixture text retained: Observation { allocations: 1, growths: 0, input_releases: 0, input_erased: false, copy_releases: 1, copy_erased: false }",
+          "public fixture text retained: Observation { allocations: 1, growths: 0, input_releases: 0, input_erased: false, copy_releases: 1, copy_erased: false }",
+          "test result: FAILED. 7 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+        ]
+      }
+    }
+  },
+  "new_tests": [
+    "Accepted 8/128/4096-byte inputs: one allocation, erased release and no growth.",
+    "Accepted prefix followed by read error erases.",
+    "Dirty error and EOF clear initialized unreported destination.",
+    "Interrupted read retains owner and accepted bytes.",
+    "4096 accepted; 4097 and 8192 sources rejected after at most 4097 consumed bytes, without growth.",
+    "Whole-line comments/blank/Unicode trim/case/inline-comment behavior preserved under returned owner.",
+    "Consuming rejection retains original normalization allocation through erasing release.",
+    "Initialized-then-truncated vector verifies pinned full-capacity erasure beyond logical length."
+  ],
+  "probe": {
+    "source": "tests/transport/support.rs",
+    "source_sha256": "00a124eb9a91991514d7198a116ac634145bb5486a9736958dd0ef671a97e0bb",
+    "read": "Eight initialized public fixture bytes, volatile immediately before System deallocation. No freed memory or uninitialized capacity read.",
+    "limits": "Selected-range observations plus dependency/type contract; not exhaustive byte/physical erasure, real filesystem fault coverage, OOM or forced termination."
+  },
+  "dependency_review": {
+    "package": "zeroize",
+    "version": "1.9.0",
+    "crate_source_sha256": "61012679ef3d0cc4e29b6f9c9d6c572c4ba8110e70a1e1c527da6bfaf77494ef",
+    "contract": "Vec zeroize clears initialized elements and full spare capacity; prior reallocations are outside the guarantee. No dependency/version change."
+  },
+  "host_validation": {
+    "debug": {
+      "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p cluster-sign",
+      "exit_status": 0,
+      "tests_passed": 92,
+      "result_lines": [
+        "test result: ok. 56 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s"
+      ]
+    },
+    "release": {
+      "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p cluster-sign",
+      "exit_status": 0,
+      "tests_passed": 92,
+      "result_lines": [
+        "test result: ok. 56 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s"
+      ]
+    }
+  },
+  "host_test_context": {
+    "cwd": "/private/tmp",
+    "flags": "--offline --locked",
+    "compiler": "rustc 1.100.0-nightly (c54751567 2026-08-22)"
+  },
+  "tested_host_binaries_before_signing_rebuild": {
+    "debug": {
+      "path": "target/debug/cluster-sign",
+      "sha256": "1f238e1b39eefc9ef4f5efed86d4251146b65c111dfc7514ab100daa961390a8"
+    },
+    "release": {
+      "path": "target/release/cluster-sign",
+      "sha256": "dae2008253886f286b6da9d23e9b4c77f0e62810c09d5bc0596300ff2ea2f17a"
+    }
+  },
+  "final_host_binaries": {
+    "debug": {
+      "path": "target/debug/cluster-sign",
+      "sha256": "1f238e1b39eefc9ef4f5efed86d4251146b65c111dfc7514ab100daa961390a8"
+    },
+    "release": {
+      "path": "target/release/cluster-sign",
+      "sha256": "dae2008253886f286b6da9d23e9b4c77f0e62810c09d5bc0596300ff2ea2f17a"
+    }
+  },
+  "checks": {
+    "clippy": {
+      "command": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p cluster-sign --all-targets -- -D warnings",
+      "exit_status": 0
+    },
+    "format": {
+      "command": "cargo fmt --all -- --check",
+      "exit_status": 0
+    },
+    "diff": {
+      "command": "git diff --check",
+      "exit_status": 0
+    },
+    "arm_build": {
+      "command": "scripts/build-catten-services.sh --embed",
+      "exit_status": 0,
+      "diagnostic": "Staged and signed AArch64 EL0 service bundle."
+    },
+    "arm_freshness": {
+      "command": "scripts/build-catten-services.sh --check",
+      "exit_status": 0,
+      "diagnostic": ">>> Staged AArch64 service bundle signatures verified."
+    },
+    "signing_compiler": "rustc 1.99.0-nightly (dc3f85158 2026-07-26)"
+  },
+  "unchanged_artifacts": {
+    "version_controlled_manifest": "docs/reports/audits/evidence/2026-10-21-security-ingress-deadline.json",
+    "manifest_sha256": "66d1101147d96626d10f9d78f43232015909a4c53b0ea62f6ae99b9ad5bcd163",
+    "canonical_map_encoding": "UTF-8 json.dumps(value, sort_keys=True, separators=(',', ':'))",
+    "bundles": {
+      "aarch64-unknown-none": {
+        "count": 41,
+        "sha256_map_digest": "469531217255f3492eed6501ff8843789def096a659cbd461d03a6f1cfc9393c"
+      },
+      "x86_64-unknown-none": {
+        "count": 37,
+        "sha256_map_digest": "e98072e6a1c088121b4ff146bda832b29e59a5a35bd2beebfc798b2e45da56fd"
+      }
+    },
+    "formal": {
+      "inventory": {
+        "modules": 34,
+        "safe_configurations": 36,
+        "negative_configurations": 109,
+        "runner_inputs": 1
+      },
+      "unchanged_inputs": 180,
+      "sha256_map_digest": "5e1735814ed956e918c183557d0b22697e901364831918abcb15b66820ee6fa5",
+      "fresh_tlc_cases": 0
+    }
+  },
+  "runtime_scope": {
+    "kernel_or_service_source_changed": false,
+    "fresh_guest_runs": 0,
+    "fresh_x86_build": false,
+    "model_transitions_changed": false,
+    "manual_pdf_edited_or_rendered": false
+  },
+  "development_failures": [],
+  "preserved_pdf": {
+    "path": "docs/manual-v2/charlotte.pdf",
+    "sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f"
+  },
+  "reviewed_source_sha256": {
+    "docs/guides/testing.md": "25f85e5fba31905d892462e119cc4d621261bd126ab83ba5ea7cc57d80f35944",
+    "docs/manual-v2/chapters/19-cluster-vision.tex": "ce29c9b795168fcf6a9429290856fa340c06d257b334185b5df5b42bf6b0832f",
+    "docs/reference/cleanup-recovery.md": "43776039312ec15c87d54fb0e282ba14271bfbafa07c74ed98479971ecd6b5e1",
+    "docs/reference/secret-state-lifetimes.md": "926df8e3377dc691bca9e2009de449a612638fe69eecd55d1e3528d7856bbcb9",
+    "docs/reference/security-remediation.md": "74dfd23f269e0309bc9a84417fed2c7c850a6e12188a2e7ed581ffd8d8df32dc",
+    "docs/reference/tooling-inputs.md": "5a3e2f6e4657b23259af5b9216eae229ada5c852ef1a237479918a3f7eb7c7f4",
+    "docs/reports/README.md": "8232dc4a8910dc39157de19388cc95ae3fec0a79b903882454ca492f66ebb69c",
+    "docs/reports/audits/2026-10-21-security-private-key-input.md": "665e77fdcb5c8c81f31062bfa8fadc163e872309a059cba4f957f2942dd958a6",
+    "tools/cluster-sign/src/key_input.rs": "b6cc0f332cc624c5c4f49b867a73a5afc5932bc31e952157f0e26410e6a06831",
+    "tools/cluster-sign/src/main.rs": "1181a2827769f9d78ed454ded82b40cd5997d671de6545cde86ebaf8477abfef",
+    "tools/cluster-sign/tests/key_input.rs": "24622b21756aae05304599555e393933ac0f29946c093282b352d95f27132e37"
+  },
+  "remaining_limits": [
+    "Synthetic reader fault controls do not exhaust real filesystem errors.",
+    "Files/permissions can mutate concurrently; byte bounds do not create deadlines or snapshots.",
+    "OS/disk/source-key copies, explicit copies, library/compiler intermediates and physical memory have separate policies.",
+    "Ordinary Drop requires execution; forced termination, panic-abort and power loss are outside these checks.",
+    "Production enrollment, rollback-resistant policy state and recipient custody remain unimplemented; SEC-15 stays partial."
+  ],
+  "fixture_scope": "Public Z/A/text fixtures, version-controlled public development keys and fresh keys in existing private test directories. Evidence contains no private key bytes."
+}

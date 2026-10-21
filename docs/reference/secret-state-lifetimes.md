@@ -40,6 +40,7 @@ records a retained-storage reproduction and the correction's validation.
 | HPKE X25519 private key and shared secret | The selected `x25519-dalek` `StaticSecret` and `SharedSecret` owners inside HPKE | The direct dependency requires `zeroize`, which HPKE's disabled defaults omitted. Production trait bounds require both owners to implement `ZeroizeOnDrop`. Drop erases their named 32-byte fields. |
 | Generated recipient private bytes | Returned `Zeroizing<[u8; 32]>`, created as an owner before serialization | Transfers directly to the signing tool; ordinary return/error drops the owner. Public recipient bytes remain an array. Explicit caller copies still need their own policy. |
 | Host key-file hexadecimal text | `cluster-sign`'s `encode_key_file` returns `Zeroizing<String>` | Reserve the complete lowercase hex plus newline before copying. The writer borrows that owner through file creation/write and ordinary rejection. No newline growth or plain-output key-file formatter remains. Original key owners, files/OS buffers and other host-tool copies retain separate policies. |
+| Host private-key input and normalized hex | `cluster-sign::key_input` returns `Zeroizing<Vec<u8>>` and `Zeroizing<String>` | The existing bounded read reserves 4097 bytes and erases full capacity on Drop, including unreported dirty bytes. Normalization now installs and returns an erasing owner before copying, with one full reservation. The original private-key caller already wrapped the former plain normalization result. Captured descriptor checks, UTF-8/hex validation and real-key permissions remain in the caller. See the [private-key input report](../reports/audits/2026-10-21-security-private-key-input.md). |
 | Host operational-profile plaintext input | `cluster-sign` retains `ProfileInput` with one fully initialized `Zeroizing<Vec<u8>>` | Reserve 64 KiB plus a sentinel before reading. Lend only the accepted prefix, retaining the complete destination through success, partial error, interrupted reads and rejection. Unix file admission rejects symlinks and non-regular inputs; source permissions, concurrent mutation, OS buffers and host custody keep separate policies. See the [profile-input report](../reports/audits/2026-10-20-security-host-profile-input.md). |
 | Host arbitrary-file hash read scratch | `cluster-sign::file_hash::digest` owns `Zeroizing<[u8; 16384]>` before the first read | The complete initialized destination stays owned through EOF, interruption and partial errors. Ordinary Drop erases that array and the existing SHA owner erases its state. Only the reported prefix is hashed; no whole-file or growth allocation remains in this loop. Tests observe zero heap allocations on successful generated reads and match independent Python vectors; erasing Drop is a type/source contract here, without a new retained-storage or physical erasure probe. Source files, OS buffers, formatting and compiler copies retain separate policies. See the [artifact-input report](../reports/audits/2026-10-21-security-artifact-input.md). |
 | Failed HPKE authentication output | Caller-owned output slice | `operations::open` uses `Zeroize` on the attempted plaintext prefix after AEAD rejection. Earlier validation errors do not modify output; the caller owns successful plaintext and unused capacity. |
@@ -209,3 +210,13 @@ key prefixes and completed private files whose public output failed. Their host
 filesystem lifetime requires operator inspection; Rust buffer erasure does not
 erase disk/OS copies or qualify custody, permissions beyond the existing mode
 policy, durable publication or forced termination.
+
+The [private-key input review](../reports/audits/2026-10-21-security-private-key-input.md) rules out a suspected
+read-error tail leak: pinned zeroize 1.9.0 clears the entire vector capacity.
+Fault-reader and initialized-then-truncated fixtures verify that behavior. The
+normalizer now returns an erasing owner directly; a bare baseline helper result
+retains its text, while the original caller's immediate wrapper already erases it.
+This strengthens the helper contract without establishing an earlier reader leak.
+The probes inspect eight initialized fixture bytes before release; they do not
+prove physical erasure or cover library/compiler copies, OS buffers, filesystem
+content, custody or forced termination.
