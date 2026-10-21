@@ -347,3 +347,10 @@ The [host profile-input follow-up](../reports/audits/2026-10-20-security-host-pr
 There is no alternate plaintext reader. Unix no-follow regular-file admission
 and early size rejection apply to the same command; arguments, COPSENC1 bytes,
 cryptography and runtime APIs are unchanged. The helper stays private to the tool.
+
+The [public-key input follow-up](../reports/audits/2026-10-21-security-public-key-input.md) removes the unbounded public-key
+`read_to_string` path and the trust module's separate normalization/parser.
+Public key and policy files share the existing bounded regular-file reader;
+public key files share one hex decoder. The 4096-byte limit now covers ordinary
+operational and ingress-policy file arguments too. Public hex arguments,
+private-key policy, command syntax and signed formats are unchanged.

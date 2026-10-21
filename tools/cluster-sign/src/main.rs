@@ -269,12 +269,34 @@ fn parse_fixed_hex(value: &str, length: usize, label: &str) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
+// Public key and policy inputs share this bounded descriptor admission.
+// File checks do not authenticate a public key or provision trust.
+fn read_bounded_regular(path: &str, maximum: usize) -> Result<Vec<u8>> {
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    let file = options.open(path).map_err(|error| format!("open {path}: {error}"))?;
+    let metadata = file.metadata().map_err(|error| format!("inspect {path}: {error}"))?;
+    if !metadata.is_file() || metadata.len() > maximum as u64 {
+        return Err(format!("{path}: expected a regular file of at most {maximum} bytes"));
+    }
+    let mut bytes = Vec::new();
+    file.take(maximum as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("read {path}: {error}"))?;
+    if bytes.len() > maximum {
+        return Err(format!("{path}: input grew beyond {maximum} bytes"));
+    }
+    Ok(bytes)
+}
+
 fn read_hex_key(path: &str, length: usize, label: &str) -> Result<Vec<u8>> {
-    let contents =
-        Zeroizing::new(fs::read_to_string(path).map_err(|error| format!("read {path}: {error}"))?);
+    let contents = Zeroizing::new(read_bounded_regular(path, 4096)?);
+    let text =
+        std::str::from_utf8(&contents).map_err(|_| "public key must be UTF-8 hex".to_owned())?;
     let encoded = Zeroizing::new(
-        contents
-            .lines()
+        text.lines()
             .map(str::trim)
             .filter(|line| !line.is_empty() && !line.starts_with('#'))
             .collect::<String>(),
@@ -2627,6 +2649,62 @@ mod tests {
         assert!(operations_recipient_generate(&[missing_parent, unused_public.clone()]).is_err());
         assert!(!std::path::Path::new(&unused_public).exists());
         assert!(operations_recipient_generate(&[]).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn public_key_rejects_oversized_comment_file() {
+        let directory = TestDirectory::new();
+        let path = directory.path("public.hex");
+        let encoded = format!("{}\n#{}", "5a".repeat(32), "x".repeat(4096));
+        fs::write(&path, encoded).unwrap();
+        assert!(read_hex_key(&path, 32, "public key").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn public_key_rejects_symlink() {
+        let directory = TestDirectory::new();
+        let path = directory.path("public.hex");
+        fs::write(&path, "5a".repeat(32)).unwrap();
+        let alias = directory.path("public-alias.hex");
+        std::os::unix::fs::symlink(&path, &alias).unwrap();
+        assert!(read_hex_key(&alias, 32, "public key").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn public_key_accepts_exact_bound_and_rejects_malformed_text() {
+        let directory = TestDirectory::new();
+        let path = directory.path("public.hex");
+        let prefix = format!("\n  # public fixture\n  {}  \n#", "5A".repeat(32));
+        let encoded = format!("{prefix}{}", "x".repeat(4096 - prefix.len()));
+        assert_eq!(encoded.len(), 4096);
+        fs::write(&path, encoded).unwrap();
+        assert_eq!(read_hex_key(&path, 32, "public key").unwrap(), [0x5a; 32]);
+        for malformed in [
+            vec![],
+            vec![0xff; 64],
+            b"0".to_vec(),
+            b"zz".repeat(32),
+            b"00".repeat(31),
+            b"00".repeat(33),
+        ] {
+            fs::write(&path, malformed).unwrap();
+            assert!(read_hex_key(&path, 32, "public key").is_err());
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn public_key_rejects_directory_fifo_and_missing_file() {
+        let directory = TestDirectory::new();
+        assert!(read_hex_key(directory.0.to_str().unwrap(), 32, "public key").is_err());
+        assert!(read_hex_key(&directory.path("absent"), 32, "public key").is_err());
+        let fifo = directory.path("fifo");
+        let name = std::ffi::CString::new(fifo.as_str()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+        assert!(read_hex_key(&fifo, 32, "public key").is_err());
     }
 
     #[cfg(unix)]

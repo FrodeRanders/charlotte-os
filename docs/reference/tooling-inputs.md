@@ -9,6 +9,15 @@ existing permission exemption; filenames do not confer that exemption.
 secret-valued variable still rejects without expanding its contents.
 See [signing and trust](../guides/signing-and-trust.md).
 
+Public-key file arguments use the trust-policy reader's 4096-byte bound and
+regular-file checks across operational and ingress-policy commands as well.
+On Unix, one no-follow/nonblocking open rejects final-component symlinks,
+directories and FIFOs before decoding. All these file readers accept the same
+hexadecimal text, blank lines and whole-line comments. Public-key files have
+no private-key owner/mode gate; caller-selected keys still need authorized trust
+provisioning. Commands that define public hex arguments retain that interface.
+See the [public-key input report](../reports/audits/2026-10-21-security-public-key-input.md).
+
 The AArch64 runner accepts repeated `--cluster-service [NAME=]IPv4:PORT`
 assignments. Named entries use deployment placement and exact-generation
 readiness. An entry without a name selects the platform-service policy over

@@ -13,32 +13,8 @@ use charlotte_launch::trust::{
 
 use super::*;
 
-fn read_bounded_regular(path: &str, maximum: usize) -> Result<Vec<u8>> {
-    let mut options = OpenOptions::new();
-    options.read(true);
-    #[cfg(unix)]
-    options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
-    let file = options.open(path).map_err(|error| format!("open {path}: {error}"))?;
-    let metadata = file.metadata().map_err(|error| format!("inspect {path}: {error}"))?;
-    if !metadata.is_file() || metadata.len() > maximum as u64 {
-        return Err(format!("{path}: expected a regular file of at most {maximum} bytes"));
-    }
-    let mut bytes = Vec::new();
-    file.take(maximum as u64 + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|error| format!("read {path}: {error}"))?;
-    if bytes.len() > maximum {
-        return Err(format!("{path}: input grew beyond {maximum} bytes"));
-    }
-    Ok(bytes)
-}
-
 fn read_public(path: &str) -> Result<[u8; 32]> {
-    let bytes = read_bounded_regular(path, 4096)?;
-    let contents =
-        std::str::from_utf8(&bytes).map_err(|_| "public key must be UTF-8 hex".to_owned())?;
-    let encoded = development_fixture_hex(contents);
-    parse_fixed_hex(&encoded, 32, "public key")?
+    read_hex_key(path, 32, "public key")?
         .try_into()
         .map_err(|_| "public key must contain exactly 32 bytes".to_owned())
 }

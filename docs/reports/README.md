@@ -8,6 +8,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Bounded public-key file inputs](audits/2026-10-21-security-public-key-input.md) — Shares trust-policy admission and decoding with operational and ingress-policy file arguments; preserves baseline rejection failures.
 - [SEC-15 host plaintext profile input](audits/2026-10-20-security-host-profile-input.md) — Owns the bounded read destination before I/O and rejects unsafe Unix file sources before sealing.
 - [SEC-15 host key-file encoding](audits/2026-10-20-security-host-key-encoding.md) — Reserves the complete erasing hex-plus-newline buffer for key generation, avoiding output growth.
 

@@ -57,6 +57,15 @@ encode 32. Unix owner/mode checks do not audit ACLs, backup copies, host memory
 or a hostile signing workstation. Real private-key file handling on non-Unix
 hosts is refused until ACL enforcement exists.
 
+Public-key file arguments also have a 4096-byte bound, including comments and
+whitespace. Operational, ingress-policy and trust-policy commands share the
+same descriptor checks and hex parser. On Unix they reject final-component
+symlinks, directories and FIFOs. Public files have no private-key permission
+gate. These checks bound the file read; choosing an authorized verification key
+and securing its parent directories remain part of trust provisioning. Commands
+with public hex arguments keep their documented interface. See the
+[public-key input report](../reports/audits/2026-10-21-security-public-key-input.md).
+
 ## Plaintext operational profiles
 
 `operations-seal` takes a nonempty regular plaintext file of at most 64 KiB.

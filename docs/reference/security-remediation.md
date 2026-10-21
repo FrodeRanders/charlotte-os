@@ -526,6 +526,14 @@ The next priority is trust and authenticated communication. Work on SEC-07/18
 continues against the finite criteria above; it does not substitute for these
 missing boundaries.
 
+The [public-key input follow-up](../reports/audits/2026-10-21-security-public-key-input.md) corrects a host-tool input gap:
+ordinary public-key file arguments now share trust-policy's bounded regular-file
+admission and hex parser. Baseline oversized-comment and symlink controls fail;
+corrected tests and actual operational CLI controls pass. This is host file
+admission evidence. Management flood fairness, authenticated trust provisioning
+and secret-state acceptance criteria retain their current finding status and
+counts.
+
 The [SEC-15 hash-state follow-up](../reports/audits/2026-10-19-security-hash-state-erasure.md)
 adds erasure of shared SHA state/compression scratch and one owned HMAC result
 path for SigV4 and SCRAM. The [bounded inventory](secret-state-lifetimes.md)
