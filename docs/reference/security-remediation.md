@@ -570,8 +570,16 @@ The [control-output follow-up](../reports/audits/2026-10-21-security-control-out
 signing through exclusive creation. Actual CLI controls preserve nine baseline
 overwrite cases across regular files, symlinks and hard links; corrected runs
 reject them and preserve their bytes. Fresh signed output bytes match baseline.
-Boot fixtures use fresh private directories for signed records. Failed-write
-pathname cleanup and durable atomic publication remain open; counts are unchanged.
+Boot fixtures use fresh private directories for signed records. The retention
+follow-up below removes pathname cleanup; durable atomic publication remains open.
+
+The [output-retention follow-up](../reports/audits/2026-10-21-security-output-retention.md) removes the signer's four failure-path
+pathname deletions. Created outputs stay available for inspection, including
+partial writes and private keys whose public output failed. One shared pair
+writer reports incomplete generation. Actual CLI file-size-limit controls
+retain fourteen baseline retention failures; corrected debug/release controls
+pass. This removes deletion redirection by avoiding deletion; atomic publication,
+disk erasure, trust custody and SEC-15 remain separate. Counts are unchanged.
 
 The [SEC-15 hash-state follow-up](../reports/audits/2026-10-19-security-hash-state-erasure.md)
 adds erasure of shared SHA state/compression scratch and one owned HMAC result

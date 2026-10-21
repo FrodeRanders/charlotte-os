@@ -197,5 +197,15 @@ the newline caused one growth for 32-byte and 64-byte keys. The new helper owns
 the complete record before writing and returns it directly to the same file
 writer. Probes observe no growth and final erasure; they do not inspect retired
 reallocation storage or prove movement. Real CLI tests preserve private modes,
-exclusive creation, rollback and output privacy. File/OS buffers, source keys,
-other host-tool copies and custody remain separate.
+exclusive creation and output privacy. The output-retention follow-up below
+replaces pathname rollback with explicit failure retention. File/OS buffers,
+source keys, other host-tool copies and custody remain separate.
+
+The [host output-retention follow-up](../reports/audits/2026-10-21-security-output-retention.md) keeps the existing per-file erasing
+key text owner through success or error, releasing it before the next output's
+encoding. One shared pair writer borrows the original key owners without adding
+copies. Created files are deliberately left alone on failure, including private
+key prefixes and completed private files whose public output failed. Their host
+filesystem lifetime requires operator inspection; Rust buffer erasure does not
+erase disk/OS copies or qualify custody, permissions beyond the existing mode
+policy, durable publication or forced termination.

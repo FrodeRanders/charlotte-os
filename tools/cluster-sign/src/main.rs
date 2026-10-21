@@ -16,10 +16,7 @@ use std::os::unix::fs::{
 };
 use std::{
     env,
-    fs::{
-        self,
-        OpenOptions,
-    },
+    fs::OpenOptions,
     io::{
         Read,
         Seek,
@@ -475,21 +472,36 @@ fn write_new_file(path: &str, bytes: &[u8], secret: bool) -> Result<()> {
         },
     );
     let mut file = options.open(path).map_err(|error| format!("create {path}: {error}"))?;
-    if let Err(error) = file.write_all(bytes) {
-        drop(file);
-        let cleanup = fs::remove_file(path);
-        return Err(match cleanup {
-            Ok(()) => format!("write {path}: {error}"),
-            Err(cleanup) => format!("write {path}: {error}; remove partial file: {cleanup}"),
-        });
-    }
-    Ok(())
+    // The pathname can change while the descriptor is live. Close on failure;
+    // leave inspection and removal of incomplete output to the operator.
+    file.write_all(bytes).map_err(|error| {
+        format!(
+            "write output opened at {path}: {error}; output may be partial; no automatic pathname \
+             cleanup"
+        )
+    })
 }
 
 fn write_new_hex_key(path: &str, bytes: &[u8], secret: bool) -> Result<()> {
     let encoded = key_encoding::encode_key_file(bytes)
         .ok_or_else(|| "key file encoding is too large".to_owned())?;
     write_new_file(path, encoded.as_bytes(), secret)
+}
+
+fn write_new_keypair(
+    private_path: &str,
+    private: &[u8],
+    public_path: &str,
+    public: &[u8],
+) -> Result<()> {
+    write_new_hex_key(private_path, private, true)
+        .map_err(|error| format!("key pair incomplete: {error}"))?;
+    write_new_hex_key(public_path, public, false).map_err(|error| {
+        format!(
+            "key pair incomplete: {error}; private output was written at {private_path}; inspect \
+             retained output before choosing fresh paths"
+        )
+    })
 }
 
 fn parse_profile_kind(value: &str) -> Result<u16> {
@@ -505,11 +517,7 @@ fn operations_recipient_generate(args: &[String]) -> Result<()> {
     let public_path = args.get(1).ok_or_else(|| "missing public-key output path".to_owned())?;
     let mut rng = UnwrapErr(getrandom::SysRng);
     let (private_key, public_key) = operations::generate_recipient_keypair(&mut rng);
-    write_new_hex_key(private_path, &*private_key, true)?;
-    if let Err(error) = write_new_hex_key(public_path, &public_key, false) {
-        let _ = fs::remove_file(private_path);
-        return Err(error);
-    }
+    write_new_keypair(private_path, &*private_key, public_path, &public_key)?;
     println!(
         "generated distinct cluster-recipient key: public={} key-id={}",
         public_path,
@@ -523,11 +531,7 @@ fn operations_signing_generate(args: &[String]) -> Result<()> {
     let private_path = args.first().ok_or_else(|| "missing private-key output path".to_owned())?;
     let public_path = args.get(1).ok_or_else(|| "missing public-key output path".to_owned())?;
     let pair = KeyPair::generate();
-    write_new_hex_key(private_path, pair.sk.as_ref(), true)?;
-    if let Err(error) = write_new_hex_key(public_path, pair.pk.as_ref(), false) {
-        let _ = fs::remove_file(private_path);
-        return Err(error);
-    }
+    write_new_keypair(private_path, pair.sk.as_ref(), public_path, pair.pk.as_ref())?;
     println!(
         "generated distinct operational signing key: public={} key-id={}",
         public_path,
@@ -544,11 +548,7 @@ fn signing_generate(args: &[String]) -> Result<()> {
         return Err("usage: cluster-sign generate <private-key-file> <public-key-file>".to_owned());
     }
     let pair = KeyPair::generate();
-    write_new_hex_key(&args[0], pair.sk.as_ref(), true)?;
-    if let Err(error) = write_new_hex_key(&args[1], pair.pk.as_ref(), false) {
-        let _ = fs::remove_file(&args[0]);
-        return Err(error);
-    }
+    write_new_keypair(&args[0], pair.sk.as_ref(), &args[1], pair.pk.as_ref())?;
     println!("generated Ed25519 key: public={} key-id={}", args[1], hex_encode(pair.pk.as_ref()));
     println!("private key written mode 0600 to {}; private bytes are never printed", args[0]);
     Ok(())
@@ -2240,6 +2240,8 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::*;
 
     #[test]
@@ -2712,9 +2714,10 @@ mod tests {
         assert_eq!(read_signing_key(&private).unwrap().as_ref(), key.as_ref());
         assert!(signing_generate(&[]).is_err());
 
-        let new_private = directory.path("rollback.hex");
+        let new_private = directory.path("retained.hex");
         assert!(signing_generate(&[new_private.clone(), public]).is_err());
-        assert!(!std::path::Path::new(&new_private).exists());
+        assert!(read_signing_key(&new_private).is_ok());
+        assert_eq!(fs::metadata(&new_private).unwrap().mode() & 0o777, 0o600);
     }
 
     #[cfg(unix)]
@@ -2734,9 +2737,10 @@ mod tests {
         assert_eq!(read_private_key(&private, 32).unwrap().as_slice(), secret.as_slice());
         assert_eq!(read_hex_key(&public, 32, "public key").unwrap(), expected);
 
-        let rollback = directory.path("rollback.hex");
-        assert!(operations_recipient_generate(&[rollback.clone(), public.clone()]).is_err());
-        assert!(!std::path::Path::new(&rollback).exists());
+        let retained = directory.path("retained.hex");
+        assert!(operations_recipient_generate(&[retained.clone(), public.clone()]).is_err());
+        assert!(read_private_key(&retained, 32).is_ok());
+        assert_eq!(fs::metadata(&retained).unwrap().mode() & 0o777, 0o600);
         assert_eq!(read_hex_key(&public, 32, "public key").unwrap(), expected);
         let missing_parent = directory.path("absent/recipient.hex");
         let unused_public = directory.path("unused.pub");

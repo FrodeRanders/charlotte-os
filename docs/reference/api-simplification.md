@@ -393,4 +393,12 @@ The [control-output follow-up](../reports/audits/2026-10-21-security-control-out
 signing share `write_new_file` with other new-file commands; existing paths reject
 without an overwrite option or alternate publication path. Boot fixtures allocate
 fresh private directories for signed records. Signed formats, command arguments
-and successful bytes stay the same. Failed-write cleanup remains separately open.
+and successful bytes stay the same. The output-retention follow-up below removes
+failed-write pathname cleanup.
+
+The [output-retention follow-up](../reports/audits/2026-10-21-security-output-retention.md) removes the shared failed-write unlink
+and three key-generator rollback deletions. One private `write_new_keypair`
+composes the existing erasing key encoders and exclusive writer; its errors
+identify incomplete generation and previously written private output. Created
+files remain available for inspection. No overwrite/cleanup compatibility branch
+remains. Formats, successful bytes, arguments and runtime ABI are unchanged.

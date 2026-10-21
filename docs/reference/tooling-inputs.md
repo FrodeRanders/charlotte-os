@@ -57,9 +57,10 @@ Key generation encodes the complete lowercase-hex record and its trailing
 newline in one reserved erasing buffer. The existing file writer borrows that
 owner through creation/write; ordinary success or rejection drops the same
 owner. The former newline append caused output growth after hex encoding.
-Private modes, exclusive creation, rollback, file-only readers and output
-messages are unchanged. Source key owners, disk/OS buffers and host custody
-retain their separate policies. See the [key-file report](../reports/audits/2026-10-20-security-host-key-encoding.md).
+Private modes, exclusive creation, file-only readers and successful output
+messages are unchanged. Failure retention follows the policy below. Source key
+owners, disk/OS buffers and host custody retain their separate policies. See the
+[key-file report](../reports/audits/2026-10-20-security-host-key-encoding.md).
 
 `operations-seal` reads plaintext from a nonempty regular file of at most
 64 KiB. On Unix it opens once with no-follow and nonblocking flags, then checks
@@ -129,5 +130,16 @@ The boot runners keep deployment/shutdown records in fresh private run directori
 with deployment worker logs beside their records. Local deployment fixtures keep
 each run's six signed parts in a fresh private directory; the assembled fixture
 bundle keeps its existing replacement policy. These directories remain available
-for inspection. Parent-directory integrity, failed-write cleanup and durable
-atomic publication still need separate qualification. See the [control-output report](../reports/audits/2026-10-21-security-control-output.md).
+for inspection. Failed writes follow the retention policy below; parent-directory
+integrity and durable atomic publication still need separate qualification. See the [control-output report](../reports/audits/2026-10-21-security-control-output.md).
+
+New-file output failures close the captured descriptor and leave any written file
+alone. The shared writer performs no pathname deletion; empty or partial output
+can remain. All three key generators share one pair writer: a public-output
+failure reports an incomplete pair and the private output's original path,
+retaining the completed private file instead of unlinking that name. The name
+may have changed, so the diagnostic does not establish its current binding.
+Private files keep the requested 0600 mode. Inspect the secured output directory
+and choose fresh paths before another generation; a failed command supplies no
+completed-pair or retry guarantee. In-memory key/text erasure is unchanged.
+See the [output-retention report](../reports/audits/2026-10-21-security-output-retention.md).

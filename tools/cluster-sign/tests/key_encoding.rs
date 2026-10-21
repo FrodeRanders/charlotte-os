@@ -130,15 +130,17 @@ fn key_generation_commands_preserve_files_modes_and_private_output() {
             Zeroizing::new(fs::read(&private).unwrap()).as_slice(),
             private_bytes.as_slice()
         );
-        let rollback = directory.0.join(format!("{command}-rollback.hex"));
+        let retained = directory.0.join(format!("{command}-retained.hex"));
         let rejected = Command::new(env!("CARGO_BIN_EXE_cluster-sign"))
             .arg(command)
-            .arg(&rollback)
+            .arg(&retained)
             .arg(&public)
             .output()
             .unwrap();
         assert!(!rejected.status.success());
-        assert!(!rollback.exists());
+        assert!(String::from_utf8_lossy(&rejected.stderr).contains("key pair incomplete"));
+        assert_eq!(fs::metadata(&retained).unwrap().len(), private_len as u64);
+        assert_eq!(fs::metadata(&retained).unwrap().permissions().mode() & 0o777, 0o600);
         assert_eq!(fs::read(&public).unwrap(), public_before);
     }
 }

@@ -1153,8 +1153,13 @@ boundaries.
 Deployment, release and shutdown signing create new output files exclusively.
 Existing files and final-component symlinks reject before writing; use a fresh
 name for each signed record. Boot fixtures keep those records in fresh private
-run directories, preserving earlier runs. Failed-write pathname cleanup and
-durable atomic publication remain separate work.
+run directories, preserving earlier runs. A failed new-file write closes its
+captured descriptor and leaves any output alone, including empty or partial
+files. All three key generators report incomplete generation and retain an
+already written private file if public output fails. Inspect files within the
+secured directory and use fresh paths before another generation. Diagnostics
+identify original paths without guaranteeing their current binding. Durable
+atomic publication and disk erasure remain separate work.
 
 Build output and boot logs explicitly identify the current images as
 development images. The build refuses production trust mode

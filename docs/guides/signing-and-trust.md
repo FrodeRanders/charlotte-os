@@ -46,6 +46,14 @@ The selected X25519 private and
 shared owners also require erasing Drop. See the [bounded memory inventory](../reference/secret-state-lifetimes.md)
 for the remaining copy and termination limits.
 
+Generation returns an error if either output fails. A new file may remain empty
+or partial; if public output fails after the private write, that private file
+remains mode 0600. Treat the generation as incomplete. Inspect retained files
+inside the secured directory and choose fresh paths for another generation.
+The tool closes its file descriptor without deleting by pathname, since a name
+may have changed while it was writing. This is file retention, without atomic
+publication or secure disk erasure. See the [output-retention audit](../reports/audits/2026-10-21-security-output-retention.md).
+
 Each independently generated public root still needs authorized provisioning
 at the corresponding verifier. These commands do not provision an OS image.
 
@@ -76,6 +84,10 @@ its parent directories under the operator's access policy: the command does
 not add private-key-style owner/mode checks for profile inputs. The byte limit
 does not provide an I/O deadline or a snapshot against concurrent writes.
 See the [profile-input audit](../reports/audits/2026-10-20-security-host-profile-input.md) for tests and remaining host-copy limits.
+
+A failed `operations-open` output write can leave a partial mode-0600 plaintext
+file. The shared retention policy above applies to that output too; keep its
+directory secured and treat the failed result as incomplete.
 
 Operational ciphertext files use the same bounded regular-file admission as
 public key files. Envelope verify/open accept at most 66,044 bytes; bundle
@@ -110,8 +122,8 @@ Deployment, release and shutdown signing require a fresh output path. They use
 the same exclusive file creation as other new-file signing commands, preserving
 existing files and symlink/hard-link targets. Keep the output directory trusted.
 Boot fixtures allocate fresh private directories for signed records, so repeated
-runs preserve earlier records. Failed-write cleanup and durable atomic publication
-remain separate work. See the [control-output audit](../reports/audits/2026-10-21-security-control-output.md).
+runs preserve earlier records. Failed writes retain output under the policy
+above; durable atomic publication remains separate work. See the [control-output audit](../reports/audits/2026-10-21-security-control-output.md).
 
 ## Public trust-policy preflight
 
