@@ -534,6 +534,14 @@ admission evidence. Management flood fairness, authenticated trust provisioning
 and secret-state acceptance criteria retain their current finding status and
 counts.
 
+The [operational-input follow-up](../reports/audits/2026-10-21-security-operational-input.md) bounds ciphertext envelopes,
+bundles and bundle-signing references before decoding or notification. The
+existing binding maximum rejects before referenced reads. Baseline CLI controls
+retain five accepted symlink paths and late size/count rejection; corrected
+controls include no-output and no-ingress-connection checks. These host input
+corrections leave management fairness, trust, secret-state and overall finding
+counts unchanged.
+
 The [SEC-15 hash-state follow-up](../reports/audits/2026-10-19-security-hash-state-erasure.md)
 adds erasure of shared SHA state/compression scratch and one owned HMAC result
 path for SigV4 and SCRAM. The [bounded inventory](secret-state-lifetimes.md)

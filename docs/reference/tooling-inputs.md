@@ -70,3 +70,14 @@ later envelope validation; they now reject before reading. Input permissions
 and ACLs remain the operator's responsibility. This byte bound supplies no I/O
 deadline or snapshot against concurrent file mutation. Arguments, envelope bytes
 and exclusive output creation are unchanged. See the [profile-input report](../reports/audits/2026-10-20-security-host-profile-input.md).
+
+Operational ciphertext commands share the bounded regular-file reader before
+verification, decryption, bundle signing or notification. `COPSENC1` input is
+at most 66,044 bytes; `COPSBND2` input is at most 1,048,064 bytes. Bundle signing
+also bounds its referenced release to 3,584 bytes and checks its 1..=8 bindings
+before opening that release or any referenced envelope. Each envelope uses the
+same standalone bound. Unix input opens reject final-component symlinks,
+directories and FIFOs. Rejected notification input does not connect to ingress;
+notification still relies on the receiver for authenticated admission. These
+file checks add no trust authority or I/O deadline. Other artifact/release
+commands retain their own input policies. See the [operational-input report](../reports/audits/2026-10-21-security-operational-input.md).

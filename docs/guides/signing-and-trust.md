@@ -77,6 +77,15 @@ not add private-key-style owner/mode checks for profile inputs. The byte limit
 does not provide an I/O deadline or a snapshot against concurrent writes.
 See the [profile-input audit](../reports/audits/2026-10-20-security-host-profile-input.md) for tests and remaining host-copy limits.
 
+Operational ciphertext files use the same bounded regular-file admission as
+public key files. Envelope verify/open accept at most 66,044 bytes; bundle
+verify/notify accept at most 1,048,064 bytes. Bundle signing checks 1..=8
+bindings before reading its referenced release (at most 3,584 bytes) or any
+envelope. On Unix these inputs reject final-component symlinks, directories
+and FIFOs. File admission leaves the existing signature, context, expiry and
+HPKE checks in place. Notification decodes before connecting; the receiving
+service still authenticates admission. See the [operational-input audit](../reports/audits/2026-10-21-security-operational-input.md).
+
 ## Public trust-policy preflight
 
 Prepare an unsigned `CTRUST1` public policy using the four public files above:

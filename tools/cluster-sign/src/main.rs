@@ -575,7 +575,7 @@ fn operations_verify(args: &[String]) -> Result<()> {
     )?
     .try_into()
     .unwrap();
-    let envelope = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    let envelope = read_bounded_regular(path, operations::MAX_ENVELOPE_LEN)?;
     if operations::verify(&envelope, &public_key) != operations::VerifyOutcome::Valid {
         return Err("operational envelope signature verification failed".to_owned());
     }
@@ -626,7 +626,7 @@ fn operations_open(args: &[String]) -> Result<()> {
     .try_into()
     .unwrap();
     let output = args.get(6).ok_or_else(|| "missing plaintext output path".to_owned())?;
-    let envelope = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    let envelope = read_bounded_regular(path, operations::MAX_ENVELOPE_LEN)?;
     let decoded = operations::decode(&envelope)
         .ok_or_else(|| "operational envelope is malformed".to_owned())?;
     let mut plaintext = Zeroizing::new(vec![0u8; decoded.ciphertext.len()]);
@@ -684,11 +684,6 @@ fn operations_bundle_sign(args: &[String]) -> Result<()> {
     .try_into()
     .unwrap();
     let release_path = args.get(6).ok_or_else(|| "missing signed release path".to_owned())?;
-    let release =
-        fs::read(release_path).map_err(|error| format!("read {release_path}: {error}"))?;
-    if release::verify(&release, &release_public) != release::VerifyOutcome::Valid {
-        return Err("release is not valid under the supplied release public key".to_owned());
-    }
     let triples = args
         .get(7..)
         .filter(|values| !values.is_empty() && values.len() % 3 == 0)
@@ -697,10 +692,20 @@ fn operations_bundle_sign(args: &[String]) -> Result<()> {
         })?;
     let (triples, remainder) = triples.as_chunks::<3>();
     debug_assert!(remainder.is_empty());
-    let envelope_paths = triples.iter().map(|triple| &triple[2]).collect::<Vec<_>>();
-    let envelopes = envelope_paths
+    // Reject excess references before opening the release or any envelope.
+    if triples.len() > operations_bundle::MAX_BINDINGS {
+        return Err(format!(
+            "operations-bundle-sign accepts at most {} bindings",
+            operations_bundle::MAX_BINDINGS
+        ));
+    }
+    let release = read_bounded_regular(release_path, release::MAX_RELEASE_LEN)?;
+    if release::verify(&release, &release_public) != release::VerifyOutcome::Valid {
+        return Err("release is not valid under the supplied release public key".to_owned());
+    }
+    let envelopes = triples
         .iter()
-        .map(|path| fs::read(path).map_err(|error| format!("read {path}: {error}")))
+        .map(|triple| read_bounded_regular(&triple[2], operations::MAX_ENVELOPE_LEN))
         .collect::<Result<Vec<_>>>()?;
     let bindings = triples
         .iter()
@@ -788,7 +793,7 @@ fn operations_bundle_verify(args: &[String]) -> Result<()> {
         args.get(5).ok_or_else(|| "missing current Unix time".to_owned())?,
         "current Unix time",
     )?;
-    let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    let bytes = read_bounded_regular(path, operations_bundle::MAX_BUNDLE_LEN)?;
     let outcome = operations_bundle::verify(
         &bytes,
         &release_public,
@@ -829,7 +834,7 @@ fn operations_bundle_verify(args: &[String]) -> Result<()> {
 fn operations_bundle_notify(args: &[String]) -> Result<()> {
     let path = args.first().ok_or_else(|| "missing bundle path".to_owned())?;
     let endpoint = args.get(1).map_or("127.0.0.1:8081", String::as_str);
-    let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    let bytes = read_bounded_regular(path, operations_bundle::MAX_BUNDLE_LEN)?;
     operations_bundle::decode(&bytes)
         .ok_or_else(|| "operational bundle is malformed".to_owned())?;
     let mut stream = TcpStream::connect(endpoint)
@@ -2649,6 +2654,25 @@ mod tests {
         assert!(operations_recipient_generate(&[missing_parent, unused_public.clone()]).is_err());
         assert!(!std::path::Path::new(&unused_public).exists());
         assert!(operations_recipient_generate(&[]).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn operational_file_limits_accept_bound_and_reject_extra_byte() {
+        let directory = TestDirectory::new();
+        let path = directory.path("public-input");
+        for maximum in [
+            release::MAX_RELEASE_LEN,
+            operations::MAX_ENVELOPE_LEN,
+            operations_bundle::MAX_BUNDLE_LEN,
+        ] {
+            let mut fixture = vec![0x5a; maximum];
+            fs::write(&path, &fixture).unwrap();
+            assert_eq!(read_bounded_regular(&path, maximum).unwrap(), fixture);
+            fixture.push(0x5a);
+            fs::write(&path, &fixture).unwrap();
+            assert!(read_bounded_regular(&path, maximum).is_err());
+        }
     }
 
     #[cfg(unix)]

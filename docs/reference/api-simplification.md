@@ -354,3 +354,11 @@ Public key and policy files share the existing bounded regular-file reader;
 public key files share one hex decoder. The 4096-byte limit now covers ordinary
 operational and ingress-policy file arguments too. Public hex arguments,
 private-key policy, command syntax and signed formats are unchanged.
+
+The [operational-input follow-up](../reports/audits/2026-10-21-security-operational-input.md) removes whole-file `fs::read` from
+all operational envelope/bundle command inputs. They share bounded regular-file
+admission with public policy/key files, using existing codec maxima. Bundle
+signing checks its binding count before referenced reads and iterates those
+triples directly, removing the temporary path vector. Command syntax, signed
+formats, cryptography and receiver authority are unchanged; ordinary release
+and artifact command inputs remain separate work.

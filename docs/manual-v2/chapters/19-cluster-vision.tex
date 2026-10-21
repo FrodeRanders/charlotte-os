@@ -381,6 +381,11 @@ this chapter.
         destination through reads and sealing, including partial read failure.
         Unix input opens reject symlinks and non-regular sources; source-file
         permissions and host custody remain the operator's responsibility.
+        Ciphertext verify/open inputs are bounded to 66,044 bytes; bundle
+        verify/notify inputs to 1,048,064 bytes. Bundle signing checks its
+        one-to-eight bindings before reading the referenced release (at most
+        3,584 bytes) or envelopes. These Unix file opens also reject symlinks
+        and non-regular sources before output or ingress connection.
         The leader verifies both authorities and trusted UTC,
         then places only compact references and replay fences in Raft. On the
         assigned node, the authorized agent retrieves the digest-pinned
