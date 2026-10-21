@@ -86,6 +86,14 @@ and FIFOs. File admission leaves the existing signature, context, expiry and
 HPKE checks in place. Notification decodes before connecting; the receiving
 service still authenticates admission. See the [operational-input audit](../reports/audits/2026-10-21-security-operational-input.md).
 
+Deployment, release, shutdown and ingress-policy file inputs share the same
+regular-file checks before verify, notify or apply. Descriptor/release inputs
+are at most 3,584 bytes, shutdown inputs 144 and ingress policies 1,184. Release
+signing checks at most 16 descriptor paths before reading their files. Unix
+opens reject final-component symlinks and non-regular inputs; the existing
+format/signature and receiver checks remain responsible for authorization.
+See the [control-input audit](../reports/audits/2026-10-21-security-control-input.md) for coverage and limits.
+
 ## Public trust-policy preflight
 
 Prepare an unsigned `CTRUST1` public policy using the four public files above:

@@ -79,5 +79,17 @@ before opening that release or any referenced envelope. Each envelope uses the
 same standalone bound. Unix input opens reject final-component symlinks,
 directories and FIFOs. Rejected notification input does not connect to ingress;
 notification still relies on the receiver for authenticated admission. These
-file checks add no trust authority or I/O deadline. Other artifact/release
-commands retain their own input policies. See the [operational-input report](../reports/audits/2026-10-21-security-operational-input.md).
+file checks add no trust authority or I/O deadline. Structured control records
+use the bounds below; raw ELF and arbitrary-file hash inputs remain separate.
+See the [operational-input report](../reports/audits/2026-10-21-security-operational-input.md).
+
+Structured control inputs also use this shared reader before verification,
+signing references, notification or apply. Deployment descriptors and release
+files are bounded to 3,584 bytes, shutdown files to 144 bytes and ingress
+policies to 1,184 bytes. Release signing checks 1..=16 descriptor references
+before reading them. Deployment apply still prepares all supplied descriptors
+before its first notification; each file has the descriptor bound. It has no
+new aggregate batch limit. Unix opens reject final-component symlinks and
+non-regular sources. Format/signature checks and receiver authorization remain
+in place. Raw ELF inputs and the arbitrary-file `sha256` command retain their
+separate read policies. See the [control-input report](../reports/audits/2026-10-21-security-control-input.md).

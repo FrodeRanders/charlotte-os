@@ -542,6 +542,14 @@ controls include no-output and no-ingress-connection checks. These host input
 corrections leave management fairness, trust, secret-state and overall finding
 counts unchanged.
 
+The [control-input follow-up](../reports/audits/2026-10-21-security-control-input.md) applies the same bounded file admission
+to deployment, release, shutdown and ingress inputs, including notify/apply and
+release-signing references. Three baseline controls preserve accepted symlinks,
+late size rejection and a referenced read before descriptor-count rejection.
+Corrected controls pass without changing the signed formats or receiver checks.
+Raw ELF/hash inputs, management fairness, trust and secret-state work remain
+separate; overall finding counts are unchanged.
+
 The [SEC-15 hash-state follow-up](../reports/audits/2026-10-19-security-hash-state-erasure.md)
 adds erasure of shared SHA state/compression scratch and one owned HMAC result
 path for SigV4 and SCRAM. The [bounded inventory](secret-state-lifetimes.md)

@@ -269,7 +269,7 @@ fn parse_fixed_hex(value: &str, length: usize, label: &str) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
-// Public key and policy inputs share this bounded descriptor admission.
+// Structured signed records, public keys and policies share this admission.
 // File checks do not authenticate a public key or provision trust.
 fn read_bounded_regular(path: &str, maximum: usize) -> Result<Vec<u8>> {
     let mut options = OpenOptions::new();
@@ -1150,7 +1150,7 @@ fn deployment_verify(args: &[String]) -> Result<()> {
         hex_decode(args.get(1).ok_or_else(|| "missing public key".to_owned())?)?
             .try_into()
             .map_err(|_| "public key must contain 32 bytes".to_owned())?;
-    let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    let bytes = read_bounded_regular(path, deployment::MAX_DESCRIPTOR_LEN)?;
     if deployment::verify(&bytes, &key_bytes) != deployment::VerifyOutcome::Valid {
         return Err("deployment descriptor signature verification failed".to_owned());
     }
@@ -1194,9 +1194,15 @@ fn release_sign(args: &[String]) -> Result<()> {
     let paths = args.get(4..).filter(|paths| !paths.is_empty()).ok_or_else(|| {
         "release-sign requires at least one signed deployment descriptor".to_owned()
     })?;
+    if paths.len() > release::MAX_DESCRIPTORS {
+        return Err(format!(
+            "release-sign accepts at most {} descriptors",
+            release::MAX_DESCRIPTORS
+        ));
+    }
     let descriptors = paths
         .iter()
-        .map(|path| fs::read(path).map_err(|error| format!("read {path}: {error}")))
+        .map(|path| read_bounded_regular(path, deployment::MAX_DESCRIPTOR_LEN))
         .collect::<Result<Vec<_>>>()?;
     let descriptor_refs = descriptors.iter().map(Vec::as_slice).collect::<Vec<_>>();
     let public = secret.public_key();
@@ -1239,7 +1245,7 @@ fn release_verify(args: &[String]) -> Result<()> {
         hex_decode(args.get(1).ok_or_else(|| "missing public key".to_owned())?)?
             .try_into()
             .map_err(|_| "public key must contain 32 bytes".to_owned())?;
-    let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    let bytes = read_bounded_regular(path, release::MAX_RELEASE_LEN)?;
     if release::verify(&bytes, &key_bytes) != release::VerifyOutcome::Valid {
         return Err("release envelope signature verification failed".to_owned());
     }
@@ -1333,7 +1339,7 @@ fn shutdown_verify(args: &[String]) -> Result<()> {
         hex_decode(args.get(1).ok_or_else(|| "missing public key".to_owned())?)?
             .try_into()
             .map_err(|_| "public key must contain 32 bytes".to_owned())?;
-    let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    let bytes = read_bounded_regular(path, shutdown::ENCODED_LEN)?;
     if shutdown::verify(&bytes, &key_bytes) != shutdown::VerifyOutcome::Valid {
         return Err("shutdown-intent signature verification failed".to_owned());
     }
@@ -1356,7 +1362,7 @@ fn shutdown_verify(args: &[String]) -> Result<()> {
 fn shutdown_notify(args: &[String]) -> Result<()> {
     let path = args.first().ok_or_else(|| "missing shutdown-intent path".to_owned())?;
     let endpoint = args.get(1).map_or("127.0.0.1:8081", String::as_str);
-    let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    let bytes = read_bounded_regular(path, shutdown::ENCODED_LEN)?;
     shutdown::decode(&bytes).ok_or_else(|| "shutdown intent is malformed".to_owned())?;
     let mut stream = TcpStream::connect(endpoint)
         .map_err(|error| format!("connect to deployment ingress {endpoint}: {error}"))?;
@@ -1499,7 +1505,7 @@ fn ingress_policy_verify(args: &[String]) -> Result<()> {
     )?
     .try_into()
     .unwrap();
-    let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    let bytes = read_bounded_regular(path, ingress_policy::MAX_ENCODED_LEN)?;
     if ingress_policy::verify(&bytes, &cluster_id, &public_key)
         != ingress_policy::VerifyOutcome::Valid
     {
@@ -1520,7 +1526,7 @@ fn ingress_policy_verify(args: &[String]) -> Result<()> {
 fn ingress_policy_notify(args: &[String]) -> Result<()> {
     let path = args.first().ok_or_else(|| "missing ingress-policy path".to_owned())?;
     let endpoint = args.get(1).map_or("127.0.0.1:8081", String::as_str);
-    let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    let bytes = read_bounded_regular(path, ingress_policy::MAX_ENCODED_LEN)?;
     ingress_policy::decode(&bytes).ok_or_else(|| "ingress policy is malformed".to_owned())?;
     let mut stream = TcpStream::connect(endpoint)
         .map_err(|error| format!("connect to deployment ingress {endpoint}: {error}"))?;
@@ -1735,7 +1741,7 @@ fn release_notify_bytes(bytes: &[u8], endpoint: &str) -> Result<String> {
 fn release_notify(args: &[String]) -> Result<()> {
     let path = args.first().ok_or_else(|| "missing release path".to_owned())?;
     let endpoint = args.get(1).map_or("127.0.0.1:8081", String::as_str);
-    let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    let bytes = read_bounded_regular(path, release::MAX_RELEASE_LEN)?;
     println!("{}", release_notify_bytes(&bytes, endpoint)?);
     Ok(())
 }
@@ -1743,7 +1749,7 @@ fn release_notify(args: &[String]) -> Result<()> {
 fn deployment_notify(args: &[String]) -> Result<()> {
     let path = args.first().ok_or_else(|| "missing descriptor path".to_owned())?;
     let endpoint = args.get(1).map_or("127.0.0.1:8081", String::as_str);
-    let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    let bytes = read_bounded_regular(path, deployment::MAX_DESCRIPTOR_LEN)?;
     println!("{}", deployment_notify_bytes(&bytes, endpoint)?);
     Ok(())
 }
@@ -1836,7 +1842,7 @@ fn deployment_apply(args: &[String]) -> Result<()> {
 
     let mut releases = Vec::with_capacity(paths.len());
     for path in paths {
-        let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+        let bytes = read_bounded_regular(path, deployment::MAX_DESCRIPTOR_LEN)?;
         let descriptor = deployment::decode(&bytes)
             .ok_or_else(|| format!("deployment descriptor {path:?} is malformed"))?;
         let name = std::str::from_utf8(descriptor.artifact_name)
@@ -1901,7 +1907,7 @@ fn release_apply(args: &[String]) -> Result<()> {
     if timeout == 0 {
         return Err("rollout timeout must be greater than zero".to_owned());
     }
-    let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    let bytes = read_bounded_regular(path, release::MAX_RELEASE_LEN)?;
     let envelope =
         release::decode(&bytes).ok_or_else(|| "release envelope is malformed".to_owned())?;
     let release_name = String::from_utf8_lossy(envelope.release_name);
@@ -2657,6 +2663,207 @@ mod tests {
     }
 
     #[cfg(unix)]
+    const CONTROL_INPUTS: [(&str, usize); 4] = [
+        ("descriptor", deployment::MAX_DESCRIPTOR_LEN),
+        ("release", release::MAX_RELEASE_LEN),
+        ("shutdown", shutdown::ENCODED_LEN),
+        ("ingress", ingress_policy::MAX_ENCODED_LEN),
+    ];
+
+    #[cfg(unix)]
+    struct SignedControlFixture {
+        directory: TestDirectory,
+        private: String,
+        public: String,
+        public_file: String,
+        cluster: String,
+    }
+
+    #[cfg(unix)]
+    impl SignedControlFixture {
+        fn new() -> Self {
+            let directory = TestDirectory::new();
+            let fixture = Self {
+                private: directory.path("private.hex"),
+                public_file: directory.path("public.hex"),
+                public: String::new(),
+                cluster: "11".repeat(32),
+                directory,
+            };
+            let pair = KeyPair::from_seed(ed25519_compact::Seed::new([7; 32])); // Public fixture seed.
+            write_new_hex_key(&fixture.private, pair.sk.as_ref(), true).unwrap();
+            write_new_hex_key(&fixture.public_file, pair.pk.as_ref(), false).unwrap();
+            fs::write(fixture.path("descriptor"), signed_descriptor(&pair, b"connector", 1))
+                .unwrap();
+            fixture.sign_release(&fixture.path("descriptor"), &fixture.path("release")).unwrap();
+            shutdown_sign(&[
+                fixture.path("shutdown"),
+                "1".into(),
+                "1".into(),
+                "1".into(),
+                "301".into(),
+                "60000".into(),
+                "5000".into(),
+                fixture.private.clone(),
+            ])
+            .unwrap();
+            ingress_policy_sign(&[
+                fixture.path("ingress"),
+                "1".into(),
+                "1".into(),
+                "301".into(),
+                fixture.cluster.clone(),
+                fixture.private.clone(),
+                "connector=10.0.2.42:80".into(),
+            ])
+            .unwrap();
+            Self {
+                public: hex_encode(pair.pk.as_ref()),
+                ..fixture
+            }
+        }
+
+        fn path(&self, name: &str) -> String {
+            self.directory.path(name)
+        }
+
+        fn sign_release(&self, input: &str, output: &str) -> Result<()> {
+            release_sign(&[
+                output.into(),
+                "public-release".into(),
+                "1".into(),
+                self.private.clone(),
+                input.into(),
+            ])
+        }
+
+        fn verify(&self, kind: &str, input: &str) -> Result<()> {
+            let args = [input.into(), self.public.clone()];
+            match kind {
+                "descriptor" => deployment_verify(&args),
+                "release" => release_verify(&args),
+                "shutdown" => shutdown_verify(&args),
+                "ingress" => ingress_policy_verify(&[
+                    input.into(),
+                    self.cluster.clone(),
+                    self.public_file.clone(),
+                ]),
+                _ => unreachable!(),
+            }
+        }
+
+        fn notify(&self, kind: &str, input: &str, endpoint: &str) -> Result<()> {
+            let args = [input.into(), endpoint.into()];
+            match kind {
+                "descriptor" => deployment_notify(&args),
+                "release" => release_notify(&args),
+                "shutdown" => shutdown_notify(&args),
+                "ingress" => ingress_policy_notify(&args),
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn signed_control_regular_files_preserve_verification() {
+        let f = SignedControlFixture::new();
+        for (kind, _) in CONTROL_INPUTS {
+            f.verify(kind, &f.path(kind)).unwrap();
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn signed_control_verifiers_reject_symlink_sources() {
+        let f = SignedControlFixture::new();
+        let results = CONTROL_INPUTS
+            .iter()
+            .map(|(kind, _)| {
+                let alias = f.path(&format!("{kind}-alias"));
+                std::os::unix::fs::symlink(f.path(kind), &alias).unwrap();
+                (*kind, f.verify(kind, &alias))
+            })
+            .collect::<Vec<_>>();
+        let alias = f.path("descriptor-alias");
+        let output = f.path("rejected-release");
+        let sign = f.sign_release(&alias, &output);
+        assert!(
+            results.iter().all(|(_, result)| result.is_err()) && sign.is_err(),
+            "symlink results: {results:?}; release-sign: {sign:?}"
+        );
+        assert!(!std::path::Path::new(&output).exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn signed_control_size_rejection_precedes_decoding() {
+        let f = SignedControlFixture::new();
+        let results = CONTROL_INPUTS
+            .iter()
+            .map(|(kind, maximum)| {
+                let path = f.path(&format!("large-{kind}"));
+                fs::write(&path, vec![0; maximum + 1]).unwrap();
+                (*kind, f.verify(kind, &path).unwrap_err())
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            results.iter().all(|(_, error)| error.contains("expected a regular file of at most")),
+            "late rejection: {results:?}"
+        );
+        let output = f.path("rejected-release");
+        assert!(f
+            .sign_release(&f.path("large-descriptor"), &output)
+            .unwrap_err()
+            .contains("expected a regular file of at most"));
+        assert!(!std::path::Path::new(&output).exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn release_sign_rejects_excess_descriptors_before_reads() {
+        let f = SignedControlFixture::new();
+        let output = f.path("rejected-release");
+        let mut args = vec![output.clone(), "public-release".into(), "1".into(), f.private.clone()];
+        args.extend((0..=release::MAX_DESCRIPTORS).map(|_| f.path("absent")));
+        let error = release_sign(&args).unwrap_err();
+        assert!(error.contains("at most 16 descriptors"), "late rejection: {error}");
+        assert!(!std::path::Path::new(&output).exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn signed_control_notifications_and_apply_reject_before_connecting() {
+        let f = SignedControlFixture::new();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let endpoint = listener.local_addr().unwrap().to_string();
+        let fifo = f.path("fifo");
+        let name = std::ffi::CString::new(fifo.as_str()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+        for (kind, maximum) in CONTROL_INPUTS {
+            let alias = f.path(&format!("{kind}-alias"));
+            std::os::unix::fs::symlink(f.path(kind), &alias).unwrap();
+            let large = f.path(&format!("large-{kind}"));
+            fs::write(&large, vec![0; maximum + 1]).unwrap();
+            for path in [&alias, &large, &fifo, &f.directory.0.to_str().unwrap().to_owned()] {
+                assert!(f.notify(kind, path, &endpoint).is_err());
+                assert!(f.verify(kind, path).is_err());
+                if kind == "descriptor" {
+                    assert!(
+                        deployment_apply(&[endpoint.clone(), "1".into(), path.clone()]).is_err()
+                    );
+                    assert!(f.sign_release(path, &f.path("rejected-release")).is_err());
+                } else if kind == "release" {
+                    assert!(release_apply(&[path.clone(), endpoint.clone(), "1".into()]).is_err());
+                }
+            }
+        }
+        assert_eq!(listener.accept().err().unwrap().kind(), std::io::ErrorKind::WouldBlock);
+        assert!(!std::path::Path::new(&f.path("rejected-release")).exists());
+    }
+
+    #[cfg(unix)]
     #[test]
     fn operational_file_limits_accept_bound_and_reject_extra_byte() {
         let directory = TestDirectory::new();
@@ -2665,6 +2872,8 @@ mod tests {
             release::MAX_RELEASE_LEN,
             operations::MAX_ENVELOPE_LEN,
             operations_bundle::MAX_BUNDLE_LEN,
+            shutdown::ENCODED_LEN,
+            ingress_policy::MAX_ENCODED_LEN,
         ] {
             let mut fixture = vec![0x5a; maximum];
             fs::write(&path, &fixture).unwrap();

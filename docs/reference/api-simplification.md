@@ -360,5 +360,14 @@ all operational envelope/bundle command inputs. They share bounded regular-file
 admission with public policy/key files, using existing codec maxima. Bundle
 signing checks its binding count before referenced reads and iterates those
 triples directly, removing the temporary path vector. Command syntax, signed
-formats, cryptography and receiver authority are unchanged; ordinary release
-and artifact command inputs remain separate work.
+formats, cryptography and receiver authority are unchanged. The control-input
+follow-up below also covers structured release/deployment records; raw ELF
+reads remain separate.
+
+The [control-input follow-up](../reports/audits/2026-10-21-security-control-input.md) removes whole-file reads from the
+remaining structured deployment, release, shutdown and ingress-policy input
+paths. They use the same bounded regular-file reader with current codec limits.
+Release signing checks its existing descriptor-count maximum before referenced
+reads. Apply preparation order, command syntax, public hex arguments, signed
+formats and receiver authority are unchanged. Raw ELF and arbitrary-file hash
+inputs remain separate; this adds no general tool-input size policy.
