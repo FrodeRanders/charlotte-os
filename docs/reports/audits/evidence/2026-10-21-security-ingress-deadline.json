@@ -1,0 +1,806 @@
+{
+  "schema": "charlotte.security.ingress-deadline.v1",
+  "report_date": "2026-10-21",
+  "reviewed_revision": "f3b8aaf4110c6eb7bee41644d9d7462ce7577ce6",
+  "classification": {
+    "corrected": 29,
+    "partial": 6,
+    "open": 3,
+    "production_trust": "disabled"
+  },
+  "baseline": {
+    "binary": {
+      "path": "target/release/cluster-sign",
+      "sha256": "92385654f9c9b97f5dd4d71f00903cffe132aad6efe10bd55075054521f32e9f",
+      "source_revision": "f3b8aaf4",
+      "matches_preceding_evidence": true
+    },
+    "command": "python3 scripts/tests/test-ingress-deadline.py --signer target/release/cluster-sign -v",
+    "exit_status": 1,
+    "methods_run": 7,
+    "cases_run": 9,
+    "passed_cases": 1,
+    "failed_deadline_or_overflow_controls": 7,
+    "failed_new_hostname_policy_control": 1,
+    "diagnostics": "FAIL\ntest_batch_notifications_share_one_budget (__main__.Deadline.test_batch_notifications_share_one_budget) ... FAIL\ntest_exact_receipt_and_ready_controls_succeed (__main__.Deadline.test_exact_receipt_and_ready_controls_succeed) ... ok\ntest_extreme_timeout_is_rejected_without_panic_or_network (__main__.Deadline.test_extreme_timeout_is_rejected_without_panic_or_network) ... \n  test_extreme_timeout_is_rejected_without_panic_or_network (__main__.Deadline.test_extreme_timeout_is_rejected_without_panic_or_network) (command='release') ... FAIL\n  test_extreme_timeout_is_rejected_without_panic_or_network (__main__.Deadline.test_extreme_timeout_is_rejected_without_panic_or_network) (command='batch') ... FAIL\n  test_extreme_timeout_is_rejected_without_panic_or_network (__main__.Deadline.test_extreme_timeout_is_rejected_without_panic_or_network) (command='status') ... FAIL\ntest_numeric_endpoint_rejects_hostname_before_network (__main__.Deadline.test_numeric_endpoint_rejects_hostname_before_network) ... FAIL\ntest_poll_pause_uses_remaining_budget (__main__.Deadline.test_poll_pause_uses_remaining_budget) ... FAIL\ntest_trickled_reply_cannot_restart_remaining_budget (__main__.Deadline.test_trickled_reply_cannot_restart_remaining_budget) ... FAIL\n\n======================================================================\nFAIL: test_admission_and_readiness_share_one_budget (__main__.Deadline.test_admission_and_readiness_share_one_budget)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-ingress-deadline.py\", line 107, in test_admission_and_readiness_share_one_budget\n    self.assertNotEqual(result.returncode, 0, result.stdout)\nAssertionError: 0 == 0 : b'accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\\nready \"app\": {\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\nready \"app2\": {\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\n'\n\n======================================================================\nFAIL: test_batch_notifications_share_one_budget (__main__.Deadline.test_batch_notifications_share_one_budget)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-ingress-deadline.py\", line 122, in test_batch_notifications_share_one_budget\n    self.assertFalse(any(kind == \"GET\" for kind, _ in events))\nAssertionError: True is not false\n\n======================================================================\nFAIL: test_extreme_timeout_is_rejected_without_panic_or_network (__main__.Deadline.test_extreme_timeout_is_rejected_without_panic_or_network) (command='release')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-ingress-deadline.py\", line 141, in test_extreme_timeout_is_rejected_without_panic_or_network\n    self.assertNotIn(b\"panicked\", result.stderr)\nAssertionError: b'panicked' unexpectedly found in b\"\\nthread 'main' (22441706) panicked at tools/cluster-sign/src/main.rs:1981:20:\\noverflow when adding duration to instant\\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\\n\"\n\n======================================================================\nFAIL: test_extreme_timeout_is_rejected_without_panic_or_network (__main__.Deadline.test_extreme_timeout_is_rejected_without_panic_or_network) (command='batch')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-ingress-deadline.py\", line 141, in test_extreme_timeout_is_rejected_without_panic_or_network\n    self.assertNotIn(b\"panicked\", result.stderr)\nAssertionError: b'panicked' unexpectedly found in b\"\\nthread 'main' (22441712) panicked at tools/cluster-sign/src/main.rs:1981:20:\\noverflow when adding duration to instant\\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\\n\"\n\n======================================================================\nFAIL: test_extreme_timeout_is_rejected_without_panic_or_network (__main__.Deadline.test_extreme_timeout_is_rejected_without_panic_or_network) (command='status')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-ingress-deadline.py\", line 141, in test_extreme_timeout_is_rejected_without_panic_or_network\n    self.assertNotIn(b\"panicked\", result.stderr)\nAssertionError: b'panicked' unexpectedly found in b\"\\nthread 'main' (22441718) panicked at tools/cluster-sign/src/main.rs:1909:20:\\noverflow when adding duration to instant\\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\\n\"\n\n======================================================================\nFAIL: test_numeric_endpoint_rejects_hostname_before_network (__main__.Deadline.test_numeric_endpoint_rejects_hostname_before_network)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-ingress-deadline.py\", line 132, in test_numeric_endpoint_rejects_hostname_before_network\n    self.assertNotEqual(result.returncode, 0, result.stdout)\nAssertionError: 0 == 0 : b'accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\\nready \"app\": {\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\nready \"app2\": {\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\n'\n\n======================================================================\nFAIL: test_poll_pause_uses_remaining_budget (__main__.Deadline.test_poll_pause_uses_remaining_budget)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-ingress-deadline.py\", line 127, in test_poll_pause_uses_remaining_budget\n    self.assertLess(elapsed, 1.6)\nAssertionError: 1.7176811250392348 not less than 1.6\n\n======================================================================\nFAIL: test_trickled_reply_cannot_restart_remaining_budget (__main__.Deadline.test_trickled_reply_cannot_restart_remaining_budget)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-ingress-deadline.py\", line 114, in test_trickled_reply_cannot_restart_remaining_budget\n    self.assertLess(elapsed, 1.6)\nAssertionError: 10.009224000154063 not less than 1.6\n\n----------------------------------------------------------------------\nRan 7 tests in 15.325s\n\nFAILED (failures=8)\n",
+    "initial_harness_run": {
+      "exit_status": 1,
+      "failed_cases": 7,
+      "errors": 1,
+      "diagnostics": "FAIL\ntest_batch_notifications_share_one_budget (__main__.Deadline.test_batch_notifications_share_one_budget) ... FAIL\ntest_exact_receipt_and_ready_controls_succeed (__main__.Deadline.test_exact_receipt_and_ready_controls_succeed) ... ok\ntest_extreme_timeout_is_rejected_without_panic_or_network (__main__.Deadline.test_extreme_timeout_is_rejected_without_panic_or_network) ... \n  test_extreme_timeout_is_rejected_without_panic_or_network (__main__.Deadline.test_extreme_timeout_is_rejected_without_panic_or_network) (command='release') ... FAIL\n  test_extreme_timeout_is_rejected_without_panic_or_network (__main__.Deadline.test_extreme_timeout_is_rejected_without_panic_or_network) (command='batch') ... FAIL\n  test_extreme_timeout_is_rejected_without_panic_or_network (__main__.Deadline.test_extreme_timeout_is_rejected_without_panic_or_network) (command='status') ... FAIL\ntest_numeric_endpoint_rejects_hostname_before_network (__main__.Deadline.test_numeric_endpoint_rejects_hostname_before_network) ... FAIL\ntest_poll_pause_uses_remaining_budget (__main__.Deadline.test_poll_pause_uses_remaining_budget) ... FAIL\ntest_trickled_reply_cannot_restart_remaining_budget (__main__.Deadline.test_trickled_reply_cannot_restart_remaining_budget) ... ERROR\n\n======================================================================\nERROR: test_trickled_reply_cannot_restart_remaining_budget (__main__.Deadline.test_trickled_reply_cannot_restart_remaining_budget)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-ingress-deadline.py\", line 112, in test_trickled_reply_cannot_restart_remaining_budget\n    result, elapsed, events = self.peer(\"trickle\")\n                              ^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-ingress-deadline.py\", line 91, in peer\n    result = subprocess.run([str(fixture.SIGNER), *args], capture_output=True, timeout=9)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/local/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/subprocess.py\", line 550, in run\n    stdout, stderr = process.communicate(input, timeout=timeout)\n                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/local/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/subprocess.py\", line 1209, in communicate\n    stdout, stderr = self._communicate(input, endtime, timeout)\n                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/local/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/subprocess.py\", line 2116, in _communicate\n    self._check_timeout(endtime, orig_timeout, stdout, stderr)\n  File \"/opt/local/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/subprocess.py\", line 1253, in _check_timeout\n    raise TimeoutExpired(\nsubprocess.TimeoutExpired: Command '['/Users/froran/Projects/private/charlotte-os/target/release/cluster-sign', 'release-apply', '/var/folders/ld/gmfpcx6n12j8w922_4_sbcvc0000gn/T/charlotte-deployment-generation-33m735ar/release.crelease', '127.0.0.1:61573', '1']' timed out after 9 seconds\n\n======================================================================\nFAIL: test_admission_and_readiness_share_one_budget (__main__.Deadline.test_admission_and_readiness_share_one_budget)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-ingress-deadline.py\", line 107, in test_admission_and_readiness_share_one_budget\n    self.assertNotEqual(result.returncode, 0, result.stdout)\nAssertionError: 0 == 0 : b'accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\\nready \"app\": {\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\nready \"app2\": {\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\n'\n\n======================================================================\nFAIL: test_batch_notifications_share_one_budget (__main__.Deadline.test_batch_notifications_share_one_budget)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-ingress-deadline.py\", line 122, in test_batch_notifications_share_one_budget\n    self.assertFalse(any(kind == \"GET\" for kind, _ in events))\nAssertionError: True is not false\n\n======================================================================\nFAIL: test_extreme_timeout_is_rejected_without_panic_or_network (__main__.Deadline.test_extreme_timeout_is_rejected_without_panic_or_network) (command='release')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-ingress-deadline.py\", line 141, in test_extreme_timeout_is_rejected_without_panic_or_network\n    self.assertNotIn(b\"panicked\", result.stderr)\nAssertionError: b'panicked' unexpectedly found in b\"\\nthread 'main' (22440929) panicked at tools/cluster-sign/src/main.rs:1981:20:\\noverflow when adding duration to instant\\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\\n\"\n\n======================================================================\nFAIL: test_extreme_timeout_is_rejected_without_panic_or_network (__main__.Deadline.test_extreme_timeout_is_rejected_without_panic_or_network) (command='batch')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-ingress-deadline.py\", line 141, in test_extreme_timeout_is_rejected_without_panic_or_network\n    self.assertNotIn(b\"panicked\", result.stderr)\nAssertionError: b'panicked' unexpectedly found in b\"\\nthread 'main' (22440934) panicked at tools/cluster-sign/src/main.rs:1981:20:\\noverflow when adding duration to instant\\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\\n\"\n\n======================================================================\nFAIL: test_extreme_timeout_is_rejected_without_panic_or_network (__main__.Deadline.test_extreme_timeout_is_rejected_without_panic_or_network) (command='status')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-ingress-deadline.py\", line 141, in test_extreme_timeout_is_rejected_without_panic_or_network\n    self.assertNotIn(b\"panicked\", result.stderr)\nAssertionError: b'panicked' unexpectedly found in b\"\\nthread 'main' (22440941) panicked at tools/cluster-sign/src/main.rs:1909:20:\\noverflow when adding duration to instant\\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\\n\"\n\n======================================================================\nFAIL: test_numeric_endpoint_rejects_hostname_before_network (__main__.Deadline.test_numeric_endpoint_rejects_hostname_before_network)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-ingress-deadline.py\", line 132, in test_numeric_endpoint_rejects_hostname_before_network\n    self.assertNotEqual(result.returncode, 0, result.stdout)\nAssertionError: 0 == 0 : b'accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\\nready \"app\": {\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\nready \"app2\": {\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\n'\n\n======================================================================\nFAIL: test_poll_pause_uses_remaining_budget (__main__.Deadline.test_poll_pause_uses_remaining_budget)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-ingress-deadline.py\", line 127, in test_poll_pause_uses_remaining_budget\n    self.assertLess(elapsed, 1.6)\nAssertionError: 1.7212979581672698 not less than 1.6\n\n----------------------------------------------------------------------\nRan 7 tests in 14.340s\n\nFAILED (failures=7, errors=1)\n",
+      "limitation": "Nine-second subprocess ceiling cut off the baseline two-query trickle. A separate 13-second-ceiling run completed and recorded its 10.009-second timing failure. No application cause is inferred from the harness cutoff."
+    }
+  },
+  "correction": {
+    "shared_transport": "tools/cluster-sign/src/http_client.rs",
+    "endpoint_grammar": "numeric IPv4:port or [IPv6]:port, port nonzero; no DNS resolver or hostname fallback",
+    "operation_deadline": "checked Instant addition before file preparation, retained across all batch notifications and readiness queries",
+    "phase_caps_seconds": {
+      "notification": 30,
+      "status": 5
+    },
+    "standalone_seconds": {
+      "notifications": 30,
+      "ingress_policy_status": 30,
+      "deployment_status_zero_or_omitted_wait": 5
+    },
+    "io": "one owned TcpStream; numeric connect_timeout; remaining timeout before each partial/interrupted write and response read; completion rechecks deadline",
+    "pause": "minimum of one second and remaining original operation budget; no event-readiness claim",
+    "uncertainty": "errors after submitted bytes leave remote work unconfirmed; no notification replay or remote rollback",
+    "owner_family": "existing C18 host preparation and socket scope; no Charlotte root/pin/capability, registry, worker, custody or recovery family",
+    "response_framing_unchanged_apart_from_visibility": true,
+    "http_wire_grammar_signed_inputs_cli_positions_runtime_abi_changed": false
+  },
+  "new_rust_controls": [
+    "numeric endpoint grammar rejects DNS/header/URL material and port zero",
+    "checked zero/overflow/expiry and nonextending phase caps",
+    "expired exchange opens no socket",
+    "partial/interrupted writes preserve offset and consume remaining budget",
+    "expired write budget stops further submission",
+    "zero/reset/impossible-count write failures do not replay"
+  ],
+  "host_validation": {
+    "debug": {
+      "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p cluster-sign",
+      "exit_status": 0,
+      "tests_passed": 81,
+      "result_lines": [
+        "test result: ok. 53 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.38s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s"
+      ]
+    },
+    "release": {
+      "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p cluster-sign",
+      "exit_status": 0,
+      "tests_passed": 81,
+      "result_lines": [
+        "test result: ok. 53 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s"
+      ]
+    }
+  },
+  "host_test_context": {
+    "cwd": "/private/tmp",
+    "manifest": "/Users/froran/Projects/private/charlotte-os/Cargo.toml",
+    "flags": "--offline --locked",
+    "compiler": "rustc 1.100.0-nightly (c54751567 2026-08-22)"
+  },
+  "cli_validation": {
+    "deadline_debug": {
+      "exit_status": 0,
+      "output": "test_admission_and_readiness_share_one_budget (__main__.Deadline.test_admission_and_readiness_share_one_budget) ... ok\ntest_batch_notifications_share_one_budget (__main__.Deadline.test_batch_notifications_share_one_budget) ... ok\ntest_exact_receipt_and_ready_controls_succeed (__main__.Deadline.test_exact_receipt_and_ready_controls_succeed) ... ok\ntest_extreme_timeout_is_rejected_without_panic_or_network (__main__.Deadline.test_extreme_timeout_is_rejected_without_panic_or_network) ... ok\ntest_numeric_endpoint_rejects_hostname_before_network (__main__.Deadline.test_numeric_endpoint_rejects_hostname_before_network) ... ok\ntest_poll_pause_uses_remaining_budget (__main__.Deadline.test_poll_pause_uses_remaining_budget) ... ok\ntest_trickled_reply_cannot_restart_remaining_budget (__main__.Deadline.test_trickled_reply_cannot_restart_remaining_budget) ... ok\n\n----------------------------------------------------------------------\nRan 7 tests in 4.245s\n\nOK\n",
+      "methods_run": 7,
+      "cases_run": 9
+    },
+    "deadline_release": {
+      "exit_status": 0,
+      "output": "test_admission_and_readiness_share_one_budget (__main__.Deadline.test_admission_and_readiness_share_one_budget) ... ok\ntest_batch_notifications_share_one_budget (__main__.Deadline.test_batch_notifications_share_one_budget) ... ok\ntest_exact_receipt_and_ready_controls_succeed (__main__.Deadline.test_exact_receipt_and_ready_controls_succeed) ... ok\ntest_extreme_timeout_is_rejected_without_panic_or_network (__main__.Deadline.test_extreme_timeout_is_rejected_without_panic_or_network) ... ok\ntest_numeric_endpoint_rejects_hostname_before_network (__main__.Deadline.test_numeric_endpoint_rejects_hostname_before_network) ... ok\ntest_poll_pause_uses_remaining_budget (__main__.Deadline.test_poll_pause_uses_remaining_budget) ... ok\ntest_trickled_reply_cannot_restart_remaining_budget (__main__.Deadline.test_trickled_reply_cannot_restart_remaining_budget) ... ok\n\n----------------------------------------------------------------------\nRan 7 tests in 4.237s\n\nOK\n",
+      "methods_run": 7,
+      "cases_run": 9
+    },
+    "generation_debug": {
+      "exit_status": 0,
+      "output": ".........\n----------------------------------------------------------------------\nRan 9 tests in 4.314s\n\nOK\n",
+      "methods_run": 9,
+      "cases_run": 13
+    },
+    "generation_release": {
+      "exit_status": 0,
+      "output": ".........\n----------------------------------------------------------------------\nRan 9 tests in 4.283s\n\nOK\n",
+      "methods_run": 9,
+      "cases_run": 13
+    },
+    "release_debug": {
+      "exit_status": 0,
+      "output": ".......\n----------------------------------------------------------------------\nRan 7 tests in 3.319s\n\nOK\n",
+      "methods_run": 7,
+      "cases_run": 13
+    },
+    "release_release": {
+      "exit_status": 0,
+      "output": ".......\n----------------------------------------------------------------------\nRan 7 tests in 3.308s\n\nOK\n",
+      "methods_run": 7,
+      "cases_run": 13
+    }
+  },
+  "deadline_cases": {
+    "debug": [
+      {
+        "case": "test_admission_and_readiness_share_one_budget",
+        "command": "release",
+        "timeout_seconds": "1",
+        "hostname": false,
+        "exit_status": 1,
+        "elapsed_seconds": 1.005767999915406,
+        "events": [
+          [
+            "POST",
+            "/v1/releases"
+          ],
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "stdout": "accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\n",
+        "stderr": "error: release did not become ready in 1s; pending: app, app2\n"
+      },
+      {
+        "case": "test_batch_notifications_share_one_budget",
+        "command": "batch",
+        "timeout_seconds": "1",
+        "hostname": false,
+        "exit_status": 1,
+        "elapsed_seconds": 1.0067774578928947,
+        "events": [
+          [
+            "POST",
+            "/v1/deployments"
+          ],
+          [
+            "POST",
+            "/v1/deployments"
+          ]
+        ],
+        "stdout": "accepted \"app\": {\"generation\":2}\n",
+        "stderr": "error: release stopped while notifying \"app2\" from \"/var/folders/ld/gmfpcx6n12j8w922_4_sbcvc0000gn/T/charlotte-deployment-generation-m22p3hno/app2.cdep\": read ingress response: Resource temporarily unavailable (os error 35); submitted work may be committed; this and earlier descriptors may already be committed\n"
+      },
+      {
+        "case": "test_exact_receipt_and_ready_controls_succeed",
+        "command": "release",
+        "timeout_seconds": "1",
+        "hostname": false,
+        "exit_status": 0,
+        "elapsed_seconds": 0.006591459037736058,
+        "events": [
+          [
+            "POST",
+            "/v1/releases"
+          ],
+          [
+            "GET",
+            "/v1/deployments/app"
+          ],
+          [
+            "GET",
+            "/v1/deployments/app2"
+          ]
+        ],
+        "stdout": "accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\nready \"app\": {\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\nready \"app2\": {\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_extreme_timeout_is_rejected_without_panic_or_network",
+        "command": "release",
+        "timeout_seconds": "18446744073709551615",
+        "hostname": false,
+        "exit_status": 1,
+        "elapsed_seconds": 0.003615583060309291,
+        "events": [],
+        "stdout": "",
+        "stderr": "error: timeout exceeds the monotonic clock range\n"
+      },
+      {
+        "case": "test_extreme_timeout_is_rejected_without_panic_or_network",
+        "command": "batch",
+        "timeout_seconds": "18446744073709551615",
+        "hostname": false,
+        "exit_status": 1,
+        "elapsed_seconds": 0.0036098749842494726,
+        "events": [],
+        "stdout": "",
+        "stderr": "error: timeout exceeds the monotonic clock range\n"
+      },
+      {
+        "case": "test_extreme_timeout_is_rejected_without_panic_or_network",
+        "command": "status",
+        "timeout_seconds": "18446744073709551615",
+        "hostname": false,
+        "exit_status": 1,
+        "elapsed_seconds": 0.003400833113119006,
+        "events": [],
+        "stdout": "",
+        "stderr": "error: timeout exceeds the monotonic clock range\n"
+      },
+      {
+        "case": "test_numeric_endpoint_rejects_hostname_before_network",
+        "command": "release",
+        "timeout_seconds": "1",
+        "hostname": true,
+        "exit_status": 1,
+        "elapsed_seconds": 0.003120749955996871,
+        "events": [],
+        "stdout": "",
+        "stderr": "error: ingress endpoint must be numeric IPv4:port or [IPv6]:port with a nonzero port\n"
+      },
+      {
+        "case": "test_poll_pause_uses_remaining_budget",
+        "command": "release",
+        "timeout_seconds": "1",
+        "hostname": false,
+        "exit_status": 1,
+        "elapsed_seconds": 1.0072751250118017,
+        "events": [
+          [
+            "POST",
+            "/v1/releases"
+          ],
+          [
+            "GET",
+            "/v1/deployments/app"
+          ],
+          [
+            "GET",
+            "/v1/deployments/app2"
+          ]
+        ],
+        "stdout": "accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\n",
+        "stderr": "error: release did not become ready in 1s; pending: app, app2\n"
+      },
+      {
+        "case": "test_trickled_reply_cannot_restart_remaining_budget",
+        "command": "release",
+        "timeout_seconds": "1",
+        "hostname": false,
+        "exit_status": 1,
+        "elapsed_seconds": 1.0050784579943866,
+        "events": [
+          [
+            "POST",
+            "/v1/releases"
+          ],
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "stdout": "accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\n",
+        "stderr": "error: release did not become ready in 1s; pending: app, app2\n"
+      }
+    ],
+    "release": [
+      {
+        "case": "test_admission_and_readiness_share_one_budget",
+        "command": "release",
+        "timeout_seconds": "1",
+        "hostname": false,
+        "exit_status": 1,
+        "elapsed_seconds": 1.004415666917339,
+        "events": [
+          [
+            "POST",
+            "/v1/releases"
+          ],
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "stdout": "accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\n",
+        "stderr": "error: release did not become ready in 1s; pending: app, app2\n"
+      },
+      {
+        "case": "test_batch_notifications_share_one_budget",
+        "command": "batch",
+        "timeout_seconds": "1",
+        "hostname": false,
+        "exit_status": 1,
+        "elapsed_seconds": 1.0062444580253214,
+        "events": [
+          [
+            "POST",
+            "/v1/deployments"
+          ],
+          [
+            "POST",
+            "/v1/deployments"
+          ]
+        ],
+        "stdout": "accepted \"app\": {\"generation\":2}\n",
+        "stderr": "error: release stopped while notifying \"app2\" from \"/var/folders/ld/gmfpcx6n12j8w922_4_sbcvc0000gn/T/charlotte-deployment-generation-kr2gnz2f/app2.cdep\": read ingress response: Resource temporarily unavailable (os error 35); submitted work may be committed; this and earlier descriptors may already be committed\n"
+      },
+      {
+        "case": "test_exact_receipt_and_ready_controls_succeed",
+        "command": "release",
+        "timeout_seconds": "1",
+        "hostname": false,
+        "exit_status": 0,
+        "elapsed_seconds": 0.005939916940405965,
+        "events": [
+          [
+            "POST",
+            "/v1/releases"
+          ],
+          [
+            "GET",
+            "/v1/deployments/app"
+          ],
+          [
+            "GET",
+            "/v1/deployments/app2"
+          ]
+        ],
+        "stdout": "accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\nready \"app\": {\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\nready \"app2\": {\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_extreme_timeout_is_rejected_without_panic_or_network",
+        "command": "release",
+        "timeout_seconds": "18446744073709551615",
+        "hostname": false,
+        "exit_status": 1,
+        "elapsed_seconds": 0.003273666836321354,
+        "events": [],
+        "stdout": "",
+        "stderr": "error: timeout exceeds the monotonic clock range\n"
+      },
+      {
+        "case": "test_extreme_timeout_is_rejected_without_panic_or_network",
+        "command": "batch",
+        "timeout_seconds": "18446744073709551615",
+        "hostname": false,
+        "exit_status": 1,
+        "elapsed_seconds": 0.0032635419629514217,
+        "events": [],
+        "stdout": "",
+        "stderr": "error: timeout exceeds the monotonic clock range\n"
+      },
+      {
+        "case": "test_extreme_timeout_is_rejected_without_panic_or_network",
+        "command": "status",
+        "timeout_seconds": "18446744073709551615",
+        "hostname": false,
+        "exit_status": 1,
+        "elapsed_seconds": 0.0034471668768674135,
+        "events": [],
+        "stdout": "",
+        "stderr": "error: timeout exceeds the monotonic clock range\n"
+      },
+      {
+        "case": "test_numeric_endpoint_rejects_hostname_before_network",
+        "command": "release",
+        "timeout_seconds": "1",
+        "hostname": true,
+        "exit_status": 1,
+        "elapsed_seconds": 0.0032904159743338823,
+        "events": [],
+        "stdout": "",
+        "stderr": "error: ingress endpoint must be numeric IPv4:port or [IPv6]:port with a nonzero port\n"
+      },
+      {
+        "case": "test_poll_pause_uses_remaining_budget",
+        "command": "release",
+        "timeout_seconds": "1",
+        "hostname": false,
+        "exit_status": 1,
+        "elapsed_seconds": 1.008880167035386,
+        "events": [
+          [
+            "POST",
+            "/v1/releases"
+          ],
+          [
+            "GET",
+            "/v1/deployments/app"
+          ],
+          [
+            "GET",
+            "/v1/deployments/app2"
+          ]
+        ],
+        "stdout": "accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\n",
+        "stderr": "error: release did not become ready in 1s; pending: app, app2\n"
+      },
+      {
+        "case": "test_trickled_reply_cannot_restart_remaining_budget",
+        "command": "release",
+        "timeout_seconds": "1",
+        "hostname": false,
+        "exit_status": 1,
+        "elapsed_seconds": 1.0062290420755744,
+        "events": [
+          [
+            "POST",
+            "/v1/releases"
+          ],
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "stdout": "accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\n",
+        "stderr": "error: release did not become ready in 1s; pending: app, app2\n"
+      }
+    ]
+  },
+  "cli_cases_per_profile": 35,
+  "host_binaries": {
+    "debug": {
+      "path": "target/debug/cluster-sign",
+      "sha256": "baffd40066c0738055e698b523207d2fd5970804a39f6bac1933ba5743b95f44"
+    },
+    "release": {
+      "path": "target/release/cluster-sign",
+      "sha256": "8b78195c5a7c18dec77468d45fe6cd4d8bca830d4f96d179fa80fbaa455f0436"
+    }
+  },
+  "checks": {
+    "format": {
+      "command": "cargo fmt --all -- --check",
+      "exit_status": 0
+    },
+    "clippy": {
+      "command": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p cluster-sign --all-targets -- -D warnings",
+      "exit_status": 0
+    },
+    "arm_services": {
+      "command": "scripts/build-catten-services.sh --embed",
+      "exit_status": 0
+    },
+    "arm_freshness": {
+      "command": "scripts/build-catten-services.sh --check",
+      "exit_status": 0,
+      "diagnostic": "Staged AArch64 service bundle signatures verified."
+    },
+    "diff": {
+      "command": "git diff --check",
+      "exit_status": 0
+    }
+  },
+  "bundles": {
+    "aarch64-unknown-none": {
+      "agent.elf": "eb37fd66c071d8402540f343a13e7f440199ff53dfd3552b7673bbea765d9de9",
+      "cclient.elf": "11cb3f63a6d27e302b7f409212e76f8c500e6f2eed4578f1198749e1078af808",
+      "client.elf": "9b06a2d48ed16db87e320b95d73680a32171ff0c6aac4492dba4567736c847ba",
+      "clusterctl.elf": "48f470e3f127e7fe6a9f0c910d60c1ee91548ff86a43d65679d3ee84588aa903",
+      "deployd.elf": "76acee9c5b495fe2f15b0221ca380d8c2a0e9ee113e9641a1b0aa293a44ee652",
+      "disco.elf": "972564a3dd27c9aabc076752dc69b7be444a2f91e509c60223a70c27d07a0a54",
+      "dns.elf": "f7c35886b581b920b8fd7e1774e77bbeb0fa789113d3f8d4d384950675d2c6f9",
+      "echo.elf": "5c57a68fcc8758e6570b735054728aaa03a66f3fd7814d7f4a6bdc43de8e3aa2",
+      "frouter.elf": "8b445535df798ff9c352ccc789fbb0b4eebfd2e4bd317c67f38d51100c178038",
+      "fs.elf": "3e63a6a1d3add22d4706500f79d7c44887c306e65fb47ff218eb96db34804756",
+      "grantctl.elf": "b506305fb8e6a76e0ab9f603ba0a9e2c08ee17719dcd54d5d37f3317531766f3",
+      "greet.elf": "4865f829e9d53b645a5153b3ac877ae04a1f6cbb0d94d783a9a19b6a2abce0cd",
+      "httpd.elf": "e6413fa948c65da7c220d1d09ba291afdc5f2376653a35e688c1087aa7fe296b",
+      "kafka.elf": "8c6648cd2be442c223f9b43f459bbd81cb2e92f303482a631b911a3a5abc34ef",
+      "kafka_fence_smoke.elf": "03b2bdf893417bd96ae8e055c915f1fa4e2dede3612add6c13a84b090e2f568a",
+      "kafka_smoke.elf": "495a69495ad7847bb62f3cd5356eb3f78a6f188187cf284bb77796393521d249",
+      "kafka_step.elf": "4f285db9fe995b11b71fff95a6bd162eafda9440b894bc09158796fab06cc874",
+      "kafka_step_input.elf": "a9860d0ca8e5fcc29c769bb4ea95c0b8cf68f5d9090008281c32814d65ba00e7",
+      "kafka_step_proc.elf": "64d0a8f3502c68136d22e44f377e0ac69d422e4f7928be7516fe13558e4d342a",
+      "nclient.elf": "18e995d664df2fc756fc844f3a01931a74ee2cb61708b97920826a1400d95eb4",
+      "net.elf": "211a4a85bd38d9479747b8b1c10cd910f1b13f51c0da97fa8e9c10257ae00b7a",
+      "ns.elf": "20e55908799669fde1097d47e49a65a7d7ef96b052f4647902bf873ed9f165eb",
+      "nvme.elf": "286aea8f72daf451cb64ac638da7fd934ac0b82ca2583d4a4d6cf8cba79be6a5",
+      "nvme_client.elf": "a81201d63e2e533c9fc549fe7dde705d18016684cdda7c62e8bc5cfa8a7c7820",
+      "objstore.elf": "b5480c385d9d13393d8dd2872765a801a0cacfaffd0e333a23ecbfaa2e200ef4",
+      "objstore_client.elf": "690c949426a6ff229610a08003f7f3f36a0d3ee5c7f83c36255f934a86ce58bb",
+      "observe.elf": "99ddb4f1b709d4b85e37a730fa1b796efea6cb987de5788b3bc341781522b696",
+      "raft.elf": "d6c04defada2e5a29c5f6724a5b7ccbe4806c708b71d67300a3290eb7a5ab353",
+      "rclient.elf": "f7068eabf84c930aaf39452cb0555580ffdc54bb009ed124a4523e1afabbaa55",
+      "relmsg.elf": "4e8fad2809ded17f41186514a0da63018259282e031a322641ec6d830d7ea578",
+      "rng.elf": "0df230439035f988b16011e131848db98504018d2159e414d99cc725577fa803",
+      "s3.elf": "7e1a8063b875c23c4b1e082816b04ea6ca294258d9ea589e4a84471ec29d3330",
+      "s3_smoke.elf": "b05d5067d7b8ad3b06e186818d01363f026527f1822b2d7f8fef48eeb2427e1a",
+      "security_probe.elf": "e343f1bf47292442f3b3275158315a7750046b7765eef861595005f699970639",
+      "servicemgr.elf": "f0bd93b58526ded54c58b2dac5cc2df9fcc71be7a7ccff1e3ac358e9ade8066c",
+      "shutdown_probe.elf": "6f1f2187d2490ad2c96604c5d255c19a40c9f3fec88103415c988ede19a14996",
+      "sitas-user.elf": "fbf1b47a721d84498a64e43bc626a7f962a52d3740e3fa7e14adaeea7fa5f311",
+      "tcpclient.elf": "a405423ec5d0ec0c3eb1b0120e4493b0f33bab6e99aa62262b07b263e9e7a382",
+      "tcpip.elf": "4f66aca3215efc2db60204825a07c2c056c7679a4601639cc36666c4dce6e239",
+      "time.elf": "bbeefd939013b4cd5be2de73fefa24bb84dbb23f28cabc28d4432e2078ea5b36",
+      "uart.elf": "400b1910b60f079b9c7b1ce239be8ecca2dc618388c9030d035b41a32c20ea4b"
+    },
+    "x86_64-unknown-none": {
+      "agent.elf": "044bb8692b2fcdcc8e090f1448d600bf3a7141b884804d8588ca1db8234f7bc4",
+      "ahci.elf": "1aa868f897d5d8a37cdb20667226d6584bd863327ccc8e4591503e79469fe5ae",
+      "client.elf": "35002799b4041edeb312fad024456e4303f68c06b4d7ec48ee846d59dd2dbb8c",
+      "clusterctl.elf": "c038d7c8a638b491c035287d3cb0020e56f604242ad60a698a16d41527a47114",
+      "deployd.elf": "2d69e0add3e21249277ea4f320c06e8fbac99486d347126d8b299acf34999f6d",
+      "disco.elf": "2d46270a1e6c025a414898be5bd9938a241484433775e6db07ba69b10981a484",
+      "dns.elf": "235ea839ca15ec5207eac35d503e7c9b834a7fc7392aad7fd2361c90bd055947",
+      "e1000e.elf": "7ee4576a28f33474be1fd5c5fb375d7cbc0855b8615ca5a289162c520e61a019",
+      "echo.elf": "0af84990d7b8b29562d43c94a53a2766b861df9a3d112a28486235a75fac739d",
+      "frouter.elf": "6c948061b30890ca0b7c11faaf285aa6eb4f5259d130841c69b4da8d9b9f387f",
+      "fs.elf": "660fa5433e03dd9080a8b55dc98d5767c36a277e57cad20f464e96dfcf8267ba",
+      "grantctl.elf": "df720de720e1a661840a957735d08fbd3580c1897554e5e694d1b3bb730e36f4",
+      "greet.elf": "fba249d2f8dca441c3e54485c4d5ef74e468389877e35cf2f153b110adcab937",
+      "httpd.elf": "e96c3190fb72ec84332458741fa0888f0a8d405cfed32813767f28d188b07fe0",
+      "kafka.elf": "bda2b9f50271f20e0a2da76d2db8112591b432d170966703a634ed9dcb383325",
+      "kafka_smoke.elf": "bfbe3d7314ab01e50125bd93dfda4da3891d21358ae534bd8930bacd8808a82d",
+      "nclient.elf": "d1b903db550a8688385c36b90c3cc0db14b07b5ad9f6c54bfdaf08c7aee370ea",
+      "net.elf": "e63c19a693a04408987b5968c091ce0c5ffe9424def1214167a8f2379b3830e5",
+      "ns.elf": "5ceb6ba8211aa035c9c9c44a8b23d923dceff316d2aa0d83645bb0d536219366",
+      "nvme.elf": "fb8ad096dc2386eb89f6f9d741b227e6839ad2482ecb009f26e16aa6a65b893c",
+      "nvme_client.elf": "ff43cdd9f41e15f3af2d21717bfdffe95f9cc4c1703bd6f032222ab92f6dc9f4",
+      "objstore.elf": "975c8a0bd9af5c7b409fe515ae110c2e4941b6bd74c81653d7161be4058579b7",
+      "objstore_client.elf": "ed3de4c00cb3d600e0470e6e284b593fbf545819d7f69430866b75add7f14394",
+      "observe.elf": "82307af70a7d4af3509f991b324720895b06074d0d74c8dbef1600a71b7149b9",
+      "raft.elf": "509fbf9061420857dbd7e56cbf605121a794af34102268bc6947fc83236b1212",
+      "rclient.elf": "64f884d7c4f74c674100d30dc4bed24c9e503a23da392b33be0547cf885e8b12",
+      "relmsg.elf": "0e1b4cd7c58a5a5c8e7b2566be41076159e74199c0c70862a9500dc124c9c8f1",
+      "rng.elf": "23a311737c1751aceb5d7fe06d0d3220f510397f5bf7d8a030c496cdceb449b4",
+      "s3.elf": "52656739cc7ab0d2dbe8e5fcccfaabfb934c78f9e76226d3b7dcbed3b672e61b",
+      "s3_smoke.elf": "254170f6ec16c83dfc913fd7ccf2839d332bc5be9716aab5ea375a9e3ce3a085",
+      "security_probe.elf": "c7f05987184a1249349f6a5a3dfdba5b37e020e4fa6076624eb1087094011034",
+      "servicemgr.elf": "8c581d62db7894fd6b48e8760133c0e594eaf06148b5e08ffc1e8503cecaabb7",
+      "shutdown_probe.elf": "32bde604563394987dd13ebb41b2856879fa46f2fa84a0ef0974c8974089e02b",
+      "tcpclient.elf": "52b2f14ebda6ada5e6788afc90ce7f2e6e5575730d053b9d1c9e6c4220cdae0b",
+      "tcpip.elf": "a3c183ca77e123e66fb8d5a1905b866aa11e248ec0a3fba5b3a575a4bae286f0",
+      "time.elf": "d731d5b346d56bd682a9ba1ad877aa91f1eb154c63dcefeb82f16a43cbcd96ca",
+      "virtio_blk.elf": "c06a4c587b307d9049b9a3c8f06dd2a66c4f241bd9877150bd7bb42346d299f2"
+    }
+  },
+  "bundles_match_preceding_evidence": true,
+  "formal": {
+    "fresh_tlc_cases": 0,
+    "inventory": {
+      "modules": 34,
+      "safe_configurations": 36,
+      "negative_configurations": 109,
+      "runner_inputs": 1
+    },
+    "checked_input_sha256": {
+      "docs/tla/CharlotteAddressSpace.tla": "94e8ae476eab11029c39513fa66197793b05f0a6ca1655b751497a6e518d0284",
+      "docs/tla/CharlotteAddressSpace_small.cfg": "25feef19bf1dc780d8cece87801b7590b0bce68aa884c7459f7a9a65866d35eb",
+      "docs/tla/CharlotteAddressSpace_unsafe.cfg": "4be0b588a5b44ff54ac273701331a622b9f2bfd241b4a428be8acaf98a5337cf",
+      "docs/tla/CharlotteAuthorization.tla": "d5e14f9e9eb674522b6446235d24e322507959a2baf0219d22912ab3c7929515",
+      "docs/tla/CharlotteAuthorization_generation_unsafe.cfg": "4f23d40ea610f3e457a4d3e8107d111c9d4bdbadd421a83d946c371677b105db",
+      "docs/tla/CharlotteAuthorization_policy_unsafe.cfg": "4f0e81b15fa4c54d4e10216d4b23f84ed3ce85fd801c0c271ca0486717750779",
+      "docs/tla/CharlotteAuthorization_policy_version_unsafe.cfg": "369762db357baf735d3464b0c1f309b9a2c6ff1c2f22bb19c28ef1d91361be2a",
+      "docs/tla/CharlotteAuthorization_principal_unsafe.cfg": "c3f4c2815588d123d723e6f3aa12360a08c5c93d1dc9730e31bca4c6590525bf",
+      "docs/tla/CharlotteAuthorization_rights_unsafe.cfg": "9d82cd883cb9b68ba02cc926d9019d591c0edaceb9568416744dc3b7a882221f",
+      "docs/tla/CharlotteAuthorization_small.cfg": "2ddfd048b004e053686223171bcfcbbeb94d1ef4f4d53cc2c63b2276738ea15b",
+      "docs/tla/CharlotteBootTrust.tla": "c9edb0a6f74bc3d0dac70ea14eae1eee59e15774356bbad191d55f5467882a29",
+      "docs/tla/CharlotteBootTrust_authenticate_unsafe.cfg": "611d53f8615472e6958a8901a1ecd1b0011801228e319577633e070780b3d328",
+      "docs/tla/CharlotteBootTrust_boundary_unsafe.cfg": "8e415118debd8e9a467bce69e30d890b8ee024cc71d00cec360c9f5e8acb4c70",
+      "docs/tla/CharlotteBootTrust_contract.cfg": "46363cde40899130188ea50dea6f0aceff8b7bac675291d52862998170a82e57",
+      "docs/tla/CharlotteBootTrust_development_unsafe.cfg": "996e72ecbf931c6e5891f6ebaa7a6e6bc807b9ab01917a3a5d6161afc4b1849f",
+      "docs/tla/CharlotteBootTrust_enrollment_unsafe.cfg": "95b4dee9697707dc39edbe8ac6c94a4c49cfe3a0cd10c05c3d4084a0163f3395",
+      "docs/tla/CharlotteBootTrust_failure_unsafe.cfg": "2310166ce6c6c0bb4f93c1e4ee384c07b959920d8c29d109fc100b1107d74d15",
+      "docs/tla/CharlotteBootTrust_fixture.cfg": "023562d632e18920d8d51cac7cee5f5d9159aad42c423782d6d833b37e5b19df",
+      "docs/tla/CharlotteBootTrust_manifest_unsafe.cfg": "6989bfd31e1eb9c7f433017cc1c2a780af10a0d9f7bdc8d1cadaec20f8abb3c6",
+      "docs/tla/CharlotteBootTrust_overwrite_unsafe.cfg": "311a8f4022eb40cba78628ec14a7a32a324b7218084fdead778d7add6d9bbfc8",
+      "docs/tla/CharlotteBootTrust_platform_unsafe.cfg": "68b37ab0eb83682fa55e89ec62ae39c123b48dfce1abbd6f1bca86e4dfb239a7",
+      "docs/tla/CharlotteBootTrust_recipient_unsafe.cfg": "6dc6e0759a42289cbbd65888842c40efbea1b8e1207cb36458adfbef8248122f",
+      "docs/tla/CharlotteBootTrust_selection_unsafe.cfg": "a8eb3675ee03bc1c5a459c522ab94a26ce40a5abbefed662cde4776cadea0990",
+      "docs/tla/CharlotteBootTrust_stale_unsafe.cfg": "aec488139f350badb5164942bc4bbe05b58bc1178c7a713bdf086defddd6b88b",
+      "docs/tla/CharlotteBootTrust_uninstalled_unsafe.cfg": "99362ddbc2c34acd714b36f30f2e037ff17138e1b9845e9d6881242654be8a7f",
+      "docs/tla/CharlotteCQ.tla": "1557db52418f0e4d47a737951b4a1d9cae5dfb44329b228bbd749da22a4bdd04",
+      "docs/tla/CharlotteCQ_buffer_unsafe.cfg": "9c5a49c335ba999c468e18651ee9a60bfb336d7ea32db783de562f8c897bf5ac",
+      "docs/tla/CharlotteCQ_mini.cfg": "e1b7eafb8fbc246c9122055672615be144e3b43ed869c9dbe41ba4d7d101125f",
+      "docs/tla/CharlotteCapability.tla": "4e94c107f21e7486cfe23c232c2b1930557af27df89c45cf75f29f4ddd098f1a",
+      "docs/tla/CharlotteCapability_small.cfg": "6a0cf36f3f4845ea37d901eb3ddbbf603445789ba18081ef7646c3f7ea36c8e3",
+      "docs/tla/CharlotteCheckedWait.tla": "0a94737e26b40c49939af7233d765ef4c76523608e39bf1b21818ac344c129b7",
+      "docs/tla/CharlotteCheckedWait_deadline_unsafe.cfg": "ed16d0f4d9759d76eafa780f56f6be83a95e7ae4721e0535aa8249afcbc0e5d2",
+      "docs/tla/CharlotteCheckedWait_park_unsafe.cfg": "0851785424eb552b590f5b191e31a0b3ec38ff8f6ee2a437803cc47a0e60fbbc",
+      "docs/tla/CharlotteCheckedWait_rejection_unsafe.cfg": "d73cdb7ac12b71fc3413a87343adecbd23a3ed3fbe29d8f5bd12d024e7b10188",
+      "docs/tla/CharlotteCheckedWait_replay_unsafe.cfg": "48df5cf72013a629118216d005481a2bef0c8e6fbee23e29664470affbec15c1",
+      "docs/tla/CharlotteCheckedWait_result_unsafe.cfg": "609274f19fcbd3f2d1a259f03c98bd8670ee2790a2de9c1b127cc935a51139c5",
+      "docs/tla/CharlotteCheckedWait_small.cfg": "5c114d9f0027dc3382a9b0ba9516b8dbc88eed5dde9b1067ebd8eecaace13e04",
+      "docs/tla/CharlotteCheckedWait_timeout_unsafe.cfg": "92699d7f09749d4f7f05ecc0e5e11605d79a0d02b715f4814eb5e0e590c36477",
+      "docs/tla/CharlotteClusterIngress.tla": "4660b215db89bb5d67b8433091eff5bb0052c993152e5423c657b9909aa6ac13",
+      "docs/tla/CharlotteClusterIngress_history_unsafe.cfg": "b35cd382b188843b7ae065053d0095c1fd55c41b6695410e8d8824e2a7820926",
+      "docs/tla/CharlotteClusterIngress_readiness_unsafe.cfg": "811add7d3dc380ff4f5feb31c33ba002ca72fa6ebc3b45e4116b5427fdec0656",
+      "docs/tla/CharlotteClusterIngress_small.cfg": "402c878db4ccef9c752c84c9beee894d823a8bf0d5f669d62de57734f2063360",
+      "docs/tla/CharlotteClusterIngress_stale_snapshot_unsafe.cfg": "ed01b5382c1dc5aa11eee36b853a7cf72e5193f586d5e9075e6c73adb22127a2",
+      "docs/tla/CharlotteDMA.tla": "5c732aed07fa1f79463d4ca30d2aa7fc7e7c58f46c1e0a64f9445298867cd9fc",
+      "docs/tla/CharlotteDMA_small.cfg": "55befa332f585191e5078b4085601f1ea9439a02f24c042d14e2bc7ae3009e93",
+      "docs/tla/CharlotteDMA_unsafe.cfg": "8b5f798d0723b8d9640eae2f9fb4c8a20383b49552d501943826fb55ad25b2ac",
+      "docs/tla/CharlotteDmaOperation.tla": "2839f7d90627b32049ac677bd0040474df313f1dc862090e1d9373817787e682",
+      "docs/tla/CharlotteDmaOperation_abandon_unsafe.cfg": "ffb8ec7166354bd94c8b53dca935d7cd0f1332aa1d922ed625c09476b6716d10",
+      "docs/tla/CharlotteDmaOperation_access_unsafe.cfg": "5a7b9512acaf0c030ed76a2c9c834b244ad06e4742db5fea72f09e1ae4182c88",
+      "docs/tla/CharlotteDmaOperation_cell_unsafe.cfg": "afca9bcf0e4ebf495043761e5a75e5f707c2f015b7596471a97e4c078e88123b",
+      "docs/tla/CharlotteDmaOperation_confirmation_unsafe.cfg": "fe466b9e71056adebe75475a3ccced1a5fa41d428694013c3924e76e14f35ea5",
+      "docs/tla/CharlotteDmaOperation_context_unsafe.cfg": "ad3c3e24b3cfdd57d6dc07851a0c73d3de6ebd123b545facbdd0ab2bf8e62999",
+      "docs/tla/CharlotteDmaOperation_cpu_unsafe.cfg": "16d1450ba672e9366eeed68a17c018d1a1988bee2bcd286ea87a4883ef3031ef",
+      "docs/tla/CharlotteDmaOperation_drop_unsafe.cfg": "b12da60b76b0b776895ba9a2b267fed4f777f9fad6561c023fbbedb290c224b8",
+      "docs/tla/CharlotteDmaOperation_map_unsafe.cfg": "bed6cdfaf7f0df9d4ba31d5f8d5005f287bcbbacd82a291986fb9771fee74a27",
+      "docs/tla/CharlotteDmaOperation_preparation_unsafe.cfg": "6fd8ba8d7238d6cc415a8dcc300d10154fd02f7bc1833605bcc612357804ce13",
+      "docs/tla/CharlotteDmaOperation_public_unsafe.cfg": "6684e9fcb141fa7ab6fa1df96918a7df1c490c62f765e2b4296c325e05b463c2",
+      "docs/tla/CharlotteDmaOperation_readiness_unsafe.cfg": "e4153638e5f59bbf1728ed2f338ade189844ad1c7254aec8751e6cfc754cb57f",
+      "docs/tla/CharlotteDmaOperation_rearm_unsafe.cfg": "3e124e8f8d7cc95794c56b1f615fcd1e30b4000aae7c9207a35f54e99f933503",
+      "docs/tla/CharlotteDmaOperation_remap_unsafe.cfg": "a97e1f454c658a35aeaac53d1ce06552fe0a95ffae5522fff19e3512a7896362",
+      "docs/tla/CharlotteDmaOperation_small.cfg": "5cd7d31f47748b790b12b903fd5fdd309106400aa6a5511e6991fc06664ddc95",
+      "docs/tla/CharlotteEndpointObservers.tla": "42415be276a5a31546337c473cfb89300cee102664809905169eb713efb140b6",
+      "docs/tla/CharlotteEndpointObservers_small.cfg": "8a972975c5d21bc23df1d1529258c455d35f5278ad6f209c19349dfbe6c11e14",
+      "docs/tla/CharlotteEndpointObservers_unsafe.cfg": "c85058ca46cb9ed10c39c38742cdb1c2895571fc6247de2fbaedcd488aff89a2",
+      "docs/tla/CharlotteHardwareAsid.tla": "2074acb290a98b6113874dbb3a6c93bb213698d5731153acd0f099b996644928",
+      "docs/tla/CharlotteHardwareAsid_small.cfg": "f4ef9b3536f735756f09f04bd0297b4f74d54ce03a6725806b5475b26b72d8ef",
+      "docs/tla/CharlotteHardwareAsid_unsafe.cfg": "4cc26e9851630ffbd7b8f3de981304bda0e3be2d06bf16c2e71cd6d286d852c9",
+      "docs/tla/CharlotteIPC.tla": "cafa97f897a33d496eb5c1ce2da877e6546ec66f9202d20f6ab33280a49ad857",
+      "docs/tla/CharlotteIPC_small.cfg": "7b5369411db55b2a2e8ea88245bdffc3dfbeb4867528f59c9e6e659a27931570",
+      "docs/tla/CharlotteInterruptRoute.tla": "9e6fdc9caff46461273a279b2a76153c6f22c7c97152999a92a93b46e281b0b4",
+      "docs/tla/CharlotteInterruptRoute_small.cfg": "d2d75e070eab33d10fd0cc38a3d60f53788637dfac9dfe505df0702f8f98f24e",
+      "docs/tla/CharlotteInterruptRoute_unsafe.cfg": "58e087639848e1cae282cd413caf77b3fffd0b912ebdde3728c6d05820f8bf10",
+      "docs/tla/CharlotteIpcPublication.tla": "67d87012aaed9bed5eec8df42b68f46359153a618d43a9b0befcb6b92e009432",
+      "docs/tla/CharlotteIpcPublication_batch_unsafe.cfg": "f21d1ad0c3c4ae9110851d914f55df4e08a5583db20fb9a1c3524c8158f3af1f",
+      "docs/tla/CharlotteIpcPublication_cancel_unsafe.cfg": "fb3cb26ea11333c4341a9569f3d1eea6757d28d2bed3a8bab006c8930187cd6d",
+      "docs/tla/CharlotteIpcPublication_connection_unsafe.cfg": "aaca3189ab479abf22b273882ca92fdf23602696a91aba0c1ff316bd46e1beae",
+      "docs/tla/CharlotteIpcPublication_memory_unsafe.cfg": "157e67d386164b1789334327b7c329b5cc2f133203867a7f2f3738688616133d",
+      "docs/tla/CharlotteIpcPublication_observe_unsafe.cfg": "958ce487bbee6ff56aae8a9a40df99593537a6b64320f4a5641a262ce245b0f9",
+      "docs/tla/CharlotteIpcPublication_readiness_unsafe.cfg": "dbc976896ed54d43217106ac32f920a93ef1ea9be8821e71b926d16ca6a02a27",
+      "docs/tla/CharlotteIpcPublication_refund_unsafe.cfg": "6aad7a123d8d50f7604ea78ed9f3106e05c5d95559c6dda0e83948f533abdc57",
+      "docs/tla/CharlotteIpcPublication_restore_unsafe.cfg": "a96f0da36e15eda49e0698ed30b3f373425fac45e76d11f8f8b034e5866ac5dd",
+      "docs/tla/CharlotteIpcPublication_rollback_unsafe.cfg": "e835593816f7502ac984d59d370237950b166a938774ec5a45a5686afbab6313",
+      "docs/tla/CharlotteIpcPublication_serial_unsafe.cfg": "32130b6ce3d0d01be1df08a89b7dd38d9a7d476ad31cd3605df48376eb1a5650",
+      "docs/tla/CharlotteIpcPublication_small.cfg": "4c6da1ebeb79eeefa62bb0dbb9d26184956c1fdd6d097a5de41b120275d67d87",
+      "docs/tla/CharlotteIpcTransaction.tla": "bfc596a22480fae309c31732670b60024085014ec084d998dbbf8affd40fed7c",
+      "docs/tla/CharlotteIpcTransaction_rollback_unsafe.cfg": "89326400847cf5ac0fd76e7c68eb2f32385d551cd38ce201c70dd6a5a6b7fe99",
+      "docs/tla/CharlotteIpcTransaction_small.cfg": "67e0efe832fbadf7258296297af6afa293da1a78edcdb464a14cf9a70280a471",
+      "docs/tla/CharlotteIpcTransaction_timeout_unsafe.cfg": "5c748b860dec8df3fb253e6aefcaa8138835fac61dc0b6ea48c8a089cb2b4c00",
+      "docs/tla/CharlotteNamePublication.tla": "64e06c4d4eba6c9af622cc8433bcb27e97a9c55655f4151a9f4d4e0faf9728f1",
+      "docs/tla/CharlotteNamePublication_abort_unsafe.cfg": "e271ebbf4cb0a504119c836cbdc42dcab8d6039a85209439f0dfa9c1d6f90a8c",
+      "docs/tla/CharlotteNamePublication_deferred_unsafe.cfg": "d1c9e007af1d13797dd43395aef321c857bb869285cbf9e13f9259b6b0ebf705",
+      "docs/tla/CharlotteNamePublication_disposal_unsafe.cfg": "9962dfc20c9bb6e4e7bdc54a2ac6a68dae04a701427004a494b54f9aaee02865",
+      "docs/tla/CharlotteNamePublication_exhausted_unsafe.cfg": "a942fbefc77918b1ad9ee416f77bd0357a1205e9cd831c1110e30e193d4deca2",
+      "docs/tla/CharlotteNamePublication_exhaustion.cfg": "9276ebe1529abbd3863d389066d633d0440adce13c69cccbdf7c8facc4c81cc6",
+      "docs/tla/CharlotteNamePublication_hint_unsafe.cfg": "8484b3ae8b8c58ceeee38e3e4bf4bee13056b420883c04924393984f85af2c09",
+      "docs/tla/CharlotteNamePublication_public_unsafe.cfg": "e569ee4d0b6f3bb86c05785a6574565195ef0d73a64edd9074cf61e18710443f",
+      "docs/tla/CharlotteNamePublication_quota_unsafe.cfg": "75624b9f524283872e18b0ec2d36c49e9b7b70a78d10e0b9248450c6eb10ee36",
+      "docs/tla/CharlotteNamePublication_replacement_unsafe.cfg": "02b0c2abe35eacfa067a22403296400228c8fff7e6531450bc428aa9bb3a8c8c",
+      "docs/tla/CharlotteNamePublication_retire_unsafe.cfg": "435a962cad50daf5e8c928c23bb0034a7b1f88f8b0d46b8e9018eb3b521b1748",
+      "docs/tla/CharlotteNamePublication_serial_unsafe.cfg": "beb2131c7c79377259741ca89e909273e0bde7bf43f7cb1e1413f182c911ad30",
+      "docs/tla/CharlotteNamePublication_small.cfg": "df05aff71bceb53c288f9e29ec0f64fd4efd5d17face5d1884fdc0a339b7dd88",
+      "docs/tla/CharlotteNamePublication_stale_unsafe.cfg": "23470b9661034062398a56368f0ff5980ecbe731f4f764da51b4e4de5ee89ac3",
+      "docs/tla/CharlotteNamePublication_watch_unsafe.cfg": "acff70f0762e23fa9ba9411edba9e5b9464a5ac9f6ba54f94ac03af10f9c020b",
+      "docs/tla/CharlotteNamePublication_wrap_unsafe.cfg": "d857d5368be2ca80b990b0b6d476da2d24ba8e5719116b19ce30a138794241a3",
+      "docs/tla/CharlottePlacementControl.tla": "2c93a5cf0a91d5babd0d4fbb863ea0d0c64eeda82a9bfc8d2467e19ba17e2515",
+      "docs/tla/CharlottePlacementControl_dwell_unsafe.cfg": "c1ffcc9f00441a11bd727cb812389a12dab91898d0764081e763693abaf55e8a",
+      "docs/tla/CharlottePlacementControl_reserve_unsafe.cfg": "969d1b58a2debd681a1beea9a4b69585f0f04f3e563eb78ddf32ef5396382733",
+      "docs/tla/CharlottePlacementControl_small.cfg": "ea702173e19534cf9f0967fe2f5a46bc5ea0e25a78c6a0a66ecd96da6e514cf8",
+      "docs/tla/CharlotteRaft.tla": "6ab1ef702a12515a8299263af5d5216115dd976dfee7d69e6b394c4c1fc94d80",
+      "docs/tla/CharlotteRaftJoin.tla": "4436022e36d4ed88690e3ba1dbd995bcb7bbaf60acd2c9da10063bb5cb221486",
+      "docs/tla/CharlotteRaftJoin_restart_unsafe.cfg": "9ae634438f5cfcd525ef79f229861ed5f16b09ded70282aa2d672670291b95eb",
+      "docs/tla/CharlotteRaftJoin_small.cfg": "645defb0cbba7276f412504af6ae1edd648bb75dc612bfec0c4466de5e15c833",
+      "docs/tla/CharlotteRaftJoin_unsafe.cfg": "e9e87d139447a922465906760b61028efcfdeb06e08fc0657111127bb1d3f3e1",
+      "docs/tla/CharlotteRaftLog.tla": "f1264ced4451c6498bbc23877475805613a798d4baa4dc7b92a16804f4d1266b",
+      "docs/tla/CharlotteRaftLog_small.cfg": "d0922611874d0a0c3aad1302c79cbeb2964b28047f5a4d62828c4b83ba44addb",
+      "docs/tla/CharlotteRaftMembership.tla": "ee283cee5f5c54cbd98a0ef002dbe2d8592f1dbda13c11a31c3dd118e30e3f4d",
+      "docs/tla/CharlotteRaftMembership_beforecatchup_unsafe.cfg": "1bebd17d6742862ea1b42603110142ab7ecfce3181a38486f900b42494c5662c",
+      "docs/tla/CharlotteRaftMembership_learnerleader_unsafe.cfg": "e03b850a627f57c6a67221bab01809966fd326845479bdc9ff9cb739c80152f8",
+      "docs/tla/CharlotteRaftMembership_oldonly_unsafe.cfg": "66c4d2ee02c6f971fb8529c3f27c6a484240e7e88787c4089e284967b569c818",
+      "docs/tla/CharlotteRaftMembership_small.cfg": "c4949302102f62fe00a4d7b2144ad348bd0ac07a14f7e49819eb9d45a3c55a3c",
+      "docs/tla/CharlotteRaftRead.tla": "ba501b11cfb8f5b1b49783164821f8f9919f7bebd005750d588af53bc55bf4a6",
+      "docs/tla/CharlotteRaftRead_apply_unsafe.cfg": "43cba1003d8bd416c940a67210311278e210565b7699d24a6b335e8cfc358231",
+      "docs/tla/CharlotteRaftRead_binding_unsafe.cfg": "eae17e21a319cc8ca76e862f0e5e8c426bb067b4df995128155e0bd859aae816",
+      "docs/tla/CharlotteRaftRead_commit_unsafe.cfg": "dc43808ad84e9c1f980a81124b59560f5e3494489c9b1c70f2cba87715ca87b7",
+      "docs/tla/CharlotteRaftRead_lease_unsafe.cfg": "04027533e5b606ff3995f03b3534135a005ced922ceff5b42d55813f2c7d7b53",
+      "docs/tla/CharlotteRaftRead_small.cfg": "d8356638da42d1a5f9e2bf70e011584a4d8e155f81401747b993c5df58f3c786",
+      "docs/tla/CharlotteRaftResponse.tla": "3d18cf384a8769934d40b538d1b66a62c347f24429e03e347076c359972fa3fa",
+      "docs/tla/CharlotteRaftResponse_backoff_unsafe.cfg": "9a72a7d3759a03c6515d0f345ef67bbb015881ae50f906b36259173c1618ec55",
+      "docs/tla/CharlotteRaftResponse_invalid_unsafe.cfg": "955dbde49aea1b4811db506ec61c662d3650272d7ec982c8d5b8d3506a36ed0f",
+      "docs/tla/CharlotteRaftResponse_oldterm_unsafe.cfg": "ca31d6e2a4e4a1545c2a541d583bdd30e68ff7c16857397c307745383f1cd4fe",
+      "docs/tla/CharlotteRaftResponse_regress_unsafe.cfg": "fec5226e58addf76e4676b34d144bb9f85785a3b725ecf88b420ef6e4161e192",
+      "docs/tla/CharlotteRaftResponse_small.cfg": "d8356638da42d1a5f9e2bf70e011584a4d8e155f81401747b993c5df58f3c786",
+      "docs/tla/CharlotteRaftSnapshot.tla": "3ecd5c17fdb200227c0de9608b732df5ae18c648acdcf4619d607eff3a7639d8",
+      "docs/tla/CharlotteRaftSnapshot_small.cfg": "0ea7a243aab5cdeace57a0ef990237f8893614d30afc06427d98ce0425baafb1",
+      "docs/tla/CharlotteRaftStream.tla": "9569b70cc70a89633d88c2b1605b685ed8269aeb835ef11919325905b800e338",
+      "docs/tla/CharlotteRaftStream_offset_unsafe.cfg": "69eff1ae0d71551616c20ca9453f5037cc655ff676343d2a0ef5c3adfe6ec35d",
+      "docs/tla/CharlotteRaftStream_owner_unsafe.cfg": "d4d8ff4cad3ee145ee09909d9aef43cf97d52f169f2f8675f768a386bb5b12d5",
+      "docs/tla/CharlotteRaftStream_small.cfg": "1cbf9e0476239a905305c0bafff90221959624090d88d60b1a96e88ea41a1cdc",
+      "docs/tla/CharlotteRaft_small.cfg": "48294c1cddc1d440a1e2d70a80fd6ea9da8ade2d20ff0f1f4f54b85e8843bb9b",
+      "docs/tla/CharlotteReliableMessage.tla": "3a17cb197cbf7818717940a30cf6930f41a3b5e6fe16b8dfe4cfa52851e51f6a",
+      "docs/tla/CharlotteReliableMessage_identity_unsafe.cfg": "4cbb48be424584a73181c7c5495e31faf41c3b967405092b520a41b9503678da",
+      "docs/tla/CharlotteReliableMessage_regression_unsafe.cfg": "49dbe795212fe69495d4c927592dce59074306c5b30c254d6d4bf8f43bd6ce8b",
+      "docs/tla/CharlotteReliableMessage_small.cfg": "85adbd3bb065b8da79a7d8dfe58fd5e4b530f10d26015f83952c4a82e22edea5",
+      "docs/tla/CharlotteRemoteCall.tla": "36de513b3ffbfa1e9cbd74bac0404fc1ef66cd5400c7b536a9da18c1be2b1c55",
+      "docs/tla/CharlotteRemoteCall_small.cfg": "56d4993c70c7c7f9a5d5ec478240776ee12e00432adf8402a6cc291bc7fe9601",
+      "docs/tla/CharlotteRootRetirement.tla": "817ce0b352e358ab901f6392354d4a42ca294274080e5f1b979d1105f563d87e",
+      "docs/tla/CharlotteRootRetirement_abandon_unsafe.cfg": "693f4eeb72902cd536fb1fa185b05e7daec0f0fd50f9fe655f1dcbd9396c7202",
+      "docs/tla/CharlotteRootRetirement_lease_unsafe.cfg": "185baa2c91ce27fd6872e654ee522f6b3770f467e0eead8557bb26c60c95c889",
+      "docs/tla/CharlotteRootRetirement_physical_unsafe.cfg": "fa20b8c4b353156b8f39c48362bc3ea995377e31d81a69f742300ca41077edab",
+      "docs/tla/CharlotteRootRetirement_refund_unsafe.cfg": "c01d5c13fbee34239773c05eb0a33db1d5c31dfaa2ecf9a8de25853de659faed",
+      "docs/tla/CharlotteRootRetirement_release_unsafe.cfg": "47ca560b0c4fba4952c7009e3fb6af8c5c3cde906a7bb943d70aea4113dbada5",
+      "docs/tla/CharlotteRootRetirement_small.cfg": "9ee0187ad3b152ba75044f87f71788bb9bd1f5d2af8ebf0a1b1389c487b593d1",
+      "docs/tla/CharlotteScheduler.tla": "a58ef1f0f39ebb06d7b5d09568071891b51ecc327ca097b018155026c2acab5e",
+      "docs/tla/CharlotteScheduler_domain_abort_unsafe.cfg": "53332baa166196b745e9c8a9ae53ca6f0df3675120de0ff4fa4c9b8d7c24ee56",
+      "docs/tla/CharlotteScheduler_small.cfg": "f48844b2897340be11b29446d9fe763fe5ac12eb09a4d98128ed8567adffb047",
+      "docs/tla/CharlotteScheduler_unsafe.cfg": "d8816f8c15bd9c50ccb9421ba88b5aba6c2b737b03d8f71bddbb8791cf8165c5",
+      "docs/tla/CharlotteServiceLifecycle.tla": "5cab06543727b1373ae1ba9a342217f93a275fb3058cc33c3408c6f6fc39dee0",
+      "docs/tla/CharlotteServiceLifecycle_small.cfg": "e44daeaa25b96571f91e1f440ef61865ca2cfe7ac2908e3761a0c17a24fc1762",
+      "docs/tla/CharlotteServiceLifecycle_unsafe.cfg": "dfbae5bdd1af4274cec07f6501be0724140ff96343be816b836d7458262e1e74",
+      "docs/tla/CharlotteSnapshotRestore.tla": "c71563b3814d1f58b6bee72dac6bfd78e76d55d50895dad5c70372002f42eb88",
+      "docs/tla/CharlotteSnapshotRestore_application_unsafe.cfg": "983d4959987c263293f339a66848e2d2160c8d47314b1006fcc965139f78c041",
+      "docs/tla/CharlotteSnapshotRestore_durable_unsafe.cfg": "08aab0735de4db738b699997e9c1e9db496a2c5627c71ead888bb9755dae2321",
+      "docs/tla/CharlotteSnapshotRestore_exposure_unsafe.cfg": "6aae5eb519c5d5e67c5cb64be07b8b64f3f82635236f0854f9d6797d00f193ad",
+      "docs/tla/CharlotteSnapshotRestore_join_unsafe.cfg": "f9e148560d035b72c231e971fabe1e0281db21539b1886d86a6aacc16bd6b079",
+      "docs/tla/CharlotteSnapshotRestore_membership_unsafe.cfg": "6de0ef827f05f5e144f88fb97473f5b8f1b15b49df87d253c6a58565d571a3b6",
+      "docs/tla/CharlotteSnapshotRestore_ordering_unsafe.cfg": "5c773fbf7a6930b96ee72c86b0a06ecba3fae85b6e51b05e03164059052eb6f5",
+      "docs/tla/CharlotteSnapshotRestore_progress_unsafe.cfg": "8e8ff5e47b8a3d60cab8d400802ff594af6320666274ce7366482045f136a854",
+      "docs/tla/CharlotteSnapshotRestore_small.cfg": "d8356638da42d1a5f9e2bf70e011584a4d8e155f81401747b993c5df58f3c786",
+      "docs/tla/CharlotteStackGrowth.tla": "36dce6679dd969bd14136bb79c5c2cff8cec8df6479f0d33458ab196324a4a5f",
+      "docs/tla/CharlotteStackGrowth_grow_unsafe.cfg": "bef8d583b177e41bc58ef6312d0726129b58aa62f0539fe0e3b2b3dc4cf99e74",
+      "docs/tla/CharlotteStackGrowth_leak_unsafe.cfg": "d3df7e3d6e69ea109cb6b9ee06c57cf54c9d6d4ac92ede12b7497066093857d6",
+      "docs/tla/CharlotteStackGrowth_small.cfg": "1931995ce026befe604d6225a63e43cf5afbc336881c9141222af8943076baf9",
+      "docs/tla/CharlotteThreadJoin.tla": "3e61029e5fa352c6b065f0edd165a94f132095fb1c0d79c31b57d6761653b0e6",
+      "docs/tla/CharlotteThreadJoin_small.cfg": "64bf35e8eea699f9f8d1f1fd51c4c8c8b3f0e123a32912015546ea891563c819",
+      "docs/tla/CharlotteThreadJoin_unsafe.cfg": "1caa3d988aea11eefcc695c7524337b2ceac2ccfa8daa7620732affb6fc577d7",
+      "docs/tla/CharlotteThreadJoin_wrap_unsafe.cfg": "6304719f640bb360f0aa8f7c85face93526dea4e490f9de314dcc46bdf62eed9",
+      "docs/tla/CharlotteTimedWait.tla": "8739f35fb3eb7d97b5e9b41c786ada3f1f74d7bfd9d285fbb332bd457e06078e",
+      "docs/tla/CharlotteTimedWait_small.cfg": "a3d3b0fcaf80d4030a515699c0f02d29b6951f4e4170774df1c83cb558aba1d2",
+      "docs/tla/CharlotteTimedWait_unsafe.cfg": "1ffdb5d33dd8d1280de6aa281c33a646b6bfa111f6f3ac8eb82b9800c8833be6",
+      "docs/tla/check.sh": "3a6139ef7a9949e067d06d676f9c36af5bff1aedf93143c07f956a37eee7cda7"
+    },
+    "unchanged_inputs": 180,
+    "qualification": "Host HTTP transport and operation loop remain outside existing kernel/placement model abstractions; no model transition changed."
+  },
+  "runtime_scope": {
+    "kernel_or_service_source_changes": false,
+    "fresh_guest_runs": 0,
+    "fresh_x86_build": false,
+    "previous_guest_results_retained_in_preceding_report": true
+  },
+  "preserved_pdf": {
+    "path": "docs/manual-v2/charlotte.pdf",
+    "sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f",
+    "edited_or_rendered": false
+  },
+  "unchanged_boundary_inputs_sha256": {
+    "Cargo.toml": "dc27f5e5077e07fc7fed9422b825620fb83c6d828b986ca5cbeba175b2148e45",
+    "Cargo.lock": "1e425c4211e2059e3da207d53e2c06b360ba69899a3644ab65609373f58323d6",
+    "tools/cluster-sign/Cargo.toml": "4bdb23cea0a8c72ca6e055ca99426c46124b3dea2ded396ac14acdecb0005a9c",
+    ".cargo/config.toml": "0a45a5f5ba64d678118b745947c36b9580f9815315c5856577e01f4f68091fe4",
+    "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
+    "scripts/run-aarch64.sh": "d3a1e6123786ac9e880f79f577520d5f59378d98e909de647ba9260b6829d901",
+    "scripts/run-x86_64.sh": "aadaf04b63519e457dcbf23ab91e2087483398076f4705900c4ad6f6f395612e",
+    "scripts/build-catten-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
+    "scripts/build-catten-services-x86_64.sh": "827ecdb3352742be1bf36152c5c13ec44a5101fa737aa0d3d321ccd715709291"
+  },
+  "reviewed_source_sha256": {
+    "docs/architecture/cluster-artifacts-and-placement.md": "f0efb356f4080cbbdb319f9aee4fabae9dfc015b9c40aa6b9a59d46cf77260d8",
+    "docs/guides/testing.md": "7f00bc5f8a855bc58ff2bd26fbbc20576fc24e8e679cde57cf11fd22f839e2b8",
+    "docs/manual-v2/chapters/19-cluster-vision.tex": "f2154e7f018577199c0cbda598ce1ea500c9e201b815aa7da47519918223a707",
+    "docs/reference/api-simplification.md": "5818acd9ede4e05c10c9fde19959abb358daa3783e831de6c81a5a69101630b2",
+    "docs/reference/cleanup-recovery.md": "25f8bc245b4a4bc5f76a7d860f42f5b2ab84b59ca7497a8b7c24c272f6b41d18",
+    "docs/reference/deployment-ingress.md": "57547d0a3f5f0edd1fae9d326eeb26777a2d15f0afcd803699858c40eea50796",
+    "docs/reference/observability.md": "f8dfaa68369e4142fe28981d5e2f7d2ea32183c964a58ca593046b114dc674fb",
+    "docs/reference/release-admission.md": "aac48020db0c47874f4eab2b5f245145eb758db133ab4a70a812bb8a3f9cbf57",
+    "docs/reference/security-remediation.md": "12d2c9db9a58403c947ca5bc31bc2b58177454d45f63d046993df1ab303ec209",
+    "docs/reference/tooling-inputs.md": "1197121c05cc64057addc76dfbf7f7d829abe4e94b17e7534f50a2e88de3e0d2",
+    "docs/reports/README.md": "d8c500de0ebbd4cacb73f1758fd1f6de1d5b5a58e1acdede4215e344bb1c00b1",
+    "docs/reports/audits/2026-10-21-security-ingress-deadline.md": "d50d4e3baf013f0e842c78109d90afdbd5ce35c610078a35e70c3da4bb9b7005",
+    "scripts/tests/test-ingress-deadline.py": "d8f6deed8a73b693267e391087adbe48aefac8a7cac98166ccad448d9db59ac0",
+    "tools/cluster-sign/src/http_client.rs": "a7e829ab9d5650b16fa2496bc8026cb09aa7a91f9c4ea21bd45bfb45d1e2f182",
+    "tools/cluster-sign/src/main.rs": "304f288115846fd39b145c0caecfe3ef0586e40b1bb1eba031b1e7e11f5dd9aa"
+  },
+  "remaining_limits": [
+    "Blocking host file I/O/stdout and OS scheduling/timeout precision can delay return; no hard real-time cancellation claim.",
+    "No live blocked-connect, send-buffer exhaustion or host filesystem-stall injection.",
+    "HTTP readiness still uses bounded-interval polling because it has no subscription.",
+    "Standalone named status still uses its previous ready substring check and observes current state, without admission binding.",
+    "Ingress peer authentication, server-side progress/teardown, coordinated rollback and production trust remain separate.",
+    "Boot fixture startup retry policy is unchanged and supplies no general authority to replay uncertain accepted work."
+  ],
+  "capture_note": "Observed diagnostics, per-case results and artifact hashes are embedded. Baseline console capture omits the initial test-line prefix; no full log archive is claimed. Temporary paths identify fixture execution only and are not required to assess this evidence."
+}

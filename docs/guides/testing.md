@@ -1795,3 +1795,22 @@ with `target/release/cluster-sign`. Run `catten-services --lib` tests in both
 profiles: projected capacity charging must execute with debug assertions disabled.
 See the [release-generation audit](../reports/audits/2026-10-21-security-release-generation.md)
 for execution evidence and the remaining deadline/polling and ownership limits.
+
+
+### Host ingress deadline controls
+
+`python3 scripts/tests/test-ingress-deadline.py --signer target/debug/cluster-sign -v`
+uses an owned loopback peer with delayed admission/status and trickled replies.
+Its seven methods cover nine cases: matching progress, a shared admission/readiness
+budget, sequential descriptor budgets, a bounded polling pause, hostname rejection
+and three extreme-timeout rejections without panic or network access. Time limits
+allow host scheduling margin. `--evidence PATH` records each CLI result, timing
+and request sequence; repeat with `target/release/cluster-sign`.
+
+Rust controls exercise numeric IPv4/IPv6 grammar, checked clock arithmetic,
+remaining-budget caps, no socket after expiry, partial/interrupted writes and
+terminal write failures. Existing generation matrices still check one POST per
+notification. These controls do not inject a live blocked connect, kernel send
+buffer exhaustion or host filesystem stalls. See the
+[deadline audit](../reports/audits/2026-10-21-security-ingress-deadline.md) for the
+preserved baseline and current limits.

@@ -878,8 +878,14 @@ rejects duplicate artifact names and retains the positive generation returned
 for each admitted descriptor. A complete ready record must match that exact
 generation; older observations remain pending, while a newer generation reports
 supersession. Malformed acknowledgement or readiness records stop observation
-without replaying accepted work. The client still has separate timeout and
-polling limitations. Artifacts must already be signed and uploaded; object-store
+without replaying accepted work. Apply captures one checked monotonic deadline
+before file preparation and carries it through every admission and readiness
+query. Connect, partial writes and response fragments use the remaining budget;
+the polling interval is shortened to the time left. Ingress endpoints must use
+numeric \texttt{IPv4:port} or \texttt{[IPv6]:port} with a nonzero port; hostnames
+and URLs reject before network access. Zero apply timeouts and values outside the
+clock range reject. Blocking host file I/O and stdout are not preempted, and
+readiness still uses status polling. Artifacts must already be signed and uploaded; object-store
 credentials remain outside the generated application and its descriptors.
 
 \texttt{deployment-apply} orchestrates independent descriptor admissions.
@@ -912,8 +918,9 @@ exact signed envelope digest and descriptor count, then retains each component's
 own deployment generation. Older observations stay pending, matching ready
 observations complete, and supersession fails. Malformed receipts or status
 records leave the operation unconfirmed without replaying its notification.
-Polling, end-to-end deadlines, and ingress peer authentication remain separate
-work. Coordinated rollback, progress policy, and a semantic process bundle that
+Release apply carries the same original deadline through receipt admission and
+component observation. Host polling, blocking host file I/O, and ingress peer
+authentication remain separate work. Coordinated rollback, progress policy, and a semantic process bundle that
 also binds BPMN, schemas, and provenance remain controller work.
 
 Retirement is nevertheless bounded locally. On the first reconciliation poll,

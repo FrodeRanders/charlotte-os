@@ -248,9 +248,14 @@ whose immutable epoch has left bounded history.
 
 The operations-facing `GET /v1/ingress-policy` endpoint reports the committed
 catalog generation, signed policy sequence, assignment count, and admission
-validity interval. `cluster-sign ingress-policy-status [host:port]` wraps this
+validity interval. `cluster-sign ingress-policy-status [IP:port]` wraps this
 query. Before the first policy commit it returns not found because the
 launch-time bootstrap table is local fallback rather than replicated state.
+
+The signer ingress endpoint uses a numeric IPv4 or bracketed IPv6 address and an
+explicit nonzero port. Its policy-status query uses one 30-second network budget;
+see [tooling inputs](tooling-inputs.md). The observation supplies no peer
+authentication or admission authority.
 
 The aggregation model follows the two explicit producer paths above: each
 service *voluntarily publishes* a status op, and the `observe` service is the

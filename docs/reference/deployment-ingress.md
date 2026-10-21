@@ -18,9 +18,9 @@ store credentials.
    monotonic sequence, per-thread stack allocation in 4 KiB pages, maximum
    active-thread count, cooperative shutdown grace, placement policy, and
    named capability grants.
-5. Submit it with `cluster-sign deployment-notify <descriptor> [host:port]`.
+5. Submit it with `cluster-sign deployment-notify <descriptor> [IP:port]`.
 6. Inspect the current named deployment with
-   `cluster-sign deployment-status <artifact-name> [host:port] [wait-seconds]`.
+   `cluster-sign deployment-status <artifact-name> [IP:port] [wait-seconds]`.
    Use `deployment-apply` below to bind a readiness wait to the generation
    returned by descriptor admission.
 
@@ -101,6 +101,15 @@ developer-reviewed component plan. Only `CDEPLOY6` is accepted. Its exact
 older formats reject even with a valid signature. Regenerate old deployment
 files and their containing signed release envelopes using the current tooling.
 
+Ingress endpoints for all `cluster-sign` commands use numeric `IPv4:port` or
+`[IPv6]:port` with a nonzero port; hostnames and URLs reject before connecting.
+Apply captures one deadline before file preparation. Partial writes, interrupted
+calls and response fragments consume the same budget, as do later descriptor
+notifications and readiness queries. A timeout leaves submitted work unconfirmed
+without replay. The status polling interval uses at most the remaining budget.
+Blocking host filesystem calls and stdout are not preempted. See
+[tooling inputs](tooling-inputs.md) for standalone command budgets and limits.
+
 `deployment-apply` is currently release orchestration, not atomic bundle
 admission. Each descriptor is a separate Raft entry, so a transport or policy
 failure can leave an accepted prefix of the release committed. The client does
@@ -150,8 +159,10 @@ replay accepted notification. See [release admission results](release-admission.
 for the IPC, relay and HTTP grammar and ownership boundary.
 
 A fetch or launch failure can leave a release committed but not ready; automatic
-rollback and rollout policy remain controller work. Host polling, end-to-end
-operation deadlines and ingress peer authentication remain separate gaps.
+rollback and rollout policy remain controller work. Apply carries one checked
+monotonic deadline from preparation through admission and readiness; each network
+step uses the remaining budget. Host polling, blocking filesystem calls and
+ingress peer authentication remain separate boundaries.
 `CRELEASE` binds executable deployment decisions, not
 yet the BPMN digest, schemas, provenance graph, or other
 semantic content of a complete Durga process bundle.

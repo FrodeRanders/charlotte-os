@@ -5,6 +5,7 @@
 //! into subtly different interpretations of the signed byte stream.
 
 mod file_hash;
+mod http_client;
 mod key_encoding;
 mod profile_input;
 mod rollout;
@@ -24,13 +25,8 @@ use std::{
         SeekFrom,
         Write,
     },
-    net::TcpStream,
+    net::SocketAddr,
     process::ExitCode,
-    thread,
-    time::{
-        Duration,
-        Instant,
-    },
 };
 
 use charlotte_launch::{
@@ -60,6 +56,12 @@ use ed25519_compact::{
     PublicKey,
     SecretKey,
     Signature,
+};
+use http_client::Deadline;
+#[cfg(test)]
+use http_client::{
+    read_framed_http_response,
+    HTTP_RESPONSE_LIMIT,
 };
 use rand_core::UnwrapErr;
 use zeroize::Zeroizing;
@@ -907,29 +909,18 @@ fn operations_bundle_verify(args: &[String]) -> Result<()> {
 fn operations_bundle_notify(args: &[String]) -> Result<()> {
     let path = args.first().ok_or_else(|| "missing bundle path".to_owned())?;
     let endpoint = args.get(1).map_or("127.0.0.1:8081", String::as_str);
+    let endpoint = http_client::endpoint(endpoint)?;
+    let deadline = Deadline::after_seconds(30)?;
     let bytes = read_bounded_regular(path, operations_bundle::MAX_BUNDLE_LEN)?;
     operations_bundle::decode(&bytes)
         .ok_or_else(|| "operational bundle is malformed".to_owned())?;
-    let mut stream = TcpStream::connect(endpoint)
-        .map_err(|error| format!("connect to deployment ingress {endpoint}: {error}"))?;
-    stream
-        .set_read_timeout(Some(Duration::from_secs(30)))
-        .map_err(|error| format!("set read timeout: {error}"))?;
-    stream
-        .set_write_timeout(Some(Duration::from_secs(30)))
-        .map_err(|error| format!("set write timeout: {error}"))?;
     let header = format!(
         "POST /v1/operations HTTP/1.1\r\nHost: {endpoint}\r\nContent-Type: \
          application/vnd.charlotte.operations-bundle\r\nContent-Length: {}\r\nConnection: \
          close\r\n\r\n",
         bytes.len()
     );
-    stream
-        .write_all(header.as_bytes())
-        .and_then(|()| stream.write_all(&bytes))
-        .map_err(|error| format!("send operational bundle: {error}"))?;
-    let response = read_http_response(&mut stream)
-        .map_err(|error| format!("read operational admission response: {error}"))?;
+    let response = http_client::exchange(endpoint, header.as_bytes(), &bytes, deadline)?;
     let status = response.lines().next().unwrap_or_default();
     if !status.starts_with("HTTP/1.1 202 ") {
         return Err(format!("operational admission failed: {}", response.trim()));
@@ -1444,27 +1435,16 @@ fn shutdown_verify(args: &[String]) -> Result<()> {
 fn shutdown_notify(args: &[String]) -> Result<()> {
     let path = args.first().ok_or_else(|| "missing shutdown-intent path".to_owned())?;
     let endpoint = args.get(1).map_or("127.0.0.1:8081", String::as_str);
+    let endpoint = http_client::endpoint(endpoint)?;
+    let deadline = Deadline::after_seconds(30)?;
     let bytes = read_bounded_regular(path, shutdown::ENCODED_LEN)?;
     shutdown::decode(&bytes).ok_or_else(|| "shutdown intent is malformed".to_owned())?;
-    let mut stream = TcpStream::connect(endpoint)
-        .map_err(|error| format!("connect to deployment ingress {endpoint}: {error}"))?;
-    stream
-        .set_read_timeout(Some(Duration::from_secs(30)))
-        .map_err(|error| format!("set read timeout: {error}"))?;
-    stream
-        .set_write_timeout(Some(Duration::from_secs(30)))
-        .map_err(|error| format!("set write timeout: {error}"))?;
     let header = format!(
         "POST /v1/shutdowns HTTP/1.1\r\nHost: {endpoint}\r\nContent-Type: \
          application/vnd.charlotte.shutdown\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
         bytes.len()
     );
-    stream
-        .write_all(header.as_bytes())
-        .and_then(|()| stream.write_all(&bytes))
-        .map_err(|error| format!("send shutdown notification: {error}"))?;
-    let response = read_http_response(&mut stream)
-        .map_err(|error| format!("read shutdown response: {error}"))?;
+    let response = http_client::exchange(endpoint, header.as_bytes(), &bytes, deadline)?;
     if !response.lines().next().unwrap_or_default().starts_with("HTTP/1.1 202 ") {
         return Err(format!("shutdown notification failed: {}", response.trim()));
     }
@@ -1608,26 +1588,17 @@ fn ingress_policy_verify(args: &[String]) -> Result<()> {
 fn ingress_policy_notify(args: &[String]) -> Result<()> {
     let path = args.first().ok_or_else(|| "missing ingress-policy path".to_owned())?;
     let endpoint = args.get(1).map_or("127.0.0.1:8081", String::as_str);
+    let endpoint = http_client::endpoint(endpoint)?;
+    let deadline = Deadline::after_seconds(30)?;
     let bytes = read_bounded_regular(path, ingress_policy::MAX_ENCODED_LEN)?;
     ingress_policy::decode(&bytes).ok_or_else(|| "ingress policy is malformed".to_owned())?;
-    let mut stream = TcpStream::connect(endpoint)
-        .map_err(|error| format!("connect to deployment ingress {endpoint}: {error}"))?;
-    stream
-        .set_read_timeout(Some(Duration::from_secs(30)))
-        .and_then(|()| stream.set_write_timeout(Some(Duration::from_secs(30))))
-        .map_err(|error| format!("configure ingress-policy connection: {error}"))?;
     let header = format!(
         "POST /v1/ingress-policy HTTP/1.1\r\nHost: {endpoint}\r\nContent-Type: \
          application/vnd.charlotte.ingress-policy\r\nContent-Length: {}\r\nConnection: \
          close\r\n\r\n",
         bytes.len()
     );
-    stream
-        .write_all(header.as_bytes())
-        .and_then(|()| stream.write_all(&bytes))
-        .map_err(|error| format!("send ingress-policy notification: {error}"))?;
-    let response = read_http_response(&mut stream)
-        .map_err(|error| format!("read ingress-policy response: {error}"))?;
+    let response = http_client::exchange(endpoint, header.as_bytes(), &bytes, deadline)?;
     if !response.lines().next().unwrap_or_default().starts_with("HTTP/1.1 202 ") {
         return Err(format!("ingress-policy notification failed: {}", response.trim()));
     }
@@ -1637,19 +1608,11 @@ fn ingress_policy_notify(args: &[String]) -> Result<()> {
 
 fn ingress_policy_status(args: &[String]) -> Result<()> {
     let endpoint = args.first().map_or("127.0.0.1:8081", String::as_str);
-    let mut stream = TcpStream::connect(endpoint)
-        .map_err(|error| format!("connect to deployment ingress {endpoint}: {error}"))?;
-    stream
-        .set_read_timeout(Some(Duration::from_secs(30)))
-        .and_then(|()| stream.set_write_timeout(Some(Duration::from_secs(30))))
-        .map_err(|error| format!("configure ingress-policy connection: {error}"))?;
+    let endpoint = http_client::endpoint(endpoint)?;
+    let deadline = Deadline::after_seconds(30)?;
     let request =
         format!("GET /v1/ingress-policy HTTP/1.1\r\nHost: {endpoint}\r\nConnection: close\r\n\r\n");
-    stream
-        .write_all(request.as_bytes())
-        .map_err(|error| format!("query ingress-policy status: {error}"))?;
-    let response = read_http_response(&mut stream)
-        .map_err(|error| format!("read ingress-policy status: {error}"))?;
+    let response = http_client::exchange(endpoint, request.as_bytes(), &[], deadline)?;
     if !response.lines().next().unwrap_or_default().starts_with("HTTP/1.1 200 ") {
         return Err(format!("ingress-policy status failed: {}", response.trim()));
     }
@@ -1681,115 +1644,23 @@ fn node_key(args: &[String]) -> Result<()> {
     Ok(())
 }
 
-const HTTP_RESPONSE_LIMIT: usize = 8192;
-
-/// Observe one complete bounded response, without requiring transport EOF.
-fn read_framed_http_response(
-    mut read: impl FnMut(&mut [u8]) -> std::io::Result<usize>,
-) -> Result<String> {
-    let mut bytes = Vec::new();
-    let mut total = None;
-    loop {
-        if let Some(length) = total.filter(|length| bytes.len() >= *length) {
-            bytes.truncate(length);
-            return String::from_utf8(bytes).map_err(|_| "response is not UTF-8".to_owned());
-        }
-        let remaining = HTTP_RESPONSE_LIMIT - bytes.len();
-        if remaining == 0 {
-            return Err("response exceeds 8192 bytes".to_owned());
-        }
-        let mut chunk = [0u8; 1024];
-        let count = match read(&mut chunk[..remaining.min(1024)]) {
-            Ok(0) => return Err("response ended before its declared body completed".to_owned()),
-            Ok(count) => count,
-            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(error) => return Err(error.to_string()),
-        };
-        bytes.extend_from_slice(&chunk[..count]);
-        let header_end = if total.is_none() {
-            bytes.windows(4).position(|window| window == b"\r\n\r\n")
-        } else {
-            None
-        };
-        if let Some(offset) = header_end {
-            let end = offset + 4;
-            let header = core::str::from_utf8(&bytes[..offset])
-                .map_err(|_| "response header is not UTF-8".to_owned())?;
-            let mut body_len = None;
-            for line in header.split("\r\n").skip(1) {
-                let (name, value) =
-                    line.split_once(':').ok_or_else(|| "malformed response header".to_owned())?;
-                if name.eq_ignore_ascii_case("transfer-encoding") {
-                    return Err("unsupported response transfer encoding".to_owned());
-                }
-                if name.eq_ignore_ascii_case("content-length") {
-                    let value = value.trim();
-                    if body_len.is_some()
-                        || value.is_empty()
-                        || !value.bytes().all(|byte| byte.is_ascii_digit())
-                    {
-                        return Err("ambiguous response content length".to_owned());
-                    }
-                    body_len = Some(
-                        value
-                            .parse::<usize>()
-                            .map_err(|_| "response length overflow".to_owned())?,
-                    );
-                }
-            }
-            let length = end
-                .checked_add(body_len.ok_or_else(|| "response lacks content length".to_owned())?)
-                .filter(|length| *length <= HTTP_RESPONSE_LIMIT)
-                .ok_or_else(|| "response exceeds 8192 bytes".to_owned())?;
-            total = Some(length);
-        }
-    }
-}
-
-fn read_http_response(stream: &mut TcpStream) -> Result<String> {
-    let budget = stream
-        .read_timeout()
-        .map_err(|error| error.to_string())?
-        .ok_or_else(|| "response requires a read timeout".to_owned())?;
-    let deadline = Instant::now() + budget;
-    read_framed_http_response(|bytes| {
-        let remaining = deadline
-            .checked_duration_since(Instant::now())
-            .filter(|remaining| !remaining.is_zero())
-            .ok_or_else(|| {
-                std::io::Error::new(std::io::ErrorKind::TimedOut, "response deadline")
-            })?;
-        stream.set_read_timeout(Some(remaining))?;
-        stream.read(bytes)
-    })
-}
-
 struct AdmittedDeployment {
     generation: u64,
     body: String,
 }
 
-fn deployment_notify_bytes(bytes: &[u8], endpoint: &str) -> Result<AdmittedDeployment> {
+fn deployment_notify_bytes(
+    bytes: &[u8],
+    endpoint: SocketAddr,
+    deadline: Deadline,
+) -> Result<AdmittedDeployment> {
     deployment::decode(bytes).ok_or_else(|| "deployment descriptor is malformed".to_owned())?;
-    let mut stream = TcpStream::connect(endpoint)
-        .map_err(|error| format!("connect to deployment ingress {endpoint}: {error}"))?;
-    stream
-        .set_read_timeout(Some(Duration::from_secs(30)))
-        .map_err(|error| format!("set read timeout: {error}"))?;
-    stream
-        .set_write_timeout(Some(Duration::from_secs(30)))
-        .map_err(|error| format!("set write timeout: {error}"))?;
     let header = format!(
         "POST /v1/deployments HTTP/1.1\r\nHost: {endpoint}\r\nContent-Type: \
          application/vnd.charlotte.deployment\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
         bytes.len()
     );
-    stream
-        .write_all(header.as_bytes())
-        .and_then(|()| stream.write_all(bytes))
-        .map_err(|error| format!("send deployment notification: {error}"))?;
-    let response = read_http_response(&mut stream)
-        .map_err(|error| format!("read deployment response: {error}"))?;
+    let response = http_client::exchange(endpoint, header.as_bytes(), bytes, deadline)?;
     let status = response.lines().next().unwrap_or_default();
     if !status.starts_with("HTTP/1.1 202 ") {
         return Err(format!("deployment notification failed: {}", response.trim()));
@@ -1809,27 +1680,18 @@ struct AdmittedRelease {
     body: String,
 }
 
-fn release_notify_bytes(bytes: &[u8], endpoint: &str) -> Result<AdmittedRelease> {
+fn release_notify_bytes(
+    bytes: &[u8],
+    endpoint: SocketAddr,
+    deadline: Deadline,
+) -> Result<AdmittedRelease> {
     release::decode(bytes).ok_or_else(|| "release envelope is malformed".to_owned())?;
-    let mut stream = TcpStream::connect(endpoint)
-        .map_err(|error| format!("connect to deployment ingress {endpoint}: {error}"))?;
-    stream
-        .set_read_timeout(Some(Duration::from_secs(30)))
-        .map_err(|error| format!("set read timeout: {error}"))?;
-    stream
-        .set_write_timeout(Some(Duration::from_secs(30)))
-        .map_err(|error| format!("set write timeout: {error}"))?;
     let header = format!(
         "POST /v1/releases HTTP/1.1\r\nHost: {endpoint}\r\nContent-Type: \
          application/vnd.charlotte.release\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
         bytes.len()
     );
-    stream
-        .write_all(header.as_bytes())
-        .and_then(|()| stream.write_all(bytes))
-        .map_err(|error| format!("send release notification: {error}"))?;
-    let response = read_http_response(&mut stream)
-        .map_err(|error| format!("read release response: {error}"))?;
+    let response = http_client::exchange(endpoint, header.as_bytes(), bytes, deadline)?;
     let status = response.lines().next().unwrap_or_default();
     if !status.starts_with("HTTP/1.1 202 ") {
         return Err(format!("release notification failed: {}", response.trim()));
@@ -1847,16 +1709,20 @@ fn release_notify_bytes(bytes: &[u8], endpoint: &str) -> Result<AdmittedRelease>
 fn release_notify(args: &[String]) -> Result<()> {
     let path = args.first().ok_or_else(|| "missing release path".to_owned())?;
     let endpoint = args.get(1).map_or("127.0.0.1:8081", String::as_str);
+    let endpoint = http_client::endpoint(endpoint)?;
+    let deadline = Deadline::after_seconds(30)?;
     let bytes = read_bounded_regular(path, release::MAX_RELEASE_LEN)?;
-    println!("{}", release_notify_bytes(&bytes, endpoint)?.body);
+    println!("{}", release_notify_bytes(&bytes, endpoint, deadline)?.body);
     Ok(())
 }
 
 fn deployment_notify(args: &[String]) -> Result<()> {
     let path = args.first().ok_or_else(|| "missing descriptor path".to_owned())?;
     let endpoint = args.get(1).map_or("127.0.0.1:8081", String::as_str);
+    let endpoint = http_client::endpoint(endpoint)?;
+    let deadline = Deadline::after_seconds(30)?;
     let bytes = read_bounded_regular(path, deployment::MAX_DESCRIPTOR_LEN)?;
-    println!("{}", deployment_notify_bytes(&bytes, endpoint)?.body);
+    println!("{}", deployment_notify_bytes(&bytes, endpoint, deadline)?.body);
     Ok(())
 }
 
@@ -1875,24 +1741,19 @@ fn percent_encode_path_segment(value: &[u8]) -> String {
     encoded
 }
 
-fn deployment_status_once(artifact_name: &str, endpoint: &str) -> Result<(String, String)> {
+fn deployment_status_once(
+    artifact_name: &str,
+    endpoint: SocketAddr,
+    deadline: Deadline,
+) -> Result<(String, String)> {
     if !deployment::valid_artifact_name(artifact_name.as_bytes()) {
         return Err("invalid deployment artifact name".to_owned());
     }
-    let mut stream = TcpStream::connect(endpoint)
-        .map_err(|error| format!("connect to deployment ingress {endpoint}: {error}"))?;
-    stream
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .map_err(|error| format!("set read timeout: {error}"))?;
     let path = percent_encode_path_segment(artifact_name.as_bytes());
     let request = format!(
         "GET /v1/deployments/{path} HTTP/1.1\r\nHost: {endpoint}\r\nConnection: close\r\n\r\n"
     );
-    stream
-        .write_all(request.as_bytes())
-        .map_err(|error| format!("send deployment status request: {error}"))?;
-    let response = read_http_response(&mut stream)
-        .map_err(|error| format!("read deployment status response: {error}"))?;
+    let response = http_client::exchange(endpoint, request.as_bytes(), &[], deadline)?;
     let status = response.lines().next().unwrap_or_default().to_owned();
     let body = response.split("\r\n\r\n").nth(1).unwrap_or_default().trim().to_owned();
     Ok((status, body))
@@ -1901,14 +1762,21 @@ fn deployment_status_once(artifact_name: &str, endpoint: &str) -> Result<(String
 fn deployment_status(args: &[String]) -> Result<()> {
     let artifact_name = args.first().ok_or_else(|| "missing artifact name".to_owned())?;
     let endpoint = args.get(1).map_or("127.0.0.1:8081", String::as_str);
+    let endpoint = http_client::endpoint(endpoint)?;
     let timeout = args
         .get(2)
         .map(|value| value.parse::<u64>().map_err(|_| "invalid timeout seconds".to_owned()))
         .transpose()?
         .unwrap_or(0);
-    let deadline = Instant::now() + Duration::from_secs(timeout);
+    let deadline = Deadline::after_seconds(
+        if timeout == 0 {
+            5
+        } else {
+            timeout
+        },
+    )?;
     loop {
-        match deployment_status_once(artifact_name, endpoint) {
+        match deployment_status_once(artifact_name, endpoint, deadline.capped(5)) {
             Ok((status, body)) if status.starts_with("HTTP/1.1 200 ") => {
                 if timeout == 0 || body.contains("\"state\":\"ready\"") {
                     println!("{body}");
@@ -1921,10 +1789,10 @@ fn deployment_status(args: &[String]) -> Result<()> {
             Err(error) if timeout == 0 => return Err(error),
             _ => {}
         }
-        if Instant::now() >= deadline {
+        if deadline.expired() {
             return Err(format!("deployment {artifact_name:?} did not become ready in {timeout}s"));
         }
-        thread::sleep(Duration::from_secs(1));
+        let _ = deadline.pause();
     }
 }
 
@@ -1933,7 +1801,8 @@ fn deployment_status(args: &[String]) -> Result<()> {
 /// artifacts must already be signed and uploaded, and the cluster remains the
 /// authority that verifies and admits each descriptor.
 fn deployment_apply(args: &[String]) -> Result<()> {
-    let endpoint = args.first().ok_or_else(|| "missing deployment ingress host:port".to_owned())?;
+    let endpoint = args.first().ok_or_else(|| "missing deployment ingress IP:port".to_owned())?;
+    let endpoint = http_client::endpoint(endpoint)?;
     let timeout = args
         .get(1)
         .ok_or_else(|| "missing rollout timeout seconds".to_owned())?
@@ -1942,12 +1811,14 @@ fn deployment_apply(args: &[String]) -> Result<()> {
     if timeout == 0 {
         return Err("rollout timeout must be greater than zero".to_owned());
     }
+    let deadline = Deadline::after_seconds(timeout)?;
     let paths = args.get(2..).filter(|paths| !paths.is_empty()).ok_or_else(|| {
         "deployment-apply requires at least one signed descriptor path".to_owned()
     })?;
 
     let mut releases = Vec::with_capacity(paths.len());
     for path in paths {
+        deadline.remaining().map_err(|error| error.to_string())?;
         let bytes = read_bounded_regular(path, deployment::MAX_DESCRIPTOR_LEN)?;
         let descriptor = deployment::decode(&bytes)
             .ok_or_else(|| format!("deployment descriptor {path:?} is malformed"))?;
@@ -1964,26 +1835,31 @@ fn deployment_apply(args: &[String]) -> Result<()> {
     // names borrow the existing prepared descriptors through terminal outcome.
     let mut pending = Vec::with_capacity(releases.len());
     for (name, path, bytes) in &releases {
-        let admitted = deployment_notify_bytes(bytes, endpoint).map_err(|error| {
-            format!(
-                "release stopped while notifying {name:?} from {path:?}: {error}; this and \
-                 earlier descriptors may already be committed"
-            )
-        })?;
+        let admitted =
+            deployment_notify_bytes(bytes, endpoint, deadline.capped(30)).map_err(|error| {
+                format!(
+                    "release stopped while notifying {name:?} from {path:?}: {error}; this and \
+                     earlier descriptors may already be committed"
+                )
+            })?;
         println!("accepted {name:?}: {}", admitted.body);
         pending.push((name.as_str(), admitted.generation));
     }
 
-    wait_for_deployments(pending, endpoint, timeout)
+    wait_for_deployments(pending, endpoint, timeout, deadline)
 }
 
-fn wait_for_deployments(mut pending: Vec<(&str, u64)>, endpoint: &str, timeout: u64) -> Result<()> {
-    let deadline = Instant::now() + Duration::from_secs(timeout);
+fn wait_for_deployments(
+    mut pending: Vec<(&str, u64)>,
+    endpoint: SocketAddr,
+    timeout: u64,
+    deadline: Deadline,
+) -> Result<()> {
     while !pending.is_empty() {
         let mut index = 0;
-        while index < pending.len() {
+        while index < pending.len() && !deadline.expired() {
             let (name, generation) = pending[index];
-            match deployment_status_once(name, endpoint) {
+            match deployment_status_once(name, endpoint, deadline.capped(5)) {
                 Ok((status, body)) if status.starts_with("HTTP/1.1 200 ") => {
                     let observed = rollout::status(&body).ok_or_else(|| {
                         format!(
@@ -2008,17 +1884,17 @@ fn wait_for_deployments(mut pending: Vec<(&str, u64)>, endpoint: &str, timeout: 
                 _ => index += 1,
             }
         }
-        if pending.is_empty() {
+        if pending.is_empty() && !deadline.expired() {
             return Ok(());
         }
-        if Instant::now() >= deadline {
+        if deadline.expired() {
             pending.sort();
             return Err(format!(
                 "release did not become ready in {timeout}s; pending: {}",
                 pending.iter().map(|(name, _)| *name).collect::<Vec<_>>().join(", ")
             ));
         }
-        thread::sleep(Duration::from_secs(1));
+        let _ = deadline.pause();
     }
     Ok(())
 }
@@ -2026,6 +1902,7 @@ fn wait_for_deployments(mut pending: Vec<(&str, u64)>, endpoint: &str, timeout: 
 fn release_apply(args: &[String]) -> Result<()> {
     let path = args.first().ok_or_else(|| "missing release path".to_owned())?;
     let endpoint = args.get(1).map_or("127.0.0.1:8081", String::as_str);
+    let endpoint = http_client::endpoint(endpoint)?;
     let timeout = args
         .get(2)
         .map(|value| value.parse::<u64>().map_err(|_| "invalid rollout timeout seconds".to_owned()))
@@ -2034,6 +1911,7 @@ fn release_apply(args: &[String]) -> Result<()> {
     if timeout == 0 {
         return Err("rollout timeout must be greater than zero".to_owned());
     }
+    let deadline = Deadline::after_seconds(timeout)?;
     let bytes = read_bounded_regular(path, release::MAX_RELEASE_LEN)?;
     let envelope =
         release::decode(&bytes).ok_or_else(|| "release envelope is malformed".to_owned())?;
@@ -2050,12 +1928,12 @@ fn release_apply(args: &[String]) -> Result<()> {
         .collect::<Result<Vec<_>>>()?;
     // Reserve observation storage before publishing the accepted release request.
     let mut pending = Vec::with_capacity(names.len());
-    let admitted = release_notify_bytes(&bytes, endpoint)?;
+    let admitted = release_notify_bytes(&bytes, endpoint, deadline.capped(30))?;
     println!("accepted release {release_name:?}: {}", admitted.body);
     for (name, generation) in names.iter().zip(admitted.receipt.components()) {
         pending.push((name.as_str(), *generation));
     }
-    wait_for_deployments(pending, endpoint, timeout)
+    wait_for_deployments(pending, endpoint, timeout, deadline)
 }
 
 fn run() -> Result<()> {
@@ -2210,23 +2088,23 @@ fn run() -> Result<()> {
                   [--spread-replicas] [--affinity-group=N] [--anti-affinity-group=N] \
                   [--features=MASK] [--variant=OBJECT_KEY,ELF,FEATURE_MASK,PRIORITY,ABI] \
                   [service=send|call|client|publish ...] | deployment-verify <descriptor> \
-                  <pubkey-hex> | deployment-notify <descriptor> [host:port] | deployment-status \
-                  <artifact-name> [host:port] [wait-seconds] | deployment-apply <host:port> \
+                  <pubkey-hex> | deployment-notify <descriptor> [IP:port] | deployment-status \
+                  <artifact-name> [IP:port] [wait-seconds] | deployment-apply <IP:port> \
                   <wait-seconds> <descriptor>... | release-sign <output> <release-name> \
                   <sequence> <private-key-file> <descriptor>... | release-verify <release> \
-                  <pubkey-hex> | release-notify <release> [host:port] | release-apply <release> \
-                  [host:port] [wait-seconds] | shutdown-sign <output> <sequence> <target-node> \
+                  <pubkey-hex> | release-notify <release> [IP:port] | release-apply <release> \
+                  [IP:port] [wait-seconds] | shutdown-sign <output> <sequence> <target-node> \
                   <not-before-unix> <expires-unix> <node-grace-ms> <phase-grace-ms> \
                   <private-key-file> | shutdown-verify <intent> <pubkey-hex> | shutdown-notify \
-                  <intent> [host:port] | ingress-policy-sign <output> <sequence> \
-                  <not-before-unix> <expires-unix> <cluster-id-hex> \
-                  <ops-ed25519-private-key-file> ([NAME=]VIP:PORT... | --clear) | \
-                  ingress-policy-verify <policy> <cluster-id-hex> <ops-ed25519-public-key-file> \
-                  | ingress-policy-notify <policy> [host:port] | ingress-policy-status \
-                  [host:port] | node-key <mac-address> | trust-policy-create <output> \
-                  <cluster-mnemonic> <sequence> <artifact-public-file> <deployment-public-file> \
-                  <operations-public-file> <recipient-public-file> | trust-policy-check <input> \
-                  <cluster-mnemonic> <minimum-sequence> | trust-policy-sign <output> <candidate> \
+                  <intent> [IP:port] | ingress-policy-sign <output> <sequence> <not-before-unix> \
+                  <expires-unix> <cluster-id-hex> <ops-ed25519-private-key-file> \
+                  ([NAME=]VIP:PORT... | --clear) | ingress-policy-verify <policy> \
+                  <cluster-id-hex> <ops-ed25519-public-key-file> | ingress-policy-notify \
+                  <policy> [IP:port] | ingress-policy-status [IP:port] | node-key <mac-address> \
+                  | trust-policy-create <output> <cluster-mnemonic> <sequence> \
+                  <artifact-public-file> <deployment-public-file> <operations-public-file> \
+                  <recipient-public-file> | trust-policy-check <input> <cluster-mnemonic> \
+                  <minimum-sequence> | trust-policy-sign <output> <candidate> \
                   <bootstrap-private-file> <cluster-mnemonic> (enroll <minimum-sequence> | \
                   installed <accepted-sequence> <accepted-digest-hex>) | trust-policy-verify \
                   <signed-policy> <bootstrap-public-file> <cluster-mnemonic> (enroll \
@@ -2244,8 +2122,7 @@ fn run() -> Result<()> {
                   (<target-artifact> <object-key> <envelope>)... | operations-bundle-verify \
                   <bundle> <cluster-id-hex> <release-ed25519-public-key-hex> \
                   <ops-ed25519-public-key-file> <recipient-public-key-file> <now-unix> | \
-                  operations-bundle-notify <bundle> [host:port] | cluster-id <mnemonic> | \
-                  selftest"
+                  operations-bundle-notify <bundle> [IP:port] | cluster-id <mnemonic> | selftest"
             .to_owned()),
     }
 }

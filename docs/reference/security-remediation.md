@@ -594,8 +594,12 @@ completes and supersession fails. Malformed records stop without POST replay.
 Live-CLI loopback controls preserve the baseline false successes. The
 [release-generation follow-up](../reports/audits/2026-10-21-security-release-generation.md) carries a complete digest-bound component receipt from catalog apply through
 local/follower admission and HTTP to the host. It also corrects capacity charges
-that release builds skipped inside `debug_assert!`. Deadline/polling and ingress
-peer authentication remain separate. Finding counts are unchanged.
+that release builds skipped inside `debug_assert!`.
+The [host deadline follow-up](../reports/audits/2026-10-21-security-ingress-deadline.md)
+carries one checked budget from preparation through admission and observation,
+uses numeric endpoints and bounds each connect/write/read by the time left.
+Status polling, blocking host I/O and ingress peer authentication remain separate.
+Finding counts are unchanged.
 
 The [SEC-15 hash-state follow-up](../reports/audits/2026-10-19-security-hash-state-erasure.md)
 adds erasure of shared SHA state/compression scratch and one owned HMAC result

@@ -135,8 +135,10 @@ commit. The [admission receipt](../reference/release-admission.md) binds the exa
 signed release to each component's own deployment generation. `release-apply`
 requires matching ready observations, waits on older generations and rejects
 supersession or malformed records without replaying the notification. Coordinated
-rollback and richer rollout policy still require a release controller. Operation
-deadlines, host polling and peer authentication remain separate work.
+rollback and richer rollout policy still require a release controller. Host apply
+carries one checked deadline from preparation through admission and observation,
+using numeric ingress endpoints and remaining-budget network calls. Status polling,
+blocking host file I/O and peer authentication remain separate work.
 
 ![Focused two-node deployment-handoff data path](../manual-v2/figures/two-node-cluster.svg)
 

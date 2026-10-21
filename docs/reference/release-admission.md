@@ -61,9 +61,14 @@ runtime calls. These are scheduled userspace service contexts without kernel
 subsystem guards. See the existing [C18 row](cleanup-recovery.md) and
 [audit evidence](../reports/audits/2026-10-21-security-release-generation.md).
 
-Host readiness still uses bounded-interval status polling. Its timeout starts
-after admission and does not bound every connect/DNS/write phase. A fetch/launch
-failure may leave committed work unready; coordinated rollback and richer rollout
-policy remain controller work. Live allocation/mapping/wait-rejection injection,
-follower failure races and wider ownership contexts need further qualification.
-Production trust remains disabled.
+Host readiness still uses status polling because this HTTP interface has no
+subscription. Apply captures one checked monotonic deadline before preparation
+and carries it through admission and readiness. Connect, partial writes and reads
+use the remaining budget; ingress endpoints must be numeric IPv4 or bracketed
+IPv6 with explicit nonzero ports. Blocking host filesystem calls and stdout are
+not preempted. See [tooling inputs](tooling-inputs.md).
+
+A fetch/launch failure may leave committed work unready; coordinated rollback
+and richer rollout policy remain controller work. Live allocation/mapping/wait
+rejection, follower failure races and wider ownership contexts need further
+qualification. Production trust remains disabled.

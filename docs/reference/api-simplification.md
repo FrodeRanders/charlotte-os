@@ -426,3 +426,13 @@ positive scalar release successes reject. The correlated release relay uses
 the complete catalog result before exposing its existing scalar generation.
 Signed envelopes, persistent catalog/log grammar, CLI arguments and runtime ABI
 are unchanged. See [the exact contract](release-admission.md).
+
+
+The [host deadline follow-up](../reports/audits/2026-10-21-security-ingress-deadline.md)
+uses one ingress transport and one numeric endpoint grammar for all signer
+network commands: `IPv4:port` or `[IPv6]:port`, with a nonzero port. Hostname,
+URL and implicit-port inputs reject before network access; no legacy resolver
+path remains. Checked deadlines replace per-phase budget restarts and unchecked
+`Instant` addition. This changes host endpoint/admission policy; HTTP routes,
+response framing, signed inputs, CLI positional arguments and runtime ABI are
+unchanged. See [tooling inputs](tooling-inputs.md) for budgets and limits.

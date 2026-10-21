@@ -168,6 +168,30 @@ remains an observation of the current named record. `release-notify` requires a
 complete `CRLADM01` receipt bound to the exact signed envelope; `release-apply`
 uses its ordered component generations with the same observation policy. Earlier
 scalar release successes reject. Storage for observations reserves before the
-POST. End-to-end deadlines, connect/DNS/write bounds and status polling remain
-separate work. See the [release-result contract](release-admission.md) and
+POST. See the [release-result contract](release-admission.md) and
 [release-generation report](../reports/audits/2026-10-21-security-release-generation.md).
+
+All `cluster-sign` ingress commands require a numeric `IPv4:port` or
+`[IPv6]:port`, with a nonzero port. Hostnames, URLs and implicit ports reject
+before network access. Resolve a name outside the command and pass the selected
+address explicitly; there is no resolver thread or unbounded DNS fallback.
+
+`deployment-apply` and `release-apply` capture one checked monotonic deadline
+before file preparation. It covers every notification and readiness query in
+that operation. Each connect, partial write, interrupted retry and response read
+uses the remaining budget. Notification exchanges are also capped at 30 seconds;
+status exchanges at five seconds. The existing one-second observation interval
+is shortened to the time left. Zero apply timeouts and values outside the
+monotonic clock range reject before preparation or network access.
+
+Standalone notify commands and ingress-policy status use one 30-second budget.
+`deployment-status` uses its supplied positive wait budget, or a five-second
+single query for zero/omitted wait. A timeout or transport error after submission
+leaves the outcome unconfirmed and never resubmits a notification. Host sockets
+close through their existing owners; accepted remote work can continue.
+
+Preparation consumes budget, but blocking host filesystem calls and stdout are
+not preempted by this clock. OS scheduling and socket timer precision can delay
+return. Readiness still polls because this HTTP interface has no subscription;
+peer authentication, standalone named-status semantics and server-side progress
+remain separate. See the [deadline audit](../reports/audits/2026-10-21-security-ingress-deadline.md).
