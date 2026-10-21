@@ -1833,3 +1833,16 @@ an extra body separator/suffix and non-JSON Unicode whitespace. These cases test
 the shared status wrapper before its rollout codec. Read-only status has no
 preceding admission; these controls do not establish a fixed generation across
 its observation wait. See the [named-status audit](../reports/audits/2026-10-21-security-named-status.md).
+
+
+### Ingress acknowledgement and policy-response controls
+
+`python3 scripts/tests/test-ingress-response.py --signer target/debug/cluster-sign -v`
+uses the actual CLI and synthetic signed inputs against one-request loopback
+peers. Six methods cover 50 cases: scalar acknowledgements for all four commands,
+release receipt whitespace, complete policy observations and HTTP rejection.
+Every rejection checks one request, exact submitted length and no success output.
+`--evidence PATH` captures each response/result; repeat with the release binary.
+Rust controls check full-body preservation, explicit clear policies and structural
+policy bounds without a local UTC admission decision. See the
+[response audit](../reports/audits/2026-10-21-security-ingress-response.md).

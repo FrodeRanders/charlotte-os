@@ -1,4 +1,4 @@
-//! Decode deployd's current scalar JSON records without substring matching.
+//! Decode deployd's current JSON records without substring matching.
 
 fn trim(value: &str) -> &str {
     value.trim_matches([' ', '\t', '\r', '\n'])
@@ -63,6 +63,33 @@ pub(super) fn admitted_release(
     receipt.matches(envelope).then_some(receipt)
 }
 
+/// Structural observation of a committed policy, without a local UTC or
+/// authority decision. Zero assignments is the current explicit clear policy.
+pub(super) fn policy_status(body: &str) -> Option<()> {
+    let [generation, sequence, assignments, start, end] = fields(
+        body,
+        [
+            "generation",
+            "sequence",
+            "assignments",
+            "not_before_unix_seconds",
+            "expires_unix_seconds",
+        ],
+    )?;
+    let generation = number(generation)?;
+    let sequence = number(sequence)?;
+    let assignments = number(assignments)?;
+    let start = number(start)?;
+    let end = number(end)?;
+    (generation > 0
+        && generation <= i64::MAX as u64
+        && sequence > 0
+        && assignments <= charlotte_launch::ingress::MAX_SERVICES as u64
+        && start > 0
+        && end.checked_sub(start)? <= charlotte_launch::ingress_policy::MAX_VALIDITY_SECONDS)
+        .then_some(())
+}
+
 pub(super) struct Status {
     pub(super) generation: u64,
     pub(super) ready: bool,
@@ -111,6 +138,45 @@ mod tests {
         "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,",
         "\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
     );
+
+    #[test]
+    fn policy_observation_accepts_current_bounds_without_utc_admission() {
+        for assignments in [0, charlotte_launch::ingress::MAX_SERVICES] {
+            let body = format!(
+                "{{\"generation\":1,\"sequence\":{},\"assignments\":{assignments},\"\
+                 not_before_unix_seconds\":1,\"expires_unix_seconds\":{}}}",
+                u64::MAX,
+                1 + charlotte_launch::ingress_policy::MAX_VALIDITY_SECONDS
+            );
+            assert!(policy_status(&body).is_some());
+        }
+    }
+    #[test]
+    fn policy_observation_rejects_ambiguous_and_invalid_fields() {
+        let valid = concat!(
+            r#"{"generation":2,"sequence":3,"assignments":1,"#,
+            r#""not_before_unix_seconds":1,"expires_unix_seconds":301}"#
+        );
+        for body in [
+            valid.replace("\"generation\":2", "\"generation\":0"),
+            valid.replace("\"sequence\":3", "\"sequence\":0"),
+            valid.replace("\"assignments\":1", "\"assignments\":17"),
+            valid.replace("\"not_before_unix_seconds\":1", "\"not_before_unix_seconds\":0"),
+            valid.replace("\"expires_unix_seconds\":301", "\"expires_unix_seconds\":0"),
+            valid.replace(
+                "\"expires_unix_seconds\":301",
+                &format!(
+                    "\"expires_unix_seconds\":{}",
+                    2 + charlotte_launch::ingress_policy::MAX_VALIDITY_SECONDS
+                ),
+            ),
+            valid.replace("\"generation\":2", "\"generation\":2,\"generation\":3"),
+            valid.replace("\"assignments\":1", "\"extra\":1"),
+            format!("{valid} trailing"),
+        ] {
+            assert!(policy_status(&body).is_none(), "{body}");
+        }
+    }
 
     #[test]
     fn admission_requires_one_positive_signed_result() {

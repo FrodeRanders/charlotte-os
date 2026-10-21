@@ -1,0 +1,2497 @@
+{
+  "schema": "charlotte.security.ingress-response.v1",
+  "report_date": "2026-10-21",
+  "reviewed_revision": "b779c8d73c02210d9916bce3cbec1542090a4ce5",
+  "classification": {
+    "corrected": 29,
+    "partial": 6,
+    "open": 3,
+    "production_trust": "disabled"
+  },
+  "correction": {
+    "body": "All seven ingress consumers share response_body: first HTTP separator, complete declared body, JSON whitespace only.",
+    "scalar_ack": "Deployment, operations-bundle, shutdown and ingress-policy require exactly one positive signed-range generation.",
+    "release_ack": "Existing complete digest/count-bound receipt; no Unicode whitespace normalization.",
+    "policy_status": "Exactly five fields; signed-range positive generation, nonzero u64 sequence, 0..16 assignments, positive not-before, nonnegative bounded signed-validity span. Zero assignments is an explicit clear policy. No local UTC or peer authority decision.",
+    "failure": "Malformed success is uncertain with no stdout success or POST replay. Malformed read-only observation rejects before output.",
+    "ownership": "Existing C18 host socket, deadline and public response/request scopes; no owner family, capability/root, registry, custody or cleanup/retry policy changes.",
+    "wire_and_cli_changes": false
+  },
+  "baseline": {
+    "binary": {
+      "path": "target/release/cluster-sign",
+      "sha256": "1a84fb54bb111f78be4b2feb60cd3d036834a9683bef07030340b4a9f738b029"
+    },
+    "version_controlled_evidence": "docs/reports/audits/evidence/2026-10-21-security-named-status.json",
+    "evidence_sha256": "7a44a88134fcec721166c1a858b3fe41fbd186adb29001db8f0fced12cb4aa1b",
+    "command": "python3 scripts/tests/test-ingress-response.py --signer target/release/cluster-sign -v",
+    "exit_status": 1,
+    "methods_run": 6,
+    "cases_run": 50,
+    "failed_controls": 34,
+    "passed_controls": 16,
+    "failure_breakdown": {
+      "untyped_scalar_acknowledgements": 24,
+      "deployment_unicode_ack": 1,
+      "release_unicode_receipt": 1,
+      "unvalidated_policy_observation": 8
+    },
+    "cases": [
+      {
+        "case": "test_current_policy_observations_succeed",
+        "kind": "policy-status",
+        "body": "{\"generation\":2,\"sequence\":3,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":2,\"sequence\":3,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_current_policy_observations_succeed",
+        "kind": "policy-status",
+        "body": "{\n  \"expires_unix_seconds\": 301,\n  \"not_before_unix_seconds\": 1,\n  \"assignments\": 1,\n  \"sequence\": 3,\n  \"generation\": 2\n}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\n  \"expires_unix_seconds\": 301,\n  \"not_before_unix_seconds\": 1,\n  \"assignments\": 1,\n  \"sequence\": 3,\n  \"generation\": 2\n}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_current_policy_observations_succeed",
+        "kind": "policy-status",
+        "body": "{\"generation\":2,\"sequence\":3,\"assignments\":0,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":2,\"sequence\":3,\"assignments\":0,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_current_scalar_acknowledgements_succeed",
+        "kind": "deployment",
+        "body": " { \"generation\" : 2 }\n",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{ \"generation\" : 2 }\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_current_scalar_acknowledgements_succeed",
+        "kind": "shutdown",
+        "body": " { \"generation\" : 2 }\n",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{ \"generation\" : 2 }\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_current_scalar_acknowledgements_succeed",
+        "kind": "ingress-policy",
+        "body": " { \"generation\" : 2 }\n",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "ingress policy accepted by 127.0.0.1:62443\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_current_scalar_acknowledgements_succeed",
+        "kind": "operations-bundle",
+        "body": " { \"generation\" : 2 }\n",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{ \"generation\" : 2 }\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_policy_observations_reject",
+        "kind": "policy-status",
+        "body": "{}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_policy_observations_reject",
+        "kind": "policy-status",
+        "body": "{\"generation\":0,\"sequence\":3,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":0,\"sequence\":3,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_policy_observations_reject",
+        "kind": "policy-status",
+        "body": "{\"generation\":2,\"sequence\":0,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":2,\"sequence\":0,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_policy_observations_reject",
+        "kind": "policy-status",
+        "body": "{\"generation\":2,\"sequence\":3,\"assignments\":17,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":2,\"sequence\":3,\"assignments\":17,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_policy_observations_reject",
+        "kind": "policy-status",
+        "body": "{\"generation\":2,\"sequence\":3,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":0}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":2,\"sequence\":3,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":0}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_policy_observations_reject",
+        "kind": "policy-status",
+        "body": "{\"generation\":2,\"generation\":3,\"sequence\":3,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":2,\"generation\":3,\"sequence\":3,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_policy_observations_reject",
+        "kind": "policy-status",
+        "body": "{\"generation\":2,\"sequence\":3,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}\r\n\r\n{}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":2,\"sequence\":3,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}\r\n\r\n{}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_policy_observations_reject",
+        "kind": "policy-status",
+        "body": "\u00a0{\"generation\":2,\"sequence\":3,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}\u00a0",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":2,\"sequence\":3,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "deployment",
+        "body": "{}",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "deployment",
+        "body": "{\"generation\":0}",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "deployment",
+        "body": "{\"generation\":-1}",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "deployment",
+        "body": "{\"generation\":2,\"generation\":3}",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "deployment",
+        "body": "{\"generation\":2,\"extra\":1}",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "deployment",
+        "body": "{\"generation\":2} trailing",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "deployment",
+        "body": "{\"generation\":2}\r\n\r\n{\"extra\":1}",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "deployment",
+        "body": "\u00a0{\"generation\":2}\u00a0",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":2}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "shutdown",
+        "body": "{}",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "shutdown",
+        "body": "{\"generation\":0}",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":0}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "shutdown",
+        "body": "{\"generation\":-1}",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":-1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "shutdown",
+        "body": "{\"generation\":2,\"generation\":3}",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":2,\"generation\":3}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "shutdown",
+        "body": "{\"generation\":2,\"extra\":1}",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":2,\"extra\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "shutdown",
+        "body": "{\"generation\":2} trailing",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":2} trailing\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "shutdown",
+        "body": "{\"generation\":2}\r\n\r\n{\"extra\":1}",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":2}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "shutdown",
+        "body": "\u00a0{\"generation\":2}\u00a0",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":2}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "ingress-policy",
+        "body": "{}",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "ingress policy accepted by 127.0.0.1:62495\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "ingress-policy",
+        "body": "{\"generation\":0}",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "ingress policy accepted by 127.0.0.1:62497\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "ingress-policy",
+        "body": "{\"generation\":-1}",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "ingress policy accepted by 127.0.0.1:62499\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "ingress-policy",
+        "body": "{\"generation\":2,\"generation\":3}",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "ingress policy accepted by 127.0.0.1:62501\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "ingress-policy",
+        "body": "{\"generation\":2,\"extra\":1}",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "ingress policy accepted by 127.0.0.1:62503\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "ingress-policy",
+        "body": "{\"generation\":2} trailing",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "ingress policy accepted by 127.0.0.1:62505\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "ingress-policy",
+        "body": "{\"generation\":2}\r\n\r\n{\"extra\":1}",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "ingress policy accepted by 127.0.0.1:62507\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "ingress-policy",
+        "body": "\u00a0{\"generation\":2}\u00a0",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "ingress policy accepted by 127.0.0.1:62509\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "operations-bundle",
+        "body": "{}",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "operations-bundle",
+        "body": "{\"generation\":0}",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":0}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "operations-bundle",
+        "body": "{\"generation\":-1}",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":-1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "operations-bundle",
+        "body": "{\"generation\":2,\"generation\":3}",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":2,\"generation\":3}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "operations-bundle",
+        "body": "{\"generation\":2,\"extra\":1}",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":2,\"extra\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "operations-bundle",
+        "body": "{\"generation\":2} trailing",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":2} trailing\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "operations-bundle",
+        "body": "{\"generation\":2}\r\n\r\n{\"extra\":1}",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":2}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "operations-bundle",
+        "body": "\u00a0{\"generation\":2}\u00a0",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":2}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_policy_http_error_is_reported",
+        "kind": "policy-status",
+        "body": "{\"error\":-2}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: ingress-policy status failed: HTTP/1.1 404 Not Found\r\nServer: BaseHTTP/0.6 Python/3.11.17\r\nDate: Wed, 21 Oct 2026 21:24:22 GMT\r\nContent-Length: 12\r\nConnection: close\r\n\r\n{\"error\":-2}\n"
+      },
+      {
+        "case": "test_release_acknowledgement_preserves_non_json_whitespace",
+        "kind": "release",
+        "body": "{\"admission\": \"43524c41444d30315752c1f836ea6057b01a52a00e4958dbfa15a78b933faceacb83782141790466010000000000000001000000000000000200000000000000\"}",
+        "events": [
+          [
+            "POST",
+            "/v1/releases",
+            342
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"admission\": \"43524c41444d30315752c1f836ea6057b01a52a00e4958dbfa15a78b933faceacb83782141790466010000000000000001000000000000000200000000000000\"}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_release_acknowledgement_preserves_non_json_whitespace",
+        "kind": "release",
+        "body": "\u00a0{\"admission\": \"43524c41444d30315752c1f836ea6057b01a52a00e4958dbfa15a78b933faceacb83782141790466010000000000000001000000000000000200000000000000\"}\u00a0",
+        "events": [
+          [
+            "POST",
+            "/v1/releases",
+            342
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"admission\": \"43524c41444d30315752c1f836ea6057b01a52a00e4958dbfa15a78b933faceacb83782141790466010000000000000001000000000000000200000000000000\"}\n",
+        "stderr": ""
+      }
+    ],
+    "capture_note": "All per-case results are retained; baseline console output exceeded its display budget, so no complete console archive is claimed."
+  },
+  "development_failure": {
+    "profiles": [
+      "debug",
+      "release"
+    ],
+    "exit_status": 101,
+    "diagnostic": "rollout.rs:157: unknown start of token: backslash; escaped long test literal broke during formatting",
+    "resolution": "Use raw-string concat fixture; formatting, tests and strict Clippy subsequently pass.",
+    "separate_from_baseline_reader_defects": true
+  },
+  "host_validation": {
+    "debug": {
+      "exit_status": 0,
+      "tests_passed": 84,
+      "result_lines": [
+        "test result: ok. 56 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s"
+      ],
+      "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p cluster-sign"
+    },
+    "release": {
+      "exit_status": 0,
+      "tests_passed": 84,
+      "result_lines": [
+        "test result: ok. 56 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s"
+      ],
+      "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p cluster-sign"
+    }
+  },
+  "host_test_context": {
+    "cwd": "/private/tmp",
+    "flags": "--offline --locked",
+    "compiler": "rustc 1.100.0-nightly (c54751567 2026-08-22)"
+  },
+  "cli_validation": {
+    "response_debug": {
+      "exit_status": 0,
+      "output": "......\n----------------------------------------------------------------------\nRan 6 tests in 2.955s\n\nOK\n",
+      "cases_run": 50
+    },
+    "status_debug": {
+      "exit_status": 0,
+      "output": ".......\n----------------------------------------------------------------------\nRan 7 tests in 1.911s\n\nOK\n",
+      "cases_run": 27
+    },
+    "generation_debug": {
+      "exit_status": 0,
+      "output": ".........\n----------------------------------------------------------------------\nRan 9 tests in 4.710s\n\nOK\n",
+      "cases_run": 15
+    },
+    "release_debug": {
+      "exit_status": 0,
+      "output": ".......\n----------------------------------------------------------------------\nRan 7 tests in 3.608s\n\nOK\n",
+      "cases_run": 15
+    },
+    "deadline_debug": {
+      "exit_status": 0,
+      "output": ".......\n----------------------------------------------------------------------\nRan 7 tests in 4.545s\n\nOK\n",
+      "cases_run": 9
+    },
+    "response_release": {
+      "exit_status": 0,
+      "output": "......\n----------------------------------------------------------------------\nRan 6 tests in 0.847s\n\nOK\n",
+      "cases_run": 50
+    },
+    "status_release": {
+      "exit_status": 0,
+      "output": ".......\n----------------------------------------------------------------------\nRan 7 tests in 1.394s\n\nOK\n",
+      "cases_run": 27
+    },
+    "generation_release": {
+      "exit_status": 0,
+      "output": ".........\n----------------------------------------------------------------------\nRan 9 tests in 4.261s\n\nOK\n",
+      "cases_run": 15
+    },
+    "release_release": {
+      "exit_status": 0,
+      "output": ".......\n----------------------------------------------------------------------\nRan 7 tests in 3.289s\n\nOK\n",
+      "cases_run": 15
+    },
+    "deadline_release": {
+      "exit_status": 0,
+      "output": ".......\n----------------------------------------------------------------------\nRan 7 tests in 4.194s\n\nOK\n",
+      "cases_run": 9
+    }
+  },
+  "response_cases": {
+    "debug": [
+      {
+        "case": "test_current_policy_observations_succeed",
+        "kind": "policy-status",
+        "body": "{\"generation\":2,\"sequence\":3,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":2,\"sequence\":3,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_current_policy_observations_succeed",
+        "kind": "policy-status",
+        "body": "{\n  \"expires_unix_seconds\": 301,\n  \"not_before_unix_seconds\": 1,\n  \"assignments\": 1,\n  \"sequence\": 3,\n  \"generation\": 2\n}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\n  \"expires_unix_seconds\": 301,\n  \"not_before_unix_seconds\": 1,\n  \"assignments\": 1,\n  \"sequence\": 3,\n  \"generation\": 2\n}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_current_policy_observations_succeed",
+        "kind": "policy-status",
+        "body": "{\"generation\":2,\"sequence\":3,\"assignments\":0,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":2,\"sequence\":3,\"assignments\":0,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_current_scalar_acknowledgements_succeed",
+        "kind": "deployment",
+        "body": " { \"generation\" : 2 }\n",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{ \"generation\" : 2 }\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_current_scalar_acknowledgements_succeed",
+        "kind": "shutdown",
+        "body": " { \"generation\" : 2 }\n",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{ \"generation\" : 2 }\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_current_scalar_acknowledgements_succeed",
+        "kind": "ingress-policy",
+        "body": " { \"generation\" : 2 }\n",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "ingress policy accepted by 127.0.0.1:62571\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_current_scalar_acknowledgements_succeed",
+        "kind": "operations-bundle",
+        "body": " { \"generation\" : 2 }\n",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{ \"generation\" : 2 }\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_policy_observations_reject",
+        "kind": "policy-status",
+        "body": "{}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid ingress-policy status\n"
+      },
+      {
+        "case": "test_malformed_policy_observations_reject",
+        "kind": "policy-status",
+        "body": "{\"generation\":0,\"sequence\":3,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid ingress-policy status\n"
+      },
+      {
+        "case": "test_malformed_policy_observations_reject",
+        "kind": "policy-status",
+        "body": "{\"generation\":2,\"sequence\":0,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid ingress-policy status\n"
+      },
+      {
+        "case": "test_malformed_policy_observations_reject",
+        "kind": "policy-status",
+        "body": "{\"generation\":2,\"sequence\":3,\"assignments\":17,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid ingress-policy status\n"
+      },
+      {
+        "case": "test_malformed_policy_observations_reject",
+        "kind": "policy-status",
+        "body": "{\"generation\":2,\"sequence\":3,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":0}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid ingress-policy status\n"
+      },
+      {
+        "case": "test_malformed_policy_observations_reject",
+        "kind": "policy-status",
+        "body": "{\"generation\":2,\"generation\":3,\"sequence\":3,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid ingress-policy status\n"
+      },
+      {
+        "case": "test_malformed_policy_observations_reject",
+        "kind": "policy-status",
+        "body": "{\"generation\":2,\"sequence\":3,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}\r\n\r\n{}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid ingress-policy status\n"
+      },
+      {
+        "case": "test_malformed_policy_observations_reject",
+        "kind": "policy-status",
+        "body": "\u00a0{\"generation\":2,\"sequence\":3,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}\u00a0",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid ingress-policy status\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "deployment",
+        "body": "{}",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "deployment",
+        "body": "{\"generation\":0}",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "deployment",
+        "body": "{\"generation\":-1}",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "deployment",
+        "body": "{\"generation\":2,\"generation\":3}",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "deployment",
+        "body": "{\"generation\":2,\"extra\":1}",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "deployment",
+        "body": "{\"generation\":2} trailing",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "deployment",
+        "body": "{\"generation\":2}\r\n\r\n{\"extra\":1}",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "deployment",
+        "body": "\u00a0{\"generation\":2}\u00a0",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "shutdown",
+        "body": "{}",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: shutdown admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "shutdown",
+        "body": "{\"generation\":0}",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: shutdown admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "shutdown",
+        "body": "{\"generation\":-1}",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: shutdown admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "shutdown",
+        "body": "{\"generation\":2,\"generation\":3}",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: shutdown admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "shutdown",
+        "body": "{\"generation\":2,\"extra\":1}",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: shutdown admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "shutdown",
+        "body": "{\"generation\":2} trailing",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: shutdown admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "shutdown",
+        "body": "{\"generation\":2}\r\n\r\n{\"extra\":1}",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: shutdown admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "shutdown",
+        "body": "\u00a0{\"generation\":2}\u00a0",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: shutdown admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "ingress-policy",
+        "body": "{}",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: ingress-policy admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "ingress-policy",
+        "body": "{\"generation\":0}",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: ingress-policy admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "ingress-policy",
+        "body": "{\"generation\":-1}",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: ingress-policy admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "ingress-policy",
+        "body": "{\"generation\":2,\"generation\":3}",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: ingress-policy admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "ingress-policy",
+        "body": "{\"generation\":2,\"extra\":1}",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: ingress-policy admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "ingress-policy",
+        "body": "{\"generation\":2} trailing",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: ingress-policy admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "ingress-policy",
+        "body": "{\"generation\":2}\r\n\r\n{\"extra\":1}",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: ingress-policy admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "ingress-policy",
+        "body": "\u00a0{\"generation\":2}\u00a0",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: ingress-policy admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "operations-bundle",
+        "body": "{}",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: operational admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "operations-bundle",
+        "body": "{\"generation\":0}",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: operational admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "operations-bundle",
+        "body": "{\"generation\":-1}",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: operational admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "operations-bundle",
+        "body": "{\"generation\":2,\"generation\":3}",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: operational admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "operations-bundle",
+        "body": "{\"generation\":2,\"extra\":1}",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: operational admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "operations-bundle",
+        "body": "{\"generation\":2} trailing",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: operational admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "operations-bundle",
+        "body": "{\"generation\":2}\r\n\r\n{\"extra\":1}",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: operational admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "operations-bundle",
+        "body": "\u00a0{\"generation\":2}\u00a0",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: operational admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_policy_http_error_is_reported",
+        "kind": "policy-status",
+        "body": "{\"error\":-2}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: ingress-policy status failed: HTTP/1.1 404 Not Found\r\nServer: BaseHTTP/0.6 Python/3.11.17\r\nDate: Wed, 21 Oct 2026 21:27:05 GMT\r\nContent-Length: 12\r\nConnection: close\r\n\r\n{\"error\":-2}\n"
+      },
+      {
+        "case": "test_release_acknowledgement_preserves_non_json_whitespace",
+        "kind": "release",
+        "body": "{\"admission\": \"43524c41444d303182d683793c09fb3ee135dfab008bdc33e49d6dd2285a974a63ce43c5a4f0a523010000000000000001000000000000000200000000000000\"}",
+        "events": [
+          [
+            "POST",
+            "/v1/releases",
+            342
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"admission\": \"43524c41444d303182d683793c09fb3ee135dfab008bdc33e49d6dd2285a974a63ce43c5a4f0a523010000000000000001000000000000000200000000000000\"}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_release_acknowledgement_preserves_non_json_whitespace",
+        "kind": "release",
+        "body": "\u00a0{\"admission\": \"43524c41444d303182d683793c09fb3ee135dfab008bdc33e49d6dd2285a974a63ce43c5a4f0a523010000000000000001000000000000000200000000000000\"}\u00a0",
+        "events": [
+          [
+            "POST",
+            "/v1/releases",
+            342
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: release admission returned an invalid component receipt; outcome is uncertain\n"
+      }
+    ],
+    "release": [
+      {
+        "case": "test_current_policy_observations_succeed",
+        "kind": "policy-status",
+        "body": "{\"generation\":2,\"sequence\":3,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":2,\"sequence\":3,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_current_policy_observations_succeed",
+        "kind": "policy-status",
+        "body": "{\n  \"expires_unix_seconds\": 301,\n  \"not_before_unix_seconds\": 1,\n  \"assignments\": 1,\n  \"sequence\": 3,\n  \"generation\": 2\n}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\n  \"expires_unix_seconds\": 301,\n  \"not_before_unix_seconds\": 1,\n  \"assignments\": 1,\n  \"sequence\": 3,\n  \"generation\": 2\n}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_current_policy_observations_succeed",
+        "kind": "policy-status",
+        "body": "{\"generation\":2,\"sequence\":3,\"assignments\":0,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"generation\":2,\"sequence\":3,\"assignments\":0,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_current_scalar_acknowledgements_succeed",
+        "kind": "deployment",
+        "body": " { \"generation\" : 2 }\n",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{ \"generation\" : 2 }\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_current_scalar_acknowledgements_succeed",
+        "kind": "shutdown",
+        "body": " { \"generation\" : 2 }\n",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{ \"generation\" : 2 }\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_current_scalar_acknowledgements_succeed",
+        "kind": "ingress-policy",
+        "body": " { \"generation\" : 2 }\n",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "ingress policy accepted by 127.0.0.1:62724\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_current_scalar_acknowledgements_succeed",
+        "kind": "operations-bundle",
+        "body": " { \"generation\" : 2 }\n",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{ \"generation\" : 2 }\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_policy_observations_reject",
+        "kind": "policy-status",
+        "body": "{}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid ingress-policy status\n"
+      },
+      {
+        "case": "test_malformed_policy_observations_reject",
+        "kind": "policy-status",
+        "body": "{\"generation\":0,\"sequence\":3,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid ingress-policy status\n"
+      },
+      {
+        "case": "test_malformed_policy_observations_reject",
+        "kind": "policy-status",
+        "body": "{\"generation\":2,\"sequence\":0,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid ingress-policy status\n"
+      },
+      {
+        "case": "test_malformed_policy_observations_reject",
+        "kind": "policy-status",
+        "body": "{\"generation\":2,\"sequence\":3,\"assignments\":17,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid ingress-policy status\n"
+      },
+      {
+        "case": "test_malformed_policy_observations_reject",
+        "kind": "policy-status",
+        "body": "{\"generation\":2,\"sequence\":3,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":0}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid ingress-policy status\n"
+      },
+      {
+        "case": "test_malformed_policy_observations_reject",
+        "kind": "policy-status",
+        "body": "{\"generation\":2,\"generation\":3,\"sequence\":3,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid ingress-policy status\n"
+      },
+      {
+        "case": "test_malformed_policy_observations_reject",
+        "kind": "policy-status",
+        "body": "{\"generation\":2,\"sequence\":3,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}\r\n\r\n{}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid ingress-policy status\n"
+      },
+      {
+        "case": "test_malformed_policy_observations_reject",
+        "kind": "policy-status",
+        "body": "\u00a0{\"generation\":2,\"sequence\":3,\"assignments\":1,\"not_before_unix_seconds\":1,\"expires_unix_seconds\":301}\u00a0",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid ingress-policy status\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "deployment",
+        "body": "{}",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "deployment",
+        "body": "{\"generation\":0}",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "deployment",
+        "body": "{\"generation\":-1}",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "deployment",
+        "body": "{\"generation\":2,\"generation\":3}",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "deployment",
+        "body": "{\"generation\":2,\"extra\":1}",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "deployment",
+        "body": "{\"generation\":2} trailing",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "deployment",
+        "body": "{\"generation\":2}\r\n\r\n{\"extra\":1}",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "deployment",
+        "body": "\u00a0{\"generation\":2}\u00a0",
+        "events": [
+          [
+            "POST",
+            "/v1/deployments",
+            223
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "shutdown",
+        "body": "{}",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: shutdown admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "shutdown",
+        "body": "{\"generation\":0}",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: shutdown admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "shutdown",
+        "body": "{\"generation\":-1}",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: shutdown admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "shutdown",
+        "body": "{\"generation\":2,\"generation\":3}",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: shutdown admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "shutdown",
+        "body": "{\"generation\":2,\"extra\":1}",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: shutdown admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "shutdown",
+        "body": "{\"generation\":2} trailing",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: shutdown admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "shutdown",
+        "body": "{\"generation\":2}\r\n\r\n{\"extra\":1}",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: shutdown admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "shutdown",
+        "body": "\u00a0{\"generation\":2}\u00a0",
+        "events": [
+          [
+            "POST",
+            "/v1/shutdowns",
+            144
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: shutdown admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "ingress-policy",
+        "body": "{}",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: ingress-policy admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "ingress-policy",
+        "body": "{\"generation\":0}",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: ingress-policy admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "ingress-policy",
+        "body": "{\"generation\":-1}",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: ingress-policy admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "ingress-policy",
+        "body": "{\"generation\":2,\"generation\":3}",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: ingress-policy admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "ingress-policy",
+        "body": "{\"generation\":2,\"extra\":1}",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: ingress-policy admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "ingress-policy",
+        "body": "{\"generation\":2} trailing",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: ingress-policy admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "ingress-policy",
+        "body": "{\"generation\":2}\r\n\r\n{\"extra\":1}",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: ingress-policy admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "ingress-policy",
+        "body": "\u00a0{\"generation\":2}\u00a0",
+        "events": [
+          [
+            "POST",
+            "/v1/ingress-policy",
+            176
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: ingress-policy admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "operations-bundle",
+        "body": "{}",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: operational admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "operations-bundle",
+        "body": "{\"generation\":0}",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: operational admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "operations-bundle",
+        "body": "{\"generation\":-1}",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: operational admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "operations-bundle",
+        "body": "{\"generation\":2,\"generation\":3}",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: operational admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "operations-bundle",
+        "body": "{\"generation\":2,\"extra\":1}",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: operational admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "operations-bundle",
+        "body": "{\"generation\":2} trailing",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: operational admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "operations-bundle",
+        "body": "{\"generation\":2}\r\n\r\n{\"extra\":1}",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: operational admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_malformed_scalar_acknowledgements_are_uncertain",
+        "kind": "operations-bundle",
+        "body": "\u00a0{\"generation\":2}\u00a0",
+        "events": [
+          [
+            "POST",
+            "/v1/operations",
+            955
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: operational admission returned an invalid generation; outcome is uncertain\n"
+      },
+      {
+        "case": "test_policy_http_error_is_reported",
+        "kind": "policy-status",
+        "body": "{\"error\":-2}",
+        "events": [
+          [
+            "GET",
+            "/v1/ingress-policy",
+            0
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: ingress-policy status failed: HTTP/1.1 404 Not Found\r\nServer: BaseHTTP/0.6 Python/3.11.17\r\nDate: Wed, 21 Oct 2026 21:27:06 GMT\r\nContent-Length: 12\r\nConnection: close\r\n\r\n{\"error\":-2}\n"
+      },
+      {
+        "case": "test_release_acknowledgement_preserves_non_json_whitespace",
+        "kind": "release",
+        "body": "{\"admission\": \"43524c41444d3031960077fe13d0aa5f786a72a7b83c6d3b495d4edd81d691fe8d152d8aaf55e523010000000000000001000000000000000200000000000000\"}",
+        "events": [
+          [
+            "POST",
+            "/v1/releases",
+            342
+          ]
+        ],
+        "exit_status": 0,
+        "stdout": "{\"admission\": \"43524c41444d3031960077fe13d0aa5f786a72a7b83c6d3b495d4edd81d691fe8d152d8aaf55e523010000000000000001000000000000000200000000000000\"}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_release_acknowledgement_preserves_non_json_whitespace",
+        "kind": "release",
+        "body": "\u00a0{\"admission\": \"43524c41444d3031960077fe13d0aa5f786a72a7b83c6d3b495d4edd81d691fe8d152d8aaf55e523010000000000000001000000000000000200000000000000\"}\u00a0",
+        "events": [
+          [
+            "POST",
+            "/v1/releases",
+            342
+          ]
+        ],
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: release admission returned an invalid component receipt; outcome is uncertain\n"
+      }
+    ]
+  },
+  "cli_cases_per_profile": 116,
+  "new_rust_controls": [
+    "Complete body suffix/Unicode preservation and missing separator rejection",
+    "Valid policy bounds, zero clear assignments and u64 sequence without UTC admission",
+    "Invalid or ambiguous policy fields and validity span rejection"
+  ],
+  "host_binaries": {
+    "debug": {
+      "path": "target/debug/cluster-sign",
+      "sha256": "803705aa4600d3cf48fe625fe50a241427ff4e709417762c9bec9296e768d2ca"
+    },
+    "release": {
+      "path": "target/release/cluster-sign",
+      "sha256": "9f1c25333a4ef6ba1c8841fc67c1e9ee4e9465921a9a03a11e705aa0c98a029d"
+    }
+  },
+  "checks": {
+    "format": {
+      "command": "cargo fmt --all -- --check",
+      "exit_status": 0
+    },
+    "clippy": {
+      "command": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p cluster-sign --all-targets -- -D warnings",
+      "exit_status": 0
+    },
+    "arm_build": {
+      "command": "scripts/build-catten-services.sh --embed",
+      "exit_status": 0
+    },
+    "arm_freshness": {
+      "command": "scripts/build-catten-services.sh --check",
+      "exit_status": 0,
+      "diagnostic": "Staged AArch64 service bundle signatures verified."
+    },
+    "diff": {
+      "command": "git diff --check",
+      "exit_status": 0
+    }
+  },
+  "unchanged_artifacts": {
+    "version_controlled_manifest": "docs/reports/audits/evidence/2026-10-21-security-ingress-deadline.json",
+    "manifest_sha256": "66d1101147d96626d10f9d78f43232015909a4c53b0ea62f6ae99b9ad5bcd163",
+    "canonical_map_encoding": "UTF-8 json.dumps(value, sort_keys=True, separators=(',', ':'))",
+    "bundles": {
+      "aarch64-unknown-none": {
+        "count": 41,
+        "sha256_map_digest": "469531217255f3492eed6501ff8843789def096a659cbd461d03a6f1cfc9393c"
+      },
+      "x86_64-unknown-none": {
+        "count": 37,
+        "sha256_map_digest": "e98072e6a1c088121b4ff146bda832b29e59a5a35bd2beebfc798b2e45da56fd"
+      }
+    },
+    "formal": {
+      "inventory": {
+        "modules": 34,
+        "safe_configurations": 36,
+        "negative_configurations": 109,
+        "runner_inputs": 1
+      },
+      "unchanged_inputs": 180,
+      "sha256_map_digest": "5e1735814ed956e918c183557d0b22697e901364831918abcb15b66820ee6fa5",
+      "fresh_tlc_cases": 0
+    }
+  },
+  "runtime_scope": {
+    "kernel_or_service_source_changed": false,
+    "fresh_guest_runs": 0,
+    "fresh_x86_build": false,
+    "model_transitions_changed": false
+  },
+  "preserved_pdf": {
+    "path": "docs/manual-v2/charlotte.pdf",
+    "sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f",
+    "edited_or_rendered": false
+  },
+  "reviewed_source_sha256": {
+    "docs/guides/testing.md": "20cdbd085742fe0aa9796f9f0dfe17ab37b7a506cf68e28b451ac351f29514fc",
+    "docs/manual-v2/chapters/19-cluster-vision.tex": "4dc73e2bb8422621f975de1f0744d8f211954fb0e3e27f19db6de723c89cab9d",
+    "docs/reference/api-simplification.md": "01f40496713c010becc7b045f2cd724adcb9f74d1616d2898dceeec11b3c8f10",
+    "docs/reference/cleanup-recovery.md": "0bb98db5b443b35276791759e66b94f28f8a2c508bac7c8bb01116154f1ab0bc",
+    "docs/reference/deployment-ingress.md": "60a699f1368ecde28ef6aa28be3c127c2d1e41f2a6681105df59f568031dde44",
+    "docs/reference/observability.md": "6ae0ec75e37d81d5d0be5239f34fa73b6012742a88ebc1b254ee834834cd252b",
+    "docs/reference/release-admission.md": "3c3cde6a5cf212b290b03f47a1dfc6e6b1ceb61db612b39812d313a8d1a752d9",
+    "docs/reference/security-remediation.md": "1551d4e54c828387cd8ea086619574ec2547aceb15ceb3b2a12531fd5a3052bf",
+    "docs/reference/tooling-inputs.md": "7665f6c0e6d78ec4957dfa8410096011310801f9d5b1a25b9b4ff3f446396730",
+    "docs/reports/README.md": "633285cf4f1e6fa4f295eb5b7b617917cf511d6ce2d12d5819450c019f477a2a",
+    "docs/reports/audits/2026-10-21-security-ingress-response.md": "46867fc072c2070cd9cb10ce7dea13ed6f650c7e4754a05c3e8fc643f96d0900",
+    "scripts/tests/test-ingress-response.py": "62415c219cb46c7b0d06f37c24e05ca1b69b3b641d7b51921ce5d45c6d8bb183",
+    "tools/cluster-sign/src/http_client.rs": "1f3226857357a81b384e7d9db106acb7d5fae992e3f144b26c68338488407043",
+    "tools/cluster-sign/src/main.rs": "a93e4f329d230df8485bf0cd792351ca733dbd2dfee84cd58e13f6c8a9b29447",
+    "tools/cluster-sign/src/rollout.rs": "5a8be975ef0a4e4a23608db20e210df9d1d8f860b4422e983285af19e8ee1233"
+  },
+  "remaining_limits": [
+    "Response structure and correlation provide no peer authentication.",
+    "Scalar results do not cryptographically bind acknowledgement to signed request.",
+    "Readiness polls; named status observes current state without an admission binding.",
+    "Blocking host file I/O/stdout, OS scheduling and socket precision remain outside hard real-time guarantees.",
+    "Server-side progress/teardown, coordinated rollback, production trust, SEC-15 and wider audit findings remain separate."
+  ],
+  "fixture_scope": "Synthetic inputs in owned private directories, fresh generated test keys and version-controlled public development operations/recipient fixtures. No real credential is used or recorded; no private key bytes are included."
+}

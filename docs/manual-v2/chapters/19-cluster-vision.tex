@@ -888,6 +888,16 @@ clock range reject. Blocking host file I/O and stdout are not preempted, and
 readiness still uses status polling. Artifacts must already be signed and uploaded; object-store
 credentials remain outside the generated application and its descriptors.
 
+All signer notification commands validate their complete HTTP-202 success body
+before reporting acceptance. Deployment, operations-bundle, shutdown and ingress
+policy use one positive generation; release uses its digest-bound receipt.
+Malformed success is uncertain because the request may already be committed;
+the client does not replay it. Every response reader preserves the complete
+body after the first HTTP separator and trims only JSON whitespace.
+Ingress-policy status validates its five current fields, bounded assignment
+count and signed validity span before output. This is structural observation,
+without a local UTC admission or peer-authentication decision.
+
 The standalone \texttt{deployment-status} command uses the same complete rollout
 codec. Zero or omitted wait prints a valid current pending or ready record;
 a positive wait requires validated readiness. Missing, duplicate, nested,

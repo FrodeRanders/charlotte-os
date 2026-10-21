@@ -609,6 +609,14 @@ could previously be stripped before apply's codec. Invalid names reject before
 waiting or connecting. Current-name observation remains separate from admission
 binding and grants no mutation or cleanup authority. Counts are unchanged.
 
+The [response-reader follow-up](../reports/audits/2026-10-21-security-ingress-response.md)
+shares complete-body extraction across every signer ingress consumer. All scalar
+notification success records require a positive generation; release preserves
+its full receipt validation. Policy observations validate their complete current
+record before output. Malformed success remains uncertain without POST replay;
+record validation supplies no peer authentication or local UTC authority.
+Finding counts are unchanged.
+
 The [SEC-15 hash-state follow-up](../reports/audits/2026-10-19-security-hash-state-erasure.md)
 adds erasure of shared SHA state/compression scratch and one owned HMAC result
 path for SigV4 and SCRAM. The [bounded inventory](secret-state-lifetimes.md)

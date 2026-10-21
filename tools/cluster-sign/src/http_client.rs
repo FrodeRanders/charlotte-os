@@ -124,6 +124,15 @@ pub(super) fn exchange(
     Ok(response)
 }
 
+/// Retain the whole declared JSON body and trim only JSON whitespace. Each
+/// consumer still validates its own current record before using or printing it.
+pub(super) fn response_body(response: &str) -> Result<&str> {
+    response
+        .split_once("\r\n\r\n")
+        .map(|(_, body)| body.trim_matches([' ', '\t', '\r', '\n']))
+        .ok_or_else(|| "response lacks header/body separator".to_owned())
+}
+
 pub(super) const HTTP_RESPONSE_LIMIT: usize = 8192;
 
 /// Observe one complete bounded response, without requiring transport EOF.
@@ -192,6 +201,14 @@ pub(super) fn read_framed_http_response(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn body_preserves_suffix_and_non_json_whitespace() {
+        assert_eq!(response_body("HTTP/1.1 200 OK\r\n\r\n \t{}\r\n").unwrap(), "{}");
+        assert_eq!(response_body("header\r\n\r\n{}\r\n\r\nextra").unwrap(), "{}\r\n\r\nextra");
+        assert_eq!(response_body("header\r\n\r\n\u{a0}{}\u{a0}").unwrap(), "\u{a0}{}\u{a0}");
+        assert!(response_body("missing separator").is_err());
+    }
+
     #[test]
     fn numeric_endpoint_grammar_rejects_resolution_and_header_material() {
         for valid in ["127.0.0.1:8081", "[::1]:8081", "[2001:db8::1]:443"] {

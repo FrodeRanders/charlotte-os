@@ -447,3 +447,13 @@ unknown, extended or inconsistent records reject before another observation.
 Named status remains an observation of the current record; apply still compares
 against its admitted generation. HTTP framing, server output, CLI arguments,
 signed inputs and runtime ABI are unchanged.
+
+
+The [response-reader follow-up](../reports/audits/2026-10-21-security-ingress-response.md)
+uses one complete HTTP-body helper for every signer consumer. Operations,
+shutdown and ingress-policy notifications now validate the same current scalar
+success grammar as deployment notification. Policy status validates its exact
+five-field record with current assignment and signed-validity bounds. There is
+no ignored-success-body, prefix-only or Unicode-whitespace fallback. Release
+keeps its full receipt grammar. Server output, HTTP framing, signed records,
+CLI arguments and runtime ABI are unchanged.

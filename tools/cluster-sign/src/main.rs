@@ -925,7 +925,11 @@ fn operations_bundle_notify(args: &[String]) -> Result<()> {
     if !status.starts_with("HTTP/1.1 202 ") {
         return Err(format!("operational admission failed: {}", response.trim()));
     }
-    println!("{}", response.split("\r\n\r\n").nth(1).unwrap_or(response.as_str()).trim());
+    let body = http_client::response_body(&response)?;
+    rollout::admitted_generation(body).ok_or_else(|| {
+        "operational admission returned an invalid generation; outcome is uncertain".to_owned()
+    })?;
+    println!("{body}");
     Ok(())
 }
 
@@ -1448,7 +1452,11 @@ fn shutdown_notify(args: &[String]) -> Result<()> {
     if !response.lines().next().unwrap_or_default().starts_with("HTTP/1.1 202 ") {
         return Err(format!("shutdown notification failed: {}", response.trim()));
     }
-    println!("{}", response.split("\r\n\r\n").nth(1).unwrap_or_default().trim());
+    let body = http_client::response_body(&response)?;
+    rollout::admitted_generation(body).ok_or_else(|| {
+        "shutdown admission returned an invalid generation; outcome is uncertain".to_owned()
+    })?;
+    println!("{body}");
     Ok(())
 }
 
@@ -1602,6 +1610,10 @@ fn ingress_policy_notify(args: &[String]) -> Result<()> {
     if !response.lines().next().unwrap_or_default().starts_with("HTTP/1.1 202 ") {
         return Err(format!("ingress-policy notification failed: {}", response.trim()));
     }
+    let body = http_client::response_body(&response)?;
+    rollout::admitted_generation(body).ok_or_else(|| {
+        "ingress-policy admission returned an invalid generation; outcome is uncertain".to_owned()
+    })?;
     println!("ingress policy accepted by {endpoint}");
     Ok(())
 }
@@ -1616,8 +1628,9 @@ fn ingress_policy_status(args: &[String]) -> Result<()> {
     if !response.lines().next().unwrap_or_default().starts_with("HTTP/1.1 200 ") {
         return Err(format!("ingress-policy status failed: {}", response.trim()));
     }
-    let body = response.split_once("\r\n\r\n").map_or("", |(_, body)| body);
-    println!("{}", body.trim());
+    let body = http_client::response_body(&response)?;
+    rollout::policy_status(body).ok_or_else(|| "invalid ingress-policy status".to_owned())?;
+    println!("{body}");
     Ok(())
 }
 
@@ -1665,7 +1678,7 @@ fn deployment_notify_bytes(
     if !status.starts_with("HTTP/1.1 202 ") {
         return Err(format!("deployment notification failed: {}", response.trim()));
     }
-    let body = response.split_once("\r\n\r\n").map_or("", |(_, body)| body).trim().to_owned();
+    let body = http_client::response_body(&response)?.to_owned();
     let generation = rollout::admitted_generation(&body).ok_or_else(|| {
         "deployment admission returned an invalid generation; outcome is uncertain".to_owned()
     })?;
@@ -1696,7 +1709,7 @@ fn release_notify_bytes(
     if !status.starts_with("HTTP/1.1 202 ") {
         return Err(format!("release notification failed: {}", response.trim()));
     }
-    let body = response.split_once("\r\n\r\n").map_or("", |(_, body)| body).trim().to_owned();
+    let body = http_client::response_body(&response)?.to_owned();
     let receipt = rollout::admitted_release(&body, bytes).ok_or_else(|| {
         "release admission returned an invalid component receipt; outcome is uncertain".to_owned()
     })?;
@@ -1755,13 +1768,7 @@ fn deployment_status_once(
     );
     let response = http_client::exchange(endpoint, request.as_bytes(), &[], deadline)?;
     let status = response.lines().next().unwrap_or_default().to_owned();
-    // Preserve the complete declared body for the status codec, including any
-    // further separators. Only JSON whitespace may surround the record.
-    let body = response
-        .split_once("\r\n\r\n")
-        .map_or("", |(_, body)| body)
-        .trim_matches([' ', '\t', '\r', '\n'])
-        .to_owned();
+    let body = http_client::response_body(&response)?.to_owned();
     Ok((status, body))
 }
 

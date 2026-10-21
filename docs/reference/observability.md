@@ -249,7 +249,11 @@ whose immutable epoch has left bounded history.
 The operations-facing `GET /v1/ingress-policy` endpoint reports the committed
 catalog generation, signed policy sequence, assignment count, and admission
 validity interval. `cluster-sign ingress-policy-status [IP:port]` wraps this
-query. Before the first policy commit it returns not found because the
+query. The CLI validates all five current fields, including the signed validity
+span and assignment bound, before printing the complete observation. Malformed
+records reject; a valid observation grants no admission authority or proof of
+current UTC validity. See [tooling inputs](tooling-inputs.md).
+Before the first policy commit it returns not found because the
 launch-time bootstrap table is local fallback rather than replicated state.
 
 The signer ingress endpoint uses a numeric IPv4 or bracketed IPv6 address and an

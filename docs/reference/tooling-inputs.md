@@ -210,3 +210,24 @@ An invalid artifact name rejects before waiting or connecting. Named status
 still observes the current record, which can change during its wait. Its result
 is not bound to a preceding admission and supplies no replay, retirement or
 cleanup authority. See the [named-status audit](../reports/audits/2026-10-21-security-named-status.md).
+
+
+All signer ingress response readers share one complete-body extraction helper.
+It splits at the first HTTP header/body separator and trims only JSON space,
+tab, carriage return and line feed. Additional body separators, trailing data
+and Unicode whitespace remain visible to the consuming codec.
+
+Deployment, operations-bundle, shutdown and ingress-policy notification require
+exactly one positive signed-range `generation` in an HTTP-202 acknowledgement.
+Release notification requires its complete digest-bound receipt. Invalid success
+records report an uncertain outcome before printing success, with no automatic
+POST replay. The request may already be committed.
+
+Ingress-policy status requires exactly five current fields: positive signed-range
+`generation`, positive u64 `sequence`, `assignments` in 0..=16, positive
+`not_before_unix_seconds`, and `expires_unix_seconds` at or after that start,
+within the signed policy's maximum validity span. Zero assignments represents an
+explicit clear policy. JSON whitespace and field order are accepted; duplicate,
+unknown, missing, nested or invalid fields reject before output. This validates
+record structure; it makes no local UTC admission or peer-authentication decision.
+See the [response-reader audit](../reports/audits/2026-10-21-security-ingress-response.md).

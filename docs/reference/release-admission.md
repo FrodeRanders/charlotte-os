@@ -39,7 +39,9 @@ nonreused request ID, then validates the receipt against its retained request.
 HTTP `POST /v1/releases` returns HTTP 202 with one JSON field:
 `{"admission":"<lowercase hex of complete CRLADM01>"}`. Errors retain the existing
 HTTP/error-code mapping. Duplicate, unknown or missing fields, scalar release
-successes and malformed hex reject. JSON whitespace is accepted. CLI arguments
+successes and malformed hex reject. JSON whitespace is accepted; non-JSON Unicode
+whitespace is preserved and rejected. The shared HTTP body reader retains any
+additional separator or trailing data. CLI arguments
 are unchanged. `release-notify` prints the validated body; `release-apply` borrows
 component names from its retained envelope preparation and waits for each captured
 generation. Older observations remain pending, matching ready generations

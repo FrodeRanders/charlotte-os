@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Complete ingress acknowledgement and policy readers](audits/2026-10-21-security-ingress-response.md) — Validates all scalar notification successes, preserves complete bodies and checks current policy observations.
+
 - [Complete named deployment observations](audits/2026-10-21-security-named-status.md) — Validates standalone status and preserves full status bodies for all apply/status callers, with false-success controls.
 
 - [Host ingress operation deadlines](audits/2026-10-21-security-ingress-deadline.md) — Shares one checked budget across preparation, notification and observation, bounds network phases and retires hostname resolution in signer commands.

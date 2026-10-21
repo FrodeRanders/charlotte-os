@@ -84,7 +84,12 @@ cluster-sign release-apply orders.crelease 127.0.0.1:8081 120
 ```
 
 A successful notification returns HTTP `202 Accepted` and JSON containing the
-committed Raft deployment generation. Repeating the exact same descriptor is
+committed Raft deployment generation. All scalar signer notification commands
+require the complete positive-generation acknowledgement; release uses its full
+receipt. A malformed HTTP-202 body is uncertain and never causes POST replay.
+The shared body reader preserves trailing data and Unicode whitespace for the
+codec. See [tooling inputs](tooling-inputs.md).
+Repeating the exact same descriptor is
 idempotent. A lower signed sequence, or different signed bytes at the same
 sequence, returns HTTP `409 Conflict`.
 
