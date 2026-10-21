@@ -94,6 +94,15 @@ opens reject final-component symlinks and non-regular inputs; the existing
 format/signature and receiver checks remain responsible for authorization.
 See the [control-input audit](../reports/audits/2026-10-21-security-control-input.md) for coverage and limits.
 
+Artifact file admission now uses the launch ABI's 4 MiB limit for ELF signing,
+verification and deployment variants. Adding a signature note must also fit that
+limit. Deployment signing checks at most eight variants, including the primary,
+before reading images. `sha256` streams regular files through a 16 KiB erasing
+buffer and accepts files larger than the artifact limit. Unix opens reject
+final-component symlinks and non-regular sources. These are input checks;
+concurrent output-path replacement and in-place write atomicity remain separate.
+See the [artifact-input audit](../reports/audits/2026-10-21-security-artifact-input.md).
+
 ## Public trust-policy preflight
 
 Prepare an unsigned `CTRUST1` public policy using the four public files above:

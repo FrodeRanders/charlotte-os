@@ -1139,8 +1139,12 @@ Structured deployment and release files are bounded to 3,584 bytes, shutdown
 files to 144 bytes and ingress policies to 1,184 bytes before verification,
 notification or apply. Release signing checks its one-to-sixteen descriptor
 references before reading those files. Unix opens reject final-component
-symlinks and non-regular sources. Raw executable and arbitrary-file hash inputs
-retain separate policies.
+symlinks and non-regular sources. Artifact sign/verify and deployment image
+inputs use the launch ABI's 4 MiB maximum; adding a note must keep the output
+within that bound. Deployment signing checks its one-to-eight variants before
+image reads. The host file-hash command streams regular files through a 16 KiB
+erasing buffer, with no artifact-size cap. Concurrent content changes,
+output-path replacement and write atomicity remain separate boundaries.
 
 Build output and boot logs explicitly identify the current images as
 development images. The build refuses production trust mode

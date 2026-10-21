@@ -8,6 +8,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Artifact input bounds and streaming hash](audits/2026-10-21-security-artifact-input.md) — Enforces the launch ELF limit before host reads/output growth, checks variant count early and streams arbitrary-file hashing.
 - [Bounded structured control inputs](audits/2026-10-21-security-control-input.md) — Covers deployment, release, shutdown and ingress file reads, with early release descriptor-count rejection.
 - [Bounded operational file inputs](audits/2026-10-21-security-operational-input.md) — Bounds ciphertext and bundle references before decoding or notification, with early binding-count rejection and actual CLI controls.
 - [Bounded public-key file inputs](audits/2026-10-21-security-public-key-input.md) — Shares trust-policy admission and decoding with operational and ingress-policy file arguments; preserves baseline rejection failures.

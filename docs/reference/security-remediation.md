@@ -550,6 +550,15 @@ Corrected controls pass without changing the signed formats or receiver checks.
 Raw ELF/hash inputs, management fairness, trust and secret-state work remain
 separate; overall finding counts are unchanged.
 
+The [artifact-input follow-up](../reports/audits/2026-10-21-security-artifact-input.md) aligns host ELF input and signed-output
+sizes with the existing 4 MiB launch bound and checks variant count before image
+reads. The arbitrary-file hash command now streams through an erasing 16 KiB
+owner. Baseline controls retain accepted aliases, late size/count rejection and
+a signed output exceeding the launch limit. Independent Python vectors and
+allocation observations qualify the hash loop. Output-path races/atomicity,
+physical erasure, custody and broader findings remain separate; counts are
+unchanged.
+
 The [SEC-15 hash-state follow-up](../reports/audits/2026-10-19-security-hash-state-erasure.md)
 adds erasure of shared SHA state/compression scratch and one owned HMAC result
 path for SigV4 and SCRAM. The [bounded inventory](secret-state-lifetimes.md)

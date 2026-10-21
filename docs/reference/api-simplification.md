@@ -361,13 +361,21 @@ admission with public policy/key files, using existing codec maxima. Bundle
 signing checks its binding count before referenced reads and iterates those
 triples directly, removing the temporary path vector. Command syntax, signed
 formats, cryptography and receiver authority are unchanged. The control-input
-follow-up below also covers structured release/deployment records; raw ELF
-reads remain separate.
+follow-up below also covers structured release/deployment records; artifact
+reads are covered by the later artifact-input follow-up.
 
 The [control-input follow-up](../reports/audits/2026-10-21-security-control-input.md) removes whole-file reads from the
 remaining structured deployment, release, shutdown and ingress-policy input
 paths. They use the same bounded regular-file reader with current codec limits.
 Release signing checks its existing descriptor-count maximum before referenced
 reads. Apply preparation order, command syntax, public hex arguments, signed
-formats and receiver authority are unchanged. Raw ELF and arbitrary-file hash
-inputs remain separate; this adds no general tool-input size policy.
+formats and receiver authority are unchanged. The artifact-input follow-up below covers raw ELF and arbitrary-file hash
+inputs with their own admission policies.
+
+The [artifact-input follow-up](../reports/audits/2026-10-21-security-artifact-input.md) replaces the remaining four whole-file
+ELF reads with bounded admission using the existing 4 MiB launch maximum, and
+replaces whole-file `sha256` loading with a streaming helper. Descriptor opening
+is shared with current bounded readers. Note construction preflights the complete
+signed output size, and variant-count admission precedes image reads. No alternate
+unbounded artifact/hash path remains. CLI syntax, signature bytes, wire formats
+and runtime ABI are preserved; no general file-size limit is added to `sha256`.

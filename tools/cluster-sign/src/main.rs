@@ -4,6 +4,7 @@
 //! SHA-256, and verifier.  Host tooling and the kernel therefore cannot drift
 //! into subtly different interpretations of the signed byte stream.
 
+mod file_hash;
 mod key_encoding;
 mod profile_input;
 mod trust_policy;
@@ -158,7 +159,13 @@ fn add_note_section(image: &[u8], metadata: ArtifactMetadata) -> Result<Vec<u8>>
         .ok_or_else(|| "string table size overflow".to_owned())?;
     let table_offset = align(new_str_offset + new_str_size, 8)?;
 
-    let mut output = image.to_vec();
+    let output_len = table_offset
+        .checked_add(old_table.len())
+        .and_then(|len| len.checked_add(ELF64_SECTION_HEADER_LEN))
+        .filter(|len| *len <= charlotte_launch::MAX_ARTIFACT_ELF_SIZE)
+        .ok_or_else(|| "signed ELF exceeds the 4 MiB artifact limit".to_owned())?;
+    let mut output = Vec::with_capacity(output_len);
+    output.extend_from_slice(image);
     output.resize(note_offset, 0);
     output.extend_from_slice(&note);
     output.extend_from_slice(old_strtab);
@@ -271,14 +278,22 @@ fn parse_fixed_hex(value: &str, length: usize, label: &str) -> Result<Vec<u8>> {
 
 // Structured signed records, public keys and policies share this admission.
 // File checks do not authenticate a public key or provision trust.
-fn read_bounded_regular(path: &str, maximum: usize) -> Result<Vec<u8>> {
+fn open_regular(path: &str) -> Result<(std::fs::File, std::fs::Metadata)> {
     let mut options = OpenOptions::new();
     options.read(true);
     #[cfg(unix)]
     options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
     let file = options.open(path).map_err(|error| format!("open {path}: {error}"))?;
     let metadata = file.metadata().map_err(|error| format!("inspect {path}: {error}"))?;
-    if !metadata.is_file() || metadata.len() > maximum as u64 {
+    if !metadata.is_file() {
+        return Err(format!("{path}: expected a regular file"));
+    }
+    Ok((file, metadata))
+}
+
+fn read_bounded_regular(path: &str, maximum: usize) -> Result<Vec<u8>> {
+    let (file, metadata) = open_regular(path)?;
+    if metadata.len() > maximum as u64 {
         return Err(format!("{path}: expected a regular file of at most {maximum} bytes"));
     }
     let mut bytes = Vec::new();
@@ -880,7 +895,7 @@ fn elf_sign(args: &[String]) -> Result<()> {
         .ok_or_else(|| "artifact name must be 1..=48 non-NUL bytes".to_owned())?
         .with_key_id(public.as_ref().try_into().map_err(|_| "invalid public key".to_owned())?)
         .with_provenance_digest(provenance_digest);
-    let mut image = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    let mut image = read_bounded_regular(path, charlotte_launch::MAX_ARTIFACT_ELF_SIZE)?;
 
     if let Some(location) = signature_note::signature_location(&image) {
         image[location.descriptor_offset..location.descriptor_offset + DESCRIPTOR_LEN]
@@ -914,7 +929,7 @@ fn elf_verify(args: &[String]) -> Result<()> {
         .map_err(|_| "public key must contain 32 bytes".to_owned())?;
     let key: &[u8; 32] =
         public.as_ref().try_into().map_err(|_| "public key must contain 32 bytes".to_owned())?;
-    let image = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    let image = read_bounded_regular(path, charlotte_launch::MAX_ARTIFACT_ELF_SIZE)?;
     match signature_note::verify_elf_for_name(&image, key, name.as_bytes()) {
         signature_note::VerifyOutcome::Valid => {
             let metadata = signature_note::artifact_metadata(&image)
@@ -1014,7 +1029,15 @@ fn deployment_sign(args: &[String]) -> Result<()> {
     let artifact_name = args.get(1).ok_or_else(|| "missing artifact name".to_owned())?;
     let object_key = args.get(2).ok_or_else(|| "missing object key".to_owned())?;
     let image_path = args.get(3).ok_or_else(|| "missing artifact ELF path".to_owned())?;
-    let image = fs::read(image_path).map_err(|error| format!("read {image_path}: {error}"))?;
+    if args.get(10..).unwrap_or_default().iter().filter(|arg| arg.starts_with("--variant=")).count()
+        >= deployment::MAX_VARIANTS
+    {
+        return Err(format!(
+            "deployment-sign accepts at most {} variants (including the primary)",
+            deployment::MAX_VARIANTS
+        ));
+    }
+    let image = read_bounded_regular(image_path, charlotte_launch::MAX_ARTIFACT_ELF_SIZE)?;
     let architecture =
         charlotte_launch::execution_target::ExecutionTarget::elf_architecture(&image)
             .ok_or_else(|| "unsupported ELF architecture".to_owned())?;
@@ -1058,8 +1081,7 @@ fn deployment_sign(args: &[String]) -> Result<()> {
             if parts.len() != 5 {
                 return Err("variant requires OBJECT_KEY,ELF,FEATURE_MASK,PRIORITY,ABI".to_owned());
             }
-            let image =
-                fs::read(parts[1]).map_err(|error| format!("read {}: {error}", parts[1]))?;
+            let image = read_bounded_regular(parts[1], charlotte_launch::MAX_ARTIFACT_ELF_SIZE)?;
             let mut target = charlotte_launch::execution_target::ExecutionTarget::baseline(
                 charlotte_launch::execution_target::ExecutionTarget::elf_architecture(&image)
                     .ok_or_else(|| "unsupported variant ELF architecture".to_owned())?,
@@ -1999,8 +2021,10 @@ fn run() -> Result<()> {
         }
         Some("sha256") => {
             let path = args.get(2).ok_or_else(|| "missing file path".to_owned())?;
-            let data = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
-            println!("{}", hex_encode(&charlotte_launch::sha256::digest(&data)));
+            let (file, _) = open_regular(path)?;
+            let digest =
+                file_hash::digest(file).map_err(|error| format!("read {path}: {error}"))?;
+            println!("{}", hex_encode(&digest));
             Ok(())
         }
         Some("selftest") => {
@@ -2660,6 +2684,140 @@ mod tests {
         assert!(operations_recipient_generate(&[missing_parent, unused_public.clone()]).is_err());
         assert!(!std::path::Path::new(&unused_public).exists());
         assert!(operations_recipient_generate(&[]).is_err());
+    }
+
+    #[cfg(unix)]
+    fn minimal_artifact_elf() -> Vec<u8> {
+        // A section-table fixture for host metadata/signature checks only.
+        let mut image = vec![0; 193];
+        image[..6].copy_from_slice(b"\x7fELF\x02\x01");
+        image[18..20].copy_from_slice(&183u16.to_le_bytes());
+        image[0x28..0x30].copy_from_slice(&64u64.to_le_bytes());
+        image[0x3a..0x3c].copy_from_slice(&64u16.to_le_bytes());
+        image[0x3c..0x3e].copy_from_slice(&2u16.to_le_bytes());
+        image[0x3e..0x40].copy_from_slice(&1u16.to_le_bytes());
+        image[132..136].copy_from_slice(&3u32.to_le_bytes());
+        image[152..160].copy_from_slice(&192u64.to_le_bytes());
+        image[160..168].copy_from_slice(&1u64.to_le_bytes());
+        image
+    }
+
+    #[cfg(unix)]
+    fn artifact_deployment_args(f: &SignedControlFixture, path: &str) -> Vec<String> {
+        vec![
+            f.path("artifact.cdep"),
+            "app".into(),
+            "apps/app.elf".into(),
+            path.into(),
+            "0".into(),
+            "1".into(),
+            "4".into(),
+            "1".into(),
+            "5000".into(),
+            f.private.clone(),
+        ]
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn artifact_regular_files_preserve_sign_verify_and_variants() {
+        let f = SignedControlFixture::new();
+        let image = f.path("artifact.elf");
+        fs::write(&image, minimal_artifact_elf()).unwrap();
+        elf_sign(&[image.clone(), "app".into(), f.private.clone()]).unwrap();
+        elf_verify(&[image.clone(), "app".into(), f.public.clone()]).unwrap();
+        let mut args = artifact_deployment_args(&f, &image);
+        args.push(format!("--variant=apps/extra.elf,{image},1,1,3"));
+        deployment_sign(&args).unwrap();
+        let bytes = fs::read(&args[0]).unwrap();
+        let descriptor = deployment::decode(&bytes).unwrap();
+        assert_eq!(descriptor.variants().count(), 2);
+        assert!(descriptor
+            .variants()
+            .all(|v| v.artifact_digest
+                == charlotte_launch::sha256::digest(&fs::read(&image).unwrap())));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn artifact_input_size_rejects_before_parsing() {
+        let f = SignedControlFixture::new();
+        let large = f.path("large.elf");
+        fs::write(&large, vec![0; charlotte_launch::MAX_ARTIFACT_ELF_SIZE + 1]).unwrap();
+        let regular = f.path("regular.elf");
+        fs::write(&regular, minimal_artifact_elf()).unwrap();
+        let mut variant_args = artifact_deployment_args(&f, &regular);
+        variant_args.push(format!("--variant=apps/extra.elf,{large},1,1,3"));
+        let errors = [
+            elf_sign(&[large.clone(), "app".into(), f.private.clone()]).unwrap_err(),
+            elf_verify(&[large.clone(), "app".into(), f.public.clone()]).unwrap_err(),
+            deployment_sign(&artifact_deployment_args(&f, &large)).unwrap_err(),
+            deployment_sign(&variant_args).unwrap_err(),
+        ];
+        assert!(
+            errors.iter().all(|e| e.contains("expected a regular file of at most 4194304 bytes")),
+            "late ELF rejection: {errors:?}"
+        );
+        assert!(!std::path::Path::new(&f.path("artifact.cdep")).exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn artifact_inputs_reject_aliases_and_nonregular_sources() {
+        let f = SignedControlFixture::new();
+        let regular = f.path("regular.elf");
+        fs::write(&regular, minimal_artifact_elf()).unwrap();
+        elf_sign(&[regular.clone(), "app".into(), f.private.clone()]).unwrap();
+        let alias = f.path("alias.elf");
+        std::os::unix::fs::symlink(&regular, &alias).unwrap();
+        let mut args = artifact_deployment_args(&f, &regular);
+        args.push(format!("--variant=apps/extra.elf,{alias},1,1,3"));
+        let results = [
+            elf_sign(&[alias.clone(), "app".into(), f.private.clone()]),
+            elf_verify(&[alias.clone(), "app".into(), f.public.clone()]),
+            deployment_sign(&artifact_deployment_args(&f, &alias)),
+            deployment_sign(&args),
+        ];
+        assert!(results.iter().all(Result::is_err), "accepted ELF aliases: {results:?}");
+        assert!(!std::path::Path::new(&f.path("artifact.cdep")).exists());
+        let fifo = f.path("fifo");
+        let name = std::ffi::CString::new(fifo.as_str()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+        for source in [&fifo, &f.directory.0.to_str().unwrap().to_owned()] {
+            assert!(elf_sign(&[source.clone(), "app".into(), f.private.clone()]).is_err());
+            assert!(elf_verify(&[source.clone(), "app".into(), f.public.clone()]).is_err());
+            assert!(deployment_sign(&artifact_deployment_args(&f, source)).is_err());
+            let mut args = artifact_deployment_args(&f, &regular);
+            args.push(format!("--variant=apps/extra.elf,{source},1,1,3"));
+            assert!(deployment_sign(&args).is_err());
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn artifact_note_growth_rejects_without_replacing_input() {
+        let f = SignedControlFixture::new();
+        let image = f.path("full.elf");
+        let mut original = minimal_artifact_elf();
+        original.resize(charlotte_launch::MAX_ARTIFACT_ELF_SIZE, 0);
+        fs::write(&image, &original).unwrap();
+        let result = elf_sign(&[image.clone(), "app".into(), f.private.clone()]);
+        let after = fs::metadata(&image).unwrap().len();
+        assert!(result.is_err(), "oversized signed output: {result:?}, bytes={after}");
+        assert_eq!(fs::read(&image).unwrap(), original);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn artifact_variant_count_rejects_before_image_reads() {
+        let f = SignedControlFixture::new();
+        let mut args = artifact_deployment_args(&f, &f.path("absent"));
+        for _ in 0..deployment::MAX_VARIANTS {
+            args.push(format!("--variant=extra,{},1,1,3", f.path("absent-extra")));
+        }
+        let error = deployment_sign(&args).unwrap_err();
+        assert!(error.contains("at most 8 variants"), "late variant rejection: {error}");
+        assert!(!std::path::Path::new(&f.path("artifact.cdep")).exists());
     }
 
     #[cfg(unix)]

@@ -80,7 +80,8 @@ same standalone bound. Unix input opens reject final-component symlinks,
 directories and FIFOs. Rejected notification input does not connect to ingress;
 notification still relies on the receiver for authenticated admission. These
 file checks add no trust authority or I/O deadline. Structured control records
-use the bounds below; raw ELF and arbitrary-file hash inputs remain separate.
+use the bounds below; artifact and arbitrary-file hash inputs use the policies
+recorded at the end of this page.
 See the [operational-input report](../reports/audits/2026-10-21-security-operational-input.md).
 
 Structured control inputs also use this shared reader before verification,
@@ -91,5 +92,20 @@ before reading them. Deployment apply still prepares all supplied descriptors
 before its first notification; each file has the descriptor bound. It has no
 new aggregate batch limit. Unix opens reject final-component symlinks and
 non-regular sources. Format/signature checks and receiver authorization remain
-in place. Raw ELF inputs and the arbitrary-file `sha256` command retain their
-separate read policies. See the [control-input report](../reports/audits/2026-10-21-security-control-input.md).
+in place. Artifact inputs and the `sha256` command use the policies below. See the
+[control-input report](../reports/audits/2026-10-21-security-control-input.md).
+
+ELF sign/verify and deployment primary/variant inputs use the shared regular-file
+reader with the launch ABI's 4 MiB artifact maximum. Signing checks the projected
+note/string/section-table output size before allocation and writing; adding a
+note cannot produce an artifact beyond that maximum. Deployment signing admits
+at most eight variants, including the primary, before opening images.
+
+`sha256` accepts regular files without the artifact size cap and hashes them to
+EOF through one 16 KiB erasing buffer. Empty-file and digest output syntax are
+unchanged. On Unix, both artifact and hash inputs reject final-component
+symlinks, directories and FIFOs. No production `fs::read` remains in the signer;
+whole-image operations retain bounded buffers. Neither streaming nor descriptor
+capture provides a content snapshot or I/O deadline. In-place signing still
+reopens its output path; concurrent replacement and write atomicity remain
+separate work. See the [artifact-input report](../reports/audits/2026-10-21-security-artifact-input.md).
