@@ -106,6 +106,17 @@ EOF through one 16 KiB erasing buffer. Empty-file and digest output syntax are
 unchanged. On Unix, both artifact and hash inputs reject final-component
 symlinks, directories and FIFOs. No production `fs::read` remains in the signer;
 whole-image operations retain bounded buffers. Neither streaming nor descriptor
-capture provides a content snapshot or I/O deadline. In-place signing still
-reopens its output path; concurrent replacement and write atomicity remain
-separate work. See the [artifact-input report](../reports/audits/2026-10-21-security-artifact-input.md).
+capture provides a content snapshot or I/O deadline. In-place signing retains
+its opened descriptor through rewriting as described below; write atomicity
+remains separate. See the [artifact-input report](../reports/audits/2026-10-21-security-artifact-input.md).
+
+`elf-sign` keeps one read/write descriptor and its prepared image in `ArtifactEdit`.
+Its consuming commit rewinds, writes and sets length through that descriptor;
+it never reopens, creates or removes the pathname. A replacement symlink or
+regular file is left untouched. If the original is renamed, that original file
+is updated; if it is unlinked, signing does not recreate the path. Success
+therefore refers to the opened file, without guaranteeing the path's current
+binding. The output identifies the artifact as opened at the supplied path.
+Dropping an edit without commit leaves its bytes unpublished. A commit error
+consumes the owner and may leave a partial rewrite; no implicit retry, rollback,
+fsync or atomic/durable publication is promised. See the [artifact-edit report](../reports/audits/2026-10-21-security-artifact-edit.md).

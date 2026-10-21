@@ -8,6 +8,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Rewriting the opened ELF file](audits/2026-10-21-security-artifact-edit.md) — Retains the opened file and image through consuming publication, with deterministic path-replacement controls.
 - [Artifact input bounds and streaming hash](audits/2026-10-21-security-artifact-input.md) — Enforces the launch ELF limit before host reads/output growth, checks variant count early and streams arbitrary-file hashing.
 - [Bounded structured control inputs](audits/2026-10-21-security-control-input.md) — Covers deployment, release, shutdown and ingress file reads, with early release descriptor-count rejection.
 - [Bounded operational file inputs](audits/2026-10-21-security-operational-input.md) — Bounds ciphertext and bundle references before decoding or notification, with early binding-count rejection and actual CLI controls.

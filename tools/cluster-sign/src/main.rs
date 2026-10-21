@@ -22,6 +22,8 @@ use std::{
     },
     io::{
         Read,
+        Seek,
+        SeekFrom,
         Write,
     },
     net::TcpStream,
@@ -279,8 +281,13 @@ fn parse_fixed_hex(value: &str, length: usize, label: &str) -> Result<Vec<u8>> {
 // Structured signed records, public keys and policies share this admission.
 // File checks do not authenticate a public key or provision trust.
 fn open_regular(path: &str) -> Result<(std::fs::File, std::fs::Metadata)> {
-    let mut options = OpenOptions::new();
-    options.read(true);
+    open_regular_options(path, OpenOptions::new().read(true))
+}
+
+fn open_regular_options(
+    path: &str,
+    options: &mut OpenOptions,
+) -> Result<(std::fs::File, std::fs::Metadata)> {
     #[cfg(unix)]
     options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
     let file = options.open(path).map_err(|error| format!("open {path}: {error}"))?;
@@ -292,7 +299,16 @@ fn open_regular(path: &str) -> Result<(std::fs::File, std::fs::Metadata)> {
 }
 
 fn read_bounded_regular(path: &str, maximum: usize) -> Result<Vec<u8>> {
-    let (file, metadata) = open_regular(path)?;
+    let (mut file, metadata) = open_regular(path)?;
+    read_bounded_contents(&mut file, &metadata, path, maximum)
+}
+
+fn read_bounded_contents(
+    file: &mut std::fs::File,
+    metadata: &std::fs::Metadata,
+    path: &str,
+    maximum: usize,
+) -> Result<Vec<u8>> {
     if metadata.len() > maximum as u64 {
         return Err(format!("{path}: expected a regular file of at most {maximum} bytes"));
     }
@@ -304,6 +320,47 @@ fn read_bounded_regular(path: &str, maximum: usize) -> Result<Vec<u8>> {
         return Err(format!("{path}: input grew beyond {maximum} bytes"));
     }
     Ok(bytes)
+}
+
+/// Keeps rewrite authority on the descriptor that supplied the prepared bytes.
+/// Dropping an uncommitted edit closes it without publishing buffered changes.
+struct ArtifactEdit {
+    file: std::fs::File,
+    image: Vec<u8>,
+}
+
+impl ArtifactEdit {
+    fn open(path: &str) -> Result<Self> {
+        let (mut file, metadata) =
+            open_regular_options(path, OpenOptions::new().read(true).write(true))?;
+        let image = read_bounded_contents(
+            &mut file,
+            &metadata,
+            path,
+            charlotte_launch::MAX_ARTIFACT_ELF_SIZE,
+        )?;
+        Ok(Self {
+            file,
+            image,
+        })
+    }
+
+    fn image_mut(&mut self) -> &mut Vec<u8> {
+        &mut self.image
+    }
+
+    /// Consumes the edit even on failure; partial writes have no implicit retry.
+    fn commit(mut self) -> std::io::Result<()> {
+        if self.image.len() > charlotte_launch::MAX_ARTIFACT_ELF_SIZE {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "signed artifact exceeds the 4 MiB limit",
+            ));
+        }
+        self.file.seek(SeekFrom::Start(0))?;
+        self.file.write_all(&self.image)?;
+        self.file.set_len(self.image.len() as u64)
+    }
 }
 
 fn read_hex_key(path: &str, length: usize, label: &str) -> Result<Vec<u8>> {
@@ -895,28 +952,30 @@ fn elf_sign(args: &[String]) -> Result<()> {
         .ok_or_else(|| "artifact name must be 1..=48 non-NUL bytes".to_owned())?
         .with_key_id(public.as_ref().try_into().map_err(|_| "invalid public key".to_owned())?)
         .with_provenance_digest(provenance_digest);
-    let mut image = read_bounded_regular(path, charlotte_launch::MAX_ARTIFACT_ELF_SIZE)?;
+    let mut edit = ArtifactEdit::open(path)?;
+    let image = edit.image_mut();
 
-    if let Some(location) = signature_note::signature_location(&image) {
+    if let Some(location) = signature_note::signature_location(image) {
         image[location.descriptor_offset..location.descriptor_offset + DESCRIPTOR_LEN]
             .copy_from_slice(&signature_note::encode_descriptor(metadata));
     } else {
-        image = add_note_section(&image, metadata)?;
+        *image = add_note_section(image, metadata)?;
     }
-    let location = signature_note::signature_location(&image)
+    let location = signature_note::signature_location(image)
         .ok_or_else(|| "failed to construct canonical signature note".to_owned())?;
     let digest =
-        charlotte_launch::sha256::digest_skipping(&image, location.signature_offset, SIGNATURE_LEN);
+        charlotte_launch::sha256::digest_skipping(image, location.signature_offset, SIGNATURE_LEN);
     let signature: Signature = secret.sign(digest, None);
     image[location.signature_offset..location.signature_offset + SIGNATURE_LEN]
         .copy_from_slice(signature.as_ref());
-    fs::write(path, &image).map_err(|error| format!("write {path}: {error}"))?;
+    let artifact_digest = charlotte_launch::sha256::digest(image);
+    edit.commit().map_err(|error| format!("rewrite artifact opened at {path}: {error}"))?;
     println!(
-        "signed {path} as {name:?} class={class:?} version={version} rollback={rollback} \
-         flags={flags:#x}"
+        "signed artifact opened at {path} as {name:?} class={class:?} version={version} \
+         rollback={rollback} flags={flags:#x}"
     );
     println!("public key id: {}", hex_encode(&metadata.key_id));
-    println!("artifact sha256: {}", hex_encode(&charlotte_launch::sha256::digest(&image)));
+    println!("artifact sha256: {}", hex_encode(&artifact_digest));
     Ok(())
 }
 
@@ -2684,6 +2743,119 @@ mod tests {
         assert!(operations_recipient_generate(&[missing_parent, unused_public.clone()]).is_err());
         assert!(!std::path::Path::new(&unused_public).exists());
         assert!(operations_recipient_generate(&[]).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn artifact_edit_preserves_inode_mode_and_exact_length() {
+        let directory = TestDirectory::new();
+        let path = directory.path("artifact");
+        fs::write(&path, b"public original with trailing bytes").unwrap();
+        let before = fs::metadata(&path).unwrap();
+        let mut edit = ArtifactEdit::open(&path).unwrap();
+        *edit.image_mut() = b"signed".to_vec();
+        edit.commit().unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"signed");
+        let after = fs::metadata(&path).unwrap();
+        assert_eq!(
+            (before.dev(), before.ino(), before.mode()),
+            (after.dev(), after.ino(), after.mode())
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn artifact_edit_symlink_replacement_cannot_redirect_write() {
+        let directory = TestDirectory::new();
+        let path = directory.path("artifact");
+        let captured = directory.path("captured");
+        let victim = directory.path("victim");
+        fs::write(&path, b"public original").unwrap();
+        fs::write(&victim, b"unrelated public file").unwrap();
+        let mut edit = ArtifactEdit::open(&path).unwrap();
+        fs::rename(&path, &captured).unwrap();
+        std::os::unix::fs::symlink(&victim, &path).unwrap();
+        *edit.image_mut() = b"signed public bytes".to_vec();
+        edit.commit().unwrap();
+        assert_eq!(
+            fs::read(&victim).unwrap(),
+            b"unrelated public file",
+            "publication followed replacement symlink"
+        );
+        assert_eq!(fs::read(&captured).unwrap(), b"signed public bytes");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn artifact_edit_regular_replacement_cannot_redirect_write() {
+        let directory = TestDirectory::new();
+        let path = directory.path("artifact");
+        let captured = directory.path("captured");
+        fs::write(&path, b"public original").unwrap();
+        let mut edit = ArtifactEdit::open(&path).unwrap();
+        fs::rename(&path, &captured).unwrap();
+        fs::write(&path, b"replacement public file").unwrap();
+        *edit.image_mut() = b"signed public bytes".to_vec();
+        edit.commit().unwrap();
+        assert_eq!(
+            fs::read(&path).unwrap(),
+            b"replacement public file",
+            "publication reopened replacement inode"
+        );
+        assert_eq!(fs::read(&captured).unwrap(), b"signed public bytes");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn artifact_edit_unlink_does_not_recreate_path() {
+        let directory = TestDirectory::new();
+        let path = directory.path("artifact");
+        fs::write(&path, b"public original").unwrap();
+        let mut edit = ArtifactEdit::open(&path).unwrap();
+        fs::remove_file(&path).unwrap();
+        *edit.image_mut() = b"signed public bytes".to_vec();
+        edit.commit().unwrap();
+        assert!(!std::path::Path::new(&path).exists(), "publication recreated removed path");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn abandoned_artifact_edit_leaves_input_unchanged() {
+        let directory = TestDirectory::new();
+        let path = directory.path("artifact");
+        fs::write(&path, b"public original").unwrap();
+        let mut edit = ArtifactEdit::open(&path).unwrap();
+        *edit.image_mut() = b"abandoned public bytes".to_vec();
+        drop(edit);
+        assert_eq!(fs::read(&path).unwrap(), b"public original");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn artifact_edit_write_rejection_leaves_input_unchanged() {
+        let directory = TestDirectory::new();
+        let path = directory.path("artifact");
+        fs::write(&path, b"public original").unwrap();
+        // Deliberately bypass preparation with a read-only descriptor to inject
+        // first-write rejection; the public constructor always requests writing.
+        let edit = ArtifactEdit {
+            file: std::fs::File::open(&path).unwrap(),
+            image: b"new bytes".to_vec(),
+        };
+        assert!(edit.commit().is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"public original");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn oversized_artifact_edit_rejects_before_write() {
+        let directory = TestDirectory::new();
+        let path = directory.path("artifact");
+        fs::write(&path, b"public original").unwrap();
+        let mut edit = ArtifactEdit::open(&path).unwrap();
+        edit.image_mut().resize(charlotte_launch::MAX_ARTIFACT_ELF_SIZE + 1, 0);
+        assert_eq!(edit.commit().unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+        assert_eq!(fs::read(&path).unwrap(), b"public original");
     }
 
     #[cfg(unix)]

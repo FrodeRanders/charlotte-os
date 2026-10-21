@@ -99,9 +99,12 @@ verification and deployment variants. Adding a signature note must also fit that
 limit. Deployment signing checks at most eight variants, including the primary,
 before reading images. `sha256` streams regular files through a 16 KiB erasing
 buffer and accepts files larger than the artifact limit. Unix opens reject
-final-component symlinks and non-regular sources. These are input checks;
-concurrent output-path replacement and in-place write atomicity remain separate.
-See the [artifact-input audit](../reports/audits/2026-10-21-security-artifact-input.md).
+final-component symlinks and non-regular sources. ELF signing retains the
+opened read/write file through rewriting; a later pathname replacement cannot
+redirect that write. Success refers to the opened file even if it is renamed
+or unlinked. Keep parent directories trusted: the tool supplies no pathname
+continuity, concurrent-content lock, rollback or durable atomic publication.
+See the [artifact-edit audit](../reports/audits/2026-10-21-security-artifact-edit.md) and [artifact-input audit](../reports/audits/2026-10-21-security-artifact-input.md).
 
 ## Public trust-policy preflight
 

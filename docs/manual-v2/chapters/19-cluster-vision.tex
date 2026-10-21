@@ -1143,8 +1143,12 @@ symlinks and non-regular sources. Artifact sign/verify and deployment image
 inputs use the launch ABI's 4 MiB maximum; adding a note must keep the output
 within that bound. Deployment signing checks its one-to-eight variants before
 image reads. The host file-hash command streams regular files through a 16 KiB
-erasing buffer, with no artifact-size cap. Concurrent content changes,
-output-path replacement and write atomicity remain separate boundaries.
+erasing buffer, with no artifact-size cap. ELF signing retains one read/write
+file owner and prepared image through a consuming rewrite. It writes the opened
+file if renamed and does not recreate an unlinked path; replacements are left
+untouched. Success refers to that opened file. Pathname continuity, concurrent
+content changes, partial writes and durable atomic publication remain separate
+boundaries.
 
 Build output and boot logs explicitly identify the current images as
 development images. The build refuses production trust mode

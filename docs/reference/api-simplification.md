@@ -379,3 +379,11 @@ is shared with current bounded readers. Note construction preflights the complet
 signed output size, and variant-count admission precedes image reads. No alternate
 unbounded artifact/hash path remains. CLI syntax, signature bytes, wire formats
 and runtime ABI are preserved; no general file-size limit is added to `sha256`.
+
+The [artifact-edit follow-up](../reports/audits/2026-10-21-security-artifact-edit.md) replaces ELF signing's path-based
+read/write pair with one `ArtifactEdit` owner. Descriptor admission and bounded
+reading are shared through borrowed helpers, retaining read-only access for
+other consumers. ELF commit consumes the captured read/write file and image;
+there is no path-based publication fallback. Command arguments, signing bytes,
+permissions policy and runtime formats stay the same. Human output now says
+"artifact opened at" the supplied path to describe the selected object.

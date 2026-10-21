@@ -555,9 +555,16 @@ sizes with the existing 4 MiB launch bound and checks variant count before image
 reads. The arbitrary-file hash command now streams through an erasing 16 KiB
 owner. Baseline controls retain accepted aliases, late size/count rejection and
 a signed output exceeding the launch limit. Independent Python vectors and
-allocation observations qualify the hash loop. Output-path races/atomicity,
-physical erasure, custody and broader findings remain separate; counts are
-unchanged.
+allocation observations qualify the hash loop. The artifact-edit follow-up
+below addresses write redirection; atomicity, physical erasure, custody and
+broader findings remain separate; counts are unchanged.
+
+The [artifact-edit follow-up](../reports/audits/2026-10-21-security-artifact-edit.md) retains the writable descriptor and
+prepared image through one consuming ELF rewrite. Replacing or removing the
+path cannot redirect or recreate publication. Deterministic phase controls
+preserve three baseline failures; corrected ownership, bounds and rejection
+controls pass. Pathname continuity, concurrent inode writers, partial writes
+and durable atomic publication remain separate. Finding counts are unchanged.
 
 The [SEC-15 hash-state follow-up](../reports/audits/2026-10-19-security-hash-state-erasure.md)
 adds erasure of shared SHA state/compression scratch and one owned HMAC result
