@@ -156,3 +156,15 @@ verification are unchanged. Publication uses the same filesystem in the normal
 helper, but supplies no fsync/durability, namespace-integrity or automatic recovery
 guarantee. New-file modes follow the current umask; prior output metadata is not
 preserved. See the [fixture-publication report](../reports/audits/2026-10-21-security-fixture-publication.md).
+
+`deployment-notify` requires the current acknowledgement's single positive
+`generation`. `deployment-apply` retains each accepted name/generation pair and
+compares complete readiness records against it. Older generations wait, matching
+ready generations complete, and newer generations fail as superseded. Invalid
+records stop without notification replay; a rejected acknowledgement may follow
+an already committed mutation. Observation storage reserves before submission and
+borrows names from the retained prepared descriptor set. `deployment-status`
+remains an observation of the current named record. `release-apply` still lacks
+component-generation binding because its acknowledgement supplies only a release
+generation. End-to-end deadlines, connect/DNS/write bounds and status polling
+remain separate work. See the [client-generation report](../reports/audits/2026-10-21-security-deployment-generation.md).

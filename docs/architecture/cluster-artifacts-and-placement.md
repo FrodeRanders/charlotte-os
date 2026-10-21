@@ -106,11 +106,13 @@ cluster-sign deployment-apply 127.0.0.1:8081 120 \
   receive.cdep transform.cdep publish.cdep
 ```
 
-The compatibility command decodes the complete set and rejects duplicate
-artifact names before mutation, then submits each signed descriptor and waits
-until every exact generation is ready. Its descriptors are independently
-committed, so a later failure can leave an earlier prefix committed; exact
-retries are safe because descriptor admission is idempotent.
+The command decodes the complete set and rejects duplicate artifact names
+before mutation, then submits each signed descriptor and retains its admitted
+generation. Only a complete ready record for that same generation completes a
+component; older observations wait and superseding generations fail. Its
+descriptors are independently committed, so a later failure can leave an earlier
+prefix committed. The client performs no notification replay; reconcile accepted
+work before an explicit retry.
 
 The preferred multi-component form is a signed release envelope:
 
@@ -129,8 +131,11 @@ or conflicting release or component before changing the deployment map. The sole
 concrete replica sets, per-node readiness, operational authorization, shutdown
 intents, ingress policy and capacity samples. Admission is atomic, while S3 fetch,
 launch, publication, and readiness remain independently reconciled after the
-commit. Coordinated rollback and richer rollout policy still require a release
-controller.
+commit. The current `release-apply` client still polls component readiness by
+name: its acknowledgement supplies only an independent release generation,
+without the component-generation map. That client can confuse concurrent
+supersession with success; exact component binding remains open. Coordinated
+rollback and richer rollout policy still require a release controller.
 
 ![Focused two-node deployment-handoff data path](../manual-v2/figures/two-node-cluster.svg)
 

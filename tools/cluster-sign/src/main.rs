@@ -7,6 +7,7 @@
 mod file_hash;
 mod key_encoding;
 mod profile_input;
+mod rollout;
 mod trust_policy;
 
 #[cfg(unix)]
@@ -1763,7 +1764,12 @@ fn read_http_response(stream: &mut TcpStream) -> Result<String> {
     })
 }
 
-fn deployment_notify_bytes(bytes: &[u8], endpoint: &str) -> Result<String> {
+struct AdmittedDeployment {
+    generation: u64,
+    body: String,
+}
+
+fn deployment_notify_bytes(bytes: &[u8], endpoint: &str) -> Result<AdmittedDeployment> {
     deployment::decode(bytes).ok_or_else(|| "deployment descriptor is malformed".to_owned())?;
     let mut stream = TcpStream::connect(endpoint)
         .map_err(|error| format!("connect to deployment ingress {endpoint}: {error}"))?;
@@ -1788,7 +1794,14 @@ fn deployment_notify_bytes(bytes: &[u8], endpoint: &str) -> Result<String> {
     if !status.starts_with("HTTP/1.1 202 ") {
         return Err(format!("deployment notification failed: {}", response.trim()));
     }
-    Ok(response.split("\r\n\r\n").nth(1).unwrap_or(response.as_str()).trim().to_owned())
+    let body = response.split_once("\r\n\r\n").map_or("", |(_, body)| body).trim().to_owned();
+    let generation = rollout::admitted_generation(&body).ok_or_else(|| {
+        "deployment admission returned an invalid generation; outcome is uncertain".to_owned()
+    })?;
+    Ok(AdmittedDeployment {
+        generation,
+        body,
+    })
 }
 
 fn release_notify_bytes(bytes: &[u8], endpoint: &str) -> Result<String> {
@@ -1831,7 +1844,7 @@ fn deployment_notify(args: &[String]) -> Result<()> {
     let path = args.first().ok_or_else(|| "missing descriptor path".to_owned())?;
     let endpoint = args.get(1).map_or("127.0.0.1:8081", String::as_str);
     let bytes = read_bounded_regular(path, deployment::MAX_DESCRIPTOR_LEN)?;
-    println!("{}", deployment_notify_bytes(&bytes, endpoint)?);
+    println!("{}", deployment_notify_bytes(&bytes, endpoint)?.body);
     Ok(())
 }
 
@@ -1935,29 +1948,46 @@ fn deployment_apply(args: &[String]) -> Result<()> {
         releases.push((name, path.clone(), bytes));
     }
 
+    // Reserve observation storage before the first accepted notification. Its
+    // names borrow the existing prepared descriptors through terminal outcome.
+    let mut pending = Vec::with_capacity(releases.len());
     for (name, path, bytes) in &releases {
-        let body = deployment_notify_bytes(bytes, endpoint).map_err(|error| {
+        let admitted = deployment_notify_bytes(bytes, endpoint).map_err(|error| {
             format!(
-                "release stopped while notifying {name:?} from {path:?}: {error}; earlier \
-                 descriptors may already be committed"
+                "release stopped while notifying {name:?} from {path:?}: {error}; this and \
+                 earlier descriptors may already be committed"
             )
         })?;
-        println!("accepted {name:?}: {body}");
+        println!("accepted {name:?}: {}", admitted.body);
+        pending.push((name.as_str(), admitted.generation));
     }
 
     let deadline = Instant::now() + Duration::from_secs(timeout);
-    let mut pending = releases.iter().map(|(name, _, _)| name.clone()).collect::<Vec<_>>();
     while !pending.is_empty() {
         let mut index = 0;
         while index < pending.len() {
-            let name = &pending[index];
+            let (name, generation) = pending[index];
             match deployment_status_once(name, endpoint) {
-                Ok((status, body))
-                    if status.starts_with("HTTP/1.1 200 ")
-                        && body.contains("\"state\":\"ready\"") =>
-                {
-                    println!("ready {name:?}: {body}");
-                    pending.swap_remove(index);
+                Ok((status, body)) if status.starts_with("HTTP/1.1 200 ") => {
+                    let observed = rollout::status(&body).ok_or_else(|| {
+                        format!(
+                            "invalid rollout status for {name:?}; generation {generation} remains \
+                             unconfirmed"
+                        )
+                    })?;
+                    if observed.generation > generation {
+                        return Err(format!(
+                            "deployment {name:?} generation {generation} was superseded by \
+                             generation {}",
+                            observed.generation
+                        ));
+                    }
+                    if observed.generation == generation && observed.ready {
+                        println!("ready {name:?}: {body}");
+                        pending.swap_remove(index);
+                    } else {
+                        index += 1;
+                    }
                 }
                 _ => index += 1,
             }
@@ -1969,7 +1999,7 @@ fn deployment_apply(args: &[String]) -> Result<()> {
             pending.sort();
             return Err(format!(
                 "release did not become ready in {timeout}s; pending: {}",
-                pending.join(", ")
+                pending.iter().map(|(name, _)| *name).collect::<Vec<_>>().join(", ")
             ));
         }
         thread::sleep(Duration::from_secs(1));

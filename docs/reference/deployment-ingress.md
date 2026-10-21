@@ -19,8 +19,10 @@ store credentials.
    active-thread count, cooperative shutdown grace, placement policy, and
    named capability grants.
 5. Submit it with `cluster-sign deployment-notify <descriptor> [host:port]`.
-6. Observe the exact generation with
+6. Inspect the current named deployment with
    `cluster-sign deployment-status <artifact-name> [host:port] [wait-seconds]`.
+   Use `deployment-apply` below to bind a readiness wait to the generation
+   returned by descriptor admission.
 
 For a release containing several independently signed components, the host
 tool can prevalidate every descriptor, submit them, and wait for the complete
@@ -33,7 +35,14 @@ cluster-sign deployment-apply 127.0.0.1:8081 120 \
 
 Artifacts must already have been signed and uploaded. The command rejects a
 malformed descriptor or duplicate artifact name before submitting anything,
-then reports acceptance and generation-safe readiness for each component.
+then retains the positive generation returned for each accepted descriptor.
+A complete readiness record must match that generation. Older observations
+remain pending; a newer generation stops the command as superseded. Malformed
+admission/status records fail without replaying the accepted descriptor. Status
+records require the current scalar fields and valid counters; ready records
+also require a nonempty fully ready replica set. Field order and JSON whitespace
+are accepted; duplicate, unknown, missing or extended fields reject. See the
+[client-generation audit](../reports/audits/2026-10-21-security-deployment-generation.md).
 
 The normal network-and-storage service set starts `clusterctl`, `agent`, and
 `deployd`. `deployd` listens on guest TCP port 7444. The QEMU runners forward
@@ -94,8 +103,10 @@ files and their containing signed release envelopes using the current tooling.
 
 `deployment-apply` is currently release orchestration, not atomic bundle
 admission. Each descriptor is a separate Raft entry, so a transport or policy
-failure can leave an accepted prefix of the release committed. Rerunning the
-same command is safe because identical descriptors are idempotent. A future
+failure can leave an accepted prefix of the release committed. The client does
+not replay accepted or uncertain notifications. Backend admission remains
+idempotent for identical descriptors; reconcile the accepted prefix before
+choosing an explicit retry. A future
 signed process-bundle controller must still supply coordinated rollback and
 the complete process-level policy described below.
 
@@ -127,9 +138,14 @@ all desired deployments or none. Exact retries return the existing release
 generation, and catalog snapshots retain the signed release and replica records.
 
 Atomic admission does not mean simultaneous readiness. Node agents reconcile
-the newly visible desired records independently, and `release-apply` waits for
-each exact deployment generation. A fetch or launch failure can therefore
-leave a release committed but not ready; automatic rollback and rollout policy
+the newly visible desired records independently. `release-apply` currently
+polls readiness by component name. Its admission acknowledgement contains only
+the release generation, which is independent of each component's deployment
+generation; the client does not bind its wait to those component generations.
+Concurrent supersession can therefore satisfy that client with another rollout's
+ready status. This remains an explicit client gap; atomic catalog admission and
+server-side generation checks do not close it. A fetch or launch failure can
+also leave a release committed but not ready; automatic rollback and rollout policy
 remain controller work. `CRELEASE` binds executable deployment decisions, not
 yet the BPMN digest, schemas, provenance graph, or other
 semantic content of a complete Durga process bundle.

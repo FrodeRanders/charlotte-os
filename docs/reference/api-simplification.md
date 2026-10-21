@@ -409,3 +409,11 @@ six-record grammar, descriptor preparation, CLI arguments and cache admission
 stay the same; there is no in-place publication fallback. Staging is retained
 on failure. This changes host publication policy without changing a wire format
 or the signer's exclusive-output contract.
+
+The [deployment-generation follow-up](../reports/audits/2026-10-21-security-deployment-generation.md) replaces descriptor-apply's ready
+substring test with the current acknowledgement and six-field readiness codec.
+It requires complete unambiguous scalar records and retains each admitted
+generation through observation; there is no missing-generation or substring
+fallback. Server encoding, HTTP routes, CLI arguments and runtime ABI are
+unchanged. `release-apply` and standalone named status still need separate
+qualification; the release acknowledgement has no component-generation map.

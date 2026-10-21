@@ -1774,3 +1774,14 @@ binding, rejection, unchanged deadlines and owning Drop. Live allocation/mapping
 failure, native wrong-principal rejection and physical cleanup remain separate.
 See [contract](../reference/name-service-generations.md) and
 [evidence](../reports/audits/2026-10-14-protocol-simplification-name-generations.md).
+
+### Host deployment generation controls
+
+`python3 scripts/tests/test-deployment-generation.py --signer target/debug/cluster-sign -v`
+exercises the actual `deployment-apply` CLI against a scripted loopback HTTP/1.1
+peer. It covers stale/matching/superseding generations, pending-to-ready progress
+and malformed admission/readiness records, checking one POST per operation.
+The peer uses current acknowledgement/status fields but supplies scripted public
+observations; this is a client control, without a live cluster or guest run.
+See the [client-generation audit](../reports/audits/2026-10-21-security-deployment-generation.md)
+for baseline failures and the remaining release-client/deadline gaps.

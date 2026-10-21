@@ -874,15 +874,19 @@ See \repofile|docs/reports/audits/2026-10-12-security-controller-deadlines.md|.
 
 For a release made from several independently signed components,
 \texttt{cluster-sign deployment-apply} prevalidates all descriptor files,
-rejects duplicate artifact names, submits each descriptor, and waits for every
-exact generation to become ready against one deadline. Artifacts must already
-be signed and uploaded; object-store credentials remain outside the generated
-application and its descriptors.
+rejects duplicate artifact names and retains the positive generation returned
+for each admitted descriptor. A complete ready record must match that exact
+generation; older observations remain pending, while a newer generation reports
+supersession. Malformed acknowledgement or readiness records stop observation
+without replaying accepted work. The client still has separate timeout and
+polling limitations. Artifacts must already be signed and uploaded; object-store
+credentials remain outside the generated application and its descriptors.
 
 \texttt{deployment-apply} orchestrates independent descriptor admissions.
 Each descriptor occupies a separate Raft entry, so a later failure can leave
-an accepted prefix committed. Identical retries are idempotent. The atomic
-alternative is described next.
+an accepted prefix committed. The client does not replay notifications;
+reconcile accepted work before an explicit retry. Identical descriptor admission
+remains idempotent. The atomic alternative is described next.
 
 A signed \texttt{CRELEASE} envelope produced with
 \texttt{cluster-sign release-sign} and submitted with
@@ -900,9 +904,12 @@ state changes all at once or not at all. Exact retries are idempotent and the
 signed release record survives catalog snapshots.
 
 After atomic admission, agents fetch, launch, and publish independently;
-\texttt{release-apply} waits for every exact generation. Coordinated rollback,
-progress policy, and a semantic process bundle that also binds BPMN, schemas,
-and provenance remain controller work.
+\texttt{release-apply} still polls each component's readiness by name. Its
+acknowledgement supplies only an independent release generation, without the
+component-generation map. Concurrent supersession can satisfy that client with
+another rollout's ready status; exact client binding remains open. Coordinated
+rollback, progress policy, and a semantic process bundle that also binds BPMN,
+schemas, and provenance remain controller work.
 
 Retirement is nevertheless bounded locally. On the first reconciliation poll,
 the kernel publishes a drain request and monotonic deadline in the domain's

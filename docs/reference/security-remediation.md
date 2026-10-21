@@ -588,6 +588,13 @@ failure and rejected publication. Both actual helper runs produce the same
 signed bundle bytes as preceding evidence. This qualifies fixture preparation;
 signer durability, production trust and finding counts remain unchanged.
 
+The [deployment-generation follow-up](../reports/audits/2026-10-21-security-deployment-generation.md) binds descriptor-apply readiness
+to each admitted generation. Stale readiness stays pending, matching readiness
+completes and supersession fails. Malformed records stop without POST replay.
+Live-CLI loopback controls preserve the baseline false successes. The release
+client still lacks component-generation binding; deadline/polling and ingress
+peer authentication remain separate. Finding counts are unchanged.
+
 The [SEC-15 hash-state follow-up](../reports/audits/2026-10-19-security-hash-state-erasure.md)
 adds erasure of shared SHA state/compression scratch and one owned HMAC result
 path for SigV4 and SCRAM. The [bounded inventory](secret-state-lifetimes.md)
