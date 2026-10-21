@@ -1,0 +1,650 @@
+{
+  "schema": "charlotte.security.aes-erasure.v1",
+  "report_date": "2026-10-21",
+  "reviewed_revision": "74f41801fba2a92775155ddb27169589d9b8579c",
+  "classification": {
+    "corrected": 29,
+    "partial": 6,
+    "open": 3,
+    "production_trust": "disabled"
+  },
+  "finding": {
+    "selected_suite": "embedded-tls::Aes128GcmSha256 -> aes-gcm 0.10.3 -> aes 0.8.4",
+    "baseline": "AES zeroize feature absent; software/hardware Drop compiles out named round-key wiping. No cross-domain read or new retained-storage probe is claimed.",
+    "correction": "Direct catten-services AES feature edge and production ZeroizeOnDrop bounds for Aes128/Aes128Enc/Aes128Dec.",
+    "lifetime": "embedded-tls connection.rs creates local AEAD owners during record encrypt/decrypt; ordinary return/error drops AES fields. Enclosing traffic-key, HKDF and authentication state remain separate.",
+    "ownership": "Existing C18 transport scope; no capability/root cleanup, allocator, guard, wait, remote teardown, registry, custody, physical completion or retry authority.",
+    "wire_abi_or_algorithm_changes": false
+  },
+  "dependencies": {
+    "versions_and_checksums_unchanged": true,
+    "new_dependency_edges": [
+      "catten-services -> aes",
+      "aes -> zeroize"
+    ],
+    "baseline_locked_aes": {
+      "name": "aes",
+      "version": "0.8.4",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "b169f7a6d4742236a0a00c541b845991d0ac43e546831af1249753ab4c3aa3a0",
+      "dependencies": [
+        "cfg-if",
+        "cipher 0.4.4",
+        "cpufeatures 0.2.17"
+      ]
+    },
+    "final_locked_aes": {
+      "name": "aes",
+      "version": "0.8.4",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "b169f7a6d4742236a0a00c541b845991d0ac43e546831af1249753ab4c3aa3a0",
+      "dependencies": [
+        "cfg-if",
+        "cipher 0.4.4",
+        "cpufeatures 0.2.17",
+        "zeroize"
+      ]
+    },
+    "final_feature_graph": "aes v0.8.4\n\u251c\u2500\u2500 aes feature \"default\"\n\u2502   \u2514\u2500\u2500 aes-gcm v0.10.3\n\u2502       \u2514\u2500\u2500 aes-gcm feature \"aes\"\n\u2502           \u2514\u2500\u2500 embedded-tls v0.19.0\n\u2502               \u251c\u2500\u2500 embedded-tls feature \"alloc\"\n\u2502               \u2502   \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services)\n\u2502               \u2502       \u2514\u2500\u2500 catten-services feature \"default\" (command-line)\n\u2502               \u251c\u2500\u2500 embedded-tls feature \"ed25519\"\n\u2502               \u2502   \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2502               \u251c\u2500\u2500 embedded-tls feature \"p384\"\n\u2502               \u2502   \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2502               \u2514\u2500\u2500 embedded-tls feature \"rustpki\"\n\u2502                   \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2502                   \u251c\u2500\u2500 embedded-tls feature \"ed25519\" (*)\n\u2502                   \u2514\u2500\u2500 embedded-tls feature \"p384\" (*)\n\u2514\u2500\u2500 aes feature \"zeroize\"\n    \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n",
+    "source_sha256": {
+      "aes-0.8.4/Cargo.toml": "0e3a91948ceb119a3f36209a8c5a6a7627cd7a09de903b5e606f563276376fed",
+      "aes-0.8.4/src/lib.rs": "8904ed0f1da5d3c6ca6cfb61add4a957054a9f95ce573c3ab198b59ba9ab06cd",
+      "aes-0.8.4/src/soft.rs": "3a84211717fdc86a2b0f0d9086f33410bee2ff9be480f50c981980f678a0c2a8",
+      "aes-0.8.4/src/autodetect.rs": "150d63066a8f1a6cac359661752db49d2d5c8d2d5b34cfee413072ff95b9041f",
+      "aes-0.8.4/src/ni.rs": "15b9a67dbedc3b558ddec063489be4a6607e568afddd8345506be36952fc3bde",
+      "aes-0.8.4/src/armv8.rs": "bc8ff3cae2f799d849105b79091604e1579ae5e8a8fbe19db24c6ccbf48146a4",
+      "aes-gcm-0.10.3/Cargo.toml": "cc58c8b539bdfdfa7f665340209afcf428962b8368c6b0beef3809dac3559506",
+      "aes-gcm-0.10.3/src/lib.rs": "9261306cb6e8ce08a3559d69b2c301b9c0474234b3ff4b92e3e3c8cd7937f479",
+      "embedded-tls-0.19.0/Cargo.toml": "2a061a6ea8ef71879f5e4985cb453c1a5f83fc18419f8d4884bb5f4e1f9a6c7a",
+      "embedded-tls-0.19.0/src/config.rs": "604238b59e15d36ad24f856327313303c827bc48ab5162316cacdaa28140ebbe",
+      "embedded-tls-0.19.0/src/connection.rs": "4a5b1e48b6073705a4bba6839734e753de99d80077e27b2ff259838edf0cea06",
+      "embedded-tls-0.19.0/src/key_schedule.rs": "07a89b7afaf9b30e09cfb4baaeb1382eb36fc437dce967b4a30a95e0f1e2bf0e",
+      "ghash-0.5.1/src/lib.rs": "df449412b068a1d66fad81b814347980b04ea724e0642fb10a84b53806d6c302",
+      "polyval-0.6.2/src/backend/autodetect.rs": "9a12a24ecb07df1128eba52b91c1e555672bfdfed88f824e6076fe219ac5d1d0",
+      "polyval-0.6.2/src/backend/pmull.rs": "1622f2637f7f67b141ec24a9f6db0d84e164575d1f215ddeb8110587cb3d3814"
+    },
+    "software_drop_source_excerpt": "        impl Drop for $name {\n            #[inline]\n            fn drop(&mut self) {\n                #[cfg(feature = \"zeroize\")]\n                zeroize::Zeroize::zeroize(&mut self.keys);\n            }\n        }\n",
+    "source_review": "Hardware AES-NI/ARMv8 owners erase round_keys behind the same feature; autodetect delegates Drop to its selected backend. No cached source edit."
+  },
+  "isolated_feature_controls": {
+    "disabled": {
+      "command": "cargo check --manifest-path <isolated-control>/Cargo.toml --offline",
+      "exit_status": 101,
+      "manifest": "[package]\nname=\"aes-erasure-false\"\nversion=\"0.0.0\"\nedition=\"2021\"\n[workspace]\n[dependencies]\naes={version=\"=0.8.4\",default-features=false}\nzeroize={version=\"=1.9.0\",default-features=false}\n",
+      "source": "const _: fn() = || {\n    fn erases_on_drop<T: zeroize::ZeroizeOnDrop>() {}\n    erases_on_drop::<aes::Aes128>();\n    erases_on_drop::<aes::Aes128Enc>();\n    erases_on_drop::<aes::Aes128Dec>();\n};\n",
+      "sha256": {
+        "Cargo.toml": "8ade03794305f3b66171e155ba13e2c0716fe19d2638ea8f0cc04fba6b846fc0",
+        "Cargo.lock": "68731cad379717b10ccf8325d8ee97d701acafdeeb353cc164c90c80018d61b6",
+        "src/lib.rs": "aea4b7b58c8cb12b2a9ab2c789fbcec0e375e505f6c579167ca29b683cc3ed66"
+      },
+      "diagnostics": "    Checking inout v0.1.4\n    Checking crypto-common v0.1.7\n    Checking cipher v0.4.4\n    Checking aes v0.8.4\n    Checking aes-erasure-false v0.0.0 (/private/tmp/charlotte-aes-erasure-controls/disabled)\nerror[E0277]: the trait bound `Aes128: ZeroizeOnDrop` is not satisfied\n --> src/lib.rs:3:22\n  |\n3 |     erases_on_drop::<aes::Aes128>();\n  |                      ^^^^^^^^^^^ the trait `ZeroizeOnDrop` is not implemented for `Aes128`\n  |\n  = help: the following other types implement trait `ZeroizeOnDrop`:\n            ()\n            (A,)\n            (A, B)\n            (A, B, C)\n            (A, B, C, D)\n            (A, B, C, D, E)\n            (A, B, C, D, E, F)\n            (A, B, C, D, E, F, G)\n          and 8 others\nnote: required by a bound in `erases_on_drop`\n --> src/lib.rs:2:26\n  |\n2 |     fn erases_on_drop<T: zeroize::ZeroizeOnDrop>() {}\n  |                          ^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `erases_on_drop`\n\nerror[E0277]: the trait bound `Aes128Enc: ZeroizeOnDrop` is not satisfied\n --> src/lib.rs:4:22\n  |\n4 |     erases_on_drop::<aes::Aes128Enc>();\n  |                      ^^^^^^^^^^^^^^ the trait `ZeroizeOnDrop` is not implemented for `Aes128Enc`\n  |\n  = help: the following other types implement trait `ZeroizeOnDrop`:\n            ()\n            (A,)\n            (A, B)\n            (A, B, C)\n            (A, B, C, D)\n            (A, B, C, D, E)\n            (A, B, C, D, E, F)\n            (A, B, C, D, E, F, G)\n          and 8 others\nnote: required by a bound in `erases_on_drop`\n --> src/lib.rs:2:26\n  |\n2 |     fn erases_on_drop<T: zeroize::ZeroizeOnDrop>() {}\n  |                          ^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `erases_on_drop`\n\nerror[E0277]: the trait bound `Aes128Dec: ZeroizeOnDrop` is not satisfied\n --> src/lib.rs:5:22\n  |\n5 |     erases_on_drop::<aes::Aes128Dec>();\n  |                      ^^^^^^^^^^^^^^ the trait `ZeroizeOnDrop` is not implemented for `Aes128Dec`\n  |\n  = help: the following other types implement trait `ZeroizeOnDrop`:\n            ()\n            (A,)\n            (A, B)\n            (A, B, C)\n            (A, B, C, D)\n            (A, B, C, D, E)\n            (A, B, C, D, E, F)\n            (A, B, C, D, E, F, G)\n          and 8 others\nnote: required by a bound in `erases_on_drop`\n --> src/lib.rs:2:26\n  |\n2 |     fn erases_on_drop<T: zeroize::ZeroizeOnDrop>() {}\n  |                          ^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `erases_on_drop`\n\nFor more information about this error, try `rustc --explain E0277`.\nerror: could not compile `aes-erasure-false` (lib) due to 3 previous errors\n"
+    },
+    "enabled": {
+      "command": "cargo check --manifest-path <isolated-control>/Cargo.toml --offline",
+      "exit_status": 0,
+      "manifest": "[package]\nname=\"aes-erasure-true\"\nversion=\"0.0.0\"\nedition=\"2021\"\n[workspace]\n[dependencies]\naes={version=\"=0.8.4\",default-features=false,features=[\"zeroize\"]}\nzeroize={version=\"=1.9.0\",default-features=false}\n",
+      "source": "const _: fn() = || {\n    fn erases_on_drop<T: zeroize::ZeroizeOnDrop>() {}\n    erases_on_drop::<aes::Aes128>();\n    erases_on_drop::<aes::Aes128Enc>();\n    erases_on_drop::<aes::Aes128Dec>();\n};\n",
+      "sha256": {
+        "Cargo.toml": "f4b2db71317f3fd4d3f52389dbad84dcb542929cd4da7b8c301209f81647580e",
+        "Cargo.lock": "1f075cdfe116b679a878bdc6aa5e50ad91058ee96106f5d2de26fcf5eef39460",
+        "src/lib.rs": "aea4b7b58c8cb12b2a9ab2c789fbcec0e375e505f6c579167ca29b683cc3ed66"
+      },
+      "diagnostics": "Isolated production bounds compile with AES zeroize enabled."
+    }
+  },
+  "public_vector": {
+    "key_hex": "000102030405060708090a0b0c0d0e0f",
+    "plaintext_hex": "00112233445566778899aabbccddeeff",
+    "ciphertext_hex": "69c4e0d86a7b0430d8cdb78070b4c55a",
+    "independent_command": "openssl enc -aes-128-ecb -K 000102030405060708090a0b0c0d0e0f -nopad -nosalt",
+    "stdin": "The 16 plaintext bytes above. Public fixture only.",
+    "exit_status": 0,
+    "rust_scope": "Combined, encrypt-only and decrypt-only AES-128 types retain matching encryption/decryption. No private-field memory read."
+  },
+  "host_validation": {
+    "debug": {
+      "library_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p catten-services --lib -p charlotte-kafka -p charlotte-s3 -p charlotte-transport-tests",
+      "library_exit_status": 0,
+      "library_result_lines": [
+        "test result: ok. 149 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s",
+        "test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ],
+      "transport_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p charlotte-kafka -p charlotte-s3 -p charlotte-transport-tests",
+      "transport_exit_status": 0,
+      "captured_transport_result_lines": [
+        "test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s"
+      ],
+      "distinct_runtime_tests": 259,
+      "compile_fail_doctests": 9,
+      "counting": "149 service-library cases plus 110 independently listed runtime cases; repeated 21 Kafka and 8 S3 unit cases in the first invocation are excluded. --lib does not run transport integration tests; the subsequent full command does.",
+      "console_capture": "Routine console output was truncated for some calls; no complete console archive is claimed. Zero exit statuses, retained result lines and post-run compiled artifact inventory establish this scope.",
+      "transport_artifact_inventory": {
+        "command": [
+          "cargo",
+          "test",
+          "--manifest-path",
+          "/Users/froran/Projects/private/charlotte-os/Cargo.toml",
+          "--offline",
+          "--locked",
+          "-p",
+          "charlotte-kafka",
+          "-p",
+          "charlotte-s3",
+          "-p",
+          "charlotte-transport-tests",
+          "--no-run",
+          "--message-format=json"
+        ],
+        "exit_status": 0,
+        "targets": {
+          "sasl_ownership": {
+            "path": "target/debug/build/charlotte-kafka/182e2005c0955d4a/out/sasl_ownership-182e2005c0955d4a",
+            "sha256": "888a0e59f8071719f718750885f9e28030441cee4a84381d08b56dfe24158731",
+            "registered_tests": 7
+          },
+          "charlotte_s3": {
+            "path": "target/debug/build/charlotte-s3/68b08df4aa1f20dc/out/charlotte_s3-68b08df4aa1f20dc",
+            "sha256": "7d6d9e7ab456b3bd00b5f83445a36199a799fb6c8e9acafc6df680a4c8624a9f",
+            "registered_tests": 8
+          },
+          "charlotte_kafka": {
+            "path": "target/debug/build/charlotte-kafka/04dc9fff74f9deb4/out/charlotte_kafka-04dc9fff74f9deb4",
+            "sha256": "cc6ded063d904e93547c9fbeab8a9fd9d5cdced0daadc152d8ace796568b3481",
+            "registered_tests": 21
+          },
+          "s3_response_erasure": {
+            "path": "target/debug/build/charlotte-transport-tests/e686b29669970225/out/s3_response_erasure-e686b29669970225",
+            "sha256": "eb8c22cf3f5ff87eb5169b7389e55d08a776c096b2da4c24d3dd2fd96633d6e7",
+            "registered_tests": 8
+          },
+          "s3_profile_wire_erasure": {
+            "path": "target/debug/build/charlotte-transport-tests/d927a90039a4b1d5/out/s3_profile_wire_erasure-d927a90039a4b1d5",
+            "sha256": "1efec1d385f0f63dd9115e2dea8532fb1120a2bc6578a191f0283932d7717f95",
+            "registered_tests": 6
+          },
+          "s3_path_erasure": {
+            "path": "target/debug/build/charlotte-transport-tests/e0e5efd2b35a7445/out/s3_path_erasure-e0e5efd2b35a7445",
+            "sha256": "5536453247196b1514128d50b9045ff7893610d4b0525e45ea84edbcefb05288",
+            "registered_tests": 8
+          },
+          "s3_canonical_erasure": {
+            "path": "target/debug/build/charlotte-transport-tests/a2894aba05ecdebd/out/s3_canonical_erasure-a2894aba05ecdebd",
+            "sha256": "4dc39ed29a41d6d345f2ad566bbbf7a7880a62a7a059908f98310a16f07a707c",
+            "registered_tests": 8
+          },
+          "kafka_profile_erasure": {
+            "path": "target/debug/build/charlotte-transport-tests/b6b0d6204c2a5af6/out/kafka_profile_erasure-b6b0d6204c2a5af6",
+            "sha256": "52c10d40a7fd792895ee9b083f535cebfac198fcf01b15980232bad8523c2d82",
+            "registered_tests": 7
+          },
+          "scram_initial_erasure": {
+            "path": "target/debug/build/charlotte-transport-tests/e719b001f8ec06fc/out/scram_initial_erasure-e719b001f8ec06fc",
+            "sha256": "9dab9d2bac5b184b5e04a9d1157b9c50931452cc2d3e9e891b23ce7c7f072313",
+            "registered_tests": 8
+          },
+          "s3_request_erasure": {
+            "path": "target/debug/build/charlotte-transport-tests/95787eaa2fd76f63/out/s3_request_erasure-95787eaa2fd76f63",
+            "sha256": "f6893e0c288f6c3eb5418777b52afd5253e87a4c3fba2df3d2226423185a4ba2",
+            "registered_tests": 5
+          },
+          "s3_profile_erasure": {
+            "path": "target/debug/build/charlotte-transport-tests/ad2ad533f1ca2cef/out/s3_profile_erasure-ad2ad533f1ca2cef",
+            "sha256": "ea50d0c36fad9ccf38463c03a8607c9efe5ff879222fdacccdbb596792890ad7",
+            "registered_tests": 7
+          },
+          "s3_metadata_erasure": {
+            "path": "target/debug/build/charlotte-transport-tests/21191c2074f4d17d/out/s3_metadata_erasure-21191c2074f4d17d",
+            "sha256": "afd0a89c800266afbe04f8a5a5550f3a016b08c1e7f49a34c61c8985fc8a00d3",
+            "registered_tests": 8
+          },
+          "receive_erasure": {
+            "path": "target/debug/build/charlotte-transport-tests/8919161121047863/out/receive_erasure-8919161121047863",
+            "sha256": "7b76346ea6f83f5ea8ba971fd6a026e0342990e0fc35f309ffec44d298cd6644",
+            "registered_tests": 9
+          }
+        },
+        "runtime_tests": 110,
+        "note": "Post-run artifact inventory and --list; no tests reexecuted. The preceding full suite invocation returned zero."
+      }
+    },
+    "release": {
+      "library_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p catten-services --lib -p charlotte-kafka -p charlotte-s3",
+      "library_exit_status": 0,
+      "library_result_lines": [
+        "test result: ok. 149 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s",
+        "test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ],
+      "transport_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p charlotte-kafka -p charlotte-s3 -p charlotte-transport-tests",
+      "transport_exit_status": 0,
+      "captured_transport_result_lines": [
+        "test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s"
+      ],
+      "distinct_runtime_tests": 259,
+      "compile_fail_doctests": 9,
+      "counting": "149 service-library cases plus 110 independently listed runtime cases; repeated 21 Kafka and 8 S3 unit cases in the first invocation are excluded. --lib does not run transport integration tests; the subsequent full command does.",
+      "console_capture": "Routine console output was truncated for some calls; no complete console archive is claimed. Zero exit statuses, retained result lines and post-run compiled artifact inventory establish this scope.",
+      "transport_artifact_inventory": {
+        "command": [
+          "cargo",
+          "test",
+          "--manifest-path",
+          "/Users/froran/Projects/private/charlotte-os/Cargo.toml",
+          "--offline",
+          "--locked",
+          "-p",
+          "charlotte-kafka",
+          "-p",
+          "charlotte-s3",
+          "-p",
+          "charlotte-transport-tests",
+          "--no-run",
+          "--message-format=json",
+          "--release"
+        ],
+        "exit_status": 0,
+        "targets": {
+          "sasl_ownership": {
+            "path": "target/release/build/charlotte-kafka/bffedfed38465b4a/out/sasl_ownership-bffedfed38465b4a",
+            "sha256": "4e39fe750994075f221a952d7e942318e1d4d88fce6e95643eaa6f5aec25ed63",
+            "registered_tests": 7
+          },
+          "charlotte_s3": {
+            "path": "target/release/build/charlotte-s3/033cae8f3a8ba57e/out/charlotte_s3-033cae8f3a8ba57e",
+            "sha256": "177dbf47d8aec15f6d3d7545fe647998c24a9f7ca7c5db98771d5bb5bb8425da",
+            "registered_tests": 8
+          },
+          "charlotte_kafka": {
+            "path": "target/release/build/charlotte-kafka/1f3d27bdba0b43dc/out/charlotte_kafka-1f3d27bdba0b43dc",
+            "sha256": "a8f64ab9aa631cdd053ebc8bd1f246d6d747c60e761f2ef41c1f76c12e8f8a79",
+            "registered_tests": 21
+          },
+          "s3_canonical_erasure": {
+            "path": "target/release/build/charlotte-transport-tests/55bd48d0c73145cf/out/s3_canonical_erasure-55bd48d0c73145cf",
+            "sha256": "864f7068341084f10a45e26fe4f376116f9506157e1412adbe27b65de970ce42",
+            "registered_tests": 8
+          },
+          "kafka_profile_erasure": {
+            "path": "target/release/build/charlotte-transport-tests/53fda07e39ab274f/out/kafka_profile_erasure-53fda07e39ab274f",
+            "sha256": "1178790da12151c289dc35595426276e527e968c6421de93efb9da42e6e97778",
+            "registered_tests": 7
+          },
+          "scram_initial_erasure": {
+            "path": "target/release/build/charlotte-transport-tests/84ff6cede889ccfe/out/scram_initial_erasure-84ff6cede889ccfe",
+            "sha256": "a2d225c570366f91dbed31c9f9efeddcb7517e1ea97ee685f43f531cf2817920",
+            "registered_tests": 8
+          },
+          "s3_request_erasure": {
+            "path": "target/release/build/charlotte-transport-tests/a283fa0efe607057/out/s3_request_erasure-a283fa0efe607057",
+            "sha256": "bb42973d747154673f3051f9f359713dccff0494734b8198496ea6169702017d",
+            "registered_tests": 5
+          },
+          "s3_profile_erasure": {
+            "path": "target/release/build/charlotte-transport-tests/d50ed6aa4724c584/out/s3_profile_erasure-d50ed6aa4724c584",
+            "sha256": "f1b2f6982dd8d76131a9b65468cd78b302f3b22e63a25a6ea2dd343568830209",
+            "registered_tests": 7
+          },
+          "s3_metadata_erasure": {
+            "path": "target/release/build/charlotte-transport-tests/74936b1286d365d2/out/s3_metadata_erasure-74936b1286d365d2",
+            "sha256": "085e4e40d263ad7fccedadc380be0b717ab6ca53842722bea1efd5e5d1d01afd",
+            "registered_tests": 8
+          },
+          "receive_erasure": {
+            "path": "target/release/build/charlotte-transport-tests/6de111143c11ff53/out/receive_erasure-6de111143c11ff53",
+            "sha256": "44e20162f833688a6fbbcb6c7c7118660a27b34e967f7836430b6e03b5820d85",
+            "registered_tests": 9
+          },
+          "s3_response_erasure": {
+            "path": "target/release/build/charlotte-transport-tests/54535e22878eb7f5/out/s3_response_erasure-54535e22878eb7f5",
+            "sha256": "9ec64c438dc865ce4e8f11439870e8d42cac34be45097cc5f34287bc51f49a3f",
+            "registered_tests": 8
+          },
+          "s3_profile_wire_erasure": {
+            "path": "target/release/build/charlotte-transport-tests/c20b573c91514d45/out/s3_profile_wire_erasure-c20b573c91514d45",
+            "sha256": "ba1cfc9089c6ddcb31efd70cebfe3cdb35b924f92e1996623b90b131dd6c5058",
+            "registered_tests": 6
+          },
+          "s3_path_erasure": {
+            "path": "target/release/build/charlotte-transport-tests/41c7e59ca86fd50b/out/s3_path_erasure-41c7e59ca86fd50b",
+            "sha256": "02d68a866b081be4fe32c1b27afc260128a5b5ff7a170f23bfdf8753a52c98bb",
+            "registered_tests": 8
+          }
+        },
+        "runtime_tests": 110,
+        "note": "Post-run artifact inventory and --list; no tests reexecuted. The preceding full suite invocation returned zero."
+      }
+    }
+  },
+  "host_context": {
+    "cwd": "/private/tmp",
+    "compiler": "rustc 1.100.0-nightly (c54751567 2026-08-22)",
+    "flags": "--offline --locked"
+  },
+  "checks": {
+    "clippy": {
+      "command": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p catten-services --lib -- -D warnings",
+      "exit_status": 0
+    },
+    "format": {
+      "command": "cargo fmt --all -- --check",
+      "exit_status": 0
+    },
+    "diff": {
+      "command": "git diff --check",
+      "exit_status": 0
+    },
+    "arm_build": {
+      "command": "scripts/build-catten-services.sh --embed",
+      "exit_status": 0
+    },
+    "arm_freshness": {
+      "command": "scripts/build-catten-services.sh --check",
+      "exit_status": 0,
+      "diagnostic": ">>> Staged AArch64 service bundle signatures verified."
+    },
+    "x86_build": {
+      "command": "scripts/build-catten-services-x86_64.sh",
+      "exit_status": 0
+    },
+    "native_compiler": "rustc 1.99.0-nightly (dc3f85158 2026-07-26)"
+  },
+  "native": {
+    "command": "CATTEN_SKIP_EMBED_BUILD=1 COMPOSE_PROJECT_NAME=charlotte-sec15-aes CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_KAFKA_IMAGE=apache/kafka@sha256:0bc1bb2478f45b6cea78864df86acdc11e8df2c5172477819a4d12942cbe5d40 scripts/run-aarch64.sh --kafka-test --instance sec15-aes --fresh-storage --timeout 300",
+    "exit_status": 0,
+    "kernel": {
+      "path": "target/aarch64-unknown-none-catten/debug/catten",
+      "sha256": "c913536af7c00a121a7dff806f561ccbb1b85b19f6df84932b35e1056a237852"
+    },
+    "results": {
+      "passed": 20,
+      "failed": 0,
+      "pending": 0,
+      "passed_bitmap": "0x503ffff"
+    },
+    "guest_diagnostics": [
+      "[+    19.163831] [EL0 LOG] lp=0 asid=139 [kafka] serving instance=kafka/selftest/main endpoints=3 broker=kafka-1.test:19092 tls=true consume-topic=charlotte-events partition=0 produce-routes=1 group=charlotte-qemu-smoke-group transactional-id=charlotte-qemu-smoke-transaction-0 ceiling=0x7",
+      "[+    19.164581] [EL0 LOG] lp=0 asid=139 [kafka] coordinators group=2 transaction=2",
+      "[+    19.165082] [kafka-test] FAULT WINDOW OPEN: route leader kafka2 may now be interrupted",
+      "[+    30.981113] [EL0 LOG] lp=0 asid=139 [kafka] TLS handshake transport failed (6)",
+      "[+    31.739330] [EL0 LOG] lp=0 asid=139 [kafka] TLS handshake transport failed (6)",
+      "[+    33.023944] [EL0 LOG] lp=0 asid=141 [kafka-smoke] producer attenuation, idempotent produce, multi-topic transaction, read_committed consume, transactional offset commit, and abort filtering succeeded",
+      "[+    33.025815] [kafka-test] low-level transaction committed at output offset 1; starting generic step",
+      "[+    37.111108] [kafka-test] SUCCESS: low-level offset 1, generic step commits=4 produced=4 retries=2 dlq=1 timeouts=1 group_generation=3 heartbeats=2 metadata_refreshes=2 coordinator_refreshes=2 retry_attempts=7 terminal_errors=2 output_route_produced=5 lag=1",
+      "[+    37.112196] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x503ffff failed_bitmap=0x0 pending_bitmap=0x0"
+    ],
+    "runner_diagnostics": [
+      ">>> Restarting Kafka broker kafka2 after the fault window...",
+      " Container charlotte-sec15-aes-kafka2-1 Starting ",
+      " Container charlotte-sec15-aes-kafka2-1 Started ",
+      " Container charlotte-sec15-aes-kafka2-1 Waiting ",
+      " Container charlotte-sec15-aes-kafka2-1 Healthy ",
+      "[+    30.981113] [EL0 LOG] lp=0 asid=139 [kafka] TLS handshake transport failed (6)\r",
+      "[+    31.739330] [EL0 LOG] lp=0 asid=139 [kafka] TLS handshake transport failed (6)\r",
+      "[+    37.111108] [kafka-test] SUCCESS: low-level offset 1, generic step commits=4 produced=4 retries=2 dlq=1 timeouts=1 group_generation=3 heartbeats=2 metadata_refreshes=2 coordinator_refreshes=2 retry_attempts=7 terminal_errors=2 output_route_produced=5 lag=1\r",
+      "[+    37.112196] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x503ffff failed_bitmap=0x0 pending_bitmap=0x0\r",
+      ">>> All registered deferred self-tests passed."
+    ],
+    "diagnostic_result": {
+      "reason": "complete",
+      "snapshot": "not-requested"
+    },
+    "image": {
+      "requested": "apache/kafka@sha256:0bc1bb2478f45b6cea78864df86acdc11e8df2c5172477819a4d12942cbe5d40",
+      "inspected_before_start": "sha256:aee4e663253e674c1aa42ddc0485ff8c98ee6885997f303924085a59f8b46c7a",
+      "running_inspections": {
+        "charlotte-sec15-aes-kafka1-1": "sha256:aee4e663253e674c1aa42ddc0485ff8c98ee6885997f303924085a59f8b46c7a",
+        "charlotte-sec15-aes-kafka2-1": "sha256:aee4e663253e674c1aa42ddc0485ff8c98ee6885997f303924085a59f8b46c7a",
+        "charlotte-sec15-aes-kafka3-1": "sha256:aee4e663253e674c1aa42ddc0485ff8c98ee6885997f303924085a59f8b46c7a"
+      }
+    },
+    "fault": "Runner kills route leader kafka2 after guest marker, later restarts and observes Healthy. Generic step success precedes restart. Two transport failures during the outage; no broader causal conclusion.",
+    "post_run_cleanup": {
+      "container_command": "docker ps -a --filter label=com.docker.compose.project=charlotte-sec15-aes --format {{.Names}}",
+      "volume_command": "docker volume ls --filter label=com.docker.compose.project=charlotte-sec15-aes --format {{.Name}}",
+      "both_exit_status": 0,
+      "containers": [],
+      "volumes": []
+    },
+    "scope": "Functional AArch64 TLS/mTLS/SCRAM and injected-route-leader outage; no memory-erasure probe, fresh x86 guest or separate S3 guest."
+  },
+  "bundles": {
+    "aarch64-unknown-none": {
+      "agent.elf": "f8f45672b338c02e26ae1bfa28785cd5d45c7e9549c809e0db7f6ef6dd714451",
+      "cclient.elf": "ec493837e6f099106d5391b5b8bd731551e320094b6d869ab3291a264888b593",
+      "client.elf": "b74e03ce8fe5d1c5f3752214b636334c785992395469c44f8598bf2996241994",
+      "clusterctl.elf": "99055a1cb4f444d05d24909c833e308287dba99060b893a40c7dcebba05963db",
+      "deployd.elf": "86dd14ca0645f05f63e9739609cb3f646713fddf85df8387706e36211e0a1ea9",
+      "disco.elf": "d9371590ee896675c0e0a95c1283f5278137ea0f32314cc32d9ca3c9274cc99c",
+      "dns.elf": "50674c1633d355cd80179fee938cba369c8ba020806017314d56ea9508fada54",
+      "echo.elf": "e546da3c07b710f104256b21f503d0244754005bb70c7b751958dff9ec41f286",
+      "frouter.elf": "23e54dd274e5ec003b3f453bfee2d124b19d68ad6bfcd2c229cb3a9ab1c1c3e8",
+      "fs.elf": "af50ce9e5ef95bcbf2aaed1822ac962dd0463c9d2eff74dcda093442644c7cd3",
+      "grantctl.elf": "49e412ad459b5bd92ca5e0928da620fafa1d430f263a8625d8236643986bed3d",
+      "greet.elf": "ac022147ab7c3d785bfaa4ad371cee83314def044862af2619c657674dd8f3cd",
+      "httpd.elf": "6f1f1ea23ee7c532545c8743553379cc95d246f10d1c02edaf01b9af03851a87",
+      "kafka.elf": "ab49aa417cbffca1db9db7450e4aac83214219174bf02fcb1f9b1557ddd7f8b6",
+      "kafka_fence_smoke.elf": "8b85423639cb7178f80495f808ca6824a4ddc10e944e4adef00f6b7e294db5a3",
+      "kafka_smoke.elf": "225d9a2cb5157676a6a1f11411b1cee3619424b913834d5cb09d07f8e4989a62",
+      "kafka_step.elf": "2a0bd8e606c26df1959b82eaf183779e2705ee2712cebedbe0b67134db047a16",
+      "kafka_step_input.elf": "8681b74bf8a36ccd2e7981fb433b72bb14aced2fe6f2f0b8c5a3ab9b4cdfc40f",
+      "kafka_step_proc.elf": "16fe7d761dbe680952838aec48e8d9c6e0cc50914640f30f5fea427bd8c3996d",
+      "nclient.elf": "1a5a94c18cba9554562e8633c9707c00c0d47fae40c4e453438891848b4ee418",
+      "net.elf": "a7e710943a052d6498e32ba0b36ee7c559c120da2bde0f54317b79102dde9226",
+      "ns.elf": "d6c0566903056ccf427e2c6f27e9b263eefbebc4c4979a505c9de2ff71e2e946",
+      "nvme.elf": "260ebd19da3a9280e824030d92691050b4588d953360d18070e42a8ba95c7ebd",
+      "nvme_client.elf": "c8fca22bf664a49ba33c8a712dd172da6b963049faa5b459cf0b4b1b2e3b2b9e",
+      "objstore.elf": "d91842e750fb1c45c553cb9d1f9d3c8ab892313ad40e94210a9fb7bf5e128f60",
+      "objstore_client.elf": "98fd6ab6092b2da203514bb4bcf8dfbfb6d8db9083b2594e723d722e92f42884",
+      "observe.elf": "6c20de9efcb83e49989d396484e8b8eb0754930bd36832795ee6115e25c553f5",
+      "raft.elf": "e50dd60dd82505074427498479d3c7015d3da8e62bd927aa4def4059dd05d167",
+      "rclient.elf": "68cd4c78cad5d8025af776f4b14722b2590cbad0d6ed3a537c47800b6e78fbb7",
+      "relmsg.elf": "28ceafdab252608481a54a135f296d4190a500449d0e960427f10cec3879a582",
+      "rng.elf": "3b23acaf483951912ee800b4dd8fa98384aefe12a7da0420e62577ab92255943",
+      "s3.elf": "846b4795ca299e88c4befdb1d501611371e3971927053f19d4f1cfd9073353b4",
+      "s3_smoke.elf": "2c3811a4a665ab6ec1930aa403fefd570fcd3aee2ab8547f32b87ccf7fc8c241",
+      "security_probe.elf": "d90edf959f63d6bd8b2b61066597041ea469744c7d12241ded15ec8bf7960d64",
+      "servicemgr.elf": "14c8b63118f771f439a8ccda9a05690e51f41d85f1e4f2a72eaed7c964bde369",
+      "shutdown_probe.elf": "bf5987ff14fc771c47cfd6041fc1a3da5c61bdaaa0807df7fb8a085ad75128a6",
+      "sitas-user.elf": "fbf1b47a721d84498a64e43bc626a7f962a52d3740e3fa7e14adaeea7fa5f311",
+      "tcpclient.elf": "c3df05b70f5a0da3f8e52fbebdb80e810dcb8df3fac0e01d66648b3e1141446f",
+      "tcpip.elf": "e6d8a52218ffe45fc5812ae902fb4f4618b1bbf757272fa132332d1dc374ba1a",
+      "time.elf": "6115d419739f36c4b2b7d3ebcdc9ce4acdcabeefbcbe55262ca991f78b9453f5",
+      "uart.elf": "74e4277b56a3f4e7cf3887d0b3b01d3b52353f9bd8cec62427eab471aca9c2f9"
+    },
+    "x86_64-unknown-none": {
+      "agent.elf": "eb32c52900333d06003cbd4d0263a7685a52e463b3163677ca5ea2efc37af7ce",
+      "ahci.elf": "5e36f044760f7d85bb9d610664a84819b59e51f105e177e42a9bd007181c2bc8",
+      "client.elf": "89d53cebb88a9bee061ad9f20b70d594c1928bfd9f391710a2fbd7f1dab14661",
+      "clusterctl.elf": "495cdf93455914c8e3bbefa9df7629e124cd189a279f7867939a6a4b9f8f9603",
+      "deployd.elf": "2ac6c049b36ef0eca39c0d5534f891d105d4d31261e3f392ff9671edf1fc4593",
+      "disco.elf": "2db330c6f58db6d7e3f9c438d2778d4143c11b61ead26856d2135d3ac14b66f9",
+      "dns.elf": "1aae585d8bbad97835199a74d7928b8a30d6b8fff22294af0856244353e18ef1",
+      "e1000e.elf": "2787171d4d03d15b032ed32f0d41cbaef9c8b41c26f8ee2ae4c2b3a2eb3304ae",
+      "echo.elf": "dbcaf017aba341c900e15841840ba43233b723475a1c89c7acaee76254e957f4",
+      "frouter.elf": "4f6c5f9a929840ca0ccf87604d4c1a1befad8bcb7c7c1634ec63291d5ad7faa7",
+      "fs.elf": "953be15118385f1e2e84ea7c1389d5043f55051050327145bb2d1e926c11ba99",
+      "grantctl.elf": "f431c83cf18cce214f537bc76c1ae6ba49d36dde0d92d344dea701ce6b13376a",
+      "greet.elf": "80f332563410c99844bf1bae877ce6f51fd7b42f6d903367c40b8e93bb530aca",
+      "httpd.elf": "03576ef375fb23442a91c444f4f9f05ab822136eaa547cf90e354155aa843f7d",
+      "kafka.elf": "710703b9bb8fabb73c4f75337a6e9df8948f3c72e9930b0215fde0d20c70ec47",
+      "kafka_smoke.elf": "edc3fdcafc8fc8c1211bc635377cc34615f33cd446711b7dac38ed51f37b27de",
+      "nclient.elf": "9056c9f27339773ab93b9c70a50e6df0721ce917f28c6c4e6e4f024e4145378b",
+      "net.elf": "69cdf5eaa8e7c68020badaee53d450452b19e0e54715fcf7056bdd6104b47738",
+      "ns.elf": "da1d0cab02ac8cb38872c8832e444edd9a2d8c5cb7cac40d3f1e7a3e228915be",
+      "nvme.elf": "fb295388ef2a829440797dca123a1cc7a0631467e9b761731f1bc212901dc9ad",
+      "nvme_client.elf": "5fa42383649403e91cd9c3c23774732085d6207fc90ba8b682b897c78ba9c64b",
+      "objstore.elf": "08eed95855d9d5b181466c6c17a1669a86c03cccfd38b2220205649cc8b4ad8a",
+      "objstore_client.elf": "a6e696a202d2c06df2909aed051a3222335082029927a95a14d38f3f2217fb36",
+      "observe.elf": "6ad2b03e9a72b5532ee339adc32dec183bcbc047ed53188f2bdccbf39670eb6d",
+      "raft.elf": "a0c8cefc0916bef85336c136b32313d0e2e6a5a4b1afd6297b3c371075cdfb2d",
+      "rclient.elf": "65b0be254f4be3c1959c8f561fd4254c1152d28c7910150b6ad6c562596c6112",
+      "relmsg.elf": "50919d1e93e226cdc64f794cc27d468062d6098abefce3ed9de40507abe6b2b8",
+      "rng.elf": "e1f5e3e61f87674f24357794c3183ec4160875d02a5f0497593647935319b07c",
+      "s3.elf": "ca04e854bd8dc3f2ea27f7896190439fd1ca12f26c450b9f3f0e8daa13f6a814",
+      "s3_smoke.elf": "228b1b1ea72ffcccdc3127da467c7e8d6f6703058d63aba97a45b9aea0dd7822",
+      "security_probe.elf": "4e372cb134ba5340d52fda049e4e739aa4af5491abda7e5b9d091b773272be92",
+      "servicemgr.elf": "c3932a01134a48cd1df6cfcada3d03fd2c62466022e580340077b21dbe8a26b6",
+      "shutdown_probe.elf": "4137ff43a35af7903239957c8053f6cfbcfae124a64812102e7f4a22b869401f",
+      "tcpclient.elf": "a00b2b45d74e0461cb03ec755f6cc4f7316530a7ca064260a28985005bd7efd3",
+      "tcpip.elf": "8a71155ef4a3fd440d9252a46ff753045aefdff41f10d871531e0db49cb4ec60",
+      "time.elf": "885fb99c4bd460dd57ebb8c63362823677c457c9315cc16f1c82ad4c83befc58",
+      "virtio_blk.elf": "eef493a5b4289ba5646e1d5ee58dfac5368a05e0504bafe90bc4f98fcc018bbb"
+    }
+  },
+  "bundle_comparison": {
+    "version_controlled_manifest": "docs/reports/audits/evidence/2026-10-21-security-ingress-deadline.json",
+    "manifest_sha256": "66d1101147d96626d10f9d78f43232015909a4c53b0ea62f6ae99b9ad5bcd163",
+    "changed": {
+      "aarch64-unknown-none": [
+        "agent.elf",
+        "cclient.elf",
+        "client.elf",
+        "clusterctl.elf",
+        "deployd.elf",
+        "disco.elf",
+        "dns.elf",
+        "echo.elf",
+        "frouter.elf",
+        "fs.elf",
+        "grantctl.elf",
+        "greet.elf",
+        "httpd.elf",
+        "kafka.elf",
+        "kafka_fence_smoke.elf",
+        "kafka_smoke.elf",
+        "kafka_step.elf",
+        "kafka_step_input.elf",
+        "kafka_step_proc.elf",
+        "nclient.elf",
+        "net.elf",
+        "ns.elf",
+        "nvme.elf",
+        "nvme_client.elf",
+        "objstore.elf",
+        "objstore_client.elf",
+        "observe.elf",
+        "raft.elf",
+        "rclient.elf",
+        "relmsg.elf",
+        "rng.elf",
+        "s3.elf",
+        "s3_smoke.elf",
+        "security_probe.elf",
+        "servicemgr.elf",
+        "shutdown_probe.elf",
+        "tcpclient.elf",
+        "tcpip.elf",
+        "time.elf",
+        "uart.elf"
+      ],
+      "x86_64-unknown-none": [
+        "agent.elf",
+        "ahci.elf",
+        "client.elf",
+        "clusterctl.elf",
+        "deployd.elf",
+        "disco.elf",
+        "dns.elf",
+        "e1000e.elf",
+        "echo.elf",
+        "frouter.elf",
+        "fs.elf",
+        "grantctl.elf",
+        "greet.elf",
+        "httpd.elf",
+        "kafka.elf",
+        "kafka_smoke.elf",
+        "nclient.elf",
+        "net.elf",
+        "ns.elf",
+        "nvme.elf",
+        "nvme_client.elf",
+        "objstore.elf",
+        "objstore_client.elf",
+        "observe.elf",
+        "raft.elf",
+        "rclient.elf",
+        "relmsg.elf",
+        "rng.elf",
+        "s3.elf",
+        "s3_smoke.elf",
+        "security_probe.elf",
+        "servicemgr.elf",
+        "shutdown_probe.elf",
+        "tcpclient.elf",
+        "tcpip.elf",
+        "time.elf",
+        "virtio_blk.elf"
+      ]
+    }
+  },
+  "formal": {
+    "version_controlled_manifest": "docs/reports/audits/evidence/2026-10-21-security-ingress-deadline.json",
+    "manifest_sha256": "66d1101147d96626d10f9d78f43232015909a4c53b0ea62f6ae99b9ad5bcd163",
+    "inventory": {
+      "modules": 34,
+      "safe_configurations": 36,
+      "negative_configurations": 109,
+      "runner_inputs": 1
+    },
+    "unchanged_inputs": 180,
+    "sha256_map_digest": "5e1735814ed956e918c183557d0b22697e901364831918abcb15b66820ee6fa5",
+    "fresh_tlc_cases": 0,
+    "reason": "Local cipher-field erasure is outside existing model projections; transitions and inputs unchanged."
+  },
+  "environment_failure": {
+    "action": "Initial sandboxed docker image inspect",
+    "exit_status": 1,
+    "diagnostic": "permission denied while trying to connect to the docker API at unix:///Users/froran/.docker/run/docker.sock",
+    "retry": "Permitted same image inspection passes before fixture launch. No guest had executed at rejection."
+  },
+  "incidental_source_test_failures": [],
+  "preserved_pdf": {
+    "path": "docs/manual-v2/charlotte.pdf",
+    "sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f",
+    "edited_or_rendered": false
+  },
+  "reviewed_source_sha256": {
+    "Cargo.lock": "358053eaeb0f2df21345b6655ba0ab25add19375d90cabfc7b08cdb1f4472a61",
+    "crates/catten-services/Cargo.toml": "80086e179ced21578db7625c6fb66f8f980e4eaf93319d60d3828052577005e9",
+    "crates/catten-services/src/tls_client.rs": "0b4bbfd31ff8c907f13f1c39c94a8412d8e32c8d029c68fd284ec0c4b4f0f149",
+    "docs/guides/testing.md": "f79ef72c48bd87ed03e881d5603ba44ded2a6fed3de3ca14bb4588cf704b22eb",
+    "docs/manual-v2/chapters/13-networking.tex": "11dd69135fe82e96b9e67769602b3004105af0e8baf90c84cf03d544b7646c08",
+    "docs/reference/cleanup-recovery.md": "040a2899bb81f92bca2d03826df8b4a63f8258165630abef16feab2c32855add",
+    "docs/reference/kafka-client.md": "aa4c26c8327e9cd7a941e29752d19b9579c70f8d846226e8d74c58ed7f3e4169",
+    "docs/reference/s3-client.md": "83d7f828f54cf02b4b3e17d0b0e4a7f20f7a4c7df835ad9beec55b62449beb90",
+    "docs/reference/secret-state-lifetimes.md": "3fca9fedcda1d983a93d11ba3d0c9344db45cc96bedfc90e34d25c2d9af812a6",
+    "docs/reference/security-remediation.md": "2f136b6354ccecc23b7f06ab526ff2e63c39912d3cebadfc52c5fcb618b67140",
+    "docs/reports/README.md": "88e4f2ce8262b93c2983b46ad10fd3e4fb1f4911e7af8590dd573cd8a0e5e5fd",
+    "docs/reports/audits/2026-10-21-security-aes-erasure.md": "20d8781620c6fba89b3ebc40f217fbab1aa132364af86761a590380fa2e98d4f"
+  },
+  "remaining_limits": [
+    "AES marker bounds and pinned dependency Drop implementation establish a source/build contract, not a private-field or physical erasure measurement.",
+    "embedded-tls traffic-key/IV arrays and HKDF state retain separate erasure gaps.",
+    "AES-GCM authentication-key scratch and GHASH/POLYVAL backend state are not covered; an enabled feature alone does not qualify every backend.",
+    "Caller keys, scalar/compiler intermediates, registers/cache, original launch/socket/kernel backing and physical memory remain separate.",
+    "Ordinary Drop requires execution; forced termination, panic-abort and power loss are outside this correction.",
+    "Production enrollment, rollback-resistant state and recipient-key custody remain missing."
+  ],
+  "fixture_scope": "Public fixed AES vector and ephemeral generated TLS fixture keys/public test credentials. No production credential or private key bytes are recorded."
+}

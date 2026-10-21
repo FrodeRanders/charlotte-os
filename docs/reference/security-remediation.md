@@ -743,6 +743,12 @@ former plain result; no earlier input leak is claimed. Host files/OS copies,
 library/compiler state and custody remain separate. SEC-15 stays partial and
 finding counts are unchanged.
 
+The [AES dependency follow-up](../reports/audits/2026-10-21-security-aes-erasure.md) enables the existing round-key
+erasure feature used by TLS record ciphers and requires it through production
+trait bounds. The baseline graph compiled that wiping out. Complete TLS
+traffic-secret/HKDF state and GCM authentication-state erasure remain open;
+this does not close SEC-15 or change finding counts.
+
 | Order | Finding and acceptance criterion |
 | --- | --- |
 | 1 | **SEC-04:** Authenticate bootstrap policy and the executable boot chain from a protected platform root. Provision independent artifact, deployment and operational authorities and a distinct recipient key; exclude every development fixture. Keep the recipient private key behind a privileged custody boundary, with recovery/rotation rules and rollback-resistant policy state. Test substituted boot images/policies, role reuse, downgrade, enrollment and custody failure. Production must remain disabled until those tests pass. |

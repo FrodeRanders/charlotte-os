@@ -771,6 +771,12 @@ bounded SCRAM exchange validates broker challenges, minimum and maximum
 iteration counts, and the server signature. Passwords, client private keys,
 and derived keys use zeroizing owners and remain outside the application ABI.
 
+The shared TLS dependency enables erasure of AES expanded round keys on
+ordinary cipher Drop, with build-time checks for its AES-128 owner types.
+This covers record-cipher round keys. TLS traffic secrets, HKDF state, GCM
+authentication state and compiler copies still need separate erasure work;
+complete-session erasure is not established.
+
 The SCRAM exchange uses consuming phases. Username escaping writes directly into
 the reserved erasing initial transcript, without a separate scratch string. The
 initial phase owns its password and nonce copies; processing the server challenge

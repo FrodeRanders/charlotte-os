@@ -121,6 +121,12 @@ callers until that bounded wait ends.
 
 ## TLS security boundary
 
+The shared TLS dependency explicitly enables AES round-key erasure and requires
+erasing Drop for its AES-128 owners. Ordinary record-cipher release clears those
+expanded keys. TLS traffic secrets/HKDF state, GCM authentication state and
+compiler copies remain separate SEC-15 work; complete-session erasure is not
+established. See the [AES review](../reports/audits/2026-10-21-security-aes-erasure.md).
+
 SigV4 and SCRAM share one HMAC implementation with zeroizing result owners.
 Its SHA state, partial block and compression scratch erase on ordinary teardown;
 finalization uses the same hash owner. The [secret-state inventory](secret-state-lifetimes.md)

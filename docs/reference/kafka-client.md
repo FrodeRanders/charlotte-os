@@ -267,6 +267,11 @@ transaction as aborted and start a new transaction after rediscovery/retry.
 
 ## TLS and SASL security boundary
 
+The shared TLS transport enables AES round-key erasure and requires erasing
+Drop for its AES-128 owners. Record-cipher release clears those expanded keys.
+TLS traffic secrets/HKDF state, GCM authentication state and compiler copies
+remain separate SEC-15 work. See the [AES review](../reports/audits/2026-10-21-security-aes-erasure.md).
+
 Setting `KafkaProfile::tls` selects the shared owned TLS transport and never
 downgrades to plaintext. The client verifies the broker's certificate chain,
 DNS identity from `kfk_host`, validity interval against synchronized UTC from

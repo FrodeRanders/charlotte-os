@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [SEC-15 TLS AES round-key erasure](audits/2026-10-21-security-aes-erasure.md) — Enables the dependency's existing wiping feature and rejects its removal at compile time; wider TLS state remains open.
+
 - [SEC-15 private-key input review](audits/2026-10-21-security-private-key-input.md) — Verifies existing read-error tail erasure and makes normalization return an erasing owner directly.
 
 - [Complete ingress acknowledgement and policy readers](audits/2026-10-21-security-ingress-response.md) — Validates all scalar notification successes, preserves complete bodies and checks current policy observations.

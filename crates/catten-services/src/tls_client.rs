@@ -58,6 +58,16 @@ use crate::{
 const TLS_RECORD_BUFFER_LEN: usize = 16_640;
 const TLS_CERTIFICATE_LEN: usize = 16_384;
 
+// The selected TLS AES-128-GCM implementation uses these AES owners. Require
+// their erasing Drop even if another workspace package changes its features.
+// This does not cover TLS traffic secrets, HKDF state or GHASH/POLYVAL.
+const _: fn() = || {
+    fn erases_on_drop<T: zeroize::ZeroizeOnDrop>() {}
+    erases_on_drop::<aes::Aes128>();
+    erases_on_drop::<aes::Aes128Enc>();
+    erases_on_drop::<aes::Aes128Dec>();
+};
+
 /// Unix time used by the in-progress TLS handshake. The verifier consults the
 /// clock only while `open` runs to completion, and each service domain is
 /// single-threaded, so one handshake-scoped value is sufficient. It is stored
@@ -503,5 +513,39 @@ fn tls_error_code(error: &TlsError) -> u32 {
         TlsError::CryptoError => 30,
         TlsError::EncodeError => 31,
         TlsError::DecodeError => 32,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use aes::cipher::{
+        BlockDecrypt,
+        BlockEncrypt,
+        KeyInit,
+    };
+
+    #[test]
+    fn erasing_aes_owners_preserve_block_encryption_and_decryption() {
+        // Public AES-128 fixture, also checked independently with OpenSSL in
+        // the audit evidence. No TLS or application credential is used here.
+        let key = core::array::from_fn::<_, 16, _>(|i| i as u8);
+        let plaintext = core::array::from_fn::<_, 16, _>(|i| (i * 0x11) as u8);
+        let ciphertext = [
+            0x69, 0xc4, 0xe0, 0xd8, 0x6a, 0x7b, 0x04, 0x30, 0xd8, 0xcd, 0xb7, 0x80, 0x70, 0xb4,
+            0xc5, 0x5a,
+        ];
+        let cipher = aes::Aes128::new(&key.into());
+        let mut block = plaintext.into();
+        cipher.encrypt_block(&mut block);
+        assert_eq!(block.as_slice(), ciphertext);
+        cipher.decrypt_block(&mut block);
+        assert_eq!(block.as_slice(), plaintext);
+
+        let encrypt = aes::Aes128Enc::new(&key.into());
+        encrypt.encrypt_block(&mut block);
+        assert_eq!(block.as_slice(), ciphertext);
+        let decrypt = aes::Aes128Dec::new(&key.into());
+        decrypt.decrypt_block(&mut block);
+        assert_eq!(block.as_slice(), plaintext);
     }
 }
