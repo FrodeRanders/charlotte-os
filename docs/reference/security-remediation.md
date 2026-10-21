@@ -749,6 +749,12 @@ trait bounds. The baseline graph compiled that wiping out. Complete TLS
 traffic-secret/HKDF state and GCM authentication-state erasure remain open;
 this does not close SEC-15 or change finding counts.
 
+The [GCM feature follow-up](../reports/audits/2026-10-22-security-gcm-erasure.md) enables authentication-key scratch
+wiping and POLYVAL software-state erasure. AArch64's build guard rejects a
+backend without a destructor, including the pinned optional PMULL path. The
+x86 dispatch owner still lacks Drop delegation; complete TLS traffic-key/IV/HKDF
+erasure remains open. SEC-15 and finding counts are unchanged.
+
 | Order | Finding and acceptance criterion |
 | --- | --- |
 | 1 | **SEC-04:** Authenticate bootstrap policy and the executable boot chain from a protected platform root. Provision independent artifact, deployment and operational authorities and a distinct recipient key; exclude every development fixture. Keep the recipient private key behind a privileged custody boundary, with recovery/rotation rules and rollback-resistant policy state. Test substituted boot images/policies, role reuse, downgrade, enrollment and custody failure. Production must remain disabled until those tests pass. |

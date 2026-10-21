@@ -773,9 +773,12 @@ and derived keys use zeroizing owners and remain outside the application ABI.
 
 The shared TLS dependency enables erasure of AES expanded round keys on
 ordinary cipher Drop, with build-time checks for its AES-128 owner types.
-This covers record-cipher round keys. TLS traffic secrets, HKDF state, GCM
-authentication state and compiler copies still need separate erasure work;
-complete-session erasure is not established.
+GCM authentication-key scratch also erases after construction. The current
+AArch64 software POLYVAL backend clears its state on ordinary Drop; its build
+guard rejects a backend without a destructor, including optional PMULL. The
+pinned x86 dispatch owner still has an erasure gap. TLS traffic keys, IVs, HKDF
+state and compiler copies need separate work; complete-session erasure is not
+established.
 
 The SCRAM exchange uses consuming phases. Username escaping writes directly into
 the reserved erasing initial transcript, without a separate scratch string. The

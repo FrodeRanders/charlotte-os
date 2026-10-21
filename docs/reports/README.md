@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [SEC-15 GCM authentication-state erasure](audits/2026-10-22-security-gcm-erasure.md) — Enables constructor-scratch and software-state erasure, with an AArch64 backend guard and explicit x86/PMULL gaps.
+
 - [SEC-15 TLS AES round-key erasure](audits/2026-10-21-security-aes-erasure.md) — Enables the dependency's existing wiping feature and rejects its removal at compile time; wider TLS state remains open.
 
 - [SEC-15 private-key input review](audits/2026-10-21-security-private-key-input.md) — Verifies existing read-error tail erasure and makes normalization return an erasing owner directly.

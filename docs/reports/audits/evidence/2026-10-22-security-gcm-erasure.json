@@ -1,0 +1,530 @@
+{
+  "schema": "charlotte.security.gcm-erasure.v1",
+  "report_date": "2026-10-22",
+  "reviewed_revision": "cb205cd94de3eb33a06da3eb95c78db87f92fa72",
+  "classification": {
+    "corrected": 29,
+    "partial": 6,
+    "open": 3,
+    "production_trust": "disabled"
+  },
+  "finding": {
+    "baseline": "AES-GCM/GHASH constructor scratch wiping and POLYVAL software Drop were disabled by separate missing zeroize features. No private-field retained-storage probe or cross-domain read is claimed.",
+    "correction": "Enable all three feature edges; keep the actual TLS-selected cipher equal to aes_gcm::Aes128Gcm; require AArch64 destructor presence for selected Polyval and GHash.",
+    "qualification": "Current AArch64 software state Drop clears named h/accumulator fields. needs_drop alone establishes destructor presence, with wiping semantics established by pinned source inspection. Optional PMULL rejects the guard. Pinned x86 dispatch still lacks Drop delegation.",
+    "ownership": "Existing C18 record-cipher owner; no new buffer/allocation, capability/root cleanup, guards, wait, remote teardown, registry, custody or physical/retry authority.",
+    "wire_abi_algorithm_or_reconnect_changes": false
+  },
+  "dependencies": {
+    "versions_and_checksums_unchanged": true,
+    "added_edges": {
+      "aes-gcm": [
+        "zeroize"
+      ],
+      "catten-services": [
+        "aes-gcm",
+        "ghash",
+        "polyval"
+      ],
+      "ghash": [
+        "zeroize"
+      ],
+      "polyval": [
+        "zeroize"
+      ]
+    },
+    "feature_graphs": {
+      "aes-gcm": {
+        "command": [
+          "cargo",
+          "tree",
+          "--manifest-path",
+          "/Users/froran/Projects/private/charlotte-os/Cargo.toml",
+          "--offline",
+          "--locked",
+          "-p",
+          "catten-services",
+          "-e",
+          "features",
+          "-i",
+          "aes-gcm"
+        ],
+        "exit_status": 0,
+        "graph": "aes-gcm v0.10.3\n\u251c\u2500\u2500 aes-gcm feature \"aes\"\n\u2502   \u251c\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services)\n\u2502   \u2502   \u2514\u2500\u2500 catten-services feature \"default\" (command-line)\n\u2502   \u2514\u2500\u2500 embedded-tls v0.19.0\n\u2502       \u251c\u2500\u2500 embedded-tls feature \"alloc\"\n\u2502       \u2502   \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2502       \u251c\u2500\u2500 embedded-tls feature \"ed25519\"\n\u2502       \u2502   \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2502       \u251c\u2500\u2500 embedded-tls feature \"p384\"\n\u2502       \u2502   \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2502       \u2514\u2500\u2500 embedded-tls feature \"rustpki\"\n\u2502           \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2502           \u251c\u2500\u2500 embedded-tls feature \"ed25519\" (*)\n\u2502           \u2514\u2500\u2500 embedded-tls feature \"p384\" (*)\n\u2514\u2500\u2500 aes-gcm feature \"zeroize\"\n    \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n"
+      },
+      "ghash": {
+        "command": [
+          "cargo",
+          "tree",
+          "--manifest-path",
+          "/Users/froran/Projects/private/charlotte-os/Cargo.toml",
+          "--offline",
+          "--locked",
+          "-p",
+          "catten-services",
+          "-e",
+          "features",
+          "-i",
+          "ghash"
+        ],
+        "exit_status": 0,
+        "graph": "ghash v0.5.1\n\u2514\u2500\u2500 aes-gcm v0.10.3\n    \u251c\u2500\u2500 aes-gcm feature \"aes\"\n    \u2502   \u251c\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services)\n    \u2502   \u2502   \u2514\u2500\u2500 catten-services feature \"default\" (command-line)\n    \u2502   \u2514\u2500\u2500 embedded-tls v0.19.0\n    \u2502       \u251c\u2500\u2500 embedded-tls feature \"alloc\"\n    \u2502       \u2502   \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n    \u2502       \u251c\u2500\u2500 embedded-tls feature \"ed25519\"\n    \u2502       \u2502   \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n    \u2502       \u251c\u2500\u2500 embedded-tls feature \"p384\"\n    \u2502       \u2502   \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n    \u2502       \u2514\u2500\u2500 embedded-tls feature \"rustpki\"\n    \u2502           \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n    \u2502           \u251c\u2500\u2500 embedded-tls feature \"ed25519\" (*)\n    \u2502           \u2514\u2500\u2500 embedded-tls feature \"p384\" (*)\n    \u2514\u2500\u2500 aes-gcm feature \"zeroize\"\n        \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2514\u2500\u2500 ghash feature \"zeroize\"\n    \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n"
+      },
+      "polyval": {
+        "command": [
+          "cargo",
+          "tree",
+          "--manifest-path",
+          "/Users/froran/Projects/private/charlotte-os/Cargo.toml",
+          "--offline",
+          "--locked",
+          "-p",
+          "catten-services",
+          "-e",
+          "features",
+          "-i",
+          "polyval"
+        ],
+        "exit_status": 0,
+        "graph": "polyval v0.6.2\n\u251c\u2500\u2500 polyval feature \"default\"\n\u2502   \u2514\u2500\u2500 ghash v0.5.1\n\u2502       \u2514\u2500\u2500 aes-gcm v0.10.3\n\u2502           \u251c\u2500\u2500 aes-gcm feature \"aes\"\n\u2502           \u2502   \u251c\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services)\n\u2502           \u2502   \u2502   \u2514\u2500\u2500 catten-services feature \"default\" (command-line)\n\u2502           \u2502   \u2514\u2500\u2500 embedded-tls v0.19.0\n\u2502           \u2502       \u251c\u2500\u2500 embedded-tls feature \"alloc\"\n\u2502           \u2502       \u2502   \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2502           \u2502       \u251c\u2500\u2500 embedded-tls feature \"ed25519\"\n\u2502           \u2502       \u2502   \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2502           \u2502       \u251c\u2500\u2500 embedded-tls feature \"p384\"\n\u2502           \u2502       \u2502   \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2502           \u2502       \u2514\u2500\u2500 embedded-tls feature \"rustpki\"\n\u2502           \u2502           \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2502           \u2502           \u251c\u2500\u2500 embedded-tls feature \"ed25519\" (*)\n\u2502           \u2502           \u2514\u2500\u2500 embedded-tls feature \"p384\" (*)\n\u2502           \u2514\u2500\u2500 aes-gcm feature \"zeroize\"\n\u2502               \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2502       \u2514\u2500\u2500 ghash feature \"zeroize\"\n\u2502           \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n\u2514\u2500\u2500 polyval feature \"zeroize\"\n    \u2514\u2500\u2500 catten-services v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-services) (*)\n"
+      }
+    },
+    "source_sha256": {
+      "aes-gcm-0.10.3/Cargo.toml": "cc58c8b539bdfdfa7f665340209afcf428962b8368c6b0beef3809dac3559506",
+      "aes-gcm-0.10.3/src/lib.rs": "9261306cb6e8ce08a3559d69b2c301b9c0474234b3ff4b92e3e3c8cd7937f479",
+      "ghash-0.5.1/Cargo.toml": "0be50951cbe38cf7669bc8943ab4f11577fe7015f454a17566ddac9df39bcfd5",
+      "ghash-0.5.1/src/lib.rs": "df449412b068a1d66fad81b814347980b04ea724e0642fb10a84b53806d6c302",
+      "polyval-0.6.2/Cargo.toml": "1534ecf7ee687cf5da5e98f89973c00b614d05f3c74ae5b093ff2e3a703c34c0",
+      "polyval-0.6.2/src/backend.rs": "594507fd60dc377320f17654c3be74a1ed5b47ef2240821a65b7f9ef2abe6eb1",
+      "polyval-0.6.2/src/backend/soft64.rs": "c51a6ebea44e3a74da58094b622266983ad21debd3974f2b9e0b2bd5bb5def91",
+      "polyval-0.6.2/src/backend/soft32.rs": "a69ff75e5e5d4d99adaa31025d82464aa34aafd83464dfc82e4932d85b28d096",
+      "polyval-0.6.2/src/backend/clmul.rs": "bfd926a7a9f0b053b4b29e074ea482f7298e5d357805d8616223b53cb8d88345",
+      "polyval-0.6.2/src/backend/autodetect.rs": "9a12a24ecb07df1128eba52b91c1e555672bfdfed88f824e6076fe219ac5d1d0",
+      "polyval-0.6.2/src/backend/pmull.rs": "1622f2637f7f67b141ec24a9f6db0d84e164575d1f215ddeb8110587cb3d3814",
+      "embedded-tls-0.19.0/src/config.rs": "604238b59e15d36ad24f856327313303c827bc48ab5162316cacdaa28140ebbe",
+      "embedded-tls-0.19.0/src/connection.rs": "4a5b1e48b6073705a4bba6839734e753de99d80077e27b2ff259838edf0cea06",
+      "embedded-tls-0.19.0/src/key_schedule.rs": "07a89b7afaf9b30e09cfb4baaeb1382eb36fc437dce967b4a30a95e0f1e2bf0e"
+    },
+    "excerpts": {
+      "aes_gcm_key_scratch": "        let mut ghash_key = ghash::Key::default();\n        cipher.encrypt_block(&mut ghash_key);\n\n        let ghash = GHash::new(&ghash_key);\n\n        #[cfg(feature = \"zeroize\")]\n        ghash_key.zeroize();\n",
+      "ghash_key_scratch": "        let mut h = *h;\n        h.reverse();\n\n        #[allow(unused_mut)]\n        let mut h_polyval = polyval::mulx(&h);\n\n        #[cfg(feature = \"zeroize\")]\n        h.zeroize();\n\n        #[allow(clippy::let_and_return)]\n        let result = GHash(Polyval::new_with_init_block(&h_polyval, init_block));\n\n        #[cfg(feature = \"zeroize\")]\n        h_polyval.zeroize();\n",
+      "polyval_software_drop": "#[cfg(feature = \"zeroize\")]\nimpl Drop for Polyval {\n    fn drop(&mut self) {\n        self.h.zeroize();\n        self.s.zeroize();\n    }\n}\n"
+    },
+    "cached_source_edited": false,
+    "backend_limits": {
+      "x86_dispatch": "Uses ManuallyDrop union without Drop delegation. Consuming finalize extracts a backend whose enabled Drop can run; dropping the dispatcher itself does not.",
+      "arm_pmull": "Pinned implementation has a commented-out erasure TODO and no destructor. Current guard rejects this backend, rather than enabling it.",
+      "enclosing_tls": "Traffic-key/IV arrays and HKDF state lack erasing ownership; local cipher erasure does not cover them."
+    }
+  },
+  "isolated_controls": {
+    "disabled": {
+      "command": "cargo check --manifest-path <isolated-control>/Cargo.toml --offline",
+      "exit_status": 101,
+      "manifest": "[package]\nname=\"gcm-erasure-false\"\nversion=\"0.0.0\"\nedition=\"2021\"\n[workspace]\n[dependencies]\nghash={version=\"=0.5.1\",default-features=false}\npolyval={version=\"=0.6.2\",default-features=false}\nzeroize={version=\"=1.9.0\",default-features=false}\n",
+      "source": "#![no_std]\n#[cfg(target_arch = \"aarch64\")]\nconst _: () = {\n    assert!(core::mem::needs_drop::<polyval::Polyval>());\n    assert!(core::mem::needs_drop::<ghash::GHash>());\n};\n",
+      "sha256": {
+        "Cargo.toml": "b1e8132a5196762b9b71cb91af6b870fe86623e92f55a60c9196f86eb1c13b19",
+        "Cargo.lock": "aea1ebbc892fe567a7b70beccd42552eed2f0070170536ba2b5b03d9ac0e5ffa",
+        "src/lib.rs": "459edde20bb63affc66fb80197e7398c8c289ef80192244b069f0ff6000edba9"
+      },
+      "diagnostics": "    Blocking waiting for file lock on package cache\n     Locking 1 package to highest compatible version\n      Adding zeroize v1.9.0 (available: v1.9.1)\n    Blocking waiting for file lock on package cache\n    Blocking waiting for file lock on package cache\n    Blocking waiting for file lock on package cache\n    Checking zeroize v1.9.0\n    Checking gcm-erasure-false v0.0.0 (/private/tmp/charlotte-gcm-erasure-controls/disabled)\nerror[E0080]: evaluation panicked: assertion failed: core::mem::needs_drop::<polyval::Polyval>()\n --> src/lib.rs:4:5\n  |\n4 |     assert!(core::mem::needs_drop::<polyval::Polyval>());\n  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed here\n\nFor more information about this error, try `rustc --explain E0080`.\nerror: could not compile `gcm-erasure-false` (lib) due to 1 previous error\n"
+    },
+    "enabled": {
+      "command": "cargo check --manifest-path <isolated-control>/Cargo.toml --offline",
+      "exit_status": 0,
+      "manifest": "[package]\nname=\"gcm-erasure-true\"\nversion=\"0.0.0\"\nedition=\"2021\"\n[workspace]\n[dependencies]\nghash={version=\"=0.5.1\",default-features=false, features=[\"zeroize\"]}\npolyval={version=\"=0.6.2\",default-features=false, features=[\"zeroize\"]}\nzeroize={version=\"=1.9.0\",default-features=false}\n",
+      "source": "#![no_std]\n#[cfg(target_arch = \"aarch64\")]\nconst _: () = {\n    assert!(core::mem::needs_drop::<polyval::Polyval>());\n    assert!(core::mem::needs_drop::<ghash::GHash>());\n};\n",
+      "sha256": {
+        "Cargo.toml": "18ad0ea7949da641aebb1870e5f3053a6cf138116d9335823299f0b08c4e8b46",
+        "Cargo.lock": "1c6ddd74e007119ba2711074df8017351dcba687c446c5e9fc7add702b398401",
+        "src/lib.rs": "459edde20bb63affc66fb80197e7398c8c289ef80192244b069f0ff6000edba9"
+      },
+      "diagnostics": "    Blocking waiting for file lock on package cache\n    Blocking waiting for file lock on package cache\n     Locking 1 package to highest compatible version\n Downgrading zeroize v1.9.1 -> v1.9.0 (available: v1.9.1)\n    Blocking waiting for file lock on package cache\n    Blocking waiting for file lock on package cache\n    Checking zeroize v1.9.0\n    Checking polyval v0.6.2\n    Checking ghash v0.5.1\n    Checking gcm-erasure-true v0.0.0 (/private/tmp/charlotte-gcm-erasure-controls/enabled)\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.19s\n"
+    },
+    "enabled_pmull": {
+      "command": "RUSTFLAGS='--cfg polyval_armv8' cargo check --manifest-path <enabled-control>/Cargo.toml --offline --locked",
+      "exit_status": 101,
+      "diagnostics": "   Compiling version_check v0.9.5\n   Compiling libc v0.2.190\n    Checking typenum v1.20.1\n    Checking subtle v2.6.1\n    Checking cfg-if v1.0.5\n    Checking opaque-debug v0.3.1\n    Checking zeroize v1.9.0\n   Compiling generic-array v0.14.7\n    Checking cpufeatures v0.2.17\n    Checking crypto-common v0.1.7\n    Checking universal-hash v0.5.1\n    Checking polyval v0.6.2\n    Checking ghash v0.5.1\n    Checking gcm-erasure-true v0.0.0 (/private/tmp/charlotte-gcm-erasure-controls/enabled)\nerror[E0080]: evaluation panicked: assertion failed: core::mem::needs_drop::<polyval::Polyval>()\n --> src/lib.rs:4:5\n  |\n4 |     assert!(core::mem::needs_drop::<polyval::Polyval>());\n  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed here\n\nFor more information about this error, try `rustc --explain E0080`.\nerror: could not compile `gcm-erasure-true` (lib) due to 1 previous error\n",
+      "scope": "Compile only on aarch64-apple-darwin; no Charlotte CPU feature or PMULL execution enabled."
+    }
+  },
+  "exploratory_control": {
+    "description": "Before pinning zeroize, the enabled isolated control selected 1.9.1 and compiled; disabled rejected. Final controls explicitly pin 1.9.0 to match the repository.",
+    "initial_enabled_exit_status": 0,
+    "initial_disabled_exit_status": 101
+  },
+  "public_vector": {
+    "key_hex": "00000000000000000000000000000000",
+    "nonce_hex": "000000000000000000000000",
+    "plaintext_hex": "00000000000000000000000000000000",
+    "aad_hex": "",
+    "ciphertext_hex": "0388dace60b6a392f328c2b971b2fe78",
+    "tag_hex": "ab6e47d42cec13bdf53a67b21257bddf",
+    "independent_implementation": {
+      "node": "v22.16.0",
+      "openssl": "3.0.16",
+      "operation": "crypto.createCipheriv(\"aes-128-gcm\", Buffer.alloc(16), Buffer.alloc(12)); concatenate update(Buffer.alloc(16)) and final(); getAuthTag().",
+      "exit_status": 0,
+      "ciphertext_hex": "0388dace60b6a392f328c2b971b2fe78",
+      "tag_hex": "ab6e47d42cec13bdf53a67b21257bddf"
+    },
+    "rust_test": "Actual TLS-associated cipher; matching ciphertext/tag, changed-tag rejection retaining ciphertext, authentic decryption."
+  },
+  "host_validation": {
+    "debug": {
+      "library_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline -p catten-services --lib",
+      "library_exit_status": 0,
+      "library_result_lines": [
+        "test result: ok. 150 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s"
+      ],
+      "transport_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p charlotte-kafka -p charlotte-s3 -p charlotte-transport-tests --quiet",
+      "transport_exit_status": 0,
+      "transport_result_lines": [
+        "test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s"
+      ],
+      "runtime_tests": 260,
+      "compile_fail_doctests": 9,
+      "counting": "150 service-library cases plus 110 Kafka/S3/transport runtime cases. Last two transport result lines are 3 Kafka and 6 S3 compile-fail doctests."
+    },
+    "release": {
+      "library_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p catten-services --lib --quiet",
+      "library_exit_status": 0,
+      "library_result_lines": [
+        "test result: ok. 150 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s"
+      ],
+      "transport_command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p charlotte-kafka -p charlotte-s3 -p charlotte-transport-tests --quiet",
+      "transport_exit_status": 0,
+      "transport_result_lines": [
+        "test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s"
+      ],
+      "runtime_tests": 260,
+      "compile_fail_doctests": 9,
+      "counting": "150 service-library cases plus 110 Kafka/S3/transport runtime cases. Last two transport result lines are 3 Kafka and 6 S3 compile-fail doctests."
+    }
+  },
+  "host_context": {
+    "cwd": "/private/tmp",
+    "compiler": "rustc 1.100.0-nightly (c54751567 2026-08-22)",
+    "host": "aarch64-apple-darwin",
+    "flags": "Offline; final suites locked. Initial debug service test updated Cargo.lock offline before the remaining locked invocations."
+  },
+  "checks": {
+    "clippy": {
+      "command": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p catten-services --lib -- -D warnings",
+      "exit_status": 0
+    },
+    "format": {
+      "command": "cargo fmt --all -- --check",
+      "exit_status": 0
+    },
+    "diff": {
+      "command": "git diff --check",
+      "exit_status": 0
+    },
+    "arm_build": {
+      "command": "scripts/build-catten-services.sh --embed",
+      "exit_status": 0
+    },
+    "arm_freshness": {
+      "command": "scripts/build-catten-services.sh --check",
+      "exit_status": 0,
+      "diagnostic": ">>> Staged AArch64 service bundle signatures verified."
+    },
+    "x86_build": {
+      "command": "scripts/build-catten-services-x86_64.sh",
+      "exit_status": 0
+    },
+    "native_compiler": "rustc 1.99.0-nightly (dc3f85158 2026-07-26)"
+  },
+  "native": {
+    "command": "CATTEN_SKIP_EMBED_BUILD=1 COMPOSE_PROJECT_NAME=charlotte-sec15-gcm CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_RUSTFS_IMAGE=rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21 CATTEN_RUSTFS_CLI_IMAGE=rustfs/rc@sha256:f3dc331f76b14a852a1dc0bffc80509cc41424eaa9ea0306d9584edc211dcad6 scripts/run-aarch64.sh --s3-test --instance sec15-gcm --fresh-storage --timeout 300",
+    "exit_status": 0,
+    "kernel": {
+      "path": "target/aarch64-unknown-none-catten/debug/catten",
+      "sha256": "8b3537a165bead5f254c5fa1dc670e249cc852e05bd6d4653e42fd588f3a47a4"
+    },
+    "results": {
+      "passed": 20,
+      "failed": 0,
+      "pending": 0,
+      "passed_bitmap": "0x303ffff"
+    },
+    "guest_diagnostics": [
+      "[+     7.364764] Testing EL0 S3 client over verified TLS against RustFS...",
+      "[+     7.499766] [s3-test] S3 service spawned (asid=137)",
+      "[+    13.941676] [EL0 LOG] lp=0 asid=141 [s3-smoke] S3 TLS PUT/HEAD/GET/DELETE round trip succeeded",
+      "[+    13.942270] [s3-test] SUCCESS: verified 33-byte object round trip",
+      "[+    13.942958] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x303ffff failed_bitmap=0x0 pending_bitmap=0x0"
+    ],
+    "runner_result": "All registered deferred self-tests passed.",
+    "images": {
+      "before_launch_inspection_command": "docker image inspect <immutable server ref> <immutable CLI ref> --format {{.Id}}",
+      "before_launch_exit_status": 0,
+      "server": {
+        "requested": "rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21",
+        "local_image_id": "sha256:67f06d4b3479fd9d323d8a99c86aac411e665ac0981d06b52a2b790c66db359e"
+      },
+      "cli": {
+        "requested": "rustfs/rc@sha256:f3dc331f76b14a852a1dc0bffc80509cc41424eaa9ea0306d9584edc211dcad6",
+        "local_image_id": "sha256:c4b42c2523eff4c378da9af9947475d1de88572cadbfd4a819ab7435a6796ff8"
+      },
+      "running_inspection_limitation": {
+        "command": "docker inspect charlotte-sec15-gcm-rustfs-1 --format {{.Name}} {{.Image}}",
+        "exit_status": 1,
+        "diagnostic": "error: no such object: charlotte-sec15-gcm-rustfs-1",
+        "interpretation": "Attempt ran after the successful fixture had cleaned up. No running-container image capture is claimed; immutable requested refs and pre-launch local IDs are recorded."
+      }
+    },
+    "post_run_cleanup": {
+      "container_command": "docker ps -a --filter label=com.docker.compose.project=charlotte-sec15-gcm --format {{.Names}}",
+      "volume_command": "docker volume ls --filter label=com.docker.compose.project=charlotte-sec15-gcm --format {{.Name}}",
+      "both_exit_status": 0,
+      "containers": [],
+      "volumes": []
+    },
+    "scope": "AArch64 verified-TLS S3 roundtrip. No new x86 guest, separate Kafka guest or target-memory erasure measurement."
+  },
+  "bundles": {
+    "aarch64-unknown-none": {
+      "agent.elf": "e17bd38a1d0fee7f1e8864eec601eabbdbd2074cf4ff9b6a6399b2edaaefa105",
+      "cclient.elf": "be5bfa7688e70151277554e8075687a661eb8adc23138675eacbb48d5132bf4c",
+      "client.elf": "08b07368555d8040f21dd4948035d15f2a21575d1421d1e6b85b3ab8ebcc0d9d",
+      "clusterctl.elf": "06551f13e4fa2eeeca650b19c18f09c52ed203296f3afa6a9fa46c7bc47f312c",
+      "deployd.elf": "470920017ff5f6f368ad67b44de3983d6f66604bf6540b37e55fce558eca0023",
+      "disco.elf": "e6b355374259ad8fac4f6ecd5489d7390ee16053ac9a709bbc63d40a1c4f2c85",
+      "dns.elf": "7d8d2d80ac2c2d2c04d6cb06e5afd90bd4e272428a7f62869301735faf1e3ed3",
+      "echo.elf": "51c8ad117aab5fb7d91d400922849cd5b5e6ffb17f03dbe31a2d457a543e4ad3",
+      "frouter.elf": "2c041791897754e63a86aaf03a405009a11000af8727ca86148a65e6c68ccfd5",
+      "fs.elf": "54403455446efbd7619d13669688a8be8b181c90af76a7933b900c65a1cb81b4",
+      "grantctl.elf": "17c135053563ad121c310029c9d4647abadca5948d058ff7622b214d5933065e",
+      "greet.elf": "3a30faec8df85735cf0875a16499d25b95b6c7f36b834fd904f923a1bbc8cbe0",
+      "httpd.elf": "5265b48bacf53e33d0517428415b170c5bb91c23cc75c889e1d380386c7e79f0",
+      "kafka.elf": "1e357ed14f1b8ce830c940928055861cc9c052513596289264c5e7ae809b3ff2",
+      "kafka_fence_smoke.elf": "fd67cd766cd98614ab6c967702d963eba72b0e5f3771c4a01fe441e0f945892a",
+      "kafka_smoke.elf": "b58560cca8a0258ff8cffcf87f2f707454e63445afc5a9ca55d33d3660145ffb",
+      "kafka_step.elf": "2e8204fa3a213f6a5c7ed2d1eef569b9c72f3c109ee69c3aa39447520a9576b0",
+      "kafka_step_input.elf": "f491599f36c2541e3279d20c91e6e504b433eda62e1c188b5854de15aeedd153",
+      "kafka_step_proc.elf": "0e467cd93728d9a5e7d158211b49f7704005a6aef5923829e709dafd18858dd9",
+      "nclient.elf": "61d364737a16f8843c37dd37c2c1a4cd3f6e695f97697ce65532c8b76e103d77",
+      "net.elf": "ce2e3f4ed267485b64acf3d907919f9839c1e1c66b3d1fddfdd77c91b04e5d27",
+      "ns.elf": "7d643f56d1eec6c8da4b78c0bb2126dc9c59743a38367a4d026c486dd5eba656",
+      "nvme.elf": "c5cd76f0bf8cc07d4375a6343fdcc91096d62888dfe664d53861c3ce10cc2b45",
+      "nvme_client.elf": "1347b9998a272b3f5c665b8d5b97dbe9e67052804a476d070988df2fc947cbd5",
+      "objstore.elf": "41e44f026f9c5d88a1199497f7cc8ec26ba222e9f5ab2b616a3ceec65430d8d8",
+      "objstore_client.elf": "ffdfbad53eed942c5ad4afec26ed9e3bcfe3e896df829a27fbcdb542d6199031",
+      "observe.elf": "4876f22f26a8add18f77de1118ca055e283cbfb147e83afa171988feaaf00e51",
+      "raft.elf": "b8e856f65750baa4c2f38e0199f82f8b6563f8509d1de23c90b609181562c008",
+      "rclient.elf": "d33d7dd61f9eb4c8a9802bf0b3ab7b18a40383162c0a793cee77ccf52c96b2c8",
+      "relmsg.elf": "29c3cc1dfab0c9dfc3087fd022a130ac3fba926089ab2b3805ccf3dc8ec56c50",
+      "rng.elf": "89333e4da2e7afe206f6f476eb66bfcbc1843c0ab87262ebb5e93e11c6458e3f",
+      "s3.elf": "0d2630eb0a250f752d82fa764b7b39f4e6d85fd89a9a54a49ddfa670a3dd38ad",
+      "s3_smoke.elf": "992a3c8f5be12b6319b3830efa13abcb3079cec3dfe6ada2f3d680fa53056b90",
+      "security_probe.elf": "016e1aaf1c9b4789fab803594c60d0b17b87c580692831e1b5e0a8250dcc54f9",
+      "servicemgr.elf": "5d7ee2c2c1f4d821ea65482b7a3d2ddc5c2b3a7ae8aa5220cffd9144625c856d",
+      "shutdown_probe.elf": "167c906a73b10dd1e36c9da003dc331145d59549ac3b7bbe916caff0f87c70bb",
+      "sitas-user.elf": "fbf1b47a721d84498a64e43bc626a7f962a52d3740e3fa7e14adaeea7fa5f311",
+      "tcpclient.elf": "72754ca83890a393a51440e57897fbf0af1d15647f7405e8ebc01b067391627e",
+      "tcpip.elf": "3a5a1fe8ed1941353e872542321b7c02d42c3408ff9aa512fd41411b7f8a0b75",
+      "time.elf": "8e40d969c542d9e511c20d55489ad60ff97469d73ef3ea64638073ab9f133011",
+      "uart.elf": "823be378bcc07b4bf700d6403a15d618a1d414c196537482a0a092e0628618f4"
+    },
+    "x86_64-unknown-none": {
+      "agent.elf": "f3599146beae125d91ca6880b2f2adaf0a74b4f04790003f95942472447dcd82",
+      "ahci.elf": "c96b331878a3b1095293d06ad0e9fc5e3807178a046915d88cffb6e9787aa787",
+      "client.elf": "23d86725e668c821af70424ebf5a3ebcc2a9ccb3a4ff386d4b866db7d09b52f6",
+      "clusterctl.elf": "0814f7758042b38356190b928f3dc723f788a2717056986d6e0be78c24eb8684",
+      "deployd.elf": "4f8f3e8791ba05874b38ec681408f765bf6e4c3bbddbc03c113d225ee70ee705",
+      "disco.elf": "fe7cbab36b64bbfc2e3b23ad0f656cfb28de0cac1d79d0943f7be443d8469f2c",
+      "dns.elf": "eac0ce101bfcdd017ee93255af4527babbc1ca9e693ff1048abb43cd6fd1a25a",
+      "e1000e.elf": "67d5d850f566878759639b267fa48b6168839d8f7cc88c74e0c4aa6a53f41dc5",
+      "echo.elf": "ec2b1b1025c988af0c0527fdb4c744b2edd5d02242ab30ad558be652ab71effd",
+      "frouter.elf": "dbe1b5ae62f499bd33246f1e0627854fa449d0b74e366fb051360cc3f7e0fbf7",
+      "fs.elf": "63361e9a246f535ca39e9bdef3cd9acbecd27ca7bb21f260245ae0ed2dafd446",
+      "grantctl.elf": "a7e7e059d8e14f067f11e36c41ce6e6ab844de5318633b12879b6283cb13ebeb",
+      "greet.elf": "aa0bf56c602b99f046dc8e0cb4908a7835c66041acc65f7620706d612e7169df",
+      "httpd.elf": "19dc16c8380ff650d698b3096757d4883a57696dd454f0fa62369898bb506cfe",
+      "kafka.elf": "15811a0bc21a73147641cc01c1e656f13214b461ea49c1307ad1c91846f668e6",
+      "kafka_smoke.elf": "a7d682d4f69074c622f104314cac8c57768361b85293d389d9c7ab1e1bf00456",
+      "nclient.elf": "fea328fdcfe48af5b6c27c87cbf085219081ca7ad018d7c73f34dcc58c10f904",
+      "net.elf": "b600ce2a9ae7488f609f55e5b48712c64896fe6a4bdaaf358010532bc8979010",
+      "ns.elf": "74991f9b37e8931f64a90109a9ce85cbc18696b317411dbef6b8b59d2b967abc",
+      "nvme.elf": "a4ca325cf0dd3492da4a43b30179bbb06f4b5a5ee65a16a5cdfeb5058be99fd4",
+      "nvme_client.elf": "83e9b7a36f2f3241067747979e0cf1a8a5ac9a0646ddab6b5aaf93d9f20318c1",
+      "objstore.elf": "4b61434075bba7cf42dfaa2bb91ba177bc86c6a42b47f86010b3e692d3b4a724",
+      "objstore_client.elf": "62e8bec62da355d63ff786e8a8ae6b841821282103902c531ad044ddd101ee8c",
+      "observe.elf": "d6881af27e7a348d0a05941d3f0ae133de6c78e64d2b011f74ded468b6802155",
+      "raft.elf": "5ce6c8354d5d30686f9b538b6036407a5744485485c842d8e5f6f92133d7b089",
+      "rclient.elf": "ae2623c4b5ad8a5d85af12e1fb4238df573e714222a22903bd23f3c787b9254d",
+      "relmsg.elf": "f7d8d99f2e867b0f8dabe964c0a2d8676054fb8ab95f8e1ea5dcd5ebee04cced",
+      "rng.elf": "ec60b367e7636a544fa0b653a96f3a59ed801e5af6acd2c321661e3523469041",
+      "s3.elf": "014ab43fe9b766712f8c5883aa5c3919ca93254e233496d8f6ec9f268c347848",
+      "s3_smoke.elf": "a07d208e314552f879dda8ba311b0e4732eed4be5ab9efe45d1a2998011388b9",
+      "security_probe.elf": "ef4653ecb742f1f30fc7237e12329f141e62daa85d386a1754e0064bc69aba16",
+      "servicemgr.elf": "469f6aa11e8b282d91c4d7485ce788d1c97c4f987b4db1c3e7efbbc6274a42ff",
+      "shutdown_probe.elf": "9ab389f0739549a39c4beb2881bc1177ce303152dab271c58522bc1b0a47021c",
+      "tcpclient.elf": "7678ac99ec0aecf71b8348db9e181929db5cfa02990cebbd180cebf30ac21f1e",
+      "tcpip.elf": "21d6380773ffbc5b1710cb1e0b99e876467bdab7b95d68ae018b98d3933bbb2a",
+      "time.elf": "fa9f427165f1161cd7104a1f27be9807334e1e23a12447dcb57fb6b5d55364e2",
+      "virtio_blk.elf": "766e2068f865dbea3b71cd0c7a3469fa65dff322a07af9d1a1f64779e6775076"
+    }
+  },
+  "bundle_comparison": {
+    "version_controlled_manifest": "docs/reports/audits/evidence/2026-10-21-security-aes-erasure.json",
+    "manifest_sha256": "d3fe1ba80ef62284cafedb5023f8dce7a35947c0f20a3b91eb766d2953dde033",
+    "changed": {
+      "aarch64-unknown-none": [
+        "agent.elf",
+        "cclient.elf",
+        "client.elf",
+        "clusterctl.elf",
+        "deployd.elf",
+        "disco.elf",
+        "dns.elf",
+        "echo.elf",
+        "frouter.elf",
+        "fs.elf",
+        "grantctl.elf",
+        "greet.elf",
+        "httpd.elf",
+        "kafka.elf",
+        "kafka_fence_smoke.elf",
+        "kafka_smoke.elf",
+        "kafka_step.elf",
+        "kafka_step_input.elf",
+        "kafka_step_proc.elf",
+        "nclient.elf",
+        "net.elf",
+        "ns.elf",
+        "nvme.elf",
+        "nvme_client.elf",
+        "objstore.elf",
+        "objstore_client.elf",
+        "observe.elf",
+        "raft.elf",
+        "rclient.elf",
+        "relmsg.elf",
+        "rng.elf",
+        "s3.elf",
+        "s3_smoke.elf",
+        "security_probe.elf",
+        "servicemgr.elf",
+        "shutdown_probe.elf",
+        "tcpclient.elf",
+        "tcpip.elf",
+        "time.elf",
+        "uart.elf"
+      ],
+      "x86_64-unknown-none": [
+        "agent.elf",
+        "ahci.elf",
+        "client.elf",
+        "clusterctl.elf",
+        "deployd.elf",
+        "disco.elf",
+        "dns.elf",
+        "e1000e.elf",
+        "echo.elf",
+        "frouter.elf",
+        "fs.elf",
+        "grantctl.elf",
+        "greet.elf",
+        "httpd.elf",
+        "kafka.elf",
+        "kafka_smoke.elf",
+        "nclient.elf",
+        "net.elf",
+        "ns.elf",
+        "nvme.elf",
+        "nvme_client.elf",
+        "objstore.elf",
+        "objstore_client.elf",
+        "observe.elf",
+        "raft.elf",
+        "rclient.elf",
+        "relmsg.elf",
+        "rng.elf",
+        "s3.elf",
+        "s3_smoke.elf",
+        "security_probe.elf",
+        "servicemgr.elf",
+        "shutdown_probe.elf",
+        "tcpclient.elf",
+        "tcpip.elf",
+        "time.elf",
+        "virtio_blk.elf"
+      ]
+    }
+  },
+  "formal": {
+    "version_controlled_manifest": "docs/reports/audits/evidence/2026-10-21-security-ingress-deadline.json",
+    "manifest_sha256": "66d1101147d96626d10f9d78f43232015909a4c53b0ea62f6ae99b9ad5bcd163",
+    "inventory": {
+      "modules": 34,
+      "safe_configurations": 36,
+      "negative_configurations": 109,
+      "runner_inputs": 1
+    },
+    "unchanged_inputs": 180,
+    "sha256_map_digest": "5e1735814ed956e918c183557d0b22697e901364831918abcb15b66820ee6fa5",
+    "fresh_tlc_cases": 0,
+    "reason": "Local cryptographic field erasure is outside model projections; no transition or input change."
+  },
+  "incidental_source_test_failures": [],
+  "preserved_pdf": {
+    "path": "docs/manual-v2/charlotte.pdf",
+    "sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f",
+    "edited_or_rendered": false
+  },
+  "reviewed_source_sha256": {
+    "Cargo.lock": "f2c731aebc1171ec6c68dd763be14ca669acd12faa7e86984716e06aac266499",
+    "crates/catten-services/Cargo.toml": "a468a021accd393f02cf0ee9512345eb0b46ececb3310900fad507d3352271a7",
+    "crates/catten-services/src/tls_client.rs": "4469540fbfd833543fdefb208234404bd79a8d1db4d580800bd1ad639b5744bf",
+    "docs/guides/testing.md": "84dea502d3d422f92a76a0dca0290f4421dc49780e648777497268bea73d8f52",
+    "docs/manual-v2/chapters/13-networking.tex": "2ce14bdfcdc02061997163ee0168536783fe00dcd1ede86b5be238d38c75c5cf",
+    "docs/reference/cleanup-recovery.md": "a089e9bba6c934f35dc1fffc7adc438eee0b5be44ba71f8e6cd528a78e0e6e24",
+    "docs/reference/kafka-client.md": "3d5d31992df57c9ee21fa850223800fac2c0533b651cad23e007e4e6ac00dfc3",
+    "docs/reference/s3-client.md": "e146edf569a74831d7ed8fdc00ac78d1a9debdb74c2f4df34ced3fd0e799f108",
+    "docs/reference/secret-state-lifetimes.md": "df6818acb64bfdf0391eb44fffe865a0638005c688cc594f4a5dbaeb8ea863f2",
+    "docs/reference/security-remediation.md": "871dfd95ecfd1e74092664f9d754ff2f07063cfbe8948a0db795e452eee0d960",
+    "docs/reports/README.md": "2d1c813f160a49b1ca0b887f3e6837dc721f1c77dd7367a8d0e1920311e3680a",
+    "docs/reports/audits/2026-10-22-security-gcm-erasure.md": "41b8d4a4b34e29c1df90698909e2cc8695b603e7fee29fa38cca0c3e102ad32e"
+  },
+  "remaining_limits": [
+    "Feature/source/type contracts establish named-field wiping; no private scratch or target-memory measurement is made.",
+    "Pinned x86 dispatch and optional ARM PMULL state still need correction; ARM guard rejects PMULL, and no extra CPU feature is enabled.",
+    "TLS traffic-key/IV arrays and HKDF state lack erasing owners.",
+    "Scalar/compiler intermediates, registers/cache, explicit copies, original caller/launch/kernel/socket backing and physical memory remain separate.",
+    "Ordinary Drop requires execution; forced termination, panic-abort and power loss are outside these checks.",
+    "Production enrollment, rollback-resistant state and recipient custody remain missing."
+  ],
+  "fixture_scope": "Public all-zero GCM fixture plus ephemeral generated TLS server keys/public development credentials. No production credentials or private key bytes are recorded."
+}

@@ -38,7 +38,9 @@ records a retained-storage reproduction and the correction's validation.
 | Encoded S3 launch profile | `charlotte_protocol_s3::Profile::encode` returns `Zeroizing<Vec<u8>>` | Full validation and frame sizing precede allocation. The owner is installed before credential writes and retains the original single allocation through launch or abandonment. Borrowed wire `Profile` has no aggregate Debug implementation. Caller inputs, explicit field/output copies and launch-memory backing keep separate policies. |
 | Encoded Kafka launch profile | `charlotte_protocol_kafka::Profile::encode` returns `Zeroizing<Vec<u8>>` | Validate all fields and the complete bounded size before allocating one frame; the owner exists before credential writes. The kernel borrows it through its existing launch scope. Profile and Authentication omit aggregate Debug. Caller inputs, explicit copies, connector-local profile copies and original launch backing remain separate. |
 | TLS AES-128 expanded round keys | The selected AES-GCM record cipher owns `aes::Aes128`; its combined/encrypt/decrypt owners require `ZeroizeOnDrop` | `catten-services` explicitly enables AES 0.8.4 erasure. The library clears software or selected hardware round-key fields on ordinary Drop, including error return. Compile-time bounds reject disabled erasure. This is a dependency/source contract, without a new target-memory erasure measurement. See the [AES review](../reports/audits/2026-10-21-security-aes-erasure.md). |
-| TLS traffic keys, IVs, HKDF and GHASH/POLYVAL state | Existing embedded-tls/AES-GCM library owners | Remaining SEC-15 work. Enabling AES round-key erasure does not erase the enclosing TLS key schedule or GCM authentication state. No complete-session erasure guarantee is established. |
+| GCM authentication-key construction scratch | Existing AES-GCM and GHASH constructors | Their separate `zeroize` features clear the AES-derived authentication key and GHASH's reversed/transformed key copies after construction. Source/feature contract; no private scratch-memory probe. See the [GCM review](../reports/audits/2026-10-22-security-gcm-erasure.md). |
+| GHASH/POLYVAL software state | The record cipher's existing `GHash` / `Polyval` owner | POLYVAL's erasure feature clears software `h` and accumulator fields on ordinary Drop. Current AArch64 builds require destructor presence; optional PMULL rejects that guard. Pinned x86 dispatch still lacks Drop delegation, so its original state is unqualified. This is not complete TLS-state erasure. |
+| TLS traffic keys, IVs and HKDF state | Existing embedded-tls key-schedule owner | Remaining SEC-15 work: these plain fields have no erasing destructor. Cipher-local erasure does not clear this enclosing state. |
 | HPKE X25519 private key and shared secret | The selected `x25519-dalek` `StaticSecret` and `SharedSecret` owners inside HPKE | The direct dependency requires `zeroize`, which HPKE's disabled defaults omitted. Production trait bounds require both owners to implement `ZeroizeOnDrop`. Drop erases their named 32-byte fields. |
 | Generated recipient private bytes | Returned `Zeroizing<[u8; 32]>`, created as an owner before serialization | Transfers directly to the signing tool; ordinary return/error drops the owner. Public recipient bytes remain an array. Explicit caller copies still need their own policy. |
 | Host key-file hexadecimal text | `cluster-sign`'s `encode_key_file` returns `Zeroizing<String>` | Reserve the complete lowercase hex plus newline before copying. The writer borrows that owner through file creation/write and ordinary rejection. No newline growth or plain-output key-file formatter remains. Original key owners, files/OS buffers and other host-tool copies retain separate policies. |
@@ -227,6 +229,14 @@ The [AES dependency review](../reports/audits/2026-10-21-security-aes-erasure.md
 locked baseline feature graph. The service now enables the existing AES feature
 and requires erasing Drop for its AES-128 owner types. Isolated feature-removal
 controls reject those bounds. Expanded round keys erase when the record cipher
-drops; TLS traffic secrets/HKDF state and GCM authentication state remain separate
-work. Tests and guest exchanges verify functional behavior, without inspecting
+drops. The GCM follow-up below qualifies part of its authentication state; TLS
+traffic secrets/HKDF state remain open. Tests and guest exchanges verify
+functional behavior, without inspecting
 private cipher fields or claiming complete-session or physical erasure.
+
+The [GCM feature review](../reports/audits/2026-10-22-security-gcm-erasure.md) enables the three separate authentication-
+state erasure features. AArch64's current software backend clears named state
+fields on ordinary Drop; a production destructor-presence guard rejects missing
+erasure and the optional PMULL backend. That guard is a build contract, not a
+memory measurement. The pinned x86 dispatch owner still lacks Drop delegation.
+TLS traffic-key/IV/HKDF fields, compiler copies and physical memory remain open.

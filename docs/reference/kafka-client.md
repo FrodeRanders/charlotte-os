@@ -267,10 +267,13 @@ transaction as aborted and start a new transaction after rediscovery/retry.
 
 ## TLS and SASL security boundary
 
-The shared TLS transport enables AES round-key erasure and requires erasing
-Drop for its AES-128 owners. Record-cipher release clears those expanded keys.
-TLS traffic secrets/HKDF state, GCM authentication state and compiler copies
-remain separate SEC-15 work. See the [AES review](../reports/audits/2026-10-21-security-aes-erasure.md).
+The shared TLS transport enables AES round-key and GCM authentication-key
+scratch erasure. The current AArch64 software POLYVAL backend also erases its
+state on ordinary Drop, with a build guard requiring destructor presence. The
+pinned x86 dispatch and optional ARM PMULL state still have erasure gaps; the
+PMULL backend rejects the AArch64 guard. TLS traffic-key/IV/HKDF state and
+compiler copies remain separate SEC-15 work. See the [AES review](../reports/audits/2026-10-21-security-aes-erasure.md) and
+[GCM review](../reports/audits/2026-10-22-security-gcm-erasure.md).
 
 Setting `KafkaProfile::tls` selects the shared owned TLS transport and never
 downgrades to plaintext. The client verifies the broker's certificate chain,
