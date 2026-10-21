@@ -642,8 +642,8 @@ if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ] || [ "$SHUTDOWN_INGRESS_TEST" = "1" ]; t
 fi
 if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
     echo ">>> Preparing signed central-store deployment fixture..."
-    DEPLOYMENT_TEST_DIR="${ROOT_DIR}/target/deployment-ingress-test"
-    mkdir -p "$DEPLOYMENT_TEST_DIR"
+    mkdir -p "${ROOT_DIR}/target/deployment-ingress-test"
+    DEPLOYMENT_TEST_DIR="$(mktemp -d "${ROOT_DIR}/target/deployment-ingress-test/run.XXXXXX")"
     if [ -z "$DEPLOY_ELF" ]; then
         DEPLOY_ELF="${CATTEN_AARCH64_SERVICE_BUNDLE}/greet.elf"
     fi
@@ -1014,9 +1014,8 @@ if [ -n "$TIMEOUT" ]; then
     DEPLOYMENT_RESULT_FILE=""
     DEPLOYMENT_WORKER_LOG=""
     if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
-        DEPLOYMENT_RESULT_FILE="${ROOT_DIR}/target/deployment-ingress-test/result"
-        DEPLOYMENT_WORKER_LOG="${ROOT_DIR}/target/deployment-ingress-test/worker.log"
-        rm -f "$DEPLOYMENT_RESULT_FILE" "$DEPLOYMENT_WORKER_LOG"
+        DEPLOYMENT_RESULT_FILE="${DEPLOYMENT_TEST_DIR}/result"
+        DEPLOYMENT_WORKER_LOG="${DEPLOYMENT_TEST_DIR}/worker.log"
         (
             deadline=$((SECONDS + TIMEOUT - 5))
             until "$CLUSTER_SIGN_BIN" release-apply \
@@ -1166,9 +1165,9 @@ if [ -n "$TIMEOUT" ]; then
             fi
             if [ "$SHUTDOWN_INGRESS_TEST" = "1" ] \
                 && [ "$SHUTDOWN_INGRESS_SUBMITTED" = "0" ]; then
-                SHUTDOWN_TEST_DIR="${ROOT_DIR}/target/shutdown-ingress-test"
+                mkdir -p "${ROOT_DIR}/target/shutdown-ingress-test"
+                SHUTDOWN_TEST_DIR="$(mktemp -d "${ROOT_DIR}/target/shutdown-ingress-test/run.XXXXXX")"
                 SHUTDOWN_INTENT="${SHUTDOWN_TEST_DIR}/node.cshutdown"
-                mkdir -p "$SHUTDOWN_TEST_DIR"
                 SHUTDOWN_KEY_FILE="$(catten_signing_key_file "$ROOT_DIR")"
                 SHUTDOWN_NOW="$(date +%s)"
                 SHUTDOWN_TARGET="$($CLUSTER_SIGN_BIN node-key "$NET_MAC")"

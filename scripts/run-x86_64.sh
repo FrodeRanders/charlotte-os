@@ -455,8 +455,8 @@ SIGN_TOOLCHAIN="$(sed -n 's/^channel = "\([^"]*\)"/\1/p' "$ROOT_DIR/rust-toolcha
 if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
     (cd /tmp && cargo +"$SIGN_TOOLCHAIN" build --locked --quiet --manifest-path "${ROOT_DIR}/tools/cluster-sign/Cargo.toml")
     echo ">>> Preparing signed central-store deployment fixture..."
-    DEPLOYMENT_TEST_DIR="${ROOT_DIR}/target/deployment-ingress-test"
-    mkdir -p "$DEPLOYMENT_TEST_DIR"
+    mkdir -p "${ROOT_DIR}/target/deployment-ingress-test"
+    DEPLOYMENT_TEST_DIR="$(mktemp -d "${ROOT_DIR}/target/deployment-ingress-test/run.XXXXXX")"
     if [ -z "$DEPLOY_ELF" ]; then
         DEPLOY_ELF="${SERVICE_BUNDLE}/greet.elf"
     fi
@@ -682,9 +682,8 @@ if [ -n "$TIMEOUT" ]; then
     HTTP_PROBED=0
     HTTP_PROBE_OK=0
     if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
-        DEPLOYMENT_RESULT_FILE="${ROOT_DIR}/target/deployment-ingress-test/result"
-        DEPLOYMENT_WORKER_LOG="${ROOT_DIR}/target/deployment-ingress-test/worker.log"
-        rm -f "$DEPLOYMENT_RESULT_FILE" "$DEPLOYMENT_WORKER_LOG"
+        DEPLOYMENT_RESULT_FILE="${DEPLOYMENT_TEST_DIR}/result"
+        DEPLOYMENT_WORKER_LOG="${DEPLOYMENT_TEST_DIR}/worker.log"
         (
             deadline=$((SECONDS + TIMEOUT - 5))
             until "$CLUSTER_SIGN_BIN" release-apply \

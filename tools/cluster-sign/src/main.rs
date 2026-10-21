@@ -1210,7 +1210,7 @@ fn deployment_sign(args: &[String]) -> Result<()> {
     if !deployment::set_signature(&mut bytes, signature) {
         return Err("failed to install deployment signature".to_owned());
     }
-    fs::write(output, &bytes).map_err(|error| format!("write {output}: {error}"))?;
+    write_new_file(output, &bytes, false)?;
     println!(
         "signed deployment {output}: artifact={artifact_name:?} object={object_key:?} \
          node={node_key:#x} sequence={sequence} stack_pages_per_thread={} max_threads={} \
@@ -1312,7 +1312,7 @@ fn release_sign(args: &[String]) -> Result<()> {
     if !release::set_signature(&mut bytes, signature) {
         return Err("failed to install release signature".to_owned());
     }
-    fs::write(output, &bytes).map_err(|error| format!("write {output}: {error}"))?;
+    write_new_file(output, &bytes, false)?;
     println!(
         "signed release {output}: name={release_name:?} sequence={sequence} components={}",
         descriptor_refs.len()
@@ -1405,7 +1405,7 @@ fn shutdown_sign(args: &[String]) -> Result<()> {
     if !shutdown::set_signature(&mut bytes, signature) {
         return Err("failed to install shutdown signature".to_owned());
     }
-    fs::write(output, &bytes).map_err(|error| format!("write {output}: {error}"))?;
+    write_new_file(output, &bytes, false)?;
     println!(
         "signed shutdown intent {output}: target={target_node:#x} sequence={sequence} \
          valid={not_before_unix_seconds}..={expires_unix_seconds} node_grace_ms={node_grace_ms} \

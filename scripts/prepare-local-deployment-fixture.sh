@@ -19,22 +19,25 @@ else
     PRIMARY="$BUNDLE/greet.elf"
 fi
 mkdir -p "$(dirname "$OUTPUT")"
+# Keep each run's signed parts in a fresh private directory for inspection.
+PARTS="$(mktemp -d "${OUTPUT}.parts.XXXXXX")"
 # Each phase has a signed node pin, so the ordinary automatic controller cannot
 # relocate the test's initial peer before its cross-node call is observed.
 for sequence in 1 2 3; do
     for node in 0x42e278ea 0x42e27737; do
-        "$SIGNER" deployment-sign "${OUTPUT}.${sequence}.${node}" greet fixture/greet-arm.elf "$PRIMARY" \
+        "$SIGNER" deployment-sign "${PARTS}/${sequence}.${node}" greet fixture/greet-arm.elf "$PRIMARY" \
             "$node" "$sequence" 4 1 5000 "$(catten_signing_key_file "$ROOT")" "${VARIANTS[@]}" greet=publish
     done
 done
-python3 - "$OUTPUT" <<'PYTHON'
+python3 - "$OUTPUT" "$PARTS" <<'PYTHON'
 from pathlib import Path
 import sys
 output=Path(sys.argv[1])
+parts=Path(sys.argv[2])
 records=[]
 for sequence in [1,2,3]:
     for node in ['0x42e278ea','0x42e27737']:
-        data=Path(f'{output}.{sequence}.{node}').read_bytes()
+        data=(parts/f'{sequence}.{node}').read_bytes()
         records.append(len(data).to_bytes(4,'little')+data)
 output.write_bytes(b''.join(records))
 PYTHON

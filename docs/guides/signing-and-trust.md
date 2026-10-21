@@ -106,6 +106,13 @@ or unlinked. Keep parent directories trusted: the tool supplies no pathname
 continuity, concurrent-content lock, rollback or durable atomic publication.
 See the [artifact-edit audit](../reports/audits/2026-10-21-security-artifact-edit.md) and [artifact-input audit](../reports/audits/2026-10-21-security-artifact-input.md).
 
+Deployment, release and shutdown signing require a fresh output path. They use
+the same exclusive file creation as other new-file signing commands, preserving
+existing files and symlink/hard-link targets. Keep the output directory trusted.
+Boot fixtures allocate fresh private directories for signed records, so repeated
+runs preserve earlier records. Failed-write cleanup and durable atomic publication
+remain separate work. See the [control-output audit](../reports/audits/2026-10-21-security-control-output.md).
+
 ## Public trust-policy preflight
 
 Prepare an unsigned `CTRUST1` public policy using the four public files above:

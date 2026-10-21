@@ -566,6 +566,13 @@ preserve three baseline failures; corrected ownership, bounds and rejection
 controls pass. Pathname continuity, concurrent inode writers, partial writes
 and durable atomic publication remain separate. Finding counts are unchanged.
 
+The [control-output follow-up](../reports/audits/2026-10-21-security-control-output.md) routes deployment, release and shutdown
+signing through exclusive creation. Actual CLI controls preserve nine baseline
+overwrite cases across regular files, symlinks and hard links; corrected runs
+reject them and preserve their bytes. Fresh signed output bytes match baseline.
+Boot fixtures use fresh private directories for signed records. Failed-write
+pathname cleanup and durable atomic publication remain open; counts are unchanged.
+
 The [SEC-15 hash-state follow-up](../reports/audits/2026-10-19-security-hash-state-erasure.md)
 adds erasure of shared SHA state/compression scratch and one owned HMAC result
 path for SigV4 and SCRAM. The [bounded inventory](secret-state-lifetimes.md)

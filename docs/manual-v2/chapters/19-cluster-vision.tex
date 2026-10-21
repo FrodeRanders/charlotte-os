@@ -1150,6 +1150,12 @@ untouched. Success refers to that opened file. Pathname continuity, concurrent
 content changes, partial writes and durable atomic publication remain separate
 boundaries.
 
+Deployment, release and shutdown signing create new output files exclusively.
+Existing files and final-component symlinks reject before writing; use a fresh
+name for each signed record. Boot fixtures keep those records in fresh private
+run directories, preserving earlier runs. Failed-write pathname cleanup and
+durable atomic publication remain separate work.
+
 Build output and boot logs explicitly identify the current images as
 development images. The build refuses production trust mode
 (\texttt{CATTEN\_TRUST\_MODE}): protected bootstrap trust and recipient-key provisioning

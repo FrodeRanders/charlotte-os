@@ -387,3 +387,10 @@ other consumers. ELF commit consumes the captured read/write file and image;
 there is no path-based publication fallback. Command arguments, signing bytes,
 permissions policy and runtime formats stay the same. Human output now says
 "artifact opened at" the supplied path to describe the selected object.
+
+The [control-output follow-up](../reports/audits/2026-10-21-security-control-output.md) removes the three remaining path-based
+`fs::write` publication calls in the signer. Deployment, release and shutdown
+signing share `write_new_file` with other new-file commands; existing paths reject
+without an overwrite option or alternate publication path. Boot fixtures allocate
+fresh private directories for signed records. Signed formats, command arguments
+and successful bytes stay the same. Failed-write cleanup remains separately open.

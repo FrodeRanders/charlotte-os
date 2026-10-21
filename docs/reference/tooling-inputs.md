@@ -120,3 +120,14 @@ binding. The output identifies the artifact as opened at the supplied path.
 Dropping an edit without commit leaves its bytes unpublished. A commit error
 consumes the owner and may leave a partial rewrite; no implicit retry, rollback,
 fsync or atomic/durable publication is promised. See the [artifact-edit report](../reports/audits/2026-10-21-security-artifact-edit.md).
+
+`deployment-sign`, `release-sign` and `shutdown-sign` create new output files
+through the shared exclusive writer. Existing regular files, hard links and
+final-component symlinks reject before writing; choose a fresh output name for
+each signed record. Successful output bytes and verification are unchanged.
+The boot runners keep deployment/shutdown records in fresh private run directories,
+with deployment worker logs beside their records. Local deployment fixtures keep
+each run's six signed parts in a fresh private directory; the assembled fixture
+bundle keeps its existing replacement policy. These directories remain available
+for inspection. Parent-directory integrity, failed-write cleanup and durable
+atomic publication still need separate qualification. See the [control-output report](../reports/audits/2026-10-21-security-control-output.md).
