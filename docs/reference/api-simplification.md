@@ -436,3 +436,14 @@ path remains. Checked deadlines replace per-phase budget restarts and unchecked
 `Instant` addition. This changes host endpoint/admission policy; HTTP routes,
 response framing, signed inputs, CLI positional arguments and runtime ABI are
 unchanged. See [tooling inputs](tooling-inputs.md) for budgets and limits.
+
+
+The [named-status follow-up](../reports/audits/2026-10-21-security-named-status.md)
+removes the standalone readiness substring path. All deployment status consumers
+validate the current six-field rollout record. The shared reader preserves the
+complete declared body after the first separator and trims only JSON whitespace;
+it has no prefix-only or Unicode-whitespace fallback. Missing, duplicate, nested,
+unknown, extended or inconsistent records reject before another observation.
+Named status remains an observation of the current record; apply still compares
+against its admitted generation. HTTP framing, server output, CLI arguments,
+signed inputs and runtime ABI are unchanged.

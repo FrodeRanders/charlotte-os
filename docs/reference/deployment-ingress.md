@@ -174,6 +174,16 @@ the reliable-message source as a current peer, relays the bounded request to
 the current Raft leader, and correlates the committed result back to the HTTP
 request. The release client therefore does not need to discover the leader.
 
+The standalone `deployment-status` command validates the complete current
+rollout record. With zero or omitted wait, it prints a valid pending or ready
+observation; a positive wait completes on validated readiness. Malformed HTTP-200
+records reject immediately. Invalid names reject before waiting or connecting.
+The shared reader preserves every declared body byte after the first HTTP
+separator and trims only JSON whitespace; extra records and Unicode whitespace
+cannot supply a valid prefix to either status or apply. See
+[tooling inputs](tooling-inputs.md). This command observes the current name,
+without binding its result to an earlier admission.
+
 `GET /v1/deployments/{percent-encoded-artifact-name}` reports `committed`,
 `replacing`, or `ready`. Readiness is generation-safe: each ready count
 represents a distinct desired node whose active distributed registration

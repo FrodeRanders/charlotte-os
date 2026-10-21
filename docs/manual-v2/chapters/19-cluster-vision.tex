@@ -888,6 +888,16 @@ clock range reject. Blocking host file I/O and stdout are not preempted, and
 readiness still uses status polling. Artifacts must already be signed and uploaded; object-store
 credentials remain outside the generated application and its descriptors.
 
+The standalone \texttt{deployment-status} command uses the same complete rollout
+codec. Zero or omitted wait prints a valid current pending or ready record;
+a positive wait requires validated readiness. Missing, duplicate, nested,
+trailing or inconsistent records reject immediately. The shared status reader
+preserves the complete declared body after the first HTTP separator and trims
+only JSON whitespace. Extra separators and Unicode whitespace cannot hide
+invalid data from status or apply. Invalid artifact names reject before waiting
+or connecting. Named status observes the current record, which may change while
+it waits; it supplies no binding to an earlier admission.
+
 \texttt{deployment-apply} orchestrates independent descriptor admissions.
 Each descriptor occupies a separate Raft entry, so a later failure can leave
 an accepted prefix committed. The client does not replay notifications;

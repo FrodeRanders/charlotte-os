@@ -601,6 +601,14 @@ uses numeric endpoints and bounds each connect/write/read by the time left.
 Status polling, blocking host I/O and ingress peer authentication remain separate.
 Finding counts are unchanged.
 
+The [named-status follow-up](../reports/audits/2026-10-21-security-named-status.md)
+uses the existing rollout codec for standalone read-only and waiting status.
+Malformed observations stop immediately. Its shared reader also preserves body
+suffixes after additional HTTP separators and rejects Unicode whitespace that
+could previously be stripped before apply's codec. Invalid names reject before
+waiting or connecting. Current-name observation remains separate from admission
+binding and grants no mutation or cleanup authority. Counts are unchanged.
+
 The [SEC-15 hash-state follow-up](../reports/audits/2026-10-19-security-hash-state-erasure.md)
 adds erasure of shared SHA state/compression scratch and one owned HMAC result
 path for SigV4 and SCRAM. The [bounded inventory](secret-state-lifetimes.md)

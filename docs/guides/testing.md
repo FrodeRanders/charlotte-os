@@ -1788,13 +1788,14 @@ for baseline descriptor failures.
 
 `python3 scripts/tests/test-release-generation.py --signer target/debug/cluster-sign -v`
 uses complete digest-bound receipts for independent component generations. Its
-seven methods cover 13 cases, including stale/superseding observations and
+seven methods cover 15 cases, including stale/superseding observations and
 retired, truncated, extended, duplicate, wrong-envelope and wrong-count receipts.
 Each case checks one POST; invalid admission performs no status query. Repeat
 with `target/release/cluster-sign`. Run `catten-services --lib` tests in both
 profiles: projected capacity charging must execute with debug assertions disabled.
 See the [release-generation audit](../reports/audits/2026-10-21-security-release-generation.md)
-for execution evidence and the remaining deadline/polling and ownership limits.
+for its execution evidence and ownership limits. The host deadline controls below
+cover the later client budget correction.
 
 
 ### Host ingress deadline controls
@@ -1814,3 +1815,21 @@ notification. These controls do not inject a live blocked connect, kernel send
 buffer exhaustion or host filesystem stalls. See the
 [deadline audit](../reports/audits/2026-10-21-security-ingress-deadline.md) for the
 preserved baseline and current limits.
+
+
+### Complete named deployment observations
+
+`python3 scripts/tests/test-deployment-status.py --signer target/debug/cluster-sign -v`
+exercises seven methods / 27 cases against a scripted loopback peer. It covers
+read-only pending/ready states, JSON whitespace and field order, pending-to-ready
+progress, nine malformed bodies in read-only and waiting modes, omitted wait,
+HTTP rejection and invalid-name admission. Malformed HTTP-200 records must cause
+one GET and no output; a later valid row cannot replace them. Invalid names
+cause no request or timer wait. `--evidence PATH` retains each result and request
+sequence. Repeat with `target/release/cluster-sign`.
+
+The descriptor and release generation matrices each now cover 15 cases, including
+an extra body separator/suffix and non-JSON Unicode whitespace. These cases test
+the shared status wrapper before its rollout codec. Read-only status has no
+preceding admission; these controls do not establish a fixed generation across
+its observation wait. See the [named-status audit](../reports/audits/2026-10-21-security-named-status.md).

@@ -1755,12 +1755,21 @@ fn deployment_status_once(
     );
     let response = http_client::exchange(endpoint, request.as_bytes(), &[], deadline)?;
     let status = response.lines().next().unwrap_or_default().to_owned();
-    let body = response.split("\r\n\r\n").nth(1).unwrap_or_default().trim().to_owned();
+    // Preserve the complete declared body for the status codec, including any
+    // further separators. Only JSON whitespace may surround the record.
+    let body = response
+        .split_once("\r\n\r\n")
+        .map_or("", |(_, body)| body)
+        .trim_matches([' ', '\t', '\r', '\n'])
+        .to_owned();
     Ok((status, body))
 }
 
 fn deployment_status(args: &[String]) -> Result<()> {
     let artifact_name = args.first().ok_or_else(|| "missing artifact name".to_owned())?;
+    if !deployment::valid_artifact_name(artifact_name.as_bytes()) {
+        return Err("invalid deployment artifact name".to_owned());
+    }
     let endpoint = args.get(1).map_or("127.0.0.1:8081", String::as_str);
     let endpoint = http_client::endpoint(endpoint)?;
     let timeout = args
@@ -1778,7 +1787,9 @@ fn deployment_status(args: &[String]) -> Result<()> {
     loop {
         match deployment_status_once(artifact_name, endpoint, deadline.capped(5)) {
             Ok((status, body)) if status.starts_with("HTTP/1.1 200 ") => {
-                if timeout == 0 || body.contains("\"state\":\"ready\"") {
+                let observed = rollout::status(&body)
+                    .ok_or_else(|| format!("invalid rollout status for {artifact_name:?}"))?;
+                if timeout == 0 || observed.ready {
                     println!("{body}");
                     return Ok(());
                 }

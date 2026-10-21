@@ -1,0 +1,2172 @@
+{
+  "schema": "charlotte.security.named-status.v1",
+  "report_date": "2026-10-21",
+  "reviewed_revision": "bad2113518db849e44080b095af0ea30d9078cab",
+  "classification": {
+    "corrected": 29,
+    "partial": 6,
+    "open": 3,
+    "production_trust": "disabled"
+  },
+  "correction": {
+    "standalone": "Validate the complete existing six-field rollout record in read-only and waiting modes. Malformed HTTP-200 data rejects before stdout or another observation.",
+    "body": "Shared status reader splits header/body once, preserves all declared body bytes and trims only JSON space/tab/CR/LF. A second separator or Unicode no-break space cannot hide an invalid suffix or prefix.",
+    "input": "Invalid artifact names reject before waiting or network admission.",
+    "current_name_scope": "Named status observes the current record. It is not bound to a prior admission and supplies no mutation, replay, retirement or cleanup authority.",
+    "unchanged": "Rollout codec, server output, HTTP framing, signed inputs, receipt format, CLI arguments, operation deadline, generation comparisons and runtime ABI.",
+    "owner_family": "Existing C18 public string/prepared apply/socket scopes; no new resource owner, registry, recovery family, custody or physical proof."
+  },
+  "baseline": {
+    "binary": {
+      "path": "target/release/cluster-sign",
+      "sha256": "8b78195c5a7c18dec77468d45fe6cd4d8bca830d4f96d179fa80fbaa455f0436"
+    },
+    "source_matches_preceding_evidence": true,
+    "status_command": "python3 scripts/tests/test-deployment-status.py --signer target/release/cluster-sign -v",
+    "exit_status": 1,
+    "methods_run": 7,
+    "cases_run": 27,
+    "failed_controls": 20,
+    "passed_controls": 7,
+    "diagnostic_summary": "18 malformed records falsely succeeded; pretty ready JSON was rejected after a wait; invalid-name handling waited until deadline instead of reporting the input error immediately.",
+    "result_line": "FAILED (failures=20)",
+    "cases": [
+      {
+        "case": "test_invalid_name_rejects_before_waiting_or_network",
+        "wait": "1",
+        "name": "bad name",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [],
+        "elapsed_seconds": 1.0109261660836637,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment \"bad name\" did not become ready in 1s\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\"}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.011221791850402951,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"ready\"}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"deployment_generation\":3,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.005552749847993255,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"ready\",\"deployment_generation\":2,\"deployment_generation\":3,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":0}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.004022541921585798,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":0}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"extra\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.00333370896987617,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"extra\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":{\"state\":\"ready\"},\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0036724579986184835,
+        "exit_status": 0,
+        "stdout": "{\"state\":{\"state\":\"ready\"},\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":0,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0034055840224027634,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"ready\",\"deployment_generation\":0,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1} trailing"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0033460829872637987,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1} trailing\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\r\n\r\n{\"ignored\":true}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0031794998794794083,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "\u00a0{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\u00a0"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0028992912266403437,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\"}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.002943541156128049,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"ready\"}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"deployment_generation\":3,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.003030667081475258,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"ready\",\"deployment_generation\":2,\"deployment_generation\":3,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":0}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.002966708969324827,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":0}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"extra\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0030543748289346695,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"extra\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":{\"state\":\"ready\"},\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0030833750497549772,
+        "exit_status": 0,
+        "stdout": "{\"state\":{\"state\":\"ready\"},\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":0,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.003456207923591137,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"ready\",\"deployment_generation\":0,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1} trailing"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0035359167959541082,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1} trailing\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\r\n\r\n{\"ignored\":true}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.003507666988298297,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "\u00a0{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\u00a0"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0038065409753471613,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_missing_wait_is_one_checked_query",
+        "wait": null,
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"committed\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":0}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.003781583858653903,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"committed\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":0}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_pending_then_ready_observes_current_name",
+        "wait": "2",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"committed\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":0}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ],
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 1.011650666128844,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_read_only_accepts_all_current_states",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.009391125058755279,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_read_only_accepts_all_current_states",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"committed\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":0}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.011613167123869061,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"committed\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":0}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_read_only_accepts_all_current_states",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"replacing\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":2,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.008337666979059577,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"replacing\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":2,\"ready_replicas\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_read_only_http_error_is_reported",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            404,
+            "{\"error\":\"deployment not found\"}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.006841750117018819,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment status failed: HTTP/1.1 404 Not Found: {\"error\":\"deployment not found\"}\n"
+      },
+      {
+        "case": "test_ready_wait_accepts_json_whitespace_and_field_order",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.006085749948397279,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_ready_wait_accepts_json_whitespace_and_field_order",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\n  \"ready_replicas\": 1,\n  \"desired_replicas\": 1,\n  \"node_key\": 1,\n  \"service_generation\": 7,\n  \"deployment_generation\": 2,\n  \"state\": \"ready\"\n}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 1.0108545841649175,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment \"app\" did not become ready in 1s\n"
+      }
+    ],
+    "apply_body_controls": {
+      "descriptor": {
+        "command": "python3 scripts/tests/test-deployment-generation.py --signer target/release/cluster-sign Generation.test_malformed_ready_status_is_rejected -v",
+        "exit_status": 1,
+        "cases_run": 5,
+        "failed_cases": 2,
+        "passed_cases": 3,
+        "observations": [
+          "A current ready record followed by CRLF-CRLF and an extra JSON object produced CLI exit 0 and printed the truncated ready prefix.",
+          "A ready record surrounded by Unicode no-break spaces produced CLI exit 0 and printed the trimmed ready record."
+        ],
+        "result_line": "FAILED (failures=2)"
+      },
+      "release": {
+        "command": "python3 scripts/tests/test-release-generation.py --signer target/release/cluster-sign ReleaseGeneration.test_malformed_component_status_stops -v",
+        "exit_status": 1,
+        "cases_run": 3,
+        "failed_cases": 2,
+        "passed_cases": 1,
+        "diagnostics": "test_malformed_component_status_stops (__main__.ReleaseGeneration.test_malformed_component_status_stops) ... \n  test_malformed_component_status_stops (__main__.ReleaseGeneration.test_malformed_component_status_stops) (observation='{\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\r\\n\\r\\n{\"ignored\":true}') ... FAIL\n  test_malformed_component_status_stops (__main__.ReleaseGeneration.test_malformed_component_status_stops) (observation='\\xa0{\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\xa0') ... FAIL\n\n======================================================================\nFAIL: test_malformed_component_status_stops (__main__.ReleaseGeneration.test_malformed_component_status_stops) (observation='{\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\r\\n\\r\\n{\"ignored\":true}')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-release-generation.py\", line 85, in test_malformed_component_status_stops\n    self.assertNotEqual(result.returncode,0,result.stdout)\nAssertionError: 0 == 0 : b'accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\\nready \"app\": {\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\nready \"app2\": {\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\n'\n\n======================================================================\nFAIL: test_malformed_component_status_stops (__main__.ReleaseGeneration.test_malformed_component_status_stops) (observation='\\xa0{\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\xa0')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-release-generation.py\", line 85, in test_malformed_component_status_stops\n    self.assertNotEqual(result.returncode,0,result.stdout)\nAssertionError: 0 == 0 : b'accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\\nready \"app\": {\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\nready \"app2\": {\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\\n'\n\n----------------------------------------------------------------------\nRan 1 test in 0.057s\n\nFAILED (failures=2)\n"
+      }
+    }
+  },
+  "host_validation": {
+    "debug": {
+      "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p cluster-sign",
+      "exit_status": 0,
+      "tests_passed": 81,
+      "result_lines": [
+        "test result: ok. 53 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s"
+      ]
+    },
+    "release": {
+      "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked --release -p cluster-sign",
+      "exit_status": 0,
+      "tests_passed": 81,
+      "result_lines": [
+        "test result: ok. 53 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s"
+      ]
+    }
+  },
+  "host_test_context": {
+    "cwd": "/private/tmp",
+    "manifest": "/Users/froran/Projects/private/charlotte-os/Cargo.toml",
+    "flags": "--offline --locked",
+    "compiler": "rustc 1.100.0-nightly (c54751567 2026-08-22)"
+  },
+  "cli_validation": {
+    "status_debug": {
+      "exit_status": 0,
+      "output": "test_invalid_name_rejects_before_waiting_or_network (__main__.Status.test_invalid_name_rejects_before_waiting_or_network) ... ok\ntest_malformed_200_stops_without_another_observation (__main__.Status.test_malformed_200_stops_without_another_observation) ... ok\ntest_missing_wait_is_one_checked_query (__main__.Status.test_missing_wait_is_one_checked_query) ... ok\ntest_pending_then_ready_observes_current_name (__main__.Status.test_pending_then_ready_observes_current_name) ... ok\ntest_read_only_accepts_all_current_states (__main__.Status.test_read_only_accepts_all_current_states) ... ok\ntest_read_only_http_error_is_reported (__main__.Status.test_read_only_http_error_is_reported) ... ok\ntest_ready_wait_accepts_json_whitespace_and_field_order (__main__.Status.test_ready_wait_accepts_json_whitespace_and_field_order) ... ok\n\n----------------------------------------------------------------------\nRan 7 tests in 1.425s\n\nOK\n",
+      "methods_run": 7,
+      "cases_run": 27
+    },
+    "status_release": {
+      "exit_status": 0,
+      "output": "test_invalid_name_rejects_before_waiting_or_network (__main__.Status.test_invalid_name_rejects_before_waiting_or_network) ... ok\ntest_malformed_200_stops_without_another_observation (__main__.Status.test_malformed_200_stops_without_another_observation) ... ok\ntest_missing_wait_is_one_checked_query (__main__.Status.test_missing_wait_is_one_checked_query) ... ok\ntest_pending_then_ready_observes_current_name (__main__.Status.test_pending_then_ready_observes_current_name) ... ok\ntest_read_only_accepts_all_current_states (__main__.Status.test_read_only_accepts_all_current_states) ... ok\ntest_read_only_http_error_is_reported (__main__.Status.test_read_only_http_error_is_reported) ... ok\ntest_ready_wait_accepts_json_whitespace_and_field_order (__main__.Status.test_ready_wait_accepts_json_whitespace_and_field_order) ... ok\n\n----------------------------------------------------------------------\nRan 7 tests in 1.410s\n\nOK\n",
+      "methods_run": 7,
+      "cases_run": 27
+    },
+    "generation_debug": {
+      "exit_status": 0,
+      "output": ".........\n----------------------------------------------------------------------\nRan 9 tests in 4.308s\n\nOK\n",
+      "methods_run": 9,
+      "cases_run": 15
+    },
+    "generation_release": {
+      "exit_status": 0,
+      "output": ".........\n----------------------------------------------------------------------\nRan 9 tests in 4.336s\n\nOK\n",
+      "methods_run": 9,
+      "cases_run": 15
+    },
+    "release_debug": {
+      "exit_status": 0,
+      "output": ".......\n----------------------------------------------------------------------\nRan 7 tests in 3.318s\n\nOK\n",
+      "methods_run": 7,
+      "cases_run": 15
+    },
+    "release_release": {
+      "exit_status": 0,
+      "output": ".......\n----------------------------------------------------------------------\nRan 7 tests in 3.296s\n\nOK\n",
+      "methods_run": 7,
+      "cases_run": 15
+    },
+    "deadline_debug": {
+      "exit_status": 0,
+      "output": ".......\n----------------------------------------------------------------------\nRan 7 tests in 4.175s\n\nOK\n",
+      "methods_run": 7,
+      "cases_run": 9
+    },
+    "deadline_release": {
+      "exit_status": 0,
+      "output": ".......\n----------------------------------------------------------------------\nRan 7 tests in 4.199s\n\nOK\n",
+      "methods_run": 7,
+      "cases_run": 9
+    }
+  },
+  "named_status_cases": {
+    "debug": [
+      {
+        "case": "test_invalid_name_rejects_before_waiting_or_network",
+        "wait": "1",
+        "name": "bad name",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [],
+        "elapsed_seconds": 0.002945791929960251,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid deployment artifact name\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\"}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.003241125028580427,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"deployment_generation\":3,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0029598341789096594,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":0}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0030005420558154583,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"extra\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0029743751510977745,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":{\"state\":\"ready\"},\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.003379124915227294,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":0,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.003386666066944599,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1} trailing"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.003548040986061096,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\r\n\r\n{\"ignored\":true}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0038052089512348175,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "\u00a0{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\u00a0"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0038084581028670073,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\"}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.003981207963079214,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"deployment_generation\":3,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.004199791932478547,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":0}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.004175042035058141,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"extra\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.004006291972473264,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":{\"state\":\"ready\"},\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.003960666013881564,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":0,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.003852291963994503,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1} trailing"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.004223791882395744,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\r\n\r\n{\"ignored\":true}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0040742079727351665,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "\u00a0{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\u00a0"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0041850421112030745,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_missing_wait_is_one_checked_query",
+        "wait": null,
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"committed\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":0}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.004318541847169399,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"committed\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":0}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_pending_then_ready_observes_current_name",
+        "wait": "2",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"committed\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":0}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ],
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 1.0116454591043293,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_read_only_accepts_all_current_states",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.009684541961178184,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_read_only_accepts_all_current_states",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"committed\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":0}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.008111832896247506,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"committed\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":0}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_read_only_accepts_all_current_states",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"replacing\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":2,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.007706583011895418,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"replacing\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":2,\"ready_replicas\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_read_only_http_error_is_reported",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            404,
+            "{\"error\":\"deployment not found\"}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.006647374946624041,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment status failed: HTTP/1.1 404 Not Found: {\"error\":\"deployment not found\"}\n"
+      },
+      {
+        "case": "test_ready_wait_accepts_json_whitespace_and_field_order",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.006058207945898175,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_ready_wait_accepts_json_whitespace_and_field_order",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\n  \"ready_replicas\": 1,\n  \"desired_replicas\": 1,\n  \"node_key\": 1,\n  \"service_generation\": 7,\n  \"deployment_generation\": 2,\n  \"state\": \"ready\"\n}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0057663749903440475,
+        "exit_status": 0,
+        "stdout": "{\n  \"ready_replicas\": 1,\n  \"desired_replicas\": 1,\n  \"node_key\": 1,\n  \"service_generation\": 7,\n  \"deployment_generation\": 2,\n  \"state\": \"ready\"\n}\n",
+        "stderr": ""
+      }
+    ],
+    "release": [
+      {
+        "case": "test_invalid_name_rejects_before_waiting_or_network",
+        "wait": "1",
+        "name": "bad name",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [],
+        "elapsed_seconds": 0.003003624966368079,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid deployment artifact name\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\"}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0029153749346733093,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"deployment_generation\":3,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0030871250201016665,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":0}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.002896500052884221,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"extra\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0029802080243825912,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":{\"state\":\"ready\"},\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0028701669070869684,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":0,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0028299579862505198,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1} trailing"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.002940957900136709,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\r\n\r\n{\"ignored\":true}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.003047082806006074,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "\u00a0{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\u00a0"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.003212457988411188,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\"}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.00314325001090765,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"deployment_generation\":3,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.003357041859999299,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":0}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0035012501757591963,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"extra\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.003716791979968548,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":{\"state\":\"ready\"},\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.003858374897390604,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":0,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0037641669623553753,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1} trailing"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.00406633410602808,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\r\n\r\n{\"ignored\":true}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.004143542144447565,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_malformed_200_stops_without_another_observation",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "\u00a0{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\u00a0"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0038024999666959047,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: invalid rollout status for \"app\"\n"
+      },
+      {
+        "case": "test_missing_wait_is_one_checked_query",
+        "wait": null,
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"committed\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":0}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.004123250022530556,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"committed\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":0}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_pending_then_ready_observes_current_name",
+        "wait": "2",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"committed\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":0}"
+          ],
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ],
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 1.0098572918213904,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_read_only_accepts_all_current_states",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.008508166996762156,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_read_only_accepts_all_current_states",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"committed\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":0}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0066462920513004065,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"committed\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":0}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_read_only_accepts_all_current_states",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"replacing\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":2,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.006234333850443363,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"replacing\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":2,\"ready_replicas\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_read_only_http_error_is_reported",
+        "wait": "0",
+        "name": "app",
+        "rows": [
+          [
+            404,
+            "{\"error\":\"deployment not found\"}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.006008458090946078,
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: deployment status failed: HTTP/1.1 404 Not Found: {\"error\":\"deployment not found\"}\n"
+      },
+      {
+        "case": "test_ready_wait_accepts_json_whitespace_and_field_order",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.0055246250703930855,
+        "exit_status": 0,
+        "stdout": "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+        "stderr": ""
+      },
+      {
+        "case": "test_ready_wait_accepts_json_whitespace_and_field_order",
+        "wait": "1",
+        "name": "app",
+        "rows": [
+          [
+            200,
+            "{\n  \"ready_replicas\": 1,\n  \"desired_replicas\": 1,\n  \"node_key\": 1,\n  \"service_generation\": 7,\n  \"deployment_generation\": 2,\n  \"state\": \"ready\"\n}"
+          ]
+        ],
+        "events": [
+          [
+            "GET",
+            "/v1/deployments/app"
+          ]
+        ],
+        "elapsed_seconds": 0.005627291975542903,
+        "exit_status": 0,
+        "stdout": "{\n  \"ready_replicas\": 1,\n  \"desired_replicas\": 1,\n  \"node_key\": 1,\n  \"service_generation\": 7,\n  \"deployment_generation\": 2,\n  \"state\": \"ready\"\n}\n",
+        "stderr": ""
+      }
+    ]
+  },
+  "cli_cases_per_profile": 66,
+  "host_binaries": {
+    "debug": {
+      "path": "target/debug/cluster-sign",
+      "sha256": "9e3985aaf9fd21a558baa5e75b014c05398d5297b0f00ac1f879f47aeb7a80a2"
+    },
+    "release": {
+      "path": "target/release/cluster-sign",
+      "sha256": "1a84fb54bb111f78be4b2feb60cd3d036834a9683bef07030340b4a9f738b029"
+    }
+  },
+  "checks": {
+    "format": {
+      "command": "cargo fmt --all -- --check",
+      "exit_status": 0
+    },
+    "clippy": {
+      "command": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml --offline --locked -p cluster-sign --all-targets -- -D warnings",
+      "exit_status": 0
+    },
+    "arm_build": {
+      "command": "scripts/build-catten-services.sh --embed",
+      "exit_status": 0
+    },
+    "arm_freshness": {
+      "command": "scripts/build-catten-services.sh --check",
+      "exit_status": 0,
+      "diagnostic": "Staged AArch64 service bundle signatures verified."
+    },
+    "diff": {
+      "command": "git diff --check",
+      "exit_status": 0
+    }
+  },
+  "unchanged_artifacts": {
+    "version_controlled_manifest": "docs/reports/audits/evidence/2026-10-21-security-ingress-deadline.json",
+    "manifest_sha256": "66d1101147d96626d10f9d78f43232015909a4c53b0ea62f6ae99b9ad5bcd163",
+    "canonical_map_encoding": "UTF-8 json.dumps(value, sort_keys=True, separators=(comma,colon))",
+    "bundles": {
+      "aarch64-unknown-none": {
+        "count": 41,
+        "sha256_map_digest": "469531217255f3492eed6501ff8843789def096a659cbd461d03a6f1cfc9393c",
+        "matches_preceding_manifest": true
+      },
+      "x86_64-unknown-none": {
+        "count": 37,
+        "sha256_map_digest": "e98072e6a1c088121b4ff146bda832b29e59a5a35bd2beebfc798b2e45da56fd",
+        "matches_preceding_manifest": true
+      }
+    },
+    "formal": {
+      "inventory": {
+        "modules": 34,
+        "safe_configurations": 36,
+        "negative_configurations": 109,
+        "runner_inputs": 1
+      },
+      "unchanged_inputs": 180,
+      "sha256_map_digest": "5e1735814ed956e918c183557d0b22697e901364831918abcb15b66820ee6fa5",
+      "fresh_tlc_cases": 0
+    }
+  },
+  "runtime_scope": {
+    "kernel_or_service_source_changed": false,
+    "fresh_guest_runs": 0,
+    "fresh_x86_build": false,
+    "model_transitions_changed": false
+  },
+  "preserved_pdf": {
+    "path": "docs/manual-v2/charlotte.pdf",
+    "sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f",
+    "edited_or_rendered": false
+  },
+  "reviewed_source_sha256": {
+    "docs/guides/testing.md": "3922abcc6299aab6b9ef9ae1b45822b02c8e6e67c580a89535be865a96b6e422",
+    "docs/manual-v2/chapters/19-cluster-vision.tex": "368c0f9eec5289e8c0b10434fb1156332b3b90bbc2418b532589fdbfb1db26ef",
+    "docs/reference/api-simplification.md": "dee00d0324cc5ee89ecdebd071bce197b742a87f1aabb6e112db125db453eb53",
+    "docs/reference/cleanup-recovery.md": "3864306cb5caf2a0c6de31b715bb5de69cd5150f21ea61f713573fb84dbd97f2",
+    "docs/reference/deployment-ingress.md": "dd95640c7bf13cfa15d6c6aecd80e109b835afe908d4f17a1c07f4a5b24893c0",
+    "docs/reference/security-remediation.md": "4c216877d7ce0ce83902f712939c741d67a916a1dd46e5c4857ba89add28f4d8",
+    "docs/reference/tooling-inputs.md": "4c77bcbce7718eab7393521bc60ae0dc2566c09a90847ea68476c5915857e2d0",
+    "docs/reports/README.md": "e38b774162d2de9ee60ec63d60ef58a5b3fbc31b9a75c4e870ef55054b3ff090",
+    "docs/reports/audits/2026-10-21-security-named-status.md": "1e47e93bdcacd078b742e9c6cdaadd5395b6b46233e143b7518a9a709f731c1b",
+    "scripts/tests/test-deployment-generation.py": "663aaf3b16e8c5462d0a1a48edbe08644135a95f7f328068919cb3bb9285a7bc",
+    "scripts/tests/test-deployment-status.py": "4cf319998ccb3a551bdc98dd2b1683aa11476983d67294630d6c83f5eefa8afa",
+    "scripts/tests/test-release-generation.py": "3da6263c445b2677a7e53c067f14ab7c099f2b95f85b4e9a2ce0d717e0624aa8",
+    "tools/cluster-sign/src/main.rs": "18c3c06dc7f20cd41e29e0c785815bf89b494a3d772f6fdf5b5b8fc91c1c3779"
+  },
+  "remaining_limits": [
+    "Current-name status can change generation during its wait and is not admission-bound.",
+    "HTTP readiness polling and peer authentication remain separate.",
+    "Other standalone HTTP observations and admission-output helpers need their own complete input/output review.",
+    "Blocking host file I/O/stdout, OS scheduling and timer precision remain outside hard real-time guarantees.",
+    "No new kernel resource-quiescence, physical cleanup or production trust proof."
+  ],
+  "capture_note": "Baseline and corrected per-case observations are embedded. Targeted descriptor baseline diagnostics are summarized from the observed CLI failure output; no complete log archive is claimed. Temporary paths identify test execution only and are not required to read the evidence."
+}

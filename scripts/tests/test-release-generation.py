@@ -79,9 +79,11 @@ class ReleaseGeneration(unittest.TestCase):
                 self.assertEqual(queries,0)
 
     def test_malformed_component_status_stops(self):
-        result, queries=self.run_release(admission, second=[fixture.status(8)+" trailing"])
-        self.assertNotEqual(result.returncode,0,result.stdout)
-        self.assertEqual(queries,2)
+        for observation in [fixture.status(8)+" trailing", fixture.status(8)+'\r\n\r\n{"ignored":true}', '\u00a0'+fixture.status(8)+'\u00a0']:
+            with self.subTest(observation=observation):
+                result, queries=self.run_release(admission, second=[observation])
+                self.assertNotEqual(result.returncode,0,result.stdout)
+                self.assertEqual(queries,2)
 
 
 if __name__ == "__main__":

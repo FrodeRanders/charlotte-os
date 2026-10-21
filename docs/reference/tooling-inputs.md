@@ -193,5 +193,20 @@ close through their existing owners; accepted remote work can continue.
 Preparation consumes budget, but blocking host filesystem calls and stdout are
 not preempted by this clock. OS scheduling and socket timer precision can delay
 return. Readiness still polls because this HTTP interface has no subscription;
-peer authentication, standalone named-status semantics and server-side progress
-remain separate. See the [deadline audit](../reports/audits/2026-10-21-security-ingress-deadline.md).
+peer authentication and server-side progress remain separate. See the [deadline audit](../reports/audits/2026-10-21-security-ingress-deadline.md).
+
+
+`deployment-status` validates the complete six-field rollout record before
+printing an HTTP-200 observation. Zero or omitted wait prints any valid current
+state; a positive wait requires a valid ready record. JSON whitespace and field
+order are accepted. Missing, duplicate, unknown, nested, trailing or inconsistent
+records reject immediately without another observation. The shared status reader
+preserves the complete declared body after the first HTTP separator and trims
+only JSON whitespace, so later separators or Unicode whitespace cannot hide an
+invalid suffix/prefix. Descriptor/release apply use that same reader and retain
+their admitted generation comparisons.
+
+An invalid artifact name rejects before waiting or connecting. Named status
+still observes the current record, which can change during its wait. Its result
+is not bound to a preceding admission and supplies no replay, retirement or
+cleanup authority. See the [named-status audit](../reports/audits/2026-10-21-security-named-status.md).

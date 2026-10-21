@@ -136,7 +136,8 @@ class Generation(unittest.TestCase):
     def test_malformed_ready_status_is_rejected(self):
         for observation in [status(2)+" trailing", status(2).replace(
                 '"deployment_generation":2', '"deployment_generation":2,"deployment_generation":3'),
-                status(2).replace('"ready_replicas":1', '"ready_replicas":0')]:
+                status(2).replace('"ready_replicas":1', '"ready_replicas":0'),
+                status(2)+'\r\n\r\n{"ignored":true}', '\u00a0'+status(2)+'\u00a0']:
             with self.subTest(observation=observation):
                 result, queries = self.apply('{"generation":2}', [observation])
                 self.assertNotEqual(result.returncode, 0, result.stdout)
