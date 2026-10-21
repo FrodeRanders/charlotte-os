@@ -129,8 +129,8 @@ each signed record. Successful output bytes and verification are unchanged.
 The boot runners keep deployment/shutdown records in fresh private run directories,
 with deployment worker logs beside their records. Local deployment fixtures keep
 each run's six signed parts in a fresh private directory; the assembled fixture
-bundle keeps its existing replacement policy. These directories remain available
-for inspection. Failed writes follow the retention policy below; parent-directory
+bundle uses the staged replacement described below. These directories remain
+available for inspection. Failed writes follow the retention policy below; parent-directory
 integrity and durable atomic publication still need separate qualification. See the [control-output report](../reports/audits/2026-10-21-security-control-output.md).
 
 New-file output failures close the captured descriptor and leave any written file
@@ -143,3 +143,16 @@ Private files keep the requested 0600 mode. Inspect the secured output directory
 and choose fresh paths before another generation; a failed command supplies no
 completed-pair or retry guarantee. In-memory key/text erasure is unchanged.
 See the [output-retention report](../reports/audits/2026-10-21-security-output-retention.md).
+
+The local deployment fixture assembler writes its complete bundle to a new
+`bundle.pending` file inside that run's private parts directory. It closes the
+staging file before `os.replace` publishes it at the requested output name.
+Successful replacement changes the named file; a symlink or hard-link target
+stays untouched, and readers holding the old file can finish reading it.
+A staging-write or close error occurs before replacement and leaves previous
+output intact. Failed staging remains available for inspection; occupied staging
+rejects without truncation. The assembled six-record bytes and descriptor
+verification are unchanged. Publication uses the same filesystem in the normal
+helper, but supplies no fsync/durability, namespace-integrity or automatic recovery
+guarantee. New-file modes follow the current umask; prior output metadata is not
+preserved. See the [fixture-publication report](../reports/audits/2026-10-21-security-fixture-publication.md).

@@ -402,3 +402,10 @@ composes the existing erasing key encoders and exclusive writer; its errors
 identify incomplete generation and previously written private output. Created
 files remain available for inspection. No overwrite/cleanup compatibility branch
 remains. Formats, successful bytes, arguments and runtime ABI are unchanged.
+
+The [fixture-publication follow-up](../reports/audits/2026-10-21-security-fixture-publication.md) replaces the local helper's final
+`Path.write_bytes` with exclusive staging and one named replacement. The existing
+six-record grammar, descriptor preparation, CLI arguments and cache admission
+stay the same; there is no in-place publication fallback. Staging is retained
+on failure. This changes host publication policy without changing a wire format
+or the signer's exclusive-output contract.

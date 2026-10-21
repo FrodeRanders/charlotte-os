@@ -581,6 +581,13 @@ retain fourteen baseline retention failures; corrected debug/release controls
 pass. This removes deletion redirection by avoiding deletion; atomic publication,
 disk erasure, trust custody and SEC-15 remain separate. Counts are unchanged.
 
+The [fixture-publication follow-up](../reports/audits/2026-10-21-security-fixture-publication.md) stages the local deployment bundle
+inside its existing private run directory before replacing the named output.
+Host controls qualify link-target preservation, old readers, partial-write
+failure and rejected publication. Both actual helper runs produce the same
+signed bundle bytes as preceding evidence. This qualifies fixture preparation;
+signer durability, production trust and finding counts remain unchanged.
+
 The [SEC-15 hash-state follow-up](../reports/audits/2026-10-19-security-hash-state-erasure.md)
 adds erasure of shared SHA state/compression scratch and one owned HMAC result
 path for SigV4 and SCRAM. The [bounded inventory](secret-state-lifetimes.md)

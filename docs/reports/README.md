@@ -8,6 +8,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Publishing the local deployment fixture bundle](audits/2026-10-21-security-fixture-publication.md) — Stages a complete bundle before named replacement, preserving link targets and earlier output on staging failure.
 - [Retaining host output after failure](audits/2026-10-21-security-output-retention.md) — Removes pathname deletion from failed writes and key generation, with real CLI partial-write controls.
 - [Exclusive structured control outputs](audits/2026-10-21-security-control-output.md) — Preserves existing files and link targets across deployment, release and shutdown signing; gives boot fixtures fresh record directories.
 - [Rewriting the opened ELF file](audits/2026-10-21-security-artifact-edit.md) — Retains the opened file and image through consuming publication, with deterministic path-replacement controls.

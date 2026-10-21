@@ -1177,6 +1177,12 @@ this policy-published service remains denied; authorized remote invocation is
 separate work. Public echo fixtures retain positive cross-node RPC coverage.
 Raft orders assignment, while signed admission authorizes deployment.
 
+The local fixture helper closes a complete staging bundle in its fresh private
+run directory before replacing the named output. Link targets and earlier open
+readers keep their bytes; staging-write failure preserves prior output and
+retains failed staging for inspection. This host publication step supplies no
+fsync/durability or namespace-integrity guarantee.
+
 \subsection{Validated properties}
 
 The focused deployment fixture validates that:

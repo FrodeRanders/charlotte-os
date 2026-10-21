@@ -1646,6 +1646,13 @@ queries and rejects malformed names, while retaining upload identity and
 key-ceremony coverage. Each local rollout phase also checks the controller
 query's current descriptor and exact replica variant pin. Neither fixture grants unsigned launch authority.
 
+The local fixture helper retains six signed parts in a fresh private directory
+for each run. It closes a complete `bundle.pending` there before replacing the
+named bundle. Earlier open readers keep their original bytes; failed staging
+writes preserve the previous named bundle. Failed staging remains inspectable.
+This host preparation policy adds no durable-publication or guest execution
+claim. See the [fixture-publication audit](../reports/audits/2026-10-21-security-fixture-publication.md).
+
 The scoped `greet` fixture is policy-published. Legacy DNS forwarding correctly
 returns denial instead of issuing an application connection. Deployment tests
 use exact-generation rollout readiness and retirement receipts; their causal

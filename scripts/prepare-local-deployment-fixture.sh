@@ -31,6 +31,7 @@ for sequence in 1 2 3; do
 done
 python3 - "$OUTPUT" "$PARTS" <<'PYTHON'
 from pathlib import Path
+import os
 import sys
 output=Path(sys.argv[1])
 parts=Path(sys.argv[2])
@@ -39,5 +40,10 @@ for sequence in [1,2,3]:
     for node in ['0x42e278ea','0x42e27737']:
         data=(parts/f'{sequence}.{node}').read_bytes()
         records.append(len(data).to_bytes(4,'little')+data)
-output.write_bytes(b''.join(records))
+# Keep incomplete output in this run's private directory. Close the complete
+# staging file before replacing the named bundle; failures leave it inspectable.
+staging=parts/'bundle.pending'
+with staging.open('xb') as pending:
+    pending.write(b''.join(records))
+os.replace(staging,output)
 PYTHON

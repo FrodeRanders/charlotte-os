@@ -125,6 +125,12 @@ Boot fixtures allocate fresh private directories for signed records, so repeated
 runs preserve earlier records. Failed writes retain output under the policy
 above; durable atomic publication remains separate work. See the [control-output audit](../reports/audits/2026-10-21-security-control-output.md).
 
+The local deployment fixture's assembled bundle has a separate replacement
+contract: it stages the complete public bundle in the run's private directory,
+closes it and replaces the requested name. Link targets and earlier open readers
+keep their bytes. This fixture operation does not add durable publication to
+signer outputs. See the [fixture-publication audit](../reports/audits/2026-10-21-security-fixture-publication.md).
+
 ## Public trust-policy preflight
 
 Prepare an unsigned `CTRUST1` public policy using the four public files above:
