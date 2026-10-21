@@ -38,6 +38,31 @@ pub(super) fn admitted_generation(body: &str) -> Option<u64> {
     number(generation).filter(|generation| *generation > 0 && *generation <= i64::MAX as u64)
 }
 
+/// The complete bounded receipt binds component order to the exact signed envelope.
+pub(super) fn admitted_release(
+    body: &str,
+    envelope: &[u8],
+) -> Option<charlotte_launch::release_admission::Receipt> {
+    let [value] = fields(body, ["admission"])?;
+    let hex = value.strip_prefix('"')?.strip_suffix('"')?;
+    if hex.len() % 2 != 0 || hex.len() > 2 * charlotte_launch::release_admission::MAX_LEN {
+        return None;
+    }
+    let mut bytes = [0; charlotte_launch::release_admission::MAX_LEN];
+    fn digit(byte: u8) -> Option<u8> {
+        match byte {
+            b'0'..=b'9' => Some(byte - b'0'),
+            b'a'..=b'f' => Some(byte - b'a' + 10),
+            _ => None,
+        }
+    }
+    for (slot, pair) in bytes.iter_mut().zip(hex.as_bytes().as_chunks::<2>().0.iter()) {
+        *slot = digit(pair[0])? * 16 + digit(pair[1])?;
+    }
+    let receipt = charlotte_launch::release_admission::Receipt::decode(&bytes[..hex.len() / 2])?;
+    receipt.matches(envelope).then_some(receipt)
+}
+
 pub(super) struct Status {
     pub(super) generation: u64,
     pub(super) ready: bool,

@@ -920,3 +920,21 @@ acquisition. It does not re-read protected state during preparation/publication.
 The conditional instance's live-state guards require the adapter's enclosing
 installation/publication serialization; the receipt alone does not implement
 them. The fixture's compiled state is immutable within its boot.
+
+### Release admission follow-up (2026-10-21)
+
+The [release-generation audit](../reports/audits/2026-10-21-security-release-generation.md)
+found two concrete `reserve_node_capacity` mutations inside `debug_assert!`.
+Optimized Rust omitted those charges, violating the intended cumulative promise
+boundary. They now execute as ordinary rejecting control flow for singleton and
+replica placement. `CharlottePlacementControl` already updates `reserved` in
+`Admit` and checks the reserve invariant; its overcommit negative control
+retains the forbidden behavior. No model transition is weakened to match the bug.
+Both Rust profiles and the selected safe/negative TLC controls qualify the fix.
+
+The complete `CRLADM01` admission receipt and the host's per-component observation
+loop remain outside the existing placement/ingress abstractions. Codec, catalog,
+scripted CLI and guest execution evidence qualify those paths separately. The
+model does not prove receipt byte framing, transport correlation, allocation
+failure cleanup, host deadlines or production trust. The formal input inventory
+is unchanged.

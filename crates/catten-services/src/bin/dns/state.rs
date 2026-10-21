@@ -59,7 +59,7 @@ pub(super) enum PendingQueryKind {
         reply: u64,
     },
     Release {
-        reply: u64,
+        reply: catten_services::release_admission::PreparedReply,
     },
     Operations {
         reply: u64,
@@ -110,6 +110,12 @@ pub(super) enum PendingRegistration {
         term: u64,
         log_index: u64,
         reply: u64,
+        release_result: bool,
+    },
+    Release {
+        term: u64,
+        log_index: u64,
+        reply: catten_services::release_admission::PreparedReply,
     },
     /// Leader-local placement-controller reconciliation.
     Placement {
@@ -131,8 +137,7 @@ pub(super) enum PendingRegistration {
         term: u64,
         log_index: u64,
         peer: String,
-        session: u64,
-        request_id: u64,
+        reply: catten_services::rrelease::PreparedReply,
     },
     /// Leader-side: a follower relayed an operational admission proof. The
     /// leader reverified it before submitting the compact command.
@@ -221,6 +226,10 @@ impl PendingRegistration {
                 ..
             }
             | Self::Deploy {
+                term,
+                ..
+            }
+            | Self::Release {
                 term,
                 ..
             }

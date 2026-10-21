@@ -1804,7 +1804,12 @@ fn deployment_notify_bytes(bytes: &[u8], endpoint: &str) -> Result<AdmittedDeplo
     })
 }
 
-fn release_notify_bytes(bytes: &[u8], endpoint: &str) -> Result<String> {
+struct AdmittedRelease {
+    receipt: charlotte_launch::release_admission::Receipt,
+    body: String,
+}
+
+fn release_notify_bytes(bytes: &[u8], endpoint: &str) -> Result<AdmittedRelease> {
     release::decode(bytes).ok_or_else(|| "release envelope is malformed".to_owned())?;
     let mut stream = TcpStream::connect(endpoint)
         .map_err(|error| format!("connect to deployment ingress {endpoint}: {error}"))?;
@@ -1829,14 +1834,21 @@ fn release_notify_bytes(bytes: &[u8], endpoint: &str) -> Result<String> {
     if !status.starts_with("HTTP/1.1 202 ") {
         return Err(format!("release notification failed: {}", response.trim()));
     }
-    Ok(response.split("\r\n\r\n").nth(1).unwrap_or(response.as_str()).trim().to_owned())
+    let body = response.split_once("\r\n\r\n").map_or("", |(_, body)| body).trim().to_owned();
+    let receipt = rollout::admitted_release(&body, bytes).ok_or_else(|| {
+        "release admission returned an invalid component receipt; outcome is uncertain".to_owned()
+    })?;
+    Ok(AdmittedRelease {
+        receipt,
+        body,
+    })
 }
 
 fn release_notify(args: &[String]) -> Result<()> {
     let path = args.first().ok_or_else(|| "missing release path".to_owned())?;
     let endpoint = args.get(1).map_or("127.0.0.1:8081", String::as_str);
     let bytes = read_bounded_regular(path, release::MAX_RELEASE_LEN)?;
-    println!("{}", release_notify_bytes(&bytes, endpoint)?);
+    println!("{}", release_notify_bytes(&bytes, endpoint)?.body);
     Ok(())
 }
 
@@ -1962,6 +1974,10 @@ fn deployment_apply(args: &[String]) -> Result<()> {
         pending.push((name.as_str(), admitted.generation));
     }
 
+    wait_for_deployments(pending, endpoint, timeout)
+}
+
+fn wait_for_deployments(mut pending: Vec<(&str, u64)>, endpoint: &str, timeout: u64) -> Result<()> {
     let deadline = Instant::now() + Duration::from_secs(timeout);
     while !pending.is_empty() {
         let mut index = 0;
@@ -2022,7 +2038,7 @@ fn release_apply(args: &[String]) -> Result<()> {
     let envelope =
         release::decode(&bytes).ok_or_else(|| "release envelope is malformed".to_owned())?;
     let release_name = String::from_utf8_lossy(envelope.release_name);
-    let mut pending = envelope
+    let names = envelope
         .descriptors()
         .map(|bytes| {
             let descriptor = deployment::decode(bytes)
@@ -2032,38 +2048,14 @@ fn release_apply(args: &[String]) -> Result<()> {
                 .map_err(|_| "nested deployment artifact name is not UTF-8".to_owned())
         })
         .collect::<Result<Vec<_>>>()?;
-    let body = release_notify_bytes(&bytes, endpoint)?;
-    println!("accepted release {release_name:?}: {body}");
-
-    let deadline = Instant::now() + Duration::from_secs(timeout);
-    while !pending.is_empty() {
-        let mut index = 0;
-        while index < pending.len() {
-            let name = &pending[index];
-            match deployment_status_once(name, endpoint) {
-                Ok((status, body))
-                    if status.starts_with("HTTP/1.1 200 ")
-                        && body.contains("\"state\":\"ready\"") =>
-                {
-                    println!("ready {name:?}: {body}");
-                    pending.swap_remove(index);
-                }
-                _ => index += 1,
-            }
-        }
-        if pending.is_empty() {
-            return Ok(());
-        }
-        if Instant::now() >= deadline {
-            pending.sort();
-            return Err(format!(
-                "release {release_name:?} did not become ready in {timeout}s; pending: {}",
-                pending.join(", ")
-            ));
-        }
-        thread::sleep(Duration::from_secs(1));
+    // Reserve observation storage before publishing the accepted release request.
+    let mut pending = Vec::with_capacity(names.len());
+    let admitted = release_notify_bytes(&bytes, endpoint)?;
+    println!("accepted release {release_name:?}: {}", admitted.body);
+    for (name, generation) in names.iter().zip(admitted.receipt.components()) {
+        pending.push((name.as_str(), *generation));
     }
-    Ok(())
+    wait_for_deployments(pending, endpoint, timeout)
 }
 
 fn run() -> Result<()> {

@@ -177,25 +177,79 @@ fn current_deployment(dns_conn: u64, name: &[u8]) -> Option<name_catalog::Deploy
     name_catalog::decode_deployment_result(mapping.as_slice().get(..len)?)
 }
 
-fn submit_release(dns_conn: u64, envelope: &[u8]) -> i64 {
-    if envelope.len() > charlotte_launch::release::MAX_RELEASE_LEN
-        || charlotte_launch::release::decode(envelope).is_none()
-    {
-        return clusterctl::ERR_TOO_LARGE;
+fn submit_release(dns_conn: u64, envelope: &[u8]) -> Result<(OwnedMemory, usize), i64> {
+    if charlotte_launch::release::decode(envelope).is_none() {
+        return Err(clusterctl::ERR_TOO_LARGE);
     }
-    let Some(memory) = memory_from_bytes(envelope) else {
-        return clusterctl::ERR_UPLOAD_FAILED;
+    let memory = memory_from_bytes(envelope).ok_or(clusterctl::ERR_UPLOAD_FAILED)?;
+    // Borrow the launch-owned connection; request and returned memory have distinct owners.
+    let dns =
+        unsafe { ConnectionRef::from_raw(dns_conn) }.map_err(|_| clusterctl::ERR_NOT_LEADER)?;
+    let mut reply = dns
+        .call_move(dns::OP_DEPLOY_RELEASE, envelope.len() as u64, memory)
+        .map_err(|_| clusterctl::ERR_NOT_LEADER)?
+        .wait()
+        .map_err(|_| dns::ERR_UNCERTAIN)?;
+    if reply.result < 0 {
+        return Err(reply.result);
+    }
+    if reply.connection.is_some() {
+        return Err(dns::ERR_UNCERTAIN);
+    }
+    let len = usize::try_from(reply.result).map_err(|_| dns::ERR_UNCERTAIN)?;
+    let memory = reply.memory.take().ok_or(dns::ERR_UNCERTAIN)?;
+    if len > memory.len() || len > charlotte_launch::release_admission::MAX_LEN {
+        return Err(dns::ERR_UNCERTAIN);
+    }
+    let mapping = memory.map_read_only().map_err(|_| dns::ERR_UNCERTAIN)?;
+    catten_services::release_admission::valid_receipt(&mapping.as_slice()[..len], envelope)
+        .ok_or(dns::ERR_UNCERTAIN)?;
+    let memory = mapping.unmap().map_err(|_| dns::ERR_UNCERTAIN)?;
+    Ok((memory, len))
+}
+
+fn notify_release(message: IpcMessage, dns_conn: u64, key: &[u8; 32]) {
+    // Receive ABI boundary: the complete incoming transaction transfers once here.
+    let Ok(Some(mut incoming)) = (unsafe { catten_rt::owned::IncomingMessage::from_raw(message) })
+    else {
+        return;
     };
-    let dns = match unsafe { ConnectionRef::from_raw(dns_conn) } {
-        Ok(dns) => dns,
-        Err(_) => return clusterctl::ERR_NOT_LEADER,
+    let Some(token) = incoming.reply.take() else {
+        return;
     };
-    match dns.call_move(dns::OP_DEPLOY_RELEASE, envelope.len() as u64, memory) {
-        Ok(call) => match call.wait() {
-            Ok(reply) => reply.result,
-            Err(_) => clusterctl::ERR_NOT_LEADER,
-        },
-        Err((_memory, _error)) => clusterctl::ERR_NOT_LEADER,
+    let result = (|| {
+        if incoming.connection.is_some() {
+            return Err(clusterctl::ERR_TOO_LARGE);
+        }
+        let memory = incoming.memory.take().ok_or(clusterctl::ERR_TOO_LARGE)?;
+        let mapping = memory.map_read_only().map_err(|_| clusterctl::ERR_UPLOAD_FAILED)?;
+        let bytes = mapping.as_slice();
+        let len = usize::try_from(u64::from_le_bytes(
+            bytes
+                .get(..8)
+                .ok_or(clusterctl::ERR_TOO_LARGE)?
+                .try_into()
+                .map_err(|_| clusterctl::ERR_TOO_LARGE)?,
+        ))
+        .map_err(|_| clusterctl::ERR_TOO_LARGE)?;
+        if len > charlotte_launch::release::MAX_RELEASE_LEN {
+            return Err(clusterctl::ERR_TOO_LARGE);
+        }
+        let envelope = bytes.get(8..8 + len).ok_or(clusterctl::ERR_TOO_LARGE)?;
+        if charlotte_launch::release::verify(envelope, key)
+            != charlotte_launch::release::VerifyOutcome::Valid
+        {
+            return Err(clusterctl::ERR_UNTRUSTED_DESCRIPTOR);
+        }
+        submit_release(dns_conn, envelope)
+    })();
+    match result {
+        Ok((memory, len)) => {
+            let _ = token.reply_move(memory, len as i64);
+        }
+        Err(code) => {
+            let _ = token.reply(code);
+        }
     }
 }
 
@@ -447,22 +501,7 @@ fn serve(ctx: &Context) -> Result<ShutdownRequest, u32> {
                     }
                 }
                 clusterctl::OP_NOTIFY_RELEASE => {
-                    let result = match read_payload(&message) {
-                        Some(envelope)
-                            if envelope.len() <= charlotte_launch::release::MAX_RELEASE_LEN
-                                && charlotte_launch::release::verify(
-                                    &envelope,
-                                    &trust.deployment_key,
-                                ) == charlotte_launch::release::VerifyOutcome::Valid =>
-                        {
-                            submit_release(dns_conn, &envelope)
-                        }
-                        Some(_) => clusterctl::ERR_UNTRUSTED_DESCRIPTOR,
-                        None => clusterctl::ERR_TOO_LARGE,
-                    };
-                    if message.reply != 0 {
-                        ipc_reply(message.reply, result);
-                    }
+                    notify_release(message, dns_conn, &trust.deployment_key)
                 }
                 clusterctl::OP_NOTIFY_OPERATIONS => {
                     let result = match read_payload(&message) {

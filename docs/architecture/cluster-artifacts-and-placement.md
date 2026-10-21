@@ -131,11 +131,12 @@ or conflicting release or component before changing the deployment map. The sole
 concrete replica sets, per-node readiness, operational authorization, shutdown
 intents, ingress policy and capacity samples. Admission is atomic, while S3 fetch,
 launch, publication, and readiness remain independently reconciled after the
-commit. The current `release-apply` client still polls component readiness by
-name: its acknowledgement supplies only an independent release generation,
-without the component-generation map. That client can confuse concurrent
-supersession with success; exact component binding remains open. Coordinated
-rollback and richer rollout policy still require a release controller.
+commit. The [admission receipt](../reference/release-admission.md) binds the exact
+signed release to each component's own deployment generation. `release-apply`
+requires matching ready observations, waits on older generations and rejects
+supersession or malformed records without replaying the notification. Coordinated
+rollback and richer rollout policy still require a release controller. Operation
+deadlines, host polling and peer authentication remain separate work.
 
 ![Focused two-node deployment-handoff data path](../manual-v2/figures/two-node-cluster.svg)
 

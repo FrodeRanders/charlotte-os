@@ -64,6 +64,7 @@ pub mod dns_catalog;
 pub mod name_catalog;
 pub mod ns_publication;
 pub mod operations_admission;
+pub mod release_admission;
 
 /// Raft peer transport over the reliable message layer (`relmsg`).
 pub mod relmsg_transport;
@@ -2208,7 +2209,8 @@ pub mod dns {
     /// Atomically admit one signed `CRELEASE` envelope. `arg0` is the byte
     /// length of the envelope in moved memory. The leader resolves every
     /// automatic node assignment and commits the complete component set in
-    /// one Raft command. The reply is the release generation.
+    /// one Raft command. Success moves a complete `CRLADM01` admission receipt;
+    /// its result is the byte length. Errors are negative scalar results.
     pub const OP_DEPLOY_RELEASE: u32 = 20;
     /// Admit one fully verified `COPSBND2` operational bundle. `arg0` is the
     /// byte length in moved memory. A follower relays the complete signed
@@ -2468,8 +2470,8 @@ pub mod clusterctl {
     /// [`RolloutStatus::encode`].
     pub const OP_ROLLOUT: u32 = 8;
     /// Notify the cluster of a signed `CRELEASE` envelope. The moved memory
-    /// uses `[len:u64][bytes]`, as for `OP_NOTIFY`; the reply is the atomically
-    /// committed release generation.
+    /// uses `[len:u64][bytes]`, as for `OP_NOTIFY`. Success moves a complete
+    /// `CRLADM01` receipt with its byte length; errors are negative scalars.
     pub const OP_NOTIFY_RELEASE: u32 = 9;
     /// Notify the cluster of an independently operator-signed `COPSBND2`.
     /// The moved memory uses `[len:u64][bytes]`; the leader verifies release,
@@ -3555,8 +3557,8 @@ pub mod rdeploy {
 
 /// Correlated follower-to-leader atomic release submission.
 pub mod rrelease {
-    pub const TAG_REQUEST: u8 = 0x19;
-    pub const TAG_REPLY: u8 = 0x1a;
+    pub const TAG_REQUEST: u8 = 0x2b;
+    pub const TAG_REPLY: u8 = 0x2c;
 
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub struct Request {
@@ -3574,8 +3576,8 @@ pub mod rrelease {
         {
             return None;
         }
-        let mut frame =
-            alloc::vec::Vec::with_capacity(19 + request.caller.len() + request.envelope.len());
+        let mut frame = alloc::vec::Vec::new();
+        frame.try_reserve_exact(19 + request.caller.len() + request.envelope.len()).ok()?;
         frame.extend_from_slice(&request.session.to_le_bytes());
         frame.extend_from_slice(&request.request_id.to_le_bytes());
         frame.push(request.caller.len() as u8);
@@ -3614,18 +3616,55 @@ pub mod rrelease {
         })
     }
 
-    pub fn encode_reply(session: u64, request_id: u64, result: i64) -> alloc::vec::Vec<u8> {
-        super::rdeploy::encode_reply(session, request_id, result)
+    /// Bounded terminal storage admitted before Raft submission.
+    pub struct PreparedReply {
+        bytes: alloc::vec::Vec<u8>,
     }
 
-    pub fn decode_reply(frame: &[u8]) -> Option<(u64, u64, i64)> {
-        if frame.len() != 25 || frame[0] != TAG_REPLY {
+    impl PreparedReply {
+        pub fn prepare(session: u64, request_id: u64) -> Option<Self> {
+            let mut bytes = alloc::vec::Vec::new();
+            bytes.try_reserve_exact(18 + charlotte_launch::release_admission::MAX_LEN).ok()?;
+            bytes.resize(18 + charlotte_launch::release_admission::MAX_LEN, 0);
+            bytes[..8].copy_from_slice(&session.to_le_bytes());
+            bytes[8..16].copy_from_slice(&request_id.to_le_bytes());
+            Some(Self {
+                bytes,
+            })
+        }
+
+        pub fn finish(mut self, result: &[u8]) -> alloc::vec::Vec<u8> {
+            let fallback = crate::dns::ERR_UNCERTAIN.to_le_bytes();
+            let result = if charlotte_launch::release_admission::decode_result(result).is_some() {
+                result
+            } else {
+                &fallback
+            };
+            self.bytes[16..18].copy_from_slice(&(result.len() as u16).to_le_bytes());
+            self.bytes[18..18 + result.len()].copy_from_slice(result);
+            self.bytes.truncate(18 + result.len());
+            self.bytes
+        }
+
+        pub fn reject(self, code: i64) -> alloc::vec::Vec<u8> {
+            self.finish(&code.to_le_bytes())
+        }
+    }
+
+    pub fn decode_reply(frame: &[u8]) -> Option<(u64, u64, &[u8])> {
+        if frame.first().copied()? != TAG_REPLY {
             return None;
         }
+        let len = usize::from(u16::from_le_bytes(frame.get(17..19)?.try_into().ok()?));
+        if frame.len() != 19 + len {
+            return None;
+        }
+        let result = frame.get(19..)?;
+        let _ = charlotte_launch::release_admission::decode_result(result)?;
         Some((
             u64::from_le_bytes(frame[1..9].try_into().ok()?),
             u64::from_le_bytes(frame[9..17].try_into().ok()?),
-            i64::from_le_bytes(frame[17..25].try_into().ok()?),
+            result,
         ))
     }
 }

@@ -47,10 +47,10 @@ class Generation(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         return descriptor
 
-    def apply(self, admission, observations, descriptors=None, expected_posts=None):
+    def apply(self, admission, observations, descriptors=None, expected_posts=None, release=None):
         events = []
         descriptors = descriptors or [self.descriptor]
-        expected_posts = len(descriptors) if expected_posts is None else expected_posts
+        expected_posts = (1 if release else len(descriptors)) if expected_posts is None else expected_posts
 
         class Handler(BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
@@ -69,7 +69,7 @@ class Generation(unittest.TestCase):
                 index = sum(event[0] == "POST" for event in events)
                 events.append(("POST", self.path, len(data)))
                 body = admission[min(index, len(admission)-1)] if isinstance(admission, list) else admission
-                self.reply(202, body)
+                self.reply(202, body(data) if callable(body) else body)
 
             def do_GET(self):
                 index = sum(event[0] == "GET" and event[1] == self.path for event in events)
@@ -86,16 +86,17 @@ class Generation(unittest.TestCase):
             thread.start()
             try:
                 endpoint = f"127.0.0.1:{server.server_port}"
-                result = subprocess.run([str(SIGNER), "deployment-apply", endpoint, "2",
-                                         *map(str, descriptors)], capture_output=True, timeout=10)
+                command = (["release-apply", str(release), endpoint, "2"] if release else
+                           ["deployment-apply", endpoint, "2", *map(str, descriptors)])
+                result = subprocess.run([str(SIGNER), *command], capture_output=True, timeout=10)
             finally:
                 server.shutdown()
                 thread.join(timeout=2)
             self.assertFalse(thread.is_alive())
         self.assertEqual(sum(event[0] == "POST" for event in events), expected_posts,
                          "accepted descriptor must never be replayed")
-        self.assertEqual(events[0][1], "/v1/deployments")
-        self.assertEqual(events[0][2], self.descriptor.stat().st_size)
+        self.assertEqual(events[0][1], "/v1/releases" if release else "/v1/deployments")
+        self.assertEqual(events[0][2], (release or self.descriptor).stat().st_size)
         return result, sum(event[0] == "GET" for event in events)
 
     def test_exact_ready_generation_succeeds(self):

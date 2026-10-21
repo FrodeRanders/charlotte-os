@@ -249,6 +249,49 @@ struct CompactOperationalSet {
 
 type ParsedOperationalTail = Option<CompactOperationalSet>;
 
+fn release_receipt(
+    envelope: &[u8],
+    generation: u64,
+    components: impl Iterator<Item = u64>,
+) -> Option<Vec<u8>> {
+    let mut generations = [0; charlotte_launch::release::MAX_DESCRIPTORS];
+    let mut count = 0;
+    for generation in components {
+        *generations.get_mut(count)? = generation;
+        count += 1;
+    }
+    let receipt = charlotte_launch::release_admission::Receipt::new(
+        envelope,
+        generation,
+        &generations[..count],
+    )?;
+    let mut bytes = Vec::new();
+    bytes.try_reserve_exact(receipt.encoded_len()).ok()?;
+    bytes.resize(receipt.encoded_len(), 0);
+    receipt.encode(&mut bytes)?;
+    Some(bytes)
+}
+
+fn repeated_release_receipt(
+    envelope: &[u8],
+    generation: u64,
+    deployments: &BTreeMap<Vec<u8>, DeploymentEntry>,
+) -> Option<Vec<u8>> {
+    let release = charlotte_launch::release::decode(envelope)?;
+    let mut generations = [0; charlotte_launch::release::MAX_DESCRIPTORS];
+    let mut count = 0;
+    for descriptor in release.descriptors() {
+        let name = charlotte_launch::deployment::decode(descriptor)?.artifact_name;
+        let current = deployments.get(name)?;
+        if current.descriptor != descriptor {
+            return None;
+        }
+        generations[count] = current.generation;
+        count += 1;
+    }
+    release_receipt(envelope, generation, generations[..count].iter().copied())
+}
+
 fn release_contains_artifact(
     release: &charlotte_launch::release::ReleaseEnvelope<'_>,
     target: &[u8],
@@ -1095,13 +1138,27 @@ impl NameCatalog {
                         return if release_exact
                             && operations.bundle_digest == existing.operations_bundle_digest
                         {
-                            (existing.generation as i64).to_le_bytes().to_vec()
+                            repeated_release_receipt(
+                                envelope_bytes,
+                                existing.generation,
+                                &self.deployments.lock(),
+                            )
+                            .unwrap_or_else(|| {
+                                crate::clusterctl::ERR_CONFLICTING_DESCRIPTOR.to_le_bytes().to_vec()
+                            })
                         } else {
                             crate::clusterctl::ERR_CONFLICTING_DESCRIPTOR.to_le_bytes().to_vec()
                         };
                     }
                 } else if release_exact {
-                    return (release_generation as i64).to_le_bytes().to_vec();
+                    return repeated_release_receipt(
+                        envelope_bytes,
+                        release_generation,
+                        &self.deployments.lock(),
+                    )
+                    .unwrap_or_else(|| {
+                        crate::clusterctl::ERR_CONFLICTING_DESCRIPTOR.to_le_bytes().to_vec()
+                    });
                 }
 
                 let mut deployments = self.deployments.lock();
@@ -1302,6 +1359,14 @@ impl NameCatalog {
                     return crate::clusterctl::ERR_CAPACITY.to_le_bytes().to_vec();
                 }
 
+                // Prepare the complete result before changing either catalog map.
+                let Some(receipt) = release_receipt(
+                    envelope_bytes,
+                    release_generation,
+                    planned_deployments.iter().map(|(_, entry)| entry.generation),
+                ) else {
+                    return crate::clusterctl::ERR_CAPACITY.to_le_bytes().to_vec();
+                };
                 let changed_artifacts = planned_deployments
                     .iter()
                     .filter(|(artifact, entry)| {
@@ -1337,7 +1402,7 @@ impl NameCatalog {
                         operations_bundle_digest,
                     },
                 );
-                (release_generation as i64).to_le_bytes().to_vec()
+                receipt
             }
             Some(CMD_SET_CLUSTER_KEY) => {
                 let Some(key) = command.get(1..1 + 32) else {

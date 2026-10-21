@@ -444,7 +444,9 @@ pub fn resolve_descriptor_assignments_with_capacity(
                         },
                     )?
             };
-            debug_assert!(reserve_node_capacity(&mut projected_capacity, selected, demand));
+            if !reserve_node_capacity(&mut projected_capacity, selected, demand) {
+                return Err(AdmissionError::InsufficientCapacity);
+            }
             assignments[index] = Some(vec![selected]);
             continue;
         }
@@ -495,7 +497,9 @@ pub fn resolve_descriptor_assignments_with_capacity(
         let mut selected = ranked.into_iter().take(wanted).collect::<Vec<_>>();
         selected.sort_unstable();
         for node in selected.iter().copied() {
-            debug_assert!(reserve_node_capacity(&mut projected_capacity, node, demand));
+            if !reserve_node_capacity(&mut projected_capacity, node, demand) {
+                return Err(AdmissionError::InsufficientCapacity);
+            }
         }
         if policy.anti_affinity_group != 0 {
             anti_affinity
@@ -825,7 +829,10 @@ mod tests {
                 cpu_load_permille: 0,
             }),
         );
-        assert_eq!(catalog.apply_with_result(1, &command), 1i64.to_le_bytes());
+        assert_eq!(
+            crate::release_admission::generation_result(&catalog.apply_with_result(1, &command)),
+            1
+        );
         let binding = catalog.operational_binding(b"kafka/orders/transactional").unwrap();
         assert_eq!(binding.target_artifact, b"kafka");
         assert_eq!(binding.object_key, b"operations/orders-kafka.cops");
@@ -1184,6 +1191,57 @@ mod tests {
             resolve_release_assignments_with_capacity(&release, &[1], 1, &capacity),
             Err(AdmissionError::InsufficientCapacity)
         );
+    }
+
+    #[test]
+    fn release_reservations_charge_every_selected_replica() {
+        let pair = KeyPair::from_seed([0x6c; 32].into());
+        for flags in [
+            charlotte_launch::placement::SPREAD_REPLICAS,
+            charlotte_launch::placement::EVERY_ELIGIBLE_NODE,
+        ] {
+            let policy = charlotte_launch::placement::PlacementPolicy {
+                replicas: if flags == charlotte_launch::placement::EVERY_ELIGIBLE_NODE {
+                    0
+                } else {
+                    2
+                },
+                max_instances_per_node: 1,
+                min_distinct_nodes: 2,
+                flags,
+                affinity_group: 0,
+                anti_affinity_group: 0,
+            };
+            let release = policy_release(&pair, &[(b"orders", policy), (b"payments", policy)]);
+            let capacity = NodeCapacityView::from_iter([1, 2].map(|node| {
+                (
+                    node,
+                    NodeCapacity {
+                        target: Some(
+                            charlotte_launch::execution_target::ExecutionTarget::baseline(
+                                charlotte_launch::execution_target::Architecture::Aarch64,
+                            ),
+                        ),
+                        free_frames: 100,
+                        usable_frames: 1000,
+                        committed_frames: 0,
+                        cpu_load_permille: CPU_LOAD_UNKNOWN,
+                    },
+                )
+            }));
+            assert_eq!(
+                resolve_release_assignments_with_capacity(&release, &[1, 2], 1, &capacity),
+                Err(AdmissionError::InsufficientCapacity)
+            );
+            let mut roomy = capacity.clone();
+            for sample in roomy.values_mut() {
+                sample.free_frames = 200;
+            }
+            assert_eq!(
+                resolve_release_assignments_with_capacity(&release, &[1, 2], 1, &roomy).unwrap(),
+                vec![vec![1, 2], vec![1, 2]]
+            );
+        }
     }
 
     #[test]

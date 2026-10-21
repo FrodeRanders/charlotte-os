@@ -1388,6 +1388,10 @@ fn abort_pending_entry(entry: PendingRegistration, transport: &RelmsgRaftTranspo
                 ipc_reply(reply, dns::ERR_UNCERTAIN);
             }
         }
+        PendingRegistration::Release {
+            reply,
+            ..
+        } => reply.reject(dns::ERR_UNCERTAIN),
         PendingRegistration::Placement {
             ..
         } => {}
@@ -1405,14 +1409,13 @@ fn abort_pending_entry(entry: PendingRegistration, transport: &RelmsgRaftTranspo
         }
         PendingRegistration::RemoteRelease {
             peer,
-            session,
-            request_id,
+            reply,
             ..
         } => {
             transport.send_message(
                 &peer,
                 catten_services::rrelease::TAG_REPLY,
-                catten_services::rrelease::encode_reply(session, request_id, dns::ERR_UNCERTAIN),
+                reply.reject(dns::ERR_UNCERTAIN),
             );
         }
         PendingRegistration::RemoteOperations {
@@ -1497,7 +1500,10 @@ fn relay_to_leader(
         return Some(dns::ERR_BUSY);
     }
     let request_id = *next_query_id;
-    *next_query_id = next_query_id.wrapping_add(1).max(1);
+    *next_query_id = match next_query_id.checked_add(1) {
+        Some(next) => next,
+        None => return Some(dns::ERR_BUSY),
+    };
     let Some(frame) = encode(session, request_id) else {
         return Some(dns::ERR_TOO_LARGE);
     };
@@ -1514,6 +1520,58 @@ fn relay_to_leader(
     None
 }
 
+/// Prepare the complete relay and pending owner before publishing the request.
+#[allow(clippy::too_many_arguments)]
+fn relay_release(
+    node: &RaftNode,
+    transport: &RelmsgRaftTransport,
+    pending: &mut Vec<PendingQuery>,
+    next_id: &mut u64,
+    session: u64,
+    caller: &[u8],
+    envelope: Vec<u8>,
+    reply: catten_services::release_admission::PreparedReply,
+) -> Result<(), (catten_services::release_admission::PreparedReply, i64)> {
+    let deadline = catten_services::deadline::Deadline::after(REMOTE_CALL_TIMEOUT_MS);
+    let Some(leader) = node.known_leader_id.clone() else {
+        return Err((reply, dns::ERR_NOT_LEADER));
+    };
+    if pending.len() >= MAX_IN_FLIGHT_CALLS
+        || !transport.has_peer(&leader)
+        || pending.try_reserve(1).is_err()
+    {
+        return Err((reply, dns::ERR_BUSY));
+    }
+    let id = *next_id;
+    let Some(next) = id.checked_add(1) else {
+        return Err((reply, dns::ERR_BUSY));
+    };
+    let Some(frame) =
+        catten_services::rrelease::encode_request(&catten_services::rrelease::Request {
+            session,
+            request_id: id,
+            caller: caller.into(),
+            envelope,
+        })
+    else {
+        return Err((reply, dns::ERR_TOO_LARGE));
+    };
+    if deadline.expired() {
+        return Err((reply, dns::ERR_NOT_LEADER));
+    }
+    *next_id = next;
+    pending.push(PendingQuery {
+        query_id: id,
+        expected_leader: leader.clone(),
+        deadline,
+        kind: PendingQueryKind::Release {
+            reply,
+        },
+    });
+    transport.send_message(&leader, catten_services::rrelease::TAG_REQUEST, frame);
+    Ok(())
+}
+
 /// Submit one admission command locally and record it for completion when it
 /// commits. Returns `Ok(())` when the caller must `continue` (the reply is
 /// deferred to the reactor), or `Err(code)` when the caller must reply.
@@ -1521,6 +1579,7 @@ fn submit_deferred(
     node: &mut RaftNode,
     pending: &mut Vec<PendingRegistration>,
     reply: u64,
+    release_result: bool,
     build: impl FnOnce(&RaftNode) -> Result<Vec<u8>, i64>,
 ) -> Result<(), i64> {
     let command = build(node)?;
@@ -1530,6 +1589,7 @@ fn submit_deferred(
                 term: node.current_term,
                 log_index,
                 reply,
+                release_result,
             });
             Ok(())
         }
@@ -2303,12 +2363,11 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                             };
                                             if let Some(result) = result && let Some(reply) = reply { let _ = reply.reply(result); }
                                         }
+                                        PendingQueryKind::Release { reply } => reply.reject(dns::ERR_UNCERTAIN),
                                         PendingQueryKind::Deploy {
                                             reply,
                                         }
-                                        | PendingQueryKind::Release {
-                                            reply,
-                                        }
+
                                         | PendingQueryKind::Operations {
                                             reply,
                                         }
@@ -2533,61 +2592,23 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                 }
                             }
                             Some(catten_services::rrelease::TAG_REQUEST) => {
-                                if let Some(request) =
-                                    catten_services::rrelease::decode_request(frame)
-                                    && let Some(source_peer) =
-                                        transport.peer_id_for_mac(&source_mac)
+                                if let Some(request) = catten_services::rrelease::decode_request(frame)
+                                    && let Some(source_peer) = transport.peer_id_for_mac(&source_mac)
                                     && source_peer.as_bytes() == request.caller
+                                    && let Some(reply) = catten_services::rrelease::PreparedReply::prepare(request.session, request.request_id)
                                 {
-                                    let result = if node.state != NodeState::Leader {
-                                        Some(dns::ERR_NOT_LEADER)
-                                    } else {
-                                        let automatic_node = node_identity::key_from_name(&node_name)
-                                            .unwrap_or(0);
+                                    let result = if node.state != NodeState::Leader { Err(dns::ERR_NOT_LEADER) }
+                                    else if pending_registers.try_reserve(1).is_err() { Err(dns::ERR_BUSY) }
+                                    else {
+                                        let automatic_node = node_identity::key_from_name(&node_name).unwrap_or(0);
                                         let eligible_nodes = placement_nodes(&node, &catalog);
-                                        let capacity = release_capacity_view(
-                                            &catalog,
-                                            fresh_capacity_view(
-                                                &catalog,
-                                                &capacity_last_seen_ms,
-                                                node.millis(),
-                                            ),
-                                            &request.envelope,
-                                        );
-                                        match release_command(
-                                            &request.envelope,
-                                            &eligible_nodes,
-                                            automatic_node,
-                                            &capacity,
-                                        ) {
-                                            Ok(command) => match node
-                                                .submit_command(command, node.millis())
-                                            {
-                                                Ok(log_index) => {
-                                                    pending_registers.push(PendingRegistration::RemoteRelease { term: node.current_term,
-                                                            log_index,
-                                                            peer: source_peer.clone(),
-                                                            session: request.session,
-                                                            request_id: request.request_id,
-                                                        },
-                                                    );
-                                                    None
-                                                }
-                                                Err(code) => Some(code),
-                                            },
-                                            Err(code) => Some(code),
-                                        }
+                                        let capacity = release_capacity_view(&catalog, fresh_capacity_view(&catalog, &capacity_last_seen_ms, node.millis()), &request.envelope);
+                                        release_command(&request.envelope, &eligible_nodes, automatic_node, &capacity)
+                                            .and_then(|command| node.submit_command(command, node.millis()))
                                     };
-                                    if let Some(result) = result {
-                                        transport.send_message(
-                                            &source_peer,
-                                            catten_services::rrelease::TAG_REPLY,
-                                            catten_services::rrelease::encode_reply(
-                                                request.session,
-                                                request.request_id,
-                                                result,
-                                            ),
-                                        );
+                                    match result {
+                                        Ok(log_index) => pending_registers.push(PendingRegistration::RemoteRelease { term: node.current_term, log_index, peer: source_peer, reply }),
+                                        Err(code) => transport.send_message(&source_peer, catten_services::rrelease::TAG_REPLY, reply.reject(code)),
                                     }
                                 }
                             }
@@ -2614,9 +2635,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     else {
                                         unreachable!()
                                     };
-                                    if reply != 0 {
-                                        ipc_reply(reply, result);
-                                    }
+                                    reply.complete(result);
                                 }
                             }
                             Some(catten_services::roperations::TAG_REQUEST) => {
@@ -3088,6 +3107,47 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 );
                 continue;
             }
+            if message.is_ok() && message.opcode == dns::OP_DEPLOY_RELEASE {
+                served += 1;
+                config::write_u32_release(dns::status::IPC_REQUESTS_SERVED, served);
+                if let Some((envelope, reply)) = message_memory::read_release_request(message) {
+                    if node.state == NodeState::Leader {
+                        let automatic_node = node_identity::key_from_name(&node_name).unwrap_or(0);
+                        let eligible_nodes = placement_nodes(&node, &catalog);
+                        let capacity = release_capacity_view(
+                            &catalog,
+                            fresh_capacity_view(&catalog, &capacity_last_seen_ms, node.millis()),
+                            &envelope,
+                        );
+                        let result = if pending_registers.try_reserve(1).is_err() {
+                            Err(dns::ERR_BUSY)
+                        } else {
+                            release_command(&envelope, &eligible_nodes, automatic_node, &capacity)
+                                .and_then(|command| node.submit_command(command, node.millis()))
+                        };
+                        match result {
+                            Ok(log_index) => pending_registers.push(PendingRegistration::Release {
+                                term: node.current_term,
+                                log_index,
+                                reply,
+                            }),
+                            Err(code) => reply.reject(code),
+                        }
+                    } else if let Err((reply, code)) = relay_release(
+                        &node,
+                        &transport,
+                        &mut pending_queries,
+                        &mut next_query_id,
+                        dns_session,
+                        &node_name,
+                        envelope,
+                        reply,
+                    ) {
+                        reply.reject(code);
+                    }
+                }
+                continue;
+            }
             let _attachments = catten_services::RequestAttachments::memory_only(message.memory);
             if message.status == ipc_status::NO_MESSAGE {
                 break;
@@ -3354,6 +3414,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                 &mut node,
                                 &mut pending_registers,
                                 message.reply,
+                                false,
                                 |node| {
                                     deployment_command(
                                         &catalog,
@@ -3404,73 +3465,6 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     }
                 }
 
-                dns::OP_DEPLOY_RELEASE => {
-                    let envelope =
-                        read_moved_bytes(&message, charlotte_launch::release::MAX_RELEASE_LEN);
-                    let result = match envelope {
-                        Some(envelope) if node.state == NodeState::Leader => {
-                            match submit_deferred(
-                                &mut node,
-                                &mut pending_registers,
-                                message.reply,
-                                |node| {
-                                    let automatic_node =
-                                        node_identity::key_from_name(&node_name).unwrap_or(0);
-                                    let eligible_nodes = placement_nodes(node, &catalog);
-                                    let capacity = release_capacity_view(
-                                        &catalog,
-                                        fresh_capacity_view(
-                                            &catalog,
-                                            &capacity_last_seen_ms,
-                                            node.millis(),
-                                        ),
-                                        &envelope,
-                                    );
-                                    release_command(
-                                        &envelope,
-                                        &eligible_nodes,
-                                        automatic_node,
-                                        &capacity,
-                                    )
-                                },
-                            ) {
-                                Ok(()) => continue,
-                                Err(code) => code,
-                            }
-                        }
-                        Some(envelope) => match relay_to_leader(
-                            &node,
-                            &transport,
-                            &mut pending_queries,
-                            &mut next_query_id,
-                            dns_session,
-                            message.reply,
-                            REMOTE_CALL_TIMEOUT_MS,
-                            catten_services::rrelease::TAG_REQUEST,
-                            |session, request_id| {
-                                catten_services::rrelease::encode_request(
-                                    &catten_services::rrelease::Request {
-                                        session,
-                                        request_id,
-                                        caller: node_name.clone(),
-                                        envelope,
-                                    },
-                                )
-                            },
-                            |reply| PendingQueryKind::Release {
-                                reply,
-                            },
-                        ) {
-                            Some(code) => code,
-                            None => continue,
-                        },
-                        None => dns::ERR_TOO_LARGE,
-                    };
-                    if message.reply != 0 {
-                        ipc_reply(message.reply, result);
-                    }
-                }
-
                 dns::OP_DEPLOY_OPERATIONS => {
                     let bundle = read_moved_bytes(
                         &message,
@@ -3482,6 +3476,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                 &mut node,
                                 &mut pending_registers,
                                 message.reply,
+                                true,
                                 |node| {
                                     let automatic_node =
                                         node_identity::key_from_name(&node_name).unwrap_or(0);
@@ -3551,6 +3546,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                 &mut node,
                                 &mut pending_registers,
                                 message.reply,
+                                false,
                                 |_node| {
                                     shutdown_command(
                                         &envelope,
@@ -3624,6 +3620,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                 &mut node,
                                 &mut pending_registers,
                                 message.reply,
+                                false,
                                 |_node| {
                                     ingress_policy_command(
                                         &envelope,
@@ -4089,6 +4086,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     log_index,
                     ..
                 }
+                | PendingRegistration::Release {
+                    log_index,
+                    ..
+                }
                 | PendingRegistration::Placement {
                     log_index,
                     ..
@@ -4135,20 +4136,33 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 PendingRegistration::RemoteRegister {
                     ..
                 } => unreachable!(),
-                PendingRegistration::Deploy {
+                PendingRegistration::Release {
                     reply,
                     ..
                 } => {
-                    // The deployment is committed and replicated: report the
-                    // manifest generation to the deployer.
-                    let generation = node
+                    reply.complete(
+                        node.command_result(log_index).unwrap_or(&dns::ERR_UNCERTAIN.to_le_bytes()),
+                    );
+                }
+                PendingRegistration::Deploy {
+                    reply,
+                    release_result,
+                    ..
+                } => {
+                    let result = node
                         .command_result(log_index)
-                        .and_then(|bytes| bytes.get(..8))
-                        .and_then(|bytes| <[u8; 8]>::try_from(bytes).ok())
-                        .map(u64::from_le_bytes)
-                        .unwrap_or(0);
+                        .map(|bytes| {
+                            if release_result {
+                                catten_services::release_admission::generation_result(bytes)
+                            } else {
+                                <[u8; 8]>::try_from(bytes)
+                                    .map(i64::from_le_bytes)
+                                    .unwrap_or(dns::ERR_UNCERTAIN)
+                            }
+                        })
+                        .unwrap_or(dns::ERR_UNCERTAIN);
                     if reply != 0 {
-                        ipc_reply(reply, generation as i64);
+                        ipc_reply(reply, result);
                     }
                 }
                 PendingRegistration::Placement {
@@ -4197,20 +4211,15 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
                 PendingRegistration::RemoteRelease {
                     peer,
-                    session,
-                    request_id,
+                    reply,
                     ..
                 } => {
-                    let result = node
-                        .command_result(log_index)
-                        .and_then(|bytes| bytes.get(..8))
-                        .and_then(|bytes| <[u8; 8]>::try_from(bytes).ok())
-                        .map(i64::from_le_bytes)
-                        .unwrap_or(dns::ERR_NOT_FOUND);
+                    let uncertain = dns::ERR_UNCERTAIN.to_le_bytes();
+                    let result = node.command_result(log_index).unwrap_or(&uncertain);
                     transport.send_message(
                         &peer,
                         catten_services::rrelease::TAG_REPLY,
-                        catten_services::rrelease::encode_reply(session, request_id, result),
+                        reply.finish(result),
                     );
                 }
                 PendingRegistration::RemoteOperations {
@@ -4221,10 +4230,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 } => {
                     let result = node
                         .command_result(log_index)
-                        .and_then(|bytes| bytes.get(..8))
-                        .and_then(|bytes| <[u8; 8]>::try_from(bytes).ok())
-                        .map(i64::from_le_bytes)
-                        .unwrap_or(dns::ERR_NOT_FOUND);
+                        .map(catten_services::release_admission::generation_result)
+                        .unwrap_or(dns::ERR_UNCERTAIN);
                     transport.send_message(
                         &peer,
                         catten_services::roperations::TAG_REPLY,

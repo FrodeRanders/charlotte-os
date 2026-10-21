@@ -164,7 +164,10 @@ ready generations complete, and newer generations fail as superseded. Invalid
 records stop without notification replay; a rejected acknowledgement may follow
 an already committed mutation. Observation storage reserves before submission and
 borrows names from the retained prepared descriptor set. `deployment-status`
-remains an observation of the current named record. `release-apply` still lacks
-component-generation binding because its acknowledgement supplies only a release
-generation. End-to-end deadlines, connect/DNS/write bounds and status polling
-remain separate work. See the [client-generation report](../reports/audits/2026-10-21-security-deployment-generation.md).
+remains an observation of the current named record. `release-notify` requires a
+complete `CRLADM01` receipt bound to the exact signed envelope; `release-apply`
+uses its ordered component generations with the same observation policy. Earlier
+scalar release successes reject. Storage for observations reserves before the
+POST. End-to-end deadlines, connect/DNS/write bounds and status polling remain
+separate work. See the [release-result contract](release-admission.md) and
+[release-generation report](../reports/audits/2026-10-21-security-release-generation.md).

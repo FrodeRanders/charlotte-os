@@ -149,10 +149,13 @@ pub(super) fn expire_queries(queries: &mut Vec<PendingQuery>) {
                 }
                 continue;
             }
-            PendingQueryKind::Deploy {
+            PendingQueryKind::Release {
                 reply,
+            } => {
+                reply.reject(dns::ERR_UNCERTAIN);
+                continue;
             }
-            | PendingQueryKind::Release {
+            PendingQueryKind::Deploy {
                 reply,
             }
             | PendingQueryKind::Operations {

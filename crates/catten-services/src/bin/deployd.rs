@@ -114,26 +114,60 @@ fn notify_cluster(controller: catten_rt::owned::ConnectionRef<'_>, descriptor: &
         .map_or_else(|error| error.code(), |reply| reply.result)
 }
 
-fn notify_release(controller: catten_rt::owned::ConnectionRef<'_>, envelope: &[u8]) -> i64 {
+fn notify_release(
+    controller: catten_rt::owned::ConnectionRef<'_>,
+    envelope: &[u8],
+) -> Result<charlotte_launch::release_admission::Receipt, i64> {
     if charlotte_launch::release::decode(envelope).is_none() {
-        return clusterctl::ERR_UNTRUSTED_DESCRIPTOR;
+        return Err(clusterctl::ERR_UNTRUSTED_DESCRIPTOR);
     }
-    let memory = match OwnedMemory::allocate(1) {
-        Ok(memory) => memory,
-        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
-    };
-    let mut mapping = match memory.map_writable() {
-        Ok(mapping) => mapping,
-        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
-    };
+    let memory = OwnedMemory::allocate(1).map_err(|_| clusterctl::ERR_UPLOAD_FAILED)?;
+    let mut mapping = memory.map_writable().map_err(|_| clusterctl::ERR_UPLOAD_FAILED)?;
     mapping.as_mut_slice()[..8].copy_from_slice(&(envelope.len() as u64).to_le_bytes());
     mapping.as_mut_slice()[8..8 + envelope.len()].copy_from_slice(envelope);
-    let memory = match mapping.unmap() {
-        Ok(memory) => memory,
-        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
+    let memory = mapping.unmap().map_err(|_| clusterctl::ERR_UPLOAD_FAILED)?;
+    let mut reply =
+        clusterctl_client::call_move(controller, clusterctl::OP_NOTIFY_RELEASE, 0, memory)
+            .map_err(|error| error.code())?;
+    if reply.result < 0 {
+        return Err(reply.result);
+    }
+    if reply.connection.is_some() {
+        return Err(catten_services::dns::ERR_UNCERTAIN);
+    }
+    let len = usize::try_from(reply.result).map_err(|_| catten_services::dns::ERR_UNCERTAIN)?;
+    let memory = reply.memory.take().ok_or(catten_services::dns::ERR_UNCERTAIN)?;
+    if len > memory.len() || len > charlotte_launch::release_admission::MAX_LEN {
+        return Err(catten_services::dns::ERR_UNCERTAIN);
+    }
+    let mapping = memory.map_read_only().map_err(|_| catten_services::dns::ERR_UNCERTAIN)?;
+    catten_services::release_admission::valid_receipt(&mapping.as_slice()[..len], envelope)
+        .ok_or(catten_services::dns::ERR_UNCERTAIN)
+}
+
+fn release_response(
+    result: Result<charlotte_launch::release_admission::Receipt, i64>,
+) -> alloc::string::String {
+    let receipt = match result {
+        Ok(receipt) => receipt,
+        Err(code) => return response(code),
     };
-    clusterctl_client::call_move(controller, clusterctl::OP_NOTIFY_RELEASE, 0, memory)
-        .map_or_else(|error| error.code(), |reply| reply.result)
+    let mut bytes = [0; charlotte_launch::release_admission::MAX_LEN];
+    let Some(len) = receipt.encode(&mut bytes) else {
+        return response(catten_services::dns::ERR_UNCERTAIN);
+    };
+    let mut hex = alloc::string::String::with_capacity(len * 2);
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    for byte in &bytes[..len] {
+        hex.push(DIGITS[(byte >> 4) as usize] as char);
+        hex.push(DIGITS[(byte & 15) as usize] as char);
+    }
+    let body = format!("{{\"admission\":\"{hex}\"}}\n");
+    format!(
+        "HTTP/1.1 202 Accepted\r\nContent-Type: application/json\r\nContent-Length: \
+         {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    )
 }
 
 fn notify_operations(controller: catten_rt::owned::ConnectionRef<'_>, bundle: &[u8]) -> i64 {
@@ -434,7 +468,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 Cow::Owned(response(notify_cluster(controller.as_ref(), &descriptor)))
             }
             Ok(Ok(Request::Release(envelope))) => {
-                Cow::Owned(response(notify_release(controller.as_ref(), &envelope)))
+                Cow::Owned(release_response(notify_release(controller.as_ref(), &envelope)))
             }
             Ok(Ok(Request::Operations(bundle))) => {
                 Cow::Owned(response(notify_operations(controller.as_ref(), &bundle)))

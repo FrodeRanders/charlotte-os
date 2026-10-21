@@ -211,3 +211,48 @@ pub(super) fn packed_name(packed: u64) -> Vec<u8> {
     let len = bytes.iter().rposition(|byte| *byte != 0).map_or(0, |index| index + 1);
     bytes[..len].to_vec()
 }
+
+/// Adopt the release transaction once and prepare its terminal output before admission.
+pub(super) fn read_release_request(
+    message: IpcMessage,
+) -> Option<(Vec<u8>, catten_services::release_admission::PreparedReply)> {
+    // Raw receive boundary: no scalar attachment guard or caller may reuse this message.
+    let Ok(Some(mut incoming)) = (unsafe { catten_rt::owned::IncomingMessage::from_raw(message) })
+    else {
+        return None;
+    };
+    let token = incoming.reply.take()?;
+    let parsed = (|| {
+        if incoming.connection.is_some() {
+            return Err(dns::ERR_BAD_OPCODE);
+        }
+        let len = usize::try_from(incoming.arg0).map_err(|_| dns::ERR_TOO_LARGE)?;
+        if len == 0 || len > charlotte_launch::release::MAX_RELEASE_LEN {
+            return Err(dns::ERR_TOO_LARGE);
+        }
+        let memory = incoming.memory.take().ok_or(dns::ERR_BAD_OPCODE)?;
+        if len > memory.len() {
+            return Err(dns::ERR_TOO_LARGE);
+        }
+        let mapping = memory.map_read_only().map_err(|_| dns::ERR_RESOURCE_LIMIT)?;
+        let mut envelope = Vec::new();
+        envelope.try_reserve_exact(len).map_err(|_| dns::ERR_RESOURCE_LIMIT)?;
+        envelope.extend_from_slice(&mapping.as_slice()[..len]);
+        drop(mapping.unmap().map_err(|_| dns::ERR_RESOURCE_LIMIT)?);
+        Ok(envelope)
+    })();
+    let envelope = match parsed {
+        Ok(envelope) => envelope,
+        Err(code) => {
+            let _ = token.reply(code);
+            return None;
+        }
+    };
+    match catten_services::release_admission::PreparedReply::prepare(token, &envelope) {
+        Ok(reply) => Some((envelope, reply)),
+        Err((token, code)) => {
+            let _ = token.reply(code);
+            None
+        }
+    }
+}

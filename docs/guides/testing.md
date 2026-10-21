@@ -1784,4 +1784,14 @@ and malformed admission/readiness records, checking one POST per operation.
 The peer uses current acknowledgement/status fields but supplies scripted public
 observations; this is a client control, without a live cluster or guest run.
 See the [client-generation audit](../reports/audits/2026-10-21-security-deployment-generation.md)
-for baseline failures and the remaining release-client/deadline gaps.
+for baseline descriptor failures.
+
+`python3 scripts/tests/test-release-generation.py --signer target/debug/cluster-sign -v`
+uses complete digest-bound receipts for independent component generations. Its
+seven methods cover 13 cases, including stale/superseding observations and
+retired, truncated, extended, duplicate, wrong-envelope and wrong-count receipts.
+Each case checks one POST; invalid admission performs no status query. Repeat
+with `target/release/cluster-sign`. Run `catten-services --lib` tests in both
+profiles: projected capacity charging must execute with debug assertions disabled.
+See the [release-generation audit](../reports/audits/2026-10-21-security-release-generation.md)
+for execution evidence and the remaining deadline/polling and ownership limits.

@@ -415,5 +415,14 @@ substring test with the current acknowledgement and six-field readiness codec.
 It requires complete unambiguous scalar records and retains each admitted
 generation through observation; there is no missing-generation or substring
 fallback. Server encoding, HTTP routes, CLI arguments and runtime ABI are
-unchanged. `release-apply` and standalone named status still need separate
-qualification; the release acknowledgement has no component-generation map.
+unchanged. Standalone named status remains an observation of current state.
+
+The [release-generation follow-up](../reports/audits/2026-10-21-security-release-generation.md) introduces one complete `CRLADM01` result grammar with the exact envelope
+digest, independent release generation and ordered component generations. DNS
+opcode 20 and clusterctl opcode 9 move that receipt on success; HTTP release
+admission returns its lowercase hex in the sole `admission` field. Earlier
+positive scalar release successes reject. The correlated release relay uses
+`0x2b/0x2c`; retired `0x19/0x1a` frames reject. Operational admission validates
+the complete catalog result before exposing its existing scalar generation.
+Signed envelopes, persistent catalog/log grammar, CLI arguments and runtime ABI
+are unchanged. See [the exact contract](release-admission.md).

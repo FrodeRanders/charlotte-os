@@ -134,19 +134,25 @@ through any member; a follower source-validates and correlates its relay to the
 leader. The leader resolves every zero node key and signed placement policy,
 then proposes all concrete replica sets as one Raft command. The replicated state machine preflights the release and
 all component sequences while holding the deployment map, then changes either
-all desired deployments or none. Exact retries return the existing release
-generation, and catalog snapshots retain the signed release and replica records.
+all desired deployments or none. The commit result captures the release generation
+and each component deployment generation in signed-envelope order. Exact retries
+return a receipt only while every component still has those signed descriptor
+bytes; a superseded component rejects without changing live state. Catalog
+snapshots retain the signed release and replica records.
 
-Atomic admission does not mean simultaneous readiness. Node agents reconcile
-the newly visible desired records independently. `release-apply` currently
-polls readiness by component name. Its admission acknowledgement contains only
-the release generation, which is independent of each component's deployment
-generation; the client does not bind its wait to those component generations.
-Concurrent supersession can therefore satisfy that client with another rollout's
-ready status. This remains an explicit client gap; atomic catalog admission and
-server-side generation checks do not close it. A fetch or launch failure can
-also leave a release committed but not ready; automatic rollback and rollout policy
-remain controller work. `CRELEASE` binds executable deployment decisions, not
+After atomic admission, node agents reconcile the desired records independently.
+`release-apply` validates the complete `CRLADM01` receipt, bound to the exact
+signed envelope digest and descriptor count. It retains each component's own
+deployment generation. Older observations stay pending, matching ready generations
+complete, and a newer generation fails as superseded. Malformed receipts or
+HTTP-200 status records stop with the operation unconfirmed; the client does not
+replay accepted notification. See [release admission results](release-admission.md)
+for the IPC, relay and HTTP grammar and ownership boundary.
+
+A fetch or launch failure can leave a release committed but not ready; automatic
+rollback and rollout policy remain controller work. Host polling, end-to-end
+operation deadlines and ingress peer authentication remain separate gaps.
+`CRELEASE` binds executable deployment decisions, not
 yet the BPMN digest, schemas, provenance graph, or other
 semantic content of a complete Durga process bundle.
 

@@ -274,7 +274,10 @@ fn signed_operational_bundle(
 }
 
 fn i64_result(bytes: Vec<u8>) -> i64 {
-    i64::from_le_bytes(bytes.try_into().unwrap())
+    match charlotte_launch::release_admission::decode_result(&bytes) {
+        Some(Ok(receipt)) => receipt.generation() as i64,
+        _ => i64::from_le_bytes(bytes.try_into().unwrap()),
+    }
 }
 
 #[test]
@@ -480,7 +483,7 @@ fn replica_set_readiness_is_per_node_generation_fenced_and_snapshotted() {
     let catalog = seed_catalog(NameCatalog::new_with_deployment_key(key));
     let command = encode_release_replicas(&release, &[vec![0x1111_1111, 0x2222_2222]])
         .expect("replica command");
-    assert_eq!(catalog.apply_with_result(1, &command), 1i64.to_le_bytes());
+    assert_eq!(i64_result(catalog.apply_with_result(1, &command)), 1);
     assert_eq!(
         catalog.deployment(b"orders").unwrap().replica_nodes,
         vec![0x1111_1111, 0x2222_2222]
@@ -675,12 +678,13 @@ fn signed_release_is_atomic_idempotent_and_snapshot_persistent() {
         ),
         Some(relay)
     );
-    let relay_reply = crate::rrelease::encode_reply(3, 9, 1);
+    let result = catalog.apply_with_result(1, &command_v1);
+    let relay_reply = crate::rrelease::PreparedReply::prepare(3, 9).unwrap().finish(&result);
     assert_eq!(
         crate::rrelease::decode_reply(
             &[&[crate::rrelease::TAG_REPLY], relay_reply.as_slice()].concat()
         ),
-        Some((3, 9, 1))
+        Some((3, 9, result.as_slice()))
     );
     assert_eq!(i64_result(catalog.apply_with_result(1, &command_v1)), 1);
     assert_eq!(i64_result(catalog.apply_with_result(2, &command_v1)), 1);
@@ -1064,7 +1068,7 @@ fn mixed_architecture_rollout_pins_each_binary_and_preserves_it_through_restore(
     )
     .unwrap();
     let command = super::encode_release_replicas(&release, &assignments, &capacity).unwrap();
-    assert_eq!(catalog.apply_with_result(1, &command), 1i64.to_le_bytes());
+    assert_eq!(i64_result(catalog.apply_with_result(1, &command)), 1);
     let entry = catalog.deployment(b"orders").unwrap();
     assert_eq!(entry.replica_nodes, vec![1, 2]);
     assert_eq!(entry.replica_variants, vec![0, 1]);
@@ -1380,4 +1384,71 @@ fn catalog_observation_is_complete_bounded_and_preserves_live_state_on_rejection
     assert_eq!(catalog.registered_count(), 2);
     catalog.apply(1, &encode_unregister_generation(&name_b, b"node", 1));
     assert_eq!(catalog.catalog_result().unwrap(), bytes);
+}
+
+#[test]
+fn release_receipt_captures_independent_components_and_rejects_superseded_retry() {
+    let pair = fixture_pair();
+    let catalog = fixture_catalog();
+    for sequence in 1..=3 {
+        assert_eq!(
+            i64_result(catalog.apply_with_result(1, &deploy_fixture(b"first", 0x1111, sequence))),
+            sequence as i64
+        );
+    }
+    let first = signed_deployment(&pair, b"first", 4);
+    let second = signed_deployment(&pair, b"second", 1);
+    let envelope = signed_release(&pair, b"receipt", 1, &[&first, &second]);
+    let command = encode_release(&envelope, &[0x1111, 0x2222]).unwrap();
+    let result = catalog.apply_with_result(1, &command);
+    let receipt = charlotte_launch::release_admission::Receipt::decode(&result).unwrap();
+    assert_eq!(receipt.generation(), 1);
+    assert_eq!(receipt.components(), &[4, 1]);
+    assert!(receipt.matches(&envelope));
+    assert_eq!(catalog.apply_with_result(1, &command), result);
+    let restored = fixture_catalog();
+    restored.restore(&catalog.snapshot()).unwrap();
+    assert_eq!(restored.apply_with_result(1, &command), result);
+    assert_eq!(i64_result(catalog.apply_with_result(1, &deploy_fixture(b"first", 0x1111, 5))), 5);
+    let before = catalog.snapshot();
+    assert_eq!(
+        i64_result(catalog.apply_with_result(1, &command)),
+        crate::clusterctl::ERR_CONFLICTING_DESCRIPTOR
+    );
+    assert_eq!(catalog.snapshot(), before);
+    assert!(!receipt.matches(&signed_release(&pair, b"other", 1, &[&first, &second])));
+}
+
+#[test]
+fn release_relay_requires_complete_current_result() {
+    let pair = fixture_pair();
+    let envelope = signed_release(&pair, b"receipt", 1, &[&signed_deployment(&pair, b"app", 1)]);
+    let receipt = charlotte_launch::release_admission::Receipt::new(&envelope, 1, &[7]).unwrap();
+    let mut bytes = [0; charlotte_launch::release_admission::MAX_LEN];
+    let len = receipt.encode(&mut bytes).unwrap();
+    let prepared = crate::rrelease::PreparedReply::prepare(3, 9).unwrap();
+    let frame = [&[crate::rrelease::TAG_REPLY][..], &prepared.finish(&bytes[..len])].concat();
+    assert_eq!(crate::rrelease::decode_reply(&frame), Some((3, 9, &bytes[..len])));
+    for retired in [0x19, 0x1a] {
+        let mut bad = frame.clone();
+        bad[0] = retired;
+        assert!(crate::rrelease::decode_reply(&bad).is_none());
+    }
+    for end in 0..frame.len() {
+        assert!(crate::rrelease::decode_reply(&frame[..end]).is_none());
+    }
+    let mut extended = frame.clone();
+    extended.push(0);
+    assert!(crate::rrelease::decode_reply(&extended).is_none());
+    let error = crate::rrelease::PreparedReply::prepare(3, 9).unwrap().finish(&1i64.to_le_bytes());
+    let frame = [&[crate::rrelease::TAG_REPLY][..], &error].concat();
+    assert_eq!(
+        crate::rrelease::decode_reply(&frame).unwrap().2,
+        crate::dns::ERR_UNCERTAIN.to_le_bytes()
+    );
+    assert_eq!(crate::release_admission::generation_result(&bytes[..len]), 1);
+    assert_eq!(
+        crate::release_admission::generation_result(&1i64.to_le_bytes()),
+        crate::dns::ERR_UNCERTAIN
+    );
 }

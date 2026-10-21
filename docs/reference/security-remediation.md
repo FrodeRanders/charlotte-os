@@ -591,8 +591,10 @@ signer durability, production trust and finding counts remain unchanged.
 The [deployment-generation follow-up](../reports/audits/2026-10-21-security-deployment-generation.md) binds descriptor-apply readiness
 to each admitted generation. Stale readiness stays pending, matching readiness
 completes and supersession fails. Malformed records stop without POST replay.
-Live-CLI loopback controls preserve the baseline false successes. The release
-client still lacks component-generation binding; deadline/polling and ingress
+Live-CLI loopback controls preserve the baseline false successes. The
+[release-generation follow-up](../reports/audits/2026-10-21-security-release-generation.md) carries a complete digest-bound component receipt from catalog apply through
+local/follower admission and HTTP to the host. It also corrects capacity charges
+that release builds skipped inside `debug_assert!`. Deadline/polling and ingress
 peer authentication remain separate. Finding counts are unchanged.
 
 The [SEC-15 hash-state follow-up](../reports/audits/2026-10-19-security-hash-state-erasure.md)

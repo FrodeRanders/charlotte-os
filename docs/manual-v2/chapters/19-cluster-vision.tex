@@ -900,16 +900,21 @@ request to the current leader, which resolves all signed placement policies
 against admitted, non-draining voters and proposes the concrete replica sets
 as one Raft command. The state machine preflights every
 release and component revision before changing the deployment map, so desired
-state changes all at once or not at all. Exact retries are idempotent and the
-signed release record survives catalog snapshots.
+state changes all at once or not at all. A commit receipt captures the release
+generation and each component deployment generation in signed-envelope order.
+An exact retry returns a receipt while every component still has those signed
+descriptor bytes; a superseded component rejects without changing live state.
+The signed release record survives catalog snapshots.
 
-After atomic admission, agents fetch, launch, and publish independently;
-\texttt{release-apply} still polls each component's readiness by name. Its
-acknowledgement supplies only an independent release generation, without the
-component-generation map. Concurrent supersession can satisfy that client with
-another rollout's ready status; exact client binding remains open. Coordinated
-rollback, progress policy, and a semantic process bundle that also binds BPMN,
-schemas, and provenance remain controller work.
+After atomic admission, agents fetch, launch, and publish independently.
+\texttt{release-apply} validates a complete \texttt{CRLADM01} receipt bound to the
+exact signed envelope digest and descriptor count, then retains each component's
+own deployment generation. Older observations stay pending, matching ready
+observations complete, and supersession fails. Malformed receipts or status
+records leave the operation unconfirmed without replaying its notification.
+Polling, end-to-end deadlines, and ingress peer authentication remain separate
+work. Coordinated rollback, progress policy, and a semantic process bundle that
+also binds BPMN, schemas, and provenance remain controller work.
 
 Retirement is nevertheless bounded locally. On the first reconciliation poll,
 the kernel publishes a drain request and monotonic deadline in the domain's

@@ -72,6 +72,7 @@ pub mod operations_bundle;
 pub mod operations_pickup;
 pub mod placement;
 pub mod release;
+pub mod release_admission;
 pub mod shutdown;
 pub mod signature_note;
 pub mod trust;
