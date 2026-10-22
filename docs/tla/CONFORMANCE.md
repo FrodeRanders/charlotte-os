@@ -24,6 +24,30 @@ separates current verifier/fixture/handoff behavior from a conditional future
 protected-installation contract. Platform, atomic-state and custody inputs remain
 unimplemented production boundaries.
 
+## Namespace token selection
+
+`CharlotteNamespaceDrain` projects one poll of an already-fenced namespace with
+quiescent callers and two nonreused token identities. Its peer completion assumes
+the competing owner's typed cleanup proof; it does not manufacture that proof.
+
+| Model action | Rust boundary | Correspondence |
+|---|---|---|
+| `Select`, `SelectEmpty` | IPC token scan in `namespace_close::close_with` | Selection captures an observation before preparation; no token means only that this scan drained, with later authority/memory/root cleanup still required. |
+| `ClosePeer`, `FinishClaim` | Competing loan-free peer close or original claim owner completion | Actual token removal permits progress; claim completion and physical proof are boundary inputs. |
+| `CancelSelected` | PreparedCancellation succeeds and finishes through its existing typed owner | Abstracts successful per-token cleanup; it never duplicates a claimed operation. |
+| `RejectPreparation`, `RecheckMissing` | Preparation returns Pending, then exact presence is rechecked under IPC | Missing selection permits rescan with the same closing owner. Nonreused identities and fenced admission make every such rescan observed progress. |
+| `ReturnPending` | Every still-present token remains Pending | Includes active/changed-epoch claims and ordinary peer-admission rejection. No busy loop, claim reset or cleanup authority follows this observation. |
+
+`NoStalePending` records that a Pending decision checked actual token presence.
+`CompleteOnlyDrained` forbids namespace completion with represented tokens left.
+Unsafe controls restore stale Pending or skip a live selection. The finite graph
+ends at a poll's return; later wakes, deadlines, reentry, epoch transitions,
+allocator/admission pressure and root/loan/backing release are outside it. The
+existing root-retirement model carries the enclosing lifetime boundary. Native
+controls inject a real close between scan/preparation with local guards released;
+production supplies an empty fixture hook. See the
+[implementation evidence](../reports/audits/2026-10-22-ipc-namespace-selection.md).
+
 ## Deployment logical close
 
 | Model state/action | Implementation | Qualification |

@@ -191,6 +191,14 @@ terminal error reports that observation before retaining its closing owner.
 This makes future recurrences distinguishable; it does not resolve the earlier
 cancellation-stress timeout, change its budget or authorize reclamation/retry.
 
+The [namespace selection correction](../reports/audits/2026-10-22-ipc-namespace-selection.md)
+reproduces a separate stale-Pending race: a real peer close consumes a selected
+token before cancellation preparation. Cleanup now rechecks exact presence and
+rescans only after observed removal, while keeping every still-present claim
+Pending. The same closing root, original charges and completion proofs remain
+required. This removes one possible false timeout boundary; its relationship to
+the historical live cancellation-stress timeout remains unproven.
+
 Remaining acceptance requires progress during saturated admission and slow
 controller-server/transport phases, sustained connection/packet flood, NIC failure
 and lifecycle shutdown evidence on supported targets. Signatures checked after receipt do

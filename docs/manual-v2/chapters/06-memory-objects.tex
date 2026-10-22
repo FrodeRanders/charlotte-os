@@ -183,6 +183,15 @@ supervisors retain a teardown owner across polls and refuse
 to report reclamation after a terminal error. They do not reclaim a root whose
 close failed or whose leases did not drain.
 
+Namespace cancellation now rechecks the exact token after rejected preparation.
+A peer close may have consumed the selected token while IPC serialization was
+released. Confirmed absence permits rescan through the same closing owner;
+every still-present token or claim remains Pending. This check supplies no
+physical or whole-namespace completion proof, adds no busy-token retry and
+restarts no deadline. A deterministic control reproduces the earlier stale
+Pending result; its connection to the historical live timeout remains unproven.
+See \repofile|docs/reports/audits/2026-10-22-ipc-namespace-selection.md|.
+
 Each closing owner keeps its last actual Pending observation inline: the
 checked preflight's root-lease count and stage, the selected IPC token/call and
 claim epoch, or the memory object's transfer/revocation flags and pin counts.

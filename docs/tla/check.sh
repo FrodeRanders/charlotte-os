@@ -88,6 +88,12 @@ run_expected_violation() {
 }
 
 cd "${script_dir}"
+run_model CharlotteNamespaceDrain CharlotteNamespaceDrain_small.cfg \
+    Select SelectEmpty ClosePeer FinishClaim CancelSelected RejectPreparation RecheckMissing ReturnPending
+run_expected_violation CharlotteNamespaceDrain CharlotteNamespaceDrain_stale_unsafe.cfg \
+    NoStalePending UnsafeStalePending
+run_expected_violation CharlotteNamespaceDrain CharlotteNamespaceDrain_skip_unsafe.cfg \
+    CompleteOnlyDrained UnsafeSkipLive
 run_model CharlotteDeploymentClose CharlotteDeploymentClose_blocking.cfg \
     RejectQueue Admit ProducerAck ProducerUnavailable ObserveAck Expire RejectWaitOrObservation Park Wake Tick RetainAdmission
 run_expected_violation CharlotteDeploymentClose CharlotteDeploymentClose_fallback_unsafe.cfg \

@@ -158,8 +158,16 @@ controller calls, response transmission, close, new admissions and wall-clock
 fairness are outside this model. See
 \path{docs/tla/CharlotteDeploymentInput.tla} and its conformance map.
 
-The current suite checks forty-one safe configurations across thirty-eight
-specifications. It also checks 118 expected-counterexample
+The namespace-drain projection checks one poll with two nonreused token
+identities under an existing admission fence. A competing close can remove the
+selection before cancellation preparation. Rechecking absence permits rescan;
+every still-present claim remains Pending. Negative controls restore stale
+Pending or skip live work. Actual root, loan, backing and peer-completion proofs
+are boundary inputs, and later wakes/deadlines lie outside this projection.
+See \path{docs/tla/CharlotteNamespaceDrain.tla}.
+
+The current suite checks forty-two safe configurations across thirty-nine
+specifications. It also checks 120 expected-counterexample
 configurations. The models are divided by state ownership and failure boundary
 so that each remains reviewable.
 The Raft models are deliberately layered: election, log replication,
@@ -245,6 +253,10 @@ different proof obligations.
 \tlbreak{Charlotte}{AddressSpace} & Reusable numeric ASIDs and software-generation
     handles & A stale handle cannot close a replacement that reused the same
     numeric ASID. \\
+\hline
+\tlbreak{Charlotte}{NamespaceDrain} & Fenced namespace selection, peer close,
+    rejected preparation and presence recheck & Missing selections rescan;
+    Pending checks presence; live claims prevent namespace completion. \\
 \hline
 \tlbreak{Charlotte}{RootRetirement} & Exact-root leases, staged close,
     invalidation retry, abandonment and physical release & Complete owners
@@ -783,6 +795,12 @@ present conformance obligations:
 \textbf{Unsafe action} & \textbf{Failure represented} & \textbf{Required violation} \\
 \hline
 \endhead
+\tlbreak{UnsafeStale}{Pending} & A consumed namespace selection returns Pending
+    without presence revalidation. & \texttt{NoStalePending} \\
+\hline
+\tlbreak{UnsafeSkip}{Live} & Namespace drain skips a still-present token. &
+    \texttt{CompleteOnlyDrained} \\
+\hline
 \tlbreak{Unsafe}{MessageWake} & Message readiness and endpoint-close observation
     share one observer queue. & \tlbreak{CloseSignalImplies}{Closed} \\
 \hline
@@ -1114,7 +1132,7 @@ Flat session allocation & Retry and restart epochs alias one wire session. &
 \end{longtable}
 \normalsize
 
-The check suite expects all 118 negative configurations to fail for the named
+The check suite expects all 120 negative configurations to fail for the named
 reason. If one unexpectedly satisfies its invariant, the regression harness
 has lost sensitivity and the suite fails.
 
@@ -1160,12 +1178,12 @@ docs/tla/check.sh /path/to/tla2tools.jar
 Alternatively, \texttt{TLA2TOOLS\_JAR} may name the tools archive. The script:
 
 \begin{itemize}
-    \item runs all forty-one safe configurations;
+    \item runs all forty-two safe configurations;
     \item enables action coverage and requires selected actions to have a
         positive successor count;
     \item rejects structural TLC warnings about variables, \texttt{EXCEPT}
         expressions, or incomplete successor states;
-    \item runs 118 negative configurations and requires each one to fail on
+    \item runs 120 negative configurations and requires each one to fail on
         the named invariant after exercising the named unsafe action; and
     \item writes checkpoints and traces into a temporary directory so generated
         state does not become part of the source tree.

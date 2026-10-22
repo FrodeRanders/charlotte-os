@@ -55,7 +55,17 @@ pub(crate) fn begin(owner: &ClosingAddressSpace) -> Result<(), IpcError> {
 /// spinning or sleeping under a registry/lifecycle guard.
 pub(crate) fn close_with(
     owner: &ClosingAddressSpace,
+    finish: impl FnMut(LoanRevocation) -> Result<(), MemoryObjectError>,
+) -> Result<NamespaceProgress, IpcError> {
+    close_with_before_prepare(owner, finish, || {})
+}
+
+// Production has an empty hook. Serialized fixtures perform a real competing
+// close after selection, with IPC/lifecycle/table guards released.
+pub(super) fn close_with_before_prepare(
+    owner: &ClosingAddressSpace,
     mut finish: impl FnMut(LoanRevocation) -> Result<(), MemoryObjectError>,
+    mut before_prepare: impl FnMut(),
 ) -> Result<NamespaceProgress, IpcError> {
     let asid = owner.handle().id();
     loop {
@@ -81,9 +91,20 @@ pub(crate) fn close_with(
         let Some(token) = next else {
             break;
         };
+        before_prepare();
         match cancellation::PreparedCancellation::prepare_namespace_token(owner, token.token) {
             Ok(call) => call.finish_with(&mut finish)?,
-            Err(IpcError::Pending) => return Ok(NamespaceProgress::Pending(token)),
+            Err(IpcError::Pending) => {
+                // Selection and preparation are separated by an unlocked
+                // interval. A peer close may have consumed this nonreused
+                // token. Rescan only after observing that actual progress;
+                // every still-present token/claim remains Pending, regardless
+                // of a changed epoch or another preparation rejection.
+                let present = IPC.read().reply_tokens.contains_key(&token.token);
+                if present {
+                    return Ok(NamespaceProgress::Pending(token));
+                }
+            }
             Err(error) => return Err(error),
         }
     }

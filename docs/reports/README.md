@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [IPC namespace selection recheck](audits/2026-10-22-ipc-namespace-selection.md) — Real peer-close interleaving reproduces stale Pending; exact presence recheck preserves live claims and original backing charges.
+
 - [Exact-root retirement pending diagnostics](audits/2026-10-22-root-retirement-diagnostics.md) — Captured Pending stages separate lease, IPC and memory observations; historical reclamation timeout remains unresolved.
 
 - [Immediate socket send: complete IDs and owned frames](audits/2026-10-22-security-immediate-send.md) — retires packed selectors and raw send cleanup; native frame rejection and high-half isolation controls.

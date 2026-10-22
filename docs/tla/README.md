@@ -1,10 +1,10 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains finite, executable specifications for thirty-eight
-CharlotteOS subsystems:
+This directory contains thirty-nine finite, executable specification modules:
 
 | Subsystem | Module | Fast configuration |
 |---|---|---|
+| Namespace token selection, peer close and Pending revalidation | `CharlotteNamespaceDrain.tla` | `CharlotteNamespaceDrain_small.cfg` |
 | Logical socket-close ownership, acknowledgement and admission | `CharlotteDeploymentClose.tla` | `CharlotteDeploymentClose_small.cfg`, `CharlotteDeploymentClose_blocking.cfg` |
 | Deployment response prefix receipts and original output budgets | `CharlotteDeploymentOutput.tla` | `CharlotteDeploymentOutput_small.cfg` |
 | Deployment controller ownership and independent reply observation | `CharlotteDeploymentControl.tla` | `CharlotteDeploymentControl_small.cfg` |
@@ -43,6 +43,12 @@ CharlotteOS subsystems:
 | Filtered placement control, dwell, and reservations | `CharlottePlacementControl.tla` | `CharlottePlacementControl_small.cfg` |
 | Remote-call identity, uncertainty, and bounded deduplication | `CharlotteRemoteCall.tla` | `CharlotteRemoteCall_small.cfg` |
 | Reliable-message restart/retry sessions | `CharlotteReliableMessage.tla` | `CharlotteReliableMessage_small.cfg` |
+
+The [22 October namespace-selection review](../reports/audits/2026-10-22-ipc-namespace-selection.md)
+checks one fenced namespace drain with two nonreused tokens. Peer close can
+consume a selection before preparation. Missing selections rescan; a still-live
+claim remains Pending. Negative controls return stale Pending or skip live work.
+Enclosing exact-root, loan/backing and physical cleanup proofs remain inputs.
 
 The [22 October synchronous-close review](../reports/audits/2026-10-22-security-synchronous-close.md)
 extends the same close model with one blocking owner and terminal unstarted
@@ -107,8 +113,8 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all forty-one complete fast configurations and 118 expected-failure
-  deployment-close, deployment-output, deployment-input, deployment-control, IPC-transaction, IPC-publication, endpoint-observer, name-publication, boot-trust, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
+- runs all forty-two complete fast configurations and 120 expected-failure
+  namespace-drain, deployment-close, deployment-output, deployment-input, deployment-control, IPC-transaction, IPC-publication, endpoint-observer, name-publication, boot-trust, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
   checked-wait, domain-abort, address-space, root-retirement, hardware-ASID, interrupt-route, service-lifecycle, DMA, DMA-operation, authorization,
   Raft-join, Raft-response, Raft-stream, snapshot-restore, cluster-ingress, and reliable-message regression configurations;
 - enables TLC action coverage;

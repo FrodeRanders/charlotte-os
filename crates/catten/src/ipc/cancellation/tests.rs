@@ -156,6 +156,8 @@ pub(crate) fn run() {
     serialized_bulk_success();
     serialized_bulk_failure();
     namespace_success();
+    namespace_selected_token_disappears();
+    namespace_missing_selection_preserves_live_claim();
     namespace_closing_peers();
     namespace_kernel_caller();
     namespace_preparation_failure();
@@ -1028,6 +1030,103 @@ fn namespace_success() {
     scalar_call(root.id(), connection, 1, 0).unwrap();
     memory::close_user_address_space_handle(root).unwrap();
     assert_eq!(memory::current_address_space_handle(root.id()), None);
+}
+
+fn namespace_selected_token_disappears() {
+    for delivered in [false, true] {
+        let caller = crate::service::loader::create_user_address_space_handle();
+        let server = crate::service::loader::create_user_address_space_handle();
+        let endpoint = endpoint_create(server.id(), 0x5245_4348, 1, 4).unwrap();
+        let connection =
+            connection_delegate(server.id(), endpoint, caller.id(), ConnectionRights::ALL).unwrap();
+        let memory = object::allocate(caller.id(), 1).unwrap();
+        let call = scalar_call_with_memory_move(caller.id(), connection, 1, 0, memory).unwrap();
+        let received = delivered.then(|| receive(server.id(), endpoint).unwrap());
+        let mut closing = ClosingAddressSpace::begin_ready(caller).unwrap();
+        assert!(closing.start_cleanup().unwrap());
+        let mut selections = 0;
+        let progress =
+            namespace_close::close_with_before_prepare(&closing, LoanRevocation::finish, || {
+                selections += 1;
+                assert_eq!(selections, 1, "removed token was selected again");
+                unlocked();
+                // No loans: the peer's ordinary close can finish after root
+                // admission is fenced. It owns its exact reply/endpoint cap.
+                close_cap(
+                    server.id(),
+                    received.as_ref().map_or(endpoint, |message| message.reply.unwrap()),
+                )
+                .unwrap();
+            })
+            .unwrap();
+        assert!(
+            matches!(progress, namespace_close::NamespaceProgress::Complete),
+            "removed selected token returned stale Pending"
+        );
+        assert_eq!(selections, 1);
+        assert_eq!(poll_reply(caller.id(), call), Err(IpcError::UnknownCapability));
+        assert_eq!(memory::budget::used(caller).pages, u64::from(delivered));
+        assert!(matches!(closing.poll().unwrap(), CloseProgress::Complete));
+        // A delivered move remains the server's owner and original charge;
+        // rechecking a missing token does not reclaim escaped backing.
+        if let Some(message) = received {
+            let memory = message.memory.unwrap();
+            assert_eq!(memory::budget::used(caller).pages, 1);
+            object::close_cap(server.id(), memory).unwrap();
+            assert_eq!(memory::budget::used(caller).pages, 0);
+        }
+        memory::close_user_address_space_handle(server).unwrap();
+    }
+    crate::logln!(
+        "[IPC namespace recheck] removed queued/delivered token drains in one pass; delivered \
+         move retains its original charge"
+    );
+}
+
+fn namespace_missing_selection_preserves_live_claim() {
+    let caller = crate::service::loader::create_user_address_space_handle();
+    let server = crate::service::loader::create_user_address_space_handle();
+    let endpoint = endpoint_create(server.id(), 0x5245_4348, 1, 4).unwrap();
+    let connection =
+        connection_delegate(server.id(), endpoint, caller.id(), ConnectionRights::ALL).unwrap();
+    let first = scalar_call(caller.id(), connection, 1, 0).unwrap();
+    let reply = receive(server.id(), endpoint).unwrap().reply.unwrap();
+    let second = scalar_call(caller.id(), connection, 2, 0).unwrap();
+    let identity = resolve(&IPC.read(), caller.id(), second).unwrap().unwrap();
+    let mut closing = ClosingAddressSpace::begin_ready(caller).unwrap();
+    assert!(closing.start_cleanup().unwrap());
+    let claim = PreparedCancellation::prepare_namespace_token(&closing, identity.token).unwrap();
+    let mut selections = 0;
+    let progress =
+        namespace_close::close_with_before_prepare(&closing, LoanRevocation::finish, || {
+            unlocked();
+            selections += 1;
+            if selections == 1 {
+                close_cap(server.id(), reply).unwrap();
+            }
+        })
+        .unwrap();
+    let namespace_close::NamespaceProgress::Pending(pending) = progress else {
+        panic!("missing selection erased another live claim")
+    };
+    assert_eq!(selections, 2);
+    assert_eq!(pending.token, identity.token);
+    assert!(pending.completing);
+    assert_eq!(pending.epoch, 1);
+    assert_eq!(poll_reply(caller.id(), second), Ok(None));
+    assert_eq!(poll_reply(caller.id(), first).unwrap().unwrap().result, REPLY_CANCELLED);
+    assert_eq!(memory::current_address_space_handle(caller.id()), Some(caller));
+    assert!(matches!(
+        AddressSpaceOperation::acquire(caller),
+        Err(crate::memory::operation::OperationError::Closing)
+    ));
+    claim.finish_with(LoanRevocation::finish).unwrap();
+    assert!(matches!(closing.poll().unwrap(), CloseProgress::Complete));
+    memory::close_user_address_space_handle(server).unwrap();
+    crate::logln!(
+        "[IPC namespace recheck] removed selection preserves the next live claim/epoch and exact \
+         closing root until its owner completes"
+    );
 }
 
 fn namespace_closing_peers() {

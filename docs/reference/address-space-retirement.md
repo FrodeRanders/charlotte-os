@@ -74,6 +74,16 @@ not the identity of a still-live claim. `Memory` captures the selected object,
 object/authority phase, transfer/revocation flags and retirement/DMA/copy pins
 under its registry at the actual Pending return.
 
+Cancellation preparation can return Pending after a peer has already consumed
+the selected token. Namespace cleanup now rechecks that exact nonreused token
+under IPC. Absence permits a rescan through the same closing owner; another
+still-present token, including an active or changed-epoch claim, remains Pending.
+This recheck cannot remove authority, restart physical cleanup or infer that the
+whole namespace is empty. Ordinary namespace/memory proofs still precede root
+sealing. The namespace fence and quiescent-thread precondition bound progress
+rescans to actual token removals; there is no busy-token retry loop. See the
+[selection-race correction](../reports/audits/2026-10-22-ipc-namespace-selection.md).
+
 On a supervisor terminal error, explicit polling logs the captured root ID and
 generation, error and last Pending sample before abandoning its complete closing
 owner. Local lifecycle/table/subsystem guards have left; cached failures do not
