@@ -168,6 +168,22 @@ boundaries; native ordinary TCP/UDP, Drop and reaped-owner success use the share
 observer. Real rejection/uncertainty fault injection and broader destructor
 latency remain unqualified.
 
+The [immediate-send follow-up](../reports/audits/2026-10-22-security-immediate-send.md)
+removes the remaining 32-bit socket-selector truncation from immediate TCP/UDP
+send. Both send operations now require the same exact CSOCKTX1 page and complete
+ID. Immediate send adopts its complete incoming transaction once and retains its
+read-only mapping through one enqueue attempt, then disposes mapping/backing
+before reply authority. Retired packed pages and malformed frames reject before
+backend enqueue; no old decoder or low-half lookup remains. Current callers
+migrate together. This corrects identity/ownership boundaries without adding
+readiness or completing management progress and pressure gates.
+
+Its initial x86 security boot passed both application scopes, then panicked with
+`AddressSpace(OperationDrainTimedOut)` while reclaiming the separate cancellation-
+stress domain. The captured stack identifies `flood.stop`; it does not identify
+which lease or namespace cleanup stage stayed pending. That failure remains
+separate from any passing repeat, without a causal conclusion or wider timeout.
+
 Remaining acceptance requires progress during saturated admission and slow
 controller-server/transport phases, sustained connection/packet flood, NIC failure
 and lifecycle shutdown evidence on supported targets. Signatures checked after receipt do

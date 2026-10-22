@@ -77,7 +77,8 @@ pub struct SocketEntry {
     pub close_started_ms: Option<u64>,
 }
 
-/// The complete moved send request stays mapped read-only while TCP is full.
+/// Both send forms own a complete moved request and its read-only mapping.
+/// Deferred TCP may retain it while full; immediate TCP/UDP attempts once.
 /// Mapping access ends before reply/cancellation; enqueue progress fences replay.
 pub struct PendingSend {
     request: IncomingMessage,
@@ -428,6 +429,38 @@ mod tests {
         assert_eq!(state.alloc_sock_id().map(|id| id.0), None);
         assert_eq!(state.alloc_sock_id().map(|id| id.0), None);
         assert_eq!(state.next_sock_id, i64::MAX as u64 + 1);
+    }
+
+    #[test]
+    fn full_width_selectors_distinguish_live_sockets_with_equal_low_halves() {
+        let mut state = state();
+        let owner = SocketOwner {
+            address_space: 5,
+            generation: 7,
+            principal: 9,
+        };
+        let foreign = SocketOwner {
+            generation: 8,
+            ..owner
+        };
+        let mut storage: Vec<SocketStorage<'_>> =
+            core::iter::repeat_with(Default::default).take(2).collect();
+        let mut set = SocketSet::new(&mut storage[..]);
+        let low = state.alloc_sock_id().unwrap();
+        let low_id = low.0;
+        let first = entry(&mut set, owner, SocketKind::Tcp, true);
+        state.publish(&mut set, low, first, |_| Ok::<_, ()>(())).unwrap();
+        state.next_sock_id = (1 << 32) | low_id;
+        let high = state.alloc_sock_id().unwrap();
+        let high_id = high.0;
+        let second = entry(&mut set, owner, SocketKind::Udp, true);
+        state.publish(&mut set, high, second, |_| Ok::<_, ()>(())).unwrap();
+        assert_ne!(low_id, high_id);
+        assert_eq!(low_id as u32, high_id as u32);
+        assert!(state.owned_entry(low_id, owner).unwrap().kind == SocketKind::Tcp);
+        assert!(state.owned_entry(high_id, owner).unwrap().kind == SocketKind::Udp);
+        assert!(state.owned_entry(high_id, foreign).is_none());
+        assert!(state.owned_entry((2 << 32) | low_id, owner).is_none());
     }
 
     #[test]

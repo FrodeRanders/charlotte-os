@@ -474,9 +474,13 @@ fn start_attempt<'connection>(
             return None;
         }
     };
-    packet_mapping.as_mut_slice()[..NTP_PACKET_LEN].fill(0);
-    packet_mapping.as_mut_slice()[0] = 0x23; // LI=0, VN=4, mode=client
-    packet_mapping.as_mut_slice()[40..48].copy_from_slice(&request_transmit.to_be_bytes());
+    let mut packet = [0; NTP_PACKET_LEN];
+    packet[0] = 0x23; // LI=0, VN=4, mode=client
+    packet[40..48].copy_from_slice(&request_transmit.to_be_bytes());
+    if !catten_services::socket_send::encode(&packet, packet_mapping.as_mut_slice()) {
+        ntp_setup_failed(NTP_SETUP_PACKET_MAP, u32::MAX);
+        return None;
+    }
     let packet_memory = match packet_mapping.unmap() {
         Ok(memory) => memory,
         Err((_, error)) => {
@@ -489,8 +493,7 @@ fn start_attempt<'connection>(
             return None;
         }
     };
-    let packed_send = ((NTP_PACKET_LEN as u64) << 32) | (socket.id() & 0xffff_ffff);
-    let send = match tcp_conn.call_move(socket::OP_TRY_SEND, packed_send, packet_memory) {
+    let send = match tcp_conn.call_move(socket::OP_TRY_SEND, socket.id(), packet_memory) {
         Ok(call) => call,
         Err((_, error)) => {
             ntp_setup_failed(NTP_SETUP_SEND_SUBMIT, u32::MAX);

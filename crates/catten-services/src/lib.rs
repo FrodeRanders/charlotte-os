@@ -778,7 +778,8 @@ pub mod socket {
     pub const OP_LISTEN: u32 = 4;
     /// Observe the current accept state without retaining a waiter.
     pub const OP_TRY_ACCEPT: u32 = 5;
-    /// Attempt an immediate packed TCP/UDP send without retaining a waiter.
+    /// Immediate TCP/UDP send: full socket ID in arg0 and exact CSOCKTX1 page.
+    /// Attempts enqueue once without retaining a waiter; no packed fallback.
     pub const OP_TRY_SEND: u32 = 6;
     /// Move one writable `REPLY_BUFFER_BYTES` buffer into the call. Reply
     /// returns that buffer with the byte count, or a scalar error/EOF. The
@@ -905,6 +906,18 @@ pub mod socket {
         fn from(value: IpcError) -> Self {
             Self::Ipc(value)
         }
+    }
+
+    fn send_memory(bytes: &[u8]) -> Result<OwnedMemory, SocketError> {
+        if bytes.is_empty() || bytes.len() > super::socket_send::MAX_PAYLOAD {
+            return Err(SocketError::InvalidReply);
+        }
+        let memory = OwnedMemory::allocate(1).map_err(SocketError::Memory)?;
+        let mut mapping = memory.map_writable().map_err(|(_, error)| SocketError::Memory(error))?;
+        if !super::socket_send::encode(bytes, mapping.as_mut_slice()) {
+            return Err(SocketError::InvalidReply);
+        }
+        mapping.unmap().map_err(|(_, error)| SocketError::Memory(error))
     }
 
     /// A receive result whose memory remains owned until explicitly moved or
@@ -1160,18 +1173,9 @@ pub mod socket {
                 if offset == bytes.len() {
                     return Ok(());
                 }
-                let chunk_len = (bytes.len() - offset).min(4096);
-                let memory = OwnedMemory::allocate(1).map_err(SocketError::Memory)?;
-                let mut mapping =
-                    memory.map_writable().map_err(|(_, error)| SocketError::Memory(error))?;
-                mapping.as_mut_slice()[..chunk_len]
-                    .copy_from_slice(&bytes[offset..offset + chunk_len]);
-                let memory = mapping.unmap().map_err(|(_, error)| SocketError::Memory(error))?;
-                let packed = ((chunk_len as u64) << 32) | (self.id() & 0xffff_ffff);
+                let chunk_len = (bytes.len() - offset).min(super::socket_send::MAX_PAYLOAD);
                 let result = self
-                    .service()
-                    .call_move(OP_TRY_SEND, packed, memory)
-                    .map_err(|(_, error)| SocketError::Ipc(error))?
+                    .try_send_call(&bytes[offset..offset + chunk_len])?
                     .wait()
                     .map_err(SocketError::Ipc)?
                     .result;
@@ -1188,6 +1192,15 @@ pub mod socket {
             Err(SocketError::RetryExhausted)
         }
 
+        /// Submit one immediate TCP/UDP enqueue attempt with the full socket
+        /// identity and caller-owned frame. Acceptance must be observed once;
+        /// timeout or observation failure cannot authorize replay.
+        pub fn try_send_call(&self, bytes: &[u8]) -> Result<PendingCall<'static>, SocketError> {
+            self.service()
+                .call_move(OP_TRY_SEND, self.id(), send_memory(bytes)?)
+                .map_err(|(_, error)| SocketError::Ipc(error))
+        }
+
         /// Submit one deferred TCP send. The moved page contains an exact
         /// frame; no Rust memory borrow survives submission. Observe the
         /// positive prefix receipt before submitting any remaining bytes.
@@ -1199,15 +1212,7 @@ pub mod socket {
             if deadline.expired() {
                 return Err(SocketError::RetryExhausted);
             }
-            if bytes.is_empty() || bytes.len() > super::socket_send::MAX_PAYLOAD {
-                return Err(SocketError::InvalidReply);
-            }
-            let memory = OwnedMemory::allocate(1).map_err(SocketError::Memory)?;
-            let mut mapping = memory.map_writable().map_err(|(_, e)| SocketError::Memory(e))?;
-            if !super::socket_send::encode(bytes, mapping.as_mut_slice()) {
-                return Err(SocketError::InvalidReply);
-            }
-            let memory = mapping.unmap().map_err(|(_, e)| SocketError::Memory(e))?;
+            let memory = send_memory(bytes)?;
             if deadline.expired() {
                 return Err(SocketError::RetryExhausted);
             }

@@ -110,9 +110,16 @@ ends before consuming reply authority. Errors or lost observations cannot
 establish that nothing was enqueued and cannot authorize replay.
 `OwnedSocket::send_call` prepares this frame against an existing deadline and
 returns a pending owner for CQ binding. Deployment response sends use it.
-The existing immediate TCP/UDP operation is explicitly `OP_TRY_SEND` (6), with
-payload length in the high 32 bits and socket ID in the low 32 bits. Both are
-current, distinct operations; opcode 16 has no packed fallback. NIC `net::OP_SEND`
+Immediate TCP/UDP `OP_TRY_SEND` (6) uses that same exact frame and the full
+socket ID in `arg0`. Its owned request attempts enqueue once, then disposes its
+mapping before consuming reply authority. It retains no send waiter. The retired
+packed length/32-bit-ID page rejects, with no low-half lookup or format fallback.
+`OwnedSocket::try_send_call` prepares its caller-owned page; NTP and the smoke
+client use the same grammar. Both send forms allow at most 4080 payload bytes.
+A positive immediate TCP receipt can acknowledge a prefix; UDP acknowledges the
+whole datagram. A rejected, timed-out or lost observation grants no general
+business replay authority. See the [immediate-send audit](../reports/audits/2026-10-22-security-immediate-send.md).
+NIC `net::OP_SEND`
 is a separate protocol. TCP/IP retains its 50 ms timed transport cadence;
 deferred send completion supplies a real reply notification, without making the
 whole stack event-driven. See the [output audit](../reports/audits/2026-10-22-security-deployment-output.md).
@@ -146,8 +153,8 @@ and unreserved/zero IDs reject. The current service incarnation never reuses IDs
 failed publication burns it. Exhaustion returns `ERR_ID_EXHAUSTED` before socket
 backing allocation. The existing connection binds a caller to that incarnation.
 Peer reset or expiry can thus end a local owner after backend reaping. Ordinary
-synchronous close recognizes the same two receipts. Immediate packed operations
-retain their separate full-ID migration gap.
+synchronous close recognizes the same two receipts. All current socket selectors
+carry the complete ID; immediate and deferred send share one frame grammar.
 
 ## What's in place
 

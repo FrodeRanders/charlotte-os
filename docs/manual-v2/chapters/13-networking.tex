@@ -335,9 +335,16 @@ its remainder. Terminal states and explicit close settle the request with an
 error; timeout or observation failure grants no replay authority.
 \texttt{OwnedSocket::send\_call} returns the pending owner for CQ binding.
 Deployment response sends use it with an original five-second output deadline.
-The distinct immediate TCP/UDP operation \texttt{OP\_TRY\_SEND} (6) retains its
-packed length/socket-ID argument. The NIC's send opcode belongs to a separate
-protocol. TCP/IP still progresses on its 50~ms timed reactor cadence; deferred
+The distinct immediate TCP/UDP operation \texttt{OP\_TRY\_SEND} (6) now uses
+that same exact frame and the full socket ID. \texttt{try\_send\_call} prepares
+the caller-owned frame; NTP and the smoke client use the same grammar. Its
+complete incoming owner retains the read-only mapping through one enqueue
+attempt, then releases mapping/backing before replying. It retains no send
+waiter. Retired untagged/packed pages reject without a low-half lookup or format
+fallback. Both operations carry 1--4080 payload bytes. A positive TCP prefix
+receipt permits the remainder; timeout or uncertain observation permits no
+replay. The NIC's send opcode belongs to a separate protocol. TCP/IP still
+progresses on its 50~ms timed reactor cadence; deferred
 receipts do not make the whole transport event-driven.
 
 Reactor logical close uses \texttt{OwnedSocket::into\_closing}, consuming the

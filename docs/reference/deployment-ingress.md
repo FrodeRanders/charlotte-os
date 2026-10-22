@@ -124,8 +124,9 @@ publication, failed publication burns it, and exhaustion rejects before backend
 allocation. The owner's existing connection captures that service incarnation.
 A reset, grace reap or unactivated-creation expiry can therefore retire the
 local ID without a second close. Both synchronous and reactor close decoders
-recognize the two receipts. Other immediate packed socket operations remain a
-separate protocol-simplification boundary.
+recognize the two receipts. Immediate TCP/UDP send also carries the full socket
+ID and exact CSOCKTX1 frame; its retired packed selector is removed in the
+[follow-up](../reports/audits/2026-10-22-security-immediate-send.md).
 
 Ordinary `OwnedSocket::close` and `Drop` now consume the same typed lease into
 `ClosingSocket`; no ID-restoration path remains. The synchronous driver starts

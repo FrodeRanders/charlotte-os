@@ -809,7 +809,11 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 && msg.reply != 0
                 && matches!(
                     msg.opcode,
-                    socket::OP_RECV | socket::OP_STATUS | socket::OP_ACCEPT | socket::OP_SEND
+                    socket::OP_RECV
+                        | socket::OP_STATUS
+                        | socket::OP_ACCEPT
+                        | socket::OP_SEND
+                        | socket::OP_TRY_SEND
                 )
             {
                 // Raw authenticated-receive ABI boundary: transfer every
@@ -839,6 +843,53 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             Err((send, error)) => send.reply(error),
                         }
                     }
+                    continue;
+                }
+                if msg.opcode == socket::OP_TRY_SEND {
+                    use catten_services::socket_state::PendingSend;
+                    // The same complete moved transaction owns both send forms.
+                    // Decode before socket lookup; retired packed pages never
+                    // reach backend enqueue, even with a valid low-half ID.
+                    let mut send = match PendingSend::prepare(request) {
+                        Ok(send) => send,
+                        Err((send, error)) => {
+                            send.reply(error);
+                            continue;
+                        }
+                    };
+                    let Some(entry) = state.owned_entry_mut(msg.arg0, owner) else {
+                        send.reply(socket::ERR_BAD_SOCKET);
+                        continue;
+                    };
+                    let result = if entry.closing {
+                        socket::ERR_NOT_CONNECTED
+                    } else {
+                        send.write(|data| match entry.kind {
+                            SocketKind::Tcp => sockets
+                                .get_mut::<TcpSocket>(entry.handle)
+                                .send_slice(data)
+                                .map_err(|_| socket::ERR_WOULD_BLOCK),
+                            SocketKind::Udp => entry
+                                .udp_remote
+                                .and_then(|remote| {
+                                    sockets
+                                        .get_mut::<UdpSocket>(entry.handle)
+                                        .send_slice(data, remote)
+                                        .ok()
+                                })
+                                .map(|()| data.len())
+                                .ok_or(socket::ERR_NOT_CONNECTED),
+                        })
+                        .map(|len| len as i64)
+                        .unwrap_or_else(|error| error)
+                    };
+                    if result > 0 {
+                        tx_ok = tx_ok.wrapping_add(1);
+                        config::write::<u32>(status::TX_OK, tx_ok);
+                    } else {
+                        tx_err = tx_err.wrapping_add(1);
+                    }
+                    send.reply(result);
                     continue;
                 }
                 if msg.opcode == socket::OP_ACCEPT {
@@ -1255,68 +1306,6 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     } else {
                         ipc_reply(msg.reply, socket::ERR_CONNECTION_REFUSED);
                     }
-                }
-
-                socket::OP_TRY_SEND => {
-                    // arg0 packs the socket id (low 32 bits) and the payload
-                    // length (high 32 bits); the memory object is one page.
-                    let sock_id = (msg.arg0 & 0xffff_ffff) as u64;
-                    let payload_len = (msg.arg0 >> 32) as usize;
-                    let entry = match state.owned_entry_mut(sock_id, owner) {
-                        Some(e) => e,
-                        None => {
-                            if msg.memory != 0 {
-                                memory_close(msg.memory);
-                            }
-                            ipc_reply(msg.reply, socket::ERR_BAD_SOCKET);
-                            continue;
-                        }
-                    };
-                    if msg.memory == 0 {
-                        ipc_reply(msg.reply, 0);
-                        continue;
-                    }
-                    if !(1..=4096).contains(&payload_len) {
-                        memory_close(msg.memory);
-                        ipc_reply(msg.reply, socket::ERR_BAD_OPCODE);
-                        continue;
-                    }
-                    let (scratch_vaddr_3_map_status, scratch_vaddr_3_vaddr) =
-                        memory_map_any(msg.memory, false);
-                    if scratch_vaddr_3_map_status != 0 {
-                        memory_close(msg.memory);
-                        ipc_reply(msg.reply, socket::ERR_BAD_OPCODE);
-                        continue;
-                    }
-                    let data = unsafe {
-                        core::slice::from_raw_parts(scratch_vaddr_3_vaddr as *const u8, payload_len)
-                    };
-                    let result = match entry.kind {
-                        SocketKind::Tcp => sockets
-                            .get_mut::<TcpSocket>(entry.handle)
-                            .send_slice(data)
-                            .map(|len| len as i64)
-                            .unwrap_or(socket::ERR_WOULD_BLOCK),
-                        SocketKind::Udp => entry
-                            .udp_remote
-                            .and_then(|remote| {
-                                sockets
-                                    .get_mut::<UdpSocket>(entry.handle)
-                                    .send_slice(data, remote)
-                                    .ok()
-                            })
-                            .map(|()| payload_len as i64)
-                            .unwrap_or(socket::ERR_NOT_CONNECTED),
-                    };
-                    if result > 0 {
-                        tx_ok = tx_ok.wrapping_add(1);
-                        config::write::<u32>(status::TX_OK, tx_ok);
-                    } else {
-                        tx_err = tx_err.wrapping_add(1);
-                    }
-                    memory_unmap(msg.memory);
-                    memory_close(msg.memory);
-                    ipc_reply(msg.reply, result);
                 }
 
                 socket::OP_CANCEL_RECV => {

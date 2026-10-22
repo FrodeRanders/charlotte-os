@@ -69,33 +69,13 @@ fn ip_from_mac(mac: &[u8; 6]) -> (u8, u8) {
 
 /// Send a payload, retrying while the tcpip service reports `ERR_WOULD_BLOCK`
 /// (the connection is not established yet or the transmit buffer is full).
-fn send_payload(
-    tcp_conn: ConnectionRef<'_>,
-    socket: &socket::OwnedSocket<'_>,
-    data: &[u8],
-) -> bool {
-    send_payload_attempts(tcp_conn, socket, data, 300)
+fn send_payload(socket: &socket::OwnedSocket<'_>, data: &[u8]) -> bool {
+    send_payload_attempts(socket, data, 300)
 }
 
-fn send_payload_attempts(
-    tcp_conn: ConnectionRef<'_>,
-    socket: &socket::OwnedSocket<'_>,
-    data: &[u8],
-    attempts: usize,
-) -> bool {
+fn send_payload_attempts(socket: &socket::OwnedSocket<'_>, data: &[u8], attempts: usize) -> bool {
     for _ in 0..attempts {
-        let Ok(memory) = OwnedMemory::allocate(1) else {
-            return false;
-        };
-        let Ok(mut mapping) = memory.map_writable() else {
-            return false;
-        };
-        mapping.as_mut_slice()[..data.len()].copy_from_slice(data);
-        let Ok(memory) = mapping.unmap() else {
-            return false;
-        };
-        let packed = ((data.len() as u64) << 32) | (socket.id() & 0xffff_ffff);
-        let Ok(send) = tcp_conn.call_move(socket::OP_TRY_SEND, packed, memory) else {
+        let Ok(send) = socket.try_send_call(data) else {
             return false;
         };
         let Ok(sent) = send.wait().map(|result| result.result) else {
@@ -224,8 +204,7 @@ fn probe_cluster_vip(tcp_conn: ConnectionRef<'_>, address: [u8; 4], port: u16) -
 
     let mut successful = 0usize;
     for socket in established {
-        if send_payload_attempts(tcp_conn, &socket, VIP_PROBE_REQUEST, 20) && receive_http(&socket)
-        {
+        if send_payload_attempts(&socket, VIP_PROBE_REQUEST, 20) && receive_http(&socket) {
             successful += 1;
         }
         let _ = socket.close();
@@ -361,7 +340,7 @@ fn main(ctx: Context) -> ! {
             retained.push(mapping.unmap().unwrap_or_else(|_| fail(0xe025)));
             config::write::<u32>(status::STAGE, 9);
 
-            if !send_payload(tcp_conn.as_ref(), &socket, PAYLOAD) {
+            if !send_payload(&socket, PAYLOAD) {
                 fail(0xe013);
             }
             config::write::<u32>(status::STAGE, 10);
@@ -386,7 +365,7 @@ fn main(ctx: Context) -> ! {
         config::write::<u32>(status::STAGE, 7);
 
         for _ in 0..32 {
-            if !send_payload(tcp_conn.as_ref(), &socket, PAYLOAD) {
+            if !send_payload(&socket, PAYLOAD) {
                 fail(0xe018);
             }
             config::write::<u32>(status::STAGE, 8);

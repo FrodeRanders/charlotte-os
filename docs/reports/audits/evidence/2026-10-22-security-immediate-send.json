@@ -1,0 +1,465 @@
+{
+  "schema": "charlotte.security.immediate-send.v1",
+  "report_date": "2026-10-22",
+  "reviewed_revision": "75dbe83b43ca56022daa059a6b947b4edc46b166",
+  "classification": {
+    "corrected": 29,
+    "partial": 6,
+    "open": 3,
+    "SEC-06": "partial",
+    "production_trust": "disabled"
+  },
+  "baseline": {
+    "evidence": "docs/reports/audits/evidence/2026-10-22-security-synchronous-close.json",
+    "sha256": "300a3675c39d23263d75f76ed684dfd1b84bb9dac099b1b936c61187e936bebb",
+    "gap": "OP_TRY_SEND packed a 32-bit selector with length, discarding high socket ID bits despite full-width nonreused allocation. Raw memory map/unmap/close cleanup remained in that branch. Captured sender generation/principal still fenced other owners."
+  },
+  "implementation": {
+    "wire": "Existing opcodes 6 (immediate TCP/UDP) and 16 (deferred TCP) both require full ID in arg0 and exact 4096-byte CSOCKTX1 page: eight magic bytes, u32 length, four zero reserved bytes, 1..=4080 payload bytes and zero tail. No packed decoder or low-half mask; current tag/opcodes unchanged.",
+    "caller_migration": "OwnedSocket::try_send_call prepares caller-sponsored memory. send_all and deferred send_call share frame preparation and 4080-byte bound. tcpclient uses try_send_call. NTP preserves its 48-byte datagram and preparation diagnostics inside the current frame.",
+    "owner": "Authenticated receive adopts IncomingMessage once into existing PendingSend. Same complete request, caller backing, read-only mapping, reply authority and Enqueue state. Validate canonical shape before exact full-ID captured-owner lookup, then attempt immediate enqueue once. Mapping/backing release precedes consuming reply authority. No retained immediate waiter.",
+    "errors": "Preparation rejection retains complete transaction for reply/disposal. Unstarted mapping/submission rejection follows existing returned Rust owners. Service/accepted timeout or lost observation gives no general replay authority. Existing caller wait/backoff policy is unchanged; no new readiness source.",
+    "scope": "Existing C18 family and guard-free service loop. No new root, pin, registry, quota family, recovery custody or physical cleanup/charge-refund proof. General containing destructor/cancellation/reply failure and pressure remain unqualified.",
+    "remaining": [
+      "blocking open/listen, controller/render and teardown",
+      "native legitimate high-ID allocation and map/submission/reply failure or cancellation-race injection",
+      "saturated admission/send buffers, all-position flood/protected operator capacity and NIC failure",
+      "syscall-return and whole-parent shutdown latency",
+      "terminal unstarted socket-close retention without recovery custody",
+      "general principal/heap admission"
+    ]
+  },
+  "source_sha256": {
+    "crates/catten-services/src/bin/security_probe.rs": "1cc6816280650b47854957c249b4a794b6181dc70bb2a627cb2cd7e17f492979",
+    "crates/catten-services/src/bin/tcpclient.rs": "3ac005fd77669677e9c0c64d574eefc04bdcc5f20250a79bfce636eb4f163042",
+    "crates/catten-services/src/bin/tcpip.rs": "4277752327dac68625ee18c587cd243574723cc23bddc44ec48e6f8080f7ca3f",
+    "crates/catten-services/src/bin/time.rs": "91638eb0d69cf89383757061db885cf67dddb441c289aa114c756458e21262b1",
+    "crates/catten-services/src/lib.rs": "63a225c7bdfaa5ad1b719e8e58ce0e774c67aa9f582acbbde4734e2e3ae6bdb4",
+    "crates/catten-services/src/socket_state.rs": "e0f1accff832943ca16d865f8454008fd1d1db326798da093e36a290e411f5fa",
+    "docs/guides/resource-ownership.md": "3b4b2f1ba3b95027d2c61c9df68f1d4a3e64828c43a7d569912b6b99d2346e82",
+    "docs/guides/testing.md": "f184406ee6a6915a22d1f40d41dfa70a47c09f150bbdd32c170388c18ea0db47",
+    "docs/manual-v2/chapters/13-networking.tex": "add19d7b24360f94d8f64ff5dcedd08fb22b3aa698e01380ff0833660dda6031",
+    "docs/reference/api-simplification.md": "83b8167adaa76de1233e04e4a162c34c3d83f9e2a37d7d62dfadb68f65d6f348",
+    "docs/reference/cleanup-recovery.md": "12a12dd2b9e637051ede15a51164f8334f17f1613b3f9de4e256038c7273ae05",
+    "docs/reference/deployment-ingress.md": "527452b8d50fac85d7c5385f3bc1fd0d8e15e888a28957881cd43b958b9973e8",
+    "docs/reference/security-remediation.md": "aeb645a06c0f37ec75c0f662a77bc7d6b3ca69e5646c8d37e9cd996ea7ccc5a9",
+    "docs/reference/smoltcp-adapter.md": "e58e472c9df60ab857e7985e7f2c5b81f1330410856f73fa7a2a247253fd1039",
+    "docs/reports/README.md": "aeda7c1c50edec96ceca3eef878137381d4aa6e11d84735e7735a6d883ac4927",
+    "docs/reports/audits/2026-10-22-security-immediate-send.md": "0f64a6c96f8f280629c3ae92a09049046cc648a9c7baca41ae37bab4f96ff44c"
+  },
+  "native_runs": [
+    {
+      "id": "arm_security",
+      "outcome": "pass",
+      "exit_code": 0,
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19282 CATTEN_DEPLOY_HOST_PORT=19446 scripts/run-aarch64.sh --security-test --instance sec06-full-id-security --fresh-storage --timeout 300",
+      "architecture": "aarch64",
+      "instance": "sec06-full-id-security",
+      "kernel_sha256": "70247827c9bb67c319a68e24b28715d931ae47f040dbbbfc08574829403d02cf",
+      "boot_image_sha256": "06471e565e79d089c2982a03dc594901ea2ac71ad6af2a45184d0febc7b7c46d",
+      "initial_disk_sha256": "023f891eb26753e9704eec973ddc0a1a7d382e0ce588442fe0a34db578612a47",
+      "bundle_manifest_id": "734b6136b45f2d20a7747f0cdccd1571e5dc74a8e42e88310bee7fa6fdee8a03",
+      "capture_sha256": {
+        "runner": "1cc0561100f50b74a87940e7c0ec162467f4872a4c01698d2a4fc58ee4bdc693",
+        "manifest": "924eb42ba7ee0d4b61247388a9eadd619f012f4bc1cf94115bb342f088db14af"
+      },
+      "ntp_sample_markers": [
+        "[+    23.412134] [EL0 LOG] lp=0 asid=115 [time] synchronized unix_s=1792693894 utc=2026-10-22T18:31:34.151740342Z stratum=3 uncertainty_ms=506 drift_ppb=0"
+      ],
+      "selftests": [
+        {
+          "passed": 19,
+          "failed": 0,
+          "pending": 0
+        }
+      ],
+      "immediate_markers": [
+        "[+    34.440958] [EL0 LOG] lp=0 asid=136 [security] immediate socket send: full ID, UDP enqueue, retired/missing/reserved/tail/length/extended rejection and high-half isolation",
+        "[+    61.948950] [EL0 LOG] lp=0 asid=136 [security] immediate socket send: full ID, UDP enqueue, retired/missing/reserved/tail/length/extended rejection and high-half isolation"
+      ],
+      "reactor_markers": [
+        "[+    34.409644] [EL0 LOG] lp=0 asid=136 [security] deployment close CQ: TCP and UDP logical acknowledgements; reaped owner returns Unavailable; pending/socket owners released after logical receipts",
+        "[+    61.913410] [EL0 LOG] lp=0 asid=136 [security] deployment close CQ: TCP and UDP logical acknowledgements; reaped owner returns Unavailable; pending/socket owners released after logical receipts"
+      ],
+      "qualification": "Both scoped roots check canonical UDP enqueue before/after missing, retired untagged/packed, reserved-byte, dirty-tail, invalid-length and oversized-memory rejection. A canonical high-half selector with a live low half returns BAD_SOCKET. No native legitimate high-ID allocation, map/submission/reply failure or cancellation-race injection."
+    },
+    {
+      "id": "x86_security_repeat",
+      "outcome": "pass",
+      "exit_code": 0,
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19283 CATTEN_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance sec06-full-id-security-x86-repeat --fresh-storage --timeout 300",
+      "architecture": "x86_64",
+      "instance": "sec06-full-id-security-x86-repeat",
+      "kernel_sha256": "2f859fc16a76d722c443727e9ef0d19f5c2ae99f6a6d8bfcea3cde121ca731b7",
+      "boot_image_sha256": "baffd119185480438a111137ecf13d976f60524ec5f6859bae8c4ad0be0bc38a",
+      "initial_disk_sha256": "3711a890e4a4a004aaf070a3dc751fc1cc076059f28738e05d1d6ab4d6c65438",
+      "bundle_manifest_id": "e432222aeb47643d779b7e86a424c89252ea1a7b7b6a470853698a32e590dbb7",
+      "capture_sha256": {
+        "runner": "27fa082de83a06f3215fe09b218aed7790f59de180939c3c54a1412fa1d7946d",
+        "manifest": "5771df4ee3023dfdc5c2cde926d49d23137b35e5be7ee51894b9b46f9b0ec55a"
+      },
+      "ntp_sample_markers": [
+        "[+    22.176095] [EL0 LOG] lp=0 asid=114 [time] synchronized unix_s=1792694247 utc=2026-10-22T18:37:27.183357445Z stratum=3 uncertainty_ms=511 drift_ppb=0"
+      ],
+      "selftests": [
+        {
+          "passed": 17,
+          "failed": 0,
+          "pending": 0
+        }
+      ],
+      "immediate_markers": [
+        "[+    38.587423] [EL0 LOG] lp=0 asid=132 [security] immediate socket send: full ID, UDP enqueue, retired/missing/reserved/tail/length/extended rejection and high-half isolation",
+        "[+    66.249379] [EL0 LOG] lp=0 asid=132 [security] immediate socket send: full ID, UDP enqueue, retired/missing/reserved/tail/length/extended rejection and high-half isolation"
+      ],
+      "reactor_markers": [
+        "[+    38.541660] [EL0 LOG] lp=0 asid=132 [security] deployment close CQ: TCP and UDP logical acknowledgements; reaped owner returns Unavailable; pending/socket owners released after logical receipts",
+        "[+    66.210660] [EL0 LOG] lp=0 asid=132 [security] deployment close CQ: TCP and UDP logical acknowledgements; reaped owner returns Unavailable; pending/socket owners released after logical receipts"
+      ],
+      "qualification": "Both scoped roots check canonical UDP enqueue before/after missing, retired untagged/packed, reserved-byte, dirty-tail, invalid-length and oversized-memory rejection. A canonical high-half selector with a live low half returns BAD_SOCKET. No native legitimate high-ID allocation, map/submission/reply failure or cancellation-race injection."
+    },
+    {
+      "id": "arm_http",
+      "outcome": "pass",
+      "exit_code": 0,
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 scripts/run-aarch64.sh --http-test --instance sec06-full-id-http --fresh-storage --timeout 240",
+      "architecture": "aarch64",
+      "instance": "sec06-full-id-http",
+      "kernel_sha256": "624d2c009ed832968dbd1fc5c2ba2506b59cb2a12d4239d9fe79467ec2b7409b",
+      "boot_image_sha256": "58e747a82ee776f12716db487ad0e16be2e4c80a5f5cd314c2142bd96deb073d",
+      "initial_disk_sha256": "023f891eb26753e9704eec973ddc0a1a7d382e0ce588442fe0a34db578612a47",
+      "bundle_manifest_id": "734b6136b45f2d20a7747f0cdccd1571e5dc74a8e42e88310bee7fa6fdee8a03",
+      "capture_sha256": {
+        "runner": "9b4bb3eebe5bbbc0e9f795b18bc114e35d8dd095c8af146730632e9c52acb1e9",
+        "manifest": "4d03f11e95e5372392e6db2c5b67d6e05c36b98ba3905f7b85c7395dc3a298d7"
+      },
+      "ntp_sample_markers": [
+        "[+    17.363526] [EL0 LOG] lp=0 asid=115 [time] synchronized unix_s=1792694011 utc=2026-10-22T18:33:31.983209393Z stratum=3 uncertainty_ms=504 drift_ppb=0"
+      ],
+      "selftests": [
+        {
+          "passed": 19,
+          "failed": 0,
+          "pending": 0
+        }
+      ],
+      "host_passes": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.323s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.254s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.357s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.14s; ingress recovered"
+      ],
+      "qualification": "Ordinary socket scopes, aborted peers, four-position healthy/stalled input controls and the original 30-second trickled-input deadline. No held-close, saturated native buffer or NIC-failure qualification."
+    },
+    {
+      "id": "x86_http",
+      "outcome": "pass",
+      "exit_code": 0,
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=18880 CATTEN_DEPLOY_HOST_PORT=18444 scripts/run-x86_64.sh --http-test --instance sec06-full-id-http-x86 --fresh-storage --timeout 240",
+      "architecture": "x86_64",
+      "instance": "sec06-full-id-http-x86",
+      "kernel_sha256": "f29cf629bee2326d9e765ab40ba7b0c0c0b02cb2995dcc5eebcb56a6e0d637c7",
+      "boot_image_sha256": "448729e90e584130611081d414007656462e3ea84795457c44902747535259a1",
+      "initial_disk_sha256": "3711a890e4a4a004aaf070a3dc751fc1cc076059f28738e05d1d6ab4d6c65438",
+      "bundle_manifest_id": "e432222aeb47643d779b7e86a424c89252ea1a7b7b6a470853698a32e590dbb7",
+      "capture_sha256": {
+        "runner": "a085a7aa73bb730fca0137bdf8e4d550453bf0af30e4da4d2edf03cb3f2b3bf2",
+        "manifest": "29e88035a459b82fc0ec077a4eb124bf987b36db08ccd9d1bfc7fb4fd451cf0e"
+      },
+      "ntp_sample_markers": [
+        "[+    21.942574] [EL0 LOG] lp=0 asid=114 [time] synchronized unix_s=1792694067 utc=2026-10-22T18:34:27.049411040Z stratum=3 uncertainty_ms=507 drift_ppb=0"
+      ],
+      "selftests": [
+        {
+          "passed": 17,
+          "failed": 0,
+          "pending": 0
+        }
+      ],
+      "host_passes": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.380s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.227s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.346s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.25s; ingress recovered"
+      ],
+      "qualification": "Ordinary socket scopes, aborted peers, four-position healthy/stalled input controls and the original 30-second trickled-input deadline. No held-close, saturated native buffer or NIC-failure qualification."
+    },
+    {
+      "id": "arm_signed_release",
+      "outcome": "pass",
+      "exit_code": 0,
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 COMPOSE_PROJECT_NAME=charlotte-sec06-full-id CATTEN_HTTP_HOST_PORT=19281 CATTEN_DEPLOY_HOST_PORT=19445 CATTEN_RUSTFS_IMAGE=rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21 CATTEN_RUSTFS_CLI_IMAGE=rustfs/rc@sha256:f3dc331f76b14a852a1dc0bffc80509cc41424eaa9ea0306d9584edc211dcad6 scripts/run-aarch64.sh --deployment-ingress-test --instance sec06-full-id-deploy --fresh-storage --timeout 300",
+      "architecture": "aarch64",
+      "instance": "sec06-full-id-deploy",
+      "kernel_sha256": "f5af32992f20c2ef1db778e2b8a8a7a5ecb4d190412edfdb1bf631abc7a797d2",
+      "boot_image_sha256": "7ebc54da3df278706dcb3fb7ee722435bd3bc72a4e13c60a3280beeee0d4108e",
+      "initial_disk_sha256": "023f891eb26753e9704eec973ddc0a1a7d382e0ce588442fe0a34db578612a47",
+      "bundle_manifest_id": "734b6136b45f2d20a7747f0cdccd1571e5dc74a8e42e88310bee7fa6fdee8a03",
+      "capture_sha256": {
+        "runner": "bf2e901281032eae73982a80fdc24de65175786a34ced8626f83ee80036e6a45",
+        "manifest": "aa40d9ca5c71570cca5c54777ed02bc8309c00d64c45ca8114ec16bb7733278e"
+      },
+      "ntp_sample_markers": [
+        "[+    12.029737] [EL0 LOG] lp=0 asid=115 [time] synchronized unix_s=1792694121 utc=2026-10-22T18:35:21.159764060Z stratum=3 uncertainty_ms=261 drift_ppb=0"
+      ],
+      "selftests": [
+        {
+          "passed": 20,
+          "failed": 0,
+          "pending": 0
+        }
+      ],
+      "signed_flow": [
+        "accepted release \"greet-ingress-e2e\": {\"admission\":\"43524c41444d3031dc09137309277a6a61b490b26cd6a1ed568e33ad6669d2569364c2ebf43ffa81010000000000000001000000000000000100000000000000\"}",
+        "ready \"greet\": {\"state\":\"ready\",\"deployment_generation\":1,\"service_generation\":1,\"node_key\":1122115291,\"desired_replicas\":1,\"ready_replicas\":1}",
+        ">>> Signed RustFS upload/atomic-release/pull/launch/readiness path validated."
+      ],
+      "intermediate_diagnostics": [
+        "error: connect to deployment ingress 127.0.0.1:19445: Connection refused (os error 61)",
+        "error: release notification failed: HTTP/1.1 409 Conflict",
+        "{\"error\":-23}",
+        "error: release notification failed: HTTP/1.1 409 Conflict",
+        "{\"error\":-23}"
+      ],
+      "qualification": "Signed upload, atomic release, acceptance receipt, TLS/S3 pull, verification, scoped launch and readiness; ordinary socket close success only. Startup rejections, if present, remain separate diagnostics without causal attribution."
+    }
+  ],
+  "bundle_manifests": {
+    "734b6136b45f2d20a7747f0cdccd1571e5dc74a8e42e88310bee7fa6fdee8a03": {
+      "agent.elf": "9bbe7b9604d2760fff2253e95f7ab5001fea1c813637e700574faed81139118d",
+      "cclient.elf": "402bbba827a8343e6f8ec46af676ab970d83017a4a381472edf7bd86e6af9a10",
+      "client.elf": "a839568b762ab40a41ff954e9e3a210f0d74ede99b1cfa575585d0e322c4ee37",
+      "clusterctl.elf": "cb87b56a77ba003db6c9b6993246a1de6220c7af0efba21db4134cf2a2b6c72d",
+      "deployd.elf": "05694503430021a1249a8e0a0ab660d1873b38284d5e86e1b841a11a885bfef3",
+      "disco.elf": "a86eac4bc587663aba42345a437a141eac9e9a5d9f724e6fb3b3c04a02cef713",
+      "dns.elf": "d83ee861ed5eea5a5b898adbed4969ebb8cdeb410837929725b2d6d028afaecb",
+      "echo.elf": "bf85081ba2fb57a6f79c1d05b4b0fed909ba10c4ea8eee295c1a80913cb824d5",
+      "frouter.elf": "35df36694d833eea418065c75d9fdb4545413d9b47f38b9808a079ffdeb3f166",
+      "fs.elf": "d8005e292a80e40c2acf2ffaa5251476abc3d4d901b7b13b607384a4f100b8fc",
+      "grantctl.elf": "6cdb7ad99db61eace79bebcb6a27f3ea4c8d1c9a61738c4f2e6eeb6548f34375",
+      "greet.elf": "654a2c248fe51b9e75f36c10cb83b45e89a15ecb25afc550c6689b87ffd95376",
+      "httpd.elf": "cad7acd26a74c8e2fc04bc3b337873b3b6b717fbda96c2f217bdb292e172eced",
+      "kafka.elf": "b0ffafaf335f2344a5fff4f48b93f25599defc5ebd4f706b225d9a64395358ec",
+      "kafka_fence_smoke.elf": "3ceda8378ea5dcbf7ebec7d1bc4d63bccfb8640ce10167ad877c03fe04430b05",
+      "kafka_smoke.elf": "374aa64ca2a8d1c0c372d89f176aa3778663e5f9cc73eed7e8caed1114b45786",
+      "kafka_step.elf": "ee946d0d1cf66f3fbb008bf31c1e5bad5b03e3a1d31b0f343d753992dc751918",
+      "kafka_step_input.elf": "7ba68011f4a5be063a99dbab16d5c89d5d945f528dc508e4388d91b9348c389a",
+      "kafka_step_proc.elf": "f768140f2b4793c7d69d460d2b2c22f94346ab3e3da175727b6e50197960367c",
+      "nclient.elf": "3a9760d32ab9f192b6b14a932ee078880994ad2ed91fae7586822c118b08e0dd",
+      "net.elf": "61594fc8319ca5d331a6f6d90a00405d3ab24cee7b8cc68a4bf7a3b2da61b78f",
+      "ns.elf": "49f934cadd4afd81e203155c3646598e4e8e000b77cd375894126875dec80b98",
+      "nvme.elf": "6c57cd97dfcbbb8cef687b3fc9b8244b610a73a89fe2f3e51d69c737f4367b97",
+      "nvme_client.elf": "4ce5d5995cd9313f4592a2c28ba691fd73cdf73df6212ec5730e3446b3c5ae37",
+      "objstore.elf": "04c04d0348bef3e61f8ef1e1900333fbc207fa3174f6ec960596c0d800b3572e",
+      "objstore_client.elf": "aaafa9e09e7e42e46416f2056843a0077bfc7793aed523a8947b6c48d8742883",
+      "observe.elf": "20eb3a4d8f77157499787dcc9cde3fb59de04b3c68edc37049bfce4e0a0c28db",
+      "raft.elf": "6b2389ffc46470e3bfad19ca310834534560f097a5a42f8924cba12d03fcb8b3",
+      "rclient.elf": "f347c94ccc5855a6ef223ab0ad9af5d1694946302218f51a9ede76cadb6023da",
+      "relmsg.elf": "a70f414abe027e4fe339ac35ad238fe8ebc6f59dae1ed818957138296b35575c",
+      "rng.elf": "89c3b350a996793f6e1a3e72de345f8d0122944d846e9dfb11cec8963c51df28",
+      "s3.elf": "351f794a270ab6dec3f5a81a46a12d9cf22fdd420597eb67acf876a8b842f194",
+      "s3_smoke.elf": "89ec18241482b9d796f255987fe3c8880eccf36b2458cedd45455084fa0efd40",
+      "security_probe.elf": "4cd0545c7c4a0473301a25580b8aa207c29fcf5da9fa9ac7af27cc450b372176",
+      "servicemgr.elf": "8acd5131d34988ec92390cc8808f3c46cb1a8f6be164c166d680c1349faa2043",
+      "shutdown_probe.elf": "694a24cd5daa511dc94be9512845a7dc7d9d3742b7ea748fe4a3d6324b581eb0",
+      "sitas-user.elf": "fbf1b47a721d84498a64e43bc626a7f962a52d3740e3fa7e14adaeea7fa5f311",
+      "tcpclient.elf": "558b2b4e4f4da91d9de7b42119c9802ce1e48456bff1c1ecd37a8016dff73f4b",
+      "tcpip.elf": "cf7e887e20c67de33546dbdac16980d234481218c818ffd40113462a35a48f07",
+      "time.elf": "73be6e6ba4215404dee7817286bac683141abcaea3f375e227451b4d018d1d7a",
+      "uart.elf": "31cb040b160a3abe9493b996f83f6797155c983cbddcd8835bc748b77ca30202"
+    },
+    "e432222aeb47643d779b7e86a424c89252ea1a7b7b6a470853698a32e590dbb7": {
+      "agent.elf": "b9d75c77cfc04441c455254413d4d643f7c2579b0e2934b665211b0ae20a4c0f",
+      "ahci.elf": "566a3fcb7532551ce177f49ec0b4c4307a41e45e303edf89a190d0ed6ea04d1e",
+      "client.elf": "4fe5fd950a485a1fb2ea86c3d072270d37dfff6a7205276ce109197a6e7d9326",
+      "clusterctl.elf": "7ad08b19b4311e45d206de97d48fcf99043ad3eb1f87cc4c9a697a9da611e2ea",
+      "deployd.elf": "4ff017035bdcf4eaada6266e929c2e0c86341b4f58f99ce83331eef5835eb7d0",
+      "disco.elf": "0d2e9cab70e90ebe22db9ab984c379dd4a4edcf1a20b942db4fdf0f578097429",
+      "dns.elf": "241c5c7c8d0f61d56b3e0a37222196561da35e5547cf8ebadbbc1d055ba9d8aa",
+      "e1000e.elf": "9becc3f8ee0cf78815345cf3e16ad0937b6370aa937be60e6d5a6192d4ab026f",
+      "echo.elf": "9191a192744960add3c145c340c8b43dc9fcbd1cfd60a37f4f2902cf6a26fdb7",
+      "frouter.elf": "ed4e7288751b75d93056562eb63ec7f815ff874302fcb387cef169195a79a7d2",
+      "fs.elf": "4e9f49fee1dfc5d18c5d59a01cd73166ff2480cd659934d50e6db6b1d9342a1c",
+      "grantctl.elf": "b752bbd0752b14f5d729389e925d9ba8584f867b45366ba63f817f5250b3cf75",
+      "greet.elf": "339b905fa591c9df3f701140f3e555603b8d7f67af7a4ea1aa6b884f7a5c544e",
+      "httpd.elf": "5d2bd123cb10477791d89c97008a8b464f8df93ae9f33d2edfece48f9deb2744",
+      "kafka.elf": "94555e5ebd75ab90f2d337543c9e060d6e862d40819e595151c5579f2c1e6388",
+      "kafka_smoke.elf": "8ac52b6b0d0d2f14db851bcefdc0bf7feca93241ff3e51a23bc4e6be46903faf",
+      "nclient.elf": "0e039f90087e4531ab71227efe9f309f939f3199972c09398e47921e8c45a756",
+      "net.elf": "1d09a060f1f23e69f19d51639f7eb33d83dad3e456629e4a3aeccc19e8f0c17f",
+      "ns.elf": "a014338e23f07856534d5aad124e549d3b93f1b519a66769c1b05ce13ce2ddc0",
+      "nvme.elf": "15b8dea77fc9dbc006ead20819a057d087b348fd328a9862ccbdcf2bb4f0e7fe",
+      "nvme_client.elf": "070d6c4a983832fced3ec647d5b6744b66ad1bfcca9b787343f0b94322b30d58",
+      "objstore.elf": "597ddd01f65917a5ca36de6157464efb976076923d0a9b2a764cba35097f3697",
+      "objstore_client.elf": "276ddf004ec79b9f6c18d7fc333fca7aa3a45fd02f55467e96aab5ec131b9d45",
+      "observe.elf": "2e2487d647db10d245358a896d31f0b9e49b5d460e72bf001a10ad1a02da989e",
+      "raft.elf": "e0b2237f801bb2f6817af554c6d63567e100ea8648632d71da4594069d7eab05",
+      "rclient.elf": "a7d3fb0f8d239e2e50398ef01be3a5d72b30fc9ce262d54d1f42c1543150c2b5",
+      "relmsg.elf": "2d1b128237007c7ab912c1cf2ab3a54949e91eadef9c43603b29b0edbbe10fad",
+      "rng.elf": "d18ae75fc2ddb4a96cd0d0d6e9defee62f7430c88f6127447ea02c4f865f6c18",
+      "s3.elf": "c3ed4b3f6a5fd3591659eb5858c01457c743dcf933bd261e52a8e4dec07fc914",
+      "s3_smoke.elf": "3769afe278f2ba246587dc876ef4357846a913b812d0e68bc116bcbe363ec08c",
+      "security_probe.elf": "ebf30e7aa281bb95a8c53cc05e0a1dee980913382b2d3c34b5fed083512448ff",
+      "servicemgr.elf": "0c8f4fe689f089fe6fd061264f1d159c75b620578b76ae848b4ec1ab6fc3b8b3",
+      "shutdown_probe.elf": "22a6ce3199809d2be31a3b1ef82fadd62bf2daa4385cf7075039d17707ac9b89",
+      "tcpclient.elf": "63e4e33dda806e2b851271102a6f2f0b9051ec99541ed113e444752e6a4c5a0b",
+      "tcpip.elf": "fb37907cf8ff5ae18a9cec77a39dd22c490675a9a2930fd59caa04905f3a111c",
+      "time.elf": "3774b85bbff395d08f3bc4fe37e16ac9d0b7c3dc3e4793d5d3c19a10686a9e34",
+      "virtio_blk.elf": "722383f548dd4633db590fe277e23f138d72e2a7e4cbacdb6db983271844e737"
+    }
+  },
+  "failed_runs": [
+    {
+      "id": "initial_x86_security",
+      "outcome": "fail",
+      "exit_code": 1,
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19283 CATTEN_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance sec06-full-id-security-x86 --fresh-storage --timeout 300",
+      "architecture": "x86_64",
+      "instance": "sec06-full-id-security-x86",
+      "kernel_sha256": "6f981cc53f2f1dca3a4f71f8ce7386b281f8bba6c78210d93b449039539dff5b",
+      "boot_image_sha256": "0b1fe0bd01c315c44198acf67d6e79e57d23e6f1a708ce5f23a4dc86745b75f0",
+      "initial_disk_sha256": "3711a890e4a4a004aaf070a3dc751fc1cc076059f28738e05d1d6ab4d6c65438",
+      "bundle_manifest_id": "e432222aeb47643d779b7e86a424c89252ea1a7b7b6a470853698a32e590dbb7",
+      "failure": {
+        "reason": "kernel-panic",
+        "elapsed_seconds": 86.95396970910951
+      },
+      "capture_sha256": {
+        "runner": "8d10474fe2ad7193d6d8bbdaaeecce4b200c19427bfad7e2a35d7cfc09c2c6b6",
+        "manifest.json": "137ca01f03c191b3183718275b4bd8b3cc998ad54ed561e6182b97010274d9d2",
+        "serial.log": "f4d5c67c4f1bb2da5965dd925e2047a2ab5742edb95080e7a5fcea6dd16f1027",
+        "serial-at-trigger.log": "f4d5c67c4f1bb2da5965dd925e2047a2ab5742edb95080e7a5fcea6dd16f1027",
+        "failure.json": "f5b25843a6755a6ad0f2add5913009ea6a4ef290482f532193e8f370232d343f",
+        "result.json": "816288de379fdd41f677e45d5142360a0e7faf2527cfeff97aca431abc73fab6",
+        "cpus.json": "23418f57d207ec501c1ed56f7546444ddfa1d560213cbc1c4ccbaf1cd592fc2a",
+        "registers.log": "074037d314a4043566d0895cffd9be8f1de4e81a738e665605b047bfe9867a77",
+        "lldb.log": "1a4bb98fb6b5cff46d88df83a609f465b3be8f0e3bca1e461b39ae61f19aed0a",
+        "kernel.symbols": "94d44025b9abef8ddc8c8ae92c29b8f77be9e823ee01fd6846b0fbead98223f2"
+      },
+      "new_send_markers": [
+        "[+    45.662920] [EL0 LOG] lp=0 asid=137 [security] immediate socket send: full ID, UDP enqueue, retired/missing/reserved/tail/length/extended rejection and high-half isolation",
+        "[+    74.079462] [EL0 LOG] lp=0 asid=137 [security] immediate socket send: full ID, UDP enqueue, retired/missing/reserved/tail/length/extended rejection and high-half isolation"
+      ],
+      "selected_diagnostics": [
+        "[+    18.553833] SELFTEST WAITING: passed=9 pending=8 passed_bitmap=0x23fc pending_bitmap=0x20039803",
+        "[+    18.555478] SELFTEST PENDING: scoped-launch-security",
+        "[+    19.556474] SELFTEST WAITING: passed=13 pending=4 passed_bitmap=0x2abfd pending_bitmap=0x20011002",
+        "[+    19.557500] SELFTEST PENDING: scoped-launch-security",
+        "[+    20.558608] SELFTEST WAITING: passed=14 pending=3 passed_bitmap=0x2bbfd pending_bitmap=0x20010002",
+        "[+    20.559464] SELFTEST PENDING: scoped-launch-security",
+        "[+    26.562204] SELFTEST WAITING: passed=16 pending=1 passed_bitmap=0x3bbff pending_bitmap=0x20000000",
+        "[+    26.562872] SELFTEST PENDING: scoped-launch-security",
+        "[+    36.567438] SELFTEST WAITING: passed=16 pending=1 passed_bitmap=0x3bbff pending_bitmap=0x20000000",
+        "[+    36.567956] SELFTEST PENDING: scoped-launch-security",
+        "[+    46.574000] SELFTEST WAITING: passed=16 pending=1 passed_bitmap=0x3bbff pending_bitmap=0x20000000",
+        "[+    46.574636] SELFTEST PENDING: scoped-launch-security",
+        "[+    51.167605] [EL0 LOG] lp=0 asid=137 [security-probe] passed checks=0xffff",
+        "[+    51.381494] [security] probe passed; retired policy fenced, publication generation=1",
+        "[+    56.578725] SELFTEST WAITING: passed=16 pending=1 passed_bitmap=0x3bbff pending_bitmap=0x20000000",
+        "[+    56.579220] SELFTEST PENDING: scoped-launch-security",
+        "[+    66.585158] SELFTEST WAITING: passed=16 pending=1 passed_bitmap=0x3bbff pending_bitmap=0x20000000",
+        "[+    66.585504] SELFTEST PENDING: scoped-launch-security",
+        "[+    76.597446] SELFTEST WAITING: passed=16 pending=1 passed_bitmap=0x3bbff pending_bitmap=0x20000000",
+        "[+    76.598201] SELFTEST PENDING: scoped-launch-security",
+        "[+    79.518450] [EL0 LOG] lp=0 asid=137 [security-probe] passed checks=0xffff",
+        "[+    79.655476] [security] probe passed; retired policy fenced, publication generation=2",
+        "panicked at crates/catten/src/self_test/el0_security.rs:55:61:",
+        "security probe reclamation: AddressSpace(OperationDrainTimedOut)",
+        "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/x86_64-yt7g6yhp"
+      ],
+      "decoded_stack": [
+        "thread #2: tid = 0x0002, 0xffffffff801e15d3 kernel.elf`catten::cpu::isa::x86_64::lp::ops::lp_idle_loop at ops.rs:574:13",
+        "thread #3: tid = 0x0003, 0xffffffff801e15d3 kernel.elf`catten::cpu::isa::x86_64::lp::ops::lp_idle_loop at ops.rs:574:13",
+        "thread #4: tid = 0x0004, 0xffffffff801e15d3 kernel.elf`catten::cpu::isa::x86_64::lp::ops::lp_idle_loop at ops.rs:574:13",
+        "frame #5: 0xffffffff802fe019 kernel.elf`<catten::self_test::el0_security::ProbeDomain>::stop(self=ProbeDomain @ 0xffff8100002b8ae8) at el0_security.rs:55:61",
+        "frame #6: 0xffffffff802fc28a kernel.elf`catten::self_test::el0_security::verify at el0_security.rs:543:11",
+        "frame #0: 0xffffffff801e15d3 kernel.elf`catten::cpu::isa::x86_64::lp::ops::lp_idle_loop at ops.rs:574:13",
+        "frame #0: 0xffffffff801e15d3 kernel.elf`catten::cpu::isa::x86_64::lp::ops::lp_idle_loop at ops.rs:574:13",
+        "frame #0: 0xffffffff801e15d3 kernel.elf`catten::cpu::isa::x86_64::lp::ops::lp_idle_loop at ops.rs:574:13",
+        "frame #0: 0xffffffff801e15d3 kernel.elf`catten::cpu::isa::x86_64::lp::ops::lp_idle_loop at ops.rs:574:13",
+        "frame #0: 0xffffffff801e15d3 kernel.elf`catten::cpu::isa::x86_64::lp::ops::lp_idle_loop at ops.rs:574:13",
+        "frame #0: 0xffffffff801e15d3 kernel.elf`catten::cpu::isa::x86_64::lp::ops::lp_idle_loop at ops.rs:574:13"
+      ],
+      "qualification": "Both new scoped send markers and both application probe-success markers preceded failure. LLDB locates final verify frame at el0_security.rs:543, flood.stop (mode-1 cancellation-stress root), after application scopes retired. Teardown used unchanged five-second reclamation policy. Error and stack do not identify which root lease or IPC/memory cleanup stage stayed pending. Other LPs were idle at capture; not quiescence/cleanup proof. No kernel source change or timeout widening. Root cause, relationship to send changes and reproduction under controlled load remain unresolved; passing repeat cannot establish a cause.",
+      "repeat_comparison": {
+        "source_and_budget_unchanged": true,
+        "signed_bundle_equal": true,
+        "kernel_equal": false,
+        "qualification": "Fresh fixture repeat has a different recorded kernel artifact hash. Same signed service bundle and source/budget; not an identical-kernel replay or causal control."
+      }
+    }
+  ],
+  "failed_run_qualification": "Initial x86 security run panicked in final cancellation-stress domain reclamation after both application scopes passed. Kept separately from same-source/budget repeat; no causal resolution claimed. Historical close-policy regressions, UEFI timeout and other startup intermittence remain in baseline reports.",
+  "host": {
+    "command": "cargo test --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p catten-services --lib --offline --locked",
+    "cwd": "/private/tmp",
+    "result": "204 passed; 0 failed",
+    "exit_code": 0,
+    "capture_sha256": "5b4391ccad004431488cbc54d267f42efa436a65a9ba0317680e91e48574b8a2",
+    "new_control": "Two published live sockets with distinct full IDs and equal low halves select their distinct TCP/UDP records. Unissued high ID and foreign sender generation reject. Allocation above 2^32 is host-controlled, not forced in native guest.",
+    "existing_controls": "Exact frame maximum, empty/oversized payload rejection; retired/truncated/extended/reserved/dirty-tail/invalid-length rejection. Positive-prefix and ambiguous-error Enqueue state prevents another write; zero progress alone may retry in the deferred adapter.",
+    "qualification": "Direct codec/record/owner-state checks; no fake-kernel success claim, native cancellation/retirement proof or broad resource-pressure qualification."
+  },
+  "checks": {
+    "format": "cargo fmt --all -- --check",
+    "diff": "git diff --check",
+    "host_clippy": "cargo clippy --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml -p catten-services --lib --offline --locked -- -D warnings (cwd /private/tmp)",
+    "native_clippy": "cargo clippy --manifest-path crates/catten-services/Cargo.toml --target crates/catten-services/aarch64-unknown-none.json --target-dir crates/catten-services/target --release -Z build-std=core,alloc --bin tcpip --bin security_probe --bin tcpclient --bin time --bin deployd --bin httpd -- -D warnings",
+    "host_clippy_sha256": "666a188d20dee9ad5833c8b39c8ba9f730848a5970d230ede072d436db8a0aaa",
+    "native_clippy_sha256": "207f257d7d4ea7cee1458cc322abb0abb6546b3b907f7c43d81c4d2d98e1283e",
+    "bundles": [
+      "scripts/build-catten-services.sh --embed",
+      "scripts/build-catten-services-x86_64.sh"
+    ],
+    "bundle_build_capture_sha256": {
+      "arm": "fe6dc7ba37d1ffdbf40c0644ecfc2bcfae692c593f10fa0b353e91dcab4d1ef7",
+      "x86": "6fdfdd6206291cc58e1ab124c1ea76589e0cf5422e89a5ec22322cf60a5b0b0f"
+    },
+    "arm_reproduction": "scripts/build-catten-services.sh --check: signatures verified and current-source signed bytes match",
+    "arm_reproduction_capture_sha256": "a7249c22ebd2eefd5b32417a46c8fa5f3fe18127220a6f106d91b0e898c989ea"
+  },
+  "formal_scope": {
+    "changed_models": [],
+    "suite_rerun": false,
+    "qualification": "Existing deployment-output projection begins with admitted deferred sends and abstract prefix receipts; selector width and frame parsing are outside it. No new immediate-send formal refinement claim. Baseline evidence records 41 safe configurations and 118 expected counterexamples; not presented as a rerun for this follow-up.",
+    "relevant_unchanged_input_sha256": {
+      "docs/tla/CharlotteDeploymentOutput.tla": "8dc953edd288250d4a4733346243663a10760980042d7f6909925cb6a24c7f4c",
+      "docs/tla/CharlotteDeploymentOutput_small.cfg": "e2f21c3070aee113fe46a330225c182af3455ed81c30566bdf402050a1c936c9",
+      "docs/tla/CONFORMANCE.md": "bee6e1296496e739ec6101e919a2214cc8434203853179fc5918116133114bb0"
+    }
+  },
+  "rustfs": {
+    "configured_server_reference": "rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21",
+    "configured_client_reference": "rustfs/rc@sha256:f3dc331f76b14a852a1dc0bffc80509cc41424eaa9ea0306d9584edc211dcad6",
+    "compose_sha256": "b1e6cad61cf875ca1718c90c66d84769cdf3ac4a28b2c94db5dfe5164b105d42",
+    "runtime_inspection": {
+      "container_id": "ec57b74d05d38e1bf6b1fc1b7993b5ec1062f2f848bb1e51edf6e0c50d9c7fc1",
+      "configured_image": "rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21",
+      "image_id": "sha256:67f06d4b3479fd9d323d8a99c86aac411e665ac0981d06b52a2b790c66db359e",
+      "state": "running"
+    },
+    "runtime_capture_sha256": "aaf3dcea03d9e87d75dc2e5790f3c9bad5c687663de3bfa9ddf8cfc71337100a",
+    "qualification": "Final-source live server container inspection; ephemeral CLI runtime image ID unobserved, configured client reference only."
+  },
+  "preserved_pdf_sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f"
+}

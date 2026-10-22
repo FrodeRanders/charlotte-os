@@ -354,6 +354,84 @@ fn synchronous_close_probe(tcpip: ConnectionRef<'_>, expired: socket::OwnedSocke
     ));
 }
 
+fn immediate_send_probe(tcpip: ConnectionRef<'_>) {
+    let socket = socket::OwnedSocket::open(tcpip, socket::DOMAIN_UDP)
+        .unwrap_or_else(|_| catten_rt::domain_abort());
+    socket.connect_ipv4([10, 0, 2, 2], 9).unwrap_or_else(|_| catten_rt::domain_abort());
+    let result = socket
+        .try_send_call(b"probe")
+        .unwrap_or_else(|_| catten_rt::domain_abort())
+        .wait()
+        .unwrap_or_else(|_| catten_rt::domain_abort());
+    check(result.result == 5 && result.memory.is_none() && result.connection.is_none(), 240);
+
+    let result = tcpip
+        .call(socket::OP_TRY_SEND, socket.id())
+        .unwrap_or_else(|_| catten_rt::domain_abort())
+        .wait()
+        .unwrap_or_else(|_| catten_rt::domain_abort());
+    check(result.result == socket::ERR_BAD_OPCODE, 241);
+    for case in 0..6 {
+        let memory = OwnedMemory::allocate(
+            if case == 4 {
+                2
+            } else {
+                1
+            },
+        )
+        .unwrap_or_else(|_| catten_rt::domain_abort());
+        let mut mapping = memory.map_writable().unwrap_or_else(|_| catten_rt::domain_abort());
+        let frame = &mut mapping.as_mut_slice()[..catten_services::socket_send::FRAME_BYTES];
+        check(catten_services::socket_send::encode(b"x", frame), 242);
+        let mut id = socket.id();
+        match case {
+            0 => {
+                // Old callers sent untagged bytes and packed the length in
+                // arg0. Neither that page nor a low-half fallback is accepted.
+                frame.fill(0);
+                frame[0] = b'x';
+                id |= 1 << 32;
+            }
+            1 => frame[12] = 1,
+            2 => frame[catten_services::socket_send::HEADER_BYTES + 1] = 1,
+            3 => frame[8..12].copy_from_slice(&u32::MAX.to_le_bytes()),
+            4 => {}
+            // A canonical frame with an unissued high-half ID must not
+            // enqueue through the caller's live low-half socket.
+            5 => id |= 1 << 32,
+            _ => unreachable!(),
+        }
+        let memory = mapping.unmap().unwrap_or_else(|_| catten_rt::domain_abort());
+        let reply = tcpip
+            .call_move(socket::OP_TRY_SEND, id, memory)
+            .unwrap_or_else(|_| catten_rt::domain_abort())
+            .wait()
+            .unwrap_or_else(|_| catten_rt::domain_abort());
+        let expected = if case == 5 {
+            socket::ERR_BAD_SOCKET
+        } else {
+            socket::ERR_BAD_OPCODE
+        };
+        check(
+            reply.result == expected && reply.memory.is_none() && reply.connection.is_none(),
+            243 + case,
+        );
+    }
+    // Rejections leave the original socket usable; this is a new explicit
+    // request after confirmed rejection, not replay of uncertain work.
+    let reply = socket
+        .try_send_call(b"after")
+        .unwrap_or_else(|_| catten_rt::domain_abort())
+        .wait()
+        .unwrap_or_else(|_| catten_rt::domain_abort());
+    check(reply.result == 5, 249);
+    check(socket.close().is_ok(), 250);
+    catten_rt::logln!(concat!(
+        "[security] immediate socket send: full ID, UDP enqueue, retired/missing/",
+        "reserved/tail/length/extended rejection and high-half isolation"
+    ));
+}
+
 fn main(ctx: Context) -> ! {
     check(ctx.name_service_connection().is_none(), 1);
     let controller = ctx.bootstrap_connection().unwrap_or_else(|| catten_rt::domain_abort());
@@ -655,6 +733,7 @@ fn main(ctx: Context) -> ! {
     output_reactor_probe(&ctx, tcpip.as_ref());
     close_reactor_probe(&ctx, tcpip.as_ref(), expired_socket);
     synchronous_close_probe(tcpip.as_ref(), synchronous_expired);
+    immediate_send_probe(tcpip.as_ref());
 
     // Many small, individually legal allocations must hit an aggregate cap
     // before exhausting node RAM. Retain every owner until rejection, then

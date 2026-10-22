@@ -66,6 +66,13 @@ with its owner live; it cannot restore an ID. This remains a blocking Drop
 policy, without a whole-parent destructor latency guarantee. See
 [synchronous close](../reports/audits/2026-10-22-security-synchronous-close.md).
 
+Immediate and deferred socket sends move the same exact caller-owned frame with
+the full socket ID. `try_send_call` attempts TCP/UDP enqueue once; `send_call`
+retains deferred TCP work for CQ observation. The service owns the complete
+incoming transaction and read-only mapping until enqueue/rejection, disposing
+mapping/backing before reply. A positive prefix receipt alone permits sending
+its remainder. An accepted error or lost observation cannot prove zero progress.
+
 ## Memory and IPC example
 
 ![Capability-safe service registration, lookup, and IPC call](../manual-v2/figures/capability-safe-ipc.svg)

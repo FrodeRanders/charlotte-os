@@ -438,6 +438,14 @@ or saturate admission. Host close controls exercise healthy completion beside a
 held or queue-rejected close, unchanged deadlines, accepted-once submission,
 capacity retention, and complete ownership at failure/abort boundaries. See the
 [close audit](../reports/audits/2026-10-22-security-deployment-close.md).
+The immediate-send fixture submits canonical UDP frames before and after
+rejected requests. It checks missing, retired untagged/packed, reserved-byte,
+dirty-tail, invalid-length and oversized frames, plus a canonical frame carrying
+an unissued high-half ID with a live low half. The latter must reject without
+selecting the low-half socket. A host control publishes two live full IDs with
+equal low halves. It checks exact selection and owner-generation isolation;
+legitimate high-ID allocation is not forced in the native guest. See the
+[immediate-send audit](../reports/audits/2026-10-22-security-immediate-send.md).
 The synchronous-close fixture retains a second unactivated UDP owner across that
 same five-second controller case, then closes it through the synchronous driver.
 It also runs explicit close and ordinary Drop for fresh TCP and UDP sockets in
