@@ -24,6 +24,23 @@ separates current verifier/fixture/handoff behavior from a conditional future
 protected-installation contract. Platform, atomic-state and custody inputs remain
 unimplemented production boundaries.
 
+## Deployment input isolation
+
+| TLA+ action/state | Rust implementation | Correspondence |
+|---|---|---|
+| `Advance`, `cursor`, `healthyAge` | `deployment_input::Machine::advance` | A completed poll/append/rearm or terminal input is one turn. Scanning from the rotating cursor bounds intervening ready turns; omitted empty slots are skipped. This is a turn bound, not a wall-clock or whole-service liveness proof. |
+| `buffered`, `BoundedBytes` | `RequestBuffer::buffered_len`, pool `byte_limit` | Sum of retained input prefix bytes. Four moved receive pages, allocator overhead and TCP buffers are separate. Production starts with empty slots; the model starts with four admitted inputs. |
+| `deadline`, `OriginalBudget`, `Tick` | `Deadline::at`, `Input::remaining` | One abstract total budget captured on observed accept completion. Rust also has a separate header deadline. Neither budget restarts after progress or unrelated wakes. |
+| `ProducerReady`, `bound`, `Park` | deferred TCP/IP accept/receive, `PendingCall::bind_cq`, default-CQ drain then owner polling | Producer and notification delivery are assumptions. The model omits TCP handshake/EOF transitions, binding preparation and CQ overflow; host producer-state tests and native socket probes qualify those separately. |
+| `RejectWait`, `owner` | `reactor::wait` / binding failure `domain_abort` | Terminal abort retains the containing owners; no new submission or cleanup proof follows rejection. Kernel cancellation/physical teardown are omitted. |
+
+`CharlotteDeploymentInput` is a new bounded safety projection. Its cursor
+negative control starves a ready healthy input for more than four turns; its
+deadline control restarts an existing budget. It covers no incoming admission
+fairness, controller execution, response backpressure, explicit socket close,
+whole-service shutdown latency or kernel scheduling fairness. See the
+[implementation evidence](../reports/audits/2026-10-22-security-deployment-input.md).
+
 ## IPC
 
 | TLA+ action | Rust implementation | Correspondence |

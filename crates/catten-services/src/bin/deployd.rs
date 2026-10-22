@@ -1,6 +1,6 @@
 //! Bounded off-cluster deployment-notification ingress.
 //!
-//! The listener accepts `POST /v1/deployments` with one signed `CDEPLOY5`
+//! The listener accepts `POST /v1/deployments` with one signed `CDEPLOY6`
 //! descriptor, `POST /v1/releases` with one signed `CRELEASE` component set,
 //! `POST /v1/operations` with one encrypted `COPSBND2` admission proof,
 //! `POST /v1/shutdowns` with one signed node-targeted shutdown intent,
@@ -31,10 +31,8 @@ use catten_services::{
     deployment_http::{
         Error as RequestError,
         Request,
-        RequestBuffer,
     },
     name_catalog,
-    sleep_ms,
     socket,
     wait_for_local_ready_or_shutdown,
     wait_for_registered_name_or_shutdown_owned,
@@ -42,7 +40,6 @@ use catten_services::{
 use catten_syscall::thread_exit;
 
 const ACCEPT_RETRY_MS: u64 = 50;
-const RECEIVE_RETRY_MS: u64 = 100;
 
 const BAD_REQUEST_RESPONSE: &str = concat!(
     "HTTP/1.1 400 Bad Request\r\n",
@@ -58,35 +55,6 @@ const ALLOCATION_FAILURE_RESPONSE: &str = concat!(
 
 fn fail() -> ! {
     unsafe { thread_exit() }
-}
-
-fn receive_request(
-    ctx: &Context,
-    socket: &socket::OwnedSocket<'_>,
-) -> Result<Result<Request, ShutdownRequest>, RequestError> {
-    let mut request = RequestBuffer::default();
-    let deadline = catten_services::deadline::Deadline::after(30_000);
-    let header_deadline = catten_services::deadline::Deadline::after(5_000);
-    loop {
-        if let Some(request) = ctx.lifecycle().shutdown_requested() {
-            return Ok(Err(request));
-        }
-        if deadline.expired() || (!request.has_header() && header_deadline.expired()) {
-            return Err(RequestError::Malformed);
-        }
-        let chunk = match socket.receive_timeout(1, RECEIVE_RETRY_MS) {
-            Ok(Some(chunk)) => chunk,
-            Ok(None) => return Err(RequestError::Malformed),
-            Err(socket::SocketError::RetryExhausted) => continue,
-            Err(_) => return Err(RequestError::Malformed),
-        };
-        let (memory, len) = chunk.into_parts();
-        let mapping = memory.map_read_only().map_err(|_| RequestError::AllocationFailed)?;
-        let bytes = mapping.as_slice().get(..len).ok_or(RequestError::Malformed)?;
-        if let Some(request) = request.push(bytes)? {
-            return Ok(Ok(request));
-        }
-    }
 }
 
 fn notify_cluster(controller: catten_rt::owned::ConnectionRef<'_>, descriptor: &[u8]) -> i64 {
@@ -406,90 +374,163 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         ctx.manifest_value(charlotte_launch::deployd_status::TRACE_KEY),
         Some(catten_rt::ManifestValue::Unsigned(1))
     );
+    let cq = ctx.completion_queue_layout();
+    let mut inputs = catten_services::deployment_input::Inputs::new(0);
+    let mut accepting: [Option<Accepting<'_>>; catten_services::deployment_input::MAX_CLIENTS] =
+        core::array::from_fn(|_| None);
+    let mut retry: Option<catten_services::deadline::Deadline> = None;
     let mut announced = false;
-    'connections: loop {
+    loop {
+        // CQ entries are hints. Drain before checking the exact pending owners;
+        // a completion arriving after this drain keeps the following wait ready.
+        for _ in 0..cq.entries {
+            if unsafe { catten_syscall::cq_read(cq.base, cq.entries) }.is_none() {
+                break;
+            }
+        }
         if let Some(request) = ctx.lifecycle().shutdown_requested() {
             return request;
         }
-        let socket = match new_listener(tcp.as_ref()) {
-            Ok(socket) => socket,
-            Err(error) => {
-                if trace {
-                    catten_rt::logln!("[deployd] listener rejected: {error:?}");
-                }
-                sleep_ms(ACCEPT_RETRY_MS);
-                continue;
-            }
-        };
-        if !announced {
+        if retry.is_some_and(|deadline| deadline.expired()) {
+            retry = None;
+        }
+        replenish(tcp.as_ref(), &mut accepting, inputs.available_slots(), &mut retry, trace);
+        if !announced && accepting.iter().any(Option::is_some) {
             catten_rt::logln!("[deployd] listening port={}", clusterctl::NOTIFY_PORT);
             announced = true;
         }
-        loop {
-            if let Some(request) = ctx.lifecycle().shutdown_requested() {
-                return request;
-            }
-            let call = match socket.call(socket::OP_ACCEPT, socket.id()) {
-                Ok(call) => call,
-                Err(error) => {
-                    if trace {
-                        catten_rt::logln!(
-                            "[deployd] accept admission={error:?} socket={}",
-                            socket.id()
-                        );
+        let mut accepted = false;
+        for slot in &mut accepting {
+            let Some(owner) = slot.as_mut() else {
+                continue;
+            };
+            match owner.pending.poll() {
+                Ok(None) => {}
+                Ok(Some(reply))
+                    if reply.result == 0
+                        && reply.memory.is_none()
+                        && reply.connection.is_none() =>
+                {
+                    let Accepting {
+                        pending,
+                        socket,
+                    } = slot.take().unwrap();
+                    drop(pending);
+                    if let Err((socket, _)) = inputs.admit(socket) {
+                        let _ = socket.close();
                     }
-                    if error
-                        == catten_rt::owned::IpcError::Status(
-                            catten_syscall::ipc_status::QUEUE_FULL,
-                        )
-                    {
-                        sleep_ms(ACCEPT_RETRY_MS);
-                        continue;
-                    }
-                    continue 'connections;
+                    accepted = true;
                 }
-            };
-            let accepted = match call.wait() {
-                Ok(reply) => reply.result,
-                Err(_) => continue 'connections,
-            };
-            if accepted == 0 {
+                _ => {
+                    drop(slot.take());
+                    retry = Some(catten_services::deadline::Deadline::after(ACCEPT_RETRY_MS));
+                }
+            }
+        }
+        if accepted {
+            continue;
+        }
+        let (progressed, finished) = inputs.advance();
+        if let Some((socket, request)) = finished {
+            // Restore the freed position as a listening socket before business
+            // work; other spare positions were listening before this accept.
+            replenish(tcp.as_ref(), &mut accepting, inputs.available_slots(), &mut retry, trace);
+            let reply = handle_request(controller.as_ref(), request);
+            let _ = socket.send_all(reply.as_bytes(), 1000, 5);
+            let _ = socket.close();
+            continue;
+        }
+        if progressed {
+            continue;
+        }
+        let timeout = match (inputs.remaining_ms(), retry.map(|d| d.remaining_ms())) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
+        catten_services::reactor::wait(timeout, 0);
+    }
+}
+
+fn replenish<'a>(
+    tcp: catten_rt::owned::ConnectionRef<'a>,
+    accepting: &mut [Option<Accepting<'a>>; catten_services::deployment_input::MAX_CLIENTS],
+    available: usize,
+    retry: &mut Option<catten_services::deadline::Deadline>,
+    trace: bool,
+) {
+    if retry.is_some() {
+        return;
+    }
+    let mut count = accepting.iter().flatten().count();
+    for slot in accepting.iter_mut().filter(|slot| slot.is_none()) {
+        if count >= available {
+            break;
+        }
+        match begin_accept(tcp) {
+            Ok(owner) => {
+                *slot = Some(owner);
+                count += 1;
+            }
+            Err(error) => {
+                if trace {
+                    catten_rt::logln!("[deployd] listener admission rejected: {error:?}");
+                }
+                // Rejected setup has no readiness producer. Accepted listener
+                // and receive operations retain their own CQ notifications.
+                *retry = Some(catten_services::deadline::Deadline::after(ACCEPT_RETRY_MS));
                 break;
             }
-            if accepted != socket::ERR_WOULD_BLOCK {
-                continue 'connections;
-            }
-            sleep_ms(ACCEPT_RETRY_MS);
         }
+    }
+}
 
-        let reply: Cow<'static, str> = match receive_request(ctx, &socket) {
-            Ok(Err(request)) => return request,
-            Ok(Ok(Request::Notify(descriptor))) => {
-                Cow::Owned(response(notify_cluster(controller.as_ref(), &descriptor)))
-            }
-            Ok(Ok(Request::Release(envelope))) => {
-                Cow::Owned(release_response(notify_release(controller.as_ref(), &envelope)))
-            }
-            Ok(Ok(Request::Operations(bundle))) => {
-                Cow::Owned(response(notify_operations(controller.as_ref(), &bundle)))
-            }
-            Ok(Ok(Request::Shutdown(envelope))) => {
-                Cow::Owned(response(notify_shutdown(controller.as_ref(), &envelope)))
-            }
-            Ok(Ok(Request::IngressPolicy(envelope))) => {
-                Cow::Owned(response(notify_ingress_policy(controller.as_ref(), &envelope)))
-            }
-            Ok(Ok(Request::IngressPolicyStatus)) => {
-                Cow::Owned(status_response(query_ingress_policy(controller.as_ref())))
-            }
-            Ok(Ok(Request::Status(name))) => {
-                Cow::Owned(rollout_response(query_rollout(controller.as_ref(), &name)))
-            }
-            Err(RequestError::AllocationFailed) => Cow::Borrowed(ALLOCATION_FAILURE_RESPONSE),
-            Err(_) => Cow::Borrowed(BAD_REQUEST_RESPONSE),
-        };
-        let _ = socket.send_all(reply.as_bytes(), 1000, 5);
-        let _ = socket.close();
+struct Accepting<'a> {
+    pending: catten_rt::owned::PendingCall<'static>,
+    socket: socket::OwnedSocket<'a>,
+}
+
+fn begin_accept(
+    tcp: catten_rt::owned::ConnectionRef<'_>,
+) -> Result<Accepting<'_>, socket::SocketError> {
+    let socket = new_listener(tcp)?;
+    let pending = socket.accept_call().map_err(socket::SocketError::Ipc)?;
+    let mut owner = Accepting {
+        pending,
+        socket,
+    };
+    if owner.pending.bind_cq(0).is_err() {
+        // Accepted work and its socket stay together through terminal abort.
+        catten_rt::domain_abort();
+    }
+    Ok(owner)
+}
+
+fn handle_request(
+    controller: catten_rt::owned::ConnectionRef<'_>,
+    request: Result<Request, RequestError>,
+) -> Cow<'static, str> {
+    match request {
+        Ok(Request::Notify(descriptor)) => {
+            Cow::Owned(response(notify_cluster(controller, &descriptor)))
+        }
+        Ok(Request::Release(envelope)) => {
+            Cow::Owned(release_response(notify_release(controller, &envelope)))
+        }
+        Ok(Request::Operations(bundle)) => {
+            Cow::Owned(response(notify_operations(controller, &bundle)))
+        }
+        Ok(Request::Shutdown(envelope)) => {
+            Cow::Owned(response(notify_shutdown(controller, &envelope)))
+        }
+        Ok(Request::IngressPolicy(envelope)) => {
+            Cow::Owned(response(notify_ingress_policy(controller, &envelope)))
+        }
+        Ok(Request::IngressPolicyStatus) => {
+            Cow::Owned(status_response(query_ingress_policy(controller)))
+        }
+        Ok(Request::Status(name)) => Cow::Owned(rollout_response(query_rollout(controller, &name))),
+        Err(RequestError::AllocationFailed) => Cow::Borrowed(ALLOCATION_FAILURE_RESPONSE),
+        Err(_) => Cow::Borrowed(BAD_REQUEST_RESPONSE),
     }
 }
 

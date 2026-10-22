@@ -88,6 +88,12 @@ run_expected_violation() {
 }
 
 cd "${script_dir}"
+run_model CharlotteDeploymentInput CharlotteDeploymentInput_small.cfg \
+    Advance ProducerReady Tick Park RejectWait
+run_expected_violation CharlotteDeploymentInput CharlotteDeploymentInput_cursor_unsafe.cfg \
+    HealthyTurnBound UnsafeKeepCursor
+run_expected_violation CharlotteDeploymentInput CharlotteDeploymentInput_deadline_unsafe.cfg \
+    OriginalBudget UnsafeRestartBudget
 run_model CharlotteIPC CharlotteIPC_small.cfg \
     MemoryCreate ScalarCallMove ScalarCallBorrowRead ScalarCallBorrowWrite \
     ScalarCallCopy Receive ReplyReturnMemory EndpointClose \

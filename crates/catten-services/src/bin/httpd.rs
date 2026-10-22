@@ -1464,7 +1464,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             if let Some(request) = ctx.lifecycle().shutdown_requested() {
                 return request;
             }
-            let call = match socket.call(socket::OP_ACCEPT, socket.id()) {
+            let call = match socket.call(socket::OP_TRY_ACCEPT, socket.id()) {
                 Ok(call) => call,
                 Err(error) => {
                     if TRACE_PHASES.load(Ordering::Relaxed) {

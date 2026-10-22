@@ -120,8 +120,16 @@ provide.
 
 \section{What is modeled}
 
-The current suite checks thirty-six safe configurations across thirty-four
-specifications. It also checks 109 expected-counterexample
+The deployment input projection checks four admitted slots, aggregate input-byte
+bounds, unchanged request budgets and a ready healthy input's bound on
+intervening turns. Negative controls retain a busy input's cursor or restart
+its deadline. Atomic input turns and producer/CQ delivery are assumptions;
+controller calls, response transmission, close, new admissions and wall-clock
+fairness are outside this model. See
+\path{docs/tla/CharlotteDeploymentInput.tla} and its conformance map.
+
+The current suite checks thirty-seven safe configurations across thirty-five
+specifications. It also checks 111 expected-counterexample
 configurations. The models are divided by state ownership and failure boundary
 so that each remains reviewable.
 The Raft models are deliberately layered: election, log replication,
@@ -138,6 +146,11 @@ different proof obligations.
 \textbf{Model} & \textbf{Functional boundary} & \textbf{Principal safety properties} \\
 \hline
 \endhead
+\tlbreak{Charlotte}{DeploymentInput} & Four admitted HTTP inputs, rotating
+    turns, shared prefix budget and original deadlines & Bounded retained
+    prefixes; ready input turn bound; unchanged budgets; retained owners on
+    rejected wait. \\
+\hline
 \tlbreak{Charlotte}{IPC} & Endpoint calls, reply tokens, memory move/copy/borrow,
     cancellation, endpoint close, domain teardown & Bounded queues; unique
     receiver-visible reply authority; exclusive write borrow; every remaining
@@ -1058,7 +1071,7 @@ Flat session allocation & Retry and restart epochs alias one wire session. &
 \end{longtable}
 \normalsize
 
-The check suite expects all 109 negative configurations to fail for the named
+The check suite expects all 111 negative configurations to fail for the named
 reason. If one unexpectedly satisfies its invariant, the regression harness
 has lost sensitivity and the suite fails.
 
@@ -1104,12 +1117,12 @@ docs/tla/check.sh /path/to/tla2tools.jar
 Alternatively, \texttt{TLA2TOOLS\_JAR} may name the tools archive. The script:
 
 \begin{itemize}
-    \item runs all thirty-six safe configurations;
+    \item runs all thirty-seven safe configurations;
     \item enables action coverage and requires selected actions to have a
         positive successor count;
     \item rejects structural TLC warnings about variables, \texttt{EXCEPT}
         expressions, or incomplete successor states;
-    \item runs 109 negative configurations and requires each one to fail on
+    \item runs 111 negative configurations and requires each one to fail on
         the named invariant after exercising the named unsafe action; and
     \item writes checkpoints and traces into a temporary directory so generated
         state does not become part of the source tree.

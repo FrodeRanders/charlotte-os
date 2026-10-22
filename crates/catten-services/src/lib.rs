@@ -30,6 +30,7 @@ pub use charlotte_protocol_time as time;
 pub mod clusterctl_client;
 pub mod deadline;
 pub mod deployment_http;
+pub mod deployment_input;
 /// Owned application-side wrapper for the capability-grant controller.
 pub mod grant_client;
 /// Owned application-side wrappers for the Kafka service protocol.
@@ -770,7 +771,8 @@ pub mod socket {
     /// Bind TCP or UDP to the little-endian port in a moved memory object.
     pub const OP_BIND: u32 = 3;
     pub const OP_LISTEN: u32 = 4;
-    pub const OP_ACCEPT: u32 = 5;
+    /// Observe the current accept state without retaining a waiter.
+    pub const OP_TRY_ACCEPT: u32 = 5;
     pub const OP_SEND: u32 = 6;
     /// Move one writable `REPLY_BUFFER_BYTES` buffer into the call. Reply
     /// returns that buffer with the byte count, or a scalar error/EOF. The
@@ -808,6 +810,10 @@ pub mod socket {
     /// Listen for TCP on one exact IPv4 address and port. The payload matches
     /// [`OP_BIND_IPV4`].
     pub const OP_LISTEN_IPV4: u32 = 14;
+    /// Retain one complete call until this TCP listener establishes a peer or
+    /// closes. A successful scalar reply is zero. Bind its PendingCall to a
+    /// CQ to combine accept readiness with other socket/deadline interests.
+    pub const OP_ACCEPT: u32 = 15;
 
     pub const CONNECTION_STATE_CLOSED: i64 = 0;
     pub const CONNECTION_STATE_CONNECTING: i64 = 1;
@@ -928,6 +934,10 @@ pub mod socket {
 
         pub fn call(&self, opcode: u32, arg0: u64) -> Result<PendingCall<'static>, IpcError> {
             self.service.call(opcode, arg0)
+        }
+
+        pub fn accept_call(&self) -> Result<PendingCall<'static>, IpcError> {
+            self.service.call(OP_ACCEPT, self.id())
         }
 
         /// Return the protocol-neutral connection state exposed by tcpip.
@@ -1109,7 +1119,12 @@ pub mod socket {
             }
         }
 
-        fn decode_receive(result: CallResult) -> Result<Option<ReceivedChunk>, SocketError> {
+        pub(crate) fn decode_receive(
+            result: CallResult,
+        ) -> Result<Option<ReceivedChunk>, SocketError> {
+            if result.connection.is_some() {
+                return Err(SocketError::InvalidReply);
+            }
             if result.result < 0 {
                 return Err(SocketError::Service(result.result));
             }

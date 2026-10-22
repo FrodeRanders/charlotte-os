@@ -33,6 +33,10 @@ pub struct RequestBuffer {
 }
 
 impl RequestBuffer {
+    pub fn buffered_len(&self) -> usize {
+        self.bytes.len()
+    }
+
     pub fn has_header(&self) -> bool {
         header_end(&self.bytes).is_some()
     }

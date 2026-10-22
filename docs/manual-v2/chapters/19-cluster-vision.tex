@@ -872,6 +872,22 @@ cancellation is not remote rollback. The input parser, controller-internal
 waits, TCP/IP RPCs and socket teardown remain separate progress boundaries.
 See \repofile|docs/reports/audits/2026-10-12-security-controller-deadlines.md|.
 
+Deployment input now uses four owning client positions, each listening or receiving.
+Spare listening sockets are prepared before observing accepts; each accepted
+accept or receive call is bound to the default CQ. A rotating cursor advances
+one ready input per turn, so an incomplete header or upload leaves other
+admitted inputs able to progress. Input prefixes share a 1,049,088-byte limit including header allowance, in
+addition to four receive pages and existing TCP buffers. The five-second header
+and thirty-second total budgets start when the reactor observes accept
+completion and survive progress and unrelated wakes. Peer EOF completes a
+deferred receive after buffered bytes drain. Rejected listener setup uses a
+50 ms admission backoff; binding or wait admission rejection after accepted
+work retains its owners through domain abort.
+Controller calls, response transmission and socket close remain synchronous.
+All occupied slots, a slow controller or response backpressure can still delay
+a healthy client. See
+\repofile|docs/reports/audits/2026-10-22-security-deployment-input.md|.
+
 For a release made from several independently signed components,
 \texttt{cluster-sign deployment-apply} prevalidates all descriptor files,
 rejects duplicate artifact names and retains the positive generation returned
@@ -987,12 +1003,15 @@ external work. The agent acknowledges and exits only after both child sets are
 empty.
 
 Deployment ingress, HTTP ingress, and the UTC time service also implement the
-cooperative path. The ingress services stop opening listeners and poll their
-current accept or receive operation with a bounded lifecycle check before
-dropping their owned listener and service connections. A receive timeout uses
-an explicit cancellation exchange with TCP/IP: closing only the local call
-capability would leave the server's deferred reply slot occupied and could
-discard the first bytes that arrive later. Time closes its public endpoint and
+cooperative path. Deployment ingress checks lifecycle on each reactor turn and
+on default-CQ wakes, then drops its accepted calls and socket owners together.
+Its synchronous controller/send/close phases remain separate shutdown latency
+boundaries. HTTP ingress retains bounded lifecycle checks around its current
+accept/receive operation. Its receive timeout uses an explicit cancellation
+exchange with TCP/IP: closing only the local call capability would leave the
+server's deferred reply slot occupied and could discard later input if that
+socket were reused. Deployment input instead closes the whole socket owner.
+Time closes its public endpoint and
 unwinds any pending NTP call, UDP socket, and persistence connection as one
 owning scope. Already admitted ingress work may finish inside the signed grace,
 but none of these services begins new work after observing the lifecycle
@@ -1014,7 +1033,7 @@ published. Before reclaiming a domain, the coordinator records per-phase
 counts for acknowledged, unacknowledged, and forced exits.
 
 The deployment plane and cluster core participate in cooperative shutdown.
-Deployment ingress closes its listener, cluster
+Deployment ingress closes its listening and receiving sockets, cluster
 control drops its endpoint and service connections, and the agent interrupts
 startup or reconciliation waits before draining applications and then their
 operational connectors. DNS stops the Raft/catalog reactor and cancels pending

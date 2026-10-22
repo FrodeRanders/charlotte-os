@@ -1,10 +1,11 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains finite, executable specifications for thirty-four
+This directory contains finite, executable specifications for thirty-five
 CharlotteOS subsystems:
 
 | Subsystem | Module | Fast configuration |
 |---|---|---|
+| Deployment input isolation and original deadlines | `CharlotteDeploymentInput.tla` | `CharlotteDeploymentInput_small.cfg` |
 | Endpoint IPC and memory transfer | `CharlotteIPC.tla` | `CharlotteIPC_small.cfg` |
 | IPC attachment rollback and reply waits | `CharlotteIpcTransaction.tla` | `CharlotteIpcTransaction_small.cfg` |
 | Captured capability admission and hidden IPC delivery | `CharlotteIpcPublication.tla` | `CharlotteIpcPublication_small.cfg` |
@@ -40,6 +41,13 @@ CharlotteOS subsystems:
 | Remote-call identity, uncertainty, and bounded deduplication | `CharlotteRemoteCall.tla` | `CharlotteRemoteCall_small.cfg` |
 | Reliable-message restart/retry sessions | `CharlotteReliableMessage.tla` | `CharlotteReliableMessage_small.cfg` |
 
+The [22 October deployment input review](../reports/audits/2026-10-22-security-deployment-input.md)
+adds a four-slot finite projection: aggregate buffered-byte bounds, original
+budgets and a ready healthy input's maximum intervening turns. Cursor and
+deadline negative controls must violate their named invariants. It assumes
+atomic input turns and producer/CQ delivery, and omits controller/send/close
+latency, new admissions, TCP handshakes and saturated-client fairness.
+
 These are abstract safety models checked with TLC. They are useful for finding
 protocol and state-machine errors, but they are not a proof of the Rust
 implementation. In particular, an action is atomic in TLA+ by definition.
@@ -66,7 +74,7 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all thirty-six complete fast configurations and 109 expected-failure
+- runs all thirty-seven complete fast configurations and 111 expected-failure
   IPC-transaction, IPC-publication, endpoint-observer, name-publication, boot-trust, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
   checked-wait, domain-abort, address-space, root-retirement, hardware-ASID, interrupt-route, service-lifecycle, DMA, DMA-operation, authorization,
   Raft-join, Raft-response, Raft-stream, snapshot-restore, cluster-ingress, and reliable-message regression configurations;

@@ -24,6 +24,32 @@ use crate::{
     },
 };
 
+/// Completion of the listening socket's handshake, including peer half-close.
+/// SYN-RECEIVED still belongs to the pending accept operation.
+pub fn accept_result(state: smoltcp::socket::tcp::State) -> Option<i64> {
+    use smoltcp::socket::tcp::State;
+    match state {
+        State::Listen | State::SynReceived => None,
+        State::Established | State::CloseWait => Some(0),
+        _ => Some(crate::socket::ERR_CONNECTION_REFUSED),
+    }
+}
+
+pub fn receive_eof(state: smoltcp::socket::tcp::State, can_recv: bool) -> bool {
+    use smoltcp::socket::tcp::State;
+    !can_recv
+        && matches!(
+            state,
+            State::CloseWait | State::Closing | State::LastAck | State::TimeWait | State::Closed
+        )
+}
+
+pub fn reply_accept(mut request: IncomingMessage, result: i64) {
+    if let Some(reply) = request.reply.take() {
+        let _ = reply.reply(result);
+    }
+}
+
 pub struct SocketEntry {
     pub handle: smoltcp::iface::SocketHandle,
     pub kind: SocketKind,
@@ -39,6 +65,7 @@ pub struct SocketEntry {
     /// selected by `OP_CONNECT` and filters received datagrams to it.
     pub udp_remote: Option<IpEndpoint>,
     pub recv_pending: Option<PendingReceive>,
+    pub accept_pending: Option<IncomingMessage>,
     /// Set by `OP_CLOSE`: the socket was gracefully closed and may be swept
     /// from the set once it reaches a final state.
     pub closing: bool,
@@ -178,6 +205,30 @@ impl TcpipState {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn accept_waits_for_handshake_and_receive_drains_before_eof() {
+        use smoltcp::socket::tcp::State;
+        for state in [State::Listen, State::SynReceived] {
+            assert_eq!(super::accept_result(state), None);
+            assert!(!super::receive_eof(state, false));
+        }
+        for state in [State::Established, State::CloseWait] {
+            assert_eq!(super::accept_result(state), Some(0));
+        }
+        for state in [State::Closed, State::Closing, State::LastAck, State::TimeWait] {
+            assert_eq!(super::accept_result(state), Some(crate::socket::ERR_CONNECTION_REFUSED));
+        }
+        for state in
+            [State::Closed, State::CloseWait, State::Closing, State::LastAck, State::TimeWait]
+        {
+            assert!(super::receive_eof(state, false));
+            assert!(!super::receive_eof(state, true));
+        }
+        for state in [State::SynSent, State::Established, State::FinWait1, State::FinWait2] {
+            assert!(!super::receive_eof(state, false));
+        }
+    }
+
     use alloc::{
         vec,
         vec::Vec,
@@ -245,6 +296,7 @@ mod tests {
             activated,
             udp_remote: None,
             recv_pending: None,
+            accept_pending: None,
             closing: false,
             close_started_ms: None,
         }

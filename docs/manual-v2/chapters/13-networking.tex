@@ -316,6 +316,15 @@ The stack uses smoltcp 0.13. It runs in a userspace service registered as
 \texttt{OP\_RECV}, and \texttt{OP\_CLOSE}). Software that requires
 TCP/IP connects to this service.
 
+\texttt{OP\_ACCEPT} (15) retains the complete request until the listening
+socket reaches Established or CloseWait, then returns scalar zero without
+attachments. Listen and SynReceived remain pending; terminal states or explicit
+close return an error. \texttt{OwnedSocket::accept\_call} can bind the accepted
+call to a CQ. \texttt{OP\_TRY\_ACCEPT} (5) is a separate immediate state
+observation used by the existing nonreactor callers. Deferred receive drains
+buffered bytes before reporting peer EOF. Deployment input uses these deferred
+notifications; HTTP keyhole input remains serial.
+
 \texttt{OP\_RECV} and \texttt{OP\_STATUS} require one writable 4096-byte
 caller-supplied memory object moved into the call. The reply returns that same
 backing; retained pages remain charged to the original allocating generation,

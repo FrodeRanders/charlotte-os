@@ -56,9 +56,25 @@ pending owner and returns HTTP `503` with `{"error":-22}`
 (`clusterctl::ERR_RPC_TIMEOUT`). The controller may already have received and
 committed a mutation: cancellation is not remote rollback. Observe the existing
 deployment/release state before deciding how to reconcile an uncertain outcome.
-The request parser's five-second header/thirty-second total input budgets are
-separate. Controller-internal waits, TCP/IP RPCs, response transmission and
-socket teardown still require their own progress qualification. See the
+Input uses four owning positions, each listening or receiving. Spare listeners
+are prepared before observing accepts. Each position has one accepted accept
+or receive bound to the default CQ; a rotating cursor advances one
+ready input per turn. Incomplete headers and bodies therefore leave other
+admitted inputs able to progress. Retained input prefixes share a
+`MAX_REQUEST_BYTES` byte limit (1,049,088 bytes, including header allowance), plus at most four caller-owned
+receive pages and the sockets' existing TCP buffers. Exhausting that prefix
+budget rejects the current input without changing other clients' owners.
+Each input has a five-second header and thirty-second total deadline captured
+when the reactor observes accept completion. Progress and unrelated CQ wakes do
+not restart either budget. Accept and receive waits use actual producer
+notifications, including peer EOF; rejected listener setup alone uses a 50 ms
+admission backoff because it has no readiness source. Rejected CQ binding after
+submission or rejected CQ wait admission aborts with the existing owners live.
+Controller work, response transmission and socket close still run synchronously.
+A healthy client can still be delayed by those phases or by all four slots being
+occupied. Controller-internal waits, general TCP/IP RPCs, response transmission
+and socket teardown require further progress qualification. See the
+[input-isolation evidence](../reports/audits/2026-10-22-security-deployment-input.md). See the
 [RPC deadline evidence](../reports/audits/2026-10-12-security-controller-deadlines.md).
 
 For the current demonstration service, the final signing steps resemble:

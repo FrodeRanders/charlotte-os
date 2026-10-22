@@ -87,11 +87,16 @@ for the boot-done marker, then runs a poll loop that:
 2. Runs `iface.poll()` using milliseconds sampled from the kernel monotonic counter;
 3. Services at most 16 requests per cycle through the socket API (`OP_SOCKET`/`OP_CONNECT`/`OP_BIND`/`OP_LISTEN`/
    `OP_ACCEPT`/`OP_SEND`/`OP_RECV`/`OP_CLOSE`) over its endpoint;
-4. Completes deferred `OP_RECV` replies when socket data arrives.
+4. Completes deferred `OP_ACCEPT` and `OP_RECV` replies when their socket state changes.
 
 smoltcp 0.13 transitions a listening socket itself into the established
-connection, so `OP_ACCEPT` reports success once the listener is no longer
-listening. `OP_SEND` carries the payload length in the high 32 bits of `arg0`;
+connection. `OP_ACCEPT` (15) retains the complete authenticated request until
+Established or CloseWait, and replies with scalar zero and no attachments.
+Listen and SynReceived keep it pending; terminal states and explicit close
+complete it with an error. `OwnedSocket::accept_call` exposes that pending owner
+for CQ binding. `OP_TRY_ACCEPT` (5) remains a distinct immediate observation for
+nonreactor callers. Deferred receive delivers buffered data before EOF, and
+reports EOF once a peer's receive half closes with no remaining bytes. `OP_SEND` carries the payload length in the high 32 bits of `arg0`;
 `OP_RECV` replies later by moving a page holding the received bytes.
 
 ## What's in place

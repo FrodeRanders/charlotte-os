@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Probe deployment ingress rejection and serial deadline recovery.
+"""Probe deployment ingress rejection, concurrent input and deadline recovery.
 
-Normal requests get three 12-second attempts, separated by three seconds to
-allow serial listener handoff. A trickled body must be rejected within 35
-seconds, against the guest's existing 30-second total request budget. This
-does not qualify concurrent-client fairness or accepted signed deployments.
+Healthy requests have a three-second, single-attempt observation budget while
+up to three admitted peers retain incomplete headers or bodies. Serial recovery
+controls retain the existing request deadlines. Saturated admission, slow
+controller calls, response backpressure and general packet floods are separate.
 """
 
 import argparse
@@ -109,6 +109,49 @@ def trickled_body(port):
         print(f"PASS: trickled deployment body rejected in {elapsed:.2f}s; ingress recovered", flush=True)
 
 
+def concurrent_input(port):
+    partial_header = b"GET /v1/deployments/audit_missing HTTP/1.1\r\nHost:"
+    partial_body = (
+        b"POST /v1/deployments HTTP/1.1\r\nHost: localhost\r\n"
+        b"Content-Length: 3584\r\n\r\nx"
+    )
+    for name, payloads in [
+        ("header", [partial_header]),
+        ("body", [partial_body]),
+        ("mixed", [partial_header, partial_body, partial_body]),
+    ]:
+        peers = []
+        try:
+            for payload in payloads:
+                peer = socket.create_connection(("127.0.0.1", port), timeout=3)
+                peers.append(peer)
+                peer.sendall(payload)
+                time.sleep(0.15)
+            start = time.monotonic()
+            deadline = start + 3
+            with socket.create_connection(("127.0.0.1", port), timeout=3) as healthy:
+                healthy.sendall(STATUS_REQUEST)
+                code, body = read_response(healthy, deadline)
+            elapsed = time.monotonic() - start
+            assert code == 404 and "error" in body, (name, code, body)
+            assert elapsed < 3, (name, elapsed)
+            # The healthy reply must arrive before the stalled peers are
+            # rejected. Do not count eventual serial deadline recovery as fairness.
+            for peer in peers:
+                peer.settimeout(0)
+                try:
+                    observed = peer.recv(1, socket.MSG_PEEK)
+                except BlockingIOError:
+                    continue
+                raise AssertionError((name, "stalled peer already completed", observed))
+            print(f"PASS: concurrent {name}: {len(peers)} stalled peers; healthy reply in {elapsed:.3f}s", flush=True)
+        finally:
+            for peer in peers:
+                peer.close()
+        # Allow peer EOF/reaping without consuming a header/body timeout.
+        time.sleep(0.25)
+
+
 class ProbeDeadlineExceeded(RuntimeError):
     pass
 
@@ -136,6 +179,7 @@ def main():
 
     status(args.port)
     print("PASS: deployment status control", flush=True)
+    concurrent_input(args.port)
     for headers in [
         b"Content-Length: 3584\r\nContent-Length: 3584\r\n",
         b"Content-Length: 3584\r\nTransfer-Encoding: chunked\r\n",

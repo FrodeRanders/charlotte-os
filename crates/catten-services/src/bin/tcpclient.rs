@@ -324,7 +324,7 @@ fn main(ctx: Context) -> ! {
         let mut accepted = false;
         for _ in 0..600 {
             let result = socket
-                .call(socket::OP_ACCEPT, socket.id())
+                .call(socket::OP_TRY_ACCEPT, socket.id())
                 .unwrap_or_else(|_| fail(0xe00a))
                 .wait()
                 .unwrap_or_else(|_| fail(0xe00a))

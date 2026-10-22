@@ -736,6 +736,19 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 
         // Reply authority and receive backing remain owned on every branch.
         for entry in state.sockets.values_mut() {
+            if entry.kind == SocketKind::Tcp {
+                let tcp = sockets.get::<TcpSocket>(entry.handle);
+                if let Some(result) = catten_services::socket_state::accept_result(tcp.state())
+                    && let Some(request) = entry.accept_pending.take()
+                {
+                    catten_services::socket_state::reply_accept(request, result);
+                }
+                if entry.recv_pending.is_some()
+                    && catten_services::socket_state::receive_eof(tcp.state(), tcp.can_recv())
+                {
+                    entry.recv_pending.take().unwrap().reply(0);
+                }
+            }
             if entry.recv_pending.is_none() {
                 continue;
             }
@@ -770,7 +783,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             let msg = ipc_recv(endpoint.as_raw());
             if msg.is_ok()
                 && msg.reply != 0
-                && matches!(msg.opcode, socket::OP_RECV | socket::OP_STATUS)
+                && matches!(msg.opcode, socket::OP_RECV | socket::OP_STATUS | socket::OP_ACCEPT)
             {
                 // Raw authenticated-receive ABI boundary: transfer every
                 // attachment and reply exactly once into the operation owner.
@@ -780,6 +793,23 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     continue;
                 };
                 let owner = SocketOwner::from_message(&msg);
+                if msg.opcode == socket::OP_ACCEPT {
+                    use catten_services::socket_state::reply_accept;
+                    if request.memory.is_some() || request.connection.is_some() {
+                        reply_accept(request, socket::ERR_BAD_OPCODE);
+                    } else if let Some(entry) = state.owned_entry_mut(msg.arg0, owner) {
+                        if entry.kind != SocketKind::Tcp || entry.closing {
+                            reply_accept(request, socket::ERR_BAD_SOCKET);
+                        } else if entry.accept_pending.is_some() {
+                            reply_accept(request, socket::ERR_WOULD_BLOCK);
+                        } else {
+                            entry.accept_pending = Some(request);
+                        }
+                    } else {
+                        reply_accept(request, socket::ERR_BAD_SOCKET);
+                    }
+                    continue;
+                }
                 let mut receive = catten_services::socket_state::PendingReceive::new(request);
                 if !receive.valid_buffer() {
                     receive.reply(socket::ERR_BAD_OPCODE);
@@ -925,6 +955,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         activated: false,
                         udp_remote: None,
                         recv_pending: None,
+                        accept_pending: None,
                         closing: false,
                         close_started_ms: None,
                     };
@@ -1144,7 +1175,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     ipc_reply(msg.reply, result);
                 }
 
-                socket::OP_ACCEPT => {
+                socket::OP_TRY_ACCEPT => {
                     if msg.memory != 0 {
                         memory_close(msg.memory);
                     }
@@ -1264,6 +1295,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     };
                     if let Some(token) = entry.recv_pending.take() {
                         token.reply(0);
+                    }
+                    if let Some(request) = entry.accept_pending.take() {
+                        catten_services::socket_state::reply_accept(
+                            request,
+                            socket::ERR_CONNECTION_REFUSED,
+                        );
                     }
                     entry.closing = true;
                     entry.close_started_ms = Some(ticks);

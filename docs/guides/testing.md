@@ -403,8 +403,12 @@ Both architecture runners require `test-deployment-http-liveness.py` under
 `--http-test`. It checks framing and invalid descriptor rejection, EOF,
 abortive-close and idle-peer recovery, plus a trickled incomplete body against
 the deployment adapter's unchanged thirty-second total deadline. Every case
-ends with a healthy status control. The selected 180-second runner window
-accommodates both serial probes; it does not extend guest request deadlines.
+ends with a healthy status control. The deployment probe also holds one incomplete header, one incomplete body,
+and three mixed peers while requiring a single-attempt healthy status response
+within three seconds, before any stalled peer completes. These cases qualify
+available-slot input isolation; saturated admission, controller latency and
+response backpressure are separate. The selected runner window
+accommodates both probes; it does not extend guest request deadlines.
 The deployment probe has its own 120-second total host budget.
 The kernel syscall fixture also forces delegated queue-full rejection, drains
 the original queue and verifies one successful grant/reply through the same
