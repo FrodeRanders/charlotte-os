@@ -210,8 +210,26 @@ observes accepted creation/listen and cancels idle accepts into that pool under
 the original budgets. Rendering, controller internals, other shutdown destructors
 and all-position admission pressure remain separate boundaries.
 
+The [controller-server relay follow-up](../reports/audits/2026-10-22-security-controller-relay.md)
+removes synchronous DNS reply waits from all seven HTTP controls plus named status.
+Eight owning positions and a 2,098,176-byte original/copy reservation bound active
+requests. Accepted phases bind to the controller CQ; preflight and mutation share
+one original server deadline, separate from the unchanged ingress deadline.
+Only checked absence/newer-request evidence advances preflight. Failed or malformed
+queries cannot become an empty-record fallback. Source mappings end before upstream
+reply/loan authority, while a delivered DNS copy may retain its original charge
+after timeout. Legacy upload/join/key handlers, synchronous bounded validation and
+rendering, DNS execution and whole-service pressure remain separate boundaries.
+
+Its first x86 security run failed the existing available-publication lookup
+check before the new adapter. The capture lacks the returned scalar/attachments,
+so neither its rejection cause nor a relationship to the relay change is known.
+The same-source repeat advanced past that check; later fixture corrections and
+passes do not resolve the original observation. The failed run remains separate
+in the linked evidence, alongside the historical reclamation timeout.
+
 Remaining acceptance requires progress during saturated admission and slow
-controller-server/transport phases, sustained connection/packet flood, NIC failure
+DNS/transport and legacy controller phases, sustained connection/packet flood, NIC failure
 and lifecycle shutdown evidence on supported targets. Signatures checked after receipt do
 not protect listener availability. Passing deadline/rejection probes do not
 complete these fairness gates or SEC-07's essential-service pressure matrix.

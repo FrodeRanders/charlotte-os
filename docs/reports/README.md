@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [SEC-06 controller server relays](audits/2026-10-22-security-controller-relay.md) — Owned CQ forwarding isolates slow DNS replies; failed preflight queries cannot authorize submission.
+
 - [SEC-06 deployment listener setup reactor](audits/2026-10-22-security-deployment-listener.md) — Creation, listen and accept retain owners and one setup deadline on the shared CQ; shutdown drains setup into the existing close pool.
 
 - [IPC namespace selection recheck](audits/2026-10-22-ipc-namespace-selection.md) — Real peer-close interleaving reproduces stale Pending; exact presence recheck preserves live claims and original backing charges.

@@ -55,9 +55,38 @@ to the default CQ. The service continues accepting and parsing other inputs and
 observing other controller calls while one reply remains outstanding. Listener
 setup/accept, input, controller, output and close phases share four positions.
 Response sends use owning `deployment_output::Outputs` operations on that same CQ. Response
-rendering still runs synchronously; the controller server itself can
-also serialize work internally. Socket creation, listen setup and accept now use
+rendering still runs synchronously. The controller forwards these operations
+through its own bounded CQ relay pool, described below. Socket creation, listen setup and accept now use
 owning `deployment_listener::Listeners` operations on the same CQ.
+
+The controller's `clusterctl_relay::Relays` handles all seven HTTP controls and
+`OP_STATUS` in eight fixed positions. Original incoming request backing and one
+copied DNS request reserve at most 2,098,176 bytes together. Admission rejects
+before mapping/copying beyond the remaining pool. This logical reservation
+excludes returned records, decoder allocations and any copies retained by DNS
+after an earlier reply or cancellation; their original kernel charges remain.
+Each accepted DNS phase binds to the same CQ as the controller endpoint. A server
+turn receives at most eight requests, then rotates relay observation and checks
+lifecycle before another turn. Legacy upload, join and key operations still use
+blocking handlers on this endpoint; their execution remains a progress boundary.
+
+One server-side five-second deadline starts before request validation/preparation.
+Deployment notification first queries the exact artifact, then submits only after
+a checked absent record or a checked older revision. Same signed bytes return
+the existing generation; stale/conflicting revisions reject. Query failure,
+malformed records or mismatched identities never stand in for absence. Both
+phases retain the original deadline and each submits once. This server budget is
+separate from the ingress caller's deadline; it cannot extend that caller's wait.
+No accepted mutation is replayed after cancellation or lost observation.
+
+Timeout cancels the exact DNS pending owner, ends the source mapping, then replies
+`ERR_RPC_TIMEOUT`. DNS may retain its moved request and original charge afterward.
+Accepted observation or malformed replies report `dns::ERR_UNCERTAIN`; only
+confirmed admission rejection reports routing failure. Checked returned records
+move to the original caller with their owners. Binding/wait rejection aborts with
+the whole pool live. Shutdown cancels pending DNS calls before source mappings
+and incoming reply authorities drop; cancellation proves no remote rollback.
+See the [server-relay evidence](../reports/audits/2026-10-22-security-controller-relay.md).
 
 Each controller operation has one five-second deadline captured before request
 validation/preparation. The reactor waits for the earliest setup, input,
@@ -159,7 +188,7 @@ no further listen/accept operation is submitted. Existing closes drain under
 their original deadlines while other client owners stay live. Cancelling an
 idle accept proves no remote rollback or physical socket release. Other phases'
 shutdown destructors still use ordinary blocking `OwnedSocket` close. Syscall
-return latency, all containing destructors and controller internals remain
+return latency, all containing destructors, DNS execution and legacy controller handlers remain
 separate boundaries; total shutdown latency is unqualified.
 See the [listener evidence](../reports/audits/2026-10-22-security-deployment-listener.md).
 

@@ -88,6 +88,16 @@ run_expected_violation() {
 }
 
 cd "${script_dir}"
+run_model CharlotteControllerRelay CharlotteControllerRelay_small.cfg \
+    ProducerReply CheckedPreflight RejectPreflight ObserveTerminal Expire ReleaseReceiver Park Wake Tick AbortBindingOrWait
+run_expected_violation CharlotteControllerRelay CharlotteControllerRelay_unknown_unsafe.cfg \
+    MutationRequiresCheckedQuery UnsafeUnknownAsMissing
+run_expected_violation CharlotteControllerRelay CharlotteControllerRelay_budget_unsafe.cfg \
+    OriginalBudget UnsafeRestart
+run_expected_violation CharlotteControllerRelay CharlotteControllerRelay_serial_unsafe.cfg \
+    ParkCoversAll UnsafeSerialWait
+run_expected_violation CharlotteControllerRelay CharlotteControllerRelay_replay_unsafe.cfg \
+    AcceptedOnce UnsafeReplay
 run_model CharlotteDeploymentListener CharlotteDeploymentListener_small.cfg \
     Admit RejectQueue ProducerReply Observe RejectConfirmed Abort Park Wake Tick
 run_expected_violation CharlotteDeploymentListener CharlotteDeploymentListener_replay_unsafe.cfg \

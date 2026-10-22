@@ -230,6 +230,160 @@ fn controller_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>) {
     ));
 }
 
+fn relay_request_memory(bytes: &[u8]) -> OwnedMemory {
+    let memory = OwnedMemory::allocate(1).unwrap_or_else(|_| catten_rt::domain_abort());
+    let mut mapping = memory.map_writable().unwrap_or_else(|_| catten_rt::domain_abort());
+    mapping.as_mut_slice()[..bytes.len()].copy_from_slice(bytes);
+    mapping.unmap().unwrap_or_else(|_| catten_rt::domain_abort())
+}
+
+fn controller_server_relay_probe(ctx: &Context) {
+    use catten_services::{
+        clusterctl,
+        clusterctl_relay::Relays,
+        dns,
+    };
+    let server = Endpoint::create(clusterctl::INTERFACE, clusterctl::VERSION, 8)
+        .unwrap_or_else(|_| catten_rt::domain_abort());
+    let backend = Endpoint::create(dns::INTERFACE, dns::VERSION, 8)
+        .unwrap_or_else(|_| catten_rt::domain_abort());
+    server.bind_completion_queue(0).unwrap_or_else(|_| catten_rt::domain_abort());
+    backend.bind_completion_queue(0).unwrap_or_else(|_| catten_rt::domain_abort());
+    let client = server.connect(IpcRights::CALL).unwrap_or_else(|_| catten_rt::domain_abort());
+    let dns_connection =
+        backend.connect(IpcRights::CALL).unwrap_or_else(|_| catten_rt::domain_abort());
+    let mut relays = Relays::new(dns_connection.as_ref(), &[0; 32], 0);
+    // Same-namespace fixtures use the public moved-memory request form.
+    // DNS gets a distinct copy whose receiver retains it after timeout.
+    let original = relay_request_memory(b"held");
+    let mut held_call = client
+        .call_move(clusterctl::OP_ROLLOUT, 4, original)
+        .unwrap_or_else(|_| catten_rt::domain_abort());
+    let mut healthy_call = client
+        .call_move(clusterctl::OP_ROLLOUT, 7, relay_request_memory(b"healthy"))
+        .unwrap_or_else(|_| catten_rt::domain_abort());
+    let mut malformed_call = client
+        .call(clusterctl::OP_INGRESS_POLICY_STATUS, 0)
+        .unwrap_or_else(|_| catten_rt::domain_abort());
+    for pending in [&mut held_call, &mut healthy_call, &mut malformed_call] {
+        pending.bind_cq(0).unwrap_or_else(|_| catten_rt::domain_abort());
+    }
+    let outer = Deadline::after(7_000);
+    let healthy_budget = Deadline::after(2_000);
+    let mut held = None;
+    let mut healthy_done = false;
+    let mut malformed_done = false;
+    let mut held_done = false;
+    let mut received = 0;
+    let cq = ctx.completion_queue_layout();
+    loop {
+        for _ in 0..cq.entries {
+            if unsafe { catten_syscall::cq_read(cq.base, cq.entries) }.is_none() {
+                break;
+            }
+        }
+        check(!outer.expired(), 300);
+        let mut progressed = false;
+        while let Some(incoming) =
+            server.try_receive().unwrap_or_else(|_| catten_rt::domain_abort())
+        {
+            relays.start(incoming);
+            progressed = true;
+        }
+        while let Some(mut incoming) =
+            backend.try_receive().unwrap_or_else(|_| catten_rt::domain_abort())
+        {
+            received += 1;
+            check(incoming.connection.is_none(), 301);
+            if incoming.opcode == dns::OP_DEPLOY_ROLLOUT_NAMED && incoming.arg0 == 4 {
+                check(held.is_none(), 302);
+                held = Some(incoming);
+                continue;
+            }
+            let token = incoming.reply.take().unwrap_or_else(|| catten_rt::domain_abort());
+            if incoming.opcode == dns::OP_INGRESS_POLICY_QUERY {
+                token
+                    .reply_connection(&backend, IpcRights::CALL, 0)
+                    .unwrap_or_else(|_| catten_rt::domain_abort());
+            } else {
+                check(incoming.opcode == dns::OP_DEPLOY_ROLLOUT_NAMED && incoming.arg0 == 7, 303);
+                let bytes = clusterctl::RolloutStatus {
+                    state: clusterctl::ROLLOUT_COMMITTED,
+                    deployment_generation: 9,
+                    service_generation: 0,
+                    node_key: 1,
+                    desired_replicas: 1,
+                    ready_replicas: 0,
+                }
+                .encode();
+                drop(incoming.memory.take());
+                token
+                    .reply_move(relay_request_memory(&bytes), bytes.len() as i64)
+                    .unwrap_or_else(|_| catten_rt::domain_abort());
+            }
+            progressed = true;
+        }
+        progressed |= relays.advance();
+        if !healthy_done
+            && let Some(mut reply) =
+                healthy_call.poll().unwrap_or_else(|_| catten_rt::domain_abort())
+        {
+            check(
+                !healthy_budget.expired()
+                    && reply.result == clusterctl::ROLLOUT_STATUS_LEN as i64
+                    && reply.connection.is_none(),
+                304,
+            );
+            let memory = reply.memory.take().unwrap_or_else(|| catten_rt::domain_abort());
+            let mapping = memory.map_read_only().unwrap_or_else(|_| catten_rt::domain_abort());
+            check(
+                clusterctl::RolloutStatus::decode(
+                    &mapping.as_slice()[..clusterctl::ROLLOUT_STATUS_LEN],
+                )
+                .is_some_and(|r| r.deployment_generation == 9),
+                305,
+            );
+            healthy_done = true;
+        }
+        if !malformed_done
+            && let Some(reply) = malformed_call.poll().unwrap_or_else(|_| catten_rt::domain_abort())
+        {
+            denied(reply, dns::ERR_UNCERTAIN, 306);
+            malformed_done = true;
+        }
+        if !held_done
+            && let Some(reply) = held_call.poll().unwrap_or_else(|_| catten_rt::domain_abort())
+        {
+            denied(reply, clusterctl::ERR_RPC_TIMEOUT, 307);
+            check(healthy_done && malformed_done, 308);
+            held_done = true;
+        }
+        if healthy_done && malformed_done && held_done {
+            break;
+        }
+        if !progressed {
+            catten_services::reactor::wait(
+                Some(
+                    relays.remaining_ms().unwrap_or(outer.remaining_ms()).min(outer.remaining_ms()),
+                ),
+                0,
+            );
+        }
+    }
+    check(received == 3 && relays.occupied_slots() == 0 && relays.reserved_bytes() == 0, 309);
+    check(held.as_ref().and_then(|i| i.memory.as_ref()).is_some_and(|m| m.len() == 4096), 310);
+    check(backend.try_receive().unwrap_or_else(|_| catten_rt::domain_abort()).is_none(), 311);
+    drop(held_call);
+    drop(healthy_call);
+    drop(malformed_call);
+    drop(held);
+    catten_rt::logln!(concat!(
+        "[security] controller server CQ: healthy returned record beside held DNS; ",
+        "malformed returned connection rejected, original timeout/no replay; ",
+        "incoming mapping ended and DNS copy retained"
+    ));
+}
+
 /// A real IPC adapter holds creation while a second listener completes setup,
 /// accept and logical close. Its scalar IDs are fixture metadata with no TCP
 /// backing; native HTTP runs separately exercise the actual TCP/IP backend.
@@ -842,6 +996,7 @@ fn main(ctx: Context) -> ! {
     let synchronous_expired = socket::OwnedSocket::open(tcpip.as_ref(), socket::DOMAIN_UDP)
         .unwrap_or_else(|_| catten_rt::domain_abort());
     controller_reactor_probe(&ctx, tcpip.as_ref());
+    controller_server_relay_probe(&ctx);
     listener_reactor_probe(&ctx);
     output_reactor_probe(&ctx, tcpip.as_ref());
     close_reactor_probe(&ctx, tcpip.as_ref(), expired_socket);

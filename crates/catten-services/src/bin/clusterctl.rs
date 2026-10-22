@@ -27,7 +27,6 @@ use catten_rt::{
     config,
     owned::{
         Connection,
-        ConnectionRef,
         Endpoint,
         OwnedMemory,
         ReplyToken,
@@ -37,7 +36,6 @@ use catten_services::{
     clusterctl,
     disco,
     dns,
-    name_catalog,
     ns,
     objstore,
     publication,
@@ -139,189 +137,6 @@ fn store_artifact(obj_conn: u64, object_id: u64, bytes: &[u8]) -> bool {
     true
 }
 
-fn submit_deployment(dns_conn: u64, descriptor: &[u8]) -> i64 {
-    if charlotte_launch::deployment::decode(descriptor).is_none() {
-        return clusterctl::ERR_UNTRUSTED_DESCRIPTOR;
-    }
-    let Some(request) = memory_from_bytes(descriptor) else {
-        return clusterctl::ERR_UPLOAD_FAILED;
-    };
-    // Borrow the launch-owned DNS connection; submission consumes request memory.
-    let dns = match unsafe { ConnectionRef::from_raw(dns_conn) } {
-        Ok(dns) => dns,
-        Err(_) => return clusterctl::ERR_NOT_LEADER,
-    };
-    match dns.call_move(dns::OP_DEPLOY_SUBMIT, descriptor.len() as u64, request) {
-        Ok(call) => match call.wait() {
-            Ok(reply) => reply.result,
-            Err(_) => clusterctl::ERR_NOT_LEADER,
-        },
-        Err((_request, _error)) => clusterctl::ERR_NOT_LEADER,
-    }
-}
-
-fn current_deployment(dns_conn: u64, name: &[u8]) -> Option<name_catalog::DeploymentEntry> {
-    let dns = unsafe { ConnectionRef::from_raw(dns_conn) }.ok()?;
-    let request = memory_from_bytes(name)?;
-    let reply =
-        dns.call_move(dns::OP_DEPLOY_QUERY_NAMED, name.len() as u64, request).ok()?.wait().ok()?;
-    if reply.result < 22 {
-        return None;
-    }
-    let len = usize::try_from(reply.result).ok()?;
-    let memory = reply.memory?;
-    if len > memory.len() {
-        return None;
-    }
-    let mapping = memory.map_read_only().ok()?;
-    name_catalog::decode_deployment_result(mapping.as_slice().get(..len)?)
-}
-
-fn submit_release(dns_conn: u64, envelope: &[u8]) -> Result<(OwnedMemory, usize), i64> {
-    if charlotte_launch::release::decode(envelope).is_none() {
-        return Err(clusterctl::ERR_TOO_LARGE);
-    }
-    let memory = memory_from_bytes(envelope).ok_or(clusterctl::ERR_UPLOAD_FAILED)?;
-    // Borrow the launch-owned connection; request and returned memory have distinct owners.
-    let dns =
-        unsafe { ConnectionRef::from_raw(dns_conn) }.map_err(|_| clusterctl::ERR_NOT_LEADER)?;
-    let mut reply = dns
-        .call_move(dns::OP_DEPLOY_RELEASE, envelope.len() as u64, memory)
-        .map_err(|_| clusterctl::ERR_NOT_LEADER)?
-        .wait()
-        .map_err(|_| dns::ERR_UNCERTAIN)?;
-    if reply.result < 0 {
-        return Err(reply.result);
-    }
-    if reply.connection.is_some() {
-        return Err(dns::ERR_UNCERTAIN);
-    }
-    let len = usize::try_from(reply.result).map_err(|_| dns::ERR_UNCERTAIN)?;
-    let memory = reply.memory.take().ok_or(dns::ERR_UNCERTAIN)?;
-    if len > memory.len() || len > charlotte_launch::release_admission::MAX_LEN {
-        return Err(dns::ERR_UNCERTAIN);
-    }
-    let mapping = memory.map_read_only().map_err(|_| dns::ERR_UNCERTAIN)?;
-    catten_services::release_admission::valid_receipt(&mapping.as_slice()[..len], envelope)
-        .ok_or(dns::ERR_UNCERTAIN)?;
-    let memory = mapping.unmap().map_err(|_| dns::ERR_UNCERTAIN)?;
-    Ok((memory, len))
-}
-
-fn notify_release(message: IpcMessage, dns_conn: u64, key: &[u8; 32]) {
-    // Receive ABI boundary: the complete incoming transaction transfers once here.
-    let Ok(Some(mut incoming)) = (unsafe { catten_rt::owned::IncomingMessage::from_raw(message) })
-    else {
-        return;
-    };
-    let Some(token) = incoming.reply.take() else {
-        return;
-    };
-    let result = (|| {
-        if incoming.connection.is_some() {
-            return Err(clusterctl::ERR_TOO_LARGE);
-        }
-        let memory = incoming.memory.take().ok_or(clusterctl::ERR_TOO_LARGE)?;
-        let mapping = memory.map_read_only().map_err(|_| clusterctl::ERR_UPLOAD_FAILED)?;
-        let bytes = mapping.as_slice();
-        let len = usize::try_from(u64::from_le_bytes(
-            bytes
-                .get(..8)
-                .ok_or(clusterctl::ERR_TOO_LARGE)?
-                .try_into()
-                .map_err(|_| clusterctl::ERR_TOO_LARGE)?,
-        ))
-        .map_err(|_| clusterctl::ERR_TOO_LARGE)?;
-        if len > charlotte_launch::release::MAX_RELEASE_LEN {
-            return Err(clusterctl::ERR_TOO_LARGE);
-        }
-        let envelope = bytes.get(8..8 + len).ok_or(clusterctl::ERR_TOO_LARGE)?;
-        if charlotte_launch::release::verify(envelope, key)
-            != charlotte_launch::release::VerifyOutcome::Valid
-        {
-            return Err(clusterctl::ERR_UNTRUSTED_DESCRIPTOR);
-        }
-        submit_release(dns_conn, envelope)
-    })();
-    match result {
-        Ok((memory, len)) => {
-            let _ = token.reply_move(memory, len as i64);
-        }
-        Err(code) => {
-            let _ = token.reply(code);
-        }
-    }
-}
-
-fn submit_operations(dns_conn: u64, bundle: &[u8]) -> i64 {
-    if bundle.len() > charlotte_launch::operations_bundle::MAX_BUNDLE_LEN
-        || charlotte_launch::operations_bundle::decode(bundle).is_none()
-    {
-        return clusterctl::ERR_TOO_LARGE;
-    }
-    let Some(memory) = memory_from_bytes(bundle) else {
-        return clusterctl::ERR_UPLOAD_FAILED;
-    };
-    let dns = match unsafe { ConnectionRef::from_raw(dns_conn) } {
-        Ok(dns) => dns,
-        Err(_) => return clusterctl::ERR_NOT_LEADER,
-    };
-    match dns.call_move(dns::OP_DEPLOY_OPERATIONS, bundle.len() as u64, memory) {
-        Ok(call) => match call.wait() {
-            Ok(reply) => reply.result,
-            Err(_) => clusterctl::ERR_NOT_LEADER,
-        },
-        Err((_memory, _error)) => clusterctl::ERR_NOT_LEADER,
-    }
-}
-
-fn submit_shutdown(dns_conn: u64, envelope: &[u8]) -> i64 {
-    if charlotte_launch::shutdown::decode(envelope).is_none() {
-        return clusterctl::ERR_TOO_LARGE;
-    }
-    let Some(memory) = memory_from_bytes(envelope) else {
-        return clusterctl::ERR_UPLOAD_FAILED;
-    };
-    let dns = match unsafe { ConnectionRef::from_raw(dns_conn) } {
-        Ok(dns) => dns,
-        Err(_) => return clusterctl::ERR_NOT_LEADER,
-    };
-    match dns.call_move(dns::OP_SHUTDOWN_SUBMIT, envelope.len() as u64, memory) {
-        Ok(call) => match call.wait() {
-            Ok(reply) => reply.result,
-            Err(_) => clusterctl::ERR_NOT_LEADER,
-        },
-        Err((_memory, _error)) => clusterctl::ERR_NOT_LEADER,
-    }
-}
-
-fn submit_ingress_policy(dns_conn: u64, envelope: &[u8]) -> i64 {
-    if charlotte_launch::ingress_policy::decode(envelope).is_none() {
-        return clusterctl::ERR_TOO_LARGE;
-    }
-    let Some(memory) = memory_from_bytes(envelope) else {
-        return clusterctl::ERR_UPLOAD_FAILED;
-    };
-    let dns = match unsafe { ConnectionRef::from_raw(dns_conn) } {
-        Ok(dns) => dns,
-        Err(_) => return clusterctl::ERR_NOT_LEADER,
-    };
-    match dns.call_move(dns::OP_INGRESS_POLICY_SUBMIT, envelope.len() as u64, memory) {
-        Ok(call) => match call.wait() {
-            Ok(reply) => reply.result,
-            Err(_) => clusterctl::ERR_NOT_LEADER,
-        },
-        Err((_memory, _error)) => clusterctl::ERR_NOT_LEADER,
-    }
-}
-
-fn memory_from_bytes(bytes: &[u8]) -> Option<OwnedMemory> {
-    let memory = OwnedMemory::allocate(bytes.len().div_ceil(4096).max(1)).ok()?;
-    let mut mapping = memory.map_writable().ok()?;
-    mapping.as_mut_slice().get_mut(..bytes.len())?.copy_from_slice(bytes);
-    mapping.unmap().ok()
-}
-
 /// The raw payload attached to an `OP_UPLOAD` call, copied out of the moved
 /// memory object. The memory layout is `[payload_len:u64 LE][payload]`.
 fn read_payload(message: &catten_syscall::IpcMessage) -> Option<alloc::vec::Vec<u8>> {
@@ -385,6 +200,13 @@ fn serve(ctx: &Context) -> Result<ShutdownRequest, u32> {
     endpoint.bind_completion_queue(0).map_err(|_| 0xdea4u32)?;
     config::write::<u32>(status::STAGE, STAGE_SERVING);
 
+    let mut relays = catten_services::clusterctl_relay::Relays::new(
+        dns_connection.as_ref(),
+        &trust.deployment_key,
+        0,
+    );
+    let cq = ctx.completion_queue_layout();
+
     // The request handlers below are still the protocol adapter's legacy raw
     // reactor. These integers borrow the typed owners for this serving scope;
     // they are never closed, transferred, or adopted.
@@ -393,17 +215,34 @@ fn serve(ctx: &Context) -> Result<ShutdownRequest, u32> {
     let dns_conn = dns_connection.as_raw();
 
     loop {
+        for _ in 0..cq.entries {
+            if unsafe { cq_read(cq.base, cq.entries) }.is_none() {
+                break;
+            }
+        }
         if let Some(request) = ctx.lifecycle().shutdown_requested() {
             return Ok(request);
         }
-        catten_services::reactor::wait(None, 0);
-        loop {
+        let mut progressed = false;
+        for _ in 0..catten_services::clusterctl_relay::MAX_RELAYS {
             let message = ipc_recv(endpoint.as_raw());
-            if message.status == ipc_status::NO_MESSAGE {
+            if matches!(message.status, ipc_status::NO_MESSAGE | ipc_status::PENDING) {
+                // A cancellation claim can fence the queue front. Its existing
+                // completion re-signals endpoint/CQ readiness for later work.
                 break;
             }
             if message.status == ipc_status::ENDPOINT_CLOSED {
                 unsafe { thread_exit() }
+            }
+            progressed = true;
+            if catten_services::clusterctl_relay::handles(message.opcode) {
+                // Receive ABI boundary: move the complete incoming transaction
+                // into its existing controller relay, exactly once.
+                match unsafe { catten_rt::owned::IncomingMessage::from_raw(message) } {
+                    Ok(Some(incoming)) => relays.start(incoming),
+                    _ => catten_rt::domain_abort(),
+                }
+                continue;
             }
             match message.opcode {
                 clusterctl::OP_UPLOAD => {
@@ -436,230 +275,6 @@ fn serve(ctx: &Context) -> Result<ShutdownRequest, u32> {
                     };
                     if message.reply != 0 {
                         ipc_reply(message.reply, result);
-                    }
-                }
-                clusterctl::OP_NOTIFY => {
-                    let result = match read_payload(&message) {
-                        Some(descriptor_bytes)
-                            if charlotte_launch::deployment::verify(
-                                &descriptor_bytes,
-                                &trust.deployment_key,
-                            ) == charlotte_launch::deployment::VerifyOutcome::Valid =>
-                        {
-                            match charlotte_launch::deployment::decode(&descriptor_bytes) {
-                                Some(descriptor)
-                                    if descriptor.node_key == 0
-                                        && descriptor.placement
-                                            != charlotte_launch::placement::PlacementPolicy::singleton() =>
-                                {
-                                    // Replica placement needs the leader's
-                                    // whole-release planning context for
-                                    // affinity and anti-affinity decisions.
-                                    clusterctl::ERR_UNSATISFIABLE_PLACEMENT
-                                }
-                                Some(descriptor) => {
-                                    match current_deployment(dns_conn, descriptor.artifact_name)
-                                    {
-                                        Some(current)
-                                            if charlotte_launch::deployment::decode(
-                                                &current.descriptor,
-                                            )
-                                            .is_some_and(|previous| {
-                                                descriptor.sequence < previous.sequence
-                                            }) =>
-                                        {
-                                            clusterctl::ERR_STALE_DESCRIPTOR
-                                        }
-                                        Some(current)
-                                            if charlotte_launch::deployment::decode(
-                                                &current.descriptor,
-                                            )
-                                            .is_some_and(|previous| {
-                                                descriptor.sequence == previous.sequence
-                                            }) =>
-                                        {
-                                            if current.descriptor == descriptor_bytes {
-                                                current.generation as i64
-                                            } else {
-                                                clusterctl::ERR_CONFLICTING_DESCRIPTOR
-                                            }
-                                        }
-                                        _ => submit_deployment(
-                                            dns_conn,
-                                            &descriptor_bytes,
-                                        ),
-                                    }
-                                }
-                                _ => clusterctl::ERR_UNTRUSTED_DESCRIPTOR,
-                            }
-                        }
-                        Some(_) => clusterctl::ERR_UNTRUSTED_DESCRIPTOR,
-                        None => clusterctl::ERR_TOO_LARGE,
-                    };
-                    if message.reply != 0 {
-                        ipc_reply(message.reply, result);
-                    }
-                }
-                clusterctl::OP_NOTIFY_RELEASE => {
-                    notify_release(message, dns_conn, &trust.deployment_key)
-                }
-                clusterctl::OP_NOTIFY_OPERATIONS => {
-                    let result = match read_payload(&message) {
-                        Some(bundle)
-                            if bundle.len()
-                                <= charlotte_launch::operations_bundle::MAX_BUNDLE_LEN
-                                && charlotte_launch::operations_bundle::decode(&bundle)
-                                    .is_some() =>
-                        {
-                            // The DNS leader performs authoritative signature,
-                            // cluster, recipient and expiry verification. A
-                            // follower is only a bounded transport hop.
-                            submit_operations(dns_conn, &bundle)
-                        }
-                        Some(_) => clusterctl::ERR_UNTRUSTED_DESCRIPTOR,
-                        None => clusterctl::ERR_TOO_LARGE,
-                    };
-                    if message.reply != 0 {
-                        ipc_reply(message.reply, result);
-                    }
-                }
-                clusterctl::OP_NOTIFY_SHUTDOWN => {
-                    let result = match read_payload(&message) {
-                        Some(envelope)
-                            if charlotte_launch::shutdown::decode(&envelope).is_some() =>
-                        {
-                            // Signature, trusted UTC and the currently
-                            // committed cluster key are checked by the DNS
-                            // leader. This hop remains a bounded transport so
-                            // future key rotation cannot leave stale ingress.
-                            submit_shutdown(dns_conn, &envelope)
-                        }
-                        Some(_) => clusterctl::ERR_UNTRUSTED_DESCRIPTOR,
-                        None => clusterctl::ERR_TOO_LARGE,
-                    };
-                    if message.reply != 0 {
-                        ipc_reply(message.reply, result);
-                    }
-                }
-                clusterctl::OP_NOTIFY_INGRESS_POLICY => {
-                    let result = match read_payload(&message) {
-                        Some(envelope)
-                            if charlotte_launch::ingress_policy::decode(&envelope).is_some() =>
-                        {
-                            // The DNS leader performs operations-key, cluster,
-                            // trusted-UTC and replay verification.
-                            submit_ingress_policy(dns_conn, &envelope)
-                        }
-                        Some(_) => clusterctl::ERR_UNTRUSTED_DESCRIPTOR,
-                        None => clusterctl::ERR_TOO_LARGE,
-                    };
-                    if message.reply != 0 {
-                        ipc_reply(message.reply, result);
-                    }
-                }
-                clusterctl::OP_INGRESS_POLICY_STATUS => {
-                    if message.memory != 0 {
-                        memory_close(message.memory);
-                    }
-                    let call = ipc_scalar_call(dns_conn, dns::OP_INGRESS_POLICY_QUERY, 0);
-                    if call == 0 {
-                        if message.reply != 0 {
-                            ipc_reply(message.reply, clusterctl::ERR_NOT_FOUND);
-                        }
-                        continue;
-                    }
-                    let (status, size, _returned_connection, memory) =
-                        ipc_reply_wait_with_memory(call);
-                    ipc_close(call);
-                    if memory == 0 || (status as i64) < 0 {
-                        if memory != 0 {
-                            memory_close(memory);
-                        }
-                        if message.reply != 0 {
-                            ipc_reply(message.reply, clusterctl::ERR_NOT_FOUND);
-                        }
-                    } else if message.reply != 0 {
-                        ipc_reply_move(message.reply, memory, size as i64);
-                    } else {
-                        memory_close(memory);
-                    }
-                }
-                clusterctl::OP_STATUS | clusterctl::OP_ROLLOUT => {
-                    // Raw receive ABI boundary: each moved request and reply
-                    // token is adopted exactly once, then used only as an owner.
-                    let _connection = unsafe { Connection::from_raw(message.connection) }.ok();
-                    let request = unsafe { OwnedMemory::from_raw(message.memory) }.ok();
-                    let token = unsafe { ReplyToken::from_raw(message.reply) }.ok();
-                    let name_len = usize::try_from(message.arg0).unwrap_or(0);
-                    let Some(request) = request.filter(|request| {
-                        name_len != 0
-                            && name_len <= charlotte_launch::deployment::MAX_ARTIFACT_NAME_LEN
-                            && name_len <= request.len()
-                    }) else {
-                        if let Some(token) = token {
-                            let _ = token.reply(clusterctl::ERR_TOO_LARGE);
-                        }
-                        continue;
-                    };
-                    let request = match request.map_read_only() {
-                        Ok(mapping)
-                            if charlotte_launch::deployment::valid_artifact_name(
-                                &mapping.as_slice()[..name_len],
-                            ) =>
-                        {
-                            mapping.unmap().ok()
-                        }
-                        _ => None,
-                    };
-                    let Some(request) = request else {
-                        if let Some(token) = token {
-                            let _ = token.reply(clusterctl::ERR_TOO_LARGE);
-                        }
-                        continue;
-                    };
-                    // `dns_conn` borrows the launch-owned connection for this
-                    // serving scope. Forwarding consumes the request owner.
-                    let dns = unsafe { ConnectionRef::from_raw(dns_conn) }
-                        .expect("launch-owned DNS connection");
-                    let opcode = if message.opcode == clusterctl::OP_STATUS {
-                        dns::OP_DEPLOY_QUERY_NAMED
-                    } else {
-                        dns::OP_DEPLOY_ROLLOUT_NAMED
-                    };
-                    let reply = dns
-                        .call_move(opcode, name_len as u64, request)
-                        .ok()
-                        .and_then(|call| call.wait().ok());
-                    if let Some(token) = token {
-                        match reply {
-                            Some(reply) if reply.result >= 0 => {
-                                let memory = reply.memory.and_then(|memory| {
-                                    let len = usize::try_from(reply.result).ok()?;
-                                    let mapping = memory.map_read_only().ok()?;
-                                    let bytes = mapping.as_slice().get(..len)?;
-                                    let valid = if message.opcode == clusterctl::OP_STATUS {
-                                        name_catalog::decode_deployment_result(bytes).is_some()
-                                    } else {
-                                        clusterctl::RolloutStatus::decode(bytes).is_some()
-                                    };
-                                    if !valid {
-                                        return None;
-                                    }
-                                    mapping.unmap().ok()
-                                });
-                                if let Some(memory) = memory {
-                                    let _ = token.reply_move(memory, reply.result);
-                                } else {
-                                    let _ = token.reply(clusterctl::ERR_NOT_FOUND);
-                                }
-                            }
-                            Some(reply) => {
-                                let _ = token.reply(reply.result);
-                            }
-                            None => {
-                                let _ = token.reply(clusterctl::ERR_NOT_FOUND);
-                            }
-                        }
                     }
                 }
                 clusterctl::OP_KEYCEREMONY => {
@@ -795,6 +410,10 @@ fn serve(ctx: &Context) -> Result<ShutdownRequest, u32> {
                     }
                 }
             }
+        }
+        progressed |= relays.advance();
+        if !progressed {
+            catten_services::reactor::wait(relays.remaining_ms(), 0);
         }
     }
 }

@@ -20,12 +20,22 @@ and aligned replica node/variant pins. Rollout returns the canonical 40-byte
 `RolloutStatus`; exact-generation readiness remains distinct from admission.
 
 The controller forwards through the sole named DNS query operations (16/18).
-It adopts uniquely received request/reply capabilities at its raw receive ABI
-boundary and uses `call_move`, `PendingCall::wait` and `ReplyToken::reply_move`.
-It validates returned record bytes before forwarding. Failure, malformed input,
-unknown operations and absent reply tokens release their owned transient
-attachments; returned memory is never detached into scalar cleanup logic.
-These handlers do not introduce timer polling or replay accepted RPCs.
+It adopts each complete incoming transaction once and retains source mapping,
+reply authority and accepted DNS call in `clusterctl_relay::Relays`. Eight fixed
+positions share a 2,098,176-byte original/copy request reservation. Each DNS call
+binds to the default CQ, alongside endpoint and lifecycle readiness. One original
+five-second server budget spans descriptor preflight and submission; the caller's
+separate deadline is unchanged. Failed, malformed or foreign preflight records
+cannot authorize mutation. A checked absent result or older revision can; the
+leader still performs authoritative admission.
+
+Returned records validate before consuming `ReplyToken::reply_move`. Timeout
+cancels DNS work and ends the source mapping before replying upstream; a delivered
+DNS copy may remain receiver-owned and charged. Binding/wait rejection aborts with
+the pool live. Shutdown drops pending calls before mappings and incoming authority,
+without remote rollback proof. Accepted mutations never replay. Legacy upload,
+join and key handlers remain blocking contexts on the same endpoint. See the
+[relay evidence](../reports/audits/2026-10-22-security-controller-relay.md).
 
 Controller deploy opcode 2 and DNS packed deploy/query opcodes 8/9 are
 retired. DNS 15's redundant named envelope is also retired. Current single-

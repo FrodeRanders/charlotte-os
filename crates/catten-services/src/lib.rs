@@ -33,6 +33,7 @@ pub use charlotte_protocol_s3 as s3;
 pub use charlotte_protocol_time as time;
 
 pub mod clusterctl_client;
+pub mod clusterctl_relay;
 pub mod deadline;
 pub mod deployment_control;
 pub mod deployment_http;

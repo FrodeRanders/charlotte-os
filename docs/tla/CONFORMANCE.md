@@ -48,6 +48,19 @@ controls inject a real close between scan/preparation with local guards released
 production supplies an empty fixture hook. See the
 [implementation evidence](../reports/audits/2026-10-22-ipc-namespace-selection.md).
 
+## Controller server relays
+
+| Model state/action | Implementation | Qualification |
+|---|---|---|
+| `CheckedPreflight`, `proof`, `sent` | `clusterctl_relay::preflight`, `Runtime::poll`, `Machine::arm` | Only an explicit absent result or checked older record permits mutation; identical bytes return a generation and other outcomes stop. Byte/signature/identity validation is a host/native/source boundary, abstracted as checked evidence here. |
+| `ProducerReply`, `ObserveTerminal`, `Park`, `Wake` | CQ-bound DNS calls, bounded receive turn and rotating relay observation | Two already admitted operations assume binding and producer delivery. Ready work prevents parking on a silent peer. Legacy upload/join/key execution and bounded synchronous validation remain outside this guarantee. |
+| `deadline`, `Expire`, `backing`, `ReleaseReceiver` | One server budget across preflight/mutation; cancel pending before mapping and upstream reply | Independent caller deadline is not renewed. DNS may retain a moved copy after local termination; logical capacity is not physical refund. Actual original/copy byte admission, returned resources and shutdown use source/tests rather than this projection. |
+| `AbortBindingOrWait` | fail-closed binding/wait rejection with pool live | No retry owner or physical cleanup authority is introduced. Native fixture exercises healthy moved return beside held DNS, incoming mapping timeout and unexpected connection rejection; actual map/bind faults are not injected. |
+
+Four negative controls violate `MutationRequiresCheckedQuery`, `OriginalBudget`,
+`ParkCoversAll` and `AcceptedOnce`. See the
+[server evidence](../reports/audits/2026-10-22-security-controller-relay.md).
+
 ## Deployment listener setup
 
 | Model state/action | Implementation | Qualification |
