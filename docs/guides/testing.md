@@ -438,6 +438,14 @@ or saturate admission. Host close controls exercise healthy completion beside a
 held or queue-rejected close, unchanged deadlines, accepted-once submission,
 capacity retention, and complete ownership at failure/abort boundaries. See the
 [close audit](../reports/audits/2026-10-22-security-deployment-close.md).
+The synchronous-close fixture retains a second unactivated UDP owner across that
+same five-second controller case, then closes it through the synchronous driver.
+It also runs explicit close and ordinary Drop for fresh TCP and UDP sockets in
+both scoped roots. Ten host driver controls exercise admission limits/backoff,
+one remaining wait budget, accepted timeout/admission/observation distinctions,
+terminal retained admission and no destructor reentry. These do not inject real
+synchronous close failure or qualify every containing destructor. See the
+[synchronous-close audit](../reports/audits/2026-10-22-security-synchronous-close.md).
 These do not establish native saturated-send-buffer fairness or inject actual
 mapping/CQ-binding failures. See the [output audit](../reports/audits/2026-10-22-security-deployment-output.md).
 

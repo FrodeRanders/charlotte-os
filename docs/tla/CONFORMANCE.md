@@ -34,9 +34,21 @@ unimplemented production boundaries.
 | `Expire`, `RejectWaitOrObservation` | deadline, non-queue submission/binding/observation failure; incomplete close Drop | Abort with all represented owners live; never cancel and reconstruct accepted close. Model preserves owners after abort. Actual domain retirement, wider field destructors and whole-service shutdown remain separate. |
 | `Park`, `Wake` | drain CQ, recheck close pool and other phases, wait on earliest original deadline/backoff | A held close does not suppress another ready acknowledgement. Wake itself releases no position. The Rust shutdown branch drains existing closes with original budgets while retaining other pools; timing/destructor qualification remains outside this model. |
 
-Safe checks require `AcceptedOnce`, `OwnersUntilAck`, `OnlyAckReleases` and
-`ParkCoversAll`. Negative controls replay accepted close or release its owner
-without acknowledgement. See [implementation evidence](../reports/audits/2026-10-22-security-deployment-close.md).
+The one-owner `Blocking` configuration also maps `RetainAdmission` to
+`socket_close::Blocking`/`finish_transaction`: an unstarted final rejection
+retains the complete operation without destructor work or another submission.
+`UnsafeFallback` re-enables work after that terminal state and must violate
+`NoReentry`. This retained state is not recoverable custody, a remote refund or
+an automatic retry owner. `ClosingSocket::wait_timeout` and CQ polling share
+`observe`; the existing checked-wait model qualifies the lower readiness loop
+separately. Exact one/five-second policy, actual returned-capability cleanup,
+parent field order and runtime domain abort are source/test boundaries.
+
+Safe checks require `NoReentry`, `AcceptedOnce`, `OwnersUntilAck`, `OnlyAckReleases` and
+`ParkCoversAll`. Negative controls reenter terminal retention, replay accepted
+close or release its owner without acknowledgement. See the
+[reactor evidence](../reports/audits/2026-10-22-security-deployment-close.md) and
+[synchronous evidence](../reports/audits/2026-10-22-security-synchronous-close.md).
 
 ## Deployment output receipts
 

@@ -11,9 +11,9 @@ use crate::{
     },
 };
 
-pub const CLOSE_MS: u64 = 5_000;
+pub const CLOSE_MS: u64 = crate::socket_close::CLOSE_MS;
 /// Queue-full admission has no producer readiness source. Accepted calls use CQ.
-pub const ADMISSION_BACKOFF_MS: u64 = 50;
+pub const ADMISSION_BACKOFF_MS: u64 = crate::socket_close::ADMISSION_BACKOFF_MS;
 
 #[derive(Debug)]
 pub enum Error {

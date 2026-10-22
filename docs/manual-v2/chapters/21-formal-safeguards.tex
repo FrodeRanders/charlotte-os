@@ -128,7 +128,11 @@ replay an accepted close or release its owner before acknowledgement. Bound repl
 sources and atomic turns are assumptions; actual ID allocation/reaping, wire
 decoding, socket setup, dynamic
 admission, whole-shutdown timing and physical release remain outside the model.
-See \path{docs/tla/CharlotteDeploymentClose.tla}.
+A one-owner blocking configuration also checks terminal unstarted admission
+retention. Its destructor-fallback negative control re-enables work after that
+state and violates \texttt{NoReentry}; accepted replay has its existing control.
+This is no recoverable custody, deadline-duration, field-destructor or runtime
+abort proof. See \path{docs/tla/CharlotteDeploymentClose.tla}.
 
 The deployment output projection checks two admitted outputs with two abstract
 prefixes. Only a positive producer receipt advances the offset and admits its
@@ -154,8 +158,8 @@ controller calls, response transmission, close, new admissions and wall-clock
 fairness are outside this model. See
 \path{docs/tla/CharlotteDeploymentInput.tla} and its conformance map.
 
-The current suite checks forty safe configurations across thirty-eight
-specifications. It also checks 117 expected-counterexample
+The current suite checks forty-one safe configurations across thirty-eight
+specifications. It also checks 118 expected-counterexample
 configurations. The models are divided by state ownership and failure boundary
 so that each remains reviewable.
 The Raft models are deliberately layered: election, log replication,
@@ -1110,7 +1114,7 @@ Flat session allocation & Retry and restart epochs alias one wire session. &
 \end{longtable}
 \normalsize
 
-The check suite expects all 117 negative configurations to fail for the named
+The check suite expects all 118 negative configurations to fail for the named
 reason. If one unexpectedly satisfies its invariant, the regression harness
 has lost sensitivity and the suite fails.
 
@@ -1156,12 +1160,12 @@ docs/tla/check.sh /path/to/tla2tools.jar
 Alternatively, \texttt{TLA2TOOLS\_JAR} may name the tools archive. The script:
 
 \begin{itemize}
-    \item runs all forty safe configurations;
+    \item runs all forty-one safe configurations;
     \item enables action coverage and requires selected actions to have a
         positive successor count;
     \item rejects structural TLC warnings about variables, \texttt{EXCEPT}
         expressions, or incomplete successor states;
-    \item runs 117 negative configurations and requires each one to fail on
+    \item runs 118 negative configurations and requires each one to fail on
         the named invariant after exercising the named unsafe action; and
     \item writes checkpoints and traces into a temporary directory so generated
         state does not become part of the source tree.

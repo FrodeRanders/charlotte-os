@@ -144,10 +144,10 @@ same four-position budget until a checked Started/Unavailable logical receipt. E
 one five-second admission/observation deadline; queue-full rejection alone permits
 50 ms admission backoff. Accepted close is never replayed. Failure, expiry or
 rejected binding/wait aborts with exact owners retained. Existing close operations
-drain on lifecycle shutdown without restarting their budgets. The synchronous helper can still restore an ID after accepted-call error and
-resubmit from Drop; that older uncertain-error fallback remains unqualified. Other
-phases' legacy socket destructors, partial setup/open/listen and controller/render work
-remain blocking contexts. Native ordinary close succeeds; real held-close,
+drain on lifecycle shutdown without restarting their budgets. The synchronous
+ID-restoration fallback remained a gap until the follow-up below. Other phases'
+socket destructors, partial setup/open/listen and controller/render work remain
+blocking contexts. Native ordinary close succeeds; real held-close,
 queue-saturation and abort-boundary injection remain unqualified. Initial ARM
 and x86 HTTP abortive-peer controls exposed reaping before close and an erroneous
 fail-closed response to ERR_BAD_SOCKET. The corrected producer distinguishes
@@ -155,6 +155,18 @@ unavailability from live foreign ownership, and full IDs no longer wrap or reuse
 Final fixtures retain an unactivated owner across an existing five-second test
 and require its Unavailable receipt. Failed initial runs remain separate in
 the evidence; no request/fixture deadline is widened.
+
+The [synchronous-close follow-up](../reports/audits/2026-10-22-security-synchronous-close.md)
+removes ID restoration and the second close from ordinary Drop. Both explicit
+close and Drop consume the same private lease/ClosingSocket as reactor close.
+A single five-second budget carries through admission and one owned reply wait;
+queue-full-only 50 ms backoff stops within its first second. Final admission
+rejection returns its actual error and retains the complete driver without retry
+custody or charge refund. Accepted timeout, wait-admission rejection or invalid/
+service/observation result aborts with the owner live. Host controls check these
+boundaries; native ordinary TCP/UDP, Drop and reaped-owner success use the shared
+observer. Real rejection/uncertainty fault injection and broader destructor
+latency remain unqualified.
 
 Remaining acceptance requires progress during saturated admission and slow
 controller-server/transport phases, sustained connection/packet flood, NIC failure

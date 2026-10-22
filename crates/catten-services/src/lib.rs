@@ -14,6 +14,7 @@ pub use charlotte_protocol_ns as ns_generation;
 pub mod deployment_close;
 pub mod deployment_output;
 pub mod network_random;
+mod socket_close;
 pub mod socket_lifetime;
 pub mod socket_send;
 pub mod socket_state;
@@ -932,33 +933,37 @@ pub mod socket {
         }
     }
 
-    /// A socket ID owned by a connection to the TCP/IP service.
-    ///
-    /// Remote socket IDs are protocol resources rather than kernel
-    /// capabilities, so their teardown can fail. [`close`](Self::close)
-    /// reports that failure; `Drop` provides a best-effort fallback for early
-    /// returns and cancellation paths.
-    #[must_use = "dropping a socket asks the TCP/IP service to close it"]
-    pub struct OwnedSocket<'connection> {
+    /// The remote selector and its original service incarnation move together.
+    /// Only the owning socket/close wrappers can construct or consume this lease.
+    struct SocketLease<'connection> {
         service: ConnectionRef<'connection>,
-        id: Option<u64>,
+        id: u64,
     }
 
-    /// Consuming logical-close operation for a CQ reactor. The pending call and
-    /// exact remote socket stay together until a checked acknowledgement.
-    /// Dropping an incomplete operation aborts the domain with both retained;
-    /// it cannot synchronously retry or infer closure from cancellation.
+    /// A socket owned through its original TCP/IP connection. Explicit close and
+    /// best-effort Drop consume the same close owner once. Rejected admission
+    /// returns an error with terminal retention; accepted uncertainty aborts.
+    #[must_use = "dropping a socket asks the TCP/IP service to close it"]
+    pub struct OwnedSocket<'connection> {
+        lease: Option<SocketLease<'connection>>,
+    }
+
+    /// Consuming logical-close operation shared by CQ and synchronous callers.
+    /// Incomplete Drop aborts before fields are released; it never issues a
+    /// second close. The synchronous driver retains an unsubmitted owner on
+    /// final admission rejection without invoking that destructor.
     #[must_use = "drive logical close to a confirmed reply; incomplete Drop aborts"]
     pub struct ClosingSocket<'connection> {
         pending: Option<PendingCall<'static>>,
-        socket: OwnedSocket<'connection>,
+        lease: Option<SocketLease<'connection>>,
     }
 
     impl ClosingSocket<'_> {
         /// Try admission once. Only a rejected submission may be attempted again.
         pub fn submit(&mut self) -> Result<(), IpcError> {
             assert!(self.pending.is_none(), "close already submitted");
-            self.pending = Some(self.socket.service.call(OP_CLOSE, self.socket.id())?);
+            let lease = self.lease.as_ref().expect("socket already closed");
+            self.pending = Some(lease.service.call(OP_CLOSE, lease.id)?);
             Ok(())
         }
 
@@ -966,13 +971,11 @@ pub mod socket {
             self.pending.as_mut().expect("accepted close").bind_cq(cq)
         }
 
-        /// A typed scalar receipt without attachments ends this logical owner.
-        /// Unavailable retires only this ID; it proves no physical cleanup.
-        /// Every rejection retains this owner; accepted work is never replayed.
-        pub fn poll(&mut self) -> Result<Option<CloseReceipt>, SocketError> {
-            let Some(reply) =
-                self.pending.as_mut().expect("accepted close").poll().map_err(SocketError::Ipc)?
-            else {
+        fn observe(
+            &mut self,
+            reply: Option<CallResult>,
+        ) -> Result<Option<CloseReceipt>, SocketError> {
+            let Some(reply) = reply else {
                 return Ok(None);
             };
             if reply.memory.is_some() || reply.connection.is_some() {
@@ -985,17 +988,38 @@ pub mod socket {
                     SocketError::InvalidReply
                 }
             })?;
-            self.socket.id = None;
             drop(self.pending.take());
+            self.lease = None;
             Ok(Some(receipt))
+        }
+
+        /// A typed logical receipt ends this owner. Unavailable grants no
+        /// former-ownership or physical cleanup proof. Rejection retains it.
+        pub fn poll(&mut self) -> Result<Option<CloseReceipt>, SocketError> {
+            let reply =
+                self.pending.as_mut().expect("accepted close").poll().map_err(SocketError::Ipc)?;
+            self.observe(reply)
+        }
+
+        /// Wait for this accepted call while retaining the entire owner through
+        /// timeout or rejected wait admission. Neither outcome permits replay.
+        pub fn wait_timeout(
+            &mut self,
+            timeout_ms: u64,
+        ) -> Result<Option<CloseReceipt>, SocketError> {
+            let reply = self
+                .pending
+                .as_mut()
+                .expect("accepted close")
+                .wait_timeout(timeout_ms)
+                .map_err(SocketError::Ipc)?;
+            self.observe(reply)
         }
     }
 
     impl Drop for ClosingSocket<'_> {
         fn drop(&mut self) {
-            if self.socket.id.is_some() {
-                // No blocking destructor or second remote close. The containing
-                // reactor must retain its scope through this terminal boundary.
+            if self.lease.is_some() {
                 catten_rt::domain_abort();
             }
         }
@@ -1008,26 +1032,32 @@ pub mod socket {
                 return Err(IpcError::Status(result.result as u64));
             }
             Ok(Self {
-                service,
-                id: Some(result.result as u64),
+                lease: Some(SocketLease {
+                    service,
+                    id: result.result as u64,
+                }),
             })
         }
 
         pub fn id(&self) -> u64 {
-            self.id.expect("socket already closed")
+            self.lease.as_ref().expect("socket already closed").id
+        }
+
+        fn service(&self) -> ConnectionRef<'connection> {
+            self.lease.as_ref().expect("socket already closed").service
         }
 
         pub fn call(&self, opcode: u32, arg0: u64) -> Result<PendingCall<'static>, IpcError> {
-            self.service.call(opcode, arg0)
+            self.service().call(opcode, arg0)
         }
 
         pub fn accept_call(&self) -> Result<PendingCall<'static>, IpcError> {
-            self.service.call(OP_ACCEPT, self.id())
+            self.service().call(OP_ACCEPT, self.id())
         }
 
         /// Return the protocol-neutral connection state exposed by tcpip.
         pub fn connection_state(&self) -> Result<i64, SocketError> {
-            self.service
+            self.service()
                 .call(OP_CONNECTION_STATE, self.id())
                 .map_err(SocketError::Ipc)?
                 .wait()
@@ -1046,7 +1076,7 @@ pub mod socket {
             mapping.as_mut_slice()[4..6].copy_from_slice(&port.to_le_bytes());
             let memory = mapping.unmap().map_err(|(_, error)| SocketError::Memory(error))?;
             let result = self
-                .service
+                .service()
                 .call_move(OP_CONNECT, self.id(), memory)
                 .map_err(|(_, error)| SocketError::Ipc(error))?
                 .wait()
@@ -1072,7 +1102,7 @@ pub mod socket {
             mapping.as_mut_slice()[4..6].copy_from_slice(&port.to_le_bytes());
             let memory = mapping.unmap().map_err(|(_, error)| SocketError::Memory(error))?;
             let result = self
-                .service
+                .service()
                 .call_move(opcode, self.id(), memory)
                 .map_err(|(_, error)| SocketError::Ipc(error))?
                 .wait()
@@ -1099,7 +1129,7 @@ pub mod socket {
             mapping.as_mut_slice()[..2].copy_from_slice(&port.to_le_bytes());
             let memory = mapping.unmap().map_err(|(_, error)| SocketError::Memory(error))?;
             let result = self
-                .service
+                .service()
                 .call_move(OP_LISTEN, self.id(), memory)
                 .map_err(|(_, error)| SocketError::Ipc(error))?
                 .wait()
@@ -1139,7 +1169,7 @@ pub mod socket {
                 let memory = mapping.unmap().map_err(|(_, error)| SocketError::Memory(error))?;
                 let packed = ((chunk_len as u64) << 32) | (self.id() & 0xffff_ffff);
                 let result = self
-                    .service
+                    .service()
                     .call_move(OP_TRY_SEND, packed, memory)
                     .map_err(|(_, error)| SocketError::Ipc(error))?
                     .wait()
@@ -1181,14 +1211,14 @@ pub mod socket {
             if deadline.expired() {
                 return Err(SocketError::RetryExhausted);
             }
-            self.service
+            self.service()
                 .call_move(OP_SEND, self.id(), memory)
                 .map_err(|(_memory, error)| SocketError::Ipc(error))
         }
 
         /// Submit a receive using this caller's backing, without waiting.
         pub fn receive_call(&self) -> Result<PendingCall<'static>, SocketError> {
-            buffered_call(self.service, OP_RECV, self.id())
+            buffered_call(self.service(), OP_RECV, self.id())
         }
 
         /// Wait for and own the receive page supplied by this caller.
@@ -1213,7 +1243,7 @@ pub mod socket {
                 super::sleep_ms(retry_ms);
             }
             let cancel =
-                self.service.call(OP_CANCEL_RECV, self.id())?.wait().map_err(SocketError::Ipc)?;
+                self.service().call(OP_CANCEL_RECV, self.id())?.wait().map_err(SocketError::Ipc)?;
             if cancel.result != 0 {
                 return Err(SocketError::Service(cancel.result));
             }
@@ -1260,65 +1290,27 @@ pub mod socket {
         }
 
         /// Transfer this exact socket into an asynchronous logical-close owner.
-        pub fn into_closing(self) -> ClosingSocket<'connection> {
-            ClosingSocket {
+        pub fn into_closing(mut self) -> ClosingSocket<'connection> {
+            self.take_closing().expect("socket already closed")
+        }
+
+        fn take_closing(&mut self) -> Option<ClosingSocket<'connection>> {
+            self.lease.take().map(|lease| ClosingSocket {
                 pending: None,
-                socket: self,
-            }
+                lease: Some(lease),
+            })
         }
 
         pub fn close(mut self) -> Result<(), IpcError> {
-            self.close_inner()
-        }
-
-        fn close_inner(&mut self) -> Result<(), IpcError> {
-            let Some(id) = self.id.take() else {
-                return Ok(());
-            };
-            // Retry only rejected admission, never an accepted close. Keep
-            // the remote owner through the total, bounded queue-pressure wait.
-            let deadline = super::deadline::Deadline::after(1_000);
-            let call = loop {
-                match self.service.call(OP_CLOSE, id) {
-                    Err(IpcError::Status(catten_syscall::ipc_status::QUEUE_FULL))
-                        if !deadline.expired() =>
-                    {
-                        super::sleep_ms(5)
-                    }
-                    result => break result,
-                }
-            };
-            let call = match call {
-                Ok(call) => call,
-                Err(error) => {
-                    // Submission did not transfer the request. Retain the ID
-                    // so the consuming close's Drop fallback can retry once.
-                    self.id = Some(id);
-                    return Err(error);
-                }
-            };
-            let result = match call.wait() {
-                Ok(result) => result,
-                Err(error) => {
-                    self.id = Some(id);
-                    return Err(error);
-                }
-            };
-            if result.memory.is_none()
-                && result.connection.is_none()
-                && CloseReceipt::decode(result.result).is_some()
-            {
-                Ok(())
-            } else {
-                self.id = Some(id);
-                Err(IpcError::Status(result.result as u64))
-            }
+            crate::socket_close::finish(self.take_closing().expect("socket already closed"))
         }
     }
 
     impl Drop for OwnedSocket<'_> {
         fn drop(&mut self) {
-            let _ = self.close_inner();
+            if let Some(owner) = self.take_closing() {
+                let _ = crate::socket_close::finish(owner);
+            }
         }
     }
 }

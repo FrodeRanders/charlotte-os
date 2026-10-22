@@ -353,9 +353,16 @@ reservation watermark; it attests to no former owner or physical cleanup.
 Foreign live entries and unreserved IDs reject. Opaque serial reservations are
 consumed once by publication, including failed attempts. IDs never repeat within
 this connection's service incarnation; exhaustion rejects before backend
-allocation. Ordinary
-\texttt{OwnedSocket::close}/Drop and partial setup/other shutdown destructors
-retain their previous synchronous policies.
+allocation. Ordinary \texttt{OwnedSocket::close}/Drop now consume the same
+private typed lease and close owner. One original five-second budget covers
+admission and one checked pending-call wait. Queue-full rejection permits 50~ms
+admission backoff during the first second. Final unstarted rejection returns its
+actual IPC error and terminally retains the complete driver; Drop cannot start
+another close. Accepted timeout, rejected wait admission or invalid/service/
+observation outcome aborts with the owner live. No scalar ID is restored.
+The shared Started/Unavailable decoder grants no physical or charge-refund proof.
+This policy remains synchronous in setup/shutdown destructors; whole-scope
+latency remains unqualified.
 
 \texttt{OP\_RECV} and \texttt{OP\_STATUS} require one writable 4096-byte
 caller-supplied memory object moved into the call. The reply returns that same
@@ -370,12 +377,10 @@ principal/heap admission or complete hostile-network fairness. See
 
 Scalar-call admission exposes exact IPC errors. HTTP retains its existing
 \texttt{OwnedSocket} listener through \texttt{QUEUE\_FULL} rejection and
-checks shutdown between retries. The ordinary synchronous close helper can
-restore its ID after accepted-call error and issue another close from Drop; that
-uncertain-error fallback remains a separate gap. The ordinary synchronous socket
-close helper bounds queue-full submission retries to one 1000~ms deadline before its
-existing best-effort fallback; request deadlines and queue capacity remain
-unchanged. The HTTP test profile enables phase traces. Failed packet captures
+checks shutdown between retries. Socket close no longer restores an ID after
+accepted-call error or submits again from Drop. The one-second admission limit
+lies within its original five-second overall budget. Request deadlines and
+queue capacity remain unchanged. The HTTP test profile enables phase traces. Failed packet captures
 and scoped pressure validation are recorded in
 \repofile|docs/reports/audits/2026-10-10-security-http-progress.md|;
 broader flood fairness remains open.

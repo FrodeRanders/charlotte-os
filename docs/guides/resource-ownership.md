@@ -37,7 +37,7 @@ each operation's transient owners promptly.
 | Completion | `Completion` | Cancels, waits for terminal state, then closes |
 | Asynchronous buffer read | `ReadOperation` | Cancels and waits before releasing the Rust borrow |
 | Reactor logical socket close | `socket::ClosingSocket` | Incomplete Drop aborts with the exact socket and any accepted pending call retained; confirmed logical reply disarms remote fallback |
-| Remote TCP/IP socket | `socket::OwnedSocket` | Best-effort protocol close; `close(self)` reports errors |
+| Remote TCP/IP socket | `socket::OwnedSocket` | Consumes the same close owner once; unstarted admission error retains it without another Drop submission; accepted uncertainty aborts |
 | Verified client TLS stream | `tls_client::OwnedTlsStream` | Drops TLS state, socket, and both record buffers in dependency order; `close(self)` reports shutdown errors |
 | Scoped application domain | `DeployedArtifact` | Fences retirement by signed artifact principal; `poll_retire` provides the signed cooperative window and `Drop` forces best-effort retirement |
 | MMIO/interrupt | `MmioRegion`, `Interrupt` | Best-effort device teardown |
@@ -56,8 +56,15 @@ rejection is unstarted admission; accepted timeout or observation failure must
 retain the operation through terminal abort, without retry. An incomplete
 `ClosingSocket` destructor aborts before dropping its fields. It cannot run a
 blocking best-effort close. Deployment ingress keeps this owner, original
-deadline and capacity position in its existing client phase family; ordinary
-socket owners keep their older fallback. See [deployment ingress](../reference/deployment-ingress.md).
+deadline and capacity position in its existing client phase family. Ordinary
+socket close and Drop transfer the same private typed lease into a synchronous
+driver. It captures one five-second deadline, permits queue-full admission
+backoff only during its first second and waits once with the remaining budget.
+Unstarted rejection returns the actual IPC error and retains the whole driver
+without retry custody or a destructor resubmission. Accepted uncertainty aborts
+with its owner live; it cannot restore an ID. This remains a blocking Drop
+policy, without a whole-parent destructor latency guarantee. See
+[synchronous close](../reports/audits/2026-10-22-security-synchronous-close.md).
 
 ## Memory and IPC example
 
@@ -219,8 +226,11 @@ explicitly drop dependent fields in the required shutdown order.
 
 A remote ID is not a kernel capability. Releasing it requires a protocol call,
 which can block or fail. Its owner therefore provides `close(self)` for normal
-operation and uses `Drop` only as a leak-prevention fallback. Errors from
-`Drop` cannot be reported.
+operation and uses `Drop` for best-effort teardown. Errors from Drop cannot be
+reported, and remote resources can remain charged after failed admission.
+Socket close returns errors only before admission; after acceptance, timeout or
+uncertain observation retains the owner through domain abort. Closing a socket
+never proves that earlier business work was rolled back or can be replayed.
 
 For TLS clients, use `catten_services::tls_client::OwnedTlsStream`. Its
 constructor consumes an `OwnedSocket` and requires a server DNS identity, DER

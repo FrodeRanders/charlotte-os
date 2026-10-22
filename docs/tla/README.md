@@ -5,7 +5,7 @@ CharlotteOS subsystems:
 
 | Subsystem | Module | Fast configuration |
 |---|---|---|
-| Logical socket-close ownership, acknowledgement and admission | `CharlotteDeploymentClose.tla` | `CharlotteDeploymentClose_small.cfg` |
+| Logical socket-close ownership, acknowledgement and admission | `CharlotteDeploymentClose.tla` | `CharlotteDeploymentClose_small.cfg`, `CharlotteDeploymentClose_blocking.cfg` |
 | Deployment response prefix receipts and original output budgets | `CharlotteDeploymentOutput.tla` | `CharlotteDeploymentOutput_small.cfg` |
 | Deployment controller ownership and independent reply observation | `CharlotteDeploymentControl.tla` | `CharlotteDeploymentControl_small.cfg` |
 | Deployment input isolation and original deadlines | `CharlotteDeploymentInput.tla` | `CharlotteDeploymentInput_small.cfg` |
@@ -43,6 +43,13 @@ CharlotteOS subsystems:
 | Filtered placement control, dwell, and reservations | `CharlottePlacementControl.tla` | `CharlottePlacementControl_small.cfg` |
 | Remote-call identity, uncertainty, and bounded deduplication | `CharlotteRemoteCall.tla` | `CharlotteRemoteCall_small.cfg` |
 | Reliable-message restart/retry sessions | `CharlotteReliableMessage.tla` | `CharlotteReliableMessage_small.cfg` |
+
+The [22 October synchronous-close review](../reports/audits/2026-10-22-security-synchronous-close.md)
+extends the same close model with one blocking owner and terminal unstarted
+admission retention. A negative control restores runnable work after retention,
+which must violate `NoReentry`. Accepted replay remains covered by the existing
+negative control. Actual deadline durations, runtime field disposal and
+containing Drop latency remain outside the finite abstraction.
 
 The [22 October logical-close review](../reports/audits/2026-10-22-security-deployment-close.md)
 adds two already owned sockets, rejected admission backoff, accepted-once close,
@@ -100,7 +107,7 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all forty complete fast configurations and 117 expected-failure
+- runs all forty-one complete fast configurations and 118 expected-failure
   deployment-close, deployment-output, deployment-input, deployment-control, IPC-transaction, IPC-publication, endpoint-observer, name-publication, boot-trust, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
   checked-wait, domain-abort, address-space, root-retirement, hardware-ASID, interrupt-route, service-lifecycle, DMA, DMA-operation, authorization,
   Raft-join, Raft-response, Raft-stream, snapshot-restore, cluster-ingress, and reliable-message regression configurations;

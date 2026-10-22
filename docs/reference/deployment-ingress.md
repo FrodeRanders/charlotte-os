@@ -127,16 +127,25 @@ local ID without a second close. Both synchronous and reactor close decoders
 recognize the two receipts. Other immediate packed socket operations remain a
 separate protocol-simplification boundary.
 
-The ordinary synchronous helper remains a separate policy gap: after an
-accepted observation/service failure it can restore its ID and let `Drop`
-submit another close. The new consuming reactor owner never takes that path.
-This batch does not qualify the older helper's uncertain-error fallback.
+Ordinary `OwnedSocket::close` and `Drop` now consume the same typed lease into
+`ClosingSocket`; no ID-restoration path remains. The synchronous driver starts
+one five-second deadline before admission and carries its remaining budget into
+one owned `PendingCall::wait_timeout`. Queue-full rejection alone permits 50 ms
+admission backoff during the first second. A final unstarted rejection returns
+its actual IPC error and terminally retains the complete driver, without a
+second destructor submission. TCP/IP keeps any remote record and its original
+charge; there is no cleanup proof, custody or retry owner. Accepted timeout,
+rejected wait admission, malformed/service/observation result or exhausted
+remaining budget aborts with the close owner live. The shared receipt decoder
+still requires Started/Unavailable without attachments. See the
+[synchronous-close evidence](../reports/audits/2026-10-22-security-synchronous-close.md).
 
 On lifecycle shutdown, existing close operations drain against their original
 deadlines while other client owners remain live. The other phases' existing
 shutdown destructors and partial listener-setup errors still use ordinary
-`OwnedSocket` fallback. Those paths, socket open/listen and controller internals
-remain separate blocking boundaries; total shutdown latency is unqualified.
+blocking `OwnedSocket` close. Its requested wait budget is bounded, but syscall
+return latency, all containing destructors, socket open/listen and controller
+internals remain separate boundaries; total shutdown latency is unqualified.
 See the [close evidence](../reports/audits/2026-10-22-security-deployment-close.md).
 
 The [output evidence](../reports/audits/2026-10-22-security-deployment-output.md)

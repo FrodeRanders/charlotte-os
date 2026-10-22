@@ -127,8 +127,17 @@ close pool with one five-second admission/observation deadline. Queue-full
 rejection alone permits admission backoff/retry. Timeout, rejected binding/wait
 or uncertain observation retains the operation through domain abort. This is
 logical close acknowledgement, without peer-delivery or physical-reclamation
-proof. Ordinary `OwnedSocket::close`/Drop and setup/shutdown error paths retain
-their previous synchronous policies. See the [close audit](../reports/audits/2026-10-22-security-deployment-close.md).
+proof. Ordinary `OwnedSocket::close`/Drop now consume that same owner in a
+synchronous driver: one five-second budget from admission through one checked
+reply wait, with queue-full-only 50 ms backoff during the first second. Final
+unstarted rejection returns its actual error and retains the complete driver
+without a second destructor attempt. Accepted timeout, wait-admission rejection
+or invalid/service/observation outcome aborts with the containing owner live.
+There is no scalar ID restoration, resubmission, charge refund or retry custody.
+Both paths share receipt observation and pending-before-lease disposal.
+Synchronous setup/shutdown destructors still block within this policy; broader
+latency qualification remains open. See the
+[synchronous audit](../reports/audits/2026-10-22-security-synchronous-close.md).
 
 An unavailable receipt means an absent full ID below the reservation watermark.
 It authenticates no former ownership or physical cleanup. Foreign live entries

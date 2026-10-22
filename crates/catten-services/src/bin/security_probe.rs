@@ -336,6 +336,24 @@ fn close_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>, expired: socket:
     ));
 }
 
+fn synchronous_close_probe(tcpip: ConnectionRef<'_>, expired: socket::OwnedSocket<'_>) {
+    // This owner survived the same five-second controller case as the CQ
+    // fixture's retired owner. The shared observer also serves bounded waits.
+    check(expired.close().is_ok(), 230);
+    for domain in [socket::DOMAIN_TCP, socket::DOMAIN_UDP] {
+        let socket =
+            socket::OwnedSocket::open(tcpip, domain).unwrap_or_else(|_| catten_rt::domain_abort());
+        check(socket.close().is_ok(), 231);
+        let socket =
+            socket::OwnedSocket::open(tcpip, domain).unwrap_or_else(|_| catten_rt::domain_abort());
+        drop(socket);
+    }
+    catten_rt::logln!(concat!(
+        "[security] synchronous socket close: reaped owner, explicit TCP/UDP ",
+        "and Drop share consuming close and bounded reply observation"
+    ));
+}
+
 fn main(ctx: Context) -> ! {
     check(ctx.name_service_connection().is_none(), 1);
     let controller = ctx.bootstrap_connection().unwrap_or_else(|| catten_rt::domain_abort());
@@ -631,9 +649,12 @@ fn main(ctx: Context) -> ! {
     checks |= 512;
     let expired_socket = socket::OwnedSocket::open(tcpip.as_ref(), socket::DOMAIN_UDP)
         .unwrap_or_else(|_| catten_rt::domain_abort());
+    let synchronous_expired = socket::OwnedSocket::open(tcpip.as_ref(), socket::DOMAIN_UDP)
+        .unwrap_or_else(|_| catten_rt::domain_abort());
     controller_reactor_probe(&ctx, tcpip.as_ref());
     output_reactor_probe(&ctx, tcpip.as_ref());
     close_reactor_probe(&ctx, tcpip.as_ref(), expired_socket);
+    synchronous_close_probe(tcpip.as_ref(), synchronous_expired);
 
     // Many small, individually legal allocations must hit an aggregate cap
     // before exhausting node RAM. Retain every owner until rejection, then
