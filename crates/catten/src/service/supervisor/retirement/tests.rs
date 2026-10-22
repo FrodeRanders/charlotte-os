@@ -54,6 +54,12 @@ fn test_pending_success() {
     let mut owner = DomainTeardown::new(domain);
     assert_eq!(owner.poll(), Ok(false));
     assert!(owner.closing.is_some());
+    assert_eq!(
+        owner.closing.as_ref().unwrap().pending(),
+        Some(memory::retirement::PendingClose::InitialOperations {
+            leases: 2
+        })
+    );
     assert!(matches!(
         AddressSpaceOperation::acquire(domain.address_space),
         Err(OperationError::Closing)
@@ -61,6 +67,12 @@ fn test_pending_success() {
     assert_eq!(backing_budget::test_used_pages(Kind::Heap), before + 1);
     first.release().unwrap();
     assert_eq!(owner.poll(), Ok(false));
+    assert_eq!(
+        owner.closing.as_ref().unwrap().pending(),
+        Some(memory::retirement::PendingClose::InitialOperations {
+            leases: 1
+        })
+    );
     second.release().unwrap();
     assert_eq!(owner.poll(), Ok(true));
     assert_eq!(backing_budget::test_used_pages(Kind::Heap), before);

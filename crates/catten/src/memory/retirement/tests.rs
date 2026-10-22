@@ -93,6 +93,12 @@ fn test_staged_close() {
     else {
         panic!("close completed with two outstanding operations");
     };
+    assert_eq!(
+        closing.pending(),
+        Some(PendingClose::InitialOperations {
+            leases: 2
+        })
+    );
     assert!(!crate::cpu::multiprocessor::spin::mutex::owned_by_current_lp(
         &ADDRESS_SPACE_LIFECYCLE
     ));
@@ -106,6 +112,12 @@ fn test_staged_close() {
     let CloseProgress::Pending(closing) = closing.poll().unwrap() else {
         panic!("close completed with one outstanding operation");
     };
+    assert_eq!(
+        closing.pending(),
+        Some(PendingClose::InitialOperations {
+            leases: 1
+        })
+    );
     // Older operations can complete after admission is fenced, without taking
     // lifecycle or accidentally making the slot available to another close.
     {

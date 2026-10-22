@@ -11,6 +11,25 @@ use crate::memory::{
     retirement::ClosingAddressSpace,
 };
 
+/// Selected under IPC before cancellation preparation. A later rejection may
+/// reflect a changed episode; this observation grants no claim/cleanup proof.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PendingToken {
+    pub token: u64,
+    pub call: u64,
+    pub caller: Option<crate::memory::AddressSpaceHandle>,
+    pub server: Option<crate::memory::AddressSpaceHandle>,
+    pub epoch: u64,
+    pub completing: bool,
+    pub cleanup_failed: bool,
+    pub loans: usize,
+}
+
+pub(crate) enum NamespaceProgress {
+    Pending(PendingToken),
+    Complete,
+}
+
 pub(crate) fn begin(owner: &ClosingAddressSpace) -> Result<(), IpcError> {
     let handle = owner.handle();
     let mut ipc = IPC.write();
@@ -37,7 +56,7 @@ pub(crate) fn begin(owner: &ClosingAddressSpace) -> Result<(), IpcError> {
 pub(crate) fn close_with(
     owner: &ClosingAddressSpace,
     mut finish: impl FnMut(LoanRevocation) -> Result<(), MemoryObjectError>,
-) -> Result<bool, IpcError> {
+) -> Result<NamespaceProgress, IpcError> {
     let asid = owner.handle().id();
     loop {
         let next = {
@@ -45,15 +64,26 @@ pub(crate) fn close_with(
             ipc.reply_tokens.iter().find_map(|(&id, token)| {
                 (token.server == asid
                     || ipc.pending_calls.get(&token.call).is_some_and(|call| call.caller == asid))
-                .then_some(id)
+                .then(|| PendingToken {
+                    token: id,
+                    call: token.call,
+                    caller: ipc.pending_calls.get(&token.call).and_then(|call| {
+                        ipc.caps.get(&call.caller).and_then(|caps| caps.address_space)
+                    }),
+                    server: ipc.caps.get(&token.server).and_then(|caps| caps.address_space),
+                    epoch: token.claim_epoch,
+                    completing: token.completing,
+                    cleanup_failed: token.cleanup_failed,
+                    loans: token.borrows.len(),
+                })
             })
         };
         let Some(token) = next else {
             break;
         };
-        match cancellation::PreparedCancellation::prepare_namespace_token(owner, token) {
+        match cancellation::PreparedCancellation::prepare_namespace_token(owner, token.token) {
             Ok(call) => call.finish_with(&mut finish)?,
-            Err(IpcError::Pending) => return Ok(false),
+            Err(IpcError::Pending) => return Ok(NamespaceProgress::Pending(token)),
             Err(error) => return Err(error),
         }
     }
@@ -75,5 +105,5 @@ pub(crate) fn close_with(
     // attachment authority is retired under IPC; admitted storage carries its
     // backing past unlock. Undelivered owners cannot acquire mappings or pins.
     drain_namespace_caps(asid)?;
-    Ok(true)
+    Ok(NamespaceProgress::Complete)
 }

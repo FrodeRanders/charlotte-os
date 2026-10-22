@@ -9,8 +9,35 @@ use crate::memory::{
 
 #[must_use]
 pub(crate) enum MemoryProgress {
-    Pending,
+    Pending(PendingMemory),
     Complete(NamespaceMemoryClosed),
+}
+
+/// Observed under the memory registry at the actual Pending return. This is
+/// diagnostic state, never permission to resume/release a fenced operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PendingMemory {
+    pub object: MemoryObjectId,
+    pub authority: bool,
+    pub transfer_in_flight: bool,
+    pub retirement_pins: usize,
+    pub dma_pins: usize,
+    pub copy_pins: usize,
+    pub revoking: bool,
+}
+
+impl PendingMemory {
+    fn capture(object: MemoryObjectId, record: &MemoryObject, transfer: Option<bool>) -> Self {
+        Self {
+            object,
+            authority: transfer.is_some(),
+            transfer_in_flight: transfer.unwrap_or(false),
+            retirement_pins: record.retirement_pins,
+            dma_pins: record.dma_pins,
+            copy_pins: record.copy_pins,
+            revoking: matches!(record.lend_state, LendState::Revoking),
+        }
+    }
 }
 
 #[must_use]
@@ -194,7 +221,7 @@ pub(crate) fn close_with(
                 || matches!(object.lend_state, LendState::Revoking)
                 || object.owner != handle.id() && (object.dma_pins != 0 || object.copy_pins != 0)
             {
-                return Ok(MemoryProgress::Pending);
+                return Ok(MemoryProgress::Pending(PendingMemory::capture(id, object, None)));
             }
             let owning = object.owner == handle.id();
             PreparingNamespaceObject {
@@ -217,20 +244,19 @@ pub(crate) fn close_with(
     // or DMA/copy operation. Do not erase it and later restore a stale borrower
     // through that operation's owned prior state. Destroy-fenced objects cannot
     // resume usable authority; their independent pins retain backing/charges.
-    if registry.caps.get(&handle.id()).is_some_and(|caps| {
-        caps.caps.values().any(|cap| {
-            let Some(object) = registry.objects.get(&cap.object) else {
-                return false;
-            };
-            !object.destroy_when_unpinned
+    if let Some(pending) = registry.caps.get(&handle.id()).and_then(|caps| {
+        caps.caps.values().find_map(|cap| {
+            let object = registry.objects.get(&cap.object)?;
+            (!object.destroy_when_unpinned
                 && (cap.transfer_in_flight
                     || object.retirement_pins != 0
                     || object.dma_pins != 0
                     || object.copy_pins != 0
-                    || matches!(object.lend_state, LendState::Revoking))
+                    || matches!(object.lend_state, LendState::Revoking)))
+            .then(|| PendingMemory::capture(cap.object, object, Some(cap.transfer_in_flight)))
         })
     }) {
-        return Ok(MemoryProgress::Pending);
+        return Ok(MemoryProgress::Pending(pending));
     }
     for object in registry.objects.values_mut() {
         clear_borrower(object, handle.id());

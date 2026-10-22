@@ -64,6 +64,24 @@ Earlier subsystem retirement and confirmed loans/objects are not rolled back. Th
 there is no retry or force-clear recovery API. The supervisor propagates/caches
 this terminal teardown error rather than treating it as successful reclamation.
 
+The close owner also retains its last actual Pending observation inline.
+`InitialOperations`, `MemoryOperations` and `FinalOperations` carry a lease count
+sampled under the same table hold as the rejected, exact-generation preflight.
+`Ipc` carries the selected token/call, captured caller/server roots, claim epoch,
+claim/failure flags and loan count. Selection precedes cancellation preparation;
+that preparation may race a changed episode, so this snapshot is an observation,
+not the identity of a still-live claim. `Memory` captures the selected object,
+object/authority phase, transfer/revocation flags and retirement/DMA/copy pins
+under its registry at the actual Pending return.
+
+On a supervisor terminal error, explicit polling logs the captured root ID and
+generation, error and last Pending sample before abandoning its complete closing
+owner. Local lifecycle/table/subsystem guards have left; cached failures do not
+log or retry again. No diagnostic acquires a root, allocates storage, traverses
+physical backing or clears a fence. None is a release/replay/custody receipt.
+The five-second policy and typed completion requirements are unchanged. See the
+[pending-diagnostic review](../reports/audits/2026-10-22-root-retirement-diagnostics.md).
+
 The lifecycle and table guards are then gone. The detached owner invalidates
 using its captured translation identity, explicitly releases its detached
 mailbox/queue/authority metadata, tears down the private tree and backing, forgets the exact object-budget sponsor, and finally completes its

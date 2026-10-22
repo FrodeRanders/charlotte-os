@@ -174,14 +174,25 @@ not all existing resource paths, and the waiting budget does not bound hardware
 rendezvous. All existing borrowed-memory reply variants retain both namespace
 leases and a reply claim across IPC-unlocked invalidation. Returned authority
 remains hidden until publication. Explicit call/reply cancellation also owns both
-roots through unlocked loan cleanup. Bulk endpoint/domain IPC cleanup still
-requires multi-call ownership before releasing its global serialization.
-Whole-domain device cleanup also
-retains lifecycle serialization.
+roots through unlocked loan cleanup. Bulk endpoint/domain IPC cleanup borrows
+its existing close owner and retains one complete cancellation at a time across
+unlocked loan revocation. Whole-domain device cleanup prepares its typed receipt
+under lifecycle, then releases local guards for device invalidation and cleanup.
 Deployment and node-shutdown
 supervisors retain a teardown owner across polls and refuse
 to report reclamation after a terminal error. They do not reclaim a root whose
 close failed or whose leases did not drain.
+
+Each closing owner keeps its last actual Pending observation inline: the
+checked preflight's root-lease count and stage, the selected IPC token/call and
+claim epoch, or the memory object's transfer/revocation flags and pin counts.
+The supervisor logs its captured root ID/generation, error and last observation
+on terminal failure, after local guards leave and before abandoning the owner.
+IPC selection precedes cancellation preparation and can become stale across an
+episode change. These diagnostics grant no cleanup or retry authority, and do
+not change the five-second policy. The earlier cancellation-stress reclamation
+timeout remains unresolved. See
+\repofile|docs/reports/audits/2026-10-22-root-retirement-diagnostics.md|.
 
 Physical teardown makes heap, image and private-table charges nonrefundable before releasing
 any owned frame. Both architecture destructors attempt the bounded private-tree

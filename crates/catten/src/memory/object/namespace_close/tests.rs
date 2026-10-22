@@ -119,6 +119,15 @@ fn unmapped_revocation_peer() {
     let CloseProgress::Pending(closing) = closing.poll().unwrap() else {
         panic!("unmapped revocation peer retired before prior state returned")
     };
+    let Some(crate::memory::retirement::PendingClose::Memory(pending)) = closing.pending() else {
+        panic!("unmapped revocation lost its diagnostic stage")
+    };
+    assert!(pending.authority && pending.revoking);
+    assert!(!pending.transfer_in_flight);
+    assert_eq!(pending.retirement_pins, 1);
+    assert_eq!(pending.dma_pins, 0);
+    assert_eq!(pending.copy_pins, 0);
+    assert_eq!(pending.object, MEMORY_OBJECTS.lock().caps[&third.id()].caps[&remaining].object);
     assert!(MEMORY_OBJECTS.lock().caps[&third.id()].caps.contains_key(&remaining));
     assert_eq!(crate::memory::current_address_space_handle(third.id()), Some(third));
     revocation.finish().unwrap();

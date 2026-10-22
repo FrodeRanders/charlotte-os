@@ -14,6 +14,23 @@ use crate::klib::collections::id_table::{
     RetiredEntry,
 };
 
+/// Last actual Pending return, captured by this exact closing owner. Diagnostic
+/// observations cannot authorize cleanup, release, replay or a new close owner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PendingClose {
+    InitialOperations {
+        leases: usize,
+    },
+    Ipc(crate::ipc::namespace_close::PendingToken),
+    MemoryOperations {
+        leases: usize,
+    },
+    Memory(super::object::namespace_close::PendingMemory),
+    FinalOperations {
+        leases: usize,
+    },
+}
+
 /// A staged close owns the operation-admission fence while older leases drain.
 /// Drop retains the fence/root; it cannot cancel closing under unknown guards.
 #[must_use]
@@ -24,6 +41,7 @@ pub(crate) struct ClosingAddressSpace {
     devices_closed: bool,
     ipc_closed: bool,
     memory_closed: bool,
+    pending: Option<PendingClose>,
     mailboxes: Option<crate::syscall::mailbox_retirement::RetiredMailboxes>,
     authority: Option<crate::capability::RetiredNamespace>,
     metadata: Option<super::registration::metadata::RetiredMetadata>,
@@ -36,6 +54,9 @@ pub(crate) enum RetirementProgress {
 }
 
 #[must_use]
+// Keep the complete owner and diagnostic copy inline: returning Pending must
+// not introduce allocation admission while retirement is already fenced.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum CloseProgress {
     Pending(ClosingAddressSpace),
     Complete,
@@ -81,6 +102,7 @@ impl ClosingAddressSpace {
             devices_closed: false,
             ipc_closed: false,
             memory_closed: false,
+            pending: None,
             mailboxes: None,
             authority: None,
             metadata: None,
@@ -106,6 +128,10 @@ impl ClosingAddressSpace {
 
     pub(crate) fn handle(&self) -> AddressSpaceHandle {
         self.handle
+    }
+
+    pub(crate) fn pending(&self) -> Option<PendingClose> {
+        self.pending
     }
 
     /// Peer admission is available only to a borrowed, started closing owner.
@@ -149,18 +175,28 @@ impl ClosingAddressSpace {
             return Ok(RetirementProgress::Pending(self));
         }
         if !self.ipc_closed {
-            if !crate::ipc::namespace_close::close_with(&self, finish)
+            match crate::ipc::namespace_close::close_with(&self, finish)
                 .map_err(|_| AddressSpaceCloseError::IpcCleanupFailed)?
             {
-                return Ok(RetirementProgress::Pending(self));
+                crate::ipc::namespace_close::NamespaceProgress::Pending(token) => {
+                    self.pending = Some(PendingClose::Ipc(token));
+                    return Ok(RetirementProgress::Pending(self));
+                }
+                crate::ipc::namespace_close::NamespaceProgress::Complete => {}
             }
             self.ipc_closed = true;
         }
         if !self.memory_closed {
             {
                 let _lifecycle = super::ADDRESS_SPACE_LIFECYCLE.lock();
-                match ADDRESS_SPACE_TABLE.lock().prepare_closing_retirement(&self.slot) {
-                    Err(Error::Leased) => return Ok(RetirementProgress::Pending(self)),
+                let mut table = ADDRESS_SPACE_TABLE.lock();
+                match table.prepare_closing_retirement(&self.slot) {
+                    Err(Error::Leased) => {
+                        self.pending = Some(PendingClose::MemoryOperations {
+                            leases: table.closing_lease_count(&self.slot).expect("validated close"),
+                        });
+                        return Ok(RetirementProgress::Pending(self));
+                    }
                     Err(error) => return Err(close_error(error)),
                     Ok(()) => {}
                 }
@@ -168,7 +204,8 @@ impl ClosingAddressSpace {
             match super::object::namespace_close::close_with(&self, finish_memory)
                 .map_err(|_| AddressSpaceCloseError::MemoryCleanupFailed)?
             {
-                super::object::namespace_close::MemoryProgress::Pending => {
+                super::object::namespace_close::MemoryProgress::Pending(pending) => {
+                    self.pending = Some(PendingClose::Memory(pending));
                     return Ok(RetirementProgress::Pending(self));
                 }
                 super::object::namespace_close::MemoryProgress::Complete(closed) => {
@@ -181,7 +218,12 @@ impl ClosingAddressSpace {
         {
             let mut table = ADDRESS_SPACE_TABLE.lock();
             match table.prepare_closing_retirement(&self.slot) {
-                Err(Error::Leased) => return Ok(RetirementProgress::Pending(self)),
+                Err(Error::Leased) => {
+                    self.pending = Some(PendingClose::FinalOperations {
+                        leases: table.closing_lease_count(&self.slot).expect("validated close"),
+                    });
+                    return Ok(RetirementProgress::Pending(self));
+                }
                 Err(error) => return Err(close_error(error)),
                 Ok(()) => {}
             }
@@ -240,7 +282,12 @@ impl ClosingAddressSpace {
             let lifecycle = super::ADDRESS_SPACE_LIFECYCLE.lock();
             let mut table = ADDRESS_SPACE_TABLE.lock();
             match table.prepare_closing_retirement(&self.slot) {
-                Err(Error::Leased) => return Ok(false),
+                Err(Error::Leased) => {
+                    self.pending = Some(PendingClose::InitialOperations {
+                        leases: table.closing_lease_count(&self.slot).expect("validated close"),
+                    });
+                    return Ok(false);
+                }
                 Err(error) => return Err(close_error(error)),
                 Ok(()) => {}
             }

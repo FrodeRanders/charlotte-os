@@ -1,0 +1,381 @@
+{
+  "schema": "charlotte.root-retirement.pending-diagnostics.v1",
+  "report_date": "2026-10-22",
+  "reviewed_revision": "fc9b0f9a98e3f38662aa9247024d0527394a77c2",
+  "classification": {
+    "corrected": 29,
+    "partial": 6,
+    "open": 3,
+    "SEC-06": "partial",
+    "SEC-07": "partial",
+    "SEC-18": "partial",
+    "production_trust": "disabled"
+  },
+  "baseline": {
+    "evidence": "docs/reports/audits/evidence/2026-10-22-security-immediate-send.json",
+    "sha256": "52f4708e32f209df27dd45b63e7b1ac97bc4d4e88b91ec36112c1b8d1aba81f5",
+    "observation": "Initial x86 security boot panicked at final flood.stop with OperationDrainTimedOut after both application scopes retired. Generic error does not distinguish lease/IPC/memory cleanup. Historical failure remains unresolved, distinct from the new assertion failures."
+  },
+  "implementation": {
+    "owner": "Existing ClosingAddressSpace carries one inline Option<PendingClose>; no allocating snapshot, new root/pin, registry, family or custody. Copy diagnostic fields have no cleanup/Drop behavior.",
+    "stages": [
+      "InitialOperations { leases }",
+      "Ipc(PendingToken)",
+      "MemoryOperations { leases }",
+      "Memory(PendingMemory)",
+      "FinalOperations { leases }"
+    ],
+    "lease_observation": "Same table hold as exact table/generation-validated rejected preflight. Counts are diagnostic, not permission to finish/release any lease.",
+    "ipc_observation": "Selected under existing IPC read hold before cancellation preparation: token/call, captured caller/server roots, claim epoch, completing/cleanup_failed and loan count. Preparation may observe a changed/vanished episode or reject peer admission; this earlier selected sample is not a live claim proof. Missing identity stays None.",
+    "memory_observation": "Actual Pending return under existing object registry: selected object, object/authority phase, transfer/revocation flags and retirement/DMA/copy pin counts.",
+    "logging": "First explicit supervisor terminal observation logs captured root ID/generation, error and last Pending while closing owner remains live and local lifecycle/table/subsystem guards have left. Then existing abandonment retains complete owner/fence. Cached failure neither logs nor retries. No logging or callbacks added to Drop.",
+    "policy": "Five-second reclamation deadline, original charges, typed subsystem completion, root sealing/invalidation/physical destruction and existing terminal retention unchanged. No new IRQ change, root lookup/adoption, physical retry or cleanup authority.",
+    "source_boundaries": "Inline owner wrappers intentionally permit large enum variants to avoid allocation admission while fenced or registry relinking. Outer caller/destructor contexts remain separately qualified. Last observation can be stale; None proves neither absence nor quiescence."
+  },
+  "controls": {
+    "root_operations": "Successive Pending polls sample two, then one exact root leases; retained backing, fenced new admission, old completion and exact-generation reuse remain asserted.",
+    "ipc_abandonment": "Exact selected token/call, both captured roots, epoch 1 and completing true after complete cancellation owner abandonment. Both roots/claim stay retained.",
+    "memory_revocation": "Unmapped authority reports Revoking and one retirement pin, no transfer/DMA/copy pin; exact object matches retained cap. Existing owner completion alone permits remaining namespace close.",
+    "terminal_retention": "Existing zero-budget fixture logs InitialOperations with one lease; cached errors preserve root, original charges and deployment failure counters after lease release. This deliberate failure is not the historical runtime timeout."
+  },
+  "source_sha256": {
+    "crates/catten/src/ipc/cancellation/tests.rs": "3c7aca56d3605c7bdae4e5a3900f70a94fe0506a967e0a8ae65ef6e5ea98cc79",
+    "crates/catten/src/ipc/namespace_close.rs": "a9f86a1aa8ec69f84fd3561cf2984cdbc58e115c738dc0cfebab1d0266324262",
+    "crates/catten/src/klib/collections/id_table.rs": "bc3c14badfd0947ec31561b8338a96d009aead16b5a39ca94fb16a93b08d446d",
+    "crates/catten/src/memory/object/namespace_close.rs": "fec64145d2237513c8f1bd587584acea029e1e08b06faf5decfe4bb96857c5cd",
+    "crates/catten/src/memory/object/namespace_close/tests.rs": "ccc26d28d412852a56fce40aaf50540a59e31ff62a8190dcb7f7fa933fd01190",
+    "crates/catten/src/memory/retirement.rs": "a2625d644bae567711cbb90fa7f8f53e9089b43a91b1e87e53ad640cb76ee029",
+    "crates/catten/src/memory/retirement/tests.rs": "b723e82107fed4a5b9b0f2c8c5b6f6cc00797a3504405af58a2b8034c1af1d77",
+    "crates/catten/src/service/supervisor/retirement.rs": "3aa465075184dd847800f93ae2a55e8085ede23043109c55f8ab23d54482b4af",
+    "crates/catten/src/service/supervisor/retirement/tests.rs": "2fc10a649148a23d4dde9a79f6242b535f36b9c7e3012c375790ed135f063204",
+    "docs/manual-v2/chapters/06-memory-objects.tex": "36142a6892240fa48157a5fa8fb4c5841dad37e5974807b044e8e0644916b0ea",
+    "docs/reference/address-space-retirement.md": "63b183d4237656edd48a7812d4d9037189dc70571f92ac1a9cae6c7e7a55951c",
+    "docs/reference/cleanup-recovery.md": "e8870e2229e49e4426ce644013eb837355e8c46597debb1077e49be6e5c58d56",
+    "docs/reference/security-remediation.md": "bfd893fb35db9bac8b7d0a3601c50dde5255af26d2c026c4109eebf40de6f7f1",
+    "docs/reports/README.md": "27795fe0ecdcc2fd330fd839826c09d022ce9c72f0c2d9c4face9e50221a0f11",
+    "docs/reports/audits/2026-10-22-root-retirement-diagnostics.md": "3a382d2af95baa0e92042bd78235de8297409114e2e967727bc5c1486c9f5d81",
+    "docs/tla/CONFORMANCE.md": "1cf699c7e9e7ccdf08b42ea1d4e8da9e8c257009ab4cfefe811201c3fb2e19ca"
+  },
+  "native_runs": [
+    {
+      "id": "initial_x86_control",
+      "outcome": "fail",
+      "exit_code": 1,
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19283 CATTEN_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance root-pending-security-x86 --fresh-storage --timeout 300",
+      "architecture": "x86_64",
+      "instance": "root-pending-security-x86",
+      "kernel_sha256": "503a33262b5791d37d15184cd4f35ab07b8b5242f1791e991ed9da46eb20813d",
+      "boot_image_sha256": "4f32431456118e5158903e560615ca51aa1c4012ff7945cc8ad7e7108d45a31c",
+      "initial_disk_sha256": "3711a890e4a4a004aaf070a3dc751fc1cc076059f28738e05d1d6ab4d6c65438",
+      "bundle_manifest_id": "e432222aeb47643d779b7e86a424c89252ea1a7b7b6a470853698a32e590dbb7",
+      "capture_sha256": {
+        "runner": "9d49b5be234acc65bf74a47dcfbe0123931413b0f286b0c5c416a3a6d3234882",
+        "manifest": "53167686f43692dae71b2ebb01abca759b38d73c7b84a250f94c52950503f1f2",
+        "failure.json": "4afeb632c867614e82eddea312d53c9d8592f169e36e9dcb19fd6216250eddfa",
+        "result.json": "f5d7087c2c7ff666becb53905779c861d8a7088774869964ab86996d96d7a741",
+        "serial.log": "a04ea1a8f256cb73a0e45e47cadba8a348dce7ff80651a060076eab70bcbab00",
+        "registers.log": "ad85822f1236b2adf05acbe110e8177cffc141516df43d91be6224a8450084cf",
+        "lldb.log": "1377a5d8b75a2c3e2ce5b407858d29469ab842a2399388bdc88906ea492ba032"
+      },
+      "deliberate_error_diagnostics": [
+        "[+     0.921475] [domain retirement] root=15:6 error=AddressSpace(OperationDrainTimedOut) pending=Some(InitialOperations { leases: 1 })",
+        "[+     0.925578] [domain retirement] root=15:6 error=AddressSpace(CloseInProgress) pending=None",
+        "[+     0.926503] [domain retirement] root=15:6 error=AddressSpace(CloseInProgress) pending=None",
+        "[+     0.930127] [domain retirement] root=21:3 error=AddressSpace(StaleHandle) pending=None"
+      ],
+      "namespace_control_markers": [
+        "[+     3.712307] [IPC namespace ownership] unlocked queued/delivered cleanup, both closing peers, preparation rollback, partial failure and abandonment passed; failed roots/backing retained; exact pending token/epoch diagnosed"
+      ],
+      "selftests": [],
+      "failure": {
+        "reason": "kernel-panic",
+        "elapsed_seconds": 17.69596595899202
+      },
+      "selected_diagnostics": [
+        "panicked at crates/catten/src/memory/object/namespace_close/tests.rs:127:5:",
+        "assertion `left == right` failed",
+        "  left: 1",
+        " right: 0",
+        "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/x86_64-7yf199ck"
+      ],
+      "source_qualification": "Intermediate uncommitted diagnostic implementation expected pending.retirement_pins == 0 in the new unmapped-revocation control. Actual LoanRevocation owns one MappingRetirementPin; corrected expectation is 1. Did not reach live cancellation-stress case. Final source hashes do not identify this intermediate tree; exact binaries and relevant assertion/actual values identify the failed control."
+    },
+    {
+      "id": "initial_arm_control",
+      "outcome": "fail",
+      "exit_code": 1,
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19282 CATTEN_DEPLOY_HOST_PORT=19446 scripts/run-aarch64.sh --security-test --instance root-pending-security-arm --fresh-storage --timeout 300",
+      "architecture": "aarch64",
+      "instance": "root-pending-security-arm",
+      "kernel_sha256": "15700e985f102979dfb9f4a3e746660399296ab590254bdd236d565a166a0323",
+      "boot_image_sha256": "7d55895c3be790e24356f014406d3f85327514296687ae5eaeb85610190ab9f9",
+      "initial_disk_sha256": "023f891eb26753e9704eec973ddc0a1a7d382e0ce588442fe0a34db578612a47",
+      "bundle_manifest_id": "734b6136b45f2d20a7747f0cdccd1571e5dc74a8e42e88310bee7fa6fdee8a03",
+      "capture_sha256": {
+        "runner": "6d1155d322100765084db2454aab801607b180eacd5fedba2087547e51027f5c",
+        "manifest": "f57af180ceeba4208397affdc58cb0dd60e1a779dee94cdb827eabd18a1df7bc",
+        "failure.json": "0037d27114709610d72c0b1b4e8bcf41cc42af87a30b443f8f48c3145f33bff2",
+        "result.json": "c9a238c8de275806fbe4e27674d4f2dd670572fedd1b061ceda6026e563f3b9d",
+        "serial.log": "213623a4213a4ebe3fc37189573d6cca93050b53258ea56e3bfd23e0f4ecf38d",
+        "registers.log": "0f303c8ff1ced8befb9556992ea3288101bef8ec3a4097e133d0ff636cb9ed9a",
+        "lldb.log": "30714853398d02086132835efe6c9f62ca23aeea8e263f147681e4a94a68a7b8"
+      },
+      "deliberate_error_diagnostics": [
+        "[+     1.055648] [domain retirement] root=15:6 error=AddressSpace(OperationDrainTimedOut) pending=Some(InitialOperations { leases: 1 })",
+        "[+     1.057670] [domain retirement] root=15:6 error=AddressSpace(CloseInProgress) pending=None",
+        "[+     1.058052] [domain retirement] root=15:6 error=AddressSpace(CloseInProgress) pending=None",
+        "[+     1.060142] [domain retirement] root=21:3 error=AddressSpace(StaleHandle) pending=None"
+      ],
+      "namespace_control_markers": [
+        "[+     3.921770] [IPC namespace ownership] unlocked queued/delivered cleanup, both closing peers, preparation rollback, partial failure and abandonment passed; failed roots/backing retained; exact pending token/epoch diagnosed"
+      ],
+      "selftests": [],
+      "failure": {
+        "reason": "kernel-panic",
+        "elapsed_seconds": 12.316883291816339
+      },
+      "selected_diagnostics": [
+        "panicked at crates/catten/src/memory/object/namespace_close/tests.rs:127:5:",
+        "assertion `left == right` failed",
+        "  left: 1",
+        " right: 0",
+        "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/aarch64-qb4jvjgu"
+      ],
+      "source_qualification": "Intermediate uncommitted diagnostic implementation expected pending.retirement_pins == 0 in the new unmapped-revocation control. Actual LoanRevocation owns one MappingRetirementPin; corrected expectation is 1. Did not reach live cancellation-stress case. Final source hashes do not identify this intermediate tree; exact binaries and relevant assertion/actual values identify the failed control."
+    },
+    {
+      "id": "first_x86_instrumented",
+      "outcome": "pass",
+      "exit_code": 0,
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19283 CATTEN_DEPLOY_HOST_PORT=19447 scripts/run-x86_64.sh --security-test --instance root-pending-security-x86-final --fresh-storage --timeout 300",
+      "architecture": "x86_64",
+      "instance": "root-pending-security-x86-final",
+      "kernel_sha256": "41437eafd96549a6b32b19614cf84fb7698d243fb1408d0e86d6aa1322ed263f",
+      "boot_image_sha256": "6ce0c69d21e8b5828ceed5074d8fab923d4be96969818444c42573e054146694",
+      "initial_disk_sha256": "3711a890e4a4a004aaf070a3dc751fc1cc076059f28738e05d1d6ab4d6c65438",
+      "bundle_manifest_id": "e432222aeb47643d779b7e86a424c89252ea1a7b7b6a470853698a32e590dbb7",
+      "capture_sha256": {
+        "runner": "8e3d31233d9b0486c2b39716f0107d190ac3cd165132b0c06d3041b490208ca4",
+        "manifest": "0e0f058e9bd851a97fe5301c03e1ad1db19907bd9011a1ee56be2db57fb241f2"
+      },
+      "deliberate_error_diagnostics": [
+        "[+     0.912363] [domain retirement] root=15:6 error=AddressSpace(OperationDrainTimedOut) pending=Some(InitialOperations { leases: 1 })",
+        "[+     0.916224] [domain retirement] root=15:6 error=AddressSpace(CloseInProgress) pending=None",
+        "[+     0.917005] [domain retirement] root=15:6 error=AddressSpace(CloseInProgress) pending=None",
+        "[+     0.920330] [domain retirement] root=21:3 error=AddressSpace(StaleHandle) pending=None"
+      ],
+      "namespace_control_markers": [
+        "[+     3.550881] [IPC namespace ownership] unlocked queued/delivered cleanup, both closing peers, preparation rollback, partial failure and abandonment passed; failed roots/backing retained; exact pending token/epoch diagnosed",
+        "[+    10.804143] [memory namespace] stale mapped peer rejected; owner/charged object and successor mapping retained",
+        "[+    10.808789] [memory namespace] mapped peers retained outside lifecycle, closing peers, unmapped revocation fence, preparation rollback and four failure/Drop quarantines passed"
+      ],
+      "selftests": [
+        {
+          "passed": 17,
+          "failed": 0,
+          "pending": 0
+        }
+      ],
+      "stress_retirement": [
+        "[+    71.842698] [security] concurrent cancellation traffic retired after 16136 requests"
+      ],
+      "new_send_regression_markers": [
+        "[+    38.784581] [EL0 LOG] lp=0 asid=138 [security] immediate socket send: full ID, UDP enqueue, retired/missing/reserved/tail/length/extended rejection and high-half isolation",
+        "[+    66.388689] [EL0 LOG] lp=0 asid=138 [security] immediate socket send: full ID, UDP enqueue, retired/missing/reserved/tail/length/extended rejection and high-half isolation"
+      ],
+      "source_qualification": "Corrected pin assertion, before equivalent let-else to ? cleanup and Clippy attributes retaining inline owner storage. Final-source ARM and x86 repeat cover those lint-only changes.",
+      "qualification": "Deterministic retained-root/claim/revocation controls pass, and live cancellation-stress retirement completes under unchanged policy. No recurrence of the historical live timeout; neither a passing repeat nor deliberate error diagnostics establish its cause or physical completion of any failed owner."
+    },
+    {
+      "id": "final_arm",
+      "outcome": "pass",
+      "exit_code": 0,
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19282 CATTEN_DEPLOY_HOST_PORT=19446 scripts/run-aarch64.sh --security-test --instance root-pending-security-arm-final --fresh-storage --timeout 300",
+      "architecture": "aarch64",
+      "instance": "root-pending-security-arm-final",
+      "kernel_sha256": "3a14b960dd93c9992da59b7b7c76a26153a3576f23fb0a0afab6067a138efa63",
+      "boot_image_sha256": "ba197c84eaf72edcae11bfdf147acb1c9869ba77d4046b2aca86af7172d9d0c3",
+      "initial_disk_sha256": "023f891eb26753e9704eec973ddc0a1a7d382e0ce588442fe0a34db578612a47",
+      "bundle_manifest_id": "734b6136b45f2d20a7747f0cdccd1571e5dc74a8e42e88310bee7fa6fdee8a03",
+      "capture_sha256": {
+        "runner": "581a2358c5dae0559e393d7395348724ed37055979fe2b1e05402dc5f23e7753",
+        "manifest": "c10ba40c81ea0a5ccffca7218de2ef26129d76988dad6f6ff23d7093a7b77d98"
+      },
+      "deliberate_error_diagnostics": [
+        "[+     0.911367] [domain retirement] root=15:6 error=AddressSpace(OperationDrainTimedOut) pending=Some(InitialOperations { leases: 1 })",
+        "[+     0.913415] [domain retirement] root=15:6 error=AddressSpace(CloseInProgress) pending=None",
+        "[+     0.913815] [domain retirement] root=15:6 error=AddressSpace(CloseInProgress) pending=None",
+        "[+     0.915755] [domain retirement] root=21:3 error=AddressSpace(StaleHandle) pending=None"
+      ],
+      "namespace_control_markers": [
+        "[+     3.545474] [IPC namespace ownership] unlocked queued/delivered cleanup, both closing peers, preparation rollback, partial failure and abandonment passed; failed roots/backing retained; exact pending token/epoch diagnosed",
+        "[+     5.339019] [memory namespace] stale mapped peer rejected; owner/charged object and successor mapping retained",
+        "[+     5.342847] [memory namespace] mapped peers retained outside lifecycle, closing peers, unmapped revocation fence, preparation rollback and four failure/Drop quarantines passed"
+      ],
+      "selftests": [
+        {
+          "passed": 19,
+          "failed": 0,
+          "pending": 0
+        }
+      ],
+      "stress_retirement": [
+        "[+    66.313461] [security] concurrent cancellation traffic retired after 17848 requests"
+      ],
+      "new_send_regression_markers": [
+        "[+    33.447458] [EL0 LOG] lp=0 asid=136 [security] immediate socket send: full ID, UDP enqueue, retired/missing/reserved/tail/length/extended rejection and high-half isolation",
+        "[+    60.829660] [EL0 LOG] lp=0 asid=136 [security] immediate socket send: full ID, UDP enqueue, retired/missing/reserved/tail/length/extended rejection and high-half isolation"
+      ],
+      "source_qualification": "Final Rust source.",
+      "qualification": "Deterministic retained-root/claim/revocation controls pass, and live cancellation-stress retirement completes under unchanged policy. No recurrence of the historical live timeout; neither a passing repeat nor deliberate error diagnostics establish its cause or physical completion of any failed owner."
+    },
+    {
+      "id": "final_x86_repeat",
+      "outcome": "pass",
+      "exit_code": 0,
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19284 CATTEN_DEPLOY_HOST_PORT=19448 scripts/run-x86_64.sh --security-test --instance root-pending-security-x86-repeat --fresh-storage --timeout 300",
+      "architecture": "x86_64",
+      "instance": "root-pending-security-x86-repeat",
+      "kernel_sha256": "70abeff8690476d255f27d9741148ef445e72fbb1c55eb8710ee818a2096fa24",
+      "boot_image_sha256": "b47e7d363f630238e6b73c3c5a57fa5a40e5e52d96e79ca71c9d644cf1ea0cda",
+      "initial_disk_sha256": "3711a890e4a4a004aaf070a3dc751fc1cc076059f28738e05d1d6ab4d6c65438",
+      "bundle_manifest_id": "e432222aeb47643d779b7e86a424c89252ea1a7b7b6a470853698a32e590dbb7",
+      "capture_sha256": {
+        "runner": "db0651a0d1d0a07cb5c99ad8b719889fad4ba17e88b493f4431270360c1e817c",
+        "manifest": "3aec2864375ed3047bb0dd644c41d6ed490758158ea0ae6e07bd302de4174f79"
+      },
+      "deliberate_error_diagnostics": [
+        "[+     0.905367] [domain retirement] root=15:6 error=AddressSpace(OperationDrainTimedOut) pending=Some(InitialOperations { leases: 1 })",
+        "[+     0.909010] [domain retirement] root=15:6 error=AddressSpace(CloseInProgress) pending=None",
+        "[+     0.909693] [domain retirement] root=15:6 error=AddressSpace(CloseInProgress) pending=None",
+        "[+     0.912954] [domain retirement] root=21:3 error=AddressSpace(StaleHandle) pending=None"
+      ],
+      "namespace_control_markers": [
+        "[+     3.523702] [IPC namespace ownership] unlocked queued/delivered cleanup, both closing peers, preparation rollback, partial failure and abandonment passed; failed roots/backing retained; exact pending token/epoch diagnosed",
+        "[+    10.749493] [memory namespace] stale mapped peer rejected; owner/charged object and successor mapping retained",
+        "[+    10.754160] [memory namespace] mapped peers retained outside lifecycle, closing peers, unmapped revocation fence, preparation rollback and four failure/Drop quarantines passed"
+      ],
+      "selftests": [
+        {
+          "passed": 17,
+          "failed": 0,
+          "pending": 0
+        }
+      ],
+      "stress_retirement": [
+        "[+    71.955816] [security] concurrent cancellation traffic retired after 16596 requests"
+      ],
+      "new_send_regression_markers": [
+        "[+    38.905718] [EL0 LOG] lp=0 asid=127 [security] immediate socket send: full ID, UDP enqueue, retired/missing/reserved/tail/length/extended rejection and high-half isolation",
+        "[+    66.527374] [EL0 LOG] lp=0 asid=127 [security] immediate socket send: full ID, UDP enqueue, retired/missing/reserved/tail/length/extended rejection and high-half isolation"
+      ],
+      "source_qualification": "Final Rust source.",
+      "qualification": "Deterministic retained-root/claim/revocation controls pass, and live cancellation-stress retirement completes under unchanged policy. No recurrence of the historical live timeout; neither a passing repeat nor deliberate error diagnostics establish its cause or physical completion of any failed owner."
+    }
+  ],
+  "bundle_manifests": {
+    "e432222aeb47643d779b7e86a424c89252ea1a7b7b6a470853698a32e590dbb7": {
+      "agent.elf": "b9d75c77cfc04441c455254413d4d643f7c2579b0e2934b665211b0ae20a4c0f",
+      "ahci.elf": "566a3fcb7532551ce177f49ec0b4c4307a41e45e303edf89a190d0ed6ea04d1e",
+      "client.elf": "4fe5fd950a485a1fb2ea86c3d072270d37dfff6a7205276ce109197a6e7d9326",
+      "clusterctl.elf": "7ad08b19b4311e45d206de97d48fcf99043ad3eb1f87cc4c9a697a9da611e2ea",
+      "deployd.elf": "4ff017035bdcf4eaada6266e929c2e0c86341b4f58f99ce83331eef5835eb7d0",
+      "disco.elf": "0d2e9cab70e90ebe22db9ab984c379dd4a4edcf1a20b942db4fdf0f578097429",
+      "dns.elf": "241c5c7c8d0f61d56b3e0a37222196561da35e5547cf8ebadbbc1d055ba9d8aa",
+      "e1000e.elf": "9becc3f8ee0cf78815345cf3e16ad0937b6370aa937be60e6d5a6192d4ab026f",
+      "echo.elf": "9191a192744960add3c145c340c8b43dc9fcbd1cfd60a37f4f2902cf6a26fdb7",
+      "frouter.elf": "ed4e7288751b75d93056562eb63ec7f815ff874302fcb387cef169195a79a7d2",
+      "fs.elf": "4e9f49fee1dfc5d18c5d59a01cd73166ff2480cd659934d50e6db6b1d9342a1c",
+      "grantctl.elf": "b752bbd0752b14f5d729389e925d9ba8584f867b45366ba63f817f5250b3cf75",
+      "greet.elf": "339b905fa591c9df3f701140f3e555603b8d7f67af7a4ea1aa6b884f7a5c544e",
+      "httpd.elf": "5d2bd123cb10477791d89c97008a8b464f8df93ae9f33d2edfece48f9deb2744",
+      "kafka.elf": "94555e5ebd75ab90f2d337543c9e060d6e862d40819e595151c5579f2c1e6388",
+      "kafka_smoke.elf": "8ac52b6b0d0d2f14db851bcefdc0bf7feca93241ff3e51a23bc4e6be46903faf",
+      "nclient.elf": "0e039f90087e4531ab71227efe9f309f939f3199972c09398e47921e8c45a756",
+      "net.elf": "1d09a060f1f23e69f19d51639f7eb33d83dad3e456629e4a3aeccc19e8f0c17f",
+      "ns.elf": "a014338e23f07856534d5aad124e549d3b93f1b519a66769c1b05ce13ce2ddc0",
+      "nvme.elf": "15b8dea77fc9dbc006ead20819a057d087b348fd328a9862ccbdcf2bb4f0e7fe",
+      "nvme_client.elf": "070d6c4a983832fced3ec647d5b6744b66ad1bfcca9b787343f0b94322b30d58",
+      "objstore.elf": "597ddd01f65917a5ca36de6157464efb976076923d0a9b2a764cba35097f3697",
+      "objstore_client.elf": "276ddf004ec79b9f6c18d7fc333fca7aa3a45fd02f55467e96aab5ec131b9d45",
+      "observe.elf": "2e2487d647db10d245358a896d31f0b9e49b5d460e72bf001a10ad1a02da989e",
+      "raft.elf": "e0b2237f801bb2f6817af554c6d63567e100ea8648632d71da4594069d7eab05",
+      "rclient.elf": "a7d3fb0f8d239e2e50398ef01be3a5d72b30fc9ce262d54d1f42c1543150c2b5",
+      "relmsg.elf": "2d1b128237007c7ab912c1cf2ab3a54949e91eadef9c43603b29b0edbbe10fad",
+      "rng.elf": "d18ae75fc2ddb4a96cd0d0d6e9defee62f7430c88f6127447ea02c4f865f6c18",
+      "s3.elf": "c3ed4b3f6a5fd3591659eb5858c01457c743dcf933bd261e52a8e4dec07fc914",
+      "s3_smoke.elf": "3769afe278f2ba246587dc876ef4357846a913b812d0e68bc116bcbe363ec08c",
+      "security_probe.elf": "ebf30e7aa281bb95a8c53cc05e0a1dee980913382b2d3c34b5fed083512448ff",
+      "servicemgr.elf": "0c8f4fe689f089fe6fd061264f1d159c75b620578b76ae848b4ec1ab6fc3b8b3",
+      "shutdown_probe.elf": "22a6ce3199809d2be31a3b1ef82fadd62bf2daa4385cf7075039d17707ac9b89",
+      "tcpclient.elf": "63e4e33dda806e2b851271102a6f2f0b9051ec99541ed113e444752e6a4c5a0b",
+      "tcpip.elf": "fb37907cf8ff5ae18a9cec77a39dd22c490675a9a2930fd59caa04905f3a111c",
+      "time.elf": "3774b85bbff395d08f3bc4fe37e16ac9d0b7c3dc3e4793d5d3c19a10686a9e34",
+      "virtio_blk.elf": "722383f548dd4633db590fe277e23f138d72e2a7e4cbacdb6db983271844e737"
+    },
+    "734b6136b45f2d20a7747f0cdccd1571e5dc74a8e42e88310bee7fa6fdee8a03": {
+      "agent.elf": "9bbe7b9604d2760fff2253e95f7ab5001fea1c813637e700574faed81139118d",
+      "cclient.elf": "402bbba827a8343e6f8ec46af676ab970d83017a4a381472edf7bd86e6af9a10",
+      "client.elf": "a839568b762ab40a41ff954e9e3a210f0d74ede99b1cfa575585d0e322c4ee37",
+      "clusterctl.elf": "cb87b56a77ba003db6c9b6993246a1de6220c7af0efba21db4134cf2a2b6c72d",
+      "deployd.elf": "05694503430021a1249a8e0a0ab660d1873b38284d5e86e1b841a11a885bfef3",
+      "disco.elf": "a86eac4bc587663aba42345a437a141eac9e9a5d9f724e6fb3b3c04a02cef713",
+      "dns.elf": "d83ee861ed5eea5a5b898adbed4969ebb8cdeb410837929725b2d6d028afaecb",
+      "echo.elf": "bf85081ba2fb57a6f79c1d05b4b0fed909ba10c4ea8eee295c1a80913cb824d5",
+      "frouter.elf": "35df36694d833eea418065c75d9fdb4545413d9b47f38b9808a079ffdeb3f166",
+      "fs.elf": "d8005e292a80e40c2acf2ffaa5251476abc3d4d901b7b13b607384a4f100b8fc",
+      "grantctl.elf": "6cdb7ad99db61eace79bebcb6a27f3ea4c8d1c9a61738c4f2e6eeb6548f34375",
+      "greet.elf": "654a2c248fe51b9e75f36c10cb83b45e89a15ecb25afc550c6689b87ffd95376",
+      "httpd.elf": "cad7acd26a74c8e2fc04bc3b337873b3b6b717fbda96c2f217bdb292e172eced",
+      "kafka.elf": "b0ffafaf335f2344a5fff4f48b93f25599defc5ebd4f706b225d9a64395358ec",
+      "kafka_fence_smoke.elf": "3ceda8378ea5dcbf7ebec7d1bc4d63bccfb8640ce10167ad877c03fe04430b05",
+      "kafka_smoke.elf": "374aa64ca2a8d1c0c372d89f176aa3778663e5f9cc73eed7e8caed1114b45786",
+      "kafka_step.elf": "ee946d0d1cf66f3fbb008bf31c1e5bad5b03e3a1d31b0f343d753992dc751918",
+      "kafka_step_input.elf": "7ba68011f4a5be063a99dbab16d5c89d5d945f528dc508e4388d91b9348c389a",
+      "kafka_step_proc.elf": "f768140f2b4793c7d69d460d2b2c22f94346ab3e3da175727b6e50197960367c",
+      "nclient.elf": "3a9760d32ab9f192b6b14a932ee078880994ad2ed91fae7586822c118b08e0dd",
+      "net.elf": "61594fc8319ca5d331a6f6d90a00405d3ab24cee7b8cc68a4bf7a3b2da61b78f",
+      "ns.elf": "49f934cadd4afd81e203155c3646598e4e8e000b77cd375894126875dec80b98",
+      "nvme.elf": "6c57cd97dfcbbb8cef687b3fc9b8244b610a73a89fe2f3e51d69c737f4367b97",
+      "nvme_client.elf": "4ce5d5995cd9313f4592a2c28ba691fd73cdf73df6212ec5730e3446b3c5ae37",
+      "objstore.elf": "04c04d0348bef3e61f8ef1e1900333fbc207fa3174f6ec960596c0d800b3572e",
+      "objstore_client.elf": "aaafa9e09e7e42e46416f2056843a0077bfc7793aed523a8947b6c48d8742883",
+      "observe.elf": "20eb3a4d8f77157499787dcc9cde3fb59de04b3c68edc37049bfce4e0a0c28db",
+      "raft.elf": "6b2389ffc46470e3bfad19ca310834534560f097a5a42f8924cba12d03fcb8b3",
+      "rclient.elf": "f347c94ccc5855a6ef223ab0ad9af5d1694946302218f51a9ede76cadb6023da",
+      "relmsg.elf": "a70f414abe027e4fe339ac35ad238fe8ebc6f59dae1ed818957138296b35575c",
+      "rng.elf": "89c3b350a996793f6e1a3e72de345f8d0122944d846e9dfb11cec8963c51df28",
+      "s3.elf": "351f794a270ab6dec3f5a81a46a12d9cf22fdd420597eb67acf876a8b842f194",
+      "s3_smoke.elf": "89ec18241482b9d796f255987fe3c8880eccf36b2458cedd45455084fa0efd40",
+      "security_probe.elf": "4cd0545c7c4a0473301a25580b8aa207c29fcf5da9fa9ac7af27cc450b372176",
+      "servicemgr.elf": "8acd5131d34988ec92390cc8808f3c46cb1a8f6be164c166d680c1349faa2043",
+      "shutdown_probe.elf": "694a24cd5daa511dc94be9512845a7dc7d9d3742b7ea748fe4a3d6324b581eb0",
+      "sitas-user.elf": "fbf1b47a721d84498a64e43bc626a7f962a52d3740e3fa7e14adaeea7fa5f311",
+      "tcpclient.elf": "558b2b4e4f4da91d9de7b42119c9802ce1e48456bff1c1ecd37a8016dff73f4b",
+      "tcpip.elf": "cf7e887e20c67de33546dbdac16980d234481218c818ffd40113462a35a48f07",
+      "time.elf": "73be6e6ba4215404dee7817286bac683141abcaea3f375e227451b4d018d1d7a",
+      "uart.elf": "31cb040b160a3abe9493b996f83f6797155c983cbddcd8835bc748b77ca30202"
+    }
+  },
+  "checks": {
+    "format": "cargo fmt --all -- --check",
+    "diff": "git diff --check",
+    "x86_clippy": "CATTEN_X86_64_SERVICE_BUNDLE=<current signed bundle> CATTEN_SECURITY_TEST_DIR=<public fixture> cargo clippy --locked --package catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi,security_test -- -D warnings",
+    "arm_clippy": "CATTEN_AARCH64_SERVICE_BUNDLE=<current signed bundle> CATTEN_SECURITY_TEST_DIR=<public fixture> cargo clippy --locked --package catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi,security_test -- -D warnings",
+    "clippy_capture_sha256": {
+      "x86": "7ae9ef04e9307441e58f96971d0cb604af9f8fe1c2bc4ca9dff6a6df0efacb79",
+      "arm": "cdfc22d448740e9e3ac0c6a3cfdcccf0a095c31c83ccd25b2c2a763882d34634"
+    },
+    "bundle_reproduction": "scripts/build-catten-services.sh --check; current-source signed bytes match and signatures verify",
+    "bundle_reproduction_capture_sha256": "348840005cb1fb69117075188fb15b87cb0044c24274b8ed15edb97da977ef8f",
+    "host_tests": "Kernel-only changes; deterministic real-root tests run inside both native boots. No unrelated host suite rerun claimed."
+  },
+  "formal_scope": {
+    "changed_models": [],
+    "suite_rerun": false,
+    "qualification": "Diagnostic fields observe existing Pending branches without new transition or cleanup policy. Conformance map documents their lack of cleanup/retry proof. Existing finite projection does not identify a stuck native operation; no new formal result claimed.",
+    "unchanged_model_sha256": "817ce0b352e358ab901f6392354d4a42ca294274080e5f1b979d1105f563d87e"
+  },
+  "remaining": "Historical cancellation-stress timeout did not recur in the three instrumented passes. No causal operation or stage established retrospectively. Lease, IPC/memory blocker, scheduling and other causes remain unexcluded. Future recurrence must retain full owner and selected stage without widening deadline, reconstructing cleanup or clearing a claim.",
+  "preserved_pdf_sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f"
+}

@@ -349,6 +349,13 @@ impl<T> IdTable<T> {
         Ok(())
     }
 
+    /// Diagnostic sample under the same hold as a rejected close preflight.
+    /// Counts carry no release or retry authority.
+    pub(crate) fn closing_lease_count(&self, slot: &ClosingSlot) -> Result<usize, Error> {
+        self.validate_closing(slot)?;
+        Ok(self.slots[slot.id].leases)
+    }
+
     fn validate_closing(&self, slot: &ClosingSlot) -> Result<(), Error> {
         if slot.table != self.identity
             || self.generation(slot.id).ok() != Some(slot.generation)

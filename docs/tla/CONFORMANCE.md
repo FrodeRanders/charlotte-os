@@ -361,6 +361,15 @@ not independently modeled.
 | `FinishPhysical` | `release_retired_with`, account retention/refund, `finish_retirement` | Successful physical release refunds the backing charge. Partial rejection retains the whole original charge with terminal backing, while the now-quiescent software slot can complete. No partial physical walk is replayed. Individual frame outcomes and interruption inside the walk are omitted. |
 | `Abandon` | consuming cleanup error, rejected custody admission, or inert root/attempt fallback before physical start | Retains all represented fields with no controller re-adoption. Abandonment after physical start/status-publication races remains outside this projection. |
 
+`ClosingAddressSpace::pending` now retains an inline diagnostic observation of
+its actual Pending branch. Supervisor failure logs it with the captured root
+before abandonment, outside local guards. Lease counts, selected IPC token/epoch
+and memory pin/transfer/revocation fields are observations, with no transition,
+release/retry authority or new model invariant. IPC selection precedes preparation
+and can be stale after an episode change. This projection and its typed physical
+completion assumptions remain unchanged; see the
+[diagnostic evidence](../reports/audits/2026-10-22-root-retirement-diagnostics.md).
+
 Five separate negative specifications expose detachment with live leases,
 release without invalidation, physical retry after partial release, adoption of
 an abandoned owner, and refund of retained backing. These supplement C01–C03

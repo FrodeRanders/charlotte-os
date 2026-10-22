@@ -1164,6 +1164,16 @@ fn namespace_abandonment() {
     let CloseProgress::Pending(owner) = owner.poll().unwrap() else {
         panic!("abandoned namespace call completed")
     };
+    let Some(memory::retirement::PendingClose::Ipc(pending)) = owner.pending() else {
+        panic!("abandoned namespace claim lost its diagnostic stage")
+    };
+    assert_eq!(pending.token, identity.token);
+    assert_eq!(pending.call, identity.call);
+    assert_eq!(pending.caller, Some(fixture.caller));
+    assert_eq!(pending.server, Some(fixture.server));
+    assert!(pending.completing);
+    assert_eq!(pending.epoch, 1);
+    assert!(!pending.cleanup_failed);
     drop(owner);
     assert!(IPC.read().reply_tokens[&identity.token].completing);
     assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));
@@ -1180,7 +1190,7 @@ fn namespace_abandonment() {
     crate::logln!(
         "[IPC namespace ownership] unlocked queued/delivered cleanup, both closing peers, \
          preparation rollback, partial failure and abandonment passed; failed roots/backing \
-         retained"
+         retained; exact pending token/epoch diagnosed"
     );
 }
 

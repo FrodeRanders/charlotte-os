@@ -184,6 +184,13 @@ stress domain. The captured stack identifies `flood.stop`; it does not identify
 which lease or namespace cleanup stage stayed pending. That failure remains
 separate from any passing repeat, without a causal conclusion or wider timeout.
 
+The [root-retirement diagnostic follow-up](../reports/audits/2026-10-22-root-retirement-diagnostics.md)
+records each actual Pending branch in the existing exact-root owner, including
+preflight lease counts, selected IPC token/epoch and memory blockers. A supervisor
+terminal error reports that observation before retaining its closing owner.
+This makes future recurrences distinguishable; it does not resolve the earlier
+cancellation-stress timeout, change its budget or authorize reclamation/retry.
+
 Remaining acceptance requires progress during saturated admission and slow
 controller-server/transport phases, sustained connection/packet flood, NIC failure
 and lifecycle shutdown evidence on supported targets. Signatures checked after receipt do

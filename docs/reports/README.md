@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Exact-root retirement pending diagnostics](audits/2026-10-22-root-retirement-diagnostics.md) — Captured Pending stages separate lease, IPC and memory observations; historical reclamation timeout remains unresolved.
+
 - [Immediate socket send: complete IDs and owned frames](audits/2026-10-22-security-immediate-send.md) — retires packed selectors and raw send cleanup; native frame rejection and high-half isolation controls.
 
 - [SEC-06 synchronous socket-close ownership](audits/2026-10-22-security-synchronous-close.md) — Explicit close and Drop consume the same owner once, carry one deadline, and cannot restore an ID after accepted uncertainty.

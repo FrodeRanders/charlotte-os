@@ -67,6 +67,15 @@ impl DomainTeardown {
         }
         let result = self.advance();
         if let Err(error) = result {
+            // Explicit terminal observation after local lifecycle/subsystem
+            // guards leave, with the complete close owner still live. Log the
+            // last Pending sample once; cached failure never emits it again.
+            crate::logln!(
+                "[domain retirement] root={}:{} error={error:?} pending={:?}",
+                self.domain.address_space.id(),
+                self.domain.address_space.generation(),
+                self.closing.as_ref().and_then(ClosingAddressSpace::pending)
+            );
             // Drop retains a staged closing root, including when an older
             // operation subsequently completes. Never retry under a new owner.
             self.closing.take();
@@ -125,6 +134,8 @@ impl DomainTeardown {
 
 /// A registry entry stays admitted while a poll temporarily borrows its owner.
 /// Polling prevents another caller from beginning/stealing the same close.
+// Inline storage keeps Pending relinking allocation-free under its registry.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum DeploymentTeardown {
     NotStarted,
     Pending(DomainTeardown),
