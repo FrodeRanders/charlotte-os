@@ -302,6 +302,28 @@ HTTP-200 status records stop with the operation unconfirmed; the client does not
 replay accepted notification. See [release admission results](release-admission.md)
 for the IPC, relay and HTTP grammar and ownership boundary.
 
+Release startup retries are limited to a connection failure before any HTTP write,
+or a complete HTTP 409 response with exactly `{"error":-23}` (JSON whitespace is
+allowed). The latter confirms incompatible-target rejection: DNS rejects before
+proposal, or catalog replay rejects its complete plan before publishing release,
+component or operational state. A Raft entry may still have committed that
+negative application result. A later attempt retains the same signed bytes and
+uses the original deadline, with at most one second of startup backoff. Permanent
+target incompatibility consumes that budget and fails.
+
+Every other result stops submission. In particular, a partial write, lost or
+truncated response, busy/timeout error, malformed receipt, and accepted rollout
+failure never cause another POST. `release-notify` remains a single attempt. Both
+QEMU deployment-ingress workers use their existing bounded serial observation
+loop to wait for `[deployd] listening port=7444` and the initial single-node DNS
+leader marker before invoking `release-apply` once with the original fixture
+budget left. QEMU forwarding can accept a host
+connection before that guest listener exists. These markers only delay the first
+attempt; they grant no replay or rollback proof. Workers write their ready marker
+only on success, and a failed worker ends the run without restarting the command. Reconcile the exact release and component state before any operator-led
+retry. The [startup retry audit](../reports/audits/2026-10-23-security-release-startup.md)
+records the checked boundary and its tests.
+
 A fetch or launch failure can leave a release committed but not ready; automatic
 rollback and rollout policy remain controller work. Apply carries one checked
 monotonic deadline from preparation through admission and readiness; each network

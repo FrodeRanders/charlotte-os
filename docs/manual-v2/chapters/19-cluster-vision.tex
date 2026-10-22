@@ -1009,8 +1009,22 @@ exact signed envelope digest and descriptor count, then retains each component's
 own deployment generation. Older observations stay pending, matching ready
 observations complete, and supersession fails. Malformed receipts or status
 records leave the operation unconfirmed without replaying its notification.
-Release apply carries the same original deadline through receipt admission and
-component observation. Host polling, blocking host file I/O, and ingress peer
+Release apply carries the same original deadline through startup, receipt
+admission and component observation. A startup attempt can repeat only after a
+connection failure before any HTTP write, or a complete HTTP 409 response with
+the single numeric error \texttt{-23}. That checked incompatible-target result
+comes before release/component/operational publication; its negative result may
+itself be committed to Raft. The client retains the exact signed bytes and uses
+at most one second of backoff within its original budget. Other errors, uncertain
+submission and failures after receipt acceptance stop the command. Both QEMU
+deployment-ingress workers first wait for the guest listener and initial DNS
+leader markers in their existing bounded serial loop, then invoke it once with the original fixture
+budget left. QEMU forwarding may accept TCP before the guest listener exists. A
+failed worker ends the run; it cannot conceal a lost response or an accepted but
+unready release by restarting admission. An operator must
+reconcile the exact release and component state before choosing a further
+attempt. Standalone \texttt{release-notify} still submits once.
+Host polling, blocking host file I/O, and ingress peer
 authentication remain separate work. Coordinated rollback, progress policy, and a semantic process bundle that
 also binds BPMN, schemas, and provenance remain controller work.
 

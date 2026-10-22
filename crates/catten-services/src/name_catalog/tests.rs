@@ -654,6 +654,63 @@ fn deployment_capacity_rejects_new_keys_and_allows_replacements() {
 }
 
 #[test]
+fn incompatible_release_rejection_preserves_catalog_before_new_admission() {
+    let pair = fixture_pair();
+    for installed in [false, true] {
+        let catalog = fixture_catalog();
+        let release_for = |sequence| {
+            let receive = signed_deployment(&pair, b"receive", sequence);
+            let publish = signed_deployment(&pair, b"publish", sequence);
+            signed_release(&pair, b"orders", sequence, &[&receive, &publish])
+        };
+        if installed {
+            assert_eq!(
+                i64_result(catalog.apply_with_result(
+                    1,
+                    &encode_release(&release_for(1), &[0x1111, 0x2222]).unwrap()
+                )),
+                1
+            );
+        }
+        let command = encode_release(&release_for(2), &[0x1111, 0x2222]).unwrap();
+        let mut profile = catalog.node_capacity(0x2222).unwrap();
+        profile.boot_nonce += 1;
+        profile.epoch = 1;
+        profile.target = charlotte_launch::execution_target::ExecutionTarget::baseline(
+            charlotte_launch::execution_target::Architecture::X86_64,
+        );
+        catalog.apply(1, &encode_node_capacity(&profile));
+        assert_eq!(catalog.node_capacity(0x2222), Some(profile));
+        let before = catalog.snapshot();
+        assert_eq!(
+            i64_result(catalog.apply_with_result(1, &command)),
+            crate::clusterctl::ERR_INCOMPATIBLE_TARGET
+        );
+        assert_eq!(
+            catalog.snapshot(),
+            before,
+            "target rejection must preserve the entire persisted application state"
+        );
+        profile.boot_nonce += 1;
+        profile.epoch = 1;
+        profile.target = charlotte_launch::execution_target::ExecutionTarget::baseline(
+            charlotte_launch::execution_target::Architecture::Aarch64,
+        );
+        catalog.apply(1, &encode_node_capacity(&profile));
+        assert_eq!(
+            i64_result(catalog.apply_with_result(1, &command)),
+            if installed {
+                2
+            } else {
+                1
+            }
+        );
+        assert!(catalog.deployment(b"receive").is_some());
+        assert!(catalog.deployment(b"publish").is_some());
+    }
+}
+
+#[test]
 fn signed_release_is_atomic_idempotent_and_snapshot_persistent() {
     let pair = KeyPair::generate();
     let public_key: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();

@@ -47,6 +47,16 @@ component names from its retained envelope preparation and waits for each captur
 generation. Older observations remain pending, matching ready generations
 complete, and supersession or malformed HTTP-200 status stops without POST replay.
 
+`release-apply` can make a new startup attempt only after a connection failure
+before any HTTP write, or a complete HTTP 409 response containing exactly the
+single numeric error `-23`. DNS emits this incompatible-target rejection before
+proposal; catalog replay can also emit it before publishing any release,
+component or operational state. This is an explicit negative application result,
+which may itself be in the committed log. No timeout, busy error, malformed
+response or accepted receipt supplies that guarantee. Startup backoff and all
+later observations retain the same original deadline. `release-notify` still
+submits once. See [deployment ingress](deployment-ingress.md).
+
 An exact release retry returns a receipt only if every current component still
 has the exact signed descriptor bytes. It may report the current generation of
 an unchanged descriptor whose placement was reconciled. A missing or superseded

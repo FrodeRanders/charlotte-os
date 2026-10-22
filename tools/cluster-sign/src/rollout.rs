@@ -38,6 +38,12 @@ pub(super) fn admitted_generation(body: &str) -> Option<u64> {
     number(generation).filter(|generation| *generation > 0 && *generation <= i64::MAX as u64)
 }
 
+/// This exact application rejection precedes release/catalog mutation. Other
+/// failures, including busy and timeout, carry no authority to submit again.
+pub(super) fn incompatible_target_rejection(body: &str) -> bool {
+    fields(body, ["error"]) == Some(["-23"])
+}
+
 /// The complete bounded receipt binds component order to the exact signed envelope.
 pub(super) fn admitted_release(
     body: &str,
@@ -138,6 +144,22 @@ mod tests {
         "{\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,",
         "\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}"
     );
+
+    #[test]
+    fn target_rejection_requires_one_complete_exact_error() {
+        assert!(incompatible_target_rejection(" { \"error\": -23 }\n"));
+        for body in [
+            "{\"error\":-22}",
+            "{\"error\":\"-23\"}",
+            "{\"error\":-023}",
+            "{\"error\":-23,\"error\":-23}",
+            "{\"error\":-23,\"generation\":1}",
+            "{\"error\":-23} trailing",
+            "{\"error\":-23}\r\n\r\n{}",
+        ] {
+            assert!(!incompatible_target_rejection(body), "{body}");
+        }
+    }
 
     #[test]
     fn policy_observation_accepts_current_bounds_without_utc_admission() {

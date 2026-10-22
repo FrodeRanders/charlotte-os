@@ -228,6 +228,14 @@ The same-source repeat advanced past that check; later fixture corrections and
 passes do not resolve the original observation. The failed run remains separate
 in the linked evidence, alongside the historical reclamation timeout.
 
+The [release startup follow-up](../reports/audits/2026-10-23-security-release-startup.md)
+removes both host workers' unconditional command-retry loops. `release-apply`
+retains its exact envelope and one original deadline, retrying only before an
+HTTP write or after a complete checked incompatible-target rejection. Uncertain
+submission, malformed results and accepted readiness failures stop. This fixes a
+fixture replay gap exposed by the controller relay run; it adds no reconciliation
+service, peer authentication, physical cleanup proof or flood-capacity guarantee.
+
 Remaining acceptance requires progress during saturated admission and slow
 DNS/transport and legacy controller phases, sustained connection/packet flood, NIC failure
 and lifecycle shutdown evidence on supported targets. Signatures checked after receipt do

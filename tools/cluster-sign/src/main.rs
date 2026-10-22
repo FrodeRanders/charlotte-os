@@ -1677,23 +1677,66 @@ struct AdmittedRelease {
     body: String,
 }
 
+enum ReleaseFailure {
+    BeforeSubmission(String),
+    TargetRejected(String),
+    Terminal(String),
+}
+impl ReleaseFailure {
+    fn into_message(self) -> String {
+        match self {
+            Self::BeforeSubmission(message)
+            | Self::TargetRejected(message)
+            | Self::Terminal(message) => message,
+        }
+    }
+}
+impl From<String> for ReleaseFailure {
+    fn from(message: String) -> Self {
+        Self::Terminal(message)
+    }
+}
+
 fn release_notify_bytes(
     bytes: &[u8],
     endpoint: SocketAddr,
     deadline: Deadline,
 ) -> Result<AdmittedRelease> {
+    release_attempt(bytes, endpoint, deadline).map_err(ReleaseFailure::into_message)
+}
+
+fn release_attempt(
+    bytes: &[u8],
+    endpoint: SocketAddr,
+    deadline: Deadline,
+) -> std::result::Result<AdmittedRelease, ReleaseFailure> {
     release::decode(bytes).ok_or_else(|| "release envelope is malformed".to_owned())?;
     let header = format!(
         "POST /v1/releases HTTP/1.1\r\nHost: {endpoint}\r\nContent-Type: \
          application/vnd.charlotte.release\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
         bytes.len()
     );
-    let response = http_client::exchange(endpoint, header.as_bytes(), bytes, deadline)?;
+    let response = http_client::exchange_checked(endpoint, header.as_bytes(), bytes, deadline)
+        .map_err(|failure| match failure {
+            http_client::ExchangeFailure::BeforeSubmission(message) => {
+                ReleaseFailure::BeforeSubmission(message)
+            }
+            http_client::ExchangeFailure::Unconfirmed(message) => ReleaseFailure::Terminal(message),
+        })?;
     let status = response.lines().next().unwrap_or_default();
-    if !status.starts_with("HTTP/1.1 202 ") {
-        return Err(format!("release notification failed: {}", response.trim()));
-    }
     let body = http_client::response_body(&response)?.to_owned();
+    if !status.starts_with("HTTP/1.1 202 ") {
+        let message = format!("release notification failed: {}", response.trim());
+        return Err(
+            if status == "HTTP/1.1 409 Conflict" && rollout::incompatible_target_rejection(&body) {
+                // DNS rejects incompatible placement before proposal, or the catalog
+                // rejects its complete plan before publishing any release/component.
+                ReleaseFailure::TargetRejected(message)
+            } else {
+                ReleaseFailure::Terminal(message)
+            },
+        );
+    }
     let receipt = rollout::admitted_release(&body, bytes).ok_or_else(|| {
         "release admission returned an invalid component receipt; outcome is uncertain".to_owned()
     })?;
@@ -1930,7 +1973,23 @@ fn release_apply(args: &[String]) -> Result<()> {
         .collect::<Result<Vec<_>>>()?;
     // Reserve observation storage before publishing the accepted release request.
     let mut pending = Vec::with_capacity(names.len());
-    let admitted = release_notify_bytes(&bytes, endpoint, deadline.capped(30))?;
+    let admitted = loop {
+        match release_attempt(&bytes, endpoint, deadline.capped(30)) {
+            Ok(admitted) => break admitted,
+            Err(
+                failure @ (ReleaseFailure::BeforeSubmission(_) | ReleaseFailure::TargetRejected(_)),
+            ) => {
+                let message = failure.into_message();
+                eprintln!("release startup retry: {message}");
+                // The HTTP API has no target-readiness subscription. Keep the
+                // bounded startup backoff inside this original operation budget.
+                deadline.pause().map_err(|error| {
+                    format!("release startup ended: {error}; last rejection: {message}")
+                })?;
+            }
+            Err(ReleaseFailure::Terminal(message)) => return Err(message),
+        }
+    };
     println!("accepted release {release_name:?}: {}", admitted.body);
     for (name, generation) in names.iter().zip(admitted.receipt.components()) {
         pending.push((name.as_str(), *generation));

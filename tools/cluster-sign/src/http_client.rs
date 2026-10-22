@@ -89,19 +89,48 @@ fn write_with_budget(
     remaining().map(|_| ())
 }
 
-/// Connect and submit once. Every read/write recomputes the remaining budget;
-/// timeout after any submitted prefix is uncertain and never causes replay.
+/// Only failure before attempting an HTTP write proves that no request was sent.
+/// An error after that boundary retains uncertainty even if the write reports zero.
+pub(super) enum ExchangeFailure {
+    BeforeSubmission(String),
+    Unconfirmed(String),
+}
+impl ExchangeFailure {
+    pub(super) fn into_message(self) -> String {
+        match self {
+            Self::BeforeSubmission(message) | Self::Unconfirmed(message) => message,
+        }
+    }
+}
+
 pub(super) fn exchange(
     endpoint: SocketAddr,
     header: &[u8],
     body: &[u8],
     deadline: Deadline,
 ) -> Result<String> {
+    exchange_checked(endpoint, header, body, deadline).map_err(ExchangeFailure::into_message)
+}
+
+/// Connect and submit once. Every read/write recomputes the remaining budget;
+/// timeout after any submitted prefix is uncertain and never causes replay.
+pub(super) fn exchange_checked(
+    endpoint: SocketAddr,
+    header: &[u8],
+    body: &[u8],
+    deadline: Deadline,
+) -> std::result::Result<String, ExchangeFailure> {
     let mut stream = TcpStream::connect_timeout(
         &endpoint,
-        deadline.remaining().map_err(|error| error.to_string())?,
+        deadline
+            .remaining()
+            .map_err(|error| ExchangeFailure::BeforeSubmission(error.to_string()))?,
     )
-    .map_err(|error| format!("connect to deployment ingress {endpoint}: {error}"))?;
+    .map_err(|error| {
+        ExchangeFailure::BeforeSubmission(format!(
+            "connect to deployment ingress {endpoint}: {error}"
+        ))
+    })?;
     for bytes in [header, body] {
         write_with_budget(
             bytes,
@@ -112,15 +141,23 @@ pub(super) fn exchange(
             },
         )
         .map_err(|error| {
-            format!("send ingress request: {error}; submitted work may be committed")
+            ExchangeFailure::Unconfirmed(format!(
+                "send ingress request: {error}; submitted work may be committed"
+            ))
         })?;
     }
     let response = read_framed_http_response(|bytes| {
         stream.set_read_timeout(Some(deadline.remaining()?))?;
         stream.read(bytes)
     })
-    .map_err(|error| format!("read ingress response: {error}; submitted work may be committed"))?;
-    deadline.remaining().map_err(|error| format!("{error}; submitted work may be committed"))?;
+    .map_err(|error| {
+        ExchangeFailure::Unconfirmed(format!(
+            "read ingress response: {error}; submitted work may be committed"
+        ))
+    })?;
+    deadline.remaining().map_err(|error| {
+        ExchangeFailure::Unconfirmed(format!("{error}; submitted work may be committed"))
+    })?;
     Ok(response)
 }
 
@@ -256,7 +293,10 @@ mod tests {
         let deadline = Deadline {
             end: Instant::now(),
         };
-        assert!(exchange(listener.local_addr().unwrap(), b"request", b"body", deadline).is_err());
+        assert!(matches!(
+            exchange_checked(listener.local_addr().unwrap(), b"request", b"body", deadline),
+            Err(ExchangeFailure::BeforeSubmission(_))
+        ));
         assert_eq!(listener.accept().unwrap_err().kind(), io::ErrorKind::WouldBlock);
     }
 

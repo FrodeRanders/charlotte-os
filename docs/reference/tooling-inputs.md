@@ -192,6 +192,16 @@ status exchanges at five seconds. The existing one-second observation interval
 is shortened to the time left. Zero apply timeouts and values outside the
 monotonic clock range reject before preparation or network access.
 
+`release-apply` may retry startup only before an HTTP write, or after the complete
+checked HTTP 409 / `{"error":-23}` incompatible-target rejection. It retains the
+original envelope and deadline across those attempts. Once submission is
+uncertain or a valid receipt is accepted, it cannot return to admission. The
+QEMU ingress workers wait for the guest listener and initial DNS leader markers
+in their existing bounded serial loop, then run this command once with the original fixture budget
+left. A worker failure ends the run. Neither a transport failure nor an unready
+accepted release restarts it. Other negative codes and malformed
+rejections stop. See [release startup](deployment-ingress.md).
+
 Standalone notify commands and ingress-policy status use one 30-second budget.
 `deployment-status` uses its supplied positive wait budget, or a five-second
 single query for zero/omitted wait. A timeout or transport error after submission

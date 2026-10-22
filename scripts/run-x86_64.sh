@@ -684,20 +684,9 @@ if [ -n "$TIMEOUT" ]; then
     if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
         DEPLOYMENT_RESULT_FILE="${DEPLOYMENT_TEST_DIR}/result"
         DEPLOYMENT_WORKER_LOG="${DEPLOYMENT_TEST_DIR}/worker.log"
-        (
-            deadline=$((SECONDS + TIMEOUT - 5))
-            until "$CLUSTER_SIGN_BIN" release-apply \
-                "$DEPLOYMENT_RELEASE" "127.0.0.1:${DEPLOY_HOST_PORT}" \
-                "$((deadline - SECONDS))"; do
-                if [ "$SECONDS" -ge "$deadline" ]; then
-                    echo "deployment ingress did not accept and realize the release before timeout"
-                    exit 1
-                fi
-                sleep 1
-            done
-            printf '%s\n' ready >"$DEPLOYMENT_RESULT_FILE"
-        ) >"$DEPLOYMENT_WORKER_LOG" 2>&1 &
-        DEPLOYMENT_WORKER_PID=$!
+        DEPLOYMENT_FAILURE_FILE="${DEPLOYMENT_TEST_DIR}/failed"
+        DEPLOYMENT_DEADLINE=$((SECONDS + TIMEOUT - 5))
+        : >"$DEPLOYMENT_WORKER_LOG"
     fi
     MAX_TICKS=$((TIMEOUT * 10))
     for ((tick = 0; tick < MAX_TICKS; tick++)); do
@@ -740,6 +729,37 @@ if [ -n "$TIMEOUT" ]; then
             echo "$HTTP_BODY"
             echo ">>> Guest cluster keyhole response:"
             echo "$HTTP_CLUSTER_BODY"
+        fi
+        # QEMU host forwarding can accept TCP before the guest listener exists.
+        # Use the existing bounded serial observation loop to delay the first
+        # mutation until the listener and initial single-node leader markers.
+        # These startup hints give no replay/rollback proof.
+        if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ] && [ -z "$DEPLOYMENT_WORKER_PID" ] \
+            && grep -Fq "[deployd] listening port=7444" "$LOG" \
+            && grep -Fq "[dns] RAFT STATE state=Leader" "$LOG"; then
+            (
+                if [ "$SECONDS" -ge "$DEPLOYMENT_DEADLINE" ]; then
+                    echo "deployment startup exhausted the original fixture budget"
+                    : >"$DEPLOYMENT_FAILURE_FILE"
+                    exit 1
+                fi
+                # Exactly one command owns admission and readiness. Uncertain
+                # submission or accepted rollout failure cannot restart it.
+                if "$CLUSTER_SIGN_BIN" release-apply \
+                    "$DEPLOYMENT_RELEASE" "127.0.0.1:${DEPLOY_HOST_PORT}" \
+                    "$((DEPLOYMENT_DEADLINE - SECONDS))"; then
+                    printf '%s\n' ready >"$DEPLOYMENT_RESULT_FILE"
+                else
+                    : >"$DEPLOYMENT_FAILURE_FILE"
+                    exit 1
+                fi
+            ) >"$DEPLOYMENT_WORKER_LOG" 2>&1 &
+            DEPLOYMENT_WORKER_PID=$!
+        fi
+        if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ] && [ -f "$DEPLOYMENT_FAILURE_FILE" ]; then
+            echo ">>> Signed deployment fixture failed:"
+            cat "$DEPLOYMENT_WORKER_LOG"
+            break
         fi
         if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ] && [ -f "$DEPLOYMENT_RESULT_FILE" ] \
             && [ "$DEPLOYMENT_READY_TICK" -lt 0 ]; then

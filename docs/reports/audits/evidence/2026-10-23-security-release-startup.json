@@ -1,0 +1,1273 @@
+{
+  "schema": "charlotte.security.release-startup.v1",
+  "report_date": "2026-10-23",
+  "work_began": "2026-10-22",
+  "reviewed_revision": "beefef8840a1398b769261a489276fccf15db611",
+  "classification": {
+    "corrected": 29,
+    "partial": 6,
+    "open": 3,
+    "SEC-06": "partial",
+    "SEC-07": "partial",
+    "SEC-18": "partial",
+    "production_trust": "disabled"
+  },
+  "baseline": {
+    "evidence": "docs/reports/audits/evidence/2026-10-22-security-controller-relay.json",
+    "sha256": "2abceb7e5a9315139ce4ed6312e690164be1233dcb4c3d25dfdb5abffe77fc77",
+    "observation": "Both shell workers repeated release-apply after every failure, including the previous real EAGAIN response read; a later success did not resolve the first accepted request. A readiness failure after receipt acceptance could also restart POST."
+  },
+  "implementation": {
+    "transport": "exchange_checked has BeforeSubmission only before the first possible HTTP write; every later error remains Unconfirmed. Existing exchange wrapper preserves standalone once-only callers.",
+    "application_rejection": "Only complete HTTP/1.1 409 Conflict with one exact numeric error -23 allows a new startup attempt. Strict fields reject duplicates, extensions, quoted numbers and trailing data. All other errors are terminal.",
+    "proof_boundary": "DNS release_command returns incompatible target before submit_command. Catalog release application validates assignments and the complete plan before release/deployment/operational publication; a negative application result may itself be committed. Snapshot-equality regression covers initially absent and installed releases, then a valid new-boot target report permits admission of the same command.",
+    "deadline": "Read exact signed envelope once, retain one checked monotonic deadline through startup and accepted observation; per-request cap never extends it; startup backoff min(1s, original remaining).",
+    "fixture": "Existing bounded serial loop observes listener and initial single-node DNS leader markers before invoking one release-apply command with original fixture budget left. Ready only on success. Worker failure ends the loop; neither marker proves completion or rollback.",
+    "ownership": "Existing C18 host envelope and TcpStream scopes; no new kernel root, pin, registry, custody or recovery family. Socket disposal cannot cancel accepted remote work.",
+    "wire_cli_signatures_catalog_and_runtime_abi_unchanged": true,
+    "remaining": [
+      "lost-receipt reconciliation and durable operation identity",
+      "ingress peer authentication",
+      "protected operator capacity and sustained flood fairness",
+      "DNS/Raft execution progress",
+      "blocking filesystem/stdout preemption and timer/scheduling precision",
+      "HTTP observation/startup backoff has no readiness subscription",
+      "historical x86 available-publication lookup check 8 and cancellation-stress root reclamation timeout"
+    ]
+  },
+  "source_sha256": {
+    "crates/catten-services/src/bin/dns.rs": "96b8c619f006188e9055b9397612a35fdb199af3fa31921017511f6571003548",
+    "crates/catten-services/src/clusterctl_relay.rs": "2aaf04861a2f5454da130d72dfd62716b9d5f02cbf34447d241703d165746332",
+    "crates/catten-services/src/deployment_control.rs": "cb7e5f37b7628cb9d43499af07988682c1cf6b618e2d9ffdc30199a7e6dd5752",
+    "crates/catten-services/src/name_catalog.rs": "6e62f3302a9d27d5a611f0a596aba2d59ec3bfec202209e86db4d3a490f3e571",
+    "crates/catten-services/src/name_catalog/tests.rs": "6de808e3ea5ffd5f6fe17b7aa2f2144ce7756454f758c2964e8417a88650dce6",
+    "docs/manual-v2/chapters/19-cluster-vision.tex": "8afc5a9c380999e754317635e1419dd34445084a340865dcb7bbba32efd9d6cd",
+    "docs/reference/cleanup-recovery.md": "4cdc543c4079d1906bd88a5f3566902eae7107f6b6c785fe67f519abe0be02b7",
+    "docs/reference/deployment-ingress.md": "dfb3404ae662bdbea8bdc961e7940d951635144bd1ffaacde179da944f553313",
+    "docs/reference/release-admission.md": "6ddc1f5ad061c8a33553c4ed5ef0a03371ee0b24f525e020c1221166068e6995",
+    "docs/reference/security-remediation.md": "eaa6ce0895c7d0ccd695ef565652545e809aa0be04ffd21e167155805ead5a1d",
+    "docs/reference/tooling-inputs.md": "0fe35a42fffcc3147ad6cd86d3cd344a15ae5be5716e99813579654f429c951f",
+    "docs/reports/README.md": "d109708209ec1b521a9bd4d54a705496fa71576194886dac417faf9832133186",
+    "docs/reports/audits/2026-10-23-security-release-startup.md": "981108017219d1121e6675561549507724dc103ed49e1647bd44b5cfcbc30b68",
+    "scripts/run-aarch64.sh": "42c62c11c20bf928001455b93c1b3c4b971dae9da72ee9d4c4dbae800f2b5973",
+    "scripts/run-x86_64.sh": "dd82631746d8765526ed3372c8a779851f254ca2b8ad1fa0ee55d49a96067aa4",
+    "scripts/tests/test-release-startup.py": "a6b337dd667093c4059495f58230e253d20fc5e041cb32bb2542eff9d142f1df",
+    "tools/cluster-sign/src/http_client.rs": "247e5499f54367c52d8259020f354914cf619778d9ab33cd258b5e00450acfc7",
+    "tools/cluster-sign/src/main.rs": "58cf2c3556fef38e22b3ea37285c9d40a786a4619e51ef299b5d0e5b4f807029",
+    "tools/cluster-sign/src/rollout.rs": "1d93de26ef1699c78845e5a11400783aed80dbd276a435bcb1d9ef5ea266e1f6"
+  },
+  "signer_sha256": "5b00f2538d485315016c5a71a6599573a1ba67aa3570ed6b34bb44c70358c96e",
+  "host": {
+    "startup": {
+      "command": "python3 scripts/tests/test-release-startup.py",
+      "exit_status": 0,
+      "methods": 7,
+      "cases": 21,
+      "records": [
+        {
+          "case": "test_boot_workers_gate_once_and_stop_on_uncertainty",
+          "mode": "drop",
+          "rejection": [
+            409,
+            "{\"error\":-23}"
+          ],
+          "delayed_listen": false,
+          "runner": "run-aarch64.sh",
+          "timeout_seconds": 2,
+          "elapsed_seconds": 0.02285700011998415,
+          "exit_status": 1,
+          "events": [
+            [
+              "POST",
+              "/v1/releases",
+              true
+            ]
+          ],
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "case": "test_boot_workers_gate_once_and_stop_on_uncertainty",
+          "mode": "drop",
+          "rejection": [
+            409,
+            "{\"error\":-23}"
+          ],
+          "delayed_listen": false,
+          "runner": "run-x86_64.sh",
+          "timeout_seconds": 2,
+          "elapsed_seconds": 0.02080520917661488,
+          "exit_status": 1,
+          "events": [
+            [
+              "POST",
+              "/v1/releases",
+              true
+            ]
+          ],
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "case": "test_checked_target_rejection_then_new_admission",
+          "mode": "reject-once",
+          "rejection": [
+            409,
+            "{\"error\":-23}"
+          ],
+          "delayed_listen": false,
+          "runner": null,
+          "timeout_seconds": 2,
+          "elapsed_seconds": 1.0101750830654055,
+          "exit_status": 0,
+          "events": [
+            [
+              "POST",
+              "/v1/releases",
+              true
+            ],
+            [
+              "POST",
+              "/v1/releases",
+              true
+            ],
+            [
+              "GET",
+              "/v1/deployments/app"
+            ],
+            [
+              "GET",
+              "/v1/deployments/app2"
+            ]
+          ],
+          "stdout": "accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\nready \"app\": {\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\nready \"app2\": {\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+          "stderr": "release startup retry: release notification failed: HTTP/1.1 409 Conflict\r\nServer: BaseHTTP/0.6 Python/3.11.17\r\nDate: Thu, 22 Oct 2026 22:00:56 GMT\r\nContent-Length: 13\r\nConnection: close\r\n\r\n{\"error\":-23}\n"
+        },
+        {
+          "case": "test_connection_refusal_then_single_submission",
+          "mode": "ready",
+          "rejection": [
+            409,
+            "{\"error\":-23}"
+          ],
+          "delayed_listen": true,
+          "runner": null,
+          "timeout_seconds": 2,
+          "elapsed_seconds": 1.0059612500481308,
+          "exit_status": 0,
+          "events": [
+            [
+              "POST",
+              "/v1/releases",
+              true
+            ],
+            [
+              "GET",
+              "/v1/deployments/app"
+            ],
+            [
+              "GET",
+              "/v1/deployments/app2"
+            ]
+          ],
+          "stdout": "accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\nready \"app\": {\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\nready \"app2\": {\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+          "stderr": "release startup retry: connect to deployment ingress 127.0.0.1:58100: Connection refused (os error 61)\n"
+        },
+        {
+          "case": "test_other_or_malformed_rejections_never_retry",
+          "mode": "reject",
+          "rejection": [
+            503,
+            "{\"error\":-23}"
+          ],
+          "delayed_listen": false,
+          "runner": null,
+          "timeout_seconds": 2,
+          "elapsed_seconds": 0.0033710829447954893,
+          "exit_status": 1,
+          "events": [
+            [
+              "POST",
+              "/v1/releases",
+              true
+            ]
+          ],
+          "stdout": "",
+          "stderr": "error: release notification failed: HTTP/1.1 503 Service Unavailable\r\nServer: BaseHTTP/0.6 Python/3.11.17\r\nDate: Thu, 22 Oct 2026 22:00:58 GMT\r\nContent-Length: 13\r\nConnection: close\r\n\r\n{\"error\":-23}\n"
+        },
+        {
+          "case": "test_other_or_malformed_rejections_never_retry",
+          "mode": "reject",
+          "rejection": [
+            409,
+            "{\"error\":-22}"
+          ],
+          "delayed_listen": false,
+          "runner": null,
+          "timeout_seconds": 2,
+          "elapsed_seconds": 0.0034811249934136868,
+          "exit_status": 1,
+          "events": [
+            [
+              "POST",
+              "/v1/releases",
+              true
+            ]
+          ],
+          "stdout": "",
+          "stderr": "error: release notification failed: HTTP/1.1 409 Conflict\r\nServer: BaseHTTP/0.6 Python/3.11.17\r\nDate: Thu, 22 Oct 2026 22:00:58 GMT\r\nContent-Length: 13\r\nConnection: close\r\n\r\n{\"error\":-22}\n"
+        },
+        {
+          "case": "test_other_or_malformed_rejections_never_retry",
+          "mode": "reject",
+          "rejection": [
+            409,
+            "{\"error\":-2}"
+          ],
+          "delayed_listen": false,
+          "runner": null,
+          "timeout_seconds": 2,
+          "elapsed_seconds": 0.0033453330397605896,
+          "exit_status": 1,
+          "events": [
+            [
+              "POST",
+              "/v1/releases",
+              true
+            ]
+          ],
+          "stdout": "",
+          "stderr": "error: release notification failed: HTTP/1.1 409 Conflict\r\nServer: BaseHTTP/0.6 Python/3.11.17\r\nDate: Thu, 22 Oct 2026 22:00:58 GMT\r\nContent-Length: 12\r\nConnection: close\r\n\r\n{\"error\":-2}\n"
+        },
+        {
+          "case": "test_other_or_malformed_rejections_never_retry",
+          "mode": "reject",
+          "rejection": [
+            403,
+            "{\"error\":-23}"
+          ],
+          "delayed_listen": false,
+          "runner": null,
+          "timeout_seconds": 2,
+          "elapsed_seconds": 0.003431708086282015,
+          "exit_status": 1,
+          "events": [
+            [
+              "POST",
+              "/v1/releases",
+              true
+            ]
+          ],
+          "stdout": "",
+          "stderr": "error: release notification failed: HTTP/1.1 403 Forbidden\r\nServer: BaseHTTP/0.6 Python/3.11.17\r\nDate: Thu, 22 Oct 2026 22:00:58 GMT\r\nContent-Length: 13\r\nConnection: close\r\n\r\n{\"error\":-23}\n"
+        },
+        {
+          "case": "test_other_or_malformed_rejections_never_retry",
+          "mode": "reject",
+          "rejection": [
+            409,
+            "{\"error\":-23,\"error\":-23}"
+          ],
+          "delayed_listen": false,
+          "runner": null,
+          "timeout_seconds": 2,
+          "elapsed_seconds": 0.0032214170787483454,
+          "exit_status": 1,
+          "events": [
+            [
+              "POST",
+              "/v1/releases",
+              true
+            ]
+          ],
+          "stdout": "",
+          "stderr": "error: release notification failed: HTTP/1.1 409 Conflict\r\nServer: BaseHTTP/0.6 Python/3.11.17\r\nDate: Thu, 22 Oct 2026 22:00:58 GMT\r\nContent-Length: 25\r\nConnection: close\r\n\r\n{\"error\":-23,\"error\":-23}\n"
+        },
+        {
+          "case": "test_other_or_malformed_rejections_never_retry",
+          "mode": "reject",
+          "rejection": [
+            409,
+            "{\"error\":-23,\"generation\":1}"
+          ],
+          "delayed_listen": false,
+          "runner": null,
+          "timeout_seconds": 2,
+          "elapsed_seconds": 0.0035840000491589308,
+          "exit_status": 1,
+          "events": [
+            [
+              "POST",
+              "/v1/releases",
+              true
+            ]
+          ],
+          "stdout": "",
+          "stderr": "error: release notification failed: HTTP/1.1 409 Conflict\r\nServer: BaseHTTP/0.6 Python/3.11.17\r\nDate: Thu, 22 Oct 2026 22:00:58 GMT\r\nContent-Length: 28\r\nConnection: close\r\n\r\n{\"error\":-23,\"generation\":1}\n"
+        },
+        {
+          "case": "test_other_or_malformed_rejections_never_retry",
+          "mode": "reject",
+          "rejection": [
+            409,
+            "{\"error\":\"-23\"}"
+          ],
+          "delayed_listen": false,
+          "runner": null,
+          "timeout_seconds": 2,
+          "elapsed_seconds": 0.0033054170198738575,
+          "exit_status": 1,
+          "events": [
+            [
+              "POST",
+              "/v1/releases",
+              true
+            ]
+          ],
+          "stdout": "",
+          "stderr": "error: release notification failed: HTTP/1.1 409 Conflict\r\nServer: BaseHTTP/0.6 Python/3.11.17\r\nDate: Thu, 22 Oct 2026 22:00:58 GMT\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"error\":\"-23\"}\n"
+        },
+        {
+          "case": "test_other_or_malformed_rejections_never_retry",
+          "mode": "reject",
+          "rejection": [
+            409,
+            "{\"error\":-23} trailing"
+          ],
+          "delayed_listen": false,
+          "runner": null,
+          "timeout_seconds": 2,
+          "elapsed_seconds": 0.0033137090504169464,
+          "exit_status": 1,
+          "events": [
+            [
+              "POST",
+              "/v1/releases",
+              true
+            ]
+          ],
+          "stdout": "",
+          "stderr": "error: release notification failed: HTTP/1.1 409 Conflict\r\nServer: BaseHTTP/0.6 Python/3.11.17\r\nDate: Thu, 22 Oct 2026 22:00:58 GMT\r\nContent-Length: 22\r\nConnection: close\r\n\r\n{\"error\":-23} trailing\n"
+        },
+        {
+          "case": "test_repeated_target_rejection_uses_original_budget",
+          "mode": "reject",
+          "rejection": [
+            409,
+            "{\"error\":-23}"
+          ],
+          "delayed_listen": false,
+          "runner": null,
+          "timeout_seconds": 2,
+          "elapsed_seconds": 2.0032570420298725,
+          "exit_status": 1,
+          "events": [
+            [
+              "POST",
+              "/v1/releases",
+              true
+            ],
+            [
+              "POST",
+              "/v1/releases",
+              true
+            ]
+          ],
+          "stdout": "",
+          "stderr": "release startup retry: release notification failed: HTTP/1.1 409 Conflict\r\nServer: BaseHTTP/0.6 Python/3.11.17\r\nDate: Thu, 22 Oct 2026 22:00:59 GMT\r\nContent-Length: 13\r\nConnection: close\r\n\r\n{\"error\":-23}\nrelease startup retry: release notification failed: HTTP/1.1 409 Conflict\r\nServer: BaseHTTP/0.6 Python/3.11.17\r\nDate: Thu, 22 Oct 2026 22:01:00 GMT\r\nContent-Length: 13\r\nConnection: close\r\n\r\n{\"error\":-23}\nerror: release startup ended: operation deadline expired; last rejection: release notification failed: HTTP/1.1 409 Conflict\r\nServer: BaseHTTP/0.6 Python/3.11.17\r\nDate: Thu, 22 Oct 2026 22:01:00 GMT\r\nContent-Length: 13\r\nConnection: close\r\n\r\n{\"error\":-23}\n"
+        },
+        {
+          "case": "test_startup_and_accepted_observation_share_budget",
+          "mode": "reject-then-pending",
+          "rejection": [
+            409,
+            "{\"error\":-23}"
+          ],
+          "delayed_listen": false,
+          "runner": null,
+          "timeout_seconds": 2,
+          "elapsed_seconds": 2.003162582870573,
+          "exit_status": 1,
+          "events": [
+            [
+              "POST",
+              "/v1/releases",
+              true
+            ],
+            [
+              "POST",
+              "/v1/releases",
+              true
+            ],
+            [
+              "GET",
+              "/v1/deployments/app"
+            ],
+            [
+              "GET",
+              "/v1/deployments/app2"
+            ]
+          ],
+          "stdout": "accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\n",
+          "stderr": "release startup retry: release notification failed: HTTP/1.1 409 Conflict\r\nServer: BaseHTTP/0.6 Python/3.11.17\r\nDate: Thu, 22 Oct 2026 22:01:01 GMT\r\nContent-Length: 13\r\nConnection: close\r\n\r\n{\"error\":-23}\nerror: release did not become ready in 2s; pending: app, app2\n"
+        },
+        {
+          "case": "test_uncertain_submission_and_accepted_failures_never_retry",
+          "mode": "drop",
+          "rejection": [
+            409,
+            "{\"error\":-23}"
+          ],
+          "delayed_listen": false,
+          "runner": null,
+          "timeout_seconds": 1,
+          "elapsed_seconds": 0.0030168751254677773,
+          "exit_status": 1,
+          "events": [
+            [
+              "POST",
+              "/v1/releases",
+              true
+            ]
+          ],
+          "stdout": "",
+          "stderr": "error: read ingress response: response ended before its declared body completed; submitted work may be committed\n"
+        },
+        {
+          "case": "test_uncertain_submission_and_accepted_failures_never_retry",
+          "mode": "truncated",
+          "rejection": [
+            409,
+            "{\"error\":-23}"
+          ],
+          "delayed_listen": false,
+          "runner": null,
+          "timeout_seconds": 1,
+          "elapsed_seconds": 0.003402458969503641,
+          "exit_status": 1,
+          "events": [
+            [
+              "POST",
+              "/v1/releases",
+              true
+            ]
+          ],
+          "stdout": "",
+          "stderr": "error: read ingress response: response ended before its declared body completed; submitted work may be committed\n"
+        },
+        {
+          "case": "test_uncertain_submission_and_accepted_failures_never_retry",
+          "mode": "stall",
+          "rejection": [
+            409,
+            "{\"error\":-23}"
+          ],
+          "delayed_listen": false,
+          "runner": null,
+          "timeout_seconds": 1,
+          "elapsed_seconds": 1.0039483751170337,
+          "exit_status": 1,
+          "events": [
+            [
+              "POST",
+              "/v1/releases",
+              true
+            ]
+          ],
+          "stdout": "",
+          "stderr": "error: read ingress response: Resource temporarily unavailable (os error 35); submitted work may be committed\n"
+        },
+        {
+          "case": "test_uncertain_submission_and_accepted_failures_never_retry",
+          "mode": "malformed",
+          "rejection": [
+            409,
+            "{\"error\":-23}"
+          ],
+          "delayed_listen": false,
+          "runner": null,
+          "timeout_seconds": 1,
+          "elapsed_seconds": 0.004506375174969435,
+          "exit_status": 1,
+          "events": [
+            [
+              "POST",
+              "/v1/releases",
+              true
+            ]
+          ],
+          "stdout": "",
+          "stderr": "error: release admission returned an invalid component receipt; outcome is uncertain\n"
+        },
+        {
+          "case": "test_uncertain_submission_and_accepted_failures_never_retry",
+          "mode": "pending",
+          "rejection": [
+            409,
+            "{\"error\":-23}"
+          ],
+          "delayed_listen": false,
+          "runner": null,
+          "timeout_seconds": 1,
+          "elapsed_seconds": 1.0089719169773161,
+          "exit_status": 1,
+          "events": [
+            [
+              "POST",
+              "/v1/releases",
+              true
+            ],
+            [
+              "GET",
+              "/v1/deployments/app"
+            ],
+            [
+              "GET",
+              "/v1/deployments/app2"
+            ]
+          ],
+          "stdout": "accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\n",
+          "stderr": "error: release did not become ready in 1s; pending: app, app2\n"
+        },
+        {
+          "case": "test_uncertain_submission_and_accepted_failures_never_retry",
+          "mode": "superseded",
+          "rejection": [
+            409,
+            "{\"error\":-23}"
+          ],
+          "delayed_listen": false,
+          "runner": null,
+          "timeout_seconds": 1,
+          "elapsed_seconds": 0.004532958846539259,
+          "exit_status": 1,
+          "events": [
+            [
+              "POST",
+              "/v1/releases",
+              true
+            ],
+            [
+              "GET",
+              "/v1/deployments/app"
+            ]
+          ],
+          "stdout": "accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\n",
+          "stderr": "error: deployment \"app\" generation 2 was superseded by generation 3\n"
+        },
+        {
+          "case": "test_uncertain_submission_and_accepted_failures_never_retry",
+          "mode": "bad-status",
+          "rejection": [
+            409,
+            "{\"error\":-23}"
+          ],
+          "delayed_listen": false,
+          "runner": null,
+          "timeout_seconds": 1,
+          "elapsed_seconds": 0.00402387510985136,
+          "exit_status": 1,
+          "events": [
+            [
+              "POST",
+              "/v1/releases",
+              true
+            ],
+            [
+              "GET",
+              "/v1/deployments/app"
+            ]
+          ],
+          "stdout": "accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\n",
+          "stderr": "error: invalid rollout status for \"app\"; generation 2 remains unconfirmed\n"
+        }
+      ],
+      "capture": {
+        "sha256": "f5443456aaae35ee79d9b8924a6af074fd7bf5b2d9b6a747ab13df7de8eabf1e",
+        "selected": [
+          "Ran 7 tests in 8.432s",
+          "OK"
+        ]
+      }
+    },
+    "release_generation": {
+      "exit_status": 0,
+      "methods": 7,
+      "capture": {
+        "sha256": "7254e148973c925003749d8b876fc90a9e4fea4ae29c0bde319975b57a0e3ae2",
+        "selected": [
+          "Ran 7 tests in 3.289s",
+          "OK"
+        ]
+      }
+    },
+    "deadline": {
+      "exit_status": 0,
+      "methods": 7,
+      "cases": 9,
+      "records": [
+        {
+          "case": "test_admission_and_readiness_share_one_budget",
+          "command": "release",
+          "timeout_seconds": "1",
+          "hostname": false,
+          "exit_status": 1,
+          "elapsed_seconds": 1.003664624877274,
+          "events": [
+            [
+              "POST",
+              "/v1/releases"
+            ],
+            [
+              "GET",
+              "/v1/deployments/app"
+            ]
+          ],
+          "stdout": "accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\n",
+          "stderr": "error: release did not become ready in 1s; pending: app, app2\n"
+        },
+        {
+          "case": "test_batch_notifications_share_one_budget",
+          "command": "batch",
+          "timeout_seconds": "1",
+          "hostname": false,
+          "exit_status": 1,
+          "elapsed_seconds": 1.0046213339082897,
+          "events": [
+            [
+              "POST",
+              "/v1/deployments"
+            ],
+            [
+              "POST",
+              "/v1/deployments"
+            ]
+          ],
+          "stdout": "accepted \"app\": {\"generation\":2}\n",
+          "stderr": "error: release stopped while notifying \"app2\" from \"/var/folders/ld/gmfpcx6n12j8w922_4_sbcvc0000gn/T/charlotte-deployment-generation-ds5agso1/app2.cdep\": read ingress response: Resource temporarily unavailable (os error 35); submitted work may be committed; this and earlier descriptors may already be committed\n"
+        },
+        {
+          "case": "test_exact_receipt_and_ready_controls_succeed",
+          "command": "release",
+          "timeout_seconds": "1",
+          "hostname": false,
+          "exit_status": 0,
+          "elapsed_seconds": 0.0036782920360565186,
+          "events": [
+            [
+              "POST",
+              "/v1/releases"
+            ],
+            [
+              "GET",
+              "/v1/deployments/app"
+            ],
+            [
+              "GET",
+              "/v1/deployments/app2"
+            ]
+          ],
+          "stdout": "accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\nready \"app\": {\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\nready \"app2\": {\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+          "stderr": ""
+        },
+        {
+          "case": "test_extreme_timeout_is_rejected_without_panic_or_network",
+          "command": "release",
+          "timeout_seconds": "18446744073709551615",
+          "hostname": false,
+          "exit_status": 1,
+          "elapsed_seconds": 0.002458832925185561,
+          "events": [],
+          "stdout": "",
+          "stderr": "error: timeout exceeds the monotonic clock range\n"
+        },
+        {
+          "case": "test_extreme_timeout_is_rejected_without_panic_or_network",
+          "command": "batch",
+          "timeout_seconds": "18446744073709551615",
+          "hostname": false,
+          "exit_status": 1,
+          "elapsed_seconds": 0.002420709002763033,
+          "events": [],
+          "stdout": "",
+          "stderr": "error: timeout exceeds the monotonic clock range\n"
+        },
+        {
+          "case": "test_extreme_timeout_is_rejected_without_panic_or_network",
+          "command": "status",
+          "timeout_seconds": "18446744073709551615",
+          "hostname": false,
+          "exit_status": 1,
+          "elapsed_seconds": 0.002464915858581662,
+          "events": [],
+          "stdout": "",
+          "stderr": "error: timeout exceeds the monotonic clock range\n"
+        },
+        {
+          "case": "test_numeric_endpoint_rejects_hostname_before_network",
+          "command": "release",
+          "timeout_seconds": "1",
+          "hostname": true,
+          "exit_status": 1,
+          "elapsed_seconds": 0.0023240840528160334,
+          "events": [],
+          "stdout": "",
+          "stderr": "error: ingress endpoint must be numeric IPv4:port or [IPv6]:port with a nonzero port\n"
+        },
+        {
+          "case": "test_poll_pause_uses_remaining_budget",
+          "command": "release",
+          "timeout_seconds": "1",
+          "hostname": false,
+          "exit_status": 1,
+          "elapsed_seconds": 1.0077918751630932,
+          "events": [
+            [
+              "POST",
+              "/v1/releases"
+            ],
+            [
+              "GET",
+              "/v1/deployments/app"
+            ],
+            [
+              "GET",
+              "/v1/deployments/app2"
+            ]
+          ],
+          "stdout": "accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\n",
+          "stderr": "error: release did not become ready in 1s; pending: app, app2\n"
+        },
+        {
+          "case": "test_trickled_reply_cannot_restart_remaining_budget",
+          "command": "release",
+          "timeout_seconds": "1",
+          "hostname": false,
+          "exit_status": 1,
+          "elapsed_seconds": 1.003705957904458,
+          "events": [
+            [
+              "POST",
+              "/v1/releases"
+            ],
+            [
+              "GET",
+              "/v1/deployments/app"
+            ]
+          ],
+          "stdout": "accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\n",
+          "stderr": "error: release did not become ready in 1s; pending: app, app2\n"
+        }
+      ],
+      "capture": {
+        "sha256": "d8213eec73ae48e0ca829a02024c03238bbd6b2770cf935f08492de8ad504eab",
+        "selected": [
+          "Ran 7 tests in 4.188s",
+          "OK"
+        ]
+      }
+    },
+    "signer": {
+      "exit_status": 0,
+      "total_tests": 93,
+      "capture": {
+        "sha256": "8964049d7acc520811f49e074a8163a9abf5788e3a09662660a4530cd07f8de9",
+        "selected": [
+          "    Finished `test` profile [optimized + debuginfo] target(s) in 15.78s",
+          "test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+          "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s",
+          "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+          "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+          "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+          "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+          "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s"
+        ]
+      }
+    },
+    "service_library": {
+      "exit_status": 0,
+      "total_tests": 224,
+      "capture": {
+        "sha256": "785c3d507b1757c7fa0196377b158b9fc1184fef67b1a06722a0e9e303d5806c",
+        "selected": [
+          "    Finished `test` profile [optimized + debuginfo] target(s) in 0.17s",
+          "test result: ok. 224 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s"
+        ]
+      }
+    },
+    "strict_signer_clippy": {
+      "exit_status": 0,
+      "all_targets": true,
+      "capture": {
+        "sha256": "def0132a9cda531c102329dd60ee74a797a4b2477930ffaaa6f7d519b562c38b",
+        "selected": [
+          "    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s"
+        ]
+      }
+    },
+    "bundle_check": {
+      "exit_status": 0,
+      "command": "scripts/build-catten-services.sh --check",
+      "capture": {
+        "sha256": "467c6cb0a993aedd3e5b783b19b90b16ec3ed7b4378430193de265628b741b0b",
+        "selected": [
+          "    Finished `release` profile [optimized] target(s) in 0.26s"
+        ]
+      }
+    }
+  },
+  "fixture_failures": [
+    {
+      "case": "initial delayed-listener startup race",
+      "exit_status": 1,
+      "observation": "Listener activated after 250ms, before CLI startup reached connect; elapsed 0.3398s, no connection failure was exercised.",
+      "capture": {
+        "sha256": "9e30492f9726ad6e79976f6478cde5db6c8e0ae5253ff927550da8fe5ce46c06",
+        "selected": [
+          "FAIL: test_connection_refusal_then_single_submission (__main__.Startup.test_connection_refusal_then_single_submission)",
+          "AssertionError: 0.33981558308005333 not greater than or equal to 0.9",
+          "Ran 6 tests in 7.674s",
+          "FAILED (failures=1)"
+        ]
+      },
+      "record": [
+        {
+          "case": "test_connection_refusal_then_single_submission",
+          "mode": "ready",
+          "rejection": [
+            409,
+            "{\"error\":-23}"
+          ],
+          "delayed_listen": true,
+          "timeout_seconds": 2,
+          "elapsed_seconds": 0.33981558308005333,
+          "exit_status": 0,
+          "events": [
+            [
+              "POST",
+              "/v1/releases",
+              true
+            ],
+            [
+              "GET",
+              "/v1/deployments/app"
+            ],
+            [
+              "GET",
+              "/v1/deployments/app2"
+            ]
+          ],
+          "stdout": "accepted release \"batch\": {\"admission\": \"43524c41444d30317173fe6cd7ee64a919d69a0860ff46d2ced46000e481f4cbe1ef227972341a5a0100000000000000020000000000000002000000000000000800000000000000\"}\nready \"app\": {\"state\":\"ready\",\"deployment_generation\":2,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\nready \"app2\": {\"state\":\"ready\",\"deployment_generation\":8,\"service_generation\":7,\"node_key\":1,\"desired_replicas\":1,\"ready_replicas\":1}\n",
+          "stderr": ""
+        }
+      ]
+    },
+    {
+      "case": "macOS bound but non-listening socket",
+      "exit_status": 1,
+      "observation": "Connect timed out rather than refusing; the initial operation budget expired before any new submission. Final peer closes the reserved port and activates listening only after the CLI reports refusal.",
+      "capture": {
+        "sha256": "25ccf5c944537054953caebaadd6dd1701d53f9f5275bd2887c0f986d91490c4",
+        "selected": [
+          "FAIL: test_connection_refusal_then_single_submission (__main__.Startup.test_connection_refusal_then_single_submission)",
+          "AssertionError: 1 != 0 : b'release startup retry: connect to deployment ingress 127.0.0.1:57704: connection timed out\\n'",
+          "Ran 6 tests in 9.393s",
+          "FAILED (failures=1)"
+        ]
+      },
+      "record": [
+        {
+          "case": "test_connection_refusal_then_single_submission",
+          "mode": "ready",
+          "rejection": [
+            409,
+            "{\"error\":-23}"
+          ],
+          "delayed_listen": true,
+          "timeout_seconds": 2,
+          "elapsed_seconds": 2.004466542042792,
+          "exit_status": 1,
+          "events": [],
+          "stdout": "",
+          "stderr": "release startup retry: connect to deployment ingress 127.0.0.1:57704: connection timed out\n"
+        }
+      ]
+    },
+    {
+      "case": "catalog test changed architecture within one boot nonce",
+      "exit_status": 101,
+      "observed_diagnostic": "incompatible_release_rejection_preserves_catalog_before_new_admission: assertion left 1, right -23 at tests.rs:683",
+      "source_result": "Existing node-capacity replay fence rejects architecture changes with the same boot nonce. Corrected fixture publishes a new boot nonce, confirms exact stored profile and tests snapshot equality.",
+      "verification_limitation": "Original standalone failed capture was overwritten by the corrected focused run. The tool-return diagnostic is retained inline; no original capture hash is available."
+    },
+    {
+      "case": "sandbox socket-bind denial",
+      "exit_status": 101,
+      "capture": {
+        "sha256": "64314ea173a335b5e30818d2a276d0f3cdd7a3d4a351cc047cfd44fe9316e59d",
+        "selected": [
+          "    Finished `test` profile [optimized + debuginfo] target(s) in 20.19s",
+          "test http_client::tests::expired_exchange_opens_no_socket ... FAILED",
+          "test tests::signed_control_notifications_and_apply_reject_before_connecting ... FAILED",
+          "thread 'http_client::tests::expired_exchange_opens_no_socket' (23969843) panicked at tools/cluster-sign/src/http_client.rs:291:67:",
+          "called `Result::unwrap()` on an `Err` value: Os { code: 1, kind: PermissionDenied, message: \"Operation not permitted\" }",
+          "thread 'tests::signed_control_notifications_and_apply_reject_before_connecting' (23969891) panicked at tools/cluster-sign/src/main.rs:3133:67:",
+          "called `Result::unwrap()` on an `Err` value: Os { code: 1, kind: PermissionDenied, message: \"Operation not permitted\" }",
+          "test result: FAILED. 55 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s"
+        ]
+      },
+      "observation": "Two existing unit controls failed bind with EPERM; rerun outside sandbox passed. Initial Python loopback invocation also failed bind with EPERM, before executing any peer scenario; original Python output was not separately saved."
+    }
+  ],
+  "native_runs": [
+    {
+      "id": "parallel_arm_setup",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19582 CATTEN_DEPLOY_HOST_PORT=19746 scripts/run-aarch64.sh --deployment-ingress-test --instance sec06-release-startup-arm --fresh-storage --timeout 300",
+      "exit_status": 1,
+      "runner": {
+        "sha256": "b85297a16af76c53808f5c0a6802d7b20ef90f35fa6b2d2db7b536d90b57c1e5",
+        "selected": [
+          "Error response from daemon: No such container: 84b5b2380bae18d8d168f378ef846845e0ad0bb31841f5ba1ae0fa85a3b0f9d5"
+        ]
+      },
+      "qualification": "Docker setup failed before any native guest boot; no guest artifacts."
+    },
+    {
+      "id": "parallel_x86_setup",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19583 CATTEN_DEPLOY_HOST_PORT=19747 scripts/run-x86_64.sh --deployment-ingress-test --instance sec06-release-startup-x86 --fresh-storage --timeout 300",
+      "exit_status": 1,
+      "runner": {
+        "sha256": "db9caaf1f9f71bfcf47491e381e567c6b5dc7b422a1cb2af678556f70d935a26",
+        "selected": [
+          "Error response from daemon: No such container: c38387a8c5b93284176aa96ffac6fba03d4e2450204b0f5957d5031a0da12bde"
+        ]
+      },
+      "qualification": "Docker setup failed before any native guest boot; no guest artifacts."
+    },
+    {
+      "id": "arm_immediate_lost_receipt",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19582 CATTEN_DEPLOY_HOST_PORT=19746 scripts/run-aarch64.sh --deployment-ingress-test --instance sec06-release-startup-arm --fresh-storage --timeout 300",
+      "exit_status": 1,
+      "runner": {
+        "sha256": "7fa9d698e8dc430118e80c428bd55cefd985fc9376332b0525ec1e4419b5bf7f",
+        "selected": [
+          "    Finished `dev` profile [optimized + debuginfo] target(s) in 1m 11s",
+          "[+     0.117562] [ACPI] Finished parsing XSDT. Found 6 tables.",
+          "[+    12.405471] [xLP] receiver on LP3: received 1003 (OK)",
+          "[+    12.405702] [xLP] receiver on LP2: received 1002 (OK)",
+          "[+    12.406077] [xLP] receiver on LP1: received 1001 (OK)",
+          "[+    12.409697] [xLP] receiver on LP0: received 1000 (OK)",
+          "[+    17.836806] [EL0 LOG] lp=0 asid=112 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e21edb\") millis=2119 pending=0 queued=0",
+          "[+    19.106004] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x303ffff failed_bitmap=0x0 pending_bitmap=0x0",
+          "[+    30.113012] [EL0 LOG] lp=0 asid=117 [agent] published \"greet\" deployment_generation=1 service_generation=1",
+          "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/aarch64-u8srm9rh"
+        ]
+      },
+      "arch": "aarch64",
+      "instance": "sec06-release-startup-arm",
+      "kernel_sha256": "62aa5668800fd13266dab9a084a1733e84141d73dcdfc50a6f4fa399457635aa",
+      "boot_image_sha256": "800bec18c7176a974c12bd78af40872b8ed5c18f03770bb8125f50ce69f403a6",
+      "initial_disk_sha256": "5923970ba5cbf6cbd08fff031dbdcb3931416b3aeeb38528a917de129f405745",
+      "tracked_diff_sha256": "8cb27c2fbc6a158d06104719d52e2165d0ae47f76bfe80b77ad2de45d6aa04bb",
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-aarch64.sh": "8c17b0fe2c799733aad25cc4e66823c61810e29b72ef033a8089774bd34c227d"
+      },
+      "bundle_sha256": {
+        "clusterctl.elf": "018f80fbf1ce9a74f1d99d2379a4d6a6b0bca2b48cf1bcc7467fbba311a72794",
+        "deployd.elf": "69dd9d198b2ab85ec1ea04c8f4dcc7805e0f3b65fe6fd74d1e48d3d479f90547",
+        "dns.elf": "78109d95c5a8bd708816a1b36fac406e68780e4b36854b2b7ecb9544eebef192",
+        "agent.elf": "7c9b52a0bed0cc6ddc324af244abfce7a4939132979a7d3b8f34223cd1da9842"
+      },
+      "diagnostic_capture_sha256": {
+        "manifest.json": "b4809f9e8a1da2a1d5c28439e108ae5926be241fd69b19e2e442e107c26c86bd",
+        "result.json": "26fb09342c19d7fd7ee0d0dd4c01b2c56c080d68186f29b1e3dd2ee8ee514310",
+        "failure.json": "4853a7b5b63be0b7c217c1267238fe8e1a77553e5b54d511acefcd6187edc3e2",
+        "serial.log": "c43e1082f37659c66a13fc7719b3766bfe0703151dc7a570d49b5a91c33a468a",
+        "lldb.log": "9e7b2f13763c0aa961a007339f32f1cba0d11e4eb0cfdcafcd28be045d3290d1",
+        "registers.log": "6bf40bf12d9120c319d1f657818ed293c64b79bb2f9ca663a5bae079b87f82e0",
+        "artifacts.json": "81a385d9a8d769a62dde83980003f9004fae28125230d5f48ae87008208d0265"
+      },
+      "result": {
+        "reason": "deadline",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 300.0961445418652
+      },
+      "selected_guest_observations": [
+        "[+    15.460725] [EL0 LOG] lp=0 asid=118 [deployd] listening port=7444",
+        "[+    17.836806] [EL0 LOG] lp=0 asid=112 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e21edb\") millis=2119 pending=0 queued=0",
+        "[+    19.106004] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x303ffff failed_bitmap=0x0 pending_bitmap=0x0",
+        "[+    29.373183] [EL0 LOG] lp=0 asid=117 [agent] launched \"greet\" generation=1 asid=140 principal=0xa31bf89d72682689",
+        "[+    30.113012] [EL0 LOG] lp=0 asid=117 [agent] published \"greet\" deployment_generation=1 service_generation=1"
+      ],
+      "worker": {
+        "sha256": "42bfc55c78eb81f60e3ebba6444180a2725f40e31c95babb4283f6fe562beede",
+        "selected": [
+          "release startup retry: connect to deployment ingress 127.0.0.1:19746: Connection refused (os error 61)",
+          "error: read ingress response: Resource temporarily unavailable (os error 35); submitted work may be committed"
+        ]
+      },
+      "readiness_marker_exists": false,
+      "failure_marker_exists": false,
+      "signed_input_sha256": {
+        "greet.cdep": "dff516463f6e91cbe209326a6879b63be1e1cb9ad00dec289da6c7769982ef2f",
+        "greet.crelease": "3ccc2b09007e4c0745b3c956d9a460a87b172abecd3f3f25db10cde985d1e949"
+      },
+      "read_only_observation": {
+        "exit_status": 0,
+        "command": "cluster-sign deployment-status greet 127.0.0.1:19746 5",
+        "sha256": "51885e04a38783979f4ad9068b9796fdc09c50f3e0277181644ab417e255720d",
+        "body": "{\"state\":\"ready\",\"deployment_generation\":1,\"service_generation\":1,\"node_key\":1122115291,\"desired_replicas\":1,\"ready_replicas\":1}",
+        "limitation": "No valid receipt was received. A ready publication is an observation, not the missing digest-bound receipt or permission to replay."
+      }
+    },
+    {
+      "id": "x86_listener_only_rejection",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19583 CATTEN_DEPLOY_HOST_PORT=19747 scripts/run-x86_64.sh --deployment-ingress-test --instance sec06-release-startup-x86-gated --fresh-storage --timeout 300",
+      "exit_status": 1,
+      "runner": {
+        "sha256": "0f1a13c3b0766d121d41c451b919f2dc40937af6a92f20e47cfae4516c5855c5",
+        "selected": [
+          "    Finished `dev` profile [optimized + debuginfo] target(s) in 56.31s",
+          "[+     0.119722] [ACPI] Finished parsing XSDT. Found 7 tables.",
+          "[+    13.659050] [xLP] receiver on LP3: received 1003 (OK)",
+          "[+    13.659702] [xLP] receiver on LP1: received 1001 (OK)",
+          "[+    13.660003] [xLP] receiver on LP2: received 1002 (OK)",
+          "[+    13.664842] [xLP] receiver on LP0: received 1000 (OK)",
+          "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/x86_64-z6z9jul2"
+        ]
+      },
+      "arch": "x86_64",
+      "instance": "sec06-release-startup-x86-gated",
+      "kernel_sha256": "5feb5a81a545f2de2b0b5030be32613bf0a99ef8299e23db35fead6991d45c7b",
+      "boot_image_sha256": "bd607f72bc7e11c69b3e697a0dc6a143ee47d4212e568bb688ed3d60af86b3f1",
+      "initial_disk_sha256": "8860169e2a2167e84d531cc5ac0446ecd4396e6a5d12dcac7f2dcdad554e351f",
+      "tracked_diff_sha256": "b9dfce8e9074d6acf8dad8cb26f452ea56f945537d33252fe37da68a9edc1369",
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-x86_64.sh": "49313044f4f2c7fd792189149c6dcc6890cba996bad3d047456bab8663407e8a"
+      },
+      "bundle_sha256": {
+        "clusterctl.elf": "ddc8f0e1022a5a596ad8bc6ecadefe267f96db4fd48143496b2b154d60359987",
+        "deployd.elf": "579b708e088efe759b505543278e8d9fcdba8c818cbfca0b2cbd32b36cc068f5",
+        "dns.elf": "acbd66f2acd5f929ee956851ac0295465cb0e8152262ec0bcec615a7e464b33d",
+        "agent.elf": "9a1ce55b668ecdbd930e4cd7f445e7386113dbcf1004670e889757483b555284"
+      },
+      "diagnostic_capture_sha256": {
+        "manifest.json": "79b4b696a9e83d22e8e900083e652d7257f9de56215e79375ef57b0e4da469d3",
+        "result.json": "34a77b2d2c11cba9832f57d00470b2e16fcc823941cee63292241fdbf5cb0936",
+        "failure.json": "99fd9f13c6d51b6d10716cf2026c45fa521a36a33629c217df8288e22ace42a6",
+        "serial.log": "0098d3b2fea7159ea1b6af2faa9d6e58e43b84f382fb7c979690ab4764bc9a68",
+        "lldb.log": "5194ff62b6abde7aa2b3555a793fa38da15b26c93ebe14638557237b876c9da4",
+        "registers.log": "b3e180313fba8e70ce32a892038cdfa2aafa717c9d7be0859b830a9cf4dac664",
+        "artifacts.json": "6aeacb1a1ed95609e35a5918f886ad2596481938b54341cb983f984b001c3e95"
+      },
+      "result": {
+        "reason": "deployment-incomplete",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 19.626037375070155
+      },
+      "selected_guest_observations": [
+        "[+    16.726956] [EL0 LOG] lp=0 asid=117 [deployd] listening port=7444"
+      ],
+      "worker": {
+        "sha256": "65dab2eba8df4d41c0a7c6b35c4132510f9dce425ab2a6193511664c26945fe7",
+        "selected": [
+          "error: release notification failed: HTTP/1.1 503 Service Unavailable",
+          "{\"error\":-2}"
+        ]
+      },
+      "readiness_marker_exists": false,
+      "failure_marker_exists": true,
+      "signed_input_sha256": {
+        "greet.cdep": "c790c21bdb293e1fdca3ad41378bb7fa0aecf6641bdded0747fb4f3d6ad71c23",
+        "greet.crelease": "3609dd88168092c0cd6c9cbcf02509bd99d933827d5e03754d1aaba569328dc7"
+      }
+    },
+    {
+      "id": "x86_final",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19583 CATTEN_DEPLOY_HOST_PORT=19747 scripts/run-x86_64.sh --deployment-ingress-test --instance sec06-release-startup-x86-ready --fresh-storage --timeout 300",
+      "exit_status": 0,
+      "runner": {
+        "sha256": "3bc17c68b65d9d60ba088166ce3daf92c6d9073262351235116b7697d5246935",
+        "selected": [
+          "    Finished `dev` profile [optimized + debuginfo] target(s) in 52.35s",
+          "[+     0.113675] [ACPI] Finished parsing XSDT. Found 7 tables.",
+          "[+    13.605150] [xLP] receiver on LP3: received 1003 (OK)",
+          "[+    13.605474] [xLP] receiver on LP1: received 1001 (OK)",
+          "[+    13.605899] [xLP] receiver on LP2: received 1002 (OK)",
+          "[+    13.607729] [xLP] receiver on LP0: received 1000 (OK)",
+          "[+    19.042246] [EL0 LOG] lp=0 asid=111 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e21edb\") millis=2121 pending=0 queued=0",
+          "[+    20.501746] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x303bbff failed_bitmap=0x0 pending_bitmap=0x0",
+          "[+    24.997426] [EL0 LOG] lp=0 asid=116 [agent] published \"greet\" deployment_generation=1 service_generation=1",
+          "release startup retry: release notification failed: HTTP/1.1 409 Conflict",
+          "{\"error\":-23}",
+          "release startup retry: release notification failed: HTTP/1.1 409 Conflict",
+          "{\"error\":-23}",
+          "accepted release \"greet-ingress-e2e\": {\"admission\":\"43524c41444d3031b837b49ac5acae03d4cb17c14ead53b086570cb8ffaf92b30f943ac6fdd0f30e010000000000000001000000000000000100000000000000\"}",
+          "ready \"greet\": {\"state\":\"ready\",\"deployment_generation\":1,\"service_generation\":1,\"node_key\":1122115291,\"desired_replicas\":1,\"ready_replicas\":1}",
+          ">>> Signed RustFS upload/atomic-release/pull/launch/readiness path validated."
+        ]
+      },
+      "arch": "x86_64",
+      "instance": "sec06-release-startup-x86-ready",
+      "kernel_sha256": "8004528a49f4bb0cf805d6544284cefdde2046ad1d79167f73d98ea8656409ed",
+      "boot_image_sha256": "2f80b03d5a77025bcc95d8c4ab7e745a80e58d0e282723bc1d9dd379b32973ff",
+      "initial_disk_sha256": "8860169e2a2167e84d531cc5ac0446ecd4396e6a5d12dcac7f2dcdad554e351f",
+      "tracked_diff_sha256": "62ef321133e2bf2d43f5d903c54341612682904bc556cd61f99f6e42f487011c",
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-x86_64.sh": "dd82631746d8765526ed3372c8a779851f254ca2b8ad1fa0ee55d49a96067aa4"
+      },
+      "bundle_sha256": {
+        "clusterctl.elf": "ddc8f0e1022a5a596ad8bc6ecadefe267f96db4fd48143496b2b154d60359987",
+        "deployd.elf": "579b708e088efe759b505543278e8d9fcdba8c818cbfca0b2cbd32b36cc068f5",
+        "dns.elf": "acbd66f2acd5f929ee956851ac0295465cb0e8152262ec0bcec615a7e464b33d",
+        "agent.elf": "9a1ce55b668ecdbd930e4cd7f445e7386113dbcf1004670e889757483b555284"
+      },
+      "diagnostic_capture_sha256": {
+        "manifest.json": "3de995603248d3d7c7b5db4848fe24f0b8489e865f3d358a071cfcae787cc309",
+        "result.json": "373d97eec748a1793b505ce00900d935a5fde132c2ababcd8a5876a2fc3c92a6",
+        "serial.log": "97589d4bac7ea8a098c21170481f20cfe5fa65cd5ab5a636365c194debb862aa",
+        "artifacts.json": "ce3a87ef52f692050d51796c180a4810e0dbc58b27f8c2b6eba4cbd331a0a91b"
+      },
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "selected_guest_observations": [
+        "[+    16.654722] [EL0 LOG] lp=0 asid=117 [deployd] listening port=7444",
+        "[+    19.042246] [EL0 LOG] lp=0 asid=111 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e21edb\") millis=2121 pending=0 queued=0",
+        "[+    20.501746] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x303bbff failed_bitmap=0x0 pending_bitmap=0x0",
+        "[+    24.309709] [EL0 LOG] lp=0 asid=116 [agent] launched \"greet\" generation=1 asid=138 principal=0xa31bf89d72682689",
+        "[+    24.997426] [EL0 LOG] lp=0 asid=116 [agent] published \"greet\" deployment_generation=1 service_generation=1"
+      ],
+      "worker": {
+        "sha256": "25985e13116f359ccf7aea380e5861ab35093b4dc66f4d72c0471486ad741102",
+        "selected": [
+          "release startup retry: release notification failed: HTTP/1.1 409 Conflict",
+          "{\"error\":-23}",
+          "release startup retry: release notification failed: HTTP/1.1 409 Conflict",
+          "{\"error\":-23}",
+          "accepted release \"greet-ingress-e2e\": {\"admission\":\"43524c41444d3031b837b49ac5acae03d4cb17c14ead53b086570cb8ffaf92b30f943ac6fdd0f30e010000000000000001000000000000000100000000000000\"}",
+          "ready \"greet\": {\"state\":\"ready\",\"deployment_generation\":1,\"service_generation\":1,\"node_key\":1122115291,\"desired_replicas\":1,\"ready_replicas\":1}"
+        ]
+      },
+      "readiness_marker_exists": true,
+      "failure_marker_exists": false,
+      "signed_input_sha256": {
+        "greet.cdep": "f754dc370d31b9b273ad23e3217fb7a388db5182eb27429e9b67bc363a005164",
+        "greet.crelease": "b837b49ac5acae03d4cb17c14ead53b086570cb8ffaf92b30f943ac6fdd0f30e"
+      }
+    },
+    {
+      "id": "arm_final",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19582 CATTEN_DEPLOY_HOST_PORT=19746 scripts/run-aarch64.sh --deployment-ingress-test --instance sec06-release-startup-arm-ready --fresh-storage --timeout 300",
+      "exit_status": 0,
+      "runner": {
+        "sha256": "508fd272276c61a901f2ce26dc7cb47f59db067f4181777719fb9ad6bdc59345",
+        "selected": [
+          "    Finished `dev` profile [optimized + debuginfo] target(s) in 57.78s",
+          "[+     0.120043] [ACPI] Finished parsing XSDT. Found 6 tables.",
+          "[+    10.855673] [xLP] receiver on LP2: received 1002 (OK)",
+          "[+    10.856006] [xLP] receiver on LP3: received 1003 (OK)",
+          "[+    10.856197] [xLP] receiver on LP1: received 1001 (OK)",
+          "[+    10.859654] [xLP] receiver on LP0: received 1000 (OK)",
+          "[+    16.307176] [EL0 LOG] lp=0 asid=112 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e21edb\") millis=2120 pending=0 queued=0",
+          "[+    17.734736] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x303ffff failed_bitmap=0x0 pending_bitmap=0x0",
+          "[+    24.947757] [EL0 LOG] lp=0 asid=117 [agent] published \"greet\" deployment_generation=1 service_generation=1",
+          "release startup retry: release notification failed: HTTP/1.1 409 Conflict",
+          "{\"error\":-23}",
+          "release startup retry: release notification failed: HTTP/1.1 409 Conflict",
+          "{\"error\":-23}",
+          "accepted release \"greet-ingress-e2e\": {\"admission\":\"43524c41444d3031968fd2a202ea98e4c54542e5d116cc54d2dda39922cf071e1523fba92a47ae00010000000000000001000000000000000100000000000000\"}",
+          "ready \"greet\": {\"state\":\"ready\",\"deployment_generation\":1,\"service_generation\":1,\"node_key\":1122115291,\"desired_replicas\":1,\"ready_replicas\":1}",
+          ">>> Signed RustFS upload/atomic-release/pull/launch/readiness path validated."
+        ]
+      },
+      "arch": "aarch64",
+      "instance": "sec06-release-startup-arm-ready",
+      "kernel_sha256": "de7ef6cc7fe68757b2c561f1036e21b525aabfcbf7ba86854bddd75018a8e495",
+      "boot_image_sha256": "6a1fc3443aa4e4d2383b4c16cebfe31c50092eac0cf5940dc391ae0dbfe8c1b0",
+      "initial_disk_sha256": "5923970ba5cbf6cbd08fff031dbdcb3931416b3aeeb38528a917de129f405745",
+      "tracked_diff_sha256": "bd7d50d570d5dc705e42e65afcbd7cfdd46d97cd3773441bdde7dcc847b7fbde",
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-aarch64.sh": "42c62c11c20bf928001455b93c1b3c4b971dae9da72ee9d4c4dbae800f2b5973"
+      },
+      "bundle_sha256": {
+        "clusterctl.elf": "018f80fbf1ce9a74f1d99d2379a4d6a6b0bca2b48cf1bcc7467fbba311a72794",
+        "deployd.elf": "69dd9d198b2ab85ec1ea04c8f4dcc7805e0f3b65fe6fd74d1e48d3d479f90547",
+        "dns.elf": "78109d95c5a8bd708816a1b36fac406e68780e4b36854b2b7ecb9544eebef192",
+        "agent.elf": "7c9b52a0bed0cc6ddc324af244abfce7a4939132979a7d3b8f34223cd1da9842"
+      },
+      "diagnostic_capture_sha256": {
+        "manifest.json": "fbbaed9c28fce51a3c2f908dbaea1636e3fa427b9e6bb4b498d970f1f6dc7781",
+        "result.json": "373d97eec748a1793b505ce00900d935a5fde132c2ababcd8a5876a2fc3c92a6",
+        "serial.log": "0d783f7e6f6529674e51de702c010ad784b80e97a972ab808362d736d56fdd34",
+        "artifacts.json": "4dda21d7a340caf0021722a9f546e4d552e1e4ce1bd88b841c7e7368ca5c910f"
+      },
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "selected_guest_observations": [
+        "[+    13.908081] [EL0 LOG] lp=0 asid=118 [deployd] listening port=7444",
+        "[+    16.307176] [EL0 LOG] lp=0 asid=112 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e21edb\") millis=2120 pending=0 queued=0",
+        "[+    17.734736] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x303ffff failed_bitmap=0x0 pending_bitmap=0x0",
+        "[+    24.195648] [EL0 LOG] lp=0 asid=117 [agent] launched \"greet\" generation=1 asid=140 principal=0xa31bf89d72682689",
+        "[+    24.947757] [EL0 LOG] lp=0 asid=117 [agent] published \"greet\" deployment_generation=1 service_generation=1"
+      ],
+      "worker": {
+        "sha256": "88524e5b3301b44a13b806a5a36d1dd3bf44f4d5eb6cac2b9eaab84245a6f6da",
+        "selected": [
+          "release startup retry: release notification failed: HTTP/1.1 409 Conflict",
+          "{\"error\":-23}",
+          "release startup retry: release notification failed: HTTP/1.1 409 Conflict",
+          "{\"error\":-23}",
+          "accepted release \"greet-ingress-e2e\": {\"admission\":\"43524c41444d3031968fd2a202ea98e4c54542e5d116cc54d2dda39922cf071e1523fba92a47ae00010000000000000001000000000000000100000000000000\"}",
+          "ready \"greet\": {\"state\":\"ready\",\"deployment_generation\":1,\"service_generation\":1,\"node_key\":1122115291,\"desired_replicas\":1,\"ready_replicas\":1}"
+        ]
+      },
+      "readiness_marker_exists": true,
+      "failure_marker_exists": false,
+      "signed_input_sha256": {
+        "greet.cdep": "ad40867810942426e14f55711f5c25efdc5b2867d3e41f9593d97aea91b3bd90",
+        "greet.crelease": "968fd2a202ea98e4c54542e5d116cc54d2dda39922cf071e1523fba92a47ae00"
+      }
+    }
+  ],
+  "checks": {
+    "cargo_fmt_workspace": 0,
+    "bash_syntax_both_runners": 0,
+    "git_diff_check": 0
+  },
+  "formal": {
+    "changed": false,
+    "rerun": false,
+    "baseline_cases": 171,
+    "safe": 44,
+    "expected_negative": 127,
+    "limitation": "Host startup/fixture continuation is qualified by real-client/worker tests; the earlier full model run does not model this new client loop."
+  },
+  "preserved_pdf_sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f"
+}
