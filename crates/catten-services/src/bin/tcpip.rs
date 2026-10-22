@@ -979,6 +979,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         ipc_reply(msg.reply, socket::ERR_QUOTA_EXCEEDED);
                         continue;
                     }
+                    let Some(reserved_id) = state.alloc_sock_id() else {
+                        ipc_reply(msg.reply, socket::ERR_ID_EXHAUSTED);
+                        continue;
+                    };
                     let handle = if kind == SocketKind::Tcp {
                         let rx = TcpSocketBuffer::new(vec![0u8; SOCKET_BUF]);
                         let tx = TcpSocketBuffer::new(vec![0u8; SOCKET_BUF]);
@@ -1011,7 +1015,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     // ABI boundary: receive transferred this authority exactly once.
                     let reply =
                         unsafe { ReplyToken::from_raw(msg.reply) }.expect("nonzero received reply");
-                    let _ = state.publish(&mut sockets, entry, |id| reply.reply(id as i64));
+                    let _ = state
+                        .publish(&mut sockets, reserved_id, entry, |id| reply.reply(id as i64));
                     config::write::<u32>(status::SOCKETS, state.sockets.len() as u32);
                 }
 
@@ -1338,10 +1343,20 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     // Graceful close: transition to FIN-WAIT so queued
                     // transmit data (e.g. an httpd response) drains before the
                     // FIN; the reactor sweeps the socket once fully closed.
-                    let Some(entry) = state.owned_entry_mut(msg.arg0, owner) else {
-                        ipc_reply(msg.reply, socket::ERR_BAD_SOCKET);
-                        continue;
-                    };
+                    match state.close_target(msg.arg0, owner) {
+                        Ok(catten_services::socket_state::CloseTarget::Live) => {}
+                        Ok(catten_services::socket_state::CloseTarget::Unavailable) => {
+                            ipc_reply(msg.reply, socket::CLOSE_UNAVAILABLE);
+                            continue;
+                        }
+                        Err(error) => {
+                            ipc_reply(msg.reply, error);
+                            continue;
+                        }
+                    }
+                    let entry = state
+                        .owned_entry_mut(msg.arg0, owner)
+                        .expect("serialized exact-owner close target");
                     if let Some(token) = entry.recv_pending.take() {
                         token.reply(0);
                     }

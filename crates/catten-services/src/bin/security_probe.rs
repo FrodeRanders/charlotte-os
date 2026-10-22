@@ -287,6 +287,55 @@ fn output_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>) {
     ));
 }
 
+fn close_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>, expired: socket::OwnedSocket<'_>) {
+    // The existing held-controller fixture consumed five seconds while this
+    // unactivated owner stayed live. TCP/IP may reap its backend independently.
+    let mut retired = expired.into_closing();
+    retired.submit().unwrap_or_else(|_| catten_rt::domain_abort());
+    retired.bind_cq(0).unwrap_or_else(|_| catten_rt::domain_abort());
+    let budget = Deadline::after(2_000);
+    let cq = ctx.completion_queue_layout();
+    loop {
+        for _ in 0..cq.entries {
+            if unsafe { catten_syscall::cq_read(cq.base, cq.entries) }.is_none() {
+                break;
+            }
+        }
+        check(!budget.expired(), 221);
+        if let Some(receipt) = retired.poll().unwrap_or_else(|_| catten_rt::domain_abort()) {
+            check(receipt == socket::CloseReceipt::Unavailable, 222);
+            break;
+        }
+        catten_services::reactor::wait(Some(budget.remaining_ms()), 0);
+    }
+    drop(retired);
+    let mut closes = catten_services::deployment_close::Closes::new(0);
+    for domain in [socket::DOMAIN_TCP, socket::DOMAIN_UDP] {
+        let socket =
+            socket::OwnedSocket::open(tcpip, domain).unwrap_or_else(|_| catten_rt::domain_abort());
+        closes.start(socket);
+    }
+    let cq = ctx.completion_queue_layout();
+    while closes.occupied_slots() != 0 {
+        for _ in 0..cq.entries {
+            if unsafe { catten_syscall::cq_read(cq.base, cq.entries) }.is_none() {
+                break;
+            }
+        }
+        check(!budget.expired(), 220);
+        if !closes.advance() {
+            catten_services::reactor::wait(
+                Some(closes.remaining_ms().unwrap_or(0).min(budget.remaining_ms())),
+                0,
+            );
+        }
+    }
+    catten_rt::logln!(concat!(
+        "[security] deployment close CQ: TCP and UDP logical acknowledgements; ",
+        "reaped owner returns Unavailable; pending/socket owners released after logical receipts"
+    ));
+}
+
 fn main(ctx: Context) -> ! {
     check(ctx.name_service_connection().is_none(), 1);
     let controller = ctx.bootstrap_connection().unwrap_or_else(|| catten_rt::domain_abort());
@@ -580,8 +629,11 @@ fn main(ctx: Context) -> ! {
         51,
     );
     checks |= 512;
+    let expired_socket = socket::OwnedSocket::open(tcpip.as_ref(), socket::DOMAIN_UDP)
+        .unwrap_or_else(|_| catten_rt::domain_abort());
     controller_reactor_probe(&ctx, tcpip.as_ref());
     output_reactor_probe(&ctx, tcpip.as_ref());
+    close_reactor_probe(&ctx, tcpip.as_ref(), expired_socket);
 
     // Many small, individually legal allocations must hit an aggregate cap
     // before exhausting node RAM. Retain every owner until rejection, then

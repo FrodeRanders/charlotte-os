@@ -24,6 +24,20 @@ separates current verifier/fixture/handoff behavior from a conditional future
 protected-installation contract. Platform, atomic-state and custody inputs remain
 unimplemented production boundaries.
 
+## Deployment logical close
+
+| Model state/action | Implementation | Qualification |
+|---|---|---|
+| `owners`, `state`, `Admit`, `accepted` | `OwnedSocket::into_closing`, `ClosingSocket`, `deployment_close::Machine::start/arm` | Complete pending/socket owner enters a fixed client position before admission. Only queue-full rejection permits another attempt. Model starts with two already owned sockets; setup and cross-phase admission are omitted. Binding is assumed before parking. |
+| `RejectQueue`, `retryAt`, `Tick` | 50 ms admission backoff inside the original five-second close deadline | Queue admission has no notification surface. Accepted pending calls use their real CQ source; backoff is not described as readiness waiting. Model time is finite abstract ticks. |
+| `ProducerAck`, `ProducerUnavailable`, `ObserveAck`, `confirmed` | `ClosingSocket::poll`, checked Started/Unavailable scalar without attachments | Either typed logical receipt disarms socket fallback and releases its position. Returned-capability rejection/cleanup uses the runtime; actual decoding is source-reviewed/native success, not a model refinement. No former-ownership, peer-delivery or physical refund proof; actual nonreused IDs and reaping are source/host/native boundaries outside this model. |
+| `Expire`, `RejectWaitOrObservation` | deadline, non-queue submission/binding/observation failure; incomplete close Drop | Abort with all represented owners live; never cancel and reconstruct accepted close. Model preserves owners after abort. Actual domain retirement, wider field destructors and whole-service shutdown remain separate. |
+| `Park`, `Wake` | drain CQ, recheck close pool and other phases, wait on earliest original deadline/backoff | A held close does not suppress another ready acknowledgement. Wake itself releases no position. The Rust shutdown branch drains existing closes with original budgets while retaining other pools; timing/destructor qualification remains outside this model. |
+
+Safe checks require `AcceptedOnce`, `OwnersUntilAck`, `OnlyAckReleases` and
+`ParkCoversAll`. Negative controls replay accepted close or release its owner
+without acknowledgement. See [implementation evidence](../reports/audits/2026-10-22-security-deployment-close.md).
+
 ## Deployment output receipts
 
 | Model state/action | Implementation | Qualification |

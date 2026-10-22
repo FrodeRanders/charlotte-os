@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [SEC-06 deployment logical-close reactor](audits/2026-10-22-security-deployment-close.md) — Consuming close owners retain capacity and original budgets through CQ observation; accepted work is never replayed.
+
 - [SEC-06 deployment response reactor](audits/2026-10-22-security-deployment-output.md) — Deferred sends retain response owners and original budgets; positive prefix receipts advance output without replaying uncertainty.
 
 - [SEC-06 deployment controller reactor](audits/2026-10-22-security-deployment-control.md) — CQ-bound controller operations retain their sockets and original budgets; healthy reply observation proceeds beside a held request without replay.

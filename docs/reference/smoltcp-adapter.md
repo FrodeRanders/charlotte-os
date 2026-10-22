@@ -117,6 +117,29 @@ is a separate protocol. TCP/IP retains its 50 ms timed transport cadence;
 deferred send completion supplies a real reply notification, without making the
 whole stack event-driven. See the [output audit](../reports/audits/2026-10-22-security-deployment-output.md).
 
+For reactors, `OwnedSocket::into_closing` consumes the socket into a
+`ClosingSocket`. `submit` attempts the existing `OP_CLOSE` (8) once, `bind_cq`
+registers the accepted reply, and `poll` decodes only `Started` (0) or
+`Unavailable` (1), without attachments. The socket stays owned on every rejection. Only a checked logical receipt
+disarms its ordinary remote-close destructor; incomplete operation Drop aborts
+without a second submission. Deployment ingress drives a bounded four-position
+close pool with one five-second admission/observation deadline. Queue-full
+rejection alone permits admission backoff/retry. Timeout, rejected binding/wait
+or uncertain observation retains the operation through domain abort. This is
+logical close acknowledgement, without peer-delivery or physical-reclamation
+proof. Ordinary `OwnedSocket::close`/Drop and setup/shutdown error paths retain
+their previous synchronous policies. See the [close audit](../reports/audits/2026-10-22-security-deployment-close.md).
+
+An unavailable receipt means an absent full ID below the reservation watermark.
+It authenticates no former ownership or physical cleanup. Foreign live entries
+and unreserved/zero IDs reject. The current service incarnation never reuses IDs:
+`ReservedSocketId` owns an unpublished serial and publication consumes it; even
+failed publication burns it. Exhaustion returns `ERR_ID_EXHAUSTED` before socket
+backing allocation. The existing connection binds a caller to that incarnation.
+Peer reset or expiry can thus end a local owner after backend reaping. Ordinary
+synchronous close recognizes the same two receipts. Immediate packed operations
+retain their separate full-ID migration gap.
+
 ## What's in place
 
 - The NIC driver exports `OP_SEND`/`OP_RECV` through the `net0` endpoint

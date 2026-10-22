@@ -53,13 +53,13 @@ All seven deployment HTTP controls use owning `deployment_control::Controls`
 operations. Each submits its controller request once and binds that pending call
 to the default CQ. The service continues accepting and parsing other inputs and
 observing other controller calls while one reply remains outstanding. Listening,
-input, controller and output phases share four positions. Response sends use
+input, controller, output and close phases share four positions. Response sends use
 owning `deployment_output::Outputs` operations on that same CQ. Response rendering
-and socket setup/close still run synchronously; the controller server itself can
+and socket setup still run synchronously; the controller server itself can
 also serialize work internally.
 
 Each controller operation has one five-second deadline captured before request
-validation/preparation. The reactor waits for the earliest input, RPC or output deadline
+validation/preparation. The reactor waits for the earliest input, RPC, output or close deadline
 and rechecks all owners after wake. Timeout cancels its exact pending owner and
 returns HTTP `503` with `{"error":-22}` (`clusterctl::ERR_RPC_TIMEOUT`). Accepted
 mutations are never replayed. An accepted-call observation failure reports
@@ -71,9 +71,9 @@ aborts with the containing owners live.
 
 Spare listeners are prepared before observing accepts. Input receives,
 controller replies and response-send receipts use actual producer notifications
-on the same CQ, including peer EOF. A rotating cursor advances ready inputs; outstanding control calls
-and outputs have rotating observation cursors. Each service turn visits all
-three phases before waiting again. Each input has a five-second header
+on the same CQ, including peer EOF. A rotating cursor advances ready inputs;
+outstanding control calls, outputs and closes have rotating observation cursors.
+Each service turn visits all four processing phases before waiting again. Each input has a five-second header
 and thirty-second total deadline from observed accept completion. Progress and
 unrelated CQ wakes do not restart these budgets. Rejected listener setup retains
 a 50 ms admission backoff because it has no readiness source.
@@ -98,10 +98,46 @@ prefix receipt permits submitting only the remaining bytes. It acknowledges
 local TCP-buffer enqueue; it proves neither peer delivery nor rollback. Zero,
 negative or malformed receipts, observation failure and timeout end output without
 resending uncertain bytes. Mapping/unmap/submission rejection ends unstarted
-submission. The existing explicit socket-close policy still follows output and
-can block. TCP/IP still services transport on its 50 ms timed reactor cadence;
-the deferred reply supplies a real CQ notification when state permits enqueue.
+submission. An owning CQ-bound logical close follows output. TCP/IP still services
+transport on its 50 ms timed reactor cadence; the deferred reply supplies a real
+CQ notification when state permits enqueue.
 This does not establish saturated-buffer or whole-service fairness.
+
+`OwnedSocket::into_closing` consumes the socket into `ClosingSocket`, which
+retains its exact socket and pending close together. `deployment_close::Closes`
+binds that operation to CQ0 and retains its client position until a checked
+`CloseReceipt::Started` (0) or `Unavailable` (1), without attachments, ends
+its logical owner. Its original five-second
+budget covers admission and observation. Only queue-full rejection permits
+another submission, after 50 ms admission backoff; there is no queue-admission
+notification source. Accepted work is never resubmitted. Deadline, other
+submission error, invalid reply, binding rejection or observation failure aborts
+with the complete owner and service scope live. Incomplete `ClosingSocket` Drop
+also aborts; it performs no second close or blocking fallback. Logical completion
+proves neither peer receipt nor TCP-buffer, physical or original-charge release.
+
+`Unavailable` means the full ID is below the service's reservation watermark
+and has no current entry. It does not attest to a former owner or cleanup.
+Foreign live entries and zero/unreserved IDs still reject. IDs never repeat
+within the same endpoint lifetime: an opaque `ReservedSocketId` is consumed by
+publication, failed publication burns it, and exhaustion rejects before backend
+allocation. The owner's existing connection captures that service incarnation.
+A reset, grace reap or unactivated-creation expiry can therefore retire the
+local ID without a second close. Both synchronous and reactor close decoders
+recognize the two receipts. Other immediate packed socket operations remain a
+separate protocol-simplification boundary.
+
+The ordinary synchronous helper remains a separate policy gap: after an
+accepted observation/service failure it can restore its ID and let `Drop`
+submit another close. The new consuming reactor owner never takes that path.
+This batch does not qualify the older helper's uncertain-error fallback.
+
+On lifecycle shutdown, existing close operations drain against their original
+deadlines while other client owners remain live. The other phases' existing
+shutdown destructors and partial listener-setup errors still use ordinary
+`OwnedSocket` fallback. Those paths, socket open/listen and controller internals
+remain separate blocking boundaries; total shutdown latency is unqualified.
+See the [close evidence](../reports/audits/2026-10-22-security-deployment-close.md).
 
 The [output evidence](../reports/audits/2026-10-22-security-deployment-output.md)
 records this boundary. The [input-isolation evidence](../reports/audits/2026-10-22-security-deployment-input.md)

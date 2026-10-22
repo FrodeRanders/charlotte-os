@@ -88,6 +88,12 @@ run_expected_violation() {
 }
 
 cd "${script_dir}"
+run_model CharlotteDeploymentClose CharlotteDeploymentClose_small.cfg \
+    RejectQueue Admit ProducerAck ProducerUnavailable ObserveAck Expire RejectWaitOrObservation Park Wake Tick
+run_expected_violation CharlotteDeploymentClose CharlotteDeploymentClose_replay_unsafe.cfg \
+    AcceptedOnce UnsafeReplay
+run_expected_violation CharlotteDeploymentClose CharlotteDeploymentClose_release_unsafe.cfg \
+    OwnersUntilAck UnsafeRelease
 run_model CharlotteDeploymentOutput CharlotteDeploymentOutput_small.cfg \
     ProducerReceipt ObservePrefix EndUncertain Tick Park Wake RejectWait
 run_expected_violation CharlotteDeploymentOutput CharlotteDeploymentOutput_replay_unsafe.cfg \

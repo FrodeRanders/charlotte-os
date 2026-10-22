@@ -868,8 +868,8 @@ the default CQ. Each operation retains its accepted pending call, socket,
 receipt-validation envelope and one five-second deadline captured before
 request preparation. The reactor keeps accepting/parsing inputs and observing
 other replies while one controller request remains outstanding. Listening,
-input, control and output phases share four positions. Spare listeners are prepared
-before observing accepts; input, controller and output observation rotate among ready
+input, control, output and close phases share four positions. Spare listeners are prepared
+before observing accepts; input, controller, output and close observation rotate among ready
 owners and wait for the earliest original deadline.
 
 Timeout cancels the exact pending owner and returns HTTP 503 with error $-22$
@@ -893,12 +893,25 @@ on the same CQ, with one original five-second deadline. Owned response capacity
 is capped at 64~KiB per position. A positive TCP prefix receipt permits sending
 only the remainder; timeout, invalid receipt or observation failure ends output
 without resending uncertain bytes. Enqueue is no peer-delivery or rollback proof.
-Each service turn advances input, controller and output work before waiting.
+Each service turn advances input, controller, output and close work before waiting.
 
-Controller-server execution, response rendering, socket setup/close and
-all-positions admission pressure can still delay healthy clients. HTTP keyhole
+A consuming logical-close owner retains the socket and accepted pending call on
+the same CQ. Its client position releases only after a checked Started (0) or
+Unavailable (1) scalar receipt without attachments, under one original five-second admission/observation budget.
+Only queue-full rejection permits 50~ms admission backoff and another submission.
+Accepted close is never replayed. Deadline, binding/wait rejection or uncertain
+observation retains the whole scope through domain abort; incomplete close Drop
+also aborts before field cleanup. Unavailable concerns an absent, nonreused
+full ID within the captured service incarnation. It proves neither former
+ownership nor peer delivery or physical release. Foreign live entries and
+unreserved IDs reject; exhausted ID reservation rejects before backend allocation.
+Existing close operations drain on shutdown under their original deadlines while
+other client owners remain live.
+
+Controller-server execution, response rendering, socket setup, older fallback
+destructors and all-positions admission pressure can still delay healthy clients. HTTP keyhole
 serving remains serial. See
-\repofile|docs/reports/audits/2026-10-22-security-deployment-output.md|.
+\repofile|docs/reports/audits/2026-10-22-security-deployment-close.md|.
 
 For a release made from several independently signed components,
 \texttt{cluster-sign deployment-apply} prevalidates all descriptor files,
@@ -1016,9 +1029,10 @@ empty.
 
 Deployment ingress, HTTP ingress, and the UTC time service also implement the
 cooperative path. Deployment ingress checks lifecycle on each reactor turn and
-on default-CQ wakes, then drops its accepted calls and socket owners together.
-Its synchronous preparation/render/setup/close phases remain separate
-shutdown latency boundaries. Controller calls are cancelled through their exact
+on default-CQ wakes. On shutdown it first drains existing logical-close owners
+under their original deadlines, then drops the other client owners together.
+Synchronous preparation/render/setup and other phases' older socket destructors
+remain separate shutdown latency boundaries. Controller calls are cancelled through their exact
 owners without proving remote rollback. HTTP ingress retains bounded lifecycle checks around its current
 accept/receive operation. Its receive timeout uses an explicit cancellation
 exchange with TCP/IP: closing only the local call capability would leave the

@@ -1,10 +1,11 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains finite, executable specifications for thirty-seven
+This directory contains finite, executable specifications for thirty-eight
 CharlotteOS subsystems:
 
 | Subsystem | Module | Fast configuration |
 |---|---|---|
+| Logical socket-close ownership, acknowledgement and admission | `CharlotteDeploymentClose.tla` | `CharlotteDeploymentClose_small.cfg` |
 | Deployment response prefix receipts and original output budgets | `CharlotteDeploymentOutput.tla` | `CharlotteDeploymentOutput_small.cfg` |
 | Deployment controller ownership and independent reply observation | `CharlotteDeploymentControl.tla` | `CharlotteDeploymentControl_small.cfg` |
 | Deployment input isolation and original deadlines | `CharlotteDeploymentInput.tla` | `CharlotteDeploymentInput_small.cfg` |
@@ -42,6 +43,14 @@ CharlotteOS subsystems:
 | Filtered placement control, dwell, and reservations | `CharlottePlacementControl.tla` | `CharlottePlacementControl_small.cfg` |
 | Remote-call identity, uncertainty, and bounded deduplication | `CharlotteRemoteCall.tla` | `CharlotteRemoteCall_small.cfg` |
 | Reliable-message restart/retry sessions | `CharlotteReliableMessage.tla` | `CharlotteReliableMessage_small.cfg` |
+
+The [22 October logical-close review](../reports/audits/2026-10-22-security-deployment-close.md)
+adds two already owned sockets, rejected admission backoff, accepted-once close,
+checked Started/Unavailable receipts, original budget and owner retention through abort.
+Unsafe accepted replay and position release before acknowledgement must fail.
+Bound reply sources and atomic turns are assumptions; actual socket setup,
+wire decoding, nonreused ID allocation/reaping, dynamic admission, shutdown/destructor timing and physical release
+remain outside this projection.
 
 The [22 October output review](../reports/audits/2026-10-22-security-deployment-output.md)
 adds two admitted outputs with two abstract prefixes each. Positive producer
@@ -91,8 +100,8 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all thirty-nine complete fast configurations and 115 expected-failure
-  deployment-output, deployment-input, deployment-control, IPC-transaction, IPC-publication, endpoint-observer, name-publication, boot-trust, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
+- runs all forty complete fast configurations and 117 expected-failure
+  deployment-close, deployment-output, deployment-input, deployment-control, IPC-transaction, IPC-publication, endpoint-observer, name-publication, boot-trust, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
   checked-wait, domain-abort, address-space, root-retirement, hardware-ASID, interrupt-route, service-lifecycle, DMA, DMA-operation, authorization,
   Raft-join, Raft-response, Raft-stream, snapshot-restore, cluster-ingress, and reliable-message regression configurations;
 - enables TLC action coverage;

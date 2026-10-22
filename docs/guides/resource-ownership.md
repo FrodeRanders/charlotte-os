@@ -36,6 +36,7 @@ each operation's transient owners promptly.
 | Reply authority | `ReplyToken` | Closes an unused reply token |
 | Completion | `Completion` | Cancels, waits for terminal state, then closes |
 | Asynchronous buffer read | `ReadOperation` | Cancels and waits before releasing the Rust borrow |
+| Reactor logical socket close | `socket::ClosingSocket` | Incomplete Drop aborts with the exact socket and any accepted pending call retained; confirmed logical reply disarms remote fallback |
 | Remote TCP/IP socket | `socket::OwnedSocket` | Best-effort protocol close; `close(self)` reports errors |
 | Verified client TLS stream | `tls_client::OwnedTlsStream` | Drops TLS state, socket, and both record buffers in dependency order; `close(self)` reports shutdown errors |
 | Scoped application domain | `DeployedArtifact` | Fences retirement by signed artifact principal; `poll_retire` provides the signed cooperative window and `Drop` forces best-effort retirement |
@@ -45,6 +46,18 @@ each operation's transient owners promptly.
 All owning types are non-`Copy` and `#[must_use]`. Moving a value transfers
 ownership. Dropping invokes the type's cleanup policy; uncertain cleanup can retain
 kernel resources.
+
+Reactor callers consume `OwnedSocket` with `into_closing`, retain the resulting
+`ClosingSocket`, submit once and bind its accepted reply to the shared CQ.
+Only a checked `Started` (0) or `Unavailable` (1) scalar without attachments
+ends the logical owner. Unavailability concerns a nonreused ID in the same
+service incarnation; it grants no cleanup or former-ownership proof. Queue-full
+rejection is unstarted admission; accepted timeout or observation failure must
+retain the operation through terminal abort, without retry. An incomplete
+`ClosingSocket` destructor aborts before dropping its fields. It cannot run a
+blocking best-effort close. Deployment ingress keeps this owner, original
+deadline and capacity position in its existing client phase family; ordinary
+socket owners keep their older fallback. See [deployment ingress](../reference/deployment-ingress.md).
 
 ## Memory and IPC example
 

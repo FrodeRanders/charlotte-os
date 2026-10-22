@@ -11,6 +11,7 @@ pub mod local_invocation;
 pub mod publication_generation;
 pub use charlotte_protocol_dns as dns_call;
 pub use charlotte_protocol_ns as ns_generation;
+pub mod deployment_close;
 pub mod deployment_output;
 pub mod network_random;
 pub mod socket_lifetime;
@@ -782,7 +783,25 @@ pub mod socket {
     /// returns that buffer with the byte count, or a scalar error/EOF. The
     /// original allocating principal remains its backing sponsor.
     pub const OP_RECV: u32 = 7;
+    /// Full socket ID; reply is CLOSE_STARTED or CLOSE_UNAVAILABLE, without attachments.
     pub const OP_CLOSE: u32 = 8;
+    pub const CLOSE_STARTED: i64 = 0;
+    pub const CLOSE_UNAVAILABLE: i64 = 1;
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum CloseReceipt {
+        Started,
+        Unavailable,
+    }
+    impl CloseReceipt {
+        pub fn decode(result: i64) -> Option<Self> {
+            match result {
+                CLOSE_STARTED => Some(Self::Started),
+                CLOSE_UNAVAILABLE => Some(Self::Unavailable),
+                _ => None,
+            }
+        }
+    }
     pub const OP_FRAME: u32 = 9;
     /// Move one writable `REPLY_BUFFER_BYTES` buffer into the call. Reply
     /// returns it holding the packed `STATUS_*` snapshot.
@@ -867,6 +886,7 @@ pub mod socket {
     pub const ERR_BAD_OPCODE: i64 = -7;
     /// The caller's per-principal socket or buffer budget is exhausted.
     pub const ERR_QUOTA_EXCEEDED: i64 = -8;
+    pub const ERR_ID_EXHAUSTED: i64 = -9;
 
     pub const DOMAIN_TCP: u64 = 1;
     pub const DOMAIN_UDP: u64 = 2;
@@ -922,6 +942,63 @@ pub mod socket {
     pub struct OwnedSocket<'connection> {
         service: ConnectionRef<'connection>,
         id: Option<u64>,
+    }
+
+    /// Consuming logical-close operation for a CQ reactor. The pending call and
+    /// exact remote socket stay together until a checked acknowledgement.
+    /// Dropping an incomplete operation aborts the domain with both retained;
+    /// it cannot synchronously retry or infer closure from cancellation.
+    #[must_use = "drive logical close to a confirmed reply; incomplete Drop aborts"]
+    pub struct ClosingSocket<'connection> {
+        pending: Option<PendingCall<'static>>,
+        socket: OwnedSocket<'connection>,
+    }
+
+    impl ClosingSocket<'_> {
+        /// Try admission once. Only a rejected submission may be attempted again.
+        pub fn submit(&mut self) -> Result<(), IpcError> {
+            assert!(self.pending.is_none(), "close already submitted");
+            self.pending = Some(self.socket.service.call(OP_CLOSE, self.socket.id())?);
+            Ok(())
+        }
+
+        pub fn bind_cq(&mut self, cq: u32) -> Result<(), IpcError> {
+            self.pending.as_mut().expect("accepted close").bind_cq(cq)
+        }
+
+        /// A typed scalar receipt without attachments ends this logical owner.
+        /// Unavailable retires only this ID; it proves no physical cleanup.
+        /// Every rejection retains this owner; accepted work is never replayed.
+        pub fn poll(&mut self) -> Result<Option<CloseReceipt>, SocketError> {
+            let Some(reply) =
+                self.pending.as_mut().expect("accepted close").poll().map_err(SocketError::Ipc)?
+            else {
+                return Ok(None);
+            };
+            if reply.memory.is_some() || reply.connection.is_some() {
+                return Err(SocketError::InvalidReply);
+            }
+            let receipt = CloseReceipt::decode(reply.result).ok_or({
+                if reply.result < 0 {
+                    SocketError::Service(reply.result)
+                } else {
+                    SocketError::InvalidReply
+                }
+            })?;
+            self.socket.id = None;
+            drop(self.pending.take());
+            Ok(Some(receipt))
+        }
+    }
+
+    impl Drop for ClosingSocket<'_> {
+        fn drop(&mut self) {
+            if self.socket.id.is_some() {
+                // No blocking destructor or second remote close. The containing
+                // reactor must retain its scope through this terminal boundary.
+                catten_rt::domain_abort();
+            }
+        }
     }
 
     impl<'connection> OwnedSocket<'connection> {
@@ -1182,6 +1259,14 @@ pub mod socket {
             }))
         }
 
+        /// Transfer this exact socket into an asynchronous logical-close owner.
+        pub fn into_closing(self) -> ClosingSocket<'connection> {
+            ClosingSocket {
+                pending: None,
+                socket: self,
+            }
+        }
+
         pub fn close(mut self) -> Result<(), IpcError> {
             self.close_inner()
         }
@@ -1219,7 +1304,10 @@ pub mod socket {
                     return Err(error);
                 }
             };
-            if result.result == 0 {
+            if result.memory.is_none()
+                && result.connection.is_none()
+                && CloseReceipt::decode(result.result).is_some()
+            {
                 Ok(())
             } else {
                 self.id = Some(id);

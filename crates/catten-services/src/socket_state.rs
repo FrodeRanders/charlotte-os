@@ -220,6 +220,17 @@ pub enum SocketKind {
     Udp,
 }
 
+#[derive(Debug, Eq, PartialEq)]
+pub enum CloseTarget {
+    Live,
+    Unavailable,
+}
+
+/// Unpublished selector reservation. Dropping it burns the ID; it owns no
+/// backend socket yet. Only publication may consume its private serial.
+#[must_use]
+pub struct ReservedSocketId(u64);
+
 pub struct TcpipState {
     pub sockets: BTreeMap<u64, SocketEntry>,
     pub next_sock_id: u64,
@@ -227,17 +238,27 @@ pub struct TcpipState {
 }
 
 impl TcpipState {
-    pub fn alloc_sock_id(&mut self) -> u64 {
-        loop {
-            let id = self.next_sock_id;
-            self.next_sock_id = if id >= i64::MAX as u64 {
-                1
-            } else {
-                id + 1
-            };
-            if !self.sockets.contains_key(&id) {
-                return id;
-            }
+    /// IDs are never reused within this endpoint lifetime, including failed
+    /// publication. Exhaustion rejects before preparing socket backing.
+    pub fn alloc_sock_id(&mut self) -> Option<ReservedSocketId> {
+        let id = self.next_sock_id;
+        if id == 0 || id > i64::MAX as u64 {
+            return None;
+        }
+        self.next_sock_id = id + 1;
+        Some(ReservedSocketId(id))
+    }
+
+    /// Unavailability is only a logical selector receipt. It attests to no
+    /// former owner, backend cleanup, physical release or refunded charge.
+    pub fn close_target(&self, id: u64, owner: SocketOwner) -> Result<CloseTarget, i64> {
+        if id == 0 || id >= self.next_sock_id {
+            return Err(crate::socket::ERR_BAD_SOCKET);
+        }
+        match self.sockets.get(&id) {
+            Some(entry) if entry.owner == owner => Ok(CloseTarget::Live),
+            Some(_) => Err(crate::socket::ERR_BAD_SOCKET),
+            None => Ok(CloseTarget::Unavailable),
         }
     }
 
@@ -398,6 +419,63 @@ mod tests {
     }
 
     #[test]
+    fn socket_ids_never_wrap_or_reuse_after_failed_publication() {
+        let mut state = state();
+        assert_eq!(state.alloc_sock_id().map(|id| id.0), Some(1));
+        assert_eq!(state.alloc_sock_id().map(|id| id.0), Some(2));
+        state.next_sock_id = i64::MAX as u64;
+        assert_eq!(state.alloc_sock_id().map(|id| id.0), Some(i64::MAX as u64));
+        assert_eq!(state.alloc_sock_id().map(|id| id.0), None);
+        assert_eq!(state.alloc_sock_id().map(|id| id.0), None);
+        assert_eq!(state.next_sock_id, i64::MAX as u64 + 1);
+    }
+
+    #[test]
+    fn logical_close_distinguishes_live_foreign_unavailable_and_unissued_targets() {
+        let mut state = state();
+        let owner = SocketOwner {
+            address_space: 1,
+            generation: 1,
+            principal: 7,
+        };
+        let foreign = SocketOwner {
+            generation: 2,
+            ..owner
+        };
+        let mut storage: Vec<SocketStorage<'_>> =
+            core::iter::repeat_with(Default::default).take(1).collect();
+        let mut set = SocketSet::new(&mut storage[..]);
+        let reserved = state.alloc_sock_id().unwrap();
+        let socket = entry(&mut set, owner, SocketKind::Udp, true);
+        let diagnostic_id = reserved.0;
+        state.publish(&mut set, reserved, socket, |_| Ok::<_, ()>(())).unwrap();
+        assert_eq!(state.close_target(diagnostic_id, owner), Ok(CloseTarget::Live));
+        assert_eq!(state.close_target(diagnostic_id, foreign), Err(crate::socket::ERR_BAD_SOCKET));
+        assert_eq!(state.close_target(0, owner), Err(crate::socket::ERR_BAD_SOCKET));
+        assert_eq!(
+            state.close_target(state.next_sock_id, owner),
+            Err(crate::socket::ERR_BAD_SOCKET)
+        );
+        assert_eq!(state.reap_abandoned(&mut set, 0, |_| false), 1);
+        assert_eq!(state.close_target(diagnostic_id, owner), Ok(CloseTarget::Unavailable));
+        assert_ne!(state.alloc_sock_id().map(|id| id.0), Some(diagnostic_id));
+    }
+
+    #[test]
+    fn close_receipt_decoder_keeps_unavailability_distinct_from_close_started() {
+        use crate::socket::{
+            CLOSE_STARTED,
+            CLOSE_UNAVAILABLE,
+            CloseReceipt,
+        };
+        assert_eq!(CloseReceipt::decode(CLOSE_STARTED), Some(CloseReceipt::Started));
+        assert_eq!(CloseReceipt::decode(CLOSE_UNAVAILABLE), Some(CloseReceipt::Unavailable));
+        for result in [crate::socket::ERR_BAD_SOCKET, -99, 2, i64::MAX] {
+            assert_eq!(CloseReceipt::decode(result), None);
+        }
+    }
+
+    #[test]
     fn cancelled_creation_returns_fixed_socket_storage_and_owner_charges() {
         let owner = SocketOwner {
             address_space: 1,
@@ -409,14 +487,16 @@ mod tests {
         let mut set = SocketSet::new(&mut storage[..]);
         let mut state = state();
         for _ in 0..1024 {
+            let reserved = state.alloc_sock_id().unwrap();
             let socket = entry(&mut set, owner, SocketKind::Tcp, false);
-            assert_eq!(state.publish(&mut set, socket, |_| Err(())), Err(()));
+            assert_eq!(state.publish(&mut set, reserved, socket, |_| Err(())), Err(()));
             assert_eq!(set.iter().count(), 0);
             assert_eq!(state.owner_socket_count(owner), 0);
             assert_eq!(state.owner_buffer_bytes(owner), 0);
         }
+        let reserved = state.alloc_sock_id().unwrap();
         let socket = entry(&mut set, owner, SocketKind::Udp, true);
-        assert!(state.publish(&mut set, socket, |_| Ok::<_, ()>(())).is_ok());
+        assert!(state.publish(&mut set, reserved, socket, |_| Ok::<_, ()>(())).is_ok());
         assert_eq!(set.iter().count(), 1);
     }
 
@@ -438,11 +518,13 @@ mod tests {
         for (kind, activated) in
             [(SocketKind::Tcp, false), (SocketKind::Tcp, true), (SocketKind::Udp, true)]
         {
+            let reserved = state.alloc_sock_id().unwrap();
             let socket = entry(&mut set, old, kind, activated);
-            state.publish(&mut set, socket, |_| Ok::<_, ()>(())).unwrap();
+            state.publish(&mut set, reserved, socket, |_| Ok::<_, ()>(())).unwrap();
         }
+        let reserved = state.alloc_sock_id().unwrap();
         let socket = entry(&mut set, successor, SocketKind::Udp, true);
-        let id = state.publish(&mut set, socket, |_| Ok::<_, ()>(())).unwrap();
+        let id = state.publish(&mut set, reserved, socket, |_| Ok::<_, ()>(())).unwrap();
         assert!(state.owned_entry(id, old).is_none());
         assert_eq!(state.reap_abandoned(&mut set, 1, |owner| owner == successor), 3);
         assert_eq!(state.owner_buffer_bytes(old), 0);
@@ -464,8 +546,9 @@ mod tests {
         let mut set = SocketSet::new(&mut storage[..]);
         let mut state = state();
         for activated in [false, true] {
+            let reserved = state.alloc_sock_id().unwrap();
             let socket = entry(&mut set, owner, SocketKind::Tcp, activated);
-            state.publish(&mut set, socket, |_| Ok::<_, ()>(())).unwrap();
+            state.publish(&mut set, reserved, socket, |_| Ok::<_, ()>(())).unwrap();
         }
         assert_eq!(state.reap_abandoned(&mut set, 4999, |_| true), 0);
         assert_eq!(state.reap_abandoned(&mut set, 5000, |_| true), 1);
@@ -480,10 +563,12 @@ impl TcpipState {
     pub fn publish<E>(
         &mut self,
         sockets: &mut SocketSet<'_>,
+        id: ReservedSocketId,
         entry: SocketEntry,
         deliver: impl FnOnce(u64) -> Result<(), E>,
     ) -> Result<u64, E> {
-        let id = self.alloc_sock_id();
+        let id = id.0;
+        assert!(id > 0 && id < self.next_sock_id && !self.sockets.contains_key(&id));
         self.sockets.insert(id, entry);
         if let Err(error) = deliver(id) {
             let entry = self.sockets.remove(&id).expect("just installed socket");

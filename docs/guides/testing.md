@@ -429,6 +429,15 @@ untagged moved page and requires rejection. Normal HTTP and signed-release runs
 exercise successful deferred TCP sends. Host controls cover partial prefix
 receipts, a held output beside a healthy output, rejection, no replay, bounded
 response capacity, original deadlines and pending-before-socket disposal.
+The scoped probe also consumes actual TCP and UDP sockets into the close pool,
+requiring checked logical receipts within two seconds and an empty pool.
+It also keeps an unactivated UDP owner across the existing five-second held
+controller case and then requires a typed Unavailable receipt, without an extra
+sleep or wider fixture budget. This case runs in both scoped roots; it does not hold actual TCP/IP close replies
+or saturate admission. Host close controls exercise healthy completion beside a
+held or queue-rejected close, unchanged deadlines, accepted-once submission,
+capacity retention, and complete ownership at failure/abort boundaries. See the
+[close audit](../reports/audits/2026-10-22-security-deployment-close.md).
 These do not establish native saturated-send-buffer fairness or inject actual
 mapping/CQ-binding failures. See the [output audit](../reports/audits/2026-10-22-security-deployment-output.md).
 

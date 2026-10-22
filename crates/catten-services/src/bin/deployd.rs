@@ -78,6 +78,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let mut inputs = catten_services::deployment_input::Inputs::new(0);
     let mut controls = catten_services::deployment_control::Controls::new(controller.as_ref(), 0);
     let mut outputs = catten_services::deployment_output::Outputs::new(0);
+    let mut closes = catten_services::deployment_close::Closes::new(0);
+    let mut shutdown = None;
     let mut accepting: [Option<Accepting<'_>>; catten_services::deployment_input::MAX_CLIENTS] =
         core::array::from_fn(|_| None);
     let mut retry: Option<catten_services::deadline::Deadline> = None;
@@ -90,8 +92,20 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 break;
             }
         }
-        if let Some(request) = ctx.lifecycle().shutdown_requested() {
-            return request;
+        if shutdown.is_none() {
+            shutdown = ctx.lifecycle().shutdown_requested();
+        }
+        if shutdown.is_some() {
+            // Drain existing logical-close owners under their original budgets
+            // before leaving this scope. Other phases remain owned throughout;
+            // their existing shutdown destructors are a separate boundary.
+            if closes.occupied_slots() == 0 {
+                return shutdown.take().unwrap();
+            }
+            if !closes.advance() {
+                catten_services::reactor::wait(closes.remaining_ms(), 0);
+            }
+            continue;
         }
         if retry.is_some_and(|deadline| deadline.expired()) {
             retry = None;
@@ -99,9 +113,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         replenish(
             tcp.as_ref(),
             &mut accepting,
-            inputs
-                .available_slots()
-                .saturating_sub(controls.occupied_slots() + outputs.occupied_slots()),
+            inputs.available_slots().saturating_sub(
+                controls.occupied_slots() + outputs.occupied_slots() + closes.occupied_slots(),
+            ),
             &mut retry,
             trace,
         );
@@ -127,12 +141,17 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     } = slot.take().unwrap();
                     drop(pending);
                     if let Err((socket, _)) = inputs.admit(socket) {
-                        let _ = socket.close();
+                        closes.start(socket);
                     }
                     accepted = true;
                 }
                 _ => {
-                    drop(slot.take());
+                    let Accepting {
+                        pending,
+                        socket,
+                    } = slot.take().unwrap();
+                    drop(pending);
+                    closes.start(socket);
                     retry = Some(catten_services::deadline::Deadline::after(ACCEPT_RETRY_MS));
                 }
             }
@@ -141,7 +160,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         if let Some((socket, reply)) = controls.advance() {
             progressed = true;
             if let Some((socket, result)) = outputs.start(socket, reply) {
-                retire_output(socket, result, trace);
+                retire_output(socket, result, &mut closes, trace);
             }
         }
         let (input_progress, finished) = inputs.advance_reserved(controls.reserved_bytes());
@@ -164,20 +183,21 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             if let Some((socket, reply)) = completed
                 && let Some((socket, result)) = outputs.start(socket, reply)
             {
-                retire_output(socket, result, trace);
+                retire_output(socket, result, &mut closes, trace);
             }
         }
         let (output_progress, finished) = outputs.advance();
         progressed |= output_progress;
         if let Some((socket, result)) = finished {
-            retire_output(socket, result, trace);
+            retire_output(socket, result, &mut closes, trace);
         }
+        progressed |= closes.advance();
         replenish(
             tcp.as_ref(),
             &mut accepting,
-            inputs
-                .available_slots()
-                .saturating_sub(controls.occupied_slots() + outputs.occupied_slots()),
+            inputs.available_slots().saturating_sub(
+                controls.occupied_slots() + outputs.occupied_slots() + closes.occupied_slots(),
+            ),
             &mut retry,
             trace,
         );
@@ -188,6 +208,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             inputs.remaining_ms(),
             controls.remaining_ms(),
             outputs.remaining_ms(),
+            closes.remaining_ms(),
             retry.map(|d| d.remaining_ms()),
         ]
         .into_iter()
@@ -197,17 +218,18 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     }
 }
 
-fn retire_output(
-    socket: socket::OwnedSocket<'_>,
+fn retire_output<'a>(
+    socket: socket::OwnedSocket<'a>,
     result: Result<(), catten_services::deployment_output::Error>,
+    closes: &mut catten_services::deployment_close::Closes<'a>,
     trace: bool,
 ) {
     if trace && let Err(error) = result {
         catten_rt::logln!("[deployd] response ended: {error:?}");
     }
-    // Logical close still uses its existing synchronous policy. A send receipt
-    // confirms TCP-buffer enqueue, without proving peer delivery or rollback.
-    let _ = socket.close();
+    // A send receipt confirms enqueue only. The next owning phase observes one
+    // logical close without blocking other clients or resending accepted work.
+    closes.start(socket);
 }
 
 fn replenish<'a>(
