@@ -24,6 +24,23 @@ separates current verifier/fixture/handoff behavior from a conditional future
 protected-installation contract. Platform, atomic-state and custody inputs remain
 unimplemented production boundaries.
 
+## Deployment controller observation
+
+| TLA+ action/state | Rust implementation | Correspondence |
+|---|---|---|
+| `Bind`, `bound` | `deployment_control::Machine::start`, `PendingCall::bind_cq` | Accepted call, socket, reply kind, original deadline and logical reservation are stored before binding. Rejection aborts with the operation live. The model starts after admission with two pending calls and omits request preparation. |
+| `Complete`, `Observe` | `PendingCall::poll`, `Machine::advance`, kind-specific reply decoding | A ready reply can be observed beside an unanswered call. Actual CQ entries are hints; polling adopts returned resources. Mapping/reply-shape failure releases those owners through existing runtime policy. The model omits result bytes, capability cleanup and rendering. |
+| `Tick`, `Expire`, `submissions` | original five-second deadline, pending owner Drop | Cancel exactly once without replay. The model's calls share an initial start for its bounded pair; Rust captures a separate deadline before each request preparation. A timeout is uncertain, not proof the server did no work. |
+| `receiverBacking`, `ReleaseReceiver` | moved request memory retained by controller; original kernel sponsor charge | The receiver may retain backing after caller timeout. Releasing an active logical reservation is not proof of physical release or refund. The model abstracts a separate receiver release action, with no hardware/allocator refinement claim. |
+| `Park`, `RejectAdmission` | minimum input/controller deadline on default CQ; shared fail-closed wait policy | Wait covers all pending sources, not one selected controller. Rejected binding/wait retains every current owner through abort. TCP/IP setup/send/close and actual controller-server blocking are separate. |
+
+`CharlotteDeploymentControl` rejects a serial wait while another response is
+ready and a replay after timeout. It is a bounded safety projection of accepted
+calls. It omits dynamic admission, request-byte budgets, response fairness,
+server execution, kernel scheduling and physical teardown. Host budget/owner
+tests and the native held moved-request fixture cover additional scoped paths;
+see the [evidence](../reports/audits/2026-10-22-security-deployment-control.md).
+
 ## Deployment input isolation
 
 | TLA+ action/state | Rust implementation | Correspondence |

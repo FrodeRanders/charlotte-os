@@ -136,6 +136,100 @@ fn denied(reply: CallResult, error: i64, failure: u32) {
     check(reply.result == error && reply.connection.is_none() && reply.memory.is_none(), failure);
 }
 
+fn controller_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>) {
+    use catten_services::{
+        clusterctl,
+        deployment_control::Controls,
+        deployment_http::Request,
+    };
+    let endpoint = Endpoint::create(clusterctl::INTERFACE, clusterctl::VERSION, 8)
+        .unwrap_or_else(|_| catten_rt::domain_abort());
+    let connection =
+        endpoint.connect(IpcRights::CALL).unwrap_or_else(|_| catten_rt::domain_abort());
+    let mut controls = Controls::new(connection.as_ref(), 0);
+    let healthy_budget = Deadline::after(2_000);
+    for _ in 0..2 {
+        let socket = socket::OwnedSocket::open(tcpip, socket::DOMAIN_UDP)
+            .unwrap_or_else(|_| catten_rt::domain_abort());
+        check(
+            controls
+                .start(
+                    socket,
+                    Request::Status(b"security_missing".to_vec()),
+                    catten_services::deployment_input::MAX_BUFFERED_BYTES,
+                )
+                .is_none(),
+            200,
+        );
+    }
+    let held = endpoint
+        .try_receive()
+        .unwrap_or_else(|_| catten_rt::domain_abort())
+        .unwrap_or_else(|| catten_rt::domain_abort());
+    let mut healthy = endpoint
+        .try_receive()
+        .unwrap_or_else(|_| catten_rt::domain_abort())
+        .unwrap_or_else(|| catten_rt::domain_abort());
+    check(
+        held.opcode == clusterctl::OP_ROLLOUT
+            && healthy.opcode == clusterctl::OP_ROLLOUT
+            && held.memory.is_some()
+            && healthy.memory.is_some(),
+        201,
+    );
+    let _ = healthy
+        .reply
+        .take()
+        .unwrap_or_else(|| catten_rt::domain_abort())
+        .reply(clusterctl::ERR_NOT_FOUND);
+    drop(healthy);
+    let cq = ctx.completion_queue_layout();
+    let mut completed = 0;
+    let outer = Deadline::after(7_000);
+    loop {
+        for _ in 0..cq.entries {
+            if unsafe { catten_syscall::cq_read(cq.base, cq.entries) }.is_none() {
+                break;
+            }
+        }
+        check(!outer.expired(), 202);
+        if let Some((socket, reply)) = controls.advance() {
+            if completed == 0 {
+                check(
+                    reply.starts_with("HTTP/1.1 404 ")
+                        && !healthy_budget.expired()
+                        && controls.occupied_slots() == 1
+                        && controls.reserved_bytes() == 4096,
+                    203,
+                );
+            } else {
+                check(
+                    reply.starts_with("HTTP/1.1 503 ")
+                        && reply.contains("-22")
+                        && controls.occupied_slots() == 0
+                        && controls.reserved_bytes() == 0,
+                    204,
+                );
+                // Local timeout does not release the receiver's moved page.
+                let memory = held.memory.as_ref().unwrap_or_else(|| catten_rt::domain_abort());
+                check(memory.len() == 4096, 205);
+                let _ = socket.close();
+                break;
+            }
+            let _ = socket.close();
+            completed += 1;
+            continue;
+        }
+        catten_services::reactor::wait(controls.remaining_ms(), 0);
+    }
+    check(endpoint.try_receive().unwrap_or_else(|_| catten_rt::domain_abort()).is_none(), 206);
+    drop(held);
+    catten_rt::logln!(concat!(
+        "[security] deployment control CQ: healthy moved reply beside ",
+        "held moved request; original timeout, no replay and receiver-owned backing retained"
+    ));
+}
+
 fn main(ctx: Context) -> ! {
     check(ctx.name_service_connection().is_none(), 1);
     let controller = ctx.bootstrap_connection().unwrap_or_else(|| catten_rt::domain_abort());
@@ -429,6 +523,7 @@ fn main(ctx: Context) -> ! {
         51,
     );
     checks |= 512;
+    controller_reactor_probe(&ctx, tcpip.as_ref());
 
     // Many small, individually legal allocations must hit an aggregate cap
     // before exhausting node RAM. Retain every owner until rejection, then

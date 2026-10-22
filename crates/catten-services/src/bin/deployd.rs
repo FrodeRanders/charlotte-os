@@ -15,24 +15,13 @@
 
 extern crate alloc;
 
-use alloc::{
-    borrow::Cow,
-    format,
-};
-
 use catten_rt::{
     Context,
     ShutdownRequest,
-    owned::OwnedMemory,
 };
 use catten_services::{
     clusterctl,
-    clusterctl_client,
-    deployment_http::{
-        Error as RequestError,
-        Request,
-    },
-    name_catalog,
+    deployment_http::Error as RequestError,
     socket,
     wait_for_local_ready_or_shutdown,
     wait_for_registered_name_or_shutdown_owned,
@@ -55,295 +44,6 @@ const ALLOCATION_FAILURE_RESPONSE: &str = concat!(
 
 fn fail() -> ! {
     unsafe { thread_exit() }
-}
-
-fn notify_cluster(controller: catten_rt::owned::ConnectionRef<'_>, descriptor: &[u8]) -> i64 {
-    let Some(decoded) = charlotte_launch::deployment::decode(descriptor) else {
-        return clusterctl::ERR_UNTRUSTED_DESCRIPTOR;
-    };
-    if decoded.artifact_name.is_empty() {
-        return clusterctl::ERR_TOO_LARGE;
-    }
-    let memory = match OwnedMemory::allocate(1) {
-        Ok(memory) => memory,
-        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
-    };
-    let mut mapping = match memory.map_writable() {
-        Ok(mapping) => mapping,
-        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
-    };
-    mapping.as_mut_slice()[..8].copy_from_slice(&(descriptor.len() as u64).to_le_bytes());
-    mapping.as_mut_slice()[8..8 + descriptor.len()].copy_from_slice(descriptor);
-    let memory = match mapping.unmap() {
-        Ok(memory) => memory,
-        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
-    };
-    clusterctl_client::call_move(controller, clusterctl::OP_NOTIFY, 0, memory)
-        .map_or_else(|error| error.code(), |reply| reply.result)
-}
-
-fn notify_release(
-    controller: catten_rt::owned::ConnectionRef<'_>,
-    envelope: &[u8],
-) -> Result<charlotte_launch::release_admission::Receipt, i64> {
-    if charlotte_launch::release::decode(envelope).is_none() {
-        return Err(clusterctl::ERR_UNTRUSTED_DESCRIPTOR);
-    }
-    let memory = OwnedMemory::allocate(1).map_err(|_| clusterctl::ERR_UPLOAD_FAILED)?;
-    let mut mapping = memory.map_writable().map_err(|_| clusterctl::ERR_UPLOAD_FAILED)?;
-    mapping.as_mut_slice()[..8].copy_from_slice(&(envelope.len() as u64).to_le_bytes());
-    mapping.as_mut_slice()[8..8 + envelope.len()].copy_from_slice(envelope);
-    let memory = mapping.unmap().map_err(|_| clusterctl::ERR_UPLOAD_FAILED)?;
-    let mut reply =
-        clusterctl_client::call_move(controller, clusterctl::OP_NOTIFY_RELEASE, 0, memory)
-            .map_err(|error| error.code())?;
-    if reply.result < 0 {
-        return Err(reply.result);
-    }
-    if reply.connection.is_some() {
-        return Err(catten_services::dns::ERR_UNCERTAIN);
-    }
-    let len = usize::try_from(reply.result).map_err(|_| catten_services::dns::ERR_UNCERTAIN)?;
-    let memory = reply.memory.take().ok_or(catten_services::dns::ERR_UNCERTAIN)?;
-    if len > memory.len() || len > charlotte_launch::release_admission::MAX_LEN {
-        return Err(catten_services::dns::ERR_UNCERTAIN);
-    }
-    let mapping = memory.map_read_only().map_err(|_| catten_services::dns::ERR_UNCERTAIN)?;
-    catten_services::release_admission::valid_receipt(&mapping.as_slice()[..len], envelope)
-        .ok_or(catten_services::dns::ERR_UNCERTAIN)
-}
-
-fn release_response(
-    result: Result<charlotte_launch::release_admission::Receipt, i64>,
-) -> alloc::string::String {
-    let receipt = match result {
-        Ok(receipt) => receipt,
-        Err(code) => return response(code),
-    };
-    let mut bytes = [0; charlotte_launch::release_admission::MAX_LEN];
-    let Some(len) = receipt.encode(&mut bytes) else {
-        return response(catten_services::dns::ERR_UNCERTAIN);
-    };
-    let mut hex = alloc::string::String::with_capacity(len * 2);
-    const DIGITS: &[u8; 16] = b"0123456789abcdef";
-    for byte in &bytes[..len] {
-        hex.push(DIGITS[(byte >> 4) as usize] as char);
-        hex.push(DIGITS[(byte & 15) as usize] as char);
-    }
-    let body = format!("{{\"admission\":\"{hex}\"}}\n");
-    format!(
-        "HTTP/1.1 202 Accepted\r\nContent-Type: application/json\r\nContent-Length: \
-         {}\r\nConnection: close\r\n\r\n{body}",
-        body.len()
-    )
-}
-
-fn notify_operations(controller: catten_rt::owned::ConnectionRef<'_>, bundle: &[u8]) -> i64 {
-    if charlotte_launch::operations_bundle::decode(bundle).is_none() {
-        return clusterctl::ERR_UNTRUSTED_DESCRIPTOR;
-    }
-    let bytes = match bundle.len().checked_add(8) {
-        Some(bytes) => bytes,
-        None => return clusterctl::ERR_TOO_LARGE,
-    };
-    let memory = match OwnedMemory::allocate(bytes.div_ceil(4096).max(1)) {
-        Ok(memory) => memory,
-        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
-    };
-    let mut mapping = match memory.map_writable() {
-        Ok(mapping) => mapping,
-        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
-    };
-    mapping.as_mut_slice()[..8].copy_from_slice(&(bundle.len() as u64).to_le_bytes());
-    mapping.as_mut_slice()[8..8 + bundle.len()].copy_from_slice(bundle);
-    let memory = match mapping.unmap() {
-        Ok(memory) => memory,
-        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
-    };
-    clusterctl_client::call_move(controller, clusterctl::OP_NOTIFY_OPERATIONS, 0, memory)
-        .map_or_else(|error| error.code(), |reply| reply.result)
-}
-
-fn notify_shutdown(controller: catten_rt::owned::ConnectionRef<'_>, envelope: &[u8]) -> i64 {
-    if charlotte_launch::shutdown::decode(envelope).is_none() {
-        return clusterctl::ERR_UNTRUSTED_DESCRIPTOR;
-    }
-    let memory = match OwnedMemory::allocate(1) {
-        Ok(memory) => memory,
-        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
-    };
-    let mut mapping = match memory.map_writable() {
-        Ok(mapping) => mapping,
-        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
-    };
-    mapping.as_mut_slice()[..8].copy_from_slice(&(envelope.len() as u64).to_le_bytes());
-    mapping.as_mut_slice()[8..8 + envelope.len()].copy_from_slice(envelope);
-    let memory = match mapping.unmap() {
-        Ok(memory) => memory,
-        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
-    };
-    clusterctl_client::call_move(controller, clusterctl::OP_NOTIFY_SHUTDOWN, 0, memory)
-        .map_or_else(|error| error.code(), |reply| reply.result)
-}
-
-fn notify_ingress_policy(controller: catten_rt::owned::ConnectionRef<'_>, envelope: &[u8]) -> i64 {
-    if charlotte_launch::ingress_policy::decode(envelope).is_none() {
-        return clusterctl::ERR_UNTRUSTED_DESCRIPTOR;
-    }
-    let bytes = match envelope.len().checked_add(8) {
-        Some(bytes) => bytes,
-        None => return clusterctl::ERR_TOO_LARGE,
-    };
-    let memory = match OwnedMemory::allocate(bytes.div_ceil(4096).max(1)) {
-        Ok(memory) => memory,
-        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
-    };
-    let mut mapping = match memory.map_writable() {
-        Ok(mapping) => mapping,
-        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
-    };
-    mapping.as_mut_slice()[..8].copy_from_slice(&(envelope.len() as u64).to_le_bytes());
-    mapping.as_mut_slice()[8..8 + envelope.len()].copy_from_slice(envelope);
-    let memory = match mapping.unmap() {
-        Ok(memory) => memory,
-        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
-    };
-    clusterctl_client::call_move(controller, clusterctl::OP_NOTIFY_INGRESS_POLICY, 0, memory)
-        .map_or_else(|error| error.code(), |reply| reply.result)
-}
-
-fn query_rollout(
-    controller: catten_rt::owned::ConnectionRef<'_>,
-    name: &[u8],
-) -> Result<clusterctl::RolloutStatus, i64> {
-    let memory = OwnedMemory::allocate(1).map_err(|_| clusterctl::ERR_UPLOAD_FAILED)?;
-    let mut mapping = memory.map_writable().map_err(|_| clusterctl::ERR_UPLOAD_FAILED)?;
-    mapping.as_mut_slice()[..name.len()].copy_from_slice(name);
-    let memory = mapping.unmap().map_err(|_| clusterctl::ERR_UPLOAD_FAILED)?;
-    let reply =
-        clusterctl_client::call_move(controller, clusterctl::OP_ROLLOUT, name.len() as u64, memory)
-            .map_err(|error| error.code())?;
-    if reply.result < 0 {
-        return Err(reply.result);
-    }
-    if reply.result != clusterctl::ROLLOUT_STATUS_LEN as i64 {
-        return Err(clusterctl::ERR_NOT_FOUND);
-    }
-    let memory = reply.memory.ok_or(clusterctl::ERR_NOT_FOUND)?;
-    let mapping = memory.map_read_only().map_err(|_| clusterctl::ERR_NOT_FOUND)?;
-    clusterctl::RolloutStatus::decode(
-        mapping
-            .as_slice()
-            .get(..clusterctl::ROLLOUT_STATUS_LEN)
-            .ok_or(clusterctl::ERR_NOT_FOUND)?,
-    )
-    .ok_or(clusterctl::ERR_NOT_FOUND)
-}
-
-fn query_ingress_policy(
-    controller: catten_rt::owned::ConnectionRef<'_>,
-) -> Result<alloc::string::String, i64> {
-    let reply = clusterctl_client::call(controller, clusterctl::OP_INGRESS_POLICY_STATUS, 0)
-        .map_err(|error| error.code())?;
-    if reply.result < 0 {
-        return Err(reply.result);
-    }
-    let len = usize::try_from(reply.result).map_err(|_| clusterctl::ERR_NOT_FOUND)?;
-    let memory = reply.memory.ok_or(clusterctl::ERR_NOT_FOUND)?;
-    let mapping = memory.map_read_only().map_err(|_| clusterctl::ERR_NOT_FOUND)?;
-    let entry = name_catalog::decode_ingress_policy_result(
-        mapping.as_slice().get(..len).ok_or(clusterctl::ERR_NOT_FOUND)?,
-    )
-    .ok_or(clusterctl::ERR_NOT_FOUND)?;
-    let policy = charlotte_launch::ingress_policy::decode(&entry.envelope)
-        .ok_or(clusterctl::ERR_NOT_FOUND)?;
-    Ok(format!(
-        "{{\"generation\":{},\"sequence\":{},\"assignments\":{},\"not_before_unix_seconds\":{},\"\
-         expires_unix_seconds\":{}}}\n",
-        entry.generation,
-        policy.sequence,
-        policy.assignments().count(),
-        policy.not_before_unix_seconds,
-        policy.expires_unix_seconds
-    ))
-}
-
-fn response(result: i64) -> alloc::string::String {
-    let (status, body) = match result {
-        generation if generation > 0 => {
-            ("202 Accepted", format!("{{\"generation\":{generation}}}\n"))
-        }
-        clusterctl::ERR_UNTRUSTED_DESCRIPTOR => {
-            ("403 Forbidden", format!("{{\"error\":{}}}\n", clusterctl::ERR_UNTRUSTED_DESCRIPTOR))
-        }
-        clusterctl::ERR_STALE_DESCRIPTOR | clusterctl::ERR_CONFLICTING_DESCRIPTOR => {
-            ("409 Conflict", format!("{{\"error\":{}}}\n", result))
-        }
-        clusterctl::ERR_EXPIRED_OPERATION => {
-            ("409 Conflict", format!("{{\"error\":{}}}\n", clusterctl::ERR_EXPIRED_OPERATION))
-        }
-        clusterctl::ERR_OUTSIDE_VALIDITY => {
-            ("409 Conflict", format!("{{\"error\":{}}}\n", clusterctl::ERR_OUTSIDE_VALIDITY))
-        }
-        clusterctl::ERR_UNSATISFIABLE_PLACEMENT | clusterctl::ERR_INCOMPATIBLE_TARGET => {
-            ("409 Conflict", format!("{{\"error\":{result}}}\n"))
-        }
-        code => ("503 Service Unavailable", format!("{{\"error\":{code}}}\n")),
-    };
-    format!(
-        "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: \
-         close\r\n\r\n{body}",
-        body.len()
-    )
-}
-
-fn status_response(result: Result<alloc::string::String, i64>) -> alloc::string::String {
-    let (status, body) = match result {
-        Ok(body) => ("200 OK", body),
-        Err(clusterctl::ERR_NOT_FOUND) => {
-            ("404 Not Found", "{\"error\":\"ingress policy not found\"}\n".into())
-        }
-        Err(code) => ("503 Service Unavailable", format!("{{\"error\":{code}}}\n")),
-    };
-    format!(
-        "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: \
-         close\r\n\r\n{}",
-        body.len(),
-        body
-    )
-}
-
-fn rollout_response(result: Result<clusterctl::RolloutStatus, i64>) -> alloc::string::String {
-    let (http_status, body) = match result {
-        Ok(status) => {
-            let state = match status.state {
-                clusterctl::ROLLOUT_READY => "ready",
-                clusterctl::ROLLOUT_REPLACING => "replacing",
-                _ => "committed",
-            };
-            (
-                "200 OK",
-                format!(
-                    "{{\"state\":\"{state}\",\"deployment_generation\":{},\"service_generation\":\
-                     {},\"node_key\":{},\"desired_replicas\":{},\"ready_replicas\":{}}}\n",
-                    status.deployment_generation,
-                    status.service_generation,
-                    status.node_key,
-                    status.desired_replicas,
-                    status.ready_replicas
-                ),
-            )
-        }
-        Err(clusterctl::ERR_NOT_FOUND) => {
-            ("404 Not Found", "{\"error\":\"deployment not found\"}\n".into())
-        }
-        Err(code) => ("503 Service Unavailable", format!("{{\"error\":{code}}}\n")),
-    };
-    format!(
-        "HTTP/1.1 {http_status}\r\nContent-Type: application/json\r\nContent-Length: \
-         {}\r\nConnection: close\r\n\r\n{body}",
-        body.len()
-    )
 }
 
 fn new_listener(
@@ -376,6 +76,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     );
     let cq = ctx.completion_queue_layout();
     let mut inputs = catten_services::deployment_input::Inputs::new(0);
+    let mut controls = catten_services::deployment_control::Controls::new(controller.as_ref(), 0);
     let mut accepting: [Option<Accepting<'_>>; catten_services::deployment_input::MAX_CLIENTS] =
         core::array::from_fn(|_| None);
     let mut retry: Option<catten_services::deadline::Deadline> = None;
@@ -394,7 +95,13 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         if retry.is_some_and(|deadline| deadline.expired()) {
             retry = None;
         }
-        replenish(tcp.as_ref(), &mut accepting, inputs.available_slots(), &mut retry, trace);
+        replenish(
+            tcp.as_ref(),
+            &mut accepting,
+            inputs.available_slots().saturating_sub(controls.occupied_slots()),
+            &mut retry,
+            trace,
+        );
         if !announced && accepting.iter().any(Option::is_some) {
             catten_rt::logln!("[deployd] listening port={}", clusterctl::NOTIFY_PORT);
             announced = true;
@@ -430,23 +137,55 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         if accepted {
             continue;
         }
-        let (progressed, finished) = inputs.advance();
-        if let Some((socket, request)) = finished {
-            // Restore the freed position as a listening socket before business
-            // work; other spare positions were listening before this accept.
-            replenish(tcp.as_ref(), &mut accepting, inputs.available_slots(), &mut retry, trace);
-            let reply = handle_request(controller.as_ref(), request);
+        if let Some((socket, reply)) = controls.advance() {
+            replenish(
+                tcp.as_ref(),
+                &mut accepting,
+                inputs.available_slots().saturating_sub(controls.occupied_slots()),
+                &mut retry,
+                trace,
+            );
             let _ = socket.send_all(reply.as_bytes(), 1000, 5);
             let _ = socket.close();
+            continue;
+        }
+        let (progressed, finished) = inputs.advance_reserved(controls.reserved_bytes());
+        if let Some((socket, request)) = finished {
+            let completed = match request {
+                Ok(request) => {
+                    let available =
+                        inputs.available_bytes().saturating_sub(controls.reserved_bytes());
+                    controls.start(socket, request, available)
+                }
+                Err(error) => Some((
+                    socket,
+                    alloc::borrow::Cow::Borrowed(match error {
+                        RequestError::AllocationFailed => ALLOCATION_FAILURE_RESPONSE,
+                        _ => BAD_REQUEST_RESPONSE,
+                    }),
+                )),
+            };
+            replenish(
+                tcp.as_ref(),
+                &mut accepting,
+                inputs.available_slots().saturating_sub(controls.occupied_slots()),
+                &mut retry,
+                trace,
+            );
+            if let Some((socket, reply)) = completed {
+                let _ = socket.send_all(reply.as_bytes(), 1000, 5);
+                let _ = socket.close();
+            }
             continue;
         }
         if progressed {
             continue;
         }
-        let timeout = match (inputs.remaining_ms(), retry.map(|d| d.remaining_ms())) {
-            (Some(a), Some(b)) => Some(a.min(b)),
-            (a, b) => a.or(b),
-        };
+        let timeout =
+            [inputs.remaining_ms(), controls.remaining_ms(), retry.map(|d| d.remaining_ms())]
+                .into_iter()
+                .flatten()
+                .min();
         catten_services::reactor::wait(timeout, 0);
     }
 }
@@ -503,35 +242,6 @@ fn begin_accept(
         catten_rt::domain_abort();
     }
     Ok(owner)
-}
-
-fn handle_request(
-    controller: catten_rt::owned::ConnectionRef<'_>,
-    request: Result<Request, RequestError>,
-) -> Cow<'static, str> {
-    match request {
-        Ok(Request::Notify(descriptor)) => {
-            Cow::Owned(response(notify_cluster(controller, &descriptor)))
-        }
-        Ok(Request::Release(envelope)) => {
-            Cow::Owned(release_response(notify_release(controller, &envelope)))
-        }
-        Ok(Request::Operations(bundle)) => {
-            Cow::Owned(response(notify_operations(controller, &bundle)))
-        }
-        Ok(Request::Shutdown(envelope)) => {
-            Cow::Owned(response(notify_shutdown(controller, &envelope)))
-        }
-        Ok(Request::IngressPolicy(envelope)) => {
-            Cow::Owned(response(notify_ingress_policy(controller, &envelope)))
-        }
-        Ok(Request::IngressPolicyStatus) => {
-            Cow::Owned(status_response(query_ingress_policy(controller)))
-        }
-        Ok(Request::Status(name)) => Cow::Owned(rollout_response(query_rollout(controller, &name))),
-        Err(RequestError::AllocationFailed) => Cow::Borrowed(ALLOCATION_FAILURE_RESPONSE),
-        Err(_) => Cow::Borrowed(BAD_REQUEST_RESPONSE),
-    }
 }
 
 fn main(ctx: Context) -> ! {

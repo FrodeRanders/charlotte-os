@@ -1,10 +1,11 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains finite, executable specifications for thirty-five
+This directory contains finite, executable specifications for thirty-six
 CharlotteOS subsystems:
 
 | Subsystem | Module | Fast configuration |
 |---|---|---|
+| Deployment controller ownership and independent reply observation | `CharlotteDeploymentControl.tla` | `CharlotteDeploymentControl_small.cfg` |
 | Deployment input isolation and original deadlines | `CharlotteDeploymentInput.tla` | `CharlotteDeploymentInput_small.cfg` |
 | Endpoint IPC and memory transfer | `CharlotteIPC.tla` | `CharlotteIPC_small.cfg` |
 | IPC attachment rollback and reply waits | `CharlotteIpcTransaction.tla` | `CharlotteIpcTransaction_small.cfg` |
@@ -41,6 +42,13 @@ CharlotteOS subsystems:
 | Remote-call identity, uncertainty, and bounded deduplication | `CharlotteRemoteCall.tla` | `CharlotteRemoteCall_small.cfg` |
 | Reliable-message restart/retry sessions | `CharlotteReliableMessage.tla` | `CharlotteReliableMessage_small.cfg` |
 
+The [22 October controller reactor review](../reports/audits/2026-10-22-security-deployment-control.md)
+adds a separate two-call projection of bound readiness, retained owners,
+per-operation expiry and receiver-owned backing after cancellation. Unsafe
+single-reply parking and accepted-request replay must fail their named checks.
+This covers controller observation; server execution and response/transport
+latency remain outside the abstraction.
+
 The [22 October deployment input review](../reports/audits/2026-10-22-security-deployment-input.md)
 adds a four-slot finite projection: aggregate buffered-byte bounds, original
 budgets and a ready healthy input's maximum intervening turns. Cursor and
@@ -54,7 +62,7 @@ implementation. In particular, an action is atomic in TLA+ by definition.
 Establishing that a Rust operation implements the same atomic transition will
 require identified linearization points and a refinement argument.
 
-The latest scoped implementation-to-model review is the
+Earlier scoped implementation-to-model reviews include the
 [18 October boot-trust synchronization](../reports/audits/2026-10-18-boot-trust-model.md).
 The preceding [NS publication synchronization](../reports/audits/2026-10-18-name-publication-model.md).
 The preceding [DMA operation synchronization](../reports/audits/2026-10-18-dma-operation-model.md).
@@ -74,8 +82,8 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all thirty-seven complete fast configurations and 111 expected-failure
-  IPC-transaction, IPC-publication, endpoint-observer, name-publication, boot-trust, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
+- runs all thirty-eight complete fast configurations and 113 expected-failure
+  deployment-input, deployment-control, IPC-transaction, IPC-publication, endpoint-observer, name-publication, boot-trust, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
   checked-wait, domain-abort, address-space, root-retirement, hardware-ASID, interrupt-route, service-lifecycle, DMA, DMA-operation, authorization,
   Raft-join, Raft-response, Raft-stream, snapshot-restore, cluster-ingress, and reliable-message regression configurations;
 - enables TLC action coverage;

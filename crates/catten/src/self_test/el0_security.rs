@@ -96,7 +96,16 @@ fn word(domain: &ServiceDomain, offset: usize) -> u32 {
 }
 
 fn wait_for(domain: &ServiceDomain, predicate: impl Fn(&ServiceDomain) -> bool, what: &str) {
-    let deadline = crate::self_test::results::Deadline::after_millis(30_000);
+    wait_for_budget(domain, predicate, what, 30_000);
+}
+
+fn wait_for_budget(
+    domain: &ServiceDomain,
+    predicate: impl Fn(&ServiceDomain) -> bool,
+    what: &str,
+    budget_ms: u64,
+) {
+    let deadline = crate::self_test::results::Deadline::after_millis(budget_ms);
     while !predicate(domain) {
         assert_ne!(
             word(domain, status::STAGE),
@@ -471,10 +480,14 @@ extern "C" fn verify() {
                 &charlotte_launch::sha256::digest(POLICY)
             ));
         }
-        wait_for(
+        // This aggregate includes serial five-second cancellation fixtures,
+        // including the new controller CQ/moved-request case. Keep each inner
+        // production deadline unchanged; allow the complete fixture to finish.
+        wait_for_budget(
             probe.get(),
             |domain| word(domain, status::STAGE) == status::PASSED,
             "adversarial application grant checks",
+            45_000,
         );
         assert_eq!(word(probe.get(), status::CHECKS), status::EXPECTED_CHECKS);
         let retained_buffer =

@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [SEC-06 deployment controller reactor](audits/2026-10-22-security-deployment-control.md) — CQ-bound controller operations retain their sockets and original budgets; healthy reply observation proceeds beside a held request without replay.
+
 - [SEC-06 deployment input isolation](audits/2026-10-22-security-deployment-input.md) — Four bounded CQ-driven inputs, deferred accept/EOF notifications, native stalled-peer controls and a finite scheduling model; controller/send/close fairness remains open.
 
 - [SEC-15 GCM authentication-state erasure](audits/2026-10-22-security-gcm-erasure.md) — Enables constructor-scratch and software-state erasure, with an AArch64 backend guard and explicit x86/PMULL gaps.

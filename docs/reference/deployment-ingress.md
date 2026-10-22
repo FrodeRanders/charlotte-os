@@ -49,33 +49,49 @@ The normal network-and-storage service set starts `clusterctl`, `agent`, and
 `${CATTEN_DEPLOY_HOST_PORT:-8081}` to that port under the default user network,
 so the host tool defaults to `127.0.0.1:8081`.
 
-All seven deployment HTTP controls use the owned `clusterctl_client` adapter.
-Each controller RPC has one five-second deadline starting before submission;
-an accepted request is never replayed by the adapter. Timeout cancels its exact
-pending owner and returns HTTP `503` with `{"error":-22}`
-(`clusterctl::ERR_RPC_TIMEOUT`). The controller may already have received and
-committed a mutation: cancellation is not remote rollback. Observe the existing
-deployment/release state before deciding how to reconcile an uncertain outcome.
-Input uses four owning positions, each listening or receiving. Spare listeners
-are prepared before observing accepts. Each position has one accepted accept
-or receive bound to the default CQ; a rotating cursor advances one
-ready input per turn. Incomplete headers and bodies therefore leave other
-admitted inputs able to progress. Retained input prefixes share a
-`MAX_REQUEST_BYTES` byte limit (1,049,088 bytes, including header allowance), plus at most four caller-owned
-receive pages and the sockets' existing TCP buffers. Exhausting that prefix
-budget rejects the current input without changing other clients' owners.
-Each input has a five-second header and thirty-second total deadline captured
-when the reactor observes accept completion. Progress and unrelated CQ wakes do
-not restart either budget. Accept and receive waits use actual producer
-notifications, including peer EOF; rejected listener setup alone uses a 50 ms
-admission backoff because it has no readiness source. Rejected CQ binding after
-submission or rejected CQ wait admission aborts with the existing owners live.
-Controller work, response transmission and socket close still run synchronously.
-A healthy client can still be delayed by those phases or by all four slots being
-occupied. Controller-internal waits, general TCP/IP RPCs, response transmission
-and socket teardown require further progress qualification. See the
-[input-isolation evidence](../reports/audits/2026-10-22-security-deployment-input.md). See the
-[RPC deadline evidence](../reports/audits/2026-10-12-security-controller-deadlines.md).
+All seven deployment HTTP controls use owning `deployment_control::Controls`
+operations. Each submits its controller request once and binds that pending call
+to the default CQ. The service continues accepting and parsing other inputs and
+observing other controller calls while one reply remains outstanding. Listening,
+input and controller phases share four positions. Response rendering, TCP send
+and socket setup/close still run synchronously; the controller server itself can
+also serialize work internally.
+
+Each controller operation has one five-second deadline captured before request
+validation/preparation. The reactor waits for the earliest input or RPC deadline
+and rechecks all owners after wake. Timeout cancels its exact pending owner and
+returns HTTP `503` with `{"error":-22}` (`clusterctl::ERR_RPC_TIMEOUT`). Accepted
+mutations are never replayed. An accepted-call observation failure reports
+uncertainty (-5), rather than a routing rejection. A controller may already have committed a mutation
+or still own its moved request: cancellation is not remote rollback or a refund
+of that receiver's original memory charge. Observe existing state before deciding
+how to reconcile an uncertain outcome. Accepted-call CQ binding or wait rejection
+aborts with the containing owners live.
+
+Spare listeners are prepared before observing accepts. Input receives and
+controller replies use actual producer notifications on the same CQ, including
+peer EOF. A rotating cursor advances ready inputs; outstanding control calls
+have their own rotating observation cursor. Each input has a five-second header
+and thirty-second total deadline from observed accept completion. Progress and
+unrelated CQ wakes do not restart these budgets. Rejected listener setup retains
+a 50 ms admission backoff because it has no readiness source.
+
+Retained prefixes and active controller request reservations share
+`MAX_REQUEST_BYTES` (1,049,088 bytes including header allowance). A controller
+reservation includes rounded moved-request pages and any retained release
+receipt-validation envelope capacity. Admission rejects before allocating above
+available budget; input growth cannot consume another operation's reservation.
+The brief request-copy preparation, caller receive pages, returned reply memory,
+allocator overhead and TCP buffers are separate. Ending a local operation does
+not discharge uncertain remote backing charges. There is no protected operator
+slot or per-peer fairness policy when all four positions are occupied.
+
+The [input-isolation evidence](../reports/audits/2026-10-22-security-deployment-input.md)
+records the first input milestone; the
+[controller-reactor evidence](../reports/audits/2026-10-22-security-deployment-control.md)
+records the next boundary. The earlier
+[RPC deadline evidence](../reports/audits/2026-10-12-security-controller-deadlines.md)
+qualifies the single-call wait helper separately.
 
 For the current demonstration service, the final signing steps resemble:
 

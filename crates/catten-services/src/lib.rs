@@ -29,6 +29,7 @@ pub use charlotte_protocol_time as time;
 
 pub mod clusterctl_client;
 pub mod deadline;
+pub mod deployment_control;
 pub mod deployment_http;
 pub mod deployment_input;
 /// Owned application-side wrapper for the capability-grant controller.

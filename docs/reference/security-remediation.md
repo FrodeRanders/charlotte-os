@@ -74,7 +74,7 @@ retains listeners through queue-full admission. The
 [deployment ingress follow-up](../reports/audits/2026-10-11-security-deployment-ingress.md)
 extends connection-local rejection to deployment setup/accept and makes its
 pre-authentication parser allocation fallible without a second body copy.
-Both endpoints have total request budgets. Deployment input now uses the bounded concurrent loop described below; controller work and response transmission remain serial. The same follow-up corrects shared identity creation ownership, the catalogue verification stack budget and scoped readiness observation. The read-only namespace query returns a live publication generation without granting invocation authority; legacy lookup stays denied. Final signed upload/release/pull/verification/launch/readiness passes. Earlier failed signed runs and intermittent AMD frame-router startup remain recorded separately; a passing repeat does not resolve that intermittence.
+Both endpoints have total request budgets. Deployment input and controller reply observation now share the bounded concurrent loop described below; response transmission remains serial. The same follow-up corrects shared identity creation ownership, the catalogue verification stack budget and scoped readiness observation. The read-only namespace query returns a live publication generation without granting invocation authority; legacy lookup stays denied. Final signed upload/release/pull/verification/launch/readiness passes. Earlier failed signed runs and intermittent AMD frame-router startup remain recorded separately; a passing repeat does not resolve that intermittence.
 
 The [network publication follow-up](../reports/audits/2026-10-12-security-network-publication.md)
 adds first-failure NIC startup diagnostics and corrects source-confirmed terminal
@@ -114,12 +114,23 @@ shared input-prefix byte budget, rotating input
 turns and CQ-bound deferred accept/receive. A healthy input can finish beside
 three incomplete peers. Original header/total deadlines survive progress and
 unrelated wakes. Accepted-work binding/wait rejection retains the operation
-owners through terminal abort. Controller calls, response sends and socket close
-remain synchronous; HTTP keyhole serving remains serial.
+owners through terminal abort. That milestone left controller calls synchronous;
+the next follow-up addresses their ingress-side observation. HTTP keyhole
+serving remains serial.
+
+The [controller reactor follow-up](../reports/audits/2026-10-22-security-deployment-control.md)
+keeps all seven controls' accepted calls, sockets and validation data in owned
+CQ-bound operations. Input and controller phases share four positions and a
+conservative active-request byte budget. Another ready response can progress
+beside an unanswered controller request. Five-second budgets start before
+preparation; timeout is uncertain and never replayed. The receiver can retain
+its moved request and original charge after local timeout. Controller-server
+execution, response send and socket setup/close remain separate blocking
+boundaries.
 
 Remaining acceptance requires progress during saturated admission and slow
-controller/response phases, sustained connection/packet flood, NIC failure and
-lifecycle shutdown evidence on supported targets. Signatures checked after receipt do
+controller-server/response phases, sustained connection/packet flood, NIC failure
+and lifecycle shutdown evidence on supported targets. Signatures checked after receipt do
 not protect listener availability. Passing deadline/rejection probes do not
 complete these fairness gates or SEC-07's essential-service pressure matrix.
 

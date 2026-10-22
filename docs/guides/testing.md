@@ -403,13 +403,25 @@ Both architecture runners require `test-deployment-http-liveness.py` under
 `--http-test`. It checks framing and invalid descriptor rejection, EOF,
 abortive-close and idle-peer recovery, plus a trickled incomplete body against
 the deployment adapter's unchanged thirty-second total deadline. Every case
-ends with a healthy status control. The deployment probe also holds one incomplete header, one incomplete body,
+ends with a healthy status control. The deployment probe also holds one
+incomplete header, one incomplete body,
 and three mixed peers while requiring a single-attempt healthy status response
 within three seconds, before any stalled peer completes. These cases qualify
 available-slot input isolation; saturated admission, controller latency and
 response backpressure are separate. The selected runner window
 accommodates both probes; it does not extend guest request deadlines.
 The deployment probe has its own 120-second total host budget.
+
+The scoped `--security-test` probe also instantiates the real controller pool
+with two local-controller moved requests and TCP/IP-owned sockets. It retains
+one incoming request unanswered, replies to the other, and requires that healthy
+404 before the first five-second budget expires. The first then returns uncertain
+503/-22 without another submission; its received memory remains owned until
+the fixture explicitly drops it. The CQ wait uses original operation deadlines.
+This qualifies ingress-side observation, not controller-server concurrency or
+HTTP response backpressure. See the
+[controller reactor audit](../reports/audits/2026-10-22-security-deployment-control.md).
+
 The kernel syscall fixture also forces delegated queue-full rejection, drains
 the original queue and verifies one successful grant/reply through the same
 sources. NIC startup failures log their first stage/category/detail, so a

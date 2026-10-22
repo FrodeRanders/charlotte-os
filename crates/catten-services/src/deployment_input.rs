@@ -106,8 +106,9 @@ impl<C: Calls> Machine<C> {
 
     /// Advance at most one ready input per turn. A readable peer moves behind
     /// every other slot even when it immediately supplies another full page.
-    fn advance(&mut self, now: u64) -> (bool, Option<Finished<C::Socket>>) {
+    fn advance(&mut self, now: u64, reserved: usize) -> (bool, Option<Finished<C::Socket>>) {
         let used: usize = self.inputs.iter().flatten().map(|i| i.buffer.buffered_len()).sum();
+        let used = used.saturating_add(reserved);
         for offset in 0..MAX_CLIENTS {
             let index = (self.cursor + offset) % MAX_CLIENTS;
             let Some(input) = self.inputs[index].as_mut() else {
@@ -215,7 +216,19 @@ impl<'a> Inputs<'a> {
     }
 
     pub fn advance(&mut self) -> (bool, Option<Finished<OwnedSocket<'a>>>) {
-        self.0.advance(catten_syscall::monotonic_clock().0)
+        self.advance_reserved(0)
+    }
+
+    pub fn advance_reserved(
+        &mut self,
+        reserved: usize,
+    ) -> (bool, Option<Finished<OwnedSocket<'a>>>) {
+        self.0.advance(catten_syscall::monotonic_clock().0, reserved)
+    }
+
+    pub fn available_bytes(&self) -> usize {
+        let used: usize = self.0.inputs.iter().flatten().map(|i| i.buffer.buffered_len()).sum();
+        MAX_BUFFERED_BYTES.saturating_sub(used)
     }
 
     pub fn remaining_ms(&self) -> Option<u64> {
@@ -329,7 +342,7 @@ mod tests {
             admit(&mut m, id);
         }
         data(&mut m, 3, STATUS);
-        let (progress, result) = m.advance(150);
+        let (progress, result) = m.advance(150, 0);
         assert!(progress);
         let (socket, request) = result.unwrap();
         assert_eq!(socket.id, 3);
@@ -346,8 +359,8 @@ mod tests {
         data(&mut m, 0, b"GET ");
         data(&mut m, 0, b"/v1/");
         data(&mut m, 1, STATUS);
-        assert!(matches!(m.advance(1), (true, None)));
-        let (_, result) = m.advance(2);
+        assert!(matches!(m.advance(1, 0), (true, None)));
+        let (_, result) = m.advance(2, 0);
         assert_eq!(result.unwrap().0.id, 1);
         assert_eq!(m.inputs[0].as_ref().unwrap().buffer.buffered_len(), 4);
     }
@@ -359,15 +372,15 @@ mod tests {
         admit(&mut m, 1);
         data(&mut m, 0, b"GET ");
         data(&mut m, 1, b"POST /v1/operations HTTP/1.1\r\nContent-Length: 3584\r\n\r\nx");
-        assert!(matches!(m.advance(4900), (true, None)));
-        assert!(matches!(m.advance(4901), (true, None)));
-        assert!(matches!(m.advance(4999), (false, None)));
-        let (socket, error) = m.advance(5000).1.unwrap();
+        assert!(matches!(m.advance(4900, 0), (true, None)));
+        assert!(matches!(m.advance(4901, 0), (true, None)));
+        assert!(matches!(m.advance(4999, 0), (false, None)));
+        let (socket, error) = m.advance(5000, 0).1.unwrap();
         assert_eq!(socket.id, 0);
         assert_eq!(error, Err(Error::Malformed));
         assert_eq!(m.remaining(5000), Some(25000));
-        assert!(m.advance(29999).1.is_none());
-        assert_eq!(m.advance(30000).1.unwrap().1, Err(Error::Malformed));
+        assert!(m.advance(29999, 0).1.is_none());
+        assert_eq!(m.advance(30000, 0).1.unwrap().1, Err(Error::Malformed));
     }
 
     #[test]
@@ -378,8 +391,8 @@ mod tests {
         admit(&mut m, 1);
         data(&mut m, 0, b"GET ");
         data(&mut m, 1, b"GET /over");
-        assert!(matches!(m.advance(10), (true, None)));
-        let (socket, error) = m.advance(20).1.unwrap();
+        assert!(matches!(m.advance(10, 0), (true, None)));
+        let (socket, error) = m.advance(20, 0).1.unwrap();
         assert_eq!(socket.id, 1);
         assert_eq!(error, Err(Error::AllocationFailed));
         assert_eq!(m.inputs[0].as_ref().unwrap().buffer.buffered_len(), 4);
@@ -437,7 +450,7 @@ mod tests {
         admit(&mut m, 0);
         data(&mut m, 0, b"GET ");
         m.calls.reject = true;
-        let (socket, error) = m.advance(1).1.unwrap();
+        let (socket, error) = m.advance(1, 0).1.unwrap();
         assert_eq!(error, Err(Error::AllocationFailed));
         assert!(m.has_capacity());
         assert_eq!(&*log.borrow(), &[("pending", 0)]);
@@ -451,10 +464,21 @@ mod tests {
             let (mut m, _) = setup();
             admit(&mut m, 0);
             m.calls.replies[0].borrow_mut().push_back(reply.clone());
-            let (_, error) = m.advance(1).1.unwrap();
+            let (_, error) = m.advance(1, 0).1.unwrap();
             assert_eq!(error, Err(reply.err().unwrap_or(Error::Malformed)));
             assert!(m.has_capacity());
         }
+    }
+
+    #[test]
+    fn controller_reservations_limit_input_growth_without_changing_deadlines() {
+        let (mut m, _) = setup();
+        m.byte_limit = 8;
+        admit(&mut m, 0);
+        data(&mut m, 0, b"GET ");
+        let (_, result) = m.advance(10, 5);
+        assert_eq!(result.unwrap().1, Err(Error::AllocationFailed));
+        assert!(m.has_capacity());
     }
 
     #[test]
