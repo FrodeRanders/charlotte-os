@@ -1,10 +1,11 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains finite, executable specifications for thirty-six
+This directory contains finite, executable specifications for thirty-seven
 CharlotteOS subsystems:
 
 | Subsystem | Module | Fast configuration |
 |---|---|---|
+| Deployment response prefix receipts and original output budgets | `CharlotteDeploymentOutput.tla` | `CharlotteDeploymentOutput_small.cfg` |
 | Deployment controller ownership and independent reply observation | `CharlotteDeploymentControl.tla` | `CharlotteDeploymentControl_small.cfg` |
 | Deployment input isolation and original deadlines | `CharlotteDeploymentInput.tla` | `CharlotteDeploymentInput_small.cfg` |
 | Endpoint IPC and memory transfer | `CharlotteIPC.tla` | `CharlotteIPC_small.cfg` |
@@ -41,6 +42,14 @@ CharlotteOS subsystems:
 | Filtered placement control, dwell, and reservations | `CharlottePlacementControl.tla` | `CharlottePlacementControl_small.cfg` |
 | Remote-call identity, uncertainty, and bounded deduplication | `CharlotteRemoteCall.tla` | `CharlotteRemoteCall_small.cfg` |
 | Reliable-message restart/retry sessions | `CharlotteReliableMessage.tla` | `CharlotteReliableMessage_small.cfg` |
+
+The [22 October output review](../reports/audits/2026-10-22-security-deployment-output.md)
+adds two admitted outputs with two abstract prefixes each. Positive producer
+receipts alone advance an offset and admit its next prefix. Wakes do not grant
+progress, uncertain termination permits no replay, and one original deadline
+survives all chunks. Replay and budget-reset negative controls must fail.
+It abstracts producer delivery and atomic turns; actual byte framing, capacity,
+kernel scheduling, saturated transport and socket close remain outside it.
 
 The [22 October controller reactor review](../reports/audits/2026-10-22-security-deployment-control.md)
 adds a separate two-call projection of bound readiness, retained owners,
@@ -82,8 +91,8 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all thirty-eight complete fast configurations and 113 expected-failure
-  deployment-input, deployment-control, IPC-transaction, IPC-publication, endpoint-observer, name-publication, boot-trust, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
+- runs all thirty-nine complete fast configurations and 115 expected-failure
+  deployment-output, deployment-input, deployment-control, IPC-transaction, IPC-publication, endpoint-observer, name-publication, boot-trust, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
   checked-wait, domain-abort, address-space, root-retirement, hardware-ASID, interrupt-route, service-lifecycle, DMA, DMA-operation, authorization,
   Raft-join, Raft-response, Raft-stream, snapshot-restore, cluster-ingress, and reliable-message regression configurations;
 - enables TLC action coverage;

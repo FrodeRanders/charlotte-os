@@ -88,6 +88,12 @@ run_expected_violation() {
 }
 
 cd "${script_dir}"
+run_model CharlotteDeploymentOutput CharlotteDeploymentOutput_small.cfg \
+    ProducerReceipt ObservePrefix EndUncertain Tick Park Wake RejectWait
+run_expected_violation CharlotteDeploymentOutput CharlotteDeploymentOutput_replay_unsafe.cfg \
+    PrefixesOnce UnsafeReplay
+run_expected_violation CharlotteDeploymentOutput CharlotteDeploymentOutput_budget_unsafe.cfg \
+    OriginalBudget UnsafeRestartBudget
 run_model CharlotteDeploymentControl CharlotteDeploymentControl_small.cfg \
     Bind Complete Observe Expire ReleaseReceiver Park Tick RejectAdmission
 run_expected_violation CharlotteDeploymentControl CharlotteDeploymentControl_replay_unsafe.cfg \

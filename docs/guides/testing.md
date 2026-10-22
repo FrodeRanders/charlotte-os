@@ -422,6 +422,16 @@ This qualifies ingress-side observation, not controller-server concurrency or
 HTTP response backpressure. See the
 [controller reactor audit](../reports/audits/2026-10-22-security-deployment-control.md).
 
+The scoped probe also exercises the actual response-output pool with a terminal
+TCP socket and an unsupported UDP socket, requiring both CQ-bound deferred sends
+to reject within two seconds and leave the pool empty. It separately submits an
+untagged moved page and requires rejection. Normal HTTP and signed-release runs
+exercise successful deferred TCP sends. Host controls cover partial prefix
+receipts, a held output beside a healthy output, rejection, no replay, bounded
+response capacity, original deadlines and pending-before-socket disposal.
+These do not establish native saturated-send-buffer fairness or inject actual
+mapping/CQ-binding failures. See the [output audit](../reports/audits/2026-10-22-security-deployment-output.md).
+
 The kernel syscall fixture also forces delegated queue-full rejection, drains
 the original queue and verifies one successful grant/reply through the same
 sources. NIC startup failures log their first stage/category/detail, so a

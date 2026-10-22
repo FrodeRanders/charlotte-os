@@ -95,7 +95,7 @@ fn send_payload_attempts(
             return false;
         };
         let packed = ((data.len() as u64) << 32) | (socket.id() & 0xffff_ffff);
-        let Ok(send) = tcp_conn.call_move(socket::OP_SEND, packed, memory) else {
+        let Ok(send) = tcp_conn.call_move(socket::OP_TRY_SEND, packed, memory) else {
             return false;
         };
         let Ok(sent) = send.wait().map(|result| result.result) else {

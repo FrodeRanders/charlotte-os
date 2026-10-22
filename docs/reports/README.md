@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [SEC-06 deployment response reactor](audits/2026-10-22-security-deployment-output.md) — Deferred sends retain response owners and original budgets; positive prefix receipts advance output without replaying uncertainty.
+
 - [SEC-06 deployment controller reactor](audits/2026-10-22-security-deployment-control.md) — CQ-bound controller operations retain their sockets and original budgets; healthy reply observation proceeds beside a held request without replay.
 
 - [SEC-06 deployment input isolation](audits/2026-10-22-security-deployment-input.md) — Four bounded CQ-driven inputs, deferred accept/EOF notifications, native stalled-peer controls and a finite scheduling model; controller/send/close fairness remains open.

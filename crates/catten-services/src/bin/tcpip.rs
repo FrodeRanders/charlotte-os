@@ -556,6 +556,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 if let Some(token) = entry.recv_pending.take() {
                     token.reply(0);
                 }
+                if let Some(send) = entry.send_pending.take() {
+                    send.reply(socket::ERR_NOT_CONNECTED);
+                }
                 match entry.kind {
                     SocketKind::Tcp => sockets.get_mut::<TcpSocket>(entry.handle).abort(),
                     SocketKind::Udp => sockets.get_mut::<UdpSocket>(entry.handle).close(),
@@ -736,6 +739,27 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 
         // Reply authority and receive backing remain owned on every branch.
         for entry in state.sockets.values_mut() {
+            if entry.send_pending.is_some() {
+                let tcp = sockets.get_mut::<TcpSocket>(entry.handle);
+                match catten_services::socket_state::send_ready(tcp.state(), tcp.can_send()) {
+                    Some(false) => {}
+                    None => entry.send_pending.take().unwrap().reply(socket::ERR_NOT_CONNECTED),
+                    Some(true) => {
+                        let result = entry.send_pending.as_mut().unwrap().write(|bytes| {
+                            tcp.send_slice(bytes).map_err(|_| socket::ERR_NOT_CONNECTED)
+                        });
+                        match result {
+                            Ok(0) => {}
+                            Ok(count) => {
+                                tx_ok = tx_ok.wrapping_add(1);
+                                config::write::<u32>(status::TX_OK, tx_ok);
+                                entry.send_pending.take().unwrap().reply(count as i64);
+                            }
+                            Err(error) => entry.send_pending.take().unwrap().reply(error),
+                        }
+                    }
+                }
+            }
             if entry.kind == SocketKind::Tcp {
                 let tcp = sockets.get::<TcpSocket>(entry.handle);
                 if let Some(result) = catten_services::socket_state::accept_result(tcp.state())
@@ -783,7 +807,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             let msg = ipc_recv(endpoint.as_raw());
             if msg.is_ok()
                 && msg.reply != 0
-                && matches!(msg.opcode, socket::OP_RECV | socket::OP_STATUS | socket::OP_ACCEPT)
+                && matches!(
+                    msg.opcode,
+                    socket::OP_RECV | socket::OP_STATUS | socket::OP_ACCEPT | socket::OP_SEND
+                )
             {
                 // Raw authenticated-receive ABI boundary: transfer every
                 // attachment and reply exactly once into the operation owner.
@@ -793,6 +820,27 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     continue;
                 };
                 let owner = SocketOwner::from_message(&msg);
+                if msg.opcode == socket::OP_SEND {
+                    use catten_services::socket_state::{
+                        PendingSend,
+                        reply_accept,
+                    };
+                    let Some(entry) = state.owned_entry_mut(msg.arg0, owner) else {
+                        reply_accept(request, socket::ERR_BAD_SOCKET);
+                        continue;
+                    };
+                    if entry.kind != SocketKind::Tcp || entry.closing {
+                        reply_accept(request, socket::ERR_NOT_CONNECTED);
+                    } else if entry.send_pending.is_some() {
+                        reply_accept(request, socket::ERR_WOULD_BLOCK);
+                    } else {
+                        match PendingSend::prepare(request) {
+                            Ok(send) => entry.send_pending = Some(send),
+                            Err((send, error)) => send.reply(error),
+                        }
+                    }
+                    continue;
+                }
                 if msg.opcode == socket::OP_ACCEPT {
                     use catten_services::socket_state::reply_accept;
                     if request.memory.is_some() || request.connection.is_some() {
@@ -956,6 +1004,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         udp_remote: None,
                         recv_pending: None,
                         accept_pending: None,
+                        send_pending: None,
                         closing: false,
                         close_started_ms: None,
                     };
@@ -1203,7 +1252,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     }
                 }
 
-                socket::OP_SEND => {
+                socket::OP_TRY_SEND => {
                     // arg0 packs the socket id (low 32 bits) and the payload
                     // length (high 32 bits); the memory object is one page.
                     let sock_id = (msg.arg0 & 0xffff_ffff) as u64;
@@ -1295,6 +1344,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     };
                     if let Some(token) = entry.recv_pending.take() {
                         token.reply(0);
+                    }
+                    if let Some(send) = entry.send_pending.take() {
+                        send.reply(socket::ERR_NOT_CONNECTED);
                     }
                     if let Some(request) = entry.accept_pending.take() {
                         catten_services::socket_state::reply_accept(

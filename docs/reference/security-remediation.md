@@ -74,7 +74,7 @@ retains listeners through queue-full admission. The
 [deployment ingress follow-up](../reports/audits/2026-10-11-security-deployment-ingress.md)
 extends connection-local rejection to deployment setup/accept and makes its
 pre-authentication parser allocation fallible without a second body copy.
-Both endpoints have total request budgets. Deployment input and controller reply observation now share the bounded concurrent loop described below; response transmission remains serial. The same follow-up corrects shared identity creation ownership, the catalogue verification stack budget and scoped readiness observation. The read-only namespace query returns a live publication generation without granting invocation authority; legacy lookup stays denied. Final signed upload/release/pull/verification/launch/readiness passes. Earlier failed signed runs and intermittent AMD frame-router startup remain recorded separately; a passing repeat does not resolve that intermittence.
+Both endpoints have total request budgets. Deployment input and controller reply observation now share the bounded concurrent loop described below; response transmission now uses the shared CQ as well. The same follow-up corrects shared identity creation ownership, the catalogue verification stack budget and scoped readiness observation. The read-only namespace query returns a live publication generation without granting invocation authority; legacy lookup stays denied. Final signed upload/release/pull/verification/launch/readiness passes. Earlier failed signed runs and intermittent AMD frame-router startup remain recorded separately; a passing repeat does not resolve that intermittence.
 
 The [network publication follow-up](../reports/audits/2026-10-12-security-network-publication.md)
 adds first-failure NIC startup diagnostics and corrects source-confirmed terminal
@@ -125,11 +125,21 @@ conservative active-request byte budget. Another ready response can progress
 beside an unanswered controller request. Five-second budgets start before
 preparation; timeout is uncertain and never replayed. The receiver can retain
 its moved request and original charge after local timeout. Controller-server
-execution, response send and socket setup/close remain separate blocking
-boundaries.
+execution, response send and socket setup/close remained blocking at that
+milestone; the output follow-up below addresses send observation.
+
+The [output reactor follow-up](../reports/audits/2026-10-22-security-deployment-output.md)
+adds CQ-bound response sends to those same four positions. Complete response
+backing (up to 64 KiB capacity), socket, pending moved page and original five-second
+deadline stay together. Only a positive TCP prefix receipt advances the remaining
+bytes. Timeout and observation failure terminate without replay or delivery
+claims. The new exact CSOCKTX1 frame carries the full socket ID. Native normal
+HTTP/release and rejection/cleanup cases qualify this path; saturated native TCP
+buffers and whole-service fairness remain unqualified. TCP/IP retains its timed
+transport cadence, and setup/close/render/controller internals can still block.
 
 Remaining acceptance requires progress during saturated admission and slow
-controller-server/response phases, sustained connection/packet flood, NIC failure
+controller-server/transport phases, sustained connection/packet flood, NIC failure
 and lifecycle shutdown evidence on supported targets. Signatures checked after receipt do
 not protect listener availability. Passing deadline/rejection probes do not
 complete these fairness gates or SEC-07's essential-service pressure matrix.

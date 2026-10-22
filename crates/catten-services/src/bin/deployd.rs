@@ -77,6 +77,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let cq = ctx.completion_queue_layout();
     let mut inputs = catten_services::deployment_input::Inputs::new(0);
     let mut controls = catten_services::deployment_control::Controls::new(controller.as_ref(), 0);
+    let mut outputs = catten_services::deployment_output::Outputs::new(0);
     let mut accepting: [Option<Accepting<'_>>; catten_services::deployment_input::MAX_CLIENTS] =
         core::array::from_fn(|_| None);
     let mut retry: Option<catten_services::deadline::Deadline> = None;
@@ -98,7 +99,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         replenish(
             tcp.as_ref(),
             &mut accepting,
-            inputs.available_slots().saturating_sub(controls.occupied_slots()),
+            inputs
+                .available_slots()
+                .saturating_sub(controls.occupied_slots() + outputs.occupied_slots()),
             &mut retry,
             trace,
         );
@@ -134,22 +137,15 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
             }
         }
-        if accepted {
-            continue;
-        }
+        let mut progressed = accepted;
         if let Some((socket, reply)) = controls.advance() {
-            replenish(
-                tcp.as_ref(),
-                &mut accepting,
-                inputs.available_slots().saturating_sub(controls.occupied_slots()),
-                &mut retry,
-                trace,
-            );
-            let _ = socket.send_all(reply.as_bytes(), 1000, 5);
-            let _ = socket.close();
-            continue;
+            progressed = true;
+            if let Some((socket, result)) = outputs.start(socket, reply) {
+                retire_output(socket, result, trace);
+            }
         }
-        let (progressed, finished) = inputs.advance_reserved(controls.reserved_bytes());
+        let (input_progress, finished) = inputs.advance_reserved(controls.reserved_bytes());
+        progressed |= input_progress;
         if let Some((socket, request)) = finished {
             let completed = match request {
                 Ok(request) => {
@@ -165,29 +161,53 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     }),
                 )),
             };
-            replenish(
-                tcp.as_ref(),
-                &mut accepting,
-                inputs.available_slots().saturating_sub(controls.occupied_slots()),
-                &mut retry,
-                trace,
-            );
-            if let Some((socket, reply)) = completed {
-                let _ = socket.send_all(reply.as_bytes(), 1000, 5);
-                let _ = socket.close();
+            if let Some((socket, reply)) = completed
+                && let Some((socket, result)) = outputs.start(socket, reply)
+            {
+                retire_output(socket, result, trace);
             }
-            continue;
         }
+        let (output_progress, finished) = outputs.advance();
+        progressed |= output_progress;
+        if let Some((socket, result)) = finished {
+            retire_output(socket, result, trace);
+        }
+        replenish(
+            tcp.as_ref(),
+            &mut accepting,
+            inputs
+                .available_slots()
+                .saturating_sub(controls.occupied_slots() + outputs.occupied_slots()),
+            &mut retry,
+            trace,
+        );
         if progressed {
             continue;
         }
-        let timeout =
-            [inputs.remaining_ms(), controls.remaining_ms(), retry.map(|d| d.remaining_ms())]
-                .into_iter()
-                .flatten()
-                .min();
+        let timeout = [
+            inputs.remaining_ms(),
+            controls.remaining_ms(),
+            outputs.remaining_ms(),
+            retry.map(|d| d.remaining_ms()),
+        ]
+        .into_iter()
+        .flatten()
+        .min();
         catten_services::reactor::wait(timeout, 0);
     }
+}
+
+fn retire_output(
+    socket: socket::OwnedSocket<'_>,
+    result: Result<(), catten_services::deployment_output::Error>,
+    trace: bool,
+) {
+    if trace && let Err(error) = result {
+        catten_rt::logln!("[deployd] response ended: {error:?}");
+    }
+    // Logical close still uses its existing synchronous policy. A send receipt
+    // confirms TCP-buffer enqueue, without proving peer delivery or rollback.
+    let _ = socket.close();
 }
 
 fn replenish<'a>(

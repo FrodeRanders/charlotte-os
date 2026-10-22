@@ -5,6 +5,7 @@ use catten_rt::owned::{
     IncomingMessage,
     MappedMemory,
     MemoryError,
+    ReadOnly,
     Writable,
 };
 use smoltcp::{
@@ -66,6 +67,7 @@ pub struct SocketEntry {
     pub udp_remote: Option<IpEndpoint>,
     pub recv_pending: Option<PendingReceive>,
     pub accept_pending: Option<IncomingMessage>,
+    pub send_pending: Option<PendingSend>,
     /// Set by `OP_CLOSE`: the socket was gracefully closed and may be swept
     /// from the set once it reaches a final state.
     pub closing: bool,
@@ -73,6 +75,75 @@ pub struct SocketEntry {
     /// bound how long a peer that never completes the FIN handshake can hold
     /// the owner's socket quota.
     pub close_started_ms: Option<u64>,
+}
+
+/// The complete moved send request stays mapped read-only while TCP is full.
+/// Mapping access ends before reply/cancellation; enqueue progress fences replay.
+pub struct PendingSend {
+    request: IncomingMessage,
+    mapping: Option<MappedMemory<ReadOnly>>,
+    enqueue: crate::socket_send::Enqueue,
+}
+impl PendingSend {
+    // Rejection returns the complete transaction without another allocation.
+    #[allow(clippy::result_large_err)]
+    pub fn prepare(request: IncomingMessage) -> Result<Self, (Self, i64)> {
+        let mut owner = Self {
+            request,
+            mapping: None,
+            enqueue: crate::socket_send::Enqueue::default(),
+        };
+        if owner.request.connection.is_some()
+            || !owner
+                .request
+                .memory
+                .as_ref()
+                .is_some_and(|memory| memory.len() == crate::socket_send::FRAME_BYTES)
+        {
+            return Err((owner, crate::socket::ERR_BAD_OPCODE));
+        }
+        let memory = owner.request.memory.take().unwrap();
+        match memory.map_read_only() {
+            Ok(mapping) => owner.mapping = Some(mapping),
+            Err((memory, _)) => {
+                owner.request.memory = Some(memory);
+                return Err((owner, crate::socket::ERR_BAD_OPCODE));
+            }
+        }
+        if crate::socket_send::decode(owner.mapping.as_ref().unwrap().as_slice()).is_none() {
+            return Err((owner, crate::socket::ERR_BAD_OPCODE));
+        }
+        Ok(owner)
+    }
+
+    pub fn write(&mut self, send: impl FnOnce(&[u8]) -> Result<usize, i64>) -> Result<usize, i64> {
+        let bytes = crate::socket_send::decode(self.mapping.as_ref().unwrap().as_slice())
+            .expect("validated immutable send frame");
+        self.enqueue.attempt(|| send(bytes))
+    }
+
+    pub fn reply(mut self, result: i64) {
+        drop(self.mapping.take());
+        drop(self.request.memory.take());
+        if let Some(reply) = self.request.reply.take() {
+            let _ = reply.reply(result);
+        }
+    }
+}
+impl Drop for PendingSend {
+    fn drop(&mut self) {
+        drop(self.mapping.take());
+    }
+}
+
+/// Handshaking/full sockets keep the accepted request. Terminal states reject.
+pub fn send_ready(state: smoltcp::socket::tcp::State, can_send: bool) -> Option<bool> {
+    use smoltcp::socket::tcp::State;
+    match state {
+        State::SynSent | State::SynReceived => Some(false),
+        State::Established | State::CloseWait => Some(can_send),
+        _ => None,
+    }
 }
 
 /// Own the complete receive transaction, including caller-sponsored backing,
@@ -297,8 +368,32 @@ mod tests {
             udp_remote: None,
             recv_pending: None,
             accept_pending: None,
+            send_pending: None,
             closing: false,
             close_started_ms: None,
+        }
+    }
+
+    #[test]
+    fn deferred_send_waits_for_handshake_and_capacity_but_rejects_terminal_states() {
+        use smoltcp::socket::tcp::State;
+        for state in [State::SynSent, State::SynReceived] {
+            assert_eq!(send_ready(state, true), Some(false));
+        }
+        for state in [State::Established, State::CloseWait] {
+            assert_eq!(send_ready(state, false), Some(false));
+            assert_eq!(send_ready(state, true), Some(true));
+        }
+        for state in [
+            State::Closed,
+            State::Listen,
+            State::FinWait1,
+            State::FinWait2,
+            State::Closing,
+            State::LastAck,
+            State::TimeWait,
+        ] {
+            assert_eq!(send_ready(state, true), None);
         }
     }
 

@@ -53,12 +53,13 @@ All seven deployment HTTP controls use owning `deployment_control::Controls`
 operations. Each submits its controller request once and binds that pending call
 to the default CQ. The service continues accepting and parsing other inputs and
 observing other controller calls while one reply remains outstanding. Listening,
-input and controller phases share four positions. Response rendering, TCP send
+input, controller and output phases share four positions. Response sends use
+owning `deployment_output::Outputs` operations on that same CQ. Response rendering
 and socket setup/close still run synchronously; the controller server itself can
 also serialize work internally.
 
 Each controller operation has one five-second deadline captured before request
-validation/preparation. The reactor waits for the earliest input or RPC deadline
+validation/preparation. The reactor waits for the earliest input, RPC or output deadline
 and rechecks all owners after wake. Timeout cancels its exact pending owner and
 returns HTTP `503` with `{"error":-22}` (`clusterctl::ERR_RPC_TIMEOUT`). Accepted
 mutations are never replayed. An accepted-call observation failure reports
@@ -68,10 +69,11 @@ of that receiver's original memory charge. Observe existing state before decidin
 how to reconcile an uncertain outcome. Accepted-call CQ binding or wait rejection
 aborts with the containing owners live.
 
-Spare listeners are prepared before observing accepts. Input receives and
-controller replies use actual producer notifications on the same CQ, including
-peer EOF. A rotating cursor advances ready inputs; outstanding control calls
-have their own rotating observation cursor. Each input has a five-second header
+Spare listeners are prepared before observing accepts. Input receives,
+controller replies and response-send receipts use actual producer notifications
+on the same CQ, including peer EOF. A rotating cursor advances ready inputs; outstanding control calls
+and outputs have rotating observation cursors. Each service turn visits all
+three phases before waiting again. Each input has a five-second header
 and thirty-second total deadline from observed accept completion. Progress and
 unrelated CQ wakes do not restart these budgets. Rejected listener setup retains
 a 50 ms admission backoff because it has no readiness source.
@@ -86,7 +88,23 @@ allocator overhead and TCP buffers are separate. Ending a local operation does
 not discharge uncertain remote backing charges. There is no protected operator
 slot or per-peer fairness policy when all four positions are occupied.
 
-The [input-isolation evidence](../reports/audits/2026-10-22-security-deployment-input.md)
+Each output retains its complete response, socket, pending moved page and one
+five-second deadline captured before send preparation. Response backing is capped
+at 64 KiB per position, counting owned string capacity. Rendering occurs before
+that check and remains a separate allocation boundary. Each deferred TCP send
+moves an exact `CSOCKTX1` page with at most 4,080 payload bytes and the full socket
+ID. TCP/IP retains it read-only through handshake or buffer pressure. A positive
+prefix receipt permits submitting only the remaining bytes. It acknowledges
+local TCP-buffer enqueue; it proves neither peer delivery nor rollback. Zero,
+negative or malformed receipts, observation failure and timeout end output without
+resending uncertain bytes. Mapping/unmap/submission rejection ends unstarted
+submission. The existing explicit socket-close policy still follows output and
+can block. TCP/IP still services transport on its 50 ms timed reactor cadence;
+the deferred reply supplies a real CQ notification when state permits enqueue.
+This does not establish saturated-buffer or whole-service fairness.
+
+The [output evidence](../reports/audits/2026-10-22-security-deployment-output.md)
+records this boundary. The [input-isolation evidence](../reports/audits/2026-10-22-security-deployment-input.md)
 records the first input milestone; the
 [controller-reactor evidence](../reports/audits/2026-10-22-security-deployment-control.md)
 records the next boundary. The earlier

@@ -312,7 +312,7 @@ fn transmit(&mut self, now: Instant) -> Option<...> {
 The stack uses smoltcp 0.13. It runs in a userspace service registered as
 \texttt{"tcpip"} and serves clients through a socket protocol
 (\texttt{OP\_SOCKET}, \texttt{OP\_CONNECT},
-\texttt{OP\_BIND}/\texttt{OP\_LISTEN}, \texttt{OP\_ACCEPT}, \texttt{OP\_SEND},
+\texttt{OP\_BIND}/\texttt{OP\_LISTEN}, \texttt{OP\_ACCEPT}, \texttt{OP\_SEND}/\texttt{OP\_TRY\_SEND},
 \texttt{OP\_RECV}, and \texttt{OP\_CLOSE}). Software that requires
 TCP/IP connects to this service.
 
@@ -324,6 +324,21 @@ call to a CQ. \texttt{OP\_TRY\_ACCEPT} (5) is a separate immediate state
 observation used by the existing nonreactor callers. Deferred receive drains
 buffered bytes before reporting peer EOF. Deployment input uses these deferred
 notifications; HTTP keyhole input remains serial.
+
+Deferred TCP \texttt{OP\_SEND} (16) carries the full socket ID and one exact
+4096-byte moved \texttt{CSOCKTX1} frame: eight magic bytes, a little-endian
+32-bit length, four zero reserved bytes, 1--4080 payload bytes and a zero tail.
+Untagged, incomplete or extended frames reject. The complete request retains
+its read-only mapping through handshake or buffer pressure. A positive scalar
+receipt acknowledges one locally enqueued prefix. Only then may a caller submit
+its remainder. Terminal states and explicit close settle the request with an
+error; timeout or observation failure grants no replay authority.
+\texttt{OwnedSocket::send\_call} returns the pending owner for CQ binding.
+Deployment response sends use it with an original five-second output deadline.
+The distinct immediate TCP/UDP operation \texttt{OP\_TRY\_SEND} (6) retains its
+packed length/socket-ID argument. The NIC's send opcode belongs to a separate
+protocol. TCP/IP still progresses on its 50~ms timed reactor cadence; deferred
+receipts do not make the whole transport event-driven.
 
 \texttt{OP\_RECV} and \texttt{OP\_STATUS} require one writable 4096-byte
 caller-supplied memory object moved into the call. The reply returns that same

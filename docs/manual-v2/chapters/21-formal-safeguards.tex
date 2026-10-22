@@ -120,6 +120,14 @@ provide.
 
 \section{What is modeled}
 
+The deployment output projection checks two admitted outputs with two abstract
+prefixes. Only a positive producer receipt advances the offset and admits its
+remainder. Wakes grant no progress, uncertainty permits no replay and all chunks
+retain the original deadline. Negative controls replay an uncertain prefix or
+restart its budget. Byte framing, capacity, actual TCP delivery, socket close,
+wall-clock scheduling and whole-service fairness are outside the projection.
+See \path{docs/tla/CharlotteDeploymentOutput.tla}.
+
 The deployment controller projection checks two admitted calls, binding before
 parking, observation beside an unanswered request, original deadlines and
 once-only submission. Receiver backing may survive caller cancellation until
@@ -136,8 +144,8 @@ controller calls, response transmission, close, new admissions and wall-clock
 fairness are outside this model. See
 \path{docs/tla/CharlotteDeploymentInput.tla} and its conformance map.
 
-The current suite checks thirty-eight safe configurations across thirty-six
-specifications. It also checks 113 expected-counterexample
+The current suite checks thirty-nine safe configurations across thirty-seven
+specifications. It also checks 115 expected-counterexample
 configurations. The models are divided by state ownership and failure boundary
 so that each remains reviewable.
 The Raft models are deliberately layered: election, log replication,
@@ -154,6 +162,10 @@ different proof obligations.
 \textbf{Model} & \textbf{Functional boundary} & \textbf{Principal safety properties} \\
 \hline
 \endhead
+\tlbreak{Charlotte}{DeploymentOutput} & Confirmed output prefixes and original
+    budgets & Once-only prefix submission; unchanged deadlines; wakes grant no
+    enqueue or replay authority. \\
+\hline
 \tlbreak{Charlotte}{DeploymentControl} & Accepted controller calls, independent
     reply readiness, timeout and receiver backing & Complete wait interests;
     once-only submission; retained owners on rejected wait; timeout grants no
@@ -1084,7 +1096,7 @@ Flat session allocation & Retry and restart epochs alias one wire session. &
 \end{longtable}
 \normalsize
 
-The check suite expects all 113 negative configurations to fail for the named
+The check suite expects all 115 negative configurations to fail for the named
 reason. If one unexpectedly satisfies its invariant, the regression harness
 has lost sensitivity and the suite fails.
 
@@ -1130,12 +1142,12 @@ docs/tla/check.sh /path/to/tla2tools.jar
 Alternatively, \texttt{TLA2TOOLS\_JAR} may name the tools archive. The script:
 
 \begin{itemize}
-    \item runs all thirty-eight safe configurations;
+    \item runs all thirty-nine safe configurations;
     \item enables action coverage and requires selected actions to have a
         positive successor count;
     \item rejects structural TLC warnings about variables, \texttt{EXCEPT}
         expressions, or incomplete successor states;
-    \item runs 113 negative configurations and requires each one to fail on
+    \item runs 115 negative configurations and requires each one to fail on
         the named invariant after exercising the named unsafe action; and
     \item writes checkpoints and traces into a temporary directory so generated
         state does not become part of the source tree.

@@ -24,6 +24,22 @@ separates current verifier/fixture/handoff behavior from a conditional future
 protected-installation contract. Platform, atomic-state and custody inputs remain
 unimplemented production boundaries.
 
+## Deployment output receipts
+
+| Model state/action | Implementation | Qualification |
+|---|---|---|
+| `active`, `attempts`, `confirmed`, `ObservePrefix` | `deployment_output::Machine`, `Output`, `arm`, `advance` | One accepted moved send per output. Only a checked positive scalar receipt advances the offset and submits the remainder. Model prefixes are units; actual 4080-byte chunking, string capacity and frame codec use host/native tests. |
+| `ProducerReceipt`, `ready` | TCP/IP `PendingSend`, `send_ready`, `Enqueue`, consuming reply | Real readiness comes from handshake/send-buffer state; zero enqueue retains the request, positive enqueue fences repetition. The model abstracts producer delivery, without TCP correctness or peer-delivery proof. |
+| `EndUncertain`, `deadline` | expiry, invalid/service/observation result; existing PendingCall cancellation then logical socket close | Uncertainty never authorizes resending. Original five-second output budget persists across chunks. Model termination includes failure and expiry; actual close and physical cleanup are omitted. |
+| `Park`, `Wake`, `RejectWait` | drain CQ, recheck all phases, wait for minimum remaining deadline | Wake alone advances no bytes. Binding/wait rejection aborts with all owners live. Model starts after admission, assuming bound sources, with two outputs/two prefixes; no whole-service fairness or wall-clock guarantee. |
+
+Safe TLC checks require `PrefixesOnce`, `OriginalBudget` and `ParkCoversAll`.
+Negative controls replay an uncertain prefix or restart a chunk's deadline.
+Source/host/native evidence is recorded in the
+[output audit](../reports/audits/2026-10-22-security-deployment-output.md).
+Socket setup/close, real saturated buffers, rendering, dynamic admission,
+allocator/map faults and kernel scheduling remain separate qualification work.
+
 ## Deployment controller observation
 
 | TLA+ action/state | Rust implementation | Correspondence |

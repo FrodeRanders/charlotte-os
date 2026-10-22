@@ -11,8 +11,10 @@ pub mod local_invocation;
 pub mod publication_generation;
 pub use charlotte_protocol_dns as dns_call;
 pub use charlotte_protocol_ns as ns_generation;
+pub mod deployment_output;
 pub mod network_random;
 pub mod socket_lifetime;
+pub mod socket_send;
 pub mod socket_state;
 
 /// Authorization policy state machine shared by a co-located name/policy
@@ -774,7 +776,8 @@ pub mod socket {
     pub const OP_LISTEN: u32 = 4;
     /// Observe the current accept state without retaining a waiter.
     pub const OP_TRY_ACCEPT: u32 = 5;
-    pub const OP_SEND: u32 = 6;
+    /// Attempt an immediate packed TCP/UDP send without retaining a waiter.
+    pub const OP_TRY_SEND: u32 = 6;
     /// Move one writable `REPLY_BUFFER_BYTES` buffer into the call. Reply
     /// returns that buffer with the byte count, or a scalar error/EOF. The
     /// original allocating principal remains its backing sponsor.
@@ -815,6 +818,10 @@ pub mod socket {
     /// closes. A successful scalar reply is zero. Bind its PendingCall to a
     /// CQ to combine accept readiness with other socket/deadline interests.
     pub const OP_ACCEPT: u32 = 15;
+    /// Deferred TCP send: full socket ID in arg0, exact CSOCKTX1 moved page.
+    /// Retains caller-sponsored backing until enqueue progress or terminal
+    /// socket state. A positive scalar acknowledges exactly that byte prefix.
+    pub const OP_SEND: u32 = 16;
 
     pub const CONNECTION_STATE_CLOSED: i64 = 0;
     pub const CONNECTION_STATE_CONNECTING: i64 = 1;
@@ -1056,7 +1063,7 @@ pub mod socket {
                 let packed = ((chunk_len as u64) << 32) | (self.id() & 0xffff_ffff);
                 let result = self
                     .service
-                    .call_move(OP_SEND, packed, memory)
+                    .call_move(OP_TRY_SEND, packed, memory)
                     .map_err(|(_, error)| SocketError::Ipc(error))?
                     .wait()
                     .map_err(SocketError::Ipc)?
@@ -1072,6 +1079,34 @@ pub mod socket {
                 }
             }
             Err(SocketError::RetryExhausted)
+        }
+
+        /// Submit one deferred TCP send. The moved page contains an exact
+        /// frame; no Rust memory borrow survives submission. Observe the
+        /// positive prefix receipt before submitting any remaining bytes.
+        pub fn send_call(
+            &self,
+            bytes: &[u8],
+            deadline: &super::deadline::Deadline,
+        ) -> Result<PendingCall<'static>, SocketError> {
+            if deadline.expired() {
+                return Err(SocketError::RetryExhausted);
+            }
+            if bytes.is_empty() || bytes.len() > super::socket_send::MAX_PAYLOAD {
+                return Err(SocketError::InvalidReply);
+            }
+            let memory = OwnedMemory::allocate(1).map_err(SocketError::Memory)?;
+            let mut mapping = memory.map_writable().map_err(|(_, e)| SocketError::Memory(e))?;
+            if !super::socket_send::encode(bytes, mapping.as_mut_slice()) {
+                return Err(SocketError::InvalidReply);
+            }
+            let memory = mapping.unmap().map_err(|(_, e)| SocketError::Memory(e))?;
+            if deadline.expired() {
+                return Err(SocketError::RetryExhausted);
+            }
+            self.service
+                .call_move(OP_SEND, self.id(), memory)
+                .map_err(|(_memory, error)| SocketError::Ipc(error))
         }
 
         /// Submit a receive using this caller's backing, without waiting.

@@ -230,6 +230,63 @@ fn controller_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>) {
     ));
 }
 
+fn output_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>) {
+    use catten_services::deployment_output::{
+        Error,
+        Outputs,
+    };
+    let mut outputs = Outputs::new(0);
+    let budget = Deadline::after(2_000);
+    for domain in [socket::DOMAIN_TCP, socket::DOMAIN_UDP] {
+        let socket =
+            socket::OwnedSocket::open(tcpip, domain).unwrap_or_else(|_| catten_rt::domain_abort());
+        check(outputs.start(socket, alloc::borrow::Cow::Borrowed("probe")).is_none(), 210);
+    }
+    let cq = ctx.completion_queue_layout();
+    let mut completed = 0;
+    while completed < 2 {
+        for _ in 0..cq.entries {
+            if unsafe { catten_syscall::cq_read(cq.base, cq.entries) }.is_none() {
+                break;
+            }
+        }
+        check(!budget.expired(), 211);
+        if let Some((socket, result)) = outputs.advance().1 {
+            check(matches!(result, Err(Error::Service(socket::ERR_NOT_CONNECTED))), 212);
+            let _ = socket.close();
+            completed += 1;
+            continue;
+        }
+        catten_services::reactor::wait(
+            Some(outputs.remaining_ms().unwrap_or(0).min(budget.remaining_ms())),
+            0,
+        );
+    }
+    check(outputs.occupied_slots() == 0, 213);
+
+    // A current TCP socket still rejects an untagged moved page before enqueue.
+    let socket = socket::OwnedSocket::open(tcpip, socket::DOMAIN_TCP)
+        .unwrap_or_else(|_| catten_rt::domain_abort());
+    let memory = OwnedMemory::allocate(1).unwrap_or_else(|_| catten_rt::domain_abort());
+    let mut mapping = memory.map_writable().unwrap_or_else(|_| catten_rt::domain_abort());
+    mapping.as_mut_slice().fill(0);
+    let memory = mapping.unmap().unwrap_or_else(|_| catten_rt::domain_abort());
+    let mut pending = tcpip
+        .call_move(socket::OP_SEND, socket.id(), memory)
+        .unwrap_or_else(|_| catten_rt::domain_abort());
+    let reply = pending
+        .wait_timeout(2_000)
+        .unwrap_or_else(|_| catten_rt::domain_abort())
+        .unwrap_or_else(|| catten_rt::domain_abort());
+    denied(reply, socket::ERR_BAD_OPCODE, 214);
+    drop(pending);
+    let _ = socket.close();
+    catten_rt::logln!(concat!(
+        "[security] deployment output CQ: TCP terminal and UDP rejection; ",
+        "moved frame cleanup and retired frame rejection"
+    ));
+}
+
 fn main(ctx: Context) -> ! {
     check(ctx.name_service_connection().is_none(), 1);
     let controller = ctx.bootstrap_connection().unwrap_or_else(|| catten_rt::domain_abort());
@@ -524,6 +581,7 @@ fn main(ctx: Context) -> ! {
     );
     checks |= 512;
     controller_reactor_probe(&ctx, tcpip.as_ref());
+    output_reactor_probe(&ctx, tcpip.as_ref());
 
     // Many small, individually legal allocations must hit an aggregate cap
     // before exhausting node RAM. Retain every owner until rejection, then

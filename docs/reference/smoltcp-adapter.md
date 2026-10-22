@@ -87,7 +87,7 @@ for the boot-done marker, then runs a poll loop that:
 2. Runs `iface.poll()` using milliseconds sampled from the kernel monotonic counter;
 3. Services at most 16 requests per cycle through the socket API (`OP_SOCKET`/`OP_CONNECT`/`OP_BIND`/`OP_LISTEN`/
    `OP_ACCEPT`/`OP_SEND`/`OP_RECV`/`OP_CLOSE`) over its endpoint;
-4. Completes deferred `OP_ACCEPT` and `OP_RECV` replies when their socket state changes.
+4. Completes deferred `OP_ACCEPT`, `OP_SEND` and `OP_RECV` replies when their socket state changes.
 
 smoltcp 0.13 transitions a listening socket itself into the established
 connection. `OP_ACCEPT` (15) retains the complete authenticated request until
@@ -96,8 +96,26 @@ Listen and SynReceived keep it pending; terminal states and explicit close
 complete it with an error. `OwnedSocket::accept_call` exposes that pending owner
 for CQ binding. `OP_TRY_ACCEPT` (5) remains a distinct immediate observation for
 nonreactor callers. Deferred receive delivers buffered data before EOF, and
-reports EOF once a peer's receive half closes with no remaining bytes. `OP_SEND` carries the payload length in the high 32 bits of `arg0`;
-`OP_RECV` replies later by moving a page holding the received bytes.
+reports EOF once a peer's receive half closes with no remaining bytes. `OP_RECV` replies later by moving a page holding the received bytes.
+
+Deferred TCP `OP_SEND` (16) carries the full socket ID in `arg0` and one exact
+4096-byte moved `CSOCKTX1` frame: eight magic bytes, little-endian u32 payload
+length, four zero reserved bytes, then 1..=4080 payload bytes and a zero tail.
+Missing, extended, untagged or malformed frames reject. The complete request
+owns a read-only mapping while handshake or a full send buffer holds it pending.
+Established and CloseWait can enqueue; terminal states, explicit close and
+shutdown settle it with an error. A positive scalar receipt acknowledges exactly
+one enqueued prefix; the caller may then submit its remainder. Mapping access
+ends before consuming reply authority. Errors or lost observations cannot
+establish that nothing was enqueued and cannot authorize replay.
+`OwnedSocket::send_call` prepares this frame against an existing deadline and
+returns a pending owner for CQ binding. Deployment response sends use it.
+The existing immediate TCP/UDP operation is explicitly `OP_TRY_SEND` (6), with
+payload length in the high 32 bits and socket ID in the low 32 bits. Both are
+current, distinct operations; opcode 16 has no packed fallback. NIC `net::OP_SEND`
+is a separate protocol. TCP/IP retains its 50 ms timed transport cadence;
+deferred send completion supplies a real reply notification, without making the
+whole stack event-driven. See the [output audit](../reports/audits/2026-10-22-security-deployment-output.md).
 
 ## What's in place
 

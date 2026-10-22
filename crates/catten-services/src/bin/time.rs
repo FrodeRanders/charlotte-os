@@ -490,7 +490,7 @@ fn start_attempt<'connection>(
         }
     };
     let packed_send = ((NTP_PACKET_LEN as u64) << 32) | (socket.id() & 0xffff_ffff);
-    let send = match tcp_conn.call_move(socket::OP_SEND, packed_send, packet_memory) {
+    let send = match tcp_conn.call_move(socket::OP_TRY_SEND, packed_send, packet_memory) {
         Ok(call) => call,
         Err((_, error)) => {
             ntp_setup_failed(NTP_SETUP_SEND_SUBMIT, u32::MAX);
