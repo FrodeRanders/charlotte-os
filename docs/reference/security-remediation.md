@@ -136,7 +136,8 @@ bytes. Timeout and observation failure terminate without replay or delivery
 claims. The new exact CSOCKTX1 frame carries the full socket ID. Native normal
 HTTP/release and rejection/cleanup cases qualify this path; saturated native TCP
 buffers and whole-service fairness remain unqualified. TCP/IP retains its timed
-transport cadence, and setup/close/render/controller internals can still block.
+transport cadence. Setup/close/render/controller work remained blocking at that
+milestone; later follow-ups below cover ingress-side close and setup.
 
 The [logical-close follow-up](../reports/audits/2026-10-22-security-deployment-close.md)
 consumes completed/rejected clients into CQ-bound close operations, keeping the
@@ -146,8 +147,8 @@ one five-second admission/observation deadline; queue-full rejection alone permi
 rejected binding/wait aborts with exact owners retained. Existing close operations
 drain on lifecycle shutdown without restarting their budgets. The synchronous
 ID-restoration fallback remained a gap until the follow-up below. Other phases'
-socket destructors, partial setup/open/listen and controller/render work remain
-blocking contexts. Native ordinary close succeeds; real held-close,
+socket destructors, partial setup/open/listen and controller/render work remained
+blocking contexts at that milestone. Native ordinary close succeeds; real held-close,
 queue-saturation and abort-boundary injection remain unqualified. Initial ARM
 and x86 HTTP abortive-peer controls exposed reaping before close and an erroneous
 fail-closed response to ERR_BAD_SOCKET. The corrected producer distinguishes
@@ -198,6 +199,16 @@ rescans only after observed removal, while keeping every still-present claim
 Pending. The same closing root, original charges and completion proofs remain
 required. This removes one possible false timeout boundary; its relationship to
 the historical live cancellation-stress timeout remains unproven.
+
+The [listener setup follow-up](../reports/audits/2026-10-22-security-deployment-listener.md)
+puts socket creation, listen and accept in the existing four-position reactor.
+Every accepted phase binds to the same CQ. One setup deadline survives phase
+changes and queue-full-only admission backoff; admitted idle accept is event-only.
+Confirmed rejection transfers known sockets into the close pool. Uncertain
+creation/setup retains the complete owner through abort, without replay. Shutdown
+observes accepted creation/listen and cancels idle accepts into that pool under
+the original budgets. Rendering, controller internals, other shutdown destructors
+and all-position admission pressure remain separate boundaries.
 
 Remaining acceptance requires progress during saturated admission and slow
 controller-server/transport phases, sustained connection/packet flood, NIC failure

@@ -230,6 +230,118 @@ fn controller_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>) {
     ));
 }
 
+/// A real IPC adapter holds creation while a second listener completes setup,
+/// accept and logical close. Its scalar IDs are fixture metadata with no TCP
+/// backing; native HTTP runs separately exercise the actual TCP/IP backend.
+fn listener_reactor_probe(ctx: &Context) {
+    let endpoint = Endpoint::create(socket::INTERFACE, socket::VERSION, 8)
+        .unwrap_or_else(|_| catten_rt::domain_abort());
+    endpoint.bind_completion_queue(0).unwrap_or_else(|_| catten_rt::domain_abort());
+    let connection =
+        endpoint.connect(IpcRights::CALL).unwrap_or_else(|_| catten_rt::domain_abort());
+    let mut listeners =
+        catten_services::deployment_listener::Listeners::new(connection.as_ref(), 0);
+    let mut closes = catten_services::deployment_close::Closes::new(0);
+    listeners.replenish(2);
+    let mut held = None;
+    let mut created = 0;
+    let mut completed = false;
+    let mut released = false;
+    let budget = Deadline::after(2_000);
+    let cq = ctx.completion_queue_layout();
+    loop {
+        for _ in 0..cq.entries {
+            if unsafe { catten_syscall::cq_read(cq.base, cq.entries) }.is_none() {
+                break;
+            }
+        }
+        check(!budget.expired(), 250);
+        let mut progressed = false;
+        while let Some(mut request) =
+            endpoint.try_receive().unwrap_or_else(|_| catten_rt::domain_abort())
+        {
+            progressed = true;
+            check(request.connection.is_none(), 251);
+            let result = match request.opcode {
+                socket::OP_SOCKET => {
+                    check(request.arg0 == socket::DOMAIN_TCP && request.memory.is_none(), 252);
+                    created += 1;
+                    if created == 1 {
+                        held = Some(request);
+                        continue;
+                    }
+                    check(created == 2, 253);
+                    2
+                }
+                socket::OP_LISTEN => {
+                    check(request.arg0 == 2, 254);
+                    let memory = request.memory.take().unwrap_or_else(|| catten_rt::domain_abort());
+                    let mapping =
+                        memory.map_read_only().unwrap_or_else(|_| catten_rt::domain_abort());
+                    check(
+                        mapping.as_slice()[..2]
+                            == catten_services::clusterctl::NOTIFY_PORT.to_le_bytes(),
+                        255,
+                    );
+                    drop(mapping);
+                    0
+                }
+                socket::OP_ACCEPT | socket::OP_CLOSE => {
+                    check(request.arg0 == 2 && request.memory.is_none(), 256);
+                    0
+                }
+                _ => {
+                    check(false, 257);
+                    unreachable!()
+                }
+            };
+            request
+                .reply
+                .take()
+                .unwrap_or_else(|| catten_rt::domain_abort())
+                .reply(result)
+                .unwrap_or_else(|_| catten_rt::domain_abort());
+        }
+        let (progress, finished) = listeners.advance(false);
+        progressed |= progress;
+        if let Some((socket, accepted)) = finished {
+            check(accepted && socket.id() == 2 && !completed && held.is_some(), 258);
+            check(listeners.occupied_slots() == 1, 259);
+            completed = true;
+            closes.start(socket);
+        }
+        progressed |= closes.advance();
+        if completed && closes.occupied_slots() == 0 && !released {
+            let mut request = held.take().unwrap_or_else(|| catten_rt::domain_abort());
+            request
+                .reply
+                .take()
+                .unwrap_or_else(|| catten_rt::domain_abort())
+                .reply(socket::ERR_QUOTA_EXCEEDED)
+                .unwrap_or_else(|_| catten_rt::domain_abort());
+            released = true;
+            progressed = true;
+        }
+        if released && listeners.occupied_slots() == 0 {
+            break;
+        }
+        if !progressed {
+            let remaining =
+                [listeners.remaining_ms(false), closes.remaining_ms(), Some(budget.remaining_ms())]
+                    .into_iter()
+                    .flatten()
+                    .min();
+            catten_services::reactor::wait(remaining, 0);
+        }
+    }
+    check(created == 2 && completed && held.is_none() && closes.occupied_slots() == 0, 260);
+    check(endpoint.try_receive().unwrap_or_else(|_| catten_rt::domain_abort()).is_none(), 261);
+    catten_rt::logln!(concat!(
+        "[security] deployment listener CQ: held creation beside complete listen/accept/close; ",
+        "moved setup page and confirmed creation rejection, no replay"
+    ));
+}
+
 fn output_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>) {
     use catten_services::deployment_output::{
         Error,
@@ -730,6 +842,7 @@ fn main(ctx: Context) -> ! {
     let synchronous_expired = socket::OwnedSocket::open(tcpip.as_ref(), socket::DOMAIN_UDP)
         .unwrap_or_else(|_| catten_rt::domain_abort());
     controller_reactor_probe(&ctx, tcpip.as_ref());
+    listener_reactor_probe(&ctx);
     output_reactor_probe(&ctx, tcpip.as_ref());
     close_reactor_probe(&ctx, tcpip.as_ref(), expired_socket);
     synchronous_close_probe(tcpip.as_ref(), synchronous_expired);

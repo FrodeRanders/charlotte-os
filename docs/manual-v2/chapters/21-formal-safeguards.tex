@@ -134,6 +134,15 @@ state and violates \texttt{NoReentry}; accepted replay has its existing control.
 This is no recoverable custody, deadline-duration, field-destructor or runtime
 abort proof. See \path{docs/tla/CharlotteDeploymentClose.tla}.
 
+The deployment listener projection checks two setup positions through creation,
+listen and idle accept. Each phase accepts once, all setup phases share their
+original deadline and parking covers every owner. Admitted idle accept has no
+timer. Negative controls replay a phase, restart its budget or park beside a
+ready reply. Binding, producer delivery and atomic turns are assumptions;
+shutdown, dynamic cross-phase admission, byte validation, TCP state and
+wall-clock fairness remain outside the projection. See
+\path{docs/tla/CharlotteDeploymentListener.tla}.
+
 The deployment output projection checks two admitted outputs with two abstract
 prefixes. Only a positive producer receipt advances the offset and admits its
 remainder. Wakes grant no progress, uncertainty permits no replay and all chunks
@@ -166,8 +175,8 @@ Pending or skip live work. Actual root, loan, backing and peer-completion proofs
 are boundary inputs, and later wakes/deadlines lie outside this projection.
 See \path{docs/tla/CharlotteNamespaceDrain.tla}.
 
-The current suite checks forty-two safe configurations across thirty-nine
-specifications. It also checks 120 expected-counterexample
+The current suite checks forty-three safe configurations across forty
+specifications. It also checks 123 expected-counterexample
 configurations. The models are divided by state ownership and failure boundary
 so that each remains reviewable.
 The Raft models are deliberately layered: election, log replication,
@@ -1132,7 +1141,7 @@ Flat session allocation & Retry and restart epochs alias one wire session. &
 \end{longtable}
 \normalsize
 
-The check suite expects all 120 negative configurations to fail for the named
+The check suite expects all 123 negative configurations to fail for the named
 reason. If one unexpectedly satisfies its invariant, the regression harness
 has lost sensitivity and the suite fails.
 
@@ -1178,12 +1187,12 @@ docs/tla/check.sh /path/to/tla2tools.jar
 Alternatively, \texttt{TLA2TOOLS\_JAR} may name the tools archive. The script:
 
 \begin{itemize}
-    \item runs all forty-two safe configurations;
+    \item runs all forty-three safe configurations;
     \item enables action coverage and requires selected actions to have a
         positive successor count;
     \item rejects structural TLC warnings about variables, \texttt{EXCEPT}
         expressions, or incomplete successor states;
-    \item runs 120 negative configurations and requires each one to fail on
+    \item runs 123 negative configurations and requires each one to fail on
         the named invariant after exercising the named unsafe action; and
     \item writes checkpoints and traces into a temporary directory so generated
         state does not become part of the source tree.

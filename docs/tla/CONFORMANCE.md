@@ -48,6 +48,24 @@ controls inject a real close between scan/preparation with local guards released
 production supplies an empty fixture hook. See the
 [implementation evidence](../reports/audits/2026-10-22-ipc-namespace-selection.md).
 
+## Deployment listener setup
+
+| Model state/action | Implementation | Qualification |
+|---|---|---|
+| `stage`, `status`, `Admit`, `accepted` | `deployment_listener::Machine::advance`, `OpeningSocket`, `OwnedSocket::listen_call`, `accept_call` | Creation/listen/accept retain one owner in the existing position. Binding is assumed within admission before parking; actual binding failure aborts with the accepted owner live. No accepted replay. |
+| `socket`, `Observe`, `RejectConfirmed` | Checked creation scalar produces a private socket lease; listen/accept require zero without attachments; confirmed negatives reject | The model abstracts validated replies. Runtime retains uncertain observations; returned attachments follow existing owned disposal. Transfer to input/close ends this projection and proves no physical release. |
+| `deadline`, `RejectQueue`, `retryAt`, `Tick` | One five-second setup budget and queue-full-only 50 ms admission backoff | Creation/listen/accept phase changes preserve the deadline. The idle admitted accept has no timer. Concrete clock arithmetic and syscall return latency remain source/test boundaries. |
+| `Park`, `Wake`, `ProducerReply`, `Abort` | CQ drain, exact owner recheck, earliest remaining deadline, terminal domain abort with all fields live | Fixed two-position projection assumes producer notifications and atomic turns. Three negatives replay a phase, restart its budget or park while another owner is ready. No temporal fairness claim. |
+
+Shutdown retains accepted creation/listen until checked observation, then hands
+known sockets to the existing close pool; idle accepts cancel before their
+sockets move. This host-tested adapter behavior, frame/mapping/returned-owner
+cleanup, dynamic admission across all five phases, physical TCP state and
+wall-clock pressure are outside this model. The native IPC adapter holds creation
+beside another listener's complete setup/accept/close; native HTTP runs use the
+real TCP/IP service. See the
+[listener evidence](../reports/audits/2026-10-22-security-deployment-listener.md).
+
 ## Deployment logical close
 
 | Model state/action | Implementation | Qualification |

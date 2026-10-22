@@ -28,8 +28,6 @@ use catten_services::{
 };
 use catten_syscall::thread_exit;
 
-const ACCEPT_RETRY_MS: u64 = 50;
-
 const BAD_REQUEST_RESPONSE: &str = concat!(
     "HTTP/1.1 400 Bad Request\r\n",
     "Content-Type: application/json\r\nContent-Length: 30\r\nConnection: close\r\n\r\n",
@@ -44,15 +42,6 @@ const ALLOCATION_FAILURE_RESPONSE: &str = concat!(
 
 fn fail() -> ! {
     unsafe { thread_exit() }
-}
-
-fn new_listener(
-    tcp: catten_rt::owned::ConnectionRef<'_>,
-) -> Result<socket::OwnedSocket<'_>, socket::SocketError> {
-    let socket =
-        socket::OwnedSocket::open(tcp, socket::DOMAIN_TCP).map_err(socket::SocketError::Ipc)?;
-    socket.listen(clusterctl::NOTIFY_PORT)?;
-    Ok(socket)
 }
 
 fn serve(ctx: &Context) -> ShutdownRequest {
@@ -80,9 +69,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let mut outputs = catten_services::deployment_output::Outputs::new(0);
     let mut closes = catten_services::deployment_close::Closes::new(0);
     let mut shutdown = None;
-    let mut accepting: [Option<Accepting<'_>>; catten_services::deployment_input::MAX_CLIENTS] =
-        core::array::from_fn(|_| None);
-    let mut retry: Option<catten_services::deadline::Deadline> = None;
+    let mut listeners = catten_services::deployment_listener::Listeners::new(tcp.as_ref(), 0);
     let mut announced = false;
     loop {
         // CQ entries are hints. Drain before checking the exact pending owners;
@@ -96,67 +83,45 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             shutdown = ctx.lifecycle().shutdown_requested();
         }
         if shutdown.is_some() {
-            // Drain existing logical-close owners under their original budgets
-            // before leaving this scope. Other phases remain owned throughout;
-            // their existing shutdown destructors are a separate boundary.
-            if closes.occupied_slots() == 0 {
+            // Finish accepted setup under its original budget. Cancel idle
+            // accepts into the same close pool while all other phases stay live.
+            let (listener_progress, finished) = listeners.advance(true);
+            if let Some((socket, _)) = finished {
+                closes.start(socket);
+            }
+            let close_progress = closes.advance();
+            if listeners.occupied_slots() == 0 && closes.occupied_slots() == 0 {
                 return shutdown.take().unwrap();
             }
-            if !closes.advance() {
-                catten_services::reactor::wait(closes.remaining_ms(), 0);
+            if !listener_progress && !close_progress {
+                catten_services::reactor::wait(
+                    [listeners.remaining_ms(false), closes.remaining_ms()]
+                        .into_iter()
+                        .flatten()
+                        .min(),
+                    0,
+                );
             }
             continue;
         }
-        if retry.is_some_and(|deadline| deadline.expired()) {
-            retry = None;
-        }
-        replenish(
-            tcp.as_ref(),
-            &mut accepting,
-            inputs.available_slots().saturating_sub(
-                controls.occupied_slots() + outputs.occupied_slots() + closes.occupied_slots(),
-            ),
-            &mut retry,
-            trace,
+        let available = inputs.available_slots().saturating_sub(
+            controls.occupied_slots() + outputs.occupied_slots() + closes.occupied_slots(),
         );
-        if !announced && accepting.iter().any(Option::is_some) {
+        listeners.replenish(available);
+        let (mut progressed, finished) = listeners.advance(false);
+        if !announced && listeners.accepting() {
             catten_rt::logln!("[deployd] listening port={}", clusterctl::NOTIFY_PORT);
             announced = true;
         }
-        let mut accepted = false;
-        for slot in &mut accepting {
-            let Some(owner) = slot.as_mut() else {
-                continue;
-            };
-            match owner.pending.poll() {
-                Ok(None) => {}
-                Ok(Some(reply))
-                    if reply.result == 0
-                        && reply.memory.is_none()
-                        && reply.connection.is_none() =>
-                {
-                    let Accepting {
-                        pending,
-                        socket,
-                    } = slot.take().unwrap();
-                    drop(pending);
-                    if let Err((socket, _)) = inputs.admit(socket) {
-                        closes.start(socket);
-                    }
-                    accepted = true;
-                }
-                _ => {
-                    let Accepting {
-                        pending,
-                        socket,
-                    } = slot.take().unwrap();
-                    drop(pending);
+        if let Some((socket, accepted)) = finished {
+            if accepted {
+                if let Err((socket, _)) = inputs.admit(socket) {
                     closes.start(socket);
-                    retry = Some(catten_services::deadline::Deadline::after(ACCEPT_RETRY_MS));
                 }
+            } else {
+                closes.start(socket);
             }
         }
-        let mut progressed = accepted;
         if let Some((socket, reply)) = controls.advance() {
             progressed = true;
             if let Some((socket, result)) = outputs.start(socket, reply) {
@@ -192,15 +157,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             retire_output(socket, result, &mut closes, trace);
         }
         progressed |= closes.advance();
-        replenish(
-            tcp.as_ref(),
-            &mut accepting,
-            inputs.available_slots().saturating_sub(
-                controls.occupied_slots() + outputs.occupied_slots() + closes.occupied_slots(),
-            ),
-            &mut retry,
-            trace,
+        let available = inputs.available_slots().saturating_sub(
+            controls.occupied_slots() + outputs.occupied_slots() + closes.occupied_slots(),
         );
+        listeners.replenish(available);
         if progressed {
             continue;
         }
@@ -209,7 +169,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             controls.remaining_ms(),
             outputs.remaining_ms(),
             closes.remaining_ms(),
-            retry.map(|d| d.remaining_ms()),
+            listeners.remaining_ms(available > listeners.occupied_slots()),
         ]
         .into_iter()
         .flatten()
@@ -230,60 +190,6 @@ fn retire_output<'a>(
     // A send receipt confirms enqueue only. The next owning phase observes one
     // logical close without blocking other clients or resending accepted work.
     closes.start(socket);
-}
-
-fn replenish<'a>(
-    tcp: catten_rt::owned::ConnectionRef<'a>,
-    accepting: &mut [Option<Accepting<'a>>; catten_services::deployment_input::MAX_CLIENTS],
-    available: usize,
-    retry: &mut Option<catten_services::deadline::Deadline>,
-    trace: bool,
-) {
-    if retry.is_some() {
-        return;
-    }
-    let mut count = accepting.iter().flatten().count();
-    for slot in accepting.iter_mut().filter(|slot| slot.is_none()) {
-        if count >= available {
-            break;
-        }
-        match begin_accept(tcp) {
-            Ok(owner) => {
-                *slot = Some(owner);
-                count += 1;
-            }
-            Err(error) => {
-                if trace {
-                    catten_rt::logln!("[deployd] listener admission rejected: {error:?}");
-                }
-                // Rejected setup has no readiness producer. Accepted listener
-                // and receive operations retain their own CQ notifications.
-                *retry = Some(catten_services::deadline::Deadline::after(ACCEPT_RETRY_MS));
-                break;
-            }
-        }
-    }
-}
-
-struct Accepting<'a> {
-    pending: catten_rt::owned::PendingCall<'static>,
-    socket: socket::OwnedSocket<'a>,
-}
-
-fn begin_accept(
-    tcp: catten_rt::owned::ConnectionRef<'_>,
-) -> Result<Accepting<'_>, socket::SocketError> {
-    let socket = new_listener(tcp)?;
-    let pending = socket.accept_call().map_err(socket::SocketError::Ipc)?;
-    let mut owner = Accepting {
-        pending,
-        socket,
-    };
-    if owner.pending.bind_cq(0).is_err() {
-        // Accepted work and its socket stay together through terminal abort.
-        catten_rt::domain_abort();
-    }
-    Ok(owner)
 }
 
 fn main(ctx: Context) -> ! {

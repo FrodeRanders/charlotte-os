@@ -88,6 +88,14 @@ run_expected_violation() {
 }
 
 cd "${script_dir}"
+run_model CharlotteDeploymentListener CharlotteDeploymentListener_small.cfg \
+    Admit RejectQueue ProducerReply Observe RejectConfirmed Abort Park Wake Tick
+run_expected_violation CharlotteDeploymentListener CharlotteDeploymentListener_replay_unsafe.cfg \
+    AcceptedOnce UnsafeReplay
+run_expected_violation CharlotteDeploymentListener CharlotteDeploymentListener_budget_unsafe.cfg \
+    OriginalBudget UnsafeRestart
+run_expected_violation CharlotteDeploymentListener CharlotteDeploymentListener_serial_unsafe.cfg \
+    ParkCoversAll UnsafeSerialPark
 run_model CharlotteNamespaceDrain CharlotteNamespaceDrain_small.cfg \
     Select SelectEmpty ClosePeer FinishClaim CancelSelected RejectPreparation RecheckMissing ReturnPending
 run_expected_violation CharlotteNamespaceDrain CharlotteNamespaceDrain_stale_unsafe.cfg \

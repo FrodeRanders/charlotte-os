@@ -12,6 +12,7 @@ pub mod publication_generation;
 pub use charlotte_protocol_dns as dns_call;
 pub use charlotte_protocol_ns as ns_generation;
 pub mod deployment_close;
+pub mod deployment_listener;
 pub mod deployment_output;
 pub mod network_random;
 mod socket_close;
@@ -961,6 +962,51 @@ pub mod socket {
         lease: Option<SocketLease<'connection>>,
     }
 
+    /// An accepted creation request can already own an unobserved remote socket.
+    /// Retain its original connection until a checked reply transfers that socket
+    /// or confirms rejection. Incomplete destruction aborts without replay.
+    #[must_use = "observe socket creation before releasing its service connection"]
+    pub struct OpeningSocket<'connection> {
+        pending: Option<PendingCall<'static>>,
+        service: Option<ConnectionRef<'connection>>,
+    }
+
+    impl<'connection> OpeningSocket<'connection> {
+        pub fn bind_cq(&mut self, cq: u32) -> Result<(), IpcError> {
+            self.pending.as_mut().expect("accepted creation").bind_cq(cq)
+        }
+
+        /// Service rejection is terminal and disarms this owner. Malformed or
+        /// failed observation retains it, since remote creation is uncertain.
+        pub fn poll(&mut self) -> Result<Option<OwnedSocket<'connection>>, SocketError> {
+            let Some(reply) = self.pending.as_mut().expect("accepted creation").poll()? else {
+                return Ok(None);
+            };
+            if reply.memory.is_some() || reply.connection.is_some() || reply.result == 0 {
+                return Err(SocketError::InvalidReply);
+            }
+            drop(self.pending.take());
+            let service = self.service.take().expect("unobserved creation");
+            if reply.result < 0 {
+                return Err(SocketError::Service(reply.result));
+            }
+            Ok(Some(OwnedSocket {
+                lease: Some(SocketLease {
+                    service,
+                    id: reply.result as u64,
+                }),
+            }))
+        }
+    }
+
+    impl Drop for OpeningSocket<'_> {
+        fn drop(&mut self) {
+            if self.service.is_some() {
+                catten_rt::domain_abort();
+            }
+        }
+    }
+
     /// Consuming logical-close operation shared by CQ and synchronous callers.
     /// Incomplete Drop aborts before fields are released; it never issues a
     /// second close. The synchronous driver retains an unsubmitted owner on
@@ -1039,6 +1085,16 @@ pub mod socket {
     }
 
     impl<'connection> OwnedSocket<'connection> {
+        pub fn open_call(
+            service: ConnectionRef<'connection>,
+            domain: u64,
+        ) -> Result<OpeningSocket<'connection>, IpcError> {
+            Ok(OpeningSocket {
+                pending: Some(service.call(OP_SOCKET, domain)?),
+                service: Some(service),
+            })
+        }
+
         pub fn open(service: ConnectionRef<'connection>, domain: u64) -> Result<Self, IpcError> {
             let result = service.call(OP_SOCKET, domain)?.wait()?;
             if result.result < 1 {
@@ -1136,23 +1192,25 @@ pub mod socket {
         /// This borrows the socket owner through setup and consumes its moved
         /// request backing exactly once; rejection leaves the socket owned.
         pub fn listen(&self, port: u16) -> Result<(), SocketError> {
-            let memory = OwnedMemory::allocate(1).map_err(SocketError::Memory)?;
-            let mut mapping =
-                memory.map_writable().map_err(|(_, error)| SocketError::Memory(error))?;
-            mapping.as_mut_slice()[..2].copy_from_slice(&port.to_le_bytes());
-            let memory = mapping.unmap().map_err(|(_, error)| SocketError::Memory(error))?;
-            let result = self
-                .service()
-                .call_move(OP_LISTEN, self.id(), memory)
-                .map_err(|(_, error)| SocketError::Ipc(error))?
-                .wait()
-                .map_err(SocketError::Ipc)?
-                .result;
+            let result = self.listen_call(port)?.wait().map_err(SocketError::Ipc)?.result;
             if result == 0 {
                 Ok(())
             } else {
                 Err(SocketError::Service(result))
             }
+        }
+
+        /// Submit setup once while the containing operation retains this socket.
+        /// CQ readiness and reply observation belong to that same operation.
+        pub fn listen_call(&self, port: u16) -> Result<PendingCall<'static>, SocketError> {
+            let memory = OwnedMemory::allocate(1).map_err(SocketError::Memory)?;
+            let mut mapping =
+                memory.map_writable().map_err(|(_, error)| SocketError::Memory(error))?;
+            mapping.as_mut_slice()[..2].copy_from_slice(&port.to_le_bytes());
+            let memory = mapping.unmap().map_err(|(_, error)| SocketError::Memory(error))?;
+            self.service()
+                .call_move(OP_LISTEN, self.id(), memory)
+                .map_err(|(_, error)| SocketError::Ipc(error))
         }
 
         pub fn listen_ipv4(&self, address: [u8; 4], port: u16) -> Result<(), SocketError> {

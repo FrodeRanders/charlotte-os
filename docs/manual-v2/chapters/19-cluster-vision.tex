@@ -868,9 +868,19 @@ the default CQ. Each operation retains its accepted pending call, socket,
 receipt-validation envelope and one five-second deadline captured before
 request preparation. The reactor keeps accepting/parsing inputs and observing
 other replies while one controller request remains outstanding. Listening,
-input, control, output and close phases share four positions. Spare listeners are prepared
-before observing accepts; input, controller, output and close observation rotate among ready
-owners and wait for the earliest original deadline.
+input, control, output and close phases share four positions, including listener
+setup. Creation, listen and accept operations bind their exact pending owners to
+the same CQ. Listener observation rotates alongside input, controller, output
+and close work, waiting for the earliest original deadline.
+
+Listener setup retains one five-second deadline from reservation through creation,
+listen and accept admission/binding. Only rejected queue-full submission permits
+50~ms backoff and another attempt of that phase; accepted requests are never
+replayed. Confirmed rejection or unstarted preparation failure moves any known
+socket into the existing close pool. Uncertain observation, malformed reply,
+binding rejection or expiry aborts with the complete owner live. An admitted idle
+accept has no timer. See
+\repofile|docs/reports/audits/2026-10-22-security-deployment-listener.md|.
 
 Timeout cancels the exact pending owner and returns HTTP 503 with error $-22$
 (\texttt{clusterctl::ERR\_RPC\_TIMEOUT}). Accepted mutations are never replayed.
@@ -908,7 +918,7 @@ unreserved IDs reject; exhausted ID reservation rejects before backend allocatio
 Existing close operations drain on shutdown under their original deadlines while
 other client owners remain live.
 
-Controller-server execution, response rendering, socket setup, blocking
+Controller-server execution, response rendering, blocking
 destructors and all-positions admission pressure can still delay healthy clients. HTTP keyhole
 serving remains serial. See
 \repofile|docs/reports/audits/2026-10-22-security-deployment-close.md|.
@@ -1029,9 +1039,13 @@ empty.
 
 Deployment ingress, HTTP ingress, and the UTC time service also implement the
 cooperative path. Deployment ingress checks lifecycle on each reactor turn and
-on default-CQ wakes. On shutdown it first drains existing logical-close owners
-under their original deadlines, then drops the other client owners together.
-Synchronous preparation/render/setup and other phases' socket destructors
+on default-CQ wakes. On shutdown it stops listener replenishment, observes
+accepted creation/listen under their original budgets and moves their known
+sockets into the close pool. Idle accepts cancel before moving their sockets;
+no further setup is submitted. Logical closes drain under their original
+deadlines, then the other client owners drop together. Cancelled accept grants
+no remote rollback or physical release proof.
+Synchronous preparation/rendering and other phases' socket destructors
 remain separate shutdown latency boundaries. Ordinary socket close and Drop
 share the consuming close owner, one original five-second budget and one
 accepted reply wait. Queue-full admission backoff stops after one second;

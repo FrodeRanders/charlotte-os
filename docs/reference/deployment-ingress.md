@@ -52,15 +52,16 @@ so the host tool defaults to `127.0.0.1:8081`.
 All seven deployment HTTP controls use owning `deployment_control::Controls`
 operations. Each submits its controller request once and binds that pending call
 to the default CQ. The service continues accepting and parsing other inputs and
-observing other controller calls while one reply remains outstanding. Listening,
-input, controller, output and close phases share four positions. Response sends use
-owning `deployment_output::Outputs` operations on that same CQ. Response rendering
-and socket setup still run synchronously; the controller server itself can
-also serialize work internally.
+observing other controller calls while one reply remains outstanding. Listener
+setup/accept, input, controller, output and close phases share four positions.
+Response sends use owning `deployment_output::Outputs` operations on that same CQ. Response
+rendering still runs synchronously; the controller server itself can
+also serialize work internally. Socket creation, listen setup and accept now use
+owning `deployment_listener::Listeners` operations on the same CQ.
 
 Each controller operation has one five-second deadline captured before request
-validation/preparation. The reactor waits for the earliest input, RPC, output or close deadline
-and rechecks all owners after wake. Timeout cancels its exact pending owner and
+validation/preparation. The reactor waits for the earliest setup, input,
+RPC, output or close deadline and rechecks all owners after wake. Timeout cancels its exact pending owner and
 returns HTTP `503` with `{"error":-22}` (`clusterctl::ERR_RPC_TIMEOUT`). Accepted
 mutations are never replayed. An accepted-call observation failure reports
 uncertainty (-5), rather than a routing rejection. A controller may already have committed a mutation
@@ -69,14 +70,24 @@ of that receiver's original memory charge. Observe existing state before decidin
 how to reconcile an uncertain outcome. Accepted-call CQ binding or wait rejection
 aborts with the containing owners live.
 
-Spare listeners are prepared before observing accepts. Input receives,
-controller replies and response-send receipts use actual producer notifications
-on the same CQ, including peer EOF. A rotating cursor advances ready inputs;
-outstanding control calls, outputs and closes have rotating observation cursors.
-Each service turn visits all four processing phases before waiting again. Each input has a five-second header
-and thirty-second total deadline from observed accept completion. Progress and
-unrelated CQ wakes do not restart these budgets. Rejected listener setup retains
-a 50 ms admission backoff because it has no readiness source.
+Spare listener positions are reserved before observing accepts. Socket creation,
+listen/accept replies, input receives, controller replies and response-send
+receipts use actual producer notifications on the same CQ, including peer EOF. A rotating cursor advances ready inputs;
+listener setup/accept, control calls, outputs and closes have rotating observation cursors.
+Each service turn visits all five processing phases before waiting again. Each
+input has a five-second header and thirty-second total deadline from observed
+accept completion. Progress and
+unrelated CQ wakes do not restart these budgets.
+
+Listener setup carries one five-second deadline from reservation through socket
+creation, listen observation and accept admission/binding. Only queue-full
+submission rejection permits retry of that phase, with 50 ms backoff and the
+original deadline. Confirmed service rejection or unstarted preparation failure
+moves any known socket into the close pool and backs off replenishment. An
+accepted idle accept has no deadline; it waits for its actual producer. Failed
+binding, uncertain/malformed observation or setup expiry aborts with the complete
+owner live. No accepted setup request is replayed. See the
+[listener evidence](../reports/audits/2026-10-22-security-deployment-listener.md).
 
 Retained prefixes and active controller request reservations share
 `MAX_REQUEST_BYTES` (1,049,088 bytes including header allowance). A controller
@@ -141,13 +152,16 @@ remaining budget aborts with the close owner live. The shared receipt decoder
 still requires Started/Unavailable without attachments. See the
 [synchronous-close evidence](../reports/audits/2026-10-22-security-synchronous-close.md).
 
-On lifecycle shutdown, existing close operations drain against their original
-deadlines while other client owners remain live. The other phases' existing
-shutdown destructors and partial listener-setup errors still use ordinary
-blocking `OwnedSocket` close. Its requested wait budget is bounded, but syscall
-return latency, all containing destructors, socket open/listen and controller
-internals remain separate boundaries; total shutdown latency is unqualified.
-See the [close evidence](../reports/audits/2026-10-22-security-deployment-close.md).
+On lifecycle shutdown, listener replenishment stops. Accepted creation/listen
+operations remain owned and observed under their original setup budgets. An
+observed new socket and cancelled idle accept move into the same close pool;
+no further listen/accept operation is submitted. Existing closes drain under
+their original deadlines while other client owners stay live. Cancelling an
+idle accept proves no remote rollback or physical socket release. Other phases'
+shutdown destructors still use ordinary blocking `OwnedSocket` close. Syscall
+return latency, all containing destructors and controller internals remain
+separate boundaries; total shutdown latency is unqualified.
+See the [listener evidence](../reports/audits/2026-10-22-security-deployment-listener.md).
 
 The [output evidence](../reports/audits/2026-10-22-security-deployment-output.md)
 records this boundary. The [input-isolation evidence](../reports/audits/2026-10-22-security-deployment-input.md)
