@@ -56,6 +56,14 @@ MMIO failed-map rollback may retain a range while returning its original error;
 it does not recycle an uncertain range. Device/lifecycle lock-held invalidations
 remain separate SEC-18 work.
 
+A rejected memory-object map with no admitted mapping pin never entered its
+table walker or published a mapping in that call. It now returns unused scratch
+without requesting invalidation. Admitted and rolled-back prefixes still retain
+their exact pin and scratch until maintenance confirms; a failed invalidation
+reports its per-call cause and retains them. This changes no completion proof or
+recovery policy for uncertain mappings. See
+[mapping admission](memory-object-retirement.md#mapping-rejection-and-maintenance).
+
 ## Verification
 
 The host runner compiles this production allocator directly. Six tests cover

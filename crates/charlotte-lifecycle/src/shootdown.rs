@@ -78,7 +78,14 @@ impl Attempt<'_> {
     }
 
     pub fn completed(&self, targets: &[Acknowledgement]) -> bool {
-        targets.iter().all(|ack| ack.0.load(Ordering::Acquire) >= self.epoch)
+        self.first_incomplete(targets).is_none()
+    }
+
+    /// Diagnostic sample for this owned epoch. A timeout's later sample may
+    /// find no missing target if an acknowledgement arrived between reads.
+    /// This observation supplies no backing-release or retry authority.
+    pub fn first_incomplete(&self, targets: &[Acknowledgement]) -> Option<usize> {
+        targets.iter().position(|ack| ack.0.load(Ordering::Acquire) < self.epoch)
     }
 }
 impl Drop for Attempt<'_> {
@@ -147,5 +154,32 @@ mod tests {
         assert!(matches!(coordinator.try_begin(), Err(BeginError::Exhausted)));
         assert!(matches!(coordinator.try_begin(), Err(BeginError::Exhausted)));
         assert_eq!(coordinator.requested(), u64::MAX);
+    }
+}
+
+#[cfg(test)]
+mod diagnostic_tests {
+    use super::*;
+
+    #[test]
+    fn missing_target_sample_tracks_the_owned_epoch_and_stale_ack() {
+        let coordinator = Shootdown::new();
+        let acks = [Acknowledgement::new(), Acknowledgement::new(), Acknowledgement::new()];
+        let first = coordinator.try_begin().unwrap();
+        assert_eq!(first.first_incomplete(&acks), Some(0));
+        acks[0].complete(first.epoch());
+        assert_eq!(first.first_incomplete(&acks), Some(1));
+        acks[1].complete(first.epoch());
+        assert_eq!(first.first_incomplete(&acks), Some(2));
+        let old = first.epoch();
+        drop(first);
+        let next = coordinator.try_begin().unwrap();
+        acks[2].complete(old);
+        assert_eq!(next.first_incomplete(&acks), Some(0));
+        for ack in &acks {
+            ack.complete(next.epoch());
+        }
+        assert_eq!(next.first_incomplete(&acks), None);
+        assert!(next.completed(&acks));
     }
 }

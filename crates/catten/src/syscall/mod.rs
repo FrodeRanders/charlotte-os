@@ -1104,7 +1104,8 @@ fn memory_status(error: object::MemoryObjectError) -> u64 {
         object::MemoryObjectError::NotPageAligned => 6,
         object::MemoryObjectError::AddressSpaceMissing => 7,
         object::MemoryObjectError::MapFailed => 8,
-        object::MemoryObjectError::UnmapFailed => 9,
+        object::MemoryObjectError::UnmapFailed
+        | object::MemoryObjectError::InvalidationFailed(_) => 9,
         object::MemoryObjectError::FrameAllocFailed => 10,
         object::MemoryObjectError::FrameFreeFailed => 11,
         object::MemoryObjectError::MissingRight => 12,

@@ -41,6 +41,7 @@ fn invalidate(asid: usize, base: VAddr, pages: usize) -> bool {
 }
 
 pub(crate) fn run(mut create: impl FnMut(&str) -> usize) {
+    super::mapping_tests::run(&mut create);
     test_coherent_dma_remap(&mut create);
     revocation::tests::run(&mut create);
     test_detached_backing(&mut create);

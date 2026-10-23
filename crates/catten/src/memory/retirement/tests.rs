@@ -444,7 +444,7 @@ pub(crate) fn test_runtime_recovery() {
                 assert_eq!(space.heap_account.pages(), 1);
                 let failure = ipis::test_incomplete_rendezvous(timeout);
                 if timeout {
-                    assert!(matches!(failure, Err(ShootdownError::TimedOut)));
+                    assert!(matches!(failure, Err(ShootdownError::TimedOut { .. })));
                 } else {
                     assert!(matches!(failure, Err(ShootdownError::Delivery(_))));
                 }

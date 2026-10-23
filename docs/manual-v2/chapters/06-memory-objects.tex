@@ -128,6 +128,14 @@ invalidation retry only before physical release starts; broader caller-context
 qualification and recovery of abandoned owners remain hardening work.
 
 Memory-object mappings carry a separate retirement pin through invalidation.
+A returned map rejection before acquiring that pin made no mapping publication
+or table change in that call. It returns unused scratch without TLB maintenance.
+Admitted calls still invalidate after rejected/rolled-back prefixes; the error
+alone cannot permit early pin release. Kernel errors retain the per-call
+invalidation cause. x86 timeouts include their owned epoch and a sampled first
+missing target, which supplies no release or retry authority. The syscall still
+reports uncertain status 9. See
+\repofile|docs/reference/memory-object-retirement.md|.
 The final DMA or copy unpin cannot release backing during that interval, and
 borrower cleanup retains loan restrictions until the fence completes. Failed
 detach or abandoned cleanup retains both backing and its original sponsorship

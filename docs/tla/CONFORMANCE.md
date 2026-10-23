@@ -1093,3 +1093,15 @@ The four expected controls violate shared admission, deallocation ordering,
 abandonment retention or original sponsorship. This is no executable refinement
 or hardware/IRQ/progress proof. Actual bytes, ordinary-node exhaustion and kernel
 reserve checks are in the [audit evidence](../reports/audits/2026-10-23-security-thread-metadata.md).
+
+## Memory-map admission qualification
+
+The [23 October mapping admission follow-up](../reports/audits/2026-10-23-security-map-admission.md)
+separates pin-free preparation rejection from an admitted prefix. Only the former
+can skip maintenance. Existing checked-epoch and retirement projections do not
+model this object-mapping pipeline or its scratch allocator. No model invariants
+or configurations change in this batch. Kernel controls exercise real preparation,
+pins and prefixes with per-call failure adapters. The host shootdown tests check
+the diagnostic first-incomplete sample against the owned epoch and stale ACKs;
+this supplies no new physical completion or recovery proof. The historical x86
+mapping panic remains outside the models' causal claims.

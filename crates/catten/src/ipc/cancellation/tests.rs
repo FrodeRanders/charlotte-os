@@ -118,7 +118,16 @@ impl Fixture {
                 object::prepare_move(server.id(), borrow.borrower_cap, caller.id()),
                 Err(MemoryObjectError::MissingRight)
             ));
-            object::map_any(server.id(), borrow.borrower_cap, index % 2 == 1).unwrap();
+            object::map_any(server.id(), borrow.borrower_cap, index % 2 == 1).unwrap_or_else(
+                |error| {
+                    panic!(
+                        "queued-loan map rejected: caller={caller:?} server={server:?} cap={} \
+                         index={index} writable={} error={error:?}",
+                        borrow.borrower_cap,
+                        index % 2 == 1
+                    )
+                },
+            );
         }
         Self {
             caller,

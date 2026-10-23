@@ -26,13 +26,16 @@ static SYNC_SHOOTDOWN_READY: AtomicBool = AtomicBool::new(false);
 const SHOOTDOWN_TIMEOUT_MS: u64 = 100;
 const ADMISSION_TIMEOUT_MS: u64 = 500;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShootdownError {
     Busy,
     InterruptsMasked,
     Exhausted,
     Delivery(u32),
-    TimedOut,
+    TimedOut {
+        epoch: u64,
+        first_missing: Option<usize>,
+    },
 }
 
 // Independent global observations only; no operation identity or retry proof.
@@ -84,7 +87,9 @@ pub fn try_send_sync_shootdown() -> Result<(), ShootdownError> {
         Err(ShootdownError::InterruptsMasked) => 2,
         Err(ShootdownError::Exhausted) => 3,
         Err(ShootdownError::Delivery(_)) => 4,
-        Err(ShootdownError::TimedOut) => 5,
+        Err(ShootdownError::TimedOut {
+            ..
+        }) => 5,
     };
     SHOOTDOWN_PROGRESS[index].fetch_add(1, Ordering::Relaxed);
     result
@@ -147,7 +152,10 @@ fn rendezvous(mut send: impl FnMut(u32) -> bool) -> Result<(), ShootdownError> {
     }
     while !attempt.completed(acks) {
         if crate::cpu::scheduler::monotonic_millis() >= deadline {
-            return Err(ShootdownError::TimedOut);
+            return Err(ShootdownError::TimedOut {
+                epoch: attempt.epoch(),
+                first_missing: attempt.first_incomplete(acks),
+            });
         }
         core::hint::spin_loop();
     }

@@ -39,6 +39,7 @@ const PAGE_SIZE: usize = 4096;
 // then walk tables after releasing it.
 const RETIREMENT_FRAME_BATCH: usize = 16;
 
+mod mapping_tests;
 pub(crate) mod namespace_close;
 pub(crate) mod retirement_tests;
 mod revocation;
@@ -79,6 +80,7 @@ pub enum MemoryObjectError {
     AddressSpaceMissing,
     MapFailed,
     UnmapFailed,
+    InvalidationFailed(crate::cpu::isa::memory::tlb::InvalidationError),
     FrameAllocFailed,
     FrameFreeFailed,
     MissingRight,
@@ -730,17 +732,23 @@ pub fn map_any(
     cap: MemoryObjectCap,
     writable: bool,
 ) -> Result<VAddr, MemoryObjectError> {
-    with_address_space_operation(asid, || map_any_with_lease(asid, cap, writable))
+    with_address_space_operation(asid, || {
+        map_any_with_lease(asid, cap, writable, crate::cpu::isa::memory::tlb::try_inval_range_user)
+    })
 }
 
 fn map_any_with_lease(
     asid: AddressSpaceId,
     cap: MemoryObjectCap,
     writable: bool,
+    invalidate: impl FnOnce(
+        AddressSpaceId,
+        VAddr,
+        usize,
+    ) -> Result<(), crate::cpu::isa::memory::tlb::InvalidationError>,
 ) -> Result<VAddr, MemoryObjectError> {
-    // The operation lease retains this exact generation across scratch
-    // reservation, page-table installation and TLB invalidation. Staged close
-    // fences later operations and waits for this owner before resource cleanup.
+    // The operation lease retains this exact generation through scratch,
+    // page-table work and invalidation. The original pin fences all backing.
     let pages = {
         let registry = MEMORY_OBJECTS.lock();
         let cap_entry = registry.lookup(asid, cap)?;
@@ -751,30 +759,54 @@ fn map_any_with_lease(
     let base = reserve_scratch(asid, pages)?;
     let mut pin = None;
     let result = map_locked(asid, cap, base, writable, true, &mut pin);
-    if crate::cpu::isa::memory::tlb::try_inval_range_user(asid, base, pages).is_err() {
-        // Keep the scratch extent and any installed/rollback backing pin.
-        return Err(MemoryObjectError::UnmapFailed);
-    }
-    let mut scratch_released = true;
-    if let Err(error) = result {
-        // If rollback itself failed, retaining the virtual range is safer than
-        // aliasing a page-table entry that may still exist.
-        if error != MemoryObjectError::UnmapFailed {
-            scratch_released = release_scratch(asid, base, pages).is_ok();
-            if !scratch_released {
-                crate::early_logln!(
-                    "[memory object] map rollback scratch release failed asid={asid}"
-                );
-            }
+    finish_mapping(asid, base, pages, true, result, pin, invalidate).map(|()| base)
+}
+
+/// A missing pin means this call rejected before table access or mapping
+/// publication. Only that branch may cancel unused scratch without maintenance.
+/// Any admitted mapping, including a rejected/rolled-back prefix, still needs
+/// confirmed invalidation before its original pin can be consumed.
+fn finish_mapping(
+    asid: AddressSpaceId,
+    base: VAddr,
+    pages: usize,
+    scratch: bool,
+    result: Result<(), MemoryObjectError>,
+    pin: Option<MappingRetirementPin>,
+    invalidate: impl FnOnce(
+        AddressSpaceId,
+        VAddr,
+        usize,
+    ) -> Result<(), crate::cpu::isa::memory::tlb::InvalidationError>,
+) -> Result<(), MemoryObjectError> {
+    if pin.is_some() {
+        if let Err(cause) = invalidate(asid, base, pages) {
+            // Keep scratch, installed/rollback metadata and backing pin. The
+            // per-call cause diagnoses rejection; it cannot authorize replay.
+            return Err(MemoryObjectError::InvalidationFailed(cause));
         }
+    } else {
+        assert!(result.is_err(), "successful mapping lost its backing pin");
     }
-    if result != Err(MemoryObjectError::UnmapFailed)
-        && scratch_released
-        && let Some(pin) = pin
-    {
+    if matches!(
+        result,
+        Err(MemoryObjectError::UnmapFailed | MemoryObjectError::InvalidationFailed(_))
+    ) {
+        return result;
+    }
+    let scratch_released = if scratch && result.is_err() {
+        let released = release_scratch(asid, base, pages).is_ok();
+        if !released {
+            crate::early_logln!("[memory object] map rollback scratch release failed asid={asid}");
+        }
+        released
+    } else {
+        true
+    };
+    if scratch_released && let Some(pin) = pin {
         pin.release(None);
     }
-    result.map(|_| base)
+    result
 }
 
 pub fn map(
@@ -790,7 +822,15 @@ pub fn map(
         return Err(MemoryObjectError::MapFailed);
     }
 
-    with_address_space_operation(asid, || map_with_lease(asid, cap, base, writable))
+    with_address_space_operation(asid, || {
+        map_with_lease(
+            asid,
+            cap,
+            base,
+            writable,
+            crate::cpu::isa::memory::tlb::try_inval_range_user,
+        )
+    })
 }
 
 fn map_with_lease(
@@ -798,6 +838,11 @@ fn map_with_lease(
     cap: MemoryObjectCap,
     base: VAddr,
     writable: bool,
+    invalidate: impl FnOnce(
+        AddressSpaceId,
+        VAddr,
+        usize,
+    ) -> Result<(), crate::cpu::isa::memory::tlb::InvalidationError>,
 ) -> Result<(), MemoryObjectError> {
     let pages = {
         let registry = MEMORY_OBJECTS.lock();
@@ -811,15 +856,7 @@ fn map_with_lease(
     };
     let mut pin = None;
     let result = map_locked(asid, cap, base, writable, false, &mut pin);
-    if crate::cpu::isa::memory::tlb::try_inval_range_user(asid, base, pages).is_err() {
-        return Err(MemoryObjectError::UnmapFailed);
-    }
-    if result != Err(MemoryObjectError::UnmapFailed)
-        && let Some(pin) = pin
-    {
-        pin.release(None);
-    }
-    result
+    finish_mapping(asid, base, pages, false, result, pin, invalidate)
 }
 
 /// Install a mapping while the caller owns an exact address-space operation.
@@ -993,9 +1030,11 @@ fn unmap_serialized(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), Me
         (mapping, pages, pin)
     };
     let result = pin.unmap_with(asid, mapping.base, mapping.installed_pages, unmap_pages);
-    if crate::cpu::isa::memory::tlb::try_inval_range_user(asid, mapping.base, pages).is_err() {
+    if let Err(cause) =
+        crate::cpu::isa::memory::tlb::try_inval_range_user(asid, mapping.base, pages)
+    {
         // Leaves may be detached, but neither scratch nor its pin may complete.
-        return Err(MemoryObjectError::UnmapFailed);
+        return Err(MemoryObjectError::InvalidationFailed(cause));
     }
     if result.is_ok() {
         MEMORY_OBJECTS.lock().objects.get_mut(&pin.object).unwrap().mappings.remove(&asid);

@@ -91,6 +91,40 @@ requires owner retirement, no DMA/copy/retirement pins, and no mapped aliases.
 It runs after releasing the object registry, with the sponsorship charge still
 owned through physical release.
 
+## Mapping rejection and maintenance
+
+`map` and `map_any` share one completion path. `map_locked` installs mapping
+metadata and acquires the existing `MappingRetirementPin` under one registry
+hold, before entering the page-table walker. Its ordinary pre-pin rejection
+paths precede that metadata insertion. A returned rejection with no pin therefore made no
+mapping change in this call. That branch skips TLB maintenance, returns the
+original admission error and cancels any unused scratch reservation. An
+already-mapped object or copy/DMA/loan restriction cannot make a denied call
+consume cross-LP shootdown admission.
+
+An admitted call retains its pin through invalidation even when installation
+rejected and its prefix was rolled back. An error result alone does not prove
+that maintenance is unnecessary. Only confirmed invalidation and, where needed,
+scratch completion permit consuming the original pin. A failed rollback keeps
+its installed-prefix record; uncertain maintenance retains scratch, metadata,
+backing pin and original charge under the existing policy. No retry owner is
+created.
+
+Kernel map/map-any/unmap errors now preserve `InvalidationFailed(cause)` per
+call. x86 distinguishes busy admission, masked context, epoch exhaustion,
+delivery rejection and timeout; timeout includes the owned epoch and a sampled
+first missing target. A later sample can be empty after a racing acknowledgement.
+AArch64 preserves missing-root rejection. These observations authorize no
+backing release or replay. Invalidation failure takes precedence if installation
+or detachment also rejected; it does not imply those earlier steps succeeded.
+The syscall boundary still reports status 9 for uncertain invalidation, without
+exporting the detailed cause to userspace.
+
+The [mapping admission follow-up](../reports/audits/2026-10-23-security-map-admission.md)
+records denial/prefix controls and retained-failure tests. Its historical queued
+loan panic remains causally unresolved; removing maintenance from pin-free
+rejections does not identify the cause of that admitted mapping failure.
+
 ## Lock-separated detachment
 
 Retirement preparation moves the mapping records and acquires the backing pin

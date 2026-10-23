@@ -327,6 +327,14 @@ progress remain gaps. Its final-layout x86 run also captured an unresolved
 `UnmapFailed` panic in the scheduled IPC endpoint fixture after the new metadata
 controls passed; preserve that failed run separately from passing executions. See [current policy](thread-metadata-admission.md).
 
+The [mapping admission follow-up](../reports/audits/2026-10-23-security-map-admission.md)
+removes cross-LP maintenance from a returned rejection before mapping-pin
+admission. This prevents denied calls from consuming shootdown admission or
+retaining otherwise-unused scratch because that maintenance failed. Admitted
+prefixes still require confirmation. Kernel errors retain the per-call cause;
+the earlier valid queued-loan failure remains causally unresolved. This narrows
+an admission/availability path without closing SEC-07 or SEC-18.
+
 SEC-07 remains partial until all of the following deliverables are accepted:
 
 The [telemetry snapshot follow-up](../reports/audits/2026-10-18-telemetry-snapshot-preparation.md)

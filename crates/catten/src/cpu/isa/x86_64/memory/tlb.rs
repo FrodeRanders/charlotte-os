@@ -1,5 +1,6 @@
 use core::arch::asm;
 
+pub use super::super::interrupts::fixed::ipis::ShootdownError as InvalidationError;
 use crate::{
     cpu::isa::memory::paging::PAGE_SIZE,
     memory::{

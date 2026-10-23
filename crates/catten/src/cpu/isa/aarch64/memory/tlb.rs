@@ -93,7 +93,7 @@ pub fn inval_range_user(asid: AddressSpaceId, base: VAddr, num_pages: usize) {
     try_inval_range_user(asid, base, num_pages).expect("user invalidation lost its live root");
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InvalidationError {
     AddressSpaceMissing,
 }
