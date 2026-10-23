@@ -387,3 +387,28 @@ pub(crate) fn initialize_kernel() {
     };
     prepared.publish(handle);
 }
+
+pub(crate) mod thread_metadata;
+
+/// Capture trusted classification and signed identity under the same exact
+/// root/ledger hold. Preparation precedes either thread metadata allocation.
+pub(crate) fn reserve_thread_metadata(
+    handle: AddressSpaceHandle,
+    bytes: usize,
+) -> Result<thread_metadata::Charge, Error> {
+    let table = super::ADDRESS_SPACE_TABLE.lock();
+    if table.generation(handle.id()).ok() != Some(handle.generation()) {
+        return Err(Error::StaleDomain);
+    }
+    let ledger = LEDGER.lock();
+    let account =
+        ledger.domains.get(&(handle.id(), handle.generation())).ok_or(Error::StaleDomain)?;
+    if account.retired {
+        return Err(Error::StaleDomain);
+    }
+    thread_metadata::Charge::reserve(
+        account.principal.as_ref().map(|principal| principal.principal()),
+        account.platform || handle.id() == KERNEL_ASID,
+        bytes,
+    )
+}

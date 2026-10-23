@@ -88,6 +88,16 @@ run_expected_violation() {
 }
 
 cd "${script_dir}"
+run_model CharlotteThreadMetadata CharlotteThreadMetadata_small.cfg \
+    Admit AllocateNode AllocateContext Publish DisposeContext FreeNode Refund Abandon Retire Reuse
+run_expected_violation CharlotteThreadMetadata CharlotteThreadMetadata_generation_unsafe.cfg \
+    PrincipalCeiling UnsafeGenerationOnly
+run_expected_violation CharlotteThreadMetadata CharlotteThreadMetadata_early_unsafe.cfg \
+    Accounted UnsafeEarlyRefund
+run_expected_violation CharlotteThreadMetadata CharlotteThreadMetadata_drop_unsafe.cfg \
+    Accounted UnsafeDropRefund
+run_expected_violation CharlotteThreadMetadata CharlotteThreadMetadata_reuse_unsafe.cfg \
+    OriginalSponsor UnsafeReplacementSponsor
 run_model CharlottePrincipalBacking CharlottePrincipalBacking_small.cfg \
     Allocate Grow Move Retire Restart ConfirmRelease
 run_expected_violation CharlottePrincipalBacking CharlottePrincipalBacking_generation_unsafe.cfg \

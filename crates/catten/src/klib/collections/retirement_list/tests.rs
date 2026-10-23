@@ -157,7 +157,7 @@ fn abandoned_entry_and_list_do_not_destroy_payloads() {
 fn independent_heads_preserve_node_identity_and_owned_payloads() {
     let drops = Arc::new(AtomicUsize::new(0));
     let prepared = PreparedEntry::try_new().unwrap();
-    let identity = &*prepared.0 as *const Node<Tracked>;
+    let identity = &**prepared.0.as_ref().unwrap() as *const Node<Tracked>;
     let mut heads = [RetirementList::new(), RetirementList::new()];
     heads[1].push(prepared.publish(Tracked(7, drops.clone())));
     assert!(heads[0].is_empty());
@@ -323,4 +323,112 @@ fn interrupted_explicit_disposal_retains_its_node() {
     assert_eq!(drops.load(Ordering::Relaxed), 0);
     assert_eq!(DISPOSAL_NODE_FREES.with(Cell::get), 0);
     DISPOSAL_NODE.with(|target| target.set(0));
+}
+
+struct AdmissionProbe {
+    releases: Arc<AtomicUsize>,
+    payload_drops: Arc<AtomicUsize>,
+    expected_payload_drops: usize,
+    expected_node_frees: usize,
+}
+impl Drop for AdmissionProbe {
+    fn drop(&mut self) {
+        assert_eq!(self.payload_drops.load(Ordering::Relaxed), self.expected_payload_drops);
+        assert_eq!(DISPOSAL_NODE_FREES.with(Cell::get), self.expected_node_frees);
+        self.releases.fetch_add(1, Ordering::Relaxed);
+    }
+}
+fn probe(expected_payload_drops: usize, expected_node_frees: usize) -> AdmissionProbe {
+    AdmissionProbe {
+        releases: Arc::new(AtomicUsize::new(0)),
+        payload_drops: Arc::new(AtomicUsize::new(0)),
+        expected_payload_drops,
+        expected_node_frees,
+    }
+}
+fn track_node<T, C>(node: &PreparedEntry<T, C>) {
+    DISPOSAL_NODE
+        .with(|target| target.set(&**node.0.as_ref().unwrap() as *const Node<T, C> as usize));
+    DISPOSAL_NODE_FREES.with(|count| count.set(0));
+}
+
+#[test]
+fn admission_refund_follows_actual_payload_and_node_deallocation() {
+    let charge = probe(1, 1);
+    let releases = charge.releases.clone();
+    let payload = Box::new(Tracked(7, charge.payload_drops.clone()));
+    let prepared = PreparedEntry::try_new_charged(charge).unwrap();
+    assert_eq!(
+        PreparedEntry::<Box<Tracked>, AdmissionProbe>::allocation_bytes(),
+        core::mem::size_of::<Node<Box<Tracked>, AdmissionProbe>>()
+    );
+    track_node(&prepared);
+    let mut list = RetirementList::new();
+    without_allocation(|| {
+        list.push(prepared.publish(payload));
+        list.reverse();
+        let node = list.pop().unwrap();
+        node.release_with(|payload| {
+            assert_eq!(releases.load(Ordering::Relaxed), 0);
+            assert_eq!(DISPOSAL_NODE_FREES.with(Cell::get), 0);
+            drop(payload);
+        });
+    });
+    assert_eq!(releases.load(Ordering::Relaxed), 1);
+    DISPOSAL_NODE.with(|target| target.set(0));
+}
+
+#[test]
+fn unused_and_rejected_storage_refund_once_after_allocated_node_is_freed() {
+    DISPOSAL_NODE_FREES.with(|count| count.set(0));
+    let charge = probe(0, 0);
+    let releases = charge.releases.clone();
+    assert!(
+        PreparedEntry::<Tracked, _>::try_new_charged_with(charge, |_| Err(AllocError)).is_err()
+    );
+    assert_eq!(releases.load(Ordering::Relaxed), 1);
+    let charge = probe(0, 1);
+    let releases = charge.releases.clone();
+    let node = PreparedEntry::<Tracked, _>::try_new_charged(charge).unwrap();
+    track_node(&node);
+    without_allocation(|| drop(node));
+    assert_eq!(releases.load(Ordering::Relaxed), 1);
+    DISPOSAL_NODE.with(|target| target.set(0));
+}
+
+#[test]
+fn abandonment_and_interrupted_disposal_retain_admission_and_storage() {
+    for mode in 0..3 {
+        let charge = probe(0, 0);
+        let releases = charge.releases.clone();
+        let drops = charge.payload_drops.clone();
+        let node = PreparedEntry::try_new_charged(charge).unwrap();
+        track_node(&node);
+        let node = node.publish(Tracked(1, drops.clone()));
+        if mode == 2 {
+            assert!(
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    node.release_with(|payload| {
+                        core::mem::forget(payload);
+                        std::panic::panic_any(());
+                    });
+                }))
+                .is_err()
+            );
+        } else {
+            without_allocation(|| {
+                if mode == 0 {
+                    drop(node);
+                } else {
+                    let mut list = RetirementList::new();
+                    list.push(node);
+                    drop(list);
+                }
+            });
+        }
+        assert_eq!(releases.load(Ordering::Relaxed), 0);
+        assert_eq!(drops.load(Ordering::Relaxed), 0);
+        assert_eq!(DISPOSAL_NODE_FREES.with(Cell::get), 0);
+        DISPOSAL_NODE.with(|target| target.set(0));
+    }
 }

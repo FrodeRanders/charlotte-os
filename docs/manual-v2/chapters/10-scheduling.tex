@@ -214,7 +214,20 @@ borrows that owner; no numeric base/length adoption is exposed. Its unmapped
 guard pages need no registry entries, eliminating the former guard-map
 allocations beneath stack-arena serialization. Failure retains the containing
 pair's root and original admission; dropping the range owner performs no
-physical cleanup. General thread metadata admission remains separate.
+physical cleanup.
+
+Before either heap allocation, thread creation now reserves exact requested
+bytes for its stable context Box and prepared retirement node, plus one bundle
+unit. All generations of a verified signed principal share 1 MiB and 128 bundles;
+the node admits 8 MiB/4,096 bundles, with ordinary work limited to 6 MiB/3,072.
+The existing principal-history record holds the counter. The charge stays in the
+same node through staging, delayed reaping, failed retirement and abandonment.
+Confirmed pair release permits context disposal, then node deallocation, then
+refund to the original principal. Root retirement, ASID reuse and trusted
+promotion cannot refund live metadata. Allocation/limit rejection remains
+\texttt{ThreadPreparationFailed}. Table-vector capacity, observer/weak storage,
+allocator overhead and general metadata admission remain separate. See
+\repofile|docs/reference/thread-metadata-admission.md|.
 
 Waiter and scheduler-timer sponsors are now prepared fallibly with each root's
 memory-budget registry node before address-space publication locks. One owner

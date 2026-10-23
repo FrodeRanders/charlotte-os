@@ -24,10 +24,11 @@ extern "C" fn unused_entry() {}
 
 pub(crate) fn run() {
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    let metadata_before = crate::memory::budget::thread_metadata::snapshot();
     let generation = NEXT_THREAD_GENERATION.load(Ordering::Relaxed);
     for _ in 0..64 {
         assert!(matches!(
-            Thread::try_new_with_retirement(KERNEL_ASID, unused_entry, || Err(AllocError)),
+            Thread::try_new_with_retirement(KERNEL_ASID, unused_entry, |_| Err(AllocError)),
             Err(crate::cpu::scheduler::system_scheduler::Error::ThreadPreparationFailed)
         ));
     }
@@ -36,7 +37,7 @@ pub(crate) fn run() {
             Thread::try_new_with_storage(
                 KERNEL_ASID,
                 unused_entry,
-                PreparedEntry::try_new,
+                PreparedEntry::try_new_charged,
                 || Err(AllocError)
             ),
             Err(crate::cpu::scheduler::system_scheduler::Error::ThreadPreparationFailed)
@@ -44,6 +45,8 @@ pub(crate) fn run() {
     }
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
     assert_eq!(NEXT_THREAD_GENERATION.load(Ordering::Relaxed), generation);
+
+    assert_eq!(crate::memory::budget::thread_metadata::snapshot(), metadata_before);
 
     // Warm physical kernel-stack table backing, which is cached independently
     // of thread/node ownership. These contexts are never scheduler-admitted.
@@ -149,6 +152,7 @@ pub(crate) fn run() {
     drop((observer_a, observer_b, observer_c, token_a, token_b, token_c));
     completion::close_address_space(asid);
     crate::capability::close_address_space(asid);
+    assert_eq!(crate::memory::budget::thread_metadata::snapshot(), metadata_before);
     readiness(lp, other_lp);
     inline_queue_retirement_fence();
     terminal_pair_retention(lp);
@@ -426,4 +430,21 @@ fn abandoned_payloads() {
          table/retirement/root/allocator guards: no exit, waiter cancellation, usage refund or \
          frame return; exact user root remains busy"
     );
+}
+
+/// Denial must precede either allocator, generation claim or physical stacks.
+pub(crate) fn assert_metadata_rejection(asid: crate::memory::AddressSpaceId) {
+    let generation = NEXT_THREAD_GENERATION.load(Ordering::Relaxed);
+    let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    assert!(matches!(
+        Thread::try_new_with_storage(
+            asid,
+            unused_entry,
+            |_| panic!("metadata denial reached node allocation"),
+            || panic!("metadata denial reached context allocation"),
+        ),
+        Err(crate::cpu::scheduler::system_scheduler::Error::ThreadPreparationFailed)
+    ));
+    assert_eq!(NEXT_THREAD_GENERATION.load(Ordering::Relaxed), generation);
+    assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
 }

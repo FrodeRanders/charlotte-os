@@ -7,7 +7,8 @@ thread ownership now has separately prepared storage as well.
 
 ## Preparation and transfer
 
-`Thread::try_new` fallibly prepares one `PreparedEntry<Thread>` before claiming
+`Thread::try_new` reserves a typed context/node byte/count charge, then fallibly
+prepares one charged `PreparedEntry` before claiming
 a generation, allocating stacks or publishing a thread. The stable context Box
 is also admitted while still uninitialized, before generation/backing; only a
 complete constructed context is written into it. Allocation rejection
@@ -267,9 +268,13 @@ original waiter charge. Explicit release recovers the original stack frames;
 a failed pair remains nonready and fenced. Existing scheduled exit/remote-abort
 tests exercise the production worker after the new event-only wait.
 
-The node is allocated from the global heap and adds one thread-sized allocation
-per live/deferred owner. There is no independent node-byte admission pool.
-General heap/metadata/principal accounting remains SEC-07 work. Scheduler
+The node and stable context come from the global heap, with their exact requested
+layouts prepaid in the [thread metadata pool](thread-metadata-admission.md).
+Node/ordinary ceilings and the shared signed-principal byte/count allowance
+retain admission through delayed reaping, physical failure and abandonment.
+Explicit disposal destroys the context and deallocates the node before refund.
+Master-table capacity, observer/weak storage and general heap/metadata remain
+SEC-07 work. Scheduler
 run-queue backing no longer grows: [inline run queues](scheduler-run-queues.md)
 use each complete thread's admitted payload and qualify exact linkage before
 queue/state/affinity publication. The earlier
@@ -345,3 +350,5 @@ linked, without notification or physical work. Lost queue heads cannot authorize
 adoption by a new queue. Original roots/charges and complete-payload fallback
 remain; this adds no custody, force-clear, physical retry or historical failure
 attribution.
+
+Context/node admission evidence: [thread metadata pool](../reports/audits/2026-10-23-security-thread-metadata.md).

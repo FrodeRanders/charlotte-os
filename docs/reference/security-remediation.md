@@ -316,6 +316,17 @@ original shares. Data growth does not pay twice. This extends R7-3 enforcement
 through two more resource families; shared kernel tables, IOMMU/device metadata,
 general heap/metadata and the broader pressure/progress criteria remain open.
 
+The [thread metadata extension](../reports/audits/2026-10-23-security-thread-metadata.md)
+reserves exact context/node layout bytes and bundle counts before either allocator.
+The existing principal-history record shares 1 MiB/128 bundles across instances;
+node and ordinary limits preserve separate platform headroom. Original charges
+follow delayed/failed retirement through actual context/node deallocation. Real
+prepared-node exhaustion checks one kernel admission and subsequent recovery;
+thread-table capacity, observer storage, general heap and sustained concurrent
+progress remain gaps. Its final-layout x86 run also captured an unresolved
+`UnmapFailed` panic in the scheduled IPC endpoint fixture after the new metadata
+controls passed; preserve that failed run separately from passing executions. See [current policy](thread-metadata-admission.md).
+
 SEC-07 remains partial until all of the following deliverables are accepted:
 
 The [telemetry snapshot follow-up](../reports/audits/2026-10-18-telemetry-snapshot-preparation.md)
@@ -331,8 +342,8 @@ Finding dispositions remain unchanged.
 | Deliverable | Completion evidence |
 | --- | --- |
 | R7-1: allocation inventory | Enumerate application-triggerable kernel allocation sites and identify their byte/count limits, sponsor, lifetime owner, rejection behavior and reserve classification. Include thread nodes, scheduler queues/migration storage, registry entries, namespace/sponsor metadata, callback captures and allocator bookkeeping. Explicitly justify bounded boot-only exclusions. |
-| R7-2: remaining scheduler/registry storage | Prepare storage fallibly before publication. Every application-triggerable allocation rejects without a kernel allocation panic or partially published authority. Admission follows the actual allocation through detached work and weak references. Thread-node preparation is fallible today but does not yet have its own byte/principal pool. |
-| R7-3: heap and aggregate sponsor budgets | Shared signed-principal object/heap/image/private-table and full user-thread-stack admission is implemented; complete other families and bound general kernel heap bytes and aggregate logical-principal consumption across domain creation/restart and outstanding work. Nested allocations and retained quarantine consume the original limits; ASID reuse, transfer, promotion and logical retirement cannot refund live backing or gain platform classification. |
+| R7-2: remaining scheduler/registry storage | Prepare storage fallibly before publication. Every application-triggerable allocation rejects without a kernel allocation panic or partially published authority. Admission follows the actual allocation through detached work and weak references. Thread contexts and retirement nodes now have shared requested-byte/count admission by signed principal and node; table capacity, observer/weak storage and other registry families still need admission. |
+| R7-3: heap and aggregate sponsor budgets | Shared signed-principal object/heap/image/private-table, full user-thread-stack and context/retirement-node admission is implemented; complete other families and bound general kernel heap bytes and aggregate logical-principal consumption across domain creation/restart and outstanding work. Nested allocations and retained quarantine consume the original limits; ASID reuse, transfer, promotion and logical retirement cannot refund live backing or gain platform classification. |
 | R7-4: essential-service progress | Reserve usable allocation/admission capacity for trusted platform work. Demonstrate management, timer/scheduler and teardown progress during sustained ordinary pressure; separate pools alone are insufficient evidence of fairness. Rejected work must be bounded rather than busy-looping. |
 | R7-5: pressure matrix | Run concurrent EL0 clients on all supported QEMU targets against ordinary and aggregate ceilings, allocation rejection, cancellation, weak retention, domain restart and generation reuse. Verify exact charges after confirmed cleanup and retained charges after uncertain cleanup. Record progress/latency against fixture deadlines chosen before the run. Include real backing pressure as well as counter-only saturation. |
 

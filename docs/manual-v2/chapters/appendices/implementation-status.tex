@@ -341,7 +341,11 @@ Source, tests, and repository history remain authoritative.
         ceilings. Runtime stacks reserve their maximum user/kernel extent in a
         separate one-eighth-RAM pool, retaining that charge through uncertain
         cleanup. These independent pools do not form a complete RAM ledger.
-        General metadata and aggregate principal admission remain open.
+        Thread context and retirement-node layouts now reserve requested bytes
+        and bundle counts against shared principal and node/ordinary ceilings,
+        retaining charges through actual deallocation. Table capacity,
+        observer/weak storage and other general metadata/principal families
+        remain open.
     \item \textbf{Cross-machine Raft boundary:} two TCG guests share a private
         QEMU LAN (stream backend on AArch64, socket backend on x86-64); the
         reliable-message frame transport and remote Raft peer routing are

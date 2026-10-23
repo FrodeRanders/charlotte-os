@@ -123,7 +123,8 @@ pub(crate) fn account_retired_cpu_ticks(thread: &Thread) {
 /// the context's assembly ownership flag. A shared, cross-LP reaper could free
 /// a stack before its owning LP has switched away.
 static DEAD_THREADS: RwLock<
-    [RetirementList<Thread>; crate::cpu::scheduler::system_scheduler::MAX_TRACKED_LPS],
+    [RetirementList<Thread, crate::memory::budget::thread_metadata::Charge>;
+        crate::cpu::scheduler::system_scheduler::MAX_TRACKED_LPS],
 > = RwLock::new(
     [const { RetirementList::new() }; crate::cpu::scheduler::system_scheduler::MAX_TRACKED_LPS],
 );
@@ -338,8 +339,8 @@ pub fn reap_dead_threads() {
 /// Own both the detached nodes and their lifecycle publication fence. Drop
 /// retains the marker as well as nodes; abandonment cannot look like reaping.
 struct ReapBatch {
-    threads: RetirementList<Thread>,
-    deferred: RetirementList<Thread>,
+    threads: RetirementList<Thread, crate::memory::budget::thread_metadata::Charge>,
+    deferred: RetirementList<Thread, crate::memory::budget::thread_metadata::Charge>,
     transition: Option<RetirementGuard>,
 }
 
@@ -587,7 +588,7 @@ pub struct ThreadPayload {
     exit_observers: exit_source::ExitSource,
     // One empty node follows this owner until it stages itself. A staged
     // thread has None here: its containing node owns the whole payload.
-    retirement: Option<PreparedEntry<Thread>>,
+    retirement: Option<PreparedEntry<Thread, crate::memory::budget::thread_metadata::Charge>>,
     retirement_metadata_completed: bool,
     stacks_retired: bool,
     stack_retirement_error: Option<crate::memory::thread_stack::RetirementError>,
@@ -624,13 +625,18 @@ impl Thread {
         asid: AddressSpaceId,
         entry_point: extern "C" fn(),
     ) -> Result<Self, crate::cpu::scheduler::system_scheduler::Error> {
-        Self::try_new_with_retirement(asid, entry_point, PreparedEntry::try_new)
+        Self::try_new_with_retirement(asid, entry_point, PreparedEntry::try_new_charged)
     }
 
     fn try_new_with_retirement(
         asid: AddressSpaceId,
         entry_point: extern "C" fn(),
-        allocate: impl FnOnce() -> Result<PreparedEntry<Thread>, core::alloc::AllocError>,
+        allocate: impl FnOnce(
+            crate::memory::budget::thread_metadata::Charge,
+        ) -> Result<
+            PreparedEntry<Thread, crate::memory::budget::thread_metadata::Charge>,
+            core::alloc::AllocError,
+        >,
     ) -> Result<Self, crate::cpu::scheduler::system_scheduler::Error> {
         Self::try_new_with_storage(
             asid,
@@ -643,7 +649,12 @@ impl Thread {
     fn try_new_with_storage(
         asid: AddressSpaceId,
         entry_point: extern "C" fn(),
-        allocate: impl FnOnce() -> Result<PreparedEntry<Thread>, core::alloc::AllocError>,
+        allocate: impl FnOnce(
+            crate::memory::budget::thread_metadata::Charge,
+        ) -> Result<
+            PreparedEntry<Thread, crate::memory::budget::thread_metadata::Charge>,
+            core::alloc::AllocError,
+        >,
         allocate_context: impl FnOnce() -> Result<
             Box<core::mem::MaybeUninit<ThreadContext>>,
             core::alloc::AllocError,
@@ -661,7 +672,14 @@ impl Thread {
             Some(handle)
         };
         // Failure precedes generation claim, stack backing and publication.
-        let retirement = allocate().map_err(|_| Error::ThreadPreparationFailed)?;
+        let handle = address_space
+            .or_else(|| crate::memory::current_address_space_handle(KERNEL_ASID))
+            .ok_or(Error::ThreadTerminated)?;
+        let bytes = PreparedEntry::<Thread, crate::memory::budget::thread_metadata::Charge>::allocation_bytes()
+            .checked_add(core::mem::size_of::<ThreadContext>()).ok_or(Error::ThreadPreparationFailed)?;
+        let charge = crate::memory::budget::reserve_thread_metadata(handle, bytes)
+            .map_err(|_| Error::ThreadPreparationFailed)?;
+        let retirement = allocate(charge).map_err(|_| Error::ThreadPreparationFailed)?;
         let mut context_storage = allocate_context().map_err(|_| Error::ThreadPreparationFailed)?;
         let generation = NEXT_THREAD_GENERATION
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |next| {

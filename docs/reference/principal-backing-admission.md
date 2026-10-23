@@ -80,6 +80,11 @@ private table branch still consumes its own table page. Cached branches remain
 charged until root teardown. Pure kernel threads and inherited stacks retain
 their existing separate policy; they do not gain an application principal.
 
+Thread contexts and retirement nodes have a separate shared
+[requested-byte/count allowance](thread-metadata-admission.md). That charge
+survives root retirement until actual metadata deallocation; it does not consume
+a data-page or memory-object unit.
+
 ## Verification and limits
 
 Native kernel controls exercise mixed real heap/image/object backing across
@@ -103,7 +108,7 @@ abandoned reservation. It abstracts page counts and does not model object-count
 admission, allocator metadata, hardware, wall-clock progress or executable refinement.
 
 This implements an aggregate boundary for these data/table/stack families. It does
-not bound general kernel heap/metadata, fresh shared kernel tables, IOMMU/device metadata, capabilities, IPC,
+not bound general kernel heap/metadata beyond those two thread layouts, fresh shared kernel tables, IOMMU/device metadata, capabilities, IPC,
 completions or every other family by principal. Principal-history records remain
 for the boot lifetime; their total metadata needs separate admission. Principal-record lookup and IRQ-masked hold times still need hostile-pressure
 qualification. Kernel-only unidentified work retains its existing family/node policy. Independent principals

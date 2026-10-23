@@ -1078,3 +1078,18 @@ scripted CLI and guest execution evidence qualify those paths separately. The
 model does not prove receipt byte framing, transport correlation, allocation
 failure cleanup, host deadlines or production trust. The formal input inventory
 is unchanged.
+
+## Thread context/node admission
+
+| Model action | Rust boundary | Correspondence |
+| --- | --- | --- |
+| `Admit` | `memory::budget::reserve_thread_metadata`; principal-history `ThreadMetadataCharge`; node `Charge::reserve` | Abstract exact-generation capture and both requested-byte/count admissions before allocation. Node reserve classification is tested natively, outside the projection. |
+| `AllocateNode` / `AllocateContext` / `Publish` | `PreparedEntry::try_new_charged`; `Thread::try_new_with_storage`; scheduler submission | Direct ordering with fallible allocation and stack preparation collapsed. The context stays in a stable ordinary Box. |
+| `DisposeContext` / `FreeNode` / `Refund` | `Thread::dispose_retired`; collection `release_node`; original charge Drop | Abstract confirmed stack-pair proof, then actual payload/context and node destruction before counter refund. Unused reservation/node cancellation is also represented. |
+| `Abandon` | Thread's retained payload; published node/list fallback | Direct retention without counter/allocator entry. Kernel panic does not unwind. |
+| `Retire` / `Reuse` | Exact-root close and generation reuse with retained metadata | Abstract root state; captured principal/classification survives reuse. |
+
+The four expected controls violate shared admission, deallocation ordering,
+abandonment retention or original sponsorship. This is no executable refinement
+or hardware/IRQ/progress proof. Actual bytes, ordinary-node exhaustion and kernel
+reserve checks are in the [audit evidence](../reports/audits/2026-10-23-security-thread-metadata.md).

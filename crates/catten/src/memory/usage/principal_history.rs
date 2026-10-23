@@ -10,6 +10,7 @@ use core::{
 use charlotte_lifecycle::resources::{
     Amount,
     Budget,
+    VectorBudget,
 };
 
 use crate::{
@@ -33,6 +34,7 @@ struct History {
     stack_pages: u64,
     heap_bytes: u64,
     backing: Budget,
+    thread_metadata: VectorBudget<2>,
 }
 
 impl Default for History {
@@ -40,6 +42,7 @@ impl Default for History {
         Self {
             stack_pages: 0,
             heap_bytes: 0,
+            thread_metadata: VectorBudget::new([1024 * 1024, 128]),
             backing: Budget::new(Amount {
                 pages: MAX_PRINCIPAL_PAGES,
                 objects: MAX_PRINCIPAL_OBJECTS,
@@ -204,3 +207,40 @@ pub(super) fn available() -> bool {
 pub(in crate::memory) mod admission_tests;
 mod structural_tests;
 pub(super) mod tests;
+mod thread_metadata_tests;
+
+/// Separate dimensions for requested heap bytes and complete thread bundles.
+/// This charge belongs to the allocation, independent of root-slot lifetime.
+#[derive(Debug)]
+pub(crate) struct ThreadMetadataCharge {
+    principal: u64,
+    amount: [u64; 2],
+}
+
+impl ThreadMetadataCharge {
+    pub(in crate::memory) fn try_new(principal: u64, amount: [u64; 2]) -> Result<Self, ()> {
+        HISTORY
+            .lock()
+            .get_mut(&principal)
+            .ok_or(())?
+            .thread_metadata
+            .reserve(amount)
+            .map_err(|_| ())?;
+        Ok(Self {
+            principal,
+            amount,
+        })
+    }
+}
+
+impl Drop for ThreadMetadataCharge {
+    fn drop(&mut self) {
+        HISTORY
+            .lock()
+            .get_mut(&self.principal)
+            .expect("thread metadata principal missing")
+            .thread_metadata
+            .release(self.amount)
+            .expect("principal thread metadata underflow");
+    }
+}

@@ -7,19 +7,24 @@ use alloc::boxed::Box;
 use core::{
     alloc::AllocError,
     fmt,
+    mem::{
+        ManuallyDrop,
+        MaybeUninit,
+    },
     ops::Index,
 };
 
-struct Node<T> {
+struct Node<T, C = ()> {
     value: Option<T>,
-    next: Option<Box<Node<T>>>,
+    charge: MaybeUninit<C>,
+    next: Option<Box<Node<T, C>>>,
 }
 
 /// Empty storage allocated before its payload becomes externally reachable.
 #[must_use]
-pub(crate) struct PreparedEntry<T>(Box<Node<T>>);
+pub(crate) struct PreparedEntry<T, C = ()>(Option<Box<Node<T, C>>>);
 
-impl<T> fmt::Debug for PreparedEntry<T> {
+impl<T, C> fmt::Debug for PreparedEntry<T, C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PreparedEntry").finish_non_exhaustive()
     }
@@ -33,25 +38,67 @@ impl<T> PreparedEntry<T> {
     fn try_new_with(
         allocate: impl FnOnce(Node<T>) -> Result<Box<Node<T>>, AllocError>,
     ) -> Result<Self, AllocError> {
-        allocate(Node {
-            value: None,
-            next: None,
-        })
-        .map(Self)
+        Self::try_new_charged_with((), allocate)
+    }
+}
+
+impl<T, C> PreparedEntry<T, C> {
+    /// Exact requested node bytes, including the custody field. Allocator
+    /// bookkeeping and independent registry capacity are separate admission.
+    pub(crate) const fn allocation_bytes() -> usize {
+        core::mem::size_of::<Node<T, C>>()
     }
 
-    pub(crate) fn publish(mut self, value: T) -> RetiredEntry<T> {
-        self.0.value = Some(value);
-        RetiredEntry(Some(self.0))
+    pub(crate) fn try_new_charged(charge: C) -> Result<Self, AllocError> {
+        Self::try_new_charged_with(charge, Box::try_new)
+    }
+
+    fn try_new_charged_with(
+        charge: C,
+        allocate: impl FnOnce(Node<T, C>) -> Result<Box<Node<T, C>>, AllocError>,
+    ) -> Result<Self, AllocError> {
+        // Keep admission outside the value passed to the fallible allocator.
+        // A rejected allocation drops its still-unstarted reservation normally.
+        let mut node = allocate(Node {
+            value: None,
+            charge: MaybeUninit::uninit(),
+            next: None,
+        })?;
+        node.charge.write(charge);
+        Ok(Self(Some(node)))
+    }
+
+    pub(crate) fn publish(mut self, value: T) -> RetiredEntry<T, C> {
+        let mut node = self.0.take().unwrap();
+        node.value = Some(value);
+        RetiredEntry(Some(node))
+    }
+}
+
+/// Charge release follows both payload disposal and actual node deallocation.
+/// Interruption retains the charge; no destructor may turn it into a refund.
+fn release_node<T, C>(node: Box<Node<T, C>>) {
+    // SAFETY: preparation initialized admission before exposing this sole node
+    // owner. No field destructor reads it; it is consumed exactly once here.
+    let charge = ManuallyDrop::new(unsafe { node.charge.assume_init_read() });
+    drop(node);
+    drop(ManuallyDrop::into_inner(charge));
+}
+
+impl<T, C> Drop for PreparedEntry<T, C> {
+    fn drop(&mut self) {
+        if let Some(node) = self.0.take() {
+            release_node(node);
+        }
     }
 }
 
 /// A detached node. Only explicit release destroys its payload. Drop retains
 /// the node/backing rather than running physical cleanup in an unknown context.
 #[must_use]
-pub(crate) struct RetiredEntry<T>(Option<Box<Node<T>>>);
+pub(crate) struct RetiredEntry<T, C = ()>(Option<Box<Node<T, C>>>);
 
-impl<T> RetiredEntry<T> {
+impl<T, C> RetiredEntry<T, C> {
     pub(crate) fn value(&self) -> &T {
         self.0.as_ref().unwrap().value.as_ref().unwrap()
     }
@@ -60,25 +107,27 @@ impl<T> RetiredEntry<T> {
         self.0.as_mut().unwrap().value.as_mut().unwrap()
     }
 
-    fn into_node(mut self) -> Box<Node<T>> {
+    fn into_node(mut self) -> Box<Node<T, C>> {
         self.0.take().unwrap()
     }
 
     pub(crate) fn release(self) {
-        drop(self.into_node());
+        release_node(self.into_node());
     }
 
     /// Transfer the complete typed payload into its explicit disposal while
-    /// retaining this node until that disposal returns. On interruption the
+    /// retaining this node until that disposal returns. A charge covering any
+    /// payload allocation requires the callback to confirm its disposal too.
+    /// On interruption the
     /// node remains retained; the payload's owner defines its own fallback.
     pub(crate) fn release_with(mut self, dispose: impl FnOnce(T)) {
         let value = self.0.as_mut().unwrap().value.take().unwrap();
         dispose(value);
-        drop(self.into_node());
+        release_node(self.into_node());
     }
 }
 
-impl<T> Drop for RetiredEntry<T> {
+impl<T, C> Drop for RetiredEntry<T, C> {
     fn drop(&mut self) {
         if let Some(node) = self.0.take() {
             core::mem::forget(node);
@@ -87,11 +136,11 @@ impl<T> Drop for RetiredEntry<T> {
 }
 
 /// Prepend/pop owning nodes. Reverse detached batches to retain insertion order.
-pub(crate) struct RetirementList<T> {
-    head: Option<Box<Node<T>>>,
+pub(crate) struct RetirementList<T, C = ()> {
+    head: Option<Box<Node<T, C>>>,
 }
 
-impl<T> RetirementList<T> {
+impl<T, C> RetirementList<T, C> {
     pub(crate) const fn new() -> Self {
         Self {
             head: None,
@@ -102,13 +151,13 @@ impl<T> RetirementList<T> {
         self.head.is_none()
     }
 
-    pub(crate) fn push(&mut self, entry: RetiredEntry<T>) {
+    pub(crate) fn push(&mut self, entry: RetiredEntry<T, C>) {
         let mut node = entry.into_node();
         node.next = self.head.take();
         self.head = Some(node);
     }
 
-    pub(crate) fn pop(&mut self) -> Option<RetiredEntry<T>> {
+    pub(crate) fn pop(&mut self) -> Option<RetiredEntry<T, C>> {
         let mut node = self.head.take()?;
         self.head = node.next.take();
         Some(RetiredEntry(Some(node)))
@@ -134,7 +183,7 @@ impl<T> RetirementList<T> {
     /// Relink admitted nodes in caller-defined order without allocating.
     pub(crate) fn insert_before(
         &mut self,
-        entry: RetiredEntry<T>,
+        entry: RetiredEntry<T, C>,
         mut before: impl FnMut(&T) -> bool,
     ) {
         let mut link = &mut self.head;
@@ -151,7 +200,7 @@ impl<T> RetirementList<T> {
     pub(crate) fn take_first(
         &mut self,
         mut matches: impl FnMut(&T) -> bool,
-    ) -> Option<RetiredEntry<T>> {
+    ) -> Option<RetiredEntry<T, C>> {
         let mut link = &mut self.head;
         while let Some(node) = link.as_ref() {
             if matches(node.value.as_ref().unwrap()) {
@@ -169,8 +218,8 @@ impl<T> RetirementList<T> {
     }
 }
 
-struct IterMut<'a, T>(Option<&'a mut Node<T>>);
-impl<'a, T> Iterator for IterMut<'a, T> {
+struct IterMut<'a, T, C>(Option<&'a mut Node<T, C>>);
+impl<'a, T, C> Iterator for IterMut<'a, T, C> {
     type Item = &'a mut T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -180,13 +229,13 @@ impl<'a, T> Iterator for IterMut<'a, T> {
     }
 }
 
-impl<T> Default for RetirementList<T> {
+impl<T, C> Default for RetirementList<T, C> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T> Drop for RetirementList<T> {
+impl<T, C> Drop for RetirementList<T, C> {
     fn drop(&mut self) {
         if let Some(head) = self.head.take() {
             // O(1) abandonment: no recursive chain destruction or T::drop.

@@ -1,9 +1,10 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains forty-two finite, executable specification modules:
+This directory contains forty-three finite, executable specification modules:
 
 | Subsystem | Module | Fast configuration |
 |---|---|---|
+| Thread context/node admission and original-charge disposal | `CharlotteThreadMetadata.tla` | `CharlotteThreadMetadata_small.cfg` |
 | Aggregate principal backing across instances and retained generations | `CharlottePrincipalBacking.tla` | `CharlottePrincipalBacking_small.cfg` |
 | Controller server preflight evidence, original budget and independent replies | `CharlotteControllerRelay.tla` | `CharlotteControllerRelay_small.cfg` |
 | Deployment listener creation, setup and idle accept | `CharlotteDeploymentListener.tla` | `CharlotteDeploymentListener_small.cfg` |
@@ -142,8 +143,8 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all forty-five complete fast configurations and 133 expected-failure
-  principal-backing, controller-relay, deployment-listener, namespace-drain, deployment-close, deployment-output, deployment-input, deployment-control, IPC-transaction, IPC-publication, endpoint-observer, name-publication, boot-trust, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
+- runs all forty-six complete fast configurations and 137 expected-failure
+  thread-metadata, principal-backing, controller-relay, deployment-listener, namespace-drain, deployment-close, deployment-output, deployment-input, deployment-control, IPC-transaction, IPC-publication, endpoint-observer, name-publication, boot-trust, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
   checked-wait, domain-abort, address-space, root-retirement, hardware-ASID, interrupt-route, service-lifecycle, DMA, DMA-operation, authorization,
   Raft-join, Raft-response, Raft-stream, snapshot-restore, cluster-ingress, and reliable-message regression configurations;
 - enables TLC action coverage;
@@ -1065,3 +1066,19 @@ They do not yet answer â€œdoes the kernel implement that transition atomically?â
 The map makes remaining abstraction gaps explicit. Implementation-level traces
 and property tests can subsequently be checked against it. TLAPS proofs and
 temporal liveness properties are later steps; neither is claimed here.
+
+## Thread metadata admission
+
+`CharlotteThreadMetadata` follows two unequal prepaid context/node bundles
+through allocation, publication, confirmed context disposal, node deallocation
+and refund. Two roots share a principal; one slot can retire and restart under
+another principal while its old charge remains. Byte/count ceilings and original
+sponsorship remain invariant. Abandonment retains admission. The safe graph has
+4,132 distinct / 12,559 generated states, depth 15, with every required action
+exercised. Four unsafe configurations admit by generation, refund before node
+free, refund abandonment or bill a replacement principal.
+
+This is a finite ordering projection. Stack-release proof is an input; node
+reserve, allocator overhead, observers/table capacity, IRQ contexts and progress
+are outside it. See [policy](../reference/thread-metadata-admission.md) and
+[execution evidence](../reports/audits/2026-10-23-security-thread-metadata.md).

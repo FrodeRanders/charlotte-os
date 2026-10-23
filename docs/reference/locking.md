@@ -257,3 +257,17 @@ yielding. Local IRQ masking without lock ownership is permitted for the short
 | IRQ → thread handoff | `ConcurrentQueue` + atomics, drained in thread context |
 | Cross-LP mutation | IPI/closure dispatch, never direct shared-memory writes |
 | One-time global initialization | `spin::LazyLock` |
+
+## Thread context/node accounting
+
+Thread preparation validates the captured root through address-space table →
+memory ledger. Principal reservation uses the existing history counter, releases
+that guard, then enters the independent thread-metadata node counter. Node
+rejection releases its guard before undoing the local principal reservation.
+Final post-deallocation refund enters the node counter, leaves it, then releases
+the original principal charge. Neither counter allocates or enters root,
+scheduler, allocator or observer registries. Published thread/node/list Drop
+retains the charge without entering either counter. No fresh counter nesting is
+introduced between node and history. Explicit metadata disposal and ordinary
+unused preparation still require their existing post-guard contexts. See
+[thread metadata admission](thread-metadata-admission.md).
