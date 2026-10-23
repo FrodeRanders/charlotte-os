@@ -7,7 +7,7 @@ counter implementation as [demand heaps](heap-admission.md).
 | Scope | Image/runtime physical backing ceiling |
 | --- | --- |
 | One address-space lifetime | 16,384 pages (64 MiB). |
-| One signed principal | 16,384 combined image/heap/memory-object pages across generations. |
+| One signed principal | 16,384 combined data/private-table pages and full stack capacity across generations. |
 | Node total | One quarter of usable RAM, rounded down to pages (minimum one). |
 | Ordinary domains | Three quarters of the node image pool. |
 
@@ -87,7 +87,7 @@ not a real-EL0 image-quota probe, full node pressure soak, real allocator
 exhaustion/corruption or exhaustive cross-LP teardown proof. Shared preparation
 fault adapters additionally check failed physical release, pool identity,
 uncertain publication, domain ceilings and mixed retained/owned teardown.
-Stack, shared kernel-table, kernel heap,
+Inherited/pure kernel stacks, shared kernel tables, kernel heap,
 empty namespace/control-block and general metadata accounting remain open.
 
 Constructor-failure fixtures verify the registration error, unchanged backing

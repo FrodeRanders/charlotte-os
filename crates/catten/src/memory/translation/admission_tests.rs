@@ -9,6 +9,11 @@ use crate::memory::{
         MemoryMapping,
         PageType,
     },
+    usage::principal_history::admission_tests::{
+        bind_fixture,
+        bind_raw_fixture,
+        check_retention,
+    },
 };
 
 fn map(space: &mut AddressSpace, vaddr: usize, frame: PAddr) -> bool {
@@ -22,6 +27,10 @@ fn map(space: &mut AddressSpace, vaddr: usize, frame: PAddr) -> bool {
 }
 
 pub(super) fn run() {
+    check_retention(run_inner);
+}
+
+fn run_inner() {
     sparse_domains();
     object_mapping();
     platform_progress();
@@ -45,6 +54,7 @@ fn object_mapping() {
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let used = account::test_used_pages();
     let owner = crate::service::loader::create_user_address_space_handle();
+    bind_fixture(owner);
     ADDRESS_SPACE_TABLE.lock().get_mut(owner.id()).unwrap().table_account.set_limit(5).unwrap();
     let memory = object::allocate(owner.id(), 1).unwrap();
     let backing = budget::used(owner);
@@ -76,7 +86,9 @@ fn sparse_domains() {
     let ordinary = account::test_ordinary_pages();
     let data = PreparingUserFrame::allocate_zeroed().unwrap();
     let mut first = AddressSpace::try_new_user().unwrap();
+    bind_raw_fixture(&mut first);
     let mut second = AddressSpace::try_new_user().unwrap();
+    bind_raw_fixture(&mut second);
     first.table_account.set_limit(5).unwrap();
     assert!(map(&mut first, 0x4000_0000, data.frame()));
     assert_eq!(first.table_account.pages(), 4);
@@ -130,6 +142,7 @@ fn platform_progress() {
     }
     // Classify before x86 root admission as well as namespace grant.
     let mut platform = AddressSpace::try_new_platform_user().unwrap();
+    bind_raw_fixture(&mut platform);
     assert!(map(&mut platform, 0x4000_0000, data.frame()));
     assert_eq!(platform.table_account.pages(), 4);
     assert_eq!(account::test_used_pages(), used + 4);
@@ -137,6 +150,7 @@ fn platform_progress() {
     drop(platform);
     drop(pressure);
     let mut retry = AddressSpace::try_new_user().unwrap();
+    bind_raw_fixture(&mut retry);
     assert!(map(&mut retry, 0x4000_0000, data.frame()));
     drop(retry);
     data.release().unwrap();
@@ -150,6 +164,7 @@ fn provisional_retention() {
         let used = account::test_used_pages();
         let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
         let mut space = AddressSpace::try_new_user().unwrap();
+        bind_raw_fixture(&mut space);
         let initial = space.table_account.pages();
         let account = &mut space.table_account;
         assert!(
@@ -193,7 +208,7 @@ fn provisional_retention() {
                 let _table = crate::memory::ADDRESS_SPACE_TABLE.lock();
                 let physical = PHYSICAL_FRAME_ALLOCATOR.lock();
                 let before = physical.free_frames();
-                drop(preparation);
+                crate::memory::usage::with_principal_history_locked(|| drop(preparation));
                 assert_eq!(physical.free_frames(), before);
             })
         });

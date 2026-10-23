@@ -584,13 +584,12 @@ fn try_load_domain_with_capacity(
     if image_backing_pages(image) > crate::memory::backing_budget::IMAGE_DOMAIN_PAGES {
         return Err(DomainLoadError::BackingAdmission);
     }
-    let address_space = try_create_user_address_space_handle_with(
-        if platform {
-            AddressSpace::try_new_platform_user
-        } else {
-            AddressSpace::try_new_user
-        },
-    )
+    let principal = charlotte_launch::artifact_principal_id(metadata.name());
+    let sponsor = crate::memory::prepare_principal_backing(principal)
+        .map_err(|_| DomainLoadError::BackingAdmission)?;
+    let address_space = try_create_user_address_space_handle_with(|| {
+        AddressSpace::try_new_principal_user(platform, sponsor)
+    })
     .map_err(DomainLoadError::AddressSpace)?;
     let mut preparation = PreparingDomain(Some(address_space));
     if platform {
@@ -602,7 +601,6 @@ fn try_load_domain_with_capacity(
     } else {
         0
     };
-    let principal = charlotte_launch::artifact_principal_id(metadata.name());
     crate::memory::register_domain_authority(address_space, principal, roles)
         .map_err(|_| DomainLoadError::BackingAdmission)?;
     // Optional grant/backing preparation already belongs to the verified

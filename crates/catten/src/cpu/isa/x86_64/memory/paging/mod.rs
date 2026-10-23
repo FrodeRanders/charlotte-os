@@ -93,22 +93,35 @@ impl AddressSpace {
     /// Runtime callers report initial root exhaustion rather than panicking
     /// before the loader's owning preparation exists.
     pub fn try_new_user() -> Result<Self, super::Error> {
-        Self::try_new_user_with_root(false, || true)
+        Self::try_new_user_with_root(false, || true, None)
     }
 
     /// Trusted ambient supervisor construction; no userspace input selects it.
     pub(crate) fn try_new_platform_user() -> Result<Self, super::Error> {
-        Self::try_new_user_with_root(true, || true)
+        Self::try_new_user_with_root(true, || true, None)
+    }
+
+    /// The signed loader supplies the prepared immutable sponsor before the
+    /// first PML4 reservation. Constructor failure cannot escape its quota.
+    pub(crate) fn try_new_principal_user(
+        platform: bool,
+        principal: crate::memory::PrincipalBackingCharge,
+    ) -> Result<Self, super::Error> {
+        Self::try_new_user_with_root(platform, || true, Some(principal))
     }
 
     fn try_new_user_with_root(
         platform: bool,
         allow: impl FnOnce() -> bool,
+        principal: Option<crate::memory::PrincipalBackingCharge>,
     ) -> Result<Self, super::Error> {
         let current = Self::get_current();
         let mut table_account = crate::memory::translation::Account::new();
         if platform {
             table_account.mark_platform();
+        }
+        if let Some(principal) = principal {
+            table_account.bind_principal(principal);
         }
         let root = allow()
             .then(|| {
@@ -149,7 +162,7 @@ impl AddressSpace {
 
     pub(crate) fn self_test_root_preparation() {
         let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
-        assert!(Self::try_new_user_with_root(false, || false).is_err());
+        assert!(Self::try_new_user_with_root(false, || false, None).is_err());
         assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
         let address_space = Self::try_new_user().unwrap();
         assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free - 1);

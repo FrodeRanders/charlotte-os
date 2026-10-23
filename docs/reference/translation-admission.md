@@ -7,6 +7,7 @@ data backing, heap, image or memory-object limits.
 | Scope | Ceiling |
 | --- | --- |
 | One owning root lifetime | 1,024 table frames (4 MiB). |
+| One signed principal | Private-table pages share the 16,384-page data/table/stack ceiling across instances and generations. |
 | Node private-table pool | One sixteenth of usable RAM, rounded down to pages (minimum one). |
 | Ordinary domains | Three quarters of that node pool. |
 
@@ -44,6 +45,15 @@ sponsorship, fairness guarantee or reserved platform subpool. Runtime stack data
 has separate [stack admission](stack-admission.md).
 IOMMU backing has [hardware-table admission](iommu-table-admission.md);
 kernel-heap data and general metadata retain unresolved admission needs.
+
+Signed launch prepares the shared principal sponsor before the architecture
+constructor: x86 PML4 admission and AArch64 lazy allocation consume it from their
+first page. Namespace/authority binding validates that sponsor and avoids a second
+charge. Trusted raw-root fixtures bind existing preparation explicitly. Every
+later private prefix retains the same principal share, including empty/cached
+branches, failed publication and quarantined unpublished pages. Physical refund
+returns its node and principal charges together; promotion cannot refund the
+principal. See [aggregate admission](principal-backing-admission.md).
 
 ## Lifetime and rollback
 

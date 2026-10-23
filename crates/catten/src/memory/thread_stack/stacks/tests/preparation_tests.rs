@@ -23,7 +23,7 @@ fn drop_under_guards(action: impl FnOnce()) {
         let _kernel = memory::KERNEL_AS.lock();
         let physical = PHYSICAL_FRAME_ALLOCATOR.lock();
         let before = physical.free_frames();
-        action();
+        memory::usage::with_principal_history_locked(action);
         assert_eq!(physical.free_frames(), before, "Drop released stack backing");
     });
 }

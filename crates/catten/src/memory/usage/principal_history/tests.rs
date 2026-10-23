@@ -37,6 +37,7 @@ pub(in crate::memory::usage) fn run() {
     assert!(history.iter().next().is_none());
     exact_root_reuse();
     super::admission_tests::run();
+    super::structural_tests::run();
     crate::logln!(
         "[principal history preparation] 64 heap-held first/duplicate publications; \
          allocation-free monotonic stack/heap updates, root retirement/restart and \

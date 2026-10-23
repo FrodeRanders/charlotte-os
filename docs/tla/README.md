@@ -47,13 +47,14 @@ This directory contains forty-two finite, executable specification modules:
 | Remote-call identity, uncertainty, and bounded deduplication | `CharlotteRemoteCall.tla` | `CharlotteRemoteCall_small.cfg` |
 | Reliable-message restart/retry sessions | `CharlotteReliableMessage.tla` | `CharlotteReliableMessage_small.cfg` |
 
-The [23 October aggregate-backing review](../reports/audits/2026-10-23-security-principal-backing.md)
-checks three unit backings and root slots, including one slot reused by another
-principal. Allocation shares one principal ceiling; move, retirement and restart
-retain original charges. Physical confirmation alone refunds them. Negative
-controls restore per-generation-only admission, early refund, sponsorship changes
-on move and late release against a replacement principal. Object counts, node
-pools, metadata, hardware and pressure fairness remain outside this projection.
+The [23 October table/stack follow-up](../reports/audits/2026-10-23-security-principal-structure.md)
+extends aggregate backing to unequal charged footprints: one-page object/table
+units and a two-page reserved stack capacity. Growth uses that prepaid capacity.
+One root slot can restart under another principal. Six negative controls include
+double-charged growth and abandonment refund, alongside generation-only admission,
+early retirement refund, move-based sponsorship changes and late release against
+a replacement. Object counts, node pools, metadata, hardware and pressure fairness
+remain outside this projection.
 
 The [22 October controller-server review](../reports/audits/2026-10-22-security-controller-relay.md)
 checks preflight/mutation beside a query, original budgets, independent readiness
@@ -141,7 +142,7 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all forty-five complete fast configurations and 131 expected-failure
+- runs all forty-five complete fast configurations and 133 expected-failure
   principal-backing, controller-relay, deployment-listener, namespace-drain, deployment-close, deployment-output, deployment-input, deployment-control, IPC-transaction, IPC-publication, endpoint-observer, name-publication, boot-trust, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
   checked-wait, domain-abort, address-space, root-retirement, hardware-ASID, interrupt-route, service-lifecycle, DMA, DMA-operation, authorization,
   Raft-join, Raft-response, Raft-stream, snapshot-restore, cluster-ingress, and reliable-message regression configurations;

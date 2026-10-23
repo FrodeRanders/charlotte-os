@@ -7,7 +7,7 @@ before allocating a frame, on both AArch64 and x86-64.
 | Scope | Physical heap backing ceiling |
 | --- | --- |
 | One address-space lifetime | Fixed heap-window maximum: `HEAP_VA_LIMIT / 4096` (1,264 pages); accessible pages are also limited by its configured virtual capacity. |
-| One signed principal | 16,384 combined heap/image/memory-object pages across generations. |
+| One signed principal | 16,384 combined data/private-table pages and full stack capacity across generations. |
 | Node total | One quarter of usable RAM, rounded down to pages (minimum one). |
 | Ordinary domains | Three quarters of the node heap pool. |
 
@@ -81,5 +81,5 @@ always uses the real architecture mapper.
 These are deterministic kernel fixtures plus ordinary service heap faults in
 the AArch64 security guest. They are not a new real-EL0 quota probe, a node-wide
 pressure soak, forced allocator exhaustion or exhaustive teardown-race proof.
-Image/runtime backing and private tables have their own admission. User/kernel
-stacks, shared kernel tables, kernel heap and general metadata remain SEC-07 work.
+Image/runtime backing and private tables have their own admission. Inherited/pure kernel stacks, shared kernel tables, kernel heap and general
+metadata remain SEC-07 work.

@@ -154,6 +154,18 @@ impl Account {
         *self.principal = Some(charge);
     }
 
+    /// The caller retains the original root lease and table borrow. Stack
+    /// admission borrows this immutable binding; its reservation owns the share.
+    pub(in crate::memory) fn reserve_principal(
+        &self,
+        pages: u64,
+    ) -> Result<Option<BackingCharge>, ()> {
+        if self.retired {
+            return Err(());
+        }
+        self.principal.as_ref().map(|owner| owner.reserve(amount(pages))).transpose()
+    }
+
     fn absorb_principal(&mut self, charge: &mut PageCharge) {
         match (self.principal.as_mut(), charge.principal.take()) {
             (Some(owner), Some(charge)) => owner.absorb(charge),

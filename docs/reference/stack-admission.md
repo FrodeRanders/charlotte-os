@@ -2,13 +2,15 @@
 
 Thread preparation reserves its maximum data footprint before physical backing
 allocation. This is independent of stack-usage telemetry, heap/image/object
-pools and translation-table admission. User pages remain demand-backed; reserving
+node pools and per-root translation-table admission; signed roots also share
+[aggregate principal admission](principal-backing-admission.md). User pages remain demand-backed; reserving
 capacity does not eagerly allocate or promise physical frames.
 
 | Scope | Reservation or ceiling |
 | --- | --- |
 | User thread | Configured maximum user pages plus 16 kernel-stack pages. |
 | Owning user root | At most 64 stack slots; each user range admits at most 64 pages. Maximum combined footprint is 5,120 pages (20 MiB). Signed/adaptive limits can reduce this. |
+| One signed principal | Maximum user-plus-kernel stack capacity shares the 16,384-page data/table/stack ceiling across instances. |
 | Kernel-only thread | 16 pages from trusted kernel admission. |
 | Node stack pool | One eighth of usable RAM, rounded down to pages, minimum one. |
 | Ordinary user domains | Three quarters of that node pool; the final quarter is trusted-platform headroom. |
@@ -30,6 +32,14 @@ physical ranges for user threads, or the kernel range and reservation for
 kernel-only threads. Both architecture contexts retain that owner through
 construction, publication, execution and off-CPU retirement. There is no scalar
 stack cleanup ladder when kernel preparation fails after user mapping.
+
+Before frame allocation, stack admission reserves its full footprint against
+the sponsor borrowed from that exact root. The reservation owns the share;
+stack growth does not add another data charge. New private branches have their
+own table charge. Node rejection rolls back an unused share after the pool guard
+leaves. Explicit confirmed pair release refunds it; the reservation's inert field
+fallback prevents uncertain Drop from refunding it. Pure kernel-only threads
+keep their existing trusted node allowance without inventing a principal.
 
 The kernel half is a non-copyable `KernelStack` holding its exact base, page
 count and one-shot release fence. Only the stack allocator constructs it;

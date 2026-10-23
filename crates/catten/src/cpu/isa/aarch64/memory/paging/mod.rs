@@ -243,6 +243,20 @@ impl AddressSpace {
         Ok(space)
     }
 
+    /// Bind the verified sponsor before the lazy root can allocate a table.
+    pub(crate) fn try_new_principal_user(
+        platform: bool,
+        principal: crate::memory::PrincipalBackingCharge,
+    ) -> Result<Self, super::Error> {
+        let mut space = if platform {
+            Self::try_new_platform_user()?
+        } else {
+            Self::try_new_user()?
+        };
+        space.table_account.bind_principal(principal);
+        Ok(space)
+    }
+
     /// Record one physical frame that belongs to this user address space's
     /// mappings and must be reclaimed when the address space is torn down.
     pub(crate) fn register_user_frame(&mut self, frame: PAddr) {

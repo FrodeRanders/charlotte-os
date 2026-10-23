@@ -1,5 +1,7 @@
 //! Reserve the complete maximum data footprint before stack preparation.
 //! Charges are independent of telemetry and never refunded by default Drop.
+use core::mem::ManuallyDrop;
+
 use charlotte_lifecycle::resources::{
     Amount,
     Budget,
@@ -9,6 +11,7 @@ use crate::memory::{
     LazyLock,
     Mutex,
     PHYSICAL_FRAME_ALLOCATOR,
+    usage::principal_history::BackingCharge,
 };
 
 fn amount(pages: u64) -> Amount {
@@ -57,21 +60,32 @@ static POOL: LazyLock<Mutex<Pool>> = LazyLock::new(|| {
 pub(super) struct Reservation {
     pages: u64,
     platform: bool,
+    principal: ManuallyDrop<Option<BackingCharge>>,
 }
 impl Reservation {
-    pub(super) fn reserve(pages: usize, platform: bool) -> Option<Self> {
+    pub(super) fn reserve(
+        pages: usize,
+        platform: bool,
+        principal: Option<BackingCharge>,
+    ) -> Option<Self> {
         let pages = pages as u64;
-        POOL.lock().reserve(pages, platform)?;
+        if let Some(owner) = &principal {
+            assert_eq!(owner.amount(), amount(pages));
+        }
+        let admitted = POOL.lock().reserve(pages, platform);
+        admitted?;
         Some(Self {
             pages,
             platform,
+            principal: ManuallyDrop::new(principal),
         })
     }
 
     /// No backing was allocated, or the whole stack pair's physical cleanup
     /// completed. Consume once; abandonment retains the original node charge.
-    pub(super) fn refund(self) {
+    pub(super) fn refund(mut self) {
         POOL.lock().release(self.pages, self.platform);
+        drop(self.principal.take());
     }
 }
 

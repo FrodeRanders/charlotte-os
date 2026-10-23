@@ -53,10 +53,12 @@ of usable physical frames free. Platform domains still obey per-domain and
 node-wide limits.
 
 One verified artifact principal also shares a ceiling of 16,384 pages across
-memory-object, committed heap and ELF/runtime backing, plus 1,024 memory-object
+memory-object, committed heap, ELF/runtime, private-table backing and maximum
+user-thread stack capacity, plus 1,024 memory-object
 allocations. Every instance and generation consumes that same counter in the
-existing principal-history record. The signed loader binds it before optional
-preparation and thread publication. A new instance, ASID reuse or platform
+existing principal-history record. The signed loader prepares its immutable sponsor before architecture root
+construction and validates that binding before optional preparation and thread
+publication. A new instance, ASID reuse or platform
 promotion cannot reset it. Existing generation and node pools still apply.
 See \path{docs/reference/principal-backing-admission.md}.
 
@@ -79,7 +81,8 @@ these limits remain future work. Demand-backed heaps and ELF/runtime pages have
 independent generation-owned accounts and node pools, alongside the shared
 principal ceiling. Capability records,
 IPC operations and several completion/observer families also have separate
-admission. Private translation tables have owning-root limits and a node pool;
+admission. Private translation tables also consume that same principal allowance, including
+initial roots and cached sparse branches. They retain owning-root limits and a node pool;
 fresh shared runtime kernel tables have a separate node pool. Inherited boot
 tables/stacks, IOMMU tables, general kernel heap and comprehensive metadata
 accounting remain open.
@@ -90,6 +93,11 @@ maximum user pages plus sixteen kernel pages in a separate node stack pool.
 The pool uses one eighth of usable RAM; ordinary domains may consume three
 quarters, leaving trusted-platform headroom. A root has at most 64 exclusive
 slots and at most 64 user pages per slot. User backing still grows on demand.
+The complete maximum user-plus-kernel data footprint consumes the shared signed
+principal allowance before frame allocation. A typed share remains with the
+original slot/root owner through uncertain cleanup; only unused cancellation or
+confirmed pair release refunds it. Data growth pays once, while new private
+table branches still have their own charge.
 One owning transaction retains both stack ranges, the original root lease and
 the reservation through physical cleanup. Refund requires confirmed release of
 both ranges; failed or abandoned cleanup retains the entire maximum charge and

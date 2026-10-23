@@ -214,6 +214,7 @@ pub(super) fn bind_principal(
     principal: u64,
     heap: &mut super::backing_budget::Account,
     image: &mut super::backing_budget::Account,
+    tables: &mut super::translation::Account,
 ) -> Result<(), Error> {
     use super::usage::principal_history::BackingCharge;
     let mut ledger = LEDGER.lock();
@@ -231,10 +232,20 @@ pub(super) fn bind_principal(
         pages: image.pages(),
         objects: 0,
     };
+    let tables_bound = tables.bound_principal(principal).map_err(|_| Error::StaleDomain)?;
+    let table_amount = Amount {
+        pages: if tables_bound {
+            0
+        } else {
+            tables.pages()
+        },
+        objects: 0,
+    };
     let pages = objects
         .pages
         .checked_add(heap_amount.pages)
         .and_then(|pages| pages.checked_add(image_amount.pages))
+        .and_then(|pages| pages.checked_add(table_amount.pages))
         .ok_or(Error::Limit)?;
     let mut charge = BackingCharge::try_new(
         principal,
@@ -246,6 +257,9 @@ pub(super) fn bind_principal(
     .map_err(|_| Error::Limit)?;
     heap.bind_principal(charge.split(heap_amount));
     image.bind_principal(charge.split(image_amount));
+    if !tables_bound {
+        tables.bind_principal(charge.split(table_amount));
+    }
     account.principal = Some(charge);
     Ok(())
 }

@@ -17,6 +17,10 @@ pub(crate) use stacks::{
 pub(crate) fn retirement_progress() -> [u64; 6] {
     stacks::retirement_progress()
 }
+pub(in crate::memory) fn test_used_pages() -> u64 {
+    budget::used().0
+}
+
 pub(crate) fn test_admission() {
     stacks::tests::run();
 }
@@ -174,8 +178,12 @@ impl StackSlot {
             let _ = operation.release();
             return Err(());
         }
-        let Some(charge) =
-            budget::Reservation::reserve(limits.user_stack_pages + KERNEL_STACK_PAGES, platform)
+        let pages = limits.user_stack_pages + KERNEL_STACK_PAGES;
+        let Some(charge) = space
+            .heap_account
+            .reserve_principal(pages as u64)
+            .ok()
+            .and_then(|principal| budget::Reservation::reserve(pages, platform, principal))
         else {
             drop(table);
             let _ = operation.release();

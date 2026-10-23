@@ -134,13 +134,13 @@ state and violates \texttt{NoReentry}; accepted replay has its existing control.
 This is no recoverable custody, deadline-duration, field-destructor or runtime
 abort proof. See \path{docs/tla/CharlotteDeploymentClose.tla}.
 
-The principal-backing projection shares one page ceiling across three root slots
-and three unit backings. One slot can restart with another authenticated
-principal. Moves, retirement and restart retain the original charge; explicit
-physical confirmation alone refunds it. Negative controls admit by generation
-alone, refund at retirement, change sponsor on move or debit a replacement
-principal on late release. Object counts, allocator/node metadata, hardware and
-pressure fairness lie outside the projection. See
+The principal-backing projection shares one ceiling across three root slots and
+unequal object/table/stack footprints. Reserved stack capacity pays before growth;
+a later commitment does not pay twice. One slot can restart under another
+principal. Moves, retirement and abandonment retain the original charge; explicit
+physical confirmation alone refunds it. Six negative controls include early
+reservation refund and double-charged growth. Object counts, allocator/node
+metadata, hardware and pressure fairness lie outside the projection. See
 \path{docs/tla/CharlottePrincipalBacking.tla}.
 
 The controller-server projection checks a preflight/mutation relay beside a
@@ -194,7 +194,7 @@ are boundary inputs, and later wakes/deadlines lie outside this projection.
 See \path{docs/tla/CharlotteNamespaceDrain.tla}.
 
 The current suite checks forty-five safe configurations across forty-two
-specifications. It also checks 131 expected-counterexample
+specifications. It also checks 133 expected-counterexample
 configurations. The models are divided by state ownership and failure boundary
 so that each remains reviewable.
 The Raft models are deliberately layered: election, log replication,
@@ -1159,7 +1159,7 @@ Flat session allocation & Retry and restart epochs alias one wire session. &
 \end{longtable}
 \normalsize
 
-The check suite expects all 131 negative configurations to fail for the named
+The check suite expects all 133 negative configurations to fail for the named
 reason. If one unexpectedly satisfies its invariant, the regression harness
 has lost sensitivity and the suite fails.
 
@@ -1210,7 +1210,7 @@ Alternatively, \texttt{TLA2TOOLS\_JAR} may name the tools archive. The script:
         positive successor count;
     \item rejects structural TLC warnings about variables, \texttt{EXCEPT}
         expressions, or incomplete successor states;
-    \item runs 131 negative configurations and requires each one to fail on
+    \item runs 133 negative configurations and requires each one to fail on
         the named invariant after exercising the named unsafe action; and
     \item writes checkpoints and traces into a temporary directory so generated
         state does not become part of the source tree.

@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [SEC-07 principal table and stack admission](audits/2026-10-23-security-principal-structure.md) — Initial/private table pages and full user-thread stack capacity share the principal limit, with original cleanup fences.
+
 - [SEC-07 aggregate principal backing](audits/2026-10-23-security-principal-backing.md) — Shared object/heap/image limits across instances and retained generations; exact cleanup retention and signed-launch controls.
 
 - [Release startup retry boundary](audits/2026-10-23-security-release-startup.md) — One command and deadline; uncertain responses and accepted rollout failures cannot restart admission.

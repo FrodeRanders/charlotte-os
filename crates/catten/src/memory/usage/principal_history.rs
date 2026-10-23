@@ -87,7 +87,7 @@ impl PreparingHistory {
 /// it through transfer/retirement; retained physical backing retains this charge.
 #[derive(Debug)]
 #[must_use]
-pub(in crate::memory) struct BackingCharge {
+pub(crate) struct BackingCharge {
     principal: u64,
     amount: Amount,
 }
@@ -104,6 +104,10 @@ impl BackingCharge {
 
     pub(in crate::memory) fn reserve(&self, amount: Amount) -> Result<Self, ()> {
         Self::try_new(self.principal, amount)
+    }
+
+    pub(in crate::memory) fn principal(&self) -> u64 {
+        self.principal
     }
 
     pub(in crate::memory) fn amount(&self) -> Amount {
@@ -152,6 +156,18 @@ impl Drop for BackingCharge {
     }
 }
 
+/// Trusted signed-loader entry, after artifact verification and before even
+/// initial private-root backing. Shared admitted storage remains boot-lifetime.
+pub(crate) fn prepare_backing(principal: u64) -> Result<BackingCharge, AllocError> {
+    if principal == 0 {
+        return Err(AllocError);
+    }
+    let mut preparation = PreparingHistory::try_new()?;
+    preparation.publish(principal);
+    preparation.cancel_unpublished();
+    Ok(BackingCharge::try_new(principal, Amount::default()).expect("prepared principal missing"))
+}
+
 pub(crate) fn backing_used(principal: u64) -> Amount {
     HISTORY.lock().get(&principal).map_or(Amount::default(), |entry| entry.backing.used())
 }
@@ -186,4 +202,5 @@ pub(super) fn available() -> bool {
 }
 
 pub(in crate::memory) mod admission_tests;
+mod structural_tests;
 pub(super) mod tests;

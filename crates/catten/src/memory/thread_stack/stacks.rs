@@ -73,8 +73,8 @@ pub(crate) struct Stacks {
 
 impl Stacks {
     pub(crate) fn kernel() -> Result<Self, Error> {
-        let charge =
-            budget::Reservation::reserve(KERNEL_STACK_PAGES, true).ok_or(Error::InvalidStack)?;
+        let charge = budget::Reservation::reserve(KERNEL_STACK_PAGES, true, None)
+            .ok_or(Error::InvalidStack)?;
         let mut stacks = Self {
             kernel_charge: Some(charge),
             ..Self::default()

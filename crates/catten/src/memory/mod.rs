@@ -15,7 +15,6 @@ pub(crate) mod retirement;
 pub(crate) mod thread_stack;
 pub(crate) mod translation;
 pub mod usage;
-
 pub use linear::VAddr;
 pub use physical::{
     MemoryInterface,
@@ -29,6 +28,10 @@ pub(crate) use preparation::{
 pub use spin::{
     LazyLock,
     RwLock,
+};
+pub(crate) use usage::principal_history::{
+    BackingCharge as PrincipalBackingCharge,
+    prepare_backing as prepare_principal_backing,
 };
 
 // Memory-global locks are acquired from both preemptible kernel threads and
@@ -199,6 +202,7 @@ pub(crate) fn register_domain_authority(
         principal,
         &mut root.heap_account,
         &mut root.image_account,
+        &mut root.table_account,
     )
     .map_err(|_| DomainAuthorityError::ResourceLimit)?;
     slot.install(address_space, principal, roles)

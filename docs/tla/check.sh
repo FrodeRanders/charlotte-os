@@ -89,7 +89,7 @@ run_expected_violation() {
 
 cd "${script_dir}"
 run_model CharlottePrincipalBacking CharlottePrincipalBacking_small.cfg \
-    Allocate Move Retire Restart ConfirmRelease
+    Allocate Grow Move Retire Restart ConfirmRelease
 run_expected_violation CharlottePrincipalBacking CharlottePrincipalBacking_generation_unsafe.cfg \
     PrincipalCeiling UnsafeGenerationOnly
 run_expected_violation CharlottePrincipalBacking CharlottePrincipalBacking_refund_unsafe.cfg \
@@ -98,6 +98,10 @@ run_expected_violation CharlottePrincipalBacking CharlottePrincipalBacking_move_
     Accounted UnsafeMoveSponsor
 run_expected_violation CharlottePrincipalBacking CharlottePrincipalBacking_reuse_unsafe.cfg \
     Accounted UnsafeReuseSponsor
+run_expected_violation CharlottePrincipalBacking CharlottePrincipalBacking_growth_unsafe.cfg \
+    Accounted UnsafeGrowCharge
+run_expected_violation CharlottePrincipalBacking CharlottePrincipalBacking_drop_unsafe.cfg \
+    Accounted UnsafeDropRefund
 run_model CharlotteControllerRelay CharlotteControllerRelay_small.cfg \
     ProducerReply CheckedPreflight RejectPreflight ObserveTerminal Expire ReleaseReceiver Park Wake Tick AbortBindingOrWait
 run_expected_violation CharlotteControllerRelay CharlotteControllerRelay_unknown_unsafe.cfg \

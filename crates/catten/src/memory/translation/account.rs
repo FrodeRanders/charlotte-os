@@ -1,4 +1,6 @@
 //! Private translation admission follows the owning root, never a reusable ASID.
+use core::mem::ManuallyDrop;
+
 use charlotte_lifecycle::resources::{
     Amount,
     Budget,
@@ -8,6 +10,7 @@ use crate::memory::{
     LazyLock,
     Mutex,
     PHYSICAL_FRAME_ALLOCATOR,
+    usage::principal_history::BackingCharge,
 };
 
 pub(crate) const DOMAIN_TABLE_PAGES: u64 = 1024; // 4 MiB of translation metadata.
@@ -64,6 +67,7 @@ pub(crate) struct Account {
     retired: bool,
     refundable: bool,
     quarantined_pages: u64,
+    principal: ManuallyDrop<Option<BackingCharge>>,
 }
 
 impl Account {
@@ -76,6 +80,7 @@ impl Account {
             // Only the complete physical destructor walk can authorize refund.
             refundable: false,
             quarantined_pages: 0,
+            principal: ManuallyDrop::new(None),
         }
     }
 
@@ -83,7 +88,12 @@ impl Account {
         if self.retired || self.pages >= self.limit {
             return Err(());
         }
+        let principal =
+            self.principal.as_ref().map(|owner| owner.reserve(amount(1))).transpose()?;
         POOL.lock().reserve(self.platform)?;
+        if let Some(charge) = principal {
+            self.principal.as_mut().unwrap().absorb(charge);
+        }
         self.pages += 1;
         Ok(())
     }
@@ -91,6 +101,9 @@ impl Account {
     pub(super) fn refund_unpublished(&mut self) {
         assert!(self.pages > self.quarantined_pages);
         POOL.lock().release(1, self.platform);
+        if let Some(principal) = self.principal.as_mut() {
+            principal.release(amount(1));
+        }
         self.pages -= 1;
     }
 
@@ -103,6 +116,25 @@ impl Account {
         assert!(self.quarantined_pages != 0);
         self.quarantined_pages -= 1;
         self.refund_unpublished();
+    }
+
+    /// Initial root tables may precede signed identity binding. One atomic
+    /// containing reservation pays for them before this owner is attached.
+    pub(crate) fn bind_principal(&mut self, charge: BackingCharge) {
+        assert!(self.principal.is_none());
+        assert_eq!(charge.amount(), amount(self.pages));
+        *self.principal = Some(charge);
+    }
+
+    pub(in crate::memory) fn bound_principal(&self, principal: u64) -> Result<bool, ()> {
+        match self.principal.as_ref() {
+            None => Ok(false),
+            Some(owner) if owner.principal() == principal => {
+                assert_eq!(owner.amount(), amount(self.pages));
+                Ok(true)
+            }
+            Some(_) => Err(()),
+        }
     }
 
     pub(crate) fn mark_platform(&mut self) {
@@ -143,7 +175,11 @@ impl Account {
 impl Drop for Account {
     fn drop(&mut self) {
         if self.refundable {
-            POOL.lock().release(self.pages - self.quarantined_pages, self.platform);
+            let pages = self.pages - self.quarantined_pages;
+            POOL.lock().release(pages, self.platform);
+            if let Some(principal) = self.principal.as_mut() {
+                principal.release(amount(pages));
+            }
         }
     }
 }

@@ -27,6 +27,7 @@ fn domain(pages: usize, platform: bool) -> AddressSpaceHandle {
         },
     )
     .unwrap();
+    memory::usage::principal_history::admission_tests::bind_fixture(handle);
     handle
 }
 
@@ -39,6 +40,10 @@ fn free() -> usize {
 }
 
 pub(in crate::memory::thread_stack) fn run() {
+    memory::usage::principal_history::admission_tests::check_retention(run_inner);
+}
+
+fn run_inner() {
     budget::test_pool();
     kernel_range_ownership();
     growth_and_drop();

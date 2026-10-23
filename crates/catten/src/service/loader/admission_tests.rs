@@ -152,8 +152,18 @@ fn signed_instances_share_backing_limit(image: &[u8]) {
     let baseline = memory::usage::principal_backing_used(principal);
     let first = try_load_domain(image).unwrap();
     let second = try_load_domain(image).unwrap();
-    let expected = 2 * image_backing_pages(image);
-    assert_eq!(memory::usage::principal_backing_used(principal).pages, baseline.pages + expected);
+    let owned = {
+        let table = ADDRESS_SPACE_TABLE.lock();
+        [first.asid, second.asid]
+            .iter()
+            .map(|asid| {
+                let root = table.get(*asid).unwrap();
+                assert_eq!(root.image_account.pages(), image_backing_pages(image));
+                root.heap_account.pages() + root.image_account.pages() + root.table_account.pages()
+            })
+            .sum::<u64>()
+    };
+    assert_eq!(memory::usage::principal_backing_used(principal).pages, baseline.pages + owned);
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     // Each instance would individually admit this request before physical
     // allocation; their existing image backing now consumes the shared ceiling.
