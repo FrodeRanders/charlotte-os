@@ -283,3 +283,14 @@ original classification. Published table/candidate fallback retains both without
 locks. The counter never looks up a root, enters history or allocates. Ordinary
 cancellation and root metadata disposal still require their existing outer
 contexts. See [history admission](principal-history-admission.md).
+
+## Root-record byte/count admission
+
+Limits, usage and signed-authority node preparation reserves its exact requested
+layout under an independent leaf counter and leaves it before allocation or
+root publication. Relinking/detachment under existing registry guards enters no
+counter. Explicit unused or confirmed post-invalidation disposal frees the node
+before refunding its original classification. Fallback retains storage and
+charges without locks. The counter enters no root, policy, history, allocator or
+other subsystem and performs no ASID lookup. Existing outer cleanup contexts
+remain required. See [root metadata admission](root-metadata-admission.md).

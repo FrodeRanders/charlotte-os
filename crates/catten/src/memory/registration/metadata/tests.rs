@@ -3,6 +3,7 @@ use super::*;
 use crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR;
 
 pub(super) fn run() {
+    admission_tests::run();
     rejection();
     let mut limits = DomainLimitsTable::new();
     let mut usage = usage::DomainUsageTable::new();
@@ -15,7 +16,9 @@ pub(super) fn run() {
         };
         {
             let _heap = PRIMARY_ALLOCATOR.lock();
-            prepared.publish_into(&mut limits, &mut usage, &mut authority, handle);
+            admission::with_locked(|| {
+                prepared.publish_into(&mut limits, &mut usage, &mut authority, handle)
+            });
             assert_eq!(limits.get(&1).unwrap().0, handle);
             assert_eq!(usage.get(&1).unwrap().0, handle);
             assert_eq!(authority.get(&1).unwrap().handle, handle);
@@ -37,16 +40,16 @@ pub(super) fn run() {
     // without publishing a root or principal.
     for stage in 1..=4 {
         let mut owner = PreparingMetadata(ManuallyDrop::new(Resources {
-            limits: Some(PreparedEntry::try_new().unwrap()),
+            limits: Some(admission::prepare(false).unwrap()),
             usage: None,
             authority: None,
             history: None,
         }));
         if stage >= 2 {
-            owner.0.usage = Some(PreparedEntry::try_new().unwrap());
+            owner.0.usage = Some(admission::prepare(false).unwrap());
         }
         if stage >= 3 {
-            owner.0.authority = Some(PreparedEntry::try_new().unwrap());
+            owner.0.authority = Some(admission::prepare(false).unwrap());
         }
         if stage == 4 {
             owner.0.history = Some(usage::PreparingHistory::try_new(false).unwrap());
@@ -57,8 +60,10 @@ pub(super) fn run() {
         let _usage = usage::DOMAIN_USAGE.lock();
         let _authority = DOMAIN_AUTHORITIES.lock();
         usage::with_principal_history_locked(|| {
-            let _heap = PRIMARY_ALLOCATOR.lock();
-            drop(owner);
+            admission::with_locked(|| {
+                let _heap = PRIMARY_ALLOCATOR.lock();
+                drop(owner);
+            });
         });
     }
     crate::logln!(
@@ -76,6 +81,7 @@ fn rejection() {
             let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
             let roots = ADDRESS_SPACE_TABLE.lock().iter().filter(|e| e.is_some()).count();
             let capabilities = crate::capability::node_admission_used();
+            let metadata_admission = admission::snapshot();
             let limits = DOMAIN_LIMITS.lock().iter().count();
             let usage = usage::DOMAIN_USAGE.lock().iter().count();
             let authorities = DOMAIN_AUTHORITIES.lock().iter().count();
@@ -116,6 +122,7 @@ fn rejection() {
                 Err(AddressSpaceRegistrationError::DomainMetadataAllocationFailed)
             );
             assert_eq!(visits, reject);
+            assert_eq!(admission::snapshot(), metadata_admission);
             assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
             assert_eq!(ADDRESS_SPACE_TABLE.lock().iter().filter(|e| e.is_some()).count(), roots);
             assert_eq!(crate::capability::node_admission_used(), capabilities);
@@ -200,3 +207,5 @@ fn generation_reuse() {
     );
     close_user_address_space_handle(next).unwrap();
 }
+
+mod admission_tests;

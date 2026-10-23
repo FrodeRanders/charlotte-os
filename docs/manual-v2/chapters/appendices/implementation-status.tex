@@ -349,6 +349,9 @@ Source, tests, and repository history remain authoritative.
         separate requested-byte/count pool with reserved platform headroom.
         Published records remain charged for the boot lifetime; duplicate
         candidates refund only after confirmed root metadata disposal.
+        Limits/usage/authority nodes also have a separate byte/count pool whose
+        charges survive partial preparation, publication and failed invalidation.
+        Namespace/account and other control-block allocations remain open.
     \item \textbf{Cross-machine Raft boundary:} two TCG guests share a private
         QEMU LAN (stream backend on AArch64, socket backend on x86-64); the
         reliable-message frame transport and remote Raft peer routing are

@@ -389,6 +389,7 @@ fn test_retry_quiescence() {
     let principal = charlotte_launch::artifact_principal_id(b"retired-authority-control");
     drop(memory::prepare_principal_backing(principal, false).unwrap());
     let history_before = memory::usage::principal_history::admission::snapshot();
+    let root_metadata_before = memory::registration::metadata::admission::snapshot();
     let owner = loader::create_user_address_space_handle();
     memory::register_domain_authority(owner, principal, 0).unwrap();
     memory::install_launch_descriptor(owner, b"retired authority descriptor");
@@ -399,6 +400,9 @@ fn test_retry_quiescence() {
     let history_charged = memory::usage::principal_history::admission::snapshot();
     let bytes = history_charged.0[0] - history_before.0[0];
     assert_eq!(history_charged.0[1], history_before.0[1] + 1);
+    let metadata_charged = memory::registration::metadata::admission::snapshot();
+    let metadata_bytes = metadata_charged.0[0] - root_metadata_before.0[0];
+    assert_eq!(metadata_charged.0[1], root_metadata_before.0[1] + 3);
     let retired = stage(owner);
     let retired = retired
         .release_retry_with(|_, handle| {
@@ -407,6 +411,7 @@ fn test_retry_quiescence() {
         })
         .expect_err("rejected invalidation consumed root");
     assert_eq!(memory::usage::principal_history::admission::snapshot(), history_charged);
+    assert_eq!(memory::registration::metadata::admission::snapshot(), metadata_charged);
     retired.metadata.as_ref().unwrap().test_assert_retained(owner);
     assert_eq!(retired.metadata.as_ref().unwrap().test_authority(), authority);
     assert_eq!(memory::domain_authority(owner.id()), None);
@@ -416,7 +421,17 @@ fn test_retry_quiescence() {
     let intervening = loader::create_user_address_space_handle();
     assert_ne!(intervening.id(), owner.id());
     let history_with_intervening = memory::usage::principal_history::admission::snapshot();
+    let metadata_with_intervening = memory::registration::metadata::admission::snapshot();
     assert!(retired.release_retry_with(invalidate).is_ok());
+    let metadata_released = memory::registration::metadata::admission::snapshot();
+    assert_eq!(
+        metadata_released.0,
+        [metadata_with_intervening.0[0] - metadata_bytes, metadata_with_intervening.0[1] - 3]
+    );
+    assert_eq!(
+        metadata_released.1,
+        [metadata_with_intervening.1[0] - metadata_bytes, metadata_with_intervening.1[1] - 3]
+    );
     let history_released = memory::usage::principal_history::admission::snapshot();
     assert_eq!(
         history_released.0,

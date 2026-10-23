@@ -63,6 +63,7 @@ pub(super) struct DomainUsage {
 pub(super) type DomainUsageTable = crate::klib::collections::retirement_list::AdmittedMap<
     AddressSpaceId,
     (AddressSpaceHandle, DomainUsage),
+    super::registration::metadata::admission::Charge,
 >;
 
 pub(super) static DOMAIN_USAGE: LazyLock<Mutex<DomainUsageTable>> =

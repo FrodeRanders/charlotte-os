@@ -129,8 +129,11 @@ impl DomainAuthoritySlot {
     }
 }
 
-type DomainAuthoritiesTable =
-    crate::klib::collections::retirement_list::AdmittedMap<AddressSpaceId, DomainAuthoritySlot>;
+type DomainAuthoritiesTable = crate::klib::collections::retirement_list::AdmittedMap<
+    AddressSpaceId,
+    DomainAuthoritySlot,
+    registration::metadata::admission::Charge,
+>;
 static DOMAIN_AUTHORITIES: LazyLock<Mutex<DomainAuthoritiesTable>> =
     LazyLock::new(|| Mutex::new(DomainAuthoritiesTable::new()));
 
@@ -163,6 +166,7 @@ pub enum DomainLimitError {
 type DomainLimitsTable = crate::klib::collections::retirement_list::AdmittedMap<
     AddressSpaceId,
     (AddressSpaceHandle, DomainLimits),
+    registration::metadata::admission::Charge,
 >;
 static DOMAIN_LIMITS: LazyLock<Mutex<DomainLimitsTable>> =
     LazyLock::new(|| Mutex::new(DomainLimitsTable::new()));

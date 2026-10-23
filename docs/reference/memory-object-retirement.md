@@ -35,8 +35,8 @@ The [sponsor metadata audit](../reports/audits/2026-10-18-memory-sponsor-prepara
 records rejection, heap-held first-use/publication, exact generation reuse and
 guarded retention controls. These qualify preparation and local lifetime ordering.
 The account/sponsor allocations do not yet have aggregate logical-principal or
-general heap byte admission. Principal high-water metadata maps and wider
-destructors remain SEC-07/18 work; this is not a fully fallible root-publication
+general heap byte admission. Principal-history node admission is described below;
+wider destructors remain SEC-07/18 work; this is not a fully fallible root-publication
 path or hostile-pressure progress qualification.
 
 ## Root policy and telemetry metadata
@@ -61,8 +61,8 @@ policy is unchanged; these nodes confer no new cleanup or replay authority.
 The [root policy preparation audit](../reports/audits/2026-10-18-root-policy-preparation.md)
 records rejection, heap-held publication, generation reuse and retirement controls.
 Shared `AdmittedMap` lookup is linear and its hold time under hostile pressure is
-unqualified. Principal high-water and snapshot allocation, aggregate
-metadata/principal admission and wider caller contexts remain open.
+unqualified. The later root-record pool below bounds those three node layouts;
+other metadata/principal admission and wider caller contexts remain open.
 
 The [signed-authority slot follow-up](../reports/audits/2026-10-18-root-authority-preparation.md)
 extends that same owner and retirement receipt with an empty slot tagged by the
@@ -72,14 +72,19 @@ stale generation, zero principal and duplicate installation reject before mutati
 The slot detaches with the other root metadata; invalidation rejection retains
 even a populated identity/digest, and confirmed invalidation releases its node
 outside local guards before backing/slot completion. No separate registry or
-identity cleanup ticket is introduced. Principal high-water allocation remains
-beneath lifecycle; this change only releases the authority borrow before sampling.
+identity cleanup ticket is introduced. History candidates now prepare before
+publication guards; record linking and high-water updates reuse admitted storage.
 
 Principal-history candidates and published records now carry their own bounded
 [byte/count admission](principal-history-admission.md). The existing root
 metadata owner retains a losing candidate through failed invalidation and
 post-guard disposal; the published record keeps its original charge for the boot
-lifetime. Other policy/usage/authority metadata remains separate.
+lifetime. Policy/usage/authority node layouts now have their own
+[root metadata pool](root-metadata-admission.md): 4 MiB/12,288 nodes total,
+3 MiB/9,216 for ordinary preparation. Typed charges follow partial preparation,
+publication and detached-root retirement until actual node deallocation.
+One/two remaining slots reject complete root publication and return unused
+partial nodes. Other namespace/account/control-block metadata remains separate.
 
 ## Owning the gap
 

@@ -251,9 +251,15 @@ invalidation releases them outside local guards before backing and slot completi
 The signed-authority slot now prepares with those nodes. It initially grants no
 identity; the signed loader fills the exact assigned generation without allocation.
 The populated principal/roles/descriptor binding remains in the same final-root
-receipt through rejected invalidation. Aggregate heap/principal admission,
-principal high-water metadata and outer
-destructor contexts remain separate work. See
+receipt through rejected invalidation. Limits, usage and authority nodes now
+reserve their exact requested layouts in a shared 4 MiB/12,288-node pool;
+ordinary preparation is limited to 3 MiB/9,216 nodes. A root needs all three;
+partial rejection frees unused nodes before refund and publishes no ASID.
+Original charges follow detached nodes through failed invalidation until actual
+post-proof deallocation. Promotion cannot reclassify an existing charge.
+Namespace/account control blocks, other aggregate heap/principal admission and
+outer destructor contexts remain separate. See
+\repofile|docs/reference/root-metadata-admission.md|. See
 \repofile|docs/reference/memory-object-retirement.md|.
 
 Each pinned reaper waits on its LP retirement head instead of polling a timer.

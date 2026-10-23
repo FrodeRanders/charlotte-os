@@ -1122,3 +1122,16 @@ classification or permanent history. This does not model allocator internals,
 authority authentication, exact hardware/root-generation proofs, lookup/IRQ
 cost or pressure fairness. The [audit](../reports/audits/2026-10-23-security-history-admission.md)
 records seven focused checks; no expanded full-suite result is inferred.
+
+## Root-record storage admission
+
+The [24 October root metadata batch](../reports/audits/2026-10-24-security-root-metadata-admission.md)
+attaches requested-byte/count charges to the three existing root policy/usage/
+authority nodes. `CharlotteRootRetirement` already projects retained metadata
+and confirmation before release; it does not represent the individual three-node
+quota or partial allocation rollback. Those boundaries are checked by native
+one/two-slot, allocator rejection and real-node exhaustion controls plus the
+shared charged-collection host tests. No model/configuration changes accompany
+this batch. The complete 190-case suite passes (47 safe / 143 expected counterexamples)
+separately from these implementation controls; it supplies no executable refinement, allocator-byte,
+IRQ-context or pressure-fairness proof.

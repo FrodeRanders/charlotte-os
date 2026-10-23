@@ -12,8 +12,9 @@ candidates now share a bounded allocation pool.
 Every dimension must fit. One quarter is kept outside ordinary admission for
 trusted platform preparation. These fixed kernel limits have no userspace
 setter. They cover the exact charged retirement-node layout, including key,
-history/counters, link and charge. Allocator overhead, root policy/usage/authority
-nodes and other heap allocations remain separate. Count limits bind first for
+history/counters, link and charge. Root policy/usage/authority nodes have a
+[separate bounded pool](root-metadata-admission.md). Allocator overhead and other
+heap allocations remain separate. Count limits bind first for
 the layouts exercised by the native controls.
 
 ## Preparation and publication

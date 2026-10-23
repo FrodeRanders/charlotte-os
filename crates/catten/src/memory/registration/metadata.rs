@@ -10,14 +10,19 @@ use crate::klib::collections::retirement_list::{
     RetiredEntry,
 };
 
+pub(in crate::memory) mod admission;
+
+type Storage<T> = PreparedEntry<T, admission::Charge>;
+type Retired<T> = RetiredEntry<T, admission::Charge>;
+
 type LimitsRecord = (AddressSpaceId, (AddressSpaceHandle, DomainLimits));
 type UsageRecord = (AddressSpaceId, (AddressSpaceHandle, usage::DomainUsage));
 type AuthorityRecord = (AddressSpaceId, DomainAuthoritySlot);
 
 struct Resources {
-    limits: Option<PreparedEntry<LimitsRecord>>,
-    usage: Option<PreparedEntry<UsageRecord>>,
-    authority: Option<PreparedEntry<AuthorityRecord>>,
+    limits: Option<Storage<LimitsRecord>>,
+    usage: Option<Storage<UsageRecord>>,
+    authority: Option<Storage<AuthorityRecord>>,
     history: Option<usage::PreparingHistory>,
 }
 
@@ -42,11 +47,11 @@ impl PreparingMetadata {
         }));
         let result = (|| {
             before(1)?;
-            owner.0.limits = Some(PreparedEntry::try_new()?);
+            owner.0.limits = Some(admission::prepare(platform)?);
             before(2)?;
-            owner.0.usage = Some(PreparedEntry::try_new()?);
+            owner.0.usage = Some(admission::prepare(platform)?);
             before(3)?;
-            owner.0.authority = Some(PreparedEntry::try_new()?);
+            owner.0.authority = Some(admission::prepare(platform)?);
             before(4)?;
             owner.0.history = Some(usage::PreparingHistory::try_new(platform)?);
             before(5)
@@ -115,9 +120,9 @@ impl PreparingMetadata {
 /// confirmed invalidation. RetiredEntry's fallback retains each allocation.
 #[must_use]
 pub(in crate::memory) struct RetiredMetadata {
-    limits: RetiredEntry<LimitsRecord>,
-    usage: RetiredEntry<UsageRecord>,
-    authority: RetiredEntry<AuthorityRecord>,
+    limits: Retired<LimitsRecord>,
+    usage: Retired<UsageRecord>,
+    authority: Retired<AuthorityRecord>,
 }
 
 impl RetiredMetadata {

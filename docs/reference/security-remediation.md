@@ -345,6 +345,15 @@ without new history storage. This qualifies that R7-2/R7-3 metadata family;
 other root/control-block bytes, hold times and sustained progress remain open.
 See [current policy](principal-history-admission.md).
 
+The [root-record admission batch](../reports/audits/2026-10-24-security-root-metadata-admission.md)
+adds byte/count admission for limits, usage and authority nodes, including
+partial preparation before history admission. Each node keeps its original
+trusted classification through publication, failed invalidation and actual
+post-proof deallocation. Real one/two-slot exhaustion rejects partial root
+publication; existing-root close proceeds at total exhaustion. Namespace/account
+control blocks, IPC's lazy namespace construction, other metadata and sustained
+progress remain separate work. See [policy](root-metadata-admission.md).
+
 SEC-07 remains partial until all of the following deliverables are accepted:
 
 The [telemetry snapshot follow-up](../reports/audits/2026-10-18-telemetry-snapshot-preparation.md)

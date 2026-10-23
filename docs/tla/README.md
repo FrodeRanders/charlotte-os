@@ -1101,6 +1101,8 @@ or free an attached node before confirmation.
 
 Allocator/root-invalidation proofs are inputs. The projection omits exact bytes,
 lookup/IRQ hold times, general metadata and pressure fairness. The seven focused
-cases pass; the expanded 190-case suite was not rerun in this batch. See
+cases pass. The [24 October follow-up](../reports/audits/2026-10-24-security-root-metadata-admission.md)
+also completes the expanded 190-case suite: 47 safe configurations and 143
+expected counterexamples across 44 modules. See
 [policy](../reference/principal-history-admission.md) and
 [audit evidence](../reports/audits/2026-10-23-security-history-admission.md).
