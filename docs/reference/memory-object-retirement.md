@@ -75,6 +75,12 @@ outside local guards before backing/slot completion. No separate registry or
 identity cleanup ticket is introduced. Principal high-water allocation remains
 beneath lifecycle; this change only releases the authority borrow before sampling.
 
+Principal-history candidates and published records now carry their own bounded
+[byte/count admission](principal-history-admission.md). The existing root
+metadata owner retains a losing candidate through failed invalidation and
+post-guard disposal; the published record keeps its original charge for the boot
+lifetime. Other policy/usage/authority metadata remains separate.
+
 ## Owning the gap
 
 `MappingRetirementPin` acquires a registry pin before mapping work or detachment.

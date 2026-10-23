@@ -150,7 +150,7 @@ fn object_count_is_independent() {
 
 fn binding_is_atomic() {
     let principal = charlotte_launch::artifact_principal_id(b"aggregate-binding-control");
-    let mut prepared = PreparingHistory::try_new().unwrap();
+    let mut prepared = PreparingHistory::try_new(false).unwrap();
     prepared.publish(principal);
     prepared.cancel_unpublished();
     let root = memory::register_user_address_space(AddressSpace::try_new_user().unwrap()).unwrap();
@@ -185,7 +185,7 @@ fn fault_principal() -> u64 {
 /// Bind their backing owners directly to the same prepared principal record.
 pub(in crate::memory) fn bind_raw_fixture(root: &mut AddressSpace) {
     let principal = fault_principal();
-    let mut preparation = PreparingHistory::try_new().unwrap();
+    let mut preparation = PreparingHistory::try_new(false).unwrap();
     preparation.publish(principal);
     preparation.cancel_unpublished();
     root.heap_account.bind_principal(BackingCharge::try_new(principal, Amount::default()).unwrap());

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -gt 1 ]]; then
-    echo "usage: $0 [path-to-tla2tools.jar]" >&2
+if [[ $# -gt 2 ]]; then
+    echo "usage: $0 [path-to-tla2tools.jar] [module]" >&2
     exit 2
 fi
 
@@ -12,6 +12,9 @@ if [[ -z "${tools_jar}" || ! -f "${tools_jar}" ]]; then
     exit 2
 fi
 
+selected_module="${2:-}"
+selected_cases=0
+
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 model_dir="$(mktemp -d "${TMPDIR:-/tmp}/charlotte-tla.XXXXXX")"
 trap 'rm -rf "${model_dir}"' EXIT
@@ -19,6 +22,10 @@ trap 'rm -rf "${model_dir}"' EXIT
 run_model() {
     local module="$1"
     local config="$2"
+    if [[ -n "${selected_module}" && "${module}" != "${selected_module}" ]]; then
+        return 0
+    fi
+    selected_cases=$((selected_cases + 1))
     shift 2
     local run_id="${module}-${config%.cfg}"
     local log="${model_dir}/${run_id}.log"
@@ -57,6 +64,10 @@ run_model() {
 run_expected_violation() {
     local module="$1"
     local config="$2"
+    if [[ -n "${selected_module}" && "${module}" != "${selected_module}" ]]; then
+        return 0
+    fi
+    selected_cases=$((selected_cases + 1))
     local invariant="$3"
     local action="$4"
     local run_id="${module}-${config%.cfg}"
@@ -88,6 +99,20 @@ run_expected_violation() {
 }
 
 cd "${script_dir}"
+run_model CharlottePrincipalHistory CharlottePrincipalHistory_small.cfg \
+    Prepare Attach Decide Exit Confirm ReleaseRoot Cancel Abandon
+run_expected_violation CharlottePrincipalHistory CharlottePrincipalHistory_ordinary_unsafe.cfg \
+    OrdinaryCeiling UnsafeIgnoreOrdinary
+run_expected_violation CharlottePrincipalHistory CharlottePrincipalHistory_exit_unsafe.cfg \
+    Accounted UnsafeExitRefund
+run_expected_violation CharlottePrincipalHistory CharlottePrincipalHistory_drop_unsafe.cfg \
+    Accounted UnsafeDropRefund
+run_expected_violation CharlottePrincipalHistory CharlottePrincipalHistory_class_unsafe.cfg \
+    OriginalClass UnsafeReclassify
+run_expected_violation CharlottePrincipalHistory CharlottePrincipalHistory_evict_unsafe.cfg \
+    HistoryRetained UnsafeEvict
+run_expected_violation CharlottePrincipalHistory CharlottePrincipalHistory_early_unsafe.cfg \
+    RootProof UnsafeRootFree
 run_model CharlotteThreadMetadata CharlotteThreadMetadata_small.cfg \
     Admit AllocateNode AllocateContext Publish DisposeContext FreeNode Refund Abandon Retire Reuse
 run_expected_violation CharlotteThreadMetadata CharlotteThreadMetadata_generation_unsafe.cfg \
@@ -530,3 +555,8 @@ run_expected_violation CharlotteReliableMessage \
 run_expected_violation CharlotteReliableMessage \
     CharlotteReliableMessage_regression_unsafe.cfg \
     ReceiveSessionMonotonic AcceptDelayedSession
+
+if [[ "${selected_cases}" -eq 0 ]]; then
+    echo "error: no configurations registered for ${selected_module}" >&2
+    exit 1
+fi

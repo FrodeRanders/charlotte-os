@@ -26,11 +26,14 @@ struct Resources {
 pub(in crate::memory) struct PreparingMetadata(ManuallyDrop<Resources>);
 
 impl PreparingMetadata {
-    pub(in crate::memory) fn try_new() -> Result<Self, AllocError> {
-        Self::prepare(|_| Ok(()))
+    pub(in crate::memory) fn try_new(platform: bool) -> Result<Self, AllocError> {
+        Self::prepare(platform, |_| Ok(()))
     }
 
-    fn prepare(mut before: impl FnMut(u8) -> Result<(), AllocError>) -> Result<Self, AllocError> {
+    fn prepare(
+        platform: bool,
+        mut before: impl FnMut(u8) -> Result<(), AllocError>,
+    ) -> Result<Self, AllocError> {
         let mut owner = Self(ManuallyDrop::new(Resources {
             limits: None,
             usage: None,
@@ -45,7 +48,7 @@ impl PreparingMetadata {
             before(3)?;
             owner.0.authority = Some(PreparedEntry::try_new()?);
             before(4)?;
-            owner.0.history = Some(usage::PreparingHistory::try_new()?);
+            owner.0.history = Some(usage::PreparingHistory::try_new(platform)?);
             before(5)
         })();
         if let Err(error) = result {

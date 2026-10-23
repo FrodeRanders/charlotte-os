@@ -167,7 +167,7 @@ impl Account {
         self.pages
     }
 
-    pub(super) fn is_platform(&self) -> bool {
+    pub(in crate::memory) fn is_platform(&self) -> bool {
         self.platform
     }
 }

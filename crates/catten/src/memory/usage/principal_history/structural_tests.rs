@@ -81,7 +81,7 @@ pub(super) fn run() {
 
 fn initial_root_admission() {
     let principal = charlotte_launch::artifact_principal_id(b"principal-constructor-control");
-    let sponsor = memory::prepare_principal_backing(principal).unwrap();
+    let sponsor = memory::prepare_principal_backing(principal, false).unwrap();
     limit(principal, 0);
     let frame = PreparingUserFrame::allocate_zeroed().unwrap();
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();

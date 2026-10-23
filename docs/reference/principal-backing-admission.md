@@ -110,7 +110,8 @@ admission, allocator metadata, hardware, wall-clock progress or executable refin
 This implements an aggregate boundary for these data/table/stack families. It does
 not bound general kernel heap/metadata beyond those two thread layouts, fresh shared kernel tables, IOMMU/device metadata, capabilities, IPC,
 completions or every other family by principal. Principal-history records remain
-for the boot lifetime; their total metadata needs separate admission. Principal-record lookup and IRQ-masked hold times still need hostile-pressure
+for the boot lifetime; their nodes and root candidates now share a separate
+[byte/count pool](principal-history-admission.md). Principal-record lookup and IRQ-masked hold times still need hostile-pressure
 qualification. Kernel-only unidentified work retains its existing family/node policy. Independent principals
 can still reach the ordinary node ceiling, and the platform reserve is shared
 headroom rather than guaranteed capacity per essential service. Concurrent EL0

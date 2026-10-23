@@ -10,8 +10,8 @@ use crate::memory::{
 pub(in crate::memory::usage) fn run() {
     let mut history = Table::new();
     for principal in 1..=64 {
-        let mut first = PreparingHistory::try_new().unwrap();
-        let mut duplicate = PreparingHistory::try_new().unwrap();
+        let mut first = PreparingHistory::try_new(false).unwrap();
+        let mut duplicate = PreparingHistory::try_new(false).unwrap();
         {
             let _heap = PRIMARY_ALLOCATOR.lock();
             first.publish_into(&mut history, principal);
@@ -35,6 +35,7 @@ pub(in crate::memory::usage) fn run() {
         history.take(&principal).unwrap().release();
     }
     assert!(history.iter().next().is_none());
+    super::storage_tests::run();
     exact_root_reuse();
     super::admission_tests::run();
     super::structural_tests::run();

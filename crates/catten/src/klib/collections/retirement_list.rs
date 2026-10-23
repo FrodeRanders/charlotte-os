@@ -246,8 +246,8 @@ impl<T, C> Drop for RetirementList<T, C> {
 
 /// Ordered owning registry storage. Prepare before publication; detach before
 /// explicit disposal. Lookup and sorted insertion are linear scans.
-pub(crate) struct AdmittedMap<K, V>(RetirementList<(K, V)>);
-impl<K: Ord + Copy, V> AdmittedMap<K, V> {
+pub(crate) struct AdmittedMap<K, V, C = ()>(RetirementList<(K, V), C>);
+impl<K: Ord + Copy, V, C> AdmittedMap<K, V, C> {
     pub(crate) const fn new() -> Self {
         Self(RetirementList::new())
     }
@@ -281,29 +281,29 @@ impl<K: Ord + Copy, V> AdmittedMap<K, V> {
         self.iter().next()
     }
 
-    pub(crate) fn insert(&mut self, entry: PreparedEntry<(K, V)>, key: K, value: V) {
+    pub(crate) fn insert(&mut self, entry: PreparedEntry<(K, V), C>, key: K, value: V) {
         assert!(!self.contains_key(&key), "admitted key replaced");
         let entry = entry.publish((key, value));
         self.0.insert_before(entry, |(other, _)| *other > key);
     }
 
-    pub(crate) fn take(&mut self, key: &K) -> Option<RetiredEntry<(K, V)>> {
+    pub(crate) fn take(&mut self, key: &K) -> Option<RetiredEntry<(K, V), C>> {
         self.0.take_first(|(k, _)| k == key)
     }
 }
-impl<K: Ord + Copy, V> Default for AdmittedMap<K, V> {
+impl<K: Ord + Copy, V, C> Default for AdmittedMap<K, V, C> {
     fn default() -> Self {
         Self::new()
     }
 }
-impl<K: Ord + Copy, V> Index<&K> for AdmittedMap<K, V> {
+impl<K: Ord + Copy, V, C> Index<&K> for AdmittedMap<K, V, C> {
     type Output = V;
 
     fn index(&self, key: &K) -> &V {
         self.get(key).expect("admitted registry key absent")
     }
 }
-impl<K: Ord + Copy + fmt::Debug, V: fmt::Debug> fmt::Debug for AdmittedMap<K, V> {
+impl<K: Ord + Copy + fmt::Debug, V: fmt::Debug, C> fmt::Debug for AdmittedMap<K, V, C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_map().entries(self.iter()).finish()
     }

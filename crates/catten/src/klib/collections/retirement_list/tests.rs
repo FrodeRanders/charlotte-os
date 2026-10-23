@@ -432,3 +432,28 @@ fn abandonment_and_interrupted_disposal_retain_admission_and_storage() {
         DISPOSAL_NODE.with(|target| target.set(0));
     }
 }
+
+#[test]
+fn charged_map_keeps_admission_through_detachment_payload_and_node_free() {
+    let charge = probe(1, 1);
+    let releases = charge.releases.clone();
+    let payload = Box::new(Tracked(9, charge.payload_drops.clone()));
+    let prepared = PreparedEntry::try_new_charged(charge).unwrap();
+    track_node(&prepared);
+    let mut map = AdmittedMap::new();
+    without_allocation(|| {
+        map.insert(prepared, 7usize, payload);
+        assert_eq!(map[&7].0, 9);
+        let node = map.take(&7).unwrap();
+        assert!(map.get(&7).is_none());
+        assert_eq!(releases.load(Ordering::Relaxed), 0);
+        node.release_with(|(key, value)| {
+            assert_eq!(key, 7);
+            assert_eq!(DISPOSAL_NODE_FREES.with(Cell::get), 0);
+            assert_eq!(releases.load(Ordering::Relaxed), 0);
+            drop(value);
+        });
+    });
+    assert_eq!(releases.load(Ordering::Relaxed), 1);
+    DISPOSAL_NODE.with(|target| target.set(0));
+}

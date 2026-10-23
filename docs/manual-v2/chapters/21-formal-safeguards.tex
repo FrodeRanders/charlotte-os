@@ -154,6 +154,17 @@ reserve, allocator overhead, observer/table storage, IRQ contexts and pressure
 fairness lie outside the projection. See
 \path{docs/tla/CharlotteThreadMetadata.tla}.
 
+The principal-history projection follows prepared/root-attached nodes and
+boot-lifetime records through shared total/ordinary admission. Duplicate
+candidates retain their original classification; logical exit and abandonment
+cannot refund storage. Root confirmation and actual deallocation are inputs to
+release. Six negative controls restore early refunds, reclassification, eviction
+or reserve bypass. Its safe graph has 2,539 distinct / 5,410 generated states,
+depth 19. Exact bytes, allocator/hardware/generation proofs and pressure fairness
+remain outside it. The seven focused cases pass; the expanded 190-case suite
+was not rerun for this batch. See
+\path{docs/tla/CharlottePrincipalHistory.tla}.
+
 The controller-server projection checks a preflight/mutation relay beside a
 query. Only checked evidence permits mutation, every phase submits once and the
 original budget survives phase changes. Parking covers both owners; DNS backing
@@ -204,8 +215,8 @@ Pending or skip live work. Actual root, loan, backing and peer-completion proofs
 are boundary inputs, and later wakes/deadlines lie outside this projection.
 See \path{docs/tla/CharlotteNamespaceDrain.tla}.
 
-The current suite checks forty-six safe configurations across forty-three
-specifications. It also checks 137 expected-counterexample
+The current suite checks forty-seven safe configurations across forty-four
+specifications. It also checks 143 expected-counterexample
 configurations. The models are divided by state ownership and failure boundary
 so that each remains reviewable.
 The Raft models are deliberately layered: election, log replication,
@@ -1170,7 +1181,7 @@ Flat session allocation & Retry and restart epochs alias one wire session. &
 \end{longtable}
 \normalsize
 
-The check suite expects all 137 negative configurations to fail for the named
+The check suite expects all 143 negative configurations to fail for the named
 reason. If one unexpectedly satisfies its invariant, the regression harness
 has lost sensitivity and the suite fails.
 
@@ -1216,12 +1227,12 @@ docs/tla/check.sh /path/to/tla2tools.jar
 Alternatively, \texttt{TLA2TOOLS\_JAR} may name the tools archive. The script:
 
 \begin{itemize}
-    \item runs all forty-six safe configurations;
+    \item runs all forty-seven safe configurations;
     \item enables action coverage and requires selected actions to have a
         positive successor count;
     \item rejects structural TLC warnings about variables, \texttt{EXCEPT}
         expressions, or incomplete successor states;
-    \item runs 137 negative configurations and requires each one to fail on
+    \item runs 143 negative configurations and requires each one to fail on
         the named invariant after exercising the named unsafe action; and
     \item writes checkpoints and traces into a temporary directory so generated
         state does not become part of the source tree.

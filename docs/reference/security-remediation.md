@@ -294,9 +294,9 @@ identity installation either links it without allocation or keeps it in that
 root's authority slot. Retirement only updates existing counters. Unused storage
 follows C02/C03 through invalidation and explicit post-guard disposal. Published
 history remains for the boot lifetime so restarts preserve their sizing inputs.
-This addresses the high-water insertion gap above; total principal/history heap
-bytes, telemetry snapshots, hostile-pressure hold times and outer contexts remain
-open. Finding dispositions are unchanged.
+This addresses the high-water insertion gap above. The later storage-admission
+batch below bounds history/candidate node bytes and counts; other metadata,
+hostile-pressure hold times and outer contexts remain open. Finding dispositions are unchanged.
 
 The [principal backing follow-up](../reports/audits/2026-10-23-security-principal-backing.md)
 adds one shared 64 MiB/1,024-object ceiling per verified artifact principal for
@@ -334,6 +334,16 @@ retaining otherwise-unused scratch because that maintenance failed. Admitted
 prefixes still require confirmation. Kernel errors retain the per-call cause;
 the earlier valid queued-loan failure remains causally unresolved. This narrows
 an admission/availability path without closing SEC-07 or SEC-18.
+
+The [principal-history storage batch](../reports/audits/2026-10-23-security-history-admission.md)
+bounds published records and root candidates together: 1 MiB/4,096 nodes, with
+ordinary work limited to 768 KiB/3,072. Classification comes from trusted signed
+preparation or the unpublished root's translation account. Duplicate candidates
+remain charged through failed invalidation; published records retain their charge
+for the boot lifetime. Real total exhaustion still permits existing-root close
+without new history storage. This qualifies that R7-2/R7-3 metadata family;
+other root/control-block bytes, hold times and sustained progress remain open.
+See [current policy](principal-history-admission.md).
 
 SEC-07 remains partial until all of the following deliverables are accepted:
 

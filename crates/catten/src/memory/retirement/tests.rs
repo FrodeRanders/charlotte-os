@@ -386,18 +386,19 @@ fn test_quarantine(abandon: bool) {
 
 fn test_retry_quiescence() {
     let before = backing_budget::test_used_pages(Kind::Heap);
+    let principal = charlotte_launch::artifact_principal_id(b"retired-authority-control");
+    drop(memory::prepare_principal_backing(principal, false).unwrap());
+    let history_before = memory::usage::principal_history::admission::snapshot();
     let owner = loader::create_user_address_space_handle();
-    memory::register_domain_authority(
-        owner,
-        charlotte_launch::artifact_principal_id(b"retired-authority-control"),
-        0,
-    )
-    .unwrap();
+    memory::register_domain_authority(owner, principal, 0).unwrap();
     memory::install_launch_descriptor(owner, b"retired authority descriptor");
     let authority = memory::domain_authority(owner.id());
     assert!(authority.is_some());
     assert!(memory::commit_user_heap_page_handle(owner, charlotte_launch::HEAP_VADDR));
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    let history_charged = memory::usage::principal_history::admission::snapshot();
+    let bytes = history_charged.0[0] - history_before.0[0];
+    assert_eq!(history_charged.0[1], history_before.0[1] + 1);
     let retired = stage(owner);
     let retired = retired
         .release_retry_with(|_, handle| {
@@ -405,6 +406,7 @@ fn test_retry_quiescence() {
             false
         })
         .expect_err("rejected invalidation consumed root");
+    assert_eq!(memory::usage::principal_history::admission::snapshot(), history_charged);
     retired.metadata.as_ref().unwrap().test_assert_retained(owner);
     assert_eq!(retired.metadata.as_ref().unwrap().test_authority(), authority);
     assert_eq!(memory::domain_authority(owner.id()), None);
@@ -413,7 +415,17 @@ fn test_retry_quiescence() {
     assert_eq!(backing_budget::test_used_pages(Kind::Heap), before + 1);
     let intervening = loader::create_user_address_space_handle();
     assert_ne!(intervening.id(), owner.id());
+    let history_with_intervening = memory::usage::principal_history::admission::snapshot();
     assert!(retired.release_retry_with(invalidate).is_ok());
+    let history_released = memory::usage::principal_history::admission::snapshot();
+    assert_eq!(
+        history_released.0,
+        [history_with_intervening.0[0] - bytes, history_with_intervening.0[1] - 1]
+    );
+    assert_eq!(
+        history_released.1,
+        [history_with_intervening.1[0] - bytes, history_with_intervening.1[1] - 1]
+    );
     assert_eq!(backing_budget::test_used_pages(Kind::Heap), before);
     let successor = loader::create_user_address_space_handle();
     assert_eq!(successor.id(), owner.id());

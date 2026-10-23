@@ -51,16 +51,26 @@ impl Default for History {
     }
 }
 
-type Table = AdmittedMap<u64, History>;
+pub(in crate::memory) mod admission;
+type Storage = PreparedEntry<(u64, History), admission::Charge>;
+type Table = AdmittedMap<u64, History, admission::Charge>;
 static HISTORY: LazyLock<Mutex<Table>> = LazyLock::new(|| Mutex::new(Table::new()));
 
 /// Inert fallback retains even a candidate that has never been published.
 #[must_use]
-pub(in crate::memory) struct PreparingHistory(ManuallyDrop<Option<PreparedEntry<(u64, History)>>>);
+pub(in crate::memory) struct PreparingHistory(ManuallyDrop<Option<Storage>>);
 
 impl PreparingHistory {
-    pub(in crate::memory) fn try_new() -> Result<Self, AllocError> {
-        Ok(Self(ManuallyDrop::new(Some(PreparedEntry::try_new()?))))
+    pub(in crate::memory) fn try_new(platform: bool) -> Result<Self, AllocError> {
+        Self::try_new_with(platform, Storage::try_new_charged)
+    }
+
+    fn try_new_with(
+        platform: bool,
+        allocate: impl FnOnce(admission::Charge) -> Result<Storage, AllocError>,
+    ) -> Result<Self, AllocError> {
+        let charge = admission::reserve(platform, Storage::allocation_bytes())?;
+        Ok(Self(ManuallyDrop::new(Some(allocate(charge)?))))
     }
 
     /// Called after exact-root identity checks, before authority becomes visible.
@@ -161,11 +171,11 @@ impl Drop for BackingCharge {
 
 /// Trusted signed-loader entry, after artifact verification and before even
 /// initial private-root backing. Shared admitted storage remains boot-lifetime.
-pub(crate) fn prepare_backing(principal: u64) -> Result<BackingCharge, AllocError> {
+pub(crate) fn prepare_backing(principal: u64, platform: bool) -> Result<BackingCharge, AllocError> {
     if principal == 0 {
         return Err(AllocError);
     }
-    let mut preparation = PreparingHistory::try_new()?;
+    let mut preparation = PreparingHistory::try_new(platform)?;
     preparation.publish(principal);
     preparation.cancel_unpublished();
     Ok(BackingCharge::try_new(principal, Amount::default()).expect("prepared principal missing"))
@@ -205,6 +215,7 @@ pub(super) fn available() -> bool {
 }
 
 pub(in crate::memory) mod admission_tests;
+mod storage_tests;
 mod structural_tests;
 pub(super) mod tests;
 mod thread_metadata_tests;

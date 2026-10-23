@@ -74,6 +74,8 @@ thread table's retained vector capacity, exit-observer lists and weak references
 waiter/timer/control-block allocations, root/principal-history storage, other
 kernel metadata, allocator bookkeeping/rounding and the physical heap arena.
 No claim is made that thread-table capacity is refunded at thread exit.
+Principal-history nodes have their own
+[bounded pool](principal-history-admission.md).
 
 A single kernel-thread admission beside serialized ordinary exhaustion supplies
 narrow reserve evidence. It does not demonstrate sustained concurrent application

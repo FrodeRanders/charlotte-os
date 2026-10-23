@@ -585,7 +585,7 @@ fn try_load_domain_with_capacity(
         return Err(DomainLoadError::BackingAdmission);
     }
     let principal = charlotte_launch::artifact_principal_id(metadata.name());
-    let sponsor = crate::memory::prepare_principal_backing(principal)
+    let sponsor = crate::memory::prepare_principal_backing(principal, platform)
         .map_err(|_| DomainLoadError::BackingAdmission)?;
     let address_space = try_create_user_address_space_handle_with(|| {
         AddressSpace::try_new_principal_user(platform, sponsor)

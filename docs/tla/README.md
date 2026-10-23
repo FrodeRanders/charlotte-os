@@ -1,9 +1,10 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains forty-three finite, executable specification modules:
+This directory contains forty-four finite, executable specification modules:
 
 | Subsystem | Module | Fast configuration |
 |---|---|---|
+| Principal-history candidates and permanent published storage | `CharlottePrincipalHistory.tla` | `CharlottePrincipalHistory_small.cfg` |
 | Thread context/node admission and original-charge disposal | `CharlotteThreadMetadata.tla` | `CharlotteThreadMetadata_small.cfg` |
 | Aggregate principal backing across instances and retained generations | `CharlottePrincipalBacking.tla` | `CharlottePrincipalBacking_small.cfg` |
 | Controller server preflight evidence, original budget and independent replies | `CharlotteControllerRelay.tla` | `CharlotteControllerRelay_small.cfg` |
@@ -141,10 +142,14 @@ Download a TLA+ tools release and run:
 docs/tla/check.sh /path/to/tla2tools.jar
 ```
 
+Select one module for a focused run with a second argument, for example
+`docs/tla/check.sh /path/to/tla2tools.jar CharlottePrincipalHistory`. An unknown
+module rejects without running configurations. CI uses the unfiltered suite.
+
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all forty-six complete fast configurations and 137 expected-failure
-  thread-metadata, principal-backing, controller-relay, deployment-listener, namespace-drain, deployment-close, deployment-output, deployment-input, deployment-control, IPC-transaction, IPC-publication, endpoint-observer, name-publication, boot-trust, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
+- runs all forty-seven complete fast configurations and 143 expected-failure
+  principal-history, thread-metadata, principal-backing, controller-relay, deployment-listener, namespace-drain, deployment-close, deployment-output, deployment-input, deployment-control, IPC-transaction, IPC-publication, endpoint-observer, name-publication, boot-trust, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
   checked-wait, domain-abort, address-space, root-retirement, hardware-ASID, interrupt-route, service-lifecycle, DMA, DMA-operation, authorization,
   Raft-join, Raft-response, Raft-stream, snapshot-restore, cluster-ingress, and reliable-message regression configurations;
 - enables TLC action coverage;
@@ -1082,3 +1087,20 @@ This is a finite ordering projection. Stack-release proof is an input; node
 reserve, allocator overhead, observers/table capacity, IRQ contexts and progress
 are outside it. See [policy](../reference/thread-metadata-admission.md) and
 [execution evidence](../reports/audits/2026-10-23-security-thread-metadata.md).
+
+## Principal-history storage
+
+`CharlottePrincipalHistory` follows three nodes through preparation, attachment,
+new-record/reuse decisions, logical exit, confirmed root disposal and abandonment.
+Two candidates can resolve to one principal with different captured classes.
+Original classification and charges survive reuse; published records remain for
+the boot lifetime. The safe graph has 2,539 distinct / 5,410 generated states,
+depth 19, with all required actions exercised. Six controls ignore ordinary
+admission, refund logical exit or Drop, reclassify an allocation, evict history
+or free an attached node before confirmation.
+
+Allocator/root-invalidation proofs are inputs. The projection omits exact bytes,
+lookup/IRQ hold times, general metadata and pressure fairness. The seven focused
+cases pass; the expanded 190-case suite was not rerun in this batch. See
+[policy](../reference/principal-history-admission.md) and
+[audit evidence](../reports/audits/2026-10-23-security-history-admission.md).

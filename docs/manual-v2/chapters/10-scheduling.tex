@@ -220,8 +220,16 @@ Before either heap allocation, thread creation now reserves exact requested
 bytes for its stable context Box and prepared retirement node, plus one bundle
 unit. All generations of a verified signed principal share 1 MiB and 128 bundles;
 the node admits 8 MiB/4,096 bundles, with ordinary work limited to 6 MiB/3,072.
-The existing principal-history record holds the counter. The charge stays in the
-same node through staging, delayed reaping, failed retirement and abandonment.
+The existing principal-history record holds the counter. Published history and
+root candidates also have a separate 1 MiB/4,096-node pool, with ordinary
+preparation limited to 768 KiB/3,072. Trusted preparation captures classification
+before allocation. Published records stay charged for the boot lifetime; losing
+candidates stay in the existing root receipt through failed invalidation and
+refund only after actual node disposal. See
+\repofile|docs/reference/principal-history-admission.md|.
+
+The thread allocation charge stays in the same node through staging, delayed
+reaping, failed retirement and abandonment.
 Confirmed pair release permits context disposal, then node deallocation, then
 refund to the original principal. Root retirement, ASID reuse and trusted
 promotion cannot refund live metadata. Allocation/limit rejection remains

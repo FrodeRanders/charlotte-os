@@ -1105,3 +1105,20 @@ pins and prefixes with per-call failure adapters. The host shootdown tests check
 the diagnostic first-incomplete sample against the owned epoch and stale ACKs;
 this supplies no new physical completion or recovery proof. The historical x86
 mapping panic remains outside the models' causal claims.
+
+## Principal-history allocation
+
+| Model action | Rust boundary | Correspondence |
+| --- | --- | --- |
+| `Prepare` | `PreparingHistory::try_new_with`, history `admission::reserve`, `Storage::try_new_charged` | Abstract fixed requested layout and node count. Classification comes from the verified-loader context or unpublished root account. |
+| `Attach` | Root metadata publication into `DomainAuthoritySlot` | Abstract candidate transfer to the exact root receipt. Generation/slot ownership remains in existing root models. |
+| `Decide` | `PreparingHistory::publish_into` | Direct one record per principal, retaining a losing candidate and preserving the published record's original class. |
+| `Exit`, `Confirm`, `ReleaseRoot` | Closing/final-root receipt and `RetiredMetadata::release` | Abstract exact invalidation and actual node deallocation as required inputs before refund. Logical exit alone supplies neither. |
+| `Cancel` | Explicit `cancel_unpublished` | Abstract confirmed unused node disposal and post-deallocation refund. |
+| `Abandon` | `PreparingHistory` retained field, charged map/list fallback | Direct retention without allocator or counter entry. Published records remain boot-lifetime. |
+
+Six expected controls violate ceilings, ownership/refund ordering, captured
+classification or permanent history. This does not model allocator internals,
+authority authentication, exact hardware/root-generation proofs, lookup/IRQ
+cost or pressure fairness. The [audit](../reports/audits/2026-10-23-security-history-admission.md)
+records seven focused checks; no expanded full-suite result is inferred.

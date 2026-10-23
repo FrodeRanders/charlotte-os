@@ -8,7 +8,7 @@ pub(super) fn run() {
     let mut usage = usage::DomainUsageTable::new();
     let mut authority = DomainAuthoritiesTable::new();
     for generation in 1..=64 {
-        let prepared = PreparingMetadata::try_new().unwrap();
+        let prepared = PreparingMetadata::try_new(false).unwrap();
         let handle = AddressSpaceHandle {
             id: 1,
             generation,
@@ -49,7 +49,7 @@ pub(super) fn run() {
             owner.0.authority = Some(PreparedEntry::try_new().unwrap());
         }
         if stage == 4 {
-            owner.0.history = Some(usage::PreparingHistory::try_new().unwrap());
+            owner.0.history = Some(usage::PreparingHistory::try_new(false).unwrap());
         }
         let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
         let _table = ADDRESS_SPACE_TABLE.lock();
@@ -97,7 +97,7 @@ fn rejection() {
                         drop(root);
                     },
                     budget::PreparingAccount::try_new,
-                    || PreparingMetadata::prepare(|stage| {
+                    || PreparingMetadata::prepare(false, |stage| {
                         visits += 1;
                         assert!(ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());
                         assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());

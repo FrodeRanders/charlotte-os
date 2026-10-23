@@ -95,7 +95,7 @@ fn sponsor_rejection() {
                     drop(root);
                 },
                 || Err(core::alloc::AllocError),
-                super::registration::metadata::PreparingMetadata::try_new,
+                || super::registration::metadata::PreparingMetadata::try_new(false),
             ),
             Err(AddressSpaceRegistrationError::MemorySponsorAllocationFailed)
         );

@@ -271,3 +271,15 @@ retains the charge without entering either counter. No fresh counter nesting is
 introduced between node and history. Explicit metadata disposal and ordinary
 unused preparation still require their existing post-guard contexts. See
 [thread metadata admission](thread-metadata-admission.md).
+
+## Principal-history node admission
+
+Prepare history/candidate node admission under its independent leaf counter,
+leave that guard, then allocate outside lifecycle/root/authority/history holds.
+Publication only relinks the charged node under the existing history guard;
+losing candidates remain with their root. Explicit unused or confirmed final
+metadata disposal deallocates the node, then enters the counter to refund its
+original classification. Published table/candidate fallback retains both without
+locks. The counter never looks up a root, enters history or allocates. Ordinary
+cancellation and root metadata disposal still require their existing outer
+contexts. See [history admission](principal-history-admission.md).

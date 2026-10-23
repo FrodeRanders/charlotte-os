@@ -110,7 +110,9 @@ pub(super) fn register(
 pub(super) fn test_abandonment() {
     let root = AddressSpace::try_new_user().unwrap();
     let mut owner = PreparingRegistration::capture(root);
-    owner.prepare(budget::PreparingAccount::try_new, metadata::PreparingMetadata::try_new).unwrap();
+    owner
+        .prepare(budget::PreparingAccount::try_new, || metadata::PreparingMetadata::try_new(false))
+        .unwrap();
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let occupied = ADDRESS_SPACE_TABLE.lock().iter().filter(|entry| entry.is_some()).count();
     {
