@@ -134,7 +134,7 @@ fn authority_generation_reuse() {
     let descriptor = b"authority-slot descriptor binding control";
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
-        register_domain_authority(first, principal, roles);
+        register_domain_authority(first, principal, roles).unwrap();
         install_launch_descriptor(first, descriptor);
         let authority = domain_authority(first.id()).unwrap();
         assert_eq!(authority.address_space, first);

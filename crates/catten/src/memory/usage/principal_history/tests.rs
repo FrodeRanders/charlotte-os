@@ -25,7 +25,8 @@ pub(in crate::memory::usage) fn run() {
                 history.get(&principal),
                 Some(&History {
                     stack_pages: 7,
-                    heap_bytes: 8192
+                    heap_bytes: 8192,
+                    ..History::default()
                 })
             );
         }
@@ -35,6 +36,7 @@ pub(in crate::memory::usage) fn run() {
     }
     assert!(history.iter().next().is_none());
     exact_root_reuse();
+    super::admission_tests::run();
     crate::logln!(
         "[principal history preparation] 64 heap-held first/duplicate publications; \
          allocation-free monotonic stack/heap updates, root retirement/restart and \
@@ -52,7 +54,7 @@ fn exact_root_reuse() {
         memory::register_user_address_space(memory::AddressSpace::try_new_user().unwrap()).unwrap();
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
-        memory::register_domain_authority(first, principal, 0);
+        memory::register_domain_authority(first, principal, 0).unwrap();
         memory::usage::note_thread_released(first.id(), 0, 7);
         memory::usage::remember_principal_heap_peak(principal, 8192);
         // Both zero samples and lower observations leave the history unchanged.
@@ -69,7 +71,7 @@ fn exact_root_reuse() {
     assert_eq!(next.generation(), first.generation() + 1);
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
-        memory::register_domain_authority(next, principal, 0);
+        memory::register_domain_authority(next, principal, 0).unwrap();
         memory::usage::remember_principal_stack_high_water(principal, 3);
         memory::usage::remember_principal_stack_high_water(principal, 0);
         assert_eq!(stack_high_water(principal), 7);
@@ -82,7 +84,7 @@ fn exact_root_reuse() {
     assert_eq!(unrelated.generation(), next.generation() + 1);
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
-        memory::register_domain_authority(unrelated, other, 0);
+        memory::register_domain_authority(unrelated, other, 0).unwrap();
         assert_eq!(stack_high_water(other), 0);
         assert_eq!(heap_peak(other), 0);
         assert_eq!(stack_high_water(principal), 7);

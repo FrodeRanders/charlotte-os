@@ -101,9 +101,75 @@ pub fn test_admission() {
     memory::close_user_address_space_handle(loaded.address_space).unwrap();
     assert_eq!(backing_budget::test_used_pages(Kind::Image), before);
     assert_eq!(crate::completion::cq_budget::node_used(), cq_before);
+    signed_instances_share_backing_limit(image);
+    rejected_preparation_retains_principal(image);
     crate::logln!(
         "[loader admission] bounded validation, fill/zero, quota, mapping rollback, \
          retirement/reuse and signed partial/successful launch cleanup passed"
+    );
+}
+
+fn rejected_preparation_retains_principal(image: &[u8]) {
+    let metadata = charlotte_launch::signature_note::artifact_metadata(image).unwrap();
+    let principal = charlotte_launch::artifact_principal_id(metadata.name());
+    let before = memory::usage::principal_backing_used(principal);
+    // Serialized kernel ABI fixture owns the moved capability in this Cell.
+    // It is consumed once after the failed loader has closed its original root.
+    let retained = core::cell::Cell::new(None);
+    let owner = core::cell::Cell::new(None);
+    assert!(matches!(
+        try_load_domain_with_preparation(
+            image,
+            &crate::service::admission::platform_artifact_key().unwrap(),
+            false,
+            |root| {
+                assert_eq!(memory::domain_authority(root.id()).unwrap().principal, principal);
+                owner.set(Some(root));
+                let cap = memory::object::allocate(root.id(), 1).unwrap();
+                retained.set(Some(
+                    memory::object::move_to(root.id(), cap, memory::KERNEL_ASID).unwrap(),
+                ));
+                Err(DomainLoadError::BackingAdmission)
+            }
+        ),
+        Err(DomainLoadError::BackingAdmission)
+    ));
+    assert!(!memory::address_space_handle_is_current(owner.get().unwrap()));
+    let after = memory::usage::principal_backing_used(principal);
+    assert_eq!(after.pages, before.pages + 1);
+    assert_eq!(after.objects, before.objects + 1);
+    memory::object::close_cap(memory::KERNEL_ASID, retained.take().unwrap()).unwrap();
+    assert_eq!(memory::usage::principal_backing_used(principal), before);
+    crate::logln!(
+        "[principal launch rejection] verified sponsor bound before preparation; moved backing \
+         remains charged after unstarted root closes and refunds only at receiver release"
+    );
+}
+
+fn signed_instances_share_backing_limit(image: &[u8]) {
+    let metadata = charlotte_launch::signature_note::artifact_metadata(image).unwrap();
+    let principal = charlotte_launch::artifact_principal_id(metadata.name());
+    let baseline = memory::usage::principal_backing_used(principal);
+    let first = try_load_domain(image).unwrap();
+    let second = try_load_domain(image).unwrap();
+    let expected = 2 * image_backing_pages(image);
+    assert_eq!(memory::usage::principal_backing_used(principal).pages, baseline.pages + expected);
+    let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    // Each instance would individually admit this request before physical
+    // allocation; their existing image backing now consumes the shared ceiling.
+    for owner in [first.asid, second.asid] {
+        assert_eq!(
+            memory::object::allocate(owner, memory::budget::MAX_DOMAIN_OBJECT_PAGES as usize),
+            Err(memory::object::MemoryObjectError::ResourceLimit)
+        );
+    }
+    assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
+    memory::close_user_address_space_handle(first.address_space).unwrap();
+    memory::close_user_address_space_handle(second.address_space).unwrap();
+    assert_eq!(memory::usage::principal_backing_used(principal), baseline);
+    crate::logln!(
+        "[principal signed launch] two verified instances share image/object ceiling; rejected \
+         oversized backing allocates no frames; confirmed teardown refunds both"
     );
 }
 

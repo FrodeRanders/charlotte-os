@@ -83,18 +83,18 @@ struct DomainAuthoritySlot {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum DomainAuthorityError {
+pub(crate) enum DomainAuthorityError {
     StaleHandle,
     ZeroPrincipal,
     AlreadyInstalled,
+    ResourceLimit,
 }
 
 impl DomainAuthoritySlot {
-    fn install(
-        &mut self,
+    fn validate(
+        &self,
         handle: AddressSpaceHandle,
         principal: u64,
-        roles: u32,
     ) -> Result<(), DomainAuthorityError> {
         if self.handle != handle {
             return Err(DomainAuthorityError::StaleHandle);
@@ -105,6 +105,16 @@ impl DomainAuthoritySlot {
         if self.authority.is_some() {
             return Err(DomainAuthorityError::AlreadyInstalled);
         }
+        Ok(())
+    }
+
+    fn install(
+        &mut self,
+        handle: AddressSpaceHandle,
+        principal: u64,
+        roles: u32,
+    ) -> Result<(), DomainAuthorityError> {
+        self.validate(handle, principal)?;
         self.history.publish(principal);
         self.authority = Some(DomainAuthority {
             address_space: handle,
@@ -172,17 +182,26 @@ pub(crate) fn register_domain_authority(
     address_space: AddressSpaceHandle,
     principal: u64,
     roles: u32,
-) {
-    assert!(
-        address_space_handle_is_current(address_space),
-        "cannot authorize a stale address-space handle"
-    );
-    DOMAIN_AUTHORITIES
-        .lock()
+) -> Result<(), DomainAuthorityError> {
+    let mut table = ADDRESS_SPACE_TABLE.lock();
+    if table.generation(address_space.id()).ok() != Some(address_space.generation()) {
+        return Err(DomainAuthorityError::StaleHandle);
+    }
+    let root = table.get_mut(address_space.id()).map_err(|_| DomainAuthorityError::StaleHandle)?;
+    let mut authorities = DOMAIN_AUTHORITIES.lock();
+    let slot = authorities
         .get_mut(&address_space.id())
-        .expect("published root lost prepared authority slot")
-        .install(address_space, principal, roles)
-        .expect("invalid signed-loader authority installation");
+        .expect("published root lost prepared authority slot");
+    slot.validate(address_space, principal)?;
+    slot.history.publish(principal);
+    budget::bind_principal(
+        address_space,
+        principal,
+        &mut root.heap_account,
+        &mut root.image_account,
+    )
+    .map_err(|_| DomainAuthorityError::ResourceLimit)?;
+    slot.install(address_space, principal, roles)
 }
 
 /// Resolve the current supervisor-assigned authority for `asid`.

@@ -7,22 +7,27 @@ use crate::{
         ADDRESS_SPACE_TABLE,
         AddressSpaceInterface,
         backing_budget,
+        usage::principal_history::admission_tests::{
+            bind_fixture,
+            bind_raw_fixture,
+            check_retention,
+        },
     },
     service::loader,
 };
 
 pub(crate) fn run() {
     for kind in [Kind::Heap, Kind::Image] {
-        test_preparation(kind);
+        check_retention(|| test_preparation(kind));
         for platform in [false, true] {
-            test_rejected_release(kind, platform);
+            check_retention(|| test_rejected_release(kind, platform));
         }
         for phase in [0, 1, 2] {
-            test_unconfirmed_publication(kind, phase);
+            check_retention(|| test_unconfirmed_publication(kind, phase));
         }
-        test_abandoned_release(kind);
+        check_retention(|| test_abandoned_release(kind));
         for allocated in [false, true] {
-            test_abandoned_preparation(kind, allocated);
+            check_retention(|| test_abandoned_preparation(kind, allocated));
         }
     }
     crate::logln!(
@@ -37,6 +42,7 @@ fn test_preparation(kind: Kind) {
     let used = backing_budget::test_used_pages(kind);
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let mut space = AddressSpace::try_new_user().unwrap();
+    bind_raw_fixture(&mut space);
     let with_root = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     account(&mut space, kind).set_limit(0).unwrap();
     assert!(matches!(
@@ -114,6 +120,7 @@ fn test_rejected_release(kind: Kind, platform: bool) {
     let ordinary = backing_budget::test_ordinary_pages(kind);
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let owner = loader::create_user_address_space_handle();
+    bind_fixture(owner);
     let rejected;
     {
         let mut table = ADDRESS_SPACE_TABLE.lock();
@@ -170,6 +177,7 @@ fn test_rejected_release(kind: Kind, platform: bool) {
     assert_eq!(backing_budget::test_ordinary_pages(kind), retained_ordinary);
 
     let replacement = loader::create_user_address_space_handle();
+    bind_fixture(replacement);
     assert_eq!(replacement.id(), owner.id());
     assert_ne!(replacement, owner);
     {
@@ -196,6 +204,7 @@ fn test_unconfirmed_publication(kind: Kind, phase: usize) {
     let used = backing_budget::test_used_pages(kind);
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let owner = loader::create_user_address_space_handle();
+    bind_fixture(owner);
     {
         let mut table = ADDRESS_SPACE_TABLE.lock();
         let space = table.get_mut(owner.id()).unwrap();
@@ -220,7 +229,9 @@ fn test_unconfirmed_publication(kind: Kind, phase: usize) {
         // still retained, and after removal of that token before frame transfer.
         let allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
         let mapped = allocator.free_frames();
-        backing_budget::test_with_pool_locked(kind, || drop(preparation));
+        memory::usage::with_principal_history_locked(|| {
+            backing_budget::test_with_pool_locked(kind, || drop(preparation));
+        });
         assert_eq!(allocator.free_frames(), mapped);
         drop(allocator);
         assert_eq!(
@@ -238,6 +249,7 @@ fn test_abandoned_release(kind: Kind) {
     let used = backing_budget::test_used_pages(kind);
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let owner = loader::create_user_address_space_handle();
+    bind_fixture(owner);
     {
         let mut table = ADDRESS_SPACE_TABLE.lock();
         let space = table.get_mut(owner.id()).unwrap();
@@ -261,6 +273,7 @@ fn test_abandoned_preparation(kind: Kind, allocated: bool) {
     let ordinary = backing_budget::test_ordinary_pages(kind);
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let owner = loader::create_user_address_space_handle();
+    bind_fixture(owner);
     {
         let mut table = ADDRESS_SPACE_TABLE.lock();
         let space = table.get_mut(owner.id()).unwrap();
@@ -306,6 +319,7 @@ fn test_abandoned_preparation(kind: Kind, allocated: bool) {
     // Completed root teardown never refunds an earlier abandoned reservation,
     // even when that reservation had not obtained physical backing yet.
     let successor = loader::create_user_address_space_handle();
+    bind_fixture(successor);
     assert_eq!(successor.id(), owner.id());
     assert_ne!(successor, owner);
     {

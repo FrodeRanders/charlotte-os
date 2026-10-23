@@ -850,7 +850,14 @@ pub fn try_spawn_with_deployment_descriptor(
     deployment_key: &[u8; 32],
     artifact_key: &[u8; 32],
 ) -> Result<ServiceDomain, ProfileLaunchError> {
-    try_spawn_deployment_with_manifest(image, descriptor_bytes, deployment_key, artifact_key, &[])
+    try_spawn_deployment_with_manifest(
+        image,
+        descriptor_bytes,
+        deployment_key,
+        artifact_key,
+        &[],
+        |_| Ok(()),
+    )
 }
 
 /// Test-only diagnostic data injection. This shares the production verifier,
@@ -869,6 +876,20 @@ pub(crate) fn try_spawn_security_probe(
         deployment_key,
         artifact_key,
         manifest,
+        |root| {
+            // This restoration probe needs an exact generation ceiling while
+            // sibling pressure workers share the artifact's aggregate sponsor.
+            // Lower it before thread publication; keep the authenticated principal
+            // and ordinary classification. Never resize a running fixture owner.
+            crate::memory::budget::set_limit(
+                root,
+                crate::memory::budget::Amount {
+                    pages: 128,
+                    objects: 128,
+                },
+            )
+            .map_err(|_| loader::DomainLoadError::BackingAdmission)
+        },
     )
 }
 
@@ -878,6 +899,7 @@ fn try_spawn_deployment_with_manifest(
     deployment_key: &[u8; 32],
     artifact_key: &[u8; 32],
     manifest: &[bootstrap::ManifestEntry<'_>],
+    prepare: impl FnOnce(crate::memory::AddressSpaceHandle) -> Result<(), loader::DomainLoadError>,
 ) -> Result<ServiceDomain, ProfileLaunchError> {
     let descriptor = charlotte_launch::deployment::decode(descriptor_bytes)
         .ok_or(ProfileLaunchError::InvalidDeploymentDescriptor)?;
@@ -909,6 +931,9 @@ fn try_spawn_deployment_with_manifest(
         loader::try_load_domain_with_key(image, artifact_key).map_err(ProfileLaunchError::Load)?;
     crate::memory::install_launch_descriptor(loaded.address_space, descriptor_bytes);
     let mut transaction = DomainLaunchTransaction::new(loaded);
+    if let Err(error) = prepare(transaction.loaded().address_space) {
+        return transaction.abort(ProfileLaunchError::Load(error));
+    }
     let controller = capability_grant_controller();
     let connection = match ipc::connection_delegate(
         controller.domain.asid,

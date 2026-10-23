@@ -52,6 +52,14 @@ supervisor-designated platform domains. Allocation must also leave one eighth
 of usable physical frames free. Platform domains still obey per-domain and
 node-wide limits.
 
+One verified artifact principal also shares a ceiling of 16,384 pages across
+memory-object, committed heap and ELF/runtime backing, plus 1,024 memory-object
+allocations. Every instance and generation consumes that same counter in the
+existing principal-history record. The signed loader binds it before optional
+preparation and thread publication. A new instance, ASID reuse or platform
+promotion cannot reset it. Existing generation and node pools still apply.
+See \path{docs/reference/principal-backing-admission.md}.
+
 \textbf{Sponsorship is distinct from ownership.} A move transfers the authority
 to use or destroy an object, while its charge stays with the creating
 generation until the physical frames are released. A copy reserves new backing
@@ -60,15 +68,16 @@ Borrowing and pinning retain the existing charge. This prevents a sender from
 shedding its budget merely by filling a privileged receiver's queue.
 
 Charges survive sponsor retirement, mapping shootdown and delayed DMA or copy
-completion. A reused ASID receives a separate budget; late releases apply only
-to the retired generation. Staged-allocation owners roll back failed admission
+completion. A reused ASID receives a separate generation budget; late releases apply only
+to the retired generation and original principal. Staged-allocation owners roll back failed admission
 and allocation. A failed physical release quarantines its charge rather than
 creating fresh headroom.
 
 These are initial kernel admission policies, independent of telemetry filtering
 and placement feedback. Signed deployment fields and a userspace policy API for
 these limits remain future work. Demand-backed heaps and ELF/runtime pages have
-independent generation-owned accounts and node pools. Capability records,
+independent generation-owned accounts and node pools, alongside the shared
+principal ceiling. Capability records,
 IPC operations and several completion/observer families also have separate
 admission. Private translation tables have owning-root limits and a node pool;
 fresh shared runtime kernel tables have a separate node pool. Inherited boot

@@ -13,7 +13,7 @@
 
 use alloc::vec::Vec;
 
-mod principal_history;
+pub(super) mod principal_history;
 mod snapshot_tests;
 pub(super) use principal_history::PreparingHistory;
 
@@ -295,6 +295,11 @@ pub(crate) fn remember_principal_stack_high_water(principal: u64, pages: u64) {
 /// principal has not run yet in this boot.
 pub(crate) fn principal_stack_high_water(principal: u64) -> u64 {
     principal_history::stack_high_water(principal)
+}
+
+/// Kernel evidence only; this is not an external observability ABI.
+pub(crate) fn principal_backing_used(principal: u64) -> charlotte_lifecycle::resources::Amount {
+    principal_history::backing_used(principal)
 }
 
 pub(super) fn test_principal_history() {

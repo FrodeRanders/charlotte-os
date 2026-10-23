@@ -81,6 +81,7 @@ impl PreparingAccount {
         assert_eq!(self.0.platform, identity.0 == KERNEL_ASID);
         let account = DomainAccount {
             budget: Budget::new(self.0.limit),
+            principal: None,
             platform: self.0.platform,
             retired: false,
             closed: false,

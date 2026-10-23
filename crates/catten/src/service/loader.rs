@@ -596,7 +596,6 @@ fn try_load_domain_with_capacity(
     if platform {
         crate::memory::budget::mark_platform(address_space);
     }
-    prepare(address_space)?;
     let roles = if metadata.class == charlotte_launch::signature_note::ArtifactClass::Administration
     {
         catten_syscall::domain_roles::POLICY_ADMIN | catten_syscall::domain_roles::SERVICE_MANAGER
@@ -604,7 +603,11 @@ fn try_load_domain_with_capacity(
         0
     };
     let principal = charlotte_launch::artifact_principal_id(metadata.name());
-    crate::memory::register_domain_authority(address_space, principal, roles);
+    crate::memory::register_domain_authority(address_space, principal, roles)
+        .map_err(|_| DomainLoadError::BackingAdmission)?;
+    // Optional grant/backing preparation already belongs to the verified
+    // principal, including any retained work when that callback rejects.
+    prepare(address_space)?;
     let asid = address_space.id();
     let entry_vaddr = load_user_elf_with_key(address_space, image, key)?;
 

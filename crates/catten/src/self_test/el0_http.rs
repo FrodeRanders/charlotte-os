@@ -289,7 +289,8 @@ mod inner {
             fixture,
             charlotte_launch::artifact_principal_id(b"ns-status-fixture"),
             0,
-        );
+        )
+        .unwrap();
         unsafe { HTTP_NS = Some((name_service, fixture)) };
 
         let _vtid = crate::self_test::results::spawn_verifier(

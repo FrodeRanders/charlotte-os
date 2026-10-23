@@ -391,7 +391,8 @@ fn test_retry_quiescence() {
         owner,
         charlotte_launch::artifact_principal_id(b"retired-authority-control"),
         0,
-    );
+    )
+    .unwrap();
     memory::install_launch_descriptor(owner, b"retired authority descriptor");
     let authority = memory::domain_authority(owner.id());
     assert!(authority.is_some());

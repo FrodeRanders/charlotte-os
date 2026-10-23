@@ -921,7 +921,7 @@ pub fn test_syscall_dispatch() {
     let policy_digest = charlotte_launch::sha256::digest(b"admitted deployment policy");
     let owner_identity = crate::memory::current_address_space_handle(memory_owner).unwrap();
     let generation = owner_identity.generation() as u64;
-    crate::memory::register_domain_authority(owner_identity, 1, 0);
+    crate::memory::register_domain_authority(owner_identity, 1, 0).unwrap();
     assert!(!crate::memory::launch_descriptor_matches(memory_owner, generation, &policy_digest));
     crate::memory::install_launch_descriptor(owner_identity, b"admitted deployment policy");
     assert!(crate::memory::launch_descriptor_matches(memory_owner, generation, &policy_digest));

@@ -1,9 +1,10 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains forty-one finite, executable specification modules:
+This directory contains forty-two finite, executable specification modules:
 
 | Subsystem | Module | Fast configuration |
 |---|---|---|
+| Aggregate principal backing across instances and retained generations | `CharlottePrincipalBacking.tla` | `CharlottePrincipalBacking_small.cfg` |
 | Controller server preflight evidence, original budget and independent replies | `CharlotteControllerRelay.tla` | `CharlotteControllerRelay_small.cfg` |
 | Deployment listener creation, setup and idle accept | `CharlotteDeploymentListener.tla` | `CharlotteDeploymentListener_small.cfg` |
 | Namespace token selection, peer close and Pending revalidation | `CharlotteNamespaceDrain.tla` | `CharlotteNamespaceDrain_small.cfg` |
@@ -45,6 +46,14 @@ This directory contains forty-one finite, executable specification modules:
 | Filtered placement control, dwell, and reservations | `CharlottePlacementControl.tla` | `CharlottePlacementControl_small.cfg` |
 | Remote-call identity, uncertainty, and bounded deduplication | `CharlotteRemoteCall.tla` | `CharlotteRemoteCall_small.cfg` |
 | Reliable-message restart/retry sessions | `CharlotteReliableMessage.tla` | `CharlotteReliableMessage_small.cfg` |
+
+The [23 October aggregate-backing review](../reports/audits/2026-10-23-security-principal-backing.md)
+checks three unit backings and root slots, including one slot reused by another
+principal. Allocation shares one principal ceiling; move, retirement and restart
+retain original charges. Physical confirmation alone refunds them. Negative
+controls restore per-generation-only admission, early refund, sponsorship changes
+on move and late release against a replacement principal. Object counts, node
+pools, metadata, hardware and pressure fairness remain outside this projection.
 
 The [22 October controller-server review](../reports/audits/2026-10-22-security-controller-relay.md)
 checks preflight/mutation beside a query, original budgets, independent readiness
@@ -132,8 +141,8 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all forty-four complete fast configurations and 127 expected-failure
-  controller-relay, deployment-listener, namespace-drain, deployment-close, deployment-output, deployment-input, deployment-control, IPC-transaction, IPC-publication, endpoint-observer, name-publication, boot-trust, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
+- runs all forty-five complete fast configurations and 131 expected-failure
+  principal-backing, controller-relay, deployment-listener, namespace-drain, deployment-close, deployment-output, deployment-input, deployment-control, IPC-transaction, IPC-publication, endpoint-observer, name-publication, boot-trust, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
   checked-wait, domain-abort, address-space, root-retirement, hardware-ASID, interrupt-route, service-lifecycle, DMA, DMA-operation, authorization,
   Raft-join, Raft-response, Raft-stream, snapshot-restore, cluster-ingress, and reliable-message regression configurations;
 - enables TLC action coverage;

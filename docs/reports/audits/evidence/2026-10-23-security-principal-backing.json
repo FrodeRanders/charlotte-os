@@ -1,0 +1,944 @@
+{
+  "schema": "charlotte.security.principal-backing.v1",
+  "report_date": "2026-10-23",
+  "reviewed_revision": "84224784bc4db156f7013c94ff72938841f7a1ff",
+  "classification": {
+    "corrected": 29,
+    "partial": 6,
+    "open": 3,
+    "SEC-07": "partial",
+    "SEC-18": "partial",
+    "production_trust": "disabled"
+  },
+  "baseline": {
+    "evidence": "docs/reports/audits/evidence/2026-10-23-security-release-startup.json",
+    "sha256": "1f39bccda8227749ce980b2ff8e4d43ec974ea98ce5a681f6ef2b1a5ce046ff9",
+    "gap": "Generation and node budgets retained backing correctly, but instances/restarts of one signed artifact had no shared object/heap/image backing ceiling. Principal history was telemetry only."
+  },
+  "implementation": {
+    "policy": {
+      "pages": 16384,
+      "bytes": 67108864,
+      "memory_objects": 1024,
+      "dimensions": "Combined memory-object + demand-heap + image/runtime pages; only memory-object allocations consume object units."
+    },
+    "identity": "Verified artifact metadata selects one immutable principal. Existing admitted boot-lifetime history node now owns its checked aggregate Budget. No new registry, userspace setter or descriptor override.",
+    "binding": "One checked reservation for existing generation/object and root heap/image backing splits into the original owners before authority publication. Signed loader binds before optional preparation, mapping and thread publication. Callback rejection closes its owning root; moved external backing retains the original sponsor.",
+    "reservation": "Typed BackingCharge shares reserve before physical work, survive node/domain rollback, and merge into existing owners after commitment. Empty-share merge/drop enters no principal counter or allocator.",
+    "retention": "Objects retain aggregate share in their original generation entry across move/loan, retirement and receiver ownership. Copy charges the copying caller. Heap/image Account uses ManuallyDrop aggregate share behind its existing physical-release fence; uncertain/partial/abandoned cleanup retains original node and principal charges.",
+    "locks": "Captured table -> prepared authority slot -> generation ledger -> existing principal-history counter. Counter sections allocate nothing or enter other subsystems. Preparation Drop tested beneath table/allocator/pool/principal guards. Principal lookup/IRQ hold times remain pressure work.",
+    "fixture": "Test-only launch hook lowers generation memory-object pages/objects to 128 before thread publication. All workers keep the same signed principal, normal aggregate policy and ordinary classification. Production common launch uses a no-op preparation hook.",
+    "abi_wire_persistent_grammar_signatures_changed": false,
+    "cleanup_families": [
+      "C02",
+      "C03",
+      "C18"
+    ],
+    "remaining": [
+      "general kernel heap/metadata and boot-lifetime principal-record admission",
+      "aggregate principal admission for stacks/tables/capability/IPC/completion and other families",
+      "concurrent EL0 multi-instance and restart pressure; essential management/timer/teardown progress",
+      "principal-record lookup and IRQ-masked hold times",
+      "direct memory-object failed-release injection with a bound principal and wider outer destructor/race contexts",
+      "independent principals can reach node ceilings; node limits may reject below the fixed principal ceiling",
+      "fatal user heap-fault behavior and no new external budget telemetry/override",
+      "historical publication lookup, cancellation-stress root reclamation and lost-ingress-response failures remain unresolved"
+    ]
+  },
+  "source_sha256": {
+    "crates/catten/src/memory/backing_budget.rs": "513063c3e71500935bba6d38e6c2a1ee117805d7e725ddd641352e03fd7c946e",
+    "crates/catten/src/memory/backing_release_tests.rs": "8ab796590099cc0258ed0d2bfb53aeead05d3a587a3959d16f0f9b9839dbde0d",
+    "crates/catten/src/memory/budget.rs": "fc3912440e8f819d8db5b36048a5b16656bf98f46dd9b2e9e71795665ba73104",
+    "crates/catten/src/memory/budget/preparation.rs": "78975cbe531a87bd4d843bd0a99f75db563c1bb097e860fc32a27f645cb4f9d5",
+    "crates/catten/src/memory/mod.rs": "c0d441da854545749a9aabcf85421d22c447beabe3c34e4348f4e9633e4aff06",
+    "crates/catten/src/memory/preparation/tests.rs": "80aa6b42f6f1dd46680f22d41910a6ed3c5399bd8294305bc07a765f976095cb",
+    "crates/catten/src/memory/registration/metadata/tests.rs": "caee1795b9547bf39c97a7e8fc44349acf03e866c78ea89e559eea66a72d6c29",
+    "crates/catten/src/memory/retirement/tests.rs": "676fc4a2effb841f4c562c2e2b3fa84ff4ffc1a924687a0e73d63ebbe83979a4",
+    "crates/catten/src/memory/usage.rs": "c659766f66dd73d6dbe58d4306fdacf0c8425fff6a263a40917a7985c64cfaa7",
+    "crates/catten/src/memory/usage/principal_history.rs": "d3467b1c10b949f2f035ef14457019f4540ddaf2b95270f725a63cc13b4d56dc",
+    "crates/catten/src/memory/usage/principal_history/admission_tests.rs": "81d207586eadaaf1ac61bbc43d30df701b2b7b69b3fc8a860165ef4506fe14e2",
+    "crates/catten/src/memory/usage/principal_history/tests.rs": "5403fae4427a22d79afb0419f62fd0938e689fb4f579791a1be7f6240400398e",
+    "crates/catten/src/self_test/el0_http.rs": "4e83b5216239ed6cc47330d014a8717c6e950a4f9322e9183289fc19e8558bb8",
+    "crates/catten/src/self_test/syscall.rs": "3d6a66e879c84c73166a4569b11320ed8c92200f37611ab09f05fba316d9e209",
+    "crates/catten/src/service/loader.rs": "0a9a040056533eb0358cea6c59db2cf80febd848998fdc930dd284b3b07f4840",
+    "crates/catten/src/service/loader/admission_tests.rs": "9721b92a5bfb4d58f4d95af73dbde029366eb6b3890fe0d6e52a2979aca69dac",
+    "crates/catten/src/service/supervisor.rs": "d44c11c8cc8cc7b0fb5aa4086f4697d08f8e0b1d70fdfa6df61343f6e4eb97cc",
+    "docs/manual-v2/chapters/06-memory-objects.tex": "928cdf509fbab8ef43a646f2843c224ee4e091ae6395abbae2c3ab1d334603e4",
+    "docs/manual-v2/chapters/21-formal-safeguards.tex": "5deb446a8b329a77b128fc7b13e31f6af868729b7513a4ad25c7aab8bb9cf98b",
+    "docs/reference/README.md": "362d855673f4270a8c1d9383fce426a86ce0acc16af7e8efda54562fe7ffd03a",
+    "docs/reference/cleanup-recovery.md": "35230d3164ab85e27d23734aa4343436fc6f742c669b755531dd7481f90889bc",
+    "docs/reference/heap-admission.md": "0ce996f687582b4949b3afa46922943b3ea80f04b1add66ab2eb87fccafb6b04",
+    "docs/reference/loader-admission.md": "d7ea2cfe1295428d5fdefab1a050f436920898bfb4c202210e2990af3cb9db37",
+    "docs/reference/locking.md": "fca91d75042a392e1be1c4c690d7b94cb3acf3dc0c934ba6556b2f0295de7fde",
+    "docs/reference/memory-object-budgets.md": "3a1a5b5572fd93da425395252023d5f8ded11732a9856112338d7d55ca90de83",
+    "docs/reference/principal-backing-admission.md": "a2e6b9bf1f93071a18cb5bd74fc217275333ab1ede29b9759263ec6c570897a9",
+    "docs/reference/security-remediation.md": "c2a35c81e58f29ac6fa867b54ad2af36aa6271f1ae968521afdb8eda69f58654",
+    "docs/reports/README.md": "f7f1c535402fcfd743007dfa37cbb878a11ea850fefd9d225ce4e0407803d91c",
+    "docs/reports/audits/2026-10-23-security-principal-backing.md": "4c1799f63f10b19099b27a815e2a47aae809287f0c1e1cf53675e91707672c58",
+    "docs/tla/CharlottePrincipalBacking.tla": "cd7f23dcfff3d48d62195eb352921f1a4b746eac63a094fd511a0addd2d34f0b",
+    "docs/tla/CharlottePrincipalBacking_generation_unsafe.cfg": "0ce147c31b6b8efe41612bf69dcf5fa9c3d4efeb0f85d3291d79d258080d80b3",
+    "docs/tla/CharlottePrincipalBacking_move_unsafe.cfg": "f7f9c917d91a7e7f6c07d5e9f62df8f4a61bc95ff43b38702674167578482b52",
+    "docs/tla/CharlottePrincipalBacking_refund_unsafe.cfg": "7656db46f01cb039a1b690f52a70bb2e8c19cdf27d4b57abd7d9a3a514389c8b",
+    "docs/tla/CharlottePrincipalBacking_reuse_unsafe.cfg": "3c99447314b825aab20ee635b9f71847de781644d9f52ace91cbe380e411547c",
+    "docs/tla/CharlottePrincipalBacking_small.cfg": "f03e6c08051a6c985bcf4a67e6e548b96e1147dc0ffc72204886f5f8efd0b88d",
+    "docs/tla/README.md": "0af6fe7c41722d5e27c17c681d2e4859f715a7a5823429f6254acdacdc36f75c",
+    "docs/tla/check.sh": "4e4879d4bd4a8b09adddb4b22762c812d36525b16bfab781a2af56ccc1b6a818"
+  },
+  "intermediate_source_sha256": {
+    "slot_order_fixture": {
+      "crates/catten/src/memory/backing_budget.rs": "513063c3e71500935bba6d38e6c2a1ee117805d7e725ddd641352e03fd7c946e",
+      "crates/catten/src/memory/backing_release_tests.rs": "8ab796590099cc0258ed0d2bfb53aeead05d3a587a3959d16f0f9b9839dbde0d",
+      "crates/catten/src/memory/budget.rs": "fc3912440e8f819d8db5b36048a5b16656bf98f46dd9b2e9e71795665ba73104",
+      "crates/catten/src/memory/budget/preparation.rs": "78975cbe531a87bd4d843bd0a99f75db563c1bb097e860fc32a27f645cb4f9d5",
+      "crates/catten/src/memory/mod.rs": "c0d441da854545749a9aabcf85421d22c447beabe3c34e4348f4e9633e4aff06",
+      "crates/catten/src/memory/preparation/tests.rs": "afac58bed90c14f384081e599dbd448d1f8c2a43f6fb3cb0714c8005dd575193",
+      "crates/catten/src/memory/registration/metadata/tests.rs": "caee1795b9547bf39c97a7e8fc44349acf03e866c78ea89e559eea66a72d6c29",
+      "crates/catten/src/memory/retirement/tests.rs": "676fc4a2effb841f4c562c2e2b3fa84ff4ffc1a924687a0e73d63ebbe83979a4",
+      "crates/catten/src/memory/usage.rs": "c659766f66dd73d6dbe58d4306fdacf0c8425fff6a263a40917a7985c64cfaa7",
+      "crates/catten/src/memory/usage/principal_history.rs": "d3467b1c10b949f2f035ef14457019f4540ddaf2b95270f725a63cc13b4d56dc",
+      "crates/catten/src/memory/usage/principal_history/tests.rs": "5403fae4427a22d79afb0419f62fd0938e689fb4f579791a1be7f6240400398e",
+      "crates/catten/src/self_test/el0_http.rs": "4e83b5216239ed6cc47330d014a8717c6e950a4f9322e9183289fc19e8558bb8",
+      "crates/catten/src/self_test/syscall.rs": "3d6a66e879c84c73166a4569b11320ed8c92200f37611ab09f05fba316d9e209",
+      "crates/catten/src/service/loader.rs": "f0bc95696ac753b6e91fd993fdfe9cedf17b78431a29f3b4aa3ad1540afb5abe",
+      "crates/catten/src/service/loader/admission_tests.rs": "c2bd622129e7324712ba65486c061d31f22e0e6a1a3a25200b797e47f9856e9a",
+      "crates/catten/src/memory/usage/principal_history/admission_tests.rs": "9ce71e48c911a93cfee219748555674d06ff018449d31c6d096af831c6b80f81"
+    },
+    "shared_ceiling_fixture": {
+      "crates/catten/src/memory/backing_budget.rs": "513063c3e71500935bba6d38e6c2a1ee117805d7e725ddd641352e03fd7c946e",
+      "crates/catten/src/memory/backing_release_tests.rs": "8ab796590099cc0258ed0d2bfb53aeead05d3a587a3959d16f0f9b9839dbde0d",
+      "crates/catten/src/memory/budget.rs": "fc3912440e8f819d8db5b36048a5b16656bf98f46dd9b2e9e71795665ba73104",
+      "crates/catten/src/memory/budget/preparation.rs": "78975cbe531a87bd4d843bd0a99f75db563c1bb097e860fc32a27f645cb4f9d5",
+      "crates/catten/src/memory/mod.rs": "c0d441da854545749a9aabcf85421d22c447beabe3c34e4348f4e9633e4aff06",
+      "crates/catten/src/memory/preparation/tests.rs": "afac58bed90c14f384081e599dbd448d1f8c2a43f6fb3cb0714c8005dd575193",
+      "crates/catten/src/memory/registration/metadata/tests.rs": "caee1795b9547bf39c97a7e8fc44349acf03e866c78ea89e559eea66a72d6c29",
+      "crates/catten/src/memory/retirement/tests.rs": "676fc4a2effb841f4c562c2e2b3fa84ff4ffc1a924687a0e73d63ebbe83979a4",
+      "crates/catten/src/memory/usage.rs": "c659766f66dd73d6dbe58d4306fdacf0c8425fff6a263a40917a7985c64cfaa7",
+      "crates/catten/src/memory/usage/principal_history.rs": "d3467b1c10b949f2f035ef14457019f4540ddaf2b95270f725a63cc13b4d56dc",
+      "crates/catten/src/memory/usage/principal_history/tests.rs": "5403fae4427a22d79afb0419f62fd0938e689fb4f579791a1be7f6240400398e",
+      "crates/catten/src/self_test/el0_http.rs": "4e83b5216239ed6cc47330d014a8717c6e950a4f9322e9183289fc19e8558bb8",
+      "crates/catten/src/self_test/syscall.rs": "3d6a66e879c84c73166a4569b11320ed8c92200f37611ab09f05fba316d9e209",
+      "crates/catten/src/service/loader.rs": "f0bc95696ac753b6e91fd993fdfe9cedf17b78431a29f3b4aa3ad1540afb5abe",
+      "crates/catten/src/service/loader/admission_tests.rs": "c2bd622129e7324712ba65486c061d31f22e0e6a1a3a25200b797e47f9856e9a",
+      "docs/tla/check.sh": "4e4879d4bd4a8b09adddb4b22762c812d36525b16bfab781a2af56ccc1b6a818",
+      "crates/catten/src/memory/usage/principal_history/admission_tests.rs": "81d207586eadaaf1ac61bbc43d30df701b2b7b69b3fc8a860165ef4506fe14e2"
+    },
+    "generation_limited_fixture_before_final_loader_order": {
+      "crates/catten/src/memory/backing_budget.rs": "513063c3e71500935bba6d38e6c2a1ee117805d7e725ddd641352e03fd7c946e",
+      "crates/catten/src/memory/backing_release_tests.rs": "8ab796590099cc0258ed0d2bfb53aeead05d3a587a3959d16f0f9b9839dbde0d",
+      "crates/catten/src/memory/budget.rs": "fc3912440e8f819d8db5b36048a5b16656bf98f46dd9b2e9e71795665ba73104",
+      "crates/catten/src/memory/budget/preparation.rs": "78975cbe531a87bd4d843bd0a99f75db563c1bb097e860fc32a27f645cb4f9d5",
+      "crates/catten/src/memory/mod.rs": "c0d441da854545749a9aabcf85421d22c447beabe3c34e4348f4e9633e4aff06",
+      "crates/catten/src/memory/preparation/tests.rs": "afac58bed90c14f384081e599dbd448d1f8c2a43f6fb3cb0714c8005dd575193",
+      "crates/catten/src/memory/registration/metadata/tests.rs": "caee1795b9547bf39c97a7e8fc44349acf03e866c78ea89e559eea66a72d6c29",
+      "crates/catten/src/memory/retirement/tests.rs": "676fc4a2effb841f4c562c2e2b3fa84ff4ffc1a924687a0e73d63ebbe83979a4",
+      "crates/catten/src/memory/usage.rs": "c659766f66dd73d6dbe58d4306fdacf0c8425fff6a263a40917a7985c64cfaa7",
+      "crates/catten/src/memory/usage/principal_history.rs": "d3467b1c10b949f2f035ef14457019f4540ddaf2b95270f725a63cc13b4d56dc",
+      "crates/catten/src/memory/usage/principal_history/tests.rs": "5403fae4427a22d79afb0419f62fd0938e689fb4f579791a1be7f6240400398e",
+      "crates/catten/src/self_test/el0_http.rs": "4e83b5216239ed6cc47330d014a8717c6e950a4f9322e9183289fc19e8558bb8",
+      "crates/catten/src/self_test/syscall.rs": "3d6a66e879c84c73166a4569b11320ed8c92200f37611ab09f05fba316d9e209",
+      "crates/catten/src/service/loader.rs": "f0bc95696ac753b6e91fd993fdfe9cedf17b78431a29f3b4aa3ad1540afb5abe",
+      "crates/catten/src/service/loader/admission_tests.rs": "c2bd622129e7324712ba65486c061d31f22e0e6a1a3a25200b797e47f9856e9a",
+      "crates/catten/src/service/supervisor.rs": "d44c11c8cc8cc7b0fb5aa4086f4697d08f8e0b1d70fdfa6df61343f6e4eb97cc",
+      "crates/catten/src/memory/usage/principal_history/admission_tests.rs": "81d207586eadaaf1ac61bbc43d30df701b2b7b69b3fc8a860165ef4506fe14e2"
+    }
+  },
+  "native_runs": [
+    {
+      "id": "arm-initial",
+      "phase": "initial-slot-order",
+      "exit_status": 1,
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19682 CATTEN_DEPLOY_HOST_PORT=19846 scripts/run-aarch64.sh --security-test --http-test --instance sec07-principal-backing-arm --fresh-storage --timeout 300",
+      "arch": "aarch64",
+      "instance": "sec07-principal-backing-arm",
+      "result": {
+        "reason": "kernel-panic",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 10.293309665983543
+      },
+      "kernel_sha256": "16336b3fa39c720b87ba394982c7a591922d35d90eb46be5d64c7f704ac0e84c",
+      "boot_image_sha256": "2950fcc1bb6de814569926f145447bb12ef5344f4431df5ccba434ef11e6cc21",
+      "initial_disk_sha256": "5923970ba5cbf6cbd08fff031dbdcb3931416b3aeeb38528a917de129f405745",
+      "tracked_diff_sha256": "c78e2b43e783155501f2fc3d3ae651361cb254a5cd62a9a69f6f7d7ba67736f7",
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-aarch64.sh": "42c62c11c20bf928001455b93c1b3c4b971dae9da72ee9d4c4dbae800f2b5973"
+      },
+      "bundle_sha256": {
+        "clusterctl.elf": "018f80fbf1ce9a74f1d99d2379a4d6a6b0bca2b48cf1bcc7467fbba311a72794",
+        "deployd.elf": "69dd9d198b2ab85ec1ea04c8f4dcc7805e0f3b65fe6fd74d1e48d3d479f90547",
+        "dns.elf": "78109d95c5a8bd708816a1b36fac406e68780e4b36854b2b7ecb9544eebef192",
+        "agent.elf": "7c9b52a0bed0cc6ddc324af244abfce7a4939132979a7d3b8f34223cd1da9842"
+      },
+      "runner_sha256": "521c5e266150e3bcb8b5a96fac04c6e41640196d132194c56c04e1762777bea2",
+      "diagnostic_capture_sha256": {
+        "manifest.json": "850af079f626b2652adbb5c5a7a8e9148536f915b10b0d71a169478f5186a175",
+        "result.json": "41fde18f29c42848307dcf869a52159c26fb49fbf511afe8e0c2d2f2d52050e1",
+        "failure.json": "8d66da213f8268091e0bb9e3a095efa0324c8689eeef8b2c0355190f9421acd8",
+        "serial.log": "fd715ca75bbfbd212fe9b351faf52bc2d97273f29f0c088b76d30291acc63466",
+        "lldb.log": "028102aadefe351aaacc65924d6fff947d6bb90a23658fa8cfaed7fe2be2aded",
+        "registers.log": "a8ab0b8b7514c8432a022a83c24cfb3c5b5c8e59e026e895bd887c5c84b7af21",
+        "artifacts.json": "5fc40e176a0b46edf1449dcfffea91474046373179247a7f3c23f7500c81cfba"
+      },
+      "selected_guest_observations": [],
+      "host_http": {
+        "passed_controls": 0,
+        "healthy_seconds": [],
+        "trickled_body_seconds": [],
+        "selected_failures": [
+          "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/aarch64-mcg4kpre"
+        ]
+      },
+      "failure_diagnostics": [
+        "panicked at crates/catten/src/memory/usage/principal_history/admission_tests.rs:101:5:",
+        "assertion `left == right` failed",
+        "  left: 22",
+        " right: 21",
+        "Kernel backtrace (raw return addresses; text=0xffffffff80000000..0xffffffff80451218, sp=0xffff00005cb80440, fp=0xffff00005cb804c0):"
+      ],
+      "interpretation": "The fixture expected first ASID 21 but received 22 after closing two roots. No quota discrepancy reported at that assertion; final fixture reopens before closing the second root."
+    },
+    {
+      "id": "x86-initial",
+      "phase": "initial-slot-order",
+      "exit_status": 1,
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19683 CATTEN_DEPLOY_HOST_PORT=19847 scripts/run-x86_64.sh --security-test --http-test --instance sec07-principal-backing-x86 --fresh-storage --timeout 300",
+      "arch": "x86_64",
+      "instance": "sec07-principal-backing-x86",
+      "result": {
+        "reason": "kernel-panic",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 3.0199446668848395
+      },
+      "kernel_sha256": "012d0f38a2e7fa33f1561c109a771d89159929e00728b37b88447c786b88a66e",
+      "boot_image_sha256": "41601609130e48d45a57db67460ca19a14fee6a953bff2886046947609103048",
+      "initial_disk_sha256": "8860169e2a2167e84d531cc5ac0446ecd4396e6a5d12dcac7f2dcdad554e351f",
+      "tracked_diff_sha256": "c78e2b43e783155501f2fc3d3ae651361cb254a5cd62a9a69f6f7d7ba67736f7",
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-x86_64.sh": "dd82631746d8765526ed3372c8a779851f254ca2b8ad1fa0ee55d49a96067aa4"
+      },
+      "bundle_sha256": {
+        "clusterctl.elf": "ddc8f0e1022a5a596ad8bc6ecadefe267f96db4fd48143496b2b154d60359987",
+        "deployd.elf": "579b708e088efe759b505543278e8d9fcdba8c818cbfca0b2cbd32b36cc068f5",
+        "dns.elf": "acbd66f2acd5f929ee956851ac0295465cb0e8152262ec0bcec615a7e464b33d",
+        "agent.elf": "9a1ce55b668ecdbd930e4cd7f445e7386113dbcf1004670e889757483b555284"
+      },
+      "runner_sha256": "09e48e13aba33826ff00776b826031db663a05ed95e439eeac7eccf1be163b8e",
+      "diagnostic_capture_sha256": {
+        "manifest.json": "98259a181e95158a74b6374a0e92a1efec1d08d79eacdd146f5fc7bfa686e1f7",
+        "result.json": "8f868fc3fc86204404aa87c38d579ff6201379d5868e59c85162766b803d0fb9",
+        "failure.json": "2d0d3a5b87ed0da6b14eb67e7ef2d06d0f87bcffb3d3bbc24a7abcf21036aa72",
+        "serial.log": "161ccdaa9a8482ffd64e896303cbe987d8d0b595343029294449ce684c2d49cd",
+        "lldb.log": "b2929ba6a9f23570733cde95c11fd749d7a0e6b0d6b4383c06e2a82a10244d70",
+        "registers.log": "e9ac173696728736a9cf1f99e22067a6fcd2d3a4598168c892e40129a376eb81",
+        "artifacts.json": "ba52204b7d2798015598ca0c18cf52ffa34778f70801f6ba06e91e1e7b460c07"
+      },
+      "selected_guest_observations": [],
+      "host_http": {
+        "passed_controls": 0,
+        "healthy_seconds": [],
+        "trickled_body_seconds": [],
+        "selected_failures": [
+          "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/x86_64-jn1o2md7"
+        ]
+      },
+      "failure_diagnostics": [
+        "panicked at crates/catten/src/memory/usage/principal_history/admission_tests.rs:101:5:",
+        "assertion `left == right` failed",
+        "  left: 22",
+        " right: 21",
+        "Kernel backtrace (raw return addresses; text=0xffffffff80000000..0xffffffff8046e65a, sp=0xffff80001df888f0, fp=0xffff80001df88990):"
+      ],
+      "interpretation": "The fixture expected first ASID 21 but received 22 after closing two roots. No quota discrepancy reported at that assertion; final fixture reopens before closing the second root."
+    },
+    {
+      "id": "arm-final",
+      "phase": "-final",
+      "exit_status": 1,
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19682 CATTEN_DEPLOY_HOST_PORT=19846 scripts/run-aarch64.sh --security-test --http-test --instance sec07-principal-backing-arm-final --fresh-storage --timeout 300",
+      "arch": "aarch64",
+      "instance": "sec07-principal-backing-arm-final",
+      "result": {
+        "reason": "kernel-panic",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 47.09817991708405
+      },
+      "kernel_sha256": "6f4022676b7517e9c7bd015709f4be1e88c17fe37eb0fbceb5a31a537c40a9eb",
+      "boot_image_sha256": "2a9a65b8da84b990915a46bb835f8717122bc285d0ca24faa9416dca0d21e423",
+      "initial_disk_sha256": "5923970ba5cbf6cbd08fff031dbdcb3931416b3aeeb38528a917de129f405745",
+      "tracked_diff_sha256": "aec88a00e82a7f2c75c5fbff960bd6feb22674ec6e1c33008e5d950ebed245d0",
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-aarch64.sh": "42c62c11c20bf928001455b93c1b3c4b971dae9da72ee9d4c4dbae800f2b5973"
+      },
+      "bundle_sha256": {
+        "clusterctl.elf": "018f80fbf1ce9a74f1d99d2379a4d6a6b0bca2b48cf1bcc7467fbba311a72794",
+        "deployd.elf": "69dd9d198b2ab85ec1ea04c8f4dcc7805e0f3b65fe6fd74d1e48d3d479f90547",
+        "dns.elf": "78109d95c5a8bd708816a1b36fac406e68780e4b36854b2b7ecb9544eebef192",
+        "agent.elf": "7c9b52a0bed0cc6ddc324af244abfce7a4939132979a7d3b8f34223cd1da9842"
+      },
+      "runner_sha256": "7d01a4714a69d6723e2ae2b89fb4fd938f3c85ea07a18c234149575a9bc7101e",
+      "diagnostic_capture_sha256": {
+        "manifest.json": "d9eaf412b7179e55f7c96465878552dfd3bf078a09b719ba1f18f1a5ead8e47c",
+        "result.json": "e75b5a6430742d10a3cb04d7271769b909ca2465bee2ebc764139c71b6574b13",
+        "failure.json": "9b2abaa3e6d21733e8b6387a19067a8d80800f435c9bb9d1aabacd36ae9f4f00",
+        "serial.log": "3ab5396d1e9e715828f51d3b59611253078686d9e1e881b53f8c6b036f02cd46",
+        "lldb.log": "eabc5e5154906eec1407eadd5de27664b173f91c20f78bd2498a0109415ccbff",
+        "registers.log": "9b8d59093103512b277661e9a369303e06170ebf1ea560378068c69c6f20b139",
+        "artifacts.json": "4cf819edb4daf6a1d3046f25c4401a291248d2e74e12b23b65938e9b2938942a"
+      },
+      "selected_guest_observations": [
+        "[+     1.166249] [principal backing admission] shared heap/image/object ceiling, copy sponsorship, promotion rejection, 256 denied requests with unrelated progress, retained transfer across exit/reuse, and atomic pre-launch binding passed",
+        "[+     1.231623] [principal signed launch] two verified instances share image/object ceiling; rejected oversized backing allocates no frames; confirmed teardown refunds both",
+        "[+    40.332301] [EL0 LOG] lp=0 asid=135 [security-probe] failed check 53",
+        "[+    40.978752] SELFTEST FAILED: scoped-launch-security",
+        "[+    40.979419] SELFTEST COMPLETE: passed=19 failed=1 pending=0 passed_bitmap=0x23ffff failed_bitmap=0x20000000 pending_bitmap=0x0"
+      ],
+      "host_http": {
+        "passed_controls": 3,
+        "healthy_seconds": [],
+        "trickled_body_seconds": [],
+        "selected_failures": [
+          "HTTP transport ConnectionResetError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 2/2",
+          "Traceback (most recent call last):",
+          "TimeoutError: timed out",
+          "Deployment transport TimeoutError; retry 1/2",
+          "Deployment transport TimeoutError; retry 2/2",
+          "Traceback (most recent call last):",
+          "TimeoutError: timed out",
+          "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/aarch64-kb4bvnl7"
+        ]
+      },
+      "failure_diagnostics": [
+        "panicked at crates/catten/src/self_test/el0_security.rs:110:9:",
+        "assertion `left != right` failed: security probe failed check 53",
+        "  left: 3",
+        " right: 3",
+        "Kernel backtrace (raw return addresses; text=0xffffffff80000000..0xffffffff80451a44, sp=0xffff810000296600, fp=0xffff810000296680):"
+      ],
+      "interpretation": "Extra allocation was accepted during exact restoration check at a shared principal ceiling. Sibling workers can release aggregate headroom. No simultaneous generation/principal snapshot or precise release interleaving was captured."
+    },
+    {
+      "id": "x86-final",
+      "phase": "-final",
+      "exit_status": 1,
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19683 CATTEN_DEPLOY_HOST_PORT=19847 scripts/run-x86_64.sh --security-test --http-test --instance sec07-principal-backing-x86-final --fresh-storage --timeout 300",
+      "arch": "x86_64",
+      "instance": "sec07-principal-backing-x86-final",
+      "result": {
+        "reason": "kernel-panic",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 56.085638457909226
+      },
+      "kernel_sha256": "b95033ed2bdc62525a3b106432fab8ef4e5305f84c54d23674ad57c3c4938bc7",
+      "boot_image_sha256": "443044946aaceaa9932dbb95b2f254d712f09615152d65016f783b5e36c72405",
+      "initial_disk_sha256": "8860169e2a2167e84d531cc5ac0446ecd4396e6a5d12dcac7f2dcdad554e351f",
+      "tracked_diff_sha256": "aec88a00e82a7f2c75c5fbff960bd6feb22674ec6e1c33008e5d950ebed245d0",
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-x86_64.sh": "dd82631746d8765526ed3372c8a779851f254ca2b8ad1fa0ee55d49a96067aa4"
+      },
+      "bundle_sha256": {
+        "clusterctl.elf": "ddc8f0e1022a5a596ad8bc6ecadefe267f96db4fd48143496b2b154d60359987",
+        "deployd.elf": "579b708e088efe759b505543278e8d9fcdba8c818cbfca0b2cbd32b36cc068f5",
+        "dns.elf": "acbd66f2acd5f929ee956851ac0295465cb0e8152262ec0bcec615a7e464b33d",
+        "agent.elf": "9a1ce55b668ecdbd930e4cd7f445e7386113dbcf1004670e889757483b555284"
+      },
+      "runner_sha256": "0ae3d99bdcbf467ac83f9685aa752e25c0ec95057d63c56563cfc9c708c6d3d4",
+      "diagnostic_capture_sha256": {
+        "manifest.json": "41bddccbf203da48a550a8e0dc861d9f283be05adb64ab05fb208441ab5761ac",
+        "result.json": "2876d3e660260f479ac43a01b966a5659a6724f78379a5bb6bc7a075c9223a04",
+        "failure.json": "afc99d7a6c35c0826e31dec2acd4e5691c6f026703f71c6895ce706d7e04b932",
+        "serial.log": "4b482549cea4a5ca12e72ce40fca5f8fdc58f1ed18f493675a71ca21406d969c",
+        "lldb.log": "fbab5e7ed63234d4504a183c6b572f50d2401eb6a0c764afc001fb92b604361f",
+        "registers.log": "c6ac5f68f6fad2b92c4cdfb8dc8a6b79d2e7f6664834a6b1d9132bc9e6b50a73",
+        "artifacts.json": "bcfc5b51380a8cb63bd972eeef867bc6b7cd6b84f29c96bb4667dc5e9acaf958"
+      },
+      "selected_guest_observations": [
+        "[+     1.001446] [principal backing admission] shared heap/image/object ceiling, copy sponsorship, promotion rejection, 256 denied requests with unrelated progress, retained transfer across exit/reuse, and atomic pre-launch binding passed",
+        "[+     1.070239] [principal signed launch] two verified instances share image/object ceiling; rejected oversized backing allocates no frames; confirmed teardown refunds both",
+        "[+    53.968879] [EL0 LOG] lp=0 asid=139 [security-probe] failed check 55",
+        "[+    54.594122] SELFTEST FAILED: scoped-launch-security",
+        "[+    54.594488] SELFTEST COMPLETE: passed=17 failed=1 pending=0 passed_bitmap=0x23bbff failed_bitmap=0x20000000 pending_bitmap=0x0"
+      ],
+      "host_http": {
+        "passed_controls": 3,
+        "healthy_seconds": [],
+        "trickled_body_seconds": [],
+        "selected_failures": [
+          "HTTP transport TimeoutError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 1/2",
+          "HTTP transport TimeoutError; retry 2/2",
+          "Traceback (most recent call last):",
+          "TimeoutError: timed out",
+          "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/x86_64-hie2valf"
+        ]
+      },
+      "failure_diagnostics": [
+        "panicked at crates/catten/src/self_test/el0_security.rs:110:9:",
+        "assertion `left != right` failed: security probe failed check 55",
+        "  left: 3",
+        " right: 3",
+        "Kernel backtrace (raw return addresses; text=0xffffffff80000000..0xffffffff8046ed7a, sp=0xffff8100002a7780, fp=0xffff8100002a7820):"
+      ],
+      "interpretation": "Extra allocation was accepted during exact restoration check at a shared principal ceiling. Sibling workers can release aggregate headroom. No simultaneous generation/principal snapshot or precise release interleaving was captured."
+    },
+    {
+      "id": "arm-qualified",
+      "phase": "-qualified",
+      "exit_status": 0,
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19682 CATTEN_DEPLOY_HOST_PORT=19846 scripts/run-aarch64.sh --security-test --http-test --instance sec07-principal-backing-arm-qualified --fresh-storage --timeout 300",
+      "arch": "aarch64",
+      "instance": "sec07-principal-backing-arm-qualified",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "kernel_sha256": "794dfe46a1c6b8710c28f2f3e8ef0f338173e96dd9781400036b268c881c2852",
+      "boot_image_sha256": "939b25f6b99ca01459989afa315d17af72814782a57ab193bd7a190c88a388bb",
+      "initial_disk_sha256": "5923970ba5cbf6cbd08fff031dbdcb3931416b3aeeb38528a917de129f405745",
+      "tracked_diff_sha256": "4b31c8b76389cb759d33e232086f40a65a73e49428b84c6388af916961504ee3",
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-aarch64.sh": "42c62c11c20bf928001455b93c1b3c4b971dae9da72ee9d4c4dbae800f2b5973"
+      },
+      "bundle_sha256": {
+        "clusterctl.elf": "018f80fbf1ce9a74f1d99d2379a4d6a6b0bca2b48cf1bcc7467fbba311a72794",
+        "deployd.elf": "69dd9d198b2ab85ec1ea04c8f4dcc7805e0f3b65fe6fd74d1e48d3d479f90547",
+        "dns.elf": "78109d95c5a8bd708816a1b36fac406e68780e4b36854b2b7ecb9544eebef192",
+        "agent.elf": "7c9b52a0bed0cc6ddc324af244abfce7a4939132979a7d3b8f34223cd1da9842"
+      },
+      "runner_sha256": "01616b450c2e8afecceb73a00e340772737023ac87090b493d85a5eac6b26c92",
+      "diagnostic_capture_sha256": {
+        "manifest.json": "ea5a950b9800792e4e60c57318f31695d0f793aca8f2e7d452ee6b95e929d1cd",
+        "result.json": "373d97eec748a1793b505ce00900d935a5fde132c2ababcd8a5876a2fc3c92a6",
+        "serial.log": "3049694b4e3fffe3979d3314ddfc9d6d7cfe8c30ba6254a6e986772229eaf85f",
+        "artifacts.json": "9152049db28ca716dc87cd1154e8264f214e836333bfe5fe150e6d697c20d5a0"
+      },
+      "selected_guest_observations": [
+        "[+     2.672641] [principal backing admission] shared heap/image/object ceiling, copy sponsorship, promotion rejection, 256 denied requests with unrelated progress, retained transfer across exit/reuse, and atomic pre-launch binding passed",
+        "[+     2.810941] [principal signed launch] two verified instances share image/object ceiling; rejected oversized backing allocates no frames; confirmed teardown refunds both",
+        "[+    61.734043] [security] probe passed; retired policy fenced, publication generation=1",
+        "[+    97.368928] [security] probe passed; retired policy fenced, publication generation=2",
+        "[+    97.385529] [security] concurrent cancellation traffic retired after 12752 requests",
+        "[+    97.387222] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x2023ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "host_http": {
+        "passed_controls": 14,
+        "healthy_seconds": [
+          0.382,
+          0.789,
+          0.582
+        ],
+        "trickled_body_seconds": [
+          30.22
+        ],
+        "selected_failures": [
+          "HTTP transport ConnectionResetError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 2/2"
+        ]
+      }
+    },
+    {
+      "id": "x86-qualified",
+      "phase": "-qualified",
+      "exit_status": 0,
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19683 CATTEN_DEPLOY_HOST_PORT=19847 scripts/run-x86_64.sh --security-test --http-test --instance sec07-principal-backing-x86-qualified --fresh-storage --timeout 300",
+      "arch": "x86_64",
+      "instance": "sec07-principal-backing-x86-qualified",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "kernel_sha256": "c1b908b3e314fde14ebeec369c3545b1c500ebccf85b73b3020cb99aa4de79cf",
+      "boot_image_sha256": "98be96a585c2edb38f3b8319d2d20b1c74957aefc467c1792b7b401c56171260",
+      "initial_disk_sha256": "8860169e2a2167e84d531cc5ac0446ecd4396e6a5d12dcac7f2dcdad554e351f",
+      "tracked_diff_sha256": "4b31c8b76389cb759d33e232086f40a65a73e49428b84c6388af916961504ee3",
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-x86_64.sh": "dd82631746d8765526ed3372c8a779851f254ca2b8ad1fa0ee55d49a96067aa4"
+      },
+      "bundle_sha256": {
+        "clusterctl.elf": "ddc8f0e1022a5a596ad8bc6ecadefe267f96db4fd48143496b2b154d60359987",
+        "deployd.elf": "579b708e088efe759b505543278e8d9fcdba8c818cbfca0b2cbd32b36cc068f5",
+        "dns.elf": "acbd66f2acd5f929ee956851ac0295465cb0e8152262ec0bcec615a7e464b33d",
+        "agent.elf": "9a1ce55b668ecdbd930e4cd7f445e7386113dbcf1004670e889757483b555284"
+      },
+      "runner_sha256": "71573562e110cf7979ae3c54bb882f10d7d146ca4491cb82e5270b55a0815295",
+      "diagnostic_capture_sha256": {
+        "manifest.json": "d12d69b3e2c63b2e0d2727d70cec8935715e6e3d14d70b870c114e878e352d30",
+        "result.json": "373d97eec748a1793b505ce00900d935a5fde132c2ababcd8a5876a2fc3c92a6",
+        "serial.log": "c3227628a46387b06f8c4d08c4b90d4424e90404a970bbe42607e65bef0cccd7",
+        "artifacts.json": "97e079c4a9d1a2b4f26608fc5a5a4fbc71efdda3e3c037fc8c386f0df59048eb"
+      },
+      "selected_guest_observations": [
+        "[+     3.295582] [principal backing admission] shared heap/image/object ceiling, copy sponsorship, promotion rejection, 256 denied requests with unrelated progress, retained transfer across exit/reuse, and atomic pre-launch binding passed",
+        "[+     3.579695] [principal signed launch] two verified instances share image/object ceiling; rejected oversized backing allocates no frames; confirmed teardown refunds both",
+        "[+    90.831410] [security] probe passed; retired policy fenced, publication generation=1",
+        "[+   136.321801] [security] probe passed; retired policy fenced, publication generation=2",
+        "[+   136.361681] [security] concurrent cancellation traffic retired after 6216 requests",
+        "[+   136.363054] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x2023bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "host_http": {
+        "passed_controls": 14,
+        "healthy_seconds": [
+          1.376,
+          1.397,
+          1.11
+        ],
+        "trickled_body_seconds": [
+          30.52
+        ],
+        "selected_failures": [
+          "HTTP transport ConnectionResetError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 2/2"
+        ]
+      }
+    },
+    {
+      "id": "arm-release",
+      "phase": "-release",
+      "exit_status": 0,
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19682 CATTEN_DEPLOY_HOST_PORT=19846 scripts/run-aarch64.sh --security-test --http-test --instance sec07-principal-backing-arm-release --fresh-storage --timeout 300",
+      "arch": "aarch64",
+      "instance": "sec07-principal-backing-arm-release",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "kernel_sha256": "baaf4b0ccdfbda4979b62fb34a55284ca68b75eff3532294dfea706f7367cb10",
+      "boot_image_sha256": "5f91b411de27af4e1509108dc51e070480ea84ba865eefc04625f7708f098fe4",
+      "initial_disk_sha256": "5923970ba5cbf6cbd08fff031dbdcb3931416b3aeeb38528a917de129f405745",
+      "tracked_diff_sha256": "10eaffc8041322750e2562c5f658fa9ffd6a1c003127d490bbb262adb49c67aa",
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-aarch64.sh": "42c62c11c20bf928001455b93c1b3c4b971dae9da72ee9d4c4dbae800f2b5973"
+      },
+      "bundle_sha256": {
+        "clusterctl.elf": "018f80fbf1ce9a74f1d99d2379a4d6a6b0bca2b48cf1bcc7467fbba311a72794",
+        "deployd.elf": "69dd9d198b2ab85ec1ea04c8f4dcc7805e0f3b65fe6fd74d1e48d3d479f90547",
+        "dns.elf": "78109d95c5a8bd708816a1b36fac406e68780e4b36854b2b7ecb9544eebef192",
+        "agent.elf": "7c9b52a0bed0cc6ddc324af244abfce7a4939132979a7d3b8f34223cd1da9842"
+      },
+      "runner_sha256": "42226560f830d15bca44dca8152f186582febde0ad9ba7aecf99dfe82578820b",
+      "diagnostic_capture_sha256": {
+        "manifest.json": "86d068add5e0ac4ba7f4fbe2da047259610b6aa4d50cca2cedd8d57de89e212d",
+        "result.json": "373d97eec748a1793b505ce00900d935a5fde132c2ababcd8a5876a2fc3c92a6",
+        "serial.log": "80fa9ab264d38d9e98a7a056649e0e9e1c963a834b986ab574c8d05519fd19de",
+        "artifacts.json": "ed1148af58fb846098a831c6a453f56a6e6e897c727feb3d15f0126c6fd63efc"
+      },
+      "selected_guest_observations": [
+        "[+     2.644608] [principal backing admission] shared heap/image/object ceiling, copy sponsorship, promotion rejection, 256 denied requests with unrelated progress, retained transfer across exit/reuse, and atomic pre-launch binding passed",
+        "[+     2.781110] [principal signed launch] two verified instances share image/object ceiling; rejected oversized backing allocates no frames; confirmed teardown refunds both",
+        "[+     2.790756] [principal launch rejection] verified sponsor bound before preparation; moved backing remains charged after unstarted root closes and refunds only at receiver release",
+        "[+    57.711170] [security] probe passed; retired policy fenced, publication generation=1",
+        "[+    90.113894] [security] probe passed; retired policy fenced, publication generation=2",
+        "[+    90.118626] [security] concurrent cancellation traffic retired after 18444 requests",
+        "[+    90.119350] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x2023ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "host_http": {
+        "passed_controls": 14,
+        "healthy_seconds": [
+          0.368,
+          0.244,
+          0.402
+        ],
+        "trickled_body_seconds": [
+          30.18
+        ],
+        "selected_failures": [
+          "HTTP transport ConnectionResetError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 2/2"
+        ]
+      }
+    },
+    {
+      "id": "x86-release",
+      "phase": "-release",
+      "exit_status": 0,
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19683 CATTEN_DEPLOY_HOST_PORT=19847 scripts/run-x86_64.sh --security-test --http-test --instance sec07-principal-backing-x86-release --fresh-storage --timeout 300",
+      "arch": "x86_64",
+      "instance": "sec07-principal-backing-x86-release",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "kernel_sha256": "45986b0c5d7d24389614f5f404f25913c37ff135ce8eb51bf1b2e70f20d37a70",
+      "boot_image_sha256": "d0e08be96bb125d9ca5fcfcb28ec833d936a53c509244e5b0fff63a668dfba15",
+      "initial_disk_sha256": "8860169e2a2167e84d531cc5ac0446ecd4396e6a5d12dcac7f2dcdad554e351f",
+      "tracked_diff_sha256": "10eaffc8041322750e2562c5f658fa9ffd6a1c003127d490bbb262adb49c67aa",
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-x86_64.sh": "dd82631746d8765526ed3372c8a779851f254ca2b8ad1fa0ee55d49a96067aa4"
+      },
+      "bundle_sha256": {
+        "clusterctl.elf": "ddc8f0e1022a5a596ad8bc6ecadefe267f96db4fd48143496b2b154d60359987",
+        "deployd.elf": "579b708e088efe759b505543278e8d9fcdba8c818cbfca0b2cbd32b36cc068f5",
+        "dns.elf": "acbd66f2acd5f929ee956851ac0295465cb0e8152262ec0bcec615a7e464b33d",
+        "agent.elf": "9a1ce55b668ecdbd930e4cd7f445e7386113dbcf1004670e889757483b555284"
+      },
+      "runner_sha256": "4e66f4d5b1baaded22524c4ef0277c6d9b9ef14e0d9e12d4b106d9f8b0654494",
+      "diagnostic_capture_sha256": {
+        "manifest.json": "9c880ce24133665d9367c9fbb88fe9d48eef9657d6a20b09858fcde9f1dfb05b",
+        "result.json": "373d97eec748a1793b505ce00900d935a5fde132c2ababcd8a5876a2fc3c92a6",
+        "serial.log": "b1a4e9ff83b3ce7798d2601ff0bc901100f23108c8e264e46e6b4293e29447e3",
+        "artifacts.json": "b8e3c520f2187fa3beea1793148d6515187917588e345d02835477be5e43aa30"
+      },
+      "selected_guest_observations": [
+        "[+     1.041041] [principal backing admission] shared heap/image/object ceiling, copy sponsorship, promotion rejection, 256 denied requests with unrelated progress, retained transfer across exit/reuse, and atomic pre-launch binding passed",
+        "[+     1.092976] [principal signed launch] two verified instances share image/object ceiling; rejected oversized backing allocates no frames; confirmed teardown refunds both",
+        "[+     1.098065] [principal launch rejection] verified sponsor bound before preparation; moved backing remains charged after unstarted root closes and refunds only at receiver release",
+        "[+    51.581369] [security] probe passed; retired policy fenced, publication generation=1",
+        "[+    84.295629] [security] probe passed; retired policy fenced, publication generation=2",
+        "[+    84.312267] [security] concurrent cancellation traffic retired after 18352 requests",
+        "[+    84.312872] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x2023bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "host_http": {
+        "passed_controls": 14,
+        "healthy_seconds": [
+          0.364,
+          0.375,
+          0.312
+        ],
+        "trickled_body_seconds": [
+          30.15
+        ],
+        "selected_failures": [
+          "HTTP transport TimeoutError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 2/2"
+        ]
+      }
+    }
+  ],
+  "checks": {
+    "workspace_fmt": {
+      "command": "cargo fmt --all -- --check",
+      "exit_status": 0,
+      "capture_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "git_diff_check": 0,
+    "base_kernel_clippy": [
+      {
+        "target": "aarch64",
+        "exit_status": 0,
+        "command": "CATTEN_TRUST_MODE=development CATTEN_AARCH64_SERVICE_BUNDLE=target/embedded-services/aarch64-unknown-none cargo clippy --offline --locked -p catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+        "capture_sha256": "c60bdb8effe7da57b663c22820776959eb4780a02b6965b98a0f656895a5a458",
+        "scope": "Base acpi target with -D warnings; combined security/HTTP feature configurations execute in native runs."
+      },
+      {
+        "target": "x86_64",
+        "exit_status": 0,
+        "command": "CATTEN_TRUST_MODE=development CATTEN_X86_64_SERVICE_BUNDLE=target/embedded-services/x86_64-unknown-none cargo clippy --offline --locked -p catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+        "capture_sha256": "73106f012e0c510f43af7187169c3ac35205c047865ae931954ab9b798640e6b",
+        "scope": "Base acpi target with -D warnings; combined security/HTTP feature configurations execute in native runs."
+      }
+    ]
+  },
+  "formal": {
+    "command": "docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar",
+    "exit_status": 0,
+    "safe": 45,
+    "expected_counterexamples": 131,
+    "modules": 42,
+    "cases": 176,
+    "checked_inputs": 219,
+    "input_sha256": {
+      "docs/tla/CharlotteAddressSpace.tla": "94e8ae476eab11029c39513fa66197793b05f0a6ca1655b751497a6e518d0284",
+      "docs/tla/CharlotteAddressSpace_small.cfg": "25feef19bf1dc780d8cece87801b7590b0bce68aa884c7459f7a9a65866d35eb",
+      "docs/tla/CharlotteAddressSpace_unsafe.cfg": "4be0b588a5b44ff54ac273701331a622b9f2bfd241b4a428be8acaf98a5337cf",
+      "docs/tla/CharlotteAuthorization.tla": "d5e14f9e9eb674522b6446235d24e322507959a2baf0219d22912ab3c7929515",
+      "docs/tla/CharlotteAuthorization_generation_unsafe.cfg": "4f23d40ea610f3e457a4d3e8107d111c9d4bdbadd421a83d946c371677b105db",
+      "docs/tla/CharlotteAuthorization_policy_unsafe.cfg": "4f0e81b15fa4c54d4e10216d4b23f84ed3ce85fd801c0c271ca0486717750779",
+      "docs/tla/CharlotteAuthorization_policy_version_unsafe.cfg": "369762db357baf735d3464b0c1f309b9a2c6ff1c2f22bb19c28ef1d91361be2a",
+      "docs/tla/CharlotteAuthorization_principal_unsafe.cfg": "c3f4c2815588d123d723e6f3aa12360a08c5c93d1dc9730e31bca4c6590525bf",
+      "docs/tla/CharlotteAuthorization_rights_unsafe.cfg": "9d82cd883cb9b68ba02cc926d9019d591c0edaceb9568416744dc3b7a882221f",
+      "docs/tla/CharlotteAuthorization_small.cfg": "2ddfd048b004e053686223171bcfcbbeb94d1ef4f4d53cc2c63b2276738ea15b",
+      "docs/tla/CharlotteBootTrust.tla": "c9edb0a6f74bc3d0dac70ea14eae1eee59e15774356bbad191d55f5467882a29",
+      "docs/tla/CharlotteBootTrust_authenticate_unsafe.cfg": "611d53f8615472e6958a8901a1ecd1b0011801228e319577633e070780b3d328",
+      "docs/tla/CharlotteBootTrust_boundary_unsafe.cfg": "8e415118debd8e9a467bce69e30d890b8ee024cc71d00cec360c9f5e8acb4c70",
+      "docs/tla/CharlotteBootTrust_contract.cfg": "46363cde40899130188ea50dea6f0aceff8b7bac675291d52862998170a82e57",
+      "docs/tla/CharlotteBootTrust_development_unsafe.cfg": "996e72ecbf931c6e5891f6ebaa7a6e6bc807b9ab01917a3a5d6161afc4b1849f",
+      "docs/tla/CharlotteBootTrust_enrollment_unsafe.cfg": "95b4dee9697707dc39edbe8ac6c94a4c49cfe3a0cd10c05c3d4084a0163f3395",
+      "docs/tla/CharlotteBootTrust_failure_unsafe.cfg": "2310166ce6c6c0bb4f93c1e4ee384c07b959920d8c29d109fc100b1107d74d15",
+      "docs/tla/CharlotteBootTrust_fixture.cfg": "023562d632e18920d8d51cac7cee5f5d9159aad42c423782d6d833b37e5b19df",
+      "docs/tla/CharlotteBootTrust_manifest_unsafe.cfg": "6989bfd31e1eb9c7f433017cc1c2a780af10a0d9f7bdc8d1cadaec20f8abb3c6",
+      "docs/tla/CharlotteBootTrust_overwrite_unsafe.cfg": "311a8f4022eb40cba78628ec14a7a32a324b7218084fdead778d7add6d9bbfc8",
+      "docs/tla/CharlotteBootTrust_platform_unsafe.cfg": "68b37ab0eb83682fa55e89ec62ae39c123b48dfce1abbd6f1bca86e4dfb239a7",
+      "docs/tla/CharlotteBootTrust_recipient_unsafe.cfg": "6dc6e0759a42289cbbd65888842c40efbea1b8e1207cb36458adfbef8248122f",
+      "docs/tla/CharlotteBootTrust_selection_unsafe.cfg": "a8eb3675ee03bc1c5a459c522ab94a26ce40a5abbefed662cde4776cadea0990",
+      "docs/tla/CharlotteBootTrust_stale_unsafe.cfg": "aec488139f350badb5164942bc4bbe05b58bc1178c7a713bdf086defddd6b88b",
+      "docs/tla/CharlotteBootTrust_uninstalled_unsafe.cfg": "99362ddbc2c34acd714b36f30f2e037ff17138e1b9845e9d6881242654be8a7f",
+      "docs/tla/CharlotteCQ.tla": "1557db52418f0e4d47a737951b4a1d9cae5dfb44329b228bbd749da22a4bdd04",
+      "docs/tla/CharlotteCQ_buffer_unsafe.cfg": "9c5a49c335ba999c468e18651ee9a60bfb336d7ea32db783de562f8c897bf5ac",
+      "docs/tla/CharlotteCQ_mini.cfg": "e1b7eafb8fbc246c9122055672615be144e3b43ed869c9dbe41ba4d7d101125f",
+      "docs/tla/CharlotteCapability.tla": "4e94c107f21e7486cfe23c232c2b1930557af27df89c45cf75f29f4ddd098f1a",
+      "docs/tla/CharlotteCapability_small.cfg": "6a0cf36f3f4845ea37d901eb3ddbbf603445789ba18081ef7646c3f7ea36c8e3",
+      "docs/tla/CharlotteCheckedWait.tla": "0a94737e26b40c49939af7233d765ef4c76523608e39bf1b21818ac344c129b7",
+      "docs/tla/CharlotteCheckedWait_deadline_unsafe.cfg": "ed16d0f4d9759d76eafa780f56f6be83a95e7ae4721e0535aa8249afcbc0e5d2",
+      "docs/tla/CharlotteCheckedWait_park_unsafe.cfg": "0851785424eb552b590f5b191e31a0b3ec38ff8f6ee2a437803cc47a0e60fbbc",
+      "docs/tla/CharlotteCheckedWait_rejection_unsafe.cfg": "d73cdb7ac12b71fc3413a87343adecbd23a3ed3fbe29d8f5bd12d024e7b10188",
+      "docs/tla/CharlotteCheckedWait_replay_unsafe.cfg": "48df5cf72013a629118216d005481a2bef0c8e6fbee23e29664470affbec15c1",
+      "docs/tla/CharlotteCheckedWait_result_unsafe.cfg": "609274f19fcbd3f2d1a259f03c98bd8670ee2790a2de9c1b127cc935a51139c5",
+      "docs/tla/CharlotteCheckedWait_small.cfg": "5c114d9f0027dc3382a9b0ba9516b8dbc88eed5dde9b1067ebd8eecaace13e04",
+      "docs/tla/CharlotteCheckedWait_timeout_unsafe.cfg": "92699d7f09749d4f7f05ecc0e5e11605d79a0d02b715f4814eb5e0e590c36477",
+      "docs/tla/CharlotteClusterIngress.tla": "4660b215db89bb5d67b8433091eff5bb0052c993152e5423c657b9909aa6ac13",
+      "docs/tla/CharlotteClusterIngress_history_unsafe.cfg": "b35cd382b188843b7ae065053d0095c1fd55c41b6695410e8d8824e2a7820926",
+      "docs/tla/CharlotteClusterIngress_readiness_unsafe.cfg": "811add7d3dc380ff4f5feb31c33ba002ca72fa6ebc3b45e4116b5427fdec0656",
+      "docs/tla/CharlotteClusterIngress_small.cfg": "402c878db4ccef9c752c84c9beee894d823a8bf0d5f669d62de57734f2063360",
+      "docs/tla/CharlotteClusterIngress_stale_snapshot_unsafe.cfg": "ed01b5382c1dc5aa11eee36b853a7cf72e5193f586d5e9075e6c73adb22127a2",
+      "docs/tla/CharlotteControllerRelay.tla": "d149e0a20150850dc94dcec82ee84b617e4e783b8a6d2fb1b6c0d11b76f6ab5d",
+      "docs/tla/CharlotteControllerRelay_budget_unsafe.cfg": "97c75c646ca0a06825dc66d51a166472ac5ddbf8b12cf04894d053c1375d6a9b",
+      "docs/tla/CharlotteControllerRelay_replay_unsafe.cfg": "0f8324fd11cebfae00a556551381af1d286d792610ddbf08a5b481838883df4c",
+      "docs/tla/CharlotteControllerRelay_serial_unsafe.cfg": "c2656b34ebaaa83cda32b9e7b5d4dddb9f5a742590e98fffe7133d8334192f99",
+      "docs/tla/CharlotteControllerRelay_small.cfg": "3a295d2322aff544c865de76b50926cfb6a3ec1c6a6521415162980b3a1a63a9",
+      "docs/tla/CharlotteControllerRelay_unknown_unsafe.cfg": "774fa00e1ff026d21093a4a3d33e7cbf6c4df2f4c55468b0116cc192fecdd348",
+      "docs/tla/CharlotteDMA.tla": "5c732aed07fa1f79463d4ca30d2aa7fc7e7c58f46c1e0a64f9445298867cd9fc",
+      "docs/tla/CharlotteDMA_small.cfg": "55befa332f585191e5078b4085601f1ea9439a02f24c042d14e2bc7ae3009e93",
+      "docs/tla/CharlotteDMA_unsafe.cfg": "8b5f798d0723b8d9640eae2f9fb4c8a20383b49552d501943826fb55ad25b2ac",
+      "docs/tla/CharlotteDeploymentClose.tla": "e595f889b6c69c726c488c83b959b70e1547481adf748769e5e1b2219d52da34",
+      "docs/tla/CharlotteDeploymentClose_blocking.cfg": "45ca77464185d9d482f3b4a770f6912f957f506f029eeef73987d7853798b89f",
+      "docs/tla/CharlotteDeploymentClose_fallback_unsafe.cfg": "57a792900504c8aa64827acb89b9ff07816e518d2c3b8378e90184214024e6a5",
+      "docs/tla/CharlotteDeploymentClose_release_unsafe.cfg": "0902c27ce000cdda55a7fa5cdf76a5256adc0bfc7fd81a8334be53b4cb6ddedd",
+      "docs/tla/CharlotteDeploymentClose_replay_unsafe.cfg": "d26c1e2bde8fe2fce1abc5da139c5bdf4f3675b1585e2e53615349f0a5f4ca43",
+      "docs/tla/CharlotteDeploymentClose_small.cfg": "e255647b8fd88cf158924d2eb435ee4f18ca8945ada777ed5a09a49c7e2ebf8e",
+      "docs/tla/CharlotteDeploymentControl.tla": "a8887a81998f30d498596913c96b79701bde1cf4edc2d2205825af8ffa55800d",
+      "docs/tla/CharlotteDeploymentControl_replay_unsafe.cfg": "a575561a30122e55ba0aec99acf54f2dd5e55e5fdb87a264b7017f8f2ec417ef",
+      "docs/tla/CharlotteDeploymentControl_serial_unsafe.cfg": "4ad95fba4d6a8950dd95345cbaefe869718f0ef7edeb7099238a86cca0c50e39",
+      "docs/tla/CharlotteDeploymentControl_small.cfg": "376cdfaae69b78bf54fd01c991492c8ebafab4346ca1120c6874462330fcfa3c",
+      "docs/tla/CharlotteDeploymentInput.tla": "6f15ec8cbb9a28e8bad70a904b803e256a5d558c038bec6e31543eb641222f49",
+      "docs/tla/CharlotteDeploymentInput_cursor_unsafe.cfg": "2614f5cf89c3531c446e72acb755236caeb1f713c44ed84b768696b55b583adf",
+      "docs/tla/CharlotteDeploymentInput_deadline_unsafe.cfg": "8a3ed0591b951e95153f91f3df44cd15b7a24665405fb43acdb456815a7dd401",
+      "docs/tla/CharlotteDeploymentInput_small.cfg": "66cf0386102f74b3289eba5a09d59d08fc573dc621054f725fca562c7b5c822a",
+      "docs/tla/CharlotteDeploymentListener.tla": "219fd3a13dd41ddb0aafc35069b177387eed40eb66fd06d02b4e3bd7bbfc6b21",
+      "docs/tla/CharlotteDeploymentListener_budget_unsafe.cfg": "e1ef7d0832cf0d05df2e94c0765dadcd5b04e7202cff7d8a67f5e2f54320e427",
+      "docs/tla/CharlotteDeploymentListener_replay_unsafe.cfg": "7e4253651de6d9e0a0226cdc3355a5d53cfd2de953142c3f92566d6d0130c699",
+      "docs/tla/CharlotteDeploymentListener_serial_unsafe.cfg": "db5625d7c50ad09741288d8aef095992becef276b57db72aa94fbe91a70c04d3",
+      "docs/tla/CharlotteDeploymentListener_small.cfg": "59eb78ae882e72f1e5b6944924429ebadba127cd14c8474cefc62516253bb50a",
+      "docs/tla/CharlotteDeploymentOutput.tla": "8dc953edd288250d4a4733346243663a10760980042d7f6909925cb6a24c7f4c",
+      "docs/tla/CharlotteDeploymentOutput_budget_unsafe.cfg": "d5752fb8d31dcf0c8aac79390390625b3b2d16390000d2d8238e74c8da4a9f88",
+      "docs/tla/CharlotteDeploymentOutput_replay_unsafe.cfg": "189d07575ab1f3ccbfb31ea262fdf37fa135cabd3916a8805e73af9b5db46100",
+      "docs/tla/CharlotteDeploymentOutput_small.cfg": "e2f21c3070aee113fe46a330225c182af3455ed81c30566bdf402050a1c936c9",
+      "docs/tla/CharlotteDmaOperation.tla": "2839f7d90627b32049ac677bd0040474df313f1dc862090e1d9373817787e682",
+      "docs/tla/CharlotteDmaOperation_abandon_unsafe.cfg": "ffb8ec7166354bd94c8b53dca935d7cd0f1332aa1d922ed625c09476b6716d10",
+      "docs/tla/CharlotteDmaOperation_access_unsafe.cfg": "5a7b9512acaf0c030ed76a2c9c834b244ad06e4742db5fea72f09e1ae4182c88",
+      "docs/tla/CharlotteDmaOperation_cell_unsafe.cfg": "afca9bcf0e4ebf495043761e5a75e5f707c2f015b7596471a97e4c078e88123b",
+      "docs/tla/CharlotteDmaOperation_confirmation_unsafe.cfg": "fe466b9e71056adebe75475a3ccced1a5fa41d428694013c3924e76e14f35ea5",
+      "docs/tla/CharlotteDmaOperation_context_unsafe.cfg": "ad3c3e24b3cfdd57d6dc07851a0c73d3de6ebd123b545facbdd0ab2bf8e62999",
+      "docs/tla/CharlotteDmaOperation_cpu_unsafe.cfg": "16d1450ba672e9366eeed68a17c018d1a1988bee2bcd286ea87a4883ef3031ef",
+      "docs/tla/CharlotteDmaOperation_drop_unsafe.cfg": "b12da60b76b0b776895ba9a2b267fed4f777f9fad6561c023fbbedb290c224b8",
+      "docs/tla/CharlotteDmaOperation_map_unsafe.cfg": "bed6cdfaf7f0df9d4ba31d5f8d5005f287bcbbacd82a291986fb9771fee74a27",
+      "docs/tla/CharlotteDmaOperation_preparation_unsafe.cfg": "6fd8ba8d7238d6cc415a8dcc300d10154fd02f7bc1833605bcc612357804ce13",
+      "docs/tla/CharlotteDmaOperation_public_unsafe.cfg": "6684e9fcb141fa7ab6fa1df96918a7df1c490c62f765e2b4296c325e05b463c2",
+      "docs/tla/CharlotteDmaOperation_readiness_unsafe.cfg": "e4153638e5f59bbf1728ed2f338ade189844ad1c7254aec8751e6cfc754cb57f",
+      "docs/tla/CharlotteDmaOperation_rearm_unsafe.cfg": "3e124e8f8d7cc95794c56b1f615fcd1e30b4000aae7c9207a35f54e99f933503",
+      "docs/tla/CharlotteDmaOperation_remap_unsafe.cfg": "a97e1f454c658a35aeaac53d1ce06552fe0a95ffae5522fff19e3512a7896362",
+      "docs/tla/CharlotteDmaOperation_small.cfg": "5cd7d31f47748b790b12b903fd5fdd309106400aa6a5511e6991fc06664ddc95",
+      "docs/tla/CharlotteEndpointObservers.tla": "42415be276a5a31546337c473cfb89300cee102664809905169eb713efb140b6",
+      "docs/tla/CharlotteEndpointObservers_small.cfg": "8a972975c5d21bc23df1d1529258c455d35f5278ad6f209c19349dfbe6c11e14",
+      "docs/tla/CharlotteEndpointObservers_unsafe.cfg": "c85058ca46cb9ed10c39c38742cdb1c2895571fc6247de2fbaedcd488aff89a2",
+      "docs/tla/CharlotteHardwareAsid.tla": "2074acb290a98b6113874dbb3a6c93bb213698d5731153acd0f099b996644928",
+      "docs/tla/CharlotteHardwareAsid_small.cfg": "f4ef9b3536f735756f09f04bd0297b4f74d54ce03a6725806b5475b26b72d8ef",
+      "docs/tla/CharlotteHardwareAsid_unsafe.cfg": "4cc26e9851630ffbd7b8f3de981304bda0e3be2d06bf16c2e71cd6d286d852c9",
+      "docs/tla/CharlotteIPC.tla": "cafa97f897a33d496eb5c1ce2da877e6546ec66f9202d20f6ab33280a49ad857",
+      "docs/tla/CharlotteIPC_small.cfg": "7b5369411db55b2a2e8ea88245bdffc3dfbeb4867528f59c9e6e659a27931570",
+      "docs/tla/CharlotteInterruptRoute.tla": "9e6fdc9caff46461273a279b2a76153c6f22c7c97152999a92a93b46e281b0b4",
+      "docs/tla/CharlotteInterruptRoute_small.cfg": "d2d75e070eab33d10fd0cc38a3d60f53788637dfac9dfe505df0702f8f98f24e",
+      "docs/tla/CharlotteInterruptRoute_unsafe.cfg": "58e087639848e1cae282cd413caf77b3fffd0b912ebdde3728c6d05820f8bf10",
+      "docs/tla/CharlotteIpcPublication.tla": "67d87012aaed9bed5eec8df42b68f46359153a618d43a9b0befcb6b92e009432",
+      "docs/tla/CharlotteIpcPublication_batch_unsafe.cfg": "f21d1ad0c3c4ae9110851d914f55df4e08a5583db20fb9a1c3524c8158f3af1f",
+      "docs/tla/CharlotteIpcPublication_cancel_unsafe.cfg": "fb3cb26ea11333c4341a9569f3d1eea6757d28d2bed3a8bab006c8930187cd6d",
+      "docs/tla/CharlotteIpcPublication_connection_unsafe.cfg": "aaca3189ab479abf22b273882ca92fdf23602696a91aba0c1ff316bd46e1beae",
+      "docs/tla/CharlotteIpcPublication_memory_unsafe.cfg": "157e67d386164b1789334327b7c329b5cc2f133203867a7f2f3738688616133d",
+      "docs/tla/CharlotteIpcPublication_observe_unsafe.cfg": "958ce487bbee6ff56aae8a9a40df99593537a6b64320f4a5641a262ce245b0f9",
+      "docs/tla/CharlotteIpcPublication_readiness_unsafe.cfg": "dbc976896ed54d43217106ac32f920a93ef1ea9be8821e71b926d16ca6a02a27",
+      "docs/tla/CharlotteIpcPublication_refund_unsafe.cfg": "6aad7a123d8d50f7604ea78ed9f3106e05c5d95559c6dda0e83948f533abdc57",
+      "docs/tla/CharlotteIpcPublication_restore_unsafe.cfg": "a96f0da36e15eda49e0698ed30b3f373425fac45e76d11f8f8b034e5866ac5dd",
+      "docs/tla/CharlotteIpcPublication_rollback_unsafe.cfg": "e835593816f7502ac984d59d370237950b166a938774ec5a45a5686afbab6313",
+      "docs/tla/CharlotteIpcPublication_serial_unsafe.cfg": "32130b6ce3d0d01be1df08a89b7dd38d9a7d476ad31cd3605df48376eb1a5650",
+      "docs/tla/CharlotteIpcPublication_small.cfg": "4c6da1ebeb79eeefa62bb0dbb9d26184956c1fdd6d097a5de41b120275d67d87",
+      "docs/tla/CharlotteIpcTransaction.tla": "bfc596a22480fae309c31732670b60024085014ec084d998dbbf8affd40fed7c",
+      "docs/tla/CharlotteIpcTransaction_rollback_unsafe.cfg": "89326400847cf5ac0fd76e7c68eb2f32385d551cd38ce201c70dd6a5a6b7fe99",
+      "docs/tla/CharlotteIpcTransaction_small.cfg": "67e0efe832fbadf7258296297af6afa293da1a78edcdb464a14cf9a70280a471",
+      "docs/tla/CharlotteIpcTransaction_timeout_unsafe.cfg": "5c748b860dec8df3fb253e6aefcaa8138835fac61dc0b6ea48c8a089cb2b4c00",
+      "docs/tla/CharlotteNamePublication.tla": "64e06c4d4eba6c9af622cc8433bcb27e97a9c55655f4151a9f4d4e0faf9728f1",
+      "docs/tla/CharlotteNamePublication_abort_unsafe.cfg": "e271ebbf4cb0a504119c836cbdc42dcab8d6039a85209439f0dfa9c1d6f90a8c",
+      "docs/tla/CharlotteNamePublication_deferred_unsafe.cfg": "d1c9e007af1d13797dd43395aef321c857bb869285cbf9e13f9259b6b0ebf705",
+      "docs/tla/CharlotteNamePublication_disposal_unsafe.cfg": "9962dfc20c9bb6e4e7bdc54a2ac6a68dae04a701427004a494b54f9aaee02865",
+      "docs/tla/CharlotteNamePublication_exhausted_unsafe.cfg": "a942fbefc77918b1ad9ee416f77bd0357a1205e9cd831c1110e30e193d4deca2",
+      "docs/tla/CharlotteNamePublication_exhaustion.cfg": "9276ebe1529abbd3863d389066d633d0440adce13c69cccbdf7c8facc4c81cc6",
+      "docs/tla/CharlotteNamePublication_hint_unsafe.cfg": "8484b3ae8b8c58ceeee38e3e4bf4bee13056b420883c04924393984f85af2c09",
+      "docs/tla/CharlotteNamePublication_public_unsafe.cfg": "e569ee4d0b6f3bb86c05785a6574565195ef0d73a64edd9074cf61e18710443f",
+      "docs/tla/CharlotteNamePublication_quota_unsafe.cfg": "75624b9f524283872e18b0ec2d36c49e9b7b70a78d10e0b9248450c6eb10ee36",
+      "docs/tla/CharlotteNamePublication_replacement_unsafe.cfg": "02b0c2abe35eacfa067a22403296400228c8fff7e6531450bc428aa9bb3a8c8c",
+      "docs/tla/CharlotteNamePublication_retire_unsafe.cfg": "435a962cad50daf5e8c928c23bb0034a7b1f88f8b0d46b8e9018eb3b521b1748",
+      "docs/tla/CharlotteNamePublication_serial_unsafe.cfg": "beb2131c7c79377259741ca89e909273e0bde7bf43f7cb1e1413f182c911ad30",
+      "docs/tla/CharlotteNamePublication_small.cfg": "df05aff71bceb53c288f9e29ec0f64fd4efd5d17face5d1884fdc0a339b7dd88",
+      "docs/tla/CharlotteNamePublication_stale_unsafe.cfg": "23470b9661034062398a56368f0ff5980ecbe731f4f764da51b4e4de5ee89ac3",
+      "docs/tla/CharlotteNamePublication_watch_unsafe.cfg": "acff70f0762e23fa9ba9411edba9e5b9464a5ac9f6ba54f94ac03af10f9c020b",
+      "docs/tla/CharlotteNamePublication_wrap_unsafe.cfg": "d857d5368be2ca80b990b0b6d476da2d24ba8e5719116b19ce30a138794241a3",
+      "docs/tla/CharlotteNamespaceDrain.tla": "a39fbe8177e3ecffa5c75be6bbab634ae433c4be8adf79a612c6c8ddb568852d",
+      "docs/tla/CharlotteNamespaceDrain_skip_unsafe.cfg": "406582aab1158ba89591f7f93eca87e8a3c6995f20682ce566e3ab6172527dfa",
+      "docs/tla/CharlotteNamespaceDrain_small.cfg": "69d6fe3ab85ffa8cc3e8c8d2d7a731ce75e1eb8bbd52eb2aa8e4b119da189dec",
+      "docs/tla/CharlotteNamespaceDrain_stale_unsafe.cfg": "8a81f6549262641792ca34a970228e3fff4c664a3c137e20e7f2e06b07908356",
+      "docs/tla/CharlottePlacementControl.tla": "2c93a5cf0a91d5babd0d4fbb863ea0d0c64eeda82a9bfc8d2467e19ba17e2515",
+      "docs/tla/CharlottePlacementControl_dwell_unsafe.cfg": "c1ffcc9f00441a11bd727cb812389a12dab91898d0764081e763693abaf55e8a",
+      "docs/tla/CharlottePlacementControl_reserve_unsafe.cfg": "969d1b58a2debd681a1beea9a4b69585f0f04f3e563eb78ddf32ef5396382733",
+      "docs/tla/CharlottePlacementControl_small.cfg": "ea702173e19534cf9f0967fe2f5a46bc5ea0e25a78c6a0a66ecd96da6e514cf8",
+      "docs/tla/CharlottePrincipalBacking.tla": "cd7f23dcfff3d48d62195eb352921f1a4b746eac63a094fd511a0addd2d34f0b",
+      "docs/tla/CharlottePrincipalBacking_generation_unsafe.cfg": "0ce147c31b6b8efe41612bf69dcf5fa9c3d4efeb0f85d3291d79d258080d80b3",
+      "docs/tla/CharlottePrincipalBacking_move_unsafe.cfg": "f7f9c917d91a7e7f6c07d5e9f62df8f4a61bc95ff43b38702674167578482b52",
+      "docs/tla/CharlottePrincipalBacking_refund_unsafe.cfg": "7656db46f01cb039a1b690f52a70bb2e8c19cdf27d4b57abd7d9a3a514389c8b",
+      "docs/tla/CharlottePrincipalBacking_reuse_unsafe.cfg": "3c99447314b825aab20ee635b9f71847de781644d9f52ace91cbe380e411547c",
+      "docs/tla/CharlottePrincipalBacking_small.cfg": "f03e6c08051a6c985bcf4a67e6e548b96e1147dc0ffc72204886f5f8efd0b88d",
+      "docs/tla/CharlotteRaft.tla": "6ab1ef702a12515a8299263af5d5216115dd976dfee7d69e6b394c4c1fc94d80",
+      "docs/tla/CharlotteRaftJoin.tla": "4436022e36d4ed88690e3ba1dbd995bcb7bbaf60acd2c9da10063bb5cb221486",
+      "docs/tla/CharlotteRaftJoin_restart_unsafe.cfg": "9ae634438f5cfcd525ef79f229861ed5f16b09ded70282aa2d672670291b95eb",
+      "docs/tla/CharlotteRaftJoin_small.cfg": "645defb0cbba7276f412504af6ae1edd648bb75dc612bfec0c4466de5e15c833",
+      "docs/tla/CharlotteRaftJoin_unsafe.cfg": "e9e87d139447a922465906760b61028efcfdeb06e08fc0657111127bb1d3f3e1",
+      "docs/tla/CharlotteRaftLog.tla": "f1264ced4451c6498bbc23877475805613a798d4baa4dc7b92a16804f4d1266b",
+      "docs/tla/CharlotteRaftLog_small.cfg": "d0922611874d0a0c3aad1302c79cbeb2964b28047f5a4d62828c4b83ba44addb",
+      "docs/tla/CharlotteRaftMembership.tla": "ee283cee5f5c54cbd98a0ef002dbe2d8592f1dbda13c11a31c3dd118e30e3f4d",
+      "docs/tla/CharlotteRaftMembership_beforecatchup_unsafe.cfg": "1bebd17d6742862ea1b42603110142ab7ecfce3181a38486f900b42494c5662c",
+      "docs/tla/CharlotteRaftMembership_learnerleader_unsafe.cfg": "e03b850a627f57c6a67221bab01809966fd326845479bdc9ff9cb739c80152f8",
+      "docs/tla/CharlotteRaftMembership_oldonly_unsafe.cfg": "66c4d2ee02c6f971fb8529c3f27c6a484240e7e88787c4089e284967b569c818",
+      "docs/tla/CharlotteRaftMembership_small.cfg": "c4949302102f62fe00a4d7b2144ad348bd0ac07a14f7e49819eb9d45a3c55a3c",
+      "docs/tla/CharlotteRaftRead.tla": "ba501b11cfb8f5b1b49783164821f8f9919f7bebd005750d588af53bc55bf4a6",
+      "docs/tla/CharlotteRaftRead_apply_unsafe.cfg": "43cba1003d8bd416c940a67210311278e210565b7699d24a6b335e8cfc358231",
+      "docs/tla/CharlotteRaftRead_binding_unsafe.cfg": "eae17e21a319cc8ca76e862f0e5e8c426bb067b4df995128155e0bd859aae816",
+      "docs/tla/CharlotteRaftRead_commit_unsafe.cfg": "dc43808ad84e9c1f980a81124b59560f5e3494489c9b1c70f2cba87715ca87b7",
+      "docs/tla/CharlotteRaftRead_lease_unsafe.cfg": "04027533e5b606ff3995f03b3534135a005ced922ceff5b42d55813f2c7d7b53",
+      "docs/tla/CharlotteRaftRead_small.cfg": "d8356638da42d1a5f9e2bf70e011584a4d8e155f81401747b993c5df58f3c786",
+      "docs/tla/CharlotteRaftResponse.tla": "3d18cf384a8769934d40b538d1b66a62c347f24429e03e347076c359972fa3fa",
+      "docs/tla/CharlotteRaftResponse_backoff_unsafe.cfg": "9a72a7d3759a03c6515d0f345ef67bbb015881ae50f906b36259173c1618ec55",
+      "docs/tla/CharlotteRaftResponse_invalid_unsafe.cfg": "955dbde49aea1b4811db506ec61c662d3650272d7ec982c8d5b8d3506a36ed0f",
+      "docs/tla/CharlotteRaftResponse_oldterm_unsafe.cfg": "ca31d6e2a4e4a1545c2a541d583bdd30e68ff7c16857397c307745383f1cd4fe",
+      "docs/tla/CharlotteRaftResponse_regress_unsafe.cfg": "fec5226e58addf76e4676b34d144bb9f85785a3b725ecf88b420ef6e4161e192",
+      "docs/tla/CharlotteRaftResponse_small.cfg": "d8356638da42d1a5f9e2bf70e011584a4d8e155f81401747b993c5df58f3c786",
+      "docs/tla/CharlotteRaftSnapshot.tla": "3ecd5c17fdb200227c0de9608b732df5ae18c648acdcf4619d607eff3a7639d8",
+      "docs/tla/CharlotteRaftSnapshot_small.cfg": "0ea7a243aab5cdeace57a0ef990237f8893614d30afc06427d98ce0425baafb1",
+      "docs/tla/CharlotteRaftStream.tla": "9569b70cc70a89633d88c2b1605b685ed8269aeb835ef11919325905b800e338",
+      "docs/tla/CharlotteRaftStream_offset_unsafe.cfg": "69eff1ae0d71551616c20ca9453f5037cc655ff676343d2a0ef5c3adfe6ec35d",
+      "docs/tla/CharlotteRaftStream_owner_unsafe.cfg": "d4d8ff4cad3ee145ee09909d9aef43cf97d52f169f2f8675f768a386bb5b12d5",
+      "docs/tla/CharlotteRaftStream_small.cfg": "1cbf9e0476239a905305c0bafff90221959624090d88d60b1a96e88ea41a1cdc",
+      "docs/tla/CharlotteRaft_small.cfg": "48294c1cddc1d440a1e2d70a80fd6ea9da8ade2d20ff0f1f4f54b85e8843bb9b",
+      "docs/tla/CharlotteReliableMessage.tla": "3a17cb197cbf7818717940a30cf6930f41a3b5e6fe16b8dfe4cfa52851e51f6a",
+      "docs/tla/CharlotteReliableMessage_identity_unsafe.cfg": "4cbb48be424584a73181c7c5495e31faf41c3b967405092b520a41b9503678da",
+      "docs/tla/CharlotteReliableMessage_regression_unsafe.cfg": "49dbe795212fe69495d4c927592dce59074306c5b30c254d6d4bf8f43bd6ce8b",
+      "docs/tla/CharlotteReliableMessage_small.cfg": "85adbd3bb065b8da79a7d8dfe58fd5e4b530f10d26015f83952c4a82e22edea5",
+      "docs/tla/CharlotteRemoteCall.tla": "36de513b3ffbfa1e9cbd74bac0404fc1ef66cd5400c7b536a9da18c1be2b1c55",
+      "docs/tla/CharlotteRemoteCall_small.cfg": "56d4993c70c7c7f9a5d5ec478240776ee12e00432adf8402a6cc291bc7fe9601",
+      "docs/tla/CharlotteRootRetirement.tla": "817ce0b352e358ab901f6392354d4a42ca294274080e5f1b979d1105f563d87e",
+      "docs/tla/CharlotteRootRetirement_abandon_unsafe.cfg": "693f4eeb72902cd536fb1fa185b05e7daec0f0fd50f9fe655f1dcbd9396c7202",
+      "docs/tla/CharlotteRootRetirement_lease_unsafe.cfg": "185baa2c91ce27fd6872e654ee522f6b3770f467e0eead8557bb26c60c95c889",
+      "docs/tla/CharlotteRootRetirement_physical_unsafe.cfg": "fa20b8c4b353156b8f39c48362bc3ea995377e31d81a69f742300ca41077edab",
+      "docs/tla/CharlotteRootRetirement_refund_unsafe.cfg": "c01d5c13fbee34239773c05eb0a33db1d5c31dfaa2ecf9a8de25853de659faed",
+      "docs/tla/CharlotteRootRetirement_release_unsafe.cfg": "47ca560b0c4fba4952c7009e3fb6af8c5c3cde906a7bb943d70aea4113dbada5",
+      "docs/tla/CharlotteRootRetirement_small.cfg": "9ee0187ad3b152ba75044f87f71788bb9bd1f5d2af8ebf0a1b1389c487b593d1",
+      "docs/tla/CharlotteScheduler.tla": "a58ef1f0f39ebb06d7b5d09568071891b51ecc327ca097b018155026c2acab5e",
+      "docs/tla/CharlotteScheduler_domain_abort_unsafe.cfg": "53332baa166196b745e9c8a9ae53ca6f0df3675120de0ff4fa4c9b8d7c24ee56",
+      "docs/tla/CharlotteScheduler_small.cfg": "f48844b2897340be11b29446d9fe763fe5ac12eb09a4d98128ed8567adffb047",
+      "docs/tla/CharlotteScheduler_unsafe.cfg": "d8816f8c15bd9c50ccb9421ba88b5aba6c2b737b03d8f71bddbb8791cf8165c5",
+      "docs/tla/CharlotteServiceLifecycle.tla": "5cab06543727b1373ae1ba9a342217f93a275fb3058cc33c3408c6f6fc39dee0",
+      "docs/tla/CharlotteServiceLifecycle_small.cfg": "e44daeaa25b96571f91e1f440ef61865ca2cfe7ac2908e3761a0c17a24fc1762",
+      "docs/tla/CharlotteServiceLifecycle_unsafe.cfg": "dfbae5bdd1af4274cec07f6501be0724140ff96343be816b836d7458262e1e74",
+      "docs/tla/CharlotteSnapshotRestore.tla": "c71563b3814d1f58b6bee72dac6bfd78e76d55d50895dad5c70372002f42eb88",
+      "docs/tla/CharlotteSnapshotRestore_application_unsafe.cfg": "983d4959987c263293f339a66848e2d2160c8d47314b1006fcc965139f78c041",
+      "docs/tla/CharlotteSnapshotRestore_durable_unsafe.cfg": "08aab0735de4db738b699997e9c1e9db496a2c5627c71ead888bb9755dae2321",
+      "docs/tla/CharlotteSnapshotRestore_exposure_unsafe.cfg": "6aae5eb519c5d5e67c5cb64be07b8b64f3f82635236f0854f9d6797d00f193ad",
+      "docs/tla/CharlotteSnapshotRestore_join_unsafe.cfg": "f9e148560d035b72c231e971fabe1e0281db21539b1886d86a6aacc16bd6b079",
+      "docs/tla/CharlotteSnapshotRestore_membership_unsafe.cfg": "6de0ef827f05f5e144f88fb97473f5b8f1b15b49df87d253c6a58565d571a3b6",
+      "docs/tla/CharlotteSnapshotRestore_ordering_unsafe.cfg": "5c773fbf7a6930b96ee72c86b0a06ecba3fae85b6e51b05e03164059052eb6f5",
+      "docs/tla/CharlotteSnapshotRestore_progress_unsafe.cfg": "8e8ff5e47b8a3d60cab8d400802ff594af6320666274ce7366482045f136a854",
+      "docs/tla/CharlotteSnapshotRestore_small.cfg": "d8356638da42d1a5f9e2bf70e011584a4d8e155f81401747b993c5df58f3c786",
+      "docs/tla/CharlotteStackGrowth.tla": "36dce6679dd969bd14136bb79c5c2cff8cec8df6479f0d33458ab196324a4a5f",
+      "docs/tla/CharlotteStackGrowth_grow_unsafe.cfg": "bef8d583b177e41bc58ef6312d0726129b58aa62f0539fe0e3b2b3dc4cf99e74",
+      "docs/tla/CharlotteStackGrowth_leak_unsafe.cfg": "d3df7e3d6e69ea109cb6b9ee06c57cf54c9d6d4ac92ede12b7497066093857d6",
+      "docs/tla/CharlotteStackGrowth_small.cfg": "1931995ce026befe604d6225a63e43cf5afbc336881c9141222af8943076baf9",
+      "docs/tla/CharlotteThreadJoin.tla": "3e61029e5fa352c6b065f0edd165a94f132095fb1c0d79c31b57d6761653b0e6",
+      "docs/tla/CharlotteThreadJoin_small.cfg": "64bf35e8eea699f9f8d1f1fd51c4c8c8b3f0e123a32912015546ea891563c819",
+      "docs/tla/CharlotteThreadJoin_unsafe.cfg": "1caa3d988aea11eefcc695c7524337b2ceac2ccfa8daa7620732affb6fc577d7",
+      "docs/tla/CharlotteThreadJoin_wrap_unsafe.cfg": "6304719f640bb360f0aa8f7c85face93526dea4e490f9de314dcc46bdf62eed9",
+      "docs/tla/CharlotteTimedWait.tla": "8739f35fb3eb7d97b5e9b41c786ada3f1f74d7bfd9d285fbb332bd457e06078e",
+      "docs/tla/CharlotteTimedWait_small.cfg": "a3d3b0fcaf80d4030a515699c0f02d29b6951f4e4170774df1c83cb558aba1d2",
+      "docs/tla/CharlotteTimedWait_unsafe.cfg": "1ffdb5d33dd8d1280de6aa281c33a646b6bfa111f6f3ac8eb82b9800c8833be6",
+      "docs/tla/check.sh": "4e4879d4bd4a8b09adddb4b22762c812d36525b16bfab781a2af56ccc1b6a818"
+    },
+    "tools_jar_sha256": "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88",
+    "capture_sha256": "2e4078c23bd050f8d01f6a881148121e0374086732645dc7954fe68ba7452c59",
+    "new_model_selected_output": [
+      ">>> TLC CharlottePrincipalBacking (CharlottePrincipalBacking_small.cfg)",
+      "<Allocate line 28, col 1 to line 28, col 8 of module CharlottePrincipalBacking>: 2370:15404",
+      "<Move line 30, col 1 to line 30, col 4 of module CharlottePrincipalBacking>: 558:17760",
+      "<Retire line 33, col 1 to line 33, col 6 of module CharlottePrincipalBacking>: 9515:57756",
+      "<Restart line 40, col 1 to line 40, col 7 of module CharlottePrincipalBacking (41 5 41 89)>: 2533:7232",
+      "<ConfirmRelease line 42, col 1 to line 42, col 14 of module CharlottePrincipalBacking>: 23527:50304",
+      "148457 states generated, 38504 distinct states found, 0 states left on queue.",
+      "The depth of the complete state graph search is 13.",
+      ">>> TLC CharlottePrincipalBacking (CharlottePrincipalBacking_generation_unsafe.cfg, expected counterexample)",
+      "Error: Invariant PrincipalCeiling is violated.",
+      "<UnsafeGenerationOnly line 48, col 1 to line 48, col 20 of module CharlottePrincipalBacking>: 7:54",
+      ">>> TLC CharlottePrincipalBacking (CharlottePrincipalBacking_refund_unsafe.cfg, expected counterexample)",
+      "Error: Invariant Accounted is violated.",
+      "<UnsafeRetirementRefund line 51, col 1 to line 51, col 22 of module CharlottePrincipalBacking>: 8:9",
+      ">>> TLC CharlottePrincipalBacking (CharlottePrincipalBacking_move_unsafe.cfg, expected counterexample)",
+      "Error: Invariant Accounted is violated.",
+      "<UnsafeMoveSponsor line 55, col 1 to line 55, col 17 of module CharlottePrincipalBacking>: 8:9",
+      ">>> TLC CharlottePrincipalBacking (CharlottePrincipalBacking_reuse_unsafe.cfg, expected counterexample)",
+      "Error: Invariant Accounted is violated.",
+      "<UnsafeReuseSponsor line 60, col 1 to line 60, col 18 of module CharlottePrincipalBacking>: 3:5"
+    ],
+    "scope": "Three unit backings/root slots; only first root slot restarts (possibly with another principal). Aggregate page admission, sticky sponsorship and explicit physical confirmation. Object counts, node pools, hardware, metadata, progress fairness and executable refinement are not modeled."
+  },
+  "preserved_pdf_sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f",
+  "verification_limits": "Failed runs remain separate. Initial source snapshots identify implementation/test phases; later artifacts and passes do not establish failed-run causes. The EL0 full-quota failures lack simultaneous generation/principal counts. Native serialized small-principal pressure is not a concurrent general-pressure acceptance matrix."
+}

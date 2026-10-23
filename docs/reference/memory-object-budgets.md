@@ -1,13 +1,14 @@
 # Memory-object admission budgets
 
-Memory-object allocation has three admission checks: a per-request size bound,
-a generation-scoped sponsorship budget, and node-wide limits. These are hard
+Memory-object allocation checks request size, its generation sponsor, the shared
+signed-principal ceiling and node-wide limits. These are hard
 checks, independent of telemetry smoothing or placement decisions.
 
 | Limit | Current policy |
 | --- | --- |
 | One allocation | At most 16,384 pages (64 MiB) |
 | One sponsoring generation | At most 16,384 pages, clamped to the node pool; at most 1,024 backing objects |
+| One signed principal, across generations | 16,384 combined object/heap/image pages and 1,024 memory objects; see [aggregate admission](principal-backing-admission.md). |
 | Entire node | At most one quarter of usable RAM in backing pages; at most 8,192 backing objects |
 | Ordinary-domain share | At most three quarters of each node-pool limit |
 | Physical progress reserve | Allocation must leave at least one eighth of usable frames free |
@@ -59,8 +60,9 @@ frames that may still be allocated.
 Retirement marks a generation closed to new reservations before payload
 teardown. Its tombstone stays until the address-space slot disappears. If
 transferred resources remain, the generation's accounting entry persists until
-their last release. Reused ASIDs start with a separate budget; a late release
-cannot debit the replacement generation.
+their last release. Reused ASIDs start with a separate generation budget; instances of the same
+signed principal still share its aggregate ceiling. A late release retains the
+original principal and cannot debit the replacement generation.
 
 Retirement drains IPC before destroying memory attachments, so an in-flight
 vector transfer can cancel private preparation when a later entry is denied.

@@ -18,11 +18,19 @@ use super::{
         PageType,
     },
     physical::Error,
+    usage::principal_history::admission_tests::{
+        bind_raw_fixture,
+        check_retention,
+    },
 };
 
 type Deallocator<'a> = dyn FnMut(PAddr) -> Result<(), Error> + 'a;
 
 pub(crate) fn run(mut destroy: impl FnMut(&mut AddressSpace, &mut Deallocator<'_>) -> usize) {
+    check_retention(|| run_inner(&mut destroy));
+}
+
+fn run_inner(destroy: &mut impl FnMut(&mut AddressSpace, &mut Deallocator<'_>) -> usize) {
     // A borrowed snapshot never enters the owning destructor walk.
     let mut borrowed = AddressSpace::get_current();
     assert_eq!(destroy(&mut borrowed, &mut |_| panic!("borrowed root freed a frame")), 0);
@@ -37,6 +45,7 @@ pub(crate) fn run(mut destroy: impl FnMut(&mut AddressSpace, &mut Deallocator<'_
         let tables_before = super::translation::account::test_used_pages();
         let free_before = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
         let mut space = AddressSpace::try_new_user().unwrap();
+        bind_raw_fixture(&mut space);
         install(&mut space, Kind::Heap, charlotte_launch::HEAP_VADDR);
         install(&mut space, Kind::Image, charlotte_launch::HEAP_VADDR + 4096);
         // An unowned leaf shares these tables, but not their backing lifetime.

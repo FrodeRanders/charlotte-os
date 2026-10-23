@@ -1,10 +1,15 @@
-//! Stack and heap history share one boot-lifetime record per signed principal.
+//! History and aggregate backing share one boot-lifetime record per signed principal.
 //! Each root prepares a candidate before publication. Identity installation
 //! links it only for a new principal; an unused candidate stays with the root
 //! until confirmed final invalidation permits explicit metadata disposal.
 use core::{
     alloc::AllocError,
     mem::ManuallyDrop,
+};
+
+use charlotte_lifecycle::resources::{
+    Amount,
+    Budget,
 };
 
 use crate::{
@@ -18,10 +23,29 @@ use crate::{
     },
 };
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+/// Shared by every occupancy of one authenticated artifact principal.
+/// Image/runtime, demand heap and memory-object pages consume this same limit.
+pub(in crate::memory) const MAX_PRINCIPAL_PAGES: u64 = 16_384;
+pub(in crate::memory) const MAX_PRINCIPAL_OBJECTS: u64 = 1_024;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct History {
     stack_pages: u64,
     heap_bytes: u64,
+    backing: Budget,
+}
+
+impl Default for History {
+    fn default() -> Self {
+        Self {
+            stack_pages: 0,
+            heap_bytes: 0,
+            backing: Budget::new(Amount {
+                pages: MAX_PRINCIPAL_PAGES,
+                objects: MAX_PRINCIPAL_OBJECTS,
+            }),
+        }
+    }
 }
 
 type Table = AdmittedMap<u64, History>;
@@ -59,6 +83,79 @@ impl PreparingHistory {
     }
 }
 
+/// Linear share of a principal's aggregate reservation. Generation owners keep
+/// it through transfer/retirement; retained physical backing retains this charge.
+#[derive(Debug)]
+#[must_use]
+pub(in crate::memory) struct BackingCharge {
+    principal: u64,
+    amount: Amount,
+}
+
+impl BackingCharge {
+    pub(in crate::memory) fn try_new(principal: u64, amount: Amount) -> Result<Self, ()> {
+        let mut history = HISTORY.lock();
+        history.get_mut(&principal).ok_or(())?.backing.reserve(amount).map_err(|_| ())?;
+        Ok(Self {
+            principal,
+            amount,
+        })
+    }
+
+    pub(in crate::memory) fn reserve(&self, amount: Amount) -> Result<Self, ()> {
+        Self::try_new(self.principal, amount)
+    }
+
+    pub(in crate::memory) fn amount(&self) -> Amount {
+        self.amount
+    }
+
+    pub(in crate::memory) fn split(&mut self, amount: Amount) -> Self {
+        self.amount.pages =
+            self.amount.pages.checked_sub(amount.pages).expect("principal split pages");
+        self.amount.objects =
+            self.amount.objects.checked_sub(amount.objects).expect("principal split objects");
+        Self {
+            principal: self.principal,
+            amount,
+        }
+    }
+
+    pub(in crate::memory) fn absorb(&mut self, mut other: Self) {
+        assert_eq!(self.principal, other.principal);
+        self.amount.pages =
+            self.amount.pages.checked_add(other.amount.pages).expect("principal merge pages");
+        self.amount.objects =
+            self.amount.objects.checked_add(other.amount.objects).expect("principal merge objects");
+        other.amount = Amount::default();
+    }
+
+    /// Caller has confirmed release (or never allocated backing). Logical exit,
+    /// namespace removal and platform promotion cannot supply that proof.
+    pub(in crate::memory) fn release(&mut self, amount: Amount) {
+        let released = self.split(amount);
+        drop(released);
+    }
+}
+
+impl Drop for BackingCharge {
+    fn drop(&mut self) {
+        if self.amount != Amount::default() {
+            HISTORY
+                .lock()
+                .get_mut(&self.principal)
+                .expect("principal sponsor missing")
+                .backing
+                .release(self.amount)
+                .expect("principal backing underflow");
+        }
+    }
+}
+
+pub(crate) fn backing_used(principal: u64) -> Amount {
+    HISTORY.lock().get(&principal).map_or(Amount::default(), |entry| entry.backing.used())
+}
+
 pub(super) fn remember_stack(principal: u64, pages: u64) {
     let mut history = HISTORY.lock();
     let entry = history.get_mut(&principal).expect("signed principal lost stack history");
@@ -88,4 +185,5 @@ pub(super) fn available() -> bool {
     HISTORY.try_lock().is_some()
 }
 
+pub(in crate::memory) mod admission_tests;
 pub(super) mod tests;

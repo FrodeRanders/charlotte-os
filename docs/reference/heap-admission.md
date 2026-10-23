@@ -7,6 +7,7 @@ before allocating a frame, on both AArch64 and x86-64.
 | Scope | Physical heap backing ceiling |
 | --- | --- |
 | One address-space lifetime | Fixed heap-window maximum: `HEAP_VA_LIMIT / 4096` (1,264 pages); accessible pages are also limited by its configured virtual capacity. |
+| One signed principal | 16,384 combined heap/image/memory-object pages across generations. |
 | Node total | One quarter of usable RAM, rounded down to pages (minimum one). |
 | Ordinary domains | Three quarters of the node heap pool. |
 
@@ -17,6 +18,9 @@ reclassifies existing heap pages as well as future pages, but cannot reclassify
 quarantined backing. There is no userspace setter or signed deployment override
 for these physical limits.
 The memory-object and [image/runtime](loader-admission.md) pools are separate.
+Their generation accounts also consume one shared
+[principal backing ceiling](principal-backing-admission.md). Another instance,
+ASID reuse or platform promotion cannot reset that ceiling.
 All three pools together are capped at three quarters of usable RAM on normal
 machines. They do not account for all physical consumers.
 
@@ -32,7 +36,7 @@ charge an already mapped page. A stale handle cannot charge a reused ASID.
 `PreparingUserBacking` jointly owns the node reservation, unpublished physical
 frame and exclusive address-space borrow. Early return refunds admission only
 after confirmed frame release. Rejected release retains a page against the
-original domain ceiling and node pool; root destruction and ASID reuse cannot
+original domain ceiling, node pool and principal ceiling; root destruction and ASID reuse cannot
 refund it. An unconfirmed publication retains reachable backing without
 deallocation. Frame tracking is preflighted before allocation; successful
 insertion therefore allocates nothing. See

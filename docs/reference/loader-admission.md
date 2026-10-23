@@ -7,6 +7,7 @@ counter implementation as [demand heaps](heap-admission.md).
 | Scope | Image/runtime physical backing ceiling |
 | --- | --- |
 | One address-space lifetime | 16,384 pages (64 MiB). |
+| One signed principal | 16,384 combined image/heap/memory-object pages across generations. |
 | Node total | One quarter of usable RAM, rounded down to pages (minimum one). |
 | Ordinary domains | Three quarters of the node image pool. |
 
@@ -15,7 +16,8 @@ The config, status, input, default CQ and four shard-CQ pages also count: eight
 runtime pages in total. The image pool is separate from heap and memory-object
 pools. Together those three pools promise at most three quarters of usable RAM
 on normal machines; uncharged consumers can still cause physical exhaustion.
-There is no deployment override or per-principal aggregate across generations.
+There is no deployment override. The [shared principal ceiling](principal-backing-admission.md)
+aggregates image, heap and memory-object backing across generations.
 Only trusted kernel platform launch policy can use the shared reserve.
 
 ## Validation and preparation
@@ -35,7 +37,7 @@ initialization, mapping and commit. `PreparingUserBacking` jointly owns the
 reservation, zeroed frame and exclusive address-space borrow. ELF bytes are copied
 through an exclusive bounded page borrow before the mapping is installed.
 Confirmed rollback frees backing before refunding admission. Failed release
-retains its original domain and node charge, even after root destruction and
+retains its original domain, principal and node charge, even after root destruction and
 ASID reuse. Unconfirmed publication retains backing without deallocation. See
 [joint preparation](kernel-backing-preparation.md).
 

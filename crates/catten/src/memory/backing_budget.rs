@@ -2,6 +2,8 @@
 //! An account is embedded in the owning address space: no per-page ledger
 //! allocation, reusable-ASID lookup or early refund at logical retirement.
 
+use core::mem::ManuallyDrop;
+
 use charlotte_lifecycle::resources::{
     Amount,
     Budget,
@@ -11,6 +13,7 @@ use super::{
     LazyLock,
     Mutex,
     PHYSICAL_FRAME_ALLOCATOR,
+    usage::principal_history::BackingCharge,
 };
 
 pub(crate) const IMAGE_DOMAIN_PAGES: u64 = 16_384; // 64 MiB, including runtime pages.
@@ -95,6 +98,8 @@ pub(crate) struct Account {
     /// Provisional frames whose rejected rollback outlives this root. Included
     /// in pages so they continue to consume the original domain's ceiling.
     quarantined_pages: u64,
+    // Failed/abandoned physical cleanup must not implicitly refund the principal.
+    principal: ManuallyDrop<Option<BackingCharge>>,
 }
 
 impl Account {
@@ -107,6 +112,7 @@ impl Account {
             retired: false,
             quarantined: false,
             quarantined_pages: 0,
+            principal: ManuallyDrop::new(None),
         }
     }
 
@@ -115,11 +121,14 @@ impl Account {
         if self.retired || self.pages >= self.limit {
             return Err(());
         }
+        let principal =
+            self.principal.as_ref().map(|owner| owner.reserve(amount(1))).transpose()?;
         self.kind.pool().lock().reserve(self.platform)?;
         Ok(PageCharge {
             kind: self.kind,
             platform: self.platform,
             active: true,
+            principal,
         })
     }
 
@@ -133,8 +142,24 @@ impl Account {
         assert!(!self.retired && self.pages < self.limit);
         assert_eq!(self.platform, charge.platform);
         assert_eq!(self.kind, charge.kind);
+        self.absorb_principal(charge);
         self.pages += 1;
         charge.active = false;
+    }
+
+    /// Identity binding also accounts for any trusted pre-launch preparation.
+    pub(super) fn bind_principal(&mut self, charge: BackingCharge) {
+        assert!(self.principal.is_none());
+        assert_eq!(charge.amount(), amount(self.pages));
+        *self.principal = Some(charge);
+    }
+
+    fn absorb_principal(&mut self, charge: &mut PageCharge) {
+        match (self.principal.as_mut(), charge.principal.take()) {
+            (Some(owner), Some(charge)) => owner.absorb(charge),
+            (None, None) => {} // Trusted, unpublished preparation/serialized fixtures.
+            _ => panic!("backing principal changed during preparation"),
+        }
     }
 
     pub(crate) fn accepting(&self) -> bool {
@@ -176,6 +201,7 @@ impl Account {
         assert!(charge.active);
         assert_eq!(self.kind, charge.kind);
         assert_eq!(self.platform, charge.platform);
+        self.absorb_principal(&mut charge);
         self.pages += 1;
         self.quarantined_pages += 1;
         charge.active = false;
@@ -200,6 +226,9 @@ impl Drop for Account {
             .expect("backing quarantine exceeds charge");
         if refundable != 0 && !self.quarantined {
             self.kind.pool().lock().release(refundable, self.platform);
+            if let Some(principal) = self.principal.as_mut() {
+                principal.release(amount(refundable));
+            }
         }
     }
 }
@@ -213,6 +242,9 @@ impl ProvisionalRelease<'_> {
     pub(crate) fn finish(self, released: bool) {
         if released {
             self.account.kind.pool().lock().release(1, self.account.platform);
+            if let Some(principal) = self.account.principal.as_mut() {
+                principal.release(amount(1));
+            }
             self.account.pages -= 1;
             self.account.quarantined_pages -= 1;
         } else {
@@ -293,6 +325,7 @@ pub(crate) struct PageCharge {
     kind: Kind,
     platform: bool,
     active: bool,
+    principal: Option<BackingCharge>,
 }
 
 impl PageCharge {

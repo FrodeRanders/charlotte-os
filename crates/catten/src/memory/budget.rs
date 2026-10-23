@@ -32,6 +32,7 @@ type Identity = (AddressSpaceId, usize);
 #[derive(Debug)]
 struct DomainAccount {
     budget: Budget,
+    principal: Option<super::usage::principal_history::BackingCharge>,
     platform: bool,
     retired: bool,
     closed: bool,
@@ -129,6 +130,9 @@ impl Drop for Charge {
         let mut ledger = LEDGER.lock();
         let account = ledger.domains.get_mut(&self.identity).expect("memory sponsor missing");
         account.budget.release(self.amount).expect("memory sponsor underflow");
+        if let Some(principal) = account.principal.as_mut() {
+            principal.release(self.amount);
+        }
         let ordinary = !account.platform;
         let remove = account.closed && account.budget.used() == Amount::default();
         ledger.total.release(self.amount).expect("node memory budget underflow");
@@ -175,6 +179,14 @@ fn reserve_inner(
         return Err(Error::StaleDomain);
     }
     account.budget.reserve(amount).map_err(|_| Error::Limit)?;
+    let principal = match account.principal.as_ref().map(|owner| owner.reserve(amount)).transpose()
+    {
+        Ok(charge) => charge,
+        Err(()) => {
+            account.budget.release(amount).unwrap();
+            return Err(Error::Limit);
+        }
+    };
     let ordinary = !account.platform;
     if ledger.total.reserve(amount).is_err() {
         ledger.domains.get_mut(&identity).unwrap().budget.release(amount).unwrap();
@@ -185,10 +197,57 @@ fn reserve_inner(
         ledger.domains.get_mut(&identity).unwrap().budget.release(amount).unwrap();
         return Err(Error::Limit);
     }
+    if let Some(charge) = principal {
+        ledger.domains.get_mut(&identity).unwrap().principal.as_mut().unwrap().absorb(charge);
+    }
     Ok(Charge {
         identity,
         amount,
     })
+}
+
+/// The table guard and authority slot are held by signed identity installation.
+/// One aggregate admission covers all pre-existing backing before binding any
+/// family, so rejection cannot leave partial principal installation.
+pub(super) fn bind_principal(
+    handle: AddressSpaceHandle,
+    principal: u64,
+    heap: &mut super::backing_budget::Account,
+    image: &mut super::backing_budget::Account,
+) -> Result<(), Error> {
+    use super::usage::principal_history::BackingCharge;
+    let mut ledger = LEDGER.lock();
+    let account =
+        ledger.domains.get_mut(&(handle.id(), handle.generation())).ok_or(Error::StaleDomain)?;
+    if account.retired || account.principal.is_some() {
+        return Err(Error::StaleDomain);
+    }
+    let objects = account.budget.used();
+    let heap_amount = Amount {
+        pages: heap.pages(),
+        objects: 0,
+    };
+    let image_amount = Amount {
+        pages: image.pages(),
+        objects: 0,
+    };
+    let pages = objects
+        .pages
+        .checked_add(heap_amount.pages)
+        .and_then(|pages| pages.checked_add(image_amount.pages))
+        .ok_or(Error::Limit)?;
+    let mut charge = BackingCharge::try_new(
+        principal,
+        Amount {
+            pages,
+            objects: objects.objects,
+        },
+    )
+    .map_err(|_| Error::Limit)?;
+    heap.bind_principal(charge.split(heap_amount));
+    image.bind_principal(charge.split(image_amount));
+    account.principal = Some(charge);
+    Ok(())
 }
 
 /// Supervisor-only: domains launched with ambient platform authority may

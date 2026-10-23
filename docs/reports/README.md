@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [SEC-07 aggregate principal backing](audits/2026-10-23-security-principal-backing.md) — Shared object/heap/image limits across instances and retained generations; exact cleanup retention and signed-launch controls.
+
 - [Release startup retry boundary](audits/2026-10-23-security-release-startup.md) — One command and deadline; uncertain responses and accepted rollout failures cannot restart admission.
 
 - [SEC-06 controller server relays](audits/2026-10-22-security-controller-relay.md) — Owned CQ forwarding isolates slow DNS replies; failed preflight queries cannot authorize submission.
