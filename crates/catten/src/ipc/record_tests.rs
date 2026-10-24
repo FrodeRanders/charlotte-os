@@ -14,6 +14,7 @@ fn account(asid: AddressSpaceId) -> Arc<record_budget::DomainBudget> {
 
 pub(crate) fn test_admission() {
     super::call_storage_tests::run();
+    super::reply_storage_tests::run();
     let baseline = record_budget::node_used();
     let server = crate::service::loader::create_user_address_space_handle();
     let client = crate::service::loader::create_user_address_space_handle();

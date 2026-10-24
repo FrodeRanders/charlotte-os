@@ -360,7 +360,7 @@ registration transaction. A first exact-root operation lease protects publicatio
 after lifecycle/table unlock; insertion only relinks prepared storage under IPC.
 Missing and retired namespaces reject instead of recreating. Fenced cleanup
 detaches the empty node and releases its account references after IPC unlock;
-foreign charges keep their original accounts. Per-capability, endpoint/reply
+foreign charges keep their original accounts. Per-capability and endpoint
 map allocation, namespace/account byte and principal ceilings, wider destructor
 contexts and sustained progress remain open. See [current contract](ipc-namespace-publication.md).
 
@@ -370,9 +370,19 @@ the pending node fallibly outside IPC. Publication relinks that node; ordinary
 rollback finishes the whole preparation after IPC unlock, root last. Existing
 call/cancellation owners carry detached nodes through post-guard disposal and
 refund only after node deallocation. Abandonment retains the containing owner.
-Other IPC maps, waiter/vector/control-block contexts, byte/principal ceilings
+Endpoint/per-capability maps, waiter/vector/control-block contexts, byte/principal ceilings
 and sustained progress remain open. This advances R7-2 and C08/C18 without a
 finding-count change; see [record policy](ipc-record-budgets.md).
+
+The [reply-token storage batch](../reports/audits/2026-10-24-security-ipc-reply-storage.md)
+prepares the second record node in that same charged call owner before authority
+or attachment mutation. Failure returns the complete prefix after local guards.
+Reply/cancellation and serialized close retain detached token nodes through
+post-IPC disposal before refund; scalar completion fallback retains notifications
+together with the node. Original claim-source classification survives promotion
+and root reuse. Endpoint/per-capability maps, other factories/destructors,
+byte/principal ceilings and pressure progress remain open. This continues
+C07/C08/C09/C10/C18 without changing finding dispositions.
 
 SEC-07 remains partial until all of the following deliverables are accepted:
 

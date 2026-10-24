@@ -103,7 +103,7 @@ impl Claim {
                 .reply_tokens
                 .get_mut(&id)
                 .filter(|token| token.completing && token.claim_epoch == epoch)
-                .map(|token| (&mut token.claim_interest, token._charge.platform())),
+                .map(|token| (&mut token.claim_interest, token.platform)),
             Self::Endpoint(id, epoch) => ipc
                 .endpoints
                 .get_mut(&id)

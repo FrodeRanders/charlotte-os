@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [IPC reply-token storage](audits/2026-10-24-security-ipc-reply-storage.md) — Charged second-node preparation and post-IPC token retirement across reply and close paths.
+
 - [IPC pending-call storage](audits/2026-10-24-security-ipc-pending-storage.md) — Exact-root, charged preparation outside IPC and post-guard node disposal.
 
 - [IPC namespace publication](audits/2026-10-24-security-ipc-namespace-publication.md) — Fallible namespace/account preparation, leased root handoff and post-IPC disposal.

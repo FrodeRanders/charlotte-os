@@ -261,10 +261,13 @@ IPC namespace storage and both budget accounts also prepare fallibly in the
 same registration owner. Its first exact-root operation lease spans
 lifecycle/table unlock and prepared namespace publication under IPC alone;
 missing namespaces reject instead of recreating. Empty drained namespace
-nodes dispose after IPC unlock. Pending-call nodes likewise prepare outside IPC
+nodes dispose after IPC unlock. Pending and reply-token nodes likewise prepare outside IPC
 with original call/reply counts and a retained caller-root lease. Their complete
 containing owner explicitly finishes ordinary outcomes; abandonment retains all
-fields, and detached node disposal precedes count refund. Other IPC map storage, namespace/account
+fields, and detached node disposal precedes count refund. Reply/cancellation
+owners retain token nodes through post-IPC disposal; serialized close reuses
+those nodes as its bounded retirement list, while scalar completion fallback
+retains the node and detached notifications together. Other IPC map storage, namespace/account
 byte/principal admission and outer destructor contexts remain separate. See
 \repofile|docs/reference/root-metadata-admission.md|. See
 \repofile|docs/reference/memory-object-retirement.md|.

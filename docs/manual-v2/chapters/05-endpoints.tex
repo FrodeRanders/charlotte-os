@@ -31,7 +31,7 @@ Missing or retired namespaces reject; ordinary IPC never recreates them.
 After fenced loan and capability drain, cleanup detaches the empty namespace
 node and disposes it outside IPC. Outstanding delegated endpoint/record charges
 keep their original accounts through ASID reuse. This covers namespace storage;
-per-capability and endpoint/reply-token map allocations, account byte/principal
+per-capability and endpoint map allocations, account byte/principal
 admission and wider destructor contexts remain audit work. See
 \repofile|docs/reference/ipc-namespace-publication.md|.
 
@@ -74,12 +74,14 @@ charges return on reply or cancellation.
 Calls reject invalid handles and unavailable queues before preparing record
 storage, then recheck them before mutation. They retain their exact caller root
 and reserve both record counts atomically
-before preparing pending storage, waiter metadata or attachments. Pending-record
-nodes allocate fallibly outside IPC and publish by relinking. Their containing
+before preparing record storage, waiter metadata or attachments. Pending and
+reply-token nodes allocate fallibly outside IPC and publish by relinking. Their containing
 owner explicitly finishes unused preparation after IPC unlock, root last;
-abandonment retains every field. Close and confirmed cancellation carry detached
-pending nodes outside IPC and free payload/storage before refunding the original
-record charge. See \repofile|docs/reference/ipc-record-budgets.md|.
+abandonment retains every field. Reply, close and confirmed cancellation carry detached record nodes outside IPC
+and free payload/storage before refunding the original record charge. Scalar
+completion retains its detached notification batch with the node until explicit
+finish; fallback retains both. Claim sources use the original token
+classification through promotion and ASID reuse. See \repofile|docs/reference/ipc-record-budgets.md|.
 
 Connection-bearing calls and replies admit their
 connection before copying memory, consuming the token or revoking a loan.
@@ -91,7 +93,7 @@ token.
 Teardown fences admission before taking its capability snapshot. Receive and
 connection-publication paths reject a retiring namespace, preventing late
 capabilities from escaping that snapshot. Charges retain the original
-generation after delegation or ASID reuse. Endpoint, reply-token and capability insertion,
+generation after delegation or ASID reuse. Endpoint and capability insertion,
 list control blocks, other capability kinds and comprehensive kernel heap
 accounting remain incomplete.
 

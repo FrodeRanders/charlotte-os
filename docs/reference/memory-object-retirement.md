@@ -47,7 +47,7 @@ an exact-root publication lease before lifecycle/table unlock, publishes the
 prepared node under IPC alone and releases that lease after IPC unlock. Missing
 namespaces reject at runtime. Fenced cleanup detaches the drained node and
 releases it outside IPC, while outstanding charges retain their original account
-references. This does not make per-capability or endpoint/call/reply map insertion
+references. This does not make per-capability or endpoint map insertion
 fully fallible or qualify all caller destructor contexts. See
 [namespace publication](ipc-namespace-publication.md).
 

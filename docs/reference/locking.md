@@ -73,12 +73,12 @@ IPC unlock. This adds no lifecycle/table-to-IPC edge; existing IPC root lookups
 retain their order. Fenced close detaches the empty namespace node under IPC and
 disposes it and its account references after unlock. Partial/complete preparation
 and detached-node fallback retain all fields without allocator or registry entry.
-Per-capability and endpoint/call/reply maps and wider disposal contexts remain
+Per-capability and endpoint maps and wider disposal contexts remain
 separate. See [namespace publication](ipc-namespace-publication.md).
 
 Pending-call preparation captures its caller under IPC, releases IPC before
 acquiring the exact-root operation lease, then revalidates and reserves call/reply
-counts under IPC. It leaves that guard before fallible pending-node allocation.
+counts under IPC. It leaves that guard before fallible pending/reply-node allocation.
 Count/node admission stays in the containing owner. Pending publication only
 relinks the prepared node under IPC. Close/cancellation detach its complete node
 and release payload/storage/charge after IPC unlock. Ordinary unused preparation
@@ -86,6 +86,18 @@ finishes after local IPC guards and releases its root last; fallback retains all
 fields. This uses C08/C18, with no new disposal registry. Other IPC maps, vector/
 waiter construction and wider enclosing contexts remain separate. See
 [record storage](ipc-record-budgets.md#preparation-and-retirement).
+
+Reply-token node allocation now follows the pending node in the same call owner,
+after count admission and outside IPC. Publication relinks the prepared node;
+its charge stays with the allocation. Reply/cancellation owners and the existing
+serialized close operation detach token nodes without allocation and release
+them after IPC unlock. Serialized close reuses those nodes as its temporary
+retirement list. Scalar completion retains its detached notifications with the
+node and delivers them after disposal. Fallback retains complete new owners.
+Claim-source preparation reads the token's original captured classification;
+no current-ASID reclassification or new guard edge is added. Other map/factory/
+payload destructor and enclosing IRQ contexts remain separate. See
+[reply storage](../reports/audits/2026-10-24-security-ipc-reply-storage.md).
 
 IPC endpoint/direct-grant/receiver-reply admission uses the generation captured
 in `AsIpcCaps`: `IPC → CAPABILITIES → capability domain → node`. Family charges

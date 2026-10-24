@@ -34,6 +34,8 @@ use crate::{
         collections::retirement_list::{
             AdmittedMap,
             PreparedEntry,
+            RetiredEntry,
+            RetirementList,
         },
         observer::{
             Observable,
@@ -67,6 +69,7 @@ pub(crate) mod namespace_close;
 pub(crate) mod record_budget;
 pub(crate) mod record_tests;
 pub(crate) mod reply;
+mod reply_storage_tests;
 mod submission;
 mod waiter_source;
 pub(crate) mod waiter_tests;
@@ -293,6 +296,8 @@ struct Endpoint {
 struct ReplyToken {
     server: AddressSpaceId,
     call: PendingCallId,
+    /// Captured from the original reservation, including for claim sources.
+    platform: bool,
     /// Exclusive reply/cancellation owner; Drop cannot force-clear this claim.
     completing: bool,
     claim_interest: Option<claim_wait::Source>,
@@ -302,7 +307,6 @@ struct ReplyToken {
     /// Borrowed minting authority protected by the in-flight reply claim.
     connection_source: Option<CapabilityId>,
     borrows: Vec<MemoryBorrow>,
-    _charge: record_budget::Charge,
 }
 
 #[derive(Debug)]
@@ -391,6 +395,52 @@ impl PreparedConnection {
 }
 
 type PendingStorage = PreparedEntry<(PendingCallId, PendingCall), Option<record_budget::Charge>>;
+type ReplyStorage = PreparedEntry<(ReplyTokenId, ReplyToken), Option<record_budget::Charge>>;
+type RetiredReply = RetiredEntry<(ReplyTokenId, ReplyToken), Option<record_budget::Charge>>;
+type RetiredCall = RetiredEntry<(PendingCallId, PendingCall), Option<record_budget::Charge>>;
+
+/// The close operation reuses detached nodes as its bounded retirement list.
+/// Fallback retains the complete chain; disposal is explicit after IPC unlock.
+#[must_use]
+struct RetiredReplies(RetirementList<(ReplyTokenId, ReplyToken), Option<record_budget::Charge>>);
+
+impl RetiredReplies {
+    fn new() -> Self {
+        Self(RetirementList::new())
+    }
+
+    fn push(&mut self, node: RetiredReply) {
+        self.0.push(node);
+    }
+
+    fn release(mut self) {
+        while let Some(node) = self.0.pop() {
+            node.release();
+        }
+    }
+}
+
+#[must_use]
+struct ReplyCompletion(ManuallyDrop<ReplyCompletionResources>);
+
+struct ReplyCompletionResources {
+    token: Option<RetiredReply>,
+    observers: Option<WaitNotifications>,
+}
+
+impl ReplyCompletion {
+    fn new(token: RetiredReply, observers: WaitNotifications) -> Self {
+        Self(ManuallyDrop::new(ReplyCompletionResources {
+            token: Some(token),
+            observers: Some(observers),
+        }))
+    }
+
+    fn finish(mut self) {
+        self.0.token.take().unwrap().release();
+        signal_observers(self.0.observers.take().unwrap());
+    }
+}
 
 /// Own unpublished call storage, authority and attachments. Ordinary finish
 /// runs after IPC unlock; fallback retains the complete partial transaction.
@@ -404,6 +454,7 @@ struct CallResources {
     call_charge: Option<record_budget::Charge>,
     platform: bool,
     storage: Option<PendingStorage>,
+    reply_storage: Option<ReplyStorage>,
     authority: Option<crate::capability::Reservation>,
     pending: Option<PendingCall>,
     reply_charge: Option<record_budget::Charge>,
@@ -430,22 +481,26 @@ impl DerefMut for PreparedCall {
 
 impl PreparedCall {
     fn try_new(caller: AddressSpaceId) -> Result<Self, IpcError> {
-        Self::prepare(caller, || {
-            PendingStorage::try_new_charged(None).map_err(|_| IpcError::ResourceLimit)
-        })
+        Self::prepare(
+            caller,
+            || PendingStorage::try_new_charged(None).map_err(|_| IpcError::ResourceLimit),
+            || ReplyStorage::try_new_charged(None).map_err(|_| IpcError::ResourceLimit),
+        )
     }
 
     fn prepare(
         caller: AddressSpaceId,
         allocate: impl FnOnce() -> Result<PendingStorage, IpcError>,
+        allocate_reply: impl FnOnce() -> Result<ReplyStorage, IpcError>,
     ) -> Result<Self, IpcError> {
-        Self::prepare_checked(caller, None, allocate)
+        Self::prepare_checked(caller, None, allocate, allocate_reply)
     }
 
     fn prepare_checked(
         caller: AddressSpaceId,
         connection: Option<CapabilityId>,
         allocate: impl FnOnce() -> Result<PendingStorage, IpcError>,
+        allocate_reply: impl FnOnce() -> Result<ReplyStorage, IpcError>,
     ) -> Result<Self, IpcError> {
         let identity = {
             let ipc = IPC.read();
@@ -472,6 +527,7 @@ impl PreparedCall {
             call_charge: None,
             platform: false,
             storage: None,
+            reply_storage: None,
             authority: None,
             pending: None,
             reply_charge: None,
@@ -508,6 +564,13 @@ impl PreparedCall {
             owner.storage = Some(allocate()?);
             let resources = &mut *owner.0;
             resources.storage.as_mut().unwrap().bind_charge(resources.call_charge.take().unwrap());
+            owner.reply_storage = Some(allocate_reply()?);
+            let resources = &mut *owner.0;
+            resources
+                .reply_storage
+                .as_mut()
+                .unwrap()
+                .bind_charge(resources.reply_charge.take().unwrap());
             Ok(())
         })();
         if let Err(error) = prepared {
@@ -524,9 +587,12 @@ impl PreparedCall {
         connection: CapabilityId,
         work: impl FnOnce(&mut Self) -> Result<(CapabilityId, Delivery), IpcError>,
     ) -> Result<CapabilityId, IpcError> {
-        let mut owner = Self::prepare_checked(caller, Some(connection), || {
-            PendingStorage::try_new_charged(None).map_err(|_| IpcError::ResourceLimit)
-        })?;
+        let mut owner = Self::prepare_checked(
+            caller,
+            Some(connection),
+            || PendingStorage::try_new_charged(None).map_err(|_| IpcError::ResourceLimit),
+            || ReplyStorage::try_new_charged(None).map_err(|_| IpcError::ResourceLimit),
+        )?;
         let result = work(&mut owner);
         owner.finish();
         let (cap, delivery) = result?;
@@ -542,6 +608,7 @@ impl PreparedCall {
         drop(core::mem::take(&mut self.0.memory));
         drop(core::mem::take(&mut self.0.borrows));
         drop(self.0.pending.take());
+        drop(self.0.reply_storage.take());
         drop(self.0.reply_charge.take());
         drop(self.0.storage.take());
         drop(self.0.call_charge.take());
@@ -657,17 +724,18 @@ impl PreparedCall {
         );
         let token = ipc.alloc_reply();
         ipc.reply_tokens.insert(
+            resources.reply_storage.take().unwrap(),
             token,
             ReplyToken {
                 server,
                 call,
+                platform: resources.platform,
                 completing: false,
                 claim_interest: None,
                 claim_epoch: 0,
                 cleanup_failed: false,
                 connection_source: None,
                 borrows: core::mem::take(&mut resources.borrows),
-                _charge: resources.reply_charge.take().unwrap(),
             },
         );
         let delivery =
@@ -683,7 +751,7 @@ struct IpcRegistry {
     next_reply: ReplyTokenId,
     next_call: PendingCallId,
     endpoints: BTreeMap<EndpointId, Endpoint>,
-    reply_tokens: BTreeMap<ReplyTokenId, ReplyToken>,
+    reply_tokens: AdmittedMap<ReplyTokenId, ReplyToken, Option<record_budget::Charge>>,
     pending_calls: AdmittedMap<PendingCallId, PendingCall, Option<record_budget::Charge>>,
     caps: crate::klib::collections::retirement_list::AdmittedMap<AddressSpaceId, AsIpcCaps>,
 }
@@ -695,7 +763,7 @@ impl IpcRegistry {
             next_reply: 1,
             next_call: 1,
             endpoints: BTreeMap::new(),
-            reply_tokens: BTreeMap::new(),
+            reply_tokens: AdmittedMap::new(),
             pending_calls: AdmittedMap::new(),
             caps: crate::klib::collections::retirement_list::AdmittedMap::new(),
         }
@@ -1876,9 +1944,9 @@ pub fn reply(server: AddressSpaceId, reply_cap: CapabilityId, result: i64) -> Re
         drop(ipc);
         return reply::complete(server, reply_cap, result);
     }
-    let observers = complete_reply(&mut ipc, server, reply_cap, result, None, None)?;
+    let completed = complete_reply(&mut ipc, server, reply_cap, result, None, None)?;
     drop(ipc);
-    signal_observers(observers);
+    completed.finish();
     Ok(())
 }
 
@@ -1904,10 +1972,10 @@ pub fn reply_with_connection(
         drop(ipc);
         return reply::complete_with_connection(server, reply_cap, endpoint_cap, rights, result);
     }
-    let observers =
+    let completed =
         complete_reply(&mut ipc, server, reply_cap, result, Some((endpoint, granted)), None)?;
     drop(ipc);
-    signal_observers(observers);
+    completed.finish();
     Ok(())
 }
 
@@ -1928,9 +1996,9 @@ pub fn reply_with_memory_move(
         drop(ipc);
         return reply::complete_with_memory(server, reply_cap, memory_cap, result);
     }
-    let observers = complete_reply(&mut ipc, server, reply_cap, result, None, Some(memory_cap))?;
+    let completed = complete_reply(&mut ipc, server, reply_cap, result, None, Some(memory_cap))?;
     drop(ipc);
-    signal_observers(observers);
+    completed.finish();
     Ok(())
 }
 
@@ -1941,7 +2009,7 @@ fn complete_reply(
     result: i64,
     returned_connection: Option<(EndpointId, ConnectionRights)>,
     returned_memory: Option<MemoryObjectCap>,
-) -> Result<WaitNotifications, IpcError> {
+) -> Result<ReplyCompletion, IpcError> {
     let token_id = match ipc.cap(server, reply_cap)? {
         Capability::ReplyToken {
             token,
@@ -1992,16 +2060,16 @@ fn complete_reply(
     .map_err(|_| IpcError::MemoryTransferFailed)?;
     drop(returned_move);
     let returned_cap = connection.map(|connection| connection.install(ipc));
-    ipc.reply_tokens.remove(&token_id);
-    let call = ipc.pending_calls.get_mut(&call_id).ok_or(IpcError::UnknownCapability)?;
+    let token = ipc.reply_tokens.take(&token_id).expect("completed reply token missing");
+    let call = ipc.pending_calls.get_mut(&call_id).expect("completed call missing");
     call.result = Some(ReplyValue {
         result,
         cap: returned_cap,
         memory: returned_memory_cap,
     });
     let observers = call.observers.close();
-    let _ = ipc.remove_cap(server, reply_cap);
-    Ok(observers)
+    ipc.remove_cap(server, reply_cap).expect("completed reply cap missing");
+    Ok(ReplyCompletion::new(token, observers))
 }
 
 pub fn poll_reply(
@@ -2324,6 +2392,7 @@ fn close_cap_with_cleanup(
     // Keep the caller's borrow alive until a claimed reply has finished its
     // detached cleanup. Never wait with IPC serialization held. Domain cleanup
     // reaches here only after the reply's exact-generation root leases drain.
+    let mut retired_replies = RetiredReplies::new();
     let mut ipc = loop {
         let ipc = IPC.write();
         let payload = if detached {
@@ -2389,8 +2458,14 @@ fn close_cap_with_cleanup(
             };
             for message in queued.iter_mut() {
                 if let Some(token) = message.reply {
-                    consume_reply_token(&mut ipc, token, REPLY_ENDPOINT_CLOSED, &mut observers)
-                        .expect("preflighted endpoint loan cleanup changed under IPC");
+                    consume_reply_token(
+                        &mut ipc,
+                        token,
+                        REPLY_ENDPOINT_CLOSED,
+                        &mut observers,
+                        &mut retired_replies,
+                    )
+                    .expect("preflighted endpoint loan cleanup changed under IPC");
                 }
                 message.memory.retire(asid);
                 if let Some(connection_cap) = message.connection {
@@ -2424,8 +2499,13 @@ fn close_cap_with_cleanup(
                         }
                     }
                 } else {
-                    retired_message =
-                        cancel_queued_call(&mut ipc, call, &mut observers, &mut cq_wake);
+                    retired_message = cancel_queued_call(
+                        &mut ipc,
+                        call,
+                        &mut observers,
+                        &mut cq_wake,
+                        &mut retired_replies,
+                    );
                 }
                 retired_call = Some(node);
             }
@@ -2433,8 +2513,14 @@ fn close_cap_with_cleanup(
         Capability::ReplyToken {
             token,
         } => {
-            consume_reply_token(&mut ipc, token, REPLY_CANCELLED, &mut observers)
-                .expect("preflighted reply loan cleanup changed under IPC");
+            consume_reply_token(
+                &mut ipc,
+                token,
+                REPLY_CANCELLED,
+                &mut observers,
+                &mut retired_replies,
+            )
+            .expect("preflighted reply loan cleanup changed under IPC");
         }
         Capability::Connection {
             endpoint,
@@ -2447,6 +2533,7 @@ fn close_cap_with_cleanup(
         }
     }
     drop(ipc);
+    retired_replies.release();
     if let Some(node) = retired_call {
         node.release();
     }
@@ -2515,17 +2602,15 @@ pub(crate) fn close_address_space_fixture(asid: AddressSpaceId) -> Result<(), Ip
         // root cleanup must not lose the receipt for an uncertain loan.
         let mut cursor = 0;
         loop {
-            let next = ipc
-                .reply_tokens
-                .range((core::ops::Bound::Excluded(cursor), core::ops::Bound::Unbounded))
-                .find_map(|(&id, token)| {
-                    (token.server == asid
+            let next = ipc.reply_tokens.iter().find_map(|(&id, token)| {
+                (id > cursor
+                    && (token.server == asid
                         || ipc
                             .pending_calls
                             .get(&token.call)
-                            .is_some_and(|call| call.caller == asid))
-                    .then_some(id)
-                });
+                            .is_some_and(|call| call.caller == asid)))
+                .then_some(id)
+            });
             let Some(token) = next else {
                 break;
             };
@@ -2626,8 +2711,8 @@ fn prepare_serialized_close(
             loop {
                 let next = ipc
                     .reply_tokens
-                    .range((core::ops::Bound::Excluded(cursor), core::ops::Bound::Unbounded))
-                    .find_map(|(&id, token)| (token.call == call).then_some(id));
+                    .iter()
+                    .find_map(|(&id, token)| (id > cursor && token.call == call).then_some(id));
                 let Some(token) = next else {
                     break;
                 };
@@ -2650,9 +2735,11 @@ fn consume_reply_token(
     token: ReplyTokenId,
     result: i64,
     observers: &mut WaitNotifications,
+    retired: &mut RetiredReplies,
 ) -> Result<(), IpcError> {
     revoke_serialized_token(ipc, token, &mut revoke_memory_borrow)?;
-    if let Some(token) = ipc.reply_tokens.remove(&token) {
+    if let Some(node) = ipc.reply_tokens.take(&token) {
+        let token = &node.value().1;
         assert!(
             !token.completing && token.borrows.is_empty(),
             "consuming an unfinished completion"
@@ -2665,6 +2752,7 @@ fn consume_reply_token(
             });
             observers.append(call.observers.close());
         }
+        retired.push(node);
     }
     Ok(())
 }
@@ -2674,16 +2762,21 @@ fn cancel_queued_call(
     call: PendingCallId,
     observers: &mut WaitNotifications,
     cq_wake: &mut Option<(AddressSpaceId, crate::completion::CqId)>,
+    retired: &mut RetiredReplies,
 ) -> Option<MemoryAttachments> {
     let mut memory = None;
-    while let Some((token, server)) = ipc
-        .reply_tokens
-        .iter()
-        .find_map(|(&id, token)| (token.call == call).then_some((id, token.server)))
-    {
-        let retired = ipc.reply_tokens.remove(&token).unwrap();
+    loop {
+        let next = ipc
+            .reply_tokens
+            .iter()
+            .find_map(|(&id, token)| (token.call == call).then_some((id, token.server)));
+        let Some((token, server)) = next else {
+            break;
+        };
+        let node = ipc.reply_tokens.take(&token).unwrap();
+        let payload = &node.value().1;
         assert!(
-            !retired.completing && !retired.cleanup_failed && retired.borrows.is_empty(),
+            !payload.completing && !payload.cleanup_failed && payload.borrows.is_empty(),
             "cancelling an unfinished reply"
         );
         if let Some(retired) =
@@ -2698,6 +2791,7 @@ fn cancel_queued_call(
                 token,
             },
         );
+        retired.push(node);
     }
     memory
 }

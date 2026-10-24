@@ -50,6 +50,8 @@ pub(super) struct PreparedCancellation<'a> {
     namespaces: [Option<AddressSpaceOperation>; 2],
     loans: Vec<(MemoryBorrow, LoanRevocation)>,
     root_owner: Option<RootOwner<'a>>,
+    retired_token: Option<RetiredReply>,
+    retired_call: Option<RetiredCall>,
 }
 
 fn resolve(
@@ -249,6 +251,8 @@ impl<'a> PreparedCancellation<'a> {
             namespaces: [None, None],
             loans: Vec::new(),
             root_owner,
+            retired_token: None,
+            retired_call: None,
         };
         let prepared = (|| {
             // Lifecycle always precedes IPC. Kernel identity is permanent.
@@ -356,6 +360,10 @@ impl<'a> PreparedCancellation<'a> {
     }
 
     fn release_namespaces(self) -> Result<(), IpcError> {
+        assert!(
+            self.retired_token.is_none() && self.retired_call.is_none(),
+            "releasing roots before cancellation metadata disposal"
+        );
         assert!(self.loans.is_empty(), "releasing cancellation roots before loans finish");
         let mut error = None;
         for namespace in self.namespaces.into_iter().flatten() {
@@ -414,8 +422,9 @@ impl<'a> PreparedCancellation<'a> {
             assert!(endpoint.closing && !endpoint.closed);
             assert_eq!(endpoint.queue.front().unwrap().reply, Some(identity.token));
         }
-        let mut token =
-            ipc.reply_tokens.remove(&identity.token).expect("claimed cancellation missing");
+        self.retired_token =
+            Some(ipc.reply_tokens.take(&identity.token).expect("claimed cancellation missing"));
+        let token = &mut self.retired_token.as_mut().unwrap().value_mut().1;
         assert!(token.completing && token.borrows.is_empty());
         assert_eq!(token.call, identity.call);
         claim_wait::finish(token.claim_interest.take());
@@ -472,7 +481,6 @@ impl<'a> PreparedCancellation<'a> {
         if let Some(cap) = reply_cap {
             ipc.remove_cap(identity.server, cap).expect("claimed reply cap missing");
         }
-        let mut retired_call = None;
         let observers = match identity.target {
             CloseTarget::Call | CloseTarget::Namespace(_) if identity.caller == self.asid => {
                 let cap = if identity.target == CloseTarget::Call {
@@ -494,7 +502,7 @@ impl<'a> PreparedCancellation<'a> {
                 let node =
                     ipc.pending_calls.take(&identity.call).expect("claimed pending call missing");
                 let observers = node.value().1.observers.close();
-                retired_call = Some(node);
+                self.retired_call = Some(node);
                 observers
             }
             CloseTarget::Reply | CloseTarget::Endpoint(_) | CloseTarget::Namespace(_) => {
@@ -524,7 +532,8 @@ impl<'a> PreparedCancellation<'a> {
             CloseTarget::Call => unreachable!("call close must own the caller"),
         };
         drop(ipc);
-        if let Some(node) = retired_call {
+        self.retired_token.take().unwrap().release();
+        if let Some(node) = self.retired_call.take() {
             node.release();
         }
         if let Some(memory) = memory {

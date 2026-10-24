@@ -14,9 +14,12 @@ pub(super) fn run() {
     let authority = crate::capability::admission_tests::test_namespace_used(caller.id());
     for _ in 0..64 {
         assert!(matches!(
-            PreparedCall::prepare_checked(caller.id(), Some(0), || {
-                panic!("invalid call handle reached pending-node allocation")
-            }),
+            PreparedCall::prepare_checked(
+                caller.id(),
+                Some(0),
+                || { panic!("invalid call handle reached pending-node allocation") },
+                || panic!("invalid call handle reached reply-node allocation")
+            ),
             Err(IpcError::UnknownCapability)
         ));
         assert_eq!(record_budget::node_used(), baseline);
@@ -24,12 +27,16 @@ pub(super) fn run() {
     }
     for _ in 0..64 {
         assert!(
-            PreparedCall::prepare(caller.id(), || {
-                assert!(IPC.try_write().is_some());
-                assert!(ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());
-                assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());
-                Err(IpcError::ResourceLimit)
-            })
+            PreparedCall::prepare(
+                caller.id(),
+                || {
+                    assert!(IPC.try_write().is_some());
+                    assert!(ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());
+                    assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());
+                    Err(IpcError::ResourceLimit)
+                },
+                || panic!("rejected pending storage reached reply preparation")
+            )
             .is_err()
         );
         assert_eq!(record_budget::node_used(), baseline);

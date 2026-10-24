@@ -1123,3 +1123,11 @@ exact-lease gates are existing model projections; pending-family node allocation
 post-guard disposal and count refund are native/host qualification. See the
 [conformance boundary](CONFORMANCE.md#pending-call-node-lifetime). No model or
 configuration changed, and the preceding full-suite checkpoint is preserved.
+
+
+The [reply-token storage follow-up](../reports/audits/2026-10-24-security-ipc-reply-storage.md)
+checks IPC publication/transaction and root retirement: three safe cases and
+17 expected counterexamples pass. Native controls qualify the two-node prefix,
+post-guard token retirement, captured class and complete fallback retention;
+shared collection tests check node destruction before refund. No model or
+configuration changed. See the [conformance boundary](CONFORMANCE.md#reply-token-node-lifetime).

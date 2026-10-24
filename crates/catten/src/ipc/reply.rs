@@ -29,6 +29,7 @@ struct PreparedReply {
     loans: Vec<(MemoryBorrow, LoanRevocation)>,
     connection: Option<ReturnedConnection>,
     memory: Option<crate::memory::object::PreparedTransfer>,
+    retired_token: Option<RetiredReply>,
 }
 
 /// The source is borrowed authority, retained by the published reply claim.
@@ -82,6 +83,7 @@ impl PreparedReply {
             loans: Vec::new(),
             connection: None,
             memory: None,
+            retired_token: None,
         };
         let prepared = (|| {
             // Capture before taking IPC. Acquiring lifecycle beneath IPC would
@@ -245,7 +247,9 @@ impl PreparedReply {
         drop(self.memory.take());
         let returned_cap =
             self.connection.take().map(|connection| connection.grant.install(&mut ipc));
-        let mut token = ipc.reply_tokens.remove(&self.token).expect("claimed reply missing");
+        self.retired_token =
+            Some(ipc.reply_tokens.take(&self.token).expect("claimed reply missing"));
+        let token = &mut self.retired_token.as_mut().unwrap().value_mut().1;
         assert!(token.completing && token.borrows.is_empty());
         assert_eq!(token.call, self.call);
         claim_wait::finish(token.claim_interest.take());
@@ -261,12 +265,14 @@ impl PreparedReply {
         let observers = call.observers.close();
         ipc.remove_cap(self.server, self.cap).expect("claimed reply cap missing");
         drop(ipc);
+        self.retired_token.take().unwrap().release();
         let released = self.release_namespaces();
         signal_observers(observers);
         released
     }
 
     fn release_namespaces(self) -> Result<(), IpcError> {
+        assert!(self.retired_token.is_none(), "releasing roots before reply metadata disposal");
         assert!(self.loans.is_empty(), "releasing roots before prepared loans finish");
         assert!(self.connection.is_none(), "releasing roots before returned authority cleanup");
         assert!(self.memory.is_none(), "releasing roots before returned memory cleanup");

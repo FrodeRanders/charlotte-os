@@ -36,8 +36,8 @@ including pending calls, delegated call attachments and returned connections;
 see [shared admission](capability-admission.md).
 
 The caller retains its pending-call charge after completion or result observation,
-until that record is closed. The reply-token charge returns on completed reply
-or cancellation, not on an uncertain cleanup error or abandoned completion claim.
+until that record is closed. The reply-token charge returns after completed
+reply/cancellation and actual node disposal, not on an uncertain cleanup error or abandoned completion claim.
 Connection charges remain until actual capability removal, including queued
 delegation cancellation and unobserved returned-result cleanup. An observed
 returned connection is independent of its former pending call.
@@ -53,12 +53,13 @@ Public call preparation rejects invalid/wrong-rights handles and closed/full
 queues before record admission or allocation; publication rechecks those inputs.
 Every call preparation retains the caller's captured root generation before
 reserving both record dimensions under IPC. The containing `PreparedCall` then
-allocates its pending-record node fallibly after IPC unlock, keeping its original
-charges through allocation rejection. Revalidation precedes authority admission;
+allocates its pending and reply-token nodes fallibly after IPC unlock, keeping
+the original charges through either allocation rejection. The pending prefix
+remains in that same owner if the second allocation fails. Revalidation precedes authority admission;
 a missing, changed or retiring namespace rejects. Kernel roots are immortal;
 explicit synthetic fixture namespaces have no physical root.
 
-The same inert owner retains storage, reply charge, pending waiter metadata,
+The same inert owner retains both nodes and their original counts, pending waiter metadata,
 shared capability reservation, complete memory/loan vectors, an attachment being
 staged, optional delegated connection and its caller-root lease. Ordinary success
 or error finishes unused fields after local IPC guards leave, releasing the root
@@ -66,20 +67,38 @@ last. Abandonment retains every field. This replaces implicit field cleanup for
 this containing transaction. It gives no replay or physical recovery authority.
 
 `commit_undelivered_transfers_with_authority` publishes all IPC/memory destinations
-or none, followed by payload installation/enqueue under IPC. Pending-record
-insertion only relinks its already-prepared node; that node holds the call's
-original count charge independently of its payload. The existing call close and
+or none, followed by payload installation/enqueue under IPC. Pending and
+reply-token insertion only relink prepared nodes; each node holds its original
+count charge independently of the payload. The existing call close and
 loan-cancellation owners detach the complete node, leave IPC, then explicitly
 dispose payload and storage before refunding that charge. Failed loan cleanup
 keeps the pending node in place. Completed/observed calls remain charged until
 close; an observer wake alone cannot release them.
 
-The pending map now uses shared admitted storage with linear lookup/insertion.
+The pending and reply-token maps use shared admitted storage with linear
+lookup/insertion.
 Its count is bounded, but worst-case hold time is not qualified by the serialized
-controls. Endpoint, per-capability and reply-token maps still allocate under IPC;
+controls. Endpoint and per-capability maps still allocate under IPC;
 waiter/control-block and vector preparation, byte/principal ceilings and wider
 caller/destructor contexts remain separate work. This is not fully fallible IPC
 publication. See the [pending storage audit](../reports/audits/2026-10-24-security-ipc-pending-storage.md).
+
+Reply-token cleanup detaches complete admitted nodes. Ordinary scalar reply
+returns one `ReplyCompletion` containing its node and detached notifications;
+explicit finish after IPC unlock frees the node before delivering notifications.
+Its fallback retains both, including their original sponsorship. Claimed reply
+and cancellation keep retired nodes in their existing root-owning operations;
+ordinary release precedes root completion. Serialized call/endpoint/namespace
+close uses the detached nodes themselves as a bounded retirement list, without
+allocating a teardown snapshot or adding a registry. Disposal leaves IPC.
+Failed/abandoned loan claims stay fenced with their live token and charge.
+
+The token stores its original reservation classification for later claim-source
+preparation. Caller promotion and ASID reuse cannot replace it or redirect a
+late refund. Existing producer-LP claim-source close/delivery is unchanged;
+waiter/source allocations retain their separate sponsorship. None of these
+metadata receipts proves physical completion or permits replay. See the
+[reply storage audit](../reports/audits/2026-10-24-security-ipc-reply-storage.md).
 
 A connection-bearing reply reserves its connection before consuming the token,
 moving memory or revoking a loan. Kernel admission rejection leaves the token

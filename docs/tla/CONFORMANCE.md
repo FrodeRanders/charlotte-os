@@ -1176,3 +1176,24 @@ shared collection host test of late-bound admission through actual node free.
 No model/configuration changes accompany this batch. Focused formal results are
 recorded in the audit; the preceding full 190-case result remains a separate
 checkpoint. No executable refinement, allocator/IRQ or fairness proof is implied.
+
+
+## Reply-token node lifetime
+
+The [reply storage batch](../reports/audits/2026-10-24-security-ipc-reply-storage.md)
+prepares the second charged node inside the same call owner. Failure cancels the
+pending prefix after local guards; successful publication relinks both nodes.
+Reply/cancellation and serialized close carry detached token nodes through
+post-IPC disposal before refund. Scalar completion fallback also retains its
+detached notifications. Original token classification supplies later claim-source
+admission and survives caller promotion and root reuse.
+
+Twenty focused cases pass: three safe configurations and 17 expected
+counterexamples from `CharlotteIpcPublication`, `CharlotteIpcTransaction` and
+`CharlotteRootRetirement`. Shared authority/delivery, rollback, non-terminal
+timeout and exact-root gates are their existing projections. The two family
+record allocations, token count's node lifetime, guard exit and source-class
+copy are not explicit model variables; native controls and shared collection
+host tests qualify those implementation boundaries. No model/configuration
+changed. The prior full 190-case checkpoint remains separate; these checks give
+no executable refinement, allocator/IRQ or sustained-pressure fairness proof.

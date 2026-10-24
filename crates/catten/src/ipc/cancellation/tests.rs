@@ -413,10 +413,17 @@ fn partial_failure() {
     let ipc = IPC.read();
     assert_eq!(ipc.reply_tokens[&identity.token].borrows, fixture.borrows[..2]);
     drop(ipc);
+    let mut retired_replies = RetiredReplies::new();
     let mut ipc = IPC.write();
     let mut notifications = WaitNotifications::empty();
     assert_eq!(
-        consume_reply_token(&mut ipc, identity.token, REPLY_ENDPOINT_CLOSED, &mut notifications),
+        consume_reply_token(
+            &mut ipc,
+            identity.token,
+            REPLY_ENDPOINT_CLOSED,
+            &mut notifications,
+            &mut retired_replies
+        ),
         Err(IpcError::MemoryTransferFailed)
     );
     assert!(
@@ -424,6 +431,7 @@ fn partial_failure() {
         "bulk cleanup falsely reported a failed loan as terminal"
     );
     drop(ipc);
+    retired_replies.release();
     signal_observers(notifications);
     // Ordinary failure returns the operation leases, but whole-domain cleanup
     // must retain its root/slot and fail rather than discard the failed token.
