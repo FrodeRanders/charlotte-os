@@ -1,7 +1,10 @@
 //! One owner retains an unpublished root and all prepared publication metadata.
 use core::mem::ManuallyDrop;
 
-use super::*;
+use super::{
+    operation::AddressSpaceOperation,
+    *,
+};
 
 pub(super) mod metadata;
 
@@ -10,6 +13,8 @@ struct Resources {
     namespace: Option<crate::capability::PreparingNamespace>,
     account: Option<budget::PreparingAccount>,
     metadata: Option<metadata::PreparingMetadata>,
+    ipc: Option<crate::ipc::namespace::PreparingNamespace>,
+    publication: Option<AddressSpaceOperation>,
 }
 
 #[must_use]
@@ -22,6 +27,8 @@ impl PreparingRegistration {
             namespace: None,
             account: None,
             metadata: None,
+            ipc: None,
+            publication: None,
         }))
     }
 
@@ -29,6 +36,7 @@ impl PreparingRegistration {
         &mut self,
         account: impl FnOnce() -> Result<budget::PreparingAccount, core::alloc::AllocError>,
         metadata: impl FnOnce() -> Result<metadata::PreparingMetadata, core::alloc::AllocError>,
+        ipc: impl FnOnce() -> Result<crate::ipc::namespace::PreparingNamespace, core::alloc::AllocError>,
     ) -> Result<(), AddressSpaceRegistrationError> {
         self.0.namespace = Some(
             crate::capability::prepare_namespace()
@@ -41,10 +49,15 @@ impl PreparingRegistration {
             metadata()
                 .map_err(|_| AddressSpaceRegistrationError::DomainMetadataAllocationFailed)?,
         );
+        self.0.ipc =
+            Some(ipc().map_err(|_| AddressSpaceRegistrationError::IpcNamespaceAllocationFailed)?);
         Ok(())
     }
 
     fn finish(mut self, reject: impl FnOnce(AddressSpace)) {
+        if let Some(ipc) = self.0.ipc.take() {
+            ipc.cancel_unpublished();
+        }
         if let Some(metadata) = self.0.metadata.take() {
             metadata.cancel_unpublished();
         }
@@ -53,6 +66,9 @@ impl PreparingRegistration {
         }
         if let Some(namespace) = self.0.namespace.take() {
             namespace.cancel_unpublished();
+        }
+        if let Some(publication) = self.0.publication.take() {
+            publication.release().expect("root publication lost its lease");
         }
         if let Some(root) = self.0.root.take() {
             reject(root);
@@ -71,8 +87,32 @@ pub(super) fn register(
     account: impl FnOnce() -> Result<budget::PreparingAccount, core::alloc::AllocError>,
     metadata: impl FnOnce() -> Result<metadata::PreparingMetadata, core::alloc::AllocError>,
 ) -> Result<AddressSpaceHandle, AddressSpaceRegistrationError> {
+    register_with_ipc(
+        root,
+        publish,
+        reject,
+        account,
+        metadata,
+        crate::ipc::namespace::PreparingNamespace::try_new,
+        |_| {},
+    )
+}
+
+fn register_with_ipc(
+    root: AddressSpace,
+    publish: impl FnOnce(
+        &mut IdTable<AddressSpace>,
+        AddressSpace,
+    )
+        -> Result<usize, (AddressSpace, crate::klib::collections::id_table::Error)>,
+    reject: impl FnOnce(AddressSpace),
+    account: impl FnOnce() -> Result<budget::PreparingAccount, core::alloc::AllocError>,
+    metadata: impl FnOnce() -> Result<metadata::PreparingMetadata, core::alloc::AllocError>,
+    ipc: impl FnOnce() -> Result<crate::ipc::namespace::PreparingNamespace, core::alloc::AllocError>,
+    before_publication: impl FnOnce(&AddressSpaceOperation),
+) -> Result<AddressSpaceHandle, AddressSpaceRegistrationError> {
     let mut owner = PreparingRegistration::capture(root);
-    if let Err(error) = owner.prepare(account, metadata) {
+    if let Err(error) = owner.prepare(account, metadata, ipc) {
         owner.finish(reject);
         return Err(error);
     }
@@ -101,8 +141,11 @@ pub(super) fn register(
     owner.0.account.take().unwrap().publish(handle);
     owner.0.namespace.take().unwrap().publish(handle);
     owner.0.metadata.take().unwrap().publish(handle);
+    owner.0.publication = Some(AddressSpaceOperation::retain_publication(handle, &mut table));
     drop(table);
     drop(lifecycle);
+    before_publication(owner.0.publication.as_ref().unwrap());
+    owner.0.ipc.take().unwrap().publish(owner.0.publication.as_ref().unwrap());
     owner.finish(reject);
     Ok(handle)
 }
@@ -111,7 +154,11 @@ pub(super) fn test_abandonment() {
     let root = AddressSpace::try_new_user().unwrap();
     let mut owner = PreparingRegistration::capture(root);
     owner
-        .prepare(budget::PreparingAccount::try_new, || metadata::PreparingMetadata::try_new(false))
+        .prepare(
+            budget::PreparingAccount::try_new,
+            || metadata::PreparingMetadata::try_new(false),
+            crate::ipc::namespace::PreparingNamespace::try_new,
+        )
         .unwrap();
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let occupied = ADDRESS_SPACE_TABLE.lock().iter().filter(|entry| entry.is_some()).count();
@@ -133,7 +180,13 @@ pub(super) fn test_abandonment() {
     }
     crate::logln!(
         "[memory sponsor registration retention] guarded abandonment retains one unpublished \
-         root, capability namespace, complete sponsor and policy/usage/authority metadata; no \
-         ASID published"
+         root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; \
+         no ASID published"
     );
+}
+
+mod ipc_tests;
+
+pub(super) fn test_ipc_preparation() {
+    ipc_tests::run();
 }

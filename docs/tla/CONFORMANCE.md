@@ -1135,3 +1135,23 @@ shared charged-collection host tests. No model/configuration changes accompany
 this batch. The complete 190-case suite passes (47 safe / 143 expected counterexamples)
 separately from these implementation controls; it supplies no executable refinement, allocator-byte,
 IRQ-context or pressure-fairness proof.
+
+
+## IPC namespace construction and root handoff
+
+The [24 October namespace batch](../reports/audits/2026-10-24-security-ipc-namespace-publication.md)
+adds a first exact-root operation lease to the existing root-registration owner.
+It protects prepared namespace publication after lifecycle/table unlock; it is
+released only after IPC unlock. `CharlotteRootRetirement` projects that lease as
+an active operation: cleanup/detachment require all such leases to finish and
+abandoned operations retain the root. `CharlotteNamespaceDrain` checks the
+existing exact-token drain boundary before namespace removal.
+
+Nine focused cases pass: two safe configurations and seven expected
+counterexamples. The prior complete 190-case result remains the full-suite
+checkpoint; no model/configuration changes accompany this implementation batch.
+`CharlotteIpcPublication` starts with live namespaces and does not model their
+three allocations or the registration handoff. Native phase-rejection,
+heap-held relinking/detachment, missing-namespace rejection and early-close
+controls qualify those boundaries. These checks provide no executable
+refinement, allocator/IRQ proof or sustained progress guarantee.

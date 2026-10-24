@@ -32,8 +32,8 @@ use crate::{
     memory::KERNEL_ASID,
 };
 
-const CQW_ASID: usize = 0x000c_9a17;
-const CQW_SENDER_ASID: usize = 0x000c_9a18;
+const CQW_ASID: usize = ipc::namespace::fixture_id(0x000c_9a17);
+const CQW_SENDER_ASID: usize = ipc::namespace::fixture_id(0x000c_9a18);
 /// Phase flags: waiter released by completion / driver started round 2 /
 /// waiter released by wake / round 3 (second queue) start and release /
 /// round 4 (endpoint readiness) start and release.
@@ -544,6 +544,8 @@ fn test_isolated_timer_events() {
 }
 
 pub fn test_cq_wait_wake() {
+    ipc::namespace::prepare_fixture(CQW_ASID);
+    ipc::namespace::prepare_fixture(CQW_SENDER_ASID);
     logln!("Testing blocking CQ wait (completion, wake, and endpoint readiness releases)...");
     completion::open_address_space_with_cq(CQW_ASID, 8, 8).expect("CQ setup failed");
     completion::open_cq(CQW_ASID, 1, 8).expect("CQ setup failed");

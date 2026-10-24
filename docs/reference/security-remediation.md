@@ -351,8 +351,18 @@ partial preparation before history admission. Each node keeps its original
 trusted classification through publication, failed invalidation and actual
 post-proof deallocation. Real one/two-slot exhaustion rejects partial root
 publication; existing-root close proceeds at total exhaustion. Namespace/account
-control blocks, IPC's lazy namespace construction, other metadata and sustained
-progress remain separate work. See [policy](root-metadata-admission.md).
+control blocks, other IPC metadata and sustained progress remain separate work.
+See [policy](root-metadata-admission.md).
+
+The [IPC namespace publication batch](../reports/audits/2026-10-24-security-ipc-namespace-publication.md)
+prepares its node and both budget accounts fallibly in the existing root
+registration transaction. A first exact-root operation lease protects publication
+after lifecycle/table unlock; insertion only relinks prepared storage under IPC.
+Missing and retired namespaces reject instead of recreating. Fenced cleanup
+detaches the empty node and releases its account references after IPC unlock;
+foreign charges keep their original accounts. Per-capability, endpoint/call/reply
+map allocation, namespace/account byte and principal ceilings, wider destructor
+contexts and sustained progress remain open. See [current contract](ipc-namespace-publication.md).
 
 SEC-07 remains partial until all of the following deliverables are accepted:
 

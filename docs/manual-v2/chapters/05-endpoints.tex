@@ -20,6 +20,21 @@ Client receives conn:       name_service.lookup("ns") -> ConnectionCap
 Ordinary clients do not mint arbitrary connections. The name service or a policy
 service normally delegates them after an access check.
 
+\subsection{Namespace publication}
+
+Root registration prepares the IPC namespace node and both budget accounts
+fallibly before taking publication guards. It captures an exact-generation
+root lease, releases lifecycle/table guards, then links that prepared storage
+under IPC alone. Cleanup cannot pass the retained lease during this handoff.
+Missing or retired namespaces reject; ordinary IPC never recreates them.
+
+After fenced loan and capability drain, cleanup detaches the empty namespace
+node and disposes it outside IPC. Outstanding delegated endpoint/record charges
+keep their original accounts through ASID reuse. This covers namespace storage;
+per-capability and endpoint/call/reply map allocations, account byte/principal
+admission and wider destructor contexts remain audit work. See
+\repofile|docs/reference/ipc-namespace-publication.md|.
+
 \subsection{Endpoint storage admission}
 
 Endpoint records and queue backing have generation-scoped sponsorship. The

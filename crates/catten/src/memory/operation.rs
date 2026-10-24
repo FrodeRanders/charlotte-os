@@ -33,6 +33,23 @@ pub(crate) struct AddressSpaceOperation {
 }
 
 impl AddressSpaceOperation {
+    /// Registration holds lifecycle/table serialization and has just installed
+    /// this root. Its first lease cannot overflow or encounter a closing slot.
+    /// Retain it before unlocking so IPC publication can use its own lock order.
+    pub(super) fn retain_publication(
+        handle: AddressSpaceHandle,
+        table: &mut super::AddressSpaceTable,
+    ) -> Self {
+        debug_assert_ne!(handle.id(), KERNEL_ASID);
+        let lease = table
+            .lease(handle.id(), handle.generation())
+            .expect("fresh root publication lease rejected");
+        Self {
+            handle,
+            lease,
+        }
+    }
+
     /// Only namespace retirement uses this admission. The borrowed closing
     /// owner and its peer must both precede sealed backing teardown.
     pub(super) fn acquire_for_close(

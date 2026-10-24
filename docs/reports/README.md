@@ -8,6 +8,10 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [IPC namespace publication](audits/2026-10-24-security-ipc-namespace-publication.md) — Fallible namespace/account preparation, leased root handoff and post-IPC disposal.
+
+- [Root-record storage admission](audits/2026-10-24-security-root-metadata-admission.md) — Shared byte/count limits and partial root preparation rejection.
+
 - [SEC-07 principal table and stack admission](audits/2026-10-23-security-principal-structure.md) — Initial/private table pages and full user-thread stack capacity share the principal limit, with original cleanup fences.
 
 - [SEC-07 aggregate principal backing](audits/2026-10-23-security-principal-backing.md) — Shared object/heap/image limits across instances and retained generations; exact cleanup retention and signed-launch controls.

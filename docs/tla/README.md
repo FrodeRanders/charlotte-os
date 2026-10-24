@@ -1106,3 +1106,12 @@ also completes the expanded 190-case suite: 47 safe configurations and 143
 expected counterexamples across 44 modules. See
 [policy](../reference/principal-history-admission.md) and
 [audit evidence](../reports/audits/2026-10-23-security-history-admission.md).
+
+
+The [IPC namespace publication follow-up](../reports/audits/2026-10-24-security-ipc-namespace-publication.md)
+rechecks `CharlotteRootRetirement` and `CharlotteNamespaceDrain`: two safe cases
+and seven expected counterexamples pass. The existing operation lease projects
+the fresh-root publication hold. Namespace allocation and IPC relinking remain
+native qualification; `CharlotteIpcPublication` assumes already-live namespaces.
+No model/configuration changed, and the preceding 190-case full-suite checkpoint
+is preserved. See the [conformance boundary](CONFORMANCE.md#ipc-namespace-construction-and-root-handoff).

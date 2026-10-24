@@ -378,6 +378,8 @@ pub(crate) fn node_snapshot() -> (Budget, Budget) {
 /// Mandatory BSP-only preparation, after heap initialization and before any LP
 /// scheduler/thread can capture a sponsor. Runtime lookups never create accounts.
 pub(crate) fn initialize_kernel() {
+    let ipc = crate::ipc::namespace::PreparingNamespace::try_new()
+        .expect("mandatory kernel IPC namespace preparation failed");
     let prepared = PreparingAccount::try_new_kernel()
         .expect("mandatory kernel memory sponsor preparation failed");
     let table = super::ADDRESS_SPACE_TABLE.lock();
@@ -386,6 +388,8 @@ pub(crate) fn initialize_kernel() {
         generation: table.generation(KERNEL_ASID).expect("kernel slot missing"),
     };
     prepared.publish(handle);
+    drop(table);
+    ipc.publish_kernel(handle);
 }
 
 pub(crate) mod thread_metadata;

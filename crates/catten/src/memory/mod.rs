@@ -294,6 +294,7 @@ pub enum AddressSpaceRegistrationError {
     CapabilityNamespaceAllocationFailed,
     MemorySponsorAllocationFailed,
     DomainMetadataAllocationFailed,
+    IpcNamespaceAllocationFailed,
     /// The image failed cluster signature verification (unsigned or
     /// invalidly signed); loading it is refused.
     SignatureVerificationFailed,

@@ -13,15 +13,18 @@ use crate::{
     logln,
 };
 
-const ASV_A: usize = 0x0ad1;
-const ASV_B: usize = 0x0ad2;
-const ASV_C: usize = 0x0ad3;
+const ASV_A: usize = ipc::namespace::fixture_id(0x0ad1);
+const ASV_B: usize = ipc::namespace::fixture_id(0x0ad2);
+const ASV_C: usize = ipc::namespace::fixture_id(0x0ad3);
 
 pub fn test_adversarial_ipc() {
     // These scenarios use the isolated pseudo namespaces below; no scheduled
     // domain exists, so do not allocate unused copies of the kernel AS here.
     logln!("Testing adversarial IPC scenarios...");
 
+    for id in [ASV_A, ASV_B, ASV_C] {
+        ipc::namespace::prepare_fixture(id);
+    }
     test_double_close();
     test_double_reply();
     test_wrong_asid();
@@ -29,6 +32,9 @@ pub fn test_adversarial_ipc() {
     test_queue_full();
     test_cancellation_race();
 
+    for id in [ASV_A, ASV_B, ASV_C] {
+        ipc::close_address_space_fixture(id).unwrap();
+    }
     logln!("Adversarial IPC tests passed.");
 }
 

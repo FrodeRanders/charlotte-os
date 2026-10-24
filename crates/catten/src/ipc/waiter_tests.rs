@@ -9,10 +9,12 @@ use core::sync::atomic::{
 use super::*;
 use crate::klib::observer::CallOnNotify;
 
-const SERVER: usize = 0x000e_a117;
-const CLIENT: usize = 0x000e_a118;
+const SERVER: usize = crate::ipc::namespace::fixture_id(0x000e_a117);
+const CLIENT: usize = crate::ipc::namespace::fixture_id(0x000e_a118);
 
 fn fixture() -> (CapabilityId, CapabilityId, EndpointId) {
+    crate::ipc::namespace::prepare_fixture(SERVER);
+    crate::ipc::namespace::prepare_fixture(CLIENT);
     let endpoint = endpoint_create(SERVER, 1, 1, 4).unwrap();
     let connection = connection_delegate(SERVER, endpoint, CLIENT, ConnectionRights::ALL).unwrap();
     let id = receive_endpoint_id(&IPC.read(), SERVER, endpoint).unwrap();

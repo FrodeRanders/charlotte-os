@@ -351,7 +351,11 @@ Source, tests, and repository history remain authoritative.
         candidates refund only after confirmed root metadata disposal.
         Limits/usage/authority nodes also have a separate byte/count pool whose
         charges survive partial preparation, publication and failed invalidation.
-        Namespace/account and other control-block allocations remain open.
+        IPC namespace nodes and both budget accounts now prepare fallibly
+        before publication guards; an exact-root lease protects post-table
+        publication under IPC alone. Empty-node disposal leaves IPC first.
+        Per-capability and endpoint/call/reply map allocation, account
+        byte/principal admission and wider contexts remain open.
     \item \textbf{Cross-machine Raft boundary:} two TCG guests share a private
         QEMU LAN (stream backend on AArch64, socket backend on x86-64); the
         reliable-message frame transport and remote Raft peer routing are

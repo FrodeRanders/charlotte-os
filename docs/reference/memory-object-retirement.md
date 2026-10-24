@@ -39,6 +39,18 @@ general heap byte admission. Principal-history node admission is described below
 wider destructors remain SEC-07/18 work; this is not a fully fallible root-publication
 path or hostile-pressure progress qualification.
 
+## IPC namespace preparation
+
+The same root-registration owner now prepares the IPC namespace node and both
+endpoint/record budget accounts fallibly before publication guards. It captures
+an exact-root publication lease before lifecycle/table unlock, publishes the
+prepared node under IPC alone and releases that lease after IPC unlock. Missing
+namespaces reject at runtime. Fenced cleanup detaches the drained node and
+releases it outside IPC, while outstanding charges retain their original account
+references. This does not make per-capability or endpoint/call/reply map insertion
+fully fallible or qualify all caller destructor contexts. See
+[namespace publication](ipc-namespace-publication.md).
+
 ## Root policy and telemetry metadata
 
 `PreparingMetadata` now prepares the launch-limit, domain-usage and signed-authority

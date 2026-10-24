@@ -65,6 +65,17 @@ so backend destruction runs after that guard releases. Observer grants check
 their exact handle under lifecycle. Observer startup uses a cancellable atomic
 claim, not a registry guard held through loader/domain teardown.
 
+IPC namespace storage and both budget accounts prepare before root-publication
+guards. Fresh registration acquires its first exact-root lease under lifecycle
+and the root table, then releases both guards before relinking the prepared
+namespace under IPC alone. The containing registration releases the lease after
+IPC unlock. This adds no lifecycle/table-to-IPC edge; existing IPC root lookups
+retain their order. Fenced close detaches the empty namespace node under IPC and
+disposes it and its account references after unlock. Partial/complete preparation
+and detached-node fallback retain all fields without allocator or registry entry.
+Per-capability and endpoint/call/reply maps and wider disposal contexts remain
+separate. See [namespace publication](ipc-namespace-publication.md).
+
 IPC endpoint/direct-grant/receiver-reply admission uses the generation captured
 in `AsIpcCaps`: `IPC → CAPABILITIES → capability domain → node`. Family charges
 and result writes run outside capability/counter guards. `PreparedReceive`

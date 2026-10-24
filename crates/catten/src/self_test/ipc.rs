@@ -63,8 +63,10 @@ fn create_ipc_memory_test_address_space(label: &str) -> AddressSpaceId {
 pub fn test_endpoint_ipc() {
     logln!("Testing endpoint IPC subsystem...");
 
-    let server = 0x5100;
-    let client = 0x5200;
+    let server = ipc::namespace::fixture_id(0x5100);
+    ipc::namespace::prepare_fixture(server);
+    let client = ipc::namespace::fixture_id(0x5200);
+    ipc::namespace::prepare_fixture(client);
 
     let endpoint = ipc::endpoint_create(server, 0x4348_4943, 1, 2)
         .expect("endpoint_create should return endpoint cap");
@@ -709,8 +711,10 @@ pub fn test_endpoint_ipc() {
 pub fn test_endpoint_resize() {
     logln!("Testing endpoint capacity adaptation...");
 
-    let server = 0x5300;
-    let client = 0x5400;
+    let server = ipc::namespace::fixture_id(0x5300);
+    ipc::namespace::prepare_fixture(server);
+    let client = ipc::namespace::fixture_id(0x5400);
+    ipc::namespace::prepare_fixture(client);
     let endpoint =
         ipc::endpoint_create(server, 0x5245_5349, 1, 2).expect("resize endpoint_create failed");
     let connection = ipc::connection_delegate(
@@ -785,8 +789,10 @@ pub fn test_endpoint_admission() {
 
     logln!("Testing aggregate endpoint admission...");
     let before = budget::node_used();
-    let server = 0x5500;
-    let client = 0x5600;
+    let server = ipc::namespace::fixture_id(0x5500);
+    ipc::namespace::prepare_fixture(server);
+    let client = ipc::namespace::fixture_id(0x5600);
+    ipc::namespace::prepare_fixture(client);
     let mut endpoints = Vec::new();
     for _ in 0..budget::DOMAIN_LIMIT[0] {
         endpoints.push(ipc::endpoint_create(server, 1, 1, 1).unwrap());
@@ -856,13 +862,13 @@ pub fn test_endpoint_admission() {
         while remaining != 0 {
             let mut amount = [0, 0];
             amount[dimension] = remaining.min(budget::DOMAIN_LIMIT[dimension]);
-            let domain = DomainBudget::new();
+            let domain = DomainBudget::try_new().unwrap();
             charges.push(budget::reserve(&domain, false, amount).unwrap());
             remaining -= amount[dimension];
         }
         let mut amount = [0, 0];
         amount[dimension] = 1;
-        let blocked = DomainBudget::new();
+        let blocked = DomainBudget::try_new().unwrap();
         let full = budget::node_used();
         assert!(budget::reserve(&blocked, false, amount).is_err());
         assert_eq!(blocked.used(), [0, 0]);
@@ -874,7 +880,7 @@ pub fn test_endpoint_admission() {
         while remaining != 0 {
             let mut amount = [0, 0];
             amount[dimension] = remaining.min(budget::DOMAIN_LIMIT[dimension]);
-            charges.push(budget::reserve(&DomainBudget::new(), true, amount).unwrap());
+            charges.push(budget::reserve(&DomainBudget::try_new().unwrap(), true, amount).unwrap());
             remaining -= amount[dimension];
         }
         assert!(budget::reserve(&blocked, true, amount).is_err());
@@ -884,6 +890,7 @@ pub fn test_endpoint_admission() {
     }
 
     let owner = create_ipc_memory_test_address_space("endpoint sponsor");
+    ipc::namespace::prepare_fixture(client);
     let identity = crate::memory::current_address_space_handle(owner).unwrap();
     let endpoint = ipc::endpoint_create(owner, 1, 1, 1).unwrap();
     let account = ipc::endpoint_admission(owner).unwrap();
@@ -941,8 +948,10 @@ pub fn test_close_watch_admission() {
 
     logln!("Testing cancellable endpoint-close registrations...");
     let before = budget::node_used();
-    let server = 0x5b00;
-    let client = 0x5c00;
+    let server = ipc::namespace::fixture_id(0x5b00);
+    ipc::namespace::prepare_fixture(server);
+    let client = ipc::namespace::fixture_id(0x5c00);
+    ipc::namespace::prepare_fixture(client);
     let endpoint = ipc::endpoint_create(server, 1, 1, 1).unwrap();
     let connection =
         ipc::connection_delegate(server, endpoint, client, ConnectionRights::CALL).unwrap();
@@ -1086,6 +1095,8 @@ pub fn test_close_watch_admission() {
 
     // A persistent remote endpoint must not accumulate entries across client
     // retirement, even when numeric ASIDs are reused.
+    ipc::namespace::prepare_fixture(server);
+    ipc::namespace::prepare_fixture(client);
     let endpoint = ipc::endpoint_create(server, 1, 1, 1).unwrap();
     for _ in 0..8 {
         let handle = crate::service::loader::create_user_address_space_handle();
@@ -1149,6 +1160,7 @@ pub fn test_close_watch_admission() {
     }
     let handle = crate::service::loader::create_user_address_space_handle();
     completion::open_address_space(handle.id(), 4);
+    ipc::namespace::prepare_fixture(server);
     let endpoint = ipc::endpoint_create(server, 1, 1, 1).unwrap();
     let conn =
         ipc::connection_delegate(server, endpoint, handle.id(), ConnectionRights::CALL).unwrap();
@@ -1193,9 +1205,12 @@ pub fn test_close_watch_admission() {
 pub fn test_endpoint_ipc_connection_attach() {
     logln!("Testing endpoint IPC connection attachment and re-delegation...");
 
-    let nameservice = 0x6100;
-    let service = 0x6200;
-    let client = 0x6300;
+    let nameservice = ipc::namespace::fixture_id(0x6100);
+    ipc::namespace::prepare_fixture(nameservice);
+    let service = ipc::namespace::fixture_id(0x6200);
+    ipc::namespace::prepare_fixture(service);
+    let client = ipc::namespace::fixture_id(0x6300);
+    ipc::namespace::prepare_fixture(client);
     crate::completion::open_address_space(client, 8);
 
     let ns_endpoint = ipc::endpoint_create(nameservice, 0x4e53_5643, 1, 4)

@@ -50,6 +50,7 @@ pub(crate) mod cancellation;
 pub(crate) mod claim_wait;
 pub(crate) mod delivery_tests;
 mod endpoint_close;
+pub(crate) mod namespace;
 pub(crate) mod namespace_close;
 pub(crate) mod record_budget;
 pub(crate) mod record_tests;
@@ -200,15 +201,6 @@ struct AsIpcCaps {
 }
 
 impl AsIpcCaps {
-    fn new(asid: AddressSpaceId) -> Self {
-        Self {
-            caps: BTreeMap::new(),
-            address_space: crate::memory::current_address_space_handle(asid),
-            endpoint_budget: budget::DomainBudget::new(),
-            record_budget: record_budget::DomainBudget::new(),
-        }
-    }
-
     /// The caller has published this identity under IPC serialization. No
     /// fallible admission may remain after mutating its associated payload.
     fn insert_admitted(
@@ -547,7 +539,7 @@ struct IpcRegistry {
     endpoints: BTreeMap<EndpointId, Endpoint>,
     reply_tokens: BTreeMap<ReplyTokenId, ReplyToken>,
     pending_calls: BTreeMap<PendingCallId, PendingCall>,
-    caps: BTreeMap<AddressSpaceId, AsIpcCaps>,
+    caps: crate::klib::collections::retirement_list::AdmittedMap<AddressSpaceId, AsIpcCaps>,
 }
 
 impl IpcRegistry {
@@ -559,7 +551,7 @@ impl IpcRegistry {
             endpoints: BTreeMap::new(),
             reply_tokens: BTreeMap::new(),
             pending_calls: BTreeMap::new(),
-            caps: BTreeMap::new(),
+            caps: crate::klib::collections::retirement_list::AdmittedMap::new(),
         }
     }
 
@@ -582,7 +574,7 @@ impl IpcRegistry {
     }
 
     fn as_caps(&mut self, asid: AddressSpaceId) -> &mut AsIpcCaps {
-        self.caps.entry(asid).or_insert_with(|| AsIpcCaps::new(asid))
+        self.caps.get_mut(&asid).expect("admitted IPC namespace missing")
     }
 
     /// Prevent capability publication into a namespace being drained, including
@@ -593,7 +585,7 @@ impl IpcRegistry {
         if identity.is_some_and(|handle| !crate::memory::budget::accepting(handle)) {
             return Err(IpcError::PermissionDenied);
         }
-        let namespace = self.as_caps(sponsor);
+        let namespace = self.caps.get(&sponsor).ok_or(IpcError::PermissionDenied)?;
         if namespace.address_space != identity || !namespace.record_budget.accepting() {
             return Err(IpcError::PermissionDenied);
         }
@@ -750,7 +742,7 @@ pub fn endpoint_create(
     if identity.is_some_and(|handle| !crate::memory::budget::accepting(handle)) {
         return Err(IpcError::PermissionDenied);
     }
-    let namespace = ipc.as_caps(owner);
+    let namespace = ipc.caps.get(&owner).ok_or(IpcError::PermissionDenied)?;
     if namespace.address_space != identity {
         return Err(IpcError::PermissionDenied);
     }
@@ -2405,7 +2397,13 @@ fn drain_namespace_caps(asid: AddressSpaceId) -> Result<(), IpcError> {
         };
         close_cap_serialized(asid, cap)?;
     }
-    IPC.write().caps.remove(&asid);
+    // Detach the complete namespace. Its fallback retains the node and both
+    // budget accounts; explicit disposal runs after the IPC guard leaves.
+    let retired = IPC.write().caps.take(&asid);
+    if let Some(retired) = retired {
+        assert!(retired.value().1.caps.is_empty());
+        retired.release();
+    }
     let mut ipc = IPC.write();
     while let Some(endpoint) = ipc.endpoints.iter().find_map(|(&id, endpoint)| {
         (endpoint.closed && !endpoint_referenced(&ipc, id)).then_some(id)

@@ -95,7 +95,7 @@ struct TestState {
 /// API under this pseudo address-space id (it exists only in the IPC
 /// capability registry).
 #[cfg(target_arch = "aarch64")]
-const KCLIENT_ASID: usize = 0x7200;
+const KCLIENT_ASID: usize = ipc::namespace::fixture_id(0x7200);
 
 /// Console protocol opcodes mirrored from `catten-services`.
 #[cfg(target_arch = "aarch64")]
@@ -112,6 +112,7 @@ const OP_CRASH: u32 = 5;
 pub fn test_el0_uart() {
     #[cfg(target_arch = "aarch64")]
     {
+        ipc::namespace::prepare_fixture(KCLIENT_ASID);
         logln!("Testing EL0 userspace UART driver (delegated MMIO + interrupt)...");
 
         let name_service = supervisor::node_name_service();

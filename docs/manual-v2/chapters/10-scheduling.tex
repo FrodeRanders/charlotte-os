@@ -257,8 +257,12 @@ ordinary preparation is limited to 3 MiB/9,216 nodes. A root needs all three;
 partial rejection frees unused nodes before refund and publishes no ASID.
 Original charges follow detached nodes through failed invalidation until actual
 post-proof deallocation. Promotion cannot reclassify an existing charge.
-Namespace/account control blocks, other aggregate heap/principal admission and
-outer destructor contexts remain separate. See
+IPC namespace storage and both budget accounts also prepare fallibly in the
+same registration owner. Its first exact-root operation lease spans
+lifecycle/table unlock and prepared namespace publication under IPC alone;
+missing namespaces reject instead of recreating. Empty drained namespace
+nodes dispose after IPC unlock. Other IPC map storage, namespace/account
+byte/principal admission and outer destructor contexts remain separate. See
 \repofile|docs/reference/root-metadata-admission.md|. See
 \repofile|docs/reference/memory-object-retirement.md|.
 

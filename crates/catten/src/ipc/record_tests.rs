@@ -21,7 +21,7 @@ pub(crate) fn test_admission() {
         connection_delegate(server.id(), endpoint, client.id(), ConnectionRights::ALL).unwrap();
     let server_account = account(server.id());
     let client_account = {
-        // Establish this namespace without introducing a sponsored connection.
+        // Observe the namespace installed by root registration.
         let mut ipc = IPC.write();
         ipc.as_caps(client.id()).record_budget.clone()
     };
@@ -252,7 +252,8 @@ pub(crate) fn test_admission() {
 }
 
 fn test_retirement() {
-    let recipient = 0x000e_b112;
+    let recipient = namespace::fixture_id(0x000e_b112);
+    namespace::prepare_fixture(recipient);
     let old = crate::service::loader::create_user_address_space_handle();
     let endpoint = endpoint_create(old.id(), 1, 1, 4).unwrap();
     let connection =
@@ -291,11 +292,16 @@ fn test_node_limits() {
             let mut amount = [0, 0, 0];
             amount[dimension] = remaining.min(record_budget::DOMAIN_LIMIT[dimension]);
             charges.push(
-                record_budget::reserve(&record_budget::DomainBudget::new(), false, amount).unwrap(),
+                record_budget::reserve(
+                    &record_budget::DomainBudget::try_new().unwrap(),
+                    false,
+                    amount,
+                )
+                .unwrap(),
             );
             remaining -= amount[dimension];
         }
-        let rejected = record_budget::DomainBudget::new();
+        let rejected = record_budget::DomainBudget::try_new().unwrap();
         let mut one = [0, 0, 0];
         one[dimension] = 1;
         let full = record_budget::node_used();
@@ -308,7 +314,12 @@ fn test_node_limits() {
             let mut amount = [0, 0, 0];
             amount[dimension] = remaining.min(record_budget::DOMAIN_LIMIT[dimension]);
             charges.push(
-                record_budget::reserve(&record_budget::DomainBudget::new(), true, amount).unwrap(),
+                record_budget::reserve(
+                    &record_budget::DomainBudget::try_new().unwrap(),
+                    true,
+                    amount,
+                )
+                .unwrap(),
             );
             remaining -= amount[dimension];
         }

@@ -7,10 +7,12 @@ use crate::{
     memory::allocators::global_allocator::PRIMARY_ALLOCATOR,
 };
 
-const SERVER: usize = 0x000e_a127;
-const CLIENT: usize = 0x000e_a128;
+const SERVER: usize = crate::ipc::namespace::fixture_id(0x000e_a127);
+const CLIENT: usize = crate::ipc::namespace::fixture_id(0x000e_a128);
 
 pub(super) fn run() {
+    crate::ipc::namespace::prepare_fixture(SERVER);
+    crate::ipc::namespace::prepare_fixture(CLIENT);
     let irq = crate::cpu::isa::lp::ops::get_int_state();
     let sponsor = WaitSponsor::new(false);
     let observer: Arc<dyn Observer> = CallOnNotify::new(|| {

@@ -34,8 +34,8 @@ struct DomainState {
 pub(crate) struct DomainBudget(Mutex<DomainState>);
 
 impl DomainBudget {
-    pub(crate) fn new() -> Arc<Self> {
-        Arc::new(Self(Mutex::new(DomainState {
+    pub(crate) fn try_new() -> Result<Arc<Self>, core::alloc::AllocError> {
+        Arc::try_new(Self(Mutex::new(DomainState {
             records: VectorBudget::new(DOMAIN_LIMIT),
             retired: false,
         })))

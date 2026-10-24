@@ -13,6 +13,7 @@ use crate::klib::collections::id_table::Error;
 // Rejected roots stay inline: boxing would allocate on the failure path.
 #[allow(clippy::result_large_err)]
 pub(crate) fn test_publication_rejection() {
+    super::registration::test_ipc_preparation();
     super::registration::metadata::test_preparation();
     sponsor_rejection();
     super::budget::tests::run();

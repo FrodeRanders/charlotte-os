@@ -13,6 +13,8 @@ should be updated with the implementation when those contracts change.
   declared lengths, Ethernet padding and current-only rollout.
 - [Security remediation](security-remediation.md) — current finding ledger,
   finite SEC-07/18 completion criteria and production security milestones.
+- [IPC namespace publication](ipc-namespace-publication.md) — fallible root-owned
+  preparation, exact-root handoff and post-IPC empty-node disposal.
 - [Cleanup ownership and recovery strategy](cleanup-recovery.md) — source-reviewed
   owner-family coverage, retry boundaries, shared controller requirements and
   cross-category completion gates.

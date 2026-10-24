@@ -55,7 +55,7 @@ const CLIENT_SENTINEL: u32 = 0xc0de;
 /// The kernel verifier acts as a second client through the direct kernel
 /// API under this pseudo address-space id. It only exists in the IPC
 /// capability registry.
-const KCLIENT_ASID: usize = 0x7100;
+const KCLIENT_ASID: usize = ipc::namespace::fixture_id(0x7100);
 static mut TEST_STATE: Option<TestState> = None;
 
 struct TestState {
@@ -68,6 +68,7 @@ struct TestState {
 }
 
 pub fn test_el0_service() {
+    ipc::namespace::prepare_fixture(KCLIENT_ASID);
     logln!("Testing EL0 name service, bootstrap delivery, and service restart...");
 
     let name_service = supervisor::node_name_service();
