@@ -81,7 +81,8 @@ object identity before authority publication; publication only relinks prepared
 storage. Cancellation leaves identity gaps. Read-loan, memory-capability and
 namespace records now also prepare before mutation and relink at publication.
 Mapping records and frame-snapshot capacity now also prepare fallibly outside
-the memory registry; scratch namespace storage retains a separate boundary.
+the memory registry. Scratch namespace and extent nodes now also prepare outside
+their local registry, with exact-generation/current-space revalidation.
 
 Retirement keeps the complete detached object node in the existing backing
 receipt, with its original frame vector, charge and metadata. Physical release
@@ -107,8 +108,8 @@ full payload/authority node with its borrower. Direct close and final-pin cleanu
 retain these nodes in the complete object/backing receipt through physical proof.
 Failed release retains original backing and authority charges. Namespace cleanup
 detaches and drains its complete node after memory unlock, without a snapshot or
-new recovery ticket. Scratch metadata, source-escrow and wider factory/destructor/
-IRQ contexts, general metadata-byte admission and sustained pressure remain open.
+new recovery ticket. Source-escrow and wider factory/destructor/IRQ contexts,
+general metadata-byte admission and sustained pressure remain open.
 
 \paragraph{Mapping storage and maintenance.}
 After preflight, one preparation allocates an empty mapping node and frame-snapshot
@@ -125,8 +126,8 @@ node before pin decrement/backing release. Revocation uses that pin too. Namespa
 retirement retains complete admitted mapping nodes and exact peer leases on
 failure/abandonment; physical success permits node disposal, then peer completion.
 No new physical proof, recovery registry or retry authority is added. General
-metadata-byte admission, concurrent unused preparations, scratch namespace
-factories and broader enclosing contexts remain separate qualification work.
+metadata-byte admission, concurrent unused preparations and broader enclosing
+contexts remain separate qualification work.
 
 These are initial kernel admission policies, independent of telemetry filtering
 and placement feedback. Signed deployment fields and a userspace policy API for
@@ -209,13 +210,22 @@ does not qualify every caller or destructor. See
 \repofile|docs/reference/hardware-quiescence.md|.
 
 Scratch reservation metadata is prepared fallibly before publishing a virtual
-range. A sorted list records live extents; gaps are implicit, so release removes
-one exact reservation without allocating a free-list node. Partial, combined or
+range. Namespace and sorted live-extent records use admitted nodes prepared
+outside scratch serialization; gaps are implicit. Release detaches one exact
+reservation without allocating a free-list node, then frees it after unlock. Partial, combined or
 duplicate releases are rejected. Bulk mapping retirement retains its backing
 pin and loan restrictions if any scratch completion fails, even after successful
 translation invalidation. Completed ranges may be reused; rejected ranges remain
 reserved. This strengthens completion without introducing a live-generation
 lease or a comprehensive kernel-metadata budget.
+MMIO retains its existing root/descriptor claim while scratch preparation also
+leaves the device registry; mapped-state admission rechecks atomically with that
+claim. Whole-root sealing carries the complete scratch namespace and extent nodes
+in its existing metadata/root receipt through final invalidation. Failure or
+abandonment retains them; confirmation permits post-guard node disposal before
+root backing/slot completion. No separate recovery ticket or physical/replay proof
+is added. Scalar range matching still supplies no allocation nonce, and general
+metadata-byte/principal admission and wider caller contexts remain open.
 
 Final user-root destruction now follows a separate two-phase boundary. Logical
 cleanup detaches the private hierarchy into an owner that leases its software

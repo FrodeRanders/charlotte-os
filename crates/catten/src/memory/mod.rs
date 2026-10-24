@@ -565,7 +565,6 @@ fn finish_user_address_space_cleanup(
 ) -> registration::metadata::RetiredMetadata {
     let handle = closing.handle();
     let asid = handle.id();
-    object::close_scratch_address_space(asid);
     crate::completion::close_address_space(asid);
 
     // Retain this generation's stack high-water mark and heap peak for the

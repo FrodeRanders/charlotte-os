@@ -476,6 +476,17 @@ concurrent preparation bytes, wider caller/IRQ/destructor contexts, aggregate
 metadata/principal admission and pressure remain open. This advances C05/C06/C18
 and R7-2 without changing finding dispositions.
 
+The [scratch storage batch](../reports/audits/2026-10-25-security-scratch-storage.md) removes allocating namespace insertion
+and extent-vector growth beneath the scratch registry. One inert preparation
+owns both nodes outside scratch/device holds, with the original root/MMIO claim
+retained; generation and current first fit revalidate before relinking. Sealed
+root cleanup carries complete scratch metadata in its existing receipt through
+final invalidation, releasing post-guard before root backing. Atomic MMIO claim
+admission also rechecks mapped state after its preliminary probe. Metadata-byte/
+principal and peak preparation admission, scalar reservation identity, raw fixture
+and broader outer contexts, pressure/fairness and historical failures remain open.
+This advances C02/C03/C05/C13/C18 and R7-2 without changing finding dispositions.
+
 SEC-07 remains partial until all of the following deliverables are accepted:
 
 The [telemetry snapshot follow-up](../reports/audits/2026-10-18-telemetry-snapshot-preparation.md)

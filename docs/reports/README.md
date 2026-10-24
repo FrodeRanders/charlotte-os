@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Scratch namespace and extent storage](audits/2026-10-25-security-scratch-storage.md) — Prepared virtual-range metadata, atomic MMIO claim revalidation and complete root-receipt retention.
+
 - [Memory mapping storage](audits/2026-10-25-security-memory-mapping-storage.md) — Unlocked record/snapshot preparation and complete mapping-node retention through maintenance and retirement.
 
 - [Memory capability and namespace storage](audits/2026-10-24-security-memory-capability-storage.md) — Prepared payload publication and complete paired metadata retirement through existing cleanup owners.

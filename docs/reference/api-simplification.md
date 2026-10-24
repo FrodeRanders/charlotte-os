@@ -491,5 +491,11 @@ Mapping storage now likewise uses a fallible prepared node and preallocated
 snapshot, with captured revalidation before relink/pin mutation. Detached map
 nodes remain in existing cleanup owners through proof; allocating map insertion
 and implicit map-node destruction are removed. See [mapping storage evidence](../reports/audits/2026-10-25-security-memory-mapping-storage.md).
-Scratch namespace and wider preparation/destructor contexts remain current
-candidates. Wire formats and runtime ABI are unchanged.
+Scratch namespace and extent storage now use one prepared admitted-node path;
+allocating namespace insertion, vector growth and generation-reset replacement
+are removed. The same final root receipt owns namespace disposal through proof.
+MMIO claim admission uses one explicit mapped-state expectation, including its
+atomic recheck. See [scratch storage evidence](../reports/audits/2026-10-25-security-scratch-storage.md).
+Other factory/destructor contexts, scalar scratch identity and comprehensive
+metadata admission remain current candidates. Wire formats/runtime ABI stay
+unchanged.

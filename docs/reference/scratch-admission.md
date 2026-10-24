@@ -1,85 +1,91 @@
 # Scratch reservation admission and completion
 
 Memory objects and MMIO share a 512 MiB virtual scratch window in each user
-address-space lifetime. This is virtual space, not a 512 MiB physical allocation.
-Reservations become reusable only after leaf removal and translation
-invalidation. Lifecycle/IPC serialization still protects the current generation;
-this allocator is not a live-operation generation lease.
+address-space lifetime. This is virtual space, not a physical allocation.
+Reservations become reusable only after their owning mapping/close operation
+confirms leaf removal and invalidation. Public callers retain an exact root
+operation or borrowed closing ownership; raw boot fixtures retain their existing
+serialization. The scratch allocator's captured handle is identity, not a new
+root lease or physical completion proof.
 
-## Admission before publication
+## Prepared namespace and extent nodes
 
-`memory::object::scratch::ScratchWindow` records sorted, disjoint **live**
-extents in a vector. First-fit admission scans their implicit gaps and validates
-nonzero page-aligned size, window bounds and checked arithmetic. It calls
-`try_reserve(1)` before inserting a reservation. Metadata rejection therefore
-publishes no virtual range and does not change live extents. The object adapter
-reports this as the existing `ResourceLimit`; invalid/exhausted ranges report
-`OutOfScratch`. There is no compatibility-only free-tree allocator.
+The existing global scratch registry and each window's sorted live-extent map
+use shared admitted nodes. Preflight validates nonzero page-aligned size, window
+bounds, checked arithmetic and current first-fit availability. One preparation
+then owns a fallible extent node and namespace candidate outside the scratch
+registry. Final publication checks the exact captured root generation again,
+recomputes first fit under the same hold and only relinks prepared storage.
+A competing namespace keeps the losing candidate in that original owner until
+explicit post-guard disposal. A different generation rejects without reset or
+replacement. Ordinary rejected preparation disposes its complete prefix after
+local guards; abandonment retains all partial fields without cleanup.
 
-This replaces the bump-pointer/free-tree representation. Splitting a free extent
-or returning a non-tail range previously could allocate a tree node after
-logical mutation. The new release path only removes an existing vector entry;
-adjacent free gaps combine implicitly. No allocation, free-node insertion or
-coalescing bookkeeping is required during release.
+There is no allocating namespace `BTreeMap` insertion, extent-vector growth or
+vector shifting. Each live reservation owns one extent node; gaps combine
+implicitly. Exact release only detaches the original node under the scratch
+registry and explicitly frees it after that guard. Neither publication nor
+detachment allocates or deallocates. First-fit lookup and ordered insertion are
+linear; the 131,072-page window and existing resource limits do not qualify
+worst-case hold time, concurrent preparation pressure or comprehensive metadata
+byte/principal admission. Nodes add allocator overhead rather than a vector
+high-water capacity. There is no compatibility-only old allocation path.
 
-The trade-off is linear first-fit scanning and vector shifting. The live-entry
-count is bounded by the window's page count (131,072), with resource/capability
-limits providing additional bounds. Metadata capacity follows its high-water
-mark until the window is destroyed. This is not a per-domain or node-wide
-metadata budget, nor a performance claim for heavily fragmented windows.
-Creation of the outer per-AS window registry entry still uses an infallible
-`BTreeMap` insertion. Comprehensive namespace/kernel-heap admission is open.
+MMIO scratch preparation also leaves `DEVICES`, with its existing exact-root
+lease and claimed descriptor retained. Claim admission rechecks mapped/unmapped
+expectation atomically with the in-flight bit; an earlier preliminary probe
+cannot authorize a claim after another completed operation changed that state.
+The same physical descriptor, pages and claim revalidate after preparation.
+Ordinary map/unmap/close hardware and uncertainty policies are unchanged.
 
-## Exact completion
+## Exact completion and whole-root retirement
 
 Release must name the offset and size of one exact live reservation. Partial,
-combined, unknown and already released extents are rejected without mutation;
-checks apply in optimized builds too. Generation checks remain in the object
-adapter. Exact-range matching is **not** an allocation nonce: a stale internal
-scalar pair could match a later reservation at the same address. Current
-callers must retain their serialized ownership records; unlocking those paths
-requires real generation/reservation owners, not this range check alone.
+combined, unknown and already released extents reject without mutation. The
+namespace records the full address-space handle; stale publication, captured
+release and detachment cannot alter a successor. Range matching remains **not**
+an allocation nonce: an invalid stale scalar pair within the same generation
+could match a later reservation at the same address. Current callers must keep
+the original mapping/close owner and proof; this check grants no replay authority.
 
-Ordinary unmap retains its backing pin on failed scratch release. Failed-map
-rollback now does the same when it owns a pin. Bulk object retirement waits for
-all mapping invalidations, attempts the surviving domains' scratch completions,
-and releases its pin/loan restrictions only if every completion succeeds.
-Failed completion logs and quarantines the original backing and charge. Ranges
-whose individual completion succeeded may be reused because their leaves are
-already quiescent; rejected ranges remain reserved. Cleanup of the closing
-domain's own ranges is subsumed by destruction of its entire scratch window.
+Ordinary unmap and rejected-prefix rollback retain their original backing pin
+on failed scratch completion. Bulk retirement waits for all invalidations,
+attempts surviving domains' completions and releases its pin/loan restrictions
+only after all required completions succeed. Individually completed ranges may
+be reused; rejected ranges remain reserved. MMIO uncertainty retains its existing
+mapping/range/root/claim owner and never restores or retries started cleanup.
 
-MMIO explicit close reports `UnmapFailed` if scratch completion fails. The
-capability is consumed and the rejected range remains reserved for that AS;
-there is no unsafe restoration or retry that can revive partially removed MMIO.
-MMIO failed-map rollback may retain a range while returning its original error;
-it does not recycle an uncertain range. Device/lifecycle lock-held invalidations
-remain separate SEC-18 work.
+Sealed whole-root cleanup detaches the complete scratch namespace and its extent
+nodes into the existing `RetiredMetadata`, retained by `ClosingAddressSpace` and
+`RetiredAddressSpace`. Final invalidation rejection/abandonment keeps those nodes
+with the original complete root, slot, backing and charges. Only confirmed final
+quiescence permits explicit extent/node disposal after lifecycle/scratch/local
+registry guards, before root backing/slot completion. This extends the existing
+root receipt, without a new recovery family, registry, metadata ticket or retry
+policy. Uncertain mapping/device work still prevents sealing; scratch absence
+or generation checks cannot substitute for its physical completion proof.
 
-A rejected memory-object map with no admitted mapping pin never entered its
-table walker or published a mapping in that call. It now returns unused scratch
-without requesting invalidation. Admitted and rolled-back prefixes still retain
-their exact pin and scratch until maintenance confirms; a failed invalidation
-reports its per-call cause and retains them. This changes no completion proof or
-recovery policy for uncertain mappings. See
-[mapping admission](memory-object-retirement.md#mapping-rejection-and-maintenance).
+## Verification and limits
 
-## Verification
+The standalone host runner reuses the exact production admitted collection:
+**six scratch cases plus sixteen shared collection cases** pass. Scratch checks
+cover first fit, implicit gaps, exact release rejection, missing preparation,
+invalid/exhausted/overflow requests, independent windows and a 6,000-operation
+bitmap oracle. Shared collection controls trace allocation-free relinking,
+inert abandonment and actual node-disposal ordering. They do not force global
+allocator OOM or prove cross-LP fairness.
 
-The host runner compiles this production allocator directly. Six tests cover
-first-fit reuse, implicit gap combination, unchanged capacity on release, exact
-release rejection, local metadata-preflight failure, invalid/exhausted/overflow
-requests, independent windows and a 6,000-operation bitmap-oracle trace.
-These do not force real allocator OOM or test cross-LP races.
+Native controls cover 192 preparation-prefix rejections, 64 heap-held
+publications/detachments, competing preparation, stale-generation publication/
+release/detachment, full/invalid rejection and guarded partial/retired retention.
+Whole-root controls retain a real namespace after rejected final invalidation,
+release it through the existing bounded custody path after confirmation, preserve
+a reused successor and retain another namespace during guarded root-attempt
+abandonment. Existing MMIO controls check factory placement and both claim-state
+rejections; ordinary native MMIO/memory mappings remain enabled.
 
-A boot fixture retires an object mapped by two borrowers, injects the final
-copy/DMA unpin during invalidation, then rejects one scratch completion before
-mutating the real allocator. It checks that all barriers precede release,
-successful range reuse, rejected range non-reuse, retained loan restrictions
-and original charge after all three domains close. That probe deliberately
-retains **one additional data page and one object charge**. There is no recovery
-or test-only re-adoption API. Existing memory-object quarantine fixtures bring
-that group's total to seven data pages and five object charges.
-
-See [memory-object retirement](memory-object-retirement.md) for the larger
-backing lifetime and unresolved generation/shootdown boundary.
+See [scratch storage evidence](../reports/audits/2026-10-25-security-scratch-storage.md) and
+[memory-object retirement](memory-object-retirement.md). General metadata-byte/
+principal admission, scalar reservation identity, serialized fixture disposal,
+other factory/destructor/outer IRQ contexts, sustained pressure and historical
+failure causes remain separate. No physical/replay proof is added.

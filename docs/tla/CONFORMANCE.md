@@ -1332,3 +1332,21 @@ placement, revalidation, prefix descriptors, node disposal, implicit fields and
 allocator/IRQ contexts are native/host qualification. No executable refinement,
 new custody, sustained-pressure fairness or historical failure attribution is
 implied. Earlier full-suite checkpoints remain separate.
+
+## Scratch namespace/extent storage in the root receipt
+
+The [scratch storage batch](../reports/audits/2026-10-25-security-scratch-storage.md) prepares namespace/extent nodes outside
+local scratch/device guards and revalidates captured identity/current space before
+publication. Whole namespace nodes now remain in existing root metadata through
+final invalidation and explicit post-guard disposal. Bounded root retry remains
+about that same complete root; no uncertain mapping/device cleanup becomes
+retryable. MMIO mapped-state admission rechecks atomically with its existing claim.
+
+Focused root-retirement/IPC-transaction safe/negative configurations are rerun
+without changes. Root metadata retention and physical-once/charge projections
+remain; concrete virtual extents, first-fit implementation, MMIO admission probe
+race, node construction/disposal and allocator/IRQ/destructor contexts are native/
+host qualification. These models do not implement the scratch pipeline. There is
+no executable refinement, general metadata budget, sustained-pressure fairness
+or historical failure attribution claim. Earlier full-suite checkpoints stay
+separate.

@@ -49,6 +49,10 @@ fn successful_cleanup() {
     let handle = loader::create_user_address_space_handle();
     let cap = grant_mmio(handle.id(), 0x0900_0000, 2).unwrap();
     let base = mmio_map_any(handle.id(), cap, true).unwrap();
+    assert_eq!(
+        MmioOperation::begin(handle.id(), cap, false).err(),
+        Some(DeviceError::AlreadyMapped)
+    );
     let direct = grant_mmio(handle.id(), 0x0900_2000, 1).unwrap();
     let direct_base = VAddr::from(0x3000_0000usize);
     mmio_map(handle.id(), direct, direct_base, false).unwrap();
@@ -134,7 +138,7 @@ fn preparation_failure() {
     let cap = grant_mmio(handle.id(), 0x0900_0000, 1).unwrap();
     // Deliberately manufacture an abandoned operation claim at this ABI
     // boundary; public MMIO operations also retain an address-space lease.
-    drop(MmioOperation::begin(handle.id(), cap).unwrap());
+    drop(MmioOperation::begin(handle.id(), cap, false).unwrap());
     let mut closing = ClosingAddressSpace::begin_ready(handle).unwrap();
     assert_eq!(
         closing.start_cleanup_with_devices(|_| panic!("failed prepare reached hardware")),

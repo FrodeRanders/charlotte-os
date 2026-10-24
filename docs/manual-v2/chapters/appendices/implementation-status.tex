@@ -385,7 +385,11 @@ Source, tests, and repository history remain authoritative.
         Mapping nodes and snapshot capacity now prepare outside memory
         serialization, then revalidate before relink/pin publication. Existing
         pins/receipts retain detached records and peer leases through uncertainty.
-        Scratch namespace storage, broader factories/destructors, concurrent
+        Scratch namespace/extent nodes now also prepare outside local guards,
+        while MMIO retains its existing root/claim and rechecks mapped-state
+        admission atomically. Complete scratch nodes stay in the final root
+        receipt through invalidation, then dispose post-guard before root backing.
+        Scalar scratch identity, broader factories/destructors, concurrent
         preparation bytes and aggregate metadata admission remain open.
     \item \textbf{Cross-machine Raft boundary:} two TCG guests share a private
         QEMU LAN (stream backend on AArch64, socket backend on x86-64); the

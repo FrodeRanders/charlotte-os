@@ -123,6 +123,7 @@ pub(in crate::memory) struct RetiredMetadata {
     limits: Retired<LimitsRecord>,
     usage: Retired<UsageRecord>,
     authority: Retired<AuthorityRecord>,
+    scratch: Option<super::super::object::RetiredScratch>,
 }
 
 impl RetiredMetadata {
@@ -139,10 +140,14 @@ impl RetiredMetadata {
             limits,
             usage,
             authority,
+            scratch: super::super::object::detach_scratch(handle),
         }
     }
 
     pub(in crate::memory) fn test_assert_retained(&self, handle: AddressSpaceHandle) {
+        if let Some(scratch) = &self.scratch {
+            scratch.test_assert_retained(handle);
+        }
         assert_eq!(self.limits.value().1.0, handle);
         assert_eq!(self.usage.value().1.0, handle);
         assert_eq!(self.authority.value().1.handle, handle);
@@ -151,12 +156,19 @@ impl RetiredMetadata {
         assert!(!DOMAIN_AUTHORITIES.lock().contains_key(&handle.id()));
     }
 
+    pub(in crate::memory) fn test_scratch_extents(&self) -> usize {
+        self.scratch.as_ref().map_or(0, |scratch| scratch.test_extent_count())
+    }
+
     pub(in crate::memory) fn test_authority(&self) -> Option<DomainAuthority> {
         self.authority.value().1.authority
     }
 
     pub(in crate::memory) fn release(self) {
         super::super::retirement::metadata_tests::policy_boundary();
+        if let Some(scratch) = self.scratch {
+            scratch.release();
+        }
         self.authority.release_with(|(_, slot)| slot.history.cancel_unpublished());
         self.usage.release();
         self.limits.release();

@@ -446,3 +446,20 @@ permits node free and subsequent exact peer-lease completion. No callbacks,
 allocation or deallocation occur in node/list fallback. Mapping lookup/insertion
 is now linear; concurrent preparation bytes and sustained hold-time/fairness
 remain unqualified. See [mapping storage](memory-object-storage.md#mapping-records-and-snapshots).
+
+Scratch namespace/extent storage now prepares fallibly before `SCRATCH_WINDOWS`;
+preflight and final captured-generation/current-first-fit checks only borrow that
+registry. Publication/detachment merely relink original nodes. Unused candidates
+and detached extents explicitly dispose after local scratch unlock. MMIO retains
+its existing exact root/claim while its factory also leaves `DEVICES`; mapped-state
+admission rechecks under the same device hold as claim publication. The page-table
+walk, reset-range fencing and physical/uncertain-cleanup rules are unchanged.
+
+Sealed root cleanup detaches scratch nodes into its existing `RetiredMetadata`.
+Final invalidation rejection/abandonment retains every node with the complete root;
+confirmation permits explicit disposal outside lifecycle/scratch/other local guards,
+before root backing/slot release. Native root-release probes include scratch guard
+availability and IRQ preservation. Partial/retired fallback enters no allocator,
+registry or callback. These contexts add no new custody family or root/pin. Raw
+serialized fixture disposal, other outer/IRQ/destructor contexts, allocation-byte
+budgets and sustained contention remain separate. See [scratch admission](scratch-admission.md).

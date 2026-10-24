@@ -57,7 +57,10 @@ fn test_namespace_metadata() {
     assert_eq!(family_used(), 2);
     assert_eq!(queue_used(), mailbox::queue_amount());
     assert_eq!(authority_used(), 3);
+    memory::object::reserve_scratch(handle.id(), 2).unwrap();
     let owner = super::super::tests::stage(handle);
+    assert_eq!(owner.metadata.as_ref().unwrap().test_scratch_extents(), 1);
+    owner.metadata.as_ref().unwrap().test_assert_retained(handle);
     mailbox::assert_hidden(handle);
     assert_eq!(family_used(), 2);
     assert_eq!(queue_used(), mailbox::queue_amount());
@@ -88,6 +91,8 @@ fn test_namespace_metadata() {
     {
         let inner = registry.inner.lock();
         let owner = inner.slots[ticket.index].owner.as_ref().unwrap();
+        assert_eq!(owner.metadata.as_ref().unwrap().test_scratch_extents(), 1);
+        owner.metadata.as_ref().unwrap().test_assert_retained(handle);
         mailbox::take_fixture_word(owner.mailboxes.as_ref().unwrap());
     }
     // Metadata release is part of this exact root's confirmed one-shot phase.
@@ -107,6 +112,7 @@ fn test_namespace_metadata() {
     let successor = loader::create_user_address_space_handle();
     assert_eq!(successor.id(), handle.id());
     assert_ne!(successor, handle);
+    memory::object::reserve_scratch(successor.id(), 2).unwrap();
     let successor_family = mailbox::populate(successor);
     let successor_queue = mailbox::captured_queue_used(successor);
     let successor_authority = crate::capability::record_tests::captured_account_used(successor);
@@ -114,6 +120,7 @@ fn test_namespace_metadata() {
         let lifecycle = memory::ADDRESS_SPACE_LIFECYCLE.lock();
         assert!(crate::capability::detach_address_space(handle, &lifecycle).is_none());
         assert!(mailbox_retirement::detach(handle, &lifecycle).is_err());
+        assert!(memory::object::detach_scratch(handle).is_none());
     }
     assert_eq!(registry.claim(ticket).err(), Some(RetryError::Terminal));
     assert_eq!(successor_family(), 2);
@@ -126,6 +133,7 @@ fn test_namespace_metadata() {
     assert_eq!(successor_family(), 0);
     assert_eq!(successor_queue(), [0, 0]);
     assert_eq!(successor_authority(), 0);
+    assert_eq!(super::super::metadata_tests::scratch_releases(), 2);
     super::super::metadata_tests::finish();
 
     // Actual bounded custody attempt abandonment retains the complete root,
@@ -136,7 +144,9 @@ fn test_namespace_metadata() {
     let queue_used = mailbox::captured_queue_used(handle);
     assert_eq!(queue_used(), mailbox::queue_amount());
     let authority_used = crate::capability::record_tests::captured_account_used(handle);
+    memory::object::reserve_scratch(handle.id(), 1).unwrap();
     let owner = super::super::tests::stage(handle);
+    assert_eq!(owner.metadata.as_ref().unwrap().test_scratch_extents(), 1);
     let ticket =
         registry.retain(owner).unwrap_or_else(|_| panic!("completed custody slot not reusable"));
     let attempt = registry.claim(ticket).unwrap();
@@ -148,7 +158,9 @@ fn test_namespace_metadata() {
         let _kernel = memory::KERNEL_AS.lock();
         let _physical = PHYSICAL_FRAME_ALLOCATOR.lock();
         let _heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
-        mailbox::under_registry_guards(|| drop(attempt));
+        memory::object::test_with_scratch_locked(|| {
+            mailbox::under_registry_guards(|| drop(attempt));
+        });
     }
     assert_eq!(status(&registry, ticket).state, State::Abandoned);
     assert_eq!(registry.claim(ticket).err(), Some(RetryError::Terminal));
@@ -167,7 +179,7 @@ fn test_namespace_metadata() {
          confirmed custody retry releases metadata post-guard before root backing; stale \
          extraction preserves reused generation; guarded attempt abandonment retains one complete \
          root/slot, two mailbox charges, three shared authority charges, one heap page and queue \
-         backing"
+         backing plus its scratch namespace/extent nodes"
     );
 }
 

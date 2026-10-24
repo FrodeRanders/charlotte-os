@@ -12,6 +12,7 @@ static IRQ: AtomicBool = AtomicBool::new(false);
 static MAILBOX: AtomicUsize = AtomicUsize::new(0);
 static AUTHORITY: AtomicUsize = AtomicUsize::new(0);
 static POLICY: AtomicUsize = AtomicUsize::new(0);
+static SCRATCH: AtomicUsize = AtomicUsize::new(0);
 
 fn available(mut probe: impl FnMut() -> bool, label: &'static str) {
     let deadline = crate::self_test::results::Deadline::after_millis(1000);
@@ -34,6 +35,7 @@ fn check_context() {
     );
     crate::syscall::mailbox_retirement::tests::assert_guards_available();
     crate::capability::record_tests::assert_local_available();
+    available(super::super::object::scratch_registry_available, "root scratch metadata");
     available(|| super::super::DOMAIN_LIMITS.try_lock().is_some(), "root limits metadata");
     available(|| super::super::usage::DOMAIN_USAGE.try_lock().is_some(), "root usage metadata");
     available(
@@ -60,12 +62,22 @@ pub(crate) fn policy_boundary() {
     check_context();
     POLICY.fetch_add(1, Ordering::Relaxed);
 }
+pub(crate) fn scratch_boundary() {
+    if ACTIVE.load(Ordering::Acquire) {
+        check_context();
+        SCRATCH.fetch_add(1, Ordering::Relaxed);
+    }
+}
+pub(super) fn scratch_releases() -> usize {
+    SCRATCH.load(Ordering::Acquire)
+}
 pub(super) fn begin() {
     assert!(!ACTIVE.swap(true, Ordering::AcqRel));
     IRQ.store(crate::cpu::isa::lp::ops::get_int_state(), Ordering::Release);
     MAILBOX.store(0, Ordering::Relaxed);
     AUTHORITY.store(0, Ordering::Relaxed);
     POLICY.store(0, Ordering::Relaxed);
+    SCRATCH.store(0, Ordering::Relaxed);
 }
 pub(super) fn finish() {
     ACTIVE.store(false, Ordering::Release);
@@ -73,12 +85,13 @@ pub(super) fn finish() {
     assert_eq!(MAILBOX.load(Ordering::Acquire), POLICY.load(Ordering::Acquire));
     assert!(MAILBOX.load(Ordering::Acquire) > 0);
     crate::logln!(
-        "[root metadata phases] {} mailbox, {} authority and {} policy/usage/signed-authority \
-         release entries outside local \
+        "[root metadata phases] {} mailbox, {} authority and {} policy/usage/signed-authority and \
+         {} scratch namespace release entries outside local \
          lifecycle/mailbox/queue/table/physical/heap/capability/policy/usage/signed-authority \
          guards; entry IRQ state preserved",
         MAILBOX.load(Ordering::Acquire),
         AUTHORITY.load(Ordering::Acquire),
-        POLICY.load(Ordering::Acquire)
+        POLICY.load(Ordering::Acquire),
+        SCRATCH.load(Ordering::Acquire)
     );
 }

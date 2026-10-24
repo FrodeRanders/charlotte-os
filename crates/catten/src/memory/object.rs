@@ -5,10 +5,7 @@
 //! syscall ABI for now: callers pass kernel address-space ids, and the registry
 //! enforces that moving an object consumes the sender's capability.
 
-use alloc::{
-    collections::BTreeMap,
-    vec::Vec,
-};
+use alloc::vec::Vec;
 
 use crate::{
     cpu::isa::interface::memory::{
@@ -55,6 +52,7 @@ pub(crate) fn test_object_storage() {
     borrower_storage_tests::run();
     cap_storage::tests::run();
     mapping_storage::tests::run();
+    scratch_namespace::tests::run();
 }
 mod publication_tests;
 pub(crate) fn test_publication_batch() {
@@ -77,7 +75,9 @@ pub(crate) fn test_scheduled_transfer_close() {
     close::tests::scheduled();
 }
 mod scratch;
+mod scratch_namespace;
 use scratch::ScratchWindow;
+pub(in crate::memory) use scratch_namespace::RetiredNamespace as RetiredScratch;
 
 /// Upper bound on a single memory-object allocation, in pages (64 MiB). A
 /// single `memory_alloc` cannot request an unbounded number of frames: this
@@ -813,69 +813,40 @@ const SCRATCH_WINDOW_PAGES: usize = (512 * 1024 * 1024) / PAGE_SIZE;
 const SCRATCH_WINDOW_SIZE: usize = SCRATCH_WINDOW_PAGES * PAGE_SIZE;
 
 static SCRATCH_WINDOWS: crate::memory::LazyLock<
-    crate::memory::Mutex<BTreeMap<AddressSpaceId, ScratchWindow>>,
-> = crate::memory::LazyLock::new(|| crate::memory::Mutex::new(BTreeMap::new()));
+    crate::memory::Mutex<scratch_namespace::Namespaces>,
+> = crate::memory::LazyLock::new(|| crate::memory::Mutex::new(AdmittedMap::new()));
 
-/// Reserve `pages` consecutive pages in an address space's scratch window at
-/// a kernel-assigned virtual address. Shared with the device layer so MMIO
-/// mappings come from the same window and can never collide with memory
-/// mappings.
+/// Callers retain an exact operation/closing root or serialized fixture lifecycle.
+/// The shared window prevents MMIO and memory mappings from colliding.
 pub(crate) fn reserve_scratch(
     asid: AddressSpaceId,
     pages: usize,
 ) -> Result<VAddr, MemoryObjectError> {
-    let bytes = pages.checked_mul(PAGE_SIZE).ok_or(MemoryObjectError::OutOfScratch)?;
-    if bytes == 0 {
-        return Err(MemoryObjectError::OutOfScratch);
-    }
-    let generation = crate::memory::current_address_space_handle(asid)
-        .ok_or(MemoryObjectError::AddressSpaceMissing)?
-        .generation();
-    let mut windows = SCRATCH_WINDOWS.lock();
-    let window =
-        windows.entry(asid).or_insert_with(|| ScratchWindow::new(generation, SCRATCH_WINDOW_SIZE));
-    if window.generation != generation {
-        *window = ScratchWindow::new(generation, SCRATCH_WINDOW_SIZE);
-    }
-    let slot = window.reserve(bytes).map_err(|error| match error {
-        scratch::Error::AllocationFailed => MemoryObjectError::ResourceLimit,
-        _ => MemoryObjectError::OutOfScratch,
-    })?;
-    Ok(VAddr::from(SCRATCH_WINDOW_BASE + (slot as u64)))
+    scratch_namespace::reserve(asid, pages)
 }
 
-/// Return a scratch mapping's virtual range after its page-table entries have
-/// been removed and the corresponding TLB invalidation has completed.
+/// Only confirmed unmap/invalidation (and the existing owner) permits release.
 pub(crate) fn release_scratch(
     asid: AddressSpaceId,
     base: VAddr,
     pages: usize,
 ) -> Result<(), MemoryObjectError> {
-    let base = <VAddr as Into<usize>>::into(base);
-    let window_base = SCRATCH_WINDOW_BASE as usize;
-    let offset = base.checked_sub(window_base).ok_or(MemoryObjectError::OutOfScratch)?;
-    let bytes = pages.checked_mul(PAGE_SIZE).ok_or(MemoryObjectError::OutOfScratch)?;
-    let end = offset.checked_add(bytes).ok_or(MemoryObjectError::OutOfScratch)?;
-    if offset % PAGE_SIZE != 0 || bytes == 0 || end > SCRATCH_WINDOW_SIZE {
-        return Err(MemoryObjectError::OutOfScratch);
-    }
-
-    let generation = crate::memory::current_address_space_handle(asid)
-        .ok_or(MemoryObjectError::AddressSpaceMissing)?
-        .generation();
-    let mut windows = SCRATCH_WINDOWS.lock();
-    let window = windows.get_mut(&asid).ok_or(MemoryObjectError::OutOfScratch)?;
-    if window.generation != generation {
-        return Err(MemoryObjectError::AddressSpaceMissing);
-    }
-    window.release(offset, bytes).map_err(|_| MemoryObjectError::OutOfScratch)
+    scratch_namespace::release(asid, base, pages)
 }
 
-/// Forget all scratch allocation state when this exact address-space lifetime
-/// is torn down. The caller holds `ADDRESS_SPACE_LIFECYCLE`, so a recycled ASID
-/// cannot race this removal.
-pub(crate) fn close_scratch_address_space(asid: AddressSpaceId) {
-    SCRATCH_WINDOWS.lock().remove(&asid);
+pub(in crate::memory) fn detach_scratch(
+    handle: super::AddressSpaceHandle,
+) -> Option<RetiredScratch> {
+    scratch_namespace::detach(handle)
+}
+
+pub(in crate::memory) fn scratch_registry_available() -> bool {
+    SCRATCH_WINDOWS.try_lock().is_some()
+}
+
+pub(in crate::memory) fn test_with_scratch_locked(work: impl FnOnce()) {
+    let _windows = SCRATCH_WINDOWS.lock();
+    work();
 }
 
 /// Keep the exact address-space generation alive through a mapping operation,

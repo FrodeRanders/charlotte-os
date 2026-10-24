@@ -1189,3 +1189,10 @@ phase. Focused IPC-transaction and root-retirement checks retain existing loan,
 non-terminal timeout and root/charge projections. Object mapping/scratch behavior,
 concrete allocator placement and field destruction are native/host qualification;
 no models, hardware proof, recovery custody or replay authority change.
+
+The [scratch storage follow-up](../reports/audits/2026-10-25-security-scratch-storage.md) retains complete namespace/extent
+nodes in the existing root metadata receipt through final invalidation. Focused
+root-retirement and IPC-transaction checks keep their existing projections;
+virtual-range/first-fit behavior, MMIO claim revalidation and concrete node/
+allocator/IRQ/destructor ordering are native/host qualification. No models,
+physical proof, custody family or accepted-work replay policy change.

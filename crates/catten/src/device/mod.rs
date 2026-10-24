@@ -254,7 +254,11 @@ impl MmioOperation {
         }
     }
 
-    fn begin(asid: AddressSpaceId, cap: DeviceCap) -> Result<Self, DeviceError> {
+    fn begin(
+        asid: AddressSpaceId,
+        cap: DeviceCap,
+        expect_mapped: bool,
+    ) -> Result<Self, DeviceError> {
         let mut devices = DEVICES.lock();
         let object = lookup_mut(&mut devices, asid, cap)?;
         let DeviceObject::Mmio(region) = object else {
@@ -264,6 +268,15 @@ impl MmioOperation {
             || reset_range_claimed(region.phys_base, region.pages * PAGE_SIZE)
         {
             return Err(DeviceError::OperationInFlight);
+        }
+        // Repeat mapped-state admission atomically with claim publication.
+        // The earlier capability probe may race another completed operation.
+        if region.mapped.is_some() != expect_mapped {
+            return Err(if expect_mapped {
+                DeviceError::NotMapped
+            } else {
+                DeviceError::AlreadyMapped
+            });
         }
         region.operation_in_flight = true;
         Ok(Self {
@@ -296,13 +309,22 @@ pub(crate) fn self_test_mmio_close_in_flight(asid: AddressSpaceId, cap: DeviceCa
         .expect("[device] MMIO close test address-space lease failed");
     MmioOperation::validate(asid, cap, false)
         .expect("[device] MMIO close test capability validation failed");
-    let operation =
-        MmioOperation::begin(asid, cap).expect("[device] MMIO close test operation claim failed");
+    assert_eq!(MmioOperation::begin(asid, cap, true).err(), Some(DeviceError::NotMapped));
+    let operation = MmioOperation::begin(asid, cap, false)
+        .expect("[device] MMIO close test operation claim failed");
 
     assert_eq!(
         close_cap(asid, cap),
         Err(DeviceError::OperationInFlight),
         "[device] close must preserve an MMIO capability while an operation owns it"
+    );
+
+    assert_eq!(
+        mmio_map_any_with_scratch(asid, cap, true, |_, _| {
+            assert!(DEVICES.try_lock().is_some(), "MMIO scratch factory held devices");
+            Err(DeviceError::MapFailed)
+        }),
+        Err(DeviceError::MapFailed)
     );
 
     operation.finish().expect("[device] MMIO close test operation release failed");
@@ -1138,7 +1160,7 @@ fn with_mmio_operation<T>(
         OperationError::Limit => DeviceError::ResourceLimit,
         _ => DeviceError::NamespaceRetired,
     })?;
-    let mmio = match MmioOperation::begin(asid, cap) {
+    let mmio = match MmioOperation::begin(asid, cap, expect_mapped) {
         Ok(operation) => operation,
         Err(error) => {
             address_space.release().map_err(|_| DeviceError::NamespaceRetired)?;
@@ -1226,16 +1248,38 @@ fn mmio_map_any_with_operation(
     cap: DeviceCap,
     writable: bool,
 ) -> Result<VAddr, DeviceError> {
-    let (base, pages, result) = {
+    mmio_map_any_with_scratch(asid, cap, writable, |asid, pages| {
+        crate::memory::object::reserve_scratch(asid, pages).map_err(|_| DeviceError::MapFailed)
+    })
+}
+
+fn mmio_map_any_with_scratch(
+    asid: AddressSpaceId,
+    cap: DeviceCap,
+    writable: bool,
+    reserve: impl FnOnce(AddressSpaceId, usize) -> Result<VAddr, DeviceError>,
+) -> Result<VAddr, DeviceError> {
+    let (phys_base, pages) = {
         let mut devices = DEVICES.lock();
-        let object = lookup_mut(&mut devices, asid, cap)?;
-        let DeviceObject::Mmio(region) = object else {
+        let DeviceObject::Mmio(region) = lookup_mut(&mut devices, asid, cap)? else {
             return Err(DeviceError::WrongType);
         };
-        let (phys_base, pages) = (region.phys_base, region.pages);
-        let base = crate::memory::object::reserve_scratch(asid, pages)
-            .map_err(|_| DeviceError::MapFailed)?;
-        let result = map_mmio_at(
+        assert!(region.operation_in_flight && region.mapped.is_none());
+        (region.phys_base, region.pages)
+    };
+    // The existing exact-root lease and MMIO claim retain this descriptor
+    // while namespace/extent storage prepares outside both local registries.
+    let base = reserve(asid, pages)?;
+    let result = {
+        let mut devices = DEVICES.lock();
+        let DeviceObject::Mmio(region) = lookup_mut(&mut devices, asid, cap)
+            .expect("claimed MMIO descriptor disappeared during scratch preparation")
+        else {
+            panic!("claimed MMIO descriptor changed type")
+        };
+        assert!(region.operation_in_flight && region.mapped.is_none());
+        assert_eq!((region.phys_base, region.pages), (phys_base, pages));
+        map_mmio_at(
             &mut devices,
             asid,
             cap,
@@ -1246,8 +1290,7 @@ fn mmio_map_any_with_operation(
                 writable,
                 scratch: true,
             },
-        );
-        (base, pages, result)
+        )
     };
     crate::cpu::isa::memory::tlb::try_inval_range_user(asid, base, pages)
         .map_err(|_| DeviceError::UnmapFailed)?;

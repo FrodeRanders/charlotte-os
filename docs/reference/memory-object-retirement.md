@@ -193,10 +193,14 @@ borrowed-memory replies, explicit call/reply cancellation and direct loan revoca
 now own live-generation leases across these phases, as described below.
 
 Scratch now records live extents with fallible admission before publication;
-release removes an exact existing reservation without allocation. Bulk finish
+release detaches an exact existing reservation without allocation; its original
+node disposes after scratch unlock. Bulk finish
 retains its pin and loan restrictions on any scratch-completion error, rather
-than ignoring that result. The outer window-registry insertion and general
-metadata admission remain SEC-07 work. See
+than ignoring that result. Outer namespace and extent nodes now prepare
+fallibly outside their local registry. Sealed root cleanup retains the complete
+scratch namespace in its existing metadata receipt through final invalidation;
+post-proof disposal leaves lifecycle/scratch guards. General metadata admission
+and wider caller contexts remain SEC-07 work. See
 [scratch admission](scratch-admission.md) for policy, costs and verification.
 
 The pin also protects ordinary unmap and failed-map rollback: a concurrent
@@ -718,4 +722,14 @@ Revocation uses that same pin field. Whole-object retirement retains every
 mapping node/peer lease on failure or guarded abandonment; physical success
 permits node free, then exact peer-lease completion. No physical proof, retry
 owner or custody is added. General metadata admission, concurrent preparation
-pressure, scratch namespace factories and broader outer contexts remain open.
+pressure and broader outer contexts remain open; scratch namespace/extent
+factories are covered by the later scratch storage follow-up.
+
+The [scratch-storage batch](../reports/audits/2026-10-25-security-scratch-storage.md) extends that same complete root receipt
+with the detached scratch namespace and all original extent nodes. Existing
+bounded root invalidation custody retains them on rejection and disposes them
+only after confirmation and local guard exit. Scratch metadata is not an
+independent retry owner or physical proof. MMIO keeps its original claim/root
+through unlocked storage preparation and atomically rechecks mapped-state
+admission. Raw serialized fixture release, metadata-byte/principal budgets and
+broader outer contexts remain separate qualification.

@@ -15,8 +15,9 @@ returns `ResourceLimit` before publication.
 Memory-capability and namespace records also use prepared nodes, as described
 below. Mixed memory/IPC commit performs no allocation or node disposal after
 preparation. Mapping records and frame snapshots now also prepare outside
-memory serialization, as described below. Scratch namespace metadata and other
-preparation/rollback contexts retain separate allocating boundaries. Factory and ordinary rollback
+memory serialization, as described below. Scratch namespace/extent nodes also
+prepare outside their local registry. Other preparation/rollback contexts and
+comprehensive metadata admission remain separate work. Factory and ordinary rollback
 contexts inherited from callers, including enclosing IPC/IRQ holds, remain
 separate qualification; no new unlocked interval or root lease is introduced.
 
@@ -127,6 +128,25 @@ Containing IPC/IRQ/destructor contexts retain separate qualification.
 See the [mapping storage follow-up](../reports/audits/2026-10-25-security-memory-mapping-storage.md) for rejection, revalidation,
 heap-held publication and guarded uncertainty controls. Bounded snapshot size,
 count limits and serialized controls supply no sustained-pressure fairness proof.
+
+## Scratch namespace and extent storage
+
+Scratch now uses a prepared namespace node plus one prepared node per live
+extent. Its original root owner stays retained while factories leave the
+scratch registry; MMIO also keeps its existing descriptor claim while leaving
+`DEVICES`. Captured namespace generation and current first fit revalidate before
+publication. Losing candidates finish explicitly after local guards; partial
+abandonment retains all fields. No allocating namespace insertion, extent-vector
+growth or silent generation replacement remains.
+
+Exact release detaches its original extent, then frees it after scratch unlock.
+Whole-root sealing transfers the complete namespace/extent nodes in the existing
+metadata/root receipt through final invalidation. Rejection/abandonment retains
+all fields; confirmed release disposes nodes after local guards before root
+backing/slot completion. This adds no recovery family or retry proof. Scalar
+ranges still depend on the containing mapping/close owner; they are not allocation
+nonces. Raw serialized fixture and broader outer contexts remain unqualified.
+See [scratch admission](scratch-admission.md) and [evidence](../reports/audits/2026-10-25-security-scratch-storage.md).
 
 ## Complete retirement owner
 
