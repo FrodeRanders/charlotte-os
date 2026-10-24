@@ -430,3 +430,12 @@ Connection and memory reply source qualification follows ordinary visibility
 lookup rather than visiting the global IPC registries for qualification.
 Existing explicit source-close claims and root leases still protect delivered sources through split-phase loan cleanup.
 See the [connection delivery report](../reports/audits/2026-10-06-security-connection-delivery.md).
+
+Memory payload retirement now uses typed `detach` / `detach_for_teardown` owners.
+The teardown form preserves the existing non-staged predicate, including an
+escrowed source when the containing close already owns its payload proof. It
+returns the exact `RetiredRecord` instead of disposing it under memory
+serialization. Memory capability/namespace nodes retain that owner through
+post-guard payload disposal; final backing destruction also retains it through
+physical completion. This changes metadata custody, not teardown admission,
+physical proof or recovery/replay permission. See [memory capability storage](memory-object-storage.md#capability-and-namespace-records).

@@ -378,8 +378,12 @@ Source, tests, and repository history remain authoritative.
         nodes now prepare fallibly before source escrow and relink at commit;
         confirmed cleanup carries borrower and exact authority past the memory
         guard, freeing the borrower node before original authority admission.
-        Target memory-capability and namespace maps remain allocating after
-        authority publication.
+        Memory-capability and namespace nodes now also prepare before
+        publication; complete mixed commit relinks all payloads without heap work.
+        Retirement carries payload/authority nodes in the existing source, loan,
+        namespace or complete object receipt through post-guard disposal.
+        Mapping storage, broader factories/destructors and aggregate metadata
+        admission remain open.
     \item \textbf{Cross-machine Raft boundary:} two TCG guests share a private
         QEMU LAN (stream backend on AArch64, socket backend on x86-64); the
         reliable-message frame transport and remote Raft peer routing are

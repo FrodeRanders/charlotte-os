@@ -17,7 +17,7 @@ pub(super) fn run() {
     crate::logln!(
         "[memory borrower storage] 128 pre-escrow rejections, 64 unused cancellations, 64 \
          heap-held two-reader relinks/detaches and 32 reader-preserving revocation/namespace \
-         closes passed; capability/namespace payload maps remain separate"
+         closes passed; borrower cancellation keeps storage before authority refund"
     );
 }
 

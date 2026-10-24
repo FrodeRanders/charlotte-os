@@ -454,7 +454,9 @@ fn test_detached_backing(create: &mut impl FnMut(&str) -> usize) {
         assert!(info(asid, cap).unwrap().mapped);
         unmap(asid, cap).unwrap();
         let before = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+        let authority = crate::capability::node_admission_used();
         let retired = try_retire_cap(asid, cap).unwrap();
+        assert_eq!(crate::capability::node_admission_used(), authority);
         assert_eq!(info(asid, cap), Err(MemoryObjectError::UnknownCapability));
         assert_eq!(budget::used(handle), amount(pages as u64));
         assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), before);
@@ -466,6 +468,7 @@ fn test_detached_backing(create: &mut impl FnMut(&str) -> usize) {
         assert_eq!(budget::used(successor_handle), budget::Amount::default());
         assert_eq!(budget::used(handle), amount(pages as u64));
         let before = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+        let detached_authority = crate::capability::node_admission_used();
         if abandon {
             let registry = MEMORY_OBJECTS.lock();
             let heap = crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
@@ -474,10 +477,12 @@ fn test_detached_backing(create: &mut impl FnMut(&str) -> usize) {
             drop(registry);
             assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), before);
             assert_eq!(budget::used(handle), amount(1));
+            assert_eq!(crate::capability::node_admission_used(), detached_authority);
         } else {
             retired.release_observed(assert_backing_release_unlocked).unwrap();
             assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), before + pages);
             assert_eq!(budget::used(handle), budget::Amount::default());
+            assert_eq!(crate::capability::node_admission_used().0, detached_authority.0 - 1);
         }
         assert_eq!(budget::used(successor_handle), budget::Amount::default());
         close_test_address_space(successor).unwrap();

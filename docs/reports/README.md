@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Memory capability and namespace storage](audits/2026-10-24-security-memory-capability-storage.md) — Prepared payload publication and complete paired metadata retirement through existing cleanup owners.
+
 - [Read-loan borrower storage](audits/2026-10-24-security-memory-borrower-storage.md) — Fallible preparation before source escrow and paired borrower/authority retirement after proof.
 
 - [Memory-object record storage](audits/2026-10-24-security-memory-object-storage.md) — Prepared global records and complete backing/node retirement before original charge refund.

@@ -1,5 +1,5 @@
-//! Serialized ABI fixtures bracket authority iteration/publication with heap held.
-//! Memory payload-map insertion follows with heap available and remains separate.
+//! Serialized ABI fixtures hold the heap through complete mixed publication,
+//! including namespace, payload, object and borrower-node relinking.
 use super::*;
 use crate::{
     capability::{
@@ -41,7 +41,7 @@ pub(super) fn run() {
     crate::logln!(
         "[IPC borrowed publication] empty and 257-member mixed authority batches with heap held; \
          late transfer/extra namespace rejection preserved every destination/source, cancellation \
-         restored baselines; payload-map allocation remains separate"
+         restored baselines; complete mixed commit including payloads needs no heap"
     );
 }
 
@@ -63,11 +63,10 @@ fn maximum() {
     let ids = extras.each_ref().map(capability::Reservation::identity);
     let irq = crate::cpu::isa::lp::ops::get_int_state();
     let [a, b] = &mut extras;
-    commit_transfers_with_delivery_using(&mut transfers, &mut [a, b], true, |transfers, extra| {
+    {
         let _heap = PRIMARY_ALLOCATOR.lock();
-        publish_transfer_authority(transfers, extra)
-    })
-    .unwrap();
+        commit_transfers_with_delivery(&mut transfers, &mut [a, b], true).unwrap();
+    }
     assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
     for &id in &ids {
         assert!(capability::contains(target.id(), id, ObjectKind::Ipc));
@@ -142,18 +141,13 @@ fn rejected_tail(retire_extra: bool) {
     let admitted = capability::node_admission_used();
     capability::retire_address_space(late.id());
     let [a, b] = &mut extras;
-    assert_eq!(
-        commit_transfers_with_delivery_using(
-            &mut transfers,
-            &mut [a, b],
-            true,
-            |transfers, extra| {
-                let _heap = PRIMARY_ALLOCATOR.lock();
-                publish_transfer_authority(transfers, extra)
-            }
-        ),
-        Err(MemoryObjectError::AddressSpaceMissing)
-    );
+    {
+        let _heap = PRIMARY_ALLOCATOR.lock();
+        assert_eq!(
+            commit_transfers_with_delivery(&mut transfers, &mut [a, b], true),
+            Err(MemoryObjectError::AddressSpaceMissing)
+        );
+    }
     assert_eq!(capability::node_admission_used(), admitted);
     for (index, transfer) in transfers.iter().enumerate() {
         assert!(!transfer.committed);

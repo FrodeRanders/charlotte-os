@@ -12,10 +12,10 @@ Publication only relinks the prepared object node. Cancelled preparations leave
 identity gaps; identities never wrap, reset or recycle. Checked exhaustion
 returns `ResourceLimit` before publication.
 
-This removes global object-record allocation after authority mutation. Target
-memory-capability maps, namespace creation and mapping
-records retain their separate allocating boundaries. Memory publication is not
-yet fully fallible or wholly allocation-free. Factory and ordinary rollback
+Memory-capability and namespace records also use prepared nodes, as described
+below. Mixed memory/IPC commit performs no allocation or node disposal after
+preparation. Mapping records and other preparation/rollback contexts remain
+separate allocating boundaries. Factory and ordinary rollback
 contexts inherited from callers, including enclosing IPC/IRQ holds, remain
 separate qualification; no new unlocked interval or root lease is introduced.
 
@@ -41,9 +41,51 @@ release explicitly drains any remaining borrower nodes before object-node free
 and original backing refund. Failed physical release retains the whole object.
 
 The [borrower storage follow-up](../reports/audits/2026-10-24-security-memory-borrower-storage.md) records native controls and the
-remaining capability/namespace-map boundaries. Shared capability counts bound
+subsequently corrected capability/namespace-map boundary. Shared capability counts bound
 admitted loans; this adds no separate metadata-byte or aggregate principal
 ceiling. Existing containing IPC/IRQ/destructor contexts remain separate work.
+
+## Capability and namespace records
+
+Every direct allocation, copy, move and loan prepares a capability payload node
+and a namespace candidate after exact shared-authority reservation. Both factories
+run outside `MEMORY_OBJECTS`, before backing allocation or source escrow; copies
+retain their already acquired source pin. The existing containing operation owns
+the complete unused prefix. Namespace candidates bind the captured root generation;
+validation rejects a different generation before shared publication. A missing
+namespace may publish its candidate; an existing exact namespace keeps the unused
+candidate in the preparation until ordinary post-guard disposal. Empty live
+namespaces remain until existing root cleanup.
+
+Publication relinks both prepared node types. No memory capability/namespace
+`BTreeMap` insertion remains. Complete mixed batch validation, authority mutation,
+object/borrower/capability/namespace insertion and source-payload extraction now
+run with the heap held in the serialized maximum-batch control. This qualifies
+commit, not all preparation factories, source-escrow cleanup or outer contexts.
+
+Detached capability records pair their payload node and exact shared authority.
+Explicit post-registry disposal frees the payload node before authority metadata
+and its original count refund. Moves keep the detached source payload in their
+existing `PreparedSource`, disposing it before the same `SourceEscrow` releases
+its retired authority. Loan cleanup pairs the full capability record with its
+borrower node; write-loan cleanup carries the same payload/authority owner.
+
+Direct close and final-pin object destruction retain capability records in the
+complete object/backing receipt through physical completion. Failure/abandonment
+retains these nodes and their original authority charges with backing, without
+retry custody. Namespace cleanup detaches its complete namespace node and pairs
+remaining authority in place, then explicitly drains records and frees the node
+after memory unlock. No snapshot, metadata ticket or recovery registry is added.
+
+Unused read-borrower storage precedes destination preparation in the containing
+transfer's field order. Cancellation frees that unused node and destination
+storage before the destination reservation refunds. Successful publication keeps
+any unused namespace candidate for ordinary containing-owner disposal; it has no
+separate metadata-byte admission. Broader factory/destructor and IPC/IRQ contexts
+remain unqualified. Shared capability counts and root counts are not a complete
+kernel metadata-byte or principal budget.
+
+The [capability storage follow-up](../reports/audits/2026-10-24-security-memory-capability-storage.md) records evidence and limits.
 
 ## Complete retirement owner
 

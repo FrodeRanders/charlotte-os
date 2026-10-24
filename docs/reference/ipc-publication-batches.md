@@ -33,12 +33,12 @@ its call authority, install its admitted payload nodes and enqueue without heap
 allocation. This does not include initial preparation, receive or reply handling.
 
 Mixed memory payload installation follows authority publication under the same
-memory registry hold, with IPC held by RPC callers. The global memory-object map now relinks [prepared records](memory-object-storage.md),
-including copies. Target memory-capability maps, namespace creation and
-read-loan bookkeeping still use allocating `BTreeMap` updates. This batch removes the temporary authority
-vector; memory publication is not yet fully fallible or fully allocation-free.
-The heap-held mixed test brackets only authority iteration/publication, then
-releases the heap before those payload updates.
+memory registry hold, with IPC held by RPC callers. Global object, read-borrower,
+memory-capability and namespace maps now relink [prepared records](memory-object-storage.md).
+The heap-held maximum mixed test brackets complete validation, authority commit,
+source extraction and all payload updates. It retains unused candidates and
+detached source metadata until later ordinary post-guard disposal. Preparation,
+source-escrow rollback and wider caller/destructor contexts remain separate work.
 
 ## Ownership and rejection
 
@@ -54,6 +54,14 @@ See the [audit evidence](../reports/audits/2026-10-24-security-ipc-borrowed-publ
 for complete heap-held scalar commits, the 257-member mixed authority control,
 late extra/transfer rejection and ordinary rollback. These serialized checks
 preserve IRQ state and original accounting; they do not prove arbitrary races,
-allocator exhaustion or sustained fairness. Other guarded factories, memory
-payload storage, wider caller contexts, aggregate byte/principal admission and
+allocator exhaustion or sustained fairness. Other guarded factories, mapping
+storage, wider caller contexts, aggregate byte/principal admission and
 historical failures remain SEC-07/18 work.
+
+The [memory capability storage follow-up](memory-object-storage.md#capability-and-namespace-records)
+prepares the remaining memory payload and namespace nodes before commit. The
+maximum mixed fixture now holds the heap through the complete commit, including
+payload installation and source extraction; the older authority-only bracketing
+adapter is removed. Unused namespace candidates and detached source metadata
+remain with existing preparations until post-guard disposal. This does not
+qualify all factories, destructors, outer contexts or sustained pressure.

@@ -680,6 +680,16 @@ pub(crate) fn remove_for_teardown(
     remove_with_state(owner, cap, kind, |state| state != EntryState::Staged)
 }
 
+/// Payload teardown retains the exact charged authority node until its own
+/// detached metadata has been disposed outside subsystem guards.
+pub(crate) fn detach_for_teardown(
+    owner: AddressSpaceId,
+    cap: ObjectCapability,
+    kind: ObjectKind,
+) -> Option<RetiredRecord> {
+    retire_record(owner, cap, kind, |state| state != EntryState::Staged)
+}
+
 fn remove_with_state(
     owner: AddressSpaceId,
     cap: ObjectCapability,

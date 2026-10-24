@@ -46,11 +46,13 @@ const PAGE_SIZE: usize = 4096;
 const RETIREMENT_FRAME_BATCH: usize = 16;
 
 mod borrower_storage_tests;
+mod cap_storage;
 mod mapping_tests;
 mod storage_tests;
 pub(crate) fn test_object_storage() {
     storage_tests::run();
     borrower_storage_tests::run();
+    cap_storage::tests::run();
 }
 mod publication_tests;
 pub(crate) fn test_publication_batch() {
@@ -147,6 +149,7 @@ struct MemoryObject {
     // This exact transfer's source owns its list and deferred-disposal node.
     close_interest: Option<close::Source>,
     transfer_root: Option<super::AddressSpaceHandle>,
+    retired_caps: cap_storage::RetiredCapabilities,
 }
 
 type ObjectStorage = PreparedEntry<(MemoryObjectId, MemoryObject)>;
@@ -260,6 +263,7 @@ impl ChargedFrames {
                         release_borrower(borrowers.take(&asid).unwrap());
                     }
                 }
+                object.retired_caps.release();
                 charge = Some(object.charge);
             });
             // Physical completion, payload and actual node free precede refund.
@@ -292,6 +296,7 @@ impl ChargedFrames {
 #[must_use]
 pub(crate) struct RetiredMemory {
     backing: Option<ChargedFrames>,
+    metadata: cap_storage::RetiredCapabilities,
 }
 
 impl core::fmt::Debug for RetiredMemory {
@@ -318,7 +323,9 @@ impl RetiredMemory {
     fn release_observed(mut self, observe: impl FnOnce()) -> Result<(), MemoryObjectError> {
         // A panicking observer still leaves the backing behind this owner.
         observe();
-        self.backing.take().map_or(Ok(()), ChargedFrames::release)
+        self.backing.take().map_or(Ok(()), ChargedFrames::release)?;
+        self.metadata.release();
+        Ok(())
     }
 }
 
@@ -453,7 +460,7 @@ struct Borrower {
     cap: MemoryObjectCap,
     // Confirmed revocation/namespace cleanup pairs detached authority with the
     // original borrower node. Its count cannot return before this node is freed.
-    authority: Option<crate::capability::RetiredRecord>,
+    authority: Option<cap_storage::RetiredCapability>,
 }
 
 type BorrowerStorage = PreparedEntry<(AddressSpaceId, Borrower)>;
@@ -474,11 +481,7 @@ fn detach_borrower_authority(
     (asid, borrower): &mut (AddressSpaceId, Borrower),
 ) {
     assert!(borrower.authority.is_none());
-    assert!(registry.caps.get_mut(asid).unwrap().caps.remove(&borrower.cap).is_some());
-    borrower.authority = Some(
-        crate::capability::detach(*asid, borrower.cap, crate::capability::ObjectKind::Memory)
-            .expect("borrower capability was absent from unified table"),
-    );
+    borrower.authority = Some(cap_storage::retire(registry, *asid, borrower.cap));
 }
 
 impl LendState {
@@ -544,26 +547,15 @@ struct MemoryCap {
 
 #[derive(Debug)]
 struct AddressSpaceCaps {
-    caps: BTreeMap<MemoryObjectCap, MemoryCap>,
-}
-
-impl AddressSpaceCaps {
-    fn new() -> Self {
-        Self {
-            caps: BTreeMap::new(),
-        }
-    }
-
-    fn insert(&mut self, id: MemoryObjectCap, cap: MemoryCap) {
-        assert!(self.caps.insert(id, cap).is_none(), "memory payload identity reused");
-    }
+    handle: super::AddressSpaceHandle,
+    caps: cap_storage::Caps,
 }
 
 #[derive(Debug)]
 struct MemoryObjectRegistry {
     next_object: MemoryObjectId,
     objects: AdmittedMap<MemoryObjectId, MemoryObject>,
-    caps: BTreeMap<AddressSpaceId, AddressSpaceCaps>,
+    caps: AdmittedMap<AddressSpaceId, AddressSpaceCaps>,
 }
 
 impl MemoryObjectRegistry {
@@ -571,7 +563,7 @@ impl MemoryObjectRegistry {
         Self {
             next_object: 1,
             objects: AdmittedMap::new(),
-            caps: BTreeMap::new(),
+            caps: AdmittedMap::new(),
         }
     }
 
@@ -579,10 +571,6 @@ impl MemoryObjectRegistry {
         let id = self.next_object;
         self.next_object = id.checked_add(1).ok_or(MemoryObjectError::ResourceLimit)?;
         Ok(id)
-    }
-
-    fn caps_for_mut(&mut self, asid: AddressSpaceId) -> &mut AddressSpaceCaps {
-        self.caps.entry(asid).or_insert_with(AddressSpaceCaps::new)
     }
 
     fn lookup(
@@ -625,7 +613,8 @@ pub fn allocate(owner: AddressSpaceId, pages: usize) -> Result<MemoryObjectCap, 
     validate_address_space(owner)?;
     let identity =
         super::current_address_space_handle(owner).ok_or(MemoryObjectError::AddressSpaceMissing)?;
-    let reservation = admit_capability(owner, identity)?;
+    let mut reservation =
+        cap_storage::Preparing::new(admit_capability(owner, identity)?, identity)?;
 
     let staged = allocate_frames(identity, pages)?;
 
@@ -643,8 +632,10 @@ pub fn allocate(owner: AddressSpaceId, pages: usize) -> Result<MemoryObjectCap, 
     if !staged.charge.as_ref().unwrap().active() {
         return Err(MemoryObjectError::AddressSpaceMissing);
     }
+    reservation.validate(&registry)?;
     let object_id = registry.allocate_object_id()?;
-    let cap = reservation.publish().map_err(capability_error)?;
+    reservation.publish()?;
+    let cap = reservation.identity();
     let (storage, frames, charge) = staged.into_parts();
     registry.objects.insert(
         storage,
@@ -662,10 +653,11 @@ pub fn allocate(owner: AddressSpaceId, pages: usize) -> Result<MemoryObjectCap, 
             destroy_when_unpinned: false,
             close_interest: None,
             transfer_root: None,
+            retired_caps: cap_storage::RetiredCapabilities::new(),
         },
     );
-    registry.caps_for_mut(owner).insert(
-        cap,
+    reservation.install(
+        &mut registry,
         MemoryCap {
             object: object_id,
             rights: MemoryObjectRights::ALL,
@@ -1233,10 +1225,11 @@ fn unmap_serialized(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), Me
 pub(crate) struct PreparedTransfer {
     target: AddressSpaceId,
     target_handle: super::AddressSpaceHandle,
-    destination: crate::capability::Reservation,
-    // Read loans retain fallible borrower storage before source escrow. Other
-    // modes need no borrower node. The containing owner cancels unused storage.
+    // Read loans retain fallible borrower storage before source escrow. Keep
+    // this before destination so cancellation frees the unused node before
+    // dropping the destination's original admission reservation.
     borrower_storage: Option<BorrowerStorage>,
+    destination: cap_storage::Preparing,
     payload: PreparedPayload,
     committed: bool,
 }
@@ -1247,6 +1240,7 @@ struct PreparedSource {
     cap: MemoryObjectCap,
     entry: MemoryCap,
     escrow: Option<crate::capability::SourceEscrow>,
+    retired_payload: Option<cap_storage::RetiredCapability>,
     _pin: ScopedCopyPin,
 }
 
@@ -1350,6 +1344,9 @@ impl Drop for PreparedTransfer {
             // Successful move publication carries the detached authority node
             // in this exact source owner through payload completion and pin
             // release. Only now may its original metadata/charge be disposed.
+            if let Some(payload) = source.retired_payload.take() {
+                payload.release();
+            }
             if let Some(escrow) = source.escrow.as_mut() {
                 escrow.finish_retired();
             }
@@ -1421,7 +1418,8 @@ fn prepare_source_transfer_with(
     // Reserve the exact destination and prepare scalar borrower storage before
     // entering memory serialization. Complete source/target validation below
     // precedes escrow; ordinary rejection drops this unused prefix after unlock.
-    let destination = admit_capability(target, target_handle)?;
+    let destination =
+        cap_storage::Preparing::new(admit_capability(target, target_handle)?, target_handle)?;
     // Shared capability admission bounds live borrower records. Reject a
     // missing node before changing source authority or taking its pin.
     let borrower_storage = if loan == Some(false) {
@@ -1472,6 +1470,7 @@ fn prepare_source_transfer_with(
         cap,
         entry,
         escrow: Some(escrow),
+        retired_payload: None,
         _pin: ScopedCopyPin(Some(CopyPin {
             object: entry.object,
             frames: Vec::new(),
@@ -1602,7 +1601,7 @@ impl crate::capability::PublicationBatch for TransferPublications<'_, '_> {
                     } => None,
                 };
                 Publication {
-                    destination: &mut transfer.destination,
+                    destination: transfer.destination.authority(),
                     source,
                 }
             }))
@@ -1625,37 +1624,19 @@ fn commit_transfers_with_delivery(
     additional: &mut [&mut crate::capability::Reservation],
     delivery_pending: bool,
 ) -> Result<(), MemoryObjectError> {
-    commit_transfers_with_delivery_using(
-        transfers,
-        additional,
-        delivery_pending,
-        publish_transfer_authority,
-    )
-}
-
-// The serialized fixture brackets only authority publication with a held heap.
-// Production uses the same borrowed helper without an injected callback.
-fn commit_transfers_with_delivery_using(
-    transfers: &mut [PreparedTransfer],
-    additional: &mut [&mut crate::capability::Reservation],
-    delivery_pending: bool,
-    publish: impl FnOnce(
-        &mut [PreparedTransfer],
-        &mut [&mut crate::capability::Reservation],
-    ) -> Result<(), MemoryObjectError>,
-) -> Result<(), MemoryObjectError> {
     // Check the complete shape before registry access. The borrowed batch
     // needs no storage proportional to its length and admits no new authority.
     transfers.len().checked_add(additional.len()).ok_or(MemoryObjectError::ResourceLimit)?;
     // Scalar-only calls/replies need no memory-registry serialization.
     if transfers.is_empty() {
-        return publish(transfers, additional);
+        return publish_transfer_authority(transfers, additional);
     }
     let mut registry = MEMORY_OBJECTS.lock();
     for transfer in transfers.iter() {
         if transfer.committed || !super::budget::accepting(transfer.target_handle) {
             return Err(MemoryObjectError::AddressSpaceMissing);
         }
+        transfer.destination.validate(&registry)?;
         let (source, loan) = match &transfer.payload {
             PreparedPayload::Copy {
                 frames,
@@ -1696,7 +1677,7 @@ fn commit_transfers_with_delivery_using(
         }
         validate_source_transfer(object, transfer.target, loan, true)?;
     }
-    publish(transfers, additional)?;
+    publish_transfer_authority(transfers, additional)?;
     // The registries serialize all verified payloads. No fallible work follows
     // authority publication; application memory lookup waits for this guard.
     for transfer in transfers.iter_mut() {
@@ -1706,7 +1687,15 @@ fn commit_transfers_with_delivery_using(
                 source,
                 rights,
             } => {
-                registry.caps.get_mut(&source.owner).unwrap().caps.remove(&source.cap);
+                source.retired_payload = Some(
+                    registry
+                        .caps
+                        .get_mut(&source.owner)
+                        .unwrap()
+                        .caps
+                        .take(&source.cap)
+                        .expect("prepared source payload missing"),
+                );
                 registry.objects.get_mut(&source.entry.object).unwrap().owner = transfer.target;
                 MemoryCap {
                     object: source.entry.object,
@@ -1737,6 +1726,7 @@ fn commit_transfers_with_delivery_using(
                         destroy_when_unpinned: false,
                         close_interest: None,
                         transfer_root: None,
+                        retired_caps: cap_storage::RetiredCapabilities::new(),
                     },
                 );
                 MemoryCap {
@@ -1780,7 +1770,7 @@ fn commit_transfers_with_delivery_using(
                 }
             }
         };
-        registry.caps_for_mut(transfer.target).insert(target_cap, entry);
+        transfer.destination.install(&mut registry, entry);
         transfer.committed = true;
     }
     Ok(())
@@ -1904,7 +1894,8 @@ fn prepare_copy_with(
     if !super::budget::accepting(source_handle) {
         return Err(MemoryObjectError::AddressSpaceMissing);
     }
-    let destination = admit_capability(target, target_handle)?;
+    let destination =
+        cap_storage::Preparing::new(admit_capability(target, target_handle)?, target_handle)?;
     let source = copy_pin.0.as_ref().unwrap();
     // This owner retains the private backing until destination publication.
     // Cancellation never consults a receiver-controlled numeric handle.
@@ -2072,20 +2063,21 @@ fn prepare_close_cap(
         }
     };
 
-    registry.caps.get_mut(&asid).unwrap().caps.remove(&cap).expect("validated memory cap missing");
-
+    let retired_cap = cap_storage::retire(&mut registry, asid, cap);
+    let mut metadata = cap_storage::RetiredCapabilities::new();
     let backing = if should_destroy {
-        let node =
-            registry.objects.take(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
+        let mut node =
+            registry.objects.take(&cap_entry.object).expect("validated memory object missing");
+        node.value_mut().1.retired_caps.push(retired_cap);
         Some(ChargedFrames::retired(node))
     } else {
+        metadata.push(retired_cap);
         None
     };
-    let revoked = crate::capability::remove(asid, cap, crate::capability::ObjectKind::Memory);
-    assert!(revoked, "memory payload capability was absent from unified table");
     drop(registry);
     Ok(RetiredMemory {
         backing,
+        metadata,
     })
 }
 
@@ -2404,21 +2396,13 @@ pub(crate) fn close_address_space_fixture(asid: AddressSpaceId) {
     for borrower in borrowers.iter_mut() {
         detach_borrower_authority(&mut registry, borrower);
     }
-    if let Some(caps) = registry.caps.remove(&asid) {
-        for cap in caps.caps.keys() {
-            assert!(
-                crate::capability::remove_for_teardown(
-                    asid,
-                    *cap,
-                    crate::capability::ObjectKind::Memory
-                ),
-                "memory payload capability was absent from unified table"
-            );
-        }
-    }
+    let namespace = cap_storage::retire_namespace(&mut registry, asid);
     drop(registry);
     while let Some(borrower) = borrowers.pop() {
         release_borrower(borrower);
+    }
+    if let Some(namespace) = namespace {
+        namespace.release();
     }
 }
 
@@ -2465,25 +2449,6 @@ fn validate_address_space(asid: AddressSpaceId) -> Result<(), MemoryObjectError>
         .map_err(|_| MemoryObjectError::AddressSpaceMissing)
 }
 
-fn remove_caps_for_object(registry: &mut MemoryObjectRegistry, object_id: MemoryObjectId) {
-    for (asid, caps) in &mut registry.caps {
-        caps.caps.retain(|cap_id, cap| {
-            if cap.object != object_id {
-                return true;
-            }
-            assert!(
-                crate::capability::remove_for_teardown(
-                    *asid,
-                    *cap_id,
-                    crate::capability::ObjectKind::Memory,
-                ),
-                "memory payload capability was absent from unified table"
-            );
-            false
-        });
-    }
-}
-
 /// Remove an object whose owner has exited once no DMA or copy operation can
 /// still access its frames. The returned frames must be freed after releasing
 /// the registry lock so the two IRQ-masking locks are never nested here.
@@ -2501,8 +2466,10 @@ fn take_deferred_frames_if_unpinned(
     if !should_destroy {
         return None;
     }
-    remove_caps_for_object(registry, object_id);
-    registry.objects.take(&object_id).map(ChargedFrames::retired)
+    let metadata = cap_storage::retire_object(registry, object_id);
+    let mut object = registry.objects.take(&object_id).expect("retiring memory object missing");
+    object.value_mut().1.retired_caps.append(metadata);
+    Some(ChargedFrames::retired(object))
 }
 
 fn release_copy_pin_locked(

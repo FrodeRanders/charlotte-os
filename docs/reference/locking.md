@@ -411,3 +411,21 @@ remaining borrower nodes only after physical completion. No lifecycle acquisitio
 new root/pin or recovery custody is added. Enclosing IPC/IRQ/destructor contexts
 and remaining capability/namespace/mapping factories are unqualified. See
 [borrower storage](memory-object-storage.md#read-loan-records).
+
+Memory capability payloads and namespace candidates now allocate before
+`MEMORY_OBJECTS`, after captured shared reservation. Existing direct/copy/source
+owners retain every unused candidate. Batch commit validates namespace generation
+before authority publication, then only relinks nodes; it neither allocates nor
+disposes unused storage. Ordinary containing-owner disposal remains after local
+guards. Source-escrow admission/rollback and wider enclosing IPC/IRQ/destructor
+contexts remain separate.
+
+Capability retirement pairs payload and exact authority under memory serialization.
+Direct/final-pin destruction carries those nodes in the complete object/backing
+owner through physical proof. Loan and namespace cleanup retain their corresponding
+complete owners. Payload/namespace-node deallocation and original authority refund
+leave the memory guard; source moves free their detached payload before the
+existing escrow's retired authority. Guarded abandonment retains all detached
+fields without allocator entry. Lookup/insertion and repeated object/capability
+scans are linear; count bounds do not qualify hold time or pressure fairness.
+See [memory capability storage](memory-object-storage.md#capability-and-namespace-records).

@@ -1301,3 +1301,18 @@ checks are rerun. Models/configurations are unchanged. Concrete node allocation,
 deallocation/refund order, containing destructors and registry/heap/IRQ contexts
 are native/host qualification, without executable refinement or pressure proof.
 The earlier full-suite checkpoint remains separate.
+
+## Memory capability and namespace storage
+
+The [capability storage batch](../reports/audits/2026-10-24-security-memory-capability-storage.md) prepares both remaining payload node
+types before authority mutation. Commit preserves existing atomic publication,
+hidden-delivery and source-escrow projections while relinking all memory nodes.
+Existing source/borrower/namespace/object cleanup owners now retain detached
+payload plus exact authority through post-guard payload-before-authority disposal;
+failed physical release retains original backing and authority admission.
+
+Focused publication/transaction/root-retirement safe and negative configurations
+are rerun without model/configuration changes. Concrete namespace candidates,
+field destruction order, node deallocation/refund and heap-held complete commit
+are native/host qualification, without executable refinement or allocator/IRQ/
+pressure fairness proof. The previous full-suite checkpoint remains separate.

@@ -244,15 +244,7 @@ impl LoanRevocation {
             detach_borrower_authority(&mut registry, borrower.value_mut());
             None
         } else {
-            registry.caps.get_mut(&self.borrower).unwrap().caps.remove(&self.borrower_cap);
-            Some(
-                crate::capability::detach(
-                    self.borrower,
-                    self.borrower_cap,
-                    crate::capability::ObjectKind::Memory,
-                )
-                .expect("borrower capability was absent from unified table"),
-            )
+            Some(cap_storage::retire(&mut registry, self.borrower, self.borrower_cap))
         };
         drop(registry);
         if let Some(borrower) = retired_borrower {

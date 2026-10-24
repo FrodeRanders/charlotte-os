@@ -454,6 +454,17 @@ existing proofs. Capability/namespace and mapping maps, byte/principal ceilings,
 wider IRQ/guard/destructor contexts and pressure remain open. This advances
 C05/C06/C18 and R7-2 without changing finding dispositions.
 
+The [memory capability/namespace storage batch](../reports/audits/2026-10-24-security-memory-capability-storage.md) prepares both node types
+fallibly after exact shared admission, before memory serialization and publication.
+Complete mixed commit now relinks all memory payloads with the heap held.
+Detached payload/authority nodes remain in the existing source, borrower,
+namespace or complete object/backing owners through post-guard disposal; failed
+physical release retains both original backing and authority charges. Ordinary
+read-loan cancellation now drops unused borrower storage before destination
+refund. Mapping/scratch metadata, source-escrow and wider caller/IRQ/destructor
+contexts, byte/principal ceilings and sustained pressure remain open. This
+advances C05/C06/C18 and R7-2 without a finding disposition change.
+
 SEC-07 remains partial until all of the following deliverables are accepted:
 
 The [telemetry snapshot follow-up](../reports/audits/2026-10-18-telemetry-snapshot-preparation.md)

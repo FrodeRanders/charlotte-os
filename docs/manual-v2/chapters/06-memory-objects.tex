@@ -78,8 +78,9 @@ creating fresh headroom.
 Global object-record storage is prepared fallibly with private backing after
 page/object admission. Direct allocation and copies claim a nonreused kernel
 object identity before authority publication; publication only relinks prepared
-storage. Cancellation leaves identity gaps. Target memory-capability and
-read-loan maps retain their separate allocating boundaries.
+storage. Cancellation leaves identity gaps. Read-loan, memory-capability and
+namespace records now also prepare before mutation and relink at publication.
+Mapping records retain their separate allocating boundary.
 
 Retirement keeps the complete detached object node in the existing backing
 receipt, with its original frame vector, charge and metadata. Physical release
@@ -89,6 +90,24 @@ charge refund. Inert backing fields retain all state after interruption or
 failure, without physical retry. Ordinary rollback and wider caller contexts
 retain their separate qualification. See
 \repofile|docs/reference/memory-object-storage.md|.
+
+\paragraph{Capability and namespace storage.}
+Direct allocation, copies, moves and loans now prepare both payload and namespace
+nodes fallibly after exact shared authority reservation. Factories leave memory
+serialization; captured namespace generation is checked before publication.
+Commit only relinks prepared nodes. Unused namespace candidates remain with the
+containing preparation for post-guard disposal. Ordinary loan cancellation drops
+unused borrower storage before its destination reservation refunds.
+
+Retired capability nodes retain their exact authority. Explicit disposal frees
+payload metadata before authority metadata and original admission. Moves carry
+the detached source payload with the same source escrow; loan cleanup pairs the
+full payload/authority node with its borrower. Direct close and final-pin cleanup
+retain these nodes in the complete object/backing receipt through physical proof.
+Failed release retains original backing and authority charges. Namespace cleanup
+detaches and drains its complete node after memory unlock, without a snapshot or
+new recovery ticket. Mapping metadata, source-escrow and wider factory/destructor/
+IRQ contexts, general metadata-byte admission and sustained pressure remain open.
 
 These are initial kernel admission policies, independent of telemetry filtering
 and placement feedback. Signed deployment fields and a userspace policy API for

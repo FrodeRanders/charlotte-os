@@ -269,18 +269,13 @@ pub(crate) fn close_with(
         detach_borrower_authority(&mut registry, borrower.value_mut());
         detached.push(borrower);
     }
-    if let Some(caps) = registry.caps.remove(&handle.id()) {
-        for cap in caps.caps.keys() {
-            assert!(crate::capability::remove_for_teardown(
-                handle.id(),
-                *cap,
-                crate::capability::ObjectKind::Memory
-            ));
-        }
-    }
+    let namespace = cap_storage::retire_namespace(&mut registry, handle.id());
     drop(registry);
     while let Some(borrower) = detached.pop() {
         release_borrower(borrower);
+    }
+    if let Some(namespace) = namespace {
+        namespace.release();
     }
     Ok(MemoryProgress::Complete(NamespaceMemoryClosed {
         handle,

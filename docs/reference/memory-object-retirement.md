@@ -689,3 +689,14 @@ abandoned revocation retains the complete prior map with its original fence/pin.
 Final backing release drains remaining borrower nodes only after physical
 completion. These are the existing C05/C06/C18 proofs and owners, without new
 custody or retry authority. See [borrower storage evidence](../reports/audits/2026-10-24-security-memory-borrower-storage.md).
+
+Capability and namespace maps now use admitted nodes. Direct close and final-pin
+extraction keep detached capability payload/authority in the complete object
+receipt through physical release. Failed release retains both backing and
+original authority admission; success frees payload nodes before authority refund
+and object-node/backing-charge disposal. Source moves retain payload metadata in
+the existing source transaction until pin completion, then free it before the
+same escrow's retired authority. Loan and namespace cleanup pair their original
+nodes without snapshots or a separate ticket. Namespace storage drains explicitly
+after memory unlock. No new physical proof, recovery custody or retry authority
+is introduced; see [capability storage evidence](../reports/audits/2026-10-24-security-memory-capability-storage.md).

@@ -482,5 +482,10 @@ carry complete retired nodes, without a separate recovery registry or metadata
 ticket. Read-borrower records now also prepare before source escrow and relink
 at publication; confirmed cleanup pairs the original node and detached authority
 through post-registry disposal. See [borrower storage evidence](../reports/audits/2026-10-24-security-memory-borrower-storage.md).
-Memory-capability, namespace and mapping storage remain current candidates.
-Wire formats and runtime ABI are unchanged.
+Memory-capability and namespace maps now also use one prepared-node path for
+all current callers. Mixed commit needs no allocating payload insertion; old
+`BTreeMap` insertion and authority-only test adapters are removed. Detached
+payload/authority metadata stays in existing cleanup owners through explicit
+post-guard disposal. See [capability storage evidence](../reports/audits/2026-10-24-security-memory-capability-storage.md).
+Mapping storage and wider preparation/destructor contexts remain current
+candidates. Wire formats and runtime ABI are unchanged.

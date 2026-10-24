@@ -1174,3 +1174,11 @@ shared authority admission returns. Focused IPC-transaction/root-retirement
 checks retain their existing projections; concrete allocator/destructor/IRQ
 contexts remain native/host qualification. No model/configuration changes or
 new physical/replay authority are introduced.
+
+The [memory capability/namespace storage follow-up](../reports/audits/2026-10-24-security-memory-capability-storage.md) retains the
+existing authority/delivery, rollback and root/charge projections. Native controls
+now hold the heap over complete mixed commit; paired metadata retirement stays
+in existing owners through proof and explicit release. Focused publication,
+transaction and root-retirement configurations are rerun. Concrete allocator,
+field-destructor and IRQ contexts remain native/host qualification; no models,
+physical proofs, recovery custody or replay policy changes.

@@ -104,6 +104,7 @@ fn relinking() {
             destroy_when_unpinned: false,
             close_interest: None,
             transfer_root: None,
+            retired_caps: cap_storage::RetiredCapabilities::new(),
         };
         let id = local.allocate_object_id().unwrap();
         let node = {
