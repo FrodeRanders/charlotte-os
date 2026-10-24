@@ -5,6 +5,8 @@ use super::*;
 type Storage = PreparedEntry<(CapabilityId, AdmittedCapability), Option<record_budget::Charge>>;
 
 struct Resources {
+    captured: Option<(AddressSpaceId, Option<crate::memory::AddressSpaceHandle>)>,
+    preparation: Option<crate::capability::PreparedReservation>,
     authority: Option<crate::capability::Reservation>,
     storage: Option<Storage>,
 }
@@ -17,6 +19,8 @@ pub(super) struct PreparingCapability(ManuallyDrop<Resources>);
 impl PreparingCapability {
     pub(super) fn new() -> Self {
         Self(ManuallyDrop::new(Resources {
+            captured: None,
+            preparation: None,
             authority: None,
             storage: None,
         }))
@@ -36,11 +40,57 @@ impl PreparingCapability {
         owner: AddressSpaceId,
         mut before: impl FnMut(u8) -> Result<(), IpcError>,
     ) -> Result<(), IpcError> {
-        assert!(self.0.authority.is_none() && self.0.storage.is_none());
-        self.0.authority = Some(ipc.reserve_cap(owner)?);
+        // Guarded callers keep their early retirement rejection before factories.
+        ipc.accepting_namespace(owner)?;
+        let identity = ipc.caps.get(&owner).ok_or(IpcError::PermissionDenied)?.address_space;
+        self.prepare_authority_storage(owner, identity)?;
+        self.reserve(ipc)?;
         before(1)?;
-        self.0.storage = Some(Storage::try_new_charged(None).map_err(|_| IpcError::ResourceLimit)?);
+        self.prepare_payload()?;
         before(2)
+    }
+
+    /// The containing transaction retains the exact root while this factory
+    /// runs outside IPC. No live capability identity is admitted here.
+    pub(super) fn prepare_authority_storage(
+        &mut self,
+        owner: AddressSpaceId,
+        identity: Option<crate::memory::AddressSpaceHandle>,
+    ) -> Result<(), IpcError> {
+        assert!(self.0.captured.is_none() && self.0.preparation.is_none());
+        self.0.captured = Some((owner, identity));
+        self.0.preparation = Some(
+            crate::capability::PreparedReservation::try_new(
+                owner,
+                crate::capability::ObjectKind::Ipc,
+                identity,
+            )
+            .map_err(cap_admission_error)?,
+        );
+        Ok(())
+    }
+
+    /// Revalidate the captured IPC namespace before relinking prepared shared
+    /// authority. Rejection leaves unused metadata in this owner for finish.
+    pub(super) fn reserve(&mut self, ipc: &mut IpcRegistry) -> Result<(), IpcError> {
+        assert!(self.0.authority.is_none());
+        let (owner, identity) = self.0.captured.unwrap();
+        if ipc.caps.get(&owner).map(|caps| caps.address_space) != Some(identity) {
+            return Err(IpcError::PermissionDenied);
+        }
+        ipc.accepting_namespace(owner)?;
+        self.0.authority = Some(
+            self.0.preparation.as_mut().unwrap().reserve_captured().map_err(cap_admission_error)?,
+        );
+        Ok(())
+    }
+
+    /// Shared count admission precedes this allocation. The exact-root parent
+    /// owns its reservation through the unlocked interval and final revalidation.
+    pub(super) fn prepare_payload(&mut self) -> Result<(), IpcError> {
+        assert!(self.0.authority.is_some() && self.0.storage.is_none());
+        self.0.storage = Some(Storage::try_new_charged(None).map_err(|_| IpcError::ResourceLimit)?);
+        Ok(())
     }
 
     pub(super) fn identity(&self) -> CapabilityId {
@@ -92,6 +142,9 @@ impl PreparingCapability {
     pub(super) fn finish(mut self) {
         drop(self.0.storage.take());
         drop(self.0.authority.take());
+        if let Some(preparation) = self.0.preparation.take() {
+            preparation.finish();
+        }
     }
 }
 

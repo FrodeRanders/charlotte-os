@@ -108,8 +108,11 @@ entire kernel heap. Separate [IPC record budgets](ipc-record-budgets.md) cover
 connections, retained pending calls and outstanding reply tokens. Separate
 [record budgets](completion-record-budgets.md) cover retained completion objects
 and detached results. Endpoint nodes publish by relinking prepared storage;
-[capability payloads](ipc-capability-storage.md) now do the same. Payload and
-shared-authority factories still run under IPC, before authority mutation. No global allocator-exhaustion injection,
+[capability payloads](ipc-capability-storage.md) now do the same. Endpoint
+shared-authority storage prepares unlocked, admission revalidates/relinks under
+IPC, and private payload allocation leaves IPC again before final publication.
+Other capability callers and the publication-vector factory retain their guarded
+boundaries. No global allocator-exhaustion injection,
 sustained hostile-pressure soak or per-principal aggregate across multiple
 domains is claimed. SEC-07 remains partially implemented; deployment still
 requires the [security audit's restrictions](../reports/audits/2026-10-03-security-remediation.md).
@@ -126,3 +129,9 @@ relinking/FIFO replacement, competing growth/close, hidden-reference retirement
 and guarded abandonment. These are scoped rejection controls. Endpoint lookup,
 insertion and repeated close/reference scans are linear; count limits do not
 qualify worst-case IRQ hold time, contention or sustained pressure fairness.
+
+The [unlocked preparation follow-up](../reports/audits/2026-10-24-security-ipc-unlocked-preparation.md)
+extends the endpoint controls to 640 stage rejections and 64 complete endpoint
+publications with heap held. Its existing root remains live through every
+factory and final publication. Earlier 384-stage results retain their own dated
+checkpoint; quota/classification policies and physical cleanup proofs are unchanged.

@@ -80,8 +80,9 @@ The pending and reply-token maps use shared admitted storage with linear
 lookup/insertion.
 Its count is bounded, but worst-case hold time is not qualified by the serialized
 controls. [Per-capability payload nodes](ipc-capability-storage.md) now prepare
-fallibly before publication, with their factories still under IPC;
-waiter/control-block and vector preparation, byte/principal ceilings and wider
+fallibly before publication. Call/endpoint authority and payload factories now
+leave IPC, as does the call's pending waiter-list factory. Other capability
+callers, publication-vector preparation, byte/principal ceilings and wider
 caller/destructor contexts remain separate work. This is not fully fallible IPC
 publication. See the [pending storage audit](../reports/audits/2026-10-24-security-ipc-pending-storage.md).
 
@@ -179,8 +180,8 @@ resource-limited replies cancelling only their token, not their grant source.
 These count budgets do not bound attachment bytes, all capability kinds,
 observer/list control blocks, weak-only retention, loader/page tables, or the
 entire kernel heap. Per-capability insertion only relinks prepared storage;
-payload/shared-authority factory entry under IPC and namespace-account
-byte/principal admission remain separate boundaries. There is no per-principal aggregate across several domains,
+guarded factories in other capability callers, publication vectors and
+namespace-account byte/principal admission remain separate boundaries. There is no per-principal aggregate across several domains,
 signed override, allocator-failure injection, exhaustive race proof or hostile
 pressure-soak claim. SEC-07 remains partial; the audit's deployment restrictions
 still apply.
@@ -190,3 +191,13 @@ now detach into these existing cleanup owners when the final reference leaves.
 Their original endpoint count follows payload/node disposal after IPC unlock;
 failed loan cleanup still retains its claim. Endpoint preparation and queue
 growth have their own [storage contract](endpoint-budgets.md).
+
+Call preparation now owns shared-authority metadata before IPC admission,
+reserves the captured namespace's shared count under IPC, then leaves before
+allocating its capability payload and pending waiter list. Stage-call only
+revalidates this completed preparation. A full shared namespace rejects before
+payload/list allocation. All ordinary failures dispose the whole prefix after
+local guards, root last; complete abandonment retains it. The same helpers serve
+endpoint creation; other capability callers still use their guarded adapter.
+The memory/authority publication helper's batch vector remains an IPC allocation,
+including scalar-only calls. See [unlocked preparation evidence](../reports/audits/2026-10-24-security-ipc-unlocked-preparation.md).

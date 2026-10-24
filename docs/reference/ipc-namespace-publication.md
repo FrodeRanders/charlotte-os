@@ -47,7 +47,9 @@ requirements remain in force.
 This change covers namespace construction and its local registry disposal. It
 does **not** qualify all IPC factories: [capability payloads](ipc-capability-storage.md)
 now prepare fallibly before authority mutation and publish by relinking, with
-payload and shared-authority factories still under IPC. [Endpoint storage](endpoint-budgets.md)
+guarded payload/shared-authority factories remaining in direct grants, receives
+and returned connections. Call/endpoint preparation now leaves IPC with its
+existing exact root retained; see [capability storage](ipc-capability-storage.md). [Endpoint storage](endpoint-budgets.md)
 now prepares its node, queue and lists outside IPC and retires detached nodes
 after unlock. [Pending and reply-token storage](ipc-record-budgets.md#preparation-and-retirement)
 now prepares outside IPC in the existing call owner, retaining original counts

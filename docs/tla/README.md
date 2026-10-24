@@ -1146,3 +1146,9 @@ and paired post-IPC payload/authority disposal remain native/host qualification;
 see the [conformance boundary](CONFORMANCE.md#ipc-capability-payload-storage).
 No model/configuration changed; the preceding full-suite checkpoint remains
 separate.
+
+The [unlocked preparation follow-up](../reports/audits/2026-10-24-security-ipc-unlocked-preparation.md)
+passes three safe IPC publication/transaction/root-retirement configurations and
+17 expected counterexamples. The unlocked factory phases and actual field/guard
+lifetimes remain native/host qualification. No model/configuration changed; see
+the [conformance boundary](CONFORMANCE.md#unlocked-call-and-endpoint-preparation).

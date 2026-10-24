@@ -405,9 +405,20 @@ stays in existing owners through post-guard unused disposal. Capability removal
 pairs its payload with detached shared authority in the same temporary cleanup
 list, outside IPC for disposal. Connection counts follow actual payload/node
 free. Speculative receive rollback and scalar/claimed reply share this boundary.
-Factories still run under IPC; byte/principal ceilings, broader contexts and
+Other capability factories still run under IPC; byte/principal ceilings, broader contexts and
 pressure progress remain open. This advances C07/C08/C09/C10/C18 and R7-2 without
 changing finding dispositions. See [contract](ipc-capability-storage.md).
+
+The [unlocked call/endpoint preparation batch](../reports/audits/2026-10-24-security-ipc-unlocked-preparation.md)
+retains shared-authority preparation in the same exact-root parents before IPC
+admission. Captured-namespace validation and count reservation only relink under
+IPC; payload allocation leaves it again. Call pending waiter-list construction
+also leaves IPC, with original sponsorship. Shared quota rejects before those
+payload/list factories. Ordinary unused disposal remains post-guard, root last;
+fallback retains the complete prefix. Direct-grant/receive/return contexts and
+the memory/authority publication vector remain guarded work, alongside wider
+byte/principal and pressure qualifications. This advances C18/R7-2 without a
+finding disposition change.
 
 SEC-07 remains partial until all of the following deliverables are accepted:
 

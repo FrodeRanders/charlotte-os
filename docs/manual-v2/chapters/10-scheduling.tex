@@ -274,7 +274,10 @@ old backing and final closed endpoint nodes dispose after IPC unlock. Complete
 fallback retains their fields. Per-capability payload nodes now prepare fallibly
 before authority mutation and publish by relinking. Detached payload and shared
 authority records leave IPC together in the existing cleanup owners; original
-connection counts follow node free. Guarded payload/authority factories,
+connection counts follow node free. Call/endpoint shared-authority storage now
+prepares outside IPC with exact roots retained, admission revalidates/relinks
+under IPC, and payload allocation leaves it again. Call pending waiter-list
+construction also leaves IPC. Other guarded factories and publication vectors,
 namespace/account byte/principal admission and outer
 contexts remain separate. See
 \repofile|docs/reference/endpoint-budgets.md|. See

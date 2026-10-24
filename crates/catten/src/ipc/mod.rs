@@ -67,6 +67,7 @@ mod endpoint_close;
 mod endpoint_storage;
 pub(crate) mod namespace;
 pub(crate) mod namespace_close;
+mod preparation_tests;
 pub(crate) mod record_budget;
 pub(crate) mod record_tests;
 pub(crate) mod reply;
@@ -525,6 +526,16 @@ impl PreparedCall {
         allocate: impl FnOnce() -> Result<PendingStorage, IpcError>,
         allocate_reply: impl FnOnce() -> Result<ReplyStorage, IpcError>,
     ) -> Result<Self, IpcError> {
+        Self::prepare_checked_with(caller, connection, allocate, allocate_reply, |_| Ok(()))
+    }
+
+    fn prepare_checked_with(
+        caller: AddressSpaceId,
+        connection: Option<CapabilityId>,
+        allocate: impl FnOnce() -> Result<PendingStorage, IpcError>,
+        allocate_reply: impl FnOnce() -> Result<ReplyStorage, IpcError>,
+        mut before: impl FnMut(u8) -> Result<(), IpcError>,
+    ) -> Result<Self, IpcError> {
         let identity = {
             let ipc = IPC.read();
             let identity = ipc.caps.get(&caller).ok_or(IpcError::PermissionDenied)?.address_space;
@@ -594,6 +605,19 @@ impl PreparedCall {
                 .as_mut()
                 .unwrap()
                 .bind_charge(resources.reply_charge.take().unwrap());
+            owner.authority = Some(PreparingCapability::new());
+            before(1)?;
+            owner.authority.as_mut().unwrap().prepare_authority_storage(caller, identity)?;
+            before(2)?;
+            {
+                let mut ipc = IPC.write();
+                owner.authority.as_mut().unwrap().reserve(&mut ipc)?;
+            }
+            before(3)?;
+            owner.authority.as_mut().unwrap().prepare_payload()?;
+            before(4)?;
+            owner.pending = Some(PendingCall::try_new(caller, owner.platform)?);
+            before(5)?;
             Ok(())
         })();
         if let Err(error) = prepared {
@@ -865,21 +889,19 @@ impl IpcRegistry {
         .map_err(cap_admission_error)
     }
 
-    /// All call authority and fallible metadata precede attachment preparation.
+    /// Revalidate already-prepared call metadata before attachment preparation.
     fn stage_call(
         &mut self,
         caller: AddressSpaceId,
         owner: &mut PreparedCall,
     ) -> Result<(), IpcError> {
-        assert!(owner.authority.is_none() && owner.pending.is_none());
+        assert!(owner.authority.is_some() && owner.pending.is_some());
         if owner.caller != caller
             || self.caps.get(&caller).and_then(|caps| caps.address_space) != owner.identity
         {
             return Err(IpcError::PermissionDenied);
         }
-        owner.authority = Some(PreparingCapability::new());
-        owner.authority.as_mut().unwrap().prepare(self, caller)?;
-        owner.pending = Some(PendingCall::try_new(caller, owner.platform)?);
+        self.accepting_namespace(caller)?;
         Ok(())
     }
 

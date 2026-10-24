@@ -364,8 +364,11 @@ Source, tests, and repository history remain authoritative.
         Final closed endpoint nodes dispose post-IPC before record refund.
         Per-capability nodes now prepare fallibly before authority publication;
         installation relinks them and detached payload/authority metadata disposes
-        post-IPC before connection-count refund. Guarded factories, byte/principal
-        admission, wider contexts and pressure fairness remain open.
+        post-IPC before connection-count refund. Call/endpoint shared-authority
+        storage and payload factories now leave IPC, as does the call pending
+        waiter list, with original roots/sponsors retained. Other guarded
+        capability factories, publication vectors, byte/principal admission,
+        wider contexts and pressure fairness remain open.
     \item \textbf{Cross-machine Raft boundary:} two TCG guests share a private
         QEMU LAN (stream backend on AArch64, socket backend on x86-64); the
         reliable-message frame transport and remote Raft peer routing are

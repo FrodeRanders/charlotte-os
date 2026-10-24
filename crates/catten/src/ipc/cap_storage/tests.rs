@@ -55,20 +55,26 @@ fn preparation() {
         }
     }
     let records = IPC.read().caps[&handle.id()].record_budget.clone();
-    let mut call = PreparedCall::try_new(handle.id()).unwrap();
-    call.authority = Some(PreparingCapability::new());
-    let result =
-        call.authority
-            .as_mut()
-            .unwrap()
-            .prepare_with(&mut IPC.write(), handle.id(), |_| Err(IpcError::ResourceLimit));
-    assert_eq!(result, Err(IpcError::ResourceLimit));
-    assert_eq!(records.used(), [0, 1, 1]);
-    assert_eq!(
-        memory::close_user_address_space_handle(handle),
-        Err(memory::AddressSpaceCloseError::OperationsInFlight)
-    );
-    call.finish();
+    assert!(matches!(
+        PreparedCall::prepare_checked_with(
+            handle.id(),
+            None,
+            || PendingStorage::try_new_charged(None).map_err(|_| IpcError::ResourceLimit),
+            || ReplyStorage::try_new_charged(None).map_err(|_| IpcError::ResourceLimit),
+            |stage| {
+                assert_eq!(
+                    memory::close_user_address_space_handle(handle),
+                    Err(memory::AddressSpaceCloseError::OperationsInFlight)
+                );
+                if stage == 3 {
+                    Err(IpcError::ResourceLimit)
+                } else {
+                    Ok(())
+                }
+            }
+        ),
+        Err(IpcError::ResourceLimit)
+    ));
     assert_eq!(records.used(), [0, 0, 0]);
     assert_eq!(used(handle.id()), baseline);
     let mut prepared = PreparingCapability::new();

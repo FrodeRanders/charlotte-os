@@ -1234,3 +1234,20 @@ three safe configurations and 17 expected counterexamples. The prior full
 190-case checkpoint remains separate, with all 235 inputs unchanged.
 These models provide no executable refinement, allocator/IRQ or sustained
 pressure fairness proof.
+
+## Unlocked call and endpoint preparation
+
+The [preparation follow-up](../reports/audits/2026-10-24-security-ipc-unlocked-preparation.md)
+retains shared-authority metadata, admitted identity and payload allocation in
+existing exact-root parents across IPC unlock. Calls also prepare their pending
+waiter list outside IPC. Captured-namespace checks precede shared admission and
+publication; ordinary disposal remains post-guard, root last.
+
+All 20 focused IPC publication/transaction and root-retirement cases pass:
+three safe configurations and 17 expected counterexamples. Existing shared
+authority/delivery, rollback, non-terminal timeout and active-root projections
+remain unchanged. The three implementation phases, actual allocator/guard
+boundaries, per-family metadata and original-class lifetimes are native/host
+qualification. No model/configuration changed; all 235 inputs of the prior full
+190-case checkpoint remain unchanged. These are not executable refinement,
+allocator/IRQ or pressure/fairness proofs.

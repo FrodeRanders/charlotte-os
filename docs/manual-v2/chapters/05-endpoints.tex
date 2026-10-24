@@ -66,9 +66,9 @@ endpoint. Final-reference removal detaches its complete node into the existing
 cleanup owner for post-IPC disposal; record admission returns after actual
 payload and node free. Late cleanup after ASID reuse credits the original
 account. Fallback retains the complete node, without cleanup or replay
-authority. Shared authority and per-capability payload factories still run
-under IPC, before authority mutation; payload insertion now relinks prepared
-storage. Linear
+authority. Endpoint shared-authority metadata now prepares outside IPC;
+count admission revalidates the captured namespace under IPC, then payload
+allocation leaves the guard again. Publication relinks prepared storage. Linear
 scans and sustained pressure/IRQ hold time remain unqualified. See
 \repofile|docs/reference/endpoint-budgets.md|.
 
@@ -119,9 +119,17 @@ rollback keeps queue/token/loans intact and disposes only its reply capability.
 Complete fallback retains metadata and charges. See
 \repofile|docs/reference/ipc-capability-storage.md|.
 
-Payload/shared-authority factories still run under IPC. Other list control
-blocks, capability kinds, byte/principal admission, wider destructor contexts
-and comprehensive kernel heap accounting remain incomplete.
+Call preparation uses the same three-phase authority boundary with its existing
+root retained, and pending waiter-list construction also leaves IPC. Call staging
+only revalidates prepared metadata. Shared quota rejects before payload/list
+allocation. Unused shared preparation disposes after local guards, root last;
+abandonment retains the complete prefix. See
+\repofile|docs/reference/ipc-capability-storage.md|.
+
+Direct-grant, receive and returned-connection factories still run under IPC.
+The memory/authority publication helper also allocates its vector there,
+including scalar-only calls. Other capability kinds, byte/principal admission,
+wider contexts and comprehensive heap accounting remain incomplete.
 
 \subsection{Receive and reply waiter admission}
 

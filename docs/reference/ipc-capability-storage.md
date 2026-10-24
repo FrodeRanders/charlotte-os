@@ -5,20 +5,45 @@ reservation. The endpoint, pending-call, direct/delegated connection, returned
 connection and receiver reply-capability paths all use the same preparation.
 There is no allocating `BTreeMap` insertion after authority publication.
 
-`PreparingCapability` first reserves shared authority against the namespace's
-captured generation, then allocates its payload node fallibly. Both fields stay
-in one inert owner, including when allocation rejects after authority admission.
+`PreparingCapability` retains the captured namespace, prepared shared-authority
+metadata, admitted authority and payload storage in one inert owner. Shared
+count admission precedes payload-node allocation. Allocation rejection after
+admission leaves the complete prefix in that owner.
 No payload or attachment mutation precedes this admission. Ordinary failure
 explicitly finishes unused storage and authority after local IPC guards leave;
-abandonment retains both. Existing containing call, endpoint and claimed-reply
+abandonment retains the complete prefix. Existing containing call, endpoint and claimed-reply
 owners keep their exact roots through this disposal and finish those roots last.
 
-These factories **still run under IPC**. Fallible preparation before mutation
-removes the later infallible allocation, but does not qualify its allocator or
-all outer IRQ/guard contexts. Shared authority's own factory remains a separate
-guarded boundary. The existing shared capability and connection count limits
+Call and endpoint factories now run outside IPC through the exact-root parents
+described below. Direct/delegated grants, receiver reply authority and returned
+connections still use the guarded adapter to the same preparation machinery.
+Their factories and all wider IRQ/guard contexts remain separate qualification.
+The memory/authority publication helper also still allocates its batch vector
+under IPC, including scalar-only calls. The existing shared capability and connection count limits
 are unchanged; private payload bytes and allocator overhead have no separate
 comprehensive byte/principal admission.
+
+## Call and endpoint preparation
+
+The existing root-owning operations carry one captured namespace through three
+phases:
+
+1. Prepare shared-authority storage outside IPC, retaining it in the containing
+   operation. No capability identity is admitted yet.
+2. Reacquire IPC, revalidate that exact namespace and its retirement fence, and
+   reserve shared count/identity by relinking prepared authority metadata.
+3. Leave IPC before payload-node allocation. The call also prepares its pending
+   waiter list here, using the original call-record classification. A full shared
+   namespace rejects before either factory. Revalidate again before publication.
+
+Endpoint publication uses its existing root check and borrowed reservation;
+call staging now only revalidates already-prepared metadata before attachment
+work. Unused preparation, including rejected shared-admission metadata, finishes
+after local guards; roots finish last. Complete fallback retains every field.
+Kernel roots remain immortal and synthetic fixtures retain their explicit
+namespace boundary. No lifecycle-under-IPC edge, IRQ enable or new root mechanism
+is added. Wider caller masks and unrelated guards still need qualification.
+See [execution evidence](../reports/audits/2026-10-24-security-ipc-unlocked-preparation.md).
 
 ## Publication and observation
 

@@ -26,14 +26,16 @@ fn available(root: AddressSpaceHandle) {
 
 pub(super) fn run() {
     preparation();
+    publication();
     growth();
     hidden_references();
     abandonment();
     crate::logln!(
-        "[IPC endpoint storage] 384 preparation and 96 growth rejections; 64 heap-held \
-         publications/detaches, heap-held FIFO replacement, concurrent resize/close, hidden \
-         connection final-reference cleanup and guarded retention passed; two roots/leases, three \
-         endpoint records and twenty slots deliberately retained"
+        "[IPC endpoint storage] 640 preparation and 96 growth rejections; 64 complete heap-held \
+         endpoint publications plus 64 heap-held publications/detaches, heap-held FIFO \
+         replacement, concurrent resize/close, hidden connection final-reference cleanup and \
+         guarded retention passed; two roots/leases, three endpoint records and twenty slots \
+         deliberately retained"
     );
 }
 
@@ -42,7 +44,7 @@ fn preparation() {
     let account = domain(root);
     let baseline = budget::node_used();
     let caps = crate::capability::admission_tests::test_namespace_used(root.id());
-    for failure in 1..=6 {
+    for failure in 1..=10 {
         for _ in 0..64 {
             assert!(
                 PreparingEndpoint::prepare(root.id(), 1, |stage| {
@@ -83,6 +85,43 @@ fn preparation() {
     crate::capability::retire_address_space(root.id());
     assert_eq!(prepared.publish(&mut IPC.write(), 1, 1, 1), Err(IpcError::PermissionDenied));
     prepared.finish();
+    assert_eq!(account.used(), [0, 0]);
+    assert_eq!(budget::node_used(), baseline);
+    memory::close_user_address_space_handle(root).unwrap();
+}
+
+fn publication() {
+    let root = create_root();
+    let account = domain(root);
+    let baseline = budget::node_used();
+    let irq = crate::cpu::isa::lp::ops::get_int_state();
+    for _ in 0..64 {
+        let mut owner = PreparingEndpoint::prepare(root.id(), 1, |_| {
+            available(root);
+            Ok(())
+        })
+        .unwrap();
+        let cap = {
+            let mut ipc = IPC.write();
+            let _heap = PRIMARY_ALLOCATOR.lock();
+            owner.publish(&mut ipc, 1, 1, 1).unwrap()
+        };
+        owner.finish();
+        close_cap(root.id(), cap).unwrap();
+        assert_eq!(account.used(), [0, 0]);
+        assert_eq!(budget::node_used(), baseline);
+        assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
+    }
+    assert!(matches!(
+        PreparingEndpoint::prepare(root.id(), 1, |stage| {
+            available(root);
+            if stage == 8 {
+                crate::capability::retire_address_space(root.id());
+            }
+            Ok(())
+        }),
+        Err(IpcError::PermissionDenied)
+    ));
     assert_eq!(account.used(), [0, 0]);
     assert_eq!(budget::node_used(), baseline);
     memory::close_user_address_space_handle(root).unwrap();

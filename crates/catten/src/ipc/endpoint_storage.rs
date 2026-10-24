@@ -134,7 +134,20 @@ impl PreparingEndpoint {
                 ObserverList::try_new(waiter_budget::SOURCE_LIMIT, prepared.0.platform)
                     .map_err(|_| IpcError::ResourceLimit)?,
             );
-            before(6)
+            before(6)?;
+            prepared.0.authority = Some(PreparingCapability::new());
+            before(7)?;
+            let identity = prepared.0.root.identity;
+            prepared.0.authority.as_mut().unwrap().prepare_authority_storage(owner, identity)?;
+            before(8)?;
+            {
+                let mut ipc = IPC.write();
+                prepared.0.root.validate(&mut ipc)?;
+                prepared.0.authority.as_mut().unwrap().reserve(&mut ipc)?;
+            }
+            before(9)?;
+            prepared.0.authority.as_mut().unwrap().prepare_payload()?;
+            before(10)
         })();
         if let Err(error) = result {
             prepared.finish();
@@ -153,8 +166,6 @@ impl PreparingEndpoint {
         self.0.root.validate(ipc)?;
         let resources = &mut *self.0;
         let owner = resources.root.owner;
-        resources.authority = Some(PreparingCapability::new());
-        resources.authority.as_mut().unwrap().prepare(ipc, owner)?;
         let authority = resources.authority.as_mut().unwrap();
         authority.publish()?;
         let id = ipc.alloc_endpoint();

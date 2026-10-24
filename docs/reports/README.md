@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Unlocked call and endpoint preparation](audits/2026-10-24-security-ipc-unlocked-preparation.md) — Exact-root authority/payload and pending waiter-list factories outside IPC.
+
 - [IPC capability payload storage](audits/2026-10-24-security-ipc-capability-storage.md) — Fallible preparation before authority mutation and paired payload/authority disposal outside IPC.
 
 - [IPC endpoint storage](audits/2026-10-24-security-ipc-endpoint-storage.md) — Charged preparation and queue growth outside IPC, with complete endpoint metadata retirement after unlock.

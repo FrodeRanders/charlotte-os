@@ -49,8 +49,9 @@ namespaces reject at runtime. Fenced cleanup detaches the drained node and
 releases it outside IPC, while outstanding charges retain their original account
 references. Per-capability payload nodes now prepare fallibly before authority
 mutation and retire together with shared authority after IPC unlock; see
-[capability storage](ipc-capability-storage.md). Their factories and wider caller
-destructor contexts remain unqualified. Endpoint storage now prepares unlocked
+[capability storage](ipc-capability-storage.md). Call/endpoint factories now leave IPC with their existing exact roots retained;
+other capability factories, publication vectors and wider caller destructor
+contexts remain unqualified. Endpoint storage now prepares unlocked
 and retires through the [existing cleanup owners](endpoint-budgets.md). See
 [namespace publication](ipc-namespace-publication.md).
 

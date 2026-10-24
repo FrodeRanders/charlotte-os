@@ -13,6 +13,7 @@ fn account(asid: AddressSpaceId) -> Arc<record_budget::DomainBudget> {
 }
 
 pub(crate) fn test_admission() {
+    super::preparation_tests::run();
     super::call_storage_tests::run();
     super::reply_storage_tests::run();
     super::cap_storage::test_storage();
