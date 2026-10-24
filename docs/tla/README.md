@@ -1152,3 +1152,10 @@ passes three safe IPC publication/transaction/root-retirement configurations and
 17 expected counterexamples. The unlocked factory phases and actual field/guard
 lifetimes remain native/host qualification. No model/configuration changed; see
 the [conformance boundary](CONFORMANCE.md#unlocked-call-and-endpoint-preparation).
+
+The [borrowed authority publication follow-up](../reports/audits/2026-10-24-security-ipc-borrowed-publication.md)
+checks IPC publication/transaction and root retirement: three safe configurations
+and 17 expected counterexamples pass. Iterator membership,
+auxiliary storage and actual guard boundaries remain native qualification;
+see the [conformance boundary](CONFORMANCE.md#borrowed-authority-batches).
+No model/configuration changed; the prior full-suite checkpoint remains separate.

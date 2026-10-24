@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Borrowed authority publication](audits/2026-10-24-security-ipc-borrowed-publication.md) — Stable borrowed batches replace the temporary vector; complete prepared scalar call commit needs no heap.
+
 - [Unlocked call and endpoint preparation](audits/2026-10-24-security-ipc-unlocked-preparation.md) — Exact-root authority/payload and pending waiter-list factories outside IPC.
 
 - [IPC capability payload storage](audits/2026-10-24-security-ipc-capability-storage.md) — Fallible preparation before authority mutation and paired payload/authority disposal outside IPC.

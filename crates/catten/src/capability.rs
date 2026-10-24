@@ -523,6 +523,7 @@ impl Drop for SourceEscrow {
 }
 
 /// Whether successful publication transfers or only lends source authority.
+#[derive(Clone, Copy)]
 pub(crate) enum SourceDisposition {
     Revoke,
     Restore,
@@ -533,11 +534,40 @@ pub(crate) struct Publication<'a> {
     pub source: Option<(&'a mut SourceEscrow, SourceDisposition)>,
 }
 
+/// A borrowed view of an existing publication batch. Both passes must enumerate
+/// the same destinations, sources and dispositions without changing membership,
+/// allocating or calling other subsystems. Each iterator holds distinct mutable
+/// borrows; it cannot yield the same authority owner twice in safe Rust.
+pub(crate) trait PublicationBatch {
+    fn publications(&mut self) -> impl Iterator<Item = Publication<'_>>;
+}
+
+impl PublicationBatch for [Publication<'_>] {
+    fn publications(&mut self) -> impl Iterator<Item = Publication<'_>> {
+        self.iter_mut().map(|publication| Publication {
+            destination: &mut *publication.destination,
+            source: publication
+                .source
+                .as_mut()
+                .map(|(source, disposition)| (&mut **source, *disposition)),
+        })
+    }
+}
+
+impl<const N: usize> PublicationBatch for [Publication<'_>; N] {
+    fn publications(&mut self) -> impl Iterator<Item = Publication<'_>> {
+        self.as_mut_slice().publications()
+    }
+}
+
 /// Validate the entire mixed batch before changing any authority. Caller owns
 /// the payload registry through publication and its remaining payload updates.
-pub(crate) fn publish_batch(batch: &mut [Publication<'_>]) -> Result<(), AllocationError> {
+/// The same exclusive authority hold spans both borrowed iterator passes.
+pub(crate) fn publish_batch(
+    batch: &mut (impl PublicationBatch + ?Sized),
+) -> Result<(), AllocationError> {
     let mut tables = CAPABILITIES.lock();
-    for publication in batch.iter() {
+    for publication in batch.publications() {
         let destination = &publication.destination;
         let mut entries = [
             Some((
@@ -565,7 +595,7 @@ pub(crate) fn publish_batch(batch: &mut [Publication<'_>]) -> Result<(), Allocat
             }
         }
     }
-    for publication in batch.iter_mut() {
+    for mut publication in batch.publications() {
         let destination = &mut publication.destination;
         tables
             .get_mut(&destination.owner)

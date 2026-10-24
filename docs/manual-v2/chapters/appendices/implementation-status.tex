@@ -367,8 +367,11 @@ Source, tests, and repository history remain authoritative.
         post-IPC before connection-count refund. Call/endpoint shared-authority
         storage and payload factories now leave IPC, as does the call pending
         waiter list, with original roots/sponsors retained. Other guarded
-        capability factories, publication vectors, byte/principal admission,
-        wider contexts and pressure fairness remain open.
+        capability factories, mixed memory payload maps, byte/principal admission,
+        wider contexts and pressure fairness remain open. Borrowed authority batches
+        remove the publication vector; complete prepared scalar call commit now
+        needs no heap allocation. Mixed authority validation/commit still precedes
+        allocating memory payload-map updates.
     \item \textbf{Cross-machine Raft boundary:} two TCG guests share a private
         QEMU LAN (stream backend on AArch64, socket backend on x86-64); the
         reliable-message frame transport and remote Raft peer routing are

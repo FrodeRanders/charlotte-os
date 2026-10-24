@@ -416,9 +416,20 @@ IPC; payload allocation leaves it again. Call pending waiter-list construction
 also leaves IPC, with original sponsorship. Shared quota rejects before those
 payload/list factories. Ordinary unused disposal remains post-guard, root last;
 fallback retains the complete prefix. Direct-grant/receive/return contexts and
-the memory/authority publication vector remain guarded work, alongside wider
+mixed memory payload maps remain guarded work, alongside wider
 byte/principal and pressure qualifications. This advances C18/R7-2 without a
 finding disposition change.
+
+The [borrowed publication batch](../reports/audits/2026-10-24-security-ipc-borrowed-publication.md)
+removes the temporary authority vector from memory/IPC publication. Existing
+reservation/escrow slices yield stable borrowed views for two passes under one
+capability hold: validate the complete set, then mutate. Full prepared scalar
+commit now publishes, installs admitted nodes and enqueues without heap work.
+The mixed 257-member control brackets authority publication only; memory payload
+maps still allocate afterward under their registry. Guarded factories, those
+payload maps, wider contexts and aggregate byte/principal/pressure boundaries
+remain open. This advances C18/R7-2 without changing finding dispositions.
+See [contract](ipc-publication-batches.md).
 
 SEC-07 remains partial until all of the following deliverables are accepted:
 

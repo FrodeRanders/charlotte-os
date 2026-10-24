@@ -18,8 +18,9 @@ Call and endpoint factories now run outside IPC through the exact-root parents
 described below. Direct/delegated grants, receiver reply authority and returned
 connections still use the guarded adapter to the same preparation machinery.
 Their factories and all wider IRQ/guard contexts remain separate qualification.
-The memory/authority publication helper also still allocates its batch vector
-under IPC, including scalar-only calls. The existing shared capability and connection count limits
+The memory/authority publication helper now uses a [borrowed batch](ipc-publication-batches.md)
+with no temporary vector. Mixed memory payload maps still allocate under their
+registry hold; scalar prepared call commit needs no memory registry or heap. The existing shared capability and connection count limits
 are unchanged; private payload bytes and allocator overhead have no separate
 comprehensive byte/principal admission.
 

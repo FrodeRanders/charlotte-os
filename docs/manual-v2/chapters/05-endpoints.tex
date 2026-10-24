@@ -127,9 +127,14 @@ abandonment retains the complete prefix. See
 \repofile|docs/reference/ipc-capability-storage.md|.
 
 Direct-grant, receive and returned-connection factories still run under IPC.
-The memory/authority publication helper also allocates its vector there,
-including scalar-only calls. Other capability kinds, byte/principal admission,
-wider contexts and comprehensive heap accounting remain incomplete.
+The memory/authority gate now borrows its existing reservations/transfers and
+validates the complete set before mutation under one capability hold, without
+a temporary vector. Complete prepared scalar call commit can publish, install
+admitted nodes and enqueue with heap held. Mixed memory payload maps still
+allocate after authority publication under their registry; their full commit
+is not allocation-free. See \repofile|docs/reference/ipc-publication-batches.md|.
+Other capability kinds, byte/principal admission, wider contexts and
+comprehensive heap accounting remain incomplete.
 
 \subsection{Receive and reply waiter admission}
 

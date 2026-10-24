@@ -50,7 +50,7 @@ releases it outside IPC, while outstanding charges retain their original account
 references. Per-capability payload nodes now prepare fallibly before authority
 mutation and retire together with shared authority after IPC unlock; see
 [capability storage](ipc-capability-storage.md). Call/endpoint factories now leave IPC with their existing exact roots retained;
-other capability factories, publication vectors and wider caller destructor
+other capability factories, mixed memory payload maps and wider caller destructor
 contexts remain unqualified. Endpoint storage now prepares unlocked
 and retires through the [existing cleanup owners](endpoint-budgets.md). See
 [namespace publication](ipc-namespace-publication.md).
@@ -662,3 +662,11 @@ release, mapped/pinned retirement rejection, 35-page release across multiple
 batches, original accounting across ASID reuse and Drop quarantine. The latter
 adds one intentionally retained page and object charge to the fixture totals.
 See the [IPC backing release follow-up](../reports/audits/2026-10-06-security-ipc-backing-release.md).
+
+Authority publication now iterates borrowed views of existing reservation/escrow
+owners under one capability hold, validating the entire set before mutation.
+No temporary publication vector remains. Source escrow and original charge
+retirement still use the same owners; the iterator grants no physical completion
+or retry authority. Memory payload maps still allocate after authority publication
+under `MEMORY_OBJECTS`; this remains separate admission/context work. See
+[borrowed publication](ipc-publication-batches.md).

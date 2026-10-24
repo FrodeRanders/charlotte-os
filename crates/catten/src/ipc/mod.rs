@@ -68,6 +68,7 @@ mod endpoint_storage;
 pub(crate) mod namespace;
 pub(crate) mod namespace_close;
 mod preparation_tests;
+mod publication_tests;
 pub(crate) mod record_budget;
 pub(crate) mod record_tests;
 pub(crate) mod reply;

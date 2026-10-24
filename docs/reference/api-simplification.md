@@ -461,3 +461,13 @@ five-field record with current assignment and signed-validity bounds. There is
 no ignored-success-body, prefix-only or Unicode-whitespace fallback. Release
 keeps its full receipt grammar. Server output, HTTP framing, signed records,
 CLI arguments and runtime ABI are unchanged.
+
+## Borrowed authority batch API
+
+The [publication batch](ipc-publication-batches.md) replaces the allocating
+memory/IPC vector bridge with one `PublicationBatch` contract. Current
+slice/array and transfer-slice providers reborrow the same owners for validation
+and commit under one capability hold; neither is a compatibility fallback.
+The old vector construction is removed. Wire grammars, ABI and descriptor limits
+are unchanged. Memory payload-map admission and other guarded factories remain
+separate candidates. See [execution evidence](../reports/audits/2026-10-24-security-ipc-borrowed-publication.md).

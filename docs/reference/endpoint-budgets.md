@@ -111,8 +111,9 @@ and detached results. Endpoint nodes publish by relinking prepared storage;
 [capability payloads](ipc-capability-storage.md) now do the same. Endpoint
 shared-authority storage prepares unlocked, admission revalidates/relinks under
 IPC, and private payload allocation leaves IPC again before final publication.
-Other capability callers and the publication-vector factory retain their guarded
-boundaries. No global allocator-exhaustion injection,
+Other capability callers retain their guarded factory boundaries;
+[borrowed publication](ipc-publication-batches.md) removes the temporary batch
+vector. Mixed memory payload maps still allocate under their registry hold. No global allocator-exhaustion injection,
 sustained hostile-pressure soak or per-principal aggregate across multiple
 domains is claimed. SEC-07 remains partially implemented; deployment still
 requires the [security audit's restrictions](../reports/audits/2026-10-03-security-remediation.md).

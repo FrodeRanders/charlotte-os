@@ -1251,3 +1251,20 @@ boundaries, per-family metadata and original-class lifetimes are native/host
 qualification. No model/configuration changed; all 235 inputs of the prior full
 190-case checkpoint remain unchanged. These are not executable refinement,
 allocator/IRQ or pressure/fairness proofs.
+
+## Borrowed authority batches
+
+The [publication follow-up](../reports/audits/2026-10-24-security-ipc-borrowed-publication.md)
+removes the temporary authority vector. Stable borrowed providers enumerate the
+existing reservations/escrows twice under one capability hold, validating the
+whole set before mutation. Existing containing roots, pins, copied backing and
+charges remain unchanged.
+
+`CharlotteIpcPublication` retains its atomic authority/delivery projection;
+`CharlotteIpcTransaction` retains rollback/non-terminal timeout;
+`CharlotteRootRetirement` retains exact-root gates. Iterator membership stability,
+actual auxiliary storage, allocation/guard boundaries and 257-member execution
+remain native qualification. Mixed memory payload maps still allocate after the
+authority gate. No model/configuration changes accompany this batch. All 20 focused cases
+pass: three safe configurations and 17 expected counterexamples. The full
+190-case checkpoint stays separate, with all 235 inputs unchanged. There is no executable refinement, allocator/IRQ or fairness proof.

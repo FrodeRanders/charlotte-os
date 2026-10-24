@@ -82,7 +82,7 @@ Its count is bounded, but worst-case hold time is not qualified by the serialize
 controls. [Per-capability payload nodes](ipc-capability-storage.md) now prepare
 fallibly before publication. Call/endpoint authority and payload factories now
 leave IPC, as does the call's pending waiter-list factory. Other capability
-callers, publication-vector preparation, byte/principal ceilings and wider
+callers, mixed memory payload maps, byte/principal ceilings and wider
 caller/destructor contexts remain separate work. This is not fully fallible IPC
 publication. See the [pending storage audit](../reports/audits/2026-10-24-security-ipc-pending-storage.md).
 
@@ -180,7 +180,7 @@ resource-limited replies cancelling only their token, not their grant source.
 These count budgets do not bound attachment bytes, all capability kinds,
 observer/list control blocks, weak-only retention, loader/page tables, or the
 entire kernel heap. Per-capability insertion only relinks prepared storage;
-guarded factories in other capability callers, publication vectors and
+guarded factories in other capability callers, memory payload maps and
 namespace-account byte/principal admission remain separate boundaries. There is no per-principal aggregate across several domains,
 signed override, allocator-failure injection, exhaustive race proof or hostile
 pressure-soak claim. SEC-07 remains partial; the audit's deployment restrictions
@@ -199,5 +199,7 @@ revalidates this completed preparation. A full shared namespace rejects before
 payload/list allocation. All ordinary failures dispose the whole prefix after
 local guards, root last; complete abandonment retains it. The same helpers serve
 endpoint creation; other capability callers still use their guarded adapter.
-The memory/authority publication helper's batch vector remains an IPC allocation,
-including scalar-only calls. See [unlocked preparation evidence](../reports/audits/2026-10-24-security-ipc-unlocked-preparation.md).
+The memory/authority helper now borrows its existing reservations/transfers
+without a temporary publication vector. Complete prepared scalar commit can
+publish/install/enqueue with heap held; mixed memory payload maps retain their
+separate allocation boundary. See [publication contract](ipc-publication-batches.md). See [unlocked preparation evidence](../reports/audits/2026-10-24-security-ipc-unlocked-preparation.md).

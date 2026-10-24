@@ -40,6 +40,10 @@ const PAGE_SIZE: usize = 4096;
 const RETIREMENT_FRAME_BATCH: usize = 16;
 
 mod mapping_tests;
+mod publication_tests;
+pub(crate) fn test_publication_batch() {
+    publication_tests::run();
+}
 pub(crate) mod namespace_close;
 pub(crate) mod retirement_tests;
 mod revocation;
@@ -1360,28 +1364,89 @@ pub(crate) fn commit_undelivered_transfers_with_authority(
     commit_transfers_with_delivery(transfers, additional, true)
 }
 
+/// Two stable slices form one authority transaction. The capability gate
+/// reborrows them twice while holding its existing registry; membership and
+/// transfer modes stay unchanged until complete validation and publication.
+struct TransferPublications<'batch, 'authority> {
+    transfers: &'batch mut [PreparedTransfer],
+    additional: &'batch mut [&'authority mut crate::capability::Reservation],
+}
+
+impl crate::capability::PublicationBatch for TransferPublications<'_, '_> {
+    fn publications(&mut self) -> impl Iterator<Item = crate::capability::Publication<'_>> {
+        use crate::capability::{
+            Publication,
+            SourceDisposition,
+        };
+        self.additional
+            .iter_mut()
+            .map(|destination| Publication {
+                destination,
+                source: None,
+            })
+            .chain(self.transfers.iter_mut().map(|transfer| {
+                let source = match &mut transfer.payload {
+                    PreparedPayload::Move {
+                        source,
+                        ..
+                    } => Some((source.escrow.as_mut().unwrap(), SourceDisposition::Revoke)),
+                    PreparedPayload::Loan {
+                        source,
+                        ..
+                    } => Some((source.escrow.as_mut().unwrap(), SourceDisposition::Restore)),
+                    PreparedPayload::Copy {
+                        ..
+                    } => None,
+                };
+                Publication {
+                    destination: &mut transfer.destination,
+                    source,
+                }
+            }))
+    }
+}
+
+fn publish_transfer_authority(
+    transfers: &mut [PreparedTransfer],
+    additional: &mut [&mut crate::capability::Reservation],
+) -> Result<(), MemoryObjectError> {
+    crate::capability::publish_batch(&mut TransferPublications {
+        transfers,
+        additional,
+    })
+    .map_err(capability_error)
+}
+
 fn commit_transfers_with_delivery(
     transfers: &mut [PreparedTransfer],
     additional: &mut [&mut crate::capability::Reservation],
     delivery_pending: bool,
 ) -> Result<(), MemoryObjectError> {
-    use crate::capability::{
-        Publication,
-        SourceDisposition,
-    };
-    let mut authorities = Vec::new();
-    let count =
-        transfers.len().checked_add(additional.len()).ok_or(MemoryObjectError::ResourceLimit)?;
-    authorities.try_reserve_exact(count).map_err(|_| MemoryObjectError::ResourceLimit)?;
-    for destination in additional.iter_mut() {
-        authorities.push(Publication {
-            destination,
-            source: None,
-        });
-    }
+    commit_transfers_with_delivery_using(
+        transfers,
+        additional,
+        delivery_pending,
+        publish_transfer_authority,
+    )
+}
+
+// The serialized fixture brackets only authority publication with a held heap.
+// Production uses the same borrowed helper without an injected callback.
+fn commit_transfers_with_delivery_using(
+    transfers: &mut [PreparedTransfer],
+    additional: &mut [&mut crate::capability::Reservation],
+    delivery_pending: bool,
+    publish: impl FnOnce(
+        &mut [PreparedTransfer],
+        &mut [&mut crate::capability::Reservation],
+    ) -> Result<(), MemoryObjectError>,
+) -> Result<(), MemoryObjectError> {
+    // Check the complete shape before registry access. The borrowed batch
+    // needs no storage proportional to its length and admits no new authority.
+    transfers.len().checked_add(additional.len()).ok_or(MemoryObjectError::ResourceLimit)?;
     // Scalar-only calls/replies need no memory-registry serialization.
     if transfers.is_empty() {
-        return crate::capability::publish_batch(&mut authorities).map_err(capability_error);
+        return publish(transfers, additional);
     }
     let mut registry = MEMORY_OBJECTS.lock();
     for transfer in transfers.iter() {
@@ -1427,27 +1492,7 @@ fn commit_transfers_with_delivery(
         }
         validate_source_transfer(object, transfer.target, loan, true)?;
     }
-    for transfer in transfers.iter_mut() {
-        let source = match &mut transfer.payload {
-            PreparedPayload::Move {
-                source,
-                ..
-            } => Some((source.escrow.as_mut().unwrap(), SourceDisposition::Revoke)),
-            PreparedPayload::Loan {
-                source,
-                ..
-            } => Some((source.escrow.as_mut().unwrap(), SourceDisposition::Restore)),
-            PreparedPayload::Copy {
-                ..
-            } => None,
-        };
-        authorities.push(Publication {
-            destination: &mut transfer.destination,
-            source,
-        });
-    }
-    crate::capability::publish_batch(&mut authorities).map_err(capability_error)?;
-    drop(authorities);
+    publish(transfers, additional)?;
     // The registries serialize all verified payloads. No fallible work follows
     // authority publication; application memory lookup waits for this guard.
     for transfer in transfers.iter_mut() {
