@@ -258,8 +258,16 @@ pub(crate) fn close_with(
     }) {
         return Ok(MemoryProgress::Pending(pending));
     }
+    let mut borrowers = RetirementList::new();
     for object in registry.objects.values_mut() {
-        clear_borrower(object, handle.id());
+        if let Some(borrower) = clear_borrower(object, handle.id()) {
+            borrowers.push(borrower);
+        }
+    }
+    let mut detached = RetirementList::new();
+    while let Some(mut borrower) = borrowers.pop() {
+        detach_borrower_authority(&mut registry, borrower.value_mut());
+        detached.push(borrower);
     }
     if let Some(caps) = registry.caps.remove(&handle.id()) {
         for cap in caps.caps.keys() {
@@ -269,6 +277,10 @@ pub(crate) fn close_with(
                 crate::capability::ObjectKind::Memory
             ));
         }
+    }
+    drop(registry);
+    while let Some(borrower) = detached.pop() {
+        release_borrower(borrower);
     }
     Ok(MemoryProgress::Complete(NamespaceMemoryClosed {
         handle,

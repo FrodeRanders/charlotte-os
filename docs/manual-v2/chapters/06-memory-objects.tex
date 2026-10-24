@@ -64,7 +64,7 @@ See \path{docs/reference/principal-backing-admission.md}.
 
 \textbf{Sponsorship is distinct from ownership.} A move transfers the authority
 to use or destroy an object, while its charge stays with the creating
-generation until the physical frames are released. A copy reserves new backing
+generation until the physical frames and object record are released. A copy reserves new backing
 storage against the copying caller, even when another domain receives it.
 Borrowing and pinning retain the existing charge. This prevents a sender from
 shedding its budget merely by filling a privileged receiver's queue.
@@ -74,6 +74,21 @@ completion. A reused ASID receives a separate generation budget; late releases a
 to the retired generation and original principal. Staged-allocation owners roll back failed admission
 and allocation. A failed physical release quarantines its charge rather than
 creating fresh headroom.
+
+Global object-record storage is prepared fallibly with private backing after
+page/object admission. Direct allocation and copies claim a nonreused kernel
+object identity before authority publication; publication only relinks prepared
+storage. Cancellation leaves identity gaps. Target memory-capability and
+read-loan maps retain their separate allocating boundaries.
+
+Retirement keeps the complete detached object node in the existing backing
+receipt, with its original frame vector, charge and metadata. Physical release
+uses sixteen-frame batches; a started/failed fence precedes allocator entry.
+Only confirmed physical completion and actual payload/node disposal permit
+charge refund. Inert backing fields retain all state after interruption or
+failure, without physical retry. Ordinary rollback and wider caller contexts
+retain their separate qualification. See
+\repofile|docs/reference/memory-object-storage.md|.
 
 These are initial kernel admission policies, independent of telemetry filtering
 and placement feedback. Signed deployment fields and a userspace policy API for
@@ -188,6 +203,14 @@ the existing borrower state and a backing pin until leaf removal, invalidation,
 scratch completion and borrower-capability removal succeed. A failed or
 abandoned transaction retains its backing charge and revocation fence.
 Successful revocation preserves the object's other read borrowers.
+Read-borrower records use admitted nodes retained in the existing prior-state
+owner. Failed completion or abandonment keeps the complete map with its fence
+and backing pin. Confirmed removal carries the detached borrower node and exact
+shared authority past the memory guard; node disposal precedes authority metadata
+and original charge release. Namespace cleanup uses that same pairing. Final
+object release drains remaining borrower nodes only after physical completion.
+Memory capability/namespace and mapping maps, wider containing contexts and
+aggregate metadata budgets remain separate qualification work.
 
 An owned staged-close request fences new operation
 leases while older leases drain. Pending poll returns
@@ -326,8 +349,10 @@ any receiver mapping; failed cleanup retains its fence and backing.
 \begin{itemize}
     \item \textbf{Use when:} the receiver needs to inspect data but must not
         modify it.
-    \item \textbf{Kernel work:} publish a read-only borrower capability and track
-        its revocation contract. A later receiver mapping must be read-only.
+    \item \textbf{Kernel work:} reserve exact destination authority and prepare
+        a fallible borrower node before source escrow, outside the memory
+        registry. Commit relinks the node and publishes the read-only capability.
+        A later receiver mapping must be read-only.
     \item \textbf{Semantics:} writable aliases in the receiver are forbidden by
         the page-table permissions. The receiver cannot write even through unsafe
         code. Revocation at reply time unmaps the pages.

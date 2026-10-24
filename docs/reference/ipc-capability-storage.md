@@ -19,7 +19,7 @@ described below. Direct/delegated grants, receiver reply authority and returned
 connections still use the guarded adapter to the same preparation machinery.
 Their factories and all wider IRQ/guard contexts remain separate qualification.
 The memory/authority publication helper now uses a [borrowed batch](ipc-publication-batches.md)
-with no temporary vector. Mixed memory payload maps still allocate under their
+with no temporary vector. Target memory-capability and read-loan maps still allocate under their
 registry hold; scalar prepared call commit needs no memory registry or heap. The existing shared capability and connection count limits
 are unchanged; private payload bytes and allocator overhead have no separate
 comprehensive byte/principal admission.
@@ -107,3 +107,9 @@ limits bound registry size; they do not establish worst-case guard/IRQ hold time
 hostile-pressure fairness or management progress. Other factories/destructors,
 weak-only retention, aggregate byte/principal accounting and historical mapping
 or root-close failures remain open. SEC-07/18 remain partial.
+
+Global memory-object records now prepare with private backing and publish by
+relinking. Their complete detached nodes remain in existing backing owners
+through physical release, post-registry node disposal and original charge refund;
+see [object storage](memory-object-storage.md). Target memory-capability and
+read-loan maps retain their separate admission/context gaps.

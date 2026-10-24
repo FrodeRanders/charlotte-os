@@ -216,13 +216,28 @@ fn test_failed_completion_and_drop(create: &mut impl FnMut(&str) -> usize) {
         let borrower = create("revocation failed borrower");
         let handle = current_address_space_handle(owner).unwrap();
         let cap = allocate(owner, 1).unwrap();
-        let loan = lend_write(owner, cap, borrower).unwrap();
+        let loan = if stage == 0 {
+            lend_write(owner, cap, borrower).unwrap()
+        } else {
+            lend_read(owner, cap, borrower).unwrap()
+        };
         let id = MEMORY_OBJECTS.lock().lookup(owner, cap).unwrap().object;
-        let base = map_any(borrower, loan, true).unwrap();
+        let base = map_any(borrower, loan, stage == 0).unwrap();
         let before = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
         let operation = LeasedRevocation::prepare(owner, cap, borrower, loan).unwrap();
         let result = operation.finish_with(|loan| {
             if stage == 3 {
+                let LendState::Read {
+                    borrowers,
+                } = &loan.prior
+                else {
+                    unreachable!()
+                };
+                assert_eq!(borrowers.get(&borrower).unwrap().cap, loan.borrower_cap);
+                let _registry = MEMORY_OBJECTS.lock();
+                let _heap = crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
+                // The owned prior borrower node must remain retained, without
+                // deallocation or source-state restoration under either guard.
                 drop(loan);
                 return Err(MemoryObjectError::UnmapFailed);
             }

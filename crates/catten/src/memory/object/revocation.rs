@@ -115,7 +115,7 @@ impl LoanRevocation {
             LendState::Revoking => return Err(MemoryObjectError::LendingActive),
             LendState::Read {
                 borrowers,
-            } if borrowers.get(&borrower) == Some(&borrower_cap) => {}
+            } if borrowers.get(&borrower).is_some_and(|record| record.cap == borrower_cap) => {}
             LendState::Write {
                 borrower: target,
                 cap: lent,
@@ -220,12 +220,14 @@ impl LoanRevocation {
             "revoking mapping changed"
         );
         object.mappings.remove(&self.borrower);
+        let mut retired_borrower = None;
         object.lend_state = match &mut self.prior {
             LendState::Read {
                 borrowers,
             } => {
-                borrowers.remove(&self.borrower);
-                if borrowers.is_empty() {
+                retired_borrower = borrowers.take(&self.borrower);
+                assert!(retired_borrower.is_some(), "revoking borrower node missing");
+                if borrowers.first_key_value().is_none() {
                     LendState::None
                 } else {
                     self.prior
@@ -236,16 +238,29 @@ impl LoanRevocation {
             } => LendState::None,
             LendState::None | LendState::Revoking => unreachable!(),
         };
-        registry.caps.get_mut(&self.borrower).unwrap().caps.remove(&self.borrower_cap);
-        assert!(
-            crate::capability::remove(
-                self.borrower,
-                self.borrower_cap,
-                crate::capability::ObjectKind::Memory,
-            ),
-            "borrower capability was absent from unified table"
-        );
+        // Keep detached authority admission with the read-loan node until
+        // actual node free. Write loans have no separate borrower allocation.
+        let write_authority = if let Some(borrower) = retired_borrower.as_mut() {
+            detach_borrower_authority(&mut registry, borrower.value_mut());
+            None
+        } else {
+            registry.caps.get_mut(&self.borrower).unwrap().caps.remove(&self.borrower_cap);
+            Some(
+                crate::capability::detach(
+                    self.borrower,
+                    self.borrower_cap,
+                    crate::capability::ObjectKind::Memory,
+                )
+                .expect("borrower capability was absent from unified table"),
+            )
+        };
         drop(registry);
+        if let Some(borrower) = retired_borrower {
+            release_borrower(borrower);
+        }
+        if let Some(authority) = write_authority {
+            authority.release();
+        }
         self.pin.release(None);
         Ok(())
     }

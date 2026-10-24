@@ -33,9 +33,9 @@ its call authority, install its admitted payload nodes and enqueue without heap
 allocation. This does not include initial preparation, receive or reply handling.
 
 Mixed memory payload installation follows authority publication under the same
-memory registry hold, with IPC held by RPC callers. Several payload maps still
-use allocating `BTreeMap` insertion/removal, including copied objects, target
-memory caps and read-loan bookkeeping. This batch removes the temporary authority
+memory registry hold, with IPC held by RPC callers. The global memory-object map now relinks [prepared records](memory-object-storage.md),
+including copies. Target memory-capability maps, namespace creation and
+read-loan bookkeeping still use allocating `BTreeMap` updates. This batch removes the temporary authority
 vector; memory publication is not yet fully fallible or fully allocation-free.
 The heap-held mixed test brackets only authority iteration/publication, then
 releases the heap before those payload updates.

@@ -431,6 +431,29 @@ payload maps, wider contexts and aggregate byte/principal/pressure boundaries
 remain open. This advances C18/R7-2 without changing finding dispositions.
 See [contract](ipc-publication-batches.md).
 
+The [memory-object storage batch](../reports/audits/2026-10-24-security-memory-object-storage.md)
+removes global object-map insertion allocation after authority mutation.
+Original page/object admission precedes fallible node preparation; direct/copy
+publication relinks prepared storage with an identity claimed before publication.
+Complete detached nodes remain in existing backing receipts through physical
+release and post-registry disposal before original charge refund. The physical
+attempt fence is recorded before allocator entry; failed/interrupted backing
+fields cannot implicitly refund or clean up. Target capability/borrower maps,
+other factory/outer contexts, metadata-byte/principal and pressure guarantees
+remain open. This advances C05/C18/R7-2 without changing finding dispositions.
+See [contract](memory-object-storage.md).
+
+The [read-borrower storage batch](../reports/audits/2026-10-24-security-memory-borrower-storage.md) removes read-loan map allocation
+after shared authority publication. Exact destination admission precedes fallible
+node preparation outside the memory registry and source escrow; the existing
+transfer owns cancellation/publication. Revocation retains its complete prior
+map on failure/abandonment. Confirmed cleanup pairs detached borrower/authority
+nodes through post-guard node disposal before original authority refund.
+Namespace and final-object cleanup explicitly dispose the same nodes after their
+existing proofs. Capability/namespace and mapping maps, byte/principal ceilings,
+wider IRQ/guard/destructor contexts and pressure remain open. This advances
+C05/C06/C18 and R7-2 without changing finding dispositions.
+
 SEC-07 remains partial until all of the following deliverables are accepted:
 
 The [telemetry snapshot follow-up](../reports/audits/2026-10-18-telemetry-snapshot-preparation.md)

@@ -118,9 +118,12 @@ Shared/family quota admission precedes reply loan revocation; later unmap or
 retirement failure can leave individually revoked loans, but no fresh returned
 authority is published on batch validation failure.
 
-Memory-object admission captures source/target handles before taking
-`MEMORY_OBJECTS`, then uses `reserve_captured`/`escrow_captured`:
-`MEMORY_OBJECTS → CAPABILITIES → capability domain → node`. Batch commit holds
+Memory-object source transfers capture source/target handles and reserve the
+exact destination before taking `MEMORY_OBJECTS`. Read loans also prepare their
+borrower node before that guard. Captured validation then precedes source
+`escrow_captured`: `MEMORY_OBJECTS → CAPABILITIES → capability domain → node`.
+Copy preparation retains its existing source pin before destination reservation.
+Batch commit holds
 the memory registry while validating and atomically publishing all mixed-mode
 authorities; payload updates follow under the same guard. Neither admission nor
 publication acquires lifecycle under a subsystem. `PreparedTransfer` Drop cancels
@@ -382,3 +385,29 @@ authority publication. The serialized heap-held mixed control releases heap
 before those payload updates; complete scalar call commit is tested with both
 IPC and heap held. No owner/root/pin/charge or notification order changes. See
 [publication batches](ipc-publication-batches.md).
+
+Global memory-object record allocation is now fallible in `allocate_frames`,
+after captured page/object admission and before frame allocation. The existing
+private backing owner keeps that storage. Direct allocation claims its identity
+before authority publication; copies preclaim theirs during preparation.
+Publication relinks the object node under `MEMORY_OBJECTS`. Namespace/capability,
+borrower and mapping maps still allocate in their existing contexts.
+
+Object removal detaches the complete node into the existing backing owner.
+Physical release and payload/node disposal leave the local registry, with the
+original charge released only after both complete. Sixteen-frame allocator
+batches remain; the terminal fence is recorded before the first attempt.
+Private/published fields retain through failed/interrupted release without
+implicit cleanup. Outer IPC/IRQ and ordinary rollback/destructor contexts remain
+separate. Linear object traversal replaces tree lookup; pressure hold times are
+unqualified. See [object storage](memory-object-storage.md).
+
+Read-loan revocation and namespace cleanup detach borrower nodes together with
+their exact shared authority under `MEMORY_OBJECTS`; disposal leaves that guard.
+Borrower-node deallocation precedes detached authority-node release and its
+original admission refund. Failed/abandoned revocation retains the complete
+prior read map without allocator entry. Final object backing disposal drains
+remaining borrower nodes only after physical completion. No lifecycle acquisition,
+new root/pin or recovery custody is added. Enclosing IPC/IRQ/destructor contexts
+and remaining capability/namespace/mapping factories are unqualified. See
+[borrower storage](memory-object-storage.md#read-loan-records).

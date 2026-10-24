@@ -370,8 +370,16 @@ Source, tests, and repository history remain authoritative.
         capability factories, mixed memory payload maps, byte/principal admission,
         wider contexts and pressure fairness remain open. Borrowed authority batches
         remove the publication vector; complete prepared scalar call commit now
-        needs no heap allocation. Mixed authority validation/commit still precedes
-        allocating memory payload-map updates.
+        needs no heap allocation. Global memory-object nodes now prepare with
+        private backing and relink at publication. Complete detached object
+        records remain in existing backing receipts through physical completion
+        and post-registry disposal before original charge refund. Failed release
+        retains the record/charge behind a pre-attempt fence. Read-loan borrower
+        nodes now prepare fallibly before source escrow and relink at commit;
+        confirmed cleanup carries borrower and exact authority past the memory
+        guard, freeing the borrower node before original authority admission.
+        Target memory-capability and namespace maps remain allocating after
+        authority publication.
     \item \textbf{Cross-machine Raft boundary:} two TCG guests share a private
         QEMU LAN (stream backend on AArch64, socket backend on x86-64); the
         reliable-message frame transport and remote Raft peer routing are

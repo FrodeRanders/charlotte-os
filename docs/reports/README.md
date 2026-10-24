@@ -8,6 +8,10 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Read-loan borrower storage](audits/2026-10-24-security-memory-borrower-storage.md) — Fallible preparation before source escrow and paired borrower/authority retirement after proof.
+
+- [Memory-object record storage](audits/2026-10-24-security-memory-object-storage.md) — Prepared global records and complete backing/node retirement before original charge refund.
+
 - [Borrowed authority publication](audits/2026-10-24-security-ipc-borrowed-publication.md) — Stable borrowed batches replace the temporary vector; complete prepared scalar call commit needs no heap.
 
 - [Unlocked call and endpoint preparation](audits/2026-10-24-security-ipc-unlocked-preparation.md) — Exact-root authority/payload and pending waiter-list factories outside IPC.

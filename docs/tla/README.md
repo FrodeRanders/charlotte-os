@@ -1159,3 +1159,18 @@ and 17 expected counterexamples pass. Iterator membership,
 auxiliary storage and actual guard boundaries remain native qualification;
 see the [conformance boundary](CONFORMANCE.md#borrowed-authority-batches).
 No model/configuration changed; the prior full-suite checkpoint remains separate.
+
+The [memory-object storage follow-up](../reports/audits/2026-10-24-security-memory-object-storage.md)
+checks IPC publication/transaction, root retirement and original principal-backed
+charges. Object-node, physical-attempt and actual destructor/guard boundaries
+remain native/host qualification; see the
+[conformance boundary](CONFORMANCE.md#memory-object-record-lifetime).
+No model/configuration changed; the prior full-suite checkpoint remains separate.
+
+The [read-loan borrower storage follow-up](../reports/audits/2026-10-24-security-memory-borrower-storage.md) prepares scalar borrower
+nodes before source escrow and retains complete maps through uncertain
+revocation. Confirmed cleanup frees detached borrower storage before its exact
+shared authority admission returns. Focused IPC-transaction/root-retirement
+checks retain their existing projections; concrete allocator/destructor/IRQ
+contexts remain native/host qualification. No model/configuration changes or
+new physical/replay authority are introduced.

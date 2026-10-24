@@ -670,3 +670,22 @@ retirement still use the same owners; the iterator grants no physical completion
 or retry authority. Memory payload maps still allocate after authority publication
 under `MEMORY_OBJECTS`; this remains separate admission/context work. See
 [borrowed publication](ipc-publication-batches.md).
+
+The global object registry now relinks prepared nodes. Allocation/copy backing
+owns unused storage before publication; retirement detaches the whole node into
+its existing backing receipt. Physical success precedes payload/node disposal
+and original charge refund outside the local memory registry. Started/failed
+release is fenced before allocator entry and backing fields suppress implicit
+cleanup; rejection/abandonment retains complete metadata and charge without
+retry. This covers object records, while mapping, memory-capability, borrower,
+namespace and wider caller contexts remain separate. See
+[object storage](memory-object-storage.md) and its execution evidence.
+
+Read-borrower metadata now uses prepared nodes, retained by the existing transfer
+and revocation prior-state owners. Confirmed mapping/loan cleanup detaches the
+selected borrower and its exact shared authority together. Explicit post-registry
+release frees the borrower node before authority admission returns; failed or
+abandoned revocation retains the complete prior map with its original fence/pin.
+Final backing release drains remaining borrower nodes only after physical
+completion. These are the existing C05/C06/C18 proofs and owners, without new
+custody or retry authority. See [borrower storage evidence](../reports/audits/2026-10-24-security-memory-borrower-storage.md).

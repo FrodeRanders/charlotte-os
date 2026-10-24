@@ -1268,3 +1268,36 @@ remain native qualification. Mixed memory payload maps still allocate after the
 authority gate. No model/configuration changes accompany this batch. All 20 focused cases
 pass: three safe configurations and 17 expected counterexamples. The full
 190-case checkpoint stays separate, with all 235 inputs unchanged. There is no executable refinement, allocator/IRQ or fairness proof.
+
+## Memory-object record lifetime
+
+The [object storage batch](../reports/audits/2026-10-24-security-memory-object-storage.md)
+prepares object nodes with private backing before authority publication. Existing
+backing receipts retain detached complete nodes and original charges through
+physical release and actual node disposal; failure remains terminal without
+refund or replay. Global object identities are claimed before publication and
+never restored on cancellation.
+
+Focused IPC publication/transaction, root-retirement and principal-backing checks
+retain their existing authority/rollback/root/charge projections. Object-node
+allocation/deallocation, the concrete pre-attempt fence, field destructors,
+nonreused object-ID gaps and actual registry/allocator contexts remain native/
+host qualification. No model/configuration changed. The prior full 190-case
+checkpoint stays separate; these checks imply no executable refinement,
+allocator/IRQ or pressure/fairness proof.
+
+## Read-loan borrower-node lifetime
+
+The [borrower storage batch](../reports/audits/2026-10-24-security-memory-borrower-storage.md) preserves the existing IPC loan,
+rollback and root-retirement projections. Destination admission and fallible
+borrower-node preparation precede source escrow; commit relinks the same node.
+Revocation's prior map retains every node on uncertain completion/abandonment.
+Confirmed cleanup carries the selected node and detached shared authority past
+memory unlock; borrower free precedes authority admission release. Existing
+physical proof and final-object ownership remain unchanged.
+
+Focused `CharlotteIpcTransaction` and `CharlotteRootRetirement` safe/negative
+checks are rerun. Models/configurations are unchanged. Concrete node allocation,
+deallocation/refund order, containing destructors and registry/heap/IRQ contexts
+are native/host qualification, without executable refinement or pressure proof.
+The earlier full-suite checkpoint remains separate.

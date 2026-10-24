@@ -1,0 +1,778 @@
+{
+  "schema": 1,
+  "report_date": "2026-10-24",
+  "reviewed_revision": "43f5132d",
+  "classification": {
+    "ledger": {
+      "corrected": 29,
+      "partial": 6,
+      "open": 3
+    },
+    "SEC-07": "partial",
+    "SEC-18": "partial",
+    "production_trust": "disabled"
+  },
+  "implementation": {
+    "scope": "Global object registry uses prepared admitted nodes for direct allocation and copies. Complete detached nodes remain in existing backing owners through physical release and actual node disposal before original charge refund.",
+    "preparation": "Original page/object admission precedes fallible object-node and physical frame allocation. Private ChargedFrames retains unused storage with frames and original charge. Copy keeps its real source pin and unpublished destination until preparation succeeds; ordinary rejection cancels the complete prefix.",
+    "identity": "Direct allocation claims a checked identity before authority publication; copy preclaims during preparation. Cancelled IDs leave gaps and are not restored/recycled. Local isolated exhaustion test does not reset the live global counter.",
+    "publication": "Object insertion only relinks prepared storage. Namespace/capability, borrower and mapping maps still allocate; complete memory publication remains separate fallibility/context work.",
+    "retirement": "Existing ChargedFrames/RetiredMemory or final-pin path carries the complete object node, original frame vector/backing charge and other metadata outside MEMORY_OBJECTS. Physical success precedes payload/node free and original charge refund.",
+    "physical_policy": "Sixteen-frame batches preserved; identities consumed before each attempt. Started/failed fence records before allocator entry. ManuallyDrop fields suppress implicit metadata/charge cleanup on failure/interruption. Ordinary success explicitly disposes storage/vector/node/charge and clears the fence. Empty attempted vectors prove no physical completion. No retry/recovery custody.",
+    "families": [
+      "C05",
+      "C18"
+    ],
+    "new_root_pin_registry_family_custody_or_physical_retry_authority": false,
+    "controls": {
+      "charged_preparation_rejections": 128,
+      "copied_prefix_rejections": 64,
+      "heap_held_object_relinks_and_detaches": 64,
+      "physical_then_payload_node_then_charge_order": true,
+      "existing_detached_backing_abandonment_now_under_memory_and_heap_guards": true,
+      "terminal_release_rejection": {
+        "physical_adapter_invocations": 1,
+        "later_release_callback_invocations": 0,
+        "retained_data_pages": 1,
+        "retained_complete_object_nodes": 1,
+        "retained_original_object_count": 1,
+        "retained_after_exact_root_retirement_and_asid_reuse": true,
+        "qualification": "Deliberate false release adapter leaves allocated frame untouched; expected quarantine warning, not a native failure or actual hardware-fault reproduction."
+      },
+      "identity_exhaustion": "Isolated registry counter only; no live global reset.",
+      "irq_state_preserved": true,
+      "allocator_exhaustion_arbitrary_interruption_or_pressure_claim": false
+    },
+    "remaining": [
+      "memory namespace/capability, borrower and mapping maps still allocate, including after authority mutation",
+      "ordinary private backing rollback, implicit destructors and broader IRQ/guard/caller contexts",
+      "metadata-byte/principal ceilings and allocator overhead",
+      "linear global object lookup/insertion/cursor traversal and repeated reference/close scans; sustained pressure fairness/progress",
+      "historical mapping panic, root-close timeout and initial HTTP timeout causes"
+    ]
+  },
+  "source_sha256": {
+    "AGENTS.md": "6f2ea18519ea608718bc502207ce82dd1d758e02f5d8276d3a30ede3772eccfd",
+    "crates/catten/src/capability.rs": "7461b919e514ad9630710358a8d8f00ac67b71e527407790d54f2a7eff3344a2",
+    "crates/catten/src/capability/budget.rs": "7ae3e3d02256b47af3e35dca15bcd0292d041006b43a11b08ad4ab42ead7a848",
+    "crates/catten/src/capability/record.rs": "837135ae8b710cdc4d171d1590eb54febcc63db1598d654baafcf14e66841cda",
+    "crates/catten/src/ipc/namespace_close.rs": "fb50d533aecbec1774dab71cecca7a75ed977d83389f4cb956c8233c5aeec1a1",
+    "crates/catten/src/ipc/preparation_tests.rs": "fd87e5a93865b24d49e63ad31e12e7f1d1fd482f165325dcc2d95156f9402c25",
+    "crates/catten/src/ipc/record_budget.rs": "ae18fbc7bf2da88997a80b42412e7c1203bf8150ef3d80df4112ebd7f775064a",
+    "crates/catten/src/ipc/record_tests.rs": "315805a3a4bafffaf9532c6584751e28aa200cfcb7de3fde03d42cad8d15287b",
+    "crates/catten/src/klib/collections/id_table.rs": "bc3c14badfd0947ec31561b8338a96d009aead16b5a39ca94fb16a93b08d446d",
+    "crates/catten/src/klib/collections/retirement_list.rs": "ef0447d659221379641fad66a9d93489574062cebb855d01e3247496716a0d65",
+    "crates/catten/src/klib/collections/retirement_list/tests.rs": "063b0983982913ff150fc0ee6af46c5fa2c05418814adfe94fe653129cbbaf69",
+    "crates/catten/src/klib/observer/registration.rs": "349ad661c61c0c6ce079c0bb75869cf053e1e17f78df35d7adb8b73ecd06c7f5",
+    "crates/catten/src/klib/observer/waiter_source.rs": "cf1b633e2dcc2c910c783052d6b4c2af22ebe3ca51bd11256cd2a43850a9c883",
+    "crates/catten/src/memory/budget.rs": "1a273b0dd50608a416ccefaecd4e0c9e007b56fe09b233c22de2cd18c4d529aa",
+    "crates/catten/src/memory/object.rs": "6d9579a6bec8999371732487a5c470e74ec9673aae2a30ef8444cbbb31d3e8bc",
+    "crates/catten/src/memory/object/namespace_close.rs": "fec64145d2237513c8f1bd587584acea029e1e08b06faf5decfe4bb96857c5cd",
+    "crates/catten/src/memory/object/publication_tests.rs": "f00f340449ce1f801b9d843c1d51a3d1382cd0d1963433be32deae20cc4bc5c1",
+    "crates/catten/src/memory/object/retirement_tests.rs": "87817e0e9b7cf90705a5e953ce18ac7e1fca560cca1f830626088e523fec9d58",
+    "crates/catten/src/memory/object/revocation.rs": "056febd9bb0efc627def10025a7145dcb02973cb18bd2af76d73e02722b91308",
+    "crates/catten/src/memory/object/storage_tests.rs": "fe5d78814da47218be0a034a3a0e96d55de2e3962af63b1b7a3dc527e31f8d98",
+    "crates/catten/src/memory/operation.rs": "830a3a6299adfe7f2c735ce4baa58e40dc065d9e65a9bfddf2c5f6f8c5818b0b",
+    "crates/catten/src/memory/retirement.rs": "a2625d644bae567711cbb90fa7f8f53e9089b43a91b1e87e53ad640cb76ee029"
+  },
+  "native_runs": [
+    {
+      "arch": "aarch64",
+      "instance": "memory-object-storage-arm",
+      "exit_status": 0,
+      "guest_attempt": 2,
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19916 CATTEN_DEPLOY_HOST_PORT=20080 scripts/run-aarch64.sh --security-test --http-test --instance memory-object-storage-arm --fresh-storage --timeout 300",
+      "kernel_sha256": "702727bc2d126699499b3e5ea54de721da60dddd7112f6eb0b124e4ad1ae4eca",
+      "boot_image_sha256": "40ce92879dd267c849aa56bba8a8981cd76f2258c468c76a47ad0bc5b1d0dcae",
+      "initial_disk_sha256": "5923970ba5cbf6cbd08fff031dbdcb3931416b3aeeb38528a917de129f405745",
+      "tracked_diff_sha256": "8b0f89f7803404cefb4e169d855209d866529e744b99a9cee786d1474232e60c",
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-aarch64.sh": "42c62c11c20bf928001455b93c1b3c4b971dae9da72ee9d4c4dbae800f2b5973"
+      },
+      "bundle_sha256": {
+        "agent.elf": "7c9b52a0bed0cc6ddc324af244abfce7a4939132979a7d3b8f34223cd1da9842",
+        "cclient.elf": "47813589646c0657ba4eb5a5a6af243b1f1684a083d780a9744ab3bcc5706248",
+        "client.elf": "5c7ac1151fa707b89db82b49bbefccfa2442f0dea4b213867dc08bdc5c510525",
+        "clusterctl.elf": "018f80fbf1ce9a74f1d99d2379a4d6a6b0bca2b48cf1bcc7467fbba311a72794",
+        "deployd.elf": "69dd9d198b2ab85ec1ea04c8f4dcc7805e0f3b65fe6fd74d1e48d3d479f90547",
+        "disco.elf": "99a7f2c90cb3ef9c0af49e176848aed3305a5ae2c1681855d3af1ef8c27f6462",
+        "dns.elf": "78109d95c5a8bd708816a1b36fac406e68780e4b36854b2b7ecb9544eebef192",
+        "echo.elf": "5c59747d8f6ce8141f0f6ed1c65d4617002cc5338481c1a7ef2060e2b448b5a5",
+        "frouter.elf": "805911205d6254f7b21b5b564bf24cb75a8de4bdf910e435ba38776e31e2bfaa",
+        "fs.elf": "c20931f30fbf42bd93046fa76c8ecb41ac1c496696e90e57e4db159037091a64",
+        "grantctl.elf": "039c27369e2371071c3d0b847b48c33c7f48e237822713577371b4cd793f898d",
+        "greet.elf": "8645845a750b0b312aab080787b8cda772e06d830e027ff3cf3ef11b9fc9c9bb",
+        "httpd.elf": "9034668d4bf50e07b8bd26309d02a6f17222a8e29d252204589938d868e5aae4",
+        "kafka.elf": "9451214217da63e6ed1204f1f2b9143043b6439e611dae6a92acee61acd7354d",
+        "kafka_fence_smoke.elf": "a3d63ba5b4f3c50c5ca32185521387d8ac98228113faef95541afd706170b9c0",
+        "kafka_smoke.elf": "46a2efaf5ffbab422ada37451e54b5565562dd44db070be2eae0b6b03107e3c2",
+        "kafka_step.elf": "8d8dd751dd49925569e3556d1f6a705d7ba4023708b459ab8ff3dff6325c2bef",
+        "kafka_step_input.elf": "a7e207a75d68acca60c3d5f5425fefb6ccf0a244cb7219dc42ffab47cd30202a",
+        "kafka_step_proc.elf": "8fef98dbe182877986eb874ebeb0ff64ae80d4d64e1a5604f7f9cfbec8ea2efc",
+        "nclient.elf": "34e54fb0b852f54f997a56bc70d6ddfd037bdab74ce58d6b48188f8e27f52f3f",
+        "net.elf": "6655d31e32759ab37b9a31bbfb5a691d91621123cfaf661c1c03514583f45bb0",
+        "ns.elf": "de73710ac3c0984734eb65d4113eb509c8a8a6837d50b8095d2573d99b204796",
+        "nvme.elf": "548ec21f81e278d77749ee6bac9e50b240bc606424f5a829ae08313131a23272",
+        "nvme_client.elf": "d14e74aebdf58aa6766a06edc877a740f695f7e6eccb78864ae1d3163df0a187",
+        "objstore.elf": "ea21184045b8391e4457f3b3b9b3bb369ef1252c71aef06143be773d0f832259",
+        "objstore_client.elf": "55cbd339afa0d78c9dc71a349c94a4ce4f815417fc82dec1e275b50944372034",
+        "observe.elf": "ff0f5552eb0d3e10edcf57b7bee59d5d3a3ea2bb111a76f68498890cd7e1de22",
+        "raft.elf": "281d4f280903c48e5800326f6826a9b09f5ec8f46dae474cb25e86e4ac4eeda1",
+        "rclient.elf": "a4b9d6d8102ec8bb8449f575d4b5580cd2f3ea525f9f26b8c991202ded52d314",
+        "relmsg.elf": "eeff85710ddd9c4270c2999651308dec8914b3b314ba737ceb6b86989653a9dd",
+        "rng.elf": "a948fdc8f30934bebbc22c85c27e1da76f00b6e6b327bfd27dda1f0a7a655686",
+        "s3.elf": "4a2acc3e9e50d8779b853d1b1b8e30ba512329ae1e00e6d731dce26e3ccee36b",
+        "s3_smoke.elf": "2abe4a752de84bdfa15e93fa38bad3c92b02e2ef2b12fb3d1d0e8091762cb253",
+        "security_probe.elf": "ba5801a48cd2450408d984ae8618059b7446056270bc28fffb59462964e20efb",
+        "servicemgr.elf": "7e100f389bf431226ae0394238aa1857b72197f3df64823111d44347383bd12f",
+        "shutdown_probe.elf": "58cd8fb289f57358a06df005afeff7a3c242ad4a43ee0d9a062f1fab9bd9ac25",
+        "sitas-user.elf": "fbf1b47a721d84498a64e43bc626a7f962a52d3740e3fa7e14adaeea7fa5f311",
+        "tcpclient.elf": "6eeb6137839b0e78c3c3b27234ee7ee1f7aaa9991a5f1d457884dab87d9b7bbe",
+        "tcpip.elf": "97b38c12575ea30242c5c1dcd9640eb0755016f857759489b56de9c07f6a0b07",
+        "time.elf": "d6bf265479d64df812bcc29aa6224427be7562746b7239daef70093ac85d70f7",
+        "uart.elf": "55a8c43ecc6489c1fb9fa1827cfd8e2881068a382918d84eebf4369dbc502009"
+      },
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "runner_capture_sha256": "373789aa23f150de6415edc355474e1a0b38258273cf0415bb49317483f0dfa4",
+      "capture_sha256": {
+        "manifest.json": "8302d62c4419644c99a233dacc5c0b3597e77cfef26962dae321ba5a940de9f0",
+        "result.json": "373d97eec748a1793b505ce00900d935a5fde132c2ababcd8a5876a2fc3c92a6",
+        "serial.log": "3d06d49b2835867820c6253f7321317cca05690eb5617c27312c4cffaa040de6",
+        "artifacts.json": "5360727c9f93b093b7f503f5507a6cf340f082cfaac0c8f976b0b55e5acab718"
+      },
+      "selected_guest_observations": [
+        "[+     4.418368] WARNING: failed to free memory-object frames; charge quarantined",
+        "[+     4.419360] [memory object storage] 128 charged preparation and 64 copied-prefix rejections, 64 heap-held object relinks/detaches, post-physical node/charge disposal, non-reused IDs and terminal release rejection passed; one data page, complete object node and original charge deliberately retained",
+        "[+     4.442232] [IPC borrowed publication] empty and 257-member mixed authority batches with heap held; late transfer/extra namespace rejection preserved every destination/source, cancellation restored baselines; payload-map allocation remains separate",
+        "[+     4.447532] [IPC scalar publication] 64 complete prepared call commits with IPC/heap held, enqueue/reply/observation, original count reconciliation and IRQ preservation passed",
+        "[+     4.610074] [IPC pending storage] 64 invalid-handle and 64 preparation rejections, 64 heap-held publications/detaches, original charge through node disposal and IRQ preservation passed; three abandoned call owners retain storage, three call/reply reservations, five roots and copied backing",
+        "[+     4.620356] [IPC reply storage] 64 second-allocation rejections, 64 heap-held paired publications/detaches and one 64-node retirement batch passed; token charge survives pending-node disposal, original class survives promotion; two abandoned scalar token nodes/counts and one notification entry retained across exact root reuse",
+        "[+     4.658478] [IPC endpoint storage] 640 preparation and 96 growth rejections; 64 complete heap-held endpoint publications plus 64 heap-held publications/detaches, heap-held FIFO replacement, concurrent resize/close, hidden connection final-reference cleanup and guarded retention passed; two roots/leases, three endpoint records and twenty slots deliberately retained",
+        "[+     6.584028] [ipc records] SUCCESS: connection/call/reply bounds, pre-transfer rejection, rollback, result/cancellation cleanup and generation reuse",
+        "[+     6.632762] [IPC backing retirement] preparation rollback, maximum vectors, bulk queue, call/result release outside IPC passed",
+        "[+     6.637588] [IPC staged rollback] partial vector, storage/publication rejection, closed destination, unlocked copy release and exact root retention passed",
+        "[+     7.059640] [IPC reply ownership] unlocked loan detach, competing reply/close, preparation rollback, staged close, partial failure and abandonment passed; failed cleanup retains exact closing roots and original backing charges",
+        "[+     7.122270] [IPC namespace ownership] unlocked queued/delivered cleanup, both closing peers, preparation rollback, partial failure and abandonment passed; failed roots/backing retained; exact pending token/epoch diagnosed",
+        "[+     7.141134] [IPC cancellation ownership] queued/delivered close, unlocked loan cleanup, competing close/reply/receive, staged close, preparation rollback, partial failure and abandonment passed; bulk failure retains queued authority and exact closing roots",
+        "[+    11.478648] [IPC endpoint retirement] mapped loans from two callers retired with secondary LPs online",
+        "[+    11.480894] [IPC namespace runtime] delivered/queued mapped loans from two callers retired with secondary LPs online",
+        "[+    48.797260] [security] probe passed; retired policy fenced, publication generation=1",
+        "[+    81.467934] [security] probe passed; retired policy fenced, publication generation=2",
+        "[+    81.486640] [security] concurrent cancellation traffic retired after 19912 requests",
+        "[+    81.487390] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x2023ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "http_controls": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.348s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.346s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.356s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.12s; ingress recovered"
+      ],
+      "failed_host_transport_attempts": [
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "preceding_successful_control": "PASS: initial metrics request",
+          "following_successful_control": "PASS: EOF followed by a successful metrics request",
+          "qualification": "Failed bounded host attempt; eventual successful control retained separately. Cause not isolated; no completion/quiescence or replay authority inferred."
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "preceding_successful_control": "PASS: EOF followed by a successful metrics request",
+          "following_successful_control": "PASS: abortive peer closes followed by a successful metrics request",
+          "qualification": "Failed bounded host attempt; eventual successful control retained separately. Cause not isolated; no completion/quiescence or replay authority inferred."
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "preceding_successful_control": "PASS: abortive peer closes followed by a successful metrics request",
+          "following_successful_control": "PASS: idle client timed out without preventing subsequent metrics",
+          "qualification": "Failed bounded host attempt; eventual successful control retained separately. Cause not isolated; no completion/quiescence or replay authority inferred."
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 2/2",
+          "preceding_successful_control": "PASS: abortive peer closes followed by a successful metrics request",
+          "following_successful_control": "PASS: idle client timed out without preventing subsequent metrics",
+          "qualification": "Failed bounded host attempt; eventual successful control retained separately. Cause not isolated; no completion/quiescence or replay authority inferred."
+        }
+      ],
+      "source_note": "Final runtime/native fixture sources unchanged after build; later changes are living documentation/evidence. Superseded earlier passing images precede the final backing-owner fence and field retention."
+    },
+    {
+      "arch": "x86_64",
+      "instance": "memory-object-storage-x86",
+      "exit_status": 0,
+      "guest_attempt": 2,
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19917 CATTEN_DEPLOY_HOST_PORT=20081 scripts/run-x86_64.sh --security-test --http-test --instance memory-object-storage-x86 --fresh-storage --timeout 300",
+      "kernel_sha256": "1768c37335edaca864d16c48cf4a0e2857978f489e179c9ca8cbe96a96f954c6",
+      "boot_image_sha256": "7f404f3191f63a6f5c269d46b1ac46ed8396aa2d2ce6acac65f61be3bc859ddf",
+      "initial_disk_sha256": "8860169e2a2167e84d531cc5ac0446ecd4396e6a5d12dcac7f2dcdad554e351f",
+      "tracked_diff_sha256": "08d1476320a6195dfe7829eceff04ddabb869e9f74ce5e5d2b809f5ff7a11502",
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-x86_64.sh": "dd82631746d8765526ed3372c8a779851f254ca2b8ad1fa0ee55d49a96067aa4"
+      },
+      "bundle_sha256": {
+        "agent.elf": "9a1ce55b668ecdbd930e4cd7f445e7386113dbcf1004670e889757483b555284",
+        "ahci.elf": "e3604e8f582c09e8e9be8927c037d2ce6a0a799177030bd13a86207776986b16",
+        "client.elf": "7587b5e8d3fed85777d90946ce3b6424c57eb228d92330fc15fb58922ed25c7d",
+        "clusterctl.elf": "ddc8f0e1022a5a596ad8bc6ecadefe267f96db4fd48143496b2b154d60359987",
+        "deployd.elf": "579b708e088efe759b505543278e8d9fcdba8c818cbfca0b2cbd32b36cc068f5",
+        "disco.elf": "706baa52489e9b8777430e05ed2b9cd6ea9b183920cf7d5d6e0435b1cc922476",
+        "dns.elf": "acbd66f2acd5f929ee956851ac0295465cb0e8152262ec0bcec615a7e464b33d",
+        "e1000e.elf": "7515ca36abeb4b871064186f1c901b9f93921541888ed4f26028faa57b7f8a96",
+        "echo.elf": "f5380da952be0e1fbc419746664551c5f33ee46d8b62ab9edb7e2d7fe924bb51",
+        "frouter.elf": "4025ca4c20d86fbb7f7c67d539ab141f551c2918e770e060874bf6ca80a7226f",
+        "fs.elf": "252ed91d742f3554a27de75b2bc1dfc84c4b540ed4061accfba5d560c5ce067f",
+        "grantctl.elf": "4eeae2dcec2bec33811c242b547706614441bbea2ccb552968b38ce74a50dce0",
+        "greet.elf": "fb6e152e34645d4ae1b6392f71850c688d4cc0475a7751f0392778050c61ad7e",
+        "httpd.elf": "b16de6b0d477afe4e2e52ff3277420bf4557894aae4b6b22b00c89c1d21be03d",
+        "kafka.elf": "9f25f86b824fe8d7de14c197626307e3bc6ead58e6305b910f9a488430333d97",
+        "kafka_smoke.elf": "f4b57e519d5983fc03f58f7b4d63159822a003c325624226f16d93ace54010a6",
+        "nclient.elf": "924bfd1a07cc67c16a64176746ac924fe4fd36b95829c87818545a261da2a326",
+        "net.elf": "9b3008b7a7356eea1b1df8d261c4e64867f587475df82e62fafa57eefcc97162",
+        "ns.elf": "55d10086d99699cf87634de7c9aec2dba60d99e19e00b697ee5e129af4de4b2b",
+        "nvme.elf": "233a835bfa268a2046bd1768a986b3a3a0d5316645fea366e25ee87e50a38b25",
+        "nvme_client.elf": "16ac4efe9b0c5b91232c088d25fffca14facd6c5201ef573111dabcd80af3c30",
+        "objstore.elf": "d84a4b33256fb3ae05db84eb281db35cf2748c263ed977b8d108a35971ece430",
+        "objstore_client.elf": "4d4f001cffde037b65c9e8433855b01098cc63b5ef334246ae25e63768ffe4fc",
+        "observe.elf": "49f3c3241de00713201da049415628eca5e6cca32748ea5c51b14a0ca637cb21",
+        "raft.elf": "4187e23f27c337863c810c70e46813e1a9f4a753d7f8096b6b14d0dfdbb183ff",
+        "rclient.elf": "3bcecad8b197e62836193f1c2e8053efc7a933cb833d05b4e3bc8f42e58a5e05",
+        "relmsg.elf": "5989b6d15c96c6660dd22a5ff3b83da0edd74739c74512b624f1a07785c15cc6",
+        "rng.elf": "b9c1cc204330dccde6b0da3aa09962bcfcddc66d06060d24fa222e8f26f6c69c",
+        "s3.elf": "4a90f021454c5a29e92d350cc5f36192056d29c16c0128d970b1226917d3950a",
+        "s3_smoke.elf": "f1d14f41f3b7fcae3e6a191c03c99ba88524fb3342dd9eaccb43568a54518406",
+        "security_probe.elf": "33539c825b40ee49f7c029e6e12044af547889bf67a086a5fa6a3e81413b81a4",
+        "servicemgr.elf": "61474b6524f95d6bb5c004ec665c3274241b4bf0292a118c5b18def84238fa2e",
+        "shutdown_probe.elf": "3f7e3ff0143acc4dc0254264f99436fcb6b3aac8ca64de051e69fd2c65e3ccd2",
+        "tcpclient.elf": "a0dda5b46b7bb114952fe0f7e22fc1ee96634f2154770eaa62eb95c7544a86e9",
+        "tcpip.elf": "7c0f683a20058b21b53e5fa86af84f6686a43225ce0e2add8e650bd3384682b2",
+        "time.elf": "459e6222d3fa94ea7297b99c4b954ce5e8af65c20157436f7c6147c23ca350ab",
+        "virtio_blk.elf": "e1398a2fcbb24b244ca9b4e7f65f4f52cd2d4c01d73df5b2860137e2b15f5b74"
+      },
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "runner_capture_sha256": "03dc9c29e3284ef387d9ecc193f191570714381264a4fe6f81e048291dac975d",
+      "capture_sha256": {
+        "manifest.json": "c9670ae52b0f94dc67b45c0d12e9797e34e3c1339348cc33501d2e8b80f5ddf8",
+        "result.json": "373d97eec748a1793b505ce00900d935a5fde132c2ababcd8a5876a2fc3c92a6",
+        "serial.log": "d914943ee99bcfdf96867f32394a2850a89343708ffcb31abea97f08198661e8",
+        "artifacts.json": "601636d4dd49db1b2b4998edb3fc77b9646cb47e0081f3fe3a84e917fff27c69"
+      },
+      "selected_guest_observations": [
+        "[+     1.712336] WARNING: failed to free memory-object frames; charge quarantined",
+        "[+     1.713537] [memory object storage] 128 charged preparation and 64 copied-prefix rejections, 64 heap-held object relinks/detaches, post-physical node/charge disposal, non-reused IDs and terminal release rejection passed; one data page, complete object node and original charge deliberately retained",
+        "[+     1.734366] [IPC borrowed publication] empty and 257-member mixed authority batches with heap held; late transfer/extra namespace rejection preserved every destination/source, cancellation restored baselines; payload-map allocation remains separate",
+        "[+     1.740663] [IPC scalar publication] 64 complete prepared call commits with IPC/heap held, enqueue/reply/observation, original count reconciliation and IRQ preservation passed",
+        "[+     1.892784] [IPC pending storage] 64 invalid-handle and 64 preparation rejections, 64 heap-held publications/detaches, original charge through node disposal and IRQ preservation passed; three abandoned call owners retain storage, three call/reply reservations, five roots and copied backing",
+        "[+     1.901596] [IPC reply storage] 64 second-allocation rejections, 64 heap-held paired publications/detaches and one 64-node retirement batch passed; token charge survives pending-node disposal, original class survives promotion; two abandoned scalar token nodes/counts and one notification entry retained across exact root reuse",
+        "[+     1.944952] [IPC endpoint storage] 640 preparation and 96 growth rejections; 64 complete heap-held endpoint publications plus 64 heap-held publications/detaches, heap-held FIFO replacement, concurrent resize/close, hidden connection final-reference cleanup and guarded retention passed; two roots/leases, three endpoint records and twenty slots deliberately retained",
+        "[+     3.738567] [ipc records] SUCCESS: connection/call/reply bounds, pre-transfer rejection, rollback, result/cancellation cleanup and generation reuse",
+        "[+     3.789485] [IPC backing retirement] preparation rollback, maximum vectors, bulk queue, call/result release outside IPC passed",
+        "[+     3.794583] [IPC staged rollback] partial vector, storage/publication rejection, closed destination, unlocked copy release and exact root retention passed",
+        "[+     4.156435] [IPC reply ownership] unlocked loan detach, competing reply/close, preparation rollback, staged close, partial failure and abandonment passed; failed cleanup retains exact closing roots and original backing charges",
+        "[+     4.221380] [IPC namespace ownership] unlocked queued/delivered cleanup, both closing peers, preparation rollback, partial failure and abandonment passed; failed roots/backing retained; exact pending token/epoch diagnosed",
+        "[+     4.242598] [IPC cancellation ownership] queued/delivered close, unlocked loan cleanup, competing close/reply/receive, staged close, preparation rollback, partial failure and abandonment passed; bulk failure retains queued authority and exact closing roots",
+        "[+    15.422513] [IPC endpoint retirement] mapped loans from two callers retired with secondary LPs online",
+        "[+    15.448908] [IPC namespace runtime] delivered/queued mapped loans from two callers retired with secondary LPs online",
+        "[+    52.796915] [security] probe passed; retired policy fenced, publication generation=1",
+        "[+    85.875025] [security] probe passed; retired policy fenced, publication generation=2",
+        "[+    85.884098] [security] concurrent cancellation traffic retired after 18348 requests",
+        "[+    85.884856] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x2023bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "http_controls": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.365s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.382s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.325s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.21s; ingress recovered"
+      ],
+      "failed_host_transport_attempts": [
+        {
+          "diagnostic": "HTTP transport TimeoutError; retry 1/2",
+          "preceding_successful_control": null,
+          "following_successful_control": "PASS: initial metrics request",
+          "qualification": "Failed bounded host attempt; eventual successful control retained separately. Cause not isolated; no completion/quiescence or replay authority inferred."
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "preceding_successful_control": "PASS: initial metrics request",
+          "following_successful_control": "PASS: EOF followed by a successful metrics request",
+          "qualification": "Failed bounded host attempt; eventual successful control retained separately. Cause not isolated; no completion/quiescence or replay authority inferred."
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "preceding_successful_control": "PASS: EOF followed by a successful metrics request",
+          "following_successful_control": "PASS: abortive peer closes followed by a successful metrics request",
+          "qualification": "Failed bounded host attempt; eventual successful control retained separately. Cause not isolated; no completion/quiescence or replay authority inferred."
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "preceding_successful_control": "PASS: abortive peer closes followed by a successful metrics request",
+          "following_successful_control": "PASS: idle client timed out without preventing subsequent metrics",
+          "qualification": "Failed bounded host attempt; eventual successful control retained separately. Cause not isolated; no completion/quiescence or replay authority inferred."
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 2/2",
+          "preceding_successful_control": "PASS: abortive peer closes followed by a successful metrics request",
+          "following_successful_control": "PASS: idle client timed out without preventing subsequent metrics",
+          "qualification": "Failed bounded host attempt; eventual successful control retained separately. Cause not isolated; no completion/quiescence or replay authority inferred."
+        }
+      ],
+      "source_note": "Final runtime/native fixture sources unchanged after build; later changes are living documentation/evidence. Superseded earlier passing images precede the final backing-owner fence and field retention."
+    }
+  ],
+  "failed_native_runs": [],
+  "checks": {
+    "host_collection": {
+      "command": "rustc --edition=2024 --test crates/catten/src/klib/collections/retirement_list.rs -o target/host-self-tests/retirement-list-tests; target/host-self-tests/retirement-list-tests",
+      "exit_status": 0,
+      "passed": 16,
+      "capture_sha256": "979cd2a1d79bcb88d38c6be4d02fb896ae047d999817a17a2b767e9f04b24250",
+      "selected_result": [
+        "test tests::charged_map_keeps_admission_through_detachment_payload_and_node_free ... ok",
+        "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ]
+    },
+    "workspace_fmt": {
+      "command": "cargo fmt --all -- --check",
+      "exit_status": 0
+    },
+    "whitespace": {
+      "command": "git diff --check",
+      "exit_status": 0
+    },
+    "shell_syntax": {
+      "command": "bash -n docs/tla/check.sh",
+      "exit_status": 0
+    },
+    "base_kernel_clippy": [
+      {
+        "arch": "aarch64",
+        "exit_status": 0,
+        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+        "capture_sha256": "618c42e1651afbe52135e26e43081edf4a3c32dd07ed09691d8ff4dc7f20be31"
+      },
+      {
+        "arch": "x86_64",
+        "exit_status": 0,
+        "flags": "--offline --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+        "capture_sha256": "d27a9829104fe1de450da277290bfde8584ebf859965e62f8a473c33f05afe15"
+      }
+    ],
+    "living_document_references": {
+      "checked": 1017,
+      "broken": 0,
+      "scope": "Changed Markdown local links and LaTeX repofile targets; changed TeX environment sequences match baseline."
+    },
+    "recorded_input_hashes": {
+      "checked": 295,
+      "mismatches": 0,
+      "scope": "22 source/instruction files, 32 focused and 235 full-suite formal inputs, prior checkpoint, four historical evidence files and preserved PDF. Native artifacts have separately recorded captured hashes."
+    }
+  },
+  "formal": {
+    "cases": 27,
+    "safe": 4,
+    "expected_counterexamples": 23,
+    "model_or_configuration_changed": false,
+    "input_sha256": {
+      "docs/tla/CharlotteIpcPublication.tla": "67d87012aaed9bed5eec8df42b68f46359153a618d43a9b0befcb6b92e009432",
+      "docs/tla/CharlotteIpcPublication_batch_unsafe.cfg": "f21d1ad0c3c4ae9110851d914f55df4e08a5583db20fb9a1c3524c8158f3af1f",
+      "docs/tla/CharlotteIpcPublication_cancel_unsafe.cfg": "fb3cb26ea11333c4341a9569f3d1eea6757d28d2bed3a8bab006c8930187cd6d",
+      "docs/tla/CharlotteIpcPublication_connection_unsafe.cfg": "aaca3189ab479abf22b273882ca92fdf23602696a91aba0c1ff316bd46e1beae",
+      "docs/tla/CharlotteIpcPublication_memory_unsafe.cfg": "157e67d386164b1789334327b7c329b5cc2f133203867a7f2f3738688616133d",
+      "docs/tla/CharlotteIpcPublication_observe_unsafe.cfg": "958ce487bbee6ff56aae8a9a40df99593537a6b64320f4a5641a262ce245b0f9",
+      "docs/tla/CharlotteIpcPublication_readiness_unsafe.cfg": "dbc976896ed54d43217106ac32f920a93ef1ea9be8821e71b926d16ca6a02a27",
+      "docs/tla/CharlotteIpcPublication_refund_unsafe.cfg": "6aad7a123d8d50f7604ea78ed9f3106e05c5d95559c6dda0e83948f533abdc57",
+      "docs/tla/CharlotteIpcPublication_restore_unsafe.cfg": "a96f0da36e15eda49e0698ed30b3f373425fac45e76d11f8f8b034e5866ac5dd",
+      "docs/tla/CharlotteIpcPublication_rollback_unsafe.cfg": "e835593816f7502ac984d59d370237950b166a938774ec5a45a5686afbab6313",
+      "docs/tla/CharlotteIpcPublication_serial_unsafe.cfg": "32130b6ce3d0d01be1df08a89b7dd38d9a7d476ad31cd3605df48376eb1a5650",
+      "docs/tla/CharlotteIpcPublication_small.cfg": "4c6da1ebeb79eeefa62bb0dbb9d26184956c1fdd6d097a5de41b120275d67d87",
+      "docs/tla/CharlotteIpcTransaction.tla": "bfc596a22480fae309c31732670b60024085014ec084d998dbbf8affd40fed7c",
+      "docs/tla/CharlotteIpcTransaction_rollback_unsafe.cfg": "89326400847cf5ac0fd76e7c68eb2f32385d551cd38ce201c70dd6a5a6b7fe99",
+      "docs/tla/CharlotteIpcTransaction_small.cfg": "67e0efe832fbadf7258296297af6afa293da1a78edcdb464a14cf9a70280a471",
+      "docs/tla/CharlotteIpcTransaction_timeout_unsafe.cfg": "5c748b860dec8df3fb253e6aefcaa8138835fac61dc0b6ea48c8a089cb2b4c00",
+      "docs/tla/CharlottePrincipalBacking.tla": "2ccbab48a90c54294d9ba8b0af5e49496af414e33f8f519aea9ae14ccf90520c",
+      "docs/tla/CharlottePrincipalBacking_drop_unsafe.cfg": "dbf25c547d2f81be26fe4d3e1d37a752b36808832fce90b469c45749377dfe3f",
+      "docs/tla/CharlottePrincipalBacking_generation_unsafe.cfg": "2769ced1188782189179d0cc5e79f3f9356a652b25e62edbab192a2d37690e50",
+      "docs/tla/CharlottePrincipalBacking_growth_unsafe.cfg": "78689baa32a157d660554f88cad578ee3cb649dd64285edd3d33586c709c76a6",
+      "docs/tla/CharlottePrincipalBacking_move_unsafe.cfg": "8201cf63ad6bd9ab9741c8374f184527aff7f4cff5ed5e6a308292cbdf9edc6f",
+      "docs/tla/CharlottePrincipalBacking_refund_unsafe.cfg": "ac39cf53c3cb34cabda30b14059588505c6e202c01dca70a53e8af2739eb783c",
+      "docs/tla/CharlottePrincipalBacking_reuse_unsafe.cfg": "3c1f54bfe704855e8e38ca9f1d7ce9cb560e0d7f049971729555049cfd60869d",
+      "docs/tla/CharlottePrincipalBacking_small.cfg": "60196e21f9b1815b5a92815b1a7e524d3ecdd9da2a3cb566736b44aab2148f91",
+      "docs/tla/CharlotteRootRetirement.tla": "817ce0b352e358ab901f6392354d4a42ca294274080e5f1b979d1105f563d87e",
+      "docs/tla/CharlotteRootRetirement_abandon_unsafe.cfg": "693f4eeb72902cd536fb1fa185b05e7daec0f0fd50f9fe655f1dcbd9396c7202",
+      "docs/tla/CharlotteRootRetirement_lease_unsafe.cfg": "185baa2c91ce27fd6872e654ee522f6b3770f467e0eead8557bb26c60c95c889",
+      "docs/tla/CharlotteRootRetirement_physical_unsafe.cfg": "fa20b8c4b353156b8f39c48362bc3ea995377e31d81a69f742300ca41077edab",
+      "docs/tla/CharlotteRootRetirement_refund_unsafe.cfg": "c01d5c13fbee34239773c05eb0a33db1d5c31dfaa2ecf9a8de25853de659faed",
+      "docs/tla/CharlotteRootRetirement_release_unsafe.cfg": "47ca560b0c4fba4952c7009e3fb6af8c5c3cde906a7bb943d70aea4113dbada5",
+      "docs/tla/CharlotteRootRetirement_small.cfg": "9ee0187ad3b152ba75044f87f71788bb9bd1f5d2af8ebf0a1b1389c487b593d1",
+      "docs/tla/check.sh": "88a486c084021244d01927cb6616dbfd8714c36aa4532c46771cf9c1d90bad58"
+    },
+    "tools_jar_sha256": "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88",
+    "runs": [
+      {
+        "module": "CharlotteIpcPublication",
+        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar CharlotteIpcPublication",
+        "exit_status": 0,
+        "safe_graph": {
+          "distinct": 7634722,
+          "generated": 36122253,
+          "depth": 42
+        },
+        "capture_sha256": "bf82dde7f0fe7dd416b35730cb12bb99d1d6f3cfef05d07a4b7495a322a4a213",
+        "selected_observations": [
+          ">>> TLC CharlotteIpcPublication (CharlotteIpcPublication_small.cfg)",
+          "<Begin line 68, col 1 to line 68, col 17 of module CharlotteIpcPublication>: 3:24",
+          "<PrepareRecord line 76, col 1 to line 76, col 19 of module CharlotteIpcPublication>: 12:311478",
+          "<RejectStorage line 80, col 1 to line 80, col 19 of module CharlotteIpcPublication>: 1840:311478",
+          "<Reserve line 84, col 1 to line 84, col 13 of module CharlotteIpcPublication>: 1127:5646",
+          "<RejectReservation line 92, col 1 to line 92, col 23 of module CharlotteIpcPublication>: 2084:305832",
+          "<PrepareMemory line 97, col 1 to line 97, col 13 of module CharlotteIpcPublication>: 60:6690",
+          "<PrepareConnection line 106, col 1 to line 106, col 17 of module CharlotteIpcPublication>: 81:6690",
+          "<Commit line 125, col 1 to line 125, col 6 of module CharlotteIpcPublication>: 48:48",
+          "<RejectCommit line 140, col 1 to line 140, col 12 of module CharlotteIpcPublication>: 301:83400",
+          "<FinishPreparation line 144, col 1 to line 144, col 17 of module CharlotteIpcPublication>: 72:75504",
+          "<AbortPreparation line 150, col 1 to line 150, col 16 of module CharlotteIpcPublication>: 3188:1463040",
+          "<Readiness line 161, col 1 to line 161, col 9 of module CharlotteIpcPublication>: 99:246484",
+          "<PrepareReceive line 165, col 1 to line 165, col 14 of module CharlotteIpcPublication>: 1494:2160",
+          "<RejectReceive line 172, col 1 to line 172, col 13 of module CharlotteIpcPublication>: 144:178528",
+          "<ReceiveWriteFailed line 177, col 1 to line 177, col 18 of module CharlotteIpcPublication>: 1051:2160",
+          "<CommitReceive line 183, col 1 to line 183, col 13 of module CharlotteIpcPublication>: 1377:2160",
+          "<ObserveReply line 192, col 1 to line 192, col 12 of module CharlotteIpcPublication>: 33:1088",
+          "<RepeatObservation line 198, col 1 to line 198, col 17 of module CharlotteIpcPublication>: 415:755552",
+          "<Use line 202, col 1 to line 202, col 9 of module CharlotteIpcPublication>: 6253:51328",
+          "<ApplicationClose line 209, col 1 to line 209, col 22 of module CharlotteIpcPublication>: 12577:102656",
+          "<CancelHidden line 218, col 1 to line 218, col 12 of module CharlotteIpcPublication>: 1252:417464",
+          "<Fill line 230, col 1 to line 230, col 10 of module CharlotteIpcPublication>: 4768:20055",
+          "<RetireNamespace line 239, col 1 to line 239, col 21 of module CharlotteIpcPublication>: 657523:2303390",
+          "<DetachNamespace line 245, col 1 to line 245, col 21 of module CharlotteIpcPublication>: 685208:2305646",
+          "<ReplaceNamespace line 255, col 1 to line 255, col 22 of module CharlotteIpcPublication>: 565344:1681171",
+          "<ReleaseRetired line 267, col 1 to line 267, col 21 of module CharlotteIpcPublication>: 5682782:24624640",
+          "<Abandon line 272, col 1 to line 272, col 7 of module CharlotteIpcPublication>: 5585:857940",
+          "36122253 states generated, 7634722 distinct states found, 0 states left on queue.",
+          "The depth of the complete state graph search is 42.",
+          ">>> TLC CharlotteIpcPublication (CharlotteIpcPublication_memory_unsafe.cfg, expected counterexample)",
+          "Error: Invariant UseRequiresDelivery is violated.",
+          "<UnsafeUseMemory line 290, col 1 to line 290, col 15 of module CharlotteIpcPublication>: 1:2",
+          ">>> TLC CharlotteIpcPublication (CharlotteIpcPublication_connection_unsafe.cfg, expected counterexample)",
+          "Error: Invariant UseRequiresDelivery is violated.",
+          "<UnsafeUseConnection line 294, col 1 to line 294, col 19 of module CharlotteIpcPublication>: 1:2",
+          ">>> TLC CharlotteIpcPublication (CharlotteIpcPublication_batch_unsafe.cfg, expected counterexample)",
+          "Error: Invariant AtomicPublication is violated.",
+          "<UnsafePublishPrefix line 298, col 1 to line 298, col 19 of module CharlotteIpcPublication>: 1:2",
+          ">>> TLC CharlotteIpcPublication (CharlotteIpcPublication_serial_unsafe.cfg, expected counterexample)",
+          "Error: Invariant SerialsConsumed is violated.",
+          "<UnsafeReuseSerial line 302, col 1 to line 302, col 17 of module CharlotteIpcPublication>: 1:2",
+          ">>> TLC CharlotteIpcPublication (CharlotteIpcPublication_cancel_unsafe.cfg, expected counterexample)",
+          "Error: Invariant ReplacementIntact is violated.",
+          "<UnsafeCancelSuccessor line 306, col 1 to line 306, col 21 of module CharlotteIpcPublication>: 1:2",
+          ">>> TLC CharlotteIpcPublication (CharlotteIpcPublication_restore_unsafe.cfg, expected counterexample)",
+          "Error: Invariant ReplacementIntact is violated.",
+          "<UnsafeRestoreSuccessor line 312, col 1 to line 312, col 22 of module CharlotteIpcPublication>: 1:2",
+          ">>> TLC CharlotteIpcPublication (CharlotteIpcPublication_refund_unsafe.cfg, expected counterexample)",
+          "Error: Invariant RetainedNodesCharged is violated.",
+          "<UnsafeRefundRetained line 317, col 1 to line 317, col 27 of module CharlotteIpcPublication>: 2:3",
+          ">>> TLC CharlotteIpcPublication (CharlotteIpcPublication_readiness_unsafe.cfg, expected counterexample)",
+          "Error: Invariant VisibleRequiresDelivery is violated.",
+          "<UnsafeReadinessDelivers line 321, col 1 to line 321, col 23 of module CharlotteIpcPublication>: 1:2",
+          ">>> TLC CharlotteIpcPublication (CharlotteIpcPublication_observe_unsafe.cfg, expected counterexample)",
+          "Error: Invariant ObservedCloseStaysClosed is violated.",
+          "<UnsafeRepublishObserved line 325, col 1 to line 325, col 23 of module CharlotteIpcPublication>: 1:2",
+          ">>> TLC CharlotteIpcPublication (CharlotteIpcPublication_rollback_unsafe.cfg, expected counterexample)",
+          "Error: Invariant RollbackRestoresCapturedSource is violated.",
+          "<UnsafeRollbackNeedsAdmission line 330, col 1 to line 330, col 28 of module CharlotteIpcPublication>: 1:2"
+        ]
+      },
+      {
+        "module": "CharlotteIpcTransaction",
+        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar CharlotteIpcTransaction",
+        "exit_status": 0,
+        "safe_graph": {
+          "distinct": 26,
+          "generated": 71,
+          "depth": 11
+        },
+        "capture_sha256": "9e6c329242d7be39cb4dbca587aae4810618e8ddb27087ad5908d53561850868",
+        "selected_observations": [
+          ">>> TLC CharlotteIpcTransaction (CharlotteIpcTransaction_small.cfg)",
+          "<BeginVector line 34, col 1 to line 34, col 11 of module CharlotteIpcTransaction>: 1:1",
+          "<TransferMove line 40, col 1 to line 40, col 15 of module CharlotteIpcTransaction>: 3:16",
+          "<BeginBorrow line 50, col 1 to line 50, col 11 of module CharlotteIpcTransaction>: 5:8",
+          "<AttachConnection line 57, col 1 to line 57, col 16 of module CharlotteIpcTransaction>: 7:8",
+          "<Commit line 64, col 1 to line 64, col 6 of module CharlotteIpcTransaction>: 1:1",
+          "<FailAndRollback line 75, col 1 to line 75, col 15 of module CharlotteIpcTransaction>: 1:28",
+          "<Deliver line 88, col 1 to line 88, col 7 of module CharlotteIpcTransaction>: 2:2",
+          "<WaitTimeout line 97, col 1 to line 97, col 11 of module CharlotteIpcTransaction>: 1:2",
+          "<Reply line 105, col 1 to line 105, col 5 of module CharlotteIpcTransaction>: 2:2",
+          "<ObserveReply line 113, col 1 to line 113, col 12 of module CharlotteIpcTransaction>: 2:2",
+          "71 states generated, 26 distinct states found, 0 states left on queue.",
+          "The depth of the complete state graph search is 11.",
+          ">>> TLC CharlotteIpcTransaction (CharlotteIpcTransaction_rollback_unsafe.cfg, expected counterexample)",
+          "Error: Invariant RollbackRestoresAll is violated.",
+          "<UnsafeRollback line 137, col 1 to line 137, col 14 of module CharlotteIpcTransaction>: 2:3",
+          ">>> TLC CharlotteIpcTransaction (CharlotteIpcTransaction_timeout_unsafe.cfg, expected counterexample)",
+          "Error: Invariant TimeoutRetainsLoan is violated.",
+          "<UnsafeTimeoutRelease line 156, col 1 to line 156, col 20 of module CharlotteIpcTransaction>: 2:3"
+        ]
+      },
+      {
+        "module": "CharlotteRootRetirement",
+        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar CharlotteRootRetirement",
+        "exit_status": 0,
+        "safe_graph": {
+          "distinct": 2978,
+          "generated": 3733,
+          "depth": 33
+        },
+        "capture_sha256": "77eeb926b78c05d1408f1408bc7d4b3cab9ee8c072a9e975416f913913a5448c",
+        "selected_observations": [
+          ">>> TLC CharlotteRootRetirement (CharlotteRootRetirement_small.cfg)",
+          "<Allocate line 50, col 1 to line 50, col 8 of module CharlotteRootRetirement>: 29:29",
+          "<Acquire line 64, col 1 to line 64, col 14 of module CharlotteRootRetirement>: 33:56",
+          "<FinishOperation line 73, col 1 to line 73, col 19 of module CharlotteRootRetirement>: 85:280",
+          "<AbandonOperation line 80, col 1 to line 80, col 20 of module CharlotteRootRetirement>: 56:280",
+          "<BeginClose line 87, col 1 to line 87, col 13 of module CharlotteRootRetirement>: 148:152",
+          "<ClosePending line 94, col 1 to line 94, col 15 of module CharlotteRootRetirement>: 87:112",
+          "<FinishCleanup line 101, col 1 to line 101, col 23 of module CharlotteRootRetirement>: 273:273",
+          "<Detach line 111, col 1 to line 111, col 9 of module CharlotteRootRetirement>: 91:91",
+          "<BeginInvalidation line 118, col 1 to line 118, col 20 of module CharlotteRootRetirement>: 91:91",
+          "<InvalidationFailed line 126, col 1 to line 126, col 21 of module CharlotteRootRetirement>: 182:182",
+          "<RetainForRetry line 134, col 1 to line 134, col 17 of module CharlotteRootRetirement>: 182:182",
+          "<ClaimRetry line 143, col 1 to line 143, col 13 of module CharlotteRootRetirement>: 91:91",
+          "<InvalidationSucceeded line 153, col 1 to line 153, col 24 of module CharlotteRootRetirement>: 182:182",
+          "<StartPhysical line 163, col 1 to line 163, col 16 of module CharlotteRootRetirement>: 182:182",
+          "<FinishPhysical line 172, col 1 to line 172, col 27 of module CharlotteRootRetirement>: 364:364",
+          "<Abandon line 186, col 1 to line 186, col 10 of module CharlotteRootRetirement>: 901:1185",
+          "3733 states generated, 2978 distinct states found, 0 states left on queue.",
+          "The depth of the complete state graph search is 33.",
+          ">>> TLC CharlotteRootRetirement (CharlotteRootRetirement_lease_unsafe.cfg, expected counterexample)",
+          "Error: Invariant LeasesRetainRoot is violated.",
+          "<UnsafeDetachWithLease line 209, col 1 to line 209, col 24 of module CharlotteRootRetirement>: 2:3",
+          ">>> TLC CharlotteRootRetirement (CharlotteRootRetirement_release_unsafe.cfg, expected counterexample)",
+          "Error: Invariant PhysicalRequiresInvalidation is violated.",
+          "<UnsafeReleaseBeforeInvalidation line 216, col 1 to line 216, col 34 of module CharlotteRootRetirement>: 2:3",
+          ">>> TLC CharlotteRootRetirement (CharlotteRootRetirement_physical_unsafe.cfg, expected counterexample)",
+          "Error: Invariant PhysicalOnce is violated.",
+          "<UnsafeRetryPhysical line 227, col 1 to line 227, col 22 of module CharlotteRootRetirement>: 2:3",
+          ">>> TLC CharlotteRootRetirement (CharlotteRootRetirement_abandon_unsafe.cfg, expected counterexample)",
+          "Error: Invariant TerminalAbandonment is violated.",
+          "<UnsafeAdoptAbandoned line 234, col 1 to line 234, col 23 of module CharlotteRootRetirement>: 1:2",
+          ">>> TLC CharlotteRootRetirement (CharlotteRootRetirement_refund_unsafe.cfg, expected counterexample)",
+          "Error: Invariant BackingCharged is violated.",
+          "<UnsafeRefundPartial line 242, col 1 to line 242, col 22 of module CharlotteRootRetirement>: 2:3"
+        ]
+      },
+      {
+        "module": "CharlottePrincipalBacking",
+        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh /private/tmp/charlotte-tla2tools-1.7.4.jar CharlottePrincipalBacking",
+        "exit_status": 0,
+        "safe_graph": {
+          "distinct": 72344,
+          "generated": 290961,
+          "depth": 14
+        },
+        "capture_sha256": "1e43eb74263066697f633547e6620bc0b01b636f5fb23c85f0903f9dc5a7e53f",
+        "selected_observations": [
+          ">>> TLC CharlottePrincipalBacking (CharlottePrincipalBacking_small.cfg)",
+          "<Allocate line 32, col 1 to line 32, col 8 of module CharlottePrincipalBacking>: 3630:23164",
+          "<Grow line 49, col 1 to line 49, col 4 of module CharlottePrincipalBacking>: 1028:16272",
+          "<Move line 34, col 1 to line 34, col 4 of module CharlottePrincipalBacking>: 713:33288",
+          "<Retire line 37, col 1 to line 37, col 6 of module CharlottePrincipalBacking>: 12002:108516",
+          "<Restart line 44, col 1 to line 44, col 7 of module CharlottePrincipalBacking (45 5 45 96)>: 3101:13400",
+          "<ConfirmRelease line 46, col 1 to line 46, col 14 of module CharlottePrincipalBacking>: 51869:96320",
+          "290961 states generated, 72344 distinct states found, 0 states left on queue.",
+          "The depth of the complete state graph search is 14.",
+          ">>> TLC CharlottePrincipalBacking (CharlottePrincipalBacking_generation_unsafe.cfg, expected counterexample)",
+          "Error: Invariant PrincipalCeiling is violated.",
+          "<UnsafeGenerationOnly line 55, col 1 to line 55, col 20 of module CharlottePrincipalBacking>: 2:31",
+          ">>> TLC CharlottePrincipalBacking (CharlottePrincipalBacking_refund_unsafe.cfg, expected counterexample)",
+          "Error: Invariant Accounted is violated.",
+          "<UnsafeRetirementRefund line 58, col 1 to line 58, col 22 of module CharlottePrincipalBacking>: 1:2",
+          ">>> TLC CharlottePrincipalBacking (CharlottePrincipalBacking_move_unsafe.cfg, expected counterexample)",
+          "Error: Invariant Accounted is violated.",
+          "<UnsafeMoveSponsor line 62, col 1 to line 62, col 17 of module CharlottePrincipalBacking>: 2:3",
+          ">>> TLC CharlottePrincipalBacking (CharlottePrincipalBacking_reuse_unsafe.cfg, expected counterexample)",
+          "Error: Invariant Accounted is violated.",
+          "<UnsafeReuseSponsor line 67, col 1 to line 67, col 18 of module CharlottePrincipalBacking>: 1:2",
+          ">>> TLC CharlottePrincipalBacking (CharlottePrincipalBacking_growth_unsafe.cfg, expected counterexample)",
+          "Error: Invariant Accounted is violated.",
+          "<UnsafeGrowCharge line 72, col 1 to line 72, col 16 of module CharlottePrincipalBacking>: 2:3",
+          ">>> TLC CharlottePrincipalBacking (CharlottePrincipalBacking_drop_unsafe.cfg, expected counterexample)",
+          "Error: Invariant Accounted is violated.",
+          "<UnsafeDropRefund line 76, col 1 to line 76, col 16 of module CharlottePrincipalBacking>: 2:3"
+        ]
+      }
+    ],
+    "prior_full_suite": {
+      "evidence": "docs/reports/audits/evidence/2026-10-24-security-root-metadata-admission.json",
+      "evidence_sha256": "64ab9cfa2b429e5985e471924d2d70c540642b32c91ceb7464af840d895546ee",
+      "cases": 190,
+      "safe": 47,
+      "expected_counterexamples": 143,
+      "modules": 44,
+      "checked_inputs": 235,
+      "all_235_inputs_unchanged": true,
+      "rerun_this_batch": false
+    },
+    "qualification": "Existing models project shared authority/delivery, rollback, non-terminal timeout and exact-root cleanup gates. Object-node allocation/deallocation, concrete start fence, implicit field destructors, nonreused identity gaps and allocator/registry contexts are native/host qualification; root physical-once is a policy projection rather than executable backing-owner refinement; no executable refinement, allocator/IRQ or fairness proof."
+  },
+  "preserved_pdf_sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f",
+  "historical_failures": [
+    {
+      "evidence": "docs/reports/audits/evidence/2026-10-24-security-ipc-capability-storage.json",
+      "sha256": "694ab1e43db7b02549112eb1290b78b12907b8482f1df5a0fab6d22294854e1f",
+      "status": "Earlier deterministic abandonment-fixture failures, corrected expectations and second-run passes retain their own checkpoint; no native failure in this batch."
+    },
+    {
+      "evidence": "docs/reports/audits/evidence/2026-10-23-security-map-admission.json",
+      "sha256": "0eebe0c36c690ac833749bb1610e4d4602dafb1443ba8691c50d76857e6064e2",
+      "status": "Earlier queued-loan mapping panic remains causally unresolved."
+    },
+    {
+      "evidence": "docs/reports/audits/evidence/2026-10-22-root-retirement-diagnostics.json",
+      "sha256": "800ce9035c08a5f74409f312093e18649febd59af969bbb7a79ae22af1262d7d",
+      "status": "Earlier root-close timeout diagnostics remain at their checkpoint; no retrospective attribution."
+    },
+    {
+      "evidence": "docs/reports/audits/evidence/2026-10-24-security-ipc-pending-storage.json",
+      "sha256": "66716e00526d63eb470dea5da81c78c79b3484a32816f2f32bc11b94a46f3f9f",
+      "status": "Earlier initial HTTP-probe timeouts and adjacent successful controls remain separately recorded."
+    }
+  ],
+  "qualification": "Both final-source native runs pass with all 14 host controls each. Earlier passing images are preserved separately, before the final backing start fence and inert fields. Expected injected release rejection retains one page/node/original charge; no native failure. Host retry attempts remain separate; causes not isolated. No timeout/counter widened. Other payload maps, outer contexts, metadata-byte/principal ceilings and pressure fairness remain open. Bundles reused; PDF preserved; historical failures retain their own checkpoints.",
+  "superseded_native_passes": {
+    "source_sha256": {
+      "crates/catten/src/ipc/preparation_tests.rs": "fd87e5a93865b24d49e63ad31e12e7f1d1fd482f165325dcc2d95156f9402c25",
+      "crates/catten/src/ipc/record_tests.rs": "315805a3a4bafffaf9532c6584751e28aa200cfcb7de3fde03d42cad8d15287b",
+      "crates/catten/src/memory/object.rs": "f608db0e521a358db3f568e9aac3e19972824f883a0eec65da313c3e1e9e2119",
+      "crates/catten/src/memory/object/retirement_tests.rs": "87817e0e9b7cf90705a5e953ce18ac7e1fca560cca1f830626088e523fec9d58",
+      "crates/catten/src/memory/object/storage_tests.rs": "fe5d78814da47218be0a034a3a0e96d55de2e3962af63b1b7a3dc527e31f8d98"
+    },
+    "native_runs": [
+      {
+        "arch": "aarch64",
+        "instance": "memory-object-storage-arm",
+        "guest_attempt": 1,
+        "exit_status": 0,
+        "kernel_sha256": "960b7acb9da35948288c66c681bb5f446b8a043e6afd977d276463cfc2a4b3db",
+        "boot_image_sha256": "0b1d4770d8416d7d44e7a2a34fd148aee440a19c9babf2182fa047485ff6d3d0",
+        "initial_disk_sha256": "5923970ba5cbf6cbd08fff031dbdcb3931416b3aeeb38528a917de129f405745",
+        "tracked_diff_sha256": "ac58b460015df7a87543e463016f7ecd0f95091ebd8b091fbe6afef097eb30c6",
+        "result": {
+          "reason": "complete",
+          "snapshot": "not-requested"
+        },
+        "runner_capture_sha256": "3419ff853ee803c2ee145b9eaa429ed3f88a4e10895d15e47fae60d2206e27dc",
+        "capture_sha256": {
+          "manifest.json": "9882b8ae18b18fe7e35b9cb80987988e51d4b1f170e6f3bf0351ed4e43f5a051",
+          "result.json": "373d97eec748a1793b505ce00900d935a5fde132c2ababcd8a5876a2fc3c92a6",
+          "serial.log": "bdd4a906c50dbadad834025447fcaf31f0a4c0a39e73b0cf52adbdd038d3778d",
+          "artifacts.json": "2078fcbe36a22c8cb0948bb6d027b0cd12bb8e3b7ad199a282b56639ca7d76c3"
+        },
+        "selected_guest_observations": [
+          "[+     2.295052] [memory object storage] 128 charged preparation and 64 copied-prefix rejections, 64 heap-held object relinks/detaches, post-physical node/charge disposal, non-reused IDs and terminal release rejection passed; one data page, complete object node and original charge deliberately retained",
+          "[+    81.674592] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x2023ffff failed_bitmap=0x0 pending_bitmap=0x0"
+        ],
+        "http_controls": [
+          "PASS: initial metrics request",
+          "PASS: EOF followed by a successful metrics request",
+          "PASS: abortive peer closes followed by a successful metrics request",
+          "PASS: idle client timed out without preventing subsequent metrics",
+          "PASS: deployment status control",
+          "PASS: concurrent header: 1 stalled peers; healthy reply in 0.342s",
+          "PASS: concurrent body: 1 stalled peers; healthy reply in 0.251s",
+          "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.391s",
+          "PASS: deployment malformed/oversized framing and healthy controls",
+          "PASS: complete invalid deployment body rejected; ingress recovered",
+          "PASS: deployment EOF recovery",
+          "PASS: deployment abortive reply recovery",
+          "PASS: deployment idle-peer deadline recovery",
+          "PASS: trickled deployment body rejected in 30.24s; ingress recovered"
+        ],
+        "host_transport_attempts": [
+          "HTTP transport TimeoutError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 2/2"
+        ]
+      },
+      {
+        "arch": "x86_64",
+        "instance": "memory-object-storage-x86",
+        "guest_attempt": 1,
+        "exit_status": 0,
+        "kernel_sha256": "e729f1cc4df43585fcdc7eef671a498fb830e1435b978969afea4d19e341dad7",
+        "boot_image_sha256": "d1dbb79d147f8a37ad3b395303c1295ac529590e6f0001c7e2f8e3d9b7396dde",
+        "initial_disk_sha256": "8860169e2a2167e84d531cc5ac0446ecd4396e6a5d12dcac7f2dcdad554e351f",
+        "tracked_diff_sha256": "ac58b460015df7a87543e463016f7ecd0f95091ebd8b091fbe6afef097eb30c6",
+        "result": {
+          "reason": "complete",
+          "snapshot": "not-requested"
+        },
+        "runner_capture_sha256": "5254a369ddc2e047c0c008d0445e8abb0780a3b467c8f2d1f38f5402dcf0c6e7",
+        "capture_sha256": {
+          "manifest.json": "56cad5ca444636f1f2a5926f2cc3f258a12c14ab8486be3f3e2a748f9a4ccbe4",
+          "result.json": "373d97eec748a1793b505ce00900d935a5fde132c2ababcd8a5876a2fc3c92a6",
+          "serial.log": "9ae773f16f33a589f57acbc3b726118653c82bf93c9d333d5f656d78fae17260",
+          "artifacts.json": "a5d5bc9d9769235646c4f6e1a8f3308eff0587b5b6579fea3a9f443f62700fa7"
+        },
+        "selected_guest_observations": [
+          "[+     2.638709] [memory object storage] 128 charged preparation and 64 copied-prefix rejections, 64 heap-held object relinks/detaches, post-physical node/charge disposal, non-reused IDs and terminal release rejection passed; one data page, complete object node and original charge deliberately retained",
+          "[+    94.179728] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x2023bbff failed_bitmap=0x0 pending_bitmap=0x0"
+        ],
+        "http_controls": [
+          "PASS: initial metrics request",
+          "PASS: EOF followed by a successful metrics request",
+          "PASS: abortive peer closes followed by a successful metrics request",
+          "PASS: idle client timed out without preventing subsequent metrics",
+          "PASS: deployment status control",
+          "PASS: concurrent header: 1 stalled peers; healthy reply in 0.323s",
+          "PASS: concurrent body: 1 stalled peers; healthy reply in 0.265s",
+          "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.270s",
+          "PASS: deployment malformed/oversized framing and healthy controls",
+          "PASS: complete invalid deployment body rejected; ingress recovered",
+          "PASS: deployment EOF recovery",
+          "PASS: deployment abortive reply recovery",
+          "PASS: deployment idle-peer deadline recovery",
+          "PASS: trickled deployment body rejected in 30.20s; ingress recovered"
+        ],
+        "host_transport_attempts": [
+          "HTTP transport TimeoutError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 1/2",
+          "HTTP transport ConnectionResetError; retry 2/2"
+        ]
+      }
+    ],
+    "qualification": "Both earlier images passed; superseded by the final pre-physical-attempt fence and inert backing-field owner. Not final-source validation."
+  }
+}

@@ -471,3 +471,16 @@ and commit under one capability hold; neither is a compatibility fallback.
 The old vector construction is removed. Wire grammars, ABI and descriptor limits
 are unchanged. Memory payload-map admission and other guarded factories remain
 separate candidates. See [execution evidence](../reports/audits/2026-10-24-security-ipc-borrowed-publication.md).
+
+## Prepared global memory-object records
+
+The [object storage batch](memory-object-storage.md) replaces allocating global
+object insertion with one prepared-node path for direct allocations and copies.
+Copies retain a preclaimed nonreused identity; cancellation never restores it.
+The old global object-map insertion path is removed. Existing backing receipts
+carry complete retired nodes, without a separate recovery registry or metadata
+ticket. Read-borrower records now also prepare before source escrow and relink
+at publication; confirmed cleanup pairs the original node and detached authority
+through post-registry disposal. See [borrower storage evidence](../reports/audits/2026-10-24-security-memory-borrower-storage.md).
+Memory-capability, namespace and mapping storage remain current candidates.
+Wire formats and runtime ABI are unchanged.

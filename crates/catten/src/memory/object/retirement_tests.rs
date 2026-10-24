@@ -467,7 +467,11 @@ fn test_detached_backing(create: &mut impl FnMut(&str) -> usize) {
         assert_eq!(budget::used(handle), amount(pages as u64));
         let before = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
         if abandon {
+            let registry = MEMORY_OBJECTS.lock();
+            let heap = crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
             drop(retired);
+            drop(heap);
+            drop(registry);
             assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), before);
             assert_eq!(budget::used(handle), amount(1));
         } else {
