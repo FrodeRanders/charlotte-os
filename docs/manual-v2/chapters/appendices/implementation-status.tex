@@ -358,9 +358,12 @@ Source, tests, and repository history remain authoritative.
         allocation outside IPC; the complete call owner retains its exact root
         through preparation, publication and ordinary rollback. Detached node
         disposal precedes count refund. Reply/cancellation retain detached nodes;
-        scalar completion fallback also retains notifications. Per-capability
-        and endpoint map allocation, account byte/principal admission and wider contexts
-        remain open.
+        scalar completion fallback also retains notifications. Endpoint node, backing
+        and list preparation now leave IPC with an exact-root owner; growth keeps
+        original sponsorship, old backing and revalidation through FIFO replacement.
+        Final closed endpoint nodes dispose post-IPC before record refund.
+        Per-capability payload-map allocation, guarded authority factories,
+        byte/principal admission, wider contexts and pressure fairness remain open.
     \item \textbf{Cross-machine Raft boundary:} two TCG guests share a private
         QEMU LAN (stream backend on AArch64, socket backend on x86-64); the
         reliable-message frame transport and remote Raft peer routing are

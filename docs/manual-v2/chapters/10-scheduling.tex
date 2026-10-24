@@ -267,8 +267,14 @@ containing owner explicitly finishes ordinary outcomes; abandonment retains all
 fields, and detached node disposal precedes count refund. Reply/cancellation
 owners retain token nodes through post-IPC disposal; serialized close reuses
 those nodes as its bounded retirement list, while scalar completion fallback
-retains the node and detached notifications together. Other IPC map storage, namespace/account
-byte/principal admission and outer destructor contexts remain separate. See
+retains the node and detached notifications together. Endpoint storage and queue
+growth now also prepare outside IPC while retaining their exact root and
+original sponsor/classification. FIFO replacement relinks without allocation;
+old backing and final closed endpoint nodes dispose after IPC unlock. Complete
+fallback retains their fields. Per-capability payload-map allocation, guarded
+authority factories, namespace/account byte/principal admission and outer
+contexts remain separate. See
+\repofile|docs/reference/endpoint-budgets.md|. See
 \repofile|docs/reference/root-metadata-admission.md|. See
 \repofile|docs/reference/memory-object-retirement.md|.
 

@@ -31,7 +31,7 @@ Missing or retired namespaces reject; ordinary IPC never recreates them.
 After fenced loan and capability drain, cleanup detaches the empty namespace
 node and disposes it outside IPC. Outstanding delegated endpoint/record charges
 keep their original accounts through ASID reuse. This covers namespace storage;
-per-capability and endpoint map allocations, account byte/principal
+per-capability payload-map allocation, account byte/principal
 admission and wider destructor contexts remain audit work. See
 \repofile|docs/reference/ipc-namespace-publication.md|.
 
@@ -44,16 +44,32 @@ domain, and 1,024 records and 32,768 slots per node. Ordinary domains share
 platform domains. These are initial kernel policies, independent of socket
 capacity, rather than deployment-descriptor settings.
 
-A single queue admits at most 4,096 messages. Its backing is preallocated
-fallibly after reserving slots, rounded to a power of two with a minimum of
-four. Growth stages a second charged queue before moving messages, so failed
-growth preserves the existing queue. Shrinking reduces message admission but
-retains the backing and its charge until it is freed.
+A single queue admits at most 4,096 messages. Creation retains its captured
+root, reserves record and slot counts atomically, then prepares endpoint storage,
+queue backing and observer lists fallibly outside IPC. Slots round up to a
+power of two with a minimum of four. Revalidation precedes authority publication
+and allocation-free endpoint relinking. Ordinary unused preparation finishes
+after local guards, root last; abandonment retains every field.
 
-Owner closure drains the queue and frees its backing. Delegated connections
-can retain the closed endpoint record; its original generation pays for that
-record until the last reference disappears. Late cleanup after ASID reuse
-credits only the old generation.
+Growth retains that exact root and the original endpoint sponsor and
+classification, then reserves and allocates a second queue outside IPC. Both
+backings count at the temporary peak. Revalidation checks root, capability,
+endpoint, closing state and available backing before moving messages in FIFO
+order. A competing larger resize can make private preparation unnecessary;
+concurrent close rejects it. Replaced or unused backing frees after IPC unlock,
+before its charge returns. Promotion cannot reclassify the original endpoint.
+Shrinking reduces message admission and retains backing and its charge.
+
+Owner closure drains the queue and frees its backing after confirmed cleanup.
+Delegated, queued and unobserved returned connections can retain a closed
+endpoint. Final-reference removal detaches its complete node into the existing
+cleanup owner for post-IPC disposal; record admission returns after actual
+payload and node free. Late cleanup after ASID reuse credits the original
+account. Fallback retains the complete node, without cleanup or replay
+authority. Shared authority preparation still enters its factory under IPC,
+and per-capability payload insertion still allocates after publication. Linear
+scans and sustained pressure/IRQ hold time remain unqualified. See
+\repofile|docs/reference/endpoint-budgets.md|.
 
 \subsection{Connection, call and reply record admission}
 
@@ -93,7 +109,7 @@ token.
 Teardown fences admission before taking its capability snapshot. Receive and
 connection-publication paths reject a retiring namespace, preventing late
 capabilities from escaping that snapshot. Charges retain the original
-generation after delegation or ASID reuse. Endpoint and capability insertion,
+generation after delegation or ASID reuse. Per-capability payload insertion,
 list control blocks, other capability kinds and comprehensive kernel heap
 accounting remain incomplete.
 

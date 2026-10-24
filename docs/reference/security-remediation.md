@@ -360,7 +360,7 @@ registration transaction. A first exact-root operation lease protects publicatio
 after lifecycle/table unlock; insertion only relinks prepared storage under IPC.
 Missing and retired namespaces reject instead of recreating. Fenced cleanup
 detaches the empty node and releases its account references after IPC unlock;
-foreign charges keep their original accounts. Per-capability and endpoint
+foreign charges keep their original accounts. Per-capability payload
 map allocation, namespace/account byte and principal ceilings, wider destructor
 contexts and sustained progress remain open. See [current contract](ipc-namespace-publication.md).
 
@@ -370,7 +370,7 @@ the pending node fallibly outside IPC. Publication relinks that node; ordinary
 rollback finishes the whole preparation after IPC unlock, root last. Existing
 call/cancellation owners carry detached nodes through post-guard disposal and
 refund only after node deallocation. Abandonment retains the containing owner.
-Endpoint/per-capability maps, waiter/vector/control-block contexts, byte/principal ceilings
+Per-capability payload maps, waiter/vector/control-block contexts, byte/principal ceilings
 and sustained progress remain open. This advances R7-2 and C08/C18 without a
 finding-count change; see [record policy](ipc-record-budgets.md).
 
@@ -380,9 +380,22 @@ or attachment mutation. Failure returns the complete prefix after local guards.
 Reply/cancellation and serialized close retain detached token nodes through
 post-IPC disposal before refund; scalar completion fallback retains notifications
 together with the node. Original claim-source classification survives promotion
-and root reuse. Endpoint/per-capability maps, other factories/destructors,
+and root reuse. Per-capability payload maps, other factories/destructors,
 byte/principal ceilings and pressure progress remain open. This continues
 C07/C08/C09/C10/C18 without changing finding dispositions.
+
+The [endpoint storage batch](../reports/audits/2026-10-24-security-ipc-endpoint-storage.md)
+reserves endpoint/queue counts before fallible node, backing and observer-list
+preparation outside IPC. Its complete owner retains the exact root through
+revalidation, publication and post-guard unused disposal. Queue growth retains
+both backings and the original sponsor/classification through unlocked
+preparation and checked FIFO replacement; old backing frees after unlock.
+Final references detach closed endpoint nodes into existing cleanup owners,
+with the original record charge held through actual node free. Abandonment
+retains complete preparation/retirement fields. This advances C08/C09/C10/C18
+and R7-2; per-capability insertion, guarded authority factories, other payload
+contexts, byte/principal ceilings and sustained pressure progress remain open.
+Finding dispositions are unchanged; see [policy](endpoint-budgets.md).
 
 SEC-07 remains partial until all of the following deliverables are accepted:
 

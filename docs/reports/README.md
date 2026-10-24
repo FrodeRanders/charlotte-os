@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [IPC endpoint storage](audits/2026-10-24-security-ipc-endpoint-storage.md) — Charged preparation and queue growth outside IPC, with complete endpoint metadata retirement after unlock.
+
 - [IPC reply-token storage](audits/2026-10-24-security-ipc-reply-storage.md) — Charged second-node preparation and post-IPC token retirement across reply and close paths.
 
 - [IPC pending-call storage](audits/2026-10-24-security-ipc-pending-storage.md) — Exact-root, charged preparation outside IPC and post-guard node disposal.

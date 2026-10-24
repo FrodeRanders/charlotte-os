@@ -73,7 +73,7 @@ IPC unlock. This adds no lifecycle/table-to-IPC edge; existing IPC root lookups
 retain their order. Fenced close detaches the empty namespace node under IPC and
 disposes it and its account references after unlock. Partial/complete preparation
 and detached-node fallback retain all fields without allocator or registry entry.
-Per-capability and endpoint maps and wider disposal contexts remain
+Per-capability payload-map allocation and wider disposal contexts remain
 separate. See [namespace publication](ipc-namespace-publication.md).
 
 Pending-call preparation captures its caller under IPC, releases IPC before
@@ -328,3 +328,22 @@ before refunding its original classification. Fallback retains storage and
 charges without locks. The counter enters no root, policy, history, allocator or
 other subsystem and performs no ASID lookup. Existing outer cleanup contexts
 remain required. See [root metadata admission](root-metadata-admission.md).
+
+Endpoint creation also captures its namespace under IPC, leaves before exact-root
+lease acquisition, and revalidates before atomic record/slot admission. Endpoint
+node, queue backing and close/readiness lists allocate outside IPC. Shared
+authority preparation still enters its factory under IPC; per-capability payload
+insertion still allocates after authority publication. Endpoint publication
+itself only relinks prepared storage, and unused preparation finishes post-guard,
+root last.
+
+Queue growth retains the exact root and original endpoint account/classification,
+reserves/allocates unlocked, then rechecks root, cap, endpoint and closing/backing
+state before an allocation-free FIFO move. Replaced or unused backing stays in
+that owner until explicit disposal outside IPC. Final references to closed,
+empty, unclaimed endpoints detach complete charged nodes into the existing close
+or cancellation owner; payload/node disposal leaves IPC. Fallback retains all
+new fields without allocator, counter-lock or callback work. These changes add
+no lifecycle-under-IPC edge or new cleanup registry. Linear scans, broader
+caller masks/guards and pressure hold times remain unqualified. See
+[endpoint storage](endpoint-budgets.md).

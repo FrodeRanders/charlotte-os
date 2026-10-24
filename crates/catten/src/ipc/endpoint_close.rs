@@ -23,6 +23,7 @@ pub(super) struct PreparedEndpointClose {
     handle: AddressSpaceHandle,
     namespace: Option<AddressSpaceOperation>,
     interest: core::mem::ManuallyDrop<Option<claim_wait::Interest>>,
+    retired: RetiredEndpoints,
 }
 
 fn resolve(
@@ -74,6 +75,7 @@ impl PreparedEndpointClose {
             handle,
             namespace,
             interest: core::mem::ManuallyDrop::new(None),
+            retired: RetiredEndpoints::new(),
         };
         let prepared = {
             let mut ipc = IPC.write();
@@ -112,6 +114,7 @@ impl PreparedEndpointClose {
     }
 
     fn release_namespace(mut self) -> Result<(), IpcError> {
+        self.retired.release();
         drop(self.interest.take());
         if let Some(namespace) = self.namespace.take() {
             namespace.release().map_err(|_| IpcError::UnknownCapability)?;
@@ -193,7 +196,7 @@ impl PreparedEndpointClose {
                     let mut message = endpoint.queue.pop_front().unwrap();
                     message.memory.retire(self.asid);
                     if let Some(cap) = message.connection {
-                        let _ = ipc.remove_cap(self.asid, cap);
+                        let _ = ipc.remove_cap(self.asid, cap, &mut self.retired);
                     }
                     Some(message.memory)
                 } else {
@@ -236,11 +239,11 @@ impl PreparedEndpointClose {
             let watches = endpoint.close_observers.close();
             let cq_wake = endpoint.notify_cq.map(|cq| (endpoint.owner, cq));
             assert!(
-                matches!(ipc.remove_cap(self.asid, self.cap)?, Capability::Endpoint { endpoint, .. }
+                matches!(ipc.remove_non_connection_cap(self.asid, self.cap)?, Capability::Endpoint { endpoint, .. }
                 if endpoint == self.endpoint)
             );
-            if !endpoint_referenced(&ipc, self.endpoint) {
-                ipc.endpoints.remove(&self.endpoint);
+            if let Some(node) = ipc.detach_endpoint(self.endpoint) {
+                self.retired.push(node);
             }
             (observers, watches, cq_wake)
         };

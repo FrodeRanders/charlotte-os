@@ -61,6 +61,17 @@ impl Charge {
     pub(crate) fn platform(&self) -> bool {
         self.platform
     }
+
+    pub(crate) fn split(&mut self, amount: [u64; 2]) -> Self {
+        for (remaining, part) in self.amount.iter_mut().zip(amount) {
+            *remaining = remaining.checked_sub(part).expect("endpoint charge split underflow");
+        }
+        Self {
+            domain: self.domain.clone(),
+            platform: self.platform,
+            amount,
+        }
+    }
 }
 
 pub(crate) fn reserve(
@@ -121,23 +132,29 @@ impl<T> Default for AdmittedQueue<T> {
 }
 
 impl<T> AdmittedQueue<T> {
-    pub(crate) fn new(
-        domain: &Arc<DomainBudget>,
-        platform: bool,
-        capacity: usize,
-    ) -> Result<Self, ()> {
-        let slots = capacity.checked_next_power_of_two().ok_or(())?.max(4);
-        let charge = reserve(domain, platform, [0, slots as u64])?;
-        let mut queue = Self {
+    pub(crate) fn required_slots(capacity: usize) -> Result<usize, ()> {
+        capacity.checked_next_power_of_two().map(|slots| slots.max(4)).ok_or(())
+    }
+
+    /// Install already-admitted backing in its containing owner before allocation.
+    pub(crate) fn reserved(charge: Charge) -> Self {
+        assert_eq!(charge.amount[0], 0);
+        Self {
             storage: VecDeque::new(),
             _charge: Some(charge),
-        };
-        queue.storage.try_reserve_exact(slots).map_err(|_| ())?;
+        }
+    }
+
+    pub(crate) fn allocate_backing(&mut self, capacity: usize) -> Result<(), ()> {
+        let slots = Self::required_slots(capacity)?;
+        assert!(self.storage.is_empty() && self.storage.capacity() == 0);
+        assert_eq!(self._charge.as_ref().unwrap().amount, [0, slots as u64]);
+        self.storage.try_reserve_exact(slots).map_err(|_| ())?;
         // Fail closed if a future allocator grows beyond our reservation.
-        if queue.storage.capacity() > slots {
+        if self.storage.capacity() > slots {
             return Err(());
         }
-        Ok(queue)
+        Ok(())
     }
 }
 

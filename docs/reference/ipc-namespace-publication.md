@@ -45,8 +45,10 @@ node disposal needs no new physical cleanup proof; all existing loan/root proof
 requirements remain in force.
 
 This change covers namespace construction and its local registry disposal. It
-does **not** make IPC operations fully fallible: endpoint and per-capability
-maps still allocate under IPC. [Pending and reply-token storage](ipc-record-budgets.md#preparation-and-retirement)
+does **not** make IPC operations fully fallible: the per-capability
+payload map still allocates under IPC. [Endpoint storage](endpoint-budgets.md)
+now prepares its node, queue and lists outside IPC and retires detached nodes
+after unlock. [Pending and reply-token storage](ipc-record-budgets.md#preparation-and-retirement)
 now prepares outside IPC in the existing call owner, retaining original counts
 through actual node disposal. Other payload/charge destructors, wider caller
 IRQs/guards, namespace/account byte and principal ceilings, and sustained

@@ -78,7 +78,7 @@ close; an observer wake alone cannot release them.
 The pending and reply-token maps use shared admitted storage with linear
 lookup/insertion.
 Its count is bounded, but worst-case hold time is not qualified by the serialized
-controls. Endpoint and per-capability maps still allocate under IPC;
+controls. The per-capability payload map still allocates under IPC;
 waiter/control-block and vector preparation, byte/principal ceilings and wider
 caller/destructor contexts remain separate work. This is not fully fallible IPC
 publication. See the [pending storage audit](../reports/audits/2026-10-24-security-ipc-pending-storage.md).
@@ -176,8 +176,15 @@ resource-limited replies cancelling only their token, not their grant source.
 
 These count budgets do not bound attachment bytes, all capability kinds,
 observer/list control blocks, weak-only retention, loader/page tables, or the
-entire kernel heap. Registry/capability insertion and namespace-account allocation
-remain infallible. There is no per-principal aggregate across several domains,
+entire kernel heap. Per-capability payload insertion remains infallible;
+shared-authority factory entry under IPC and namespace-account byte/principal
+admission remain separate boundaries. There is no per-principal aggregate across several domains,
 signed override, allocator-failure injection, exhaustive race proof or hostile
 pressure-soak claim. SEC-07 remains partial; the audit's deployment restrictions
 still apply.
+
+Closed endpoint records retained by queued or unobserved returned connections
+now detach into these existing cleanup owners when the final reference leaves.
+Their original endpoint count follows payload/node disposal after IPC unlock;
+failed loan cleanup still retains its claim. Endpoint preparation and queue
+growth have their own [storage contract](endpoint-budgets.md).

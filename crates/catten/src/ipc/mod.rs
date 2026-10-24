@@ -64,6 +64,7 @@ pub(crate) mod cancellation;
 pub(crate) mod claim_wait;
 pub(crate) mod delivery_tests;
 mod endpoint_close;
+mod endpoint_storage;
 pub(crate) mod namespace;
 pub(crate) mod namespace_close;
 pub(crate) mod record_budget;
@@ -75,6 +76,7 @@ mod waiter_source;
 pub(crate) mod waiter_tests;
 
 use attachments::MemoryAttachments;
+use endpoint_storage::RetiredEndpoints;
 
 type WaiterList = ListRef<waiter_budget::Charge>;
 type WaitNotifications = NotificationBatch<waiter_budget::Charge>;
@@ -288,8 +290,9 @@ struct Endpoint {
     /// transition and on closure, so a shard can block on one CQ wait for
     /// both kernel completions and endpoint work (§7, Phase 7).
     notify_cq: Option<crate::completion::CqId>,
-    // Last field: retained subobjects drop before metadata admission returns.
-    metadata_charge: budget::Charge,
+    /// Original namespace and classification also sponsor later queue growth.
+    budget: Arc<budget::DomainBudget>,
+    platform: bool,
 }
 
 #[derive(Debug)]
@@ -750,7 +753,7 @@ struct IpcRegistry {
     next_endpoint: EndpointId,
     next_reply: ReplyTokenId,
     next_call: PendingCallId,
-    endpoints: BTreeMap<EndpointId, Endpoint>,
+    endpoints: AdmittedMap<EndpointId, Endpoint, Option<budget::Charge>>,
     reply_tokens: AdmittedMap<ReplyTokenId, ReplyToken, Option<record_budget::Charge>>,
     pending_calls: AdmittedMap<PendingCallId, PendingCall, Option<record_budget::Charge>>,
     caps: crate::klib::collections::retirement_list::AdmittedMap<AddressSpaceId, AsIpcCaps>,
@@ -762,7 +765,7 @@ impl IpcRegistry {
             next_endpoint: 1,
             next_reply: 1,
             next_call: 1,
-            endpoints: BTreeMap::new(),
+            endpoints: AdmittedMap::new(),
             reply_tokens: AdmittedMap::new(),
             pending_calls: AdmittedMap::new(),
             caps: crate::klib::collections::retirement_list::AdmittedMap::new(),
@@ -894,6 +897,7 @@ impl IpcRegistry {
         &mut self,
         asid: AddressSpaceId,
         cap: CapabilityId,
+        retired: &mut RetiredEndpoints,
     ) -> Result<Capability, IpcError> {
         let entry = self
             .caps
@@ -913,16 +917,48 @@ impl IpcRegistry {
             && self.endpoints.get(&endpoint).is_some_and(|record| record.closed)
             && !endpoint_referenced(self, endpoint)
         {
-            self.endpoints.remove(&endpoint);
+            retired.push(self.detach_endpoint(endpoint).expect("unreferenced endpoint missing"));
         }
         Ok(removed)
+    }
+
+    fn detach_endpoint(
+        &mut self,
+        endpoint: EndpointId,
+    ) -> Option<endpoint_storage::RetiredEndpoint> {
+        if endpoint_referenced(self, endpoint) {
+            return None;
+        }
+        let record = self.endpoints.get(&endpoint)?;
+        assert!(
+            record.closed && !record.closing && record.queue.is_empty(),
+            "endpoint metadata retirement before queue/claim completion"
+        );
+        self.endpoints.take(&endpoint)
+    }
+
+    /// These callers retire endpoint/call/reply control authority, never a
+    /// connection that can hold the final reference to another endpoint.
+    fn remove_non_connection_cap(
+        &mut self,
+        asid: AddressSpaceId,
+        cap: CapabilityId,
+    ) -> Result<Capability, IpcError> {
+        if matches!(self.cap_for_cleanup(asid, cap)?, Capability::Connection { .. }) {
+            return Err(IpcError::WrongType);
+        }
+        let mut retired = RetiredEndpoints::new();
+        let payload = self.remove_cap(asid, cap, &mut retired)?;
+        assert!(retired.is_empty());
+        Ok(payload)
     }
 
     fn remove_matching_caps(&mut self, asid: AddressSpaceId, target: Capability) {
         while let Some(id) = self.caps.get(&asid).and_then(|caps| {
             caps.caps.iter().find_map(|(&id, cap)| (cap.payload == target).then_some(id))
         }) {
-            self.remove_cap(asid, id).expect("matching IPC capability disappeared");
+            self.remove_non_connection_cap(asid, id)
+                .expect("matching IPC control capability disappeared");
         }
     }
 }
@@ -947,64 +983,7 @@ pub fn endpoint_create(
     version: u32,
     capacity: usize,
 ) -> Result<CapabilityId, IpcError> {
-    if capacity == 0 {
-        return Err(IpcError::QueueFull);
-    }
-    let capacity = capacity.min(MAX_ENDPOINT_CAPACITY);
-    let identity = crate::memory::current_address_space_handle(owner);
-    let platform_identity = crate::memory::budget::platform_identity(owner);
-    let mut ipc = IPC.write();
-    if identity.is_some_and(|handle| !crate::memory::budget::accepting(handle)) {
-        return Err(IpcError::PermissionDenied);
-    }
-    let namespace = ipc.caps.get(&owner).ok_or(IpcError::PermissionDenied)?;
-    if namespace.address_space != identity {
-        return Err(IpcError::PermissionDenied);
-    }
-    // Synthetic namespaces exist only at the kernel test/adapter boundary;
-    // syscalls always supply the authenticated live caller ASID.
-    let platform = owner == crate::memory::KERNEL_ASID
-        || platform_identity.is_some_and(|handle| Some(handle) == namespace.address_space);
-    let metadata_charge = budget::reserve(&namespace.endpoint_budget, platform, [1, 0])
-        .map_err(|_| IpcError::ResourceLimit)?;
-    let queue = budget::AdmittedQueue::new(&namespace.endpoint_budget, platform, capacity)
-        .map_err(|_| IpcError::ResourceLimit)?;
-    let close_observers =
-        ObserverList::try_new(crate::completion::watch_budget::MAX_ENDPOINT_WATCHES, platform)
-            .map_err(|_| IpcError::ResourceLimit)?;
-    let readiness_observers = ObserverList::try_new(waiter_budget::SOURCE_LIMIT, platform)
-        .map_err(|_| IpcError::ResourceLimit)?;
-    let reservation = ipc.reserve_cap(owner)?;
-    let cap = reservation.publish().map_err(cap_admission_error)?;
-    // Everything after publication is infallible under this IPC write guard.
-    let endpoint = ipc.alloc_endpoint();
-    ipc.endpoints.insert(
-        endpoint,
-        Endpoint {
-            owner,
-            interface,
-            version,
-            capacity,
-            high_water: 0,
-            queue,
-            metadata_charge,
-            readiness_observers,
-            close_observers,
-            closed: false,
-            closing: false,
-            claim_interest: None,
-            claim_epoch: 0,
-            notify_cq: None,
-        },
-    );
-    Ok(ipc.as_caps(owner).insert_admitted(
-        cap,
-        Capability::Endpoint {
-            endpoint,
-            rights: ConnectionRights::ALL,
-        },
-        None,
-    ))
+    endpoint_storage::create(owner, interface, version, capacity)
 }
 
 /// Binds an endpoint's readiness to one of the owner's completion queues.
@@ -1057,48 +1036,7 @@ pub fn endpoint_resize(
     endpoint_cap: CapabilityId,
     new_capacity: usize,
 ) -> Result<usize, IpcError> {
-    if new_capacity == 0 {
-        return Err(IpcError::QueueFull);
-    }
-    let capacity = new_capacity.min(MAX_ENDPOINT_CAPACITY);
-    let identity = crate::memory::current_address_space_handle(owner);
-    let mut ipc = IPC.write();
-    if identity.is_some_and(|handle| !crate::memory::budget::accepting(handle))
-        || ipc.caps.get(&owner).is_some_and(|caps| caps.address_space != identity)
-    {
-        return Err(IpcError::PermissionDenied);
-    }
-    let endpoint_id = match ipc.cap(owner, endpoint_cap)? {
-        Capability::Endpoint {
-            endpoint,
-            ..
-        } => endpoint,
-        _ => return Err(IpcError::WrongType),
-    };
-    let endpoint = ipc.endpoints.get_mut(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
-    if endpoint.owner != owner {
-        return Err(IpcError::PermissionDenied);
-    }
-    if endpoint.closed {
-        return Err(IpcError::EndpointClosed);
-    }
-    if endpoint.closing {
-        return Err(IpcError::Pending);
-    }
-    if capacity > endpoint.queue.capacity() {
-        // Charge both backing allocations during growth. A failed admission
-        // or allocation leaves the policy and queued messages unchanged.
-        let mut grown = budget::AdmittedQueue::new(
-            endpoint.metadata_charge.domain(),
-            endpoint.metadata_charge.platform(),
-            capacity,
-        )
-        .map_err(|_| IpcError::ResourceLimit)?;
-        grown.extend(endpoint.queue.drain(..));
-        endpoint.queue = grown;
-    }
-    endpoint.capacity = capacity;
-    Ok(capacity)
+    endpoint_storage::resize(owner, endpoint_cap, new_capacity)
 }
 
 /// Read an owned endpoint's `(capacity, depth, high-water depth)`.
@@ -1721,7 +1659,9 @@ impl<'a> PreparedReceive<'a> {
 impl Drop for PreparedReceive<'_> {
     fn drop(&mut self) {
         if let Some(cap) = self.reply.take() {
-            self.ipc.remove_cap(self.receiver, cap).expect("prepared reply authority disappeared");
+            self.ipc
+                .remove_non_connection_cap(self.receiver, cap)
+                .expect("prepared reply authority disappeared");
         }
     }
 }
@@ -2068,7 +2008,7 @@ fn complete_reply(
         memory: returned_memory_cap,
     });
     let observers = call.observers.close();
-    ipc.remove_cap(server, reply_cap).expect("completed reply cap missing");
+    ipc.remove_non_connection_cap(server, reply_cap).expect("completed reply cap missing");
     Ok(ReplyCompletion::new(token, observers))
 }
 
@@ -2393,6 +2333,7 @@ fn close_cap_with_cleanup(
     // detached cleanup. Never wait with IPC serialization held. Domain cleanup
     // reaches here only after the reply's exact-generation root leases drain.
     let mut retired_replies = RetiredReplies::new();
+    let mut retired_endpoints = RetiredEndpoints::new();
     let mut ipc = loop {
         let ipc = IPC.write();
         let payload = if detached {
@@ -2436,7 +2377,7 @@ fn close_cap_with_cleanup(
     let mut retired_message = None;
     let mut retired_result = None;
     let mut retired_call = None;
-    match ipc.remove_cap(asid, cap)? {
+    match ipc.remove_cap(asid, cap, &mut retired_endpoints)? {
         Capability::Endpoint {
             endpoint,
             ..
@@ -2469,14 +2410,14 @@ fn close_cap_with_cleanup(
                 }
                 message.memory.retire(asid);
                 if let Some(connection_cap) = message.connection {
-                    let _ = ipc.remove_cap(asid, connection_cap);
+                    let _ = ipc.remove_cap(asid, connection_cap, &mut retired_endpoints);
                 }
             }
             retired_queue = queued;
             // Retire the registry entry once no capability can name it, so
             // endpoint create/close cycles cannot grow the registry forever.
-            if !endpoint_referenced(&ipc, endpoint) {
-                ipc.endpoints.remove(&endpoint);
+            if let Some(node) = ipc.detach_endpoint(endpoint) {
+                retired_endpoints.push(node);
             }
         }
         Capability::PendingCall {
@@ -2492,7 +2433,7 @@ fn close_cap_with_cleanup(
                     // property and survive the pending-call close.
                     if !pending.observed {
                         if let Some(returned_cap) = reply.cap {
-                            let _ = ipc.remove_cap(asid, returned_cap);
+                            let _ = ipc.remove_cap(asid, returned_cap, &mut retired_endpoints);
                         }
                         if let Some(memory_cap) = reply.memory {
                             retired_result = attachments::retire_one(asid, memory_cap);
@@ -2505,6 +2446,7 @@ fn close_cap_with_cleanup(
                         &mut observers,
                         &mut cq_wake,
                         &mut retired_replies,
+                        &mut retired_endpoints,
                     );
                 }
                 retired_call = Some(node);
@@ -2527,13 +2469,14 @@ fn close_cap_with_cleanup(
             ..
         } => {
             // The last capability naming a closed endpoint retires it.
-            if !endpoint_referenced(&ipc, endpoint) {
-                ipc.endpoints.remove(&endpoint);
+            if let Some(node) = ipc.detach_endpoint(endpoint) {
+                retired_endpoints.push(node);
             }
         }
     }
     drop(ipc);
     retired_replies.release();
+    retired_endpoints.release();
     if let Some(node) = retired_call {
         node.release();
     }
@@ -2638,12 +2581,20 @@ fn drain_namespace_caps(asid: AddressSpaceId) -> Result<(), IpcError> {
         assert!(retired.value().1.caps.is_empty());
         retired.release();
     }
-    let mut ipc = IPC.write();
-    while let Some(endpoint) = ipc.endpoints.iter().find_map(|(&id, endpoint)| {
-        (endpoint.closed && !endpoint_referenced(&ipc, id)).then_some(id)
-    }) {
-        ipc.endpoints.remove(&endpoint);
+    let mut retired = RetiredEndpoints::new();
+    {
+        let mut ipc = IPC.write();
+        loop {
+            let next = ipc.endpoints.iter().find_map(|(&id, endpoint)| {
+                (endpoint.closed && !endpoint_referenced(&ipc, id)).then_some(id)
+            });
+            let Some(id) = next else {
+                break;
+            };
+            retired.push(ipc.detach_endpoint(id).unwrap());
+        }
     }
+    retired.release();
     Ok(())
 }
 
@@ -2763,6 +2714,7 @@ fn cancel_queued_call(
     observers: &mut WaitNotifications,
     cq_wake: &mut Option<(AddressSpaceId, crate::completion::CqId)>,
     retired: &mut RetiredReplies,
+    retired_endpoints: &mut RetiredEndpoints,
 ) -> Option<MemoryAttachments> {
     let mut memory = None;
     loop {
@@ -2779,9 +2731,14 @@ fn cancel_queued_call(
             !payload.completing && !payload.cleanup_failed && payload.borrows.is_empty(),
             "cancelling an unfinished reply"
         );
-        if let Some(retired) =
-            cancel_queued_message_with_token(ipc, server, token, observers, cq_wake)
-        {
+        if let Some(retired) = cancel_queued_message_with_token(
+            ipc,
+            server,
+            token,
+            observers,
+            cq_wake,
+            retired_endpoints,
+        ) {
             assert!(memory.is_none(), "one call acquired multiple queued messages");
             memory = Some(retired);
         }
@@ -2802,29 +2759,29 @@ fn cancel_queued_message_with_token(
     token: ReplyTokenId,
     observers: &mut WaitNotifications,
     cq_wake: &mut Option<(AddressSpaceId, crate::completion::CqId)>,
+    retired_endpoints: &mut RetiredEndpoints,
 ) -> Option<MemoryAttachments> {
-    for endpoint in ipc.endpoints.values_mut() {
+    let selected = ipc.endpoints.iter().find_map(|(&id, endpoint)| {
         if endpoint.owner != server {
-            continue;
-        }
-        if let Some(index) = endpoint.queue.iter().position(|message| message.reply == Some(token))
-        {
-            observers.append(endpoint.readiness_observers.drain());
-            *cq_wake = endpoint.notify_cq.map(|cq| (endpoint.owner, cq));
-            if let Some(mut message) = endpoint.queue.remove(index) {
-                // Confirmed loans are already gone. Carry unmapped owning
-                // attachments in their admitted storage past IPC unlock.
-                message.memory.retire(server);
-                if let Some(connection_cap) = message.connection {
-                    ipc.remove_cap(server, connection_cap)
-                        .expect("queued connection disappeared during cancellation");
-                }
-                return Some(message.memory);
-            }
             return None;
         }
+        endpoint
+            .queue
+            .iter()
+            .position(|message| message.reply == Some(token))
+            .map(|index| (id, index))
+    });
+    let (id, index) = selected?;
+    let endpoint = ipc.endpoints.get_mut(&id).unwrap();
+    observers.append(endpoint.readiness_observers.drain());
+    *cq_wake = endpoint.notify_cq.map(|cq| (endpoint.owner, cq));
+    let mut message = endpoint.queue.remove(index)?;
+    message.memory.retire(server);
+    if let Some(connection_cap) = message.connection {
+        ipc.remove_cap(server, connection_cap, retired_endpoints)
+            .expect("queued connection disappeared during cancellation");
     }
-    None
+    Some(message.memory)
 }
 
 fn revoke_memory_borrow(

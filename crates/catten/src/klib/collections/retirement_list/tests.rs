@@ -444,6 +444,11 @@ fn charged_map_keeps_admission_through_detachment_payload_and_node_free() {
     without_allocation(|| {
         map.insert(prepared, 7usize, payload);
         assert_eq!(map[&7].0, 9);
+        for value in map.values_mut() {
+            value.0 += 1;
+        }
+        assert_eq!(map[&7].0, 10);
+        assert_eq!(releases.load(Ordering::Relaxed), 0);
         let node = map.take(&7).unwrap();
         assert!(map.get(&7).is_none());
         assert_eq!(releases.load(Ordering::Relaxed), 0);

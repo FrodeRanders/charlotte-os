@@ -288,6 +288,10 @@ impl<K: Ord + Copy, V, C> AdmittedMap<K, V, C> {
         self.0.iter().map(|(_, v)| v)
     }
 
+    pub(crate) fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
+        self.0.iter_mut().map(|(_, v)| v)
+    }
+
     pub(crate) fn first_key_value(&self) -> Option<(&K, &V)> {
         self.iter().next()
     }

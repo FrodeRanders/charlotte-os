@@ -1131,3 +1131,10 @@ checks IPC publication/transaction and root retirement: three safe cases and
 post-guard token retirement, captured class and complete fallback retention;
 shared collection tests check node destruction before refund. No model or
 configuration changed. See the [conformance boundary](CONFORMANCE.md#reply-token-node-lifetime).
+
+The [endpoint storage follow-up](../reports/audits/2026-10-24-security-ipc-endpoint-storage.md)
+rechecks the same 20 IPC publication/transaction and root-retirement cases:
+three safe configurations and 17 expected counterexamples pass. Unlocked
+node/list/backing preparation, FIFO replacement, original sponsorship and
+post-guard disposal remain native/host qualification. No model/configuration
+changed; see the [conformance boundary](CONFORMANCE.md#endpoint-storage-and-queue-growth).

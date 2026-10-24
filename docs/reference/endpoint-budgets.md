@@ -24,18 +24,33 @@ for each essential service.
 
 ## Queue backing and resize
 
-Creation reserves backing before a fallible `VecDeque::try_reserve_exact`.
-Slot reservations round capacity up to a power of two, with a minimum of four
-slots. Failed admission or allocation drops the staged owners and returns all
-reservations; no endpoint or owning capability is published. Accepted sends do
-not grow this backing beyond its admitted size. Message attachments and their
-separate allocations are not included in the slot count.
+Creation captures the IPC namespace's exact root, leaves IPC before acquiring
+its operation lease, then revalidates that generation before reserving one
+record and all queue slots atomically. Slot reservations round capacity up to a
+power of two, with a minimum of four slots. The complete preparation owns the
+original account/classification, both charges, endpoint node, queue, close and
+readiness lists, and any shared authority reservation.
 
-Growth beyond allocated backing stages a second charged queue, then moves the
-messages in FIFO order and replaces the old queue. Both backing allocations
-count during that transition. This can reject growth even when the final size
-would fit: the temporary peak must fit too. Failure leaves the old capacity,
-depth and messages unchanged.
+Node, backing and observer-list allocation run fallibly outside IPC and local
+lifecycle/table guards. Revalidation precedes authority publication and endpoint
+node relinking. Ordinary rejection explicitly finishes the complete prefix after
+local guards; its exact-root lease finishes last. Abandonment retains every
+field without cleanup. Accepted sends do not grow backing beyond its admitted
+size. Message attachments and their allocations are outside the slot count.
+
+Growth beyond retained backing captures the exact endpoint, original account
+and original classification under IPC. Its existing root-owning operation then
+reserves and allocates a second queue outside IPC. Both backing allocations count
+during that transition, so growth can reject even when the final size would fit.
+Before moving messages in FIFO order, publication rechecks the captured root,
+capability, endpoint identity, closing state and current backing capacity. A
+competing larger resize can supply sufficient backing; the unused preparation
+then disposes after unlock. Concurrent close rejects without restoring authority
+or replaying work. Ordinary preparation failure leaves the old queue unchanged.
+
+The operation retains replaced backing through IPC unlock, explicitly frees it
+before returning its original slot charge, and finishes its root last. Later
+caller promotion cannot reclassify existing endpoint storage or queue growth.
 
 Shrinking changes admission policy only. Existing messages survive and new
 sends fail while depth reaches or exceeds the new limit. The retained backing
@@ -46,9 +61,15 @@ allocated memory. Growth within retained backing needs no new reservation.
 
 Closing the owning endpoint drains/cancels queued operations, releases their
 attachments and frees queue backing. A closed endpoint record can remain
-referenced by delegated connections; its record charge remains until the last
-reference is removed. Internal cancellation of an unobserved returned
-connection follows the same reclamation rule as explicit connection close.
+referenced by delegated connections; its record charge follows the complete
+node through actual disposal.
+Final-reference removal detaches a closed, empty, unclaimed endpoint into the
+existing cancellation, endpoint-close or serialized cleanup owner. That owner
+leaves IPC before freeing payload/node and refunding the record charge. Queued
+and unobserved returned connections follow the same rule as explicit close.
+The detached nodes form a temporary owning list without a new registry;
+abandonment retains the entire list. Detachment grants no physical cleanup or
+replay authority.
 
 Every namespace has a reference-counted budget owner. Retained closed records
 keep the old owner alive after domain teardown. Reusing the numeric ASID gives
@@ -58,8 +79,10 @@ generation before publication or growth.
 
 Budget locking is domain-before-node, with checked all-dimension reservation
 and rollback. Budget critical sections do not allocate or call another
-subsystem. Storage-owning structs release charges through `Drop`, after freeing
-their admitted backing.
+subsystem. Explicit ordinary finish frees admitted storage before releasing
+its charge.
+Containing preparation/retirement fallback retains storage and charge together;
+it does not enter budget locks, the allocator or notification callbacks.
 
 ## Errors and verification scope
 
@@ -84,8 +107,10 @@ storage, attachment vectors, all completion metadata, loader/page tables or the
 entire kernel heap. Separate [IPC record budgets](ipc-record-budgets.md) cover
 connections, retained pending calls and outstanding reply tokens. Separate
 [record budgets](completion-record-budgets.md) cover retained completion objects
-and detached results. Allocation of registry
-and capability metadata is still infallible. No allocator-failure injection,
+and detached results. Endpoint nodes publish by relinking prepared storage;
+the per-capability payload map still allocates
+infallibly under IPC after authority publication. Shared authority preparation
+also still enters its factory under IPC. No global allocator-exhaustion injection,
 sustained hostile-pressure soak or per-principal aggregate across multiple
 domains is claimed. SEC-07 remains partially implemented; deployment still
 requires the [security audit's restrictions](../reports/audits/2026-10-03-security-remediation.md).
@@ -95,3 +120,10 @@ Endpoint-readiness and pending-call **waiter entries** now have separate
 Their source-list allocation is fallible before attachment transfer; that does
 not by itself admit records or all metadata. Call submission now reserves its
 separate pending-call/reply-token records before preparing that list.
+
+The [endpoint storage audit](../reports/audits/2026-10-24-security-ipc-endpoint-storage.md)
+records 384 preparation-stage and 96 growth-stage rejections, allocation-free
+relinking/FIFO replacement, competing growth/close, hidden-reference retirement
+and guarded abandonment. These are scoped rejection controls. Endpoint lookup,
+insertion and repeated close/reference scans are linear; count limits do not
+qualify worst-case IRQ hold time, contention or sustained pressure fairness.

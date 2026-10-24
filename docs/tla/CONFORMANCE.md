@@ -1197,3 +1197,21 @@ copy are not explicit model variables; native controls and shared collection
 host tests qualify those implementation boundaries. No model/configuration
 changed. The prior full 190-case checkpoint remains separate; these checks give
 no executable refinement, allocator/IRQ or sustained-pressure fairness proof.
+
+## Endpoint storage and queue growth
+
+The [endpoint storage batch](../reports/audits/2026-10-24-security-ipc-endpoint-storage.md)
+retains exact roots through unlocked endpoint/list/backing preparation and checked
+publication. Growth keeps its original sponsor/classification and both backings
+through FIFO replacement; post-IPC disposal precedes refund. Existing cleanup
+owners carry final closed endpoint nodes. Complete fallback retains all fields.
+
+Twenty focused cases pass: three safe configurations and 17 expected
+counterexamples from `CharlotteIpcPublication`, `CharlotteIpcTransaction` and
+`CharlotteRootRetirement`. Their shared authority/delivery, rollback,
+non-terminal timeout and root gates remain unchanged. Endpoint node allocation,
+atomic record/slot admission, old-backing lifetime, post-guard disposal and
+source-class preservation are native/host qualification; these models do not
+add variables for them. No model/configuration changed. All 235 inputs of the
+prior full 190-case checkpoint remain unchanged. These checks provide no
+executable refinement, allocator/IRQ, linear-scan hold-time or fairness proof.

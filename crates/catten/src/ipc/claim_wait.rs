@@ -108,9 +108,7 @@ impl Claim {
                 .endpoints
                 .get_mut(&id)
                 .filter(|endpoint| endpoint.closing && endpoint.claim_epoch == epoch)
-                .map(|endpoint| {
-                    (&mut endpoint.claim_interest, endpoint.metadata_charge.platform())
-                }),
+                .map(|endpoint| (&mut endpoint.claim_interest, endpoint.platform)),
         }
     }
 }

@@ -263,7 +263,7 @@ impl PreparedReply {
             memory: returned_memory,
         });
         let observers = call.observers.close();
-        ipc.remove_cap(self.server, self.cap).expect("claimed reply cap missing");
+        ipc.remove_non_connection_cap(self.server, self.cap).expect("claimed reply cap missing");
         drop(ipc);
         self.retired_token.take().unwrap().release();
         let released = self.release_namespaces();
