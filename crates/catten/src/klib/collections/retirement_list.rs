@@ -42,6 +42,17 @@ impl<T> PreparedEntry<T> {
     }
 }
 
+impl<T, C> PreparedEntry<T, Option<C>> {
+    /// Bind admission to already-prepared storage before payload publication.
+    /// The original charge then follows node deallocation, including rejection.
+    pub(crate) fn bind_charge(&mut self, charge: C) {
+        // SAFETY: every prepared node initializes its charge before exposure.
+        let slot = unsafe { self.0.as_mut().unwrap().charge.assume_init_mut() };
+        assert!(slot.is_none(), "prepared node admission rebound");
+        *slot = Some(charge);
+    }
+}
+
 impl<T, C> PreparedEntry<T, C> {
     /// Exact requested node bytes, including the custody field. Allocator
     /// bookkeeping and independent registry capacity are separate admission.

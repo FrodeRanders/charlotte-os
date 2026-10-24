@@ -14,7 +14,12 @@ use alloc::{
     vec::Vec,
 };
 use core::{
-    ops::BitOr,
+    mem::ManuallyDrop,
+    ops::{
+        BitOr,
+        Deref,
+        DerefMut,
+    },
     sync::atomic::{
         AtomicU64,
         Ordering,
@@ -25,18 +30,24 @@ use spin::LazyLock;
 
 use crate::{
     cpu::multiprocessor::spin::rwlock::RwLock,
-    klib::observer::{
-        Observable,
-        Observer,
-        WaitRegistration,
-        WaitSponsor,
-        registration::{
-            ListRef,
-            NotificationBatch,
-            ObserverList,
-            RegistrationError,
+    klib::{
+        collections::retirement_list::{
+            AdmittedMap,
+            PreparedEntry,
         },
-        waiter_budget,
+        observer::{
+            Observable,
+            Observer,
+            WaitRegistration,
+            WaitSponsor,
+            registration::{
+                ListRef,
+                NotificationBatch,
+                ObserverList,
+                RegistrationError,
+            },
+            waiter_budget,
+        },
     },
     memory::{
         AddressSpaceId,
@@ -46,6 +57,7 @@ use crate::{
 
 mod attachments;
 pub(crate) mod budget;
+mod call_storage_tests;
 pub(crate) mod cancellation;
 pub(crate) mod claim_wait;
 pub(crate) mod delivery_tests;
@@ -304,21 +316,18 @@ struct PendingCall {
     /// caller, and closing the pending-call cap no longer revokes them
     /// (state `ResultObserved` in the operation state machine).
     observed: bool,
-    // Last: retained waiter/result metadata is dropped before admission returns.
-    _charge: record_budget::Charge,
 }
 
 impl PendingCall {
     /// Prepare before attachment transfer or publishing any call capability.
-    fn try_new(caller: AddressSpaceId, charge: record_budget::Charge) -> Result<Self, IpcError> {
+    fn try_new(caller: AddressSpaceId, platform: bool) -> Result<Self, IpcError> {
         Ok(Self {
             caller,
             result: None,
-            observers: ObserverList::try_new(waiter_budget::SOURCE_LIMIT, charge.platform())
+            observers: ObserverList::try_new(waiter_budget::SOURCE_LIMIT, platform)
                 .map_err(|_| IpcError::ResourceLimit)?,
             cq_interest: None,
             observed: false,
-            _charge: charge,
         })
     }
 }
@@ -381,37 +390,187 @@ impl PreparedConnection {
     }
 }
 
-/// One owner for unpublished call authority, metadata and all attachments.
-/// Field destruction cancels exact reservations and restores prepared sources;
-/// it never operates on live receiver-controlled aliases.
-struct PreparedCall {
-    authority: crate::capability::Reservation,
-    pending: PendingCall,
-    reply_charge: record_budget::Charge,
+type PendingStorage = PreparedEntry<(PendingCallId, PendingCall), Option<record_budget::Charge>>;
+
+/// Own unpublished call storage, authority and attachments. Ordinary finish
+/// runs after IPC unlock; fallback retains the complete partial transaction.
+#[must_use]
+struct PreparedCall(ManuallyDrop<CallResources>);
+
+struct CallResources {
+    caller: AddressSpaceId,
+    identity: Option<crate::memory::AddressSpaceHandle>,
+    root: Option<crate::memory::operation::AddressSpaceOperation>,
+    call_charge: Option<record_budget::Charge>,
+    platform: bool,
+    storage: Option<PendingStorage>,
+    authority: Option<crate::capability::Reservation>,
+    pending: Option<PendingCall>,
+    reply_charge: Option<record_budget::Charge>,
     connection: Option<PreparedConnection>,
+    attaching: Option<crate::memory::object::PreparedTransfer>,
     transfers: Vec<crate::memory::object::PreparedTransfer>,
     memory: Vec<MemoryObjectCap>,
     borrows: Vec<MemoryBorrow>,
+    attempted: bool,
+}
+
+impl Deref for PreparedCall {
+    type Target = CallResources;
+
+    fn deref(&self) -> &CallResources {
+        &self.0
+    }
+}
+impl DerefMut for PreparedCall {
+    fn deref_mut(&mut self) -> &mut CallResources {
+        &mut self.0
+    }
 }
 
 impl PreparedCall {
+    fn try_new(caller: AddressSpaceId) -> Result<Self, IpcError> {
+        Self::prepare(caller, || {
+            PendingStorage::try_new_charged(None).map_err(|_| IpcError::ResourceLimit)
+        })
+    }
+
+    fn prepare(
+        caller: AddressSpaceId,
+        allocate: impl FnOnce() -> Result<PendingStorage, IpcError>,
+    ) -> Result<Self, IpcError> {
+        Self::prepare_checked(caller, None, allocate)
+    }
+
+    fn prepare_checked(
+        caller: AddressSpaceId,
+        connection: Option<CapabilityId>,
+        allocate: impl FnOnce() -> Result<PendingStorage, IpcError>,
+    ) -> Result<Self, IpcError> {
+        let identity = {
+            let ipc = IPC.read();
+            let identity = ipc.caps.get(&caller).ok_or(IpcError::PermissionDenied)?.address_space;
+            if let Some(connection) = connection {
+                let Capability::Connection {
+                    endpoint,
+                    rights,
+                } = ipc.cap(caller, connection)?
+                else {
+                    return Err(IpcError::WrongType);
+                };
+                if !rights.contains(ConnectionRights::CALL) {
+                    return Err(IpcError::PermissionDenied);
+                }
+                reserve_endpoint_queue(&ipc, endpoint)?;
+            }
+            identity
+        };
+        let mut owner = Self(ManuallyDrop::new(CallResources {
+            caller,
+            identity,
+            root: None,
+            call_charge: None,
+            platform: false,
+            storage: None,
+            authority: None,
+            pending: None,
+            reply_charge: None,
+            connection: None,
+            attaching: None,
+            transfers: Vec::new(),
+            memory: Vec::new(),
+            borrows: Vec::new(),
+            attempted: false,
+        }));
+        let prepared = (|| {
+            if caller != crate::memory::KERNEL_ASID {
+                match identity {
+                    Some(handle) => {
+                        owner.root = Some(
+                            crate::memory::operation::AddressSpaceOperation::acquire(handle)
+                                .map_err(|_| IpcError::PermissionDenied)?,
+                        )
+                    }
+                    None if caller == namespace::fixture_id(caller) => {}
+                    None => return Err(IpcError::PermissionDenied),
+                }
+            }
+            {
+                let mut ipc = IPC.write();
+                if ipc.caps.get(&caller).and_then(|caps| caps.address_space) != identity {
+                    return Err(IpcError::PermissionDenied);
+                }
+                let mut charge = ipc.reserve_records(caller, [0, 1, 1])?;
+                owner.platform = charge.platform();
+                owner.reply_charge = Some(charge.split([0, 0, 1]));
+                owner.call_charge = Some(charge);
+            }
+            owner.storage = Some(allocate()?);
+            let resources = &mut *owner.0;
+            resources.storage.as_mut().unwrap().bind_charge(resources.call_charge.take().unwrap());
+            Ok(())
+        })();
+        if let Err(error) = prepared {
+            owner.finish();
+            return Err(error);
+        }
+        Ok(owner)
+    }
+
+    /// Work's IPC guards leave on every ordinary return before unused resources
+    /// finish. Abandonment retains this complete transaction without cleanup.
+    fn run(
+        caller: AddressSpaceId,
+        connection: CapabilityId,
+        work: impl FnOnce(&mut Self) -> Result<(CapabilityId, Delivery), IpcError>,
+    ) -> Result<CapabilityId, IpcError> {
+        let mut owner = Self::prepare_checked(caller, Some(connection), || {
+            PendingStorage::try_new_charged(None).map_err(|_| IpcError::ResourceLimit)
+        })?;
+        let result = work(&mut owner);
+        owner.finish();
+        let (cap, delivery) = result?;
+        deliver(delivery);
+        Ok(cap)
+    }
+
+    fn finish(mut self) {
+        drop(self.0.connection.take());
+        drop(self.0.authority.take());
+        drop(core::mem::take(&mut self.0.transfers));
+        drop(self.0.attaching.take());
+        drop(core::mem::take(&mut self.0.memory));
+        drop(core::mem::take(&mut self.0.borrows));
+        drop(self.0.pending.take());
+        drop(self.0.reply_charge.take());
+        drop(self.0.storage.take());
+        drop(self.0.call_charge.take());
+        if let Some(root) = self.0.root.take() {
+            root.release().expect("call preparation lost its exact-root lease");
+        }
+    }
+
     fn attach(
         &mut self,
         transfer: crate::memory::object::PreparedTransfer,
     ) -> Result<(), IpcError> {
-        self.transfers.try_reserve_exact(1).map_err(|_| IpcError::ResourceLimit)?;
-        self.memory.try_reserve_exact(1).map_err(|_| IpcError::ResourceLimit)?;
+        let resources = &mut *self.0;
+        assert!(resources.attaching.is_none());
+        resources.attaching = Some(transfer);
+        resources.transfers.try_reserve_exact(1).map_err(|_| IpcError::ResourceLimit)?;
+        resources.memory.try_reserve_exact(1).map_err(|_| IpcError::ResourceLimit)?;
+        let transfer = resources.attaching.as_ref().unwrap();
         if let Some((owner, owner_cap)) = transfer.loan_origin() {
-            self.borrows.try_reserve_exact(1).map_err(|_| IpcError::ResourceLimit)?;
-            self.borrows.push(MemoryBorrow {
+            resources.borrows.try_reserve_exact(1).map_err(|_| IpcError::ResourceLimit)?;
+            resources.borrows.push(MemoryBorrow {
                 owner,
                 owner_cap,
                 borrower: transfer.target(),
                 borrower_cap: transfer.target_cap(),
             });
         }
-        self.memory.push(transfer.target_cap());
-        self.transfers.push(transfer);
+        resources.memory.push(transfer.target_cap());
+        resources.transfers.push(resources.attaching.take().unwrap());
         Ok(())
     }
 
@@ -420,10 +579,16 @@ impl PreparedCall {
         transfers: Vec<crate::memory::object::PreparedTransfer>,
         memory: Vec<MemoryObjectCap>,
     ) -> Result<(), IpcError> {
-        self.borrows.try_reserve_exact(transfers.len()).map_err(|_| IpcError::ResourceLimit)?;
-        for transfer in &transfers {
+        let resources = &mut *self.0;
+        resources.transfers = transfers;
+        resources.memory = memory;
+        resources
+            .borrows
+            .try_reserve_exact(resources.transfers.len())
+            .map_err(|_| IpcError::ResourceLimit)?;
+        for transfer in &resources.transfers {
             if let Some((owner, owner_cap)) = transfer.loan_origin() {
-                self.borrows.push(MemoryBorrow {
+                resources.borrows.push(MemoryBorrow {
                     owner,
                     owner_cap,
                     borrower: transfer.target(),
@@ -431,13 +596,11 @@ impl PreparedCall {
                 });
             }
         }
-        self.transfers = transfers;
-        self.memory = memory;
         Ok(())
     }
 
     fn commit(
-        self,
+        &mut self,
         ipc: &mut IpcRegistry,
         endpoint: EndpointId,
         opcode: u32,
@@ -447,61 +610,44 @@ impl PreparedCall {
     }
 
     fn commit_with_memory(
-        self,
+        &mut self,
         ipc: &mut IpcRegistry,
         endpoint: EndpointId,
         opcode: u32,
         arg0: u64,
         prepare_memory: impl FnOnce(Vec<MemoryObjectCap>) -> Result<MemoryAttachments, IpcError>,
     ) -> Result<(CapabilityId, Delivery), IpcError> {
-        // Scalar move/loan paths and raw fixtures have no staged copies to
-        // release here. Copy/vector submissions retain errors past IPC unlock.
-        self.commit_retained(ipc, endpoint, opcode, arg0, prepare_memory).map_err(
-            |(error, owner)| {
-                drop(owner);
-                error
-            },
-        )
-    }
-
-    // Returning the owner inline avoids a fallible teardown allocation.
-    #[allow(clippy::result_large_err)]
-    fn commit_retained(
-        mut self,
-        ipc: &mut IpcRegistry,
-        endpoint: EndpointId,
-        opcode: u32,
-        arg0: u64,
-        prepare_memory: impl FnOnce(Vec<MemoryObjectCap>) -> Result<MemoryAttachments, IpcError>,
-    ) -> Result<(CapabilityId, Delivery), (IpcError, Self)> {
-        let preparation = (|| {
+        assert!(!self.0.attempted, "call publication attempted twice");
+        self.0.attempted = true;
+        let resources = &mut *self.0;
+        let (server, memory) = (|| {
             let server = reserve_endpoint_queue(ipc, endpoint)?;
-            let memory = prepare_memory(core::mem::take(&mut self.memory))?;
-            if let Some(connection) = &mut self.connection {
+            let memory = prepare_memory(core::mem::take(&mut resources.memory))?;
+            if let Some(connection) = &mut resources.connection {
                 crate::memory::object::commit_undelivered_transfers_with_authority(
-                    &mut self.transfers,
-                    &mut [&mut self.authority, &mut connection.authority],
+                    &mut resources.transfers,
+                    &mut [resources.authority.as_mut().unwrap(), &mut connection.authority],
                 )
             } else {
                 crate::memory::object::commit_undelivered_transfers_with_authority(
-                    &mut self.transfers,
-                    &mut [&mut self.authority],
+                    &mut resources.transfers,
+                    &mut [resources.authority.as_mut().unwrap()],
                 )
             }
             .map_err(|_| IpcError::MemoryTransferFailed)?;
             Ok((server, memory))
-        })();
-        let (server, memory) = match preparation {
-            Ok(prepared) => prepared,
-            Err(error) => return Err((error, self)),
-        };
-        let call_cap = self.authority.identity();
+        })()?;
+        let call_cap = resources.authority.as_ref().unwrap().identity();
         // Pins must end before the newly published objects become writable.
-        self.transfers.clear();
-        let caller = self.pending.caller;
-        let attached = self.connection.take().map(|connection| connection.install(ipc));
+        resources.transfers.clear();
+        let caller = resources.pending.as_ref().unwrap().caller;
+        let attached = resources.connection.take().map(|connection| connection.install(ipc));
         let call = ipc.alloc_call();
-        ipc.pending_calls.insert(call, self.pending);
+        ipc.pending_calls.insert(
+            resources.storage.take().unwrap(),
+            call,
+            resources.pending.take().unwrap(),
+        );
         ipc.as_caps(caller).insert_admitted(
             call_cap,
             Capability::PendingCall {
@@ -520,8 +666,8 @@ impl PreparedCall {
                 claim_epoch: 0,
                 cleanup_failed: false,
                 connection_source: None,
-                borrows: self.borrows,
-                _charge: self.reply_charge,
+                borrows: core::mem::take(&mut resources.borrows),
+                _charge: resources.reply_charge.take().unwrap(),
             },
         );
         let delivery =
@@ -538,7 +684,7 @@ struct IpcRegistry {
     next_call: PendingCallId,
     endpoints: BTreeMap<EndpointId, Endpoint>,
     reply_tokens: BTreeMap<ReplyTokenId, ReplyToken>,
-    pending_calls: BTreeMap<PendingCallId, PendingCall>,
+    pending_calls: AdmittedMap<PendingCallId, PendingCall, Option<record_budget::Charge>>,
     caps: crate::klib::collections::retirement_list::AdmittedMap<AddressSpaceId, AsIpcCaps>,
 }
 
@@ -550,7 +696,7 @@ impl IpcRegistry {
             next_call: 1,
             endpoints: BTreeMap::new(),
             reply_tokens: BTreeMap::new(),
-            pending_calls: BTreeMap::new(),
+            pending_calls: AdmittedMap::new(),
             caps: crate::klib::collections::retirement_list::AdmittedMap::new(),
         }
     }
@@ -620,19 +766,20 @@ impl IpcRegistry {
     }
 
     /// All call authority and fallible metadata precede attachment preparation.
-    fn stage_call(&mut self, caller: AddressSpaceId) -> Result<PreparedCall, IpcError> {
-        let mut charge = self.reserve_records(caller, [0, 1, 1])?;
-        let reply_charge = charge.split([0, 0, 1]);
-        let authority = self.reserve_cap(caller)?;
-        Ok(PreparedCall {
-            authority,
-            pending: PendingCall::try_new(caller, charge)?,
-            reply_charge,
-            connection: None,
-            transfers: Vec::new(),
-            memory: Vec::new(),
-            borrows: Vec::new(),
-        })
+    fn stage_call(
+        &mut self,
+        caller: AddressSpaceId,
+        owner: &mut PreparedCall,
+    ) -> Result<(), IpcError> {
+        assert!(owner.authority.is_none() && owner.pending.is_none());
+        if owner.caller != caller
+            || self.caps.get(&caller).and_then(|caps| caps.address_space) != owner.identity
+        {
+            return Err(IpcError::PermissionDenied);
+        }
+        owner.authority = Some(self.reserve_cap(caller)?);
+        owner.pending = Some(PendingCall::try_new(caller, owner.platform)?);
+        Ok(())
     }
 
     fn cap(&self, asid: AddressSpaceId, cap: CapabilityId) -> Result<Capability, IpcError> {
@@ -1070,24 +1217,23 @@ pub fn scalar_call(
     opcode: u32,
     arg0: u64,
 ) -> Result<CapabilityId, IpcError> {
-    let mut ipc = IPC.write();
-    let (endpoint_id, rights) = match ipc.cap(caller, connection_cap)? {
-        Capability::Connection {
-            endpoint,
-            rights,
-        } => (endpoint, rights),
-        _ => return Err(IpcError::WrongType),
-    };
-    if !rights.contains(ConnectionRights::CALL) {
-        return Err(IpcError::PermissionDenied);
-    }
+    PreparedCall::run(caller, connection_cap, |prepared| {
+        let mut ipc = IPC.write();
+        let (endpoint_id, rights) = match ipc.cap(caller, connection_cap)? {
+            Capability::Connection {
+                endpoint,
+                rights,
+            } => (endpoint, rights),
+            _ => return Err(IpcError::WrongType),
+        };
+        if !rights.contains(ConnectionRights::CALL) {
+            return Err(IpcError::PermissionDenied);
+        }
 
-    reserve_endpoint_queue(&ipc, endpoint_id)?;
-    let prepared = ipc.stage_call(caller)?;
-    let (call_cap, delivery) = prepared.commit(&mut ipc, endpoint_id, opcode, arg0)?;
-    drop(ipc);
-    deliver(delivery);
-    Ok(call_cap)
+        reserve_endpoint_queue(&ipc, endpoint_id)?;
+        ipc.stage_call(caller, prepared)?;
+        prepared.commit(&mut ipc, endpoint_id, opcode, arg0)
+    })
 }
 
 /// Scalar call carrying a delegated connection capability.
@@ -1164,31 +1310,30 @@ fn scalar_call_with_connection_impl(
             Some((delegate_cap, delegate_rights)),
         );
     }
-    let mut ipc = IPC.write();
-    let (endpoint_id, rights) = match ipc.cap(caller, connection_cap)? {
-        Capability::Connection {
-            endpoint,
-            rights,
-        } => (endpoint, rights),
-        _ => return Err(IpcError::WrongType),
-    };
-    if !rights.contains(ConnectionRights::CALL) {
-        return Err(IpcError::PermissionDenied);
-    }
-    let (delegated_endpoint, granted) = if delegate_cap == 0 {
-        (0, ConnectionRights(0))
-    } else {
-        mintable_endpoint(&ipc, caller, delegate_cap, delegate_rights)?
-    };
+    PreparedCall::run(caller, connection_cap, |prepared| {
+        let mut ipc = IPC.write();
+        let (endpoint_id, rights) = match ipc.cap(caller, connection_cap)? {
+            Capability::Connection {
+                endpoint,
+                rights,
+            } => (endpoint, rights),
+            _ => return Err(IpcError::WrongType),
+        };
+        if !rights.contains(ConnectionRights::CALL) {
+            return Err(IpcError::PermissionDenied);
+        }
+        let (delegated_endpoint, granted) = if delegate_cap == 0 {
+            (0, ConnectionRights(0))
+        } else {
+            mintable_endpoint(&ipc, caller, delegate_cap, delegate_rights)?
+        };
 
-    let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
-    let mut prepared = ipc.stage_call(caller)?;
-    prepared.connection =
-        Some(PreparedConnection::new(&mut ipc, caller, server, delegated_endpoint, granted)?);
-    let (call_cap, delivery) = prepared.commit(&mut ipc, endpoint_id, opcode, arg0)?;
-    drop(ipc);
-    deliver(delivery);
-    Ok(call_cap)
+        let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
+        ipc.stage_call(caller, prepared)?;
+        prepared.connection =
+            Some(PreparedConnection::new(&mut ipc, caller, server, delegated_endpoint, granted)?);
+        prepared.commit(&mut ipc, endpoint_id, opcode, arg0)
+    })
 }
 
 pub fn scalar_call_with_memory_move(
@@ -1198,28 +1343,27 @@ pub fn scalar_call_with_memory_move(
     arg0: u64,
     memory_cap: MemoryObjectCap,
 ) -> Result<CapabilityId, IpcError> {
-    let mut ipc = IPC.write();
-    let (endpoint_id, rights) = match ipc.cap(caller, connection_cap)? {
-        Capability::Connection {
-            endpoint,
-            rights,
-        } => (endpoint, rights),
-        _ => return Err(IpcError::WrongType),
-    };
-    if !rights.contains(ConnectionRights::CALL) {
-        return Err(IpcError::PermissionDenied);
-    }
+    PreparedCall::run(caller, connection_cap, |prepared| {
+        let mut ipc = IPC.write();
+        let (endpoint_id, rights) = match ipc.cap(caller, connection_cap)? {
+            Capability::Connection {
+                endpoint,
+                rights,
+            } => (endpoint, rights),
+            _ => return Err(IpcError::WrongType),
+        };
+        if !rights.contains(ConnectionRights::CALL) {
+            return Err(IpcError::PermissionDenied);
+        }
 
-    let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
-    let mut prepared = ipc.stage_call(caller)?;
-    prepared.attach(
-        crate::memory::object::prepare_move(caller, memory_cap, server)
-            .map_err(|_| IpcError::MemoryTransferFailed)?,
-    )?;
-    let (call_cap, delivery) = prepared.commit(&mut ipc, endpoint_id, opcode, arg0)?;
-    drop(ipc);
-    deliver(delivery);
-    Ok(call_cap)
+        let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
+        ipc.stage_call(caller, prepared)?;
+        prepared.attach(
+            crate::memory::object::prepare_move(caller, memory_cap, server)
+                .map_err(|_| IpcError::MemoryTransferFailed)?,
+        )?;
+        prepared.commit(&mut ipc, endpoint_id, opcode, arg0)
+    })
 }
 
 pub fn scalar_call_with_memory_copy(
@@ -1260,28 +1404,27 @@ fn scalar_call_with_memory_borrow(
     memory_cap: MemoryObjectCap,
     writable: bool,
 ) -> Result<CapabilityId, IpcError> {
-    let mut ipc = IPC.write();
-    let (endpoint_id, rights) = match ipc.cap(caller, connection_cap)? {
-        Capability::Connection {
-            endpoint,
-            rights,
-        } => (endpoint, rights),
-        _ => return Err(IpcError::WrongType),
-    };
-    if !rights.contains(ConnectionRights::CALL) {
-        return Err(IpcError::PermissionDenied);
-    }
+    PreparedCall::run(caller, connection_cap, |prepared| {
+        let mut ipc = IPC.write();
+        let (endpoint_id, rights) = match ipc.cap(caller, connection_cap)? {
+            Capability::Connection {
+                endpoint,
+                rights,
+            } => (endpoint, rights),
+            _ => return Err(IpcError::WrongType),
+        };
+        if !rights.contains(ConnectionRights::CALL) {
+            return Err(IpcError::PermissionDenied);
+        }
 
-    let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
-    let mut prepared = ipc.stage_call(caller)?;
-    prepared.attach(
-        crate::memory::object::prepare_loan(caller, memory_cap, server, writable)
-            .map_err(|_| IpcError::MemoryTransferFailed)?,
-    )?;
-    let (call_cap, delivery) = prepared.commit(&mut ipc, endpoint_id, opcode, arg0)?;
-    drop(ipc);
-    deliver(delivery);
-    Ok(call_cap)
+        let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
+        ipc.stage_call(caller, prepared)?;
+        prepared.attach(
+            crate::memory::object::prepare_loan(caller, memory_cap, server, writable)
+                .map_err(|_| IpcError::MemoryTransferFailed)?,
+        )?;
+        prepared.commit(&mut ipc, endpoint_id, opcode, arg0)
+    })
 }
 
 /// What must be signalled after an enqueue, once the IPC lock is dropped:
@@ -2223,6 +2366,7 @@ fn close_cap_with_cleanup(
     let mut retired_queue = budget::AdmittedQueue::default();
     let mut retired_message = None;
     let mut retired_result = None;
+    let mut retired_call = None;
     match ipc.remove_cap(asid, cap)? {
         Capability::Endpoint {
             endpoint,
@@ -2263,7 +2407,8 @@ fn close_cap_with_cleanup(
         Capability::PendingCall {
             call,
         } => {
-            if let Some(pending) = ipc.pending_calls.remove(&call) {
+            if let Some(mut node) = ipc.pending_calls.take(&call) {
+                let pending = &mut node.value_mut().1;
                 // A thread parked in wait_reply holds its only waker here.
                 observers.append(pending.observers.close());
                 if let Some(reply) = pending.result {
@@ -2282,6 +2427,7 @@ fn close_cap_with_cleanup(
                     retired_message =
                         cancel_queued_call(&mut ipc, call, &mut observers, &mut cq_wake);
                 }
+                retired_call = Some(node);
             }
         }
         Capability::ReplyToken {
@@ -2301,6 +2447,9 @@ fn close_cap_with_cleanup(
         }
     }
     drop(ipc);
+    if let Some(node) = retired_call {
+        node.release();
+    }
     if let Some(owner) = retired_result {
         release(owner);
     }

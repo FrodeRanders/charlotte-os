@@ -344,9 +344,10 @@ fn test_joint_retirement() {
             let source_count = used(f.client.id());
             let target_count = used(f.server.id());
             let records = record_budget::node_used();
+            let mut call = PreparedCall::try_new(f.client.id()).unwrap();
             let mut ipc = IPC.write();
-            let mut call = ipc.stage_call(f.client.id()).unwrap();
-            let staged_call = call.authority.identity();
+            ipc.stage_call(f.client.id(), &mut call).unwrap();
+            let staged_call = call.authority.as_ref().unwrap().identity();
             call.connection = Some(
                 PreparedConnection::new(
                     &mut ipc,
@@ -399,6 +400,7 @@ fn test_joint_retirement() {
             assert_eq!(ipc.cap(f.client.id(), staged_call), Err(IpcError::UnknownCapability));
             assert_eq!(ipc.cap(f.server.id(), staged_connection), Err(IpcError::UnknownCapability));
             drop(ipc);
+            call.finish();
             for cap in staged_memory {
                 assert_eq!(
                     object::info(f.server.id(), cap),
@@ -490,9 +492,10 @@ fn test_stale_call() {
     let endpoint = endpoint_create(server.id(), 1, 1, 4).unwrap();
     connection_delegate(server.id(), endpoint, old.id(), ConnectionRights::CALL).unwrap();
     let source = object::allocate(old.id(), 1).unwrap();
+    let mut stale = PreparedCall::try_new(old.id()).unwrap();
     let mut ipc = IPC.write();
-    let mut stale = ipc.stage_call(old.id()).unwrap();
-    let old_cap = stale.authority.identity();
+    ipc.stage_call(old.id(), &mut stale).unwrap();
+    let old_cap = stale.authority.as_ref().unwrap().identity();
     stale.connection = Some(
         PreparedConnection::new(&mut ipc, old.id(), server.id(), endpoint, ConnectionRights::SEND)
             .unwrap(),
@@ -500,15 +503,15 @@ fn test_stale_call() {
     stale.attach(object::prepare_copy(old.id(), source, server.id()).unwrap()).unwrap();
     let old_records = ipc.as_caps(old.id()).record_budget.clone();
     drop(ipc);
-    crate::memory::close_user_address_space_handle(old).unwrap();
-    assert_eq!(old_records.used(), [1, 1, 1]);
     assert_eq!(
-        crate::memory::budget::used(old),
-        crate::memory::budget::Amount {
-            pages: 1,
-            objects: 1
-        }
+        crate::memory::close_user_address_space_handle(old),
+        Err(crate::memory::AddressSpaceCloseError::OperationsInFlight)
     );
+    assert_eq!(old_records.used(), [1, 1, 1]);
+    stale.finish();
+    assert_eq!(old_records.used(), [0, 0, 0]);
+    crate::memory::close_user_address_space_handle(old).unwrap();
+    assert_eq!(old_records.used(), [0, 0, 0]);
     let fresh = crate::service::loader::create_user_address_space_handle();
     assert_eq!(fresh.id(), old.id());
     assert_ne!(fresh, old);
@@ -518,10 +521,7 @@ fn test_stale_call() {
     assert_eq!(call, old_cap, "reuse the exact staged IPC handle in the successor");
     let fresh_records = account(fresh.id());
     let counts = used(fresh.id());
-    let mut ipc = IPC.write();
-    assert!(matches!(stale.commit(&mut ipc, endpoint, 1, 0), Err(IpcError::MemoryTransferFailed)));
-    assert!(matches!(ipc.cap(fresh.id(), call), Ok(Capability::PendingCall { .. })));
-    drop(ipc);
+    assert!(matches!(IPC.read().cap(fresh.id(), call), Ok(Capability::PendingCall { .. })));
     assert_eq!(old_records.used(), [0, 0, 0]);
     assert_eq!(crate::memory::budget::used(old), crate::memory::budget::Amount::default());
     assert_eq!(crate::memory::budget::used(fresh), crate::memory::budget::Amount::default());

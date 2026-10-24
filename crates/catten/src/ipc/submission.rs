@@ -110,21 +110,6 @@ impl Submission {
     }
 }
 
-fn committed(
-    result: Result<(CapabilityId, Delivery), (IpcError, PreparedCall)>,
-) -> Result<CapabilityId, IpcError> {
-    match result {
-        Ok((cap, delivery)) => {
-            deliver(delivery);
-            Ok(cap)
-        }
-        Err((error, owner)) => {
-            drop(owner);
-            Err(error)
-        }
-    }
-}
-
 pub(super) fn call_copy(
     caller: AddressSpaceId,
     connection: CapabilityId,
@@ -134,31 +119,31 @@ pub(super) fn call_copy(
     delegation: Option<(CapabilityId, ConnectionRights)>,
 ) -> Result<CapabilityId, IpcError> {
     Submission::prepare(caller, connection, ConnectionRights::CALL)?.run(|submission| {
-        let (mut prepared, delegated) = {
-            let mut ipc = IPC.write();
-            submission.validate(&ipc)?;
-            let delegated = match delegation {
-                Some((0, _)) => Some((0, ConnectionRights(0))),
-                Some((cap, rights)) => Some(mintable_endpoint(&ipc, caller, cap, rights)?),
-                None => None,
+        PreparedCall::run(caller, connection, |prepared| {
+            let delegated = {
+                let mut ipc = IPC.write();
+                submission.validate(&ipc)?;
+                let delegated = match delegation {
+                    Some((0, _)) => Some((0, ConnectionRights(0))),
+                    Some((cap, rights)) => Some(mintable_endpoint(&ipc, caller, cap, rights)?),
+                    None => None,
+                };
+                ipc.stage_call(caller, prepared)?;
+                if let Some((endpoint, rights)) = delegated {
+                    prepared.connection = Some(PreparedConnection::new(
+                        &mut ipc,
+                        caller,
+                        submission.server,
+                        endpoint,
+                        rights,
+                    )?);
+                }
+                delegated
             };
-            let mut prepared = ipc.stage_call(caller)?;
-            if let Some((endpoint, rights)) = delegated {
-                prepared.connection = Some(PreparedConnection::new(
-                    &mut ipc,
-                    caller,
-                    submission.server,
-                    endpoint,
-                    rights,
-                )?);
-            }
-            (prepared, delegated)
-        };
-        prepared.attach(
-            object::prepare_copy(caller, memory, submission.server)
-                .map_err(|_| IpcError::MemoryTransferFailed)?,
-        )?;
-        let result = {
+            prepared.attach(
+                object::prepare_copy(caller, memory, submission.server)
+                    .map_err(|_| IpcError::MemoryTransferFailed)?,
+            )?;
             let mut ipc = IPC.write();
             submission.validate(&ipc)?;
             if let Some((cap, rights)) = delegation
@@ -167,15 +152,8 @@ pub(super) fn call_copy(
             {
                 return Err(IpcError::PermissionDenied);
             }
-            prepared.commit_retained(
-                &mut ipc,
-                submission.endpoint,
-                opcode,
-                arg0,
-                MemoryAttachments::try_new,
-            )
-        };
-        committed(result)
+            prepared.commit(&mut ipc, submission.endpoint, opcode, arg0)
+        })
     })
 }
 
@@ -222,33 +200,25 @@ pub(super) fn vector(
         },
     )?
     .run(|submission| {
-        let prepared = if call {
-            let mut ipc = IPC.write();
-            submission.validate(&ipc)?;
-            Some(ipc.stage_call(caller)?)
-        } else {
-            None
-        };
-        let mut caps = Vec::new();
-        // Parsing, frame allocation/copy, partial preparation rollback and
-        // attachment metadata allocation all happen without IPC serialization.
-        let mut transfers =
-            read_vector_page(caller, descriptor, submission.server, call, &mut caps)?;
-        let result = if let Some(mut prepared) = prepared {
-            prepared.attach_vector(transfers, caps)?;
-            let result = {
+        let result = if call {
+            Some(PreparedCall::run(caller, connection, |prepared| {
+                {
+                    let mut ipc = IPC.write();
+                    submission.validate(&ipc)?;
+                    ipc.stage_call(caller, prepared)?;
+                }
+                let mut caps = Vec::new();
+                let transfers =
+                    read_vector_page(caller, descriptor, submission.server, true, &mut caps)?;
+                prepared.attach_vector(transfers, caps)?;
                 let mut ipc = IPC.write();
                 submission.validate(&ipc)?;
-                prepared.commit_retained(
-                    &mut ipc,
-                    submission.endpoint,
-                    opcode,
-                    arg0,
-                    MemoryAttachments::try_new,
-                )
-            };
-            Some(committed(result)?)
+                prepared.commit(&mut ipc, submission.endpoint, opcode, arg0)
+            })?)
         } else {
+            let mut caps = Vec::new();
+            let mut transfers =
+                read_vector_page(caller, descriptor, submission.server, false, &mut caps)?;
             let memory = MemoryAttachments::try_new(caps)?;
             let delivery = {
                 let mut ipc = IPC.write();

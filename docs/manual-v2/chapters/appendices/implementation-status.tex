@@ -354,8 +354,12 @@ Source, tests, and repository history remain authoritative.
         IPC namespace nodes and both budget accounts now prepare fallibly
         before publication guards; an exact-root lease protects post-table
         publication under IPC alone. Empty-node disposal leaves IPC first.
-        Per-capability and endpoint/call/reply map allocation, account
-        byte/principal admission and wider contexts remain open.
+        Pending-call nodes now reserve their original counts before fallible
+        allocation outside IPC; the complete call owner retains its exact root
+        through preparation, publication and ordinary rollback. Detached node
+        disposal precedes count refund. Per-capability and endpoint/reply-token
+        map allocation, account byte/principal admission and wider contexts
+        remain open.
     \item \textbf{Cross-machine Raft boundary:} two TCG guests share a private
         QEMU LAN (stream backend on AArch64, socket backend on x86-64); the
         reliable-message frame transport and remote Raft peer routing are

@@ -457,3 +457,28 @@ fn charged_map_keeps_admission_through_detachment_payload_and_node_free() {
     assert_eq!(releases.load(Ordering::Relaxed), 1);
     DISPOSAL_NODE.with(|target| target.set(0));
 }
+
+#[test]
+fn prepared_storage_can_bind_original_admission_before_publication() {
+    for published in [false, true] {
+        let charge = probe(usize::from(published), 1);
+        let releases = charge.releases.clone();
+        let drops = charge.payload_drops.clone();
+        let mut node =
+            PreparedEntry::<Tracked, Option<AdmissionProbe>>::try_new_charged(None).unwrap();
+        track_node(&node);
+        without_allocation(|| node.bind_charge(charge));
+        assert_eq!(releases.load(Ordering::Relaxed), 0);
+        without_allocation(|| {
+            if published {
+                let node = node.publish(Tracked(1, drops));
+                node.release();
+            } else {
+                drop(node);
+            }
+        });
+        assert_eq!(releases.load(Ordering::Relaxed), 1);
+        assert_eq!(DISPOSAL_NODE_FREES.with(Cell::get), 1);
+        DISPOSAL_NODE.with(|target| target.set(0));
+    }
+}

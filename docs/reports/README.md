@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [IPC pending-call storage](audits/2026-10-24-security-ipc-pending-storage.md) — Exact-root, charged preparation outside IPC and post-guard node disposal.
+
 - [IPC namespace publication](audits/2026-10-24-security-ipc-namespace-publication.md) — Fallible namespace/account preparation, leased root handoff and post-IPC disposal.
 
 - [Root-record storage admission](audits/2026-10-24-security-root-metadata-admission.md) — Shared byte/count limits and partial root preparation rejection.

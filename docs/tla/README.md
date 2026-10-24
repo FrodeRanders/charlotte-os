@@ -1115,3 +1115,11 @@ the fresh-root publication hold. Namespace allocation and IPC relinking remain
 native qualification; `CharlotteIpcPublication` assumes already-live namespaces.
 No model/configuration changed, and the preceding 190-case full-suite checkpoint
 is preserved. See the [conformance boundary](CONFORMANCE.md#ipc-namespace-construction-and-root-handoff).
+
+
+The [pending-call storage follow-up](../reports/audits/2026-10-24-security-ipc-pending-storage.md)
+rechecks IPC publication and root retirement. Shared authority/delivery and
+exact-lease gates are existing model projections; pending-family node allocation,
+post-guard disposal and count refund are native/host qualification. See the
+[conformance boundary](CONFORMANCE.md#pending-call-node-lifetime). No model or
+configuration changed, and the preceding full-suite checkpoint is preserved.

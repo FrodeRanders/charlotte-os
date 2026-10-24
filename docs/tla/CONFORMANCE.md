@@ -1155,3 +1155,24 @@ three allocations or the registration handoff. Native phase-rejection,
 heap-held relinking/detachment, missing-namespace rejection and early-close
 controls qualify those boundaries. These checks provide no executable
 refinement, allocator/IRQ proof or sustained progress guarantee.
+
+
+## Pending-call node lifetime
+
+The [pending-call storage batch](../reports/audits/2026-10-24-security-ipc-pending-storage.md)
+keeps exact caller-root retention and call/reply family counts in the existing
+preparation owner. Pending-node allocation leaves IPC; ordinary unused resources
+finish post-guard and the root finishes last. Publication only relinks storage;
+close/cancellation retain detached nodes until explicit disposal before refund.
+Abandonment retains the whole preparation.
+
+`CharlotteIpcPublication` checks joint shared-authority publication, hidden
+payload delivery, rollback and charge retention. Its prepared storage represents
+shared authority staging, not these family-record node allocations or the
+call/reply count dimensions. `CharlotteRootRetirement` projects the caller lease
+that prevents teardown/slot reuse while preparation is live. The allocation,
+post-IPC disposal and counter lifetime are qualified by native controls and the
+shared collection host test of late-bound admission through actual node free.
+No model/configuration changes accompany this batch. Focused formal results are
+recorded in the audit; the preceding full 190-case result remains a separate
+checkpoint. No executable refinement, allocator/IRQ or fairness proof is implied.

@@ -360,9 +360,19 @@ registration transaction. A first exact-root operation lease protects publicatio
 after lifecycle/table unlock; insertion only relinks prepared storage under IPC.
 Missing and retired namespaces reject instead of recreating. Fenced cleanup
 detaches the empty node and releases its account references after IPC unlock;
-foreign charges keep their original accounts. Per-capability, endpoint/call/reply
+foreign charges keep their original accounts. Per-capability, endpoint/reply
 map allocation, namespace/account byte and principal ceilings, wider destructor
 contexts and sustained progress remain open. See [current contract](ipc-namespace-publication.md).
+
+The [pending-call storage batch](../reports/audits/2026-10-24-security-ipc-pending-storage.md)
+retains the caller's exact root, reserves original call/reply counts, then prepares
+the pending node fallibly outside IPC. Publication relinks that node; ordinary
+rollback finishes the whole preparation after IPC unlock, root last. Existing
+call/cancellation owners carry detached nodes through post-guard disposal and
+refund only after node deallocation. Abandonment retains the containing owner.
+Other IPC maps, waiter/vector/control-block contexts, byte/principal ceilings
+and sustained progress remain open. This advances R7-2 and C08/C18 without a
+finding-count change; see [record policy](ipc-record-budgets.md).
 
 SEC-07 remains partial until all of the following deliverables are accepted:
 

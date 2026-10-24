@@ -472,6 +472,7 @@ impl<'a> PreparedCancellation<'a> {
         if let Some(cap) = reply_cap {
             ipc.remove_cap(identity.server, cap).expect("claimed reply cap missing");
         }
+        let mut retired_call = None;
         let observers = match identity.target {
             CloseTarget::Call | CloseTarget::Namespace(_) if identity.caller == self.asid => {
                 let cap = if identity.target == CloseTarget::Call {
@@ -490,11 +491,11 @@ impl<'a> PreparedCancellation<'a> {
                         .expect("retiring call cap missing")
                 };
                 ipc.remove_cap(self.asid, cap).expect("claimed call cap missing");
-                ipc.pending_calls
-                    .remove(&identity.call)
-                    .expect("claimed pending call missing")
-                    .observers
-                    .close()
+                let node =
+                    ipc.pending_calls.take(&identity.call).expect("claimed pending call missing");
+                let observers = node.value().1.observers.close();
+                retired_call = Some(node);
+                observers
             }
             CloseTarget::Reply | CloseTarget::Endpoint(_) | CloseTarget::Namespace(_) => {
                 if identity.target == CloseTarget::Reply {
@@ -523,6 +524,9 @@ impl<'a> PreparedCancellation<'a> {
             CloseTarget::Call => unreachable!("call close must own the caller"),
         };
         drop(ipc);
+        if let Some(node) = retired_call {
+            node.release();
+        }
         if let Some(memory) = memory {
             memory.release_with(&mut release);
         }

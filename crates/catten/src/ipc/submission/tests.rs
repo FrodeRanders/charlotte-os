@@ -64,7 +64,8 @@ fn retained_failure() {
                 .unwrap();
         submission
             .run(|submission| {
-                let mut prepared = IPC.write().stage_call(fixture.caller.id()).unwrap();
+                let mut prepared = PreparedCall::try_new(fixture.caller.id()).unwrap();
+                IPC.write().stage_call(fixture.caller.id(), &mut prepared).unwrap();
                 unlocked(&fixture);
                 prepared
                     .attach(
@@ -80,7 +81,7 @@ fn retained_failure() {
                 let result = {
                     let mut ipc = IPC.write();
                     submission.validate(&ipc).unwrap();
-                    prepared.commit_retained(&mut ipc, submission.endpoint, 1, 0, |caps| {
+                    prepared.commit_with_memory(&mut ipc, submission.endpoint, 1, 0, |caps| {
                         if publication {
                             MemoryAttachments::try_new(caps)
                         } else {
@@ -88,7 +89,7 @@ fn retained_failure() {
                         }
                     })
                 };
-                let (error, owner) = result.err().expect("fault publication succeeded");
+                let error = result.err().expect("fault publication succeeded");
                 assert_eq!(
                     error,
                     if publication {
@@ -99,7 +100,7 @@ fn retained_failure() {
                 );
                 unlocked(&fixture);
                 assert_eq!(memory::budget::used(fixture.caller).pages, 70);
-                drop(owner);
+                prepared.finish();
                 assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free + 35);
                 assert_eq!(memory::budget::used(fixture.caller), before);
                 assert_eq!(

@@ -27,6 +27,7 @@ fn submission_failure() {
     let records = record_budget::node_used();
     let caps = [fixture.caller, fixture.server]
         .map(|handle| crate::capability::admission_tests::test_namespace_used(handle.id()));
+    let mut call = PreparedCall::try_new(fixture.caller.id()).unwrap();
     let mut ipc = IPC.write();
     let Capability::Connection {
         endpoint,
@@ -35,7 +36,7 @@ fn submission_failure() {
     else {
         unreachable!()
     };
-    let mut call = ipc.stage_call(fixture.caller.id()).unwrap();
+    ipc.stage_call(fixture.caller.id(), &mut call).unwrap();
     call.connection = Some(
         PreparedConnection::new(
             &mut ipc,
@@ -60,6 +61,7 @@ fn submission_failure() {
         Err(IpcError::ResourceLimit)
     ));
     drop(ipc);
+    call.finish();
     assert_eq!(memory::budget::used(fixture.caller), before);
     assert_eq!(record_budget::node_used(), records);
     assert_eq!(

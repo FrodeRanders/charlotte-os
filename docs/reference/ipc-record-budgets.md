@@ -49,16 +49,37 @@ Result encoding uses bounded stack storage, not a fresh heap allocation.
 
 ## Preparation and retirement
 
-Every call path reserves both record dimensions atomically and then prepares
-its fallible waiter list before moving, copying, lending or vector-transferring
-attachments. `PreparedCall` additionally owns the shared pending-call slot,
-prepared memory batch, complete loan vector and optional `PreparedConnection`.
-A connection-bearing call admits its receiver connection before copying memory.
-`commit_transfers_with_authority` publishes all IPC/memory destinations or none,
-followed by payload installation/enqueue under IPC serialization. Drop returns
-reservations on rejection or attachment failure and restores source slots
-without new quota. Scalar-only publication takes no memory-registry lock.
-No IPC path retains the unbounded allocation helper.
+Public call preparation rejects invalid/wrong-rights handles and closed/full
+queues before record admission or allocation; publication rechecks those inputs.
+Every call preparation retains the caller's captured root generation before
+reserving both record dimensions under IPC. The containing `PreparedCall` then
+allocates its pending-record node fallibly after IPC unlock, keeping its original
+charges through allocation rejection. Revalidation precedes authority admission;
+a missing, changed or retiring namespace rejects. Kernel roots are immortal;
+explicit synthetic fixture namespaces have no physical root.
+
+The same inert owner retains storage, reply charge, pending waiter metadata,
+shared capability reservation, complete memory/loan vectors, an attachment being
+staged, optional delegated connection and its caller-root lease. Ordinary success
+or error finishes unused fields after local IPC guards leave, releasing the root
+last. Abandonment retains every field. This replaces implicit field cleanup for
+this containing transaction. It gives no replay or physical recovery authority.
+
+`commit_undelivered_transfers_with_authority` publishes all IPC/memory destinations
+or none, followed by payload installation/enqueue under IPC. Pending-record
+insertion only relinks its already-prepared node; that node holds the call's
+original count charge independently of its payload. The existing call close and
+loan-cancellation owners detach the complete node, leave IPC, then explicitly
+dispose payload and storage before refunding that charge. Failed loan cleanup
+keeps the pending node in place. Completed/observed calls remain charged until
+close; an observer wake alone cannot release them.
+
+The pending map now uses shared admitted storage with linear lookup/insertion.
+Its count is bounded, but worst-case hold time is not qualified by the serialized
+controls. Endpoint, per-capability and reply-token maps still allocate under IPC;
+waiter/control-block and vector preparation, byte/principal ceilings and wider
+caller/destructor contexts remain separate work. This is not fully fallible IPC
+publication. See the [pending storage audit](../reports/audits/2026-10-24-security-ipc-pending-storage.md).
 
 A connection-bearing reply reserves its connection before consuming the token,
 moving memory or revoking a loan. Kernel admission rejection leaves the token
@@ -104,7 +125,9 @@ snapshot. Generation-qualified memory retirement is checked too. Existing
 record charges retain the original reference-counted account after its namespace
 is removed; a late remote close cannot credit a replacement using the same ASID.
 
-Counter locking is IPC registry → domain → node. Identity checks may take the
+Counter locking is IPC registry → domain → node. Preparation captures and leases
+the exact caller before count admission, releases IPC before pending-node
+allocation, and rechecks that identity before authority admission. Identity checks may take the
 address-space table and memory ledger under IPC, but release them before record
 counters are acquired. Counter guards allocate nothing, invoke no callbacks and
 enter no other subsystem. Notifications still run after releasing IPC.

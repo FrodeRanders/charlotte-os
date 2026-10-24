@@ -76,6 +76,17 @@ and detached-node fallback retain all fields without allocator or registry entry
 Per-capability and endpoint/call/reply maps and wider disposal contexts remain
 separate. See [namespace publication](ipc-namespace-publication.md).
 
+Pending-call preparation captures its caller under IPC, releases IPC before
+acquiring the exact-root operation lease, then revalidates and reserves call/reply
+counts under IPC. It leaves that guard before fallible pending-node allocation.
+Count/node admission stays in the containing owner. Pending publication only
+relinks the prepared node under IPC. Close/cancellation detach its complete node
+and release payload/storage/charge after IPC unlock. Ordinary unused preparation
+finishes after local IPC guards and releases its root last; fallback retains all
+fields. This uses C08/C18, with no new disposal registry. Other IPC maps, vector/
+waiter construction and wider enclosing contexts remain separate. See
+[record storage](ipc-record-budgets.md#preparation-and-retirement).
+
 IPC endpoint/direct-grant/receiver-reply admission uses the generation captured
 in `AsIpcCaps`: `IPC → CAPABILITIES → capability domain → node`. Family charges
 and result writes run outside capability/counter guards. `PreparedReceive`

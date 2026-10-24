@@ -31,7 +31,7 @@ Missing or retired namespaces reject; ordinary IPC never recreates them.
 After fenced loan and capability drain, cleanup detaches the empty namespace
 node and disposes it outside IPC. Outstanding delegated endpoint/record charges
 keep their original accounts through ASID reuse. This covers namespace storage;
-per-capability and endpoint/call/reply map allocations, account byte/principal
+per-capability and endpoint/reply-token map allocations, account byte/principal
 admission and wider destructor contexts remain audit work. See
 \repofile|docs/reference/ipc-namespace-publication.md|.
 
@@ -71,8 +71,17 @@ capability-table limit. Sponsorship does not change capability authority.
 Completed and observed calls remain charged until closed, while reply-token
 charges return on reply or cancellation.
 
-Calls reserve both records atomically before preparing their waiter list or
-transferring attachments. Connection-bearing calls and replies admit their
+Calls reject invalid handles and unavailable queues before preparing record
+storage, then recheck them before mutation. They retain their exact caller root
+and reserve both record counts atomically
+before preparing pending storage, waiter metadata or attachments. Pending-record
+nodes allocate fallibly outside IPC and publish by relinking. Their containing
+owner explicitly finishes unused preparation after IPC unlock, root last;
+abandonment retains every field. Close and confirmed cancellation carry detached
+pending nodes outside IPC and free payload/storage before refunding the original
+record charge. See \repofile|docs/reference/ipc-record-budgets.md|.
+
+Connection-bearing calls and replies admit their
 connection before copying memory, consuming the token or revoking a loan.
 Kernel rejection leaves the inputs intact. The consuming Rust
 \texttt{ReplyToken::reply\_connection*} methods close/cancel their token on an
@@ -82,7 +91,7 @@ token.
 Teardown fences admission before taking its capability snapshot. Receive and
 connection-publication paths reject a retiring namespace, preventing late
 capabilities from escaping that snapshot. Charges retain the original
-generation after delegation or ASID reuse. Registry and capability insertion,
+generation after delegation or ASID reuse. Endpoint, reply-token and capability insertion,
 list control blocks, other capability kinds and comprehensive kernel heap
 accounting remain incomplete.
 

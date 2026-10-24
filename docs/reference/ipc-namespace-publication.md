@@ -45,8 +45,9 @@ node disposal needs no new physical cleanup proof; all existing loan/root proof
 requirements remain in force.
 
 This change covers namespace construction and its local registry disposal. It
-does **not** make IPC operations fully fallible: per-capability, endpoint,
-pending-call and reply-token maps still allocate under IPC. Their payload and
+does **not** make IPC operations fully fallible: per-capability, endpoint and reply-token maps still allocate under IPC.
+[Pending-call storage](ipc-record-budgets.md#preparation-and-retirement) now
+prepares outside IPC in its complete containing owner. Their payload and
 charge destructors, wider caller guards/IRQ masks, namespace/account byte and
 principal ceilings, and sustained pressure progress remain SEC-07/18 work.
 Ordered namespace lookup/insertion is linear; its hold time is not qualified by
