@@ -1316,3 +1316,19 @@ are rerun without model/configuration changes. Concrete namespace candidates,
 field destruction order, node deallocation/refund and heap-held complete commit
 are native/host qualification, without executable refinement or allocator/IRQ/
 pressure fairness proof. The previous full-suite checkpoint remains separate.
+
+## Memory mapping-node and snapshot ownership
+
+The [mapping storage batch](../reports/audits/2026-10-25-security-memory-mapping-storage.md) prepares node/snapshot storage outside
+memory serialization and revalidates the captured object before publication.
+Existing pins and retirement receipts retain complete nodes through uncertainty;
+explicit node free follows proof, and captured peer leases finish after node free.
+The table-walk locking, source identities, physical proof and replay policy remain.
+
+Focused IPC-transaction/root-retirement safe/negative configurations are rerun
+without model changes. As in the earlier mapping-admission qualification, these
+models do not implement the object mapping/scratch pipeline. Concrete factory
+placement, revalidation, prefix descriptors, node disposal, implicit fields and
+allocator/IRQ contexts are native/host qualification. No executable refinement,
+new custody, sustained-pressure fairness or historical failure attribution is
+implied. Earlier full-suite checkpoints remain separate.

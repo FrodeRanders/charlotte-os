@@ -465,6 +465,17 @@ refund. Mapping/scratch metadata, source-escrow and wider caller/IRQ/destructor
 contexts, byte/principal ceilings and sustained pressure remain open. This
 advances C05/C06/C18 and R7-2 without a finding disposition change.
 
+The [mapping-node/snapshot batch](../reports/audits/2026-10-25-security-memory-mapping-storage.md) removes allocating map-record
+publication and snapshot growth under the memory registry. One unused preparation
+owns both buffers outside that guard; captured revalidation precedes relink/pin
+mutation. Existing pins/receipts retain complete detached records and exact peer
+leases through uncertain cleanup; explicit release follows confirmation and local
+guard exit. Published-prefix metadata survives rollback until maintenance, and
+unmap keeps its record through scratch completion. Scratch namespace factories,
+concurrent preparation bytes, wider caller/IRQ/destructor contexts, aggregate
+metadata/principal admission and pressure remain open. This advances C05/C06/C18
+and R7-2 without changing finding dispositions.
+
 SEC-07 remains partial until all of the following deliverables are accepted:
 
 The [telemetry snapshot follow-up](../reports/audits/2026-10-18-telemetry-snapshot-preparation.md)

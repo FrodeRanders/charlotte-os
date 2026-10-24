@@ -80,7 +80,8 @@ page/object admission. Direct allocation and copies claim a nonreused kernel
 object identity before authority publication; publication only relinks prepared
 storage. Cancellation leaves identity gaps. Read-loan, memory-capability and
 namespace records now also prepare before mutation and relink at publication.
-Mapping records retain their separate allocating boundary.
+Mapping records and frame-snapshot capacity now also prepare fallibly outside
+the memory registry; scratch namespace storage retains a separate boundary.
 
 Retirement keeps the complete detached object node in the existing backing
 receipt, with its original frame vector, charge and metadata. Physical release
@@ -106,8 +107,26 @@ full payload/authority node with its borrower. Direct close and final-pin cleanu
 retain these nodes in the complete object/backing receipt through physical proof.
 Failed release retains original backing and authority charges. Namespace cleanup
 detaches and drains its complete node after memory unlock, without a snapshot or
-new recovery ticket. Mapping metadata, source-escrow and wider factory/destructor/
+new recovery ticket. Scratch metadata, source-escrow and wider factory/destructor/
 IRQ contexts, general metadata-byte admission and sustained pressure remain open.
+
+\paragraph{Mapping storage and maintenance.}
+After preflight, one preparation allocates an empty mapping node and frame-snapshot
+capacity outside memory serialization. No frame identity or pin crosses that
+factory interval. Captured object/size and every admission predicate revalidate
+before snapshot fill, node relink and existing pin acquisition. Page-table walking
+and prefix rollback keep their previous serialization; unused snapshot disposal
+leaves both local guards.
+
+Rejected-prefix rollback carries its original detached node and exact published
+prefix in the same pin until invalidation and required scratch completion.
+Explicit unmap keeps its live record through those proofs, then frees the detached
+node before pin decrement/backing release. Revocation uses that pin too. Namespace
+retirement retains complete admitted mapping nodes and exact peer leases on
+failure/abandonment; physical success permits node disposal, then peer completion.
+No new physical proof, recovery registry or retry authority is added. General
+metadata-byte admission, concurrent unused preparations, scratch namespace
+factories and broader enclosing contexts remain separate qualification work.
 
 These are initial kernel admission policies, independent of telemetry filtering
 and placement feedback. Signed deployment fields and a userspace policy API for

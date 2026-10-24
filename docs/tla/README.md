@@ -1182,3 +1182,10 @@ in existing owners through proof and explicit release. Focused publication,
 transaction and root-retirement configurations are rerun. Concrete allocator,
 field-destructor and IRQ contexts remain native/host qualification; no models,
 physical proofs, recovery custody or replay policy changes.
+
+The [mapping storage follow-up](../reports/audits/2026-10-25-security-memory-mapping-storage.md) keeps complete mapping nodes and
+snapshots in existing preparations/pins/retirement receipts through their proper
+phase. Focused IPC-transaction and root-retirement checks retain existing loan,
+non-terminal timeout and root/charge projections. Object mapping/scratch behavior,
+concrete allocator placement and field destruction are native/host qualification;
+no models, hardware proof, recovery custody or replay authority change.

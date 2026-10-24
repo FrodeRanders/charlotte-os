@@ -219,7 +219,7 @@ impl LoanRevocation {
             self.mapping,
             "revoking mapping changed"
         );
-        object.mappings.remove(&self.borrower);
+        self.pin.retired_mapping = object.mappings.take(&self.borrower);
         let mut retired_borrower = None;
         object.lend_state = match &mut self.prior {
             LendState::Read {

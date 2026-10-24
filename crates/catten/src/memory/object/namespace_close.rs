@@ -155,7 +155,7 @@ impl<'root> PreparingNamespaceObject<'root> {
             object.destroy_when_unpinned = true;
             RetiredMappings::All(core::mem::take(&mut object.mappings))
         } else {
-            RetiredMappings::One(handle.id(), object.mappings.remove(&handle.id()).unwrap())
+            RetiredMappings::One(object.mappings.take(&handle.id()).unwrap())
         };
         let receipt = RetiredObjectMappings {
             pin: self.pin,

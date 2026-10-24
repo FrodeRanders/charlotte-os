@@ -106,12 +106,12 @@ partial nodes. Other namespace/account/control-block metadata remains separate.
 
 `MappingRetirementPin` acquires a registry pin before mapping work or detachment.
 Only explicit consuming release after invalidation decrements it. Its Drop
-does nothing: an abandoned operation retains the pin, backing and original
-charge in the registry. It neither takes a lock nor initiates invalidation.
+does no cleanup: an abandoned operation retains the pin, backing and original
+charge in the registry, plus any complete detached mapping node in that owner. It neither takes a lock nor initiates invalidation.
 Object IDs are monotonic and are not restored through reusable ASID lookup.
 
 `RetiredObjectMappings` owns detached mapping records plus that pin. Domain
-cleanup processes one object at a time, moving its existing mapping tree rather
+cleanup processes one object at a time, moving its existing admitted mapping nodes rather
 than allocating temporary vectors of objects, invalidations or backing. A
 monotonic cursor avoids rescanning processed objects. Final frame release
 requires owner retirement, no DMA/copy/retirement pins, and no mapped aliases.
@@ -119,6 +119,14 @@ It runs after releasing the object registry, with the sponsorship charge still
 owned through physical release.
 
 ## Mapping rejection and maintenance
+
+Mapping node and frame-snapshot capacity now prepare fallibly outside the local
+memory registry after preflight admission. No frame identity or pin crosses that
+factory interval. Captured object/size and all admission predicates revalidate
+before snapshot fill, node relink and existing pin acquisition. A lost source or
+competing mapping rejects its unused prefix without table mutation. The table
+walk/rollback retain their existing locking; snapshot disposal leaves local
+memory/table guards. See [mapping storage evidence](../reports/audits/2026-10-25-security-memory-mapping-storage.md).
 
 `map` and `map_any` share one completion path. `map_locked` installs mapping
 metadata and acquires the existing `MappingRetirementPin` under one registry
@@ -132,9 +140,11 @@ consume cross-LP shootdown admission.
 An admitted call retains its pin through invalidation even when installation
 rejected and its prefix was rolled back. An error result alone does not prove
 that maintenance is unnecessary. Only confirmed invalidation and, where needed,
-scratch completion permit consuming the original pin. A failed rollback keeps
-its installed-prefix record; uncertain maintenance retains scratch, metadata,
-backing pin and original charge under the existing policy. No retry owner is
+scratch completion permit consuming the original pin. A confirmed leaf rollback
+carries its detached record and exact published-prefix count in that same pin
+through maintenance. Failed rollback keeps its record live in the registry.
+Uncertain maintenance retains scratch, complete metadata, backing pin and original
+charge under the existing policy. No retry owner is
 created.
 
 Kernel map/map-any/unmap errors now preserve `InvalidationFailed(cause)` per
@@ -700,3 +710,12 @@ same escrow's retired authority. Loan and namespace cleanup pair their original
 nodes without snapshots or a separate ticket. Namespace storage drains explicitly
 after memory unlock. No new physical proof, recovery custody or retry authority
 is introduced; see [capability storage evidence](../reports/audits/2026-10-24-security-memory-capability-storage.md).
+
+The [mapping-node follow-up](../reports/audits/2026-10-25-security-memory-mapping-storage.md) makes mapping records admitted owning
+nodes. Explicit unmap retains the live record through invalidation and scratch
+completion, then disposes its detached node before pin decrement/backing release.
+Revocation uses that same pin field. Whole-object retirement retains every
+mapping node/peer lease on failure or guarded abandonment; physical success
+permits node free, then exact peer-lease completion. No physical proof, retry
+owner or custody is added. General metadata admission, concurrent preparation
+pressure, scratch namespace factories and broader outer contexts remain open.

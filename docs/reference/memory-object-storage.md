@@ -14,8 +14,9 @@ returns `ResourceLimit` before publication.
 
 Memory-capability and namespace records also use prepared nodes, as described
 below. Mixed memory/IPC commit performs no allocation or node disposal after
-preparation. Mapping records and other preparation/rollback contexts remain
-separate allocating boundaries. Factory and ordinary rollback
+preparation. Mapping records and frame snapshots now also prepare outside
+memory serialization, as described below. Scratch namespace metadata and other
+preparation/rollback contexts retain separate allocating boundaries. Factory and ordinary rollback
 contexts inherited from callers, including enclosing IPC/IRQ holds, remain
 separate qualification; no new unlocked interval or root lease is introduced.
 
@@ -86,6 +87,46 @@ remain unqualified. Shared capability counts and root counts are not a complete
 kernel metadata-byte or principal budget.
 
 The [capability storage follow-up](../reports/audits/2026-10-24-security-memory-capability-storage.md) records evidence and limits.
+
+## Mapping records and snapshots
+
+Mapping admission first validates capability, rights, full range, loan/pin state
+and the absence of an existing mapping. The existing caller retains its exact
+root throughout. A private preparation then allocates an empty mapping node and
+frame-snapshot capacity fallibly outside `MEMORY_OBJECTS`. It holds no frame
+identity or pin during that factory interval. Final validation rechecks the
+captured object/size and every admission predicate before filling the snapshot,
+relinking its node and acquiring the existing retirement pin under one hold.
+A removed source or a competing mapping rejects the unused preparation after
+local unlock. No table publication or invalidation follows a pin-free rejection.
+
+The table walk and prefix rollback retain their existing serialization. Snapshot
+capacity is prepared beforehand, so filling it and publishing the mapping record
+need no allocation under the memory registry. Snapshot disposal also leaves
+both local memory and table guards. Shared count limits and original backing
+ownership remain; there is no new mapping-byte/aggregate-principal pool. Multiple
+unused preparations can overlap, and their peak allocation/pressure remains
+unqualified.
+
+Ordinary rejected-prefix rollback detaches the original mapping node into the
+existing `MappingRetirementPin`, retaining its exact published-prefix count.
+Confirmed invalidation and required scratch completion permit explicit node
+release before pin decrement/backing release. Failed maintenance or abandonment
+retains the complete node and original backing fence, without retry authority.
+Explicit unmap retains its live record until leaf cleanup, invalidation and
+scratch completion all succeed, then uses that same detached-node owner.
+
+Loan revocation carries its confirmed detached mapping in its existing pin.
+Namespace/fixture retirement moves the complete admitted map or selected node
+into `RetiredObjectMappings`. Failure/abandonment retains nodes and exact peer
+leases without allocator entry. Physical success permits explicit node disposal;
+each peer lease stays owned through actual node free and completes afterward.
+No new root/pin, registry, recovery family or metadata ticket is introduced.
+Containing IPC/IRQ/destructor contexts retain separate qualification.
+
+See the [mapping storage follow-up](../reports/audits/2026-10-25-security-memory-mapping-storage.md) for rejection, revalidation,
+heap-held publication and guarded uncertainty controls. Bounded snapshot size,
+count limits and serialized controls supply no sustained-pressure fairness proof.
 
 ## Complete retirement owner
 

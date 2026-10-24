@@ -47,12 +47,14 @@ const RETIREMENT_FRAME_BATCH: usize = 16;
 
 mod borrower_storage_tests;
 mod cap_storage;
+mod mapping_storage;
 mod mapping_tests;
 mod storage_tests;
 pub(crate) fn test_object_storage() {
     storage_tests::run();
     borrower_storage_tests::run();
     cap_storage::tests::run();
+    mapping_storage::tests::run();
 }
 mod publication_tests;
 pub(crate) fn test_publication_batch() {
@@ -136,7 +138,7 @@ struct MemoryObject {
     owner: AddressSpaceId,
     frames: Vec<PAddr>,
     charge: super::budget::Charge,
-    mappings: BTreeMap<AddressSpaceId, MemoryMappingRecord>,
+    mappings: AdmittedMap<AddressSpaceId, MemoryMappingRecord>,
     lend_state: LendState,
     dma_pins: usize,
     exclusive_dma_pins: usize,
@@ -644,7 +646,7 @@ pub fn allocate(owner: AddressSpaceId, pages: usize) -> Result<MemoryObjectCap, 
             owner,
             frames,
             charge,
-            mappings: BTreeMap::new(),
+            mappings: AdmittedMap::new(),
             lend_state: LendState::None,
             dma_pins: 0,
             exclusive_dma_pins: 0,
@@ -1051,76 +1053,106 @@ fn map_locked_with_cleanup(
     writable: bool,
     scratch: bool,
     pin: &mut Option<MappingRetirementPin>,
-    mut cleanup: impl FnMut(&mut crate::cpu::isa::memory::paging::AddressSpace, VAddr, PAddr) -> bool,
+    cleanup: impl FnMut(&mut crate::cpu::isa::memory::paging::AddressSpace, VAddr, PAddr) -> bool,
+) -> Result<(), MemoryObjectError> {
+    map_locked_with_preparation(
+        asid,
+        cap,
+        base,
+        writable,
+        scratch,
+        pin,
+        (cleanup, mapping_storage::Preparing::new),
+    )
+}
+
+fn mapping_admission(
+    registry: &MemoryObjectRegistry,
+    asid: AddressSpaceId,
+    cap: MemoryObjectCap,
+    base: VAddr,
+    writable: bool,
+) -> Result<(MemoryObjectId, usize, PageType), MemoryObjectError> {
+    let entry = registry.lookup(asid, cap)?;
+    let required = if writable {
+        MemoryObjectRights::MAP_WRITE
+    } else {
+        MemoryObjectRights::MAP_READ
+    };
+    if !entry.rights.contains(required) {
+        return Err(MemoryObjectError::MissingRight);
+    }
+    let object = registry.objects.get(&entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
+    if !charlotte_launch::user_address::valid_application_pages(base.into(), object.frames.len()) {
+        return Err(MemoryObjectError::MapFailed);
+    }
+    if object.destroy_when_unpinned
+        || object.retirement_pins != 0
+        || object.dma_pins != 0
+        || writable && object.copy_pins != 0
+    {
+        return Err(MemoryObjectError::LendingActive);
+    }
+    check_map_lend_state(object, asid, writable)?;
+    if object.mappings.contains_key(&asid) {
+        return Err(MemoryObjectError::AlreadyMapped);
+    }
+    Ok((
+        entry.object,
+        object.frames.len(),
+        if writable {
+            PageType::UserData
+        } else {
+            PageType::UserRoData
+        },
+    ))
+}
+
+fn map_locked_with_preparation(
+    asid: AddressSpaceId,
+    cap: MemoryObjectCap,
+    base: VAddr,
+    writable: bool,
+    scratch: bool,
+    pin: &mut Option<MappingRetirementPin>,
+    (mut cleanup, prepare): (
+        impl FnMut(&mut crate::cpu::isa::memory::paging::AddressSpace, VAddr, PAddr) -> bool,
+        impl FnOnce(usize) -> Result<mapping_storage::Preparing, MemoryObjectError>,
+    ),
 ) -> Result<(), MemoryObjectError> {
     assert!(pin.is_none(), "map preparation already owns a retirement pin");
     // Capture before the registry. The caller's exact lease (or raw fixture's
     // lifecycle guard) retains this generation through mapping publication.
     let address_space =
         super::current_address_space_handle(asid).ok_or(MemoryObjectError::AddressSpaceMissing)?;
-    let (object_id, frames, page_type) = {
+    let (object_id, pages, _) = {
+        let registry = MEMORY_OBJECTS.lock();
+        mapping_admission(&registry, asid, cap, base, writable)?
+    };
+    // No frame identity/borrow or source pin crosses this factory interval.
+    // The existing caller root stays retained. Recheck the exact object and
+    // all admission predicates before filling its preallocated snapshot.
+    let mut prepared = prepare(pages)?;
+    let page_type = {
         let mut registry = MEMORY_OBJECTS.lock();
-        let cap_entry = registry.lookup(asid, cap)?;
-        let required = if writable {
-            MemoryObjectRights::MAP_WRITE
-        } else {
-            MemoryObjectRights::MAP_READ
-        };
-        if !cap_entry.rights.contains(required) {
-            return Err(MemoryObjectError::MissingRight);
+        let (current, current_pages, page_type) =
+            mapping_admission(&registry, asid, cap, base, writable)?;
+        if current != object_id || current_pages != pages {
+            return Err(MemoryObjectError::UnknownCapability);
         }
-
-        let object = registry
-            .objects
-            .get_mut(&cap_entry.object)
-            .ok_or(MemoryObjectError::UnknownCapability)?;
-        if !charlotte_launch::user_address::valid_application_pages(
-            base.into(),
-            object.frames.len(),
-        ) {
-            return Err(MemoryObjectError::MapFailed);
-        }
-        if object.destroy_when_unpinned || object.retirement_pins != 0 {
-            return Err(MemoryObjectError::LendingActive);
-        }
-        // Coherent DMA may retain an existing volatile CPU mapping. A fresh
-        // mapping could expose Rust references after a failed shared transfer
-        // consumed its restricted mapping owner, so every DMA pin fences it.
-        if object.dma_pins != 0 || writable && object.copy_pins != 0 {
-            return Err(MemoryObjectError::LendingActive);
-        }
-        check_map_lend_state(object, asid, writable)?;
-        if object.mappings.contains_key(&asid) {
-            return Err(MemoryObjectError::AlreadyMapped);
-        }
-        let page_type = if writable {
-            PageType::UserData
-        } else {
-            PageType::UserRoData
-        };
-        let mut frames = Vec::new();
-        frames
-            .try_reserve_exact(object.frames.len())
-            .map_err(|_| MemoryObjectError::FrameAllocFailed)?;
-        frames.extend_from_slice(&object.frames);
-        object.mappings.insert(
+        *pin = Some(prepared.publish(
+            &mut registry,
+            object_id,
             asid,
-            MemoryMappingRecord {
-                state: MemoryMappingState {
-                    address_space,
-                    base,
-                    installed_pages: 0,
-                    writable,
-                    scratch,
-                },
-                cleanup_lease: None,
+            MemoryMappingState {
+                address_space,
+                base,
+                installed_pages: 0,
+                writable,
+                scratch,
             },
-        );
-        // Registry metadata and translation-table allocation have separate
-        // lock/allocator dependencies. Retain backing with the pin rather than
-        // nesting the registry across the address-space table walk.
-        *pin = Some(MappingRetirementPin::acquire(&mut registry, cap_entry.object));
-        (cap_entry.object, frames, page_type)
+        ));
+        page_type
     };
 
     let mut mapped_pages = 0usize;
@@ -1129,7 +1161,7 @@ fn map_locked_with_cleanup(
         match table.get_mut(asid) {
             Ok(address_space) => {
                 let mut result = Ok(());
-                for (index, frame) in frames.iter().copied().enumerate() {
+                for (index, frame) in prepared.frames.iter().copied().enumerate() {
                     let vaddr = base + (index * PAGE_SIZE);
                     if address_space
                         .map_existing_page(MemoryMapping {
@@ -1141,7 +1173,7 @@ fn map_locked_with_cleanup(
                     {
                         let mut cleanup_failed = false;
                         for (cleanup_index, &cleanup_frame) in
-                            frames.iter().take(mapped_pages).enumerate()
+                            prepared.frames.iter().take(mapped_pages).enumerate()
                         {
                             let cleanup_vaddr = base + (cleanup_index * PAGE_SIZE);
                             cleanup_failed |= !cleanup(address_space, cleanup_vaddr, cleanup_frame);
@@ -1165,13 +1197,17 @@ fn map_locked_with_cleanup(
         if let Some(object) = registry.objects.get_mut(&object_id)
             && object.mappings.get(&asid).is_some_and(|mapping| mapping.state.base == base)
         {
+            // Preserve the exact published prefix even when leaves rolled back:
+            // invalidation has not yet confirmed that cached access ended.
+            object.mappings.get_mut(&asid).unwrap().state.installed_pages = mapped_pages;
             if map_result.is_err() && map_result != Err(MemoryObjectError::UnmapFailed) {
-                object.mappings.remove(&asid);
-            } else {
-                // A cleanup failure retains the published prefix as live
-                // ownership; close/transfer may not release its backing.
-                object.mappings.get_mut(&asid).unwrap().state.installed_pages = mapped_pages;
+                // The pin owns this detached record through the caller's
+                // invalidation/scratch outcome. Failed maintenance retains it.
+                pin.as_mut().unwrap().retired_mapping = object.mappings.take(&asid);
             }
+            // Failed cleanup leaves the original record in the registry. Its
+            // pin fences close/transfer until confirmed completion (or forever
+            // on abandonment), never authorizing a physical retry.
         }
     }
     map_result
@@ -1185,7 +1221,7 @@ pub fn unmap(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), MemoryObj
 /// serialization. Retirement drains IPC before memory cleanup, so mapped-loan
 /// revocation must not acquire lifecycle from underneath the IPC guard.
 fn unmap_serialized(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), MemoryObjectError> {
-    let (mapping, pages, pin) = {
+    let (mapping, pages, mut pin) = {
         let mut registry = MEMORY_OBJECTS.lock();
         let cap_entry = registry.lookup(asid, cap)?;
         let object = registry
@@ -1207,13 +1243,13 @@ fn unmap_serialized(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), Me
         // Leaves may be detached, but neither scratch nor its pin may complete.
         return Err(MemoryObjectError::InvalidationFailed(cause));
     }
-    if result.is_ok() {
-        MEMORY_OBJECTS.lock().objects.get_mut(&pin.object).unwrap().mappings.remove(&asid);
-    }
     if result.is_ok() && mapping.scratch {
         release_scratch(asid, mapping.base, pages)?;
     }
     if result.is_ok() {
+        pin.retired_mapping =
+            MEMORY_OBJECTS.lock().objects.get_mut(&pin.object).unwrap().mappings.take(&asid);
+        assert!(pin.retired_mapping.is_some(), "confirmed unmap lost its mapping record");
         pin.release(None);
     }
     result
@@ -1526,7 +1562,7 @@ fn validate_source_transfer(
         if object.lend_state.is_active() || object.copy_pins != usize::from(prepared) {
             return Err(MemoryObjectError::LendingActive);
         }
-        if !object.mappings.is_empty() {
+        if object.mappings.first_key_value().is_some() {
             return Err(MemoryObjectError::AlreadyMapped);
         }
     }
@@ -1717,7 +1753,7 @@ fn commit_transfers_with_delivery(
                         owner: transfer.target,
                         frames,
                         charge,
-                        mappings: BTreeMap::new(),
+                        mappings: AdmittedMap::new(),
                         lend_state: LendState::None,
                         dma_pins: 0,
                         exclusive_dma_pins: 0,
@@ -2056,7 +2092,7 @@ fn prepare_close_cap(
             || object.retirement_pins != 0
         {
             return Err(MemoryObjectError::LendingActive);
-        } else if !object.mappings.is_empty() {
+        } else if object.mappings.first_key_value().is_some() {
             return Err(MemoryObjectError::AlreadyMapped);
         } else {
             true
@@ -2083,11 +2119,11 @@ fn prepare_close_cap(
 
 /// Detached mappings keep a separate registry pin: the last concurrent DMA
 /// or copy unpin cannot release backing before this operation's shootdown.
-/// No new metadata allocation is needed; the existing map tree is moved here.
+/// No new metadata allocation is needed; existing admitted nodes move here.
 ///
 /// Dropping an unfinished receipt deliberately leaves its pin in the registry
 /// (and thus its physical backing and exact sponsorship charge quarantined).
-/// Drop releases only receipt metadata; the backing pin and physical frames remain retained.
+/// Drop retains complete mapping nodes/peer leases with the backing fence.
 #[must_use]
 struct RetiredObjectMappings {
     pin: MappingRetirementPin,
@@ -2102,6 +2138,7 @@ struct RetiredObjectMappings {
 #[must_use]
 struct MappingRetirementPin {
     object: MemoryObjectId,
+    retired_mapping: Option<mapping_storage::RetiredMapping>,
 }
 
 impl Drop for MappingRetirementPin {
@@ -2118,6 +2155,7 @@ impl MappingRetirementPin {
             entry.retirement_pins.checked_add(1).expect("retirement pin overflow");
         Self {
             object,
+            retired_mapping: None,
         }
     }
 
@@ -2164,9 +2202,14 @@ impl MappingRetirementPin {
     }
 
     fn release_checked(
-        self,
+        mut self,
         closing_asid: Option<AddressSpaceId>,
     ) -> Result<(), MemoryObjectError> {
+        // Keep the registry pin and original backing admission through actual
+        // detached-node disposal. Only this confirmed consuming path may free it.
+        if let Some(mapping) = self.retired_mapping.take() {
+            mapping_storage::release(mapping);
+        }
         let (backing, borrower) = {
             let mut registry = MEMORY_OBJECTS.lock();
             let object = registry.objects.get_mut(&self.object).expect("retiring object missing");
@@ -2186,19 +2229,33 @@ impl MappingRetirementPin {
 }
 
 enum RetiredMappings {
-    All(BTreeMap<AddressSpaceId, MemoryMappingRecord>),
-    One(AddressSpaceId, MemoryMappingRecord),
+    All(AdmittedMap<AddressSpaceId, MemoryMappingRecord>),
+    One(mapping_storage::RetiredMapping),
 }
 
 impl RetiredMappings {
     fn for_each(&self, mut visit: impl FnMut(AddressSpaceId, MemoryMappingState)) {
         match self {
             Self::All(mappings) => {
-                for (&asid, mapping) in mappings {
+                for (&asid, mapping) in mappings.iter() {
                     visit(asid, mapping.state);
                 }
             }
-            Self::One(asid, mapping) => visit(*asid, mapping.state),
+            Self::One(node) => {
+                let (asid, mapping) = node.value();
+                visit(*asid, mapping.state);
+            }
+        }
+    }
+
+    fn release(self) {
+        match self {
+            Self::All(mut mappings) => {
+                while let Some((&asid, _)) = mappings.first_key_value() {
+                    mapping_storage::release(mappings.take(&asid).unwrap());
+                }
+            }
+            Self::One(node) => mapping_storage::release(node),
         }
     }
 }
@@ -2223,8 +2280,7 @@ impl RetiredObjectMappings {
             RetiredMappings::All(core::mem::take(&mut object.mappings))
         } else {
             RetiredMappings::One(
-                closing_asid,
-                object.mappings.remove(&closing_asid).expect("retiring mapping missing"),
+                object.mappings.take(&closing_asid).expect("retiring mapping missing"),
             )
         };
         let receipt = Self {
@@ -2279,7 +2335,7 @@ impl RetiredObjectMappings {
     }
 
     fn complete_with_scratch(
-        mut self,
+        self,
         closing_asid: AddressSpaceId,
         mut invalidate: impl FnMut(AddressSpaceId, VAddr, usize) -> bool,
         mut release: impl FnMut(AddressSpaceId, VAddr, usize) -> Result<(), MemoryObjectError>,
@@ -2313,21 +2369,9 @@ impl RetiredObjectMappings {
             return Err(MemoryObjectError::OutOfScratch);
         }
         self.pin.release_checked(Some(closing_asid))?;
-        // Only physical success returns the mapped peer roots. Failed/abandoned
-        // receipts leave their inline counts retained when metadata drops.
-        let release_peer = |mapping: &mut MemoryMappingRecord| {
-            if let Some(lease) = mapping.cleanup_lease.take() {
-                lease.release().expect("retiring mapping lost its exact root lease");
-            }
-        };
-        match &mut self.mappings {
-            RetiredMappings::All(mappings) => {
-                for mapping in mappings.values_mut() {
-                    release_peer(mapping);
-                }
-            }
-            RetiredMappings::One(_, mapping) => release_peer(mapping),
-        }
+        // Only physical success permits node disposal and peer-root release.
+        // Failed/abandoned receipts retain complete nodes and inline leases.
+        self.mappings.release();
         Ok(())
     }
 }
@@ -2461,7 +2505,7 @@ fn take_deferred_frames_if_unpinned(
             && object.dma_pins == 0
             && object.copy_pins == 0
             && object.retirement_pins == 0
-            && object.mappings.is_empty()
+            && object.mappings.first_key_value().is_none()
     });
     if !should_destroy {
         return None;
@@ -2596,7 +2640,7 @@ pub(crate) fn pin_for_dma(
             && (object.dma_pins != 0
                 || object.copy_pins != 0
                 || object.lend_state.is_active()
-                || !object.mappings.is_empty())
+                || object.mappings.first_key_value().is_some())
     {
         return Err(MemoryObjectError::LendingActive);
     }

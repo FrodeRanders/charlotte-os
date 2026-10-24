@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Memory mapping storage](audits/2026-10-25-security-memory-mapping-storage.md) — Unlocked record/snapshot preparation and complete mapping-node retention through maintenance and retirement.
+
 - [Memory capability and namespace storage](audits/2026-10-24-security-memory-capability-storage.md) — Prepared payload publication and complete paired metadata retirement through existing cleanup owners.
 
 - [Read-loan borrower storage](audits/2026-10-24-security-memory-borrower-storage.md) — Fallible preparation before source escrow and paired borrower/authority retirement after proof.

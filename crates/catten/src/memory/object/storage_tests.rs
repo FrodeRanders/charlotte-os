@@ -95,7 +95,7 @@ fn relinking() {
             owner: handle.id(),
             frames,
             charge,
-            mappings: BTreeMap::new(),
+            mappings: AdmittedMap::new(),
             lend_state: LendState::None,
             dma_pins: 0,
             exclusive_dma_pins: 0,

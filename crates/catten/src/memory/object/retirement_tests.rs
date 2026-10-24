@@ -351,7 +351,9 @@ fn test_failed_barrier_and_abandonment(create: &mut impl FnMut(&str) -> usize) {
             if fail_barrier {
                 receipt.finish_with(owner, |_, _, _| false);
             } else {
-                drop(receipt);
+                let _registry = MEMORY_OBJECTS.lock();
+                let _heap = crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
+                drop(receipt); // Complete admitted nodes remain inert under both guards.
             }
             assert_eq!(MEMORY_OBJECTS.lock().objects[&id].retirement_pins, 1);
             assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), before);

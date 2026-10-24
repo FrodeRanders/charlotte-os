@@ -429,3 +429,20 @@ existing escrow's retired authority. Guarded abandonment retains all detached
 fields without allocator entry. Lookup/insertion and repeated object/capability
 scans are linear; count bounds do not qualify hold time or pressure fairness.
 See [memory capability storage](memory-object-storage.md#capability-and-namespace-records).
+
+Memory mapping-node and snapshot-capacity allocation now leave `MEMORY_OBJECTS`.
+Preflight validates the request under that registry; the existing caller root
+stays retained while empty storage prepares. No frame identity/pin crosses this
+interval. Final captured-object/size/admission validation precedes snapshot fill,
+node relinking and pin acquisition under memory serialization. Table walk and
+prefix rollback keep their previous locking. Unused/snapshot disposal leaves
+local memory/table guards; enclosing IPC/IRQ/destructor contexts remain separate.
+
+Confirmed rollback/unmap/revocation carries its original detached mapping node
+in the existing pin. Explicit disposal leaves memory serialization and precedes
+pin decrement/backing release. Whole-object/namespace receipts retain complete
+admitted nodes and peer leases on failure/abandonment. Only physical success
+permits node free and subsequent exact peer-lease completion. No callbacks,
+allocation or deallocation occur in node/list fallback. Mapping lookup/insertion
+is now linear; concurrent preparation bytes and sustained hold-time/fairness
+remain unqualified. See [mapping storage](memory-object-storage.md#mapping-records-and-snapshots).

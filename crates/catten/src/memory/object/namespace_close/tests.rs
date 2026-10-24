@@ -215,7 +215,10 @@ fn failure_case(failure: Failure) {
             .prepare_with_cleanup(LoanRevocation::finish, |receipt| {
                 unlocked();
                 if failure == Failure::Abandon {
-                    drop(receipt);
+                    let _registry = MEMORY_OBJECTS.lock();
+                    let _heap =
+                        crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
+                    drop(receipt); // Retain nodes and exact peer leases without destruction.
                     return Err(MemoryObjectError::UnmapFailed);
                 }
                 receipt.finish_with(

@@ -487,5 +487,9 @@ all current callers. Mixed commit needs no allocating payload insertion; old
 `BTreeMap` insertion and authority-only test adapters are removed. Detached
 payload/authority metadata stays in existing cleanup owners through explicit
 post-guard disposal. See [capability storage evidence](../reports/audits/2026-10-24-security-memory-capability-storage.md).
-Mapping storage and wider preparation/destructor contexts remain current
+Mapping storage now likewise uses a fallible prepared node and preallocated
+snapshot, with captured revalidation before relink/pin mutation. Detached map
+nodes remain in existing cleanup owners through proof; allocating map insertion
+and implicit map-node destruction are removed. See [mapping storage evidence](../reports/audits/2026-10-25-security-memory-mapping-storage.md).
+Scratch namespace and wider preparation/destructor contexts remain current
 candidates. Wire formats and runtime ABI are unchanged.
