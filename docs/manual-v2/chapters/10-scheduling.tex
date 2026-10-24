@@ -271,8 +271,11 @@ retains the node and detached notifications together. Endpoint storage and queue
 growth now also prepare outside IPC while retaining their exact root and
 original sponsor/classification. FIFO replacement relinks without allocation;
 old backing and final closed endpoint nodes dispose after IPC unlock. Complete
-fallback retains their fields. Per-capability payload-map allocation, guarded
-authority factories, namespace/account byte/principal admission and outer
+fallback retains their fields. Per-capability payload nodes now prepare fallibly
+before authority mutation and publish by relinking. Detached payload and shared
+authority records leave IPC together in the existing cleanup owners; original
+connection counts follow node free. Guarded payload/authority factories,
+namespace/account byte/principal admission and outer
 contexts remain separate. See
 \repofile|docs/reference/endpoint-budgets.md|. See
 \repofile|docs/reference/root-metadata-admission.md|. See

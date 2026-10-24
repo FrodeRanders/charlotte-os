@@ -30,6 +30,7 @@ struct PreparedReply {
     connection: Option<ReturnedConnection>,
     memory: Option<crate::memory::object::PreparedTransfer>,
     retired_token: Option<RetiredReply>,
+    retired: RetiredMetadata,
 }
 
 /// The source is borrowed authority, retained by the published reply claim.
@@ -84,6 +85,7 @@ impl PreparedReply {
             connection: None,
             memory: None,
             retired_token: None,
+            retired: RetiredMetadata::new(),
         };
         let prepared = (|| {
             // Capture before taking IPC. Acquiring lifecycle beneath IPC would
@@ -116,14 +118,9 @@ impl PreparedReply {
                 // identities remain protected against close by this reply claim.
                 operation.connection = Some(ReturnedConnection {
                     source,
-                    grant: PreparedConnection::new(
-                        &mut ipc,
-                        identities[0].0,
-                        identities[0].0,
-                        endpoint,
-                        rights,
-                    )?,
+                    grant: PreparedConnection::empty(identities[0].0, endpoint, rights),
                 });
+                operation.connection.as_mut().unwrap().grant.prepare(&mut ipc, identities[0].0)?;
             }
             if let Some(source) = memory {
                 // Ordinary memory lookup rejects queued/unobserved owning
@@ -169,7 +166,9 @@ impl PreparedReply {
         })();
         if let Err(error) = prepared {
             drop(operation.memory.take());
-            drop(operation.connection.take());
+            if let Some(connection) = operation.connection.take() {
+                connection.grant.finish();
+            }
             operation.release_namespaces()?;
             return Err(error);
         }
@@ -231,7 +230,7 @@ impl PreparedReply {
             );
         }
         let published = if let Some(connection) = self.connection.as_mut() {
-            publish(self.memory.as_mut_slice(), &mut [&mut connection.grant.authority])
+            publish(self.memory.as_mut_slice(), &mut [connection.grant.authority.authority()])
         } else if self.memory.is_some() {
             publish(self.memory.as_mut_slice(), &mut [])
         } else {
@@ -246,7 +245,7 @@ impl PreparedReply {
         let returned_memory = self.memory.as_ref().map(|transfer| transfer.target_cap());
         drop(self.memory.take());
         let returned_cap =
-            self.connection.take().map(|connection| connection.grant.install(&mut ipc));
+            self.connection.as_mut().map(|connection| connection.grant.install(&mut ipc));
         self.retired_token =
             Some(ipc.reply_tokens.take(&self.token).expect("claimed reply missing"));
         let token = &mut self.retired_token.as_mut().unwrap().value_mut().1;
@@ -263,7 +262,8 @@ impl PreparedReply {
             memory: returned_memory,
         });
         let observers = call.observers.close();
-        ipc.remove_non_connection_cap(self.server, self.cap).expect("claimed reply cap missing");
+        ipc.remove_non_connection_cap(self.server, self.cap, &mut self.retired)
+            .expect("claimed reply cap missing");
         drop(ipc);
         self.retired_token.take().unwrap().release();
         let released = self.release_namespaces();
@@ -271,7 +271,11 @@ impl PreparedReply {
         released
     }
 
-    fn release_namespaces(self) -> Result<(), IpcError> {
+    fn release_namespaces(mut self) -> Result<(), IpcError> {
+        self.retired.release();
+        if let Some(connection) = self.connection.take() {
+            connection.grant.finish();
+        }
         assert!(self.retired_token.is_none(), "releasing roots before reply metadata disposal");
         assert!(self.loans.is_empty(), "releasing roots before prepared loans finish");
         assert!(self.connection.is_none(), "releasing roots before returned authority cleanup");
@@ -290,7 +294,6 @@ impl PreparedReply {
     fn abort_prepared(&mut self, ipc: &mut IpcRegistry) {
         self.cancel_prepared();
         drop(self.memory.take());
-        drop(self.connection.take());
         let token = ipc.reply_tokens.get_mut(&self.token).expect("claimed reply missing");
         assert!(token.completing);
         token.connection_source = None;

@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [IPC capability payload storage](audits/2026-10-24-security-ipc-capability-storage.md) — Fallible preparation before authority mutation and paired payload/authority disposal outside IPC.
+
 - [IPC endpoint storage](audits/2026-10-24-security-ipc-endpoint-storage.md) — Charged preparation and queue growth outside IPC, with complete endpoint metadata retirement after unlock.
 
 - [IPC reply-token storage](audits/2026-10-24-security-ipc-reply-storage.md) — Charged second-node preparation and post-IPC token retirement across reply and close paths.

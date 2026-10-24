@@ -38,8 +38,9 @@ see [shared admission](capability-admission.md).
 The caller retains its pending-call charge after completion or result observation,
 until that record is closed. The reply-token charge returns after completed
 reply/cancellation and actual node disposal, not on an uncertain cleanup error or abandoned completion claim.
-Connection charges remain until actual capability removal, including queued
-delegation cancellation and unobserved returned-result cleanup. An observed
+Connection charges follow their detached payload nodes through actual
+post-IPC deallocation, including queued delegation cancellation and unobserved
+returned-result cleanup. An observed
 returned connection is independent of its former pending call.
 
 `PreparedReceive` owns speculative receiver reply authority under the IPC guard.
@@ -78,7 +79,8 @@ close; an observer wake alone cannot release them.
 The pending and reply-token maps use shared admitted storage with linear
 lookup/insertion.
 Its count is bounded, but worst-case hold time is not qualified by the serialized
-controls. The per-capability payload map still allocates under IPC;
+controls. [Per-capability payload nodes](ipc-capability-storage.md) now prepare
+fallibly before publication, with their factories still under IPC;
 waiter/control-block and vector preparation, byte/principal ceilings and wider
 caller/destructor contexts remain separate work. This is not fully fallible IPC
 publication. See the [pending storage audit](../reports/audits/2026-10-24-security-ipc-pending-storage.md).
@@ -176,9 +178,9 @@ resource-limited replies cancelling only their token, not their grant source.
 
 These count budgets do not bound attachment bytes, all capability kinds,
 observer/list control blocks, weak-only retention, loader/page tables, or the
-entire kernel heap. Per-capability payload insertion remains infallible;
-shared-authority factory entry under IPC and namespace-account byte/principal
-admission remain separate boundaries. There is no per-principal aggregate across several domains,
+entire kernel heap. Per-capability insertion only relinks prepared storage;
+payload/shared-authority factory entry under IPC and namespace-account
+byte/principal admission remain separate boundaries. There is no per-principal aggregate across several domains,
 signed override, allocator-failure injection, exhaustive race proof or hostile
 pressure-soak claim. SEC-07 remains partial; the audit's deployment restrictions
 still apply.

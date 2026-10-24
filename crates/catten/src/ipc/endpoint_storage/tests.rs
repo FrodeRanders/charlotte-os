@@ -66,7 +66,7 @@ fn preparation() {
         let storage = prepared.0.storage.take().unwrap();
         let mut payload = prepared.take_payload(1, 1, 1);
         payload.closed = true;
-        let mut retired = RetiredEndpoints::new();
+        let mut retired = RetiredMetadata::new();
         {
             let _ipc = IPC.write();
             let _heap = PRIMARY_ALLOCATOR.lock();
@@ -243,7 +243,7 @@ fn abandonment() {
     payload.closed = true;
     let mut local = IpcRegistry::new();
     local.endpoints.insert(storage, 1, payload);
-    let mut retired = RetiredEndpoints::new();
+    let mut retired = RetiredMetadata::new();
     retired.push(local.detach_endpoint(1).unwrap());
     {
         let _ipc = IPC.write();

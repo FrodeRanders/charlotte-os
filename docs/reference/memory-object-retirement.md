@@ -47,7 +47,9 @@ an exact-root publication lease before lifecycle/table unlock, publishes the
 prepared node under IPC alone and releases that lease after IPC unlock. Missing
 namespaces reject at runtime. Fenced cleanup detaches the drained node and
 releases it outside IPC, while outstanding charges retain their original account
-references. Per-capability payload insertion still allocates under IPC, and wider caller
+references. Per-capability payload nodes now prepare fallibly before authority
+mutation and retire together with shared authority after IPC unlock; see
+[capability storage](ipc-capability-storage.md). Their factories and wider caller
 destructor contexts remain unqualified. Endpoint storage now prepares unlocked
 and retires through the [existing cleanup owners](endpoint-budgets.md). See
 [namespace publication](ipc-namespace-publication.md).

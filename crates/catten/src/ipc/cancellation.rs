@@ -52,7 +52,7 @@ pub(super) struct PreparedCancellation<'a> {
     root_owner: Option<RootOwner<'a>>,
     retired_token: Option<RetiredReply>,
     retired_call: Option<RetiredCall>,
-    retired_endpoints: RetiredEndpoints,
+    retired_metadata: RetiredMetadata,
 }
 
 fn resolve(
@@ -254,7 +254,7 @@ impl<'a> PreparedCancellation<'a> {
             root_owner,
             retired_token: None,
             retired_call: None,
-            retired_endpoints: RetiredEndpoints::new(),
+            retired_metadata: RetiredMetadata::new(),
         };
         let prepared = (|| {
             // Lifecycle always precedes IPC. Kernel identity is permanent.
@@ -365,7 +365,7 @@ impl<'a> PreparedCancellation<'a> {
         assert!(
             self.retired_token.is_none()
                 && self.retired_call.is_none()
-                && self.retired_endpoints.is_empty(),
+                && self.retired_metadata.is_empty(),
             "releasing roots before cancellation metadata disposal"
         );
         assert!(self.loans.is_empty(), "releasing cancellation roots before loans finish");
@@ -466,7 +466,7 @@ impl<'a> PreparedCancellation<'a> {
             .map(|(mut message, delivery)| {
                 message.memory.retire(identity.server);
                 if let Some(cap) = message.connection {
-                    let _ = ipc.remove_cap(identity.server, cap, &mut self.retired_endpoints);
+                    let _ = ipc.remove_cap(identity.server, cap, &mut self.retired_metadata);
                 }
                 (delivery, message.memory)
             })
@@ -483,7 +483,8 @@ impl<'a> PreparedCancellation<'a> {
             })
         });
         if let Some(cap) = reply_cap {
-            ipc.remove_non_connection_cap(identity.server, cap).expect("claimed reply cap missing");
+            ipc.remove_non_connection_cap(identity.server, cap, &mut self.retired_metadata)
+                .expect("claimed reply cap missing");
         }
         let observers = match identity.target {
             CloseTarget::Call | CloseTarget::Namespace(_) if identity.caller == self.asid => {
@@ -502,7 +503,8 @@ impl<'a> PreparedCancellation<'a> {
                         })
                         .expect("retiring call cap missing")
                 };
-                ipc.remove_non_connection_cap(self.asid, cap).expect("claimed call cap missing");
+                ipc.remove_non_connection_cap(self.asid, cap, &mut self.retired_metadata)
+                    .expect("claimed call cap missing");
                 let node =
                     ipc.pending_calls.take(&identity.call).expect("claimed pending call missing");
                 let observers = node.value().1.observers.close();
@@ -537,7 +539,7 @@ impl<'a> PreparedCancellation<'a> {
         };
         drop(ipc);
         self.retired_token.take().unwrap().release();
-        self.retired_endpoints.release();
+        self.retired_metadata.release();
         if let Some(node) = self.retired_call.take() {
             node.release();
         }

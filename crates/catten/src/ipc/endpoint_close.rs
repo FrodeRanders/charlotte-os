@@ -23,7 +23,7 @@ pub(super) struct PreparedEndpointClose {
     handle: AddressSpaceHandle,
     namespace: Option<AddressSpaceOperation>,
     interest: core::mem::ManuallyDrop<Option<claim_wait::Interest>>,
-    retired: RetiredEndpoints,
+    retired: RetiredMetadata,
 }
 
 fn resolve(
@@ -75,7 +75,7 @@ impl PreparedEndpointClose {
             handle,
             namespace,
             interest: core::mem::ManuallyDrop::new(None),
-            retired: RetiredEndpoints::new(),
+            retired: RetiredMetadata::new(),
         };
         let prepared = {
             let mut ipc = IPC.write();
@@ -239,7 +239,7 @@ impl PreparedEndpointClose {
             let watches = endpoint.close_observers.close();
             let cq_wake = endpoint.notify_cq.map(|cq| (endpoint.owner, cq));
             assert!(
-                matches!(ipc.remove_non_connection_cap(self.asid, self.cap)?, Capability::Endpoint { endpoint, .. }
+                matches!(ipc.remove_non_connection_cap(self.asid, self.cap, &mut self.retired)?, Capability::Endpoint { endpoint, .. }
                 if endpoint == self.endpoint)
             );
             if let Some(node) = ipc.detach_endpoint(self.endpoint) {

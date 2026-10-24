@@ -319,19 +319,29 @@ fn abandonment() {
     let source = endpoint_create(fixture.server.id(), 3, 1, 4).unwrap();
     let before = crate::capability::admission_tests::test_namespace_used(fixture.caller.id());
     let memory = object::allocate(fixture.server.id(), 1).unwrap();
-    drop(
-        PreparedReply::prepare_with_outputs(
-            fixture.server.id(),
-            fixture.reply,
-            Some((source, ConnectionRights::ALL)),
-            Some(memory),
-        )
-        .unwrap(),
-    );
+    let records = IPC.read().caps[&fixture.caller.id()].record_budget.clone();
+    let before_records = records.used();
+    let operation = PreparedReply::prepare_with_outputs(
+        fixture.server.id(),
+        fixture.reply,
+        Some((source, ConnectionRights::ALL)),
+        Some(memory),
+    )
+    .unwrap();
+    let destination = operation.connection.as_ref().unwrap().grant.authority.identity();
+    drop(operation);
+    // The unpublished grant stays with the abandoned reply claim and roots.
+    // Its payload storage and original authority/connection counts cannot refund.
     assert_eq!(
         crate::capability::admission_tests::test_namespace_used(fixture.caller.id()),
-        before
+        before + 1
     );
+    assert_eq!(records.used(), [before_records[0] + 1, before_records[1], before_records[2]]);
+    assert!(!crate::capability::contains(
+        fixture.caller.id(),
+        destination,
+        crate::capability::ObjectKind::Ipc
+    ));
     let ipc = IPC.read();
     let token = match ipc.cap(fixture.server.id(), fixture.reply).unwrap() {
         Capability::ReplyToken {

@@ -37,16 +37,15 @@ fn submission_failure() {
         unreachable!()
     };
     ipc.stage_call(fixture.caller.id(), &mut call).unwrap();
-    call.connection = Some(
-        PreparedConnection::new(
-            &mut ipc,
-            fixture.caller.id(),
-            fixture.server.id(),
-            endpoint,
-            ConnectionRights::SEND,
-        )
-        .unwrap(),
-    );
+    PreparedConnection::prepare_into(
+        &mut call.connection,
+        &mut ipc,
+        fixture.caller.id(),
+        fixture.server.id(),
+        endpoint,
+        ConnectionRights::SEND,
+    )
+    .unwrap();
     call.attach(
         object::prepare_move(fixture.caller.id(), sources[0], fixture.server.id()).unwrap(),
     )

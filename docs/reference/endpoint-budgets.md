@@ -108,9 +108,8 @@ entire kernel heap. Separate [IPC record budgets](ipc-record-budgets.md) cover
 connections, retained pending calls and outstanding reply tokens. Separate
 [record budgets](completion-record-budgets.md) cover retained completion objects
 and detached results. Endpoint nodes publish by relinking prepared storage;
-the per-capability payload map still allocates
-infallibly under IPC after authority publication. Shared authority preparation
-also still enters its factory under IPC. No global allocator-exhaustion injection,
+[capability payloads](ipc-capability-storage.md) now do the same. Payload and
+shared-authority factories still run under IPC, before authority mutation. No global allocator-exhaustion injection,
 sustained hostile-pressure soak or per-principal aggregate across multiple
 domains is claimed. SEC-07 remains partially implemented; deployment still
 requires the [security audit's restrictions](../reports/audits/2026-10-03-security-remediation.md).

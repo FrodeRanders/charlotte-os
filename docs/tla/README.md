@@ -1138,3 +1138,11 @@ three safe configurations and 17 expected counterexamples pass. Unlocked
 node/list/backing preparation, FIFO replacement, original sponsorship and
 post-guard disposal remain native/host qualification. No model/configuration
 changed; see the [conformance boundary](CONFORMANCE.md#endpoint-storage-and-queue-growth).
+
+The [capability payload storage follow-up](../reports/audits/2026-10-24-security-ipc-capability-storage.md)
+checks IPC publication/transaction and root retirement: three safe configurations
+and 17 expected counterexamples pass. Private payload allocation
+and paired post-IPC payload/authority disposal remain native/host qualification;
+see the [conformance boundary](CONFORMANCE.md#ipc-capability-payload-storage).
+No model/configuration changed; the preceding full-suite checkpoint remains
+separate.

@@ -6,7 +6,6 @@
 //! and the LP-indexed mailbox smoke ABI are separate interfaces.
 
 use alloc::{
-    collections::BTreeMap,
     sync::{
         Arc,
         Weak,
@@ -61,6 +60,7 @@ mod attachments;
 pub(crate) mod budget;
 mod call_storage_tests;
 pub(crate) mod cancellation;
+mod cap_storage;
 pub(crate) mod claim_wait;
 pub(crate) mod delivery_tests;
 mod endpoint_close;
@@ -76,7 +76,10 @@ mod waiter_source;
 pub(crate) mod waiter_tests;
 
 use attachments::MemoryAttachments;
-use endpoint_storage::RetiredEndpoints;
+use cap_storage::{
+    PreparingCapability,
+    RetiredMetadata,
+};
 
 type WaiterList = ListRef<waiter_budget::Charge>;
 type WaitNotifications = NotificationBatch<waiter_budget::Charge>;
@@ -204,39 +207,16 @@ struct AdmittedCapability {
     payload: Capability,
     /// Queued/unobserved connection authority is still exclusively IPC-owned.
     delivery_pending: bool,
-    // Lookup copies only payload authority. The unique stored entry retains
-    // sponsorship until removal, including internal cancellation paths.
-    _connection_charge: Option<record_budget::Charge>,
+    // Present only after removal; retained with payload storage until post-IPC disposal.
+    retired_authority: Option<crate::capability::RetiredRecord>,
 }
 
 #[derive(Debug)]
 struct AsIpcCaps {
-    caps: BTreeMap<CapabilityId, AdmittedCapability>,
+    caps: AdmittedMap<CapabilityId, AdmittedCapability, Option<record_budget::Charge>>,
     address_space: Option<crate::memory::AddressSpaceHandle>,
     endpoint_budget: Arc<budget::DomainBudget>,
     record_budget: Arc<record_budget::DomainBudget>,
-}
-
-impl AsIpcCaps {
-    /// The caller has published this identity under IPC serialization. No
-    /// fallible admission may remain after mutating its associated payload.
-    fn insert_admitted(
-        &mut self,
-        id: CapabilityId,
-        cap: Capability,
-        charge: Option<record_budget::Charge>,
-    ) -> CapabilityId {
-        assert_eq!(matches!(cap, Capability::Connection { .. }), charge.is_some());
-        self.caps.insert(
-            id,
-            AdmittedCapability {
-                payload: cap,
-                delivery_pending: false,
-                _connection_charge: charge,
-            },
-        );
-        id
-    }
 }
 
 #[derive(Debug)]
@@ -359,41 +339,56 @@ struct PreparedConnection {
     target: AddressSpaceId,
     endpoint: EndpointId,
     rights: ConnectionRights,
-    authority: crate::capability::Reservation,
-    charge: record_budget::Charge,
+    authority: PreparingCapability,
+    charge: ManuallyDrop<Option<record_budget::Charge>>,
 }
 
 impl PreparedConnection {
-    fn new(
+    fn empty(target: AddressSpaceId, endpoint: EndpointId, rights: ConnectionRights) -> Self {
+        Self {
+            target,
+            endpoint,
+            rights,
+            authority: PreparingCapability::new(),
+            charge: ManuallyDrop::new(None),
+        }
+    }
+
+    fn prepare(&mut self, ipc: &mut IpcRegistry, sponsor: AddressSpaceId) -> Result<(), IpcError> {
+        *self.charge = Some(ipc.reserve_records(sponsor, [1, 0, 0])?);
+        self.authority.prepare(ipc, self.target)
+    }
+
+    fn prepare_into(
+        slot: &mut Option<Self>,
         ipc: &mut IpcRegistry,
         sponsor: AddressSpaceId,
         target: AddressSpaceId,
         endpoint: EndpointId,
         rights: ConnectionRights,
-    ) -> Result<Self, IpcError> {
-        let charge = ipc.reserve_records(sponsor, [1, 0, 0])?;
-        let authority = ipc.reserve_cap(target)?;
-        Ok(Self {
-            target,
-            endpoint,
-            rights,
-            authority,
-            charge,
-        })
+    ) -> Result<(), IpcError> {
+        assert!(slot.is_none());
+        *slot = Some(Self::empty(target, endpoint, rights));
+        slot.as_mut().unwrap().prepare(ipc, sponsor)
     }
 
-    /// Only after joint authority publication under IPC serialization.
-    fn install(self, ipc: &mut IpcRegistry) -> CapabilityId {
-        let id = ipc.as_caps(self.target).insert_admitted(
-            self.authority.identity(),
+    /// Joint authority publication and payload installation share IPC exclusion.
+    fn install(&mut self, ipc: &mut IpcRegistry) -> CapabilityId {
+        self.authority.install(
+            ipc,
+            self.target,
             Capability::Connection {
                 endpoint: self.endpoint,
                 rights: self.rights,
             },
-            Some(self.charge),
-        );
-        ipc.as_caps(self.target).caps.get_mut(&id).unwrap().delivery_pending = true;
-        id
+            self.charge.take(),
+            true,
+        )
+    }
+
+    fn finish(mut self) {
+        self.authority.finish();
+        drop(self.charge.take());
     }
 }
 
@@ -429,6 +424,9 @@ struct ReplyCompletion(ManuallyDrop<ReplyCompletionResources>);
 struct ReplyCompletionResources {
     token: Option<RetiredReply>,
     observers: Option<WaitNotifications>,
+    connection: Option<PreparedConnection>,
+    memory: Option<crate::memory::object::PreparedTransfer>,
+    retired: RetiredMetadata,
 }
 
 impl ReplyCompletion {
@@ -436,12 +434,34 @@ impl ReplyCompletion {
         Self(ManuallyDrop::new(ReplyCompletionResources {
             token: Some(token),
             observers: Some(observers),
+            connection: None,
+            memory: None,
+            retired: RetiredMetadata::new(),
+        }))
+    }
+
+    fn empty() -> Self {
+        Self(ManuallyDrop::new(ReplyCompletionResources {
+            token: None,
+            observers: None,
+            connection: None,
+            memory: None,
+            retired: RetiredMetadata::new(),
         }))
     }
 
     fn finish(mut self) {
-        self.0.token.take().unwrap().release();
-        signal_observers(self.0.observers.take().unwrap());
+        drop(self.0.memory.take());
+        if let Some(connection) = self.0.connection.take() {
+            connection.finish();
+        }
+        self.0.retired.release();
+        if let Some(token) = self.0.token.take() {
+            token.release();
+        }
+        if let Some(observers) = self.0.observers.take() {
+            signal_observers(observers);
+        }
     }
 }
 
@@ -458,7 +478,7 @@ struct CallResources {
     platform: bool,
     storage: Option<PendingStorage>,
     reply_storage: Option<ReplyStorage>,
-    authority: Option<crate::capability::Reservation>,
+    authority: Option<PreparingCapability>,
     pending: Option<PendingCall>,
     reply_charge: Option<record_budget::Charge>,
     connection: Option<PreparedConnection>,
@@ -604,8 +624,12 @@ impl PreparedCall {
     }
 
     fn finish(mut self) {
-        drop(self.0.connection.take());
-        drop(self.0.authority.take());
+        if let Some(connection) = self.0.connection.take() {
+            connection.finish();
+        }
+        if let Some(authority) = self.0.authority.take() {
+            authority.finish();
+        }
         drop(core::mem::take(&mut self.0.transfers));
         drop(self.0.attaching.take());
         drop(core::mem::take(&mut self.0.memory));
@@ -696,12 +720,15 @@ impl PreparedCall {
             if let Some(connection) = &mut resources.connection {
                 crate::memory::object::commit_undelivered_transfers_with_authority(
                     &mut resources.transfers,
-                    &mut [resources.authority.as_mut().unwrap(), &mut connection.authority],
+                    &mut [
+                        resources.authority.as_mut().unwrap().authority(),
+                        connection.authority.authority(),
+                    ],
                 )
             } else {
                 crate::memory::object::commit_undelivered_transfers_with_authority(
                     &mut resources.transfers,
-                    &mut [resources.authority.as_mut().unwrap()],
+                    &mut [resources.authority.as_mut().unwrap().authority()],
                 )
             }
             .map_err(|_| IpcError::MemoryTransferFailed)?;
@@ -711,19 +738,21 @@ impl PreparedCall {
         // Pins must end before the newly published objects become writable.
         resources.transfers.clear();
         let caller = resources.pending.as_ref().unwrap().caller;
-        let attached = resources.connection.take().map(|connection| connection.install(ipc));
+        let attached = resources.connection.as_mut().map(|connection| connection.install(ipc));
         let call = ipc.alloc_call();
         ipc.pending_calls.insert(
             resources.storage.take().unwrap(),
             call,
             resources.pending.take().unwrap(),
         );
-        ipc.as_caps(caller).insert_admitted(
-            call_cap,
+        resources.authority.as_mut().unwrap().install(
+            ipc,
+            caller,
             Capability::PendingCall {
                 call,
             },
             None,
+            false,
         );
         let token = ipc.alloc_reply();
         ipc.reply_tokens.insert(
@@ -848,7 +877,8 @@ impl IpcRegistry {
         {
             return Err(IpcError::PermissionDenied);
         }
-        owner.authority = Some(self.reserve_cap(caller)?);
+        owner.authority = Some(PreparingCapability::new());
+        owner.authority.as_mut().unwrap().prepare(self, caller)?;
         owner.pending = Some(PendingCall::try_new(caller, owner.platform)?);
         Ok(())
     }
@@ -897,17 +927,9 @@ impl IpcRegistry {
         &mut self,
         asid: AddressSpaceId,
         cap: CapabilityId,
-        retired: &mut RetiredEndpoints,
+        retired: &mut RetiredMetadata,
     ) -> Result<Capability, IpcError> {
-        let entry = self
-            .caps
-            .get_mut(&asid)
-            .and_then(|caps| caps.caps.remove(&cap))
-            .ok_or(IpcError::UnknownCapability)?;
-        let revoked = crate::capability::remove(asid, cap, crate::capability::ObjectKind::Ipc);
-        assert!(revoked, "IPC payload capability was absent from unified table");
-        let removed = entry.payload;
-        drop(entry);
+        let removed = cap_storage::retire(self, asid, cap, retired)?;
         // Internal cancellation also revokes connections. It must reclaim a
         // closed endpoint just as public capability closure does.
         if let Capability::Connection {
@@ -943,21 +965,24 @@ impl IpcRegistry {
         &mut self,
         asid: AddressSpaceId,
         cap: CapabilityId,
+        retired: &mut RetiredMetadata,
     ) -> Result<Capability, IpcError> {
         if matches!(self.cap_for_cleanup(asid, cap)?, Capability::Connection { .. }) {
             return Err(IpcError::WrongType);
         }
-        let mut retired = RetiredEndpoints::new();
-        let payload = self.remove_cap(asid, cap, &mut retired)?;
-        assert!(retired.is_empty());
-        Ok(payload)
+        self.remove_cap(asid, cap, retired)
     }
 
-    fn remove_matching_caps(&mut self, asid: AddressSpaceId, target: Capability) {
+    fn remove_matching_caps(
+        &mut self,
+        asid: AddressSpaceId,
+        target: Capability,
+        retired: &mut RetiredMetadata,
+    ) {
         while let Some(id) = self.caps.get(&asid).and_then(|caps| {
             caps.caps.iter().find_map(|(&id, cap)| (cap.payload == target).then_some(id))
         }) {
-            self.remove_non_connection_cap(asid, id)
+            self.remove_non_connection_cap(asid, id, retired)
                 .expect("matching IPC control capability disappeared");
         }
     }
@@ -1073,20 +1098,29 @@ pub fn connection_delegate(
     target: AddressSpaceId,
     rights: ConnectionRights,
 ) -> Result<CapabilityId, IpcError> {
-    let mut ipc = IPC.write();
-    let (endpoint, granted) = mintable_endpoint(&ipc, owner, endpoint_cap, rights)?;
-    ipc.accepting_namespace(target)?;
-    let charge = ipc.reserve_records(owner, [1, 0, 0])?;
-    let reservation = ipc.reserve_cap(target)?;
-    let cap = reservation.publish().map_err(cap_admission_error)?;
-    Ok(ipc.as_caps(target).insert_admitted(
-        cap,
-        Capability::Connection {
+    let mut prepared = None;
+    let result = (|| {
+        let mut ipc = IPC.write();
+        let (endpoint, granted) = mintable_endpoint(&ipc, owner, endpoint_cap, rights)?;
+        ipc.accepting_namespace(target)?;
+        PreparedConnection::prepare_into(
+            &mut prepared,
+            &mut ipc,
+            owner,
+            target,
             endpoint,
-            rights: granted,
-        },
-        Some(charge),
-    ))
+            granted,
+        )?;
+        let prepared = prepared.as_mut().unwrap();
+        prepared.authority.publish()?;
+        let cap = prepared.install(&mut ipc);
+        ipc.deliver_connection(target, cap);
+        Ok(cap)
+    })();
+    if let Some(prepared) = prepared {
+        prepared.finish();
+    }
+    result
 }
 
 /// Resolve the owner of the endpoint named by a connection capability.
@@ -1336,8 +1370,14 @@ fn scalar_call_with_connection_impl(
 
         let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
         ipc.stage_call(caller, prepared)?;
-        prepared.connection =
-            Some(PreparedConnection::new(&mut ipc, caller, server, delegated_endpoint, granted)?);
+        PreparedConnection::prepare_into(
+            &mut prepared.connection,
+            &mut ipc,
+            caller,
+            server,
+            delegated_endpoint,
+            granted,
+        )?;
         prepared.commit(&mut ipc, endpoint_id, opcode, arg0)
     })
 }
@@ -1551,10 +1591,49 @@ pub fn receive(
     receiver: AddressSpaceId,
     endpoint_cap: CapabilityId,
 ) -> Result<ScalarMessage, IpcError> {
-    let mut ipc = IPC.write();
-    let endpoint_id = receive_endpoint_id(&ipc, receiver, endpoint_cap)?;
-    ipc.accepting_namespace(receiver)?;
-    Ok(PreparedReceive::new(&mut ipc, receiver, endpoint_id)?.commit())
+    receive_with_result(receiver, endpoint_cap, None)
+}
+
+fn receive_with_result(
+    receiver: AddressSpaceId,
+    endpoint_cap: CapabilityId,
+    result_page: Option<MemoryObjectCap>,
+) -> Result<ScalarMessage, IpcError> {
+    let mut owner = ReceiveResources {
+        authority: PreparingCapability::new(),
+        retired: RetiredMetadata::new(),
+    };
+    let result = (|| {
+        let mut ipc = IPC.write();
+        let endpoint_id = receive_endpoint_id(&ipc, receiver, endpoint_cap)?;
+        ipc.accepting_namespace(receiver)?;
+        let prepared = PreparedReceive::new(
+            &mut ipc,
+            receiver,
+            endpoint_id,
+            &mut owner.authority,
+            &mut owner.retired,
+        )?;
+        if let Some(page) = result_page {
+            prepared.write_result(page)?;
+        }
+        Ok(prepared.commit())
+    })();
+    owner.finish();
+    result
+}
+
+/// The complete receive preparation survives guard exit on every ordinary path.
+/// Both fields retain their allocations and original charges on abandonment.
+struct ReceiveResources {
+    authority: PreparingCapability,
+    retired: RetiredMetadata,
+}
+impl ReceiveResources {
+    fn finish(mut self) {
+        self.retired.release();
+        self.authority.finish();
+    }
 }
 
 /// Own speculative reply authority until dequeue commits. IPC stays exclusively
@@ -1567,6 +1646,7 @@ struct PreparedReceive<'a> {
     receiver: AddressSpaceId,
     endpoint: EndpointId,
     reply: Option<CapabilityId>,
+    retired: &'a mut RetiredMetadata,
 }
 
 impl<'a> PreparedReceive<'a> {
@@ -1574,6 +1654,8 @@ impl<'a> PreparedReceive<'a> {
         ipc: &'a mut IpcRegistry,
         receiver: AddressSpaceId,
         endpoint: EndpointId,
+        authority: &mut PreparingCapability,
+        retired: &'a mut RetiredMetadata,
     ) -> Result<Self, IpcError> {
         let token = ipc
             .endpoints
@@ -1591,14 +1673,16 @@ impl<'a> PreparedReceive<'a> {
             if reply.completing || reply.cleanup_failed {
                 return Err(IpcError::Pending);
             }
-            let reservation = ipc.reserve_cap(receiver)?;
-            let cap = reservation.publish().map_err(cap_admission_error)?;
-            Some(ipc.as_caps(receiver).insert_admitted(
-                cap,
+            authority.prepare(ipc, receiver)?;
+            authority.publish()?;
+            Some(authority.install(
+                ipc,
+                receiver,
                 Capability::ReplyToken {
                     token,
                 },
                 None,
+                false,
             ))
         } else {
             None
@@ -1608,6 +1692,7 @@ impl<'a> PreparedReceive<'a> {
             receiver,
             endpoint,
             reply,
+            retired,
         })
     }
 
@@ -1660,7 +1745,7 @@ impl Drop for PreparedReceive<'_> {
     fn drop(&mut self) {
         if let Some(cap) = self.reply.take() {
             self.ipc
-                .remove_non_connection_cap(self.receiver, cap)
+                .remove_non_connection_cap(self.receiver, cap, self.retired)
                 .expect("prepared reply authority disappeared");
         }
     }
@@ -1884,10 +1969,11 @@ pub fn reply(server: AddressSpaceId, reply_cap: CapabilityId, result: i64) -> Re
         drop(ipc);
         return reply::complete(server, reply_cap, result);
     }
-    let completed = complete_reply(&mut ipc, server, reply_cap, result, None, None)?;
+    let mut completed = ReplyCompletion::empty();
+    let result = complete_reply(&mut ipc, server, reply_cap, result, None, None, &mut completed);
     drop(ipc);
     completed.finish();
-    Ok(())
+    result
 }
 
 /// Return attenuated connection authority. If loan cleanup needs an unlocked
@@ -1912,11 +1998,19 @@ pub fn reply_with_connection(
         drop(ipc);
         return reply::complete_with_connection(server, reply_cap, endpoint_cap, rights, result);
     }
-    let completed =
-        complete_reply(&mut ipc, server, reply_cap, result, Some((endpoint, granted)), None)?;
+    let mut completed = ReplyCompletion::empty();
+    let result = complete_reply(
+        &mut ipc,
+        server,
+        reply_cap,
+        result,
+        Some((endpoint, granted)),
+        None,
+        &mut completed,
+    );
     drop(ipc);
     completed.finish();
-    Ok(())
+    result
 }
 
 pub fn reply_with_memory_move(
@@ -1936,10 +2030,12 @@ pub fn reply_with_memory_move(
         drop(ipc);
         return reply::complete_with_memory(server, reply_cap, memory_cap, result);
     }
-    let completed = complete_reply(&mut ipc, server, reply_cap, result, None, Some(memory_cap))?;
+    let mut completed = ReplyCompletion::empty();
+    let result =
+        complete_reply(&mut ipc, server, reply_cap, result, None, Some(memory_cap), &mut completed);
     drop(ipc);
     completed.finish();
-    Ok(())
+    result
 }
 
 fn complete_reply(
@@ -1949,7 +2045,8 @@ fn complete_reply(
     result: i64,
     returned_connection: Option<(EndpointId, ConnectionRights)>,
     returned_memory: Option<MemoryObjectCap>,
-) -> Result<ReplyCompletion, IpcError> {
+    completed: &mut ReplyCompletion,
+) -> Result<(), IpcError> {
     let token_id = match ipc.cap(server, reply_cap)? {
         Capability::ReplyToken {
             token,
@@ -1971,35 +2068,41 @@ fn complete_reply(
     // A reply is solicited by this caller. Charge returned authority to that
     // requester, so repeated lookups cannot spend the serving grantor's budget.
     // Reject before consuming the reply token, revoking a loan, or moving memory.
-    let mut connection = returned_connection
-        .map(|(endpoint, rights)| PreparedConnection::new(ipc, caller, caller, endpoint, rights))
-        .transpose()?;
-    let mut returned_move = if let Some(memory_cap) = returned_memory {
-        Some(
+    if let Some((endpoint, rights)) = returned_connection {
+        PreparedConnection::prepare_into(
+            &mut completed.0.connection,
+            ipc,
+            caller,
+            caller,
+            endpoint,
+            rights,
+        )?;
+    }
+    if let Some(memory_cap) = returned_memory {
+        completed.0.memory = Some(
             crate::memory::object::prepare_move(server, memory_cap, caller)
                 .map_err(|_| IpcError::MemoryTransferFailed)?,
-        )
-    } else {
-        None
-    };
+        );
+    }
     // Record each successful revocation immediately. A later unmap failure or
     // retired destination leaves only the still-live loans for retry/cancel.
     while let Some(borrow) = ipc.reply_tokens.get(&token_id).unwrap().borrows.last().copied() {
         revoke_memory_borrow(borrow).map_err(|_| IpcError::MemoryTransferFailed)?;
         ipc.reply_tokens.get_mut(&token_id).unwrap().borrows.pop();
     }
-    let returned_memory_cap = returned_move.as_ref().map(|transfer| transfer.target_cap());
-    if let Some(connection) = &mut connection {
+    let returned_memory_cap = completed.0.memory.as_ref().map(|transfer| transfer.target_cap());
+    let resources = &mut *completed.0;
+    if let Some(connection) = &mut resources.connection {
         crate::memory::object::commit_undelivered_transfers_with_authority(
-            returned_move.as_mut_slice(),
-            &mut [&mut connection.authority],
+            resources.memory.as_mut_slice(),
+            &mut [connection.authority.authority()],
         )
     } else {
-        crate::memory::object::commit_undelivered_transfers(returned_move.as_mut_slice())
+        crate::memory::object::commit_undelivered_transfers(resources.memory.as_mut_slice())
     }
     .map_err(|_| IpcError::MemoryTransferFailed)?;
-    drop(returned_move);
-    let returned_cap = connection.map(|connection| connection.install(ipc));
+    drop(completed.0.memory.take());
+    let returned_cap = completed.0.connection.as_mut().map(|connection| connection.install(ipc));
     let token = ipc.reply_tokens.take(&token_id).expect("completed reply token missing");
     let call = ipc.pending_calls.get_mut(&call_id).expect("completed call missing");
     call.result = Some(ReplyValue {
@@ -2008,8 +2111,11 @@ fn complete_reply(
         memory: returned_memory_cap,
     });
     let observers = call.observers.close();
-    ipc.remove_non_connection_cap(server, reply_cap).expect("completed reply cap missing");
-    Ok(ReplyCompletion::new(token, observers))
+    ipc.remove_non_connection_cap(server, reply_cap, &mut completed.0.retired)
+        .expect("completed reply cap missing");
+    completed.0.token = Some(token);
+    completed.0.observers = Some(observers);
+    Ok(())
 }
 
 pub fn poll_reply(
@@ -2333,7 +2439,7 @@ fn close_cap_with_cleanup(
     // detached cleanup. Never wait with IPC serialization held. Domain cleanup
     // reaches here only after the reply's exact-generation root leases drain.
     let mut retired_replies = RetiredReplies::new();
-    let mut retired_endpoints = RetiredEndpoints::new();
+    let mut retired_metadata = RetiredMetadata::new();
     let mut ipc = loop {
         let ipc = IPC.write();
         let payload = if detached {
@@ -2377,7 +2483,7 @@ fn close_cap_with_cleanup(
     let mut retired_message = None;
     let mut retired_result = None;
     let mut retired_call = None;
-    match ipc.remove_cap(asid, cap, &mut retired_endpoints)? {
+    match ipc.remove_cap(asid, cap, &mut retired_metadata)? {
         Capability::Endpoint {
             endpoint,
             ..
@@ -2410,14 +2516,14 @@ fn close_cap_with_cleanup(
                 }
                 message.memory.retire(asid);
                 if let Some(connection_cap) = message.connection {
-                    let _ = ipc.remove_cap(asid, connection_cap, &mut retired_endpoints);
+                    let _ = ipc.remove_cap(asid, connection_cap, &mut retired_metadata);
                 }
             }
             retired_queue = queued;
             // Retire the registry entry once no capability can name it, so
             // endpoint create/close cycles cannot grow the registry forever.
             if let Some(node) = ipc.detach_endpoint(endpoint) {
-                retired_endpoints.push(node);
+                retired_metadata.push(node);
             }
         }
         Capability::PendingCall {
@@ -2433,7 +2539,7 @@ fn close_cap_with_cleanup(
                     // property and survive the pending-call close.
                     if !pending.observed {
                         if let Some(returned_cap) = reply.cap {
-                            let _ = ipc.remove_cap(asid, returned_cap, &mut retired_endpoints);
+                            let _ = ipc.remove_cap(asid, returned_cap, &mut retired_metadata);
                         }
                         if let Some(memory_cap) = reply.memory {
                             retired_result = attachments::retire_one(asid, memory_cap);
@@ -2446,7 +2552,7 @@ fn close_cap_with_cleanup(
                         &mut observers,
                         &mut cq_wake,
                         &mut retired_replies,
-                        &mut retired_endpoints,
+                        &mut retired_metadata,
                     );
                 }
                 retired_call = Some(node);
@@ -2470,13 +2576,13 @@ fn close_cap_with_cleanup(
         } => {
             // The last capability naming a closed endpoint retires it.
             if let Some(node) = ipc.detach_endpoint(endpoint) {
-                retired_endpoints.push(node);
+                retired_metadata.push(node);
             }
         }
     }
     drop(ipc);
     retired_replies.release();
-    retired_endpoints.release();
+    retired_metadata.release();
     if let Some(node) = retired_call {
         node.release();
     }
@@ -2568,7 +2674,11 @@ fn drain_namespace_caps(asid: AddressSpaceId) -> Result<(), IpcError> {
     // Reuse admitted registry storage as the work list to avoid allocating
     // a teardown snapshot. Closing one call may also remove a reply cap.
     loop {
-        let next = IPC.read().caps.get(&asid).and_then(|caps| caps.caps.keys().next().copied());
+        let next = IPC
+            .read()
+            .caps
+            .get(&asid)
+            .and_then(|caps| caps.caps.first_key_value().map(|(id, _)| *id));
         let Some(cap) = next else {
             break;
         };
@@ -2578,10 +2688,10 @@ fn drain_namespace_caps(asid: AddressSpaceId) -> Result<(), IpcError> {
     // budget accounts; explicit disposal runs after the IPC guard leaves.
     let retired = IPC.write().caps.take(&asid);
     if let Some(retired) = retired {
-        assert!(retired.value().1.caps.is_empty());
+        assert!(retired.value().1.caps.first_key_value().is_none());
         retired.release();
     }
-    let mut retired = RetiredEndpoints::new();
+    let mut retired = RetiredMetadata::new();
     {
         let mut ipc = IPC.write();
         loop {
@@ -2714,7 +2824,7 @@ fn cancel_queued_call(
     observers: &mut WaitNotifications,
     cq_wake: &mut Option<(AddressSpaceId, crate::completion::CqId)>,
     retired: &mut RetiredReplies,
-    retired_endpoints: &mut RetiredEndpoints,
+    retired_metadata: &mut RetiredMetadata,
 ) -> Option<MemoryAttachments> {
     let mut memory = None;
     loop {
@@ -2737,7 +2847,7 @@ fn cancel_queued_call(
             token,
             observers,
             cq_wake,
-            retired_endpoints,
+            retired_metadata,
         ) {
             assert!(memory.is_none(), "one call acquired multiple queued messages");
             memory = Some(retired);
@@ -2747,6 +2857,7 @@ fn cancel_queued_call(
             Capability::ReplyToken {
                 token,
             },
+            retired_metadata,
         );
         retired.push(node);
     }
@@ -2759,7 +2870,7 @@ fn cancel_queued_message_with_token(
     token: ReplyTokenId,
     observers: &mut WaitNotifications,
     cq_wake: &mut Option<(AddressSpaceId, crate::completion::CqId)>,
-    retired_endpoints: &mut RetiredEndpoints,
+    retired_metadata: &mut RetiredMetadata,
 ) -> Option<MemoryAttachments> {
     let selected = ipc.endpoints.iter().find_map(|(&id, endpoint)| {
         if endpoint.owner != server {
@@ -2778,7 +2889,7 @@ fn cancel_queued_message_with_token(
     let mut message = endpoint.queue.remove(index)?;
     message.memory.retire(server);
     if let Some(connection_cap) = message.connection {
-        ipc.remove_cap(server, connection_cap, retired_endpoints)
+        ipc.remove_cap(server, connection_cap, retired_metadata)
             .expect("queued connection disappeared during cancellation");
     }
     Some(message.memory)
@@ -2802,14 +2913,7 @@ pub fn receive_vec(
     endpoint_cap: CapabilityId,
     result_page: MemoryObjectCap,
 ) -> Result<ScalarMessage, IpcError> {
-    let mut ipc = IPC.write();
-    let endpoint_id = receive_endpoint_id(&ipc, receiver, endpoint_cap)?;
-    ipc.accepting_namespace(receiver)?;
-    let prepared = PreparedReceive::new(&mut ipc, receiver, endpoint_id)?;
-    // Rights/capacity failure returns speculative reply admission and leaves
-    // the queued call and all attachments available for retry/cancellation.
-    prepared.write_result(result_page)?;
-    Ok(prepared.commit())
+    receive_with_result(receiver, endpoint_cap, Some(result_page))
 }
 
 /// Send a vector of memory objects through a connection. Each entry in

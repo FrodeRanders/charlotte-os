@@ -130,13 +130,14 @@ pub(super) fn call_copy(
                 };
                 ipc.stage_call(caller, prepared)?;
                 if let Some((endpoint, rights)) = delegated {
-                    prepared.connection = Some(PreparedConnection::new(
+                    PreparedConnection::prepare_into(
+                        &mut prepared.connection,
                         &mut ipc,
                         caller,
                         submission.server,
                         endpoint,
                         rights,
-                    )?);
+                    )?;
                 }
                 delegated
             };

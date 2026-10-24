@@ -73,7 +73,7 @@ IPC unlock. This adds no lifecycle/table-to-IPC edge; existing IPC root lookups
 retain their order. Fenced close detaches the empty namespace node under IPC and
 disposes it and its account references after unlock. Partial/complete preparation
 and detached-node fallback retain all fields without allocator or registry entry.
-Per-capability payload-map allocation and wider disposal contexts remain
+Payload/shared-authority factories under IPC and wider disposal contexts remain
 separate. See [namespace publication](ipc-namespace-publication.md).
 
 Pending-call preparation captures its caller under IPC, releases IPC before
@@ -332,8 +332,8 @@ remain required. See [root metadata admission](root-metadata-admission.md).
 Endpoint creation also captures its namespace under IPC, leaves before exact-root
 lease acquisition, and revalidates before atomic record/slot admission. Endpoint
 node, queue backing and close/readiness lists allocate outside IPC. Shared
-authority preparation still enters its factory under IPC; per-capability payload
-insertion still allocates after authority publication. Endpoint publication
+authority and per-capability payload preparation still enter their factories
+under IPC, before authority mutation. Payload insertion now relinks prepared nodes. Endpoint publication
 itself only relinks prepared storage, and unused preparation finishes post-guard,
 root last.
 
@@ -347,3 +347,14 @@ new fields without allocator, counter-lock or callback work. These changes add
 no lifecycle-under-IPC edge or new cleanup registry. Linear scans, broader
 caller masks/guards and pressure hold times remain unqualified. See
 [endpoint storage](endpoint-budgets.md).
+
+All per-capability payload nodes now prepare fallibly before shared authority
+publication. Existing containing operations retain unused payload/authority
+preparation through local guard exit and explicitly finish it there. Connection
+counts follow node lifetime. Removal detaches payload and unified authority
+metadata together; the same close/cancellation temporary lists carry both outside
+IPC. Speculative receive rollback and scalar/claimed reply use these owners too.
+No new lifecycle-under-IPC edge, registry or physical retry authority is added.
+Payload/shared-authority factories still execute under IPC. See
+[capability storage](ipc-capability-storage.md) for that remaining boundary and
+linear traversal/outer-context limitations.

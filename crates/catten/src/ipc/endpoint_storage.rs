@@ -9,29 +9,6 @@ use crate::memory::{
 type Storage = PreparedEntry<(EndpointId, Endpoint), Option<budget::Charge>>;
 pub(super) type RetiredEndpoint = RetiredEntry<(EndpointId, Endpoint), Option<budget::Charge>>;
 
-#[must_use]
-pub(super) struct RetiredEndpoints(RetirementList<(EndpointId, Endpoint), Option<budget::Charge>>);
-
-impl RetiredEndpoints {
-    pub(super) fn new() -> Self {
-        Self(RetirementList::new())
-    }
-
-    pub(super) fn push(&mut self, node: RetiredEndpoint) {
-        self.0.push(node);
-    }
-
-    pub(super) fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub(super) fn release(&mut self) {
-        while let Some(node) = self.0.pop() {
-            node.release();
-        }
-    }
-}
-
 struct Root {
     owner: AddressSpaceId,
     identity: Option<AddressSpaceHandle>,
@@ -85,7 +62,7 @@ struct Resources {
     queue: Option<budget::AdmittedQueue<QueuedMessage>>,
     close_observers: Option<ListRef<crate::completion::watch_budget::Charge>>,
     readiness_observers: Option<WaiterList>,
-    authority: Option<crate::capability::Reservation>,
+    authority: Option<PreparingCapability>,
 }
 
 #[must_use]
@@ -176,26 +153,23 @@ impl PreparingEndpoint {
         self.0.root.validate(ipc)?;
         let resources = &mut *self.0;
         let owner = resources.root.owner;
-        resources.authority = Some(ipc.reserve_cap(owner)?);
+        resources.authority = Some(PreparingCapability::new());
+        resources.authority.as_mut().unwrap().prepare(ipc, owner)?;
         let authority = resources.authority.as_mut().unwrap();
-        let cap = authority.identity();
-        crate::capability::publish_batch(&mut [crate::capability::Publication {
-            destination: authority,
-            source: None,
-        }])
-        .map_err(cap_admission_error)?;
+        authority.publish()?;
         let id = ipc.alloc_endpoint();
         let storage = self.0.storage.take().unwrap();
         let payload = self.take_payload(interface, version, capacity);
         ipc.endpoints.insert(storage, id, payload);
-        // The per-capability map is still an allocating publication boundary.
-        Ok(ipc.as_caps(owner).insert_admitted(
-            cap,
+        Ok(self.0.authority.as_mut().unwrap().install(
+            ipc,
+            owner,
             Capability::Endpoint {
                 endpoint: id,
                 rights: ConnectionRights::ALL,
             },
             None,
+            false,
         ))
     }
 
@@ -221,7 +195,9 @@ impl PreparingEndpoint {
     }
 
     fn finish(mut self) {
-        drop(self.0.authority.take());
+        if let Some(authority) = self.0.authority.take() {
+            authority.finish();
+        }
         drop(self.0.readiness_observers.take());
         drop(self.0.close_observers.take());
         drop(self.0.queue.take());

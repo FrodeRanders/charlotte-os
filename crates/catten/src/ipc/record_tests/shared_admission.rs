@@ -348,16 +348,15 @@ fn test_joint_retirement() {
             let mut ipc = IPC.write();
             ipc.stage_call(f.client.id(), &mut call).unwrap();
             let staged_call = call.authority.as_ref().unwrap().identity();
-            call.connection = Some(
-                PreparedConnection::new(
-                    &mut ipc,
-                    f.client.id(),
-                    f.server.id(),
-                    f.endpoint,
-                    ConnectionRights::SEND,
-                )
-                .unwrap(),
-            );
+            PreparedConnection::prepare_into(
+                &mut call.connection,
+                &mut ipc,
+                f.client.id(),
+                f.server.id(),
+                f.endpoint,
+                ConnectionRights::SEND,
+            )
+            .unwrap();
             let staged_connection = call.connection.as_ref().unwrap().authority.identity();
             call.attach(object::prepare_copy(f.client.id(), sources[0], f.server.id()).unwrap())
                 .unwrap();
@@ -496,10 +495,15 @@ fn test_stale_call() {
     let mut ipc = IPC.write();
     ipc.stage_call(old.id(), &mut stale).unwrap();
     let old_cap = stale.authority.as_ref().unwrap().identity();
-    stale.connection = Some(
-        PreparedConnection::new(&mut ipc, old.id(), server.id(), endpoint, ConnectionRights::SEND)
-            .unwrap(),
-    );
+    PreparedConnection::prepare_into(
+        &mut stale.connection,
+        &mut ipc,
+        old.id(),
+        server.id(),
+        endpoint,
+        ConnectionRights::SEND,
+    )
+    .unwrap();
     stale.attach(object::prepare_copy(old.id(), source, server.id()).unwrap()).unwrap();
     let old_records = ipc.as_caps(old.id()).record_budget.clone();
     drop(ipc);

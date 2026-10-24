@@ -1215,3 +1215,22 @@ source-class preservation are native/host qualification; these models do not
 add variables for them. No model/configuration changed. All 235 inputs of the
 prior full 190-case checkpoint remain unchanged. These checks provide no
 executable refinement, allocator/IRQ, linear-scan hold-time or fairness proof.
+
+## IPC capability payload storage
+
+The [capability storage batch](../reports/audits/2026-10-24-security-ipc-capability-storage.md)
+prepares payload nodes before authority mutation and publishes by relinking.
+Existing owners keep unused preparation and detached payload/shared-authority
+pairs through post-IPC disposal; connection counts follow node lifetime.
+Speculative receive rollback and scalar/claimed reply share these owners.
+
+`CharlotteIpcPublication` projects joint authority/delivery and rollback;
+`CharlotteIpcTransaction` checks rollback and non-terminal timeout;
+`CharlotteRootRetirement` projects existing exact-root gates. Private IPC payload
+node allocation, its shared-count prefix, paired metadata disposal, field-drop
+contexts and linear traversal remain native/host qualification. No
+model/configuration changes accompany this batch. All 20 focused cases pass:
+three safe configurations and 17 expected counterexamples. The prior full
+190-case checkpoint remains separate, with all 235 inputs unchanged.
+These models provide no executable refinement, allocator/IRQ or sustained
+pressure fairness proof.

@@ -362,8 +362,10 @@ Source, tests, and repository history remain authoritative.
         and list preparation now leave IPC with an exact-root owner; growth keeps
         original sponsorship, old backing and revalidation through FIFO replacement.
         Final closed endpoint nodes dispose post-IPC before record refund.
-        Per-capability payload-map allocation, guarded authority factories,
-        byte/principal admission, wider contexts and pressure fairness remain open.
+        Per-capability nodes now prepare fallibly before authority publication;
+        installation relinks them and detached payload/authority metadata disposes
+        post-IPC before connection-count refund. Guarded factories, byte/principal
+        admission, wider contexts and pressure fairness remain open.
     \item \textbf{Cross-machine Raft boundary:} two TCG guests share a private
         QEMU LAN (stream backend on AArch64, socket backend on x86-64); the
         reliable-message frame transport and remote Raft peer routing are

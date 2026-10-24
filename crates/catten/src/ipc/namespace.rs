@@ -79,7 +79,7 @@ impl PreparingNamespace {
             self.0.node.take().unwrap(),
             id,
             AsIpcCaps {
-                caps: BTreeMap::new(),
+                caps: AdmittedMap::new(),
                 address_space: handle,
                 endpoint_budget: self.0.endpoints.take().unwrap(),
                 record_budget: self.0.records.take().unwrap(),
