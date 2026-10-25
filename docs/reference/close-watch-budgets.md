@@ -89,6 +89,14 @@ entry or charge.
 
 ## Transactional submission
 
+[`completion/producers.rs`](../../crates/catten/src/completion/producers.rs)
+groups `EventSubmission`, worker/exit/timer observers and their installation,
+commit and rollback paths. Producer fields are private; callers retain the
+same typed submission/registration owners through the completion facade.
+Installation and fallback still check the exact captured completion object.
+The containing submission's active Drop and outer IRQ/guard obligations remain
+unchanged. See the [producer-boundary evidence](../reports/audits/2026-10-25-refactoring-completion-producers.md).
+
 Thread-exit preparation now captures its original candidate source, weak
 observer and already-admitted watch charge in one inert containing owner before
 list/entry allocation. The scheduler's preparation hook borrows that owner;

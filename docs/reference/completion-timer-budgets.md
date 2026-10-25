@@ -56,6 +56,12 @@ delivery, independently of whether their timer event has been reclaimed.
 
 ## Cancellation and publication
 
+Shared timer observer/cancellation adapters live in
+[`completion/producers.rs`](../../crates/catten/src/completion/producers.rs).
+Record and detached preparation pass their existing typed values through
+constructors; observer binding and cancellation-handle fields remain private.
+Construction adds no lookup, allocation, admission, guard or deadline capture.
+
 Detached timer preparation, producer callbacks, cancellation and retirement are
 kept together in [`completion/detached.rs`](../../crates/catten/src/completion/detached.rs).
 The module owns its private timer fields; it retains the same captured CQ

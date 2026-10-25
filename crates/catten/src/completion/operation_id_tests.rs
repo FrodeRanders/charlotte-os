@@ -18,7 +18,7 @@ fn reject_submissions(ids: &OperationIds) {
         ));
     }
     assert_eq!(
-        submit_timer_with_observer(CLIENT, 0, ids, |_| {
+        producers::submit_timer_with_observer(CLIENT, 0, ids, |_| {
             panic!("exhausted operation IDs reached timer observer allocation")
         }),
         Err(SubmitError::WouldBlock)
@@ -99,7 +99,9 @@ fn rejected_preparation_consumes_identity() {
     let records = record_admission(CLIENT).unwrap();
     let ids = OperationIds::new(LAST_OPERATION_ID - 2);
     assert_eq!(
-        submit_timer_with_observer(CLIENT, u64::MAX, &ids, |_| Err(core::alloc::AllocError)),
+        producers::submit_timer_with_observer(CLIENT, u64::MAX, &ids, |_| Err(
+            core::alloc::AllocError
+        )),
         Err(SubmitError::WouldBlock)
     );
     assert_eq!(records.used(), 0);

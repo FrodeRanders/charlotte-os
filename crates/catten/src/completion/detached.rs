@@ -408,7 +408,7 @@ impl Preparing {
                 TimerEvent::charged(ExtDuration::from_millis(timeout_ms as u128), charge)
                     .map_err(|_| SubmitError::WouldBlock)?;
             preparing.0.record.as_mut().unwrap().timer_cancel =
-                Some(TimerCancellation(Some(cancel)));
+                Some(TimerCancellation::new(cancel));
             preparing.0.event = Some(allocate_event(event).map_err(|_| SubmitError::WouldBlock)?);
             let observer = allocate(DetachedTimerObserver {
                 asid: preparing.0.target.asid,

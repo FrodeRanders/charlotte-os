@@ -66,7 +66,11 @@ fn unlocked() {
             },
             |observer| {
                 assert!(COMPLETIONS.write()[&CLIENT].table.first_key_value().is_none());
-                assert!(!crate::capability::contains(CLIENT, observer.cap, ObjectKind::Completion));
+                assert!(!crate::capability::contains(
+                    CLIENT,
+                    observer.cap(),
+                    ObjectKind::Completion
+                ));
                 if mode == 1 {
                     Err(core::alloc::AllocError)
                 } else {

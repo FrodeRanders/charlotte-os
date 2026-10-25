@@ -252,7 +252,7 @@ completion::wait(asid, cap):
   4. yield_lp()                       [thread sleeps]
 
   When completion fires:
-  → CompletionTimerObserver::notify() → complete()
+  → CompletionTimerObserver::notify() → complete_registered() [captured record]
   → CqState::post(ring_entry)         [ring write under COMPLETIONS]
   → post-guard refunds/disposal       [original charges and subscriptions]
   → signal_cq_source()                [wakes the captured CQ source]

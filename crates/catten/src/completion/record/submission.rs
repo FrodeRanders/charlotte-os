@@ -226,15 +226,15 @@ impl Preparing {
                 .map_err(|_| SubmitError::WouldBlock)?;
         let (event, cancel) =
             TimerEvent::charged_at(deadline, charge).map_err(|_| SubmitError::WouldBlock)?;
-        resources.cancel = Some(TimerCancellation(Some(cancel)));
+        resources.cancel = Some(TimerCancellation::new(cancel));
         resources.event = Some(allocate_event(event).map_err(|_| SubmitError::WouldBlock)?);
         let completion = resources.completion.as_ref().unwrap();
-        let observer = allocate_observer(CompletionTimerObserver {
-            asid: resources.target.asid,
-            cap: resources.reservation.as_ref().unwrap().identity(),
-            result: OpResult::Ok(0),
-            completion: Arc::downgrade(completion),
-        })
+        let observer = allocate_observer(CompletionTimerObserver::new(
+            resources.target.asid,
+            resources.reservation.as_ref().unwrap().identity(),
+            OpResult::Ok(0),
+            Arc::downgrade(completion),
+        ))
         .map_err(|_| SubmitError::WouldBlock)?;
         resources
             .event
