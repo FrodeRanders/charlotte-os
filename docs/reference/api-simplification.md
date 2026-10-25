@@ -501,6 +501,14 @@ old uncharged production aliases and factories are removed. Exact layout/count
 admission follows the existing allocation owner, without a parallel registry or
 alternate refund path. The generic host scratch core exercises the same map and
 range algorithm. See [admission evidence](../reports/audits/2026-10-25-security-scratch-admission.md).
+
+Copy-pin snapshots now have one two-phase preparation path: probe, fallible
+capacity outside memory serialization, then captured revalidation and pin
+publication. The allocating-under-registry snapshot path is removed; empty
+source-escrow pins retain their distinct no-snapshot purpose. Bare pin fallback
+retains metadata, while explicit unpin disposes it before backing-fence release.
+No ABI/format change or compatibility branch is introduced. See
+[copy snapshot evidence](../reports/audits/2026-10-25-security-copy-snapshot-storage.md).
 Other factory/destructor contexts, scalar scratch identity and comprehensive
 metadata admission remain current candidates. Wire formats/runtime ABI stay
 unchanged.

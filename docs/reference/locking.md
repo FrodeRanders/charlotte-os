@@ -471,3 +471,16 @@ charge. Allocation/prefix rejection disposes outside the counter and local scrat
 guard. Publication only relinks charged nodes. Explicit disposal frees each actual
 node before counter refund; fallback retains both without counter entry. The
 guarded partial/retired and root-custody controls also hold this counter mutex.
+
+Copy-pin snapshot capacity now prepares outside `MEMORY_OBJECTS`, without a
+source pin or copied frame identities. Final captured-generation/object/size and
+rights/loan/DMA/mapping checks precede allocation-free fill and pin publication.
+Ordinary rejected preparation explicitly disposes after local memory unlock.
+Bare preparation/pin fallback retains snapshot capacity without allocator or
+registry entry. Explicit unpin frees snapshot storage before its original pin
+decrements, then permits existing deferred backing teardown after memory unlock.
+Native controls hold heap/memory during publication and heap/memory/table/physical
+guards during bare pin abandonment, preserving IRQ state. This does not qualify
+`ScopedCopyPin` or source-transfer destructors, enclosing IPC/lifecycle holds,
+DMA snapshot factories, aggregate admission or sustained-pressure progress.
+See [copy snapshot storage](memory-object-storage.md#copy-pin-snapshots).

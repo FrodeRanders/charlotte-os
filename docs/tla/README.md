@@ -1202,3 +1202,10 @@ bounds requested node layouts/counts through those same owners. Focused root and
 IPC transaction configurations are rerun; concrete pool dimensions, reserve
 classification, allocation failure and counter-lock contexts remain native/host
 qualification. No model inputs or physical/replay policies change.
+
+The [copy snapshot follow-up](../reports/audits/2026-10-25-security-copy-snapshot-storage.md)
+keeps preparation pin-free, revalidates the source and retains bare abandoned
+snapshot/pin metadata. Focused IPC-transaction and root-retirement checks preserve
+existing loan/root/charge projections. Concrete copy factories, snapshot disposal
+and guard/IRQ contexts remain native/source qualification; no model input or
+physical/replay policy changes.

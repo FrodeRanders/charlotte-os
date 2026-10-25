@@ -84,6 +84,16 @@ Mapping records and frame-snapshot capacity now also prepare fallibly outside
 the memory registry. Scratch namespace and extent nodes now also prepare outside
 their local registry, with exact-generation/current-space revalidation.
 
+Copy-pin frame snapshots likewise prepare fallibly outside memory serialization,
+before any frame identity or source pin is retained. Final namespace-generation,
+object/size and rights/loan/DMA/mapping checks precede snapshot fill and pin
+publication under one hold. Ordinary rejection disposes unused capacity after
+unlock. Bare preparation/pin abandonment retains snapshot metadata without
+allocator entry; explicit unpin frees it before decrementing the backing fence.
+Empty source-escrow retention pins use this same owner without a snapshot.
+Aggregate snapshot admission, automatic scoped/source-transfer destructors and
+wider IRQ/guard contexts remain separate qualification.
+
 Retirement keeps the complete detached object node in the existing backing
 receipt, with its original frame vector, charge and metadata. Physical release
 uses sixteen-frame batches; a started/failed fence precedes allocator entry.

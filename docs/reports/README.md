@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Copy-pin snapshot storage](audits/2026-10-25-security-copy-snapshot-storage.md) — Pin-free snapshot preparation outside memory serialization, captured source revalidation and inert bare-pin fallback.
+
 - [Scratch metadata admission](audits/2026-10-25-security-scratch-admission.md) — Requested-layout/count ceilings follow candidates and retained root metadata through actual deallocation.
 
 - [Scratch namespace and extent storage](audits/2026-10-25-security-scratch-storage.md) — Prepared virtual-range metadata, atomic MMIO claim revalidation and complete root-receipt retention.

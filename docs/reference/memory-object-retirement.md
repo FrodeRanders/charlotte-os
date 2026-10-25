@@ -120,6 +120,18 @@ owned through physical release.
 
 ## Mapping rejection and maintenance
 
+Copy-pin frame snapshots now prepare before any pin or frame identity is captured,
+outside memory serialization. Final namespace-generation, source object/size and
+all copy admission predicates revalidate before allocation-free fill and pin
+publication. Bare preparation/pin fallback retains snapshot metadata and the
+original backing fence without allocator entry. Explicit unpin disposes snapshot
+capacity before decrementing that pin; the independent mapping-retirement pin
+still prevents last-copy-unpin from bypassing unfinished invalidation. No root
+lease, custody or physical/replay proof is added. Automatic `ScopedCopyPin` and
+containing source-transfer destructors retain their wider-context gap. See
+[copy storage](memory-object-storage.md#copy-pin-snapshots) and
+[evidence](../reports/audits/2026-10-25-security-copy-snapshot-storage.md).
+
 Mapping node and frame-snapshot capacity now prepare fallibly outside the local
 memory registry after preflight admission. No frame identity or pin crosses that
 factory interval. Captured object/size and all admission predicates revalidate

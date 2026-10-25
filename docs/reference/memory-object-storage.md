@@ -157,6 +157,33 @@ Later promotion and ASID reuse cannot redirect a refund. These ceilings include
 concurrent candidates; allocator overhead, aggregate principals and other metadata
 remain separate. See [admission evidence](../reports/audits/2026-10-25-security-scratch-admission.md).
 
+## Copy-pin snapshots
+
+Copy-pin admission probes capability, rights, source ownership, loan/retirement/
+DMA fences, writable mappings and checked pin capacity under `MEMORY_OBJECTS`.
+An inert preparation then reserves snapshot capacity fallibly outside that
+registry. No frame identity, borrow or source pin crosses its factory interval.
+Final validation checks the captured namespace generation, object, size and all
+admission predicates before snapshot fill and pin increment share one hold.
+Source close, writable-map/DMA admission or actual ASID reuse can reject the
+unused preparation; no pin or copied frame identity publishes on rejection.
+
+Snapshot fill and pin publication allocate nothing. Ordinary unused/rejected
+preparation explicitly disposes after memory unlock. Partial abandonment retains
+the vector allocation without allocator entry. The bare `CopyPin` likewise
+retains its snapshot and original backing fence on abandonment. Explicit
+`unpin_copy` disposes the actual snapshot before decrementing that same pin and
+permitting any deferred backing release, outside the local memory guard. Empty
+source-escrow retention pins use this same owner without allocating a snapshot.
+
+This preserves the existing source pin and containing IPC/fixture policy; it adds
+no root lease, admission pool, metadata ticket, recovery owner or physical proof.
+The 64 MiB object bound caps one snapshot, but overlapping candidates have no
+independent byte/count or aggregate principal admission. `ScopedCopyPin`'s
+automatic unpin and containing source-transfer/ordinary rollback destructors,
+DMA snapshots and other outer IRQ/guard contexts remain separate qualification.
+See [copy snapshot evidence](../reports/audits/2026-10-25-security-copy-snapshot-storage.md).
+
 ## Complete retirement owner
 
 Object removal detaches the complete node into the existing `ChargedFrames`

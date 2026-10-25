@@ -497,6 +497,17 @@ that boundary. Allocator overhead, aggregate principal metadata, wider contexts
 and sustained concurrent progress remain open. This advances R7-2/R7-3 and the
 same C02/C03/C05/C13/C18 owners; SEC-07/18 and finding counts remain unchanged.
 
+The [copy snapshot batch](../reports/audits/2026-10-25-security-copy-snapshot-storage.md)
+moves frame-vector capacity outside memory serialization, then revalidates exact
+namespace generation, source object/size and every pin admission predicate before
+allocation-free snapshot fill and pin publication. Ordinary unused preparation
+disposes post-guard; bare preparation/pin abandonment retains metadata and the
+original backing fence. Explicit unpin frees the snapshot before decrementing
+that fence. Source close, writable-map/DMA competition, real ASID reuse and
+guarded fallback controls qualify this C18/R7-2 boundary. Aggregate metadata/
+principal admission, `ScopedCopyPin`/source-transfer destructors, DMA snapshots,
+wider outer contexts and pressure remain open. SEC-07/18 counts are unchanged.
+
 SEC-07 remains partial until all of the following deliverables are accepted:
 
 The [telemetry snapshot follow-up](../reports/audits/2026-10-18-telemetry-snapshot-preparation.md)

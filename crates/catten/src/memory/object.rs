@@ -6,6 +6,7 @@
 //! enforces that moving an object consumes the sender's capability.
 
 use alloc::vec::Vec;
+use core::mem::ManuallyDrop;
 
 use crate::{
     cpu::isa::interface::memory::{
@@ -44,6 +45,7 @@ const RETIREMENT_FRAME_BATCH: usize = 16;
 
 mod borrower_storage_tests;
 mod cap_storage;
+mod copy_storage;
 mod mapping_storage;
 mod mapping_tests;
 mod storage_tests;
@@ -52,6 +54,7 @@ pub(crate) fn test_object_storage() {
     borrower_storage_tests::run();
     cap_storage::tests::run();
     mapping_storage::tests::run();
+    copy_storage::tests::run();
     scratch_namespace::tests::run();
 }
 mod publication_tests;
@@ -391,9 +394,19 @@ impl Drop for ScopedCopyPin {
     }
 }
 
+#[must_use]
 pub(crate) struct CopyPin {
     object: MemoryObjectId,
-    frames: Vec<PAddr>,
+    // A bare abandoned pin retains its snapshot and original backing fence.
+    // Only explicit unpin may dispose the snapshot and decrement that fence.
+    frames: ManuallyDrop<Vec<PAddr>>,
+}
+
+impl Drop for CopyPin {
+    fn drop(&mut self) {
+        // Explicit unpin owns release. Fallback retains both metadata and the
+        // registry's original backing fence, without allocator/registry entry.
+    }
 }
 
 pub(crate) struct DmaPin {
@@ -1484,7 +1497,7 @@ fn prepare_source_transfer_with(
         retired_payload: None,
         _pin: ScopedCopyPin(Some(CopyPin {
             object: entry.object,
-            frames: Vec::new(),
+            frames: ManuallyDrop::new(Vec::new()),
         })),
     };
     let payload = match loan {
@@ -1848,13 +1861,20 @@ pub(crate) fn pin_for_copy(
     owner: AddressSpaceId,
     cap: MemoryObjectCap,
 ) -> Result<CopyPin, MemoryObjectError> {
-    let mut registry = MEMORY_OBJECTS.lock();
+    copy_storage::pin(owner, cap)
+}
+
+fn copy_admission(
+    registry: &MemoryObjectRegistry,
+    owner: AddressSpaceId,
+    cap: MemoryObjectCap,
+) -> Result<(MemoryObjectId, usize), MemoryObjectError> {
     let cap_entry = registry.lookup(owner, cap)?;
     if !cap_entry.rights.contains(MemoryObjectRights::MAP_READ) {
         return Err(MemoryObjectError::MissingRight);
     }
     let object =
-        registry.objects.get_mut(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
+        registry.objects.get(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
     if object.owner != owner {
         return Err(MemoryObjectError::WrongOwner);
     }
@@ -1868,16 +1888,8 @@ pub(crate) fn pin_for_copy(
     if object.mappings.values().any(|mapping| mapping.state.writable) {
         return Err(MemoryObjectError::AlreadyMapped);
     }
-    let mut frames = Vec::new();
-    frames
-        .try_reserve_exact(object.frames.len())
-        .map_err(|_| MemoryObjectError::FrameAllocFailed)?;
-    frames.extend_from_slice(&object.frames);
-    object.copy_pins = object.copy_pins.checked_add(1).ok_or(MemoryObjectError::InvalidLength)?;
-    Ok(CopyPin {
-        object: cap_entry.object,
-        frames,
-    })
+    object.copy_pins.checked_add(1).ok_or(MemoryObjectError::InvalidLength)?;
+    Ok((cap_entry.object, object.frames.len()))
 }
 
 pub(crate) fn prepare_copy(
@@ -2509,6 +2521,14 @@ fn deallocate_frames(frames: Option<ChargedFrames>) {
 }
 
 pub(crate) fn unpin_copy(pin: CopyPin) {
+    unpin_copy_with(pin, || {});
+}
+
+fn unpin_copy_with(mut pin: CopyPin, snapshot_disposed: impl FnOnce()) {
+    // Dispose metadata before its original pin can permit backing release.
+    // The complete pin remains armed if disposal or its observer is interrupted.
+    drop(core::mem::take(&mut *pin.frames));
+    snapshot_disposed();
     let frames = {
         let mut registry = MEMORY_OBJECTS.lock();
         release_copy_pin_locked(&mut registry, pin.object)

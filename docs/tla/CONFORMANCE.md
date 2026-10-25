@@ -1359,3 +1359,14 @@ host qualification. These models do not implement the scratch pipeline. There is
 no executable refinement, general metadata budget, sustained-pressure fairness
 or historical failure attribution claim. Earlier full-suite checkpoints stay
 separate.
+
+## Copy-pin snapshot storage
+
+The [copy snapshot storage batch](../reports/audits/2026-10-25-security-copy-snapshot-storage.md)
+prepares vector capacity outside memory serialization and revalidates source
+identity/state before snapshot fill and pin publication. Bare pin fallback retains
+the allocation with its existing backing fence; explicit snapshot disposal now
+precedes unpin. Existing IPC loan/rollback/timeout and root original-charge
+projections are unchanged. Neither focused model implements the copy snapshot
+factory/revalidation interval, concrete allocator or destructor contexts. These
+remain native/source qualification, without a refinement or pressure/fairness proof.
