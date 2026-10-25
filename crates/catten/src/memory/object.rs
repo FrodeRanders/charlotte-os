@@ -360,7 +360,7 @@ struct AddressSpaceCaps {
 struct MemoryObjectRegistry {
     next_object: MemoryObjectId,
     objects: AdmittedMap<MemoryObjectId, MemoryObject>,
-    caps: AdmittedMap<AddressSpaceId, AddressSpaceCaps>,
+    caps: cap_storage::Namespaces,
 }
 
 impl MemoryObjectRegistry {

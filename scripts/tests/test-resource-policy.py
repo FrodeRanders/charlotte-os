@@ -51,6 +51,8 @@ class ResourcePolicy(unittest.TestCase):
 
     def test_invalid_selected_profiles_fail_during_compilation(self):
         cases = {
+            "memory-capability-reserve": "p.memory_capability_nodes.ordinary = p.memory_capability_nodes.total;",
+            "memory-capability-range": "p.memory_capability_nodes.total[0] = u64::MAX;",
             "no-reserve": "p.mapping_nodes.ordinary = p.mapping_nodes.total;",
             "domain": "p.capabilities.domain[0] = p.capabilities.pool.total[0];",
             "machine-range": "p.mapping_nodes.total[0] = u64::MAX;",

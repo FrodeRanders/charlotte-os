@@ -1,10 +1,12 @@
 //! Prepared memory capability/namespace nodes and paired metadata retirement.
 use super::*;
 
+mod admission;
 pub(super) mod tests;
 
-type Storage = PreparedEntry<(MemoryObjectCap, Record)>;
-type NamespaceStorage = PreparedEntry<(AddressSpaceId, AddressSpaceCaps)>;
+type Storage = PreparedEntry<(MemoryObjectCap, Record), admission::Charge>;
+type NamespaceStorage = PreparedEntry<(AddressSpaceId, AddressSpaceCaps), admission::Charge>;
+pub(super) type Namespaces = AdmittedMap<AddressSpaceId, AddressSpaceCaps, admission::Charge>;
 
 #[derive(Debug)]
 struct Record {
@@ -14,7 +16,7 @@ struct Record {
 
 /// Payload borrows remain plain metadata; detached records carry their owner.
 #[derive(Debug)]
-pub(super) struct Caps(AdmittedMap<MemoryObjectCap, Record>);
+pub(super) struct Caps(AdmittedMap<MemoryObjectCap, Record, admission::Charge>);
 impl Caps {
     pub(super) const fn new() -> Self {
         Self(AdmittedMap::new())
@@ -78,13 +80,16 @@ impl Preparing {
             authority: Some(authority),
             handle,
         }));
+        // Capture trusted classification once before any factory or hook.
+        // Promotion/reuse cannot redirect these original node reservations.
+        let platform = super::super::budget::platform_identity(handle.id()) == Some(handle);
         let result = (|| {
             before(0)?;
             owner.0.payload =
-                Some(Storage::try_new().map_err(|_| MemoryObjectError::ResourceLimit)?);
+                Some(admission::prepare(platform).map_err(|_| MemoryObjectError::ResourceLimit)?);
             before(1)?;
             owner.0.namespace =
-                Some(NamespaceStorage::try_new().map_err(|_| MemoryObjectError::ResourceLimit)?);
+                Some(admission::prepare(platform).map_err(|_| MemoryObjectError::ResourceLimit)?);
             before(2)
         })();
         if let Err(error) = result {
@@ -175,7 +180,7 @@ impl Preparing {
 /// The source-move case leaves authority in its containing SourceEscrow until
 /// this payload node has been freed. Every other retirement pairs it here.
 #[must_use]
-pub(super) struct RetiredCapability(RetiredEntry<(MemoryObjectCap, Record)>);
+pub(super) struct RetiredCapability(RetiredEntry<(MemoryObjectCap, Record), admission::Charge>);
 impl core::fmt::Debug for RetiredCapability {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("RetiredCapability").finish_non_exhaustive()
@@ -225,7 +230,7 @@ pub(super) fn retire(
 }
 
 #[must_use]
-pub(super) struct RetiredCapabilities(RetirementList<(MemoryObjectCap, Record)>);
+pub(super) struct RetiredCapabilities(RetirementList<(MemoryObjectCap, Record), admission::Charge>);
 impl core::fmt::Debug for RetiredCapabilities {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("RetiredCapabilities").finish_non_exhaustive()
@@ -256,7 +261,9 @@ impl RetiredCapabilities {
 /// Detachment transfers complete namespace/payload/authority storage without
 /// allocator work. The caller retains its existing closing root/proof.
 #[must_use]
-pub(super) struct RetiredNamespace(RetiredEntry<(AddressSpaceId, AddressSpaceCaps)>);
+pub(super) struct RetiredNamespace(
+    RetiredEntry<(AddressSpaceId, AddressSpaceCaps), admission::Charge>,
+);
 impl RetiredNamespace {
     pub(super) fn release(mut self) {
         while let Some((&cap, _)) = self.0.value().1.caps.0.first_key_value() {

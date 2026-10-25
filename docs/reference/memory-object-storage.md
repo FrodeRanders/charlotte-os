@@ -100,8 +100,10 @@ Existing namespace teardown can dispose hidden staged authority even while an
 abandoned preparation retains unused payload nodes and its captured account
 reference. A preparation is not a root lease or replay owner. Late explicit finish
 uses the original account; actual ASID reuse cannot redirect cancellation to a
-successor. Retained payload metadata still has no separate byte admission, so
-shared authority/root counts are not a complete metadata/principal budget. See
+successor. Payload and namespace nodes now retain their own shared requested-byte/
+count admission through actual deallocation; shared authority/root counts still
+do not provide complete metadata/principal budgets. See
+[node admission](memory-capability-node-admission.md) and
 [preparation evidence](../reports/audits/2026-10-25-security-memory-capability-preparation.md).
 
 The [capability storage follow-up](../reports/audits/2026-10-24-security-memory-capability-storage.md) records evidence and limits.

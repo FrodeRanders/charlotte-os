@@ -49,6 +49,7 @@ fn exercise(p: Policy) {
         p.scratch_nodes,
         p.snapshot_buffers,
         p.mapping_nodes,
+        p.memory_capability_nodes,
     ] {
         exhaust(pool);
     }

@@ -94,9 +94,19 @@ Ordinary success/rejection explicitly frees unused nodes before authority
 cancellation, after local memory guards. The existing containing transfer consumes
 remaining destination storage after source/borrower work. Bare preparation
 abandonment enters no registry, allocator or account destructor. Namespace teardown
-may drain hidden authority while payload metadata remains retained without byte
+may drain hidden authority while payload metadata retains its original byte/count
 admission; late finish after ASID reuse cannot affect a successor. Containing
 transfer/backing destructors and broader IRQ/guard contexts remain separate.
+
+Payload and namespace nodes now share requested-layout admission: 4 MiB and
+32768 nodes total, with 3 MiB and 24576 nodes available to ordinary callers.
+These are compile-time defaults for the memory-capability node pool.
+Each preparation needs two temporary nodes, including an unused namespace
+candidate when a namespace already exists. Original admission follows published,
+detached and abandoned storage until actual node deallocation, before independent
+authority disposal. Promotion, logical retirement and ASID reuse supply no refund.
+Allocator overhead, nested allocations and aggregate principals remain separate;
+see \repofile|docs/reference/memory-capability-node-admission.md|.
 
 Mapping preparation now owns its partial node and shared snapshot in inert
 fields before either factory. Ordinary constructor rejection and every

@@ -9,14 +9,16 @@ operator procedure, authority, planning and qualification process.
 [Policy](../../crates/catten/src/resource_policy.rs) groups typed, copyable
 immutable settings. Family-local constant aliases forward to those fields;
 existing reservation helpers still enforce admission at their owning boundary.
-Six metadata families share the checked `AdmissionPool` counter mechanics:
+Seven metadata families share the checked `AdmissionPool` counter mechanics:
 root metadata, principal history, thread metadata, scratch nodes, snapshot
-buffers and mapping nodes. Each retains its own lock, typed charge, captured
+buffers, mapping nodes and memory-capability nodes. Each retains its own lock,
+typed charge, captured
 classification and allocation-lifetime release policy. The shared counter
 owns no resource and grants no cleanup authority; both counters change together
 on accepted admission/refund and remain unchanged on rejection.
 No new account, registry, classification source or cleanup owner is introduced.
-All numerical defaults below are preserved. They are defaults, not fixed
+Existing numerical defaults are preserved; memory-capability node admission adds
+the separately documented pool below. These are defaults, not fixed
 application requirements or workload sizing guarantees.
 
 ## Fixed-pool inventory
@@ -46,6 +48,7 @@ unlimited node capacity.
 | `scratch_nodes` | node-layout bytes; nodes | — | 384 KiB; 6144 nodes | 512 KiB; 8192 nodes |
 | `snapshot_buffers` | vector-buffer bytes; buffers | — | 3 MiB; 6144 buffers | 4 MiB; 8192 buffers |
 | `mapping_nodes` | node-layout bytes; nodes | — | 768 KiB; 6144 nodes | 1 MiB; 8192 nodes |
+| `memory_capability_nodes` | payload/namespace node-layout bytes; nodes | — | 3 MiB; 24576 nodes | 4 MiB; 32768 nodes |
 | `memory.objects` | backing objects | 1024 | 6144 | 8192 |
 
 Per-source defaults are 64 scheduler waiters, 128 endpoint/thread watches and
@@ -99,6 +102,12 @@ metadata versus stack backing, and requested layouts versus heap overhead. Some
 are workload-dependent and require measurement rather than a universal formula.
 Changing a node total does not silently rescale other families; changes must be
 explicit in the same reviewed profile.
+
+Memory-capability preparation requires a payload node and a namespace candidate,
+including when an existing namespace will win. Account for two temporary slots
+per overlapping preparation, plus published/retained nodes; unified authority
+counts and [payload-node admission](memory-capability-node-admission.md) remain
+independent. Increasing capability counts alone does not raise this pool.
 
 The [host harness](../../scripts/tests/test-resource-policy.py) compiles the
 actual policy and counter code for the default, larger and optional selected

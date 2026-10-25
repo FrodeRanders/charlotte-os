@@ -110,6 +110,10 @@ pub(super) const POLICY: Policy = Policy {
         total: [1024 * 1024, 8192],
         ordinary: [768 * 1024, 6144],
     },
+    memory_capability_nodes: Pool {
+        total: [4 * 1024 * 1024, 32_768],
+        ordinary: [3 * 1024 * 1024, 24_576],
+    },
     memory: Memory {
         object_pages: 16_384,
         domain_object_pages: 16_384,

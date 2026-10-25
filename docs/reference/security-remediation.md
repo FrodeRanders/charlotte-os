@@ -565,9 +565,20 @@ before factories. Ordinary rejection/success explicitly consumes unused metadata
 after local guards, storage before authority cancellation. Guarded bare fallback
 performs no allocator/registry/Arc destruction; actual namespace retirement/reuse
 and late cancellation preserve successor authority. Namespace teardown may drain
-hidden authority while payload metadata remains retained without byte admission.
-Containing transfer/backing destructors and broader contexts remain separate. This
-advances C18/G1 and R7-2 without a new limit, custody or finding disposition change.
+hidden authority while payload metadata remains retained; the node admission
+follow-up below now charges that storage. Containing transfer/backing destructors
+and broader contexts remain separate. This preparation correction advances C18/G1
+and R7-2 without adding custody or changing finding dispositions.
+
+The [memory-capability node admission follow-up](../reports/audits/2026-10-25-security-memory-capability-node-admission.md)
+adds requested byte/count admission before payload and namespace allocation,
+including unused candidates. Original charges follow the existing complete nodes
+through publication, detached cleanup and abandonment until actual deallocation.
+The central compile-time policy supplies 4 MiB/32768 total and 3 MiB/24576 ordinary
+defaults. Real exhaustion, trusted reserve, two-node partial rejection, public
+allocate/move/copy/loan denial and cleanup/root reuse at exhaustion qualify this
+R7-2/R7-3 family. Aggregate principal/general-heap accounting, other metadata and
+sustained concurrent progress remain open; SEC-07/18 stay partial.
 
 SEC-07 remains partial until all of the following deliverables are accepted:
 

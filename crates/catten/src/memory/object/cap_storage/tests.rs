@@ -17,6 +17,7 @@ pub(crate) fn run() {
     publication_and_detachment();
     stale_namespace();
     late_cancellation();
+    admission::tests::run();
     guarded_abandonment();
     crate::logln!(
         "[memory capability storage] 192 charged preparation-prefix rejections, 64 heap-held \
@@ -28,11 +29,11 @@ pub(crate) fn run() {
          storage-before-authority finishes, 64 local-guard rejection finishes and 192 containing \
          move/loan/copy rejections passed; guarded fallback retains four unused metadata nodes \
          and captured authority/account references, no data/root/pin; namespace retirement may \
-         dispose hidden authority, retained payload metadata has no byte admission"
+         dispose hidden authority, retained payload metadata keeps original byte/count admission"
     );
 }
 
-fn available() {
+pub(super) fn available() {
     assert!(MEMORY_OBJECTS.try_lock().is_some());
     assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());
     assert!(PRIMARY_ALLOCATOR.try_lock().is_some());
@@ -142,9 +143,18 @@ fn late_cancellation() {
 fn guarded_abandonment() {
     let handle = root();
     let counts = crate::capability::node_admission_used();
+    let nodes = admission::snapshot();
+    let retained = |payloads: u64, namespaces: u64| {
+        let bytes = payloads * Storage::allocation_bytes() as u64
+            + namespaces * NamespaceStorage::allocation_bytes() as u64;
+        (
+            [nodes.0[0] + bytes, nodes.0[1] + payloads + namespaces],
+            [nodes.1[0] + bytes, nodes.1[1] + payloads + namespaces],
+        )
+    };
     let irq = crate::cpu::isa::lp::ops::get_int_state();
     let partial = Preparing(ManuallyDrop::new(Resources {
-        payload: Some(Storage::try_new().unwrap()),
+        payload: Some(admission::prepare(false).unwrap()),
         namespace: None,
         authority: Some(admit_capability(handle.id(), handle).unwrap()),
         handle,
@@ -167,17 +177,21 @@ fn guarded_abandonment() {
         let _table = ADDRESS_SPACE_TABLE.lock();
         let _heap = PRIMARY_ALLOCATOR.lock();
         let _physical = PHYSICAL_FRAME_ALLOCATOR.lock();
-        crate::capability::admission_tests::test_with_registry_locked(|| {
-            drop(partial);
-            drop(full);
-            drop(published);
-            drop(replacement);
+        admission::with_locked(|| {
+            crate::capability::admission_tests::test_with_registry_locked(|| {
+                drop(partial);
+                drop(full);
+                drop(published);
+                drop(replacement);
+            });
         });
     }
+    assert_eq!(admission::snapshot(), retained(4, 3));
     assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
     assert_eq!(crate::capability::node_admission_used().0, counts.0 + 4);
     let namespace = retire_namespace(&mut local, handle.id()).unwrap();
     namespace.release();
+    assert_eq!(admission::snapshot(), retained(2, 2));
     assert_eq!(crate::capability::node_admission_used().0, counts.0 + 2);
     for id in [first_hidden, second_hidden] {
         assert!(!crate::capability::contains(
@@ -188,8 +202,9 @@ fn guarded_abandonment() {
     }
     // Existing namespace teardown can consume staged authority. The inert
     // payload preparations are not leases or retry owners; their unused nodes
-    // and captured account references remain retained without byte admission.
+    // and captured account references retain their original byte/count admission.
     memory::close_user_address_space_handle(handle).unwrap();
+    assert_eq!(admission::snapshot(), retained(2, 2));
     assert_eq!(crate::capability::node_admission_used(), counts);
     let fresh = root();
     assert_eq!(fresh.id(), handle.id());
@@ -198,12 +213,14 @@ fn guarded_abandonment() {
     write_bytes(fresh.id(), cap, &[0x5a]).unwrap();
     close_cap(fresh.id(), cap).unwrap();
     memory::close_user_address_space_handle(fresh).unwrap();
+    assert_eq!(admission::snapshot(), retained(2, 2));
     assert_eq!(crate::capability::node_admission_used(), counts);
 }
 
 fn rejected_prefixes() {
     let handle = root();
     let counts = crate::capability::node_admission_used();
+    let nodes = admission::snapshot();
     let frames = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     for reject in 0..3 {
         for _ in 0..64 {
@@ -222,6 +239,7 @@ fn rejected_prefixes() {
                 Err(MemoryObjectError::ResourceLimit)
             ));
             assert_eq!(crate::capability::node_admission_used(), counts);
+            assert_eq!(admission::snapshot(), nodes);
             assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), frames);
             assert!(MEMORY_OBJECTS.lock().caps.get(&handle.id()).is_none());
         }
@@ -229,7 +247,7 @@ fn rejected_prefixes() {
     memory::close_user_address_space_handle(handle).unwrap();
 }
 
-fn payload() -> MemoryCap {
+pub(super) fn payload() -> MemoryCap {
     // Isolated metadata below is never installed into MEMORY_OBJECTS. Shared
     // authority is published only in an unstarted fixture root, then retired.
     MemoryCap {
@@ -284,7 +302,7 @@ fn stale_namespace() {
     let old = root();
     let mut local = MemoryObjectRegistry::new();
     local.caps.insert(
-        NamespaceStorage::try_new().unwrap(),
+        admission::prepare(false).unwrap(),
         old.id(),
         AddressSpaceCaps {
             handle: old,

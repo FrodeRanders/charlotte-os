@@ -388,7 +388,11 @@ Source, tests, and repository history remain authoritative.
         guards. Direct/source/copy callers and containing transfer cleanup consume
         it explicitly. Guarded bare fallback and late cancellation after root reuse
         are qualified; namespace teardown can drain hidden authority while payload
-        metadata remains without byte admission. Broader outer transfer/backing
+        metadata retains original requested-byte/count admission: 4 MiB and 32768
+        nodes total, 3 MiB and 24576 ordinary, shared with namespace nodes.
+        Admission precedes allocation and follows actual node deallocation,
+        including unused candidates and abandoned metadata after authority
+        teardown. These defaults use the central compile-time policy. Broader outer transfer/backing
         and IRQ/destructor contexts remain separate.
         Mapping nodes and snapshot capacity now prepare outside memory
         serialization, then revalidate before relink/pin publication. Existing
