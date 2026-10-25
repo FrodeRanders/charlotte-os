@@ -8,8 +8,8 @@ name, a role claim or the current occupant of a reusable ASID.
 
 | Dimension | Initial kernel policy |
 | --- | --- |
-| Memory-object, committed heap, ELF/runtime and private-table pages, plus full user-thread stack capacity | 16,384 pages (64 MiB) per principal |
-| Memory-object backing allocations | 1,024 objects per principal |
+| Memory-object, committed heap, ELF/runtime and private-table pages, plus full user-thread stack capacity | 16384 pages (64 MiB) per principal |
+| Memory-object backing allocations | 1024 objects per principal |
 
 The page dimension counts reserved stack capacity even before every data page
 is committed. Both dimensions must fit. Existing generation, family/node,

@@ -8,9 +8,9 @@ retained cancellation backing still exists.
 | Limit | Current kernel policy |
 | --- | --- |
 | Operation submission slots in a domain | Its configured completion capacity; capability and detached operations share it. |
-| Completion timer events in a domain | The smaller of completion capacity and 1,024 events. The service loader currently uses capacity 16. |
-| Anonymous timer events on a node | 8,192 events shared with sleeps/watchdogs, including cancelled events awaiting physical queue removal. |
-| Ordinary-domain share of node events | 6,144 events; kernel/supervisor-designated platform domains may use the remaining 2,048. |
+| Completion timer events in a domain | The smaller of completion capacity and 1024 events. The service loader currently uses capacity 16. |
+| Anonymous timer events on a node | 8192 events shared with sleeps/watchdogs, including cancelled events awaiting physical queue removal. |
+| Ordinary-domain share of node events | 6144 events; kernel/supervisor-designated platform domains may use the remaining 2048. |
 
 Platform access comes from kernel launch policy. The generation-qualified
 designation must match the completion namespace, so ASID reuse cannot inherit

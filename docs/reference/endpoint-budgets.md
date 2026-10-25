@@ -13,11 +13,11 @@ creating IPC namespace, including after delegation or domain retirement.
 | Limit | Current kernel policy |
 | --- | --- |
 | Endpoint records per domain generation | 64 |
-| Queue backing slots per domain generation | 8,192 |
-| Endpoint records per node | 1,024 |
-| Queue backing slots per node | 32,768 |
-| Ordinary-domain share of node capacity | 768 records and 24,576 slots |
-| Single endpoint's admission capacity | 1–4,096 messages |
+| Queue backing slots per domain generation | 8192 |
+| Endpoint records per node | 1024 |
+| Queue backing slots per node | 32768 |
+| Ordinary-domain share of node capacity | 768 records and 24576 slots |
+| Single endpoint's admission capacity | 1–4096 messages |
 
 These are initial kernel policies, not signed descriptor parameters or
 application-facing settings. They bound endpoint storage, independently of

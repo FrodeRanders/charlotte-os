@@ -11,9 +11,9 @@ count dimensions, independent of endpoint queues and scheduler waiter entries.
 
 | Record dimension | Per sponsoring namespace generation | Node | Ordinary-domain node share |
 | --- | --- | --- | --- |
-| Connection capabilities | 512 | 8,192 | 6,144 |
-| Retained pending calls | 512 | 8,192 | 6,144 |
-| Outstanding reply tokens | 512 | 8,192 | 6,144 |
+| Connection capabilities | 512 | 8192 | 6144 |
+| Retained pending calls | 512 | 8192 | 6144 |
+| Outstanding reply tokens | 512 | 8192 | 6144 |
 
 These are initial kernel policies, not signed deployment settings. Platform
 classification comes from the kernel's exact live generation designation,

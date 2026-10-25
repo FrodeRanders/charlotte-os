@@ -15,45 +15,47 @@ application requirements or workload sizing guarantees.
 
 ## Fixed-pool inventory
 
-Vectors list dimensions in the stated order. Counts and requested bytes are
-independent dimensions. A missing domain limit means that this pool has no
-per-domain dimension, not unlimited node capacity.
+Counts and requested bytes are independent dimensions. Multi-value cells label
+each quantity and separate dimensions with semicolons. Integer counts have no
+thousands separators. No comma is used as a decimal separator in this inventory.
+A missing domain limit means that this pool has no per-domain dimension, not
+unlimited node capacity.
 
 | Policy field | Dimensions | Domain default | Ordinary default | Total default |
 | --- | --- | --- | --- | --- |
-| `capabilities` | records | 4,096 | 49,152 | 65,536 |
-| `completions` | records | 1,024 | 6,144 | 8,192 |
-| `timers` | events | 1,024 | 6,144 | 8,192 |
-| `watches` | endpoint/thread/callback entries | 1,024 | 6,144 | 8,192 |
-| `waiters` | scheduler entries | 1,024 | 6,144 | 8,192 |
-| `observer_lists` | allocation lifetimes | — | 6,144 | 8,192 |
-| `mailbox_records` | records | 512 | 6,144 | 8,192 |
-| `mailbox_queues` | sets, ring bytes | 2, 1 MiB | 768, 6 MiB | 1,024, 8 MiB |
-| `ipc_records` | connections, pending calls, replies | 512 each | 6,144 each | 8,192 each |
-| `endpoints` | endpoints, queue slots | 64, 8,192 | 768, 24,576 | 1,024, 32,768 |
-| `completion_queues` | queues, backing bytes | 32, 256 KiB | 1,536, 3 MiB | 2,048, 4 MiB |
-| `root_metadata` | node-layout bytes, nodes | — | 3 MiB, 9,216 | 4 MiB, 12,288 |
-| `principal_history` | node-layout bytes, nodes | — | 768 KiB, 3,072 | 1 MiB, 4,096 |
-| `thread_metadata` | context/node bytes, bundles | principal 1 MiB, 128 | 6 MiB, 3,072 | 8 MiB, 4,096 |
-| `scratch_nodes` | node-layout bytes, nodes | — | 384 KiB, 6,144 | 512 KiB, 8,192 |
-| `snapshot_buffers` | vector-buffer bytes, buffers | — | 3 MiB, 6,144 | 4 MiB, 8,192 |
-| `mapping_nodes` | node-layout bytes, nodes | — | 768 KiB, 6,144 | 1 MiB, 8,192 |
-| `memory.objects` | backing objects | 1,024 | 6,144 | 8,192 |
+| `capabilities` | records | 4096 | 49152 | 65536 |
+| `completions` | records | 1024 | 6144 | 8192 |
+| `timers` | events | 1024 | 6144 | 8192 |
+| `watches` | endpoint/thread/callback entries | 1024 | 6144 | 8192 |
+| `waiters` | scheduler entries | 1024 | 6144 | 8192 |
+| `observer_lists` | allocation lifetimes | — | 6144 | 8192 |
+| `mailbox_records` | records | 512 | 6144 | 8192 |
+| `mailbox_queues` | sets; ring bytes | 2 sets; 1 MiB | 768 sets; 6 MiB | 1024 sets; 8 MiB |
+| `ipc_records` | connections, pending calls, replies | 512 each | 6144 each | 8192 each |
+| `endpoints` | endpoints; queue slots | 64 endpoints; 8192 slots | 768 endpoints; 24576 slots | 1024 endpoints; 32768 slots |
+| `completion_queues` | queues; backing bytes | 32 queues; 256 KiB | 1536 queues; 3 MiB | 2048 queues; 4 MiB |
+| `root_metadata` | node-layout bytes; nodes | — | 3 MiB; 9216 nodes | 4 MiB; 12288 nodes |
+| `principal_history` | node-layout bytes; nodes | — | 768 KiB; 3072 nodes | 1 MiB; 4096 nodes |
+| `thread_metadata` | context/node bytes; bundles | principal 1 MiB; 128 bundles | 6 MiB; 3072 bundles | 8 MiB; 4096 bundles |
+| `scratch_nodes` | node-layout bytes; nodes | — | 384 KiB; 6144 nodes | 512 KiB; 8192 nodes |
+| `snapshot_buffers` | vector-buffer bytes; buffers | — | 3 MiB; 6144 buffers | 4 MiB; 8192 buffers |
+| `mapping_nodes` | node-layout bytes; nodes | — | 768 KiB; 6144 nodes | 1 MiB; 8192 nodes |
+| `memory.objects` | backing objects | 1024 | 6144 | 8192 |
 
 Per-source defaults are 64 scheduler waiters, 128 endpoint/thread watches and
-128 completion callbacks. Maximum endpoint capacity is 4,096 entries; diagnostic
+128 completion callbacks. Maximum endpoint capacity is 4096 entries; diagnostic
 snapshot scratch is 1 MiB per request. These forward to `Policy.local`.
 
 ## Backing, physical fractions and kernel heap
 
 `Policy.memory` groups:
 
-- Per-object and domain object backing: 16,384 pages each. One authenticated
-  principal shares 16,384 pages across its admitted backing and 1,024 objects.
-- Heap backing per root: 1,264 pages, the existing launch ABI's `0x4f0000`-byte
+- Per-object and domain object backing: 16384 pages each. One authenticated
+  principal shares 16384 pages across its admitted backing and 1024 objects.
+- Heap backing per root: 1264 pages, the existing launch ABI's `0x4f0000`-byte
   heap interval; the launch's ordinary initial heap is a separate value. Image/
-  runtime backing permits 16,384 pages per root. Private tables allow 1,024 pages.
-- IOMMU per-domain and per-unit backing: 1,024 and 2,048 pages respectively.
+  runtime backing permits 16384 pages per root. Private tables allow 1024 pages.
+- IOMMU per-domain and per-unit backing: 1024 and 2048 pages respectively.
 - Independent usable-RAM ratios: objects, heap and image each 1/4; stack 1/8;
   private tables 1/16; fresh shared tables 1/64; IOMMU tables 1/32. Each pool
   retains the previous minimum-one-page rule. Ratios apply after 4 KiB page

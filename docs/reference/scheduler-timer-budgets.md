@@ -12,14 +12,14 @@ does not free an event still held by an LP queue. Both require admission.
 
 | Event limit | Kernel policy |
 | --- | ---: |
-| Sleep/watchdog events per sponsoring domain generation | 1,024 |
-| Completion-backed events per completion namespace | Smaller of its completion capacity and 1,024 |
-| Anonymous events per node, shared by both families | 8,192 |
-| Ordinary-domain share of that node pool | 6,144 |
+| Sleep/watchdog events per sponsoring domain generation | 1024 |
+| Completion-backed events per completion namespace | Smaller of its completion capacity and 1024 |
+| Anonymous events per node, shared by both families | 8192 |
+| Ordinary-domain share of that node pool | 6144 |
 | Scheduler quantum/idle-wake storage | One embedded slot per LP, outside anonymous admission |
 
 The two domain accounts are independent, not a single aggregate allowance.
-For example, a service with completion capacity 16 can sponsor 1,024 scheduler
+For example, a service with completion capacity 16 can sponsor 1024 scheduler
 events plus 16 completion events, subject to the **shared** node pool.
 There are no deployment overrides or application-controlled platform setters.
 Kernel/supervisor-designated platform generations may use the node reserve;
@@ -253,7 +253,7 @@ remain separate; see the [detached preparation follow-up](../reports/audits/2026
 
 ## Evidence and limits
 
-Kernel fixtures cover 1,024 real sorted nodes, reuse after removal, iterative
+Kernel fixtures cover 1024 real sorted nodes, reuse after removal, iterative
 filter/destruction, the inline quantum, shared node/ordinary saturation
 (counter-only at the node maximum), platform promotion, retirement and exact
 ASID reuse. A deterministic queue-node allocation failure checks charge rollback;

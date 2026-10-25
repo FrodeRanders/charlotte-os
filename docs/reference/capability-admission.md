@@ -18,11 +18,11 @@ budget bypass have been removed. SEC-07 remains partial for broader accounting.
 
 | Shared admission scope | Record limit |
 | --- | ---: |
-| One namespace | 4,096 |
-| Node total | 65,536 |
-| Ordinary records on the node | 49,152 |
+| One namespace | 4096 |
+| Node total | 65536 |
+| Ordinary records on the node | 49152 |
 
-The remaining 16,384 records are shared platform headroom, not a per-service
+The remaining 16384 records are shared platform headroom, not a per-service
 allowance. Kernel platform launch policy
 sets the namespace's class against an exact address-space handle. A later
 promotion affects future records; existing charges retain their original
@@ -366,7 +366,7 @@ live loan; successful retry revokes it and leaves observed authority independent
 of the pending call. These are deterministic kernel fixtures, not allocator
 failure injection, exhaustive scheduling exploration or a new EL0 quota probe.
 
-Kernel fixtures fill 4,096 actual records across all six kinds, test hidden
+Kernel fixtures fill 4096 actual records across all six kinds, test hidden
 staging/cancellation, source rollback at capacity, committed revocation and
 capacity reuse. A staged batch cancels every entry after rejection; this is
 not an atomic vector-admission API. Exact-number replacement fixtures preserve

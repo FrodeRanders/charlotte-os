@@ -24,9 +24,9 @@ an exit and returns submission failure.
 | Per endpoint, across callers | 128 |
 | Per target thread, across callers | 128 |
 | Per completion, non-scheduler kernel callbacks | 128 |
-| Per submitting completion namespace | Configured completion capacity, clamped to 1,024 |
-| Per node | 8,192 |
-| Ordinary-domain share | 6,144 |
+| Per submitting completion namespace | Configured completion capacity, clamped to 1024 |
+| Per node | 8192 |
+| Ordinary-domain share | 6144 |
 
 Endpoint-close, thread-exit and kernel completion-callback entries share the namespace and node pools;
 they are not additional allowances per event type. These are independent of

@@ -14,8 +14,8 @@ capability, requester or domain number.
 
 | Scope | Ceiling |
 | --- | --- |
-| One DMA domain | 1,024 actual 4 KiB pages (4 MiB), including its root and SMMU context descriptor. |
-| One remapping unit | 2,048 pages (8 MiB), including shared tables, queues and completion storage. |
+| One DMA domain | 1024 actual 4 KiB pages (4 MiB), including its root and SMMU context descriptor. |
+| One remapping unit | 2048 pages (8 MiB), including shared tables, queues and completion storage. |
 | Node total | One thirty-second of usable RAM, rounded down to pages, minimum one. |
 | All DMA domains | Three quarters of the node total; the final quarter is shared-unit headroom. |
 

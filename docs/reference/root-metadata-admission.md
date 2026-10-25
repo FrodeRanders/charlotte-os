@@ -13,7 +13,7 @@ including partial preparation and detached retirement receipts.
 | Dimension | Whole node | Ordinary preparation |
 | --- | --- | --- |
 | Requested node-layout bytes | 4 MiB | 3 MiB |
-| Prepared, published or retained nodes | 12,288 | 9,216 |
+| Prepared, published or retained nodes | 12288 | 9216 |
 
 A complete root needs three nodes. Their requested sizes include their payload,
 link and typed charge; each type reserves its actual layout before allocating.

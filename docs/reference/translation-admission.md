@@ -12,8 +12,8 @@ data backing, heap, image or memory-object limits.
 
 | Scope | Ceiling |
 | --- | --- |
-| One owning root lifetime | 1,024 table frames (4 MiB). |
-| One signed principal | Private-table pages share the 16,384-page data/table/stack ceiling across instances and generations. |
+| One owning root lifetime | 1024 table frames (4 MiB). |
+| One signed principal | Private-table pages share the 16384-page data/table/stack ceiling across instances and generations. |
 | Node private-table pool | One sixteenth of usable RAM, rounded down to pages (minimum one). |
 | Ordinary domains | Three quarters of that node pool. |
 

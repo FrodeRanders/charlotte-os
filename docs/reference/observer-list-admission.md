@@ -13,8 +13,8 @@ waiter and event-watch entry charges account for a different lifetime.
 
 | Limit | Kernel policy |
 | --- | ---: |
-| Retained list allocations per node | 8,192 |
-| Ordinary share | 6,144 |
+| Retained list allocations per node | 8192 |
+| Ordinary share | 6144 |
 | Platform reserve | Remaining shared pool; no per-service entitlement |
 
 There is no additional per-domain list account or signed override. Existing

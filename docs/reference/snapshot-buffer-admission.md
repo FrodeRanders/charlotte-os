@@ -11,7 +11,7 @@ CPU mapping, copy-pin and DMA-pin frame snapshots share fixed kernel admission:
 | Dimension | Total | Ordinary callers |
 | --- | --- | --- |
 | Requested vector-buffer bytes | 4 MiB | 3 MiB |
-| Buffer reservations | 8,192 | 6,144 |
+| Buffer reservations | 8192 | 6144 |
 
 A nonempty buffer reserves `pages * size_of::<PAddr>()` bytes and one count before
 the fallible vector allocator. The per-object frame bound is unchanged. On the

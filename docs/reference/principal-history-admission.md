@@ -13,7 +13,7 @@ candidates now share a bounded allocation pool.
 | Dimension | Whole node | Ordinary preparation |
 | --- | --- | --- |
 | Requested node-layout bytes | 1 MiB | 768 KiB |
-| Allocated or reserved nodes | 4,096 | 3,072 |
+| Allocated or reserved nodes | 4096 | 3072 |
 
 Every dimension must fit. One quarter is kept outside ordinary admission for
 trusted platform preparation. These fixed kernel limits have no userspace

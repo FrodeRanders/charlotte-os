@@ -29,7 +29,7 @@ formats are unchanged.
 
 The release relay uses request tag `0x2b` and reply tag `0x2c`. The request body
 is `session:u64 | request_id:u64 | caller_length:u8 | caller | envelope_length:u16 |
-envelope`, with nonempty complete caller identity and the existing 3,584-byte
+envelope`, with nonempty complete caller identity and the existing 3584-byte
 envelope bound. The reply body is `session:u64 | request_id:u64 | result_length:u16 |
 result`. All integers are little endian. The result is a complete receipt or an
 exact eight-byte negative error. Exact frame lengths are required; retired

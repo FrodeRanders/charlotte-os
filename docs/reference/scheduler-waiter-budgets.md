@@ -32,9 +32,9 @@ operation completion or adopt returned capabilities.
 | Live registration limit | Current policy |
 | --- | ---: |
 | Linked entries per completion, CQ, IPC, blocking-lock or timer wait source | 64 |
-| Per waiting domain generation | 1,024 |
-| Per node | 8,192 |
-| Ordinary-domain share | 6,144 |
+| Per waiting domain generation | 1024 |
+| Per node | 8192 |
+| Ordinary-domain share | 6144 |
 
 These limits are separate from completion records, endpoint-close watches,
 timer events and CQ backing. The waiting thread's domain sponsors the entry,

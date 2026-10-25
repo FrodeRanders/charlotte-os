@@ -13,10 +13,10 @@ lifetimes.
 
 | Limit | Current kernel policy |
 | --- | --- |
-| Submission slots per namespace | Its configured completion capacity, clamped to 1,024 |
-| Retained records per namespace | The smaller of that capacity and 1,024 |
-| Retained records per node | 8,192 |
-| Ordinary-domain share | 6,144; the remaining pool is available to kernel-designated platform domains |
+| Submission slots per namespace | Its configured completion capacity, clamped to 1024 |
+| Retained records per namespace | The smaller of that capacity and 1024 |
+| Retained records per node | 8192 |
+| Ordinary-domain share | 6144; the remaining pool is available to kernel-designated platform domains |
 
 The service loader currently configures 16 submission slots. These policies
 are independent of endpoint counts and socket capacity, and have no signed

@@ -32,8 +32,8 @@ storage stays in the preparation until post-guard disposal.
 
 Each completion accepts 128 non-scheduler callback entries. They share the
 [event-watch account and node pool](close-watch-budgets.md) with endpoint-close
-and thread-exit entries: configured completion capacity clamped to 1,024 per
-namespace, 8,192 per node and 6,144 for ordinary domains. Kernel-designated
+and thread-exit entries: configured completion capacity clamped to 1024 per
+namespace, 8192 per node and 6144 for ordinary domains. Kernel-designated
 platform generations may use the remaining shared pool. Default service
 capacity of 16 does not entitle it to 128 linked callbacks.
 

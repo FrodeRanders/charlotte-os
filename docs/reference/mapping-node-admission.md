@@ -5,7 +5,7 @@ CPU memory-object mapping records share fixed requested-layout admission:
 | Dimension | Total | Ordinary callers |
 | --- | --- | --- |
 | Requested node-layout bytes | 1 MiB | 768 KiB |
-| Prepared, published or retained nodes | 8,192 | 6,144 |
+| Prepared, published or retained nodes | 8192 | 6144 |
 
 These values are the default of the central compile-time
 [resource policy](resource-policy.md). `CATTEN_RESOURCE_POLICY` can select a

@@ -21,7 +21,7 @@ Namespace candidates and extent nodes share one fixed requested-byte/count pool:
 | Dimension | Whole node | Ordinary preparation |
 | --- | --- | --- |
 | Requested node-layout bytes | 512 KiB | 384 KiB |
-| Prepared, published or retained nodes | 8,192 | 6,144 |
+| Prepared, published or retained nodes | 8192 | 6144 |
 
 Every node reserves its actual layout, including payload, link and typed charge,
 before the fallible allocator. One preparation needs two nodes, even when an
@@ -57,7 +57,7 @@ vector shifting. Each live reservation owns one extent node; gaps combine
 implicitly. Exact release only detaches the original node under the scratch
 registry and explicitly frees it after that guard. Neither publication nor
 detachment allocates or deallocates. First-fit lookup and ordered insertion are
-linear; the 131,072-page window and existing resource limits do not qualify
+linear; the 131072-page window and existing resource limits do not qualify
 worst-case hold time or concurrent pressure/fairness. The requested layouts now
 have the ceilings above; comprehensive metadata/principal admission remains open.
 Nodes add allocator overhead rather than a vector
@@ -104,7 +104,7 @@ or generation checks cannot substitute for its physical completion proof.
 The standalone host runner reuses the exact production admitted collection:
 **six scratch cases plus sixteen shared collection cases** pass. Scratch checks
 cover first fit, implicit gaps, exact release rejection, missing preparation,
-invalid/exhausted/overflow requests, independent windows and a 6,000-operation
+invalid/exhausted/overflow requests, independent windows and a 6000-operation
 bitmap oracle. Shared collection controls trace allocation-free relinking,
 inert abandonment and actual node-disposal ordering. They do not force global
 allocator OOM or prove cross-LP fairness.

@@ -15,8 +15,8 @@ capacity does not eagerly allocate or promise physical frames.
 | Scope | Reservation or ceiling |
 | --- | --- |
 | User thread | Configured maximum user pages plus 16 kernel-stack pages. |
-| Owning user root | At most 64 stack slots; each user range admits at most 64 pages. Maximum combined footprint is 5,120 pages (20 MiB). Signed/adaptive limits can reduce this. |
-| One signed principal | Maximum user-plus-kernel stack capacity shares the 16,384-page data/table/stack ceiling across instances. |
+| Owning user root | At most 64 stack slots; each user range admits at most 64 pages. Maximum combined footprint is 5120 pages (20 MiB). Signed/adaptive limits can reduce this. |
+| One signed principal | Maximum user-plus-kernel stack capacity shares the 16384-page data/table/stack ceiling across instances. |
 | Kernel-only thread | 16 pages from trusted kernel admission. |
 | Node stack pool | One eighth of usable RAM, rounded down to pages, minimum one. |
 | Ordinary user domains | Three quarters of that node pool; the final quarter is trusted-platform headroom. |

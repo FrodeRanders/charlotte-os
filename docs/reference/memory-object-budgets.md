@@ -12,10 +12,10 @@ checks, independent of telemetry smoothing or placement decisions.
 
 | Limit | Current policy |
 | --- | --- |
-| One allocation | At most 16,384 pages (64 MiB) |
-| One sponsoring generation | At most 16,384 pages, clamped to the node pool; at most 1,024 backing objects |
-| One signed principal, across generations | 16,384 combined object/heap/image/private-table pages and maximum stack capacity and 1,024 memory objects; see [aggregate admission](principal-backing-admission.md). |
-| Entire node | At most one quarter of usable RAM in backing pages; at most 8,192 backing objects |
+| One allocation | At most 16384 pages (64 MiB) |
+| One sponsoring generation | At most 16384 pages, clamped to the node pool; at most 1024 backing objects |
+| One signed principal, across generations | 16384 combined object/heap/image/private-table pages and maximum stack capacity and 1024 memory objects; see [aggregate admission](principal-backing-admission.md). |
+| Entire node | At most one quarter of usable RAM in backing pages; at most 8192 backing objects |
 | Ordinary-domain share | At most three quarters of each node-pool limit |
 | Physical progress reserve | Allocation must leave at least one eighth of usable frames free |
 

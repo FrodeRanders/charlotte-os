@@ -6,8 +6,8 @@ counter implementation as [demand heaps](heap-admission.md).
 
 | Scope | Image/runtime physical backing ceiling |
 | --- | --- |
-| One address-space lifetime | 16,384 pages (64 MiB). |
-| One signed principal | 16,384 combined data/private-table pages and full stack capacity across generations. |
+| One address-space lifetime | 16384 pages (64 MiB). |
+| One signed principal | 16384 combined data/private-table pages and full stack capacity across generations. |
 | Node total | One quarter of usable RAM, rounded down to pages (minimum one). |
 | Ordinary domains | Three quarters of the node image pool. |
 

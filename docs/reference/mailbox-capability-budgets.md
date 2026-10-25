@@ -6,10 +6,10 @@ have independent record admission in `syscall/mailbox_budget.rs`:
 | Scope | Maximum live or staged records |
 | --- | ---: |
 | One domain namespace | 512 |
-| Node total | 8,192 |
-| Ordinary domains on the node | 6,144 |
+| Node total | 8192 |
+| Ordinary domains on the node | 6144 |
 
-The remaining 2,048 node records are a shared progress reserve for
+The remaining 2048 node records are a shared progress reserve for
 kernel-designated platform domains, not an allowance for each service. Reserve
 classification is captured against the exact address-space generation; caller
 names, roles and deployment fields cannot request it. Each record retains its
@@ -46,7 +46,7 @@ independent dimensions in the same captured family account:
 | Scope | Prepared/live queue sets | Requested ring backing bytes |
 | --- | ---: | ---: |
 | One exact domain generation | 2 | 1 MiB |
-| Node total | 1,024 | 8 MiB |
+| Node total | 1024 | 8 MiB |
 | Ordinary domains on the node | 768 | 6 MiB |
 
 Both dimensions must admit before allocation. The remaining 256 sets / 2 MiB
@@ -114,7 +114,7 @@ teardown is confined to boot fixtures. See the [final-metadata evidence](../repo
 
 Kernel fixtures call actual mailbox syscalls to fill 512 mixed sender/receiver
 records, reject another sender, reuse a receiver at the ceiling, close/reopen
-one slot and perform 1,024 open/close cycles. A high-bit-invalid LP is rejected
+one slot and perform 1024 open/close cycles. A high-bit-invalid LP is rejected
 before narrowing. Serial-exhaustion injection tests staged refund and preserved
 existing authority. Retained-charge fixtures reuse exact numeric capabilities
 without crediting the replacement. Real address spaces test retirement before
@@ -154,7 +154,7 @@ new original backing charge.
 ## Shared namespace admission
 
 Mailbox opens also enforce the [shared capability budget](capability-admission.md):
-4,096 records per namespace, 65,536 node-wide and 49,152 ordinary records.
+4096 records per namespace, 65536 node-wide and 49152 ordinary records.
 Completion submissions and memory destinations use the same bounded path.
 Every IPC capability publication does too;
 receive rejection preserves queued work and vector result bytes.

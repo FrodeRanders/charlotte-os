@@ -12,8 +12,8 @@ These resources have different lifetimes from [completion records](completion-re
 | Limit | Registered queues | Kernel-owned backing bytes |
 | --- | ---: | ---: |
 | Per completion namespace | 32 | 256 KiB |
-| Per node | 2,048 | 4 MiB |
-| Ordinary-domain share | 1,536 | 3 MiB |
+| Per node | 2048 | 4 MiB |
+| Ordinary-domain share | 1536 | 3 MiB |
 
 The remainder is available to kernel-designated platform domains. It is a
 shared reserve, not a per-service progress guarantee. Artifact roles, names
@@ -25,7 +25,7 @@ application-facing CQ creation API or signed deployment override yet.
 Each queue reserves one registration and its preallocated backlog's bytes.
 Backlog capacity is rounded up to a power of two, with a minimum of four for
 nonempty queues; checked arithmetic rejects overflow. A namespace's configured
-submission capacity is clamped to 1,024 before allocation. A heap-backed ring
+submission capacity is clamped to 1024 before allocation. A heap-backed ring
 adds 4 KiB, allocated as `Vec<u64>` to guarantee the ring's alignment. Allocation
 uses `try_reserve_exact`; unexpectedly larger capacity is rejected rather than
 retained without a charge.

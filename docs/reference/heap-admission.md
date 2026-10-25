@@ -12,8 +12,8 @@ before allocating a frame, on both AArch64 and x86-64.
 
 | Scope | Physical heap backing ceiling |
 | --- | --- |
-| One address-space lifetime | Fixed heap-window maximum: `HEAP_VA_LIMIT / 4096` (1,264 pages); accessible pages are also limited by its configured virtual capacity. |
-| One signed principal | 16,384 combined data/private-table pages and full stack capacity across generations. |
+| One address-space lifetime | Fixed heap-window maximum: `HEAP_VA_LIMIT / 4096` (1264 pages); accessible pages are also limited by its configured virtual capacity. |
+| One signed principal | 16384 combined data/private-table pages and full stack capacity across generations. |
 | Node total | One quarter of usable RAM, rounded down to pages (minimum one). |
 | Ordinary domains | Three quarters of the node heap pool. |
 

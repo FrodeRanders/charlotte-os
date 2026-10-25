@@ -14,7 +14,7 @@ and preallocated retirement node, including the node's charge field.
 | Dimension | Whole node | Ordinary work | Each verified signed principal |
 | --- | --- | --- | --- |
 | Requested heap bytes | 8 MiB | 6 MiB | 1 MiB |
-| Complete bundles | 4,096 | 3,072 | 128 |
+| Complete bundles | 4096 | 3072 | 128 |
 
 Every dimension must fit. These fixed kernel ceilings have no userspace setter
 or deployment override. They are independent of stack/frame admission and the
