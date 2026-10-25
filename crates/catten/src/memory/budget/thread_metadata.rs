@@ -1,7 +1,7 @@
 //! Requested bytes and bundle counts for stable thread contexts and their
 //! preallocated retirement nodes. The existing principal history sponsors all
 //! generations; no ASID lookup is needed at final post-guard deallocation.
-use charlotte_lifecycle::resources::VectorBudget;
+use charlotte_lifecycle::resources::AdmissionPool;
 
 use crate::memory::{
     Mutex,
@@ -11,15 +11,7 @@ use crate::memory::{
 const NODE_LIMIT: [u64; 2] = crate::resource_policy::POLICY.thread_metadata.total;
 const ORDINARY_LIMIT: [u64; 2] = crate::resource_policy::POLICY.thread_metadata.ordinary;
 
-struct NodeBudget {
-    total: VectorBudget<2>,
-    ordinary: VectorBudget<2>,
-}
-
-static NODE: Mutex<NodeBudget> = Mutex::new(NodeBudget {
-    total: VectorBudget::new(NODE_LIMIT),
-    ordinary: VectorBudget::new(ORDINARY_LIMIT),
-});
+static NODE: Mutex<AdmissionPool<2>> = Mutex::new(AdmissionPool::new(NODE_LIMIT, ORDINARY_LIMIT));
 
 #[derive(Debug)]
 #[must_use]
@@ -44,11 +36,7 @@ impl Charge {
             .map_err(|_| super::Error::Limit)?;
         {
             let mut node = NODE.lock();
-            node.total.reserve(amount).map_err(|_| super::Error::Limit)?;
-            if !platform && node.ordinary.reserve(amount).is_err() {
-                node.total.release(amount).unwrap();
-                return Err(super::Error::Limit);
-            }
+            node.reserve(platform, amount).map_err(|_| super::Error::Limit)?;
         }
         Ok(Self {
             amount,
@@ -61,16 +49,13 @@ impl Charge {
 impl Drop for Charge {
     fn drop(&mut self) {
         let mut node = NODE.lock();
-        node.total.release(self.amount).expect("thread metadata node underflow");
-        if !self.platform {
-            node.ordinary.release(self.amount).expect("thread metadata ordinary underflow");
-        }
+        node.release(self.platform, self.amount).expect("thread metadata node underflow");
     }
 }
 
 pub(crate) fn snapshot() -> ([u64; 2], [u64; 2]) {
     let node = NODE.lock();
-    (node.total.used(), node.ordinary.used())
+    node.used()
 }
 
 /// Serialized boot qualification: fallback must not enter this counter lock.

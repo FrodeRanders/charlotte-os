@@ -73,6 +73,52 @@ impl<const N: usize> VectorBudget<N> {
     }
 }
 
+/// Shared total and ordinary admission for one resource family. Callers retain
+/// serialization, trusted classification and their own typed charge owners.
+/// This counter neither owns storage nor decides when a refund is permitted.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AdmissionPool<const N: usize> {
+    total: VectorBudget<N>,
+    ordinary: VectorBudget<N>,
+}
+
+impl<const N: usize> AdmissionPool<N> {
+    pub const fn new(total: [u64; N], ordinary: [u64; N]) -> Self {
+        Self {
+            total: VectorBudget::new(total),
+            ordinary: VectorBudget::new(ordinary),
+        }
+    }
+
+    pub const fn used(&self) -> ([u64; N], [u64; N]) {
+        (self.total.used(), self.ordinary.used())
+    }
+
+    /// Commit both counters together; ordinary rejection cannot consume total
+    /// capacity. Platform work still obeys the total ceiling.
+    pub fn reserve(&mut self, platform: bool, amount: [u64; N]) -> Result<(), Error> {
+        let mut next = *self;
+        next.total.reserve(amount)?;
+        if !platform {
+            next.ordinary.reserve(amount)?;
+        }
+        *self = next;
+        Ok(())
+    }
+
+    /// The charge owner supplies its original classification and amount only
+    /// after actual release. Underflow leaves both counters unchanged.
+    pub fn release(&mut self, platform: bool, amount: [u64; N]) -> Result<(), Error> {
+        let mut next = *self;
+        next.total.release(amount)?;
+        if !platform {
+            next.ordinary.release(amount)?;
+        }
+        *self = next;
+        Ok(())
+    }
+}
+
 /// One-dimensional admission for records/events rather than backing pages.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CountBudget {
@@ -182,6 +228,67 @@ pub const fn frames_available(free: u64, usable: u64, request: u64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn admission_pool_preserves_platform_reserve_and_original_refunds() {
+        let mut pool = AdmissionPool::new([12, 4], [8, 3]);
+        pool.reserve(false, [8, 2]).unwrap();
+        assert_eq!(pool.used(), ([8, 2], [8, 2]));
+        let before = pool;
+        assert_eq!(pool.reserve(false, [1, 1]), Err(Error::Limit));
+        assert_eq!(pool, before);
+        pool.reserve(true, [4, 2]).unwrap();
+        assert_eq!(pool.used(), ([12, 4], [8, 2]));
+        let full = pool;
+        assert_eq!(pool.reserve(true, [0, 1]), Err(Error::Limit));
+        assert_eq!(pool, full);
+        pool.release(false, [8, 2]).unwrap();
+        assert_eq!(pool.used(), ([4, 2], [0, 0]));
+        pool.reserve(false, [8, 2]).unwrap();
+        pool.release(true, [4, 2]).unwrap();
+        assert_eq!(pool.used(), ([8, 2], [8, 2]));
+        pool.release(false, [8, 2]).unwrap();
+        assert_eq!(pool.used(), ([0; 2], [0; 2]));
+    }
+
+    #[test]
+    fn admission_pool_rejection_is_atomic_across_pools_and_dimensions() {
+        let mut pool = AdmissionPool::new([12, 4], [8, 3]);
+        pool.reserve(false, [4, 2]).unwrap();
+        pool.reserve(true, [4, 0]).unwrap();
+        let before = pool;
+        // Total rejection, then ordinary rejection after total would fit.
+        for amount in [[5, 0], [0, 2], [0, u64::MAX]] {
+            assert_eq!(pool.reserve(false, amount), Err(Error::Limit));
+            assert_eq!(pool, before);
+        }
+        pool.reserve(false, [0, 1]).unwrap();
+        let before = pool;
+        assert_eq!(pool.reserve(false, [0, 0]), Ok(()));
+        assert_eq!(pool.reserve(false, [0, 1]), Err(Error::Limit));
+        assert_eq!(pool, before);
+        // Reject both total underflow and refunds of platform-only capacity.
+        for amount in [[5, 0], [0, 4], [u64::MAX, 0]] {
+            assert_eq!(pool.release(false, amount), Err(Error::Underflow));
+            assert_eq!(pool, before);
+        }
+    }
+
+    #[test]
+    fn admission_pool_rejects_arithmetic_overflow_without_consumption() {
+        let mut pool = AdmissionPool::new([u64::MAX], [u64::MAX - 1]);
+        pool.reserve(false, [u64::MAX - 1]).unwrap();
+        let before = pool;
+        assert_eq!(pool.reserve(false, [1]), Err(Error::Limit));
+        assert_eq!(pool, before);
+        pool.reserve(true, [1]).unwrap();
+        let full = pool;
+        assert_eq!(pool.reserve(true, [1]), Err(Error::Limit));
+        assert_eq!(pool, full);
+        pool.release(false, [u64::MAX - 1]).unwrap();
+        pool.release(true, [1]).unwrap();
+        assert_eq!(pool.used(), ([0], [0]));
+    }
 
     #[test]
     fn queue_backing_rounding_is_checked() {

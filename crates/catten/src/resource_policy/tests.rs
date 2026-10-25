@@ -5,26 +5,25 @@ use super::*;
 mod resources;
 
 fn exhaust<const N: usize>(pool: Pool<N>) {
-    let mut total = resources::VectorBudget::new(pool.total);
-    let mut ordinary = resources::VectorBudget::new(pool.ordinary);
-    total.reserve(pool.ordinary).unwrap();
-    ordinary.reserve(pool.ordinary).unwrap();
-    let before = ordinary;
-    assert!(ordinary.reserve([1; N]).is_err());
-    assert_eq!(ordinary, before);
+    let mut admission = resources::AdmissionPool::new(pool.total, pool.ordinary);
+    admission.reserve(false, pool.ordinary).unwrap();
+    assert_eq!(admission.used(), (pool.ordinary, pool.ordinary));
+    let before = admission;
+    assert!(admission.reserve(false, [1; N]).is_err());
+    assert_eq!(admission, before);
     let mut reserve = [0; N];
     for (i, value) in reserve.iter_mut().enumerate() {
         *value = pool.total[i] - pool.ordinary[i];
     }
-    total.reserve(reserve).unwrap();
-    let before = total;
-    assert!(total.reserve([1; N]).is_err());
-    assert_eq!(total, before);
-    total.release(pool.ordinary).unwrap();
-    ordinary.release(pool.ordinary).unwrap();
-    total.release(reserve).unwrap();
-    assert_eq!(total.used(), [0; N]);
-    assert_eq!(ordinary.used(), [0; N]);
+    admission.reserve(true, reserve).unwrap();
+    assert_eq!(admission.used(), (pool.total, pool.ordinary));
+    let before = admission;
+    assert!(admission.reserve(true, [1; N]).is_err());
+    assert_eq!(admission, before);
+    admission.release(false, pool.ordinary).unwrap();
+    assert_eq!(admission.used(), (reserve, [0; N]));
+    admission.release(true, reserve).unwrap();
+    assert_eq!(admission.used(), ([0; N], [0; N]));
 }
 fn exercise(p: Policy) {
     assert_eq!(p.validate(), Ok(()));

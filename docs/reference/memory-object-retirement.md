@@ -6,6 +6,15 @@ This repairs a teardown race: the final external unpin could previously destroy
 a deferred object after the registry was unlocked but before its shootdown.
 Failed bulk unmaps could also lead to physical release with live leaves.
 
+Move, copy and loan preparation, atomic batch publication and ordinary
+cancellation live together in
+[`object/transfer.rs`](../../crates/catten/src/memory/object/transfer.rs).
+`object.rs` retains registry/backing/mapping policy and reexports the existing
+entry points. A `PreparedTransfer` still owns the exact source escrow, pin,
+destination preparation and any private copy backing; the module boundary
+does not change its active destructor or qualify additional outer IRQ/guard
+contexts. See the [consolidation evidence](../reports/audits/2026-10-25-refactoring-consolidation.md).
+
 ## Sponsor metadata preparation
 
 Memory-budget accounts now have fallibly prepared registry nodes and waiter/timer

@@ -1,7 +1,7 @@
 //! Requested scratch-node layouts share admission through actual deallocation.
 use core::alloc::AllocError;
 
-use charlotte_lifecycle::resources::VectorBudget;
+use charlotte_lifecycle::resources::AdmissionPool;
 
 use crate::{
     klib::collections::retirement_list::PreparedEntry,
@@ -11,14 +11,7 @@ use crate::{
 pub(super) const TOTAL_LIMIT: [u64; 2] = crate::resource_policy::POLICY.scratch_nodes.total;
 pub(super) const ORDINARY_LIMIT: [u64; 2] = crate::resource_policy::POLICY.scratch_nodes.ordinary;
 
-struct Pool {
-    total: VectorBudget<2>,
-    ordinary: VectorBudget<2>,
-}
-static POOL: Mutex<Pool> = Mutex::new(Pool {
-    total: VectorBudget::new(TOTAL_LIMIT),
-    ordinary: VectorBudget::new(ORDINARY_LIMIT),
-});
+static POOL: Mutex<AdmissionPool<2>> = Mutex::new(AdmissionPool::new(TOTAL_LIMIT, ORDINARY_LIMIT));
 
 #[derive(Debug)]
 #[must_use]
@@ -31,11 +24,7 @@ impl Charge {
     fn reserve(platform: bool, bytes: usize) -> Result<Self, AllocError> {
         let bytes = u64::try_from(bytes).map_err(|_| AllocError)?;
         let mut pool = POOL.lock();
-        pool.total.reserve([bytes, 1]).map_err(|_| AllocError)?;
-        if !platform && pool.ordinary.reserve([bytes, 1]).is_err() {
-            pool.total.release([bytes, 1]).unwrap();
-            return Err(AllocError);
-        }
+        pool.reserve(platform, [bytes, 1]).map_err(|_| AllocError)?;
         Ok(Self {
             bytes,
             platform,
@@ -46,10 +35,7 @@ impl Charge {
 impl Drop for Charge {
     fn drop(&mut self) {
         let mut pool = POOL.lock();
-        pool.total.release([self.bytes, 1]).expect("scratch node admission underflow");
-        if !self.platform {
-            pool.ordinary.release([self.bytes, 1]).expect("scratch ordinary admission underflow");
-        }
+        pool.release(self.platform, [self.bytes, 1]).expect("scratch node admission underflow");
     }
 }
 
@@ -67,7 +53,7 @@ pub(super) fn prepare_with<T>(
 
 pub(in crate::memory) fn snapshot() -> ([u64; 2], [u64; 2]) {
     let pool = POOL.lock();
-    (pool.total.used(), pool.ordinary.used())
+    pool.used()
 }
 
 pub(in crate::memory) fn with_locked(work: impl FnOnce()) {

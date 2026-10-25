@@ -46,7 +46,8 @@ class ResourcePolicy(unittest.TestCase):
                 self.assertEqual(compiled.returncode, 0, compiled.stderr)
                 result = subprocess.run([str(self.directory / "tests")], capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                self.assertIn("13 passed; 0 failed", result.stdout)
+                self.assertIn("test result: ok.", result.stdout)
+                self.assertIn("admission_pool_rejection_is_atomic_across_pools_and_dimensions ... ok", result.stdout)
 
     def test_invalid_selected_profiles_fail_during_compilation(self):
         cases = {
