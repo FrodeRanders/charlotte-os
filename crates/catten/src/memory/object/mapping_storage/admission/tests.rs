@@ -187,10 +187,14 @@ fn actual_pressure() {
     assert_eq!(snapshot(), before);
     crate::logln!(
         "[mapping node pressure] {} ordinary + {} reserve actual unused nodes plus one public \
-         mapping, {} requested bytes/node; 768/1024 KiB and 6144/8192 ceilings; exact baseline \
+         mapping, {} requested bytes/node; {}/{} bytes and {}/{} node ceilings; exact baseline \
          after deallocation, public unmap and generation reuse at total exhaustion passed",
         counts.0,
         counts.1,
-        bytes
+        bytes,
+        ORDINARY_LIMIT[0],
+        TOTAL_LIMIT[0],
+        ORDINARY_LIMIT[1],
+        TOTAL_LIMIT[1]
     );
 }

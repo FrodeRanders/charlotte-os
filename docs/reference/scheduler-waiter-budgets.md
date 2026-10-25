@@ -1,5 +1,11 @@
 # Owned scheduler waiter budgets
 
+Kernel admission capacity for this family comes from the default compile-time
+[resource policy](resource-policy.md). Related values can be adjusted together
+in a reviewed build profile; see [Configuration](../guides/configuration.md).
+Structural/protocol bounds and original-charge/physical-completion rules remain
+separate contracts.
+
 Connection, retained-call and reply-token counts have separate
 [IPC record admission](ipc-record-budgets.md). Waiter entries count a different
 lifetime: the thread's parked registration, not the operation it waits for.

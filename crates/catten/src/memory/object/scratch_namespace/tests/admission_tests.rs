@@ -63,12 +63,12 @@ fn pressure() {
     let before = admission::snapshot();
     let handle = root();
     reserve_scratch(handle.id(), 1).unwrap();
-    let mut ordinary: Vec<ExtentStorage> = Vec::with_capacity(8_192);
+    let mut ordinary: Vec<ExtentStorage> = Vec::with_capacity(admission::TOTAL_LIMIT[1] as usize);
     while let Ok(node) = admission::prepare(false) {
         ordinary.push(node);
-        assert!(ordinary.len() <= 8_192);
+        assert!(ordinary.len() <= admission::TOTAL_LIMIT[1] as usize);
     }
-    assert_eq!(admission::snapshot().1[1], 6_144);
+    assert_eq!(admission::snapshot().1[1], admission::ORDINARY_LIMIT[1]);
     for _ in 0..64 {
         assert!(
             admission::prepare_with::<(usize, usize)>(false, |_| {
@@ -100,13 +100,13 @@ fn pressure() {
     memory::close_user_address_space_handle(trusted).unwrap();
     assert_eq!(admission::snapshot(), full_ordinary);
 
-    let mut reserve: Vec<ExtentStorage> = Vec::with_capacity(8_192);
+    let mut reserve: Vec<ExtentStorage> = Vec::with_capacity(admission::TOTAL_LIMIT[1] as usize);
     while let Ok(node) = admission::prepare(true) {
         reserve.push(node);
-        assert!(reserve.len() <= 8_192);
+        assert!(reserve.len() <= admission::TOTAL_LIMIT[1] as usize);
     }
     let full = admission::snapshot();
-    assert_eq!(full.0[1], 8_192);
+    assert_eq!(full.0[1], admission::TOTAL_LIMIT[1]);
     assert!(
         admission::prepare_with::<(usize, usize)>(true, |_| {
             panic!("scratch total rejection entered allocator")
@@ -130,42 +130,46 @@ fn pressure() {
     drop(ordinary);
     assert_eq!(admission::snapshot(), before);
     crate::logln!(
-        "[scratch node pressure] {} ordinary + {} reserved actual extent nodes; 6144/8192 count \
+        "[scratch node pressure] {} ordinary + {} reserved actual extent nodes; {}/{} count \
          ceilings, one-slot rollback, trusted publication and close at total exhaustion passed",
         counts.0,
-        counts.1
+        counts.1,
+        admission::ORDINARY_LIMIT[1],
+        admission::TOTAL_LIMIT[1]
     );
 }
 
 fn byte_pressure() {
     let before = admission::snapshot();
     let bytes = Storage::allocation_bytes() as u64;
-    let mut ordinary: Vec<Storage> = Vec::with_capacity(8_192);
+    let mut ordinary: Vec<Storage> = Vec::with_capacity(admission::TOTAL_LIMIT[1] as usize);
     while let Ok(node) = admission::prepare(false) {
         ordinary.push(node);
-        assert!(ordinary.len() <= 8_192);
+        assert!(ordinary.len() <= admission::TOTAL_LIMIT[1] as usize);
     }
     let used = admission::snapshot();
-    assert!(used.1[0] + bytes > 384 * 1024);
-    assert!(used.1[1] < 6_144);
-    let mut reserve: Vec<Storage> = Vec::with_capacity(8_192);
+    assert!(used.1[0] + bytes > admission::ORDINARY_LIMIT[0]);
+    assert!(used.1[1] < admission::ORDINARY_LIMIT[1]);
+    let mut reserve: Vec<Storage> = Vec::with_capacity(admission::TOTAL_LIMIT[1] as usize);
     while let Ok(node) = admission::prepare(true) {
         reserve.push(node);
-        assert!(reserve.len() <= 8_192);
+        assert!(reserve.len() <= admission::TOTAL_LIMIT[1] as usize);
     }
     let used = admission::snapshot();
-    assert!(used.0[0] + bytes > 512 * 1024);
-    assert!(used.0[1] < 8_192);
+    assert!(used.0[0] + bytes > admission::TOTAL_LIMIT[0]);
+    assert!(used.0[1] < admission::TOTAL_LIMIT[1]);
     let counts = (ordinary.len(), reserve.len());
     drop(reserve);
     drop(ordinary);
     assert_eq!(admission::snapshot(), before);
     crate::logln!(
         "[scratch byte pressure] {} ordinary + {} reserved actual namespace nodes, {} bytes each; \
-         384/512 KiB ceilings reject before count limits and return exact baseline after \
+         {}/{} byte ceilings reject before count limits and return exact baseline after \
          deallocation",
         counts.0,
         counts.1,
-        bytes
+        bytes,
+        admission::ORDINARY_LIMIT[0],
+        admission::TOTAL_LIMIT[0]
     );
 }

@@ -249,3 +249,10 @@ explicit clear policy. JSON whitespace and field order are accepted; duplicate,
 unknown, missing, nested or invalid fields reject before output. This validates
 record structure; it makes no local UTC admission or peer-authentication decision.
 See the [response-reader audit](../reports/audits/2026-10-21-security-ingress-response.md).
+
+`CATTEN_RESOURCE_POLICY` selects an existing absolute-path Rust resource-policy
+file for the kernel build. Unset selects the checked-in defaults; empty/relative/
+missing/directory paths reject. Cargo tracks selection and file changes; these
+capacity values are compiled into the kernel and fixed for that boot. The input
+is trusted build source, never an application/deployment/boot-trust override.
+See [Configuration](../guides/configuration.md) and [policy](resource-policy.md).

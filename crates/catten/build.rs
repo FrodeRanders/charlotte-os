@@ -1,6 +1,24 @@
 use std::env;
 
 fn main() {
+    // Compile-time policy is trusted Rust build input. Require an absolute path
+    // so invocation cwd cannot silently select a different operator profile.
+    println!("cargo:rerun-if-env-changed=CATTEN_RESOURCE_POLICY");
+    let policy = match env::var_os("CATTEN_RESOURCE_POLICY") {
+        Some(path) => {
+            let path = std::path::PathBuf::from(path);
+            assert!(path.is_absolute(), "CATTEN_RESOURCE_POLICY must be an absolute file path");
+            path
+        }
+        None => std::path::PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap())
+            .join("src/resource_policy/defaults.rs"),
+    };
+    let policy = policy.canonicalize().expect("resource policy file must exist");
+    assert!(policy.is_file(), "resource policy must be a file");
+    let policy = policy.to_str().expect("resource policy path must be UTF-8");
+    assert!(!policy.contains(['\n', '\r']), "resource policy path cannot contain newlines");
+    println!("cargo:rerun-if-changed={policy}");
+    println!("cargo:rustc-env=CATTEN_RESOURCE_POLICY_FILE={policy}");
     for retired in ["CATTEN_CLUSTER_VIP", "CATTEN_CLUSTER_TCP_PORT", "CATTEN_CLUSTER_SERVICE_NAME"]
     {
         println!("cargo:rerun-if-env-changed={retired}");

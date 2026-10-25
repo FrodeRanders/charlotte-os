@@ -7,9 +7,12 @@ use charlotte_lifecycle::resources::CountBudget;
 
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
 
-pub(crate) const DOMAIN_LIMIT: usize = 4_096;
-pub(crate) const NODE_LIMIT: usize = 65_536;
-pub(crate) const ORDINARY_LIMIT: usize = 49_152;
+pub(crate) const DOMAIN_LIMIT: usize =
+    crate::resource_policy::POLICY.capabilities.domain[0] as usize;
+pub(crate) const NODE_LIMIT: usize =
+    crate::resource_policy::POLICY.capabilities.pool.total[0] as usize;
+pub(crate) const ORDINARY_LIMIT: usize =
+    crate::resource_policy::POLICY.capabilities.pool.ordinary[0] as usize;
 
 #[derive(Debug)]
 struct Account {

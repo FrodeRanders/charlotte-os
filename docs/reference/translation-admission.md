@@ -1,5 +1,11 @@
 # Translation-table admission
 
+Kernel admission capacity for this family comes from the default compile-time
+[resource policy](resource-policy.md). Related values can be adjusted together
+in a reviewed build profile; see [Configuration](../guides/configuration.md).
+Structural/protocol bounds and original-charge/physical-completion rules remain
+separate contracts.
+
 Each owning user `AddressSpace` embeds a separate translation `Account`.
 Admission counts actual 4 KiB roots and intermediate tables, independently of
 data backing, heap, image or memory-object limits.

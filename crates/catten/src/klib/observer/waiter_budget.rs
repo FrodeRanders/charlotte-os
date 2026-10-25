@@ -8,10 +8,11 @@ use spin::LazyLock;
 
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
 
-pub(crate) const DOMAIN_LIMIT: usize = 1_024;
-pub(crate) const NODE_LIMIT: usize = 8_192;
-pub(crate) const ORDINARY_LIMIT: usize = 6_144;
-pub(crate) const SOURCE_LIMIT: usize = 64;
+pub(crate) const DOMAIN_LIMIT: usize = crate::resource_policy::POLICY.waiters.domain[0] as usize;
+pub(crate) const NODE_LIMIT: usize = crate::resource_policy::POLICY.waiters.pool.total[0] as usize;
+pub(crate) const ORDINARY_LIMIT: usize =
+    crate::resource_policy::POLICY.waiters.pool.ordinary[0] as usize;
+pub(crate) const SOURCE_LIMIT: usize = crate::resource_policy::POLICY.local.waiters_per_source;
 
 #[derive(Debug)]
 struct Account {

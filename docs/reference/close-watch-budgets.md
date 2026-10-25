@@ -1,5 +1,11 @@
 # Cancellable endpoint-close and thread-exit watches
 
+Kernel admission capacity for this family comes from the default compile-time
+[resource policy](resource-policy.md). Related values can be adjusted together
+in a reviewed build profile; see [Configuration](../guides/configuration.md).
+Structural/protocol bounds and original-charge/physical-completion rules remain
+separate contracts.
+
 `Connection::watch_closed()` returns an owned completion for the source
 endpoint's death. Dropping that completion now cancels the registration and
 finishes locally: the endpoint can remain open indefinitely. Cancellation does

@@ -8,8 +8,8 @@ use crate::memory::{
     usage::principal_history::ThreadMetadataCharge,
 };
 
-const NODE_LIMIT: [u64; 2] = [8 * 1024 * 1024, 4096];
-const ORDINARY_LIMIT: [u64; 2] = [6 * 1024 * 1024, 3072];
+const NODE_LIMIT: [u64; 2] = crate::resource_policy::POLICY.thread_metadata.total;
+const ORDINARY_LIMIT: [u64; 2] = crate::resource_policy::POLICY.thread_metadata.ordinary;
 
 struct NodeBudget {
     total: VectorBudget<2>,

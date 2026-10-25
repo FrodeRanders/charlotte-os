@@ -6,8 +6,8 @@ use charlotte_lifecycle::resources::VectorBudget;
 
 use crate::memory::Mutex;
 
-const NODE_LIMIT: [u64; 2] = [1024 * 1024, 4096];
-const ORDINARY_LIMIT: [u64; 2] = [768 * 1024, 3072];
+const NODE_LIMIT: [u64; 2] = crate::resource_policy::POLICY.principal_history.total;
+const ORDINARY_LIMIT: [u64; 2] = crate::resource_policy::POLICY.principal_history.ordinary;
 
 struct Pool {
     total: VectorBudget<2>,

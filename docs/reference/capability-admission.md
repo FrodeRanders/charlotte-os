@@ -1,5 +1,11 @@
 # Shared capability-record admission
 
+Kernel admission capacity for this family comes from the default compile-time
+[resource policy](resource-policy.md). Related values can be adjusted together
+in a reviewed build profile; see [Configuration](../guides/configuration.md).
+Structural/protocol bounds and original-charge/physical-completion rules remain
+separate contracts.
+
 The kernel's unified namespace now accounts for every capability kind:
 IPC, memory, completion, device, mailbox and system-observer authority.
 Mailbox opens and capability-backed completion submissions (including timers,

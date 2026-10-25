@@ -1,5 +1,11 @@
 # IOMMU table backing admission
 
+Kernel admission capacity for this family comes from the default compile-time
+[resource policy](resource-policy.md). Related values can be adjusted together
+in a reviewed build profile; see [Configuration](../guides/configuration.md).
+Structural/protocol bounds and original-charge/physical-completion rules remain
+separate contracts.
+
 Intel VT-d, AMD-Vi and Arm SMMUv3 use `device::dma_tables::Tables` to own
 physical table/queue backing and its admission charge. Admission precedes
 physical allocation and hardware publication. The account follows the exact

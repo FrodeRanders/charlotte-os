@@ -102,7 +102,7 @@ pub const REPLY_ENDPOINT_CLOSED: i64 = -7;
 /// Upper bound on a single endpoint's queued-message capacity. Endpoint
 /// storage is kernel heap, so an EL0-provided capacity must be clamped before
 /// it can drive unbounded allocation.
-pub const MAX_ENDPOINT_CAPACITY: usize = 4096;
+pub const MAX_ENDPOINT_CAPACITY: usize = crate::resource_policy::POLICY.local.endpoint_capacity;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IpcError {

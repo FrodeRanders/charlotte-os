@@ -30,7 +30,11 @@ struct Pool {
 // Independent of private roots and data backing. Bootloader-inherited tables
 // predate this preparation owner; this pool admits fresh runtime allocations.
 static POOL: LazyLock<Mutex<Pool>> = LazyLock::new(|| {
-    let pages = (PHYSICAL_FRAME_ALLOCATOR.lock().usable_bytes() / 4096 / 64).max(1);
+    let pages = crate::resource_policy::POLICY
+        .memory
+        .shared_table_ram
+        .of(PHYSICAL_FRAME_ALLOCATOR.lock().usable_bytes() / 4096)
+        .max(1);
     Mutex::new(Pool {
         budget: Budget::new(amount(pages)),
     })

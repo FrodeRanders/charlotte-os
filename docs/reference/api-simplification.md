@@ -545,3 +545,10 @@ node alias and factory are removed; no compatibility path or replacement node
 is available during teardown. Requested-layout/count admission follows actual
 allocation lifetime. Public ABI/wire formats and existing physical completion
 proofs remain unchanged. See [mapping-node admission](mapping-node-admission.md).
+
+Kernel hardening capacities now forward to one typed resource policy with an
+optional absolute-file build profile. Duplicate family-local capacity values are
+removed; existing aliases keep dimensional context and enforcement at the owner.
+No public ABI, wire grammar, new registry or live policy mutation is introduced.
+Structural/protocol/service policy remains separately inventoried. See
+[resource policy](resource-policy.md).

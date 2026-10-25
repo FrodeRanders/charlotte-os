@@ -8,9 +8,10 @@ use spin::LazyLock;
 
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
 
-pub(crate) const DOMAIN_LIMIT: [u64; 3] = [512, 512, 512];
-pub(crate) const NODE_LIMIT: [u64; 3] = [8_192, 8_192, 8_192];
-pub(crate) const ORDINARY_LIMIT: [u64; 3] = [6_144, 6_144, 6_144];
+pub(crate) const DOMAIN_LIMIT: [u64; 3] = crate::resource_policy::POLICY.ipc_records.domain;
+pub(crate) const NODE_LIMIT: [u64; 3] = crate::resource_policy::POLICY.ipc_records.pool.total;
+pub(crate) const ORDINARY_LIMIT: [u64; 3] =
+    crate::resource_policy::POLICY.ipc_records.pool.ordinary;
 
 struct NodeBudget {
     total: VectorBudget<3>,

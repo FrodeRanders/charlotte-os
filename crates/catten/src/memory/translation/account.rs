@@ -13,7 +13,8 @@ use crate::memory::{
     usage::principal_history::BackingCharge,
 };
 
-pub(crate) const DOMAIN_TABLE_PAGES: u64 = 1024; // 4 MiB of translation metadata.
+pub(crate) const DOMAIN_TABLE_PAGES: u64 =
+    crate::resource_policy::POLICY.memory.private_table_domain_pages; // 4 MiB of translation metadata.
 
 fn amount(pages: u64) -> Amount {
     Amount {
@@ -31,7 +32,9 @@ impl Pool {
     fn new(pages: u64) -> Self {
         Self {
             total: Budget::new(amount(pages)),
-            ordinary: Budget::new(amount(pages * 3 / 4)),
+            ordinary: Budget::new(amount(
+                crate::resource_policy::POLICY.memory.ordinary_share.of(pages),
+            )),
         }
     }
 
@@ -55,7 +58,11 @@ impl Pool {
 // Independent of heap/image/object backing: sparse trees need not track data
 // density. Ordinary roots cannot consume the last quarter of this pool.
 static POOL: LazyLock<Mutex<Pool>> = LazyLock::new(|| {
-    let pages = (PHYSICAL_FRAME_ALLOCATOR.lock().usable_bytes() / 4096 / 16).max(1);
+    let pages = crate::resource_policy::POLICY
+        .memory
+        .private_table_ram
+        .of(PHYSICAL_FRAME_ALLOCATOR.lock().usable_bytes() / 4096)
+        .max(1);
     Mutex::new(Pool::new(pages))
 });
 
@@ -186,17 +193,22 @@ impl Drop for Account {
 
 pub(super) fn test_pool() {
     let mut pool = Pool::new(8);
-    for _ in 0..6 {
+    let ordinary = pool.ordinary.limit().pages;
+    for _ in 0..ordinary {
         pool.reserve(false).unwrap();
     }
     assert!(pool.reserve(false).is_err());
-    pool.reserve(true).unwrap();
-    pool.reserve(true).unwrap();
+    assert_eq!(pool.total.used().pages, ordinary);
+    for _ in ordinary..8 {
+        pool.reserve(true).unwrap();
+    }
     assert!(pool.reserve(true).is_err());
-    pool.release(1, false);
-    pool.reserve(false).unwrap();
-    pool.release(6, false);
-    pool.release(2, true);
+    if ordinary > 0 {
+        pool.release(1, false);
+        pool.reserve(false).unwrap();
+    }
+    pool.release(ordinary, false);
+    pool.release(8 - ordinary, true);
     assert_eq!(pool.total.used().pages, 0);
     assert_eq!(pool.ordinary.used().pages, 0);
 }

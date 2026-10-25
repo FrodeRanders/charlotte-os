@@ -29,7 +29,9 @@ impl Pool {
     fn new(pages: u64) -> Self {
         Self {
             total: Budget::new(amount(pages)),
-            ordinary: Budget::new(amount(pages * 3 / 4)),
+            ordinary: Budget::new(amount(
+                crate::resource_policy::POLICY.memory.ordinary_share.of(pages),
+            )),
         }
     }
 
@@ -51,7 +53,11 @@ impl Pool {
 }
 
 static POOL: LazyLock<Mutex<Pool>> = LazyLock::new(|| {
-    let pages = (PHYSICAL_FRAME_ALLOCATOR.lock().usable_bytes() / 4096 / 8).max(1);
+    let pages = crate::resource_policy::POLICY
+        .memory
+        .stack_ram
+        .of(PHYSICAL_FRAME_ALLOCATOR.lock().usable_bytes() / 4096)
+        .max(1);
     Mutex::new(Pool::new(pages))
 });
 
@@ -113,13 +119,14 @@ impl Drop for OrdinaryPressure {
 
 pub(super) fn test_pool() {
     let mut pool = Pool::new(80);
-    pool.reserve(60, false).unwrap();
+    let ordinary = pool.ordinary.limit().pages;
+    pool.reserve(ordinary, false).unwrap();
     assert!(pool.reserve(1, false).is_none());
-    assert_eq!(pool.total.used().pages, 60);
-    pool.reserve(20, true).unwrap();
+    assert_eq!(pool.total.used().pages, ordinary);
+    pool.reserve(80 - ordinary, true).unwrap();
     assert!(pool.reserve(1, true).is_none());
-    pool.release(60, false);
-    pool.release(20, true);
+    pool.release(ordinary, false);
+    pool.release(80 - ordinary, true);
     assert_eq!(pool.total.used().pages, 0);
     assert_eq!(pool.ordinary.used().pages, 0);
 }

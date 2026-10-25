@@ -43,6 +43,10 @@ messages attach \textbf{memory-object capabilities} with declared transfer modes
 
 \section{Aggregate admission and sponsorship}
 
+The capacities in this section are compile-time defaults, adjustable through the
+central resource policy described in Chapter~\ref{chap:configuration}. Adjusting
+capacity does not change ownership, sponsorship or physical completion rules.
+
 The kernel reserves backing pages and one object-accounting unit before each
 allocation. One generation may sponsor at most 64 MiB and 1,024 backing objects,
 with the page ceiling reduced on smaller nodes. The node's memory-object pool

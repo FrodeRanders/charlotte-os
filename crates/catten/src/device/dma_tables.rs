@@ -18,8 +18,8 @@ use crate::memory::{
     },
 };
 
-pub(super) const DOMAIN_PAGES: u64 = 1024;
-const UNIT_PAGES: u64 = 2048;
+pub(super) const DOMAIN_PAGES: u64 = crate::resource_policy::POLICY.memory.dma_domain_pages;
+const UNIT_PAGES: u64 = crate::resource_policy::POLICY.memory.dma_unit_pages;
 const PAGE: usize = 4096;
 mod tests;
 
@@ -42,7 +42,9 @@ impl Pool {
     fn new(pages: u64) -> Self {
         Self {
             total: Budget::new(amount(pages)),
-            clients: Budget::new(amount(pages * 3 / 4)),
+            clients: Budget::new(amount(
+                crate::resource_policy::POLICY.memory.ordinary_share.of(pages),
+            )),
         }
     }
 
@@ -63,7 +65,11 @@ impl Pool {
     }
 }
 static POOL: LazyLock<Mutex<Pool>> = LazyLock::new(|| {
-    let pages = (PHYSICAL_FRAME_ALLOCATOR.lock().usable_bytes() / PAGE as u64 / 32).max(1);
+    let pages = crate::resource_policy::POLICY
+        .memory
+        .dma_ram
+        .of(PHYSICAL_FRAME_ALLOCATOR.lock().usable_bytes() / 4096)
+        .max(1);
     Mutex::new(Pool::new(pages))
 });
 

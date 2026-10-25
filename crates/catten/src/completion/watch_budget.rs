@@ -8,12 +8,18 @@ use spin::LazyLock;
 
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
 
-pub(crate) const MAX_DOMAIN_WATCHES: usize = 1_024;
-pub(crate) const MAX_NODE_WATCHES: usize = 8_192;
-pub(crate) const MAX_ORDINARY_WATCHES: usize = 6_144;
-pub(crate) const MAX_ENDPOINT_WATCHES: usize = 128;
-pub(crate) const MAX_THREAD_WATCHES: usize = 128;
-pub(crate) const MAX_COMPLETION_CALLBACKS: usize = 128;
+pub(crate) const MAX_DOMAIN_WATCHES: usize =
+    crate::resource_policy::POLICY.watches.domain[0] as usize;
+pub(crate) const MAX_NODE_WATCHES: usize =
+    crate::resource_policy::POLICY.watches.pool.total[0] as usize;
+pub(crate) const MAX_ORDINARY_WATCHES: usize =
+    crate::resource_policy::POLICY.watches.pool.ordinary[0] as usize;
+pub(crate) const MAX_ENDPOINT_WATCHES: usize =
+    crate::resource_policy::POLICY.local.watches_per_endpoint;
+pub(crate) const MAX_THREAD_WATCHES: usize =
+    crate::resource_policy::POLICY.local.watches_per_thread;
+pub(crate) const MAX_COMPLETION_CALLBACKS: usize =
+    crate::resource_policy::POLICY.local.callbacks_per_completion;
 
 struct NodeBudget {
     total: CountBudget,

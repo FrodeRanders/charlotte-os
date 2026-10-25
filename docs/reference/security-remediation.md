@@ -550,10 +550,14 @@ root reuse cannot refund live records. Real-node exhaustion, public map/map-any
 denial, trusted reserve and unmap at total exhaustion qualify R7-2/R7-3 and C05/C18.
 Other metadata families, aggregate principals/general heap and sustained concurrent
 progress remain open. SEC-07/18 and finding dispositions remain unchanged.
-Resource capacity values also remain scattered compile-time policy constants.
-Central typed operator configuration, validated totals/reserves and an explicit
-installation/lifetime contract are required; capacity tuning must not require
-editing allocation/cleanup checks. Protocol/structural bounds remain distinct.
+The [resource-policy follow-up](../reports/audits/2026-10-25-security-resource-policy.md)
+centralizes kernel hardening capacities, RAM ratios and related backing/local
+ceilings in a typed compile-time policy. Operators can select an absolute-file
+profile; compile-time validation rejects inconsistent settings. Existing defaults
+and charge lifetimes remain. The Configuration manual chapter and
+[guide](../guides/configuration.md) document dependencies and qualification.
+Boot-resource installation, remaining service/protocol/structural inventory and
+sustained concurrent progress remain separate; no finding disposition changes.
 
 SEC-07 remains partial until all of the following deliverables are accepted:
 

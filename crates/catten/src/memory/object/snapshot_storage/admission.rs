@@ -3,8 +3,9 @@ use charlotte_lifecycle::resources::VectorBudget;
 
 use super::*;
 
-pub(super) const TOTAL_LIMIT: [u64; 2] = [4 * 1024 * 1024, 8_192];
-pub(super) const ORDINARY_LIMIT: [u64; 2] = [3 * 1024 * 1024, 6_144];
+pub(super) const TOTAL_LIMIT: [u64; 2] = crate::resource_policy::POLICY.snapshot_buffers.total;
+pub(super) const ORDINARY_LIMIT: [u64; 2] =
+    crate::resource_policy::POLICY.snapshot_buffers.ordinary;
 struct Pool {
     total: VectorBudget<2>,
     ordinary: VectorBudget<2>,

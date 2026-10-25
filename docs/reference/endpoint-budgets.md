@@ -1,5 +1,11 @@
 # Endpoint and queue admission
 
+Kernel admission capacity for this family comes from the default compile-time
+[resource policy](resource-policy.md). Related values can be adjusted together
+in a reviewed build profile; see [Configuration](../guides/configuration.md).
+Structural/protocol bounds and original-charge/physical-completion rules remain
+separate contracts.
+
 Endpoint creation reserves two independently checked resources: one endpoint
 record and its preallocated queue backing slots. Charges remain with the
 creating IPC namespace, including after delegation or domain retirement.

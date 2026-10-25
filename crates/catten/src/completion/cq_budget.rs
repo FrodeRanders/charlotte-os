@@ -9,9 +9,10 @@ use spin::LazyLock;
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
 
 // Dimensions: registered CQs and allocated kernel backing bytes.
-pub(crate) const DOMAIN_LIMIT: [u64; 2] = [32, 256 * 1024];
-pub(crate) const NODE_LIMIT: [u64; 2] = [2048, 4 * 1024 * 1024];
-pub(crate) const ORDINARY_LIMIT: [u64; 2] = [1536, 3 * 1024 * 1024];
+pub(crate) const DOMAIN_LIMIT: [u64; 2] = crate::resource_policy::POLICY.completion_queues.domain;
+pub(crate) const NODE_LIMIT: [u64; 2] = crate::resource_policy::POLICY.completion_queues.pool.total;
+pub(crate) const ORDINARY_LIMIT: [u64; 2] =
+    crate::resource_policy::POLICY.completion_queues.pool.ordinary;
 
 struct NodeBudget {
     total: VectorBudget<2>,

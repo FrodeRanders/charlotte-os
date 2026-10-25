@@ -1,5 +1,11 @@
 # Scheduler timer-event admission
 
+Kernel admission capacity for this family comes from the default compile-time
+[resource policy](resource-policy.md). Related values can be adjusted together
+in a reviewed build profile; see [Configuration](../guides/configuration.md).
+Structural/protocol bounds and original-charge/physical-completion rules remain
+separate contracts.
+
 Sleep and timed-wait watchdog events have a lifetime distinct from their
 [scheduler waiter entries](scheduler-waiter-budgets.md). Cancelling a waiter
 does not free an event still held by an LP queue. Both require admission.

@@ -1,5 +1,11 @@
 # Completion-record admission
 
+Kernel admission capacity for this family comes from the default compile-time
+[resource policy](resource-policy.md). Related values can be adjusted together
+in a reviewed build profile; see [Configuration](../guides/configuration.md).
+Structural/protocol bounds and original-charge/physical-completion rules remain
+separate contracts.
+
 All completion submissions reserve record admission: buffer-bearing operations,
 timers, thread-exit and endpoint-close watches, and capability-free operations.
 The existing submission-slot limit and this record budget measure different

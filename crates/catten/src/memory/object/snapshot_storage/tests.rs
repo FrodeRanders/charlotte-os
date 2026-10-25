@@ -138,8 +138,8 @@ fn count_pressure() {
     let movable = allocate(handle.id(), 1).unwrap();
     let old_pin = pin_for_copy(handle.id(), cap).unwrap();
     let old_object = old_pin.object;
-    let mut ordinary = Vec::with_capacity(8_192);
-    pressure(handle, 1, &mut ordinary, 8_192);
+    let mut ordinary = Vec::with_capacity(admission::TOTAL_LIMIT[1] as usize);
+    pressure(handle, 1, &mut ordinary, admission::TOTAL_LIMIT[1] as usize);
     assert_eq!(admitted().1[1], admission::ORDINARY_LIMIT[1]);
     for _ in 0..64 {
         assert_eq!(
@@ -164,8 +164,8 @@ fn count_pressure() {
     assert_eq!(admitted().1, full_ordinary.1);
     unpin_copy(pin);
     assert_eq!(admitted(), full_ordinary);
-    let mut reserve = Vec::with_capacity(8_192);
-    pressure(trusted, 1, &mut reserve, 8_192);
+    let mut reserve = Vec::with_capacity(admission::TOTAL_LIMIT[1] as usize);
+    pressure(trusted, 1, &mut reserve, admission::TOTAL_LIMIT[1] as usize);
     let full = admitted();
     assert_eq!(full.0[1], admission::TOTAL_LIMIT[1]);
     memory::budget::mark_platform(handle);
@@ -193,10 +193,12 @@ fn count_pressure() {
     memory::close_user_address_space_handle(trusted).unwrap();
     assert_eq!(admitted(), before);
     crate::logln!(
-        "[snapshot count pressure] {} ordinary + {} reserve actual buffers; 6144/8192 limits, \
-         three adapter denials, empty escrow and exact old/new-generation unpin refund passed",
+        "[snapshot count pressure] {} ordinary + {} reserve actual buffers; {}/{} limits, three \
+         adapter denials, empty escrow and exact old/new-generation unpin refund passed",
         counts.0,
-        counts.1
+        counts.1,
+        admission::ORDINARY_LIMIT[1],
+        admission::TOTAL_LIMIT[1]
     );
 }
 
@@ -205,8 +207,15 @@ fn byte_pressure() {
     let handle = root();
     let trusted = trusted_root();
     let cap = allocate(handle.id(), 1).unwrap();
-    let mut ordinary = Vec::with_capacity(64);
-    pressure(handle, MAX_MEMORY_OBJECT_PAGES, &mut ordinary, 64);
+    let mut ordinary = Vec::with_capacity(
+        (admission::TOTAL_LIMIT[0] / (MAX_MEMORY_OBJECT_PAGES * 8) as u64 + 2) as usize,
+    );
+    pressure(
+        handle,
+        MAX_MEMORY_OBJECT_PAGES,
+        &mut ordinary,
+        (admission::TOTAL_LIMIT[0] / (MAX_MEMORY_OBJECT_PAGES * 8) as u64 + 2) as usize,
+    );
     let remainder = admission::ORDINARY_LIMIT[0] - admitted().1[0];
     if remainder != 0 {
         ordinary.push(Preparing::new(handle, remainder as usize / 8).unwrap());
@@ -214,8 +223,15 @@ fn byte_pressure() {
     assert_eq!(admitted().1[0], admission::ORDINARY_LIMIT[0]);
     assert!(admitted().1[1] < admission::ORDINARY_LIMIT[1]);
     denied(handle, cap, 0);
-    let mut reserve = Vec::with_capacity(64);
-    pressure(trusted, MAX_MEMORY_OBJECT_PAGES, &mut reserve, 64);
+    let mut reserve = Vec::with_capacity(
+        (admission::TOTAL_LIMIT[0] / (MAX_MEMORY_OBJECT_PAGES * 8) as u64 + 2) as usize,
+    );
+    pressure(
+        trusted,
+        MAX_MEMORY_OBJECT_PAGES,
+        &mut reserve,
+        (admission::TOTAL_LIMIT[0] / (MAX_MEMORY_OBJECT_PAGES * 8) as u64 + 2) as usize,
+    );
     let remainder = admission::TOTAL_LIMIT[0] - admitted().0[0];
     if remainder != 0 {
         reserve.push(Preparing::new(trusted, remainder as usize / 8).unwrap());
@@ -231,8 +247,11 @@ fn byte_pressure() {
     assert_eq!(admitted(), before);
     crate::logln!(
         "[snapshot byte pressure] {} ordinary + {} reserve actual buffers, up to 128 KiB each; \
-         exact 3/4 MiB limits before count limits and post-deallocation baseline recovery passed",
+         exact {}/{} byte limits before count limits and post-deallocation baseline recovery \
+         passed",
         counts.0,
-        counts.1
+        counts.1,
+        admission::ORDINARY_LIMIT[0],
+        admission::TOTAL_LIMIT[0]
     );
 }

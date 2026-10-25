@@ -40,7 +40,7 @@ use crate::{
 // therefore retain roughly 2.4 MiB of signed ELF data in addition to the
 // kernel's ordinary boot allocations. Claim enough arena up front that this
 // expected working set fits while services start concurrently.
-const INITIAL_HEAP_SIZE: usize = mebibytes(8);
+const INITIAL_HEAP_SIZE: usize = crate::resource_policy::POLICY.kernel_heap.initial_bytes;
 // A pre-mapped growth reserve immediately after the initial heap. The
 // ExtendOnOom acquire extends the talc's range *within* this reserve, so it
 // never takes the kernel address-space or frame-allocator locks while the
@@ -51,28 +51,23 @@ const INITIAL_HEAP_SIZE: usize = mebibytes(8);
 // The reserve scales with discovered RAM: one sixty-fourth of usable memory,
 // clamped between the historical 64 MiB floor and a 256 MiB ceiling, and
 // rounded up to the 2 MiB large-page granularity the arena is mapped with.
-pub(crate) const HEAP_RESERVE_FRACTION_DIVISOR: u64 = 64;
-pub(crate) const MIN_HEAP_GROWTH_RESERVE: usize = mebibytes(64);
-pub(crate) const MAX_HEAP_GROWTH_RESERVE: usize = mebibytes(256);
+pub(crate) const MIN_HEAP_GROWTH_RESERVE: usize =
+    crate::resource_policy::POLICY.kernel_heap.growth_min_bytes;
+pub(crate) const MAX_HEAP_GROWTH_RESERVE: usize =
+    crate::resource_policy::POLICY.kernel_heap.growth_max_bytes;
 pub(crate) static HEAP_GROWTH_RESERVE_BYTES: AtomicUsize =
     AtomicUsize::new(MIN_HEAP_GROWTH_RESERVE);
 #[global_allocator]
 pub static PRIMARY_ALLOCATOR: TalcLock<MutexCore, ExtendOnOom> = TalcLock::new(ExtendOnOom::new());
 
-fn heap_growth_reserve_bytes(usable_bytes: u64) -> usize {
-    let scaled =
-        usize::try_from(usable_bytes / HEAP_RESERVE_FRACTION_DIVISOR).unwrap_or(usize::MAX);
-    let page = PageSize::Large.num_bytes();
-    let aligned = scaled.div_ceil(page) * page;
-    aligned.clamp(MIN_HEAP_GROWTH_RESERVE, MAX_HEAP_GROWTH_RESERVE)
-}
-
 pub fn init_primary_allocator() {
+    crate::early_logln!("Resource policy: {} (compile-time)", crate::resource_policy::POLICY.name);
     let usable_bytes = {
         let allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
         allocator.usable_bytes()
     };
-    let growth_reserve = heap_growth_reserve_bytes(usable_bytes);
+    let growth_reserve =
+        crate::resource_policy::POLICY.kernel_heap.growth_reserve_bytes(usable_bytes);
     HEAP_GROWTH_RESERVE_BYTES.store(growth_reserve, Ordering::Relaxed);
     crate::early_logln!(
         "Kernel heap: usable={} MiB initial={} MiB reserve={} MiB total={} MiB",
@@ -81,7 +76,12 @@ pub fn init_primary_allocator() {
         growth_reserve / mebibytes(1),
         (INITIAL_HEAP_SIZE + growth_reserve) / mebibytes(1)
     );
-    let base = LA_MAP.get_region(KernelAllocatorArena).base;
+    let arena = LA_MAP.get_region(KernelAllocatorArena);
+    assert!(
+        INITIAL_HEAP_SIZE + growth_reserve <= arena.length,
+        "resource policy exceeds kernel allocator arena"
+    );
+    let base = arena.base;
     let mut retirement = RetiredKernelRange::new();
     let result = try_allocate_and_map_range(
         base,

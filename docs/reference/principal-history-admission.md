@@ -1,5 +1,11 @@
 # Principal-history storage admission
 
+Kernel admission capacity for this family comes from the default compile-time
+[resource policy](resource-policy.md). Related values can be adjusted together
+in a reviewed build profile; see [Configuration](../guides/configuration.md).
+Structural/protocol bounds and original-charge/physical-completion rules remain
+separate contracts.
+
 The shared principal-history table holds sizing history and aggregate resource
 counters for the boot lifetime. Its published records and unpublished root
 candidates now share a bounded allocation pool.

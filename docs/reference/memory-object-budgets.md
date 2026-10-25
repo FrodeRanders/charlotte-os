@@ -1,5 +1,11 @@
 # Memory-object admission budgets
 
+Kernel admission capacity for this family comes from the default compile-time
+[resource policy](resource-policy.md). Related values can be adjusted together
+in a reviewed build profile; see [Configuration](../guides/configuration.md).
+Structural/protocol bounds and original-charge/physical-completion rules remain
+separate contracts.
+
 Memory-object allocation checks request size, its generation sponsor, the shared
 signed-principal ceiling and node-wide limits. These are hard
 checks, independent of telemetry smoothing or placement decisions.

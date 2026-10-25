@@ -1417,3 +1417,12 @@ ownership projections remain relevant; concrete node layouts, counters, captured
 classification and allocator/destructor contexts remain native/source controls.
 No model inputs, executable refinement, physical/replay policy or sustained
 concurrent progress proof changes.
+
+## Central resource capacity policy
+
+The [resource-policy follow-up](../reports/audits/2026-10-25-security-resource-policy.md)
+centralizes compile-time capacity without changing existing charge ownership.
+Root original-charge, IPC loan/rollback/timeout and DMA operation projections
+remain; the selected policy, concrete dimensions, arithmetic and boot installation
+are host/native qualification. No model input or physical/replay policy changes,
+executable refinement or arbitrary-profile/sustained-pressure proof is claimed.

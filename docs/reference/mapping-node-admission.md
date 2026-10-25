@@ -7,10 +7,11 @@ CPU memory-object mapping records share fixed requested-layout admission:
 | Requested node-layout bytes | 1 MiB | 768 KiB |
 | Prepared, published or retained nodes | 8,192 | 6,144 |
 
-These are currently family-local compile-time policy constants, not an operator
-configuration interface. Central typed configuration and validation of resource
-ceilings/reserves remain required; future capacity tuning should not edit the
-allocation/cleanup checks. Protocol and structural bounds need separate treatment.
+These values are the default of the central compile-time
+[resource policy](resource-policy.md). `CATTEN_RESOURCE_POLICY` can select a
+reviewed build profile; see [Configuration](../guides/configuration.md). Allocation
+and cleanup checks keep the same owners and captured charges. Boot-time policy
+installation and live resizing are not implemented.
 
 Each node reserves its complete layout, including payload, link and typed charge,
 before fallible allocation. Quota or allocator rejection returns `ResourceLimit`.

@@ -11,9 +11,12 @@ use spin::LazyLock;
 
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
 
-pub(crate) const MAX_DOMAIN_TIMERS: usize = 1_024;
-pub(crate) const MAX_NODE_TIMERS: usize = 8_192;
-pub(crate) const MAX_ORDINARY_TIMERS: usize = MAX_NODE_TIMERS * 3 / 4;
+pub(crate) const MAX_DOMAIN_TIMERS: usize =
+    crate::resource_policy::POLICY.timers.domain[0] as usize;
+pub(crate) const MAX_NODE_TIMERS: usize =
+    crate::resource_policy::POLICY.timers.pool.total[0] as usize;
+pub(crate) const MAX_ORDINARY_TIMERS: usize =
+    crate::resource_policy::POLICY.timers.pool.ordinary[0] as usize;
 
 struct NodeBudget {
     total: CountBudget,

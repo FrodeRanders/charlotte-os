@@ -16,7 +16,12 @@ use super::{
     usage::principal_history::BackingCharge,
 };
 
-pub(crate) const IMAGE_DOMAIN_PAGES: u64 = 16_384; // 64 MiB, including runtime pages.
+const _: () = assert!(
+    crate::resource_policy::POLICY.memory.heap_domain_pages
+        <= (charlotte_launch::HEAP_VA_LIMIT / 4096) as u64
+);
+
+pub(crate) const IMAGE_DOMAIN_PAGES: u64 = crate::resource_policy::POLICY.memory.image_domain_pages; // 64 MiB, including runtime pages.
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Kind {
@@ -34,7 +39,7 @@ impl Kind {
 
     const fn domain_pages(self) -> u64 {
         match self {
-            Self::Heap => (charlotte_launch::HEAP_VA_LIMIT / 4096) as u64,
+            Self::Heap => crate::resource_policy::POLICY.memory.heap_domain_pages,
             Self::Image => IMAGE_DOMAIN_PAGES,
         }
     }
@@ -57,7 +62,9 @@ impl Pool {
     fn new(pages: u64) -> Self {
         Self {
             total: Budget::new(amount(pages)),
-            ordinary: Budget::new(amount(pages * 3 / 4)),
+            ordinary: Budget::new(amount(
+                crate::resource_policy::POLICY.memory.ordinary_share.of(pages),
+            )),
         }
     }
 
@@ -80,12 +87,14 @@ impl Pool {
 
 // Heap, image/runtime and memory-object backing each have a quarter-RAM pool.
 // Other physical consumers remain uncharged; this isn't a global RAM ledger.
-fn new_pool() -> Mutex<Pool> {
-    let pages = (PHYSICAL_FRAME_ALLOCATOR.lock().usable_bytes() / 4096 / 4).max(1);
+fn new_pool(ratio: crate::resource_policy::Ratio) -> Mutex<Pool> {
+    let pages = ratio.of(PHYSICAL_FRAME_ALLOCATOR.lock().usable_bytes() / 4096).max(1);
     Mutex::new(Pool::new(pages))
 }
-static HEAP_POOL: LazyLock<Mutex<Pool>> = LazyLock::new(new_pool);
-static IMAGE_POOL: LazyLock<Mutex<Pool>> = LazyLock::new(new_pool);
+static HEAP_POOL: LazyLock<Mutex<Pool>> =
+    LazyLock::new(|| new_pool(crate::resource_policy::POLICY.memory.heap_ram));
+static IMAGE_POOL: LazyLock<Mutex<Pool>> =
+    LazyLock::new(|| new_pool(crate::resource_policy::POLICY.memory.image_ram));
 
 #[derive(Debug)]
 pub(crate) struct Account {
@@ -356,18 +365,22 @@ impl Drop for PageCharge {
 
 pub(crate) fn test_pool() {
     let mut pool = Pool::new(8);
-    for _ in 0..6 {
+    let ordinary = pool.ordinary.limit().pages;
+    for _ in 0..ordinary {
         pool.reserve(false).unwrap();
     }
     assert!(pool.reserve(false).is_err());
-    assert_eq!(pool.total.used().pages, 6);
-    pool.reserve(true).unwrap();
-    pool.reserve(true).unwrap();
+    assert_eq!(pool.total.used().pages, ordinary);
+    for _ in ordinary..8 {
+        pool.reserve(true).unwrap();
+    }
     assert!(pool.reserve(true).is_err());
-    pool.release(1, false);
-    pool.reserve(false).unwrap();
-    pool.release(6, false);
-    pool.release(2, true);
+    if ordinary > 0 {
+        pool.release(1, false);
+        pool.reserve(false).unwrap();
+    }
+    pool.release(ordinary, false);
+    pool.release(8 - ordinary, true);
     assert_eq!(pool.total.used().pages, 0);
     assert_eq!(pool.ordinary.used().pages, 0);
 

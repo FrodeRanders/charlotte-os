@@ -1,0 +1,171 @@
+\chapter{Configuration}
+\label{chap:configuration}
+
+Configuration expresses the workload and capacity a node is intended to support.
+A security limit needs an owner, a unit and an admission rule, but its chosen
+capacity also needs an explanation and a way to change it. Resource ceilings
+are therefore collected in a typed kernel policy, separate from the allocation
+and cleanup code that enforces them.
+
+This chapter describes current configuration mechanisms and how to qualify a
+change. The matching operator guide is
+\repofile|docs/guides/configuration.md|; the complete resource-policy inventory
+and dimensions are in \repofile|docs/reference/resource-policy.md|.
+
+\section{Configuration sources and authority}
+
+The following inputs have different authorities and lifetimes:
+\begin{description}
+    \item[Kernel resource policy.] Trusted Rust build input selects capacity
+        ceilings, ordinary shares and platform reserves. It is compiled into
+        the kernel and remains fixed throughout that boot.
+    \item[Bootstrap assignments.] The kernel build consumes
+        \path{CATTEN_CLUSTER_SERVICES}. Boot runners accept repeatable
+        \texttt{-{}-cluster-service [NAME=]IPv4:PORT} assignments. The first
+        committed signed ingress policy replaces the bootstrap assignments.
+    \item[Trust policy.] The kernel's one prepared boot-trust policy supplies
+        launch and grant verification. Capacity configuration cannot install
+        keys, grant platform classification or enable production trust.
+        Production remains disabled pending protected provisioning and custody.
+    \item[Application launch policy.] Signed deployment and kernel admission
+        determine per-domain stack/thread limits, executable variants,
+        delegated capabilities and protocol-specific launch profiles. An
+        application's request does not enlarge a node-wide capacity pool.
+    \item[Persistent state.] A storage format tag and committed state are not
+        disposable configuration. Changing capacity never authorizes silent
+        reformatting, resetting election state or discarding retained charges.
+\end{description}
+
+Internal protocol fields, architectural address ranges, page granularity and
+hardware register widths are separate structural contracts. Changing their
+numbers requires a coordinated implementation and format review. They are not
+ordinary operator capacity settings.
+
+\section{Selecting the compile-time resource policy}
+
+The default settings are in
+\repofile|crates/catten/src/resource_policy/defaults.rs|. They retain the existing
+capacity values. Operators may edit this central file or select an external
+profile with \texttt{CATTEN\_RESOURCE\_POLICY}, which must name an existing file
+by absolute path. Unset selects the default; empty, relative, missing and
+directory paths reject. The file is trusted Rust source and belongs in the
+reviewed build inputs, not in an application manifest or upload request.
+
+A profile defines \texttt{POLICY: Policy} in the policy module's scope. It can
+start from \texttt{DEFAULT} and override related fields. The checked-in
+\repofile|crates/catten/src/resource_policy/larger.rs| demonstrates co-scaling
+scratch-node, snapshot-buffer and mapping-node byte/count capacities by one
+quarter while retaining their reserve proportions.
+
+\begin{lstlisting}[language=bash]
+CATTEN_RESOURCE_POLICY="$PWD/ops/resource-policy.rs" \
+  scripts/run-aarch64.sh --security-test --http-test
+\end{lstlisting}
+
+The runners pass this environment input through to the kernel build. Cargo
+tracks the selected path, its contents and environment selection. Changing or
+unsetting the selection rebuilds the kernel; userspace service images do not
+need rebuilding for these policy fields. Boot serial output identifies the
+selected policy name. Record the exact profile source and kernel artifact
+hashes with qualification evidence; the name alone is not an artifact identity.
+
+There is currently no resource-policy boot-module parser, capability, syscall
+or live-resizing interface. The compiled policy does not change after charges
+exist. Boot-time resource input is a future installation mechanism, not an
+implemented fallback for an invalid build profile.
+
+\section{Related limits and tuning consequences}
+
+The policy groups domain/ordinary/total capacities and resource dimensions.
+For fixed pools, every ordinary dimension is positive and below the total;
+domain dimensions must fit the ordinary pool. A reserve is the difference
+between total and ordinary admission, not a guaranteed share for one service.
+
+Examples of settings that require joint review include:
+\begin{itemize}
+    \item Memory-object size, aggregate domain/principal backing and snapshot
+        bytes. One maximum-sized object must fit an ordinary frame snapshot.
+        Increasing object size can also increase mapping work and pin lifetime.
+    \item Mapping nodes, scratch extents and snapshots. Concurrent preparations,
+        live objects and uncertain cleanup all consume admission. Raising the
+        live-object target without space for preparation can prevent progress.
+    \item Endpoint counts, queue slots, completion queues, connections,
+        pending/reply records, capabilities, waiter entries and observer lists.
+        One outstanding RPC can consume several of these families together.
+        Endpoint backing rounds queue capacity to a power of two.
+    \item Lifecycle watches, publication counts and replacement overlap.
+        A name-service replacement needs the new watch before disposing the old
+        one; service minima must be tested as part of boot qualification.
+    \item Thread bundles, principal thread metadata, stacks and private tables.
+        More runnable domains can encounter any of these ceilings before their
+        individual thread limits, including while old generations remain retained.
+    \item Requested metadata bytes, allocator overhead, kernel-heap backing and
+        physical progress reserves. Independent logical pool totals do not form
+        a complete physical-RAM ledger and cannot establish fairness by addition.
+\end{itemize}
+
+RAM-derived pools use documented ratios of discovered usable pages, with
+checked widened arithmetic. The heap reserve has a RAM divisor, aligned floor
+and aligned ceiling. It clamps before alignment rounding, including extreme
+reported RAM. The current launch ABI still bounds heap virtual capacity; the
+kernel checks policy against that contract and the actual allocator arena.
+
+Capacity changes do not alter sponsorship or cleanup. A move keeps its original
+charge, and root retirement, ASID reuse or later platform promotion cannot refund
+live backing. Failed physical cleanup retains the original complete owner and
+charge. A larger budget never supplies proof of completion or permission to
+replay accepted work.
+
+\section{Planning and validating a policy change}
+
+Use the following process before selecting a profile for a new workload:
+\begin{enumerate}
+    \item State the workload: RAM, domains/principals, threads, service topology,
+        maximum object sizes, outstanding RPCs and expected overlap during restart.
+    \item Inventory each consumed family, unit, sponsor, lifetime and rejection
+        result. Include unused candidates, detached work, weak references and
+        retained uncertain cleanup. Separate structural bounds from capacity policy.
+    \item Measure peak occupancy and rejection under the intended concurrency.
+        Choose ordinary capacity and trusted headroom together, explaining
+        dependencies and expected failure behavior. A previously passing default
+        is not a capacity estimate for a larger workload.
+    \item Run the policy harness and strict kernel builds. The harness compiles
+        the actual policy, exercises admission counters and rejects inconsistent
+        profiles. Compile-time validation checks relationships and arithmetic;
+        it does not establish boot viability or essential-service progress.
+    \item Boot the exact selected profile on the supported backends. Exercise
+        success, exhaustion, allocation rejection, cancellation, restart/generation
+        reuse, retained charges and confirmed cleanup. Measure management,
+        timer/scheduler and teardown progress against deadlines fixed beforehand.
+    \item Preserve the profile, artifact hashes, occupancy/latency results and
+        failure diagnostics. Keep failed or interrupted attempts separate from
+        successful repeats. Requalify after changing the workload or profile.
+\end{enumerate}
+
+\begin{lstlisting}[language=bash]
+CATTEN_RESOURCE_POLICY="$PWD/ops/resource-policy.rs" \
+  python3 scripts/tests/test-resource-policy.py
+cargo fmt --all -- --check
+\end{lstlisting}
+
+The policy harness checks both the default and larger example, plus an optional
+operator-selected file. Native evidence for those profiles is listed in the resource-policy reference.
+These are focused capacity and ownership controls; sustained concurrent pressure and
+essential-service fairness remain acceptance work under SEC-07/18.
+
+\section{Extending configuration toward boot resources}
+
+Boot-time installation should reuse this typed policy and its validation, but
+must also define a complete authenticated input, reject unknown or incomplete
+settings, and establish authority before the first relevant allocation.
+Kernel-heap sizing and statically initialized counters currently precede a
+general resource-policy installation point. A future implementation must order
+those initializations, validate discovered-memory and structural constraints,
+then publish one immutable policy before schedulers and services consume it.
+
+Do not implement this by resizing live pools independently. Any future update
+mechanism would need a separate account-generation and original-charge contract.
+Until that work is implemented and tested, changing capacity means building a
+new kernel with a reviewed profile and booting it.
+
+\endinput

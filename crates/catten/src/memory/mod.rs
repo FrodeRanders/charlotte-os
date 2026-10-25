@@ -413,7 +413,7 @@ impl PreparingUserFrame {
 
     fn allocate() -> Option<Self> {
         Self::allocate_with_policy(|free, usable| {
-            charlotte_lifecycle::resources::frames_available(free, usable, 1)
+            crate::resource_policy::frames_available(free, usable, 1)
         })
     }
 

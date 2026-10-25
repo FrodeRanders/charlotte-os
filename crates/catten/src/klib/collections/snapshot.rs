@@ -5,7 +5,8 @@ use alloc::vec::Vec;
 
 /// Per diagnostic request, across capture buffers and encoded scratch. This
 /// does not replace general heap or aggregate principal admission.
-pub(crate) const MAX_WORKING_BYTES: usize = 1024 * 1024;
+pub(crate) const MAX_WORKING_BYTES: usize =
+    crate::resource_policy::POLICY.local.telemetry_working_bytes;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Error {

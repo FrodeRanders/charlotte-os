@@ -10,14 +10,20 @@ use charlotte_lifecycle::resources::{
 
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
 
-pub(crate) const DOMAIN_LIMIT: usize = 512;
-pub(crate) const NODE_LIMIT: usize = 8_192;
-pub(crate) const ORDINARY_LIMIT: usize = 6_144;
+pub(crate) const DOMAIN_LIMIT: usize =
+    crate::resource_policy::POLICY.mailbox_records.domain[0] as usize;
+pub(crate) const NODE_LIMIT: usize =
+    crate::resource_policy::POLICY.mailbox_records.pool.total[0] as usize;
+pub(crate) const ORDINARY_LIMIT: usize =
+    crate::resource_policy::POLICY.mailbox_records.pool.ordinary[0] as usize;
 // Dimensions: prepared/live queue sets and requested word-ring backing bytes.
 // Namespace nodes/account control blocks remain separate metadata admission.
-pub(crate) const QUEUE_DOMAIN_LIMIT: [u64; 2] = [2, 1024 * 1024];
-pub(crate) const QUEUE_NODE_LIMIT: [u64; 2] = [1024, 8 * 1024 * 1024];
-pub(crate) const QUEUE_ORDINARY_LIMIT: [u64; 2] = [768, 6 * 1024 * 1024];
+pub(crate) const QUEUE_DOMAIN_LIMIT: [u64; 2] =
+    crate::resource_policy::POLICY.mailbox_queues.domain;
+pub(crate) const QUEUE_NODE_LIMIT: [u64; 2] =
+    crate::resource_policy::POLICY.mailbox_queues.pool.total;
+pub(crate) const QUEUE_ORDINARY_LIMIT: [u64; 2] =
+    crate::resource_policy::POLICY.mailbox_queues.pool.ordinary;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Error {

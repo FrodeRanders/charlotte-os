@@ -35,3 +35,9 @@ records the latest manual sweep, corrections and verification limits. Short
 architectural listings are explanatory sketches unless identified as included,
 compiled source. Keep current API and validation claims tied to source or dated
 evidence; a PDF rebuild is not a fresh runtime qualification.
+
+The **Configuration** chapter and matching [Markdown guide](../guides/configuration.md)
+describe current configuration inputs, central compile-time resource profiles,
+related capacity choices, qualification, and the boundary to future boot resources.
+The [resource-policy reference](../reference/resource-policy.md) inventories exact
+units and default values.

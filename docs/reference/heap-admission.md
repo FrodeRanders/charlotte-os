@@ -1,5 +1,11 @@
 # Demand-backed heap admission
 
+Kernel admission capacity for this family comes from the default compile-time
+[resource policy](resource-policy.md). Related values can be adjusted together
+in a reviewed build profile; see [Configuration](../guides/configuration.md).
+Structural/protocol bounds and original-charge/physical-completion rules remain
+separate contracts.
+
 The runtime heap's virtual capacity is a launch claim, not a physical allocation.
 First touch commits a zeroed 4 KiB page. The kernel now admits that backing
 before allocating a frame, on both AArch64 and x86-64.

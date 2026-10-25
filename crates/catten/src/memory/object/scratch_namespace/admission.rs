@@ -8,8 +8,8 @@ use crate::{
     memory::Mutex,
 };
 
-const TOTAL_LIMIT: [u64; 2] = [512 * 1024, 8_192];
-const ORDINARY_LIMIT: [u64; 2] = [384 * 1024, 6_144];
+pub(super) const TOTAL_LIMIT: [u64; 2] = crate::resource_policy::POLICY.scratch_nodes.total;
+pub(super) const ORDINARY_LIMIT: [u64; 2] = crate::resource_policy::POLICY.scratch_nodes.ordinary;
 
 struct Pool {
     total: VectorBudget<2>,

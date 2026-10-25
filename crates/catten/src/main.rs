@@ -36,6 +36,7 @@ pub mod klib;
 pub mod log;
 pub mod memory;
 pub mod panic;
+mod resource_policy;
 pub mod self_test;
 pub mod service;
 pub mod syscall;

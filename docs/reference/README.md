@@ -11,6 +11,8 @@ should be updated with the implementation when those contracts change.
   relays, captured reply correlation and owning local publication phases.
 - [Discovery protocol](discovery-protocol.md) — complete peer advertisements,
   declared lengths, Ethernet padding and current-only rollout.
+- [Configuration](../guides/configuration.md) — build profiles, configuration authority, related limits and workload qualification.
+- [Kernel resource policy](resource-policy.md) — central defaults, dimensions, validation and remaining configuration inventory.
 - [Security remediation](security-remediation.md) — current finding ledger,
   finite SEC-07/18 completion criteria and production security milestones.
 - [IPC namespace publication](ipc-namespace-publication.md) — fallible root-owned

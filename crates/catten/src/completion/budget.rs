@@ -7,9 +7,12 @@ use spin::LazyLock;
 
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
 
-pub(crate) const MAX_DOMAIN_RECORDS: usize = 1_024;
-pub(crate) const MAX_NODE_RECORDS: usize = 8_192;
-pub(crate) const MAX_ORDINARY_RECORDS: usize = MAX_NODE_RECORDS * 3 / 4;
+pub(crate) const MAX_DOMAIN_RECORDS: usize =
+    crate::resource_policy::POLICY.completions.domain[0] as usize;
+pub(crate) const MAX_NODE_RECORDS: usize =
+    crate::resource_policy::POLICY.completions.pool.total[0] as usize;
+pub(crate) const MAX_ORDINARY_RECORDS: usize =
+    crate::resource_policy::POLICY.completions.pool.ordinary[0] as usize;
 
 struct NodeBudget {
     // One checked dimension permits constant-time refunds of an owning

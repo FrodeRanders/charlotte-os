@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Central resource policy and Configuration chapter](audits/2026-10-25-security-resource-policy.md) — Typed compile-time profiles, grouped capacities, validation, tuning process and native profile qualification.
+
 - [Mapping-node admission](audits/2026-10-25-security-mapping-node-admission.md) — Requested-layout/count ceilings follow actual prepared, published and retained mapping-node allocation lifetime.
 
 - [Shared snapshot-buffer admission](audits/2026-10-25-security-snapshot-buffer-admission.md) — Byte/count ceilings follow mapping/copy/DMA buffer lifetime, with real allocation pressure and explicit audit acceptance scope.

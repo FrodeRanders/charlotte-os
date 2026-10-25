@@ -1,5 +1,11 @@
 # Stack backing admission
 
+Kernel admission capacity for this family comes from the default compile-time
+[resource policy](resource-policy.md). Related values can be adjusted together
+in a reviewed build profile; see [Configuration](../guides/configuration.md).
+Structural/protocol bounds and original-charge/physical-completion rules remain
+separate contracts.
+
 Thread preparation reserves its maximum data footprint before physical backing
 allocation. This is independent of stack-usage telemetry, heap/image/object
 node pools and per-root translation-table admission; signed roots also share

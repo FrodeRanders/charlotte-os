@@ -1,5 +1,11 @@
 # Scratch reservation admission and completion
 
+Kernel admission capacity for this family comes from the default compile-time
+[resource policy](resource-policy.md). Related values can be adjusted together
+in a reviewed build profile; see [Configuration](../guides/configuration.md).
+Structural/protocol bounds and original-charge/physical-completion rules remain
+separate contracts.
+
 Memory objects and MMIO share a 512 MiB virtual scratch window in each user
 address-space lifetime. This is virtual space, not a physical allocation.
 Reservations become reusable only after their owning mapping/close operation

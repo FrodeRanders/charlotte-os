@@ -24,9 +24,9 @@ use super::{
     PHYSICAL_FRAME_ALLOCATOR,
 };
 
-pub const MAX_DOMAIN_OBJECT_PAGES: u64 = 16_384; // 64 MiB, independent of heap.
-pub const MAX_DOMAIN_OBJECTS: u64 = 1_024;
-const MAX_NODE_OBJECTS: u64 = 8_192;
+pub const MAX_DOMAIN_OBJECT_PAGES: u64 = crate::resource_policy::POLICY.memory.domain_object_pages; // 64 MiB, independent of heap.
+pub const MAX_DOMAIN_OBJECTS: u64 = crate::resource_policy::POLICY.memory.objects.domain[0];
+const MAX_NODE_OBJECTS: u64 = crate::resource_policy::POLICY.memory.objects.pool.total[0];
 type Identity = (AddressSpaceId, usize);
 
 #[derive(Debug)]
@@ -53,15 +53,19 @@ impl Ledger {
         // not reserve loader/page-table/IPC/completion memory. Demand heaps
         // have their own separate quarter-RAM pool in backing_budget. Image
         // and runtime pages have a third independent quarter-RAM pool there.
-        let pages = (PHYSICAL_FRAME_ALLOCATOR.lock().usable_bytes() / 4096 / 4).max(1);
+        let pages = crate::resource_policy::POLICY
+            .memory
+            .object_ram
+            .of(PHYSICAL_FRAME_ALLOCATOR.lock().usable_bytes() / 4096)
+            .max(1);
         Self {
             total: Budget::new(Amount {
                 pages,
                 objects: MAX_NODE_OBJECTS,
             }),
             ordinary: Budget::new(Amount {
-                pages: pages * 3 / 4,
-                objects: MAX_NODE_OBJECTS * 3 / 4,
+                pages: crate::resource_policy::POLICY.memory.ordinary_share.of(pages),
+                objects: crate::resource_policy::POLICY.memory.objects.pool.ordinary[0],
             }),
             domains: AdmittedMap::new(),
         }

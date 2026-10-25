@@ -16,9 +16,9 @@ use spin::LazyLock;
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
 
 // Count endpoint records and queue backing slots; payload bytes are outside this budget.
-pub(crate) const DOMAIN_LIMIT: [u64; 2] = [64, 8_192];
-pub(crate) const NODE_LIMIT: [u64; 2] = [1_024, 32_768];
-pub(crate) const ORDINARY_LIMIT: [u64; 2] = [768, 24_576];
+pub(crate) const DOMAIN_LIMIT: [u64; 2] = crate::resource_policy::POLICY.endpoints.domain;
+pub(crate) const NODE_LIMIT: [u64; 2] = crate::resource_policy::POLICY.endpoints.pool.total;
+pub(crate) const ORDINARY_LIMIT: [u64; 2] = crate::resource_policy::POLICY.endpoints.pool.ordinary;
 
 struct NodeBudget {
     total: VectorBudget<2>,

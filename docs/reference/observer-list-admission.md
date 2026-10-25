@@ -1,5 +1,11 @@
 # Observer-list allocation admission
 
+Kernel admission capacity for this family comes from the default compile-time
+[resource policy](resource-policy.md). Related values can be adjusted together
+in a reviewed build profile; see [Configuration](../guides/configuration.md).
+Structural/protocol bounds and original-charge/physical-completion rules remain
+separate contracts.
+
 Every `ObserverList` allocation reserves a separate node slot before allocating
 its charged owner or list backing. These slots cover empty list/control-block
 storage retained by sources, registration tokens and weak references. Scheduler

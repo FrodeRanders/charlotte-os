@@ -91,7 +91,8 @@ pub(in crate::memory) use scratch_namespace::RetiredNamespace as RetiredScratch;
 /// caps the allocation loop and the amount of physical memory zeroed in one
 /// syscall. Aggregate sponsorship limits are enforced by [`super::budget`]
 /// in addition to this per-request bound.
-pub const MAX_MEMORY_OBJECT_PAGES: usize = 16_384;
+pub const MAX_MEMORY_OBJECT_PAGES: usize =
+    crate::resource_policy::POLICY.memory.object_pages as usize;
 
 pub type MemoryObjectCap = u64;
 type MemoryObjectId = u64;
@@ -373,7 +374,7 @@ fn allocate_frames_with(
     staged.storage = Some(allocate_storage()?);
     staged.frames.try_reserve_exact(pages).map_err(|_| MemoryObjectError::FrameAllocFailed)?;
     let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
-    if !charlotte_lifecycle::resources::frames_available(
+    if !crate::resource_policy::frames_available(
         allocator.free_frames() as u64,
         allocator.usable_bytes() / PAGE_SIZE as u64,
         pages as u64,

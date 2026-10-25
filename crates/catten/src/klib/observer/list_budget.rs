@@ -7,8 +7,10 @@ use spin::LazyLock;
 
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
 
-pub(crate) const NODE_LIMIT: usize = 8_192;
-pub(crate) const ORDINARY_LIMIT: usize = 6_144;
+pub(crate) const NODE_LIMIT: usize =
+    crate::resource_policy::POLICY.observer_lists.total[0] as usize;
+pub(crate) const ORDINARY_LIMIT: usize =
+    crate::resource_policy::POLICY.observer_lists.ordinary[0] as usize;
 
 struct NodeBudget {
     total: CountBudget,

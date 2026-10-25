@@ -26,8 +26,10 @@ use crate::{
 
 /// Shared by every occupancy of one authenticated artifact principal.
 /// Image/runtime, demand heap and memory-object pages consume this same limit.
-pub(in crate::memory) const MAX_PRINCIPAL_PAGES: u64 = 16_384;
-pub(in crate::memory) const MAX_PRINCIPAL_OBJECTS: u64 = 1_024;
+pub(in crate::memory) const MAX_PRINCIPAL_PAGES: u64 =
+    crate::resource_policy::POLICY.memory.principal_pages;
+pub(in crate::memory) const MAX_PRINCIPAL_OBJECTS: u64 =
+    crate::resource_policy::POLICY.memory.principal_objects;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct History {
@@ -42,7 +44,9 @@ impl Default for History {
         Self {
             stack_pages: 0,
             heap_bytes: 0,
-            thread_metadata: VectorBudget::new([1024 * 1024, 128]),
+            thread_metadata: VectorBudget::new(
+                crate::resource_policy::POLICY.memory.principal_thread_metadata,
+            ),
             backing: Budget::new(Amount {
                 pages: MAX_PRINCIPAL_PAGES,
                 objects: MAX_PRINCIPAL_OBJECTS,

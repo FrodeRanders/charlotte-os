@@ -1,5 +1,11 @@
 # Mapping, copy and DMA snapshot buffers
 
+Kernel admission capacity for this family comes from the default compile-time
+[resource policy](resource-policy.md). Related values can be adjusted together
+in a reviewed build profile; see [Configuration](../guides/configuration.md).
+Structural/protocol bounds and original-charge/physical-completion rules remain
+separate contracts.
+
 CPU mapping, copy-pin and DMA-pin frame snapshots share fixed kernel admission:
 
 | Dimension | Total | Ordinary callers |

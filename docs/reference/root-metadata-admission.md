@@ -1,5 +1,11 @@
 # Root policy, usage and authority storage
 
+Kernel admission capacity for this family comes from the default compile-time
+[resource policy](resource-policy.md). Related values can be adjusted together
+in a reviewed build profile; see [Configuration](../guides/configuration.md).
+Structural/protocol bounds and original-charge/physical-completion rules remain
+separate contracts.
+
 Each userspace root prepares three registry nodes: launch limits, usage/telemetry,
 and signed-authority metadata. These allocations now share byte/count admission,
 including partial preparation and detached retirement receipts.

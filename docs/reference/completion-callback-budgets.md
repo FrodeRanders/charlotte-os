@@ -1,5 +1,11 @@
 # Owned kernel completion callbacks
 
+Kernel admission capacity for this family comes from the default compile-time
+[resource policy](resource-policy.md). Related values can be adjusted together
+in a reviewed build profile; see [Configuration](../guides/configuration.md).
+Structural/protocol bounds and original-charge/physical-completion rules remain
+separate contracts.
+
 Kernel code subscribes using `completion::observe`, which takes a strong
 `Arc<dyn Observer>` and returns a `CompletionObservation` owner. Retain the owner
 until notification or cancellation. Dropping it removes only the subscription:

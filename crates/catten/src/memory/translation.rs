@@ -19,7 +19,7 @@ pub(crate) enum TableScope {
 fn allowed(scope: TableScope, platform: bool, free: u64, usable: u64) -> bool {
     scope == TableScope::SharedKernel
         || platform
-        || charlotte_lifecycle::resources::frames_available(free, usable, 1)
+        || crate::resource_policy::frames_available(free, usable, 1)
 }
 
 #[must_use]
@@ -148,8 +148,9 @@ impl<'a> PreparingTable<'a> {
     }
 
     pub(crate) fn test_policy() {
-        assert!(!allowed(TableScope::PrivateUser, false, 10, 80));
-        assert!(allowed(TableScope::PrivateUser, false, 11, 80));
+        let floor = crate::resource_policy::POLICY.memory.physical_reserve.of(80).max(1);
+        assert!(!allowed(TableScope::PrivateUser, false, floor, 80));
+        assert!(allowed(TableScope::PrivateUser, false, floor + 1, 80));
         assert!(!allowed(TableScope::PrivateUser, false, 0, 80));
         assert!(allowed(TableScope::PrivateUser, true, 10, 80));
         assert!(allowed(TableScope::SharedKernel, false, 10, 80));
