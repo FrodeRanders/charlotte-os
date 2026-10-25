@@ -390,11 +390,17 @@ Source, tests, and repository history remain authoritative.
         finish after local memory/table guards. Full captured namespace generation
         also revalidates before mapping/pin publication. Broader contexts and
         aggregate metadata admission remain separate.
+        Mapping/copy/DMA snapshot buffers now share requested-byte/count limits:
+        4 MiB/8,192 total and 3 MiB/6,144 ordinary. Original admission moves with
+        each buffer and refunds after deallocation; captured classification
+        survives promotion and root reuse. Empty escrow pins allocate no buffer.
+        Inline metadata, allocator overhead, aggregate principals and concurrent
+        essential-progress qualification remain open.
         Copy-pin snapshot capacity also prepares outside memory serialization,
         with exact-generation/source revalidation before snapshot fill and pin
         publication. Bare preparation/pin fallback retains its allocation;
         explicit snapshot disposal precedes backing-fence decrement. Automatic
-        scoped/source-transfer destructors and aggregate snapshot admission
+        scoped/source-transfer destructors and aggregate principal admission
         remain separate qualification.
         DMA snapshots now share that inert preparation before either pin counter
         changes, with full source/direction/rights/exclusion revalidation. Bare

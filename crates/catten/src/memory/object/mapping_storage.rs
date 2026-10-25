@@ -15,11 +15,15 @@ struct Resources {
 #[must_use]
 pub(super) struct Preparing(ManuallyDrop<Resources>);
 impl Preparing {
-    pub(super) fn new(pages: usize) -> Result<Self, MemoryObjectError> {
-        Self::with(pages, |_| Ok(()))
+    pub(super) fn new(
+        handle: super::super::AddressSpaceHandle,
+        pages: usize,
+    ) -> Result<Self, MemoryObjectError> {
+        Self::with(handle, pages, |_| Ok(()))
     }
 
     pub(super) fn with(
+        handle: super::super::AddressSpaceHandle,
         pages: usize,
         mut before: impl FnMut(u8) -> Result<(), MemoryObjectError>,
     ) -> Result<Self, MemoryObjectError> {
@@ -31,7 +35,7 @@ impl Preparing {
             before(0)?;
             owner.0.node = Some(Storage::try_new().map_err(|_| MemoryObjectError::ResourceLimit)?);
             before(1)?;
-            owner.0.snapshot = Some(snapshot_storage::Preparing::new(pages)?);
+            owner.0.snapshot = Some(snapshot_storage::Preparing::new(handle, pages)?);
             before(2)
         })();
         if let Err(error) = result {

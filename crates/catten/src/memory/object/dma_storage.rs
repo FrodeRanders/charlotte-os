@@ -96,7 +96,10 @@ fn pin_with(
     asid: AddressSpaceId,
     cap: MemoryObjectCap,
     access: Access,
-    prepare: impl FnOnce(usize) -> Result<Preparing, MemoryObjectError>,
+    prepare: impl FnOnce(
+        super::super::AddressSpaceHandle,
+        usize,
+    ) -> Result<Preparing, MemoryObjectError>,
 ) -> Result<DmaPin, MemoryObjectError> {
     access.validate()?;
     let handle = super::super::current_address_space_handle(asid)
@@ -108,7 +111,7 @@ fn pin_with(
     // The existing public DMA operation retains its exact root/capability;
     // serialized adapters keep their own caller policy. No source frame or pin
     // crosses this factory interval, before any backend domain/engine claim.
-    let mut prepared = prepare(pages)?;
+    let mut prepared = prepare(handle, pages)?;
     let result = (|| {
         let mut registry = MEMORY_OBJECTS.lock();
         if registry.caps.get(&asid).is_some_and(|namespace| namespace.handle != handle) {

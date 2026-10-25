@@ -30,7 +30,10 @@ pub(super) fn pin(
 fn pin_with(
     owner: AddressSpaceId,
     cap: MemoryObjectCap,
-    prepare: impl FnOnce(usize) -> Result<Preparing, MemoryObjectError>,
+    prepare: impl FnOnce(
+        super::super::AddressSpaceHandle,
+        usize,
+    ) -> Result<Preparing, MemoryObjectError>,
 ) -> Result<CopyPin, MemoryObjectError> {
     let handle = super::super::current_address_space_handle(owner)
         .ok_or(MemoryObjectError::AddressSpaceMissing)?;
@@ -40,7 +43,7 @@ fn pin_with(
     };
     // No frame identity, Rust borrow or source pin crosses this interval.
     // Existing IPC/fixture contexts remain responsible for their outer policy.
-    let mut prepared = prepare(pages)?;
+    let mut prepared = prepare(handle, pages)?;
     let result = (|| {
         let mut registry = MEMORY_OBJECTS.lock();
         if registry.caps.get(&owner).is_some_and(|namespace| namespace.handle != handle) {

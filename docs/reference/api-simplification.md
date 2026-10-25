@@ -527,6 +527,14 @@ captured full namespace generation before mapping mutation. All internal callers
 and fixtures use this one owner; no compatibility allocator, public ABI/format
 change, new pin family or replay permission is added. See
 [mapping preparation evidence](../reports/audits/2026-10-25-security-mapping-preparation-ownership.md).
+
+All mapping/copy/DMA snapshot factories now receive the already captured namespace
+handle and create one charged `Snapshot`. The old uncharged vector aliases and
+size-only factory signatures are removed. Buffer and original admission move
+together; explicit disposal frees before refund. Empty source-escrow pins retain
+their current no-buffer purpose, with no compatibility allocation path. Public
+ABI/formats and typed backing/hardware completion proofs remain unchanged. See
+[snapshot-buffer admission](snapshot-buffer-admission.md).
 Other factory/destructor contexts, scalar scratch identity and comprehensive
 metadata admission remain current candidates. Wire formats/runtime ABI stay
 unchanged.

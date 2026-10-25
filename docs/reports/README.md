@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Shared snapshot-buffer admission](audits/2026-10-25-security-snapshot-buffer-admission.md) — Byte/count ceilings follow mapping/copy/DMA buffer lifetime, with real allocation pressure and explicit audit acceptance scope.
+
 - [Mapping preparation ownership](audits/2026-10-25-security-mapping-preparation-ownership.md) — Inert partial node/snapshot custody, explicit post-guard ordinary disposal and captured-generation publication checks.
 
 - [DMA-pin snapshot storage](audits/2026-10-25-security-dma-snapshot-storage.md) — Shared fallible snapshot preparation before DMA pin publication, exact-source revalidation and inert bare-pin fallback.

@@ -1222,3 +1222,10 @@ Focused root, IPC transaction and DMA operation checks retain their existing
 projections. Concrete construction, captured-generation publication, disposal and
 guarded fallback remain native/source qualification, without a refinement or
 sustained-pressure claim. No model input or physical/replay policy changes.
+
+The [snapshot-buffer admission follow-up](../reports/audits/2026-10-25-security-snapshot-buffer-admission.md)
+bounds requested vector layouts/counts through their existing typed owners.
+Focused root, IPC transaction and DMA operation checks keep their prior
+projections; concrete counters, captured policy, allocator and cleanup contexts
+remain native/source qualification. No models, physical/replay policy or
+sustained-pressure fairness proof changes.

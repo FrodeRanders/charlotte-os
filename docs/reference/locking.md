@@ -510,3 +510,13 @@ mapping/pin publication. These controls add no root lease, cleanup custody or
 hardware/replay proof; broader caller/destructor/IRQ contexts and aggregate
 metadata pressure remain open. See
 [mapping preparation](../reports/audits/2026-10-25-security-mapping-preparation-ownership.md).
+
+Shared snapshot buffers now reserve requested bytes/count under one independent
+leaf mutex before their fallible allocator. Exact caller classification is
+captured before either counter or allocator; no root/registry lookup occurs at
+late refund. Publication only moves charged owners. Explicit buffer deallocation
+precedes counter entry/refund, and fallback retains all fields without counter
+or allocator work. Guarded publication and copy/DMA/mapping abandonment controls
+also hold this counter. Empty source-escrow pins have no allocation or reservation.
+Broader outer cleanup contexts and aggregate pressure remain unqualified; see
+[snapshot-buffer admission](snapshot-buffer-admission.md).

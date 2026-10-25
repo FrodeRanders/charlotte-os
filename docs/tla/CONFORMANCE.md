@@ -1394,3 +1394,16 @@ CPU-map source-interleaving interval, allocator entry or destructor/IRQ contexts
 Native/source controls qualify those boundaries, without executable refinement,
 arbitrary-schedule or sustained-pressure fairness proof. No model input, custody
 or physical/replay policy changes.
+
+## Shared snapshot-buffer admission
+
+The [snapshot admission batch](../reports/audits/2026-10-25-security-snapshot-buffer-admission.md)
+adds requested buffer-byte/count enforcement and moves the charge with the same
+allocation through mapping/copy/DMA publication and retirement. Explicit buffer
+free precedes refund; captured classification survives root reuse/promotion.
+Existing root original-charge, IPC loan/rollback/timeout and DMA ownership
+projections remain. None represents these concrete pool dimensions, allocator
+layouts, per-allocation classification or destructor/IRQ contexts. Actual-buffer
+pressure and guarded ownership controls qualify those boundaries natively; no
+model input, executable refinement, physical/replay or sustained fairness claim
+changes.

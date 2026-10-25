@@ -117,9 +117,10 @@ The table walk and prefix rollback retain their existing serialization. Snapshot
 capacity is prepared beforehand, so filling it and publishing the mapping record
 need no allocation under the memory registry. Snapshot disposal also leaves
 both local memory and table guards. Shared count limits and original backing
-ownership remain; there is no new mapping-byte/aggregate-principal pool. Multiple
-unused preparations can overlap, and their peak allocation/pressure remains
-unqualified.
+ownership remain. Multiple
+unused preparations can overlap. Shared snapshot-buffer admission now bounds their
+requested vector bytes/counts, as described below; mapping-node/aggregate-principal
+admission and sustained pressure remain separate.
 
 Ordinary rejected-prefix rollback detaches the original mapping node into the
 existing `MappingRetirementPin`, retaining its exact published-prefix count.
@@ -190,8 +191,9 @@ source-escrow retention pins use this same owner without allocating a snapshot.
 
 This preserves the existing source pin and containing IPC/fixture policy; it adds
 no root lease, admission pool, metadata ticket, recovery owner or physical proof.
-The 64 MiB object bound caps one snapshot, but overlapping candidates have no
-independent byte/count or aggregate principal admission. `ScopedCopyPin`'s
+The 64 MiB object bound caps one snapshot; shared snapshot-buffer byte/count
+admission now also bounds overlapping candidates. Aggregate principal admission
+remains open. `ScopedCopyPin`'s
 automatic unpin and containing source-transfer/ordinary rollback destructors,
 other outer IRQ/guard contexts remain separate qualification. DMA snapshots now
 use the same preparation owner, as described below.
@@ -224,9 +226,21 @@ No new root lease, registry, admission pool, recovery family, readiness or repla
 permission is introduced. Serialized memory-pin controls install no IOMMU state;
 only an unused pin or the original backend's confirmed cleanup permits unpin.
 
-The per-object frame bound is unchanged. Concurrent candidates, retained vector
-bytes, aggregate principal admission and broader outer/destructor/IRQ contexts
-remain open. See [DMA snapshot evidence](../reports/audits/2026-10-25-security-dma-snapshot-storage.md).
+The per-object frame bound is unchanged. Shared snapshot-buffer admission now
+bounds concurrent/retained vector reservations. Aggregate principal admission and
+broader outer/destructor/IRQ contexts remain open. See
+[DMA snapshot evidence](../reports/audits/2026-10-25-security-dma-snapshot-storage.md).
+
+## Shared snapshot-buffer admission
+
+Mapping/copy/DMA snapshots now reserve one count and their requested buffer bytes
+before allocation: 4 MiB/8,192 total and 3 MiB/6,144 ordinary. The same inert
+`Snapshot` owns vector plus original charge through preparation, publication,
+detached pins and abandonment. Explicit buffer free precedes refund; source-root
+retirement, scalar reuse and late promotion cannot redirect it. Existing empty
+source-escrow pins allocate no buffer and use no quota. Mapping nodes, inline
+owners, allocator overhead and aggregate principals remain separate.
+See [current limits and acceptance scope](snapshot-buffer-admission.md).
 
 ## Complete retirement owner
 

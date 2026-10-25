@@ -530,6 +530,18 @@ metadata admission, broader outer contexts, pressure and historical failure
 attribution remain open. This advances C05/C18 and G1/R7-2 without changing finding
 dispositions or SEC-07/18 status.
 
+The [shared snapshot admission batch](../reports/audits/2026-10-25-security-snapshot-buffer-admission.md)
+adds requested buffer-byte/count enforcement for mapping/copy/DMA: 4 MiB/8,192
+total and 3 MiB/6,144 ordinary. One typed buffer owner keeps its original charge
+through preparation, publication, root retirement and abandonment, refunding only
+after actual buffer free. Captured classification survives promotion and ASID
+reuse. Actual buffer exhaustion exercises all three rejection paths, trusted
+reserve, empty escrow and cleanup at exhaustion. This closes that family's
+unbounded snapshot-buffer reservation gap under R7-2/R7-3, not the whole gates.
+Per-principal/general metadata, allocator overhead, sustained EL0 pressure and
+essential-service progress remain open. See the [acceptance map](snapshot-buffer-admission.md#acceptance-scope).
+No finding disposition or SEC-07/18 status changes.
+
 SEC-07 remains partial until all of the following deliverables are accepted:
 
 The [telemetry snapshot follow-up](../reports/audits/2026-10-18-telemetry-snapshot-preparation.md)

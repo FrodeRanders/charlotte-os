@@ -35,6 +35,7 @@ pub(crate) fn run() {
 }
 
 fn rejected_prefixes() {
+    let admitted = snapshot_storage::admitted();
     let handle = root();
     let cap = allocate(handle.id(), 2).unwrap();
     let object = id(handle, cap);
@@ -43,8 +44,8 @@ fn rejected_prefixes() {
     let authority = crate::capability::node_admission_used();
     for reject in 0..2 {
         for _ in 0..64 {
-            let result = pin_with(handle.id(), cap, |pages| {
-                Preparing::with(pages, |stage| {
+            let result = pin_with(handle.id(), cap, |handle, pages| {
+                Preparing::with(handle, pages, |stage| {
                     available();
                     assert_eq!(pages, 2);
                     assert_eq!(MEMORY_OBJECTS.lock().objects[&object].copy_pins, 0);
@@ -61,11 +62,12 @@ fn rejected_prefixes() {
             assert_eq!(memory::budget::used(handle), used);
             assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
             assert_eq!(crate::capability::node_admission_used(), authority);
+            assert_eq!(snapshot_storage::admitted(), admitted);
         }
     }
-    assert_eq!(Preparing::new(usize::MAX).err(), Some(MemoryObjectError::FrameAllocFailed));
+    assert_eq!(Preparing::new(handle, usize::MAX).err(), Some(MemoryObjectError::FrameAllocFailed));
     assert_eq!(
-        pin_with(handle.id(), cap, |_| Err(MemoryObjectError::FrameAllocFailed)).err(),
+        pin_with(handle.id(), cap, |_, _| Err(MemoryObjectError::FrameAllocFailed)).err(),
         Some(MemoryObjectError::FrameAllocFailed)
     );
     close_cap(handle.id(), cap).unwrap();
@@ -75,8 +77,8 @@ fn rejected_prefixes() {
 fn changed_source() {
     let handle = root();
     let cap = allocate(handle.id(), 1).unwrap();
-    let result = pin_with(handle.id(), cap, |pages| {
-        let prepared = Preparing::new(pages)?;
+    let result = pin_with(handle.id(), cap, |handle, pages| {
+        let prepared = Preparing::new(handle, pages)?;
         available();
         close_cap(handle.id(), cap).unwrap();
         Ok(prepared)
@@ -87,8 +89,8 @@ fn changed_source() {
     let cap = allocate(handle.id(), 1).unwrap();
     let object = id(handle, cap);
     let base = VAddr::from(0x240000usize);
-    let result = pin_with(handle.id(), cap, |pages| {
-        let prepared = Preparing::new(pages)?;
+    let result = pin_with(handle.id(), cap, |handle, pages| {
+        let prepared = Preparing::new(handle, pages)?;
         map(handle.id(), cap, base, true).unwrap();
         Ok(prepared)
     });
@@ -96,8 +98,8 @@ fn changed_source() {
     assert_eq!(MEMORY_OBJECTS.lock().objects[&object].copy_pins, 0);
     unmap(handle.id(), cap).unwrap();
     let mut dma = None;
-    let result = pin_with(handle.id(), cap, |pages| {
-        let prepared = Preparing::new(pages)?;
+    let result = pin_with(handle.id(), cap, |handle, pages| {
+        let prepared = Preparing::new(handle, pages)?;
         dma = Some(pin_for_dma(handle.id(), cap, true, false, false)?);
         Ok(prepared)
     });
@@ -112,8 +114,8 @@ fn reused_generation() {
     let old = root();
     let cap = allocate(old.id(), 1).unwrap();
     let mut successor = None;
-    let result = pin_with(old.id(), cap, |pages| {
-        let prepared = Preparing::new(pages)?;
+    let result = pin_with(old.id(), cap, |handle, pages| {
+        let prepared = Preparing::new(handle, pages)?;
         // No borrowed frames or source pin exist during preparation. This raw
         // serialized fixture can close and really reuse the entire namespace.
         close_cap(old.id(), cap).unwrap();
@@ -140,12 +142,14 @@ fn publication() {
     let object = id(handle, cap);
     let irq = crate::cpu::isa::lp::ops::get_int_state();
     for _ in 0..64 {
-        let mut prepared = Preparing::new(35).unwrap();
+        let mut prepared = Preparing::new(handle, 35).unwrap();
         let pin = {
             let mut registry = MEMORY_OBJECTS.lock();
             let _heap = PRIMARY_ALLOCATOR.lock();
             assert_eq!(copy_admission(&registry, handle.id(), cap), Ok((object, 35)));
-            let pin = publish(&mut prepared, &mut registry, object);
+            let pin = snapshot_storage::with_budget_locked(|| {
+                publish(&mut prepared, &mut registry, object)
+            });
             assert_eq!(pin.frames.as_slice(), registry.objects[&object].frames.as_slice());
             assert_eq!(registry.objects[&object].copy_pins, 1);
             pin
@@ -164,13 +168,14 @@ fn publication() {
 }
 
 fn retention() {
-    let prepared = Preparing::new(35).unwrap();
+    let admitted = snapshot_storage::admitted();
+    let handle = root();
+    let prepared = Preparing::new(handle, 35).unwrap();
     {
         let _registry = MEMORY_OBJECTS.lock();
         let _heap = PRIMARY_ALLOCATOR.lock();
-        drop(prepared); // Unused snapshot capacity, with no frame identity or pin.
+        snapshot_storage::with_budget_locked(|| drop(prepared));
     }
-    let handle = root();
     let cap = allocate(handle.id(), 1).unwrap();
     let object = id(handle, cap);
     let pin = pin_for_copy(handle.id(), cap).unwrap();
@@ -181,7 +186,7 @@ fn retention() {
         let _table = ADDRESS_SPACE_TABLE.lock();
         let _heap = PRIMARY_ALLOCATOR.lock();
         let _physical = PHYSICAL_FRAME_ALLOCATOR.lock();
-        drop(pin); // Bare pin abandonment cannot free metadata or decrement it.
+        snapshot_storage::with_budget_locked(|| drop(pin));
     }
     assert_eq!(MEMORY_OBJECTS.lock().objects[&object].copy_pins, 1);
     assert_eq!(close_cap(handle.id(), cap), Err(MemoryObjectError::LendingActive));
@@ -202,7 +207,7 @@ fn retention() {
     assert_ne!(successor, handle);
     assert_eq!(memory::budget::used(successor), memory::budget::Amount::default());
     assert_eq!(
-        pin_with(successor.id(), cap, |_| panic!("retired source reached factory")).err(),
+        pin_with(successor.id(), cap, |_, _| panic!("retired source reached factory")).err(),
         Some(MemoryObjectError::UnknownCapability)
     );
     let fresh = allocate(successor.id(), 1).unwrap();
@@ -217,4 +222,9 @@ fn retention() {
     close_cap(successor.id(), fresh).unwrap();
     memory::close_user_address_space_handle(successor).unwrap();
     assert_eq!(memory::budget::used(handle), used);
+    let after = snapshot_storage::admitted();
+    assert_eq!(
+        after,
+        ([admitted.0[0] + 36 * 8, admitted.0[1] + 2], [admitted.1[0] + 36 * 8, admitted.1[1] + 2])
+    );
 }

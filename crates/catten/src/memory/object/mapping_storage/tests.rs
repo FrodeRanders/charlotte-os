@@ -47,6 +47,7 @@ pub(crate) fn run() {
 }
 
 fn rejected_prefixes() {
+    let admitted = snapshot_storage::admitted();
     let handle = root();
     let cap = allocate(handle.id(), 2).unwrap();
     let id = MEMORY_OBJECTS.lock().lookup(handle.id(), cap).unwrap().object;
@@ -67,8 +68,8 @@ fn rejected_prefixes() {
                     &mut pin,
                     (
                         cleanup,
-                        |pages| {
-                            Preparing::with(pages, |stage| {
+                        |handle, pages| {
+                            Preparing::with(handle, pages, |stage| {
                                 available();
                                 assert_eq!(pages, 2);
                                 assert_eq!(MEMORY_OBJECTS.lock().objects[&id].retirement_pins, 0);
@@ -100,9 +101,10 @@ fn rejected_prefixes() {
             assert_eq!(memory::budget::used(handle), used);
             assert_eq!(crate::capability::node_admission_used(), counts);
             assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), frames);
+            assert_eq!(snapshot_storage::admitted(), admitted);
         }
     }
-    assert_eq!(Preparing::new(usize::MAX).err(), Some(MemoryObjectError::FrameAllocFailed));
+    assert_eq!(Preparing::new(handle, usize::MAX).err(), Some(MemoryObjectError::FrameAllocFailed));
     close_cap(handle.id(), cap).unwrap();
     memory::close_user_address_space_handle(handle).unwrap();
 }
@@ -121,8 +123,8 @@ fn lost_source() {
             &mut pin,
             (
                 cleanup,
-                |pages| {
-                    let prepared = Preparing::new(pages)?;
+                |handle, pages| {
+                    let prepared = Preparing::new(handle, pages)?;
                     available();
                     close_cap(handle.id(), cap).unwrap();
                     Ok(prepared)
@@ -147,22 +149,24 @@ fn metadata_publication() {
     let object = MEMORY_OBJECTS.lock().lookup(handle.id(), cap).unwrap().object;
     let irq = crate::cpu::isa::lp::ops::get_int_state();
     for _ in 0..64 {
-        let mut prepared = Preparing::new(35).unwrap();
+        let mut prepared = Preparing::new(handle, 35).unwrap();
         let pin = {
             let mut registry = MEMORY_OBJECTS.lock();
             let _heap = PRIMARY_ALLOCATOR.lock();
-            let mut pin = prepared.publish(
-                &mut registry,
-                object,
-                handle.id(),
-                MemoryMappingState {
-                    address_space: handle,
-                    base: VAddr::from(0x1c0000usize),
-                    installed_pages: 0,
-                    writable: false,
-                    scratch: false,
-                },
-            );
+            let mut pin = snapshot_storage::with_budget_locked(|| {
+                prepared.publish(
+                    &mut registry,
+                    object,
+                    handle.id(),
+                    MemoryMappingState {
+                        address_space: handle,
+                        base: VAddr::from(0x1c0000usize),
+                        installed_pages: 0,
+                        writable: false,
+                        scratch: false,
+                    },
+                )
+            });
             assert_eq!(prepared.frames(), registry.objects[&object].frames.as_slice());
             pin.retired_mapping =
                 registry.objects.get_mut(&object).unwrap().mappings.take(&handle.id());
@@ -196,8 +200,8 @@ fn reused_generation() {
         &mut pin,
         (
             cleanup,
-            |pages| {
-                let prepared = Preparing::new(pages)?;
+            |handle, pages| {
+                let prepared = Preparing::new(handle, pages)?;
                 close_cap(old.id(), cap).unwrap();
                 memory::close_user_address_space_handle(old).unwrap();
                 let fresh = root();
@@ -291,6 +295,8 @@ fn ordinary_disposal() {
 }
 
 fn guarded_preparation() {
+    let admitted = snapshot_storage::admitted();
+    let handle = root();
     let irq = crate::cpu::isa::lp::ops::get_int_state();
     // One partial empty node and one complete unused node/snapshot pair. No
     // source identities or pins exist, so the fixture root is unrelated to them.
@@ -298,20 +304,21 @@ fn guarded_preparation() {
         node: Some(Storage::try_new().unwrap()),
         snapshot: None,
     }));
-    let full = Preparing::new(35).unwrap();
+    let full = Preparing::new(handle, 35).unwrap();
     {
         let _registry = MEMORY_OBJECTS.lock();
         let _table = ADDRESS_SPACE_TABLE.lock();
         let _heap = PRIMARY_ALLOCATOR.lock();
         let _physical = PHYSICAL_FRAME_ALLOCATOR.lock();
-        drop(partial);
-        drop(full);
+        snapshot_storage::with_budget_locked(|| {
+            drop(partial);
+            drop(full);
+        });
     }
     assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
-    let handle = root();
     let cap = allocate(handle.id(), 35).unwrap();
     let object = MEMORY_OBJECTS.lock().lookup(handle.id(), cap).unwrap().object;
-    let mut prepared = Preparing::new(35).unwrap();
+    let mut prepared = Preparing::new(handle, 35).unwrap();
     let mut pin = {
         let mut registry = MEMORY_OBJECTS.lock();
         prepared.publish(
@@ -335,7 +342,7 @@ fn guarded_preparation() {
         assert_eq!(prepared.frames().len(), 35);
         pin.retired_mapping =
             registry.objects.get_mut(&object).unwrap().mappings.take(&handle.id());
-        drop(prepared); // Snapshot retained; its original node is still in pin.
+        snapshot_storage::with_budget_locked(|| drop(prepared));
     }
     assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
     // No leaves or externally owned mapping were installed by this isolated
@@ -344,6 +351,10 @@ fn guarded_preparation() {
     assert_eq!(MEMORY_OBJECTS.lock().objects[&object].retirement_pins, 0);
     close_cap(handle.id(), cap).unwrap();
     memory::close_user_address_space_handle(handle).unwrap();
+    assert_eq!(
+        snapshot_storage::admitted(),
+        ([admitted.0[0] + 70 * 8, admitted.0[1] + 2], [admitted.1[0] + 70 * 8, admitted.1[1] + 2])
+    );
 }
 
 fn rollback_record_lifetime() {

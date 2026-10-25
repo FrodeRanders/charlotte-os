@@ -52,6 +52,7 @@ mod mapping_tests;
 mod snapshot_storage;
 mod storage_tests;
 pub(crate) fn test_object_storage() {
+    snapshot_storage::tests::run();
     storage_tests::run();
     borrower_storage_tests::run();
     cap_storage::tests::run();
@@ -402,7 +403,7 @@ pub(crate) struct CopyPin {
     object: MemoryObjectId,
     // A bare abandoned pin retains its snapshot and original backing fence.
     // Only explicit unpin may dispose the snapshot and decrement that fence.
-    frames: ManuallyDrop<Vec<PAddr>>,
+    frames: snapshot_storage::Snapshot,
 }
 
 impl Drop for CopyPin {
@@ -415,7 +416,7 @@ impl Drop for CopyPin {
 #[must_use]
 pub(crate) struct DmaPin {
     object: MemoryObjectId,
-    frames: ManuallyDrop<Vec<PAddr>>,
+    frames: snapshot_storage::Snapshot,
     exclusive: bool,
 }
 
@@ -1116,7 +1117,10 @@ fn map_locked_with_preparation(
     pin: &mut Option<MappingRetirementPin>,
     (mut cleanup, prepare, before_dispose): (
         impl FnMut(&mut crate::cpu::isa::memory::paging::AddressSpace, VAddr, PAddr) -> bool,
-        impl FnOnce(usize) -> Result<mapping_storage::Preparing, MemoryObjectError>,
+        impl FnOnce(
+            super::AddressSpaceHandle,
+            usize,
+        ) -> Result<mapping_storage::Preparing, MemoryObjectError>,
         impl FnOnce(&mapping_storage::Preparing),
     ),
 ) -> Result<(), MemoryObjectError> {
@@ -1132,7 +1136,7 @@ fn map_locked_with_preparation(
     // No frame identity/borrow or source pin crosses this factory interval.
     // The existing caller root stays retained. Recheck the exact object and
     // all admission predicates before filling its preallocated snapshot.
-    let mut prepared = prepare(pages)?;
+    let mut prepared = prepare(address_space, pages)?;
     let result = (|| {
         let page_type = {
             let mut registry = MEMORY_OBJECTS.lock();
@@ -1518,7 +1522,7 @@ fn prepare_source_transfer_with(
         retired_payload: None,
         _pin: ScopedCopyPin(Some(CopyPin {
             object: entry.object,
-            frames: ManuallyDrop::new(Vec::new()),
+            frames: snapshot_storage::Snapshot::default(),
         })),
     };
     let payload = match loan {
@@ -2548,7 +2552,7 @@ pub(crate) fn unpin_copy(pin: CopyPin) {
 fn unpin_copy_with(mut pin: CopyPin, snapshot_disposed: impl FnOnce()) {
     // Dispose metadata before its original pin can permit backing release.
     // The complete pin remains armed if disposal or its observer is interrupted.
-    drop(core::mem::take(&mut *pin.frames));
+    core::mem::take(&mut pin.frames).finish();
     snapshot_disposed();
     let frames = {
         let mut registry = MEMORY_OBJECTS.lock();
@@ -2645,7 +2649,7 @@ pub(crate) fn unpin_dma(pin: DmaPin) {
 }
 
 fn unpin_dma_with(mut pin: DmaPin, snapshot_disposed: impl FnOnce()) {
-    drop(core::mem::take(&mut *pin.frames));
+    core::mem::take(&mut pin.frames).finish();
     snapshot_disposed();
     let frames = {
         let mut registry = MEMORY_OBJECTS.lock();

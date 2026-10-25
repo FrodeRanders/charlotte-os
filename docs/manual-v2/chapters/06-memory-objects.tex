@@ -99,8 +99,17 @@ publication under one hold. Ordinary rejection disposes unused capacity after
 unlock. Bare preparation/pin abandonment retains snapshot metadata without
 allocator entry; explicit unpin frees it before decrementing the backing fence.
 Empty source-escrow retention pins use this same owner without a snapshot.
-Aggregate snapshot admission, automatic scoped/source-transfer destructors and
+Aggregate principal admission, automatic scoped/source-transfer destructors and
 wider IRQ/guard contexts remain separate qualification.
+
+Mapping/copy/DMA frame snapshots now share requested buffer-byte/count admission:
+4 MiB/8,192 total and 3 MiB/6,144 ordinary. The exact calling namespace's trusted
+classification is captured before allocation. One inert buffer owner carries its
+original charge through preparation, publication, root retirement and abandonment;
+actual buffer free precedes refund. Late promotion and ASID reuse cannot reclassify
+that reservation. Empty source-escrow pins have no buffer allocation or quota.
+Allocator overhead, inline metadata, aggregate principals and sustained concurrent
+progress remain separate; see \repofile|docs/reference/snapshot-buffer-admission.md|.
 
 DMA snapshots now use the same inert vector preparation outside memory
 serialization. Full namespace/source and direction/rights/loan/exclusion checks
