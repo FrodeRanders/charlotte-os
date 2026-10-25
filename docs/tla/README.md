@@ -1209,3 +1209,9 @@ snapshot/pin metadata. Focused IPC-transaction and root-retirement checks preser
 existing loan/root/charge projections. Concrete copy factories, snapshot disposal
 and guard/IRQ contexts remain native/source qualification; no model input or
 physical/replay policy changes.
+
+The [DMA snapshot follow-up](../reports/audits/2026-10-25-security-dma-snapshot-storage.md)
+shares snapshot preparation without merging typed copy/DMA completion proofs.
+Focused DMA-operation, IPC-transaction and root-retirement configurations are
+rerun. Concrete vector factories, source revalidation and destructor/IRQ contexts
+remain native/source qualification; no models, custody or replay policy change.

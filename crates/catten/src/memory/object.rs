@@ -46,8 +46,10 @@ const RETIREMENT_FRAME_BATCH: usize = 16;
 mod borrower_storage_tests;
 mod cap_storage;
 mod copy_storage;
+mod dma_storage;
 mod mapping_storage;
 mod mapping_tests;
+mod snapshot_storage;
 mod storage_tests;
 pub(crate) fn test_object_storage() {
     storage_tests::run();
@@ -55,6 +57,7 @@ pub(crate) fn test_object_storage() {
     cap_storage::tests::run();
     mapping_storage::tests::run();
     copy_storage::tests::run();
+    dma_storage::tests::run();
     scratch_namespace::tests::run();
 }
 mod publication_tests;
@@ -409,10 +412,18 @@ impl Drop for CopyPin {
     }
 }
 
+#[must_use]
 pub(crate) struct DmaPin {
     object: MemoryObjectId,
-    frames: Vec<PAddr>,
+    frames: ManuallyDrop<Vec<PAddr>>,
     exclusive: bool,
+}
+
+impl Drop for DmaPin {
+    fn drop(&mut self) {
+        // Only confirmed backend cleanup or unused preparation permits explicit
+        // unpin. Fallback retains snapshot, pin counters and original backing.
+    }
 }
 
 impl DmaPin {
@@ -2608,58 +2619,28 @@ pub(crate) fn pin_for_dma(
     device_writes: bool,
     exclusive: bool,
 ) -> Result<DmaPin, MemoryObjectError> {
-    if !device_reads && !device_writes {
-        return Err(MemoryObjectError::MissingRight);
-    }
-    let mut registry = MEMORY_OBJECTS.lock();
-    let cap_entry = registry.lookup(asid, cap)?;
-    if device_reads && !cap_entry.rights.contains(MemoryObjectRights::MAP_READ)
-        || device_writes && !cap_entry.rights.contains(MemoryObjectRights::MAP_WRITE)
-    {
-        return Err(MemoryObjectError::MissingRight);
-    }
-    let object =
-        registry.objects.get_mut(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
-    if object.destroy_when_unpinned
-        || object.retirement_pins != 0
-        || matches!(object.lend_state, LendState::Revoking)
-        || device_writes && matches!(object.lend_state, LendState::Read { .. })
-        || matches!(object.lend_state, LendState::Write { borrower, cap: lent }
-            if borrower != asid || lent != cap)
-    {
-        return Err(MemoryObjectError::LendingActive);
-    }
-    if object.exclusive_dma_pins != 0
-        || device_writes && object.copy_pins != 0
-        || exclusive
-            && (object.dma_pins != 0
-                || object.copy_pins != 0
-                || object.lend_state.is_active()
-                || object.mappings.first_key_value().is_some())
-    {
-        return Err(MemoryObjectError::LendingActive);
-    }
-    let dma_pins = object.dma_pins.checked_add(1).ok_or(MemoryObjectError::InvalidLength)?;
-    let exclusive_dma_pins = if exclusive {
-        object.exclusive_dma_pins.checked_add(1).ok_or(MemoryObjectError::InvalidLength)?
-    } else {
-        object.exclusive_dma_pins
-    };
-    object.dma_pins = dma_pins;
-    object.exclusive_dma_pins = exclusive_dma_pins;
-    Ok(DmaPin {
-        object: cap_entry.object,
-        frames: object.frames.clone(),
-        exclusive,
-    })
+    dma_storage::pin(
+        asid,
+        cap,
+        dma_storage::Access {
+            reads: device_reads,
+            writes: device_writes,
+            exclusive,
+        },
+    )
 }
 
 pub(crate) fn unpin_dma(pin: DmaPin) {
+    unpin_dma_with(pin, || {});
+}
+
+fn unpin_dma_with(mut pin: DmaPin, snapshot_disposed: impl FnOnce()) {
+    drop(core::mem::take(&mut *pin.frames));
+    snapshot_disposed();
     let frames = {
         let mut registry = MEMORY_OBJECTS.lock();
-        let Some(object) = registry.objects.get_mut(&pin.object) else {
-            return;
-        };
+        let object =
+            registry.objects.get_mut(&pin.object).expect("unpin_dma: pinned object missing");
         object.dma_pins = object.dma_pins.checked_sub(1).expect("unpin_dma: dma_pins underflow");
         if pin.exclusive {
             object.exclusive_dma_pins = object

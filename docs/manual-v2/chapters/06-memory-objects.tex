@@ -94,6 +94,15 @@ Empty source-escrow retention pins use this same owner without a snapshot.
 Aggregate snapshot admission, automatic scoped/source-transfer destructors and
 wider IRQ/guard contexts remain separate qualification.
 
+DMA snapshots now use the same inert vector preparation outside memory
+serialization. Full namespace/source and direction/rights/loan/exclusion checks
+revalidate before allocation-free snapshot fill and shared/exclusive counter
+publication. The infallible clone after counter mutation is removed. Bare DMA
+pin fallback retains snapshot and original backing fences; explicit snapshot
+free precedes unpin. Existing backend operation/maintenance owners still supply
+the hardware completion proof. No readiness, recovery family or replay authority
+is added. Concurrent snapshot budgets and broader outer contexts remain open.
+
 Retirement keeps the complete detached object node in the existing backing
 receipt, with its original frame vector, charge and metadata. Physical release
 uses sixteen-frame batches; a started/failed fence precedes allocator entry.

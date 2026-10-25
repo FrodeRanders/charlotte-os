@@ -482,5 +482,18 @@ decrements, then permits existing deferred backing teardown after memory unlock.
 Native controls hold heap/memory during publication and heap/memory/table/physical
 guards during bare pin abandonment, preserving IRQ state. This does not qualify
 `ScopedCopyPin` or source-transfer destructors, enclosing IPC/lifecycle holds,
-DMA snapshot factories, aggregate admission or sustained-pressure progress.
+aggregate admission or sustained-pressure progress.
 See [copy snapshot storage](memory-object-storage.md#copy-pin-snapshots).
+
+DMA snapshots now share that inert vector preparation outside `MEMORY_OBJECTS`.
+Final full-namespace/source/direction/rights/loan/copy/DMA/mapping checks precede
+snapshot fill and both shared/exclusive counter updates under one hold, with no
+allocation. The VT-d, AMD-Vi and SMMU map entries call it before backend claim;
+their existing exact-root/public-capability operation stays owned throughout.
+Unused snapshots dispose after local memory unlock. Bare DMA-pin fallback retains
+snapshot and both fences without allocator/registry entry; explicit unpin frees
+the actual snapshot before decrementing those counters. Backend completion and
+post-backend guard requirements remain the caller's typed proof. Native controls
+qualify memory/heap-held publication, memory/table/heap/physical-held abandonment
+and original IRQ preservation, not arbitrary outer contexts or sustained pressure.
+See [DMA snapshot storage](memory-object-storage.md#dma-pin-snapshots).

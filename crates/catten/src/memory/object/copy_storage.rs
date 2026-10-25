@@ -1,45 +1,22 @@
 //! Snapshot factories leave memory serialization before any source pin exists.
 //! Final revalidation fills preallocated storage and pins the exact object once.
-use super::*;
+use super::{
+    snapshot_storage::Preparing,
+    *,
+};
 
-#[must_use]
-struct Preparing(ManuallyDrop<Vec<PAddr>>);
-impl Preparing {
-    fn new(pages: usize) -> Result<Self, MemoryObjectError> {
-        Self::with(pages, |_| Ok(()))
-    }
-
-    fn with(
-        pages: usize,
-        mut before: impl FnMut(u8) -> Result<(), MemoryObjectError>,
-    ) -> Result<Self, MemoryObjectError> {
-        let mut owner = Self(ManuallyDrop::new(Vec::new()));
-        let result = (|| {
-            before(0)?;
-            owner.0.try_reserve_exact(pages).map_err(|_| MemoryObjectError::FrameAllocFailed)?;
-            before(1)
-        })();
-        if let Err(error) = result {
-            owner.finish();
-            return Err(error);
-        }
-        Ok(owner)
-    }
-
-    fn publish(&mut self, registry: &mut MemoryObjectRegistry, object: MemoryObjectId) -> CopyPin {
-        let entry = registry.objects.get_mut(&object).expect("validated copy source missing");
-        let pins = entry.copy_pins.checked_add(1).expect("validated copy pin overflow");
-        assert!(self.0.is_empty() && self.0.capacity() >= entry.frames.len());
-        self.0.extend_from_slice(&entry.frames);
-        entry.copy_pins = pins;
-        CopyPin {
-            object,
-            frames: ManuallyDrop::new(core::mem::take(&mut *self.0)),
-        }
-    }
-
-    fn finish(mut self) {
-        drop(core::mem::take(&mut *self.0));
+fn publish(
+    prepared: &mut Preparing,
+    registry: &mut MemoryObjectRegistry,
+    object: MemoryObjectId,
+) -> CopyPin {
+    let entry = registry.objects.get_mut(&object).expect("validated copy source missing");
+    let pins = entry.copy_pins.checked_add(1).expect("validated copy pin overflow");
+    let frames = prepared.fill_and_take(&entry.frames);
+    entry.copy_pins = pins;
+    CopyPin {
+        object,
+        frames,
     }
 }
 
@@ -73,7 +50,7 @@ fn pin_with(
         if current != object || current_pages != pages {
             return Err(MemoryObjectError::UnknownCapability);
         }
-        Ok(prepared.publish(&mut registry, object))
+        Ok(publish(&mut prepared, &mut registry, object))
     })();
     prepared.finish();
     result

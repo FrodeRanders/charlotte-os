@@ -391,6 +391,11 @@ Source, tests, and repository history remain authoritative.
         explicit snapshot disposal precedes backing-fence decrement. Automatic
         scoped/source-transfer destructors and aggregate snapshot admission
         remain separate qualification.
+        DMA snapshots now share that inert preparation before either pin counter
+        changes, with full source/direction/rights/exclusion revalidation. Bare
+        DMA-pin fallback retains metadata; explicit snapshot free precedes
+        counter decrement. Existing backend completion and root/capability
+        ownership remain required, without new readiness or replay permission.
         Scratch namespace/extent nodes now also prepare outside local guards,
         while MMIO retains its existing root/claim and rechecks mapped-state
         admission atomically. Complete scratch nodes stay in the final root

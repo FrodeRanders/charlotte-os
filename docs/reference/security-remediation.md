@@ -508,6 +508,17 @@ guarded fallback controls qualify this C18/R7-2 boundary. Aggregate metadata/
 principal admission, `ScopedCopyPin`/source-transfer destructors, DMA snapshots,
 wider outer contexts and pressure remain open. SEC-07/18 counts are unchanged.
 
+The [DMA snapshot batch](../reports/audits/2026-10-25-security-dma-snapshot-storage.md)
+replaces infallible frame cloning under memory serialization after pin-counter
+mutation. Shared inert vector capacity prepares outside that registry; captured
+source and all direction/rights/loan/exclusion predicates revalidate before
+allocation-free snapshot fill and both counter publications. Bare DMA-pin fallback
+retains metadata and original fences; explicit snapshot free precedes unpin.
+Existing complete DMA operation/maintenance owners and their typed hardware proof
+remain authoritative. Concurrent snapshot bytes, aggregate principal metadata,
+wider caller/destructor/IRQ contexts and sustained progress remain open. This
+advances R7-2 and C14/C15/C18 without changing SEC-07/18 or finding counts.
+
 SEC-07 remains partial until all of the following deliverables are accepted:
 
 The [telemetry snapshot follow-up](../reports/audits/2026-10-18-telemetry-snapshot-preparation.md)

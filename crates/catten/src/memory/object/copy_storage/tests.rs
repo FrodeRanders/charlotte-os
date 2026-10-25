@@ -145,7 +145,7 @@ fn publication() {
             let mut registry = MEMORY_OBJECTS.lock();
             let _heap = PRIMARY_ALLOCATOR.lock();
             assert_eq!(copy_admission(&registry, handle.id(), cap), Ok((object, 35)));
-            let pin = prepared.publish(&mut registry, object);
+            let pin = publish(&mut prepared, &mut registry, object);
             assert_eq!(pin.frames.as_slice(), registry.objects[&object].frames.as_slice());
             assert_eq!(registry.objects[&object].copy_pins, 1);
             pin

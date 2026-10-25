@@ -1370,3 +1370,15 @@ precedes unpin. Existing IPC loan/rollback/timeout and root original-charge
 projections are unchanged. Neither focused model implements the copy snapshot
 factory/revalidation interval, concrete allocator or destructor contexts. These
 remain native/source qualification, without a refinement or pressure/fairness proof.
+
+## DMA-pin snapshot storage
+
+The [DMA snapshot batch](../reports/audits/2026-10-25-security-dma-snapshot-storage.md)
+shares fallible vector preparation with copy snapshots before source pin mutation.
+Captured source/access validation precedes fill and both DMA counter updates; bare
+pin fallback retains metadata, while explicit snapshot free precedes unpin. Existing
+DMA-operation backend claim/confirmation/abandonment, IPC loan and root-charge
+projections remain unchanged. None models concrete snapshot allocation, the
+pin-free source-interleaving interval, vector disposal or allocator/IRQ contexts.
+Those are native/source qualification, without executable refinement or sustained
+concurrent pressure/fairness proof. No model input or replay policy changes.

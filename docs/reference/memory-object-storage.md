@@ -181,8 +181,40 @@ no root lease, admission pool, metadata ticket, recovery owner or physical proof
 The 64 MiB object bound caps one snapshot, but overlapping candidates have no
 independent byte/count or aggregate principal admission. `ScopedCopyPin`'s
 automatic unpin and containing source-transfer/ordinary rollback destructors,
-DMA snapshots and other outer IRQ/guard contexts remain separate qualification.
+other outer IRQ/guard contexts remain separate qualification. DMA snapshots now
+use the same preparation owner, as described below.
 See [copy snapshot evidence](../reports/audits/2026-10-25-security-copy-snapshot-storage.md).
+
+## DMA-pin snapshots
+
+DMA pin admission probes direction/read-write rights, loan/retirement state,
+copy/DMA exclusion, CPU mappings and checked shared/exclusive counters under
+memory serialization. The shared inert snapshot preparation then allocates
+capacity fallibly outside `MEMORY_OBJECTS`, before any data pin or frame identity
+exists. Final admission checks the captured namespace generation, object, size
+and all original predicates before filling the snapshot and publishing both pin
+counters under one hold. The old infallible frame-vector clone after counter
+mutation is removed. Rejected preparation disposes post-guard and publishes no pin.
+
+Copy and DMA share vector construction, transfer and explicit cancellation;
+their admission predicates, pin types and completion proofs stay separate.
+Bare `DmaPin` fallback retains snapshot capacity, shared/exclusive counters and
+original backing without allocator or registry entry. Explicit `unpin_dma`
+disposes snapshot storage before decrementing those counters and permitting
+existing deferred backing release. A missing pinned object is an internal
+invariant rejection, matching copy unpin; absence no longer silently returns
+from DMA unpin. No hardware completion is inferred by that assertion.
+
+All three backend map entries call this preparation before domain/engine claim.
+Their existing `DmaOperation` and `PendingPin` continue to own the exact root,
+capability and completed pin through unit admission and typed hardware work.
+No new root lease, registry, admission pool, recovery family, readiness or replay
+permission is introduced. Serialized memory-pin controls install no IOMMU state;
+only an unused pin or the original backend's confirmed cleanup permits unpin.
+
+The per-object frame bound is unchanged. Concurrent candidates, retained vector
+bytes, aggregate principal admission and broader outer/destructor/IRQ contexts
+remain open. See [DMA snapshot evidence](../reports/audits/2026-10-25-security-dma-snapshot-storage.md).
 
 ## Complete retirement owner
 

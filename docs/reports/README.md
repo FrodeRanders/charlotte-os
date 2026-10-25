@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [DMA-pin snapshot storage](audits/2026-10-25-security-dma-snapshot-storage.md) — Shared fallible snapshot preparation before DMA pin publication, exact-source revalidation and inert bare-pin fallback.
+
 - [Copy-pin snapshot storage](audits/2026-10-25-security-copy-snapshot-storage.md) — Pin-free snapshot preparation outside memory serialization, captured source revalidation and inert bare-pin fallback.
 
 - [Scratch metadata admission](audits/2026-10-25-security-scratch-admission.md) — Requested-layout/count ceilings follow candidates and retained root metadata through actual deallocation.

@@ -14,6 +14,17 @@ before readiness admission; the original memory object cannot close or change
 ownership while that pin is held. Source/disposal storage is fallibly prepared
 outside lifecycle/device/backend guards, with the captured classification.
 
+Before that `PendingPin` exists, DMA snapshot capacity now prepares fallibly
+outside memory serialization with no data pin or copied frame identity. The
+public operation keeps its original root/capability claim; memory-source close
+or competing access can reject after final captured namespace/object/size and
+direction/rights/loan/exclusion revalidation. Snapshot fill and both pin counters
+publish together without allocation. Only then does the original `PendingPin`
+enter unit admission. Rejection before pin publication performs no backend claim,
+descriptor or maintenance. Shared snapshot preparation does not merge copy/DMA
+completion proofs or authorize map replay. See
+[snapshot storage](memory-object-storage.md#dma-pin-snapshots).
+
 The common admission helper checks the same fixed slot, links or borrows its
 existing source, rechecks after preparation and parks on the independent
 subscription. Producer restoration closes the source through deferred delivery

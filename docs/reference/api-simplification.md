@@ -509,6 +509,15 @@ source-escrow pins retain their distinct no-snapshot purpose. Bare pin fallback
 retains metadata, while explicit unpin disposes it before backing-fence release.
 No ABI/format change or compatibility branch is introduced. See
 [copy snapshot evidence](../reports/audits/2026-10-25-security-copy-snapshot-storage.md).
+
+DMA snapshots now use that same inert vector preparation, replacing the old
+infallible clone after pin-counter mutation. Copy and DMA retain separate typed
+admission/pin publication. Explicit snapshot disposal precedes counter release;
+bare DMA-pin fallback retains metadata. The silent missing-object DMA-unpin return
+is removed in favor of the same pinned-object invariant as copy unpin. Internal
+callers compile against this one path; no ABI/format revision, compatibility
+allocator or physical/replay authority is added. See
+[DMA snapshot evidence](../reports/audits/2026-10-25-security-dma-snapshot-storage.md).
 Other factory/destructor contexts, scalar scratch identity and comprehensive
 metadata admission remain current candidates. Wire formats/runtime ABI stay
 unchanged.
