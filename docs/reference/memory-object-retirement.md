@@ -140,6 +140,16 @@ competing mapping rejects its unused prefix without table mutation. The table
 walk/rollback retain their existing locking; snapshot disposal leaves local
 memory/table guards. See [mapping storage evidence](../reports/audits/2026-10-25-security-memory-mapping-storage.md).
 
+Mapping preparation now retains its partial node/shared-snapshot fields inertly
+on abandonment. Constructor rejection explicitly cancels its unused prefix;
+every ordinary constructed return finishes after local memory/table guards.
+Final admission checks the captured full namespace generation too, before frame
+fill, node publication or pin acquisition. No new root lease, retry owner or
+physical proof is added; the existing caller root and mapping pin retain their
+original responsibility. Native controls qualify ordinary success/prefix rollback
+disposal and guarded partial/full/published fallback. See
+[preparation evidence](../reports/audits/2026-10-25-security-mapping-preparation-ownership.md).
+
 `map` and `map_any` share one completion path. `map_locked` installs mapping
 metadata and acquires the existing `MappingRetirementPin` under one registry
 hold, before entering the page-table walker. Its ordinary pre-pin rejection

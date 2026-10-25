@@ -1215,3 +1215,10 @@ shares snapshot preparation without merging typed copy/DMA completion proofs.
 Focused DMA-operation, IPC-transaction and root-retirement configurations are
 rerun. Concrete vector factories, source revalidation and destructor/IRQ contexts
 remain native/source qualification; no models, custody or replay policy change.
+
+The [mapping preparation follow-up](../reports/audits/2026-10-25-security-mapping-preparation-ownership.md)
+uses inert node/shared-snapshot ownership and explicit ordinary post-guard finish.
+Focused root, IPC transaction and DMA operation checks retain their existing
+projections. Concrete construction, captured-generation publication, disposal and
+guarded fallback remain native/source qualification, without a refinement or
+sustained-pressure claim. No model input or physical/replay policy changes.

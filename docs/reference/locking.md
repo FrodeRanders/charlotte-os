@@ -497,3 +497,16 @@ post-backend guard requirements remain the caller's typed proof. Native controls
 qualify memory/heap-held publication, memory/table/heap/physical-held abandonment
 and original IRQ preservation, not arbitrary outer contexts or sustained pressure.
 See [DMA snapshot storage](memory-object-storage.md#dma-pin-snapshots).
+
+Mapping preparation now owns its node and shared snapshot in inert fields before
+either factory. Constructor rejection explicitly cancels after allocator return;
+ordinary constructed completion/rejection calls `finish` after its local memory
+and table guards leave. The private per-call disposal probe runs immediately
+before that explicit disposal; production supplies an empty probe. Bare partial,
+complete and published-snapshot abandonment enters no allocator/registry. Native
+controls hold memory/table/heap/physical guards while dropping those owners and
+check entry IRQ preservation. Final namespace-generation validation rejects before
+mapping/pin publication. These controls add no root lease, cleanup custody or
+hardware/replay proof; broader caller/destructor/IRQ contexts and aggregate
+metadata pressure remain open. See
+[mapping preparation](../reports/audits/2026-10-25-security-mapping-preparation-ownership.md).

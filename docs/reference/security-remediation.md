@@ -519,6 +519,17 @@ remain authoritative. Concurrent snapshot bytes, aggregate principal metadata,
 wider caller/destructor/IRQ contexts and sustained progress remain open. This
 advances R7-2 and C14/C15/C18 without changing SEC-07/18 or finding counts.
 
+The [mapping preparation batch](../reports/audits/2026-10-25-security-mapping-preparation-ownership.md)
+keeps partial node/shared-snapshot fields inert on abandonment and explicitly
+finishes every ordinary constructed return after local memory/table guards.
+Final namespace-generation validation precedes snapshot fill and mapping/pin
+publication. Native controls qualify captured reuse rejection, ordinary success/
+prefix rollback disposal and guarded partial/full/published fallback. No new
+root/pin, registry, recovery custody or physical/replay proof is added. Aggregate
+metadata admission, broader outer contexts, pressure and historical failure
+attribution remain open. This advances C05/C18 and G1/R7-2 without changing finding
+dispositions or SEC-07/18 status.
+
 SEC-07 remains partial until all of the following deliverables are accepted:
 
 The [telemetry snapshot follow-up](../reports/audits/2026-10-18-telemetry-snapshot-preparation.md)

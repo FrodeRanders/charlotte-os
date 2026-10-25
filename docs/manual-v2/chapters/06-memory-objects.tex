@@ -84,6 +84,14 @@ Mapping records and frame-snapshot capacity now also prepare fallibly outside
 the memory registry. Scratch namespace and extent nodes now also prepare outside
 their local registry, with exact-generation/current-space revalidation.
 
+Mapping preparation now owns its partial node and shared snapshot in inert
+fields before either factory. Ordinary constructor rejection and every
+constructed completion/rejection explicitly dispose after local memory/table
+guards. Abandonment retains partial, complete unpublished and published-snapshot
+storage without allocator entry. Final admission checks the captured full
+namespace generation before mapping/pin publication. Existing root and physical
+completion policies remain required; no retry owner or cleanup authority is added.
+
 Copy-pin frame snapshots likewise prepare fallibly outside memory serialization,
 before any frame identity or source pin is retained. Final namespace-generation,
 object/size and rights/loan/DMA/mapping checks precede snapshot fill and pin

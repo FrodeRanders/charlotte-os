@@ -1061,7 +1061,7 @@ fn map_locked_with_cleanup(
         writable,
         scratch,
         pin,
-        (cleanup, mapping_storage::Preparing::new),
+        (cleanup, mapping_storage::Preparing::new, |_| {}),
     )
 }
 
@@ -1114,9 +1114,10 @@ fn map_locked_with_preparation(
     writable: bool,
     scratch: bool,
     pin: &mut Option<MappingRetirementPin>,
-    (mut cleanup, prepare): (
+    (mut cleanup, prepare, before_dispose): (
         impl FnMut(&mut crate::cpu::isa::memory::paging::AddressSpace, VAddr, PAddr) -> bool,
         impl FnOnce(usize) -> Result<mapping_storage::Preparing, MemoryObjectError>,
+        impl FnOnce(&mapping_storage::Preparing),
     ),
 ) -> Result<(), MemoryObjectError> {
     assert!(pin.is_none(), "map preparation already owns a retirement pin");
@@ -1132,84 +1133,93 @@ fn map_locked_with_preparation(
     // The existing caller root stays retained. Recheck the exact object and
     // all admission predicates before filling its preallocated snapshot.
     let mut prepared = prepare(pages)?;
-    let page_type = {
-        let mut registry = MEMORY_OBJECTS.lock();
-        let (current, current_pages, page_type) =
-            mapping_admission(&registry, asid, cap, base, writable)?;
-        if current != object_id || current_pages != pages {
-            return Err(MemoryObjectError::UnknownCapability);
-        }
-        *pin = Some(prepared.publish(
-            &mut registry,
-            object_id,
-            asid,
-            MemoryMappingState {
-                address_space,
-                base,
-                installed_pages: 0,
-                writable,
-                scratch,
-            },
-        ));
-        page_type
-    };
+    let result = (|| {
+        let page_type = {
+            let mut registry = MEMORY_OBJECTS.lock();
+            if registry.caps.get(&asid).is_some_and(|namespace| namespace.handle != address_space) {
+                return Err(MemoryObjectError::AddressSpaceMissing);
+            }
+            let (current, current_pages, page_type) =
+                mapping_admission(&registry, asid, cap, base, writable)?;
+            if current != object_id || current_pages != pages {
+                return Err(MemoryObjectError::UnknownCapability);
+            }
+            *pin = Some(prepared.publish(
+                &mut registry,
+                object_id,
+                asid,
+                MemoryMappingState {
+                    address_space,
+                    base,
+                    installed_pages: 0,
+                    writable,
+                    scratch,
+                },
+            ));
+            page_type
+        };
 
-    let mut mapped_pages = 0usize;
-    let map_result = {
-        let mut table = ADDRESS_SPACE_TABLE.lock();
-        match table.get_mut(asid) {
-            Ok(address_space) => {
-                let mut result = Ok(());
-                for (index, frame) in prepared.frames.iter().copied().enumerate() {
-                    let vaddr = base + (index * PAGE_SIZE);
-                    if address_space
-                        .map_existing_page(MemoryMapping {
-                            vaddr,
-                            paddr: frame,
-                            page_type,
-                        })
-                        .is_err()
-                    {
-                        let mut cleanup_failed = false;
-                        for (cleanup_index, &cleanup_frame) in
-                            prepared.frames.iter().take(mapped_pages).enumerate()
+        let mut mapped_pages = 0usize;
+        let map_result = {
+            let mut table = ADDRESS_SPACE_TABLE.lock();
+            match table.get_mut(asid) {
+                Ok(address_space) => {
+                    let mut result = Ok(());
+                    for (index, frame) in prepared.frames().iter().copied().enumerate() {
+                        let vaddr = base + (index * PAGE_SIZE);
+                        if address_space
+                            .map_existing_page(MemoryMapping {
+                                vaddr,
+                                paddr: frame,
+                                page_type,
+                            })
+                            .is_err()
                         {
-                            let cleanup_vaddr = base + (cleanup_index * PAGE_SIZE);
-                            cleanup_failed |= !cleanup(address_space, cleanup_vaddr, cleanup_frame);
+                            let mut cleanup_failed = false;
+                            for (cleanup_index, &cleanup_frame) in
+                                prepared.frames().iter().take(mapped_pages).enumerate()
+                            {
+                                let cleanup_vaddr = base + (cleanup_index * PAGE_SIZE);
+                                cleanup_failed |=
+                                    !cleanup(address_space, cleanup_vaddr, cleanup_frame);
+                            }
+                            result = Err(if cleanup_failed {
+                                MemoryObjectError::UnmapFailed
+                            } else {
+                                MemoryObjectError::MapFailed
+                            });
+                            break;
                         }
-                        result = Err(if cleanup_failed {
-                            MemoryObjectError::UnmapFailed
-                        } else {
-                            MemoryObjectError::MapFailed
-                        });
-                        break;
+                        mapped_pages += 1;
                     }
-                    mapped_pages += 1;
+                    result
                 }
-                result
+                Err(_) => Err(MemoryObjectError::AddressSpaceMissing),
             }
-            Err(_) => Err(MemoryObjectError::AddressSpaceMissing),
-        }
-    };
-    {
-        let mut registry = MEMORY_OBJECTS.lock();
-        if let Some(object) = registry.objects.get_mut(&object_id)
-            && object.mappings.get(&asid).is_some_and(|mapping| mapping.state.base == base)
+        };
         {
-            // Preserve the exact published prefix even when leaves rolled back:
-            // invalidation has not yet confirmed that cached access ended.
-            object.mappings.get_mut(&asid).unwrap().state.installed_pages = mapped_pages;
-            if map_result.is_err() && map_result != Err(MemoryObjectError::UnmapFailed) {
-                // The pin owns this detached record through the caller's
-                // invalidation/scratch outcome. Failed maintenance retains it.
-                pin.as_mut().unwrap().retired_mapping = object.mappings.take(&asid);
+            let mut registry = MEMORY_OBJECTS.lock();
+            if let Some(object) = registry.objects.get_mut(&object_id)
+                && object.mappings.get(&asid).is_some_and(|mapping| mapping.state.base == base)
+            {
+                // Preserve the exact published prefix even when leaves rolled back:
+                // invalidation has not yet confirmed that cached access ended.
+                object.mappings.get_mut(&asid).unwrap().state.installed_pages = mapped_pages;
+                if map_result.is_err() && map_result != Err(MemoryObjectError::UnmapFailed) {
+                    // The pin owns this detached record through the caller's
+                    // invalidation/scratch outcome. Failed maintenance retains it.
+                    pin.as_mut().unwrap().retired_mapping = object.mappings.take(&asid);
+                }
+                // Failed cleanup leaves the original record in the registry. Its
+                // pin fences close/transfer until confirmed completion (or forever
+                // on abandonment), never authorizing a physical retry.
             }
-            // Failed cleanup leaves the original record in the registry. Its
-            // pin fences close/transfer until confirmed completion (or forever
-            // on abandonment), never authorizing a physical retry.
         }
-    }
-    map_result
+        map_result
+    })();
+    before_dispose(&prepared);
+    prepared.finish();
+    result
 }
 
 pub fn unmap(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), MemoryObjectError> {

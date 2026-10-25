@@ -101,6 +101,18 @@ relinking its node and acquiring the existing retirement pin under one hold.
 A removed source or a competing mapping rejects the unused preparation after
 local unlock. No table publication or invalidation follows a pin-free rejection.
 
+The mapping preparation now owns its node and shared snapshot behind inert
+fields before either factory. Partial construction rejection explicitly cancels
+the complete unused prefix. Every ordinary post-construction return, including
+source/generation rejection, mapping success and prefix rollback, explicitly
+finishes after local memory/table guards leave. Abandonment retains partial,
+complete unpublished or published-snapshot storage without allocator entry.
+This removes automatic node/vector destruction from that fallback. Final
+admission also checks the full captured namespace generation before snapshot
+fill and mapping publication; public callers still retain their original root
+lease. Copy, DMA and mapping share vector storage, with distinct typed pin and
+completion policies. See [preparation evidence](../reports/audits/2026-10-25-security-mapping-preparation-ownership.md).
+
 The table walk and prefix rollback retain their existing serialization. Snapshot
 capacity is prepared beforehand, so filling it and publishing the mapping record
 need no allocation under the memory registry. Snapshot disposal also leaves

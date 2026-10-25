@@ -26,7 +26,10 @@ fn cleanup(
 pub(crate) fn run() {
     rejected_prefixes();
     lost_source();
+    reused_generation();
+    ordinary_disposal();
     metadata_publication();
+    guarded_preparation();
     rollback_record_lifetime();
     uncertain_rollback();
     crate::logln!(
@@ -34,6 +37,12 @@ pub(crate) fn run() {
          revalidation, 64 heap-held snapshot fills/node publications/detachments, 32 rollback \
          receipts through confirmed maintenance, and guarded uncertain rollback passed; two data \
          pages, their mapping node/root and original charge deliberately retained"
+    );
+    crate::logln!(
+        "[mapping preparation ownership] captured generation rejects real ASID reuse; 64 ordinary \
+         success/rollback disposal entries outside memory/table/heap/frame guards; guarded \
+         partial/full/published preparation retains two empty nodes and two snapshots, no \
+         additional data/root/lease; existing uncertain rollback remains separately retained"
     );
 }
 
@@ -56,19 +65,23 @@ fn rejected_prefixes() {
                     true,
                     true,
                     &mut pin,
-                    (cleanup, |pages| {
-                        Preparing::with(pages, |stage| {
-                            available();
-                            assert_eq!(pages, 2);
-                            assert_eq!(MEMORY_OBJECTS.lock().objects[&id].retirement_pins, 0);
-                            write_bytes(handle.id(), cap, &[0x5a]).unwrap();
-                            if stage == reject {
-                                Err(MemoryObjectError::ResourceLimit)
-                            } else {
-                                Ok(())
-                            }
-                        })
-                    }),
+                    (
+                        cleanup,
+                        |pages| {
+                            Preparing::with(pages, |stage| {
+                                available();
+                                assert_eq!(pages, 2);
+                                assert_eq!(MEMORY_OBJECTS.lock().objects[&id].retirement_pins, 0);
+                                write_bytes(handle.id(), cap, &[0x5a]).unwrap();
+                                if stage == reject {
+                                    Err(MemoryObjectError::ResourceLimit)
+                                } else {
+                                    Ok(())
+                                }
+                            })
+                        },
+                        |_| {},
+                    ),
                 );
                 assert!(pin.is_none());
                 assert_eq!(
@@ -89,6 +102,7 @@ fn rejected_prefixes() {
             assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), frames);
         }
     }
+    assert_eq!(Preparing::new(usize::MAX).err(), Some(MemoryObjectError::FrameAllocFailed));
     close_cap(handle.id(), cap).unwrap();
     memory::close_user_address_space_handle(handle).unwrap();
 }
@@ -105,12 +119,19 @@ fn lost_source() {
             true,
             false,
             &mut pin,
-            (cleanup, |pages| {
-                let prepared = Preparing::new(pages)?;
-                available();
-                close_cap(handle.id(), cap).unwrap();
-                Ok(prepared)
-            }),
+            (
+                cleanup,
+                |pages| {
+                    let prepared = Preparing::new(pages)?;
+                    available();
+                    close_cap(handle.id(), cap).unwrap();
+                    Ok(prepared)
+                },
+                |prepared| {
+                    available();
+                    assert!(prepared.frames().is_empty());
+                },
+            ),
         );
         assert!(pin.is_none());
         result
@@ -142,7 +163,7 @@ fn metadata_publication() {
                     scratch: false,
                 },
             );
-            assert_eq!(prepared.frames.as_slice(), registry.objects[&object].frames.as_slice());
+            assert_eq!(prepared.frames(), registry.objects[&object].frames.as_slice());
             pin.retired_mapping =
                 registry.objects.get_mut(&object).unwrap().mappings.take(&handle.id());
             pin
@@ -150,11 +171,177 @@ fn metadata_publication() {
         assert_eq!(pin.retired_mapping.as_ref().unwrap().value().1.state.installed_pages, 0);
         // No leaves were installed; this isolated metadata owner needs no TLB
         // operation. Its explicit release consumes the original pin/node once.
-        drop(prepared);
+        prepared.finish();
         pin.release(None);
         assert_eq!(MEMORY_OBJECTS.lock().objects[&object].retirement_pins, 0);
         assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
     }
+    close_cap(handle.id(), cap).unwrap();
+    memory::close_user_address_space_handle(handle).unwrap();
+}
+
+fn reused_generation() {
+    let old = root();
+    let cap = allocate(old.id(), 1).unwrap();
+    let mut successor = None;
+    let mut pin = None;
+    // This private serialized adapter deliberately retires a pin-free fixture.
+    // Public mapping callers keep their original root lease throughout.
+    let result = map_locked_with_preparation(
+        old.id(),
+        cap,
+        VAddr::from(0x280000usize),
+        true,
+        false,
+        &mut pin,
+        (
+            cleanup,
+            |pages| {
+                let prepared = Preparing::new(pages)?;
+                close_cap(old.id(), cap).unwrap();
+                memory::close_user_address_space_handle(old).unwrap();
+                let fresh = root();
+                assert_eq!(fresh.id(), old.id());
+                assert_ne!(fresh, old);
+                successor = Some((fresh, allocate(fresh.id(), 1).unwrap()));
+                Ok(prepared)
+            },
+            |prepared| {
+                available();
+                assert!(prepared.frames().is_empty());
+            },
+        ),
+    );
+    assert_eq!(result, Err(MemoryObjectError::AddressSpaceMissing));
+    assert!(pin.is_none());
+    let (fresh, cap) = successor.unwrap();
+    assert!(!info(fresh.id(), cap).unwrap().mapped);
+    write_bytes(fresh.id(), cap, &[0x7b]).unwrap();
+    close_cap(fresh.id(), cap).unwrap();
+    memory::close_user_address_space_handle(fresh).unwrap();
+}
+
+fn ordinary_disposal() {
+    let handle = root();
+    let cap = allocate(handle.id(), 2).unwrap();
+    let foreign = allocate(handle.id(), 1).unwrap();
+    let object = MEMORY_OBJECTS.lock().lookup(handle.id(), cap).unwrap().object;
+    let base = VAddr::from(0x280000usize);
+    let irq = crate::cpu::isa::lp::ops::get_int_state();
+    for rollback in [false, true] {
+        if rollback {
+            map(handle.id(), foreign, base + PAGE_SIZE, true).unwrap();
+        }
+        for _ in 0..32 {
+            with_address_space_operation(handle.id(), || {
+                let mut pin = None;
+                let result = map_locked_with_preparation(
+                    handle.id(),
+                    cap,
+                    base,
+                    true,
+                    false,
+                    &mut pin,
+                    (cleanup, Preparing::new, |prepared| {
+                        available();
+                        assert_eq!(prepared.frames().len(), 2);
+                        assert_eq!(MEMORY_OBJECTS.lock().objects[&object].retirement_pins, 1);
+                        assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
+                    }),
+                );
+                assert_eq!(
+                    result,
+                    if rollback {
+                        Err(MemoryObjectError::MapFailed)
+                    } else {
+                        Ok(())
+                    }
+                );
+                let result = finish_mapping(
+                    handle.id(),
+                    base,
+                    2,
+                    false,
+                    result,
+                    pin,
+                    crate::cpu::isa::memory::tlb::try_inval_range_user,
+                );
+                assert_eq!(
+                    result,
+                    if rollback {
+                        Err(MemoryObjectError::MapFailed)
+                    } else {
+                        Ok(())
+                    }
+                );
+                Ok(())
+            })
+            .unwrap();
+            if !rollback {
+                unmap(handle.id(), cap).unwrap();
+            }
+        }
+        if rollback {
+            unmap(handle.id(), foreign).unwrap();
+        }
+    }
+    close_cap(handle.id(), foreign).unwrap();
+    close_cap(handle.id(), cap).unwrap();
+    memory::close_user_address_space_handle(handle).unwrap();
+}
+
+fn guarded_preparation() {
+    let irq = crate::cpu::isa::lp::ops::get_int_state();
+    // One partial empty node and one complete unused node/snapshot pair. No
+    // source identities or pins exist, so the fixture root is unrelated to them.
+    let partial = Preparing(ManuallyDrop::new(Resources {
+        node: Some(Storage::try_new().unwrap()),
+        snapshot: None,
+    }));
+    let full = Preparing::new(35).unwrap();
+    {
+        let _registry = MEMORY_OBJECTS.lock();
+        let _table = ADDRESS_SPACE_TABLE.lock();
+        let _heap = PRIMARY_ALLOCATOR.lock();
+        let _physical = PHYSICAL_FRAME_ALLOCATOR.lock();
+        drop(partial);
+        drop(full);
+    }
+    assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
+    let handle = root();
+    let cap = allocate(handle.id(), 35).unwrap();
+    let object = MEMORY_OBJECTS.lock().lookup(handle.id(), cap).unwrap().object;
+    let mut prepared = Preparing::new(35).unwrap();
+    let mut pin = {
+        let mut registry = MEMORY_OBJECTS.lock();
+        prepared.publish(
+            &mut registry,
+            object,
+            handle.id(),
+            MemoryMappingState {
+                address_space: handle,
+                base: VAddr::from(0x280000usize),
+                installed_pages: 0,
+                writable: false,
+                scratch: false,
+            },
+        )
+    };
+    {
+        let mut registry = MEMORY_OBJECTS.lock();
+        let _table = ADDRESS_SPACE_TABLE.lock();
+        let _heap = PRIMARY_ALLOCATOR.lock();
+        let _physical = PHYSICAL_FRAME_ALLOCATOR.lock();
+        assert_eq!(prepared.frames().len(), 35);
+        pin.retired_mapping =
+            registry.objects.get_mut(&object).unwrap().mappings.take(&handle.id());
+        drop(prepared); // Snapshot retained; its original node is still in pin.
+    }
+    assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
+    // No leaves or externally owned mapping were installed by this isolated
+    // metadata fixture. Explicitly consume that pin/node, then close backing.
+    pin.release(None);
+    assert_eq!(MEMORY_OBJECTS.lock().objects[&object].retirement_pins, 0);
     close_cap(handle.id(), cap).unwrap();
     memory::close_user_address_space_handle(handle).unwrap();
 }

@@ -1,4 +1,4 @@
-//! Shared pin-free vector preparation; copy and DMA keep separate admission
+//! Shared pin-free vector preparation; mapping, copy and DMA keep separate admission
 //! predicates, pin publication and completion proofs.
 use super::*;
 
@@ -28,9 +28,17 @@ impl Preparing {
 
     /// Caller revalidated its source under memory serialization. No allocation
     /// follows this capacity check; the typed publisher owns pin mutation.
-    pub(super) fn fill_and_take(&mut self, frames: &[PAddr]) -> ManuallyDrop<Vec<PAddr>> {
+    pub(super) fn fill(&mut self, frames: &[PAddr]) {
         assert!(self.0.is_empty() && self.0.capacity() >= frames.len());
         self.0.extend_from_slice(frames);
+    }
+
+    pub(super) fn frames(&self) -> &[PAddr] {
+        &self.0
+    }
+
+    pub(super) fn fill_and_take(&mut self, frames: &[PAddr]) -> ManuallyDrop<Vec<PAddr>> {
+        self.fill(frames);
         ManuallyDrop::new(core::mem::take(&mut *self.0))
     }
 

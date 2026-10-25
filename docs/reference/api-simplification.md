@@ -518,6 +518,15 @@ is removed in favor of the same pinned-object invariant as copy unpin. Internal
 callers compile against this one path; no ABI/format revision, compatibility
 allocator or physical/replay authority is added. See
 [DMA snapshot evidence](../reports/audits/2026-10-25-security-dma-snapshot-storage.md).
+
+CPU mapping preparation now uses the same inert vector storage as copy/DMA,
+alongside its existing prepared mapping node. The old automatically destroyed
+node/vector preparation is removed; ordinary cleanup explicitly finishes after
+local guards, while abandonment retains fields. Final publication checks the
+captured full namespace generation before mapping mutation. All internal callers
+and fixtures use this one owner; no compatibility allocator, public ABI/format
+change, new pin family or replay permission is added. See
+[mapping preparation evidence](../reports/audits/2026-10-25-security-mapping-preparation-ownership.md).
 Other factory/destructor contexts, scalar scratch identity and comprehensive
 metadata admission remain current candidates. Wire formats/runtime ABI stay
 unchanged.

@@ -1382,3 +1382,15 @@ projections remain unchanged. None models concrete snapshot allocation, the
 pin-free source-interleaving interval, vector disposal or allocator/IRQ contexts.
 Those are native/source qualification, without executable refinement or sustained
 concurrent pressure/fairness proof. No model input or replay policy changes.
+
+## Mapping preparation ownership
+
+The [mapping preparation batch](../reports/audits/2026-10-25-security-mapping-preparation-ownership.md)
+retains partial node/snapshot fields inertly and explicitly finishes ordinary
+constructed returns after local guards. Full namespace generation revalidates
+before publication. Root original-charge/physical-once, IPC loan/rollback/timeout
+and DMA ownership projections remain; none implements these preparation fields,
+CPU-map source-interleaving interval, allocator entry or destructor/IRQ contexts.
+Native/source controls qualify those boundaries, without executable refinement,
+arbitrary-schedule or sustained-pressure fairness proof. No model input, custody
+or physical/replay policy changes.

@@ -385,6 +385,11 @@ Source, tests, and repository history remain authoritative.
         Mapping nodes and snapshot capacity now prepare outside memory
         serialization, then revalidate before relink/pin publication. Existing
         pins/receipts retain detached records and peer leases through uncertainty.
+        Mapping preparation's partial node/shared-snapshot fields now retain
+        storage inertly on abandonment; ordinary constructed returns explicitly
+        finish after local memory/table guards. Full captured namespace generation
+        also revalidates before mapping/pin publication. Broader contexts and
+        aggregate metadata admission remain separate.
         Copy-pin snapshot capacity also prepares outside memory serialization,
         with exact-generation/source revalidation before snapshot fill and pin
         publication. Bare preparation/pin fallback retains its allocation;
