@@ -43,6 +43,7 @@ const PAGE_SIZE: usize = 4096;
 // then walk tables after releasing it.
 const RETIREMENT_FRAME_BATCH: usize = 16;
 
+mod backing;
 mod borrower_storage_tests;
 mod cap_storage;
 mod copy_storage;
@@ -50,10 +51,11 @@ mod dma_storage;
 mod mapping_storage;
 mod mapping_tests;
 mod snapshot_storage;
-mod storage_tests;
+use backing::ChargedFrames;
+pub(crate) use backing::RetiredMemory;
 pub(crate) fn test_object_storage() {
     snapshot_storage::tests::run();
-    storage_tests::run();
+    backing::test_storage();
     borrower_storage_tests::run();
     cap_storage::tests::run();
     mapping_storage::tests::run();
@@ -188,231 +190,6 @@ struct MemoryObject {
 
 type ObjectStorage = PreparedEntry<(MemoryObjectId, MemoryObject)>;
 type RetiredObject = RetiredEntry<(MemoryObjectId, MemoryObject)>;
-
-/// Private backing keeps its unused object node. Published retirement carries
-/// the complete detached object node, including its original backing charge.
-struct FrameResources {
-    frames: Vec<PAddr>,
-    charge: Option<super::budget::Charge>,
-    storage: Option<ObjectStorage>,
-    retired: Option<RetiredObject>,
-    failed: bool,
-}
-
-struct ChargedFrames(core::mem::ManuallyDrop<FrameResources>);
-impl core::ops::Deref for ChargedFrames {
-    type Target = FrameResources;
-
-    fn deref(&self) -> &FrameResources {
-        &self.0
-    }
-}
-impl core::ops::DerefMut for ChargedFrames {
-    fn deref_mut(&mut self) -> &mut FrameResources {
-        &mut self.0
-    }
-}
-
-impl Drop for ChargedFrames {
-    fn drop(&mut self) {
-        self.free();
-    }
-}
-
-impl ChargedFrames {
-    fn retired(node: RetiredObject) -> Self {
-        Self(core::mem::ManuallyDrop::new(FrameResources {
-            frames: Vec::new(),
-            charge: None,
-            storage: None,
-            retired: Some(node),
-            failed: false,
-        }))
-    }
-
-    fn frame_count(&self) -> usize {
-        self.retired.as_ref().map_or(self.frames.len(), |node| node.value().1.frames.len())
-    }
-
-    fn frames_mut(&mut self) -> &mut Vec<PAddr> {
-        let fields = &mut *self.0;
-        match fields.retired.as_mut() {
-            Some(node) => &mut node.value_mut().1.frames,
-            None => &mut fields.frames,
-        }
-    }
-
-    fn free(&mut self) -> bool {
-        self.free_with(|frames| {
-            let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
-            let mut complete = true;
-            for &frame in frames {
-                complete &= allocator.deallocate_frame(frame).is_ok();
-            }
-            complete
-        })
-    }
-
-    fn free_with(&mut self, mut release: impl FnMut(&[PAddr]) -> bool) -> bool {
-        if self.failed {
-            return true;
-        }
-        // Fence before the first physical attempt. Interruption retains every
-        // field; only confirmed completion clears the fence after disposal.
-        self.failed = true;
-        let mut failed = false;
-        // Preserve sixteen-frame physical batches. Consume identities before
-        // each attempt; a failed or interrupted release never retries them.
-        while self.frame_count() != 0 {
-            let mut frames = [PAddr::from(0u64); RETIREMENT_FRAME_BATCH];
-            let mut count = 0;
-            for slot in &mut frames {
-                let Some(frame) = self.frames_mut().pop() else {
-                    break;
-                };
-                *slot = frame;
-                count += 1;
-            }
-            failed |= !release(&frames[..count]);
-        }
-        if failed {
-            self.failed = true;
-            // ManuallyDrop keeps private fields, or the complete published
-            // node/charge, without implicit refunds or allocator cleanup.
-            crate::early_logln!("WARNING: failed to free memory-object frames; charge quarantined");
-            return true;
-        }
-        drop(self.storage.take());
-        if let Some(node) = self.retired.take() {
-            let mut charge = None;
-            node.release_with(|(_, mut object)| {
-                // The complete object retained these scalar loan records until
-                // physical completion. Dispose their nodes outside the registry,
-                // before the original backing charge can return.
-                if let LendState::Read {
-                    borrowers,
-                } = &mut object.lend_state
-                {
-                    while let Some((&asid, _)) = borrowers.first_key_value() {
-                        release_borrower(borrowers.take(&asid).unwrap());
-                    }
-                }
-                object.retired_caps.release();
-                charge = Some(object.charge);
-            });
-            // Physical completion, payload and actual node free precede refund.
-            drop(charge);
-        }
-        drop(core::mem::take(&mut self.frames));
-        drop(self.charge.take());
-        self.failed = false;
-        false
-    }
-
-    fn release(mut self) -> Result<(), MemoryObjectError> {
-        if self.free() {
-            Err(MemoryObjectError::FrameFreeFailed)
-        } else {
-            Ok(())
-        }
-    }
-
-    fn into_parts(mut self) -> (ObjectStorage, Vec<PAddr>, super::budget::Charge) {
-        assert!(self.retired.is_none() && !self.failed);
-        let storage = self.storage.take().expect("staged object storage missing");
-        let frames = core::mem::take(&mut self.frames);
-        (storage, frames, self.charge.take().expect("staged charge missing"))
-    }
-}
-
-/// Unmapped, authority-detached backing owns its original sponsor until explicit
-/// physical release. Drop quarantines: never free under an unknown outer guard.
-#[must_use]
-pub(crate) struct RetiredMemory {
-    backing: Option<ChargedFrames>,
-    metadata: cap_storage::RetiredCapabilities,
-}
-
-impl core::fmt::Debug for RetiredMemory {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("RetiredMemory")
-            .field("pages", &self.backing.as_ref().map_or(0, |backing| backing.frame_count()))
-            .finish()
-    }
-}
-
-impl Drop for RetiredMemory {
-    fn drop(&mut self) {
-        if let Some(backing) = self.backing.take() {
-            core::mem::forget(backing);
-        }
-    }
-}
-
-impl RetiredMemory {
-    pub(crate) fn release(self) -> Result<(), MemoryObjectError> {
-        self.release_observed(|| {})
-    }
-
-    fn release_observed(mut self, observe: impl FnOnce()) -> Result<(), MemoryObjectError> {
-        // A panicking observer still leaves the backing behind this owner.
-        observe();
-        self.backing.take().map_or(Ok(()), ChargedFrames::release)?;
-        self.metadata.release();
-        Ok(())
-    }
-}
-
-fn allocate_frames(
-    owner: super::AddressSpaceHandle,
-    pages: usize,
-) -> Result<ChargedFrames, MemoryObjectError> {
-    allocate_frames_with(owner, pages, || {
-        ObjectStorage::try_new().map_err(|_| MemoryObjectError::ResourceLimit)
-    })
-}
-
-fn allocate_frames_with(
-    owner: super::AddressSpaceHandle,
-    pages: usize,
-    allocate_storage: impl FnOnce() -> Result<ObjectStorage, MemoryObjectError>,
-) -> Result<ChargedFrames, MemoryObjectError> {
-    let charge = super::budget::reserve_captured(
-        owner,
-        super::budget::Amount {
-            pages: pages as u64,
-            objects: 1,
-        },
-    )
-    .map_err(|error| match error {
-        super::budget::Error::StaleDomain => MemoryObjectError::AddressSpaceMissing,
-        super::budget::Error::Limit => MemoryObjectError::ResourceLimit,
-    })?;
-    let mut staged = ChargedFrames(core::mem::ManuallyDrop::new(FrameResources {
-        frames: Vec::new(),
-        charge: Some(charge),
-        storage: None,
-        retired: None,
-        failed: false,
-    }));
-    staged.storage = Some(allocate_storage()?);
-    staged.frames.try_reserve_exact(pages).map_err(|_| MemoryObjectError::FrameAllocFailed)?;
-    let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
-    if !crate::resource_policy::frames_available(
-        allocator.free_frames() as u64,
-        allocator.usable_bytes() / PAGE_SIZE as u64,
-        pages as u64,
-    ) {
-        return Err(MemoryObjectError::ResourceLimit);
-    }
-    for _ in 0..pages {
-        staged
-            .frames
-            .push(allocator.allocate_frame().map_err(|_| MemoryObjectError::FrameAllocFailed)?);
-    }
-    drop(allocator);
-    Ok(staged)
-}
 
 struct ScopedCopyPin(Option<CopyPin>);
 impl Drop for ScopedCopyPin {
@@ -668,12 +445,12 @@ pub fn allocate(owner: AddressSpaceId, pages: usize) -> Result<MemoryObjectCap, 
     let reservation = cap_storage::Preparing::new(admit_capability(owner, identity)?, identity)?;
 
     let (reservation, cap) = reservation.try_prepare(|reservation| {
-        let staged = allocate_frames(identity, pages)?;
+        let staged = ChargedFrames::allocate(identity, pages)?;
 
         // The frames are exclusively owned and not yet published, so zeroing them
         // does not require the IRQ-masking allocator lock held across the (up to
         // 64 MiB) memset.
-        for frame in &staged.frames {
+        for frame in staged.prepared_frames() {
             let ptr: *mut u8 = (*frame).into();
             unsafe {
                 core::ptr::write_bytes(ptr, 0, PAGE_SIZE);
@@ -681,7 +458,7 @@ pub fn allocate(owner: AddressSpaceId, pages: usize) -> Result<MemoryObjectCap, 
         }
 
         let mut registry = MEMORY_OBJECTS.lock();
-        if !staged.charge.as_ref().unwrap().active() {
+        if !staged.admission_active() {
             return Err(MemoryObjectError::AddressSpaceMissing);
         }
         reservation.validate(&registry)?;
@@ -1487,10 +1264,7 @@ fn prepare_close_cap(
         None
     };
     drop(registry);
-    Ok(RetiredMemory {
-        backing,
-        metadata,
-    })
+    Ok(RetiredMemory::new(backing, metadata))
 }
 
 /// Detached mappings keep a separate registry pin: the last concurrent DMA

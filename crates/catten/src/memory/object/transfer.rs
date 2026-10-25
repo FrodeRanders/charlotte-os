@@ -442,7 +442,7 @@ pub(super) fn commit_transfers_with_delivery(
                 frames,
                 ..
             } => {
-                if !frames.as_ref().unwrap().charge.as_ref().unwrap().active() {
+                if !frames.as_ref().unwrap().admission_active() {
                     return Err(MemoryObjectError::AddressSpaceMissing);
                 }
                 continue;
@@ -612,7 +612,7 @@ pub(crate) fn prepare_copy(
     cap: MemoryObjectCap,
     target: AddressSpaceId,
 ) -> Result<PreparedTransfer, MemoryObjectError> {
-    prepare_copy_with(owner, cap, target, allocate_frames)
+    prepare_copy_with(owner, cap, target, ChargedFrames::allocate)
 }
 
 pub(super) fn prepare_copy_with(
@@ -642,7 +642,7 @@ pub(super) fn prepare_copy_with(
         // This owner retains the private backing until destination publication.
         // Cancellation never consults a receiver-controlled numeric handle.
         let staged = allocate(source_handle, source.frames.len())?;
-        for (source, target_frame) in source.frames.iter().zip(staged.frames.iter()) {
+        for (source, target_frame) in source.frames.iter().zip(staged.prepared_frames().iter()) {
             let source_ptr: *const u8 = (*source).into();
             let target_ptr: *mut u8 = (*target_frame).into();
             unsafe {

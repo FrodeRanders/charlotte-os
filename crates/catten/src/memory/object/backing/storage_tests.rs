@@ -43,7 +43,7 @@ fn rejections() {
     let frames = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     for _ in 0..128 {
         assert!(matches!(
-            allocate_frames_with(handle, 1, || {
+            ChargedFrames::allocate_with(handle, 1, || {
                 available();
                 assert_eq!(memory::budget::used(handle), amount());
                 Err(MemoryObjectError::ResourceLimit)
@@ -59,7 +59,7 @@ fn rejections() {
     for _ in 0..64 {
         assert!(matches!(
             prepare_copy_with(handle.id(), cap, target.id(), |owner, pages| {
-                allocate_frames_with(owner, pages, || {
+                ChargedFrames::allocate_with(owner, pages, || {
                     available();
                     assert_eq!(
                         memory::budget::used(handle),
@@ -89,7 +89,7 @@ fn relinking() {
     let mut local = MemoryObjectRegistry::new();
     let irq = crate::cpu::isa::lp::ops::get_int_state();
     for _ in 0..64 {
-        let staged = allocate_frames(handle, 1).unwrap();
+        let staged = ChargedFrames::allocate(handle, 1).unwrap();
         let (storage, frames, charge) = staged.into_parts();
         let object = MemoryObject {
             owner: handle.id(),
@@ -138,7 +138,7 @@ fn failed_physical_release() {
         false // Deliberately retain this allocated frame; never re-adopt it.
     }));
     assert_eq!(attempts, 1);
-    assert!(backing.failed && backing.retired.is_some());
+    assert!(backing.0.failed && backing.0.retired.is_some());
     assert_eq!(memory::budget::used(handle), amount());
     assert!(backing.free_with(|_| panic!("terminal physical attempt was replayed")));
     {

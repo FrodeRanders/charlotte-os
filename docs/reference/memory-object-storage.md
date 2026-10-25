@@ -262,6 +262,17 @@ See [current limits and acceptance scope](snapshot-buffer-admission.md).
 
 ## Complete retirement owner
 
+[`object/backing.rs`](../../crates/catten/src/memory/object/backing.rs) groups
+charged frame allocation, physical release and the complete retired owner.
+`ChargedFrames` keeps its frames, original charge, unused/published nodes and
+release fence private; its former `Deref`/`DerefMut` payload access is removed.
+Allocation/copy preparation borrows a frame slice and queries the original
+admission through narrow methods. `RetiredMemory` consumes its existing backing
+and metadata through one field-assembly constructor, retaining its root-level
+type and release facade. The allocation and release order are unchanged.
+`ChargedFrames::Drop` remains active; grouping this code does not qualify its
+outer contexts. See the [refactoring evidence](../reports/audits/2026-10-25-refactoring-memory-backing.md).
+
 Object removal detaches the complete node into the existing `ChargedFrames`
 backing owner, carried by `RetiredMemory` or the existing last-pin cleanup path.
 The node retains the object, frame vector, original backing charge and remaining
