@@ -128,7 +128,7 @@ pub(super) fn call_copy(
                     Some((cap, rights)) => Some(mintable_endpoint(&ipc, caller, cap, rights)?),
                     None => None,
                 };
-                ipc.stage_call(caller, prepared)?;
+                prepared.stage(&mut ipc, caller)?;
                 if let Some((endpoint, rights)) = delegated {
                     PreparedConnection::prepare_into(
                         &mut prepared.connection,
@@ -206,7 +206,7 @@ pub(super) fn vector(
                 {
                     let mut ipc = IPC.write();
                     submission.validate(&ipc)?;
-                    ipc.stage_call(caller, prepared)?;
+                    prepared.stage(&mut ipc, caller)?;
                 }
                 let mut caps = Vec::new();
                 let transfers =

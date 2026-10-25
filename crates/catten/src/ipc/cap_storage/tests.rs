@@ -135,7 +135,7 @@ fn publication() {
 fn abandonment() {
     let handle = root();
     let mut call = PreparedCall::try_new(handle.id()).unwrap();
-    IPC.write().stage_call(handle.id(), &mut call).unwrap();
+    call.stage(&mut IPC.write(), handle.id()).unwrap();
     let records = IPC.read().caps[&handle.id()].record_budget.clone();
     {
         let _ipc = IPC.write();

@@ -77,7 +77,7 @@ pub(super) fn run() {
         {
             let mut ipc = IPC.write();
             let _heap = PRIMARY_ALLOCATOR.lock();
-            ipc.stage_call(handle.id(), &mut owner).unwrap();
+            owner.stage(&mut ipc, handle.id()).unwrap();
         }
         owner.finish();
         assert_eq!(used(handle), 0);

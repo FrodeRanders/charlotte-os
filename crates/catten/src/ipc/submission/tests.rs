@@ -65,7 +65,7 @@ fn retained_failure() {
         submission
             .run(|submission| {
                 let mut prepared = PreparedCall::try_new(fixture.caller.id()).unwrap();
-                IPC.write().stage_call(fixture.caller.id(), &mut prepared).unwrap();
+                prepared.stage(&mut IPC.write(), fixture.caller.id()).unwrap();
                 unlocked(&fixture);
                 prepared
                     .attach(

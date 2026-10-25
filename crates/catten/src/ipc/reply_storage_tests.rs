@@ -75,7 +75,7 @@ fn paired_batch() {
     let mut local = IpcRegistry::new();
     for id in 1..=64 {
         let mut owner = PreparedCall::try_new(root.id()).unwrap();
-        IPC.write().stage_call(root.id(), &mut owner).unwrap();
+        owner.stage(&mut IPC.write(), root.id()).unwrap();
         let call_node = owner.storage.take().unwrap();
         let call = owner.pending.take().unwrap();
         let reply_node = owner.reply_storage.take().unwrap();
@@ -120,7 +120,7 @@ fn original_classification() {
     assert_eq!(record_budget::node_used(), charged);
     let (call, delivery) = {
         let mut ipc = IPC.write();
-        ipc.stage_call(root.id(), &mut owner).unwrap();
+        owner.stage(&mut ipc, root.id()).unwrap();
         let endpoint_id = match ipc.cap(root.id(), connection).unwrap() {
             Capability::Connection {
                 endpoint,

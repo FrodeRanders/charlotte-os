@@ -46,7 +46,7 @@ pub(super) fn run() {
     for _ in 0..64 {
         let irq = crate::cpu::isa::lp::ops::get_int_state();
         let mut call = PreparedCall::try_new(caller.id()).unwrap();
-        IPC.write().stage_call(caller.id(), &mut call).unwrap();
+        call.stage(&mut IPC.write(), caller.id()).unwrap();
         let node = call.storage.take().unwrap();
         let payload = call.pending.take().unwrap();
         let charged = record_budget::node_used();
@@ -78,7 +78,7 @@ pub(super) fn run() {
         let caller = crate::service::loader::create_user_address_space_handle();
         let server = crate::service::loader::create_user_address_space_handle();
         let mut call = PreparedCall::try_new(caller.id()).unwrap();
-        IPC.write().stage_call(caller.id(), &mut call).unwrap();
+        call.stage(&mut IPC.write(), caller.id()).unwrap();
         if copied {
             let source = object::allocate(caller.id(), 1).unwrap();
             call.attach(object::prepare_copy(caller.id(), source, server.id()).unwrap()).unwrap();

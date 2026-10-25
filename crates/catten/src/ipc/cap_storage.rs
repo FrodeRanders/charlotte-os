@@ -1,5 +1,7 @@
 //! Per-capability payload storage accompanies authority before publication.
 //! Detached payload and authority metadata leave IPC in the same owning list.
+use core::mem::ManuallyDrop;
+
 use super::*;
 
 type Storage = PreparedEntry<(CapabilityId, AdmittedCapability), Option<record_budget::Charge>>;

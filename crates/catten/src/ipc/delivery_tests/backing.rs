@@ -36,7 +36,7 @@ fn submission_failure() {
     else {
         unreachable!()
     };
-    ipc.stage_call(fixture.caller.id(), &mut call).unwrap();
+    call.stage(&mut ipc, fixture.caller.id()).unwrap();
     PreparedConnection::prepare_into(
         &mut call.connection,
         &mut ipc,

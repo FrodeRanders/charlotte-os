@@ -1,0 +1,340 @@
+{
+  "schema": "charlotte-refactoring-evidence-v1",
+  "report_date": "2026-10-25",
+  "reviewed_revision": "1c37593becd80ad214b5e6d452f34830238549bf",
+  "scope": {
+    "owner_module": "crates/catten/src/ipc/transaction.rs",
+    "core_lines_before": 3020,
+    "core_lines_after": 2456,
+    "migrated_staging_sites": 17,
+    "migrated_scalar_reply_sites": 3,
+    "new_resource_accounts_registries_or_owners": false,
+    "configured_limits_public_abi_wire_formats_unchanged": true,
+    "finding_ledger": {
+      "corrected": 29,
+      "partial": 6,
+      "open": 3
+    }
+  },
+  "source_sha256": {
+    "crates/catten/src/ipc/call_storage_tests.rs": "7762c0813ddd9198a8ef7fb1e5587d02c7f5c086f7332c3eaaf2785bea3da36c",
+    "crates/catten/src/ipc/cap_storage.rs": "031e072f549f34c4b2bfd1476ad8c4dcf198f43d381b35166d56dea3c128fb52",
+    "crates/catten/src/ipc/cap_storage/tests.rs": "6ff92c321b97c0726885426138e2d5059e73d5ec31a9820b548d8c036a0139ff",
+    "crates/catten/src/ipc/delivery_tests/backing.rs": "f70bc4b528b8faaf5e9d5c46ad3d0724d9678901572d1fed4d15a954d3a2b3cb",
+    "crates/catten/src/ipc/endpoint_storage.rs": "a63b16207e7eb9822cca316aac5f25bf52caa7025b247a28f7c4c11fd3aebda5",
+    "crates/catten/src/ipc/mod.rs": "c6fa199dfc4bae035fc39c9408e8394160a45e1de3f907205493a80125edbb78",
+    "crates/catten/src/ipc/preparation_tests.rs": "1327ddd2b4de83910ab14a6a712f66e167427d6d725d137b1bf1666bd69bfeb3",
+    "crates/catten/src/ipc/publication_tests.rs": "a3bfd20200fd7dca4cb32d8858571b8ba3a660bbd60b174224701b8751402d1c",
+    "crates/catten/src/ipc/record_tests/shared_admission.rs": "b2274805000378fa5c00ec50874062a8e5e606dd980dd1a13840b586974081bb",
+    "crates/catten/src/ipc/reply_storage_tests.rs": "ae4540c5e86bb1596510bad938b2426c46011902a41c2818dcdfc6d1742a9ad5",
+    "crates/catten/src/ipc/submission.rs": "81376c2b208430891474578f024ebdd862855f79bfbed9b871971f33e591a2be",
+    "crates/catten/src/ipc/submission/tests.rs": "0f896113f1249d44c5e890af4608705f191e1e351938a7a8c3d55636224dff72",
+    "crates/catten/src/ipc/transaction.rs": "385255f55a7a4a9280b2ea2b92f0a54819dc13e715060d6e367dccc79b066a6c"
+  },
+  "checks": {
+    "extracted_bodies": {
+      "result": "equivalent",
+      "covers": [
+        "call/connection constructors",
+        "call commit",
+        "post-guard finish",
+        "detached reply retirement"
+      ],
+      "normalized": [
+        "private IPC-family visibility",
+        "comments/formatting",
+        "optional trailing commas"
+      ]
+    },
+    "stage_validation_body": {
+      "result": "equivalent",
+      "old": "IpcRegistry::stage_call",
+      "new": "PreparedCall::stage",
+      "normalized": [
+        "receiver names",
+        "comments/formatting"
+      ],
+      "guard": "same caller-owned IPC write hold"
+    },
+    "scalar_reply_body": {
+      "result": "equivalent",
+      "old": "complete_reply",
+      "new": "ReplyCompletion::publish",
+      "normalized": [
+        "receiver names",
+        "comments/formatting"
+      ],
+      "guard": "same caller-owned IPC write hold"
+    },
+    "other_ipc_core_changes": {
+      "result": "verified",
+      "allowed": [
+        "module/import plumbing",
+        "4 stage receiver calls",
+        "3 reply receiver calls"
+      ]
+    },
+    "other_ipc_source_changes": {
+      "result": "verified",
+      "allowed": [
+        "13 stage receiver calls",
+        "two explicit ManuallyDrop imports"
+      ]
+    },
+    "strict_base_kernel_clippy": {
+      "command": "CATTEN_<ARCH>_SERVICE_BUNDLE=<absolute signed bundle> cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+      "aarch64": "pass",
+      "x86_64": "pass"
+    },
+    "formatting": "pass",
+    "whitespace": "pass",
+    "existing_native_fixtures_preserved_except_stage_receiver_calls": true,
+    "new_tests_or_alternate_implementation": false,
+    "previously_rebuilt_signed_userspace_bundles_reused_no_userspace_source_changes": true,
+    "local_references": {
+      "result": "pass",
+      "checked": 331
+    }
+  },
+  "initial_compilation": {
+    "aarch64": "six E0425/E0433 diagnostics",
+    "x86_64": "six E0425/E0433 diagnostics",
+    "cause": "cap_storage.rs and endpoint_storage.rs inherited ManuallyDrop from the former parent import",
+    "correction": "explicit core::mem::ManuallyDrop imports in those modules",
+    "final_checks": "both pass"
+  },
+  "native_runs": [
+    {
+      "arch": "aarch64",
+      "instance": "ipc-transaction-refactor-arm",
+      "cpus": 4,
+      "revision": "1c37593becd80ad214b5e6d452f34830238549bf",
+      "kernel_sha256": "6b17fe1403603a5dd19d77abc56d8955e0c568be0e52702ef618a77c460a01a4",
+      "boot_image_sha256": "3c22118ef1fa0ce7fb101a1ff4048a9cca40b39cc884211c097f79d60518e99e",
+      "initial_disk_sha256": "5923970ba5cbf6cbd08fff031dbdcb3931416b3aeeb38528a917de129f405745",
+      "bundle_sha256": {
+        "agent.elf": "7c9b52a0bed0cc6ddc324af244abfce7a4939132979a7d3b8f34223cd1da9842",
+        "cclient.elf": "47813589646c0657ba4eb5a5a6af243b1f1684a083d780a9744ab3bcc5706248",
+        "client.elf": "5c7ac1151fa707b89db82b49bbefccfa2442f0dea4b213867dc08bdc5c510525",
+        "clusterctl.elf": "018f80fbf1ce9a74f1d99d2379a4d6a6b0bca2b48cf1bcc7467fbba311a72794",
+        "deployd.elf": "69dd9d198b2ab85ec1ea04c8f4dcc7805e0f3b65fe6fd74d1e48d3d479f90547",
+        "disco.elf": "99a7f2c90cb3ef9c0af49e176848aed3305a5ae2c1681855d3af1ef8c27f6462",
+        "dns.elf": "78109d95c5a8bd708816a1b36fac406e68780e4b36854b2b7ecb9544eebef192",
+        "echo.elf": "5c59747d8f6ce8141f0f6ed1c65d4617002cc5338481c1a7ef2060e2b448b5a5",
+        "frouter.elf": "805911205d6254f7b21b5b564bf24cb75a8de4bdf910e435ba38776e31e2bfaa",
+        "fs.elf": "c20931f30fbf42bd93046fa76c8ecb41ac1c496696e90e57e4db159037091a64",
+        "grantctl.elf": "039c27369e2371071c3d0b847b48c33c7f48e237822713577371b4cd793f898d",
+        "greet.elf": "8645845a750b0b312aab080787b8cda772e06d830e027ff3cf3ef11b9fc9c9bb",
+        "httpd.elf": "9034668d4bf50e07b8bd26309d02a6f17222a8e29d252204589938d868e5aae4",
+        "kafka.elf": "9451214217da63e6ed1204f1f2b9143043b6439e611dae6a92acee61acd7354d",
+        "kafka_fence_smoke.elf": "a3d63ba5b4f3c50c5ca32185521387d8ac98228113faef95541afd706170b9c0",
+        "kafka_smoke.elf": "46a2efaf5ffbab422ada37451e54b5565562dd44db070be2eae0b6b03107e3c2",
+        "kafka_step.elf": "8d8dd751dd49925569e3556d1f6a705d7ba4023708b459ab8ff3dff6325c2bef",
+        "kafka_step_input.elf": "a7e207a75d68acca60c3d5f5425fefb6ccf0a244cb7219dc42ffab47cd30202a",
+        "kafka_step_proc.elf": "8fef98dbe182877986eb874ebeb0ff64ae80d4d64e1a5604f7f9cfbec8ea2efc",
+        "nclient.elf": "34e54fb0b852f54f997a56bc70d6ddfd037bdab74ce58d6b48188f8e27f52f3f",
+        "net.elf": "6655d31e32759ab37b9a31bbfb5a691d91621123cfaf661c1c03514583f45bb0",
+        "ns.elf": "de73710ac3c0984734eb65d4113eb509c8a8a6837d50b8095d2573d99b204796",
+        "nvme.elf": "548ec21f81e278d77749ee6bac9e50b240bc606424f5a829ae08313131a23272",
+        "nvme_client.elf": "d14e74aebdf58aa6766a06edc877a740f695f7e6eccb78864ae1d3163df0a187",
+        "objstore.elf": "ea21184045b8391e4457f3b3b9b3bb369ef1252c71aef06143be773d0f832259",
+        "objstore_client.elf": "55cbd339afa0d78c9dc71a349c94a4ce4f815417fc82dec1e275b50944372034",
+        "observe.elf": "ff0f5552eb0d3e10edcf57b7bee59d5d3a3ea2bb111a76f68498890cd7e1de22",
+        "raft.elf": "281d4f280903c48e5800326f6826a9b09f5ec8f46dae474cb25e86e4ac4eeda1",
+        "rclient.elf": "a4b9d6d8102ec8bb8449f575d4b5580cd2f3ea525f9f26b8c991202ded52d314",
+        "relmsg.elf": "eeff85710ddd9c4270c2999651308dec8914b3b314ba737ceb6b86989653a9dd",
+        "rng.elf": "a948fdc8f30934bebbc22c85c27e1da76f00b6e6b327bfd27dda1f0a7a655686",
+        "s3.elf": "4a2acc3e9e50d8779b853d1b1b8e30ba512329ae1e00e6d731dce26e3ccee36b",
+        "s3_smoke.elf": "2abe4a752de84bdfa15e93fa38bad3c92b02e2ef2b12fb3d1d0e8091762cb253",
+        "security_probe.elf": "ba5801a48cd2450408d984ae8618059b7446056270bc28fffb59462964e20efb",
+        "servicemgr.elf": "7e100f389bf431226ae0394238aa1857b72197f3df64823111d44347383bd12f",
+        "shutdown_probe.elf": "58cd8fb289f57358a06df005afeff7a3c242ad4a43ee0d9a062f1fab9bd9ac25",
+        "sitas-user.elf": "fbf1b47a721d84498a64e43bc626a7f962a52d3740e3fa7e14adaeea7fa5f311",
+        "tcpclient.elf": "6eeb6137839b0e78c3c3b27234ee7ee1f7aaa9991a5f1d457884dab87d9b7bbe",
+        "tcpip.elf": "97b38c12575ea30242c5c1dcd9640eb0755016f857759489b56de9c07f6a0b07",
+        "time.elf": "d6bf265479d64df812bcc29aa6224427be7562746b7239daef70093ac85d70f7",
+        "uart.elf": "55a8c43ecc6489c1fb9fa1827cfd8e2881068a382918d84eebf4369dbc502009"
+      },
+      "tracked_diff_sha256": "db1b3620b33c5f1458f6a2b15338eaaddb31c16a7d638befc94aaf231a36e37e",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19973 CATTEN_DEPLOY_HOST_PORT=20137 scripts/run-aarch64.sh --security-test --http-test --instance ipc-transaction-refactor-arm --fresh-storage --timeout 300",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 20,
+        "failed": 0,
+        "pending": 0
+      },
+      "http_checks_passed": 14,
+      "security_publication_generations": [
+        1,
+        2
+      ],
+      "serial_sha256": "8312710b144f200afa9f55b517cacc682bec9e553f1441403cf68357203572a9",
+      "selected_native_controls": [
+        "[+     4.920666] [IPC borrowed publication] empty and 257-member mixed authority batches with heap held; late transfer/extra namespace rejection preserved every destination/source, cancellation restored baselines; complete mixed commit including payloads needs no heap",
+        "[+     4.928096] [IPC scalar publication] 64 complete prepared call commits with IPC/heap held, enqueue/reply/observation, original count reconciliation and IRQ preservation passed",
+        "[+     5.161240] [IPC unlocked preparation] 320 call-stage and 64 authority-factory rejections; 64 heap-held call revalidations, quota-before-payload/list rejection, retirement race and exact-root/IRQ retention passed; publication vectors and other capability callers remain separate",
+        "[+     5.167970] [IPC pending storage] 64 invalid-handle and 64 preparation rejections, 64 heap-held publications/detaches, original charge through node disposal and IRQ preservation passed; three abandoned call owners retain storage, three call/reply reservations, five roots and copied backing",
+        "[+     5.181756] [IPC reply storage] 64 second-allocation rejections, 64 heap-held paired publications/detaches and one 64-node retirement batch passed; token charge survives pending-node disposal, original class survives promotion; two abandoned scalar token nodes/counts and one notification entry retained across exact root reuse",
+        "[+     5.193804] [IPC capability storage] 128 stage rejections, 64 heap-held joint publications/detaches, post-guard payload/authority refunds, containing-call rejection and guarded retention passed; one call root/lease with two family records and one staged capability, plus one detached connection payload/authority pair deliberately retained",
+        "[+     8.016362] [ipc records] SUCCESS: connection/call/reply bounds, pre-transfer rejection, rollback, result/cancellation cleanup and generation reuse"
+      ],
+      "http_probe_results": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.352s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.304s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.272s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.15s; ingress recovered"
+      ],
+      "http_transport_retries": [
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: EOF followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: abortive peer closes followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 2/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        }
+      ]
+    },
+    {
+      "arch": "x86_64",
+      "instance": "ipc-transaction-refactor-intel",
+      "cpus": 4,
+      "revision": "1c37593becd80ad214b5e6d452f34830238549bf",
+      "kernel_sha256": "5b44f907182b52e900a3b7f782ad324696dfdee9f3e39973da85992eda7f7b1f",
+      "boot_image_sha256": "f6637fd5ca8d0112c9ac790e6eeabd3e34bb355c0bc69d3f6df1d58847b364c4",
+      "initial_disk_sha256": "8860169e2a2167e84d531cc5ac0446ecd4396e6a5d12dcac7f2dcdad554e351f",
+      "bundle_sha256": {
+        "agent.elf": "9a1ce55b668ecdbd930e4cd7f445e7386113dbcf1004670e889757483b555284",
+        "ahci.elf": "e3604e8f582c09e8e9be8927c037d2ce6a0a799177030bd13a86207776986b16",
+        "client.elf": "7587b5e8d3fed85777d90946ce3b6424c57eb228d92330fc15fb58922ed25c7d",
+        "clusterctl.elf": "ddc8f0e1022a5a596ad8bc6ecadefe267f96db4fd48143496b2b154d60359987",
+        "deployd.elf": "579b708e088efe759b505543278e8d9fcdba8c818cbfca0b2cbd32b36cc068f5",
+        "disco.elf": "706baa52489e9b8777430e05ed2b9cd6ea9b183920cf7d5d6e0435b1cc922476",
+        "dns.elf": "acbd66f2acd5f929ee956851ac0295465cb0e8152262ec0bcec615a7e464b33d",
+        "e1000e.elf": "7515ca36abeb4b871064186f1c901b9f93921541888ed4f26028faa57b7f8a96",
+        "echo.elf": "f5380da952be0e1fbc419746664551c5f33ee46d8b62ab9edb7e2d7fe924bb51",
+        "frouter.elf": "4025ca4c20d86fbb7f7c67d539ab141f551c2918e770e060874bf6ca80a7226f",
+        "fs.elf": "252ed91d742f3554a27de75b2bc1dfc84c4b540ed4061accfba5d560c5ce067f",
+        "grantctl.elf": "4eeae2dcec2bec33811c242b547706614441bbea2ccb552968b38ce74a50dce0",
+        "greet.elf": "fb6e152e34645d4ae1b6392f71850c688d4cc0475a7751f0392778050c61ad7e",
+        "httpd.elf": "b16de6b0d477afe4e2e52ff3277420bf4557894aae4b6b22b00c89c1d21be03d",
+        "kafka.elf": "9f25f86b824fe8d7de14c197626307e3bc6ead58e6305b910f9a488430333d97",
+        "kafka_smoke.elf": "f4b57e519d5983fc03f58f7b4d63159822a003c325624226f16d93ace54010a6",
+        "nclient.elf": "924bfd1a07cc67c16a64176746ac924fe4fd36b95829c87818545a261da2a326",
+        "net.elf": "9b3008b7a7356eea1b1df8d261c4e64867f587475df82e62fafa57eefcc97162",
+        "ns.elf": "55d10086d99699cf87634de7c9aec2dba60d99e19e00b697ee5e129af4de4b2b",
+        "nvme.elf": "233a835bfa268a2046bd1768a986b3a3a0d5316645fea366e25ee87e50a38b25",
+        "nvme_client.elf": "16ac4efe9b0c5b91232c088d25fffca14facd6c5201ef573111dabcd80af3c30",
+        "objstore.elf": "d84a4b33256fb3ae05db84eb281db35cf2748c263ed977b8d108a35971ece430",
+        "objstore_client.elf": "4d4f001cffde037b65c9e8433855b01098cc63b5ef334246ae25e63768ffe4fc",
+        "observe.elf": "49f3c3241de00713201da049415628eca5e6cca32748ea5c51b14a0ca637cb21",
+        "raft.elf": "4187e23f27c337863c810c70e46813e1a9f4a753d7f8096b6b14d0dfdbb183ff",
+        "rclient.elf": "3bcecad8b197e62836193f1c2e8053efc7a933cb833d05b4e3bc8f42e58a5e05",
+        "relmsg.elf": "5989b6d15c96c6660dd22a5ff3b83da0edd74739c74512b624f1a07785c15cc6",
+        "rng.elf": "b9c1cc204330dccde6b0da3aa09962bcfcddc66d06060d24fa222e8f26f6c69c",
+        "s3.elf": "4a90f021454c5a29e92d350cc5f36192056d29c16c0128d970b1226917d3950a",
+        "s3_smoke.elf": "f1d14f41f3b7fcae3e6a191c03c99ba88524fb3342dd9eaccb43568a54518406",
+        "security_probe.elf": "33539c825b40ee49f7c029e6e12044af547889bf67a086a5fa6a3e81413b81a4",
+        "servicemgr.elf": "61474b6524f95d6bb5c004ec665c3274241b4bf0292a118c5b18def84238fa2e",
+        "shutdown_probe.elf": "3f7e3ff0143acc4dc0254264f99436fcb6b3aac8ca64de051e69fd2c65e3ccd2",
+        "tcpclient.elf": "a0dda5b46b7bb114952fe0f7e22fc1ee96634f2154770eaa62eb95c7544a86e9",
+        "tcpip.elf": "7c0f683a20058b21b53e5fa86af84f6686a43225ce0e2add8e650bd3384682b2",
+        "time.elf": "459e6222d3fa94ea7297b99c4b954ce5e8af65c20157436f7c6147c23ca350ab",
+        "virtio_blk.elf": "e1398a2fcbb24b244ca9b4e7f65f4f52cd2d4c01d73df5b2860137e2b15f5b74"
+      },
+      "tracked_diff_sha256": "db1b3620b33c5f1458f6a2b15338eaaddb31c16a7d638befc94aaf231a36e37e",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19974 CATTEN_DEPLOY_HOST_PORT=20138 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance ipc-transaction-refactor-intel --fresh-storage --timeout 480",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 18,
+        "failed": 0,
+        "pending": 0
+      },
+      "http_checks_passed": 14,
+      "security_publication_generations": [
+        1,
+        2
+      ],
+      "serial_sha256": "40bfa856debc64c05fdc78e79c59dad3db7ba64f3102c95745800cbd5ea25b5c",
+      "selected_native_controls": [
+        "[+     2.383088] [IPC borrowed publication] empty and 257-member mixed authority batches with heap held; late transfer/extra namespace rejection preserved every destination/source, cancellation restored baselines; complete mixed commit including payloads needs no heap",
+        "[+     2.389800] [IPC scalar publication] 64 complete prepared call commits with IPC/heap held, enqueue/reply/observation, original count reconciliation and IRQ preservation passed",
+        "[+     2.575138] [IPC unlocked preparation] 320 call-stage and 64 authority-factory rejections; 64 heap-held call revalidations, quota-before-payload/list rejection, retirement race and exact-root/IRQ retention passed; publication vectors and other capability callers remain separate",
+        "[+     2.586216] [IPC pending storage] 64 invalid-handle and 64 preparation rejections, 64 heap-held publications/detaches, original charge through node disposal and IRQ preservation passed; three abandoned call owners retain storage, three call/reply reservations, five roots and copied backing",
+        "[+     2.597294] [IPC reply storage] 64 second-allocation rejections, 64 heap-held paired publications/detaches and one 64-node retirement batch passed; token charge survives pending-node disposal, original class survives promotion; two abandoned scalar token nodes/counts and one notification entry retained across exact root reuse",
+        "[+     2.615730] [IPC capability storage] 128 stage rejections, 64 heap-held joint publications/detaches, post-guard payload/authority refunds, containing-call rejection and guarded retention passed; one call root/lease with two family records and one staged capability, plus one detached connection payload/authority pair deliberately retained",
+        "[+     4.460040] [ipc records] SUCCESS: connection/call/reply bounds, pre-transfer rejection, rollback, result/cancellation cleanup and generation reuse"
+      ],
+      "http_probe_results": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.334s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.387s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.258s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.22s; ingress recovered"
+      ],
+      "http_transport_retries": [
+        {
+          "diagnostic": "HTTP transport TimeoutError; retry 1/2",
+          "eventual_probe_result": "PASS: initial metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: EOF followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: abortive peer closes followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 2/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        }
+      ]
+    }
+  ],
+  "native_failures": [],
+  "limitations": [
+    "Code comparisons are review aids, not executable refinement proofs.",
+    "Broader outer IRQ/guard/implicit destructor qualification remains open.",
+    "No formal model inputs change or new model claim.",
+    "Observed host transport retries are preserved; overlapping native invocations provide no controlled causal attribution.",
+    "Historical scheduler/metrics/root-close/mapping failures remain unattributed."
+  ]
+}

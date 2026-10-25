@@ -1,4 +1,6 @@
 //! Endpoint preparation, queue growth and complete post-IPC metadata disposal.
+use core::mem::ManuallyDrop;
+
 use super::*;
 use crate::memory::{
     AddressSpaceHandle,

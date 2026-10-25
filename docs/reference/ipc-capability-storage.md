@@ -38,8 +38,11 @@ phases:
    namespace rejects before either factory. Revalidate again before publication.
 
 Endpoint publication uses its existing root check and borrowed reservation;
-call staging now only revalidates already-prepared metadata before attachment
-work. Unused preparation, including rejected shared-admission metadata, finishes
+[`PreparedCall::stage`](../../crates/catten/src/ipc/transaction.rs) revalidates
+its own already-prepared metadata before attachment work, borrowing the caller's
+existing IPC write guard. The captured caller identity, root and unfinished
+factory fields remain private to that transaction module. No new lock or root
+acquisition occurs at this boundary. Unused preparation, including rejected shared-admission metadata, finishes
 after local guards; roots finish last. Complete fallback retains every field.
 Kernel roots remain immortal and synthetic fixtures retain their explicit
 namespace boundary. No lifecycle-under-IPC edge, IRQ enable or new root mechanism
@@ -71,6 +74,15 @@ capability metadata with its existing completion owner. Claimed replies retain
 them with their existing root-owning operation through post-IPC disposal. Failed
 publication or loan cleanup leaves the live token and uncertain backing fenced;
 metadata preparation does not supply replay authority.
+
+Call/connection construction, joint call publication, scalar reply publication
+and explicit retirement finish live together in
+[`ipc/transaction.rs`](../../crates/catten/src/ipc/transaction.rs).
+`ReplyCompletion::publish` keeps its returned resources, detached token,
+authority metadata and notifications private through post-IPC `finish`.
+The front end still selects the existing root-owning claimed-reply path for
+loans; that physical cleanup policy is unchanged. See the
+[refactoring evidence](../reports/audits/2026-10-25-refactoring-ipc-transactions.md).
 
 ## Retirement
 

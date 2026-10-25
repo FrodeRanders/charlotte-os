@@ -346,7 +346,7 @@ fn test_joint_retirement() {
             let records = record_budget::node_used();
             let mut call = PreparedCall::try_new(f.client.id()).unwrap();
             let mut ipc = IPC.write();
-            ipc.stage_call(f.client.id(), &mut call).unwrap();
+            call.stage(&mut ipc, f.client.id()).unwrap();
             let staged_call = call.authority.as_ref().unwrap().identity();
             PreparedConnection::prepare_into(
                 &mut call.connection,
@@ -493,7 +493,7 @@ fn test_stale_call() {
     let source = object::allocate(old.id(), 1).unwrap();
     let mut stale = PreparedCall::try_new(old.id()).unwrap();
     let mut ipc = IPC.write();
-    ipc.stage_call(old.id(), &mut stale).unwrap();
+    stale.stage(&mut ipc, old.id()).unwrap();
     let old_cap = stale.authority.as_ref().unwrap().identity();
     PreparedConnection::prepare_into(
         &mut stale.connection,

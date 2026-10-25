@@ -24,7 +24,7 @@ pub(super) fn run() {
         let (call, delivery) = {
             let mut ipc = IPC.write();
             let _heap = PRIMARY_ALLOCATOR.lock();
-            ipc.stage_call(handle.id(), &mut prepared).unwrap();
+            prepared.stage(&mut ipc, handle.id()).unwrap();
             prepared.commit(&mut ipc, endpoint_id, 7, 8).unwrap()
         };
         prepared.finish();

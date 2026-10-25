@@ -56,6 +56,11 @@ Result encoding uses bounded stack storage, not a fresh heap allocation.
 
 ## Preparation and retirement
 
+[`ipc/transaction.rs`](../../crates/catten/src/ipc/transaction.rs) owns the call,
+connection and scalar reply phases described here. Factories, publication and
+explicit finish retain their original record charges and cleanup order; registry
+storage remains in `ipc/mod.rs`. See the [ownership boundary](ipc-capability-storage.md#call-and-endpoint-preparation).
+
 Public call preparation rejects invalid/wrong-rights handles and closed/full
 queues before record admission or allocation; publication rechecks those inputs.
 Every call preparation retains the caller's captured root generation before
