@@ -145,7 +145,7 @@ struct MemoryObject {
     owner: AddressSpaceId,
     frames: Vec<PAddr>,
     charge: super::budget::Charge,
-    mappings: AdmittedMap<AddressSpaceId, MemoryMappingRecord>,
+    mappings: mapping_storage::Mappings,
     lend_state: LendState,
     dma_pins: usize,
     exclusive_dma_pins: usize,
@@ -2241,7 +2241,7 @@ impl MappingRetirementPin {
 }
 
 enum RetiredMappings {
-    All(AdmittedMap<AddressSpaceId, MemoryMappingRecord>),
+    All(mapping_storage::Mappings),
     One(mapping_storage::RetiredMapping),
 }
 

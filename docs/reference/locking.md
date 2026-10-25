@@ -520,3 +520,12 @@ or allocator work. Guarded publication and copy/DMA/mapping abandonment controls
 also hold this counter. Empty source-escrow pins have no allocation or reservation.
 Broader outer cleanup contexts and aggregate pressure remain unqualified; see
 [snapshot-buffer admission](snapshot-buffer-admission.md).
+
+Mapping-node requested-layout/count admission uses an independent leaf mutex
+before the fallible node allocator. Capture exact-root trusted classification
+once before either entry; release the counter before allocation. Publication and
+detachment only relink the existing charged node. Explicit actual node free
+precedes original counter refund, then any captured peer-root lease completion.
+Guarded publication/abandonment controls also hold this counter. Fallback retains
+all fields without allocator/counter entry; broader outer contexts and pressure
+remain separate. See [mapping-node admission](mapping-node-admission.md).

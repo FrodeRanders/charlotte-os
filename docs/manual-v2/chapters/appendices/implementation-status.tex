@@ -396,6 +396,13 @@ Source, tests, and repository history remain authoritative.
         survives promotion and root reuse. Empty escrow pins allocate no buffer.
         Inline metadata, allocator overhead, aggregate principals and concurrent
         essential-progress qualification remain open.
+        Mapping nodes now also reserve requested layouts/counts before allocation:
+        1 MiB/8,192 total and 768 KiB/6,144 ordinary. Captured classification and
+        original admission follow the same node through preparation, publication
+        and detached retirement until actual deallocation. Guarded fallback
+        retains both without counter/allocator entry; no replacement teardown
+        node, physical proof or retry owner is introduced. Principal/heap limits
+        and concurrent progress remain separate.
         Copy-pin snapshot capacity also prepares outside memory serialization,
         with exact-generation/source revalidation before snapshot fill and pin
         publication. Bare preparation/pin fallback retains its allocation;

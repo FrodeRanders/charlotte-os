@@ -1407,3 +1407,13 @@ layouts, per-allocation classification or destructor/IRQ contexts. Actual-buffer
 pressure and guarded ownership controls qualify those boundaries natively; no
 model input, executable refinement, physical/replay or sustained fairness claim
 changes.
+
+## Mapping-node admission
+
+The [mapping-node admission follow-up](../reports/audits/2026-10-25-security-mapping-node-admission.md)
+adds requested-layout/count enforcement in the existing mapping nodes and
+retirement owners. Root original-charge, IPC loan/rollback/timeout and DMA
+ownership projections remain relevant; concrete node layouts, counters, captured
+classification and allocator/destructor contexts remain native/source controls.
+No model inputs, executable refinement, physical/replay policy or sustained
+concurrent progress proof changes.

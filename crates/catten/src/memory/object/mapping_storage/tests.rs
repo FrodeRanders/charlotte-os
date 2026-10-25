@@ -9,7 +9,7 @@ use crate::memory::{
 fn root() -> AddressSpaceHandle {
     crate::service::loader::create_user_address_space_handle()
 }
-fn available() {
+pub(super) fn available() {
     assert!(MEMORY_OBJECTS.try_lock().is_some());
     assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());
     assert!(PRIMARY_ALLOCATOR.try_lock().is_some());
@@ -24,6 +24,7 @@ fn cleanup(
 }
 
 pub(crate) fn run() {
+    admission::tests::run();
     rejected_prefixes();
     lost_source();
     reused_generation();
@@ -48,6 +49,7 @@ pub(crate) fn run() {
 
 fn rejected_prefixes() {
     let admitted = snapshot_storage::admitted();
+    let nodes = admission::snapshot();
     let handle = root();
     let cap = allocate(handle.id(), 2).unwrap();
     let id = MEMORY_OBJECTS.lock().lookup(handle.id(), cap).unwrap().object;
@@ -102,6 +104,7 @@ fn rejected_prefixes() {
             assert_eq!(crate::capability::node_admission_used(), counts);
             assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), frames);
             assert_eq!(snapshot_storage::admitted(), admitted);
+            assert_eq!(admission::snapshot(), nodes);
         }
     }
     assert_eq!(Preparing::new(handle, usize::MAX).err(), Some(MemoryObjectError::FrameAllocFailed));
@@ -153,19 +156,21 @@ fn metadata_publication() {
         let pin = {
             let mut registry = MEMORY_OBJECTS.lock();
             let _heap = PRIMARY_ALLOCATOR.lock();
-            let mut pin = snapshot_storage::with_budget_locked(|| {
-                prepared.publish(
-                    &mut registry,
-                    object,
-                    handle.id(),
-                    MemoryMappingState {
-                        address_space: handle,
-                        base: VAddr::from(0x1c0000usize),
-                        installed_pages: 0,
-                        writable: false,
-                        scratch: false,
-                    },
-                )
+            let mut pin = admission::with_locked(|| {
+                snapshot_storage::with_budget_locked(|| {
+                    prepared.publish(
+                        &mut registry,
+                        object,
+                        handle.id(),
+                        MemoryMappingState {
+                            address_space: handle,
+                            base: VAddr::from(0x1c0000usize),
+                            installed_pages: 0,
+                            writable: false,
+                            scratch: false,
+                        },
+                    )
+                })
             });
             assert_eq!(prepared.frames(), registry.objects[&object].frames.as_slice());
             pin.retired_mapping =
@@ -296,12 +301,13 @@ fn ordinary_disposal() {
 
 fn guarded_preparation() {
     let admitted = snapshot_storage::admitted();
+    let nodes = admission::snapshot();
     let handle = root();
     let irq = crate::cpu::isa::lp::ops::get_int_state();
     // One partial empty node and one complete unused node/snapshot pair. No
     // source identities or pins exist, so the fixture root is unrelated to them.
     let partial = Preparing(ManuallyDrop::new(Resources {
-        node: Some(Storage::try_new().unwrap()),
+        node: Some(admission::prepare(false).unwrap()),
         snapshot: None,
     }));
     let full = Preparing::new(handle, 35).unwrap();
@@ -310,9 +316,11 @@ fn guarded_preparation() {
         let _table = ADDRESS_SPACE_TABLE.lock();
         let _heap = PRIMARY_ALLOCATOR.lock();
         let _physical = PHYSICAL_FRAME_ALLOCATOR.lock();
-        snapshot_storage::with_budget_locked(|| {
-            drop(partial);
-            drop(full);
+        admission::with_locked(|| {
+            snapshot_storage::with_budget_locked(|| {
+                drop(partial);
+                drop(full);
+            })
         });
     }
     assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
@@ -342,7 +350,7 @@ fn guarded_preparation() {
         assert_eq!(prepared.frames().len(), 35);
         pin.retired_mapping =
             registry.objects.get_mut(&object).unwrap().mappings.take(&handle.id());
-        snapshot_storage::with_budget_locked(|| drop(prepared));
+        admission::with_locked(|| snapshot_storage::with_budget_locked(|| drop(prepared)));
     }
     assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
     // No leaves or externally owned mapping were installed by this isolated
@@ -354,6 +362,11 @@ fn guarded_preparation() {
     assert_eq!(
         snapshot_storage::admitted(),
         ([admitted.0[0] + 70 * 8, admitted.0[1] + 2], [admitted.1[0] + 70 * 8, admitted.1[1] + 2])
+    );
+    let bytes = 2 * Storage::allocation_bytes() as u64;
+    assert_eq!(
+        admission::snapshot(),
+        ([nodes.0[0] + bytes, nodes.0[1] + 2], [nodes.1[0] + bytes, nodes.1[1] + 2])
     );
 }
 
@@ -408,6 +421,7 @@ fn rollback_record_lifetime() {
 // Deliberate failed confirmation after real leaf rollback. Never re-adopt or
 // release the retained pin/node; the source remains terminally fenced.
 fn uncertain_rollback() {
+    let nodes = admission::snapshot();
     use crate::cpu::isa::memory::tlb::InvalidationError;
     let handle = root();
     let cap = allocate(handle.id(), 2).unwrap();
@@ -430,7 +444,9 @@ fn uncertain_rollback() {
         let _heap = PRIMARY_ALLOCATOR.lock();
         // Confirmation rejects once; complete pin/node fallback must neither
         // enter either allocator/registry nor reclaim the original backing.
-        finish_mapping(handle.id(), base, 2, false, result, pin, |_, _, _| Err(cause))
+        admission::with_locked(|| {
+            finish_mapping(handle.id(), base, 2, false, result, pin, |_, _, _| Err(cause))
+        })
     });
     assert_eq!(result, Err(MemoryObjectError::InvalidationFailed(cause)));
     assert_eq!(MEMORY_OBJECTS.lock().objects[&object].retirement_pins, 1);
@@ -455,5 +471,10 @@ fn uncertain_rollback() {
             pages: 2,
             objects: 1
         }
+    );
+    let bytes = Storage::allocation_bytes() as u64;
+    assert_eq!(
+        admission::snapshot(),
+        ([nodes.0[0] + bytes, nodes.0[1] + 1], [nodes.1[0] + bytes, nodes.1[1] + 1])
     );
 }

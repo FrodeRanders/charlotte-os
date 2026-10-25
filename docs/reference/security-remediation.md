@@ -542,6 +542,19 @@ Per-principal/general metadata, allocator overhead, sustained EL0 pressure and
 essential-service progress remain open. See the [acceptance map](snapshot-buffer-admission.md#acceptance-scope).
 No finding disposition or SEC-07/18 status changes.
 
+The [mapping-node admission follow-up](../reports/audits/2026-10-25-security-mapping-node-admission.md)
+adds shared requested-layout/count ceilings before allocation: 1 MiB/8,192 total,
+768 KiB/6,144 ordinary. Captured classification and original admission stay in the
+same prepared/published/detached node until actual deallocation; promotion and
+root reuse cannot refund live records. Real-node exhaustion, public map/map-any
+denial, trusted reserve and unmap at total exhaustion qualify R7-2/R7-3 and C05/C18.
+Other metadata families, aggregate principals/general heap and sustained concurrent
+progress remain open. SEC-07/18 and finding dispositions remain unchanged.
+Resource capacity values also remain scattered compile-time policy constants.
+Central typed operator configuration, validated totals/reserves and an explicit
+installation/lifetime contract are required; capacity tuning must not require
+editing allocation/cleanup checks. Protocol/structural bounds remain distinct.
+
 SEC-07 remains partial until all of the following deliverables are accepted:
 
 The [telemetry snapshot follow-up](../reports/audits/2026-10-18-telemetry-snapshot-preparation.md)

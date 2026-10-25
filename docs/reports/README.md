@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Mapping-node admission](audits/2026-10-25-security-mapping-node-admission.md) — Requested-layout/count ceilings follow actual prepared, published and retained mapping-node allocation lifetime.
+
 - [Shared snapshot-buffer admission](audits/2026-10-25-security-snapshot-buffer-admission.md) — Byte/count ceilings follow mapping/copy/DMA buffer lifetime, with real allocation pressure and explicit audit acceptance scope.
 
 - [Mapping preparation ownership](audits/2026-10-25-security-mapping-preparation-ownership.md) — Inert partial node/snapshot custody, explicit post-guard ordinary disposal and captured-generation publication checks.

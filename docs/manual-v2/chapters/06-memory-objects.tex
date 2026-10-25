@@ -111,6 +111,15 @@ that reservation. Empty source-escrow pins have no buffer allocation or quota.
 Allocator overhead, inline metadata, aggregate principals and sustained concurrent
 progress remain separate; see \repofile|docs/reference/snapshot-buffer-admission.md|.
 
+Mapping-record nodes now reserve their complete requested layout/count before
+allocation: 1 MiB/8,192 total and 768 KiB/6,144 ordinary. The exact calling root's
+trusted classification is captured once. Original admission follows the same node
+through preparation, publication and selected/whole-map retirement; actual node
+free precedes refund and peer-root completion. Unused/uncertain abandonment
+retains node and charge without counter or allocator entry. Existing physical
+proofs remain required; see \repofile|docs/reference/mapping-node-admission.md|.
+Aggregate principals and sustained concurrent progress remain open.
+
 DMA snapshots now use the same inert vector preparation outside memory
 serialization. Full namespace/source and direction/rights/loan/exclusion checks
 revalidate before allocation-free snapshot fill and shared/exclusive counter
@@ -118,7 +127,7 @@ publication. The infallible clone after counter mutation is removed. Bare DMA
 pin fallback retains snapshot and original backing fences; explicit snapshot
 free precedes unpin. Existing backend operation/maintenance owners still supply
 the hardware completion proof. No readiness, recovery family or replay authority
-is added. Concurrent snapshot budgets and broader outer contexts remain open.
+is added. Aggregate principal snapshot budgets and broader outer contexts remain open.
 
 Retirement keeps the complete detached object node in the existing backing
 receipt, with its original frame vector, charge and metadata. Physical release

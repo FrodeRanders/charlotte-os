@@ -538,3 +538,10 @@ ABI/formats and typed backing/hardware completion proofs remain unchanged. See
 Other factory/destructor contexts, scalar scratch identity and comprehensive
 metadata admission remain current candidates. Wire formats/runtime ABI stay
 unchanged.
+
+Memory-object mapping storage now uses one charged node type in preparation,
+the mapping map and all selected/whole-map retirement owners. The uncharged
+node alias and factory are removed; no compatibility path or replacement node
+is available during teardown. Requested-layout/count admission follows actual
+allocation lifetime. Public ABI/wire formats and existing physical completion
+proofs remain unchanged. See [mapping-node admission](mapping-node-admission.md).

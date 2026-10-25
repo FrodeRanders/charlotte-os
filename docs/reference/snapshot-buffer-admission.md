@@ -11,7 +11,8 @@ A nonempty buffer reserves `pages * size_of::<PAddr>()` bytes and one count befo
 the fallible vector allocator. The per-object frame bound is unchanged. On the
 supported targets one maximum-sized snapshot requests 128 KiB. These are
 requested buffer layouts, excluding allocator overhead/excess storage, inline
-owner fields, mapping nodes and other metadata allocations.
+owner fields, mapping nodes and other metadata allocations. Mapping nodes have
+separate [requested-layout admission](mapping-node-admission.md).
 
 ## Captured policy and lifetime
 

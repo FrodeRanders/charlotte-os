@@ -1,10 +1,13 @@
 //! Mapping record/snapshot preparation precedes publication and pin mutation.
 use super::*;
 
+mod admission;
 pub(super) mod tests;
 
-type Storage = PreparedEntry<(AddressSpaceId, MemoryMappingRecord)>;
-pub(super) type RetiredMapping = RetiredEntry<(AddressSpaceId, MemoryMappingRecord)>;
+type Storage = PreparedEntry<(AddressSpaceId, MemoryMappingRecord), admission::Charge>;
+pub(super) type Mappings = AdmittedMap<AddressSpaceId, MemoryMappingRecord, admission::Charge>;
+pub(super) type RetiredMapping =
+    RetiredEntry<(AddressSpaceId, MemoryMappingRecord), admission::Charge>;
 
 struct Resources {
     node: Option<Storage>,
@@ -31,9 +34,12 @@ impl Preparing {
             node: None,
             snapshot: None,
         }));
+        // Capture once against the caller's exact generation before any factory.
+        // Late promotion or ASID reuse must not redirect admission or refund.
+        let platform = super::super::budget::platform_identity(handle.id()) == Some(handle);
         let result = (|| {
             before(0)?;
-            owner.0.node = Some(Storage::try_new().map_err(|_| MemoryObjectError::ResourceLimit)?);
+            owner.0.node = Some(admission::prepare(platform)?);
             before(1)?;
             owner.0.snapshot = Some(snapshot_storage::Preparing::new(handle, pages)?);
             before(2)

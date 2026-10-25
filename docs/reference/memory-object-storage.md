@@ -119,8 +119,9 @@ need no allocation under the memory registry. Snapshot disposal also leaves
 both local memory and table guards. Shared count limits and original backing
 ownership remain. Multiple
 unused preparations can overlap. Shared snapshot-buffer admission now bounds their
-requested vector bytes/counts, as described below; mapping-node/aggregate-principal
-admission and sustained pressure remain separate.
+requested vector bytes/counts, as described below. Mapping nodes now have their
+own requested-layout/count admission; aggregate principals and sustained pressure
+remain separate.
 
 Ordinary rejected-prefix rollback detaches the original mapping node into the
 existing `MappingRetirementPin`, retaining its exact published-prefix count.
@@ -282,3 +283,16 @@ cursor scans are now linear; existing count limits do not prove worst-case
 hold time, pressure fairness or management progress. Other memory payload maps,
 factory/destructor contexts, physical-failure causes and historical failures
 remain open. SEC-07/18 remain partial.
+
+## Mapping-node requested-layout admission
+
+Mapping candidates, published records and detached/retained nodes now share
+1 MiB/8,192 total and 768 KiB/6,144 ordinary ceilings. The exact calling root's
+trusted classification is captured once before reservation and fallible allocation.
+The same node carries its original charge through publication and every existing
+mapping retirement owner; actual node deallocation precedes refund. Promotion,
+root retirement and ASID reuse cannot reclassify it. Partial preparation and
+uncertain cleanup retain their charges without entering the allocator or counter.
+No replacement node is needed for confirmed unmap. Other metadata, allocator
+overhead, aggregate principals and sustained pressure remain separate; see
+[mapping-node admission](mapping-node-admission.md).
