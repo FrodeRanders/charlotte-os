@@ -86,6 +86,18 @@ loans; that physical cleanup policy is unchanged. See the
 
 ## Retirement
 
+[`ipc/close.rs`](../../crates/catten/src/ipc/close.rs) groups common close
+dispatch, loan preflight, serialized capability cleanup and namespace draining.
+Its internal `CloseMode::Owned` names visible-capability admission and the
+existing root-owning loan/claim-wait path. `CloseMode::Serialized` names cleanup
+after the caller controls namespace retirement and has drained claims; it may
+consume hidden grants but rejects an unexpected claim without admitting fresh
+live roots beneath IPC. These replace the former boolean selector and provide
+no authority or completion proof themselves. Public close and the kernel-only
+fixture facade remain available through `ipc`; exact roots, retained owners,
+post-guard metadata disposal and notification order are unchanged. See the
+[refactoring evidence](../reports/audits/2026-10-25-refactoring-ipc-close.md).
+
 Removing an IPC capability detaches both its payload node and the shared
 `RetiredRecord` under IPC. That authority receipt moves into the detached payload
 before the node joins the existing temporary cleanup list. Public close, queued

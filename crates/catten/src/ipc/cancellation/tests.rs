@@ -2,10 +2,19 @@
 //! Raw capability IDs belong to these kernel ABI fixtures; applications use typed owners.
 use super::*;
 use crate::{
-    ipc::readiness::{
-        EndpointObservable,
-        PendingCallObservable,
-        endpoint_is_readable_or_closed,
+    ipc::{
+        close::{
+            CloseMode,
+            close_cap_in_mode_with_revoker,
+            close_cap_serialized,
+            close_cap_with_wait,
+            consume_reply_token,
+        },
+        readiness::{
+            EndpointObservable,
+            PendingCallObservable,
+            endpoint_is_readable_or_closed,
+        },
     },
     memory::{
         self,
@@ -517,7 +526,7 @@ fn serialized_bulk_failure() {
             close_cap_in_mode_with_revoker(
                 asid,
                 cap,
-                false,
+                CloseMode::Serialized,
                 || panic!("unclaimed bulk close must not wait"),
                 |borrow| {
                     let loan = LoanRevocation::prepare(

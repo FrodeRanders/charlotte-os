@@ -125,6 +125,6 @@ pub(super) fn close_with_before_prepare(
     // list. No new root lease is acquired under IPC. Existing move/copy/result
     // attachment authority is retired under IPC; admitted storage carries its
     // backing past unlock. Undelivered owners cannot acquire mappings or pins.
-    drain_namespace_caps(asid)?;
+    close::drain_namespace_caps(asid)?;
     Ok(NamespaceProgress::Complete)
 }

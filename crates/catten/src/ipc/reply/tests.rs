@@ -3,6 +3,7 @@
 //! retain two data pages; abandonment additionally retains both live roots.
 
 use super::*;
+use crate::ipc::close::close_cap_with_wait;
 mod connection_tests;
 mod memory_tests;
 use crate::memory::{

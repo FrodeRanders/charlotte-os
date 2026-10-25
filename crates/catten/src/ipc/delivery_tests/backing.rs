@@ -1,5 +1,9 @@
 //! Kernel ABI fixtures for retirement storage and unlocked physical release.
 use super::*;
+use crate::ipc::close::{
+    CloseMode,
+    close_cap_with_cleanup,
+};
 
 fn unlocked(owner: object::RetiredMemory) {
     assert!(IPC.try_write().is_some(), "backing release held IPC");
@@ -100,7 +104,7 @@ fn bulk_vectors() {
     close_cap_with_cleanup(
         fixture.server.id(),
         fixture.endpoint,
-        false,
+        CloseMode::Serialized,
         || panic!("bulk cleanup waited"),
         revoke_memory_borrow,
         |owner| {
@@ -151,7 +155,7 @@ fn call_and_result() {
         close_cap_with_cleanup(
             fixture.caller.id(),
             pending,
-            false,
+            CloseMode::Serialized,
             || panic!("call cleanup waited"),
             revoke_memory_borrow,
             |owner| {
