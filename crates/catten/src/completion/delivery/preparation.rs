@@ -25,7 +25,7 @@ struct Target {
 impl Target {
     fn from_namespace(
         asid: AddressSpaceId,
-        entries: &AsCompletions,
+        entries: &Namespace,
         platform: Option<crate::memory::AddressSpaceHandle>,
     ) -> Result<Self, CqOpenError> {
         if entries.address_space.is_some_and(|root| !crate::memory::budget::accepting(root)) {
@@ -51,7 +51,7 @@ impl Target {
         )
     }
 
-    fn validate(&self, entries: &AsCompletions) -> Result<(), CqOpenError> {
+    fn validate(&self, entries: &Namespace) -> Result<(), CqOpenError> {
         if self.root != entries.address_space
             || !Arc::ptr_eq(&self.account, &entries.cq_budget)
             || self.capacity != entries.capacity
@@ -222,7 +222,7 @@ impl Prepared {
     /// this same constructor; physical states cannot escape uninitialized.
     pub(in crate::completion) fn heap_for_namespace(
         asid: AddressSpaceId,
-        entries: &AsCompletions,
+        entries: &Namespace,
         cq_entries: u32,
     ) -> (PreparedEntry<(CqId, CqState)>, CqState) {
         let platform = crate::memory::budget::platform_identity(asid);
@@ -272,7 +272,7 @@ impl RetiredCq {
 struct PreparedNamespace(ManuallyDrop<NamespacePreparation>);
 
 struct NamespacePreparation {
-    namespace: namespace_preparation::Preparing,
+    namespace: namespace::Preparing,
     queue: Prepared,
 }
 
@@ -283,7 +283,7 @@ impl PreparedNamespace {
         cq_entries: u32,
         frame: Option<crate::memory::physical::PAddr>,
     ) -> Result<Self, CqOpenError> {
-        let mut namespace = namespace_preparation::Preparing::new(asid, capacity)?;
+        let mut namespace = namespace::Preparing::new(asid, capacity)?;
         let platform = crate::memory::budget::platform_identity(asid);
         let mut queue = match Target::from_namespace(asid, namespace.entries(), platform)
             .and_then(|target| Prepared::new(target, cq_entries, frame))
@@ -355,5 +355,5 @@ mod tests;
 pub(in crate::completion) fn test_preparation() {
     tests::run();
     metadata_tests::run();
-    namespace_preparation::test_preparation();
+    namespace::test_preparation();
 }

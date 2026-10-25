@@ -157,7 +157,7 @@ fn namespace_identity() {
     {
         let _registry = COMPLETIONS.write();
         let _heap = PRIMARY_ALLOCATOR.lock();
-        revoke_namespace_authority(CLIENT, &mut previous);
+        previous.revoke_authority(CLIENT);
         assert!(!crate::capability::contains(CLIENT, cap, ObjectKind::Completion));
         assert!(!crate::capability::contains(CLIENT, timer, ObjectKind::Completion));
         assert_eq!(crate::capability::node_admission_used(), authority);

@@ -170,7 +170,7 @@ fn post_detached(
     asid: AddressSpaceId,
     operation: OperationId,
     result: OpResult,
-    as_completions: &mut Namespace,
+    as_completions: &mut NamespaceState,
     mut record: RetiredEntry<(OperationId, DetachedOp)>,
 ) -> RetiredDetached {
     let detached = &mut record.value_mut().1;
@@ -287,7 +287,7 @@ impl Target {
         })
     }
 
-    fn validate(&self, entries: &AsCompletions) -> Result<(), SubmitError> {
+    fn validate(&self, entries: &Namespace) -> Result<(), SubmitError> {
         if self.root != entries.address_space
             || !Arc::ptr_eq(&self.records, &entries.record_budget)
             || !Arc::ptr_eq(&self.timers, &entries.timer_budget)

@@ -59,8 +59,17 @@ pub use detached::{
     submit_detached,
     submit_detached_timer,
 };
-mod namespace_preparation;
-use namespace_preparation::RetiredNamespace;
+mod namespace;
+use namespace::{
+    Namespace,
+    NamespaceState,
+    Registry,
+    RetiredNamespace,
+};
+pub use namespace::{
+    close_address_space,
+    open_address_space,
+};
 mod operation_id_tests;
 mod operation_ids;
 mod producers;
@@ -91,13 +100,7 @@ use alloc::{
     },
     vec::Vec,
 };
-use core::{
-    mem::ManuallyDrop,
-    ops::{
-        Deref,
-        DerefMut,
-    },
-};
+use core::mem::ManuallyDrop;
 
 use spin::LazyLock;
 
@@ -244,140 +247,10 @@ pub type CqId = u32;
 /// The default completion queue of an address space.
 pub const DEFAULT_CQ: CqId = 0;
 
-/// Complete namespace fallback retains all payloads and original accounts.
-/// Only explicit post-registry finish may dispose sources, nodes and backing.
-#[must_use = "explicitly finish the complete namespace after registry unlock"]
-struct AsCompletions(ManuallyDrop<Namespace>);
-
-struct Namespace {
-    table: AdmittedMap<CompletionCap, CapabilityRecord>,
-    /// Shared upper bound for capability records, in-flight detached
-    /// operations, and completed detached records awaiting CQ delivery.
-    capacity: usize,
-    live: usize,
-    /// Live capability-free operations, keyed by their stable operation id.
-    /// These count toward `capacity` exactly like capability-backed ones.
-    /// Their admitted nodes transfer to terminal/backlog/refund owners.
-    detached: AdmittedMap<OperationId, DetachedOp>,
-    /// The address space's completion queues, keyed by [`CqId`].
-    cqs: AdmittedMap<CqId, CqState>,
-    /// Separate lifetime budget: a cancelled timer on another LP stays charged
-    /// even after its completion slot has been reclaimed.
-    timer_budget: Arc<crate::timers::budget::DomainBudget>,
-    record_budget: Arc<budget::DomainBudget>,
-    cq_budget: Arc<cq_budget::DomainBudget>,
-    watch_budget: Arc<watch_budget::DomainBudget>,
-    address_space: Option<crate::memory::AddressSpaceHandle>,
-}
-
-impl Deref for AsCompletions {
-    type Target = Namespace;
-
-    fn deref(&self) -> &Namespace {
-        &self.0
-    }
-}
-impl DerefMut for AsCompletions {
-    fn deref_mut(&mut self) -> &mut Namespace {
-        &mut self.0
-    }
-}
-
-impl AsCompletions {
-    fn finish(self) {
-        let mut entries = ManuallyDrop::into_inner(self.0);
-        // Public watches are revoked even if a kernel waiter retains their
-        // completion object. Only independent list locks are entered here.
-        for completion in entries.table.values() {
-            completion.release_event_observation();
-            drop(completion.waiters.close());
-            drop(completion.detach_callbacks());
-        }
-        while let Some((&cap, _)) = entries.table.first_key_value() {
-            RetiredCapability::from_node(entries.table.take(&cap).unwrap()).finish();
-        }
-        while let Some((&operation, _)) = entries.detached.first_key_value() {
-            dispose_detached_node(entries.detached.take(&operation).unwrap());
-        }
-        while let Some((&cq, _)) = entries.cqs.first_key_value() {
-            RetiredCq::from_node(entries.cqs.take(&cq).unwrap()).finish();
-        }
-        drop(entries);
-    }
-}
-
-// SAFETY: `CqState::ring` has two backing modes. Heap-backed queues retain their
-// aligned allocation in `_buf: Some(Vec<u64>)`. Physical queues use `_buf: None`; their
-// frame is owned by the user address-space mapping, and address-space teardown
-// calls `completion::close_address_space` before removing that mapping/table.
-// Consequently either backing allocation outlives its registry entry.
-//
-// All safe kernel dereferences of `ring` and mutations of CQ producer state are
-// serialized by the `COMPLETIONS` write lock. The mapped EL0 consumer may update
-// the ring tail concurrently; the ring implementation uses volatile accesses
-// and acquire/release fences for that producer/consumer protocol. The only raw
-// pointer escape, `cq_ring_of`, is unsafe and places its quiescence/lifetime
-// obligation on its test/inspection caller. These invariants make moving or
-// sharing the registry between kernel threads sound.
-unsafe impl Send for AsCompletions {}
-unsafe impl Sync for AsCompletions {}
-
 /// Per-address-space capability tables. In a full design these would live inside
 /// each `AddressSpace`; keying them here keeps the prototype self-contained
 /// without modifying the address-space type.
-type Registry = AdmittedMap<AddressSpaceId, AsCompletions>;
 static COMPLETIONS: LazyLock<RwLock<Registry>> = LazyLock::new(|| RwLock::new(Registry::new()));
-
-// Mandatory private boot fixture; runtime publication uses fallible Preparing.
-fn empty_as(asid: AddressSpaceId, capacity: usize) -> AsCompletions {
-    try_empty_as(crate::memory::current_address_space_handle(asid), capacity, &mut |_| Ok(()))
-        .expect("mandatory completion namespace allocation failed")
-}
-
-fn try_empty_as(
-    root: Option<crate::memory::AddressSpaceHandle>,
-    capacity: usize,
-    before_allocate: &mut impl FnMut(u8) -> Result<(), core::alloc::AllocError>,
-) -> Result<AsCompletions, core::alloc::AllocError> {
-    let capacity = capacity.min(budget::MAX_DOMAIN_RECORDS);
-    // No payload/source/authority is published. Partial account construction
-    // releases only unused Arcs outside local registry/lifecycle guards.
-    before_allocate(1)?;
-    let timer_budget = crate::timers::budget::DomainBudget::try_new(capacity)?;
-    before_allocate(2)?;
-    let record_budget = budget::DomainBudget::try_new(capacity)?;
-    before_allocate(3)?;
-    let cq_budget = cq_budget::DomainBudget::try_new()?;
-    before_allocate(4)?;
-    let watch_budget = watch_budget::DomainBudget::try_new(capacity)?;
-    Ok(AsCompletions(ManuallyDrop::new(Namespace {
-        table: AdmittedMap::new(),
-        capacity,
-        live: 0,
-        detached: AdmittedMap::new(),
-        cqs: AdmittedMap::new(),
-        timer_budget,
-        record_budget,
-        cq_budget,
-        watch_budget,
-        address_space: root,
-    })))
-}
-
-/// The caller retains both the complete detached namespace and COMPLETIONS
-/// through authority removal. Destroy payload/source metadata after unlock.
-fn revoke_namespace_authority(asid: AddressSpaceId, previous: &mut AsCompletions) {
-    for (cap, record) in previous.table.iter_mut() {
-        record.revoke(asid, *cap);
-    }
-}
-
-/// Mandatory kernel/demo/serialized-fixture adapter. Runtime domain setup uses
-/// the fallible CQ namespace entry points below; all share prepared storage.
-pub fn open_address_space(asid: AddressSpaceId, capacity: usize) {
-    namespace_preparation::open(asid, capacity)
-        .expect("mandatory completion namespace publication failed");
-}
 
 /// Like [`open_address_space`] but also allocates and attaches the default
 /// completion-queue ring ([`DEFAULT_CQ`]). The ring is a single 4 KiB page
@@ -473,7 +346,7 @@ fn attach_cq(
 /// Retained detached results must return their submission slots as well as
 /// their owning record charges; capability results still live in the table.
 fn replace_cq(
-    entries: &mut AsCompletions,
+    entries: &mut Namespace,
     cq: CqId,
     node: PreparedEntry<(CqId, CqState)>,
     replacement: CqState,
@@ -503,21 +376,6 @@ pub unsafe fn cq_ring_of(
 ) -> Option<*mut crate::completion::cq::CompletionQueueRing> {
     let registry = COMPLETIONS.read();
     registry.get(&asid).and_then(|c| c.cqs.get(&cq)).map(|state| state.ring_ptr())
-}
-
-/// Closes an address space's capability table and frees its CQ ring (if any).
-pub fn close_address_space(asid: AddressSpaceId) {
-    let retired = {
-        let mut registry = COMPLETIONS.write();
-        let mut retired = registry.take(&asid).map(RetiredNamespace::from_node);
-        if let Some(retired) = &mut retired {
-            revoke_namespace_authority(asid, retired);
-        }
-        retired
-    };
-    if let Some(retired) = retired {
-        retired.finish();
-    }
 }
 
 pub(crate) fn completion_of(
@@ -641,7 +499,7 @@ pub(crate) fn complete_registered(
 }
 
 fn flush_cq_backlog(
-    as_completions: &mut AsCompletions,
+    as_completions: &mut Namespace,
     cq: CqId,
     releases: &mut budget::Releases,
 ) -> FlushOutcome {

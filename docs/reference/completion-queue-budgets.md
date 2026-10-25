@@ -119,6 +119,17 @@ identity pins physical backing.
 The caller retains the original frame/mapping and must
 quiesce its consumer through publication and use.
 
+[`completion/namespace.rs`](../../crates/catten/src/completion/namespace.rs)
+groups that complete `Namespace` owner, account construction, authority removal
+and explicit payload disposal with its preparation/retirement child. The shared
+`NamespaceState` view keeps the existing guarded cross-family transactions;
+it is not a second owner or registry. The owner retains all fields on abandonment.
+Global-node disposal still precedes payload/account disposal after registry
+unlock, and captured generation validation remains unchanged. Public open/close
+entry points remain reexported through `completion`. The
+[namespace-boundary evidence](../reports/audits/2026-10-25-refactoring-completion-namespace.md)
+does not qualify wider disposal/IRQ contexts or supply physical quiescence.
+
 The service loader owns preparation in one rollback guard. If a CQ fails,
 teardown closes already-installed queues and releases the partially mapped
 address space before returning a typed `DomainLoadError`. Trusted ambient

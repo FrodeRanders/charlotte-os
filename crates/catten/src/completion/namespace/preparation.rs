@@ -4,16 +4,19 @@
 use super::*;
 
 #[must_use = "finish unused namespace preparation after local guards leave"]
-pub(super) struct Preparing(ManuallyDrop<Resources>);
+pub(in crate::completion) struct Preparing(ManuallyDrop<Resources>);
 
 struct Resources {
     asid: AddressSpaceId,
-    node: Option<PreparedEntry<(AddressSpaceId, AsCompletions)>>,
-    entries: Option<AsCompletions>,
+    node: Option<PreparedEntry<(AddressSpaceId, Namespace)>>,
+    entries: Option<Namespace>,
 }
 
 impl Preparing {
-    pub(super) fn new(asid: AddressSpaceId, capacity: usize) -> Result<Self, CqOpenError> {
+    pub(in crate::completion) fn new(
+        asid: AddressSpaceId,
+        capacity: usize,
+    ) -> Result<Self, CqOpenError> {
         Self::new_with(asid, capacity, |_| Ok(()))
     }
 
@@ -33,7 +36,7 @@ impl Preparing {
         let result = (|| {
             before_allocate(0)?;
             preparing.0.node = Some(PreparedEntry::try_new()?);
-            preparing.0.entries = Some(try_empty_as(root, capacity, &mut before_allocate)?);
+            preparing.0.entries = Some(Namespace::try_new(root, capacity, &mut before_allocate)?);
             Ok::<_, core::alloc::AllocError>(())
         })();
         if result.is_err() {
@@ -43,19 +46,19 @@ impl Preparing {
         Ok(preparing)
     }
 
-    pub(super) fn is_published(&self) -> bool {
+    pub(in crate::completion) fn is_published(&self) -> bool {
         self.0.entries.is_none()
     }
 
-    pub(super) fn entries(&self) -> &AsCompletions {
+    pub(in crate::completion) fn entries(&self) -> &Namespace {
         self.0.entries.as_ref().expect("namespace preparation published twice")
     }
 
-    pub(super) fn entries_mut(&mut self) -> &mut AsCompletions {
+    pub(in crate::completion) fn entries_mut(&mut self) -> &mut Namespace {
         self.0.entries.as_mut().expect("namespace preparation published twice")
     }
 
-    pub(super) fn validate(&self) -> Result<(), CqOpenError> {
+    pub(in crate::completion) fn validate(&self) -> Result<(), CqOpenError> {
         if self.entries().address_space.is_some_and(|root| !crate::memory::budget::accepting(root))
         {
             return Err(CqOpenError::RetiringAddressSpace);
@@ -65,7 +68,10 @@ impl Preparing {
 
     /// Caller validates the captured namespace under this same registry hold,
     /// before any borrowed physical-ring write. No later fallible admission.
-    pub(super) fn publish_into(&mut self, registry: &mut Registry) -> Option<RetiredNamespace> {
+    pub(in crate::completion) fn publish_into(
+        &mut self,
+        registry: &mut Registry,
+    ) -> Option<RetiredNamespace> {
         let resources = &mut *self.0;
         let mut previous = registry.take(&resources.asid).map(RetiredNamespace::from_node);
         registry.insert(
@@ -74,18 +80,20 @@ impl Preparing {
             resources.entries.take().unwrap(),
         );
         if let Some(previous) = &mut previous {
-            revoke_namespace_authority(resources.asid, previous);
+            previous.revoke_authority(resources.asid);
         }
         previous
     }
 
-    pub(super) fn publish(&mut self) -> Result<Option<RetiredNamespace>, CqOpenError> {
+    pub(in crate::completion) fn publish(
+        &mut self,
+    ) -> Result<Option<RetiredNamespace>, CqOpenError> {
         let mut registry = COMPLETIONS.write();
         self.validate()?;
         Ok(self.publish_into(&mut registry))
     }
 
-    pub(super) fn finish(self) {
+    pub(in crate::completion) fn finish(self) {
         let Resources {
             node,
             entries,
@@ -102,14 +110,16 @@ impl Preparing {
 /// One shared node retains the entire namespace. Its fallback never frees
 /// metadata, closes sources or refunds any sibling's original admission.
 #[must_use = "finish the complete retired namespace after registry unlock"]
-pub(super) struct RetiredNamespace(RetiredEntry<(AddressSpaceId, AsCompletions)>);
+pub(in crate::completion) struct RetiredNamespace(RetiredEntry<(AddressSpaceId, Namespace)>);
 
 impl RetiredNamespace {
-    pub(super) fn from_node(node: RetiredEntry<(AddressSpaceId, AsCompletions)>) -> Self {
+    pub(in crate::completion) fn from_node(
+        node: RetiredEntry<(AddressSpaceId, Namespace)>,
+    ) -> Self {
         Self(node)
     }
 
-    pub(super) fn finish(self) {
+    pub(in crate::completion) fn finish(self) {
         let mut entries = None;
         self.0.release_with(|(_, payload)| entries = Some(payload));
         // Global node deallocation precedes all payload/account disposal.
@@ -118,20 +128,23 @@ impl RetiredNamespace {
 }
 
 impl Deref for RetiredNamespace {
-    type Target = AsCompletions;
+    type Target = Namespace;
 
-    fn deref(&self) -> &AsCompletions {
+    fn deref(&self) -> &Namespace {
         &self.0.value().1
     }
 }
 
 impl DerefMut for RetiredNamespace {
-    fn deref_mut(&mut self) -> &mut AsCompletions {
+    fn deref_mut(&mut self) -> &mut Namespace {
         &mut self.0.value_mut().1
     }
 }
 
-pub(super) fn open(asid: AddressSpaceId, capacity: usize) -> Result<(), CqOpenError> {
+pub(in crate::completion) fn open(
+    asid: AddressSpaceId,
+    capacity: usize,
+) -> Result<(), CqOpenError> {
     let mut preparing = Preparing::new(asid, capacity)?;
     let result = preparing.publish();
     preparing.finish();
@@ -143,6 +156,6 @@ pub(super) fn open(asid: AddressSpaceId, capacity: usize) -> Result<(), CqOpenEr
 
 mod tests;
 
-pub(super) fn test_preparation() {
+pub(in crate::completion) fn test_preparation() {
     tests::run();
 }

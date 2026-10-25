@@ -173,7 +173,7 @@ fn guarded_abandonment() {
     let namespace = {
         let mut registry = COMPLETIONS.write();
         let mut namespace = RetiredNamespace::from_node(registry.take(&CLIENT).unwrap());
-        revoke_namespace_authority(CLIENT, &mut namespace);
+        namespace.revoke_authority(CLIENT);
         namespace
     };
     let queue_usage = queues.used();

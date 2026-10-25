@@ -1,6 +1,8 @@
 //! Admitted capability payload metadata carries detached authority through
 //! explicit disposal. The charged completion stays alive until both nodes free.
 
+use core::ops::Deref;
+
 use super::*;
 
 pub(super) struct CapabilityRecord {
@@ -62,7 +64,7 @@ impl RetiredCapability {
 /// Called under COMPLETIONS after the caller's exact-object validation. Every
 /// fallible lookup precedes mutation; no allocation/free/refund occurs here.
 pub(super) fn retire(
-    entries: &mut AsCompletions,
+    entries: &mut Namespace,
     asid: AddressSpaceId,
     cap: CompletionCap,
 ) -> Result<RetiredCapability, CapError> {

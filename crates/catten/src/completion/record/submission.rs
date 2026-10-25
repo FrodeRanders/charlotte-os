@@ -47,7 +47,7 @@ impl Target {
         })
     }
 
-    fn validate(&self, entries: &AsCompletions) -> Result<(), SubmitError> {
+    fn validate(&self, entries: &Namespace) -> Result<(), SubmitError> {
         if self.root != entries.address_space
             || !Arc::ptr_eq(&self.records, &entries.record_budget)
             || !Arc::ptr_eq(&self.timers, &entries.timer_budget)
