@@ -38,9 +38,9 @@ pub(crate) fn test_admission() {
     super::test_prepared_wake_identity();
     super::budget::test_backlog_refunds();
     super::operation_id_tests::run();
-    super::capability_preparation::test_preparation();
+    super::submission::test_preparation();
     crate::klib::observer::registration::test_entry_allocation_rollback();
-    super::record_preparation::test_preparation();
+    super::preparation::test_preparation();
     super::callbacks::test_preparation();
     super::terminal_tests::run();
     super::delivery::test_preparation();

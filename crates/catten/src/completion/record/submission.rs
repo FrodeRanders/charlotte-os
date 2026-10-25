@@ -315,7 +315,7 @@ impl Preparing {
     }
 }
 
-pub(super) fn submit(
+pub(in crate::completion) fn submit(
     asid: AddressSpaceId,
     buffer: Option<Vec<u8>>,
     watch: bool,
@@ -329,7 +329,7 @@ pub(super) fn submit(
     result
 }
 
-pub(super) fn submit_timer(
+pub(in crate::completion) fn submit_timer(
     asid: AddressSpaceId,
     timeout_ms: u64,
     ids: &operation_ids::OperationIds,

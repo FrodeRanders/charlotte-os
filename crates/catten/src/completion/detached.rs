@@ -18,7 +18,7 @@ pub(super) struct DetachedOp {
     /// The queue this operation's completion is delivered to.
     cq: CqId,
     /// Reduced lifecycle: `InFlight → CancelPending`; completion removes the
-    /// record, so the terminal states of [`OpState`] have no analogue here.
+    /// record, so the terminal states of [`OpStateKind`] have no analogue here.
     cancel_pending: bool,
     /// Keeps a timer observer alive until it fires and removes this operation.
     _timer_observer: Option<Arc<DetachedTimerObserver>>,

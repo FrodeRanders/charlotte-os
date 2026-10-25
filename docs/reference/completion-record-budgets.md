@@ -11,6 +11,16 @@ timers, thread-exit and endpoint-close watches, and capability-free operations.
 The existing submission-slot limit and this record budget measure different
 lifetimes.
 
+[`completion/record.rs`](../../crates/catten/src/completion/record.rs) owns the
+capability-backed record's private buffer, lifecycle state and producer/callback
+subscriptions. Allocation, capability submission and callback preparation are
+children of that owner. Registry publication receives the complete terminal
+receipt with only its effective result exposed; detached subscriptions stay
+together until post-guard disposal. Waiter-source access retains its existing
+completion-family scope for namespace close and diagnostics. Public completion
+and callback entry points remain reexported through `completion`. See the
+[record-boundary evidence](../reports/audits/2026-10-25-refactoring-completion-record.md).
+
 The capability-free lifecycle lives in
 [`completion/detached.rs`](../../crates/catten/src/completion/detached.rs):
 captured-target preparation, one-time publication, producer completion,

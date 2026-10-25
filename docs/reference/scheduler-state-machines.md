@@ -211,6 +211,11 @@ publishing, preventing stale notifications after namespace reuse. See
 
 ## 3. Completion Operation Lifecycle (`OpState`)
 
+The state, buffer and subscription fields are private to
+[`completion/record.rs`](../../crates/catten/src/completion/record.rs).
+Allocation, submission and callback preparation live beneath that owner;
+registry/CQ publication retains the complete terminal receipt through unlock.
+
 **Source:** `crates/catten/src/completion/mod.rs`
 
 ```

@@ -13,12 +13,20 @@ the operation remains live, its producer continues, and transferred buffers
 remain owned until terminal completion. No syscall exposes Rust callback
 objects; applications use `catten_rt::owned`.
 
-Asynchronous callers with a captured operation use
+Captured-operation preparation uses the owner-local
 `observe_registered(asid, cap, &captured, observer)`. It checks exact `Arc`
 identity under the namespace guard and rejects a replacement even with identical
 ASID/capability numbers. The numeric convenience function captures the current
 object and uses the same checked path. Callbacks should likewise use captured
 producer identity rather than later resolving stale numbers.
+
+The implementation lives under
+[`completion/record/callbacks.rs`](../../crates/catten/src/completion/record/callbacks.rs),
+where capture/publication can borrow the record's private state atomically.
+The registry and producers receive whole records and installation/terminal
+receipts; they do not obtain a raw inner-state guard or buffer view. The
+captured helper remains local to the record boundary; the public numeric
+`completion::observe` entry point keeps the same checks and return owner.
 
 Capture records the exact completion, namespace/root identity, watch account,
 classification and existing callback list under short registry/inner borrows.
