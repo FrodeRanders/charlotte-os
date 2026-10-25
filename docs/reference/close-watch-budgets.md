@@ -89,6 +89,13 @@ entry or charge.
 
 ## Transactional submission
 
+[`ipc/readiness.rs`](../../crates/catten/src/ipc/readiness.rs) owns the IPC
+endpoint-close producer and its watch entry point alongside endpoint/reply waits
+and reply-CQ subscription custody. Completion staging still uses the existing
+`EventSubmission`; root entry points, exact-object checks, connection
+revalidation and post-guard notification retain their original contracts.
+See the [IPC readiness evidence](../reports/audits/2026-10-25-refactoring-ipc-readiness.md).
+
 [`completion/producers.rs`](../../crates/catten/src/completion/producers.rs)
 groups `EventSubmission`, worker/exit/timer observers and their installation,
 commit and rollback paths. Producer fields are private; callers retain the

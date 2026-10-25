@@ -162,6 +162,16 @@ recheck durable work after readiness; a hint alone is not result observation.
 
 ## IPC receive and reply waits
 
+[`ipc/readiness.rs`](../../crates/catten/src/ipc/readiness.rs) groups endpoint
+and reply waits, close watches, the complete reply-CQ subscription and their
+observable bindings. Its waiter-source child owns capture/preparation and
+allocation-free publication; the existing registry remains shared with message,
+reply and close transactions. Observable bindings and subscription fields are
+private to readiness. Existing entry points and the debugger's admission-retry
+counter remain available through `ipc`. No deadline, notification, cancellation
+or source-admission policy changes. See the
+[refactoring evidence](../reports/audits/2026-10-25-refactoring-ipc-readiness.md).
+
 `wait_readable` and `wait_reply` prepare owning registration outside IPC, then
 revalidate exact source and readiness before publication under the registry.
 A message drains the endpoint's current receiver batch. Reply, reply-token

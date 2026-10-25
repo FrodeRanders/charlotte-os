@@ -1,19 +1,26 @@
 //! Deterministic cancellation interleavings before secondary LP startup.
 //! Raw capability IDs belong to these kernel ABI fixtures; applications use typed owners.
 use super::*;
-use crate::memory::{
-    self,
-    ADDRESS_SPACE_LIFECYCLE,
-    ADDRESS_SPACE_TABLE,
-    AddressSpaceCloseError,
-    object::{
-        self,
-        MemoryObjectCap,
+use crate::{
+    ipc::readiness::{
+        EndpointObservable,
+        PendingCallObservable,
+        endpoint_is_readable_or_closed,
     },
-    retirement::{
-        CloseProgress,
-        ClosingAddressSpace,
-        RetirementProgress,
+    memory::{
+        self,
+        ADDRESS_SPACE_LIFECYCLE,
+        ADDRESS_SPACE_TABLE,
+        AddressSpaceCloseError,
+        object::{
+            self,
+            MemoryObjectCap,
+        },
+        retirement::{
+            CloseProgress,
+            ClosingAddressSpace,
+            RetirementProgress,
+        },
     },
 };
 
@@ -315,11 +322,9 @@ fn queued_endpoint_close() {
         counter.fetch_add(1, Ordering::Relaxed);
     });
     let sponsor = WaitSponsor::new(false);
-    let registration = EndpointObservable {
-        endpoint: endpoint_id,
-    }
-    .try_register_waiter(Arc::downgrade(&observer), &sponsor)
-    .unwrap();
+    let registration = EndpointObservable::new(endpoint_id)
+        .try_register_waiter(Arc::downgrade(&observer), &sponsor)
+        .unwrap();
     assert!(registration.is_owned(), "claimed front incorrectly reported readable");
     let mut waits = 0;
     close_cap_with_wait(fixture.server.id(), fixture.endpoint, || {
@@ -499,11 +504,9 @@ fn serialized_bulk_failure() {
             counter.fetch_add(1, Ordering::Relaxed);
         });
         let sponsor = WaitSponsor::new(false);
-        let registration = PendingCallObservable {
-            call: identity.call,
-        }
-        .try_register_waiter(Arc::downgrade(&observer), &sponsor)
-        .unwrap();
+        let registration = PendingCallObservable::new(identity.call)
+            .try_register_waiter(Arc::downgrade(&observer), &sponsor)
+            .unwrap();
         let (asid, cap) = if close_endpoint {
             (fixture.server.id(), fixture.endpoint)
         } else {
@@ -649,11 +652,9 @@ fn owned_endpoint_success() {
         counter.fetch_add(1, Ordering::Relaxed);
     });
     let sponsor = WaitSponsor::new(false);
-    let registration = EndpointObservable {
-        endpoint,
-    }
-    .try_register_waiter(Arc::downgrade(&observer), &sponsor)
-    .unwrap();
+    let registration = EndpointObservable::new(endpoint)
+        .try_register_waiter(Arc::downgrade(&observer), &sponsor)
+        .unwrap();
     assert!(registration.is_owned());
     let mut waits = 0;
     assert_eq!(
@@ -803,11 +804,9 @@ fn owned_endpoint_rollback() {
         counter.fetch_add(1, Ordering::Relaxed);
     });
     let sponsor = WaitSponsor::new(false);
-    let registration = EndpointObservable {
-        endpoint,
-    }
-    .try_register_waiter(Arc::downgrade(&observer), &sponsor)
-    .unwrap();
+    let registration = EndpointObservable::new(endpoint)
+        .try_register_waiter(Arc::downgrade(&observer), &sponsor)
+        .unwrap();
     let caller = ClosingAddressSpace::begin(fixture.caller).unwrap();
     assert_eq!(
         owner.finish_with(
