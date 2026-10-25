@@ -56,6 +56,12 @@ delivery, independently of whether their timer event has been reclaimed.
 
 ## Cancellation and publication
 
+Detached timer preparation, producer callbacks, cancellation and retirement are
+kept together in [`completion/detached.rs`](../../crates/catten/src/completion/detached.rs).
+The module owns its private timer fields; it retains the same captured CQ
+source, original event/record charges and post-registry disposal sequence.
+Capability-backed timers and the shared CQ wait/deadline policy remain separate.
+
 The event and its cancellation handle retain the same charged state allocation.
 Queue removal compares that exact owned object, rather than a numeric event ID.
 The old private wrapping cancellation counter is removed; it supplies no API,

@@ -11,6 +11,17 @@ timers, thread-exit and endpoint-close watches, and capability-free operations.
 The existing submission-slot limit and this record budget measure different
 lifetimes.
 
+The capability-free lifecycle lives in
+[`completion/detached.rs`](../../crates/catten/src/completion/detached.rs):
+captured-target preparation, one-time publication, producer completion,
+cancellation and explicit post-registry retirement. Operation/timer state and
+the terminal receipt stay private to that module. The completion core retains
+the shared registry, CQ backlog and waits; only the original record-charge field
+is exposed for existing backlog-refund accounting. Complete nodes still follow
+their existing registry/backlog/refund owners. Public
+entry points remain available through `completion`. See the
+[refactoring evidence](../reports/audits/2026-10-25-refactoring-completion-detached.md).
+
 | Limit | Current kernel policy |
 | --- | --- |
 | Submission slots per namespace | Its configured completion capacity, clamped to 1024 |

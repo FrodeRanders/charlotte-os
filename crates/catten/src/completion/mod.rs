@@ -42,8 +42,17 @@ use capability_metadata::{
 };
 pub mod cq;
 pub(crate) mod cq_budget;
-mod detached_preparation;
-mod detached_tests;
+mod detached;
+use detached::{
+    DetachedOp,
+    dispose_detached_node,
+};
+pub use detached::{
+    cancel_detached,
+    complete_detached,
+    submit_detached,
+    submit_detached_timer,
+};
 pub(crate) mod exit_tests;
 mod namespace_preparation;
 use namespace_preparation::RetiredNamespace;
@@ -562,31 +571,6 @@ pub type CqId = u32;
 /// The default completion queue of an address space.
 pub const DEFAULT_CQ: CqId = 0;
 
-/// A capability-free operation (architecture doc §8.4): tracked only by its
-/// [`OperationId`], delivered exclusively through the CQ ring, and reclaimed
-/// on completion. The operation ID then stops being addressable, but an
-/// undelivered CQ result retains record admission until publication/discard.
-struct DetachedOp {
-    /// Submitter-chosen correlation token, posted as the CQ entry's cookie.
-    user_data: u64,
-    /// The queue this operation's completion is delivered to.
-    cq: CqId,
-    /// Reduced lifecycle: `InFlight → CancelPending`; completion removes the
-    /// record, so the terminal states of [`OpState`] have no analogue here.
-    cancel_pending: bool,
-    /// Keeps a timer observer alive until it fires and removes this operation.
-    _timer_observer: Option<Arc<DetachedTimerObserver>>,
-    timer_cancel: Option<TimerCancellation>,
-    // Remains here through direct-ring delivery and post-registry disposal;
-    // only a retained backlog entry consumes it before the record leaves.
-    record_charge: Option<budget::Charge>,
-}
-
-struct DetachedTimerObserver {
-    asid: AddressSpaceId,
-    operation: OperationId,
-}
-
 enum BacklogOwner {
     Capability,
     Detached {
@@ -600,12 +584,6 @@ struct BacklogEntry {
     status: u32,
     result: i64,
     owner: BacklogOwner,
-}
-
-impl Observer for DetachedTimerObserver {
-    fn notify(self: Arc<Self>) {
-        let _ = complete_detached(self.asid, self.operation, OpResult::Ok(0));
-    }
 }
 
 /// One completion queue: the shared ring plus its bounded non-lossy backlog
@@ -1423,213 +1401,6 @@ fn post_to_cq(
         flushed,
         delivered_current,
     }
-}
-
-/// Starts a capability-free operation (architecture doc §8.4): the common
-/// path for high-rate operations whose only consumer is the CQ ring.
-///
-/// No capability-table slot is allocated; the operation is identified by the
-/// returned [`OperationId`] (for cancellation) and correlated by the caller's
-/// `user_data`, which is posted as the CQ entry cookie on completion to the
-/// selected queue `cq` (per-shard delivery, §8.1). The operation counts
-/// toward the same submission-backpressure capacity as capability-backed
-/// ones. Requires the selected queue to exist, since it is the only delivery
-/// channel.
-pub fn submit_detached(
-    asid: AddressSpaceId,
-    cq: CqId,
-    _op: OpCode,
-    user_data: u64,
-) -> Result<OperationId, SubmitError> {
-    detached_preparation::submit(asid, cq, user_data, &OPERATION_IDS)
-}
-
-/// Submit a timer delivered exclusively through a completion queue.
-pub fn submit_detached_timer(
-    asid: AddressSpaceId,
-    cq: CqId,
-    timeout_ms: u64,
-    user_data: u64,
-) -> Result<OperationId, SubmitError> {
-    submit_detached_timer_with_observer(asid, cq, timeout_ms, user_data, Arc::try_new)
-}
-
-fn submit_detached_timer_with_observer(
-    asid: AddressSpaceId,
-    cq: CqId,
-    timeout_ms: u64,
-    user_data: u64,
-    allocate: impl FnOnce(
-        DetachedTimerObserver,
-    ) -> Result<Arc<DetachedTimerObserver>, core::alloc::AllocError>,
-) -> Result<OperationId, SubmitError> {
-    detached_preparation::submit_timer(asid, cq, timeout_ms, user_data, &OPERATION_IDS, allocate)
-}
-
-/// Completes a capability-free operation: posts `(user_data, result)` to the
-/// operation's queue (or its non-lossy backlog), reclaims the addressable
-/// operation record, and wakes that queue's waiters. A backlogged record keeps
-/// its submission slot until it reaches the ring, bounding retained records by
-/// the address-space capacity. The effective result is forced to
-/// [`OpResult::Cancelled`] when a cancel was pending. After this call the
-/// operation id no longer names anything.
-pub fn complete_detached(
-    asid: AddressSpaceId,
-    operation: OperationId,
-    result: OpResult,
-) -> Result<(), CapError> {
-    retire_detached(asid, operation, result)?.finish();
-    Ok(())
-}
-
-/// Own the complete logically retired record. Physical cleanup needs its own completion proof.
-/// Keep every remaining record field and the exact published CQ source until
-/// producer disposal outside COMPLETIONS, before any notification.
-#[must_use = "dispose the complete detached record after registry unlock, then notify its captured \
-              source"]
-struct RetiredDetached(ManuallyDrop<DetachedRetirement>);
-
-struct DetachedRetirement {
-    asid: AddressSpaceId,
-    record: Option<RetiredEntry<(OperationId, DetachedOp)>>,
-    cq: CqId,
-    observer: Option<Arc<DetachedTimerObserver>>,
-    cancel: Option<TimerCancellation>,
-    releases: budget::Releases,
-    source: Option<
-        crate::klib::observer::registration::ListRef<crate::klib::observer::waiter_budget::Charge>,
-    >,
-}
-
-impl RetiredDetached {
-    fn finish(self) {
-        let DetachedRetirement {
-            asid,
-            mut record,
-            cq,
-            observer,
-            cancel,
-            releases,
-            source,
-        } = ManuallyDrop::into_inner(self.0);
-        drop(releases);
-        let charge = record.as_mut().and_then(|node| node.value_mut().1.record_charge.take());
-        if let Some(record) = record {
-            record.release();
-        }
-        drop(observer);
-        drop(cancel);
-        drop(charge);
-        if let Some(source) = source {
-            signal_cq_source(asid, cq, &source);
-        }
-    }
-}
-
-/// Retain the original record charge through actual admitted-node release.
-/// Backlogged records have already moved that charge into their CQ owner.
-fn dispose_detached_node(mut record: RetiredEntry<(OperationId, DetachedOp)>) {
-    let charge = record.value_mut().1.record_charge.take();
-    record.release();
-    drop(charge);
-}
-
-fn retire_detached(
-    asid: AddressSpaceId,
-    operation: OperationId,
-    result: OpResult,
-) -> Result<RetiredDetached, CapError> {
-    let retired = {
-        let mut registry = COMPLETIONS.write();
-        let as_completions = registry.get_mut(&asid).ok_or(CapError::UnknownAddressSpace)?;
-        let detached = as_completions.detached.take(&operation).ok_or(CapError::UnknownCap)?;
-        post_detached(asid, operation, result, as_completions, detached)
-    };
-    Ok(retired)
-}
-
-/// The caller serializes removal and this splice under COMPLETIONS. Returning
-/// the complete remaining record keeps timer and direct-result cleanup out of
-/// that hold. A backlog takes the admitted node and its original charge;
-/// direct delivery retains it in this receipt until post-guard disposal.
-fn post_detached(
-    asid: AddressSpaceId,
-    operation: OperationId,
-    result: OpResult,
-    as_completions: &mut Namespace,
-    mut record: RetiredEntry<(OperationId, DetachedOp)>,
-) -> RetiredDetached {
-    let detached = &mut record.value_mut().1;
-    let cq = detached.cq;
-    let user_data = detached.user_data;
-    let observer = detached._timer_observer.take();
-    let cancel = detached.timer_cancel.take();
-    let mut releases = budget::Releases::default();
-    let effective = if detached.cancel_pending {
-        OpResult::Cancelled
-    } else {
-        result
-    };
-    let mut record = Some(record);
-    let source = if let Some(cq_state) = as_completions.cqs.get_mut(&cq) {
-        let outcome = post_to_cq(
-            cq_state,
-            operation,
-            user_data,
-            &effective,
-            || BacklogOwner::Detached {
-                record: record.take().expect("detached record queued twice"),
-            },
-            &mut releases,
-        );
-        cq_state.work_generation = cq_state.work_generation.wrapping_add(1);
-        crate::debug_trace::trace(
-            crate::debug_trace::TAG_COMPLETE_DETACHED,
-            asid as u64,
-            cq_state.work_generation,
-            operation,
-        );
-        let delivered = outcome.flushed.detached + usize::from(outcome.delivered_current);
-        as_completions.live = as_completions.live.saturating_sub(delivered);
-        Some(cq_state.waiters.clone())
-    } else {
-        // The queue disappeared after submission, so no delivery can be
-        // retained. Release this operation's submission slot.
-        as_completions.live = as_completions.live.saturating_sub(1);
-        None
-    };
-    RetiredDetached(ManuallyDrop::new(DetachedRetirement {
-        asid,
-        record,
-        cq,
-        observer,
-        cancel,
-        releases,
-        source,
-    }))
-}
-
-/// Requests cancellation of a capability-free operation. A completed detached
-/// operation no longer exists, so cancelling it reports
-/// [`CapError::UnknownCap`] rather than `AlreadyComplete` — there is no
-/// post-terminal record to inspect.
-pub fn cancel_detached(
-    asid: AddressSpaceId,
-    operation: OperationId,
-) -> Result<CancelState, CapError> {
-    let mut registry = COMPLETIONS.write();
-    let as_completions = registry.get_mut(&asid).ok_or(CapError::UnknownAddressSpace)?;
-    let detached = as_completions.detached.get_mut(&operation).ok_or(CapError::UnknownCap)?;
-    detached.cancel_pending = true;
-    let timer = detached.timer_cancel.take();
-    drop(registry);
-    if timer.is_some() {
-        drop(timer);
-        // Only timer work is synchronously stoppable. Other operations retain
-        // their buffers/submission slots until their real producer completes.
-        let _ = complete_detached(asid, operation, OpResult::Cancelled);
-    }
-    Ok(CancelState::CancelRequested)
 }
 
 #[derive(Clone, Copy, Default)]

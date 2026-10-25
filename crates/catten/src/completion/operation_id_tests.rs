@@ -23,12 +23,9 @@ fn reject_submissions(ids: &OperationIds) {
         }),
         Err(SubmitError::WouldBlock)
     );
+    assert_eq!(detached::submit_with_ids(CLIENT, DEFAULT_CQ, 9, ids), Err(SubmitError::WouldBlock));
     assert_eq!(
-        detached_preparation::submit(CLIENT, DEFAULT_CQ, 9, ids),
-        Err(SubmitError::WouldBlock)
-    );
-    assert_eq!(
-        detached_preparation::submit_timer(CLIENT, DEFAULT_CQ, 0, 10, ids, |_| {
+        detached::submit_timer_with_ids(CLIENT, DEFAULT_CQ, 0, 10, ids, |_| {
             panic!("exhausted operation IDs reached detached observer allocation")
         }),
         Err(SubmitError::WouldBlock)
@@ -44,7 +41,7 @@ fn boundary_and_replacement() {
         submit_captured(CLIENT, Some(alloc::vec![4, 5, 6]), false, &ids).unwrap();
     assert!(watch.is_none());
     assert_eq!(completion.operation_id(), LAST_OPERATION_ID - 1);
-    let detached = detached_preparation::submit(CLIENT, DEFAULT_CQ, 7, &ids).unwrap();
+    let detached = detached::submit_with_ids(CLIENT, DEFAULT_CQ, 7, &ids).unwrap();
     assert_eq!(detached, LAST_OPERATION_ID);
 
     for _ in 0..16 {
@@ -107,7 +104,7 @@ fn rejected_preparation_consumes_identity() {
     );
     assert_eq!(records.used(), 0);
     assert_eq!(timer_events_used(CLIENT), 0);
-    let operation = detached_preparation::submit(CLIENT, DEFAULT_CQ, 11, &ids).unwrap();
+    let operation = detached::submit_with_ids(CLIENT, DEFAULT_CQ, 11, &ids).unwrap();
     assert_eq!(operation, LAST_OPERATION_ID);
     reject_submissions(&ids);
     complete_detached(CLIENT, operation, OpResult::Ok(11)).unwrap();

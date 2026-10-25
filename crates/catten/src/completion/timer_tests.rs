@@ -68,7 +68,7 @@ pub(crate) fn test_observer_allocation_rollback() {
         );
         assert_eq!(snapshot(), baseline);
         assert_eq!(
-            super::submit_detached_timer_with_observer(
+            super::detached::submit_detached_timer_with_observer(
                 CLIENT,
                 super::DEFAULT_CQ,
                 u64::MAX,
