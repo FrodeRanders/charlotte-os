@@ -190,6 +190,15 @@ remain separate. See [admission evidence](../reports/audits/2026-10-25-security-
 
 ## Copy-pin snapshots
 
+[`object/copy.rs`](../../crates/catten/src/memory/object/copy.rs) groups the
+copy pin, scoped wrapper, admission/snapshot publication and explicit unpin.
+Pin identity/snapshot and the wrapper's optional owner are private; callers
+borrow metadata or move the complete pin. The existing empty-snapshot source
+escrow still uses its original locked fence decrement, while ordinary unpin
+disposes its snapshot before entering the registry. Bare pin abandonment
+remains inert and scoped Drop remains active. No cleanup policy or authority
+changes; see the [refactoring evidence](../reports/audits/2026-10-25-refactoring-copy-pin.md).
+
 Copy-pin admission probes capability, rights, source ownership, loan/retirement/
 DMA fences, writable mappings and checked pin capacity under `MEMORY_OBJECTS`.
 An inert preparation then reserves snapshot capacity fallibly outside that

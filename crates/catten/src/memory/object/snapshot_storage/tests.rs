@@ -137,7 +137,7 @@ fn count_pressure() {
     let cap = allocate(handle.id(), 1).unwrap();
     let movable = allocate(handle.id(), 1).unwrap();
     let old_pin = pin_for_copy(handle.id(), cap).unwrap();
-    let old_object = old_pin.object;
+    let old_object = old_pin.object_id();
     let mut ordinary = Vec::with_capacity(admission::TOTAL_LIMIT[1] as usize);
     pressure(handle, 1, &mut ordinary, admission::TOTAL_LIMIT[1] as usize);
     assert_eq!(admitted().1[1], admission::ORDINARY_LIMIT[1]);
@@ -181,7 +181,7 @@ fn count_pressure() {
     assert_ne!(fresh, handle);
     let fresh_cap = allocate(fresh.id(), 1).unwrap();
     let pin = pin_for_copy(fresh.id(), fresh_cap).unwrap();
-    assert_ne!(pin.object, old_object);
+    assert_ne!(pin.object_id(), old_object);
     assert_eq!(admitted(), full);
     unpin_copy(pin);
     close_cap(fresh.id(), fresh_cap).unwrap();

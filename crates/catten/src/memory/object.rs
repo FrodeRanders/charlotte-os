@@ -46,7 +46,16 @@ const RETIREMENT_FRAME_BATCH: usize = 16;
 mod backing;
 mod borrower_storage_tests;
 mod cap_storage;
-mod copy_storage;
+mod copy;
+pub(crate) use copy::{
+    CopyPin,
+    pin_for_copy,
+    unpin_copy,
+};
+use copy::{
+    ScopedCopyPin,
+    release_copy_pin_locked,
+};
 mod dma_storage;
 mod mapping;
 pub use mapping::{
@@ -63,7 +72,7 @@ pub(crate) fn test_object_storage() {
     borrower_storage_tests::run();
     cap_storage::tests::run();
     mapping::storage::tests::run();
-    copy_storage::tests::run();
+    copy::tests::run();
     dma_storage::tests::run();
     scratch_namespace::tests::run();
 }
@@ -200,30 +209,6 @@ struct MemoryObject {
 
 type ObjectStorage = PreparedEntry<(MemoryObjectId, MemoryObject)>;
 type RetiredObject = RetiredEntry<(MemoryObjectId, MemoryObject)>;
-
-struct ScopedCopyPin(Option<CopyPin>);
-impl Drop for ScopedCopyPin {
-    fn drop(&mut self) {
-        if let Some(pin) = self.0.take() {
-            unpin_copy(pin);
-        }
-    }
-}
-
-#[must_use]
-pub(crate) struct CopyPin {
-    object: MemoryObjectId,
-    // A bare abandoned pin retains its snapshot and original backing fence.
-    // Only explicit unpin may dispose the snapshot and decrement that fence.
-    frames: snapshot_storage::Snapshot,
-}
-
-impl Drop for CopyPin {
-    fn drop(&mut self) {
-        // Explicit unpin owns release. Fallback retains both metadata and the
-        // registry's original backing fence, without allocator/registry entry.
-    }
-}
 
 #[must_use]
 pub(crate) struct DmaPin {
@@ -735,45 +720,6 @@ fn admit_capability(
     .map_err(capability_error)
 }
 
-/// Hold a shared-read pin on a memory object while its frames are copied.
-///
-/// The pin keeps the frames alive and prevents every tracked path that can
-/// grant or perform writes until [`unpin_copy`] releases it.
-pub(crate) fn pin_for_copy(
-    owner: AddressSpaceId,
-    cap: MemoryObjectCap,
-) -> Result<CopyPin, MemoryObjectError> {
-    copy_storage::pin(owner, cap)
-}
-
-fn copy_admission(
-    registry: &MemoryObjectRegistry,
-    owner: AddressSpaceId,
-    cap: MemoryObjectCap,
-) -> Result<(MemoryObjectId, usize), MemoryObjectError> {
-    let cap_entry = registry.lookup(owner, cap)?;
-    if !cap_entry.rights.contains(MemoryObjectRights::MAP_READ) {
-        return Err(MemoryObjectError::MissingRight);
-    }
-    let object =
-        registry.objects.get(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
-    if object.owner != owner {
-        return Err(MemoryObjectError::WrongOwner);
-    }
-    if object.destroy_when_unpinned
-        || object.retirement_pins != 0
-        || matches!(object.lend_state, LendState::Write { .. } | LendState::Revoking)
-        || object.dma_pins != 0
-    {
-        return Err(MemoryObjectError::LendingActive);
-    }
-    if object.mappings.values().any(|mapping| mapping.state.writable) {
-        return Err(MemoryObjectError::AlreadyMapped);
-    }
-    object.copy_pins.checked_add(1).ok_or(MemoryObjectError::InvalidLength)?;
-    Ok((cap_entry.object, object.frames.len()))
-}
-
 pub fn revoke_lend(
     owner: AddressSpaceId,
     cap: MemoryObjectCap,
@@ -1018,37 +964,8 @@ fn take_deferred_frames_if_unpinned(
     Some(ChargedFrames::retired(object))
 }
 
-fn release_copy_pin_locked(
-    registry: &mut MemoryObjectRegistry,
-    object_id: MemoryObjectId,
-) -> Option<ChargedFrames> {
-    let object = registry
-        .objects
-        .get_mut(&object_id)
-        .expect("release_copy_pin: pinned memory object missing");
-    object.copy_pins =
-        object.copy_pins.checked_sub(1).expect("release_copy_pin: copy_pins underflow");
-    take_deferred_frames_if_unpinned(registry, object_id)
-}
-
 fn deallocate_frames(frames: Option<ChargedFrames>) {
     drop(frames);
-}
-
-pub(crate) fn unpin_copy(pin: CopyPin) {
-    unpin_copy_with(pin, || {});
-}
-
-fn unpin_copy_with(mut pin: CopyPin, snapshot_disposed: impl FnOnce()) {
-    // Dispose metadata before its original pin can permit backing release.
-    // The complete pin remains armed if disposal or its observer is interrupted.
-    core::mem::take(&mut pin.frames).finish();
-    snapshot_disposed();
-    let frames = {
-        let mut registry = MEMORY_OBJECTS.lock();
-        release_copy_pin_locked(&mut registry, pin.object)
-    };
-    deallocate_frames(frames);
 }
 
 /// Check ownership before removing a leaf; a foreign replacement is not ours

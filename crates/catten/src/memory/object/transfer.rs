@@ -108,9 +108,8 @@ impl Drop for PreparedTransfer {
             }
             let frames = source
                 ._pin
-                .0
                 .take()
-                .and_then(|pin| release_copy_pin_locked(&mut registry, pin.object));
+                .and_then(|pin| release_copy_pin_locked(&mut registry, pin.object_id()));
             if let Some(entry) = registry
                 .caps
                 .get_mut(&source.owner)
@@ -269,10 +268,10 @@ pub(super) fn prepare_source_transfer_with(
             entry,
             escrow: Some(escrow),
             retired_payload: None,
-            _pin: ScopedCopyPin(Some(CopyPin {
-                object: entry.object,
-                frames: snapshot_storage::Snapshot::default(),
-            })),
+            _pin: ScopedCopyPin::new(Some(CopyPin::new(
+                entry.object,
+                snapshot_storage::Snapshot::default(),
+            ))),
         };
         let payload = match loan {
             Some(write) => PreparedPayload::Loan {
@@ -631,18 +630,18 @@ pub(super) fn prepare_copy_with(
         .ok_or(MemoryObjectError::AddressSpaceMissing)?;
     let target_handle = super::super::current_address_space_handle(target)
         .ok_or(MemoryObjectError::AddressSpaceMissing)?;
-    let copy_pin = ScopedCopyPin(Some(pin_for_copy(owner, cap)?));
+    let copy_pin = ScopedCopyPin::new(Some(pin_for_copy(owner, cap)?));
     if !super::super::budget::accepting(source_handle) {
         return Err(MemoryObjectError::AddressSpaceMissing);
     }
     let destination =
         cap_storage::Preparing::new(admit_capability(target, target_handle)?, target_handle)?;
     let (destination, payload) = destination.try_prepare(|_| {
-        let source = copy_pin.0.as_ref().unwrap();
+        let source = copy_pin.as_ref().unwrap();
         // This owner retains the private backing until destination publication.
         // Cancellation never consults a receiver-controlled numeric handle.
-        let staged = allocate(source_handle, source.frames.len())?;
-        for (source, target_frame) in source.frames.iter().zip(staged.prepared_frames().iter()) {
+        let staged = allocate(source_handle, source.frames().len())?;
+        for (source, target_frame) in source.frames().iter().zip(staged.prepared_frames().iter()) {
             let source_ptr: *const u8 = (*source).into();
             let target_ptr: *mut u8 = (*target_frame).into();
             unsafe {
