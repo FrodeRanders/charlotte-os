@@ -199,7 +199,9 @@ retains its pin and loan restrictions on any scratch-completion error, rather
 than ignoring that result. Outer namespace and extent nodes now prepare
 fallibly outside their local registry. Sealed root cleanup retains the complete
 scratch namespace in its existing metadata receipt through final invalidation;
-post-proof disposal leaves lifecycle/scratch guards. General metadata admission
+post-proof disposal leaves lifecycle/scratch guards. Scratch requested node bytes
+and counts now retain their original admission through those same owners, with
+refund after actual node free. General metadata/principal admission
 and wider caller contexts remain SEC-07 work. See
 [scratch admission](scratch-admission.md) for policy, costs and verification.
 

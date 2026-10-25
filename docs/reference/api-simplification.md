@@ -496,6 +496,11 @@ allocating namespace insertion, vector growth and generation-reset replacement
 are removed. The same final root receipt owns namespace disposal through proof.
 MMIO claim admission uses one explicit mapped-state expectation, including its
 atomic recheck. See [scratch storage evidence](../reports/audits/2026-10-25-security-scratch-storage.md).
+Scratch namespace and extent records now also use one charged-node path; their
+old uncharged production aliases and factories are removed. Exact layout/count
+admission follows the existing allocation owner, without a parallel registry or
+alternate refund path. The generic host scratch core exercises the same map and
+range algorithm. See [admission evidence](../reports/audits/2026-10-25-security-scratch-admission.md).
 Other factory/destructor contexts, scalar scratch identity and comprehensive
 metadata admission remain current candidates. Wire formats/runtime ABI stay
 unchanged.

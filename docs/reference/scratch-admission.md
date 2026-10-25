@@ -8,6 +8,31 @@ operation or borrowed closing ownership; raw boot fixtures retain their existing
 serialization. The scratch allocator's captured handle is identity, not a new
 root lease or physical completion proof.
 
+## Requested storage ceilings
+
+Namespace candidates and extent nodes share one fixed requested-byte/count pool:
+
+| Dimension | Whole node | Ordinary preparation |
+| --- | --- | --- |
+| Requested node-layout bytes | 512 KiB | 384 KiB |
+| Prepared, published or retained nodes | 8,192 | 6,144 |
+
+Every node reserves its actual layout, including payload, link and typed charge,
+before the fallible allocator. One preparation needs two nodes, even when an
+existing namespace leaves its candidate unused. The original charge stays in
+that allocation until payload disposal and actual node deallocation. Partial
+preparation, concurrent candidates, live reservations, empty namespaces and
+detached/quarantined nodes all consume the same pool. Quota or allocation failure
+returns `ResourceLimit`; partial ordinary rejection explicitly disposes and
+refunds its unused prefix without publishing a new range.
+
+Classification is captured once from the trusted policy of the exact retained
+root before either factory. Caller names, roles and manifests supply no reserve
+claim. Later platform promotion cannot reclassify existing nodes or their refunds.
+The counter is a leaf mutex released before allocation; publication does not
+enter it. No userspace setter, new root/pin, registry or recovery owner is added.
+Allocator bookkeeping and aggregate signed-principal admission remain separate.
+
 ## Prepared namespace and extent nodes
 
 The existing global scratch registry and each window's sorted live-extent map
@@ -27,8 +52,9 @@ implicitly. Exact release only detaches the original node under the scratch
 registry and explicitly frees it after that guard. Neither publication nor
 detachment allocates or deallocates. First-fit lookup and ordered insertion are
 linear; the 131,072-page window and existing resource limits do not qualify
-worst-case hold time, concurrent preparation pressure or comprehensive metadata
-byte/principal admission. Nodes add allocator overhead rather than a vector
+worst-case hold time or concurrent pressure/fairness. The requested layouts now
+have the ceilings above; comprehensive metadata/principal admission remains open.
+Nodes add allocator overhead rather than a vector
 high-water capacity. There is no compatibility-only old allocation path.
 
 MMIO scratch preparation also leaves `DEVICES`, with its existing exact-root
@@ -60,7 +86,9 @@ nodes into the existing `RetiredMetadata`, retained by `ClosingAddressSpace` and
 `RetiredAddressSpace`. Final invalidation rejection/abandonment keeps those nodes
 with the original complete root, slot, backing and charges. Only confirmed final
 quiescence permits explicit extent/node disposal after lifecycle/scratch/local
-registry guards, before root backing/slot completion. This extends the existing
+registry guards, before root backing/slot completion. Original scratch admission
+refunds only after each actual node free; rejection and abandonment retain it.
+This extends the existing
 root receipt, without a new recovery family, registry, metadata ticket or retry
 policy. Uncertain mapping/device work still prevents sealing; scratch absence
 or generation checks cannot substitute for its physical completion proof.
@@ -83,6 +111,15 @@ release it through the existing bounded custody path after confirmation, preserv
 a reused successor and retain another namespace during guarded root-attempt
 abandonment. Existing MMIO controls check factory placement and both claim-state
 rejections; ordinary native MMIO/memory mappings remain enabled.
+
+The [storage-admission follow-up](../reports/audits/2026-10-25-security-scratch-admission.md)
+adds 128 allocator rejections, actual ordinary/total node and byte exhaustion,
+one-slot partial rollback, trusted reserve, immutable captured classification,
+close at total exhaustion and exact baseline return after deallocation. Existing
+guarded controls retain all six isolated nodes' charges. Final-root custody
+controls now check original scratch bytes/count through rejection, confirmation,
+ASID reuse and guarded abandonment. Serialized pressure is not sustained
+concurrent EL0 pressure or an essential-service latency guarantee.
 
 See [scratch storage evidence](../reports/audits/2026-10-25-security-scratch-storage.md) and
 [memory-object retirement](memory-object-retirement.md). General metadata-byte/

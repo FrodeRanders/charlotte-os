@@ -1196,3 +1196,9 @@ root-retirement and IPC-transaction checks keep their existing projections;
 virtual-range/first-fit behavior, MMIO claim revalidation and concrete node/
 allocator/IRQ/destructor ordering are native/host qualification. No models,
 physical proof, custody family or accepted-work replay policy change.
+
+The [scratch admission follow-up](../reports/audits/2026-10-25-security-scratch-admission.md)
+bounds requested node layouts/counts through those same owners. Focused root and
+IPC transaction configurations are rerun; concrete pool dimensions, reserve
+classification, allocation failure and counter-lock contexts remain native/host
+qualification. No model inputs or physical/replay policies change.

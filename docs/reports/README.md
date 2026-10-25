@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Scratch metadata admission](audits/2026-10-25-security-scratch-admission.md) — Requested-layout/count ceilings follow candidates and retained root metadata through actual deallocation.
+
 - [Scratch namespace and extent storage](audits/2026-10-25-security-scratch-storage.md) — Prepared virtual-range metadata, atomic MMIO claim revalidation and complete root-receipt retention.
 
 - [Memory mapping storage](audits/2026-10-25-security-memory-mapping-storage.md) — Unlocked record/snapshot preparation and complete mapping-node retention through maintenance and retirement.

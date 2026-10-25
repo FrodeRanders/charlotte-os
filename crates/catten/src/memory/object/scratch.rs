@@ -17,8 +17,8 @@ use retirement_list::{
 };
 
 const PAGE_SIZE: usize = 4096;
-pub(crate) type PreparedExtent = PreparedEntry<(usize, usize)>;
-pub(crate) type RetiredExtent = RetiredEntry<(usize, usize)>;
+pub(crate) type PreparedExtent<C = ()> = PreparedEntry<(usize, usize), C>;
+pub(crate) type RetiredExtent<C = ()> = RetiredEntry<(usize, usize), C>;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Error {
@@ -28,14 +28,14 @@ pub(crate) enum Error {
 }
 
 #[derive(Debug)]
-pub(crate) struct ScratchWindow {
+pub(crate) struct ScratchWindow<C = ()> {
     bytes: usize,
     /// Sorted, disjoint live reservations. Gaps are implicit; neither first
     /// fit nor exact removal allocates or needs a coalescing node.
-    occupied: AdmittedMap<usize, usize>,
+    occupied: AdmittedMap<usize, usize, C>,
 }
 
-impl ScratchWindow {
+impl<C> ScratchWindow<C> {
     pub(crate) const fn new(bytes: usize) -> Self {
         Self {
             bytes,
@@ -63,7 +63,7 @@ impl ScratchWindow {
     pub(crate) fn reserve(
         &mut self,
         bytes: usize,
-        storage: &mut Option<PreparedExtent>,
+        storage: &mut Option<PreparedExtent<C>>,
     ) -> Result<usize, Error> {
         let offset = self.first_fit(bytes)?;
         let node = storage.take().ok_or(Error::AllocationFailed)?;
@@ -72,7 +72,11 @@ impl ScratchWindow {
     }
 
     /// Detach only. Callers retain the original node until post-guard disposal.
-    pub(crate) fn release(&mut self, offset: usize, bytes: usize) -> Result<RetiredExtent, Error> {
+    pub(crate) fn release(
+        &mut self,
+        offset: usize,
+        bytes: usize,
+    ) -> Result<RetiredExtent<C>, Error> {
         if self.occupied.get(&offset) != Some(&bytes) {
             return Err(Error::InvalidRange);
         }

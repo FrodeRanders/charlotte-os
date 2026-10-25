@@ -17,6 +17,7 @@ fn available() {
 }
 
 pub(crate) fn run() {
+    admission_tests::run();
     rejection();
     publication();
     competing_namespace();
@@ -30,6 +31,7 @@ pub(crate) fn run() {
 }
 
 fn rejection() {
+    let admitted = admission::snapshot();
     let handle = root();
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let counts = crate::capability::node_admission_used();
@@ -51,6 +53,7 @@ fn rejection() {
             assert!(SCRATCH_WINDOWS.lock().get(&handle.id()).is_none());
             assert_eq!(crate::capability::node_admission_used(), counts);
             assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
+            assert_eq!(admission::snapshot(), admitted);
         }
     }
     for pages in [0, usize::MAX, SCRATCH_WINDOW_PAGES + 1] {
@@ -66,6 +69,7 @@ fn rejection() {
     );
     release_scratch(handle.id(), base, SCRATCH_WINDOW_PAGES).unwrap();
     memory::close_user_address_space_handle(handle).unwrap();
+    assert_eq!(admission::snapshot(), admitted);
 }
 fn publication() {
     let handle = root();
@@ -140,6 +144,9 @@ fn stale_generation() {
 }
 fn retention() {
     let handle = root();
+    let admitted = admission::snapshot();
+    let extent_bytes = ExtentStorage::allocation_bytes() as u64;
+    let namespace_bytes = Storage::allocation_bytes() as u64;
     for stage in 0..3 {
         let mut owner = Preparing(ManuallyDrop::new(Resources {
             handle,
@@ -147,14 +154,14 @@ fn retention() {
             namespace: None,
         }));
         if stage >= 1 {
-            owner.0.extent = Some(scratch::PreparedExtent::try_new().unwrap());
+            owner.0.extent = Some(admission::prepare(false).unwrap());
         }
         if stage >= 2 {
-            owner.0.namespace = Some(Storage::try_new().unwrap());
+            owner.0.namespace = Some(admission::prepare(false).unwrap());
         }
         let _windows = SCRATCH_WINDOWS.lock();
         let _heap = PRIMARY_ALLOCATOR.lock();
-        drop(owner); // Three empty nodes retained across these partial phases.
+        admission::with_locked(|| drop(owner)); // Three empty nodes retained.
     }
     let mut local = Namespaces::new();
     let mut first = Preparing::new(handle).unwrap();
@@ -167,7 +174,13 @@ fn retention() {
     {
         let _windows = SCRATCH_WINDOWS.lock();
         let _heap = PRIMARY_ALLOCATOR.lock();
-        drop(namespace); // Namespace + two extents; no physical mapping or lease.
+        admission::with_locked(|| drop(namespace)); // Namespace + two extents.
     }
     memory::close_user_address_space_handle(handle).unwrap();
+    let after = admission::snapshot();
+    let retained = [4 * extent_bytes + 2 * namespace_bytes, 6];
+    assert_eq!(after.0, [admitted.0[0] + retained[0], admitted.0[1] + retained[1]]);
+    assert_eq!(after.1, [admitted.1[0] + retained[0], admitted.1[1] + retained[1]]);
 }
+
+mod admission_tests;

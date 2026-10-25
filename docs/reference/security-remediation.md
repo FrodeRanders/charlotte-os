@@ -487,6 +487,16 @@ principal and peak preparation admission, scalar reservation identity, raw fixtu
 and broader outer contexts, pressure/fairness and historical failures remain open.
 This advances C02/C03/C05/C13/C18 and R7-2 without changing finding dispositions.
 
+The [scratch admission batch](../reports/audits/2026-10-25-security-scratch-admission.md)
+adds 512 KiB/8,192 total and 384 KiB/6,144 ordinary requested-layout/count
+ceilings before the two factories. Captured trusted classification, partial
+preparation, losing candidates and detached root metadata retain original charges
+through actual node deallocation. Real node/byte exhaustion, partial quota
+rollback, trusted reserve, promotion/reuse and retained-root controls qualify
+that boundary. Allocator overhead, aggregate principal metadata, wider contexts
+and sustained concurrent progress remain open. This advances R7-2/R7-3 and the
+same C02/C03/C05/C13/C18 owners; SEC-07/18 and finding counts remain unchanged.
+
 SEC-07 remains partial until all of the following deliverables are accepted:
 
 The [telemetry snapshot follow-up](../reports/audits/2026-10-18-telemetry-snapshot-preparation.md)

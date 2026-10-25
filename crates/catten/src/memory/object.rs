@@ -844,9 +844,13 @@ pub(in crate::memory) fn scratch_registry_available() -> bool {
     SCRATCH_WINDOWS.try_lock().is_some()
 }
 
+pub(in crate::memory) fn scratch_admission_snapshot() -> ([u64; 2], [u64; 2]) {
+    scratch_namespace::admission::snapshot()
+}
+
 pub(in crate::memory) fn test_with_scratch_locked(work: impl FnOnce()) {
     let _windows = SCRATCH_WINDOWS.lock();
-    work();
+    scratch_namespace::admission::with_locked(work);
 }
 
 /// Keep the exact address-space generation alive through a mapping operation,

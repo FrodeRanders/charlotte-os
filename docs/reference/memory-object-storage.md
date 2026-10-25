@@ -148,6 +148,15 @@ ranges still depend on the containing mapping/close owner; they are not allocati
 nonces. Raw serialized fixture and broader outer contexts remain unqualified.
 See [scratch admission](scratch-admission.md) and [evidence](../reports/audits/2026-10-25-security-scratch-storage.md).
 
+Scratch node layouts now share 512 KiB/8,192 total and 384 KiB/6,144 ordinary
+admission. Each extent and namespace candidate reserves before allocation using
+classification captured once from its exact root. Original charges follow unused
+preparation, publication and detached root metadata until actual deallocation;
+partial rejection explicitly refunds, while abandonment retains node and charge.
+Later promotion and ASID reuse cannot redirect a refund. These ceilings include
+concurrent candidates; allocator overhead, aggregate principals and other metadata
+remain separate. See [admission evidence](../reports/audits/2026-10-25-security-scratch-admission.md).
+
 ## Complete retirement owner
 
 Object removal detaches the complete node into the existing `ChargedFrames`

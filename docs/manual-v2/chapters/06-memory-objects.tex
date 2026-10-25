@@ -227,6 +227,15 @@ root backing/slot completion. No separate recovery ticket or physical/replay pro
 is added. Scalar range matching still supplies no allocation nonce, and general
 metadata-byte/principal admission and wider caller contexts remain open.
 
+Scratch namespace and extent layouts now share 512 KiB/8,192 nodes in total,
+with ordinary preparation limited to 384 KiB/6,144 nodes. Admission precedes each
+allocator, capturing the exact root's trusted classification once. Partial and
+unused candidates, live reservations and detached metadata retain their original
+requested bytes/counts through actual node deallocation. Later promotion and
+ASID reuse cannot reclassify the refund. Ordinary rejection disposes explicitly;
+abandonment retains node and charge without counter entry. Allocator overhead,
+aggregate principal metadata and sustained concurrent progress remain separate.
+
 Final user-root destruction now follows a separate two-phase boundary. Logical
 cleanup detaches the private hierarchy into an owner that leases its software
 slot. After lifecycle and table guards are released, that owner invalidates

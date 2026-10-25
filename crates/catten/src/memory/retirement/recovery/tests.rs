@@ -48,6 +48,7 @@ fn test_namespace_metadata() {
         tests as mailbox,
     };
     let before = backing_budget::test_used_pages(Kind::Heap);
+    let scratch_before = memory::object::scratch_admission_snapshot();
     let handle = loader::create_user_address_space_handle();
     assert!(memory::commit_user_heap_page_handle(handle, charlotte_launch::HEAP_VADDR));
     let family_used = mailbox::populate(handle);
@@ -58,6 +59,8 @@ fn test_namespace_metadata() {
     assert_eq!(queue_used(), mailbox::queue_amount());
     assert_eq!(authority_used(), 3);
     memory::object::reserve_scratch(handle.id(), 2).unwrap();
+    let scratch_retained = memory::object::scratch_admission_snapshot();
+    assert_eq!(scratch_retained.0[1], scratch_before.0[1] + 2);
     let owner = super::super::tests::stage(handle);
     assert_eq!(owner.metadata.as_ref().unwrap().test_scratch_extents(), 1);
     owner.metadata.as_ref().unwrap().test_assert_retained(handle);
@@ -78,6 +81,7 @@ fn test_namespace_metadata() {
                 assert_eq!(family_used(), 2);
                 assert_eq!(queue_used(), mailbox::queue_amount());
                 assert_eq!(authority_used(), 3);
+                assert_eq!(memory::object::scratch_admission_snapshot(), scratch_retained);
                 false
             },
             &mut |_| panic!("rejected final barrier started physical release"),
@@ -87,6 +91,7 @@ fn test_namespace_metadata() {
     assert_eq!(family_used(), 2);
     assert_eq!(queue_used(), mailbox::queue_amount());
     assert_eq!(authority_used(), 3);
+    assert_eq!(memory::object::scratch_admission_snapshot(), scratch_retained);
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
     {
         let inner = registry.inner.lock();
@@ -104,6 +109,7 @@ fn test_namespace_metadata() {
             assert_eq!(family_used(), 0);
             assert_eq!(queue_used(), [0, 0]);
             assert_eq!(authority_used(), 0);
+            assert_eq!(memory::object::scratch_admission_snapshot(), scratch_before);
             release(frame)
         })
         .unwrap();
@@ -113,6 +119,7 @@ fn test_namespace_metadata() {
     assert_eq!(successor.id(), handle.id());
     assert_ne!(successor, handle);
     memory::object::reserve_scratch(successor.id(), 2).unwrap();
+    assert_eq!(memory::object::scratch_admission_snapshot(), scratch_retained);
     let successor_family = mailbox::populate(successor);
     let successor_queue = mailbox::captured_queue_used(successor);
     let successor_authority = crate::capability::record_tests::captured_account_used(successor);
@@ -126,6 +133,7 @@ fn test_namespace_metadata() {
     assert_eq!(successor_family(), 2);
     assert_eq!(successor_queue(), mailbox::queue_amount());
     assert_eq!(successor_authority(), 3);
+    assert_eq!(memory::object::scratch_admission_snapshot(), scratch_retained);
     assert_eq!(family_used(), 0);
     assert_eq!(queue_used(), [0, 0]);
     assert_eq!(authority_used(), 0);
@@ -133,6 +141,7 @@ fn test_namespace_metadata() {
     assert_eq!(successor_family(), 0);
     assert_eq!(successor_queue(), [0, 0]);
     assert_eq!(successor_authority(), 0);
+    assert_eq!(memory::object::scratch_admission_snapshot(), scratch_before);
     assert_eq!(super::super::metadata_tests::scratch_releases(), 2);
     super::super::metadata_tests::finish();
 
@@ -145,6 +154,7 @@ fn test_namespace_metadata() {
     assert_eq!(queue_used(), mailbox::queue_amount());
     let authority_used = crate::capability::record_tests::captured_account_used(handle);
     memory::object::reserve_scratch(handle.id(), 1).unwrap();
+    assert_eq!(memory::object::scratch_admission_snapshot(), scratch_retained);
     let owner = super::super::tests::stage(handle);
     assert_eq!(owner.metadata.as_ref().unwrap().test_scratch_extents(), 1);
     let ticket =
@@ -167,6 +177,7 @@ fn test_namespace_metadata() {
     assert_eq!(family_used(), 2);
     assert_eq!(queue_used(), mailbox::queue_amount());
     assert_eq!(authority_used(), 3);
+    assert_eq!(memory::object::scratch_admission_snapshot(), scratch_retained);
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
     assert_eq!(backing_budget::test_used_pages(Kind::Heap), before + 1);
     mailbox::assert_hidden(handle);

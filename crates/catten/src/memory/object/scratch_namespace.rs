@@ -4,16 +4,19 @@ use core::mem::ManuallyDrop;
 
 use super::*;
 
-type Storage = PreparedEntry<(AddressSpaceId, Namespace)>;
-pub(super) type Namespaces = AdmittedMap<AddressSpaceId, Namespace>;
+pub(super) mod admission;
+type Charge = admission::Charge;
+type Storage = PreparedEntry<(AddressSpaceId, Namespace), Charge>;
+type ExtentStorage = scratch::PreparedExtent<Charge>;
+pub(super) type Namespaces = AdmittedMap<AddressSpaceId, Namespace, Charge>;
 #[derive(Debug)]
 pub(super) struct Namespace {
     handle: super::super::AddressSpaceHandle,
-    window: ScratchWindow,
+    window: ScratchWindow<Charge>,
 }
 struct Resources {
     handle: super::super::AddressSpaceHandle,
-    extent: Option<scratch::PreparedExtent>,
+    extent: Option<ExtentStorage>,
     namespace: Option<Storage>,
 }
 #[must_use]
@@ -32,14 +35,16 @@ impl Preparing {
             extent: None,
             namespace: None,
         }));
+        // Capture trusted classification for this exact root before either
+        // allocator or scratch registry. Later promotion cannot reclassify nodes.
+        let platform = super::super::budget::platform_identity(handle.id()) == Some(handle);
         let result = (|| {
             before(0)?;
-            owner.0.extent = Some(
-                scratch::PreparedExtent::try_new().map_err(|_| MemoryObjectError::ResourceLimit)?,
-            );
+            owner.0.extent =
+                Some(admission::prepare(platform).map_err(|_| MemoryObjectError::ResourceLimit)?);
             before(1)?;
             owner.0.namespace =
-                Some(Storage::try_new().map_err(|_| MemoryObjectError::ResourceLimit)?);
+                Some(admission::prepare(platform).map_err(|_| MemoryObjectError::ResourceLimit)?);
             before(2)
         })();
         if let Err(error) = result {
@@ -66,7 +71,9 @@ impl Preparing {
         } else {
             // Fresh namespace admission precedes mutation too. The bounded
             // request was checked before allocation; this local check allocates nothing.
-            ScratchWindow::new(SCRATCH_WINDOW_SIZE).first_fit(bytes).map_err(scratch_error)?;
+            ScratchWindow::<Charge>::new(SCRATCH_WINDOW_SIZE)
+                .first_fit(bytes)
+                .map_err(scratch_error)?;
             windows.insert(
                 self.0.namespace.take().ok_or(MemoryObjectError::ResourceLimit)?,
                 handle.id(),
@@ -159,7 +166,7 @@ fn take_extent(
     handle: super::super::AddressSpaceHandle,
     offset: usize,
     bytes: usize,
-) -> Result<scratch::RetiredExtent, MemoryObjectError> {
+) -> Result<scratch::RetiredExtent<Charge>, MemoryObjectError> {
     let namespace = windows.get_mut(&handle.id()).ok_or(MemoryObjectError::OutOfScratch)?;
     if namespace.handle != handle {
         return Err(MemoryObjectError::AddressSpaceMissing);
@@ -170,7 +177,7 @@ fn take_extent(
 /// The whole root receipt retains every extent and its original namespace node
 /// through final invalidation. Drop retains, never disposes beneath lifecycle.
 #[must_use]
-pub(in crate::memory) struct RetiredNamespace(RetiredEntry<(AddressSpaceId, Namespace)>);
+pub(in crate::memory) struct RetiredNamespace(RetiredEntry<(AddressSpaceId, Namespace), Charge>);
 impl RetiredNamespace {
     pub(in crate::memory) fn release(self) {
         super::super::retirement::metadata_tests::scratch_boundary();

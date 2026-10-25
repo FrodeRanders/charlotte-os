@@ -1335,6 +1335,15 @@ implied. Earlier full-suite checkpoints remain separate.
 
 ## Scratch namespace/extent storage in the root receipt
 
+The [scratch storage admission batch](../reports/audits/2026-10-25-security-scratch-admission.md)
+adds concrete requested-layout/count ceilings before node allocation. Original
+charges follow those same metadata owners through rejection, detached retention
+and actual deallocation. Root-retirement charge projections remain relevant, but
+neither focused model represents these counter dimensions, captured reserve
+classification, allocator byte layouts or the counter-lock context. Native real
+pressure, guarded fallback and exact refund controls qualify that boundary;
+no model input, physical proof or refinement claim changes.
+
 The [scratch storage batch](../reports/audits/2026-10-25-security-scratch-storage.md) prepares namespace/extent nodes outside
 local scratch/device guards and revalidates captured identity/current space before
 publication. Whole namespace nodes now remain in existing root metadata through

@@ -389,8 +389,12 @@ Source, tests, and repository history remain authoritative.
         while MMIO retains its existing root/claim and rechecks mapped-state
         admission atomically. Complete scratch nodes stay in the final root
         receipt through invalidation, then dispose post-guard before root backing.
-        Scalar scratch identity, broader factories/destructors, concurrent
-        preparation bytes and aggregate metadata admission remain open.
+        Scratch layouts now reserve requested bytes/counts before allocation:
+        512 KiB/8,192 total and 384 KiB/6,144 ordinary nodes. Candidates and
+        retained metadata keep their original charge until actual node free;
+        captured classification survives promotion and ASID reuse.
+        Scalar scratch identity, broader factories/destructors, aggregate
+        principal metadata, allocator overhead and pressure progress remain open.
     \item \textbf{Cross-machine Raft boundary:} two TCG guests share a private
         QEMU LAN (stream backend on AArch64, socket backend on x86-64); the
         reliable-message frame transport and remote Raft peer routing are

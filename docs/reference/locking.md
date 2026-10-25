@@ -461,5 +461,13 @@ confirmation permits explicit disposal outside lifecycle/scratch/other local gua
 before root backing/slot release. Native root-release probes include scratch guard
 availability and IRQ preservation. Partial/retired fallback enters no allocator,
 registry or callback. These contexts add no new custody family or root/pin. Raw
-serialized fixture disposal, other outer/IRQ/destructor contexts, allocation-byte
-budgets and sustained contention remain separate. See [scratch admission](scratch-admission.md).
+serialized fixture disposal, other outer/IRQ/destructor contexts, broader metadata/
+principal budgets and sustained contention remain separate. See [scratch admission](scratch-admission.md).
+
+Scratch requested node bytes/counts now reserve under an independent leaf mutex
+before either allocator. Trusted classification is captured once against the exact
+root, before this counter or scratch lock; promotion cannot change an existing
+charge. Allocation/prefix rejection disposes outside the counter and local scratch
+guard. Publication only relinks charged nodes. Explicit disposal frees each actual
+node before counter refund; fallback retains both without counter entry. The
+guarded partial/retired and root-custody controls also hold this counter mutex.
