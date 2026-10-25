@@ -32,7 +32,7 @@ fn map_fixed_with(
     with_address_space_operation(owner, || map_with_lease(owner, cap, base, true, invalidate))
 }
 
-pub(super) fn run(create: &mut impl FnMut(&str) -> usize) {
+pub(in crate::memory::object) fn run(create: &mut impl FnMut(&str) -> usize) {
     preflight_rejection(create);
     rejected_prefix_still_invalidates(create);
     for &cause in causes() {

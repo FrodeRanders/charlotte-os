@@ -1,5 +1,15 @@
 # Memory-mapping node admission
 
+[`object/mapping.rs`](../../crates/catten/src/memory/object/mapping.rs) groups
+map admission, installation, rollback and invalidation with its
+[`storage` child](../../crates/catten/src/memory/object/mapping/storage.rs).
+Installation helpers are private to that boundary except the existing two
+object-family retirement-fixture hooks. Shared mapping records and retirement
+pins still serve their original namespace/loan cleanup owners; storage release
+keeps its object-family scope. Root `map`, `map_any` and `unmap` remain facades.
+No admission, guard or physical-completion policy changes. See the
+[refactoring evidence](../reports/audits/2026-10-25-refactoring-memory-mapping.md).
+
 CPU memory-object mapping records share fixed requested-layout admission:
 
 | Dimension | Total | Ordinary callers |

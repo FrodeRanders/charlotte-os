@@ -29,7 +29,7 @@ fn increment(before: ([u64; 2], [u64; 2]), count: u64) -> ([u64; 2], [u64; 2]) {
     ([before.0[0] + bytes, before.0[1] + count], [before.1[0] + bytes, before.1[1] + count])
 }
 
-pub(in crate::memory::object::mapping_storage) fn run() {
+pub(in crate::memory::object::mapping::storage) fn run() {
     allocation_failure();
     captured_classification();
     published_lifetime();

@@ -9,11 +9,21 @@ Failed bulk unmaps could also lead to physical release with live leaves.
 Move, copy and loan preparation, atomic batch publication and ordinary
 cancellation live together in
 [`object/transfer.rs`](../../crates/catten/src/memory/object/transfer.rs).
-`object.rs` retains registry/backing/mapping policy and reexports the existing
-entry points. A `PreparedTransfer` still owns the exact source escrow, pin,
-destination preparation and any private copy backing; the module boundary
+The object registry reexports the existing entry points. A `PreparedTransfer`
+still owns the exact source escrow, pin, destination preparation and any private
+copy backing; the module boundary
 does not change its active destructor or qualify additional outer IRQ/guard
 contexts. See the [consolidation evidence](../reports/audits/2026-10-25-refactoring-consolidation.md).
+
+[`object/mapping.rs`](../../crates/catten/src/memory/object/mapping.rs) now
+groups map admission, installation, rollback, unmap and invalidation with its
+admitted storage. Preparation captures the same generation and retains its
+admitted snapshot until post-guard disposal. The caller's existing lease and
+any published backing pin retain their original mapping/invalidation lifetimes.
+Mapping retirement pins, namespace/loan retirement and physical backing retain
+their existing shared owners. This relocation changes no detach/invalidation,
+scratch-release or cleanup authority; see the
+[mapping evidence](../reports/audits/2026-10-25-refactoring-memory-mapping.md).
 
 ## Sponsor metadata preparation
 

@@ -3,7 +3,13 @@
 //! Quarantine probes intentionally reserve twelve data pages for the guest's
 //! lifetime; there is no test-only re-adoption/release escape hatch.
 
-use super::*;
+use super::{
+    mapping::{
+        map_locked,
+        map_locked_with_cleanup,
+    },
+    *,
+};
 use crate::{
     memory::{
         budget,
@@ -41,7 +47,7 @@ fn invalidate(asid: usize, base: VAddr, pages: usize) -> bool {
 }
 
 pub(crate) fn run(mut create: impl FnMut(&str) -> usize) {
-    super::mapping_tests::run(&mut create);
+    super::mapping::tests::run(&mut create);
     test_coherent_dma_remap(&mut create);
     revocation::tests::run(&mut create);
     test_detached_backing(&mut create);

@@ -2,11 +2,12 @@
 use super::*;
 
 mod admission;
-pub(super) mod tests;
+pub(in crate::memory::object) mod tests;
 
 type Storage = PreparedEntry<(AddressSpaceId, MemoryMappingRecord), admission::Charge>;
-pub(super) type Mappings = AdmittedMap<AddressSpaceId, MemoryMappingRecord, admission::Charge>;
-pub(super) type RetiredMapping =
+pub(in crate::memory::object) type Mappings =
+    AdmittedMap<AddressSpaceId, MemoryMappingRecord, admission::Charge>;
+pub(in crate::memory::object) type RetiredMapping =
     RetiredEntry<(AddressSpaceId, MemoryMappingRecord), admission::Charge>;
 
 struct Resources {
@@ -16,17 +17,17 @@ struct Resources {
 
 /// Partial and published preparation abandonment retains every allocation.
 #[must_use]
-pub(super) struct Preparing(ManuallyDrop<Resources>);
+pub(in crate::memory::object) struct Preparing(ManuallyDrop<Resources>);
 impl Preparing {
-    pub(super) fn new(
-        handle: super::super::AddressSpaceHandle,
+    pub(in crate::memory::object) fn new(
+        handle: crate::memory::AddressSpaceHandle,
         pages: usize,
     ) -> Result<Self, MemoryObjectError> {
         Self::with(handle, pages, |_| Ok(()))
     }
 
-    pub(super) fn with(
-        handle: super::super::AddressSpaceHandle,
+    pub(in crate::memory::object) fn with(
+        handle: crate::memory::AddressSpaceHandle,
         pages: usize,
         mut before: impl FnMut(u8) -> Result<(), MemoryObjectError>,
     ) -> Result<Self, MemoryObjectError> {
@@ -36,7 +37,7 @@ impl Preparing {
         }));
         // Capture once against the caller's exact generation before any factory.
         // Late promotion or ASID reuse must not redirect admission or refund.
-        let platform = super::super::budget::platform_identity(handle.id()) == Some(handle);
+        let platform = crate::memory::budget::platform_identity(handle.id()) == Some(handle);
         let result = (|| {
             before(0)?;
             owner.0.node = Some(admission::prepare(platform)?);
@@ -53,7 +54,7 @@ impl Preparing {
 
     /// Caller revalidated the captured object/root and holds memory serialization.
     /// Fill preallocated snapshot storage and relink before taking the same pin.
-    pub(super) fn publish(
+    pub(in crate::memory::object) fn publish(
         &mut self,
         registry: &mut MemoryObjectRegistry,
         object: MemoryObjectId,
@@ -73,12 +74,12 @@ impl Preparing {
         MappingRetirementPin::acquire(registry, object)
     }
 
-    pub(super) fn frames(&self) -> &[PAddr] {
+    pub(in crate::memory::object) fn frames(&self) -> &[PAddr] {
         self.0.snapshot.as_ref().unwrap().frames()
     }
 
     /// Ordinary completion/rejection only, after local memory/table guards.
-    pub(super) fn finish(mut self) {
+    pub(in crate::memory::object) fn finish(mut self) {
         drop(self.0.node.take());
         if let Some(snapshot) = self.0.snapshot.take() {
             snapshot.finish();
@@ -88,7 +89,7 @@ impl Preparing {
 
 /// Only confirmed cleanup may consume a detached node. Keep its exact peer
 /// lease through actual node deallocation, then finish that original root last.
-pub(super) fn release(node: RetiredMapping) {
+pub(in crate::memory::object) fn release(node: RetiredMapping) {
     let mut peer = None;
     node.release_with(|(_, mapping)| peer = mapping.cleanup_lease);
     if let Some(peer) = peer {
