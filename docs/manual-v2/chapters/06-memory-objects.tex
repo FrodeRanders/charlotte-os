@@ -88,6 +88,16 @@ Mapping records and frame-snapshot capacity now also prepare fallibly outside
 the memory registry. Scratch namespace and extent nodes now also prepare outside
 their local registry, with exact-generation/current-space revalidation.
 
+Memory capability preparation now owns its partial payload/namespace nodes, exact
+authority/account reference and captured handle in inert fields before factories.
+Ordinary success/rejection explicitly frees unused nodes before authority
+cancellation, after local memory guards. The existing containing transfer consumes
+remaining destination storage after source/borrower work. Bare preparation
+abandonment enters no registry, allocator or account destructor. Namespace teardown
+may drain hidden authority while payload metadata remains retained without byte
+admission; late finish after ASID reuse cannot affect a successor. Containing
+transfer/backing destructors and broader IRQ/guard contexts remain separate.
+
 Mapping preparation now owns its partial node and shared snapshot in inert
 fields before either factory. Ordinary constructor rejection and every
 constructed completion/rejection explicitly dispose after local memory/table

@@ -529,3 +529,13 @@ precedes original counter refund, then any captured peer-root lease completion.
 Guarded publication/abandonment controls also hold this counter. Fallback retains
 all fields without allocator/counter entry; broader outer contexts and pressure
 remain separate. See [mapping-node admission](mapping-node-admission.md).
+
+Memory capability preparation now retains its partial/complete/published fields
+without allocator, memory/unified-capability registry or implicit account-Arc
+destruction on bare abandonment. Ordinary consuming finish frees unused storage
+before authority cancellation, after its action's local guards leave. Native
+controls hold memory, table, heap, physical allocator and CAPABILITIES together
+while dropping these owners, preserving the entry IRQ state. The containing
+transfer still performs its existing source/backing cleanup and explicit
+destination finish; broader outer guard/IRQ/destructor contexts remain unqualified.
+See [preparation evidence](../reports/audits/2026-10-25-security-memory-capability-preparation.md).

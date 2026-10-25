@@ -352,3 +352,12 @@ remain; this adds no custody, force-clear, physical retry or historical failure
 attribution.
 
 Context/node admission evidence: [thread metadata pool](../reports/audits/2026-10-23-security-thread-metadata.md).
+
+A later [memory capability preparation run](../reports/audits/2026-10-25-security-memory-capability-preparation.md)
+records an Arm first-entry exit-watch timeout at the unchanged five-second
+budget, after the new metadata controls passed. A four-LP snapshot identifies the
+fixture but lacks its exact awaited target tuple; cause and relationship to other
+failures remain unestablished. The fixture now emits failure-only target/typed-wait
+and live/staged observations before panic, after local guards. Passing repeats
+do not resolve the failure; neither an absent snapshot nor a delivery marker
+permits stack/root release or accepted-work replay.

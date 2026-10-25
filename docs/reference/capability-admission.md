@@ -445,3 +445,14 @@ serialization. Memory capability/namespace nodes retain that owner through
 post-guard payload disposal; final backing destruction also retains it through
 physical completion. This changes metadata custody, not teardown admission,
 physical proof or recovery/replay permission. See [memory capability storage](memory-object-storage.md#capability-and-namespace-records).
+
+Memory payload-capability preparation now retains its unused nodes, exact
+Reservation/account reference and captured generation behind inert fields before
+its factories. Ordinary finish disposes storage before authority cancellation;
+constructor/work rejection and direct success finish explicitly after local
+guards. The containing memory transfer consumes remaining destination metadata
+after its existing source/borrower cleanup. Bare preparation fallback never enters
+CAPABILITIES, allocator or account destructors. Namespace teardown may still drain
+hidden authority independently of retained payload metadata; no payload-byte
+ceiling or root lease is added. Other Reservation/transfer/backing destructor and
+outer contexts remain separate. See [evidence](../reports/audits/2026-10-25-security-memory-capability-preparation.md).

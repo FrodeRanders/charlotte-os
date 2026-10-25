@@ -1244,3 +1244,11 @@ Root original-charge, IPC loan/rollback/timeout and DMA operation projections
 remain; the selected policy, concrete dimensions, arithmetic and boot installation
 are host/native qualification. No model input or physical/replay policy changes,
 executable refinement or arbitrary-profile/sustained-pressure proof is claimed.
+
+The [memory capability preparation follow-up](../reports/audits/2026-10-25-security-memory-capability-preparation.md)
+uses inert partial payload/namespace/authority storage and consuming ordinary
+finish. Root original-charge, IPC loan/rollback/timeout and DMA ownership
+projections remain; concrete factories, Arc destruction, captured-account late
+cancellation and enclosing destructor/IRQ contexts are native/source controls.
+No model inputs, executable refinement, new custody or physical/replay policy
+changes; broader cleanup and sustained-pressure qualification remain open.

@@ -559,6 +559,16 @@ and charge lifetimes remain. The Configuration manual chapter and
 Boot-resource installation, remaining service/protocol/structural inventory and
 sustained concurrent progress remain separate; no finding disposition changes.
 
+The [memory capability preparation follow-up](../reports/audits/2026-10-25-security-memory-capability-preparation.md)
+retains partial payload/namespace nodes with exact authority/account references
+before factories. Ordinary rejection/success explicitly consumes unused metadata
+after local guards, storage before authority cancellation. Guarded bare fallback
+performs no allocator/registry/Arc destruction; actual namespace retirement/reuse
+and late cancellation preserve successor authority. Namespace teardown may drain
+hidden authority while payload metadata remains retained without byte admission.
+Containing transfer/backing destructors and broader contexts remain separate. This
+advances C18/G1 and R7-2 without a new limit, custody or finding disposition change.
+
 SEC-07 remains partial until all of the following deliverables are accepted:
 
 The [telemetry snapshot follow-up](../reports/audits/2026-10-18-telemetry-snapshot-preparation.md)
@@ -599,6 +609,14 @@ after confirmed invalidation/hardware completion; uncertainty retains charges
 and fences. QEMU CPU epochs, VT-d/AMD-Vi/SMMUv3 maintenance and the supported NVMe
 reset path have execution evidence. Aborting threads is request submission, not
 a quiescence receipt.
+
+The [memory capability preparation follow-up](../reports/audits/2026-10-25-security-memory-capability-preparation.md)
+also retains a fresh Arm panic in the existing first-entry exit-watch fixture:
+the unchanged five-second wait returned false after new metadata controls passed.
+A four-LP capture identifies the fixture but lacks its exact awaited target tuple.
+Failure-only exact-target/typed-wait/live-staged diagnostics are now added; cause
+and relationship to the memory change or historical failures remain unestablished.
+Passing repeats cannot resolve this C16/G1/G7 observation or authorize cleanup.
 
 SEC-18 remains partial. These deliverables track its remaining work and the
 implemented R18-2 scope:

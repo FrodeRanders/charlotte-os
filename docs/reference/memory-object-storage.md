@@ -79,13 +79,30 @@ retry custody. Namespace cleanup detaches its complete namespace node and pairs
 remaining authority in place, then explicitly drains records and frees the node
 after memory unlock. No snapshot, metadata ticket or recovery registry is added.
 
-Unused read-borrower storage precedes destination preparation in the containing
-transfer's field order. Cancellation frees that unused node and destination
-storage before the destination reservation refunds. Successful publication keeps
-any unused namespace candidate for ordinary containing-owner disposal; it has no
-separate metadata-byte admission. Broader factory/destructor and IPC/IRQ contexts
-remain unqualified. Shared capability counts and root counts are not a complete
-kernel metadata-byte or principal budget.
+The capability preparation now holds payload/namespace storage, its exact shared
+reservation/account reference and captured handle in inert fields before either
+factory. Ordinary constructor rejection explicitly consumes its partial prefix.
+Direct allocation and source/copy preparation use one consuming action helper:
+error finishes after the action's local guards/borrower storage leave; success
+returns the same owner for publication or transfer handoff. Explicit finish frees
+unused payload/namespace nodes before cancelling authority or releasing its account
+reference. Bare partial/full/published abandonment does none of that work.
+
+Ordinary containing-transfer cleanup explicitly frees unused read-borrower storage
+before consuming destination storage/authority, after its existing source work.
+Successful publication keeps any losing namespace candidate until that explicit
+finish. This does not make `PreparedTransfer`/`PreparedSource`, scoped pin or private
+backing destructors inert; their outer IPC/IRQ/physical cleanup contexts remain
+separate qualification. No new root lease, recovery custody or physical proof is
+introduced.
+
+Existing namespace teardown can dispose hidden staged authority even while an
+abandoned preparation retains unused payload nodes and its captured account
+reference. A preparation is not a root lease or replay owner. Late explicit finish
+uses the original account; actual ASID reuse cannot redirect cancellation to a
+successor. Retained payload metadata still has no separate byte admission, so
+shared authority/root counts are not a complete metadata/principal budget. See
+[preparation evidence](../reports/audits/2026-10-25-security-memory-capability-preparation.md).
 
 The [capability storage follow-up](../reports/audits/2026-10-24-security-memory-capability-storage.md) records evidence and limits.
 

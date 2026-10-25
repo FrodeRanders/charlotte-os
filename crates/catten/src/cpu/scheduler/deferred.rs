@@ -173,7 +173,30 @@ pub(crate) fn test_first_entry(asid: crate::memory::AddressSpaceId) {
         assert!(FIRST_BATCH.lock().replace(source.drain()).is_none());
         assert_eq!(FIRST_DISPATCH.swap(generation, Ordering::AcqRel), 0);
         SYSTEM_SCHEDULER.read().submit_to_lp(tid, lp).unwrap();
-        assert!(completion::wait_timeout(asid, watched, 5_000).unwrap());
+        let waited = completion::wait_timeout(asid, watched, 5_000);
+        if !matches!(waited, Ok(true)) {
+            // Capture the exact awaited episode before panic, outside wait/
+            // scheduler guards. A busy table, absent entry, wake or worker
+            // marker is diagnostic only, never quiescence or cleanup authority.
+            let live = MASTER_THREAD_TABLE
+                .try_read()
+                .map(|table| table.get(tid).map(|thread| thread.statistics_snapshot(tid)));
+            let staged = super::threads::staged_retirement_snapshot(generation);
+            crate::logln!(
+                "[scheduler first entry failure] target_lp={} tid={} generation={} watch={} \
+                 waited={:?} armed={} delivered={} live={:?} staged={:?}",
+                lp,
+                tid,
+                generation,
+                watched,
+                waited,
+                FIRST_DISPATCH.load(Ordering::Acquire),
+                FIRST_DELIVERED.load(Ordering::Acquire),
+                live,
+                staged
+            );
+        }
+        assert!(waited.unwrap());
         assert_eq!(
             completion::poll(asid, watched).unwrap().unwrap().result,
             completion::OpResult::Ok(0)

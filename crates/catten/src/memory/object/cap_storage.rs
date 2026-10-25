@@ -48,16 +48,17 @@ impl core::ops::Index<&MemoryObjectCap> for Caps {
     }
 }
 
-/// Only unused nodes remain in these fields after install. Existing containing
-/// owners drop them after their local memory guard, before reservation refund.
-/// Source transfer escrow/pin cleanup remains the parent's existing policy.
-pub(super) struct Preparing {
+struct Resources {
     payload: Option<Storage>,
     namespace: Option<NamespaceStorage>,
-    // Rust drops fields in declaration order: storage before authority refund.
-    authority: crate::capability::Reservation,
+    authority: Option<crate::capability::Reservation>,
     handle: super::super::AddressSpaceHandle,
 }
+/// Own every prefix before the first factory. Abandonment retains storage and
+/// exact authority/account without allocator, registry or implicit Arc Drop.
+/// Source-transfer escrow/pin cleanup remains the containing owner's policy.
+#[must_use]
+pub(super) struct Preparing(ManuallyDrop<Resources>);
 impl Preparing {
     pub(super) fn new(
         authority: crate::capability::Reservation,
@@ -71,35 +72,68 @@ impl Preparing {
         handle: super::super::AddressSpaceHandle,
         mut before: impl FnMut(u8) -> Result<(), MemoryObjectError>,
     ) -> Result<Self, MemoryObjectError> {
-        // Shared authority count admission precedes either payload factory.
-        // Function locals cancel a rejected unused prefix in reverse order.
-        before(0)?;
-        let payload = Storage::try_new().map_err(|_| MemoryObjectError::ResourceLimit)?;
-        before(1)?;
-        let namespace =
-            NamespaceStorage::try_new().map_err(|_| MemoryObjectError::ResourceLimit)?;
-        before(2)?;
-        Ok(Self {
-            payload: Some(payload),
-            namespace: Some(namespace),
-            authority,
+        let mut owner = Self(ManuallyDrop::new(Resources {
+            payload: None,
+            namespace: None,
+            authority: Some(authority),
             handle,
-        })
+        }));
+        let result = (|| {
+            before(0)?;
+            owner.0.payload =
+                Some(Storage::try_new().map_err(|_| MemoryObjectError::ResourceLimit)?);
+            before(1)?;
+            owner.0.namespace =
+                Some(NamespaceStorage::try_new().map_err(|_| MemoryObjectError::ResourceLimit)?);
+            before(2)
+        })();
+        if let Err(error) = result {
+            owner.finish();
+            return Err(error);
+        }
+        Ok(owner)
+    }
+
+    /// Ordinary rejection cancels only after the action's local guards and
+    /// unused borrower storage leave. Success returns this same owner for handoff.
+    /// The caller remains responsible for its enclosing IRQ/guard context.
+    pub(super) fn try_prepare<T>(
+        mut self,
+        work: impl FnOnce(&mut Self) -> Result<T, MemoryObjectError>,
+    ) -> Result<(Self, T), MemoryObjectError> {
+        match work(&mut self) {
+            Ok(value) => Ok((self, value)),
+            Err(error) => {
+                self.finish();
+                Err(error)
+            }
+        }
+    }
+
+    pub(super) fn finish(self) {
+        self.finish_with(|_| {});
+    }
+
+    fn finish_with(mut self, after_storage: impl FnOnce(&Resources)) {
+        drop(self.0.payload.take());
+        drop(self.0.namespace.take());
+        after_storage(&self.0);
+        drop(self.0.authority.take());
     }
 
     pub(super) fn identity(&self) -> MemoryObjectCap {
-        self.authority.identity()
+        self.0.authority.as_ref().unwrap().identity()
     }
 
     pub(super) fn authority(&mut self) -> &mut crate::capability::Reservation {
-        &mut self.authority
+        self.0.authority.as_mut().unwrap()
     }
 
     pub(super) fn validate(
         &self,
         registry: &MemoryObjectRegistry,
     ) -> Result<(), MemoryObjectError> {
-        if registry.caps.get(&self.handle.id()).is_some_and(|caps| caps.handle != self.handle) {
+        if registry.caps.get(&self.0.handle.id()).is_some_and(|caps| caps.handle != self.0.handle) {
             return Err(MemoryObjectError::AddressSpaceMissing);
         }
         Ok(())
@@ -114,21 +148,21 @@ impl Preparing {
     }
 
     pub(super) fn install(&mut self, registry: &mut MemoryObjectRegistry, payload: MemoryCap) {
-        let owner = self.handle.id();
+        let owner = self.0.handle.id();
         if !registry.caps.contains_key(&owner) {
             registry.caps.insert(
-                self.namespace.take().expect("prepared memory namespace missing"),
+                self.0.namespace.take().expect("prepared memory namespace missing"),
                 owner,
                 AddressSpaceCaps {
-                    handle: self.handle,
+                    handle: self.0.handle,
                     caps: Caps::new(),
                 },
             );
         }
         let namespace = registry.caps.get_mut(&owner).unwrap();
-        assert_eq!(namespace.handle, self.handle, "captured memory namespace changed");
+        assert_eq!(namespace.handle, self.0.handle, "captured memory namespace changed");
         namespace.caps.0.insert(
-            self.payload.take().expect("prepared memory capability missing"),
+            self.0.payload.take().expect("prepared memory capability missing"),
             self.identity(),
             Record {
                 payload,

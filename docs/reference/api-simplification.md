@@ -552,3 +552,11 @@ removed; existing aliases keep dimensional context and enforcement at the owner.
 No public ABI, wire grammar, new registry or live policy mutation is introduced.
 Structural/protocol/service policy remains separately inventoried. See
 [resource policy](resource-policy.md).
+
+Memory payload-capability preparation replaces automatic field destruction with
+one inert prefix owner and consuming finish/action handoff. Direct allocation,
+move/read/write-loan and copy callers cancel ordinary failure after local guards
+and explicitly consume remaining metadata. A transfer's optional destination
+permits one consuming finish; no fabricated empty reservation or compatibility
+allocator remains. Public ABI/formats and existing source/physical completion
+policies stay unchanged. See [preparation evidence](../reports/audits/2026-10-25-security-memory-capability-preparation.md).
