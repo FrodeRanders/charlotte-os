@@ -1,0 +1,330 @@
+{
+  "schema": "charlotte-refactoring-evidence-v1",
+  "report_date": "2026-10-25",
+  "reviewed_revision": "83d6d82b7d54ad7a7bb8176ed914e2d986c2b980",
+  "scope": {
+    "retirement_module": "crates/catten/src/memory/object/retirement.rs",
+    "registry_lines_before": 1405,
+    "registry_lines_after": 1158,
+    "private_state": [
+      "pin object identity and detached node",
+      "receipt pin/page count/mapping records/detach state"
+    ],
+    "object_family_api": [
+      "same pin acquire/unmap/release",
+      "borrowed identity/record metadata",
+      "identical optional node assignment",
+      "complete existing receipt field assembly"
+    ],
+    "unchanged": [
+      "exact object fence and original root context",
+      "bounded borrowed frame identities",
+      "guard separation for table walks",
+      "detach/invalidation/scratch gates",
+      "pin-owned node disposal before pin decrement",
+      "receipt pin/backing completion before final mapping map and peer-lease disposal",
+      "original physical/metadata admission lifetimes",
+      "earlier receipt retention and later terminal backing policy",
+      "limits/register/wire ABI/userspace/model inputs"
+    ],
+    "new_locks_roots_registries_pins_reservations_allocations_owner_instances_or_recovery_authority": false,
+    "finding_ledger": {
+      "corrected": 29,
+      "partial": 6,
+      "open": 3
+    }
+  },
+  "source_sha256": {
+    "crates/catten/src/memory/object.rs": "5d9de4c99f45ed7738225a5eef1de723dae86cec11c32b2a6ebcbf18a3f551d5",
+    "crates/catten/src/memory/object/mapping.rs": "f3c33942909fa199554bf62a0695aaf2268c900c645985f55f2b90eec5fdbbe1",
+    "crates/catten/src/memory/object/mapping/storage/tests.rs": "5fcb7b3ed8be208125ce33e34b2e533cfd17dc3f0b4c069bbd16c1b5d8948a1c",
+    "crates/catten/src/memory/object/namespace_close.rs": "2d1d5042c17b4e38382a8fd5fee474c24e5cc0fba9bacd0c6c148c75873dde5c",
+    "crates/catten/src/memory/object/retirement.rs": "e70cc3d0536bd85c208b4075155d880099438dd90aff62d5219add8221bd4b89",
+    "crates/catten/src/memory/object/retirement/tests.rs": "d05f1fd1f915073afdfe0573fd75654a4d931f0e30c9b2278e8fecb6fb65cd5b",
+    "crates/catten/src/memory/object/revocation.rs": "9f3cd118898d1f243eb4ba801b46a4ccbdb7929485484ef453fe1d4b3cc33d22"
+  },
+  "checks": {
+    "source_comparison": {
+      "baseline": "83d6d82b7d54ad7a7bb8176ed914e2d986c2b980",
+      "method": "Token comparisons preserve strings, ignore comments/whitespace/optional trailing commas, and normalize family scope, module facades, pure receipt field assembly, pin metadata borrows and identical detached-node assignment at original positions. All acquire/unmap/detach/invalidation/scratch/release/Drop bodies and remaining registry/copy/DMA/close/backing code match. Review aid, not formal refinement.",
+      "checks": {
+        "all_pin_acquire_unmap_release_receipt_detach_finish_drop_bodies": true,
+        "pin_accessors_and_node_assignment_only": true,
+        "receipt_constructor_and_metadata_only": true,
+        "remaining_registry_copy_dma_close_backing_after_plumbing": true,
+        "retirement_fixture_byte_identical": true,
+        "namespace_owner_only_receipt_constructor_and_metadata": true,
+        "revocation_only_metadata_and_same_node_assignment": true,
+        "mapping_only_same_node_assignment_and_borrowed_inspection": true,
+        "storage_fixture_only_node_custody_and_inspection_routing": true
+      },
+      "fixture": {
+        "before": "crates/catten/src/memory/object/retirement_tests.rs",
+        "after": "crates/catten/src/memory/object/retirement/tests.rs",
+        "byte_identical": true,
+        "sha256": "d05f1fd1f915073afdfe0573fd75654a4d931f0e30c9b2278e8fecb6fb65cd5b"
+      }
+    },
+    "strict_base_kernel_clippy": {
+      "command": "CATTEN_<ARCH>_SERVICE_BUNDLE=<absolute signed bundle> cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+      "aarch64": "pass",
+      "x86_64": "pass"
+    },
+    "previously_rebuilt_signed_userspace_bundles_reused_no_userspace_source_changes": true,
+    "native_architectures_run_sequentially": true,
+    "new_tests_or_alternate_implementation": false,
+    "formatting": "pass",
+    "whitespace": "pass",
+    "frozen_rust_hashes": {
+      "result": "pass",
+      "files": 7
+    },
+    "local_references": {
+      "result": "pass",
+      "checked": 378
+    }
+  },
+  "resolved_draft_integration_feedback": {
+    "diagnostic": "E0616: remaining mapping rollback node assignment and storage-fixture pin identity inspection used private fields",
+    "correction": "same node setter and borrowed identity accessor",
+    "final_architecture_checks": "both pass; native source frozen after corrections"
+  },
+  "native_runs": [
+    {
+      "arch": "aarch64",
+      "instance": "mapping-retirement-refactor-arm",
+      "cpus": 4,
+      "revision": "83d6d82b7d54ad7a7bb8176ed914e2d986c2b980",
+      "kernel_sha256": "8925976ffb33843fcec00d56a759084b8743bf8e36f7b70fb60e2429c046bd28",
+      "boot_image_sha256": "f86f9cd9d1ea5bc4a0df44714ed9e70ae6597306a1ef773a4d3974e208100bbf",
+      "initial_disk_sha256": "5923970ba5cbf6cbd08fff031dbdcb3931416b3aeeb38528a917de129f405745",
+      "bundle_sha256": {
+        "agent.elf": "7c9b52a0bed0cc6ddc324af244abfce7a4939132979a7d3b8f34223cd1da9842",
+        "cclient.elf": "47813589646c0657ba4eb5a5a6af243b1f1684a083d780a9744ab3bcc5706248",
+        "client.elf": "5c7ac1151fa707b89db82b49bbefccfa2442f0dea4b213867dc08bdc5c510525",
+        "clusterctl.elf": "018f80fbf1ce9a74f1d99d2379a4d6a6b0bca2b48cf1bcc7467fbba311a72794",
+        "deployd.elf": "69dd9d198b2ab85ec1ea04c8f4dcc7805e0f3b65fe6fd74d1e48d3d479f90547",
+        "disco.elf": "99a7f2c90cb3ef9c0af49e176848aed3305a5ae2c1681855d3af1ef8c27f6462",
+        "dns.elf": "78109d95c5a8bd708816a1b36fac406e68780e4b36854b2b7ecb9544eebef192",
+        "echo.elf": "5c59747d8f6ce8141f0f6ed1c65d4617002cc5338481c1a7ef2060e2b448b5a5",
+        "frouter.elf": "805911205d6254f7b21b5b564bf24cb75a8de4bdf910e435ba38776e31e2bfaa",
+        "fs.elf": "c20931f30fbf42bd93046fa76c8ecb41ac1c496696e90e57e4db159037091a64",
+        "grantctl.elf": "039c27369e2371071c3d0b847b48c33c7f48e237822713577371b4cd793f898d",
+        "greet.elf": "8645845a750b0b312aab080787b8cda772e06d830e027ff3cf3ef11b9fc9c9bb",
+        "httpd.elf": "9034668d4bf50e07b8bd26309d02a6f17222a8e29d252204589938d868e5aae4",
+        "kafka.elf": "9451214217da63e6ed1204f1f2b9143043b6439e611dae6a92acee61acd7354d",
+        "kafka_fence_smoke.elf": "a3d63ba5b4f3c50c5ca32185521387d8ac98228113faef95541afd706170b9c0",
+        "kafka_smoke.elf": "46a2efaf5ffbab422ada37451e54b5565562dd44db070be2eae0b6b03107e3c2",
+        "kafka_step.elf": "8d8dd751dd49925569e3556d1f6a705d7ba4023708b459ab8ff3dff6325c2bef",
+        "kafka_step_input.elf": "a7e207a75d68acca60c3d5f5425fefb6ccf0a244cb7219dc42ffab47cd30202a",
+        "kafka_step_proc.elf": "8fef98dbe182877986eb874ebeb0ff64ae80d4d64e1a5604f7f9cfbec8ea2efc",
+        "nclient.elf": "34e54fb0b852f54f997a56bc70d6ddfd037bdab74ce58d6b48188f8e27f52f3f",
+        "net.elf": "6655d31e32759ab37b9a31bbfb5a691d91621123cfaf661c1c03514583f45bb0",
+        "ns.elf": "de73710ac3c0984734eb65d4113eb509c8a8a6837d50b8095d2573d99b204796",
+        "nvme.elf": "548ec21f81e278d77749ee6bac9e50b240bc606424f5a829ae08313131a23272",
+        "nvme_client.elf": "d14e74aebdf58aa6766a06edc877a740f695f7e6eccb78864ae1d3163df0a187",
+        "objstore.elf": "ea21184045b8391e4457f3b3b9b3bb369ef1252c71aef06143be773d0f832259",
+        "objstore_client.elf": "55cbd339afa0d78c9dc71a349c94a4ce4f815417fc82dec1e275b50944372034",
+        "observe.elf": "ff0f5552eb0d3e10edcf57b7bee59d5d3a3ea2bb111a76f68498890cd7e1de22",
+        "raft.elf": "281d4f280903c48e5800326f6826a9b09f5ec8f46dae474cb25e86e4ac4eeda1",
+        "rclient.elf": "a4b9d6d8102ec8bb8449f575d4b5580cd2f3ea525f9f26b8c991202ded52d314",
+        "relmsg.elf": "eeff85710ddd9c4270c2999651308dec8914b3b314ba737ceb6b86989653a9dd",
+        "rng.elf": "a948fdc8f30934bebbc22c85c27e1da76f00b6e6b327bfd27dda1f0a7a655686",
+        "s3.elf": "4a2acc3e9e50d8779b853d1b1b8e30ba512329ae1e00e6d731dce26e3ccee36b",
+        "s3_smoke.elf": "2abe4a752de84bdfa15e93fa38bad3c92b02e2ef2b12fb3d1d0e8091762cb253",
+        "security_probe.elf": "ba5801a48cd2450408d984ae8618059b7446056270bc28fffb59462964e20efb",
+        "servicemgr.elf": "7e100f389bf431226ae0394238aa1857b72197f3df64823111d44347383bd12f",
+        "shutdown_probe.elf": "58cd8fb289f57358a06df005afeff7a3c242ad4a43ee0d9a062f1fab9bd9ac25",
+        "sitas-user.elf": "fbf1b47a721d84498a64e43bc626a7f962a52d3740e3fa7e14adaeea7fa5f311",
+        "tcpclient.elf": "6eeb6137839b0e78c3c3b27234ee7ee1f7aaa9991a5f1d457884dab87d9b7bbe",
+        "tcpip.elf": "97b38c12575ea30242c5c1dcd9640eb0755016f857759489b56de9c07f6a0b07",
+        "time.elf": "d6bf265479d64df812bcc29aa6224427be7562746b7239daef70093ac85d70f7",
+        "uart.elf": "55a8c43ecc6489c1fb9fa1827cfd8e2881068a382918d84eebf4369dbc502009"
+      },
+      "tracked_diff_sha256": "0a76b2f670fdf462b32f3a1631eba275d345d7442c1b3a33c5145e5b56bc252a",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19997 CATTEN_DEPLOY_HOST_PORT=20161 scripts/run-aarch64.sh --security-test --http-test --instance mapping-retirement-refactor-arm --fresh-storage --timeout 300",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 20,
+        "failed": 0,
+        "pending": 0
+      },
+      "http_checks_passed": 14,
+      "http_probe_results": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.393s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.259s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.295s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.16s; ingress recovered"
+      ],
+      "http_transport_retries": [
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: EOF followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: abortive peer closes followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 2/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        }
+      ],
+      "security_publication_generations": [
+        1,
+        2
+      ],
+      "serial_sha256": "20255d85b749ef9be78be6499c0ac2af63eafd0f8e21155ccae984cee5d06b46",
+      "selected_native_controls": [
+        "[+     0.833022] [object mapping admission] 256 pin-free denials skipped maintenance and recovered scratch; admitted success/rolled-back prefix still invalidate; per-call causes retain exact mapping/backing pin and original charge without replay",
+        "[+     0.838524] [DMA CPU remap fence] existing shared mapping, read/write remap rejection, three directions, two coherent pins, last-unpin reuse and original charge cleanup passed",
+        "[+     0.892208] [object retirement] bounded lock-separated batches, last-unpin fence, borrower authority, scratch rejection, partial detach, failed barrier, Drop quarantine and foreign-leaf preservation passed (twelve reserved data pages including loan revocation and detached backing)",
+        "[+     1.768470] [memory mapping storage] 192 unlocked record/snapshot prefix rejections, source-close revalidation, 64 heap-held snapshot fills/node publications/detachments, 32 rollback receipts through confirmed maintenance, and guarded uncertain rollback passed; two data pages, their mapping node/root and original charge deliberately retained",
+        "[+     1.769252] [mapping preparation ownership] captured generation rejects real ASID reuse; 64 ordinary success/rollback disposal entries outside memory/table/heap/frame guards; guarded partial/full/published preparation retains two empty nodes and two snapshots, no additional data/root/lease; existing uncertain rollback remains separately retained",
+        "[+     4.480548] [IPC DMA loans] cancellation/reply preserve read/write loans until DMA unpin",
+        "[+     4.517926] [IPC namespace ownership] unlocked queued/delivered cleanup, both closing peers, preparation rollback, partial failure and abandonment passed; failed roots/backing retained; exact pending token/epoch diagnosed",
+        "[+     6.413720] [memory namespace] stale mapped peer rejected; owner/charged object and successor mapping retained",
+        "[+     6.417506] [memory namespace] mapped peers retained outside lifecycle, closing peers, unmapped revocation fence, preparation rollback and four failure/Drop quarantines passed",
+        "[+     8.280470] [memory namespace runtime] local/peer mapped backing retired with secondary LPs online"
+      ]
+    },
+    {
+      "arch": "x86_64",
+      "instance": "mapping-retirement-refactor-intel",
+      "cpus": 4,
+      "revision": "83d6d82b7d54ad7a7bb8176ed914e2d986c2b980",
+      "kernel_sha256": "0a210182a992a53df087b85eaae865a826adeff73a969ad753cf2dbfab25f2fa",
+      "boot_image_sha256": "dbfb23277e630a5cb865b9a97efaeb42487387abae048c7f774419e23d733ac0",
+      "initial_disk_sha256": "8860169e2a2167e84d531cc5ac0446ecd4396e6a5d12dcac7f2dcdad554e351f",
+      "bundle_sha256": {
+        "agent.elf": "9a1ce55b668ecdbd930e4cd7f445e7386113dbcf1004670e889757483b555284",
+        "ahci.elf": "e3604e8f582c09e8e9be8927c037d2ce6a0a799177030bd13a86207776986b16",
+        "client.elf": "7587b5e8d3fed85777d90946ce3b6424c57eb228d92330fc15fb58922ed25c7d",
+        "clusterctl.elf": "ddc8f0e1022a5a596ad8bc6ecadefe267f96db4fd48143496b2b154d60359987",
+        "deployd.elf": "579b708e088efe759b505543278e8d9fcdba8c818cbfca0b2cbd32b36cc068f5",
+        "disco.elf": "706baa52489e9b8777430e05ed2b9cd6ea9b183920cf7d5d6e0435b1cc922476",
+        "dns.elf": "acbd66f2acd5f929ee956851ac0295465cb0e8152262ec0bcec615a7e464b33d",
+        "e1000e.elf": "7515ca36abeb4b871064186f1c901b9f93921541888ed4f26028faa57b7f8a96",
+        "echo.elf": "f5380da952be0e1fbc419746664551c5f33ee46d8b62ab9edb7e2d7fe924bb51",
+        "frouter.elf": "4025ca4c20d86fbb7f7c67d539ab141f551c2918e770e060874bf6ca80a7226f",
+        "fs.elf": "252ed91d742f3554a27de75b2bc1dfc84c4b540ed4061accfba5d560c5ce067f",
+        "grantctl.elf": "4eeae2dcec2bec33811c242b547706614441bbea2ccb552968b38ce74a50dce0",
+        "greet.elf": "fb6e152e34645d4ae1b6392f71850c688d4cc0475a7751f0392778050c61ad7e",
+        "httpd.elf": "b16de6b0d477afe4e2e52ff3277420bf4557894aae4b6b22b00c89c1d21be03d",
+        "kafka.elf": "9f25f86b824fe8d7de14c197626307e3bc6ead58e6305b910f9a488430333d97",
+        "kafka_smoke.elf": "f4b57e519d5983fc03f58f7b4d63159822a003c325624226f16d93ace54010a6",
+        "nclient.elf": "924bfd1a07cc67c16a64176746ac924fe4fd36b95829c87818545a261da2a326",
+        "net.elf": "9b3008b7a7356eea1b1df8d261c4e64867f587475df82e62fafa57eefcc97162",
+        "ns.elf": "55d10086d99699cf87634de7c9aec2dba60d99e19e00b697ee5e129af4de4b2b",
+        "nvme.elf": "233a835bfa268a2046bd1768a986b3a3a0d5316645fea366e25ee87e50a38b25",
+        "nvme_client.elf": "16ac4efe9b0c5b91232c088d25fffca14facd6c5201ef573111dabcd80af3c30",
+        "objstore.elf": "d84a4b33256fb3ae05db84eb281db35cf2748c263ed977b8d108a35971ece430",
+        "objstore_client.elf": "4d4f001cffde037b65c9e8433855b01098cc63b5ef334246ae25e63768ffe4fc",
+        "observe.elf": "49f3c3241de00713201da049415628eca5e6cca32748ea5c51b14a0ca637cb21",
+        "raft.elf": "4187e23f27c337863c810c70e46813e1a9f4a753d7f8096b6b14d0dfdbb183ff",
+        "rclient.elf": "3bcecad8b197e62836193f1c2e8053efc7a933cb833d05b4e3bc8f42e58a5e05",
+        "relmsg.elf": "5989b6d15c96c6660dd22a5ff3b83da0edd74739c74512b624f1a07785c15cc6",
+        "rng.elf": "b9c1cc204330dccde6b0da3aa09962bcfcddc66d06060d24fa222e8f26f6c69c",
+        "s3.elf": "4a90f021454c5a29e92d350cc5f36192056d29c16c0128d970b1226917d3950a",
+        "s3_smoke.elf": "f1d14f41f3b7fcae3e6a191c03c99ba88524fb3342dd9eaccb43568a54518406",
+        "security_probe.elf": "33539c825b40ee49f7c029e6e12044af547889bf67a086a5fa6a3e81413b81a4",
+        "servicemgr.elf": "61474b6524f95d6bb5c004ec665c3274241b4bf0292a118c5b18def84238fa2e",
+        "shutdown_probe.elf": "3f7e3ff0143acc4dc0254264f99436fcb6b3aac8ca64de051e69fd2c65e3ccd2",
+        "tcpclient.elf": "a0dda5b46b7bb114952fe0f7e22fc1ee96634f2154770eaa62eb95c7544a86e9",
+        "tcpip.elf": "7c0f683a20058b21b53e5fa86af84f6686a43225ce0e2add8e650bd3384682b2",
+        "time.elf": "459e6222d3fa94ea7297b99c4b954ce5e8af65c20157436f7c6147c23ca350ab",
+        "virtio_blk.elf": "e1398a2fcbb24b244ca9b4e7f65f4f52cd2d4c01d73df5b2860137e2b15f5b74"
+      },
+      "tracked_diff_sha256": "0a76b2f670fdf462b32f3a1631eba275d345d7442c1b3a33c5145e5b56bc252a",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19998 CATTEN_DEPLOY_HOST_PORT=20162 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance mapping-retirement-refactor-intel --fresh-storage --timeout 480",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 18,
+        "failed": 0,
+        "pending": 0
+      },
+      "http_checks_passed": 14,
+      "http_probe_results": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.367s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.387s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.304s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.19s; ingress recovered"
+      ],
+      "http_transport_retries": [
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: EOF followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: abortive peer closes followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 2/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        }
+      ],
+      "security_publication_generations": [
+        1,
+        2
+      ],
+      "serial_sha256": "7c164f59cd640f452ebc438931445497be3ca316dc5e97be8a7ff0c83cebd46f",
+      "selected_native_controls": [
+        "[+     0.919990] [object mapping admission] 256 pin-free denials skipped maintenance and recovered scratch; admitted success/rolled-back prefix still invalidate; per-call causes retain exact mapping/backing pin and original charge without replay",
+        "[+     0.924487] [DMA CPU remap fence] existing shared mapping, read/write remap rejection, three directions, two coherent pins, last-unpin reuse and original charge cleanup passed",
+        "[+     0.978317] [object retirement] bounded lock-separated batches, last-unpin fence, borrower authority, scratch rejection, partial detach, failed barrier, Drop quarantine and foreign-leaf preservation passed (twelve reserved data pages including loan revocation and detached backing)",
+        "[+     2.359198] [memory mapping storage] 192 unlocked record/snapshot prefix rejections, source-close revalidation, 64 heap-held snapshot fills/node publications/detachments, 32 rollback receipts through confirmed maintenance, and guarded uncertain rollback passed; two data pages, their mapping node/root and original charge deliberately retained",
+        "[+     2.360860] [mapping preparation ownership] captured generation rejects real ASID reuse; 64 ordinary success/rollback disposal entries outside memory/table/heap/frame guards; guarded partial/full/published preparation retains two empty nodes and two snapshots, no additional data/root/lease; existing uncertain rollback remains separately retained",
+        "[+     5.049068] [IPC DMA loans] cancellation/reply preserve read/write loans until DMA unpin",
+        "[+     5.094595] [IPC namespace ownership] unlocked queued/delivered cleanup, both closing peers, preparation rollback, partial failure and abandonment passed; failed roots/backing retained; exact pending token/epoch diagnosed",
+        "[+    14.840346] [memory namespace] stale mapped peer rejected; owner/charged object and successor mapping retained",
+        "[+    14.846886] [memory namespace] mapped peers retained outside lifecycle, closing peers, unmapped revocation fence, preparation rollback and four failure/Drop quarantines passed",
+        "[+    17.250122] [memory namespace runtime] local/peer mapped backing retired with secondary LPs online"
+      ]
+    }
+  ],
+  "native_failures": [],
+  "limitations": [
+    "Mechanical source comparisons aid review, not formal refinement.",
+    "Pin-owned record disposal and whole-receipt map/peer disposal keep distinct original completion order; no generic cleanup proof is substituted.",
+    "Node setter preserves existing assignment behavior; it adds no new claim or validation and is used at original guarded points.",
+    "Shared namespace/revocation/backing contexts retain their existing active disposal and outer IRQ/guard/destructor qualification.",
+    "No physical completion/replay authority from metadata, retained backing, a missing leaf, empty prefix or error diagnostic.",
+    "No broader pressure/fairness, recovery custody, model change or attribution of historical scheduler/metrics/root-close/mapping failures.",
+    "Tracked boot diffs omit untracked new modules; explicit frozen Rust hashes identify the complete changed source set."
+  ]
+}

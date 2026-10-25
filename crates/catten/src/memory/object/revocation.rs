@@ -143,7 +143,8 @@ impl LoanRevocation {
     /// `finish` consumes it, so uncertain cleanup cannot use this restoration.
     pub(crate) fn cancel_prepared(mut self) {
         let mut registry = MEMORY_OBJECTS.lock();
-        let object = registry.objects.get_mut(&self.pin.object).expect("prepared loan missing");
+        let object =
+            registry.objects.get_mut(&self.pin.object_id()).expect("prepared loan missing");
         assert!(matches!(object.lend_state, LendState::Revoking));
         assert_eq!(object.mappings.get(&self.borrower).map(|mapping| mapping.state), self.mapping);
         object.lend_state = core::mem::replace(&mut self.prior, LendState::None);
@@ -203,23 +204,24 @@ impl LoanRevocation {
         // not a new lookup through a reusable namespace.
         assert_eq!(
             registry.lookup(self.owner, self.owner_cap).expect("revoking owner cap missing").object,
-            self.pin.object,
+            self.pin.object_id(),
         );
         assert_eq!(
             registry
                 .lookup(self.borrower, self.borrower_cap)
                 .expect("revoking borrower cap missing")
                 .object,
-            self.pin.object,
+            self.pin.object_id(),
         );
-        let object = registry.objects.get_mut(&self.pin.object).expect("revoking object missing");
+        let object =
+            registry.objects.get_mut(&self.pin.object_id()).expect("revoking object missing");
         assert!(matches!(object.lend_state, LendState::Revoking), "loan revocation fence lost");
         assert_eq!(
             object.mappings.get(&self.borrower).map(|mapping| mapping.state),
             self.mapping,
             "revoking mapping changed"
         );
-        self.pin.retired_mapping = object.mappings.take(&self.borrower);
+        self.pin.retain_detached_mapping(object.mappings.take(&self.borrower));
         let mut retired_borrower = None;
         object.lend_state = match &mut self.prior {
             LendState::Read {

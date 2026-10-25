@@ -25,6 +25,19 @@ their existing shared owners. This relocation changes no detach/invalidation,
 scratch-release or cleanup authority; see the
 [mapping evidence](../reports/audits/2026-10-25-refactoring-memory-mapping.md).
 
+## Mapping retirement custody
+
+Mapping retirement custody lives in
+[`object/retirement.rs`](../../crates/catten/src/memory/object/retirement.rs).
+`MappingRetirementPin` keeps its object identity and detached node private;
+callers borrow metadata and consume the same node into that pin at their
+existing guarded publication point. `RetiredObjectMappings` keeps its pin,
+records/peer leases and detach state private. Namespace publication constructs
+the complete receipt from its existing fields; it cannot set the detached flag.
+Detach/invalidation, scratch release, node disposal and unpin retain their
+original order and proofs. This boundary adds no root, retry owner or cleanup
+authority; see the [retirement evidence](../reports/audits/2026-10-25-refactoring-mapping-retirement.md).
+
 ## Sponsor metadata preparation
 
 Memory-budget accounts now have fallibly prepared registry nodes and waiter/timer

@@ -80,7 +80,7 @@ impl<'root> PreparingNamespaceObject<'root> {
         loop {
             let next = {
                 let registry = MEMORY_OBJECTS.lock();
-                let object = &registry.objects[&self.pin.object];
+                let object = &registry.objects[&self.pin.object_id()];
                 object.mappings.iter().find_map(|(&asid, mapping)| {
                     ((self.owning || asid == handle.id()) && cursor.is_none_or(|old| asid > old))
                         .then_some((asid, mapping.state))
@@ -114,7 +114,7 @@ impl<'root> PreparingNamespaceObject<'root> {
             })?;
             let mut registry = MEMORY_OBJECTS.lock();
             let object =
-                registry.objects.get_mut(&self.pin.object).expect("preparing object missing");
+                registry.objects.get_mut(&self.pin.object_id()).expect("preparing object missing");
             let stored = object.mappings.get_mut(&asid).expect("pinned mapping disappeared");
             assert_eq!(stored.state, mapping, "pinned mapping changed before peer publication");
             assert!(stored.cleanup_lease.is_none());
@@ -128,8 +128,10 @@ impl<'root> PreparingNamespaceObject<'root> {
         loop {
             let lease = {
                 let mut registry = MEMORY_OBJECTS.lock();
-                let object =
-                    registry.objects.get_mut(&self.pin.object).expect("preparing object missing");
+                let object = registry
+                    .objects
+                    .get_mut(&self.pin.object_id())
+                    .expect("preparing object missing");
                 object.mappings.iter_mut().find_map(|(&asid, mapping)| {
                     if cursor.is_none_or(|old| asid > old) && mapping.cleanup_lease.is_some() {
                         cursor = Some(asid);
@@ -150,19 +152,15 @@ impl<'root> PreparingNamespaceObject<'root> {
     fn publish(self) -> PreparedNamespaceObject<'root> {
         let handle = self.root.memory_cleanup_handle();
         let mut registry = MEMORY_OBJECTS.lock();
-        let object = registry.objects.get_mut(&self.pin.object).expect("preparing object missing");
+        let object =
+            registry.objects.get_mut(&self.pin.object_id()).expect("preparing object missing");
         let mappings = if self.owning {
             object.destroy_when_unpinned = true;
             RetiredMappings::All(core::mem::take(&mut object.mappings))
         } else {
             RetiredMappings::One(object.mappings.take(&handle.id()).unwrap())
         };
-        let receipt = RetiredObjectMappings {
-            pin: self.pin,
-            pages: object.frames.len(),
-            mappings,
-            detached: false,
-        };
+        let receipt = RetiredObjectMappings::new(self.pin, object.frames.len(), mappings);
         drop(registry);
         PreparedNamespaceObject {
             root: self.root,
@@ -189,7 +187,7 @@ impl PreparedNamespaceObject<'_> {
         release: impl FnMut(AddressSpaceId, VAddr, usize) -> Result<(), MemoryObjectError>,
     ) -> Result<NamespaceObjectClosed, MemoryObjectError> {
         let handle = self.root.memory_cleanup_handle();
-        let object = self.receipt.pin.object;
+        let object = self.receipt.object_id();
         self.receipt.detach_with(unmap).complete_with_scratch(handle.id(), invalidate, release)?;
         Ok(NamespaceObjectClosed {
             handle,
@@ -234,7 +232,7 @@ pub(crate) fn close_with(
             preparing.cancel();
             return Err(error);
         }
-        let object = preparing.pin.object;
+        let object = preparing.pin.object_id();
         let closed = finish(preparing.publish())?;
         assert_eq!(closed.handle, handle);
         assert_eq!(closed.object, object);

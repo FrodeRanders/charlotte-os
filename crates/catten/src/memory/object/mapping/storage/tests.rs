@@ -173,11 +173,12 @@ fn metadata_publication() {
                 })
             });
             assert_eq!(prepared.frames(), registry.objects[&object].frames.as_slice());
-            pin.retired_mapping =
-                registry.objects.get_mut(&object).unwrap().mappings.take(&handle.id());
+            pin.retain_detached_mapping(
+                registry.objects.get_mut(&object).unwrap().mappings.take(&handle.id()),
+            );
             pin
         };
-        assert_eq!(pin.retired_mapping.as_ref().unwrap().value().1.state.installed_pages, 0);
+        assert_eq!(pin.retired_mapping().unwrap().value().1.state.installed_pages, 0);
         // No leaves were installed; this isolated metadata owner needs no TLB
         // operation. Its explicit release consumes the original pin/node once.
         prepared.finish();
@@ -348,8 +349,9 @@ fn guarded_preparation() {
         let _heap = PRIMARY_ALLOCATOR.lock();
         let _physical = PHYSICAL_FRAME_ALLOCATOR.lock();
         assert_eq!(prepared.frames().len(), 35);
-        pin.retired_mapping =
-            registry.objects.get_mut(&object).unwrap().mappings.take(&handle.id());
+        pin.retain_detached_mapping(
+            registry.objects.get_mut(&object).unwrap().mappings.take(&handle.id()),
+        );
         admission::with_locked(|| snapshot_storage::with_budget_locked(|| drop(prepared)));
     }
     assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
@@ -382,18 +384,10 @@ fn rollback_record_lifetime() {
             let result = map_locked(handle.id(), cap, base, true, false, &mut pin);
             assert_eq!(result, Err(MemoryObjectError::MapFailed));
             assert_eq!(
-                pin.as_ref()
-                    .unwrap()
-                    .retired_mapping
-                    .as_ref()
-                    .unwrap()
-                    .value()
-                    .1
-                    .state
-                    .installed_pages,
+                pin.as_ref().unwrap().retired_mapping().unwrap().value().1.state.installed_pages,
                 1
             );
-            let object = pin.as_ref().unwrap().object;
+            let object = pin.as_ref().unwrap().object_id();
             assert_eq!(MEMORY_OBJECTS.lock().objects[&object].retirement_pins, 1);
             assert_eq!(
                 finish_mapping(
@@ -437,7 +431,7 @@ fn uncertain_rollback() {
         let mut pin = None;
         let result = map_locked(handle.id(), cap, base, true, false, &mut pin);
         assert_eq!(result, Err(MemoryObjectError::MapFailed));
-        let state = pin.as_ref().unwrap().retired_mapping.as_ref().unwrap().value().1.state;
+        let state = pin.as_ref().unwrap().retired_mapping().unwrap().value().1.state;
         assert_eq!(state.installed_pages, 1);
         assert_eq!(state.address_space, handle);
         let _registry = MEMORY_OBJECTS.lock();

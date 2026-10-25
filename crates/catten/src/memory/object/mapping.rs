@@ -320,7 +320,7 @@ fn map_locked_with_preparation(
                 if map_result.is_err() && map_result != Err(MemoryObjectError::UnmapFailed) {
                     // The pin owns this detached record through the caller's
                     // invalidation/scratch outcome. Failed maintenance retains it.
-                    pin.as_mut().unwrap().retired_mapping = object.mappings.take(&asid);
+                    pin.as_mut().unwrap().retain_detached_mapping(object.mappings.take(&asid));
                 }
                 // Failed cleanup leaves the original record in the registry. Its
                 // pin fences close/transfer until confirmed completion (or forever
@@ -368,9 +368,10 @@ fn unmap_serialized(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), Me
         release_scratch(asid, mapping.base, pages)?;
     }
     if result.is_ok() {
-        pin.retired_mapping =
-            MEMORY_OBJECTS.lock().objects.get_mut(&pin.object).unwrap().mappings.take(&asid);
-        assert!(pin.retired_mapping.is_some(), "confirmed unmap lost its mapping record");
+        pin.retain_detached_mapping(
+            MEMORY_OBJECTS.lock().objects.get_mut(&pin.object_id()).unwrap().mappings.take(&asid),
+        );
+        assert!(pin.retired_mapping().is_some(), "confirmed unmap lost its mapping record");
         pin.release(None);
     }
     result
