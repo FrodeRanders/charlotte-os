@@ -42,6 +42,13 @@ use capability_metadata::{
 };
 pub mod cq;
 pub(crate) mod cq_budget;
+mod delivery;
+use delivery::{
+    BacklogOwner,
+    CqState,
+    FlushOutcome,
+    RetiredCq,
+};
 mod detached;
 use detached::{
     DetachedOp,
@@ -58,16 +65,13 @@ mod namespace_preparation;
 use namespace_preparation::RetiredNamespace;
 mod operation_id_tests;
 mod operation_ids;
-mod queue_preparation;
 mod record_preparation;
-use queue_preparation::RetiredCq;
 mod terminal_tests;
 pub(crate) mod timer_tests;
 mod waiter_tests;
 pub(crate) mod watch_budget;
 
 use alloc::{
-    collections::VecDeque,
     sync::{
         Arc,
         Weak,
@@ -571,127 +575,6 @@ pub type CqId = u32;
 /// The default completion queue of an address space.
 pub const DEFAULT_CQ: CqId = 0;
 
-enum BacklogOwner {
-    Capability,
-    Detached {
-        record: RetiredEntry<(OperationId, DetachedOp)>,
-    },
-}
-
-struct BacklogEntry {
-    operation: OperationId,
-    cookie: u64,
-    status: u32,
-    result: i64,
-    owner: BacklogOwner,
-}
-
-/// One completion queue: the shared ring plus its bounded non-lossy backlog
-/// and a monotonic work-generation counter. An address space owns one per
-/// shard.
-struct CqState {
-    /// The shared ring (zero-syscall drain path). The allocation backing a
-    /// heap-backed ring is kept alive by `_buf`.
-    ring: *mut crate::completion::cq::CompletionQueueRing,
-    /// Kernel-authoritative producer cursor and capacity. The ring page is
-    /// mapped writable to EL0, so `head`/`capacity` in shared memory are only
-    /// a publication mirror; the producer must never read them back.
-    ring_head: u32,
-    ring_capacity: u32,
-    /// Entries that could not fit in the shared ring yet. Every entry either
-    /// belongs to a live capability or retains a detached operation's live
-    /// submission slot, so the address-space capacity also bounds this queue.
-    /// Closing a cap-based completion removes its undelivered redundant entry.
-    backlog: VecDeque<BacklogEntry>,
-    retained_limit: usize,
-    /// Monotonic counter bumped every time new work arrives on this queue:
-    /// a completion is posted or an explicit wake is posted.  Used by
-    /// [`wait_on_cq`] to detect new work without depending on the shared
-    /// ring's `pending()` count — callers that poll individual completions
-    /// via `poll(cap)` and never drain the ring are not stuck in a busy-spin.
-    work_generation: u64,
-    /// The `work_generation` value consumed by this queue's reactor. Only new
-    /// work releases the next wait. Charlotte's per-shard model has one
-    /// blocking reactor per CQ; multiple independent waiters would require a
-    /// cursor per waiter rather than this queue-wide cursor.
-    last_seen_generation: u64,
-    /// Threads blocked waiting for this queue to become readable.
-    waiters:
-        crate::klib::observer::registration::ListRef<crate::klib::observer::waiter_budget::Charge>,
-    #[allow(dead_code)]
-    _buf: Option<alloc::vec::Vec<u64>>,
-    // Last: free heap backing before returning admission.
-    _storage_charge: cq_budget::Charge,
-}
-
-impl CqState {
-    /// Sanitized consumer cursor. EL0 owns `tail` but may hand back garbage;
-    /// an out-of-range value is treated as empty so producer arithmetic stays
-    /// bounded by the kernel-side capacity.
-    fn shared_tail(&self) -> u32 {
-        let tail = unsafe { core::ptr::read_volatile(&(*self.ring).tail) };
-        if tail < self.ring_capacity {
-            tail
-        } else {
-            self.ring_head
-        }
-    }
-
-    fn ring_has_space(&self) -> bool {
-        (self.ring_head + 1) % self.ring_capacity != self.shared_tail()
-    }
-
-    fn ring_pending(&self) -> u32 {
-        let tail = self.shared_tail();
-        if self.ring_head >= tail {
-            self.ring_head - tail
-        } else {
-            self.ring_head + self.ring_capacity - tail
-        }
-    }
-
-    /// Publishes one entry to the shared ring using the kernel-authoritative
-    /// producer cursor. Returns `false` when the ring is full.
-    fn push_completion(&mut self, operation: u64, cookie: u64, status: u32, result: i64) -> bool {
-        if !self.ring_has_space() {
-            let overflow = unsafe { core::ptr::read_volatile(&(*self.ring).overflow) };
-            unsafe {
-                core::ptr::write_volatile(&mut (*self.ring).overflow, overflow.wrapping_add(1));
-            }
-            return false;
-        }
-        let head = self.ring_head;
-        let entry = unsafe { &mut *(*self.ring).entry_ptr(head as usize) };
-        unsafe {
-            core::ptr::write_volatile(&mut entry.operation, operation);
-            core::ptr::write_volatile(&mut entry.cookie, cookie);
-            core::ptr::write_volatile(&mut entry.status, status);
-            core::ptr::write_volatile(&mut entry.flags, 0u32);
-            core::ptr::write_volatile(&mut entry.result, result);
-        }
-        core::sync::atomic::fence(core::sync::atomic::Ordering::Release);
-        let next = (head + 1) % self.ring_capacity;
-        unsafe {
-            core::ptr::write_volatile(&mut (*self.ring).head, next);
-        }
-        self.ring_head = next;
-        true
-    }
-}
-
-impl Drop for CqState {
-    fn drop(&mut self) {
-        drop(self.waiters.close());
-        while let Some(entry) = self.backlog.pop_front() {
-            if let BacklogOwner::Detached {
-                record,
-            } = entry.owner
-            {
-                dispose_detached_node(record);
-            }
-        }
-    }
-}
 /// Complete namespace fallback retains all payloads and original accounts.
 /// Only explicit post-registry finish may dispose sources, nodes and backing.
 #[must_use = "explicitly finish the complete namespace after registry unlock"]
@@ -873,7 +756,7 @@ fn check_ring_alias(
             namespace
                 .cqs
                 .iter()
-                .any(|(id, state)| state.ring == ptr && (*owner != asid || *id != cq))
+                .any(|(id, state)| state.ring_ptr() == ptr && (*owner != asid || *id != cq))
         }) {
             return Err(CqOpenError::RingInUse);
         }
@@ -887,7 +770,7 @@ fn open_namespace_with_cq(
     cq_entries: u32,
     frame: Option<crate::memory::physical::PAddr>,
 ) -> Result<(), CqOpenError> {
-    queue_preparation::open_namespace(asid, capacity, cq_entries, frame)
+    delivery::open_namespace(asid, capacity, cq_entries, frame)
 }
 
 /// Attaches an additional heap-backed completion queue to an address space —
@@ -914,7 +797,7 @@ fn attach_cq(
     cq_entries: u32,
     frame: Option<crate::memory::physical::PAddr>,
 ) -> Result<(), CqOpenError> {
-    queue_preparation::attach(asid, cq, cq_entries, frame)
+    delivery::attach(asid, cq, cq_entries, frame)
 }
 
 /// Kernel-controlled queue replacement discards old undelivered results.
@@ -929,13 +812,7 @@ fn replace_cq(
     let previous = entries.cqs.take(&cq);
     entries.cqs.insert(node, cq, replacement);
     if let Some(previous) = &previous {
-        let discarded = previous
-            .value()
-            .1
-            .backlog
-            .iter()
-            .filter(|entry| matches!(&entry.owner, BacklogOwner::Detached { .. }))
-            .count();
+        let discarded = previous.value().1.detached_backlog_len();
         entries.live = entries
             .live
             .checked_sub(discarded)
@@ -956,7 +833,7 @@ pub unsafe fn cq_ring_of(
     cq: CqId,
 ) -> Option<*mut crate::completion::cq::CompletionQueueRing> {
     let registry = COMPLETIONS.read();
-    registry.get(&asid).and_then(|c| c.cqs.get(&cq)).map(|state| state.ring)
+    registry.get(&asid).and_then(|c| c.cqs.get(&cq)).map(|state| state.ring_ptr())
 }
 
 /// Closes an address space's capability table and frees its CQ ring (if any).
@@ -1326,16 +1203,10 @@ pub(crate) fn complete_registered(
             && let Some(cq_state) = as_completions.cqs.get_mut(&DEFAULT_CQ)
         {
             let op = completion.operation_id();
-            let flushed_detached = post_to_cq(
-                cq_state,
-                op,
-                cap,
-                &transition.result,
-                || BacklogOwner::Capability,
-                &mut releases,
-            )
-            .flushed
-            .detached;
+            let flushed_detached = cq_state
+                .post(op, cap, &transition.result, || BacklogOwner::Capability, &mut releases)
+                .flushed
+                .detached;
             as_completions.live = as_completions.live.saturating_sub(flushed_detached);
             cq_state.work_generation = cq_state.work_generation.wrapping_add(1);
             crate::debug_trace::trace(
@@ -1362,102 +1233,13 @@ pub(crate) fn complete_registered(
     Ok(())
 }
 
-/// Posts one entry to a queue's ring, spilling to its non-lossy backlog when
-/// the ring is full. Any backlog is flushed first so ordering is preserved.
-struct PostOutcome {
-    flushed: FlushOutcome,
-    delivered_current: bool,
-}
-
-fn post_to_cq(
-    cq_state: &mut CqState,
-    operation: u64,
-    cookie: u64,
-    result: &OpResult,
-    owner: impl FnOnce() -> BacklogOwner,
-    releases: &mut budget::Releases,
-) -> PostOutcome {
-    let (status, val) = crate::completion::cq::op_result_to_fields(result);
-    let flushed = flush_backlog(cq_state, releases);
-    let delivered_current =
-        cq_state.backlog.is_empty() && cq_state.push_completion(operation, cookie, status, val);
-    if !delivered_current {
-        assert!(
-            cq_state.backlog.len() < cq_state.retained_limit,
-            "completion backlog exceeded address-space submission capacity"
-        );
-        cq_state.backlog.push_back(BacklogEntry {
-            operation,
-            cookie,
-            status,
-            result: val,
-            // Transfer admission only if a retained entry needs it. A direct
-            // delivery leaves its existing record owner intact for disposal
-            // beyond the containing registry guard.
-            owner: owner(),
-        });
-    }
-    PostOutcome {
-        flushed,
-        delivered_current,
-    }
-}
-
-#[derive(Clone, Copy, Default)]
-struct FlushOutcome {
-    total: usize,
-    detached: usize,
-}
-
-/// Writes as many retained entries as fit, preserving order. Reports how many
-/// entries became visible and how many detached entries therefore released
-/// submission slots.
-fn flush_backlog(cq_state: &mut CqState, releases: &mut budget::Releases) -> FlushOutcome {
-    if cq_state.backlog.is_empty() {
-        return FlushOutcome::default();
-    }
-
-    let mut outcome = FlushOutcome::default();
-    while cq_state.ring_has_space() {
-        let Some(entry) = cq_state.backlog.pop_front() else {
-            break;
-        };
-        let written =
-            cq_state.push_completion(entry.operation, entry.cookie, entry.status, entry.result);
-        if !written {
-            // A racing shared-tail update made the ring full; retain the
-            // entry and retry after the consumer advances.
-            cq_state.backlog.push_front(entry);
-            break;
-        }
-        outcome.total += 1;
-        if let BacklogOwner::Detached {
-            mut record,
-        } = entry.owner
-        {
-            outcome.detached += 1;
-            releases.push(record.value_mut().1.record_charge.take().expect("backlog lost charge"));
-            releases.push_node(record);
-        }
-    }
-    if outcome.total != 0 {
-        // Retained records becoming visible are new work even if the original
-        // completion generation was consumed before ring space was available.
-        cq_state.work_generation = cq_state.work_generation.wrapping_add(1);
-    }
-    outcome
-}
-
 fn flush_cq_backlog(
     as_completions: &mut AsCompletions,
     cq: CqId,
     releases: &mut budget::Releases,
 ) -> FlushOutcome {
-    let outcome = as_completions
-        .cqs
-        .get_mut(&cq)
-        .map(|state| flush_backlog(state, releases))
-        .unwrap_or_default();
+    let outcome =
+        as_completions.cqs.get_mut(&cq).map(|state| state.flush(releases)).unwrap_or_default();
     as_completions.live = as_completions.live.saturating_sub(outcome.detached);
     outcome
 }

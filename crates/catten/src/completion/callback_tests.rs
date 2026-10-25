@@ -43,7 +43,7 @@ pub(crate) fn test_admission() {
     super::record_preparation::test_preparation();
     super::callbacks::test_preparation();
     super::terminal_tests::run();
-    super::queue_preparation::test_preparation();
+    super::delivery::test_preparation();
     super::detached::test_lifecycle();
     crate::service::launch::test_publication_waiter_admission();
     crate::self_test::results::test_waiter_admission();

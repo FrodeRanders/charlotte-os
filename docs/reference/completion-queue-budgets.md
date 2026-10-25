@@ -9,6 +9,16 @@ separate contracts.
 CQ registration reserves both a queue count and kernel-owned backing bytes.
 These resources have different lifetimes from [completion records](completion-record-budgets.md).
 
+[`completion/delivery.rs`](../../crates/catten/src/completion/delivery.rs) owns
+the queue's ring producer state, FIFO backlog and backing. Its
+[`preparation` child](../../crates/catten/src/completion/delivery/preparation.rs)
+initializes those private fields and retains the complete prepared/retired
+payload. Producers call `CqState::post`; backlog reconciliation calls
+`CqState::flush` with the existing caller-owned refund batch. Namespace slot
+accounting, captured-source notification and checked waits remain in the core.
+Wait generations/source retain their existing completion-family access; ring
+inspection is read-only. See the [refactoring evidence](../reports/audits/2026-10-25-refactoring-cq-delivery.md).
+
 | Limit | Registered queues | Kernel-owned backing bytes |
 | --- | ---: | ---: |
 | Per completion namespace | 32 | 256 KiB |

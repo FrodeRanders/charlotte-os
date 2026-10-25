@@ -59,7 +59,7 @@ fn heap_held_splice() {
             let mut registry = COMPLETIONS.write();
             let queue = registry.get_mut(&CLIENT).unwrap().cqs.get_mut(&DEFAULT_CQ).unwrap();
             // SAFETY: this private heap ring has exactly this fixture consumer.
-            let first = unsafe { (&mut *queue.ring).read().unwrap() };
+            let first = unsafe { (&mut *queue.ring_ptr()).read().unwrap() };
             assert_eq!(
                 first.cookie,
                 if mode == 1 {
@@ -74,7 +74,7 @@ fn heap_held_splice() {
             assert_eq!(records.used(), 0);
             let mut registry = COMPLETIONS.write();
             let queue = registry.get_mut(&CLIENT).unwrap().cqs.get_mut(&DEFAULT_CQ).unwrap();
-            let entry = unsafe { (&mut *queue.ring).read().unwrap() };
+            let entry = unsafe { (&mut *queue.ring_ptr()).read().unwrap() };
             assert_eq!(entry.cookie, 12);
             assert_eq!(cq::fields_to_op_result(entry.status, entry.result), OpResult::Ok(12));
         }
@@ -124,7 +124,7 @@ fn public_producers() {
             assert_eq!(entries.timer_budget.used(), usize::from(mode == 2));
             assert_eq!(observed.upgrade().is_some(), mode == 2);
             let queue = entries.cqs.get_mut(&DEFAULT_CQ).unwrap();
-            let entry = unsafe { (&mut *queue.ring).read().unwrap() };
+            let entry = unsafe { (&mut *queue.ring_ptr()).read().unwrap() };
             assert_eq!(entry.operation, operation);
             assert_eq!(entry.cookie, 21);
             assert_eq!(

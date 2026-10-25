@@ -248,8 +248,9 @@ completion::wait(asid, cap):
 
   When completion fires:
   → CompletionTimerObserver::notify() → complete()
-  → post_to_cq(ring_entry)            [ring write]
-  → signal_cq()                       [wakes CQ waiters]
+  → CqState::post(ring_entry)         [ring write under COMPLETIONS]
+  → post-guard refunds/disposal       [original charges and subscriptions]
+  → signal_cq_source()                [wakes the captured CQ source]
   → completion.signal()               [wakes capability-specific waiters]
   → Waker::notify() → submit_woken_thread()
 ```

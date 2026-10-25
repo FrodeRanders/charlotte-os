@@ -219,8 +219,8 @@ fn cq_detachment() {
     // account. Exercise the production splice under the actual registry/heap
     // without substituting any live root, account or ring consumer.
     let mut entries = empty_as(CLIENT, 8);
-    let first = queue_preparation::Prepared::heap_for_namespace(CLIENT, &entries, 8);
-    let second = queue_preparation::Prepared::heap_for_namespace(CLIENT, &entries, 8);
+    let first = delivery::Prepared::heap_for_namespace(CLIENT, &entries, 8);
+    let second = delivery::Prepared::heap_for_namespace(CLIENT, &entries, 8);
     entries.cqs.insert(first.0, 0, first.1);
     let sponsor = WaitSponsor::new(false);
     let observer: Arc<dyn Observer> =

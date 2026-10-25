@@ -85,7 +85,7 @@ fn allocation_and_publication() {
         }
         let registry = COMPLETIONS.read();
         assert!(registry[&CLIENT].table.first_key_value().is_none());
-        assert!(registry[&CLIENT].cqs[&DEFAULT_CQ].backlog.is_empty());
+        assert!(registry[&CLIENT].cqs[&DEFAULT_CQ].backlog_is_empty());
         assert_eq!(registry[&CLIENT].live, 0);
         assert_eq!(records.used(), 64);
         assert_eq!(
@@ -125,14 +125,14 @@ fn abort_backlog() {
                 EventSubmission::cap,
             );
             complete(CLIENT, cap, OpResult::Ok(1)).unwrap();
-            assert_eq!(COMPLETIONS.read()[&CLIENT].cqs[&DEFAULT_CQ].backlog.len(), 1);
+            assert_eq!(COMPLETIONS.read()[&CLIENT].cqs[&DEFAULT_CQ].backlog_len(), 1);
             if let Some(submission) = submission {
                 drop(submission);
             } else {
                 abort_submission(CLIENT, cap).unwrap();
             }
             let registry = COMPLETIONS.read();
-            assert!(registry[&CLIENT].cqs[&DEFAULT_CQ].backlog.is_empty());
+            assert!(registry[&CLIENT].cqs[&DEFAULT_CQ].backlog_is_empty());
             assert_eq!(registry[&CLIENT].live, 1);
             assert_eq!(records.used(), 1);
             assert_eq!(crate::capability::node_admission_used(), original_authority);

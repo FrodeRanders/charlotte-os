@@ -186,8 +186,7 @@ fn post_detached(
     };
     let mut record = Some(record);
     let source = if let Some(cq_state) = as_completions.cqs.get_mut(&cq) {
-        let outcome = post_to_cq(
-            cq_state,
+        let outcome = cq_state.post(
             operation,
             user_data,
             &effective,

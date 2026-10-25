@@ -52,8 +52,8 @@ fn full_flush_and_replacement() {
         completion::complete_detached(CLIENT, operation, completion::OpResult::Ok(cookie as i64))
             .unwrap();
     }
-    let capacity =
-        completion::COMPLETIONS.read()[&CLIENT].cqs[&completion::DEFAULT_CQ].ring_capacity as usize;
+    let capacity = completion::COMPLETIONS.read()[&CLIENT].cqs[&completion::DEFAULT_CQ]
+        .ring_capacity() as usize;
     let pending = 128 - (capacity - 1);
     assert!(pending > 1);
     assert_eq!(account.used(), pending);

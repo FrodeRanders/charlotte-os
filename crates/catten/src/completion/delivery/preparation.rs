@@ -68,7 +68,7 @@ impl Target {
 /// Borrow publication so every rejected payload stays owned until guard exit.
 /// A physical state's null ring is private until serialized initialization.
 #[must_use]
-pub(super) struct Prepared(ManuallyDrop<Resources>);
+pub(in crate::completion) struct Prepared(ManuallyDrop<Resources>);
 
 struct Resources {
     target: Target,
@@ -220,7 +220,7 @@ impl Prepared {
 
     /// The existing private detachment fixture stages real heap queues using
     /// this same constructor; physical states cannot escape uninitialized.
-    pub(super) fn heap_for_namespace(
+    pub(in crate::completion) fn heap_for_namespace(
         asid: AddressSpaceId,
         entries: &AsCompletions,
         cq_entries: u32,
@@ -234,7 +234,7 @@ impl Prepared {
     }
 }
 
-pub(super) fn attach(
+pub(in crate::completion) fn attach(
     asid: AddressSpaceId,
     cq: CqId,
     cq_entries: u32,
@@ -252,14 +252,14 @@ pub(super) fn attach(
 /// Complete detached queue metadata/payload. Shared RetiredEntry fallback
 /// retains source, ring/backlog, original charge and node without cleanup.
 #[must_use = "finish the complete retired queue after local registry unlock"]
-pub(super) struct RetiredCq(RetiredEntry<(CqId, CqState)>);
+pub(in crate::completion) struct RetiredCq(RetiredEntry<(CqId, CqState)>);
 
 impl RetiredCq {
-    pub(super) fn from_node(node: RetiredEntry<(CqId, CqState)>) -> Self {
+    pub(in crate::completion) fn from_node(node: RetiredEntry<(CqId, CqState)>) -> Self {
         Self(node)
     }
 
-    pub(super) fn finish(self) {
+    pub(in crate::completion) fn finish(self) {
         let mut state = None;
         self.0.release_with(|(_, payload)| state = Some(payload));
         // The node has freed; payload/source/backing still own their charge.
@@ -333,7 +333,7 @@ impl PreparedNamespace {
     }
 }
 
-pub(super) fn open_namespace(
+pub(in crate::completion) fn open_namespace(
     asid: AddressSpaceId,
     capacity: usize,
     cq_entries: u32,
@@ -352,7 +352,7 @@ pub(super) fn open_namespace(
 mod metadata_tests;
 mod tests;
 
-pub(super) fn test_preparation() {
+pub(in crate::completion) fn test_preparation() {
     tests::run();
     metadata_tests::run();
     namespace_preparation::test_preparation();

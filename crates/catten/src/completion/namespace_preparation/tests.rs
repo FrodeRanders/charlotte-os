@@ -19,7 +19,7 @@ const CLIENT: usize = 0x5f00;
 
 fn with_queue(asid: usize) -> Preparing {
     let mut preparing = Preparing::new(asid, 4).unwrap();
-    let queue = queue_preparation::Prepared::heap_for_namespace(asid, preparing.entries(), 2);
+    let queue = delivery::Prepared::heap_for_namespace(asid, preparing.entries(), 2);
     preparing.entries_mut().cqs.insert(queue.0, DEFAULT_CQ, queue.1);
     preparing
 }

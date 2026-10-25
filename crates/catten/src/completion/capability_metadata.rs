@@ -70,11 +70,7 @@ pub(super) fn retire(
     let operation = record.operation_id();
     record.revoke(asid, cap);
     if let Some(queue) = entries.cqs.get_mut(&DEFAULT_CQ) {
-        queue.backlog.retain(|entry| {
-            !matches!(&entry.owner, BacklogOwner::Capability)
-                || entry.operation != operation
-                || entry.cookie != cap
-        });
+        queue.discard_capability(operation, cap);
     }
     let node = entries.table.take(&cap).unwrap();
     entries.live = entries.live.checked_sub(1).expect("retired completion slot missing");
