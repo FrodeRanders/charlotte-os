@@ -1,0 +1,586 @@
+{
+  "schema": "charlotte.security.x86-gcm-owner.v1",
+  "report_date": "2026-10-26",
+  "work_started": "2026-10-25",
+  "reviewed_revision": "4158ff6a4952469b965e2b85c9f2f0d497850e7b",
+  "classification": {
+    "corrected": 29,
+    "partial": 6,
+    "open": 3,
+    "finding": "SEC-15 remains partial",
+    "production_trust": "disabled"
+  },
+  "finding": {
+    "gap": "Pinned x86 POLYVAL dispatcher has no Drop delegation for its ManuallyDrop union, leaving its original active authentication state unerased on ordinary dispatcher Drop. Source-confirmed, without a cross-domain retained-memory read.",
+    "correction": "Freestanding x86 target selects polyval_force_soft; production GHash/Polyval destructor-presence guard covers that target as well as AArch64. Explicit unsafe flag/erasure-feature overrides reject.",
+    "semantics": "Pinned enabled software Drop clears named h/s fields. needs_drop establishes destructor presence; no post-Drop target-memory measurement or complete TLS-state erasure proof.",
+    "tradeoff": "PCLMUL authentication acceleration disabled on freestanding x86; AES selection and TLS cipher unchanged. Throughput impact unmeasured.",
+    "new_production_buffer_capability_root_registry_custody_or_physical_replay_owner": false
+  },
+  "source_sha256": {
+    ".cargo/config.toml": "5845e3de73e807da085ea0cb8a5c76272a20c145adf70cbd404bb57f58bd4402",
+    "crates/catten-services/src/bin/security_probe.rs": "0bb15f24c4d1b93ac587c71fa26bcbaf8d0a8c44996b8e892e32ce8910a3570b",
+    "crates/catten-services/src/tls_client.rs": "f8895d56ef9bea49a36c9dcebcbf8682cd4a6f6712f071b368a47d2cb882e619",
+    "crates/catten-services/src/tls_client/gcm_contract.rs": "b6afac957b1776e29a062cc963e72b0b0c63d215e69fc3be3d4e170e99025060",
+    "scripts/run-host-tests.sh": "9f3f6da58418bb12ef83c558c9c7cca6f7f0694d11974a9295ff09bfec11f642",
+    "scripts/tests/test-tls-gcm-backend.py": "216d6e28e514f473804eb6d89beef974163d4b7db5179c6808235205d2837695"
+  },
+  "lockfile_sha256": "f2c731aebc1171ec6c68dd763be14ca669acd12faa7e86984716e06aac266499",
+  "lockfile_unchanged": true,
+  "dependencies": {
+    "versions_and_checksums": {
+      "aes": {
+        "version": "0.8.4",
+        "checksum": "b169f7a6d4742236a0a00c541b845991d0ac43e546831af1249753ab4c3aa3a0"
+      },
+      "aes-gcm": {
+        "version": "0.10.3",
+        "checksum": "831010a0f742e1209b3bcea8fab6a8e149051ba6099432c8cb2cc117dec3ead1"
+      },
+      "embedded-tls": {
+        "version": "0.19.0",
+        "checksum": "6ff3c16c9cedcab3ef5c79fd46349152adbb98f997b937cb1ead7655f5c07e43"
+      },
+      "ghash": {
+        "version": "0.5.1",
+        "checksum": "f0d8a4362ccb29cb0b265253fb0a2728f592895ee6854fd9bc13f2ffda266ff1"
+      },
+      "polyval": {
+        "version": "0.6.2",
+        "checksum": "9d1fe60d06143b2430aa532c94cfe9e29783047f06c0d7fd359a9a51b729fa25"
+      },
+      "zeroize": {
+        "version": "1.9.0",
+        "checksum": "e13c156562582aa81c60cb29407084cdb54c4164760106ab78e6c5b0858cf64e"
+      }
+    },
+    "source_sha256": {
+      "polyval-0.6.2/src/backend.rs": "594507fd60dc377320f17654c3be74a1ed5b47ef2240821a65b7f9ef2abe6eb1",
+      "polyval-0.6.2/src/backend/autodetect.rs": "9a12a24ecb07df1128eba52b91c1e555672bfdfed88f824e6076fe219ac5d1d0",
+      "polyval-0.6.2/src/backend/soft64.rs": "c51a6ebea44e3a74da58094b622266983ad21debd3974f2b9e0b2bd5bb5def91",
+      "ghash-0.5.1/src/lib.rs": "df449412b068a1d66fad81b814347980b04ea724e0642fb10a84b53806d6c302",
+      "aes-gcm-0.10.3/src/lib.rs": "9261306cb6e8ce08a3559d69b2c301b9c0474234b3ff4b92e3e3c8cd7937f479",
+      "embedded-tls-0.19.0/src/config.rs": "604238b59e15d36ad24f856327313303c827bc48ab5162316cacdaa28140ebbe"
+    },
+    "same_as_prior_gcm_review": true,
+    "software_drop_excerpt": "#[cfg(feature = \"zeroize\")]\nimpl Drop for Polyval {\n    fn drop(&mut self) {\n        self.h.zeroize();\n        self.s.zeroize();\n    }\n}",
+    "dispatcher_has_drop_impl": false,
+    "cached_dependency_sources_edited_or_vendored": false
+  },
+  "isolated_controls": {
+    "target": "crates/catten-services/x86_64-unknown-none.json",
+    "guard": "#![no_std]\n#[cfg(any(target_arch = \"aarch64\", all(target_arch = \"x86_64\", target_os = \"none\")))]\nconst _: () = {\n    assert!(core::mem::needs_drop::<polyval::Polyval>());\n    assert!(core::mem::needs_drop::<ghash::GHash>());\n};\n",
+    "guard_sha256": "1c44b3e68dc3fb700b35dd44279a3442b592023900822fcfbbf517a70d35945b",
+    "controls": [
+      {
+        "name": "software-erasing",
+        "zeroize_features": true,
+        "overrides_target_flags": false,
+        "command": [
+          "cargo",
+          "check",
+          "--offline",
+          "--lib",
+          "--manifest-path",
+          "<isolated-control>/Cargo.toml",
+          "--target",
+          "/Users/froran/Projects/private/charlotte-os/crates/catten-services/x86_64-unknown-none.json",
+          "--target-dir",
+          "/Users/froran/Projects/private/charlotte-os/target/tls-gcm-backend-controls"
+        ],
+        "manifest": "[package]\nname=\"tls-gcm-backend-control\"\nversion=\"0.0.0\"\nedition=\"2021\"\n[workspace]\n[dependencies]\npolyval={version=\"=0.6.2\",default-features=false,features=[\"zeroize\"]}\nghash={version=\"=0.5.1\",default-features=false,features=[\"zeroize\"]}\nzeroize={version=\"=1.9.0\",default-features=false}\n",
+        "exit_status": 0,
+        "diagnostics": []
+      },
+      {
+        "name": "dispatcher-rejected",
+        "zeroize_features": true,
+        "overrides_target_flags": true,
+        "command": [
+          "cargo",
+          "check",
+          "--offline",
+          "--lib",
+          "--manifest-path",
+          "<isolated-control>/Cargo.toml",
+          "--target",
+          "/Users/froran/Projects/private/charlotte-os/crates/catten-services/x86_64-unknown-none.json",
+          "--target-dir",
+          "/Users/froran/Projects/private/charlotte-os/target/tls-gcm-backend-controls"
+        ],
+        "manifest": "[package]\nname=\"tls-gcm-backend-control\"\nversion=\"0.0.0\"\nedition=\"2021\"\n[workspace]\n[dependencies]\npolyval={version=\"=0.6.2\",default-features=false,features=[\"zeroize\"]}\nghash={version=\"=0.5.1\",default-features=false,features=[\"zeroize\"]}\nzeroize={version=\"=1.9.0\",default-features=false}\n",
+        "exit_status": 101,
+        "diagnostics": [
+          "error[E0080]: evaluation panicked: assertion failed: core::mem::needs_drop::<polyval::Polyval>()",
+          "4 |     assert!(core::mem::needs_drop::<polyval::Polyval>());",
+          "For more information about this error, try `rustc --explain E0080`."
+        ]
+      },
+      {
+        "name": "software-erasure-disabled",
+        "zeroize_features": false,
+        "overrides_target_flags": false,
+        "command": [
+          "cargo",
+          "check",
+          "--offline",
+          "--lib",
+          "--manifest-path",
+          "<isolated-control>/Cargo.toml",
+          "--target",
+          "/Users/froran/Projects/private/charlotte-os/crates/catten-services/x86_64-unknown-none.json",
+          "--target-dir",
+          "/Users/froran/Projects/private/charlotte-os/target/tls-gcm-backend-controls"
+        ],
+        "manifest": "[package]\nname=\"tls-gcm-backend-control\"\nversion=\"0.0.0\"\nedition=\"2021\"\n[workspace]\n[dependencies]\npolyval={version=\"=0.6.2\",default-features=false}\nghash={version=\"=0.5.1\",default-features=false}\nzeroize={version=\"=1.9.0\",default-features=false}\n",
+        "exit_status": 101,
+        "diagnostics": [
+          "error[E0080]: evaluation panicked: assertion failed: core::mem::needs_drop::<polyval::Polyval>()",
+          "4 |     assert!(core::mem::needs_drop::<polyval::Polyval>());",
+          "For more information about this error, try `rustc --explain E0080`."
+        ]
+      }
+    ]
+  },
+  "checks": {
+    "targeted_host_suites": {
+      "packages": [
+        "catten-services",
+        "charlotte-kafka",
+        "charlotte-s3"
+      ],
+      "profiles": {
+        "debug": {
+          "runtime": 263,
+          "doctests": 9
+        },
+        "release": {
+          "runtime": 263,
+          "doctests": 9
+        }
+      }
+    },
+    "strict_service_clippy": {
+      "aarch64_library_and_bins": "pass",
+      "x86_library_and_security_probe": "pass"
+    },
+    "ci_runtime_inputs": {
+      "result": "pass",
+      "cases": 4,
+      "kernel_frame_pointer_and_warning_settings_preserved": true
+    },
+    "new_host_driver_hook": "Actual control invoked directly; driver syntax checked. Full cross-workspace host wrapper not rerun.",
+    "formatting": "pass",
+    "whitespace": "pass",
+    "frozen_source_hashes": {
+      "result": "pass",
+      "files": 6
+    },
+    "local_references": {
+      "result": "pass",
+      "targets_checked": 818
+    }
+  },
+  "native_runs": [
+    {
+      "arch": "x86_64",
+      "instance": "gcm-owner-intel",
+      "cpus": 4,
+      "revision": "4158ff6a4952469b965e2b85c9f2f0d497850e7b",
+      "kernel_sha256": "756b220eedca0df565110623b6963a9a557bc9c6cbb871e37fbbd6a66136faa6",
+      "boot_image_sha256": "5b2106cdc91e5f3cc75f5e6ea7b6756b6fbbe6aad84a05d47679cc7663bd8b08",
+      "initial_disk_sha256": "57910192506c25a8070344341c2fe8c897fbb74add47ec91b40bb47b63168089",
+      "bundle_sha256": {
+        "agent.elf": "b07861a2ee5f9509f0a5f1d881041b00f1e7665ca467f698f767c8f065edfdd2",
+        "ahci.elf": "9e21364e4ea8045ad845ddb20a548c4381928666c2f3af96475e01242757bb58",
+        "client.elf": "7587b5e8d3fed85777d90946ce3b6424c57eb228d92330fc15fb58922ed25c7d",
+        "clusterctl.elf": "1b6de1cf910e8dea6a12f68958d83e3af60c3c8958556ac4b203d5398fc4d6fb",
+        "deployd.elf": "ab904ea05674eef9a3fcf1857524391d7ee772b3da0530286750d82f700fc671",
+        "disco.elf": "53a27b5f8747f2feeffb110cd50b55f3e6c558f37ee64d97d7a44c1315fbe7f6",
+        "dns.elf": "cea0a8fa1f24f574965b0a4094cc3bcee971ba980b509d7892a361ca01941699",
+        "e1000e.elf": "cc5b64a43a9ab341211c627d2e52178cdf6464ffbea5e1a34248d2d0b9d94662",
+        "echo.elf": "2408de7305d57704c740871f792ff7598b11cee9fbbe2f58988be54755d918cc",
+        "frouter.elf": "ce5ff26fa4b10becf0e20b1298a0777ece40a9bfd8bfa37bfc381561107ac5cd",
+        "fs.elf": "5f780ba292deeb028c342301ba7907d52fafd4f43189e3fe6d4344178f744eb1",
+        "grantctl.elf": "bd6e4a653f916116ad0d37a705b3bf7a34313047ad270fcda3b6ea9ba1e44d37",
+        "greet.elf": "2a1e920cca22ca6d8d7c2f136d6337d0f7389859387c9c3dc274739cf92564f1",
+        "httpd.elf": "f19d778df57a7d208e3487afd0cdbfc3d694246f2d681e1753df545f6a1cd57f",
+        "kafka.elf": "664c10c762a7591a4ad663430ed3299f644539958c580aa69288df8227094a68",
+        "kafka_smoke.elf": "7ff312e507ab5fa3a88415e09e60860a531ac3fcb0656331e56a9e5b39d7c371",
+        "nclient.elf": "f195c04718844b77f594339e813f39abd7fca746702d7868096b9cdfcbb36d94",
+        "net.elf": "021ca368c9a4f784590264e7722e34431b721041aa14e157e202ca7053b1142f",
+        "ns.elf": "59c1c0521b550020ecb67cdb0a46ea72fe3ce7038611800ad84f68f8bfc13b28",
+        "nvme.elf": "f02e4d95477de1d645fa58285cacb9c82b6e369b4c48e5b5bbdbfea8de18198e",
+        "nvme_client.elf": "ca57cec0ab5136b898acd7a320e8efba6c26480910f6a08fbd6e4448f0e41acd",
+        "objstore.elf": "927faf09a7e20241d3b3f069d26d196e1b2ca38450563e1aee2a4f9affcb287e",
+        "objstore_client.elf": "ea65f4c0c3843d1fdd13157a40142f8798d8183a0f14e3e66c204ed5523f9828",
+        "observe.elf": "2a3b9d9a4108c853ec4a0781a90776783d7b827be5a999cb5097017e3bbf04b7",
+        "raft.elf": "fd92b8cc8a2cb6d254a7a57bc92779dd2cafe126c46f9b9ca79f63dfae028fb9",
+        "rclient.elf": "b6f1f62fbccfe439044f5c360dcb1ac2935a458deaab29d151cbb1336e6396fa",
+        "relmsg.elf": "b4a1e6176e4192bece00b747ec6f97dc7d4f1d289477184f853991ef91ceab8a",
+        "rng.elf": "933b6da80757471d1a20f11594588db9992bddbd3f8a3affa07ea85d92c20424",
+        "s3.elf": "3253a756efc4c64f4fe6e68fc28eae068a85c59abbffceab90c43e218fa9e8de",
+        "s3_smoke.elf": "bf0d862369f2b3e852099ccacef7ad38e159319e20375b2e347281483f9dc417",
+        "security_probe.elf": "1a14d1c94e8410a0d33c04576569360603976a03bb0618ea23de04af5b311edd",
+        "servicemgr.elf": "61474b6524f95d6bb5c004ec665c3274241b4bf0292a118c5b18def84238fa2e",
+        "shutdown_probe.elf": "7fdb39d2fd2e938820d596358cbf8dc8d7b81fd61c417fad076493dd90301b3a",
+        "tcpclient.elf": "3c196aa3478e4838a88e6af40e6761b568b86fe61c4361fd156d332b949074cf",
+        "tcpip.elf": "746d3b20e2fdd4dcc77a1bdd9267a6128607025584b60e46509e59fdbd322227",
+        "time.elf": "17e06ce8b749531328c5b0dc53dbaa29928721420d696f8b3752cdbd6ba30bf1",
+        "virtio_blk.elf": "8cf9c557e37eaa51e360ab454fe5142a759e940d5d53986497410bf981dd65cb"
+      },
+      "tracked_diff_sha256": "901ba5745a66a456a146d602eaec054daece9e3fc8341e7c284495df74a5c612",
+      "backend": "intel",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20006 CATTEN_DEPLOY_HOST_PORT=20170 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance gcm-owner-intel --fresh-storage --timeout 480",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 18,
+        "failed": 0,
+        "pending": 0
+      },
+      "security_publication_generations": [
+        1,
+        2
+      ],
+      "native_gcm_receipts": [
+        "[+    14.670047] [EL0 LOG] lp=0 asid=154 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    15.115821] [EL0 LOG] lp=0 asid=152 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    15.226483] [EL0 LOG] lp=0 asid=158 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    19.003728] [EL0 LOG] lp=0 asid=158 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    52.377410] [EL0 LOG] lp=0 asid=158 [security] TLS GCM known-answer, tamper rejection and decrypt passed"
+      ],
+      "http_checks_passed": 14,
+      "http_probe_results": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.425s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.384s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.249s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.17s; ingress recovered"
+      ],
+      "http_transport_retries": [
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: EOF followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: abortive peer closes followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 2/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        }
+      ],
+      "s3_tls_results": [],
+      "serial_sha256": "584b20c949d6cc909198f6ac9ccd6c4afb9fe4ab353abf8f0c55a9893ca05952"
+    },
+    {
+      "arch": "x86_64",
+      "instance": "gcm-owner-amd",
+      "cpus": 4,
+      "revision": "4158ff6a4952469b965e2b85c9f2f0d497850e7b",
+      "kernel_sha256": "5407a9ced54667865c895d38ad10289c9bbd38ccf1200aecd4a707227ba19f79",
+      "boot_image_sha256": "c80ef3664c58e379d3e6a0119a5d92217c4a0dad33093df4b8a97a9568fcd36d",
+      "initial_disk_sha256": "57910192506c25a8070344341c2fe8c897fbb74add47ec91b40bb47b63168089",
+      "bundle_sha256": {
+        "agent.elf": "b07861a2ee5f9509f0a5f1d881041b00f1e7665ca467f698f767c8f065edfdd2",
+        "ahci.elf": "9e21364e4ea8045ad845ddb20a548c4381928666c2f3af96475e01242757bb58",
+        "client.elf": "7587b5e8d3fed85777d90946ce3b6424c57eb228d92330fc15fb58922ed25c7d",
+        "clusterctl.elf": "1b6de1cf910e8dea6a12f68958d83e3af60c3c8958556ac4b203d5398fc4d6fb",
+        "deployd.elf": "ab904ea05674eef9a3fcf1857524391d7ee772b3da0530286750d82f700fc671",
+        "disco.elf": "53a27b5f8747f2feeffb110cd50b55f3e6c558f37ee64d97d7a44c1315fbe7f6",
+        "dns.elf": "cea0a8fa1f24f574965b0a4094cc3bcee971ba980b509d7892a361ca01941699",
+        "e1000e.elf": "cc5b64a43a9ab341211c627d2e52178cdf6464ffbea5e1a34248d2d0b9d94662",
+        "echo.elf": "2408de7305d57704c740871f792ff7598b11cee9fbbe2f58988be54755d918cc",
+        "frouter.elf": "ce5ff26fa4b10becf0e20b1298a0777ece40a9bfd8bfa37bfc381561107ac5cd",
+        "fs.elf": "5f780ba292deeb028c342301ba7907d52fafd4f43189e3fe6d4344178f744eb1",
+        "grantctl.elf": "bd6e4a653f916116ad0d37a705b3bf7a34313047ad270fcda3b6ea9ba1e44d37",
+        "greet.elf": "2a1e920cca22ca6d8d7c2f136d6337d0f7389859387c9c3dc274739cf92564f1",
+        "httpd.elf": "f19d778df57a7d208e3487afd0cdbfc3d694246f2d681e1753df545f6a1cd57f",
+        "kafka.elf": "664c10c762a7591a4ad663430ed3299f644539958c580aa69288df8227094a68",
+        "kafka_smoke.elf": "7ff312e507ab5fa3a88415e09e60860a531ac3fcb0656331e56a9e5b39d7c371",
+        "nclient.elf": "f195c04718844b77f594339e813f39abd7fca746702d7868096b9cdfcbb36d94",
+        "net.elf": "021ca368c9a4f784590264e7722e34431b721041aa14e157e202ca7053b1142f",
+        "ns.elf": "59c1c0521b550020ecb67cdb0a46ea72fe3ce7038611800ad84f68f8bfc13b28",
+        "nvme.elf": "f02e4d95477de1d645fa58285cacb9c82b6e369b4c48e5b5bbdbfea8de18198e",
+        "nvme_client.elf": "ca57cec0ab5136b898acd7a320e8efba6c26480910f6a08fbd6e4448f0e41acd",
+        "objstore.elf": "927faf09a7e20241d3b3f069d26d196e1b2ca38450563e1aee2a4f9affcb287e",
+        "objstore_client.elf": "ea65f4c0c3843d1fdd13157a40142f8798d8183a0f14e3e66c204ed5523f9828",
+        "observe.elf": "2a3b9d9a4108c853ec4a0781a90776783d7b827be5a999cb5097017e3bbf04b7",
+        "raft.elf": "fd92b8cc8a2cb6d254a7a57bc92779dd2cafe126c46f9b9ca79f63dfae028fb9",
+        "rclient.elf": "b6f1f62fbccfe439044f5c360dcb1ac2935a458deaab29d151cbb1336e6396fa",
+        "relmsg.elf": "b4a1e6176e4192bece00b747ec6f97dc7d4f1d289477184f853991ef91ceab8a",
+        "rng.elf": "933b6da80757471d1a20f11594588db9992bddbd3f8a3affa07ea85d92c20424",
+        "s3.elf": "3253a756efc4c64f4fe6e68fc28eae068a85c59abbffceab90c43e218fa9e8de",
+        "s3_smoke.elf": "bf0d862369f2b3e852099ccacef7ad38e159319e20375b2e347281483f9dc417",
+        "security_probe.elf": "1a14d1c94e8410a0d33c04576569360603976a03bb0618ea23de04af5b311edd",
+        "servicemgr.elf": "61474b6524f95d6bb5c004ec665c3274241b4bf0292a118c5b18def84238fa2e",
+        "shutdown_probe.elf": "7fdb39d2fd2e938820d596358cbf8dc8d7b81fd61c417fad076493dd90301b3a",
+        "tcpclient.elf": "3c196aa3478e4838a88e6af40e6761b568b86fe61c4361fd156d332b949074cf",
+        "tcpip.elf": "746d3b20e2fdd4dcc77a1bdd9267a6128607025584b60e46509e59fdbd322227",
+        "time.elf": "17e06ce8b749531328c5b0dc53dbaa29928721420d696f8b3752cdbd6ba30bf1",
+        "virtio_blk.elf": "8cf9c557e37eaa51e360ab454fe5142a759e940d5d53986497410bf981dd65cb"
+      },
+      "tracked_diff_sha256": "bc04f3a9e76986f0b102d93b2451c26d9e082fa4718d4f4177f2a0c8d57cbfe1",
+      "backend": "amd",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20007 CATTEN_DEPLOY_HOST_PORT=20171 scripts/run-x86_64.sh --security-test --http-test --iommu amd --instance gcm-owner-amd --fresh-storage --timeout 480",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 18,
+        "failed": 0,
+        "pending": 0
+      },
+      "security_publication_generations": [
+        1,
+        2
+      ],
+      "native_gcm_receipts": [
+        "[+    14.494234] [EL0 LOG] lp=0 asid=156 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    14.962468] [EL0 LOG] lp=0 asid=157 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    15.022009] [EL0 LOG] lp=0 asid=152 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    18.890825] [EL0 LOG] lp=0 asid=152 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    51.890148] [EL0 LOG] lp=0 asid=152 [security] TLS GCM known-answer, tamper rejection and decrypt passed"
+      ],
+      "http_checks_passed": 14,
+      "http_probe_results": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.399s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.245s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.416s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.19s; ingress recovered"
+      ],
+      "http_transport_retries": [
+        {
+          "diagnostic": "HTTP transport TimeoutError; retry 1/2",
+          "eventual_probe_result": "PASS: initial metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: EOF followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: abortive peer closes followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 2/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        }
+      ],
+      "s3_tls_results": [],
+      "serial_sha256": "2b23fb6cca377cdb157655a34f5e7b4ac6cff26a1e5eb66967e3edeee58cef08"
+    },
+    {
+      "arch": "aarch64",
+      "instance": "gcm-owner-arm",
+      "cpus": 4,
+      "revision": "4158ff6a4952469b965e2b85c9f2f0d497850e7b",
+      "kernel_sha256": "f612798c786bf474a0cc3b7caa27b2c473ee4a60f96a17d449645745cec4c5c2",
+      "boot_image_sha256": "3948c2855c8c1271b7ce631890751b62f3007a7502aacfe4aad6069e3bb8a60e",
+      "initial_disk_sha256": "6c06135f6e3926b94a41d83512ee69e024540f62a525b02680974c1faaf4fc41",
+      "bundle_sha256": {
+        "agent.elf": "7c9b52a0bed0cc6ddc324af244abfce7a4939132979a7d3b8f34223cd1da9842",
+        "cclient.elf": "47813589646c0657ba4eb5a5a6af243b1f1684a083d780a9744ab3bcc5706248",
+        "client.elf": "5c7ac1151fa707b89db82b49bbefccfa2442f0dea4b213867dc08bdc5c510525",
+        "clusterctl.elf": "018f80fbf1ce9a74f1d99d2379a4d6a6b0bca2b48cf1bcc7467fbba311a72794",
+        "deployd.elf": "69dd9d198b2ab85ec1ea04c8f4dcc7805e0f3b65fe6fd74d1e48d3d479f90547",
+        "disco.elf": "99a7f2c90cb3ef9c0af49e176848aed3305a5ae2c1681855d3af1ef8c27f6462",
+        "dns.elf": "78109d95c5a8bd708816a1b36fac406e68780e4b36854b2b7ecb9544eebef192",
+        "echo.elf": "5c59747d8f6ce8141f0f6ed1c65d4617002cc5338481c1a7ef2060e2b448b5a5",
+        "frouter.elf": "805911205d6254f7b21b5b564bf24cb75a8de4bdf910e435ba38776e31e2bfaa",
+        "fs.elf": "c20931f30fbf42bd93046fa76c8ecb41ac1c496696e90e57e4db159037091a64",
+        "grantctl.elf": "039c27369e2371071c3d0b847b48c33c7f48e237822713577371b4cd793f898d",
+        "greet.elf": "8645845a750b0b312aab080787b8cda772e06d830e027ff3cf3ef11b9fc9c9bb",
+        "httpd.elf": "9034668d4bf50e07b8bd26309d02a6f17222a8e29d252204589938d868e5aae4",
+        "kafka.elf": "11e9b77f45723a6e60d8a0e7d581ff297b6b80f0044049fa389d0abc9752e325",
+        "kafka_fence_smoke.elf": "a3d63ba5b4f3c50c5ca32185521387d8ac98228113faef95541afd706170b9c0",
+        "kafka_smoke.elf": "46a2efaf5ffbab422ada37451e54b5565562dd44db070be2eae0b6b03107e3c2",
+        "kafka_step.elf": "8d8dd751dd49925569e3556d1f6a705d7ba4023708b459ab8ff3dff6325c2bef",
+        "kafka_step_input.elf": "a7e207a75d68acca60c3d5f5425fefb6ccf0a244cb7219dc42ffab47cd30202a",
+        "kafka_step_proc.elf": "8fef98dbe182877986eb874ebeb0ff64ae80d4d64e1a5604f7f9cfbec8ea2efc",
+        "nclient.elf": "34e54fb0b852f54f997a56bc70d6ddfd037bdab74ce58d6b48188f8e27f52f3f",
+        "net.elf": "6655d31e32759ab37b9a31bbfb5a691d91621123cfaf661c1c03514583f45bb0",
+        "ns.elf": "de73710ac3c0984734eb65d4113eb509c8a8a6837d50b8095d2573d99b204796",
+        "nvme.elf": "548ec21f81e278d77749ee6bac9e50b240bc606424f5a829ae08313131a23272",
+        "nvme_client.elf": "d14e74aebdf58aa6766a06edc877a740f695f7e6eccb78864ae1d3163df0a187",
+        "objstore.elf": "ea21184045b8391e4457f3b3b9b3bb369ef1252c71aef06143be773d0f832259",
+        "objstore_client.elf": "55cbd339afa0d78c9dc71a349c94a4ce4f815417fc82dec1e275b50944372034",
+        "observe.elf": "ff0f5552eb0d3e10edcf57b7bee59d5d3a3ea2bb111a76f68498890cd7e1de22",
+        "raft.elf": "281d4f280903c48e5800326f6826a9b09f5ec8f46dae474cb25e86e4ac4eeda1",
+        "rclient.elf": "a4b9d6d8102ec8bb8449f575d4b5580cd2f3ea525f9f26b8c991202ded52d314",
+        "relmsg.elf": "eeff85710ddd9c4270c2999651308dec8914b3b314ba737ceb6b86989653a9dd",
+        "rng.elf": "a948fdc8f30934bebbc22c85c27e1da76f00b6e6b327bfd27dda1f0a7a655686",
+        "s3.elf": "cc524ffc152d78bc1ad5319a9ffb2d82e1944ef521168e3a7787b9a89547145d",
+        "s3_smoke.elf": "2abe4a752de84bdfa15e93fa38bad3c92b02e2ef2b12fb3d1d0e8091762cb253",
+        "security_probe.elf": "ec5a2a8013149323858942a013dcfcbe136acf1a59b335f1cec05e3b00289c59",
+        "servicemgr.elf": "7e100f389bf431226ae0394238aa1857b72197f3df64823111d44347383bd12f",
+        "shutdown_probe.elf": "58cd8fb289f57358a06df005afeff7a3c242ad4a43ee0d9a062f1fab9bd9ac25",
+        "sitas-user.elf": "fbf1b47a721d84498a64e43bc626a7f962a52d3740e3fa7e14adaeea7fa5f311",
+        "tcpclient.elf": "6eeb6137839b0e78c3c3b27234ee7ee1f7aaa9991a5f1d457884dab87d9b7bbe",
+        "tcpip.elf": "0e24f771f43a3fea52539b8c65721c72957b4e3a09e2fbf42e45394591f91ab6",
+        "time.elf": "d6bf265479d64df812bcc29aa6224427be7562746b7239daef70093ac85d70f7",
+        "uart.elf": "55a8c43ecc6489c1fb9fa1827cfd8e2881068a382918d84eebf4369dbc502009"
+      },
+      "tracked_diff_sha256": "b55cf7eb160f287a7efa35418be324069b765880d677a972e5c42445159a0d73",
+      "backend": "smmuv3",
+      "command": "COMPOSE_PROJECT_NAME=charlotte-gcm-owner-arm CATTEN_RUSTFS_IMAGE=sha256:67f06d4b3479fd9d323d8a99c86aac411e665ac0981d06b52a2b790c66db359e CATTEN_RUSTFS_CLI_IMAGE=sha256:c4b42c2523eff4c378da9af9947475d1de88572cadbfd4a819ab7435a6796ff8 CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20008 CATTEN_DEPLOY_HOST_PORT=20172 scripts/run-aarch64.sh --security-test --http-test --s3-test --instance gcm-owner-arm --fresh-storage --timeout 300",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 22,
+        "failed": 0,
+        "pending": 0
+      },
+      "security_publication_generations": [
+        1,
+        2
+      ],
+      "native_gcm_receipts": [
+        "[+     8.555998] [EL0 LOG] lp=0 asid=150 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+     8.974750] [EL0 LOG] lp=0 asid=140 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+     9.062486] [EL0 LOG] lp=0 asid=157 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    13.009210] [EL0 LOG] lp=0 asid=157 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    45.699824] [EL0 LOG] lp=0 asid=157 [security] TLS GCM known-answer, tamper rejection and decrypt passed"
+      ],
+      "http_checks_passed": 14,
+      "http_probe_results": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.334s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.331s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.303s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.18s; ingress recovered"
+      ],
+      "http_transport_retries": [
+        {
+          "diagnostic": "HTTP transport TimeoutError; retry 1/2",
+          "eventual_probe_result": "PASS: initial metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: EOF followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: abortive peer closes followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 2/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        }
+      ],
+      "s3_tls_results": [
+        "[+    24.694096] [EL0 LOG] lp=0 asid=155 [s3-smoke] S3 TLS PUT/HEAD/GET/DELETE round trip succeeded",
+        "[+    24.694586] [s3-test] SUCCESS: verified 33-byte object round trip"
+      ],
+      "serial_sha256": "f2b41dc903056ae4fc7f88d025d4efaf736054b48d718e9909ae069f2330563b"
+    }
+  ],
+  "native_failures": [],
+  "tls_fixture": {
+    "project": "charlotte-gcm-owner-arm",
+    "cached_images_inspected_before_launch": [
+      {
+        "id": "sha256:67f06d4b3479fd9d323d8a99c86aac411e665ac0981d06b52a2b790c66db359e",
+        "architecture": "arm64",
+        "repo_digests": [
+          "rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21"
+        ]
+      },
+      {
+        "id": "sha256:c4b42c2523eff4c378da9af9947475d1de88572cadbfd4a819ab7435a6796ff8",
+        "architecture": "arm64",
+        "repo_digests": [
+          "rustfs/rc@sha256:f3dc331f76b14a852a1dc0bffc80509cc41424eaa9ea0306d9584edc211dcad6"
+        ]
+      }
+    ],
+    "running_container": {
+      "id": "c859c3b973860ef94addde5630c7ad4e9f6203036340344eb1109962b1bbb65a",
+      "image": "sha256:67f06d4b3479fd9d323d8a99c86aac411e665ac0981d06b52a2b790c66db359e",
+      "project": "charlotte-gcm-owner-arm"
+    },
+    "images_pinned_by_id_in_command": true,
+    "public_ca_der_sha256": "5c115fbe72ab02fba956307fc0389f06ff1d4db671b9c1a441cd33ff98a48225",
+    "post_cleanup": {
+      "containers": [],
+      "volumes": [],
+      "project": "charlotte-gcm-owner-arm",
+      "result": "empty after runner cleanup"
+    },
+    "credentials": "Public development fixture credentials and ephemeral generated CA/server keys; no production credential or private key bytes recorded."
+  },
+  "manual": {
+    "path": "docs/manual-v2/charlotte.pdf",
+    "sha256": "d49dbff37053f201345801fe3646348a7a2b7dd2e8e645657af44dc89ba071d2",
+    "pages": 249,
+    "source_sha256": "013cc2f307175162a9233ebb760191b3df3683b0c6bbc76f092f0e336976f709",
+    "two_pass_build": "pass",
+    "visually_reviewed_pdf_pages": [
+      117,
+      118
+    ],
+    "overfull_box_warnings": 190,
+    "scope": "Affected paragraph and following page reviewed; full manual layout not re-audited."
+  },
+  "formal": {
+    "inputs_or_transitions_changed": false,
+    "fresh_tlc_cases": 0,
+    "reason": "Local cryptographic backend/field lifetime outside current projections; no new refinement claim."
+  },
+  "incidental_source_build_test_failures": [],
+  "remaining_limits": [
+    "Hosted x86 outside the freestanding target policy remains unqualified; optional ARM PMULL still rejects its guard.",
+    "TLS traffic-key/IV/HKDF fields, explicit/compiler/register/cache copies and caller/socket/kernel/physical backing remain separate.",
+    "Ordinary Drop must execute; forced termination, panic-abort and power loss remain outside this correction.",
+    "x86 validation includes native selected-cipher operations and ordinary network integration, not an x86 TLS server round trip.",
+    "No performance qualification, new physical completion/retry authority or historical failure attribution.",
+    "Tracked boot diffs omit new untracked modules; frozen source hashes identify the complete changed code/configuration set."
+  ]
+}

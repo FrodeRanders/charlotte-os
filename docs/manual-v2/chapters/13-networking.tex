@@ -831,9 +831,13 @@ ordinary cipher Drop, with build-time checks for its AES-128 owner types.
 GCM authentication-key scratch also erases after construction. The current
 AArch64 software POLYVAL backend clears its state on ordinary Drop; its build
 guard rejects a backend without a destructor, including optional PMULL. The
-pinned x86 dispatch owner still has an erasure gap. TLS traffic keys, IVs, HKDF
-state and compiler copies need separate work; complete-session erasure is not
-established.
+freestanding x86 target now selects that same erasing software state instead of
+the pinned non-dropping dispatcher. Its production guard rejects a missing
+backend flag or erasure feature. This disables PCLMUL authentication acceleration;
+the TLS cipher and AES selection remain unchanged, and throughput impact is not
+qualified. Hosted x86 outside this target policy, TLS traffic keys, IVs, HKDF
+state and compiler copies need separate work; complete-session or physical-memory
+erasure is not established.
 
 The SCRAM exchange uses consuming phases. Username escaping writes directly into
 the reserved erasing initial transcript, without a separate scratch string. The

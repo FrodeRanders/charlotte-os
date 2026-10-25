@@ -3,6 +3,9 @@
 #![no_main]
 extern crate alloc;
 
+#[path = "../tls_client/gcm_contract.rs"]
+mod gcm_contract;
+
 use alloc::vec::Vec;
 
 use catten_rt::{
@@ -710,6 +713,9 @@ fn main(ctx: Context) -> ! {
     let endpoint = Endpoint::create(0x5ec, 1, 8).unwrap_or_else(|_| catten_rt::domain_abort());
     endpoint.bind_completion_queue(0).unwrap_or_else(|_| catten_rt::domain_abort());
     config::write::<u32>(status::STAGE, status::STARTED);
+
+    gcm_contract::check();
+    catten_rt::logln!("[security] TLS GCM known-answer, tamper rejection and decrypt passed");
 
     if matches!(ctx.manifest_value(status::MODE_KEY), Some(ManifestValue::Unsigned(2))) {
         let tcpip =

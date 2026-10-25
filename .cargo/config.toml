@@ -14,6 +14,12 @@ rustflags = ["-D", "warnings", "-C", "force-frame-pointers=yes"]
 [target.aarch64-unknown-none-catten]
 rustflags = ["-D", "warnings", "-C", "force-frame-pointers=yes"]
 
+# POLYVAL 0.6.2's x86 dispatcher does not drop its active authentication
+# state. Freestanding services select the erasing software owner instead.
+# tls_client rejects a flag/feature override that loses its destructor.
+[target.x86_64-unknown-none]
+rustflags = ["-D", "warnings", "--cfg", "polyval_force_soft"]
+
 [env]
 # Tell clang/cc and bindgen to use a real clang triple instead of our custom one,
 # since clang doesn't know about the 'catten' environment component.

@@ -39,6 +39,16 @@ running documentation tests. Check the test names/counts when adding a suite.
 Freestanding binary targets keep their harness disabled. CI calls the same
 wrapper.
 
+Before switching to the temporary host directory, the wrapper also runs
+`scripts/tests/test-tls-gcm-backend.py`. This uses the pinned nightly toolchain
+and `rust-src` to compile the production authentication-state guard for
+freestanding x86, even on an AArch64 development host. Repository backend flags
+must compile; removing software selection or its erasure feature must fail.
+These are compile controls, not emulated guest execution. The public GCM vector
+is shared with the signed `security_probe`, which emits a separate native
+known-answer/tamper/decrypt receipt. See the
+[backend qualification](../reports/audits/2026-10-25-security-x86-gcm-owner.md).
+
 ## Target-only tests
 
 The `catten` kernel, `catten-user`, and the binaries in `catten-services` are

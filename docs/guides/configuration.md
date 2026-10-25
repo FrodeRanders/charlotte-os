@@ -62,6 +62,13 @@ There is currently **no boot-time resource-policy input or live resizing**.
 Profile selection does not install trust or provide a fallback for invalid policy.
 An already-running node keeps its compiled policy and original charges.
 
+Cryptographic backend flags are a separate build contract. Freestanding x86
+services select the erasing software POLYVAL owner through target settings in
+`.cargo/config.toml`. An overriding `RUSTFLAGS`/`CARGO_ENCODED_RUSTFLAGS` that
+loses that selection rejects the TLS destructor guard. Resource profiles do not
+override it. Re-enabling authentication acceleration requires a separately
+qualified erasing owner; see the [backend evidence](../reports/audits/2026-10-25-security-x86-gcm-owner.md).
+
 ## Related limits
 
 Review these groups together when changing workload targets:

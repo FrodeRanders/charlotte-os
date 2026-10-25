@@ -270,9 +270,12 @@ transaction as aborted and start a new transaction after rediscovery/retry.
 The shared TLS transport enables AES round-key and GCM authentication-key
 scratch erasure. The current AArch64 software POLYVAL backend also erases its
 state on ordinary Drop, with a build guard requiring destructor presence. The
-pinned x86 dispatch and optional ARM PMULL state still have erasure gaps; the
-PMULL backend rejects the AArch64 guard. TLS traffic-key/IV/HKDF state and
-compiler copies remain separate SEC-15 work. See the [AES review](../reports/audits/2026-10-21-security-aes-erasure.md) and
+freestanding x86 target selects the erasing software state and requires its
+destructor too, avoiding the pinned non-dropping dispatcher. Removing its backend
+flag or erasure feature rejects the build. PCLMUL authentication acceleration is
+disabled; hosted x86 outside that target policy is unqualified. Optional ARM PMULL
+still rejects the AArch64 guard. TLS traffic-key/IV/HKDF state and compiler copies
+remain separate SEC-15 work. See the [x86 follow-up](../reports/audits/2026-10-25-security-x86-gcm-owner.md), [AES review](../reports/audits/2026-10-21-security-aes-erasure.md) and
 [GCM review](../reports/audits/2026-10-22-security-gcm-erasure.md).
 
 Setting `KafkaProfile::tls` selects the shared owned TLS transport and never

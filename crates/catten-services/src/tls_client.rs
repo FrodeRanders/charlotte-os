@@ -72,11 +72,12 @@ const _: fn() = || {
 const _: fn(<Aes128GcmSha256 as embedded_tls::TlsCipherSuite>::Cipher) -> aes_gcm::Aes128Gcm =
     |cipher| cipher;
 
-// The current AArch64 software POLYVAL backend erases its fields on Drop.
-// Reject a feature/backend change that removes that destructor. The pinned
-// x86 dispatch and optional ARM PMULL implementations need separate fixes;
-// this assertion does not qualify their state erasure.
-#[cfg(target_arch = "aarch64")]
+// Require the selected authentication-state owners to have Drop. AArch64's
+// default software backend erases its fields. Freestanding x86 selects it with
+// polyval_force_soft because the pinned dispatcher does not drop its backend.
+// Reject flag/feature overrides rather than silently losing state erasure.
+// Pinned source establishes the destructor's semantics, not needs_drop alone.
+#[cfg(any(target_arch = "aarch64", all(target_arch = "x86_64", target_os = "none")))]
 const _: () = {
     assert!(core::mem::needs_drop::<polyval::Polyval>());
     assert!(core::mem::needs_drop::<ghash::GHash>());
@@ -537,33 +538,14 @@ mod tests {
         BlockEncrypt,
         KeyInit,
     };
-    use aes_gcm::AeadInPlace;
+
+    mod gcm_contract {
+        include!("tls_client/gcm_contract.rs");
+    }
 
     #[test]
     fn selected_tls_gcm_preserves_ciphertext_tag_and_rejects_tampering() {
-        type Cipher = <embedded_tls::Aes128GcmSha256 as embedded_tls::TlsCipherSuite>::Cipher;
-        let cipher = Cipher::new(&[0u8; 16].into());
-        let nonce = [0u8; 12].into();
-        let mut block = [0u8; 16];
-        let expected = [
-            0x03, 0x88, 0xda, 0xce, 0x60, 0xb6, 0xa3, 0x92, 0xf3, 0x28, 0xc2, 0xb9, 0x71, 0xb2,
-            0xfe, 0x78,
-        ];
-        let tag = cipher.encrypt_in_place_detached(&nonce, b"", &mut block).unwrap();
-        assert_eq!(block, expected);
-        assert_eq!(
-            tag.as_slice(),
-            [
-                0xab, 0x6e, 0x47, 0xd4, 0x2c, 0xec, 0x13, 0xbd, 0xf5, 0x3a, 0x67, 0xb2, 0x12, 0x57,
-                0xbd, 0xdf,
-            ]
-        );
-        let mut invalid = tag;
-        invalid[0] ^= 1;
-        assert!(cipher.decrypt_in_place_detached(&nonce, b"", &mut block, &invalid).is_err());
-        assert_eq!(block, expected);
-        cipher.decrypt_in_place_detached(&nonce, b"", &mut block, &tag).unwrap();
-        assert_eq!(block, [0; 16]);
+        gcm_contract::check();
     }
 
     #[test]

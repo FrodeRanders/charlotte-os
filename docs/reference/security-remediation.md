@@ -1169,8 +1169,15 @@ this does not close SEC-15 or change finding counts.
 The [GCM feature follow-up](../reports/audits/2026-10-22-security-gcm-erasure.md) enables authentication-key scratch
 wiping and POLYVAL software-state erasure. AArch64's build guard rejects a
 backend without a destructor, including the pinned optional PMULL path. The
-x86 dispatch owner still lacks Drop delegation; complete TLS traffic-key/IV/HKDF
-erasure remains open. SEC-15 and finding counts are unchanged.
+x86 dispatch owner still lacks Drop delegation. The
+[freestanding x86 follow-up](../reports/audits/2026-10-25-security-x86-gcm-owner.md)
+now selects the existing erasing software backend through target Cargo flags
+and extends the production destructor guard. Removing the flag or erasure
+feature rejects the deployed build. The signed security probe executes the same
+public GCM known-answer/tamper/decrypt control as the host test. PCLMUL
+authentication acceleration is disabled; AES selection and the TLS cipher stay
+unchanged. Hosted x86, complete TLS traffic-key/IV/HKDF erasure, forced termination
+and physical-memory copies remain open. SEC-15 and finding counts are unchanged.
 
 | Order | Finding and acceptance criterion |
 | --- | --- |

@@ -39,7 +39,7 @@ records a retained-storage reproduction and the correction's validation.
 | Encoded Kafka launch profile | `charlotte_protocol_kafka::Profile::encode` returns `Zeroizing<Vec<u8>>` | Validate all fields and the complete bounded size before allocating one frame; the owner exists before credential writes. The kernel borrows it through its existing launch scope. Profile and Authentication omit aggregate Debug. Caller inputs, explicit copies, connector-local profile copies and original launch backing remain separate. |
 | TLS AES-128 expanded round keys | The selected AES-GCM record cipher owns `aes::Aes128`; its combined/encrypt/decrypt owners require `ZeroizeOnDrop` | `catten-services` explicitly enables AES 0.8.4 erasure. The library clears software or selected hardware round-key fields on ordinary Drop, including error return. Compile-time bounds reject disabled erasure. This is a dependency/source contract, without a new target-memory erasure measurement. See the [AES review](../reports/audits/2026-10-21-security-aes-erasure.md). |
 | GCM authentication-key construction scratch | Existing AES-GCM and GHASH constructors | Their separate `zeroize` features clear the AES-derived authentication key and GHASH's reversed/transformed key copies after construction. Source/feature contract; no private scratch-memory probe. See the [GCM review](../reports/audits/2026-10-22-security-gcm-erasure.md). |
-| GHASH/POLYVAL software state | The record cipher's existing `GHash` / `Polyval` owner | POLYVAL's erasure feature clears software `h` and accumulator fields on ordinary Drop. Current AArch64 builds require destructor presence; optional PMULL rejects that guard. Pinned x86 dispatch still lacks Drop delegation, so its original state is unqualified. This is not complete TLS-state erasure. |
+| GHASH/POLYVAL software state | The record cipher's existing `GHash` / `Polyval` owner | POLYVAL's erasure feature clears software `h` and accumulator fields on ordinary Drop. AArch64 and freestanding x86 require destructor presence; x86 target flags select software state instead of the non-dropping dispatcher. Missing erasure/backend flags reject the deployed build; optional ARM PMULL still rejects its guard. Hosted x86 and complete TLS-state erasure remain unqualified. See the [x86 follow-up](../reports/audits/2026-10-25-security-x86-gcm-owner.md). |
 | TLS traffic keys, IVs and HKDF state | Existing embedded-tls key-schedule owner | Remaining SEC-15 work: these plain fields have no erasing destructor. Cipher-local erasure does not clear this enclosing state. |
 | HPKE X25519 private key and shared secret | The selected `x25519-dalek` `StaticSecret` and `SharedSecret` owners inside HPKE | The direct dependency requires `zeroize`, which HPKE's disabled defaults omitted. Production trait bounds require both owners to implement `ZeroizeOnDrop`. Drop erases their named 32-byte fields. |
 | Generated recipient private bytes | Returned `Zeroizing<[u8; 32]>`, created as an owner before serialization | Transfers directly to the signing tool; ordinary return/error drops the owner. Public recipient bytes remain an array. Explicit caller copies still need their own policy. |
@@ -238,5 +238,11 @@ The [GCM feature review](../reports/audits/2026-10-22-security-gcm-erasure.md) e
 state erasure features. AArch64's current software backend clears named state
 fields on ordinary Drop; a production destructor-presence guard rejects missing
 erasure and the optional PMULL backend. That guard is a build contract, not a
-memory measurement. The pinned x86 dispatch owner still lacks Drop delegation.
-TLS traffic-key/IV/HKDF fields, compiler copies and physical memory remain open.
+memory measurement. The [x86 follow-up](../reports/audits/2026-10-25-security-x86-gcm-owner.md)
+selects the same erasing software state for freestanding x86 services with the
+target's `polyval_force_soft` Cargo flag. Their production guard now rejects the
+non-dropping dispatcher or disabled erasure; a caller override cannot silently
+remove that requirement. This disables PCLMUL authentication acceleration, not
+the TLS cipher or AES backend. No throughput qualification is claimed. Hosted
+x86 outside this target policy, TLS traffic-key/IV/HKDF fields, compiler copies
+and physical memory remain open.
