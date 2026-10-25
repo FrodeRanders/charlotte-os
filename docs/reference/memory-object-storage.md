@@ -228,6 +228,15 @@ See [copy snapshot evidence](../reports/audits/2026-10-25-security-copy-snapshot
 
 ## DMA-pin snapshots
 
+[`object/dma.rs`](../../crates/catten/src/memory/object/dma.rs) owns DMA pin
+admission, snapshot publication and explicit unpin together. Pin identity,
+snapshot and exclusivity are private to that module; backend callers keep the
+same complete pin and borrowed frame/identity methods. The internal access
+descriptor and snapshot factory are private too. Only unused preparation or
+the existing backend completion contract permits consuming unpin; module
+placement adds no hardware proof. See the
+[refactoring evidence](../reports/audits/2026-10-25-refactoring-dma-pin.md).
+
 DMA pin admission probes direction/read-write rights, loan/retirement state,
 copy/DMA exclusion, CPU mappings and checked shared/exclusive counters under
 memory serialization. The shared inert snapshot preparation then allocates

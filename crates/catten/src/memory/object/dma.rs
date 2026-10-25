@@ -5,11 +5,76 @@ use super::{
     *,
 };
 
+#[must_use]
+pub(crate) struct DmaPin {
+    object: MemoryObjectId,
+    frames: snapshot_storage::Snapshot,
+    exclusive: bool,
+}
+
+impl Drop for DmaPin {
+    fn drop(&mut self) {
+        // Only confirmed backend cleanup or unused preparation permits explicit
+        // unpin. Fallback retains snapshot, pin counters and original backing.
+    }
+}
+
+impl DmaPin {
+    pub(crate) fn frames(&self) -> &[PAddr] {
+        &self.frames
+    }
+
+    pub(crate) fn object_id(&self) -> u64 {
+        self.object
+    }
+}
+
+pub(crate) fn pin_for_dma(
+    asid: AddressSpaceId,
+    cap: MemoryObjectCap,
+    device_reads: bool,
+    device_writes: bool,
+    exclusive: bool,
+) -> Result<DmaPin, MemoryObjectError> {
+    pin(
+        asid,
+        cap,
+        Access {
+            reads: device_reads,
+            writes: device_writes,
+            exclusive,
+        },
+    )
+}
+
+pub(crate) fn unpin_dma(pin: DmaPin) {
+    unpin_dma_with(pin, || {});
+}
+
+fn unpin_dma_with(mut pin: DmaPin, snapshot_disposed: impl FnOnce()) {
+    core::mem::take(&mut pin.frames).finish();
+    snapshot_disposed();
+    let frames = {
+        let mut registry = MEMORY_OBJECTS.lock();
+        let object =
+            registry.objects.get_mut(&pin.object).expect("unpin_dma: pinned object missing");
+        object.dma_pins = object.dma_pins.checked_sub(1).expect("unpin_dma: dma_pins underflow");
+        if pin.exclusive {
+            object.exclusive_dma_pins = object
+                .exclusive_dma_pins
+                .checked_sub(1)
+                .expect("unpin_dma: exclusive_dma_pins underflow");
+        }
+        take_deferred_frames_if_unpinned(&mut registry, pin.object)
+    };
+    deallocate_frames(frames);
+}
+
 #[derive(Clone, Copy)]
-pub(super) struct Access {
-    pub reads: bool,
-    pub writes: bool,
-    pub exclusive: bool,
+struct Access {
+    reads: bool,
+    writes: bool,
+    exclusive: bool,
 }
 impl Access {
     fn validate(self) -> Result<(), MemoryObjectError> {
@@ -84,7 +149,7 @@ fn publish(
     }
 }
 
-pub(super) fn pin(
+fn pin(
     asid: AddressSpaceId,
     cap: MemoryObjectCap,
     access: Access,

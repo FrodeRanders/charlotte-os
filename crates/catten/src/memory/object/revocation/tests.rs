@@ -151,7 +151,7 @@ fn test_dma_pin_rejection(create: &mut impl FnMut(&str) -> usize) {
         assert!(info(borrower, loan).unwrap().mapped);
         assert_eq!(
             ADDRESS_SPACE_TABLE.lock().get_mut(borrower).unwrap().translate_address(base).unwrap(),
-            pin.frames[0]
+            pin.frames()[0]
         );
         // Rejected preparation returns both leases and leaves the original
         // loan/pin intact. This validates pin state without injecting an IOMMU fault.
