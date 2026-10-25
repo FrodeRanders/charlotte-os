@@ -178,7 +178,7 @@ pub(super) fn send_copy(
                 .expect("reserved copy-send endpoint changed under IPC ownership")
         };
         drop(transfer);
-        deliver(delivery);
+        delivery.notify();
         Ok(())
     })
 }
@@ -239,7 +239,7 @@ pub(super) fn vector(
                 .expect("reserved vector-send endpoint changed under IPC ownership")
             };
             drop(transfers);
-            deliver(delivery);
+            delivery.notify();
             None
         };
         let _ = object::close_cap(caller, descriptor);

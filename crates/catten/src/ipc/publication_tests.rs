@@ -28,7 +28,7 @@ pub(super) fn run() {
             prepared.commit(&mut ipc, endpoint_id, 7, 8).unwrap()
         };
         prepared.finish();
-        deliver(delivery);
+        delivery.notify();
         let incoming = receive(handle.id(), endpoint).unwrap();
         assert_eq!((incoming.opcode, incoming.arg0), (7, 8));
         reply(handle.id(), incoming.reply.unwrap(), 42).unwrap();

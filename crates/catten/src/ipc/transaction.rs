@@ -437,7 +437,7 @@ impl PreparedCall {
         let result = work(&mut owner);
         owner.finish();
         let (cap, delivery) = result?;
-        deliver(delivery);
+        delivery.notify();
         Ok(cap)
     }
 

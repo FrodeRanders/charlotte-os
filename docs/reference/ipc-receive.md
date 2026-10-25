@@ -44,6 +44,16 @@ Blocking receive still registers against endpoint readiness; pending/claimed
 fronts, loan cleanup, cancellation and exact delivery publication retain their
 existing contracts. This simplification adds no polling or cleanup owner.
 
+[`ipc/message.rs`](../../crates/catten/src/ipc/message.rs) groups enqueue,
+post-IPC notification and receive transactions. Its receive resources and
+speculative reply authority are private; result-page rejection leaves the
+queued message and hidden attachments intact. Commit publishes those attachments
+under the same exclusive IPC borrow. Producers pass a complete `Delivery`
+receipt out of their existing guard/cleanup boundary and consume it through
+`notify()`, preserving CQ wake before receiver notification. The root receive
+entry points, register envelope and cleanup order remain unchanged. See the
+[refactoring evidence](../reports/audits/2026-10-25-refactoring-ipc-message.md).
+
 A signed variant declaring runtime ABI 1 or 2 cannot be placed or launched on an
 ABI 3 node. Rebuild and re-sign all variants and bundled services. The CDEPLOY6
 layout and current persistent record tags are unchanged; exact target matching

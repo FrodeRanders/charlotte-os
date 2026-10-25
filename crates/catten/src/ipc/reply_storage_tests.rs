@@ -134,7 +134,7 @@ fn original_classification() {
         result
     };
     owner.finish();
-    deliver(delivery);
+    delivery.notify();
     assert_eq!(record_budget::node_used(), charged);
     let reply_cap = receive(root.id(), endpoint).unwrap().reply.unwrap();
     reply(root.id(), reply_cap, 42).unwrap();

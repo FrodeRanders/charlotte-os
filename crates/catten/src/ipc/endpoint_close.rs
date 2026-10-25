@@ -140,21 +140,21 @@ impl PreparedEndpointClose {
             // Ordinary rejection must restore that readiness edge after unlock.
             let ready = endpoint_available(&ipc, &ipc.endpoints[&self.endpoint]);
             let endpoint = ipc.endpoints.get_mut(&self.endpoint).unwrap();
-            Delivery {
-                observers: if ready {
+            Delivery::new(
+                if ready {
                     endpoint.readiness_observers.drain()
                 } else {
                     WaitNotifications::empty()
                 },
-                cq_wake: if ready {
+                if ready {
                     endpoint.notify_cq.map(|cq| (endpoint.owner, cq))
                 } else {
                     None
                 },
-            }
+            )
         };
         self.release_namespace()?;
-        deliver(delivery);
+        delivery.notify();
         Err(error)
     }
 

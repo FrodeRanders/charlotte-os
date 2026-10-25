@@ -447,18 +447,18 @@ impl<'a> PreparedCancellation<'a> {
                 || matches!(identity.target, CloseTarget::Namespace(owner) if owner == identity.server);
             Some((
                 message,
-                Delivery {
-                    observers: if endpoint_close {
+                Delivery::new(
+                    if endpoint_close {
                         WaitNotifications::empty()
                     } else {
                         endpoint.readiness_observers.drain()
                     },
-                    cq_wake: if endpoint_close {
+                    if endpoint_close {
                         None
                     } else {
                         endpoint.notify_cq.map(|cq| (endpoint.owner, cq))
                     },
-                },
+                ),
             ))
         });
         let was_queued = queued.is_some();
@@ -548,7 +548,7 @@ impl<'a> PreparedCancellation<'a> {
         }
         let released = self.release_namespaces();
         if let Some(delivery) = delivery {
-            deliver(delivery);
+            delivery.notify();
         }
         signal_observers(observers);
         released
