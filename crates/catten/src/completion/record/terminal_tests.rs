@@ -146,7 +146,7 @@ fn public_terminal(cancel_pending: bool, replace_queue: bool) {
                 assert_eq!(inner.buffer.as_deref(), Some(&[8][..]));
                 let queue = &registry[&CLIENT].cqs[&DEFAULT_CQ];
                 assert_eq!(queue.producer_head(), 1);
-                assert_ne!(queue.work_generation, 0);
+                assert_ne!(queue.work_generation(), 0);
                 // SAFETY: this private heap ring has no concurrent consumer;
                 // the registry retains its whole backing through this read.
                 let entry = unsafe { core::ptr::read((*queue.ring_ptr()).entries.as_ptr()) };
@@ -157,8 +157,9 @@ fn public_terminal(cancel_pending: bool, replace_queue: bool) {
             if replace_queue {
                 open_cq(CLIENT, DEFAULT_CQ, 8).unwrap();
                 let successor = capture_cq_interest(CLIENT, DEFAULT_CQ).unwrap();
-                *token.lock() =
-                    Some(sponsor.register(&successor.identity, Arc::downgrade(&observer)).unwrap());
+                *token.lock() = Some(
+                    sponsor.register(successor.waiter_source(), Arc::downgrade(&observer)).unwrap(),
+                );
             }
         });
         if worker {
@@ -188,7 +189,8 @@ fn public_terminal(cancel_pending: bool, replace_queue: bool) {
     let callback = observe(CLIENT, cap, notification.clone()).unwrap();
     let cq_sponsor = WaitSponsor::new(false);
     let original = capture_cq_interest(CLIENT, DEFAULT_CQ).unwrap();
-    let cq_token = cq_sponsor.register(&original.identity, Arc::downgrade(&notification)).unwrap();
+    let cq_token =
+        cq_sponsor.register(original.waiter_source(), Arc::downgrade(&notification)).unwrap();
     if cancel_pending {
         assert_eq!(captured.cancel(), CancelState::CancelRequested);
     }

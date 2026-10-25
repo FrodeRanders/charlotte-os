@@ -139,7 +139,7 @@ fn public_producers() {
         });
         let sponsor = WaitSponsor::new(false);
         let source = capture_cq_interest(CLIENT, DEFAULT_CQ).unwrap();
-        let token = sponsor.register(&source.identity, Arc::downgrade(&callback)).unwrap();
+        let token = sponsor.register(source.waiter_source(), Arc::downgrade(&callback)).unwrap();
         match mode {
             0 => complete_detached(CLIENT, operation, OpResult::Ok(0)).unwrap(),
             1 => assert_eq!(cancel_detached(CLIENT, operation), Ok(CancelState::CancelRequested)),
@@ -172,7 +172,7 @@ fn source_replacement() {
         counter.fetch_add(1, Ordering::SeqCst);
     });
     let original = capture_cq_interest(CLIENT, DEFAULT_CQ).unwrap();
-    let old_token = sponsor.register(&original.identity, Arc::downgrade(&callback)).unwrap();
+    let old_token = sponsor.register(original.waiter_source(), Arc::downgrade(&callback)).unwrap();
     // Force replacement precisely between real serialized publication and
     // producer disposal/notification, rather than relying on a timing race.
     let retired = retire_detached(CLIENT, operation, OpResult::Ok(0)).unwrap();
@@ -181,7 +181,7 @@ fn source_replacement() {
     open_cq(CLIENT, DEFAULT_CQ, 4).unwrap();
     assert_eq!(sponsor.used(), 0);
     let successor = capture_cq_interest(CLIENT, DEFAULT_CQ).unwrap();
-    let new_token = sponsor.register(&successor.identity, Arc::downgrade(&callback)).unwrap();
+    let new_token = sponsor.register(successor.waiter_source(), Arc::downgrade(&callback)).unwrap();
     retired.finish();
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     assert_eq!(sponsor.used(), 1);

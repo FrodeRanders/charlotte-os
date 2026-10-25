@@ -225,7 +225,7 @@ fn cq_detachment() {
     let sponsor = WaitSponsor::new(false);
     let observer: Arc<dyn Observer> =
         CallOnNotify::new(|| panic!("replaced CQ fabricated readiness"));
-    let list = entries.cqs[&0].waiters.clone();
+    let list = entries.cqs[&0].waiter_source().clone();
     let token = sponsor.register(&list, Arc::downgrade(&observer)).unwrap();
     let previous;
     {
@@ -246,7 +246,7 @@ fn cq_detachment() {
     // A normal public CQ replacement cancels an old source too.
     open_address_space_with_cq(CLIENT, 4, 8).unwrap();
     let interest = capture_cq_interest(CLIENT, 0).unwrap();
-    let token = sponsor.register(&interest.identity, Arc::downgrade(&observer)).unwrap();
+    let token = sponsor.register(interest.waiter_source(), Arc::downgrade(&observer)).unwrap();
     open_cq(CLIENT, 0, 8).unwrap();
     assert_eq!(sponsor.used(), 0);
     assert_eq!(cq_waiter_count(CLIENT, 0), 0);

@@ -15,9 +15,12 @@ the queue's ring producer state, FIFO backlog and backing. Its
 initializes those private fields and retains the complete prepared/retired
 payload. Producers call `CqState::post`; backlog reconciliation calls
 `CqState::flush` with the existing caller-owned refund batch. Namespace slot
-accounting, captured-source notification and checked waits remain in the core.
-Wait generations/source retain their existing completion-family access; ring
-inspection is read-only. See the [refactoring evidence](../reports/audits/2026-10-25-refactoring-cq-delivery.md).
+accounting remains in the core. Queue generations, the consumed cursor and
+waiter source are private to this module and its children. Producers advance
+work through a method at the original publication point and borrow the same
+admitted source for post-guard notification. Ring and generation inspection
+are read-only. See the [delivery evidence](../reports/audits/2026-10-25-refactoring-cq-delivery.md)
+and [readiness evidence](../reports/audits/2026-10-25-refactoring-cq-readiness.md).
 
 | Limit | Registered queues | Kernel-owned backing bytes |
 | --- | ---: | ---: |

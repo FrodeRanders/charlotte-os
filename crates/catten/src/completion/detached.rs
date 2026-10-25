@@ -195,16 +195,16 @@ fn post_detached(
             },
             &mut releases,
         );
-        cq_state.work_generation = cq_state.work_generation.wrapping_add(1);
+        let generation = cq_state.advance_work();
         crate::debug_trace::trace(
             crate::debug_trace::TAG_COMPLETE_DETACHED,
             asid as u64,
-            cq_state.work_generation,
+            generation,
             operation,
         );
         let delivered = outcome.flushed.detached + usize::from(outcome.delivered_current);
         as_completions.live = as_completions.live.saturating_sub(delivered);
-        Some(cq_state.waiters.clone())
+        Some(cq_state.waiter_source().clone())
     } else {
         // The queue disappeared after submission, so no delivery can be
         // retained. Release this operation's submission slot.
@@ -283,7 +283,7 @@ impl Target {
             capacity: entries.capacity,
             platform: asid == crate::memory::KERNEL_ASID
                 || platform.is_some_and(|root| Some(root) == entries.address_space),
-            source: queue.waiters.clone(),
+            source: queue.waiter_source().clone(),
         })
     }
 
@@ -299,7 +299,7 @@ impl Target {
         if !entries
             .cqs
             .get(&self.cq)
-            .is_some_and(|queue| core::ptr::eq(&*queue.waiters, &*self.source))
+            .is_some_and(|queue| core::ptr::eq(&**queue.waiter_source(), &*self.source))
         {
             return Err(SubmitError::NoCompletionQueue);
         }

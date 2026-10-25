@@ -1,0 +1,336 @@
+{
+  "schema": "charlotte-refactoring-evidence-v1",
+  "report_date": "2026-10-25",
+  "reviewed_revision": "acafa0e7a5825e7d34cf51fa9a91e207e3061fca",
+  "scope": {
+    "readiness_module": "crates/catten/src/completion/delivery/readiness.rs",
+    "core_lines_before": 1010,
+    "core_lines_after": 671,
+    "private_state": [
+      "queue work generation",
+      "queue consumed-generation cursor",
+      "queue admitted waiter source",
+      "captured interest binding"
+    ],
+    "unchanged": [
+      "single registry and lock boundaries",
+      "absolute deadline loop",
+      "exact source validation",
+      "refund/notification order",
+      "queue-wide consumption policy",
+      "limits/public register/wire ABI/userspace"
+    ],
+    "new_locks_accounts_reservations_allocations_owner_instances": false,
+    "finding_ledger": {
+      "corrected": 29,
+      "partial": 6,
+      "open": 3
+    }
+  },
+  "source_sha256": {
+    "crates/catten/src/completion/delivery.rs": "ec4e69499fc3d7fc0bd3f8ddf2d40f63d8896b1d896e9bc2aa74298212708454",
+    "crates/catten/src/completion/delivery/preparation/metadata_tests.rs": "972725150cb7f61e9303ee79af88df07b37cbfd3e092dd9646328702a128f867",
+    "crates/catten/src/completion/delivery/preparation/tests.rs": "7f9ba5862ccaf6e214edc35e0d5bda07bedff2a3fec8b07b19418f69681e27e3",
+    "crates/catten/src/completion/delivery/readiness.rs": "7c90df22ffd8fef70956a87f08e97ba2ec0d7b86b70b0cb5757c0cbcf7b94c4a",
+    "crates/catten/src/completion/delivery/readiness/waiter_tests.rs": "53203a4ac0b15eea5622568b6b8b982bb71d1abc7304870260f86944f17cbad0",
+    "crates/catten/src/completion/detached.rs": "ca0ba677f88dab85d569a25f9abd82d6fcaa89c8e18a69cf06383e81e131c242",
+    "crates/catten/src/completion/detached/retirement_tests.rs": "23c5c98f72d42024dbc9140c552d92afa5f90d71a2ab97f730593f40cdbf26ee",
+    "crates/catten/src/completion/mod.rs": "40ad91dd98bdc98f6b80f5db1740cd491d998e1f27d2fedc6a9ba3ca0938beaa",
+    "crates/catten/src/completion/namespace/preparation/tests.rs": "a895f619c151fc35489976b348dc9d875117f594a68ab2577d2b6fd34a948750",
+    "crates/catten/src/completion/record/callbacks/tests.rs": "efb0d6d122642efecbbc582b78e09f9b134f32b1eaa424a01c0b5d47bed735e2",
+    "crates/catten/src/completion/record/terminal_tests.rs": "1f456d6fcf6e8eeb9d5712db02a329522ce11f63824fbae21000c1cfdb7be49a"
+  },
+  "checks": {
+    "source_comparison": {
+      "baseline": "acafa0e7a5825e7d34cf51fa9a91e207e3061fca",
+      "method": "Token comparisons preserve string contents, ignoring comments/whitespace and optional trailing commas. Normalize new module facades, narrowed field scopes, explicit source borrows and pure generation helper calls at their original positions. Review aid, not formal refinement.",
+      "checks": {
+        "readiness_wake_wait_source_and_integrated_fixtures": true,
+        "interest_accessor_reads_original_source": true,
+        "waiter_fixture_byte_identical": true,
+        "remaining_core_after_plumbing": true,
+        "delivery_storage_fifo_flush_drop_unchanged": true,
+        "generation_method_same_wrapping_increment": true,
+        "generation_accessor": true,
+        "queue_source_accessor": true,
+        "caller_detached.rs": true,
+        "caller_delivery/preparation/metadata_tests.rs": true,
+        "caller_delivery/preparation/tests.rs": true,
+        "caller_detached/retirement_tests.rs": true,
+        "caller_namespace/preparation/tests.rs": true,
+        "caller_record/callbacks/tests.rs": true,
+        "caller_record/terminal_tests.rs": true
+      },
+      "fixture": {
+        "before": "crates/catten/src/completion/waiter_tests.rs",
+        "after": "crates/catten/src/completion/delivery/readiness/waiter_tests.rs",
+        "sha256": "53203a4ac0b15eea5622568b6b8b982bb71d1abc7304870260f86944f17cbad0"
+      }
+    },
+    "strict_base_kernel_clippy": {
+      "command": "CATTEN_<ARCH>_SERVICE_BUNDLE=<absolute signed bundle> cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+      "aarch64": "pass",
+      "x86_64": "pass"
+    },
+    "previously_rebuilt_signed_userspace_bundles_reused_no_userspace_source_changes": true,
+    "native_architectures_run_sequentially": true,
+    "new_tests_alternate_implementation_or_compatibility_path": false,
+    "formatting": "pass",
+    "whitespace": "pass",
+    "frozen_rust_hashes": {
+      "result": "pass",
+      "files": 11
+    },
+    "local_references": {
+      "result": "pass",
+      "checked": 375
+    }
+  },
+  "native_runs": [
+    {
+      "arch": "aarch64",
+      "instance": "cq-readiness-refactor-arm",
+      "cpus": 4,
+      "revision": "acafa0e7a5825e7d34cf51fa9a91e207e3061fca",
+      "kernel_sha256": "d75c95279199762faec395f997110bd900fb7a50b1bfdd433b6a9964185bf620",
+      "boot_image_sha256": "e4b7a7bbb0c89208fc198ce722a51eb1f7f937034722e35c88da859426c0c657",
+      "initial_disk_sha256": "5923970ba5cbf6cbd08fff031dbdcb3931416b3aeeb38528a917de129f405745",
+      "bundle_sha256": {
+        "agent.elf": "7c9b52a0bed0cc6ddc324af244abfce7a4939132979a7d3b8f34223cd1da9842",
+        "cclient.elf": "47813589646c0657ba4eb5a5a6af243b1f1684a083d780a9744ab3bcc5706248",
+        "client.elf": "5c7ac1151fa707b89db82b49bbefccfa2442f0dea4b213867dc08bdc5c510525",
+        "clusterctl.elf": "018f80fbf1ce9a74f1d99d2379a4d6a6b0bca2b48cf1bcc7467fbba311a72794",
+        "deployd.elf": "69dd9d198b2ab85ec1ea04c8f4dcc7805e0f3b65fe6fd74d1e48d3d479f90547",
+        "disco.elf": "99a7f2c90cb3ef9c0af49e176848aed3305a5ae2c1681855d3af1ef8c27f6462",
+        "dns.elf": "78109d95c5a8bd708816a1b36fac406e68780e4b36854b2b7ecb9544eebef192",
+        "echo.elf": "5c59747d8f6ce8141f0f6ed1c65d4617002cc5338481c1a7ef2060e2b448b5a5",
+        "frouter.elf": "805911205d6254f7b21b5b564bf24cb75a8de4bdf910e435ba38776e31e2bfaa",
+        "fs.elf": "c20931f30fbf42bd93046fa76c8ecb41ac1c496696e90e57e4db159037091a64",
+        "grantctl.elf": "039c27369e2371071c3d0b847b48c33c7f48e237822713577371b4cd793f898d",
+        "greet.elf": "8645845a750b0b312aab080787b8cda772e06d830e027ff3cf3ef11b9fc9c9bb",
+        "httpd.elf": "9034668d4bf50e07b8bd26309d02a6f17222a8e29d252204589938d868e5aae4",
+        "kafka.elf": "9451214217da63e6ed1204f1f2b9143043b6439e611dae6a92acee61acd7354d",
+        "kafka_fence_smoke.elf": "a3d63ba5b4f3c50c5ca32185521387d8ac98228113faef95541afd706170b9c0",
+        "kafka_smoke.elf": "46a2efaf5ffbab422ada37451e54b5565562dd44db070be2eae0b6b03107e3c2",
+        "kafka_step.elf": "8d8dd751dd49925569e3556d1f6a705d7ba4023708b459ab8ff3dff6325c2bef",
+        "kafka_step_input.elf": "a7e207a75d68acca60c3d5f5425fefb6ccf0a244cb7219dc42ffab47cd30202a",
+        "kafka_step_proc.elf": "8fef98dbe182877986eb874ebeb0ff64ae80d4d64e1a5604f7f9cfbec8ea2efc",
+        "nclient.elf": "34e54fb0b852f54f997a56bc70d6ddfd037bdab74ce58d6b48188f8e27f52f3f",
+        "net.elf": "6655d31e32759ab37b9a31bbfb5a691d91621123cfaf661c1c03514583f45bb0",
+        "ns.elf": "de73710ac3c0984734eb65d4113eb509c8a8a6837d50b8095d2573d99b204796",
+        "nvme.elf": "548ec21f81e278d77749ee6bac9e50b240bc606424f5a829ae08313131a23272",
+        "nvme_client.elf": "d14e74aebdf58aa6766a06edc877a740f695f7e6eccb78864ae1d3163df0a187",
+        "objstore.elf": "ea21184045b8391e4457f3b3b9b3bb369ef1252c71aef06143be773d0f832259",
+        "objstore_client.elf": "55cbd339afa0d78c9dc71a349c94a4ce4f815417fc82dec1e275b50944372034",
+        "observe.elf": "ff0f5552eb0d3e10edcf57b7bee59d5d3a3ea2bb111a76f68498890cd7e1de22",
+        "raft.elf": "281d4f280903c48e5800326f6826a9b09f5ec8f46dae474cb25e86e4ac4eeda1",
+        "rclient.elf": "a4b9d6d8102ec8bb8449f575d4b5580cd2f3ea525f9f26b8c991202ded52d314",
+        "relmsg.elf": "eeff85710ddd9c4270c2999651308dec8914b3b314ba737ceb6b86989653a9dd",
+        "rng.elf": "a948fdc8f30934bebbc22c85c27e1da76f00b6e6b327bfd27dda1f0a7a655686",
+        "s3.elf": "4a2acc3e9e50d8779b853d1b1b8e30ba512329ae1e00e6d731dce26e3ccee36b",
+        "s3_smoke.elf": "2abe4a752de84bdfa15e93fa38bad3c92b02e2ef2b12fb3d1d0e8091762cb253",
+        "security_probe.elf": "ba5801a48cd2450408d984ae8618059b7446056270bc28fffb59462964e20efb",
+        "servicemgr.elf": "7e100f389bf431226ae0394238aa1857b72197f3df64823111d44347383bd12f",
+        "shutdown_probe.elf": "58cd8fb289f57358a06df005afeff7a3c242ad4a43ee0d9a062f1fab9bd9ac25",
+        "sitas-user.elf": "fbf1b47a721d84498a64e43bc626a7f962a52d3740e3fa7e14adaeea7fa5f311",
+        "tcpclient.elf": "6eeb6137839b0e78c3c3b27234ee7ee1f7aaa9991a5f1d457884dab87d9b7bbe",
+        "tcpip.elf": "97b38c12575ea30242c5c1dcd9640eb0755016f857759489b56de9c07f6a0b07",
+        "time.elf": "d6bf265479d64df812bcc29aa6224427be7562746b7239daef70093ac85d70f7",
+        "uart.elf": "55a8c43ecc6489c1fb9fa1827cfd8e2881068a382918d84eebf4369dbc502009"
+      },
+      "tracked_diff_sha256": "b4789b09f8cd77dd70ad93607f02c88ab0d45aea47ce4841476ff25a453e985c",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19985 CATTEN_DEPLOY_HOST_PORT=20149 scripts/run-aarch64.sh --security-test --http-test --instance cq-readiness-refactor-arm --fresh-storage --timeout 300",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 20,
+        "failed": 0,
+        "pending": 0
+      },
+      "http_checks_passed": 14,
+      "http_probe_results": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.375s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.340s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.334s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.12s; ingress recovered"
+      ],
+      "http_transport_retries": [
+        {
+          "diagnostic": "HTTP transport TimeoutError; retry 1/2",
+          "eventual_probe_result": "PASS: initial metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: EOF followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: abortive peer closes followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 2/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        }
+      ],
+      "security_publication_generations": [
+        1,
+        2
+      ],
+      "serial_sha256": "5882936dd78ca92121e4e394158ab3f03bab4a758cff1bca9141fb8b9c8788f9",
+      "selected_native_controls": [
+        "[+     1.161970] [waiters] SUCCESS: source/domain/node bounds, owning cancellation, detached charges, promotion and ASID reuse",
+        "[+     1.496414] [CQ waiter preparation] heap-held success/full/ready/reused-source publication, retained rejection charge and post-guard cancellation passed",
+        "[+     1.497668] [device] prepared CQ wake fenced against exact numeric namespace reuse",
+        "[+     1.584674] [completion terminal disposal] heap-held owner detachment, post-publication reentrant event/worker disposal, cancellation parity, idempotency, exact CQ replacement and ten installation controls passed",
+        "[+     1.595043] [CQ metadata] unlocked node rejection, 32 heap-held fresh publications/removals, admission before allocation, complete backlog/source handback and original-account reuse passed",
+        "[+     4.280618] [reply CQ] reply/cancel/late binding, unobserved results, saturated admission and owner cancellation passed",
+        "[+     8.323351] CQ ring integration tests passed.",
+        "[+     8.335961] [device] deferred IRQ notification reentered device/CQ registries outside guards",
+        "[+     8.546478] [waiters] SUCCESS: Running/Ready rejection is non-mutating; retained-Waker cancellation; 64 completion/CQ timeout cleanups",
+        "[+     8.762895] [reply CQ] timed/untimed parked callers awakened by exact pending reply without a completion entry",
+        "[+    10.079802] [cq wait] SUCCESS: blocking CQ wait released by completion, by explicit wake, by a per-queue wake on a second shard queue, and by CQ-bound endpoint readiness."
+      ]
+    },
+    {
+      "arch": "x86_64",
+      "instance": "cq-readiness-refactor-intel",
+      "cpus": 4,
+      "revision": "acafa0e7a5825e7d34cf51fa9a91e207e3061fca",
+      "kernel_sha256": "ed70fb0e7ac5af5fc1224b4ace9dd8b11cef833362b03e19645e70fb6ce1ecee",
+      "boot_image_sha256": "393efcf0a8b33bcbd9e85075e6305ad702f7dd52dc813540f38b1d0cccca900c",
+      "initial_disk_sha256": "8860169e2a2167e84d531cc5ac0446ecd4396e6a5d12dcac7f2dcdad554e351f",
+      "bundle_sha256": {
+        "agent.elf": "9a1ce55b668ecdbd930e4cd7f445e7386113dbcf1004670e889757483b555284",
+        "ahci.elf": "e3604e8f582c09e8e9be8927c037d2ce6a0a799177030bd13a86207776986b16",
+        "client.elf": "7587b5e8d3fed85777d90946ce3b6424c57eb228d92330fc15fb58922ed25c7d",
+        "clusterctl.elf": "ddc8f0e1022a5a596ad8bc6ecadefe267f96db4fd48143496b2b154d60359987",
+        "deployd.elf": "579b708e088efe759b505543278e8d9fcdba8c818cbfca0b2cbd32b36cc068f5",
+        "disco.elf": "706baa52489e9b8777430e05ed2b9cd6ea9b183920cf7d5d6e0435b1cc922476",
+        "dns.elf": "acbd66f2acd5f929ee956851ac0295465cb0e8152262ec0bcec615a7e464b33d",
+        "e1000e.elf": "7515ca36abeb4b871064186f1c901b9f93921541888ed4f26028faa57b7f8a96",
+        "echo.elf": "f5380da952be0e1fbc419746664551c5f33ee46d8b62ab9edb7e2d7fe924bb51",
+        "frouter.elf": "4025ca4c20d86fbb7f7c67d539ab141f551c2918e770e060874bf6ca80a7226f",
+        "fs.elf": "252ed91d742f3554a27de75b2bc1dfc84c4b540ed4061accfba5d560c5ce067f",
+        "grantctl.elf": "4eeae2dcec2bec33811c242b547706614441bbea2ccb552968b38ce74a50dce0",
+        "greet.elf": "fb6e152e34645d4ae1b6392f71850c688d4cc0475a7751f0392778050c61ad7e",
+        "httpd.elf": "b16de6b0d477afe4e2e52ff3277420bf4557894aae4b6b22b00c89c1d21be03d",
+        "kafka.elf": "9f25f86b824fe8d7de14c197626307e3bc6ead58e6305b910f9a488430333d97",
+        "kafka_smoke.elf": "f4b57e519d5983fc03f58f7b4d63159822a003c325624226f16d93ace54010a6",
+        "nclient.elf": "924bfd1a07cc67c16a64176746ac924fe4fd36b95829c87818545a261da2a326",
+        "net.elf": "9b3008b7a7356eea1b1df8d261c4e64867f587475df82e62fafa57eefcc97162",
+        "ns.elf": "55d10086d99699cf87634de7c9aec2dba60d99e19e00b697ee5e129af4de4b2b",
+        "nvme.elf": "233a835bfa268a2046bd1768a986b3a3a0d5316645fea366e25ee87e50a38b25",
+        "nvme_client.elf": "16ac4efe9b0c5b91232c088d25fffca14facd6c5201ef573111dabcd80af3c30",
+        "objstore.elf": "d84a4b33256fb3ae05db84eb281db35cf2748c263ed977b8d108a35971ece430",
+        "objstore_client.elf": "4d4f001cffde037b65c9e8433855b01098cc63b5ef334246ae25e63768ffe4fc",
+        "observe.elf": "49f3c3241de00713201da049415628eca5e6cca32748ea5c51b14a0ca637cb21",
+        "raft.elf": "4187e23f27c337863c810c70e46813e1a9f4a753d7f8096b6b14d0dfdbb183ff",
+        "rclient.elf": "3bcecad8b197e62836193f1c2e8053efc7a933cb833d05b4e3bc8f42e58a5e05",
+        "relmsg.elf": "5989b6d15c96c6660dd22a5ff3b83da0edd74739c74512b624f1a07785c15cc6",
+        "rng.elf": "b9c1cc204330dccde6b0da3aa09962bcfcddc66d06060d24fa222e8f26f6c69c",
+        "s3.elf": "4a90f021454c5a29e92d350cc5f36192056d29c16c0128d970b1226917d3950a",
+        "s3_smoke.elf": "f1d14f41f3b7fcae3e6a191c03c99ba88524fb3342dd9eaccb43568a54518406",
+        "security_probe.elf": "33539c825b40ee49f7c029e6e12044af547889bf67a086a5fa6a3e81413b81a4",
+        "servicemgr.elf": "61474b6524f95d6bb5c004ec665c3274241b4bf0292a118c5b18def84238fa2e",
+        "shutdown_probe.elf": "3f7e3ff0143acc4dc0254264f99436fcb6b3aac8ca64de051e69fd2c65e3ccd2",
+        "tcpclient.elf": "a0dda5b46b7bb114952fe0f7e22fc1ee96634f2154770eaa62eb95c7544a86e9",
+        "tcpip.elf": "7c0f683a20058b21b53e5fa86af84f6686a43225ce0e2add8e650bd3384682b2",
+        "time.elf": "459e6222d3fa94ea7297b99c4b954ce5e8af65c20157436f7c6147c23ca350ab",
+        "virtio_blk.elf": "e1398a2fcbb24b244ca9b4e7f65f4f52cd2d4c01d73df5b2860137e2b15f5b74"
+      },
+      "tracked_diff_sha256": "6ca66008a058cec2b2d4dd0f0c3fe1410882eb24e16bd88651500d69cbc414ab",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=19986 CATTEN_DEPLOY_HOST_PORT=20150 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance cq-readiness-refactor-intel --fresh-storage --timeout 480",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 18,
+        "failed": 0,
+        "pending": 0
+      },
+      "http_checks_passed": 14,
+      "http_probe_results": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.337s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.312s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.405s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.22s; ingress recovered"
+      ],
+      "http_transport_retries": [
+        {
+          "diagnostic": "HTTP transport TimeoutError; retry 1/2",
+          "eventual_probe_result": "PASS: initial metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: EOF followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: abortive peer closes followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 2/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        }
+      ],
+      "security_publication_generations": [
+        1,
+        2
+      ],
+      "serial_sha256": "a1bf8b81cf7c49e9e68d976dc15247077326237922ad87b32b75d836d0db2b05",
+      "selected_native_controls": [
+        "[+     1.974398] [waiters] SUCCESS: source/domain/node bounds, owning cancellation, detached charges, promotion and ASID reuse",
+        "[+     2.440377] [CQ waiter preparation] heap-held success/full/ready/reused-source publication, retained rejection charge and post-guard cancellation passed",
+        "[+     2.442121] [device] prepared CQ wake fenced against exact numeric namespace reuse",
+        "[+     2.539612] [completion terminal disposal] heap-held owner detachment, post-publication reentrant event/worker disposal, cancellation parity, idempotency, exact CQ replacement and ten installation controls passed",
+        "[+     2.552813] [CQ metadata] unlocked node rejection, 32 heap-held fresh publications/removals, admission before allocation, complete backlog/source handback and original-account reuse passed",
+        "[+     5.304093] [reply CQ] reply/cancel/late binding, unobserved results, saturated admission and owner cancellation passed",
+        "[+    15.494153] CQ ring integration tests passed.",
+        "[+    15.535989] [device] deferred IRQ notification reentered device/CQ registries outside guards",
+        "[+    15.718256] [waiters] SUCCESS: Running/Ready rejection is non-mutating; retained-Waker cancellation; 64 completion/CQ timeout cleanups",
+        "[+    15.947329] [reply CQ] timed/untimed parked callers awakened by exact pending reply without a completion entry",
+        "[+    17.358817] [cq wait] SUCCESS: blocking CQ wait released by completion, by explicit wake, by a per-queue wake on a second shard queue, and by CQ-bound endpoint readiness."
+      ]
+    }
+  ],
+  "native_failures": [],
+  "limitations": [
+    "Mechanical source comparisons aid review, not formal refinement.",
+    "Queue-wide consumption remains shared; no new per-waiter progress/fairness guarantee or Sitas backstop removal.",
+    "Captured source retains no ring backing, root lease, result observation or physical quiescence authority.",
+    "Payload/source/containing destructor and outer IRQ/guard contexts remain separately qualified or open.",
+    "No model change or attribution of historical scheduler/metrics/root-close/mapping failures.",
+    "Tracked boot diffs omit untracked new modules; explicit frozen Rust hashes identify the complete changed source set."
+  ]
+}

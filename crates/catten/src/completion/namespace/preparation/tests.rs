@@ -143,7 +143,8 @@ fn complete_replacement() {
     let observer: Arc<dyn Observer> =
         CallOnNotify::new(|| panic!("namespace disposal fabricated CQ readiness"));
     let old_source = capture_cq_interest(CLIENT, DEFAULT_CQ).unwrap();
-    let old_token = sponsor.register(&old_source.identity, Arc::downgrade(&observer)).unwrap();
+    let old_token =
+        sponsor.register(old_source.waiter_source(), Arc::downgrade(&observer)).unwrap();
     let ring = unsafe { cq_ring_of(CLIENT, DEFAULT_CQ).unwrap() };
     let mut next = with_queue(CLIENT);
     let retired;
@@ -177,7 +178,8 @@ fn complete_replacement() {
     let next_records = record_admission(CLIENT).unwrap();
     let next_queues = cq_admission(CLIENT).unwrap();
     let next_source = capture_cq_interest(CLIENT, DEFAULT_CQ).unwrap();
-    let next_token = sponsor.register(&next_source.identity, Arc::downgrade(&observer)).unwrap();
+    let next_token =
+        sponsor.register(next_source.waiter_source(), Arc::downgrade(&observer)).unwrap();
     retired.finish();
     assert_eq!(hits.load(Ordering::SeqCst), 1);
     assert_eq!(source.registered(), 0);

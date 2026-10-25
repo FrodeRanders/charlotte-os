@@ -26,10 +26,10 @@ The capability-free lifecycle lives in
 captured-target preparation, one-time publication, producer completion,
 cancellation and explicit post-registry retirement. Operation/timer state and
 the terminal receipt stay private to that module. The completion core retains
-the shared registry and waits; [CQ delivery](completion-queue-budgets.md) owns
-the common ring/backlog. Only the original detached record-charge field is
-exposed for existing backlog-refund accounting. Complete nodes still follow
-their existing registry/backlog/refund owners. Public
+the shared registry and capability waits; [CQ delivery](completion-queue-budgets.md)
+owns the common ring/backlog and checked CQ readiness. Only the original
+detached record-charge field is exposed for existing backlog-refund accounting.
+Complete nodes still follow their existing registry/backlog/refund owners. Public
 entry points remain available through `completion`. See the
 [refactoring evidence](../reports/audits/2026-10-25-refactoring-completion-detached.md).
 

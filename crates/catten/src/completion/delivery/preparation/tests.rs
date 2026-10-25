@@ -68,7 +68,7 @@ fn allocation_and_replacement() {
     let observer: Arc<dyn Observer> =
         CallOnNotify::new(|| panic!("replacement fabricated readiness"));
     let old = capture_cq_interest(CLIENT, DEFAULT_CQ).unwrap();
-    let token = sponsor.register(&old.identity, Arc::downgrade(&observer)).unwrap();
+    let token = sponsor.register(old.waiter_source(), Arc::downgrade(&observer)).unwrap();
     let retired1;
     let retired2;
     {

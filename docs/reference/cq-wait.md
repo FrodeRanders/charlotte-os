@@ -35,6 +35,16 @@ readiness and linking under that registry. Ready/full/stale preparation remains
 owned until post-guard disposal. See the
 [source-preparation audit](../reports/audits/2026-10-15-waiter-source-preparation.md).
 
+[`completion/delivery/readiness.rs`](../../crates/catten/src/completion/delivery/readiness.rs)
+groups the captured interest, registration, checked wait, explicit wake and
+detached notification paths beneath the CQ payload owner. Queue generation,
+consumed cursor and source fields are private to that owner and its children;
+the captured interest's identity is private to readiness. Existing kernel/SDK
+entry points remain reexported through `completion`. Completion-family fixtures
+borrow the original admitted source through a read-only accessor. Deadline,
+admission, exact-source checks and post-guard notification order are unchanged.
+See the [refactoring evidence](../reports/audits/2026-10-25-refactoring-cq-readiness.md).
+
 Readiness is a hint, not result observation, attachment adoption or physical
 quiescence. Preserve every pending operation and borrowed buffer on timeout or
 rejection. `catten_services::reactor::wait` gives ordinary reference reactors a

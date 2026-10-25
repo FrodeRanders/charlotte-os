@@ -1,10 +1,28 @@
 //! CQ payload custody and delivery. Ring publication, FIFO backlog ownership
 //! and detached refund extraction share the existing serialized queue state.
 //! Caller-owned refund batches survive local registry guards before disposal;
-//! wait/source generations retain their existing completion-family contract.
+//! Its readiness child owns exact-source waits and wake delivery.
 use alloc::collections::VecDeque;
 
 use super::*;
+
+mod readiness;
+pub(in crate::completion) use readiness::signal_cq_source;
+pub(crate) use readiness::{
+    CqInterest,
+    capture_cq_interest,
+    cq_waiter_count,
+    prepare_wake,
+    test_irq_wake_reentrancy,
+    test_prepared_wake_identity,
+};
+pub use readiness::{
+    CqWaitError,
+    cq_pending,
+    cq_work_generation,
+    wait_on_cq_checked,
+    wake,
+};
 
 mod preparation;
 pub(super) use preparation::{
@@ -53,14 +71,14 @@ pub(super) struct CqState {
     /// [`wait_on_cq_checked`] to detect new work without depending on the shared
     /// ring's `pending()` count — callers that poll individual completions
     /// via `poll(cap)` and never drain the ring are not stuck in a busy-spin.
-    pub(super) work_generation: u64,
+    work_generation: u64,
     /// The `work_generation` value consumed by this queue's reactor. Only new
     /// work releases the next wait. Charlotte's per-shard model has one
     /// blocking reactor per CQ; multiple independent waiters would require a
     /// cursor per waiter rather than this queue-wide cursor.
-    pub(super) last_seen_generation: u64,
+    last_seen_generation: u64,
     /// Threads blocked waiting for this queue to become readable.
-    pub(super) waiters:
+    waiters:
         crate::klib::observer::registration::ListRef<crate::klib::observer::waiter_budget::Charge>,
     #[allow(dead_code)]
     _buf: Option<alloc::vec::Vec<u64>>,
@@ -69,6 +87,23 @@ pub(super) struct CqState {
 }
 
 impl CqState {
+    /// Caller retains registry serialization; notification follows guard exit.
+    pub(super) fn advance_work(&mut self) -> u64 {
+        self.work_generation = self.work_generation.wrapping_add(1);
+        self.work_generation
+    }
+
+    pub(super) fn work_generation(&self) -> u64 {
+        self.work_generation
+    }
+
+    pub(super) fn waiter_source(
+        &self,
+    ) -> &crate::klib::observer::registration::ListRef<crate::klib::observer::waiter_budget::Charge>
+    {
+        &self.waiters
+    }
+
     /// Borrowed raw ring address; ownership and every dereference remain with
     /// the existing registry/mapping/quiescent-consumer contract.
     pub(super) fn ring_ptr(&self) -> *mut cq::CompletionQueueRing {
