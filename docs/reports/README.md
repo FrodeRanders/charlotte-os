@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [RNG publication and idle readiness](audits/2026-10-26-security-rng-readiness.md) — Bounded shared publication and event-only endpoint/lifecycle waits; old signed server fails the exact CQ/no-timer control, replacement passes both publication generations.
+
 - [RNG caller-funded reply backing](audits/2026-10-26-security-rng-caller-buffers.md) — One current caller-buffer protocol, original-charge retention and real producer/caller budget controls; preserves the failed same-domain-loan fixture runs.
 
 - [Owned entropy request deadlines](audits/2026-10-26-security-entropy-deadlines.md) — Configurable observation budget, complete pending/reply ownership and signed native rejection/cleanup controls; records remaining producer-funded reply pressure.

@@ -27,13 +27,13 @@ use catten_rt::{
 };
 use catten_services::{
     entropy,
-    ns,
-    sleep_ms,
+    publication,
+    reactor,
     virtio,
 };
 use catten_syscall::{
     DmaDirection,
-    IpcRights,
+    cq_read,
     thread_exit,
 };
 use charlotte_launch::rng_status as status;
@@ -285,20 +285,23 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 
     let endpoint =
         Endpoint::create(entropy::INTERFACE, entropy::VERSION, 32).unwrap_or_else(|_| fail(0xe004));
-    let registration = ns_connection
-        .call_connection(
-            ns::OP_REGISTER,
-            entropy::NAME,
-            &endpoint,
-            IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
-        )
-        .unwrap_or_else(|_| fail(0xe005));
-    if !registration.wait().is_ok_and(|reply| reply.result >= 1) {
-        fail(0xe005);
+    if let Err(error) = endpoint.bind_completion_queue(0) {
+        config::write::<u32>(status::ERROR, 0xe007);
+        catten_rt::logln!("[rng] endpoint CQ binding rejected: {:?}", error);
+        catten_rt::domain_abort();
+    }
+    if let Err(error) = publication::register(ns_connection, entropy::NAME, &endpoint) {
+        config::write::<u32>(status::ERROR, 0xe005);
+        catten_rt::logln!("[rng] publication rejected: {:?}", error);
+        // Initialized device and endpoint remain live through terminal abort.
+        // An accepted/uncertain registration is never replayed or treated as
+        // device quiescence merely because its observation budget expired.
+        catten_rt::domain_abort();
     }
     config::write::<u32>(status::STAGE, 1);
     catten_rt::logln!("[rng] serving host-backed VirtIO entropy");
     let mut bytes_served = 0u64;
+    let cq = ctx.completion_queue_layout();
 
     loop {
         if let Some(request) = ctx.lifecycle().shutdown_requested() {
@@ -310,8 +313,14 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             drop(device);
             return request;
         }
+        // Drain readiness hints, including already observed publication/backoff
+        // completions. No RPC result/attachment is adopted from these entries.
+        while unsafe { cq_read(cq.base, cq.entries) }.is_some() {}
         let Some(message) = endpoint.try_receive().unwrap_or_else(|_| fail(0xe006)) else {
-            sleep_ms(10);
+            // Endpoint publication and exact-root lifecycle requests signal this
+            // same CQ. Its generation/recheck contract closes the enqueue race.
+            // Rejected wait admission aborts with all device owners live.
+            reactor::wait(None, 0);
             continue;
         };
         let length = message.arg0;

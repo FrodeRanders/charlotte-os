@@ -17,6 +17,34 @@ that requester, and launches `rng.elf`. The driver receives only its four-page
 modern VirtIO MMIO window and DMA-domain capability. It polls the queue and is
 therefore not granted an interrupt capability.
 
+### Publication and request readiness
+
+Before publication the owned request endpoint binds to the launch-owned default
+CQ. Registration uses the shared `publication::register`: only unaccepted exact
+queue-full rejection permits bounded admission backoff; accepted work is
+observed once. Its existing central compile-time policy allows 1000 ms for
+admission and 5000 ms for accepted-call observation, with 10 ms admission
+backoff. These are separate phase budgets, not one five-second end-to-end
+startup guarantee. Permanent/timeout/malformed publication and CQ binding or
+wait-admission rejection abort with the initialized device and endpoint live;
+they do not replay a registration or claim device quiescence.
+
+The ordinary idle service checks lifecycle, drains CQ hints and tries to
+receive from its endpoint. An empty receive waits event-only on that same CQ,
+whose generation/recheck contract covers enqueue races. Endpoint enqueue
+and exact-root lifecycle request publication both signal it. Every wake
+rechecks actual sources; CQ readiness neither receives a request nor adopts
+returned capabilities. There is no 10 ms idle timer. Unrelated wakeups repark
+without a watchdog, and accepted requests still use the owning transaction
+below. Lifecycle wakeup is not proof of hardware teardown; that separate
+existing shutdown path is unchanged.
+
+The shared publication constants live in `publication.rs`; changing them affects
+all its service callers. Rebuild/requalify boot ordering, queue-full/silent-peer
+publication and owner retention against loader/readiness budgets together.
+There is no new boot-resource input, live configuration or independent quota.
+See the [configuration guide](../guides/configuration.md).
+
 The service registers the short name `rng`, interface version 2. `OP_FILL = 2`
 requires a writable memory object moved from the caller, exactly
 `entropy::BUFFER_BYTES` bytes, and a requested count from 1 through
@@ -99,6 +127,15 @@ retention, cancellation, budget and DMA qualification. The separate positive
 The [caller-buffer follow-up](../reports/audits/2026-10-26-security-rng-caller-buffers.md)
 records concrete caller/producer accounting and verification limits. It does
 not establish hardware quiescence or close the broader SEC-07 finding.
+
+The [server-readiness follow-up](../reports/audits/2026-10-26-security-rng-readiness.md)
+qualifies actual idle CQ registration, endpoint wakeups and repark after
+unrelated/lifecycle-publication hints, including a failing old-server control.
+This removes request polling, not the bounded VirtIO descriptor/status poll.
+That hardware path has no implemented completion-interrupt notification. A
+device completion timeout can still leave a descriptor's outcome uncertain;
+fencing subsequent reuse and qualifying hardware recovery remain separate
+audit work. An idle CQ wake supplies no permission to replay device work.
 
 ## TCP/IP startup
 

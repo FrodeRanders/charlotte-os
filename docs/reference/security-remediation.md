@@ -91,6 +91,15 @@ independent-progress and sponsor-retirement controls qualify this narrow
 retention path; authorized flooding, shared metadata pressure and broader
 SEC-07 acceptance remain open. Finding dispositions stay unchanged.
 
+The [RNG server-readiness follow-up](../reports/audits/2026-10-26-security-rng-readiness.md)
+binds its owned endpoint to the default CQ before bounded shared publication.
+Idle request/lifecycle observation now registers event-only interest instead of
+10 ms timer polling; rejected binding/wait/publication aborts with device and
+endpoint owners live. Native exact-thread/CQ/no-timer checks reject the old
+signed server and qualify endpoint progress and unrelated/lifecycle-publication
+repark on the replacement. This does not qualify actual hardware shutdown,
+descriptor timeout recovery or broader flood fairness.
+
 The [HTTP listener correction](../reports/audits/2026-10-10-security-http-progress.md)
 retains listeners through queue-full admission. The
 [deployment ingress follow-up](../reports/audits/2026-10-11-security-deployment-ingress.md)

@@ -866,6 +866,13 @@ audit work. The bounded DNS boot-nonce collection also uses this client, with
 one 100 ms deadline for lookup and fill. See
 \repofiletext|docs/reference/entropy.md|{the entropy protocol reference}.
 
+The RNG server binds its request endpoint to the default completion queue before
+using shared bounded publication. With no queued request it parks on event-only
+CQ readiness, rechecking lifecycle and endpoint state after every wake; no idle
+10 ms timer remains. Rejected publication/binding/wait aborts with the device
+and endpoint owners live. This does not replace the bounded hardware-status poll
+or establish hardware shutdown or uncertain-descriptor recovery.
+
 One nonblocking handshake admission owns the static verification clock through
 completion. Overlap rejects before changing the clock, and completion clears
 it. mTLS retains typed P-256 SEC1 validation and constructs its Embassy signing

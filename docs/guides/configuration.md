@@ -96,6 +96,13 @@ changing them. DNS nonce lookup/fill shares its existing 100 ms collection
 budget, named `CAPACITY_NONCE_TIMEOUT_MS` in its capacity-report context. See
 [entropy configuration](../reference/entropy.md#client-policy-and-related-dimensions).
 
+RNG publication shares the compile-time policy in `publication.rs` with other
+platform services: `RETRY_BUDGET_MS = 1000`, `OBSERVATION_BUDGET_MS = 5000`,
+and `RETRY_PAUSE_MS = 10`. The admission and accepted-observation phases have
+separate budgets. Tune all helper consumers, boot ordering and readiness
+deadlines together; this is not live per-instance configuration. RNG idle
+request/lifecycle observation has an event-only CQ wait, with no timer setting.
+
 ## Related limits
 
 Review these groups together when changing workload targets:

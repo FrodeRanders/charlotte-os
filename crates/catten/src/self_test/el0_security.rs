@@ -406,7 +406,7 @@ fn verify_caller_buffers(
 fn verify_rng_caller_buffers(
     ns: &supervisor::NameServiceHandle,
     root: crate::memory::AddressSpaceHandle,
-    producer: crate::memory::AddressSpaceHandle,
+    producer_domain: &ServiceDomain,
 ) -> u64 {
     use crate::{
         ipc,
@@ -419,6 +419,7 @@ fn verify_rng_caller_buffers(
     const REQUEST: u64 = 32;
     const RETAINED: u64 = 32;
     let caller = root.id();
+    let producer = producer_domain.address_space;
     let baseline = memory::budget::used(root);
     let producer_baseline = memory::budget::used(producer);
     memory::budget::set_limit(
@@ -443,6 +444,18 @@ fn verify_rng_caller_buffers(
         result
     };
     let rng = wait(ipc::scalar_call(caller, ns_connection, 2, RNG_NAME).unwrap()).cap.unwrap();
+    let idle_dispatch = wait_for_rng_idle(producer_domain, None);
+    // An unrelated readiness hint must recheck sources and park again, rather
+    // than invent a request, observe attachments or install a polling timer.
+    crate::completion::wake(producer_domain.asid, 0);
+    let reparked_dispatch = wait_for_rng_idle(producer_domain, Some(idle_dispatch));
+    // Exercise the actual exact-root lifecycle publication wake without asking
+    // the boot hardware driver to stop or claiming a new physical/DMA receipt.
+    bootstrap::with_service_pages(producer_domain, |pages| {
+        pages.write_request(charlotte_launch::lifecycle::STATE_RUNNING, 0, 0)
+    })
+    .unwrap();
+    wait_for_rng_idle(producer_domain, Some(reparked_dispatch));
     for (opcode, expected) in [(1, -4), (FILL, -1)] {
         let result = wait(ipc::scalar_call(caller, rng, opcode, REQUEST).unwrap());
         assert_eq!(result.result, expected, "retired or missing-buffer RNG request must reject");
@@ -470,6 +483,11 @@ fn verify_rng_caller_buffers(
     assert!(ipc::wait_reply_timeout(caller, unobserved, 5_000).unwrap());
     assert_eq!(memory::budget::used(root).pages, baseline.pages + 1);
     assert_eq!(memory::budget::used(producer), producer_baseline);
+    wait_for_rng_idle(producer_domain, None);
+    logln!(
+        "[rng] readiness: exact thread parked on one CQ waiter without timer; unrelated and \
+         lifecycle-publication wakes reparked; endpoint requests progressed"
+    );
     ipc::close_cap(caller, unobserved).unwrap();
     assert_eq!(memory::budget::used(root), baseline);
     let mut retained = Vec::new();
@@ -523,6 +541,38 @@ fn verify_rng_caller_buffers(
          independent fill progressed"
     );
     external
+}
+
+fn wait_for_rng_idle(domain: &ServiceDomain, after_dispatch: Option<u64>) -> u64 {
+    use crate::cpu::scheduler::threads::{
+        MASTER_THREAD_TABLE,
+        MigrationConstraint,
+        ThreadState,
+    };
+    let deadline = crate::self_test::results::Deadline::after_millis(5_000);
+    loop {
+        let dispatch = {
+            let table = MASTER_THREAD_TABLE.read();
+            let thread = table.get(domain.tid).expect("RNG fixture retains the running domain");
+            assert_eq!(thread.generation, domain.generation);
+            assert_eq!(thread.address_space, Some(domain.address_space));
+            (matches!(thread.state, ThreadState::Blocked(_))
+                && thread.migration_constraints & MigrationConstraint::CompletionQueueWait.bit()
+                    != 0
+                && thread.timer_sponsor.used() == 0
+                && after_dispatch.is_none_or(|previous| thread.dispatch_count > previous))
+            .then_some(thread.dispatch_count)
+        };
+        // Independent inspection after the thread guard leaves; a timer sleep
+        // cannot satisfy this exact CQ registration count or migration fence.
+        if let Some(dispatch) = dispatch
+            && crate::completion::cq_waiter_count(domain.asid, 0) == 1
+        {
+            return dispatch;
+        }
+        deadline.assert_pending("RNG idle must register event-only CQ readiness");
+        sleep_millis(1); // Bounded fixture observation, never production polling.
+    }
 }
 
 extern "C" fn verify() {
@@ -620,7 +670,7 @@ extern "C" fn verify() {
             retained_buffers.push(verify_rng_caller_buffers(
                 &supervisor::node_name_service(),
                 probe.get().address_space,
-                entropy.address_space,
+                &entropy,
             ));
         }
         let base: *const u8 = probe.get().status_frame.into();

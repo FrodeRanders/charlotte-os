@@ -117,6 +117,13 @@ boot-resource parser or live resizing. DNS's separate
 budget in the capacity-report context. See
 \repofiletext|docs/reference/entropy.md|{the entropy configuration reference}.
 
+RNG publication uses the shared platform-service compile-time policy: 1000 ms
+admission, 5000 ms accepted-call observation and 10 ms queue-full-only admission
+backoff. These are separate phase budgets. Tune all helper consumers and boot
+readiness deadlines together in the shared publication module; RNG adds no
+per-instance or live override. Its idle request/lifecycle wait is event-only,
+without a timer policy.
+
 \section{Related limits and tuning consequences}
 
 The policy groups domain/ordinary/total capacities and resource dimensions.
