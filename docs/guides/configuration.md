@@ -87,6 +87,15 @@ possible returned backing longer; requalify timeouts, rejection and pressure
 without granting replay authority. See the
 [deadline contract](../reference/tls-client.md#request-deadline-and-operation-owner).
 
+RNG protocol storage groups `entropy::BUFFER_PAGES`, `BUFFER_BYTES` and
+`MAX_REQUEST` (currently one 4096-byte page). These compile-time dimensions
+control caller reply allocations and the driver's private DMA buffer together;
+they are separate from the request observation budget and kernel capacities.
+Rebuild all callers/driver and qualify maximum sizes, retention and DMA before
+changing them. DNS nonce lookup/fill shares its existing 100 ms collection
+budget, named `CAPACITY_NONCE_TIMEOUT_MS` in its capacity-report context. See
+[entropy configuration](../reference/entropy.md#client-policy-and-related-dimensions).
+
 ## Related limits
 
 Review these groups together when changing workload targets:

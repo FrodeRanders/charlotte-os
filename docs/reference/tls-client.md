@@ -65,9 +65,11 @@ shortcut. The service-only request must fit the protocol's existing
 `1..=entropy::MAX_REQUEST` bound; no prefix is submitted on rejection.
 
 `ServiceEntropyRead::start` owns the accepted pending call and borrows the
-source/output with the original deadline. Consuming `finish` combines it with
+source/output with the original deadline. Preparation allocates the current
+protocol buffer on the caller's account and transfers it with `call_move`.
+Consuming `finish` combines it with
 returned owners and a read-only mapping in one completion owner. It requires an
-exact byte count, memory and no connection attachment; negative peer status,
+exact byte count, exact-sized memory and no connection attachment; negative peer status,
 malformed replies and mapping failure never become successful entropy. A deferred
 `start` does not arm background cancellation: retaining that owner can retain
 accepted work/backing past its deadline until `finish`, `cancel` or Drop. A late
@@ -75,7 +77,7 @@ reply is disposed without publication; a deadline crossed during the final copy
 clears that destination before rejection. Output is usable only on success;
 an architectural prefix may already have been filled when the service fails.
 
-`ExpiredBeforeAdmission`, `Submission`, `Observation` and `ObservationTimeout`
+`ExpiredBeforeAdmission`, buffer `Preparation`, `Submission`, `Observation` and `ObservationTimeout`
 remain distinct. `Observation` preserves the exact `IpcError`, including wait
 admission rejection; it is never converted to timeout. Accepted work is not
 replayed. The pending owner survives rejection until checked cancellation, and
@@ -84,9 +86,11 @@ Its Drop retains the runtime's domain-abort policy on unsafe cancellation.
 
 This bounds reply observation, not a whole TLS/SCRAM exchange, source lookup,
 kernel mapping/cancellation latency or scheduling progress. Cancellation of a
-request does not prove RNG device DMA quiescence. The service still allocates
-reply backing on its own account; caller funding and retention pressure remain
-separate audit work for holders of RNG authority.
+request does not prove RNG device DMA quiescence. RNG v2 fills and returns the
+caller-supplied buffer, preserving its original allocation charge through
+retention. The service has no fresh reply-allocation fallback. Queue/metadata
+pressure and authorized flooding remain separate audit work; see the
+[entropy protocol](entropy.md).
 
 Embassy's RNG callback cannot return an error. Opening TLS preflights entropy
 and returns `EntropyUnavailable` on ordinary admission/source failure. A later

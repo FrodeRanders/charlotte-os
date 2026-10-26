@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [RNG caller-funded reply backing](audits/2026-10-26-security-rng-caller-buffers.md) — One current caller-buffer protocol, original-charge retention and real producer/caller budget controls; preserves the failed same-domain-loan fixture runs.
+
 - [Owned entropy request deadlines](audits/2026-10-26-security-entropy-deadlines.md) — Configurable observation budget, complete pending/reply ownership and signed native rejection/cleanup controls; records remaining producer-funded reply pressure.
 
 - [Pinned Embassy TLS migration](audits/2026-10-26-security-embassy-tls.md) — Active patched crypto-bigint graph, domain-owned entropy, typed mTLS and erasing cipher driver; host interop and final ARM/Intel/AMD artifact qualification.

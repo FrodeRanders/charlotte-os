@@ -7,6 +7,7 @@ use catten_rt::owned::{
     IpcError,
     MappedMemory,
     MemoryError,
+    OwnedMemory,
     PendingCall,
     ReadOnly,
 };
@@ -76,6 +77,7 @@ pub enum EntropyError {
     NoService,
     /// Budget/clock rejected before this request was submitted.
     ExpiredBeforeAdmission,
+    Preparation(MemoryError),
     Submission(IpcError),
     /// Includes exact wait-admission rejection; never interpreted as timeout.
     Observation(IpcError),
@@ -162,6 +164,7 @@ pub fn fill_service_entropy(
 #[must_use = "dropping a service entropy read cancels its exact pending request"]
 pub struct ServiceEntropyRead<'service, 'output> {
     pending: Option<PendingCall<'static>>,
+    buffer: Option<OwnedMemory>,
     destination: &'output mut [u8],
     _service: ConnectionRef<'service>,
     deadline: Deadline,
@@ -179,15 +182,31 @@ impl<'service, 'output> ServiceEntropyRead<'service, 'output> {
         if deadline.expired() {
             return Err(EntropyError::ExpiredBeforeAdmission);
         }
-        let pending = service
-            .call(entropy::OP_FILL, destination.len() as u64)
-            .map_err(EntropyError::Submission)?;
-        Ok(Self {
-            pending: Some(pending),
+        let mut read = Self {
+            pending: None,
+            buffer: None,
             destination,
             _service: service,
             deadline,
-        })
+        };
+        read.buffer =
+            Some(OwnedMemory::allocate(entropy::BUFFER_PAGES).map_err(EntropyError::Preparation)?);
+        if read.deadline.expired() {
+            return Err(EntropyError::ExpiredBeforeAdmission);
+        }
+        read.pending = Some(
+            service
+                .call_move(
+                    entropy::OP_FILL,
+                    read.destination.len() as u64,
+                    read.buffer.take().expect("prepared caller buffer"),
+                )
+                .map_err(|(memory, error)| {
+                    read.buffer = Some(memory);
+                    EntropyError::Submission(error)
+                })?,
+        );
+        Ok(read)
     }
 
     /// Observe once within the remaining budget. On ordinary failure this
@@ -251,6 +270,10 @@ impl CompletingEntropyRead<'_, '_> {
             return Err(EntropyError::InvalidReply);
         }
         let memory = reply.memory.take().ok_or(EntropyError::InvalidReply)?;
+        if memory.len() != entropy::BUFFER_BYTES {
+            reply.memory = Some(memory);
+            return Err(EntropyError::InvalidReply);
+        }
         self.mapping = Some(match memory.map_read_only() {
             Ok(mapping) => mapping,
             Err((memory, error)) => {

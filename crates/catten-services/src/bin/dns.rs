@@ -47,11 +47,7 @@ use catten_rt::{
     ShutdownRequest,
     config,
     manifest_key,
-    owned::{
-        CallResult,
-        ConnectionRef,
-        PendingCall,
-    },
+    owned::ConnectionRef,
 };
 use catten_services::{
     broker::EventBroker,
@@ -995,35 +991,24 @@ const CAPACITY_LEASE_MS: u64 = CAPACITY_REPORT_INTERVAL_MS * 3;
 const PLACEMENT_REASSIGN_DWELL_MS: u64 = 30_000;
 const PLACEMENT_REASSIGN_COOLDOWN_MS: u64 = 60_000;
 
-fn wait_capacity_call(mut call: PendingCall<'_>) -> Option<CallResult> {
-    let (started, frequency_hz) = catten_syscall::monotonic_clock();
-    loop {
-        match call.poll() {
-            Ok(Some(reply)) => return Some(reply),
-            Ok(None) => {}
-            Err(_) => return None,
-        }
-        let now = catten_syscall::monotonic_clock().0;
-        if now.saturating_sub(started).saturating_mul(1_000) / frequency_hz.max(1) >= 100 {
-            return None;
-        }
-        catten_services::sleep_ms(5);
-    }
-}
+// Startup nonce lookup and fill share this existing short observation budget.
+const CAPACITY_NONCE_TIMEOUT_MS: u64 = 100;
 
 fn obtain_capacity_boot_nonce(ns_connection: ConnectionRef<'_>) -> Option<u64> {
+    let deadline = catten_services::deadline::Deadline::after(CAPACITY_NONCE_TIMEOUT_MS);
     if let Some(nonce) = catten_syscall::random_u64().filter(|nonce| *nonce != 0) {
         return Some(nonce);
     }
-    let lookup = ns_connection.call(ns::OP_TRY_LOOKUP, entropy::NAME).ok()?;
-    let entropy = wait_capacity_call(lookup)?.connection?;
-    let fill = entropy.as_ref().call(entropy::OP_FILL, 8).ok()?;
-    let reply = wait_capacity_call(fill)?;
-    if reply.result != 8 {
+    let mut lookup = ns_connection.call(ns::OP_TRY_LOOKUP, entropy::NAME).ok()?;
+    let reply = lookup.wait_timeout(deadline.remaining_ms()).ok()??;
+    if deadline.expired() || reply.result < 1 || reply.memory.is_some() {
         return None;
     }
-    let mapping = reply.memory?.map_read_only().ok()?;
-    let nonce = u64::from_le_bytes(mapping.as_slice().get(..8)?.try_into().ok()?);
+    let entropy = reply.connection?;
+    let mut bytes = [0; 8];
+    catten_services::tls_client::fill_service_entropy(entropy.as_ref(), &mut bytes, deadline)
+        .ok()?;
+    let nonce = u64::from_le_bytes(bytes);
     (nonce != 0).then_some(nonce)
 }
 

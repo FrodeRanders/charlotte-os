@@ -1,0 +1,946 @@
+{
+  "date": "2026-10-26",
+  "baseline_revision": "e5b9f2bd4c987507e99646fbd6da7244817c1f49",
+  "scope": "RNG v2 caller-funded reply storage and bounded DNS nonce observation; no producer reply allocation fallback. Original accounting rules and DMA proof requirements unchanged.",
+  "finding_dispositions": {
+    "corrected": 29,
+    "partial": 6,
+    "open": 3,
+    "SEC-06": "partial",
+    "SEC-07": "partial",
+    "SEC-14": "partial",
+    "SEC-15": "partial",
+    "SEC-18": "partial",
+    "production_trust": "disabled"
+  },
+  "source_input_sha256": {
+    "Cargo.toml": "dc27f5e5077e07fc7fed9422b825620fb83c6d828b986ca5cbeba175b2148e45",
+    "Cargo.lock": "a78dc5de15d396815f8659290f8de56d9bb8f564ff26244295e7a3d1a2ef1392",
+    "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
+    ".cargo/config.toml": "5845e3de73e807da085ea0cb8a5c76272a20c145adf70cbd404bb57f58bd4402",
+    ".cargo/audit.toml": "6dedf4733a1def7aab3bb002f58c005b1d0d05d7a54dea7308847b90e60d3fdd",
+    ".cargo/audit-version": "76dff43b6331e7f1a4f0d1b14bbc1c3e001190af5a7ed008ab165bbc3c815e12",
+    "crates/catten-services/Cargo.toml": "3ca9d0b32ccecfeca2745454b98c4632b280f558d1695387315cd7b0ea9b6bb8",
+    "crates/catten-services/src/lib.rs": "72ca511ba8981145eb71281b936b3b84d344b6133fe16a02850d045b0c4fccbe",
+    "crates/catten-services/src/entropy_service.rs": "f81a517193286b429e176c07e89c7b11648c965ad025101707d35eb60d84cedb",
+    "crates/catten-services/src/tls_client.rs": "82377698386036af836a7bce0eddfeb84b63a328badcc0ac508a8c31a5505d0b",
+    "crates/catten-services/src/tls_client/entropy_client.rs": "e11ce22c39792592c1fca91b6e8b4c4eebb9d876c608812482d76e0b2e987e25",
+    "crates/catten-services/src/tls_client/entropy_contract.rs": "c50166e1f7ac1e32b8d8f0e284bc9517156de31fb1275d335b3a3136cc86453e",
+    "crates/catten-services/src/tls_client/runtime.rs": "657f715ed85a16c86cdf9a428ed307b998d02d5dcac9104c6626d83a831be7ce",
+    "crates/catten-services/src/tls_client/crypto.rs": "e93748db23fde582261b5c042492adbf7f485b659a0089f7e971ad1b18440cb2",
+    "crates/catten-services/src/tls_client/interop.rs": "b5c879c852d76be5534120e2d80a45bcaf0ff19c0fcc5948249e49f1e702bc33",
+    "crates/catten-services/src/bin/rng.rs": "eade4b5a726f3caa13044b317a9d3d30182c387845244db470078cdec0f47f9d",
+    "crates/catten-services/src/bin/dns.rs": "e0e47094a0f08dac2c82f396d22bba6912b0ed1ae0083ff05abfc2fb3816d3c3",
+    "crates/catten-services/src/bin/tcpip.rs": "2a4e940ae6f2b35b3a5dd80dd539cd708af915c22708005aee798e0652c97351",
+    "crates/catten-services/src/bin/s3.rs": "63fc692f8beab8ae643a7d51438c919796be2332258450f54591d4377a312863",
+    "crates/catten-services/src/bin/kafka.rs": "69430620ff0c91761c222c9890213fa254b901d3c83a03c6ef7e5cc4dc798518",
+    "crates/catten-services/src/bin/security_probe.rs": "e91844c6c8a942264f508d20157fba4b8c80a3f8a59567f480ca33c7433b3e57",
+    "crates/catten-services/src/deadline.rs": "4fe91d47a40524b52c062496d9b27f9a1e47d54ce04a8f9945b6b4875e0817f6",
+    "crates/catten-rt/src/owned/ipc.rs": "ca68efa9790d121cc7ccb1cd4f794ae150c30fa1ca14312c3b5c4a948a02d6ed",
+    "crates/catten-rt/src/owned/memory.rs": "c578b79e5dbdc45906a31de769732f76d00ee7b035481290d4a7eac4ccbc9f12",
+    "crates/catten/src/self_test/el0_security.rs": "23a5d2bb1c06d92ddefa4325d6460f4286b790066dd2b59a1de1a317129082f3",
+    "crates/catten/src/memory/object/transfer.rs": "1983824fb4325839ca38fce87c0daa55bd720a53a0d278cbdb1b794f6367815b",
+    "scripts/build-catten-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
+    "scripts/build-catten-services-x86_64.sh": "827ecdb3352742be1bf36152c5c13ec44a5101fa737aa0d3d321ccd715709291",
+    "scripts/check-dependency-advisories.py": "f0d601732ebf1beef98c10742121c224d38d026d2df41df06e90463a7e8bb379"
+  },
+  "lockfile_unchanged": true,
+  "lockfile_dependency_count": 182,
+  "protocol": {
+    "interface_version": 2,
+    "fill_opcode": 2,
+    "retired_scalar_opcode": 1,
+    "buffer_pages": 1,
+    "buffer_bytes": 4096,
+    "max_request_bytes": 4096,
+    "producer_allocates_reply_backing": false,
+    "caller_original_charge_preserved": true
+  },
+  "configuration": {
+    "central_compile_time_dimensions": "catten_services::entropy::{BUFFER_PAGES, BUFFER_BYTES, MAX_REQUEST}",
+    "descriptor_bound": "nonzero buffer; bytes <= u32::MAX",
+    "domain_observation_default_ms": 5000,
+    "dns_nonce_lookup_and_fill_budget_ms": 100,
+    "dns_nonce_budget_constant": "CAPACITY_NONCE_TIMEOUT_MS",
+    "boot_resource_parser": false,
+    "live_resizing": false
+  },
+  "host": [
+    {
+      "mode": "debug",
+      "command": "cargo +nightly-2026-07-27 test --locked -p catten-services -p catten-rt -p charlotte-transport-tests --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml",
+      "cwd": "/private/tmp",
+      "exit_code": 0,
+      "runtime_tests": 374,
+      "doctests": 1,
+      "explicitly_ignored_documentation_examples": 2,
+      "harnesses": [
+        {
+          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/catten_rt-7565f8c504a110ab)",
+          "passed": 53,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/debug/deps/catten_rt-7565f8c504a110ab",
+          "executable_sha256": "6b717ab9d72e6a3d6263f6472021447aa273247183d161dda57dceedb831c586"
+        },
+        {
+          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/catten_services-8baf3ad084f7a274)",
+          "passed": 244,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/debug/deps/catten_services-8baf3ad084f7a274",
+          "executable_sha256": "116d5b82441e7cc30b58d94930cf0d3881f94d4037158f73f9aef460bdb170da"
+        },
+        {
+          "harness": "unittests examples/reconnecting_client.rs (/Users/froran/Projects/private/charlotte-os/target/debug/examples/reconnecting_client-aa9411a34c7830e7)",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/debug/examples/reconnecting_client-aa9411a34c7830e7",
+          "executable_sha256": "0c134130a85802f0df7431396d0f164563fcca9a49c6ee5e945fbf805602f207"
+        },
+        {
+          "harness": "kafka_profile_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/kafka_profile_erasure-eb984ed6070dc5b0)",
+          "passed": 7,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/debug/deps/kafka_profile_erasure-eb984ed6070dc5b0",
+          "executable_sha256": "82c2c190886a0126c871b2ba945fb513e04bfe2620a7284a1bf2246f314078d2"
+        },
+        {
+          "harness": "receive_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/receive_erasure-1a5870f1652a158e)",
+          "passed": 9,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/debug/deps/receive_erasure-1a5870f1652a158e",
+          "executable_sha256": "06160f61714fcb83022ee024f027da9c7bd45fd17a788148913551d5f9c557ea"
+        },
+        {
+          "harness": "s3_canonical_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/s3_canonical_erasure-b7d8ece69dd89729)",
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/debug/deps/s3_canonical_erasure-b7d8ece69dd89729",
+          "executable_sha256": "976d4e5cc72af659a131c1d7ca2737c4ec01e3698a1cbd55280847624784b349"
+        },
+        {
+          "harness": "s3_metadata_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/s3_metadata_erasure-3a16b50319ee253d)",
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/debug/deps/s3_metadata_erasure-3a16b50319ee253d",
+          "executable_sha256": "573a3890bc23e2aaffceff44b1a68f4345712105aad4804d4be279ad9f4162fb"
+        },
+        {
+          "harness": "s3_path_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/s3_path_erasure-b5c21f95fadacdb1)",
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/debug/deps/s3_path_erasure-b5c21f95fadacdb1",
+          "executable_sha256": "dfdb4520955105c5a46ef9e95fe375348fb2d880fe609513f9ce77ed5dbbabfe"
+        },
+        {
+          "harness": "s3_profile_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/s3_profile_erasure-cc1e6af1a5ede12f)",
+          "passed": 7,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/debug/deps/s3_profile_erasure-cc1e6af1a5ede12f",
+          "executable_sha256": "40a548bec629061d2ea384dc4c581fa19a47a02471baa5a6d333a9c5d3a66dcb"
+        },
+        {
+          "harness": "s3_profile_wire_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/s3_profile_wire_erasure-1c01906d06cb42fd)",
+          "passed": 6,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/debug/deps/s3_profile_wire_erasure-1c01906d06cb42fd",
+          "executable_sha256": "03dcdd6cc421ad44beace20d38afbcb4fd5b493ce02c769fb1e1a9eb2fdc7c59"
+        },
+        {
+          "harness": "s3_request_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/s3_request_erasure-f8dc30e03ab0efe9)",
+          "passed": 5,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/debug/deps/s3_request_erasure-f8dc30e03ab0efe9",
+          "executable_sha256": "577e1b63869428909646182165139ecd56566284584a53949a1dcbdb0cb7a624"
+        },
+        {
+          "harness": "s3_response_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/s3_response_erasure-307afd8d7f878956)",
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/debug/deps/s3_response_erasure-307afd8d7f878956",
+          "executable_sha256": "cc0e9e7f6265f305d84650257f795e7f9e36c9b628490e70054607d68f3b47cc"
+        },
+        {
+          "harness": "scram_initial_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/scram_initial_erasure-1ef418169f87dff5)",
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/debug/deps/scram_initial_erasure-1ef418169f87dff5",
+          "executable_sha256": "8af0068cf4fdbcbc8d7a336ed99623c226cf54c7082632c12ef5c1f8e34cb362"
+        },
+        {
+          "harness": "Doc-tests catten_rt",
+          "passed": 1,
+          "failed": 0,
+          "ignored": 2
+        },
+        {
+          "harness": "Doc-tests catten_services",
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0
+        }
+      ]
+    },
+    {
+      "mode": "release",
+      "command": "cargo +nightly-2026-07-27 test --locked -p catten-services -p catten-rt -p charlotte-transport-tests --release --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml",
+      "cwd": "/private/tmp",
+      "exit_code": 0,
+      "runtime_tests": 374,
+      "doctests": 1,
+      "explicitly_ignored_documentation_examples": 2,
+      "harnesses": [
+        {
+          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/catten_rt-f5e796761dc4e325)",
+          "passed": 53,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/release/deps/catten_rt-f5e796761dc4e325",
+          "executable_sha256": "9880a33c3c998bf02362c806f2d75abb7051d2c7965f20220f907d885ad4b9e6"
+        },
+        {
+          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/catten_services-1557187fb8e52239)",
+          "passed": 244,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/release/deps/catten_services-1557187fb8e52239",
+          "executable_sha256": "5452e289d2700087d75692777a54ecc3aa78af948495f854d18ebfdc560ac16d"
+        },
+        {
+          "harness": "unittests examples/reconnecting_client.rs (/Users/froran/Projects/private/charlotte-os/target/release/examples/reconnecting_client-029c9598e8d81890)",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/release/examples/reconnecting_client-029c9598e8d81890",
+          "executable_sha256": "bff3a4986950429023b492d57a076da7cb7232d28d60eafcddb6fab9e49ba0d8"
+        },
+        {
+          "harness": "kafka_profile_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/kafka_profile_erasure-c1cf507805a43098)",
+          "passed": 7,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/release/deps/kafka_profile_erasure-c1cf507805a43098",
+          "executable_sha256": "63d2d891f64b449ce41f47f45979b0433e289d25ed61565ac061fc653aca8efb"
+        },
+        {
+          "harness": "receive_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/receive_erasure-d05892cb78fd2517)",
+          "passed": 9,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/release/deps/receive_erasure-d05892cb78fd2517",
+          "executable_sha256": "d3fa3be5643104c4af74f3b0e17c197b028c4488bc7ef899e5e1f6f65f3fe085"
+        },
+        {
+          "harness": "s3_canonical_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/s3_canonical_erasure-868c4dd2c0873562)",
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/release/deps/s3_canonical_erasure-868c4dd2c0873562",
+          "executable_sha256": "9f8cf77b802187d2ac1ecbc4cffc84a28c891d72b7d93532b58f623142783711"
+        },
+        {
+          "harness": "s3_metadata_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/s3_metadata_erasure-86c7c432ca3ec0e3)",
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/release/deps/s3_metadata_erasure-86c7c432ca3ec0e3",
+          "executable_sha256": "90aa118de1e899789f86060bd23db1a8e070f7607ad1eb2f1538694ee0c4bfc8"
+        },
+        {
+          "harness": "s3_path_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/s3_path_erasure-8c5ede0cb246dcbf)",
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/release/deps/s3_path_erasure-8c5ede0cb246dcbf",
+          "executable_sha256": "f5a256b927ee235b2285bbcf5745c9a5902948aa7bfb7b2bdf6689e58f0a1ed6"
+        },
+        {
+          "harness": "s3_profile_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/s3_profile_erasure-5e9626c78e6aab62)",
+          "passed": 7,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/release/deps/s3_profile_erasure-5e9626c78e6aab62",
+          "executable_sha256": "bc2526452beec89404145e3ec25508255f4d842581a1a7a1936e3e245cf84ed0"
+        },
+        {
+          "harness": "s3_profile_wire_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/s3_profile_wire_erasure-aaf5ccc3a4a2a8cd)",
+          "passed": 6,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/release/deps/s3_profile_wire_erasure-aaf5ccc3a4a2a8cd",
+          "executable_sha256": "d72ac02830f5e7aa89f58f7f25501cc154a1e75dd2fdc09381388032e5eac640"
+        },
+        {
+          "harness": "s3_request_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/s3_request_erasure-e26aa75257da4e2b)",
+          "passed": 5,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/release/deps/s3_request_erasure-e26aa75257da4e2b",
+          "executable_sha256": "885dbbfc5f43b4f03fb1f9d88e36712d0c7959a87c60a6f2f7d4cf43e4a6b8f8"
+        },
+        {
+          "harness": "s3_response_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/s3_response_erasure-6e817382d028e3cd)",
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/release/deps/s3_response_erasure-6e817382d028e3cd",
+          "executable_sha256": "41535bcdef08022d3722057fb8842a2522651147718277f13e529938fd4728ed"
+        },
+        {
+          "harness": "scram_initial_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/scram_initial_erasure-0a8ae99bb299c830)",
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/release/deps/scram_initial_erasure-0a8ae99bb299c830",
+          "executable_sha256": "db6674c52e9806543bf41d922cdeb16c6b7b3ee8c2f90d400ac0b9326b655223"
+        },
+        {
+          "harness": "Doc-tests catten_rt",
+          "passed": 0,
+          "failed": 0,
+          "ignored": 1
+        },
+        {
+          "harness": "Doc-tests catten_rt",
+          "passed": 1,
+          "failed": 0,
+          "ignored": 1
+        },
+        {
+          "harness": "Doc-tests catten_services",
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0
+        }
+      ]
+    }
+  ],
+  "toolchain": "nightly-2026-07-27; rustc 1.99.0-nightly (dc3f85158 2026-07-26), LLVM 22.1.8; host aarch64-apple-darwin",
+  "openssl": "OpenSSL 4.0.3 29 Sep 2026 (Library: OpenSSL 4.0.3 29 Sep 2026)",
+  "strict_service_clippy": [
+    {
+      "target": "aarch64-unknown-none",
+      "exit_code": 0,
+      "command": "cargo clippy -p catten-services --lib --bins --target crates/catten-services/aarch64-unknown-none.json --target-dir target/entropy-caller-check --locked --offline -- -D warnings"
+    },
+    {
+      "target": "x86_64-unknown-none",
+      "exit_code": 0,
+      "command": "cargo clippy -p catten-services --lib --bins --target crates/catten-services/x86_64-unknown-none.json --target-dir target/entropy-caller-check --locked --offline -- -D warnings"
+    }
+  ],
+  "format_check": {
+    "command": "cargo fmt --all -- --check",
+    "exit_code": 0
+  },
+  "advisory_gate": {
+    "command": "python3 scripts/check-dependency-advisories.py",
+    "exit_code": 0,
+    "scanner": "cargo-audit 0.22.2",
+    "report": {
+      "database": {
+        "advisory-count": 1378,
+        "last-commit": "a78282a1414d6c28cc228c4eae3570451affb0dc",
+        "last-updated": "2026-10-26T14:45:01+01:00"
+      },
+      "lockfile": {
+        "dependency-count": 182
+      },
+      "settings": {
+        "target_arch": [],
+        "target_os": [],
+        "severity": null,
+        "ignore": [],
+        "informational_warnings": [
+          "unmaintained",
+          "unsound",
+          "notice"
+        ]
+      },
+      "vulnerabilities": {
+        "found": false,
+        "count": 0,
+        "list": []
+      },
+      "warnings": {}
+    },
+    "production_wrapper_validation": "passed"
+  },
+  "build_commands": [
+    {
+      "command": "scripts/build-catten-services.sh --embed",
+      "exit_code": 0,
+      "rebuilt_service_images": 40,
+      "reused_unchanged_sitas": true
+    },
+    {
+      "command": "scripts/build-catten-services-x86_64.sh",
+      "exit_code": 0,
+      "rebuilt_service_images": 37
+    }
+  ],
+  "bundle_sets": {
+    "aarch64-unknown-none": {
+      "agent.elf": "223e74ec143837308fe56cb41c4d5763a2b06d1830477154218b702c4dbf3323",
+      "cclient.elf": "bef6e1d44c9a84a4e8f34340debcb539f344fa1ee5dabc0cd2dcef20aaebb7a8",
+      "client.elf": "43b813ca47a78d8e015e12a286842fcdf2d492f6c7c8f1eafad07779eec0d30f",
+      "clusterctl.elf": "308afd6cac0d46719ce6f216f601c7b8a2bc26e9df6714c35ce6184b43a555df",
+      "deployd.elf": "3486df4f02f2e67b8f23a87e325aae782adc5bb43a8abec5fcbe6eb835089c4d",
+      "disco.elf": "6205d8c793241b2fe8ab0f6dd8ceec17d946bd189d8ad66f3c81cd8ca49a3d7c",
+      "dns.elf": "57322c49b0af20f64d696d5a96d4acb9cbc500d2be3b65f82c1d4c3aa9e6da07",
+      "echo.elf": "5670d9e2efcc9922331f20a2574e600118a5782993779d76e900c4d6756bcbe5",
+      "frouter.elf": "f7b0d4789375266503de84ec66f2c94d86a43bcea1faa301139060f53b1694af",
+      "fs.elf": "bcc97830fa5d18a56271a1a7910a2933a1c9c4a566d2bfee01c4ba44022825bc",
+      "grantctl.elf": "021dba478717c74f75de00898598e18968ddcecbeec3beb5746cf1ed6b9a3cbe",
+      "greet.elf": "698ff3909936fdeebd574dd95fbf0870b09a044605da4c05cf6c9f1cad72299f",
+      "httpd.elf": "818e2824e663a06b3b25fd9bfbaf10ebdbebf0792b77230208c3e66e8f104338",
+      "kafka.elf": "3e30c87e09506af997b70b19f7842e913a7e9e87bfe9e2105c8c892663ae3a7e",
+      "kafka_fence_smoke.elf": "a5cffb773552dd822a7f3dbb37841e6f925b7897ddec7587025606ee15ae07c4",
+      "kafka_smoke.elf": "0f0611ce82fb265e66948a851bd7a153b8757345afcb39adf83201dfb3436971",
+      "kafka_step.elf": "a31ff93578c9baf7acf13e038bdf631e24c7d226922cdbfd3a26d65f07b0da05",
+      "kafka_step_input.elf": "d82fd8a4492f9eb3e9480ffff8bfac8ea58c3bf8380712618bab78cc935fe53a",
+      "kafka_step_proc.elf": "986979477c2416702fa34254923d405641a83b8b24c7f5771cec5fe48548d25f",
+      "nclient.elf": "2ca3eea19efd39995c47cc6d85efb835ad1a24b4e37f823f3627c23ad8d0cf7c",
+      "net.elf": "6cf5f73576478e487a0177a4d67e839e31592bad3459207a7aa8542f160ff515",
+      "ns.elf": "8efda33fd1f4f85e60399914dffeb00aed684b59e611a412695907b2c5292db7",
+      "nvme.elf": "b5a6559971ed1c81e24ea8c3c24913ebced70a9fbecfb44c3d173073f53a650e",
+      "nvme_client.elf": "8dac3da0fa0bf1ca6a862793e0434d5dffa4fd290f8cbea7734a07d84f4157dd",
+      "objstore.elf": "a59ab2b6356da355e05158709586be2e0286c79cd8a76fabb7c4bff0b79fe54b",
+      "objstore_client.elf": "c0e546ff1ad6badfcd152e290b8f126d8b88b62b29c2b2a631172f4c12bf9aef",
+      "observe.elf": "c577d443d1622edc84bfc93a879a46ba800b88f7e5061991ccd3a08beb6b1f49",
+      "raft.elf": "edf65cdde6ddc17c907420a07a130faae8411b715e1a12e5ebe1b5483c559cf7",
+      "rclient.elf": "c83e463dd3c0905de5e505598026bfff0cb4f2b64d0e60eb76702f559d6019c1",
+      "relmsg.elf": "fd01f463e049e204fc4f008c4f53c65b5240cd7e63242c4a58baea80942567a6",
+      "rng.elf": "f4d847694700e870f91de93c7e50e3fdac21c39af51ddf8fbd09573235f9226e",
+      "s3.elf": "46aa7b4f01898324159a06062d3c790e8802686272692a50267ade6898ad9187",
+      "s3_smoke.elf": "a56f2bd444584bdf9e77a392d7616dce4a424bb41d32f5c46b3001effcb6c5bf",
+      "security_probe.elf": "79160a1aa70897c8af8df7785b6077b7757579e38c547c8832edae2075e52e53",
+      "servicemgr.elf": "a80ec644e927354e06a024c6e038c0f3b77ca0f8c0fcf765a1f91696680de661",
+      "shutdown_probe.elf": "dbe8e534fd09c1277f283452c3a29fbf82f0c8145e2c979b3cd4fc9147625527",
+      "sitas-user.elf": "cf1cf39d85f24c0663ae2c7b7d16f9288e097c39803913905126def3913b910c",
+      "tcpclient.elf": "d90a700d21624bb7161f4cef09b1a38d3eb518947c87b62115f26ba08694bf0f",
+      "tcpip.elf": "913936ca6ab03aaeb1948fb0581841602712353615b40ad3a7acb98c5754ef9a",
+      "time.elf": "945a9f4786d6437ec536db8e8509ea62d533f16ff21fd33b21f20a4250da8b3c",
+      "uart.elf": "bf5d52c7e7b6c37c3c7e3121b275c788e9b3000fa1a38a19f935e0ca61fc7145"
+    },
+    "x86_64-unknown-none": {
+      "agent.elf": "82dcd618a910503900e869dd3194a5b2c10714698f7076bd8d3d717bd60fb0a6",
+      "ahci.elf": "0f8267336cb7532ceb529792d094ab3deb14723234bebd5c31775dee02025989",
+      "client.elf": "661a1998e8a8898dc0319e1050700251d0bccf1252f0dbb3f5b597a49ede4c51",
+      "clusterctl.elf": "19863c1d119c08566ba43a0be189690ee377ccb89ff63867e6882aac6f6d12f1",
+      "deployd.elf": "834136ed7b30e18ab33424e503b1372d5a0207cc581c8ddd03fd25b8064e622e",
+      "disco.elf": "92a13a13a7f1814a6aec002bc6adc6e4bd6233305481205331e6a616e778cd82",
+      "dns.elf": "4b5a07cbf5bc61627b41a13c4a4a0fa8ecc25b4cd277bee3530ed04460f158e7",
+      "e1000e.elf": "6dbd09f9337081057a9bcf9a4cc38a18998189c20f6507b5776d0dfcfa75c90b",
+      "echo.elf": "67bf3d296980f2ea3de096e8b1133bafd64a0a58934260807d502040043caf13",
+      "frouter.elf": "da295792f00feecb748ca1081d78b481c66d61dd33d033cf8411c45fc3952b8c",
+      "fs.elf": "805f5a3928558554b767685b18141749475f68833040aed99ddbf22643af2535",
+      "grantctl.elf": "893cedb85486d4fb51c409a5485cd1801ff89321597befb17b32fda1d688f034",
+      "greet.elf": "5e1174f84f9c05ff6e6b46cbd837b0cccd670d57e5c9145a402d06e46ffa6585",
+      "httpd.elf": "6ad4648d49fa084d6ec03aea44add39fec617ad676815e88ecea4b43bd3e381d",
+      "kafka.elf": "c2970d2635b5e07f49d44cd2b60b02e1af5250d295386edb7369a4a54240b7d5",
+      "kafka_smoke.elf": "fea5bbc9af1d88afa3ab3c3f29d12bc5ff39ae36a90b74e856ee69c077753126",
+      "nclient.elf": "504620be2a2fce69fb2b9ae3738c2ff654c8c91e6907c47c8f04067808cb0687",
+      "net.elf": "26e122ff004530140adc99e88e8404469aef51a7b7192ad0510928d69b8fef52",
+      "ns.elf": "cdbacb32f389b9a132de9c7404d67e7d4da817aa1b8c1cc603611c4c60cea684",
+      "nvme.elf": "07644550b1cd8559d35fe75dda47c3971cdb936f11d615da789cb904adbda1ee",
+      "nvme_client.elf": "54e8305d71ef630d418c1bdca3f8b74e95943527a1f5c94eb8138bede7019876",
+      "objstore.elf": "cbc50189faf1088f57c301cfbf0031c134e6603936530f55e6dcbd3c85fea9c9",
+      "objstore_client.elf": "cdf06df5b5a2aeec7d4348fc3f81eaa3f88000208bbeb2472af204b2b1738c89",
+      "observe.elf": "b092184111333e2a235d06f2b8a32be7a76795258ec7f1584622990f332b542b",
+      "raft.elf": "d6eefa8b0a1f46081321d30e23592071f9e5dcf7ba40ea77fd8c95fda6599ede",
+      "rclient.elf": "79eccddde73b7be649f2cf9217972f072865c34d380dec2e090aa8ad80fc0b52",
+      "relmsg.elf": "0197ea57e6bc6a1822d3a5922d59b4ee8d82267989054dcb47e6c23d85fac4f3",
+      "rng.elf": "07fcb7579f61dd2c71f20ef4c05e48ee4877e4a7e22abf8c07bf4e6b1391799d",
+      "s3.elf": "94f5704de7f7b32ec25804d08211e7eb5bb11cb32cf3bf53366f887f976cd39c",
+      "s3_smoke.elf": "15f7610b20f4825676b3506a2cd4ec886b570c39c7a584093434acefce123d55",
+      "security_probe.elf": "35aa24c5dbc6361c4a1574b8033aae5feb0befefcc292c987dc2fc08157447e1",
+      "servicemgr.elf": "50223218fc3549d2e62fbd866223d5f8c8612061207d600014025473bfb2884f",
+      "shutdown_probe.elf": "56993428b543ec9e1c892b1c7b0c3b4cfc1dd446d264fc8f6391a8c2fe8df841",
+      "tcpclient.elf": "784fa5d8e3c5d64c2e5a4010360da22f2e568b5c88a8ee68a64262d9c7992241",
+      "tcpip.elf": "f3e34905e5d3adc3bd07b6b91515e558f472d9f5c2948b5d669185a868cf9570",
+      "time.elf": "e9591c32cb69540d3680846ae67f4234ec65262dd5e66c746d45ff95bee5a9d0",
+      "virtio_blk.elf": "de71c92c9f0aeddb461e8f51e0419b3e15f1589e1158c4d451d296d4a0ece95c"
+    },
+    "preliminary/aarch64-unknown-none": {
+      "agent.elf": "223e74ec143837308fe56cb41c4d5763a2b06d1830477154218b702c4dbf3323",
+      "cclient.elf": "bef6e1d44c9a84a4e8f34340debcb539f344fa1ee5dabc0cd2dcef20aaebb7a8",
+      "client.elf": "43b813ca47a78d8e015e12a286842fcdf2d492f6c7c8f1eafad07779eec0d30f",
+      "clusterctl.elf": "308afd6cac0d46719ce6f216f601c7b8a2bc26e9df6714c35ce6184b43a555df",
+      "deployd.elf": "3486df4f02f2e67b8f23a87e325aae782adc5bb43a8abec5fcbe6eb835089c4d",
+      "disco.elf": "6205d8c793241b2fe8ab0f6dd8ceec17d946bd189d8ad66f3c81cd8ca49a3d7c",
+      "dns.elf": "57322c49b0af20f64d696d5a96d4acb9cbc500d2be3b65f82c1d4c3aa9e6da07",
+      "echo.elf": "5670d9e2efcc9922331f20a2574e600118a5782993779d76e900c4d6756bcbe5",
+      "frouter.elf": "f7b0d4789375266503de84ec66f2c94d86a43bcea1faa301139060f53b1694af",
+      "fs.elf": "bcc97830fa5d18a56271a1a7910a2933a1c9c4a566d2bfee01c4ba44022825bc",
+      "grantctl.elf": "021dba478717c74f75de00898598e18968ddcecbeec3beb5746cf1ed6b9a3cbe",
+      "greet.elf": "698ff3909936fdeebd574dd95fbf0870b09a044605da4c05cf6c9f1cad72299f",
+      "httpd.elf": "818e2824e663a06b3b25fd9bfbaf10ebdbebf0792b77230208c3e66e8f104338",
+      "kafka.elf": "3e30c87e09506af997b70b19f7842e913a7e9e87bfe9e2105c8c892663ae3a7e",
+      "kafka_fence_smoke.elf": "a5cffb773552dd822a7f3dbb37841e6f925b7897ddec7587025606ee15ae07c4",
+      "kafka_smoke.elf": "0f0611ce82fb265e66948a851bd7a153b8757345afcb39adf83201dfb3436971",
+      "kafka_step.elf": "a31ff93578c9baf7acf13e038bdf631e24c7d226922cdbfd3a26d65f07b0da05",
+      "kafka_step_input.elf": "d82fd8a4492f9eb3e9480ffff8bfac8ea58c3bf8380712618bab78cc935fe53a",
+      "kafka_step_proc.elf": "986979477c2416702fa34254923d405641a83b8b24c7f5771cec5fe48548d25f",
+      "nclient.elf": "2ca3eea19efd39995c47cc6d85efb835ad1a24b4e37f823f3627c23ad8d0cf7c",
+      "net.elf": "6cf5f73576478e487a0177a4d67e839e31592bad3459207a7aa8542f160ff515",
+      "ns.elf": "8efda33fd1f4f85e60399914dffeb00aed684b59e611a412695907b2c5292db7",
+      "nvme.elf": "b5a6559971ed1c81e24ea8c3c24913ebced70a9fbecfb44c3d173073f53a650e",
+      "nvme_client.elf": "8dac3da0fa0bf1ca6a862793e0434d5dffa4fd290f8cbea7734a07d84f4157dd",
+      "objstore.elf": "a59ab2b6356da355e05158709586be2e0286c79cd8a76fabb7c4bff0b79fe54b",
+      "objstore_client.elf": "c0e546ff1ad6badfcd152e290b8f126d8b88b62b29c2b2a631172f4c12bf9aef",
+      "observe.elf": "c577d443d1622edc84bfc93a879a46ba800b88f7e5061991ccd3a08beb6b1f49",
+      "raft.elf": "edf65cdde6ddc17c907420a07a130faae8411b715e1a12e5ebe1b5483c559cf7",
+      "rclient.elf": "c83e463dd3c0905de5e505598026bfff0cb4f2b64d0e60eb76702f559d6019c1",
+      "relmsg.elf": "fd01f463e049e204fc4f008c4f53c65b5240cd7e63242c4a58baea80942567a6",
+      "rng.elf": "f4d847694700e870f91de93c7e50e3fdac21c39af51ddf8fbd09573235f9226e",
+      "s3.elf": "46aa7b4f01898324159a06062d3c790e8802686272692a50267ade6898ad9187",
+      "s3_smoke.elf": "a56f2bd444584bdf9e77a392d7616dce4a424bb41d32f5c46b3001effcb6c5bf",
+      "security_probe.elf": "76a3bdba64bdf2b22d76d67e5d4f7e78f6bb6c45c0af71d18f81b6af88499bd0",
+      "servicemgr.elf": "a80ec644e927354e06a024c6e038c0f3b77ca0f8c0fcf765a1f91696680de661",
+      "shutdown_probe.elf": "dbe8e534fd09c1277f283452c3a29fbf82f0c8145e2c979b3cd4fc9147625527",
+      "sitas-user.elf": "cf1cf39d85f24c0663ae2c7b7d16f9288e097c39803913905126def3913b910c",
+      "tcpclient.elf": "d90a700d21624bb7161f4cef09b1a38d3eb518947c87b62115f26ba08694bf0f",
+      "tcpip.elf": "913936ca6ab03aaeb1948fb0581841602712353615b40ad3a7acb98c5754ef9a",
+      "time.elf": "945a9f4786d6437ec536db8e8509ea62d533f16ff21fd33b21f20a4250da8b3c",
+      "uart.elf": "bf5d52c7e7b6c37c3c7e3121b275c788e9b3000fa1a38a19f935e0ca61fc7145"
+    },
+    "preliminary/x86_64-unknown-none": {
+      "agent.elf": "82dcd618a910503900e869dd3194a5b2c10714698f7076bd8d3d717bd60fb0a6",
+      "ahci.elf": "0f8267336cb7532ceb529792d094ab3deb14723234bebd5c31775dee02025989",
+      "client.elf": "661a1998e8a8898dc0319e1050700251d0bccf1252f0dbb3f5b597a49ede4c51",
+      "clusterctl.elf": "19863c1d119c08566ba43a0be189690ee377ccb89ff63867e6882aac6f6d12f1",
+      "deployd.elf": "834136ed7b30e18ab33424e503b1372d5a0207cc581c8ddd03fd25b8064e622e",
+      "disco.elf": "92a13a13a7f1814a6aec002bc6adc6e4bd6233305481205331e6a616e778cd82",
+      "dns.elf": "4b5a07cbf5bc61627b41a13c4a4a0fa8ecc25b4cd277bee3530ed04460f158e7",
+      "e1000e.elf": "6dbd09f9337081057a9bcf9a4cc38a18998189c20f6507b5776d0dfcfa75c90b",
+      "echo.elf": "67bf3d296980f2ea3de096e8b1133bafd64a0a58934260807d502040043caf13",
+      "frouter.elf": "da295792f00feecb748ca1081d78b481c66d61dd33d033cf8411c45fc3952b8c",
+      "fs.elf": "805f5a3928558554b767685b18141749475f68833040aed99ddbf22643af2535",
+      "grantctl.elf": "893cedb85486d4fb51c409a5485cd1801ff89321597befb17b32fda1d688f034",
+      "greet.elf": "5e1174f84f9c05ff6e6b46cbd837b0cccd670d57e5c9145a402d06e46ffa6585",
+      "httpd.elf": "6ad4648d49fa084d6ec03aea44add39fec617ad676815e88ecea4b43bd3e381d",
+      "kafka.elf": "c2970d2635b5e07f49d44cd2b60b02e1af5250d295386edb7369a4a54240b7d5",
+      "kafka_smoke.elf": "fea5bbc9af1d88afa3ab3c3f29d12bc5ff39ae36a90b74e856ee69c077753126",
+      "nclient.elf": "504620be2a2fce69fb2b9ae3738c2ff654c8c91e6907c47c8f04067808cb0687",
+      "net.elf": "26e122ff004530140adc99e88e8404469aef51a7b7192ad0510928d69b8fef52",
+      "ns.elf": "cdbacb32f389b9a132de9c7404d67e7d4da817aa1b8c1cc603611c4c60cea684",
+      "nvme.elf": "07644550b1cd8559d35fe75dda47c3971cdb936f11d615da789cb904adbda1ee",
+      "nvme_client.elf": "54e8305d71ef630d418c1bdca3f8b74e95943527a1f5c94eb8138bede7019876",
+      "objstore.elf": "cbc50189faf1088f57c301cfbf0031c134e6603936530f55e6dcbd3c85fea9c9",
+      "objstore_client.elf": "cdf06df5b5a2aeec7d4348fc3f81eaa3f88000208bbeb2472af204b2b1738c89",
+      "observe.elf": "b092184111333e2a235d06f2b8a32be7a76795258ec7f1584622990f332b542b",
+      "raft.elf": "d6eefa8b0a1f46081321d30e23592071f9e5dcf7ba40ea77fd8c95fda6599ede",
+      "rclient.elf": "79eccddde73b7be649f2cf9217972f072865c34d380dec2e090aa8ad80fc0b52",
+      "relmsg.elf": "0197ea57e6bc6a1822d3a5922d59b4ee8d82267989054dcb47e6c23d85fac4f3",
+      "rng.elf": "07fcb7579f61dd2c71f20ef4c05e48ee4877e4a7e22abf8c07bf4e6b1391799d",
+      "s3.elf": "94f5704de7f7b32ec25804d08211e7eb5bb11cb32cf3bf53366f887f976cd39c",
+      "s3_smoke.elf": "15f7610b20f4825676b3506a2cd4ec886b570c39c7a584093434acefce123d55",
+      "security_probe.elf": "c1a776ac2e645a63d0196c7395b14594604f17f8516e31d8587d0a6732a2f29c",
+      "servicemgr.elf": "50223218fc3549d2e62fbd866223d5f8c8612061207d600014025473bfb2884f",
+      "shutdown_probe.elf": "56993428b543ec9e1c892b1c7b0c3b4cfc1dd446d264fc8f6391a8c2fe8df841",
+      "tcpclient.elf": "784fa5d8e3c5d64c2e5a4010360da22f2e568b5c88a8ee68a64262d9c7992241",
+      "tcpip.elf": "f3e34905e5d3adc3bd07b6b91515e558f472d9f5c2948b5d669185a868cf9570",
+      "time.elf": "e9591c32cb69540d3680846ae67f4234ec65262dd5e66c746d45ff95bee5a9d0",
+      "virtio_blk.elf": "de71c92c9f0aeddb461e8f51e0419b3e15f1589e1158c4d451d296d4a0ece95c"
+    }
+  },
+  "native": [
+    {
+      "instance": "rng-caller-s3-arm",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20150 CATTEN_DEPLOY_HOST_PORT=20250 scripts/run-aarch64.sh --s3-test --security-test --http-test --smp 4 --instance rng-caller-s3-arm --fresh-storage --timeout 300",
+      "exit_code": 1,
+      "passed": false,
+      "baseline_revision": "e5b9f2bd4c987507e99646fbd6da7244817c1f49",
+      "cpus": 4,
+      "cpu": "cortex-a710",
+      "iommu": "smmuv3",
+      "kernel_sha256": "7fa41850671148891b5b9791e672d9df40db46aba8ea492b8e08fa490042ef8c",
+      "boot_image_sha256": "8d516fbf0c1fb6c7401e5e3984f606b7098a23f19bb1f68fac795fa4adc5be19",
+      "initial_disk_sha256": "8182305430cef0e85ec492b95f0846b3e1053ca41de5ac7511de8c9efd4de222",
+      "tracked_diff_sha256_at_preparation": "b368b25ebf7d4e2c5b100c63a56df2041d034d14f9998a590d67093420e4c62e",
+      "bundle_set": "preliminary/aarch64-unknown-none",
+      "complete_bundle_equals_final": false,
+      "differences_from_final_bundle": [
+        "security_probe.elf"
+      ],
+      "executed_production_service_images_equal_final": true,
+      "result": {
+        "reason": "kernel-panic",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 31.399569333996624
+      },
+      "deferred": {
+        "passed": 21,
+        "failed": 1,
+        "pending": 0
+      },
+      "http_checks": [
+        "PASS: initial metrics request"
+      ],
+      "http_retry_diagnostics": [
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport TimeoutError; retry 2/2"
+      ],
+      "host_failure_diagnostics": [
+        "TimeoutError: timed out",
+        "TimeoutError: timed out",
+        "error: guest HTTP keyholes did not return both expected JSON views",
+        "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/aarch64-0qmdb1a8"
+      ],
+      "salient_guest_diagnostics": [
+        "[+    19.353607] [s3-test] SUCCESS: verified 33-byte object round trip",
+        "panicked at crates/catten/src/self_test/el0_security.rs:116:9:",
+        "security probe exited before adversarial application grant checks"
+      ],
+      "entropy_client_probe_executions": 0,
+      "entropy_server_probe_executions": 0,
+      "real_rng_caller_accounting_executions": 0,
+      "fault_driver_diagnostics": [],
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-aarch64.sh": "42c62c11c20bf928001455b93c1b3c4b971dae9da72ee9d4c4dbae800f2b5973"
+      }
+    },
+    {
+      "instance": "rng-caller-amd",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20151 CATTEN_DEPLOY_HOST_PORT=20251 scripts/run-x86_64.sh --security-test --http-test --iommu amd --smp 4 --instance rng-caller-amd --fresh-storage --timeout 480",
+      "exit_code": 1,
+      "passed": false,
+      "baseline_revision": "e5b9f2bd4c987507e99646fbd6da7244817c1f49",
+      "cpus": 4,
+      "cpu": "max",
+      "iommu": "amd",
+      "kernel_sha256": "da4c575f2c916077903c83d5299b17f3bebd80d0fb6432d5f34f4abefef6ec5f",
+      "boot_image_sha256": "1e9d588af2035695d71c05dac74efe77fa188e1348dfe2c92cac07e6b6e664c3",
+      "initial_disk_sha256": "3c755117b134622b9890aaab1c3167465b213b409b88168d2738c76b225ccc09",
+      "tracked_diff_sha256_at_preparation": "023ed989274c46c8f556bf43774c28825d55c49e8bdeecb50a4cc8b23f0e4a72",
+      "bundle_set": "preliminary/x86_64-unknown-none",
+      "complete_bundle_equals_final": false,
+      "differences_from_final_bundle": [
+        "security_probe.elf"
+      ],
+      "executed_production_service_images_equal_final": true,
+      "result": {
+        "reason": "kernel-panic",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 46.67496216716245
+      },
+      "deferred": {
+        "passed": 17,
+        "failed": 1,
+        "pending": 0
+      },
+      "http_checks": [],
+      "http_retry_diagnostics": [
+        "HTTP transport TimeoutError; retry 1/2",
+        "HTTP transport TimeoutError; retry 2/2"
+      ],
+      "host_failure_diagnostics": [
+        "TimeoutError: timed out",
+        "error: guest failure/deadline captured; see /Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/x86_64-csv6my77"
+      ],
+      "salient_guest_diagnostics": [
+        "panicked at crates/catten/src/self_test/el0_security.rs:116:9:",
+        "security probe exited before adversarial application grant checks"
+      ],
+      "entropy_client_probe_executions": 0,
+      "entropy_server_probe_executions": 0,
+      "real_rng_caller_accounting_executions": 0,
+      "fault_driver_diagnostics": [],
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-x86_64.sh": "dd82631746d8765526ed3372c8a779851f254ca2b8ad1fa0ee55d49a96067aa4"
+      }
+    },
+    {
+      "instance": "rng-caller-kafka-arm",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20152 CATTEN_DEPLOY_HOST_PORT=20252 scripts/run-aarch64.sh --kafka-test --smp 4 --instance rng-caller-kafka-arm --fresh-storage --timeout 300",
+      "exit_code": 0,
+      "passed": true,
+      "baseline_revision": "e5b9f2bd4c987507e99646fbd6da7244817c1f49",
+      "cpus": 4,
+      "cpu": "cortex-a710",
+      "iommu": "smmuv3",
+      "kernel_sha256": "bf360a72b32442f8afe7e277fc7167c97b9581c29469eb7f6aa9a883d126de7b",
+      "boot_image_sha256": "2e8a90517607507c62262172253cd9c8f667bcde274d23c6b08bfa29bde4496c",
+      "initial_disk_sha256": "8182305430cef0e85ec492b95f0846b3e1053ca41de5ac7511de8c9efd4de222",
+      "tracked_diff_sha256_at_preparation": "d6990b664934eb13212175e4296b6430fee5f35de97ded2d0066645f6ca6baa0",
+      "bundle_set": "preliminary/aarch64-unknown-none",
+      "complete_bundle_equals_final": false,
+      "differences_from_final_bundle": [
+        "security_probe.elf"
+      ],
+      "executed_production_service_images_equal_final": true,
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 20,
+        "failed": 0,
+        "pending": 0
+      },
+      "http_checks": [],
+      "http_retry_diagnostics": [],
+      "host_failure_diagnostics": [],
+      "salient_guest_diagnostics": [
+        "[+    19.579095] [kafka-test] FAULT WINDOW OPEN: route leader kafka2 may now be interrupted",
+        "[+    32.003887] [EL0 LOG] lp=0 asid=133 [kafka] TLS handshake transport failed (6)",
+        "[+    38.400544] [kafka-test] SUCCESS: low-level offset 1, generic step commits=4 produced=4 retries=2 dlq=1 timeouts=1 group_generation=3 heartbeats=3 metadata_refreshes=2 coordinator_refreshes=0 retry_attempts=6 terminal_errors=2 output_route_produced=5 lag=0"
+      ],
+      "entropy_client_probe_executions": 0,
+      "entropy_server_probe_executions": 0,
+      "real_rng_caller_accounting_executions": 0,
+      "fault_driver_diagnostics": [
+        ">>> Killing Kafka route leader kafka2 during the in-guest fault window...",
+        ">>> Restarting Kafka broker kafka2 after the fault window..."
+      ],
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-aarch64.sh": "42c62c11c20bf928001455b93c1b3c4b971dae9da72ee9d4c4dbae800f2b5973"
+      }
+    },
+    {
+      "instance": "rng-caller-s3-arm-final",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20154 CATTEN_DEPLOY_HOST_PORT=20254 scripts/run-aarch64.sh --s3-test --security-test --http-test --smp 4 --instance rng-caller-s3-arm-final --fresh-storage --timeout 300",
+      "exit_code": 0,
+      "passed": true,
+      "baseline_revision": "e5b9f2bd4c987507e99646fbd6da7244817c1f49",
+      "cpus": 4,
+      "cpu": "cortex-a710",
+      "iommu": "smmuv3",
+      "kernel_sha256": "1e86ea1ea88aebdb0b0b29be6b412264b8c3b67bbcf1c01787e0229bb65254c6",
+      "boot_image_sha256": "ba95be75629cb10f2c4f963f9442c8fce8db2e1d999eb1156810c8a1bcad5a82",
+      "initial_disk_sha256": "f9b972a45eb29c94ff3b266c27652ec65111f3e1cb1da56ac9759720f18b4dd3",
+      "tracked_diff_sha256_at_preparation": "725dc5b43b69c0d0b72b8ce3b129fe85151449527a4c4672ff4b913b6730e4ac",
+      "bundle_set": "aarch64-unknown-none",
+      "complete_bundle_equals_final": true,
+      "differences_from_final_bundle": [],
+      "executed_production_service_images_equal_final": true,
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 22,
+        "failed": 0,
+        "pending": 0
+      },
+      "http_checks": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.385s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.336s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.360s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.13s; ingress recovered"
+      ],
+      "http_retry_diagnostics": [
+        "HTTP transport TimeoutError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 2/2"
+      ],
+      "host_failure_diagnostics": [],
+      "salient_guest_diagnostics": [
+        "[+    24.681136] [s3-test] SUCCESS: verified 33-byte object round trip",
+        "[+    25.023704] [EL0 LOG] lp=0 asid=157 [security] entropy server: retired/missing/oversized/invalid rejected before fill; same-domain loan rejected before admission; minimum/maximum caller buffers and untouched suffix verified",
+        "[+    25.149278] [EL0 LOG] lp=0 asid=157 [security] entropy read: caller buffer, malformed count/missing memory/extra connection/size, device rejection, cancel/Drop and late-result cleanup; original deadline, queue-full/silent timeout distinct and all eight slots recovered",
+        "[+    45.549874] [EL0 LOG] lp=0 asid=157 [security-probe] passed checks=0xffff",
+        "[+    46.061552] [rng] caller reply backing: retired/missing/oversized/read-only rejected; unobserved cancellation refunded; 32 retained pages charged to caller, producer unchanged, independent fill progressed",
+        "[+    46.087640] [caller backing] original sponsor close retained TCP/IP/RNG reply charges; physical release refunded original account and left successor unaffected",
+        "[+    46.089124] [security] probe passed; retired policy fenced, publication generation=1",
+        "[+    57.982236] [EL0 LOG] lp=0 asid=157 [security] entropy server: retired/missing/oversized/invalid rejected before fill; same-domain loan rejected before admission; minimum/maximum caller buffers and untouched suffix verified",
+        "[+    58.110438] [EL0 LOG] lp=0 asid=157 [security] entropy read: caller buffer, malformed count/missing memory/extra connection/size, device rejection, cancel/Drop and late-result cleanup; original deadline, queue-full/silent timeout distinct and all eight slots recovered",
+        "[+    78.514948] [EL0 LOG] lp=0 asid=157 [security-probe] passed checks=0xffff",
+        "[+    79.023322] [rng] caller reply backing: retired/missing/oversized/read-only rejected; unobserved cancellation refunded; 32 retained pages charged to caller, producer unchanged, independent fill progressed",
+        "[+    79.053280] [caller backing] original sponsor close retained TCP/IP/RNG reply charges; physical release refunded original account and left successor unaffected",
+        "[+    79.053708] [security] probe passed; retired policy fenced, publication generation=2"
+      ],
+      "entropy_client_probe_executions": 2,
+      "entropy_server_probe_executions": 2,
+      "real_rng_caller_accounting_executions": 2,
+      "fault_driver_diagnostics": [],
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-aarch64.sh": "42c62c11c20bf928001455b93c1b3c4b971dae9da72ee9d4c4dbae800f2b5973"
+      }
+    },
+    {
+      "instance": "rng-caller-amd-final",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20155 CATTEN_DEPLOY_HOST_PORT=20255 scripts/run-x86_64.sh --security-test --http-test --iommu amd --smp 4 --instance rng-caller-amd-final --fresh-storage --timeout 480",
+      "exit_code": 0,
+      "passed": true,
+      "baseline_revision": "e5b9f2bd4c987507e99646fbd6da7244817c1f49",
+      "cpus": 4,
+      "cpu": "max",
+      "iommu": "amd",
+      "kernel_sha256": "41c216f63441b579fbc592726b8aa56debee02854453dc93cab54c994952a088",
+      "boot_image_sha256": "4821abfe88e169f19a20691cfd10d15cda28aee9ef717158ba6153b8e6f0232e",
+      "initial_disk_sha256": "5cb85de7d233c13ff1b85b998329a8fb8a805afcd3bf66ee3673c61ba3d6d844",
+      "tracked_diff_sha256_at_preparation": "ced22047532e4ed6b5d1d3fbe2f296997d7d7699a57fb195d7d084d3e0197fc7",
+      "bundle_set": "x86_64-unknown-none",
+      "complete_bundle_equals_final": true,
+      "differences_from_final_bundle": [],
+      "executed_production_service_images_equal_final": true,
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 18,
+        "failed": 0,
+        "pending": 0
+      },
+      "http_checks": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.442s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.306s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.347s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.38s; ingress recovered"
+      ],
+      "http_retry_diagnostics": [
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 2/2"
+      ],
+      "host_failure_diagnostics": [],
+      "salient_guest_diagnostics": [
+        "[+    42.769260] [EL0 LOG] lp=0 asid=156 [security] entropy server: retired/missing/oversized/invalid rejected before fill; same-domain loan rejected before admission; minimum/maximum caller buffers and untouched suffix verified",
+        "[+    42.900277] [EL0 LOG] lp=0 asid=156 [security] entropy read: caller buffer, malformed count/missing memory/extra connection/size, device rejection, cancel/Drop and late-result cleanup; original deadline, queue-full/silent timeout distinct and all eight slots recovered",
+        "[+    63.579270] [EL0 LOG] lp=0 asid=156 [security-probe] passed checks=0xffff",
+        "[+    63.772521] [caller backing] original sponsor close retained TCP/IP/RNG reply charges; physical release refunded original account and left successor unaffected",
+        "[+    63.774256] [security] probe passed; retired policy fenced, publication generation=1",
+        "[+    77.065007] [EL0 LOG] lp=0 asid=156 [security] entropy server: retired/missing/oversized/invalid rejected before fill; same-domain loan rejected before admission; minimum/maximum caller buffers and untouched suffix verified",
+        "[+    77.241728] [EL0 LOG] lp=0 asid=156 [security] entropy read: caller buffer, malformed count/missing memory/extra connection/size, device rejection, cancel/Drop and late-result cleanup; original deadline, queue-full/silent timeout distinct and all eight slots recovered",
+        "[+    97.855344] [EL0 LOG] lp=0 asid=156 [security-probe] passed checks=0xffff",
+        "[+    98.042860] [caller backing] original sponsor close retained TCP/IP/RNG reply charges; physical release refunded original account and left successor unaffected",
+        "[+    98.043293] [security] probe passed; retired policy fenced, publication generation=2"
+      ],
+      "entropy_client_probe_executions": 2,
+      "entropy_server_probe_executions": 2,
+      "real_rng_caller_accounting_executions": 0,
+      "fault_driver_diagnostics": [],
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-x86_64.sh": "dd82631746d8765526ed3372c8a779851f254ca2b8ad1fa0ee55d49a96067aa4"
+      }
+    }
+  ],
+  "passing_native_totals": {
+    "deferred_passed": 60,
+    "http_passed": 28,
+    "entropy_client_probe_executions": 4,
+    "entropy_server_probe_executions": 4,
+    "real_rng_accounting_executions": 2,
+    "http_retry_diagnostics": 9
+  },
+  "failed_construction_checks": [
+    {
+      "name": "Initial strict AArch64 service Clippy",
+      "exit_code": 101,
+      "diagnostics": [
+        "unused imports: CallResult and PendingCall in bin/dns.rs"
+      ],
+      "correction": "Remove imports made obsolete by the retired poll/sleep helper."
+    },
+    {
+      "name": "Initial sandboxed advisory database refresh",
+      "exit_code": 1,
+      "diagnostics": [
+        "could not fetch advisory database: failed to prepare fetch; IO error talking to github.com/RustSec/advisory-db.git/info/refs"
+      ],
+      "correction": "Run the same production wrapper with permitted network access; no stale/offline substitute."
+    }
+  ],
+  "failed_native_fixture_correction": {
+    "observation": "Both first security probes aborted before the new completion marker; coordinator records early probe exit and scoped-launch-security failure.",
+    "cause": "The local fixture unwrapped a read loan to its own address space. memory::object::transfer::prepare_loan explicitly rejects owner == target with WrongOwner before submission.",
+    "correction": "Assert same-domain loan rejection; retain caller memory and map safely afterward. Real read-only mapping/loan revocation uses the distinct signed RNG domain in the kernel pressure fixture. No production ownership rule, deadline or capacity weakened."
+  },
+  "manual": {
+    "path": "docs/manual-v2/charlotte.pdf",
+    "sha256": "d631cb6fb273a609ecb55d3ab4f24928ace60b0f25da887001b69b3c80085c50",
+    "pages": 252,
+    "overfull_warnings": 189,
+    "undefined_references": false,
+    "source_sha256": {
+      "docs/manual-v2/charlotte.tex": "42b2f84da83ecf1abf41bcdbcd3dece446936502710951d99c24ed7cda2fe4d8",
+      "docs/manual-v2/chapters/13-networking.tex": "3f449e4aa70157d8420ef5e5680e17d240955eb0e9f1698739ad29bad59db928",
+      "docs/manual-v2/chapters/22-configuration.tex": "a98999dd89dcc0861337c2dbebeb0abf1c0660d3d8f136cf4d674e2c4eb425f8"
+    },
+    "rendered_and_visually_checked_pages": [
+      14,
+      117,
+      118,
+      119,
+      197,
+      198,
+      199,
+      200,
+      201
+    ],
+    "build": "Two initial passes exposed one new long inline module-name overflow (190 global warnings); descriptive wording followed by two final passes restored baseline 189.",
+    "scope": "Affected/adjacent pages and contents only"
+  },
+  "limitations": [
+    "Kernel production accounting/IPC/DMA behavior unchanged; kernel edits are opt-in test controls. No new whole-node flood fairness or physical-device quiescence claim.",
+    "Real caller/producer accounting runs only on AArch64 with the separate VirtIO RNG domain. x86 AMD executes the local current-handler protocol tests but has no attached VirtIO RNG device; no x86 real-RNG accounting claim.",
+    "Kafka passing run predates the local self-loan fixture correction: its complete bundle differs only at unused security_probe.elf. All production service image hashes equal final. The final AArch64/AMD security runs qualify the corrected probe; Kafka was not redundantly repeated.",
+    "No new native forced client allocation failure, client returned-memory mapping failure, unmap failure or wait-admission rejection injection. Real server read-only mapping rejection, exact errors and runtime boundary ownership controls cover their stated scopes only.",
+    "DNS nonce collection remains synchronous in the reactor for a bounded observation, with fail-closed collection on its existing interval. Scheduler/kernel cleanup latency and dependency readiness need separate qualification.",
+    "Authorized flooding, IPC metadata/mapping pressure, device timeout recovery, full TLS erasure, provenance/license, production enrollment, hardware timing and broader SEC-07/18 remain open/partial.",
+    "No Intel native rerun, full signing/launch suite, formal-model change or new GCM backend guard rerun in this batch. Host/current selected-cipher tests and native controls passed; prior qualifications remain historical.",
+    "Passing repeats and retained HTTP/Kafka transport diagnostics do not establish causes for earlier unrelated intermittents."
+  ]
+}

@@ -83,10 +83,13 @@ wait-admission rejection stay distinct, with no replay or fabricated bytes.
 Native reply/attachment, explicit cancel/Drop, late-result and full/silent queue
 controls qualify that scope. This does not bound dependency naming, RNG-server
 publication, kernel mapping/cancellation latency or a complete TLS exchange.
-The RNG protocol still allocates producer-sponsored reply memory: clients
-holding RNG authority can retain it outside this helper. Caller funding and
-retention-pressure qualification remain SEC-07 work; no reachability from an
-ungranted application is asserted. Finding dispositions stay unchanged.
+The subsequent [RNG caller-buffer correction](../reports/audits/2026-10-26-security-rng-caller-buffers.md)
+removes producer-sponsored reply allocation: RNG v2 fills/returns supplied
+caller backing, rejecting the retired scalar path. Retained/unobserved pages
+keep their original caller charge. Concrete ceiling, producer-account,
+independent-progress and sponsor-retirement controls qualify this narrow
+retention path; authorized flooding, shared metadata pressure and broader
+SEC-07 acceptance remain open. Finding dispositions stay unchanged.
 
 The [HTTP listener correction](../reports/audits/2026-10-10-security-http-progress.md)
 retains listeners through queue-full admission. The

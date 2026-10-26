@@ -17,10 +17,30 @@ that requester, and launches `rng.elf`. The driver receives only its four-page
 modern VirtIO MMIO window and DMA-domain capability. It polls the queue and is
 therefore not granted an interrupt capability.
 
-The service registers the short name `rng`. `OP_FILL` accepts a requested byte
-count from 1 through 4096 and returns the exact initialized length plus a moved
-memory object. The driver handles short device completions by resubmitting
-until the complete request has been filled.
+The service registers the short name `rng`, interface version 2. `OP_FILL = 2`
+requires a writable memory object moved from the caller, exactly
+`entropy::BUFFER_BYTES` bytes, and a requested count from 1 through
+`entropy::MAX_REQUEST`. Both currently equal 4096 bytes. Success returns that
+same buffer and the exact initialized count, with no connection attachment.
+Only the requested prefix is written. Retired opcode 1, missing/oversized
+buffers, invalid counts and connection attachments reject before device work;
+there is no service-allocating fallback.
+
+The shared `entropy_service::serve_fill` transaction retains the complete
+incoming request, reply/loan authority and transient writable mapping. Local
+access and received memory end before an error reply or loan cancellation.
+Mapping/unmapping failure returns `ERR_MEMORY`, device failure `ERR_DEVICE`;
+ordinary rejected requests return no memory. The client must move a fresh
+buffer for another independent operation, never replay accepted uncertainty.
+The driver handles short device completions by resubmitting until the complete
+request has been filled; its fixed private DMA buffer remains separate from
+the caller's CPU-only reply backing.
+
+The kernel keeps the original allocating generation's charge through moves,
+unobserved results, return, retention and sponsor retirement. Retaining RNG
+replies therefore consumes caller backing rather than fresh producer backing.
+This does not eliminate IPC metadata admission, queue contention, producer
+mapping costs or denial of service from authorized flooding.
 
 Virtqueue memory uses `catten_rt::owned::SharedDmaMemory`. This owner keeps the
 memory object, CPU mapping, and DMA mapping together; access is volatile, and
@@ -47,6 +67,38 @@ The S3 TLS service prefers architectural random words and transparently uses
 the `rng` service for any remainder. Other applications should resolve `rng`
 through the name service and retain the returned owned connection rather than
 accessing VirtIO or DMA directly.
+
+## Client policy and related dimensions
+
+The shared owned client allocates its buffer before admission, within its
+original deadline; allocation failure is `EntropyError::Preparation`, distinct
+from submission/observation failure. It consumes the buffer with `call_move`,
+retains returned memory/mapping in its completion owner and checks the exact
+buffer size as well as count/attachments. Explicit cancel and Drop preserve
+the existing checked cancellation policy. See [TLS ownership](tls-client.md).
+S3, Kafka and TCP/IP use that client. DNS boot-nonce collection also uses it,
+carrying one central `CAPACITY_NONCE_TIMEOUT_MS = 100` budget through immediate
+name lookup and fill, replacing its reply poll/sleep loop. Collection can still
+pause the DNS reactor for that bounded observation; this is not a general
+asynchronous capacity-report reactor migration or a latency guarantee for
+kernel cleanup. Independent failed collections retain the existing report
+interval and fail-closed no-nonce behavior.
+
+Protocol storage dimensions are grouped in `catten_services::entropy`:
+`BUFFER_PAGES = 1`, `BUFFER_BYTES = BUFFER_PAGES * 4096` and
+`MAX_REQUEST = BUFFER_BYTES`. The page size is the memory-object ABI's structural
+unit. These are compile-time settings; no launch/boot resource or live override
+is added. Increasing them enlarges every service request's caller allocation
+and the driver's persistent private DMA buffer. Descriptor lengths must fit
+`u32`; the compile-time check enforces that and a nonzero buffer. Rebuild all
+consumers and the driver, then repeat minimum/maximum, rejection, queue,
+retention, cancellation, budget and DMA qualification. The separate positive
+`EntropyLimits` deadline remains installed with its source. See the
+[configuration guide](../guides/configuration.md).
+
+The [caller-buffer follow-up](../reports/audits/2026-10-26-security-rng-caller-buffers.md)
+records concrete caller/producer accounting and verification limits. It does
+not establish hardware quiescence or close the broader SEC-07 finding.
 
 ## TCP/IP startup
 

@@ -1,8 +1,8 @@
 //! VirtIO RNG driver and node-local cryptographic entropy service.
 //!
-//! The launch environment delegates exactly one MMIO region, interrupt, and
+//! The launch environment delegates exactly one MMIO region and
 //! protected DMA domain. One polled split virtqueue obtains host entropy; IPC
-//! replies move freshly allocated memory objects to callers.
+//! replies return the caller's supplied memory without producer allocation.
 #![no_std]
 #![no_main]
 
@@ -159,7 +159,7 @@ impl<'domain> VirtioRng<'domain> {
             .ok()?
             .map_shared_dma(domain, DmaDirection::Bidirectional)
             .ok()?;
-        let entropy = OwnedMemory::allocate(1)
+        let entropy = OwnedMemory::allocate(entropy::BUFFER_PAGES)
             .ok()?
             .map_shared_dma(domain, DmaDirection::DeviceWrite)
             .ok()?;
@@ -310,43 +310,13 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             drop(device);
             return request;
         }
-        let Some(mut message) = endpoint.try_receive().unwrap_or_else(|_| fail(0xe006)) else {
+        let Some(message) = endpoint.try_receive().unwrap_or_else(|_| fail(0xe006)) else {
             sleep_ms(10);
             continue;
         };
-        let Some(reply) = message.reply.take() else {
-            continue;
-        };
-        if message.opcode != entropy::OP_FILL {
-            let _ = reply.reply(entropy::ERR_BAD_OPCODE);
-            continue;
-        }
-        let Ok(length) = usize::try_from(message.arg0) else {
-            let _ = reply.reply(entropy::ERR_INVALID);
-            continue;
-        };
-        if length == 0 || length > entropy::MAX_REQUEST {
-            let _ = reply.reply(entropy::ERR_INVALID);
-            continue;
-        }
-        let Ok(memory) = OwnedMemory::allocate(length.div_ceil(PAGE_SIZE)) else {
-            let _ = reply.reply(entropy::ERR_MEMORY);
-            continue;
-        };
-        let Ok(mut mapping) = memory.map_writable() else {
-            let _ = reply.reply(entropy::ERR_MEMORY);
-            continue;
-        };
-        if !device.fill(&mut mapping.as_mut_slice()[..length]) {
-            let _ = reply.reply(entropy::ERR_DEVICE);
-            continue;
-        }
-        let Ok(memory) = mapping.unmap() else {
-            let _ = reply.reply(entropy::ERR_MEMORY);
-            continue;
-        };
-        if reply.reply_move(memory, length as i64).is_ok() {
-            bytes_served = bytes_served.saturating_add(length as u64);
+        let length = message.arg0;
+        if catten_services::entropy_service::serve_fill(message, |output| device.fill(output)) {
+            bytes_served = bytes_served.saturating_add(length);
             config::write::<u64>(status::BYTES, bytes_served);
         }
     }

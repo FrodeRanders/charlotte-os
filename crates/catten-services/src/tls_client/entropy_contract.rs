@@ -13,6 +13,7 @@ use catten_rt::owned::{
 use catten_services::{
     deadline::Deadline,
     entropy,
+    entropy_service,
     tls_client::{
         self,
         EntropyError,
@@ -55,20 +56,38 @@ impl Peer {
         check(
             message.opcode == entropy::OP_FILL
                 && message.arg0 == REQUEST_LEN as u64
-                && message.memory.is_none()
+                && message.memory.as_ref().is_some_and(|m| m.len() == entropy::BUFFER_BYTES)
                 && message.connection.is_none(),
             300,
         );
+        if mode == 0 || mode == 4 {
+            check(
+                entropy_service::serve_fill(message, |bytes| {
+                    if mode == 4 {
+                        return false;
+                    }
+                    bytes.fill(0x3a);
+                    true
+                }) == (mode == 0),
+                320,
+            );
+            return;
+        }
         let reply = message.reply.take().unwrap_or_else(|| catten_rt::domain_abort());
         match mode {
-            0 | 1 => {
-                let memory = OwnedMemory::allocate(1).unwrap_or_else(|_| catten_rt::domain_abort());
+            1 | 5 => {
+                let memory = if mode == 1 {
+                    message.memory.take().unwrap_or_else(|| catten_rt::domain_abort())
+                } else {
+                    OwnedMemory::allocate(entropy::BUFFER_PAGES + 1)
+                        .unwrap_or_else(|_| catten_rt::domain_abort())
+                };
                 let mut mapping =
                     memory.map_writable().unwrap_or_else(|_| catten_rt::domain_abort());
                 mapping.as_mut_slice()[..REQUEST_LEN].fill(0x3a);
                 let memory = mapping.unmap().unwrap_or_else(|_| catten_rt::domain_abort());
                 check(
-                    reply.reply_move(memory, (REQUEST_LEN - usize::from(mode)) as i64).is_ok(),
+                    reply.reply_move(memory, (REQUEST_LEN - usize::from(mode == 1)) as i64).is_ok(),
                     301,
                 );
             }
@@ -77,7 +96,6 @@ impl Peer {
                 reply.reply_connection(&self.endpoint, IpcRights::CALL, REQUEST_LEN as i64).is_ok(),
                 303,
             ),
-            4 => check(reply.reply(entropy::ERR_DEVICE).is_ok(), 304),
             _ => check(false, 305),
         }
     }
@@ -98,7 +116,8 @@ fn delayed_observation() {
 pub(crate) fn run(silent: ConnectionRef<'_>) {
     let peer = Peer::new();
     let mut bytes = [0xa5; REQUEST_LEN];
-    for mode in 0..5 {
+    server_contract(&peer);
+    for mode in 0..6 {
         bytes.fill(0xa5);
         let read = ServiceEntropyRead::start(
             peer.connection.as_ref(),
@@ -219,8 +238,122 @@ pub(crate) fn run(silent: ConnectionRef<'_>) {
     });
     drop(recovered);
     catten_rt::logln!(concat!(
-        "[security] entropy read: moved reply, malformed count/missing memory/extra connection, ",
+        "[security] entropy read: caller buffer, malformed count/missing memory/extra \
+         connection/size, ",
         "device rejection, cancel/Drop and late-result cleanup; original deadline, ",
         "queue-full/silent timeout distinct and all eight slots recovered"
     ));
+}
+
+fn serve_invalid(peer: &Peer, pending: PendingCall<'_>, error: i64) {
+    let message = peer
+        .endpoint
+        .try_receive()
+        .unwrap_or_else(|_| catten_rt::domain_abort())
+        .unwrap_or_else(|| catten_rt::domain_abort());
+    check(
+        !entropy_service::serve_fill(message, |_| {
+            check(false, 321);
+            false
+        }),
+        322,
+    );
+    let reply = pending.wait().unwrap_or_else(|_| catten_rt::domain_abort());
+    check(reply.result == error && reply.memory.is_none() && reply.connection.is_none(), 323);
+}
+
+fn server_contract(peer: &Peer) {
+    // Retired scalar opcode and current missing/oversized/invalid buffer shapes
+    // must reject before the hardware callback, with the whole request owned.
+    serve_invalid(
+        peer,
+        peer.connection
+            .as_ref()
+            .call(1, REQUEST_LEN as u64)
+            .unwrap_or_else(|_| catten_rt::domain_abort()),
+        entropy::ERR_BAD_OPCODE,
+    );
+    serve_invalid(
+        peer,
+        peer.connection
+            .as_ref()
+            .call(entropy::OP_FILL, REQUEST_LEN as u64)
+            .unwrap_or_else(|_| catten_rt::domain_abort()),
+        entropy::ERR_INVALID,
+    );
+    for length in [0, entropy::MAX_REQUEST as u64 + 1, u64::MAX] {
+        let buffer = OwnedMemory::allocate(entropy::BUFFER_PAGES)
+            .unwrap_or_else(|_| catten_rt::domain_abort());
+        let pending = peer
+            .connection
+            .as_ref()
+            .call_move(entropy::OP_FILL, length, buffer)
+            .unwrap_or_else(|_| catten_rt::domain_abort());
+        serve_invalid(peer, pending, entropy::ERR_INVALID);
+    }
+    let buffer = OwnedMemory::allocate(entropy::BUFFER_PAGES + 1)
+        .unwrap_or_else(|_| catten_rt::domain_abort());
+    let pending = peer
+        .connection
+        .as_ref()
+        .call_move(entropy::OP_FILL, REQUEST_LEN as u64, buffer)
+        .unwrap_or_else(|_| catten_rt::domain_abort());
+    serve_invalid(peer, pending, entropy::ERR_INVALID);
+    let buffer =
+        OwnedMemory::allocate(entropy::BUFFER_PAGES).unwrap_or_else(|_| catten_rt::domain_abort());
+    // The kernel rejects a loan to the same address space before submission.
+    // Actual read-only mapping/revocation is tested against the distinct signed
+    // RNG domain by the kernel caller-accounting fixture.
+    check(
+        peer.connection
+            .as_ref()
+            .call_borrow_read(entropy::OP_FILL, REQUEST_LEN as u64, &buffer)
+            .is_err(),
+        328,
+    );
+    drop(buffer.map_writable().unwrap_or_else(|_| catten_rt::domain_abort()));
+    for length in [1, entropy::MAX_REQUEST] {
+        let mut mapping = OwnedMemory::allocate(entropy::BUFFER_PAGES)
+            .unwrap_or_else(|_| catten_rt::domain_abort())
+            .map_writable()
+            .unwrap_or_else(|_| catten_rt::domain_abort());
+        mapping.as_mut_slice().fill(0xa5);
+        let buffer = mapping.unmap().unwrap_or_else(|_| catten_rt::domain_abort());
+        let pending = peer
+            .connection
+            .as_ref()
+            .call_move(entropy::OP_FILL, length as u64, buffer)
+            .unwrap_or_else(|_| catten_rt::domain_abort());
+        let message = peer
+            .endpoint
+            .try_receive()
+            .unwrap_or_else(|_| catten_rt::domain_abort())
+            .unwrap_or_else(|| catten_rt::domain_abort());
+        check(
+            entropy_service::serve_fill(message, |bytes| {
+                check(bytes.len() == length, 324);
+                bytes.fill(0x3a);
+                true
+            }),
+            325,
+        );
+        let reply = pending.wait().unwrap_or_else(|_| catten_rt::domain_abort());
+        check(reply.result == length as i64 && reply.connection.is_none(), 326);
+        let mapping = reply
+            .memory
+            .unwrap_or_else(|| catten_rt::domain_abort())
+            .map_read_only()
+            .unwrap_or_else(|_| catten_rt::domain_abort());
+        check(
+            mapping.len() == entropy::BUFFER_BYTES
+                && mapping.as_slice()[..length].iter().all(|b| *b == 0x3a)
+                && mapping.as_slice()[length..].iter().all(|b| *b == 0xa5),
+            327,
+        );
+    }
+    catten_rt::logln!(
+        "[security] entropy server: retired/missing/oversized/invalid rejected before fill; \
+         same-domain loan rejected before admission; minimum/maximum caller buffers and untouched \
+         suffix verified"
+    );
 }

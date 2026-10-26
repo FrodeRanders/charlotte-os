@@ -106,6 +106,17 @@ replay. This bounds reply observation, not dependency naming or kernel cleanup
 latency. Details and exact inputs are in
 \repofiletext|docs/reference/tls-client.md|{the TLS configuration reference}.
 
+The shared entropy protocol groups \texttt{BUFFER\_PAGES},
+\texttt{BUFFER\_BYTES} and \texttt{MAX\_REQUEST}, currently one 4096-byte page.
+These compile-time dimensions control caller allocations and
+the driver's private DMA buffer together; descriptor lengths must fit
+\texttt{u32}. Rebuild every caller and driver, then qualify maximum sizes,
+rejection, retention, cancellation and DMA before changing them. This adds no
+boot-resource parser or live resizing. DNS's separate
+\texttt{CAPACITY\_NONCE\_TIMEOUT\_MS} groups its 100 ms lookup/fill observation
+budget in the capacity-report context. See
+\repofiletext|docs/reference/entropy.md|{the entropy configuration reference}.
+
 \section{Related limits and tuning consequences}
 
 The policy groups domain/ordinary/total capacities and resource dimensions.

@@ -855,8 +855,16 @@ completion owns returned resources and mapping. Exact byte counts and memory
 without a connection attachment are required. Late results are disposed, and
 explicit cancellation returns its complete owner if rejected. Timeout,
 submission and exact observation rejection remain distinct; none grants replay
-or device-quiescence authority. Dependency lookup, kernel cleanup latency and
-producer-sponsored reply-memory retention remain separate audit work.
+or device-quiescence authority. RNG interface version 2 uses opcode 2 and an
+exact caller-moved buffer, currently one 4096-byte page. The service fills and
+returns that object; no producer-allocated reply fallback remains, and retired
+scalar opcode 1 rejects. Returned or unobserved backing keeps its original
+caller charge through sponsor retirement. The shared server transaction ends
+mapping access before reply or loan cancellation. Dependency lookup, kernel
+cleanup latency, queue/metadata pressure and authorized flooding remain separate
+audit work. The bounded DNS boot-nonce collection also uses this client, with
+one 100 ms deadline for lookup and fill. See
+\repofiletext|docs/reference/entropy.md|{the entropy protocol reference}.
 
 One nonblocking handshake admission owns the static verification clock through
 completion. Overlap rejects before changing the clock, and completion clears

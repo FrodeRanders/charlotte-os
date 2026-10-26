@@ -403,6 +403,128 @@ fn verify_caller_buffers(
     external
 }
 
+fn verify_rng_caller_buffers(
+    ns: &supervisor::NameServiceHandle,
+    root: crate::memory::AddressSpaceHandle,
+    producer: crate::memory::AddressSpaceHandle,
+) -> u64 {
+    use crate::{
+        ipc,
+        memory,
+    };
+    // Kernel fixture ABI adapter for RNG v2: opcode 2 returns the supplied
+    // page. This intentionally tests the signed service across the IPC boundary.
+    const RNG_NAME: u64 = u64::from_le_bytes(*b"rng\0\0\0\0\0");
+    const FILL: u32 = 2;
+    const REQUEST: u64 = 32;
+    const RETAINED: u64 = 32;
+    let caller = root.id();
+    let baseline = memory::budget::used(root);
+    let producer_baseline = memory::budget::used(producer);
+    memory::budget::set_limit(
+        root,
+        memory::budget::Amount {
+            pages: baseline.pages + RETAINED,
+            objects: baseline.objects + RETAINED,
+        },
+    )
+    .unwrap();
+    let ns_connection = ipc::connection_delegate(
+        ns.domain.asid,
+        ns.endpoint_cap,
+        caller,
+        ipc::ConnectionRights::CALL,
+    )
+    .unwrap();
+    let wait = |call| {
+        assert!(ipc::wait_reply_timeout(caller, call, 5_000).unwrap());
+        let result = ipc::poll_reply(caller, call).unwrap().unwrap();
+        ipc::close_cap(caller, call).unwrap();
+        result
+    };
+    let rng = wait(ipc::scalar_call(caller, ns_connection, 2, RNG_NAME).unwrap()).cap.unwrap();
+    for (opcode, expected) in [(1, -4), (FILL, -1)] {
+        let result = wait(ipc::scalar_call(caller, rng, opcode, REQUEST).unwrap());
+        assert_eq!(result.result, expected, "retired or missing-buffer RNG request must reject");
+        assert!(result.cap.is_none() && result.memory.is_none());
+    }
+    let oversized = memory::object::allocate(caller, 2).unwrap();
+    let result =
+        wait(ipc::scalar_call_with_memory_move(caller, rng, FILL, REQUEST, oversized).unwrap());
+    assert_eq!(result.result, -1);
+    assert!(result.memory.is_none());
+    assert_eq!(memory::budget::used(root), baseline);
+    let readonly = memory::object::allocate(caller, 1).unwrap();
+    let result = wait(
+        ipc::scalar_call_with_memory_borrow_read(caller, rng, FILL, REQUEST, readonly).unwrap(),
+    );
+    assert_eq!(result.result, -3, "RNG mapping failure must reject and revoke read loan");
+    assert!(result.memory.is_none());
+    memory::object::write_bytes(caller, readonly, &[0xa5]).unwrap();
+    memory::object::close_cap(caller, readonly).unwrap();
+    assert_eq!(memory::budget::used(root), baseline);
+    // Ready is not observation: closing the unobserved result releases exactly
+    // the caller's original page, without taking ownership of a returned scalar.
+    let buffer = memory::object::allocate(caller, 1).unwrap();
+    let unobserved = ipc::scalar_call_with_memory_move(caller, rng, FILL, REQUEST, buffer).unwrap();
+    assert!(ipc::wait_reply_timeout(caller, unobserved, 5_000).unwrap());
+    assert_eq!(memory::budget::used(root).pages, baseline.pages + 1);
+    assert_eq!(memory::budget::used(producer), producer_baseline);
+    ipc::close_cap(caller, unobserved).unwrap();
+    assert_eq!(memory::budget::used(root), baseline);
+    let mut retained = Vec::new();
+    for count in 1..=RETAINED {
+        let buffer = memory::object::allocate(caller, 1).unwrap();
+        let result =
+            wait(ipc::scalar_call_with_memory_move(caller, rng, FILL, REQUEST, buffer).unwrap());
+        assert_eq!(result.result, REQUEST as i64);
+        assert!(result.cap.is_none());
+        retained.push(result.memory.expect("RNG returns caller backing"));
+        assert_eq!(memory::budget::used(root).pages, baseline.pages + count);
+        assert_eq!(memory::budget::used(root).objects, baseline.objects + count);
+        assert_eq!(memory::budget::used(producer), producer_baseline);
+    }
+    assert!(memory::object::allocate(caller, 1).is_err());
+    // A separately funded operation still progresses with the ordinary caller
+    // at its real ceiling. This is one independent sponsor, not flood fairness.
+    let independent = memory::KERNEL_ASID;
+    let kernel_ns = ipc::connection_delegate(
+        ns.domain.asid,
+        ns.endpoint_cap,
+        independent,
+        ipc::ConnectionRights::CALL,
+    )
+    .unwrap();
+    let lookup = ipc::scalar_call(independent, kernel_ns, 2, RNG_NAME).unwrap();
+    assert!(ipc::wait_reply_timeout(independent, lookup, 5_000).unwrap());
+    let kernel_rng = ipc::poll_reply(independent, lookup).unwrap().unwrap().cap.unwrap();
+    ipc::close_cap(independent, lookup).unwrap();
+    let buffer = memory::object::allocate(independent, 1).unwrap();
+    let call =
+        ipc::scalar_call_with_memory_move(independent, kernel_rng, FILL, REQUEST, buffer).unwrap();
+    assert!(ipc::wait_reply_timeout(independent, call, 5_000).unwrap());
+    let result = ipc::poll_reply(independent, call).unwrap().unwrap();
+    assert_eq!(result.result, REQUEST as i64);
+    memory::object::close_cap(independent, result.memory.unwrap()).unwrap();
+    ipc::close_cap(independent, call).unwrap();
+    ipc::close_cap(independent, kernel_rng).unwrap();
+    ipc::close_cap(independent, kernel_ns).unwrap();
+    assert_eq!(memory::budget::used(producer), producer_baseline);
+    let external = memory::object::move_to(caller, retained.pop().unwrap(), independent).unwrap();
+    for memory in retained {
+        memory::object::close_cap(caller, memory).unwrap();
+    }
+    assert_eq!(memory::budget::used(root).pages, baseline.pages + 1);
+    ipc::close_cap(caller, rng).unwrap();
+    ipc::close_cap(caller, ns_connection).unwrap();
+    logln!(
+        "[rng] caller reply backing: retired/missing/oversized/read-only rejected; unobserved \
+         cancellation refunded; 32 retained pages charged to caller, producer unchanged, \
+         independent fill progressed"
+    );
+    external
+}
+
 extern "C" fn verify() {
     assert!(
         crate::service::launch::steady_state().appliance.is_some(),
@@ -490,8 +612,17 @@ extern "C" fn verify() {
             45_000,
         );
         assert_eq!(word(probe.get(), status::CHECKS), status::EXPECTED_CHECKS);
-        let retained_buffer =
-            verify_caller_buffers(&supervisor::node_name_service(), probe.get().address_space);
+        let mut retained_buffers = alloc::vec![verify_caller_buffers(
+            &supervisor::node_name_service(),
+            probe.get().address_space
+        )];
+        if let Some(entropy) = crate::service::launch::steady_state().entropy {
+            retained_buffers.push(verify_rng_caller_buffers(
+                &supervisor::node_name_service(),
+                probe.get().address_space,
+                entropy.address_space,
+            ));
+        }
         let base: *const u8 = probe.get().status_frame.into();
         let generation = unsafe {
             core::ptr::read_volatile(base.add(status::PUBLICATION_GENERATION).cast::<u64>())
@@ -510,19 +641,21 @@ extern "C" fn verify() {
         verify_publication_and_lookup_boundary(None);
         assert_eq!(
             crate::memory::budget::used(retired).pages,
-            1,
+            retained_buffers.len() as u64,
             "closing original sponsor cannot refund retained backing"
         );
         let successor = crate::service::loader::create_user_address_space();
         let successor_root = crate::memory::current_address_space_handle(successor).unwrap();
         assert_eq!(crate::memory::budget::used(successor_root).pages, 0);
-        crate::memory::object::close_cap(crate::memory::KERNEL_ASID, retained_buffer).unwrap();
+        for retained_buffer in retained_buffers {
+            crate::memory::object::close_cap(crate::memory::KERNEL_ASID, retained_buffer).unwrap();
+        }
         assert_eq!(crate::memory::budget::used(retired).pages, 0);
         assert_eq!(crate::memory::budget::used(successor_root).pages, 0);
         crate::self_test::close_test_address_space(successor).unwrap();
         logln!(
-            "[tcpip] original sponsor close retained reply charge; physical release refunded \
-             original account and left successor unaffected"
+            "[caller backing] original sponsor close retained TCP/IP/RNG reply charges; physical \
+             release refunded original account and left successor unaffected"
         );
         previous_domain = Some(retired);
         assert!(!crate::memory::launch_descriptor_matches(

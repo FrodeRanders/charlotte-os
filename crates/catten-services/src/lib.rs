@@ -38,6 +38,7 @@ pub mod deadline;
 pub mod deployment_control;
 pub mod deployment_http;
 pub mod deployment_input;
+pub mod entropy_service;
 /// Owned application-side wrapper for the capability-grant controller.
 pub mod grant_client;
 /// Owned application-side wrappers for the Kafka service protocol.
@@ -521,13 +522,19 @@ pub mod virtio {
 /// Cryptographic entropy service backed by a delegated VirtIO RNG device.
 pub mod entropy {
     pub const INTERFACE: u64 = super::name(b"RNG");
-    pub const VERSION: u32 = 1;
+    pub const VERSION: u32 = 2;
     pub const NAME: u64 = super::name(b"rng");
 
-    /// Return up to `arg0` random bytes in a moved memory object. The scalar
-    /// result is the exact initialized byte count.
-    pub const OP_FILL: u32 = 1;
-    pub const MAX_REQUEST: usize = 4_096;
+    /// Fill exactly `arg0` bytes in the caller's moved writable buffer and
+    /// return that same object. Retired scalar opcode 1 is not accepted.
+    pub const OP_FILL: u32 = 2;
+    /// Related protocol storage dimensions; changing these requires rebuilding
+    /// every caller and the driver and qualifying retention/maximum-size cases.
+    /// The 4096-byte page size is the memory-object ABI's structural unit.
+    pub const BUFFER_PAGES: usize = 1;
+    pub const BUFFER_BYTES: usize = BUFFER_PAGES * 4_096;
+    pub const MAX_REQUEST: usize = BUFFER_BYTES;
+    const _: () = assert!(BUFFER_PAGES > 0 && BUFFER_BYTES <= u32::MAX as usize);
 
     pub const ERR_INVALID: i64 = -1;
     pub const ERR_DEVICE: i64 = -2;
