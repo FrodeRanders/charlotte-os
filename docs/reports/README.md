@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [SEC-18 backing abandonment](audits/2026-10-26-security-backing-abandonment.md) — Inert complete backing fallback, explicit ordinary cancellation, retained original charges and a failing old-Drop native control.
+
 - [SEC-15 freestanding x86 GCM owner](audits/2026-10-25-security-x86-gcm-owner.md) — Selects erasing software authentication state, rejects unsafe build overrides and checks the selected cipher in the signed guest probe.
 
 - [Memory-capability node admission](audits/2026-10-25-security-memory-capability-node-admission.md) — Requested-byte/count ceilings follow payload and namespace nodes through preparation, publication and retained cleanup.

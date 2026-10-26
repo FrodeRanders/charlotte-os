@@ -613,6 +613,17 @@ Relevant contracts: [translation](translation-admission.md),
 
 ## SEC-18: quiescence and recovery
 
+The [backing abandonment correction](../reports/audits/2026-10-26-security-backing-abandonment.md)
+removes physical release, metadata destruction and refund from the memory-object
+backing owner's Drop, including reservation-only prefixes. Ordinary preparation
+rejection, last-pin cleanup and cancelled-copy release consume the same complete
+owner explicitly after their local guards, preserving original charges and
+publication/cleanup order. A native old-Drop negative control fails on premature
+reservation refund; guarded data-owner abandonment retains backing and authority
+past root retirement/reuse. This advances C05/C18 and G1; containing transfer
+destructors and broader outer IRQ/guard/physical recovery qualification remain
+open. SEC-18/07 and finding dispositions remain partial/unchanged.
+
 Implemented paths retain exact roots and ownership through staged copy rollback,
 IPC delivery/reply/cancellation, endpoint and namespace cleanup, memory/device
 retirement, thread abort, cooperative runtime-page access and final root destruction. Backing is released only

@@ -1,0 +1,660 @@
+{
+  "schema": "charlotte-security-evidence-v1",
+  "report_date": "2026-10-26",
+  "reviewed_revision": "98a2ffde2f7685e115f0f3e159b723f3a4eeb49d",
+  "scope": {
+    "finding": "SEC-18 C05/C18/G1 with original-charge SEC-07 dependencies",
+    "gap": "ChargedFrames Drop invoked physical/metadata cleanup and refund under an unknown outer context, including charge-only/private prefixes.",
+    "correction": "Inert complete fallback, consuming private preparation cancellation after callback-local guards, explicit last-pin and cancelled-copy release.",
+    "unchanged": [
+      "sixteen-frame physical batching and pre-attempt/failed fence",
+      "physical-before-node-before-original-charge disposal",
+      "exact roots, source sponsorship, pin/loan/hardware completion requirements",
+      "publication guard retained across authority and payload handoff",
+      "active containing transfer destructor and its existing destination-before-copy cleanup order",
+      "limits/register/wire ABI/userspace inputs"
+    ],
+    "new_root_pin_registry_custody_family_or_physical_replay_authority": false,
+    "finding_ledger": {
+      "corrected": 29,
+      "partial": 6,
+      "open": 3,
+      "production_trust": "disabled"
+    }
+  },
+  "source_sha256": {
+    "crates/catten/src/memory/object.rs": "399e8d351817ccae05916699ebfd7ca896f89b44ddba11bd74ea26e134cc6971",
+    "crates/catten/src/memory/object/backing.rs": "7e925f724a226d8d3275aa4a123491d5a4b52050b915a876b6f2967ef63674a9",
+    "crates/catten/src/memory/object/backing/storage_tests.rs": "377a01c2699ef967c626b3880110b266bd767fcdac9c4a33608aadaf3c0b1de4",
+    "crates/catten/src/memory/object/transfer.rs": "63de58444ef4729ccd6767f700d3d0074aa5e6c0ac6f6c933298432ae0edef06"
+  },
+  "checks": {
+    "physical_release_and_into_release_status_bodies_byte_identical_to_baseline": true,
+    "strict_base_kernel_clippy": {
+      "aarch64": "pass",
+      "x86_64": "pass",
+      "command": "CATTEN_<ARCH>_SERVICE_BUNDLE=<absolute signed bundle> cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings"
+    },
+    "frozen_final_source_restored_after_negative": "byte-identical, all four Rust files",
+    "formatting": "pass",
+    "whitespace": "pass",
+    "local_references": {
+      "result": "pass",
+      "targets_checked": 863
+    },
+    "signed_service_bundles_unchanged_from_parent_evidence": {
+      "reference": "2026-10-25-security-x86-gcm-owner.json",
+      "by_backend": {
+        "smmuv3": true,
+        "intel": true,
+        "amd": true
+      }
+    }
+  },
+  "native_negative_controls": [
+    {
+      "mutation": "Restore the prior ChargedFrames::Drop body: self.free(); all other final code unchanged.",
+      "source_sha256": {
+        "crates/catten/src/memory/object.rs": "399e8d351817ccae05916699ebfd7ca896f89b44ddba11bd74ea26e134cc6971",
+        "crates/catten/src/memory/object/backing.rs": "79e943ad981b7312a9658e4d2aebd9fa501519103bfa9df35be2b976a5d1c72f",
+        "crates/catten/src/memory/object/backing/storage_tests.rs": "377a01c2699ef967c626b3880110b266bd767fcdac9c4a33608aadaf3c0b1de4",
+        "crates/catten/src/memory/object/transfer.rs": "63de58444ef4729ccd6767f700d3d0074aa5e6c0ac6f6c933298432ae0edef06"
+      },
+      "result": {
+        "reason": "kernel-panic",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 8.640025374945253
+      },
+      "kernel_sha256": "f672b9881863d6737e89a15287b966020d6d224c8a319dec47b5a38bfa94bb2f",
+      "boot_image_sha256": "49aadc49e3e4328557af0c009969ed37d9b0b0db997cda3e6c770feb4e728788",
+      "initial_disk_sha256": "6c06135f6e3926b94a41d83512ee69e024540f62a525b02680974c1faaf4fc41",
+      "bundle_sha256": {
+        "agent.elf": "7c9b52a0bed0cc6ddc324af244abfce7a4939132979a7d3b8f34223cd1da9842",
+        "cclient.elf": "47813589646c0657ba4eb5a5a6af243b1f1684a083d780a9744ab3bcc5706248",
+        "client.elf": "5c7ac1151fa707b89db82b49bbefccfa2442f0dea4b213867dc08bdc5c510525",
+        "clusterctl.elf": "018f80fbf1ce9a74f1d99d2379a4d6a6b0bca2b48cf1bcc7467fbba311a72794",
+        "deployd.elf": "69dd9d198b2ab85ec1ea04c8f4dcc7805e0f3b65fe6fd74d1e48d3d479f90547",
+        "disco.elf": "99a7f2c90cb3ef9c0af49e176848aed3305a5ae2c1681855d3af1ef8c27f6462",
+        "dns.elf": "78109d95c5a8bd708816a1b36fac406e68780e4b36854b2b7ecb9544eebef192",
+        "echo.elf": "5c59747d8f6ce8141f0f6ed1c65d4617002cc5338481c1a7ef2060e2b448b5a5",
+        "frouter.elf": "805911205d6254f7b21b5b564bf24cb75a8de4bdf910e435ba38776e31e2bfaa",
+        "fs.elf": "c20931f30fbf42bd93046fa76c8ecb41ac1c496696e90e57e4db159037091a64",
+        "grantctl.elf": "039c27369e2371071c3d0b847b48c33c7f48e237822713577371b4cd793f898d",
+        "greet.elf": "8645845a750b0b312aab080787b8cda772e06d830e027ff3cf3ef11b9fc9c9bb",
+        "httpd.elf": "9034668d4bf50e07b8bd26309d02a6f17222a8e29d252204589938d868e5aae4",
+        "kafka.elf": "11e9b77f45723a6e60d8a0e7d581ff297b6b80f0044049fa389d0abc9752e325",
+        "kafka_fence_smoke.elf": "a3d63ba5b4f3c50c5ca32185521387d8ac98228113faef95541afd706170b9c0",
+        "kafka_smoke.elf": "46a2efaf5ffbab422ada37451e54b5565562dd44db070be2eae0b6b03107e3c2",
+        "kafka_step.elf": "8d8dd751dd49925569e3556d1f6a705d7ba4023708b459ab8ff3dff6325c2bef",
+        "kafka_step_input.elf": "a7e207a75d68acca60c3d5f5425fefb6ccf0a244cb7219dc42ffab47cd30202a",
+        "kafka_step_proc.elf": "8fef98dbe182877986eb874ebeb0ff64ae80d4d64e1a5604f7f9cfbec8ea2efc",
+        "nclient.elf": "34e54fb0b852f54f997a56bc70d6ddfd037bdab74ce58d6b48188f8e27f52f3f",
+        "net.elf": "6655d31e32759ab37b9a31bbfb5a691d91621123cfaf661c1c03514583f45bb0",
+        "ns.elf": "de73710ac3c0984734eb65d4113eb509c8a8a6837d50b8095d2573d99b204796",
+        "nvme.elf": "548ec21f81e278d77749ee6bac9e50b240bc606424f5a829ae08313131a23272",
+        "nvme_client.elf": "d14e74aebdf58aa6766a06edc877a740f695f7e6eccb78864ae1d3163df0a187",
+        "objstore.elf": "ea21184045b8391e4457f3b3b9b3bb369ef1252c71aef06143be773d0f832259",
+        "objstore_client.elf": "55cbd339afa0d78c9dc71a349c94a4ce4f815417fc82dec1e275b50944372034",
+        "observe.elf": "ff0f5552eb0d3e10edcf57b7bee59d5d3a3ea2bb111a76f68498890cd7e1de22",
+        "raft.elf": "281d4f280903c48e5800326f6826a9b09f5ec8f46dae474cb25e86e4ac4eeda1",
+        "rclient.elf": "a4b9d6d8102ec8bb8449f575d4b5580cd2f3ea525f9f26b8c991202ded52d314",
+        "relmsg.elf": "eeff85710ddd9c4270c2999651308dec8914b3b314ba737ceb6b86989653a9dd",
+        "rng.elf": "a948fdc8f30934bebbc22c85c27e1da76f00b6e6b327bfd27dda1f0a7a655686",
+        "s3.elf": "cc524ffc152d78bc1ad5319a9ffb2d82e1944ef521168e3a7787b9a89547145d",
+        "s3_smoke.elf": "2abe4a752de84bdfa15e93fa38bad3c92b02e2ef2b12fb3d1d0e8091762cb253",
+        "security_probe.elf": "ec5a2a8013149323858942a013dcfcbe136acf1a59b335f1cec05e3b00289c59",
+        "servicemgr.elf": "7e100f389bf431226ae0394238aa1857b72197f3df64823111d44347383bd12f",
+        "shutdown_probe.elf": "58cd8fb289f57358a06df005afeff7a3c242ad4a43ee0d9a062f1fab9bd9ac25",
+        "sitas-user.elf": "fbf1b47a721d84498a64e43bc626a7f962a52d3740e3fa7e14adaeea7fa5f311",
+        "tcpclient.elf": "6eeb6137839b0e78c3c3b27234ee7ee1f7aaa9991a5f1d457884dab87d9b7bbe",
+        "tcpip.elf": "0e24f771f43a3fea52539b8c65721c72957b4e3a09e2fbf42e45394591f91ab6",
+        "time.elf": "d6bf265479d64df812bcc29aa6224427be7562746b7239daef70093ac85d70f7",
+        "uart.elf": "55a8c43ecc6489c1fb9fa1827cfd8e2881068a382918d84eebf4369dbc502009"
+      },
+      "serial_sha256": "74c6cb5a5fc6bb489e12b20d938b16f51733187bad32c44e1a69711504410b49",
+      "diagnostic_lines": [
+        "Kernel panic:",
+        "panicked at crates/catten/src/memory/object/backing/storage_tests.rs:142:5:",
+        "assertion `left == right` failed: reservation-only backing abandonment refunded charge",
+        "  left: Amount { pages: 0, objects: 0 }",
+        " right: Amount { pages: 1, objects: 1 }"
+      ],
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 scripts/run-aarch64.sh --no-network --instance backing-drop-negative --fresh-storage --timeout 120",
+      "expected_failure": true,
+      "held_guard_test_not_entered": true
+    }
+  ],
+  "native_runs": [
+    {
+      "arch": "aarch64",
+      "instance": "backing-abandonment-arm",
+      "cpus": 4,
+      "revision": "98a2ffde2f7685e115f0f3e159b723f3a4eeb49d",
+      "kernel_sha256": "1ff7d092a44daeca31011124f587c6f9280560a11d13413cb63098c27c2c4fda",
+      "boot_image_sha256": "a589f5920a0039f639ec880a7d4d6b68f9ecfa48b72e71d269fed9d14c346dbc",
+      "initial_disk_sha256": "6c06135f6e3926b94a41d83512ee69e024540f62a525b02680974c1faaf4fc41",
+      "bundle_sha256": {
+        "agent.elf": "7c9b52a0bed0cc6ddc324af244abfce7a4939132979a7d3b8f34223cd1da9842",
+        "cclient.elf": "47813589646c0657ba4eb5a5a6af243b1f1684a083d780a9744ab3bcc5706248",
+        "client.elf": "5c7ac1151fa707b89db82b49bbefccfa2442f0dea4b213867dc08bdc5c510525",
+        "clusterctl.elf": "018f80fbf1ce9a74f1d99d2379a4d6a6b0bca2b48cf1bcc7467fbba311a72794",
+        "deployd.elf": "69dd9d198b2ab85ec1ea04c8f4dcc7805e0f3b65fe6fd74d1e48d3d479f90547",
+        "disco.elf": "99a7f2c90cb3ef9c0af49e176848aed3305a5ae2c1681855d3af1ef8c27f6462",
+        "dns.elf": "78109d95c5a8bd708816a1b36fac406e68780e4b36854b2b7ecb9544eebef192",
+        "echo.elf": "5c59747d8f6ce8141f0f6ed1c65d4617002cc5338481c1a7ef2060e2b448b5a5",
+        "frouter.elf": "805911205d6254f7b21b5b564bf24cb75a8de4bdf910e435ba38776e31e2bfaa",
+        "fs.elf": "c20931f30fbf42bd93046fa76c8ecb41ac1c496696e90e57e4db159037091a64",
+        "grantctl.elf": "039c27369e2371071c3d0b847b48c33c7f48e237822713577371b4cd793f898d",
+        "greet.elf": "8645845a750b0b312aab080787b8cda772e06d830e027ff3cf3ef11b9fc9c9bb",
+        "httpd.elf": "9034668d4bf50e07b8bd26309d02a6f17222a8e29d252204589938d868e5aae4",
+        "kafka.elf": "11e9b77f45723a6e60d8a0e7d581ff297b6b80f0044049fa389d0abc9752e325",
+        "kafka_fence_smoke.elf": "a3d63ba5b4f3c50c5ca32185521387d8ac98228113faef95541afd706170b9c0",
+        "kafka_smoke.elf": "46a2efaf5ffbab422ada37451e54b5565562dd44db070be2eae0b6b03107e3c2",
+        "kafka_step.elf": "8d8dd751dd49925569e3556d1f6a705d7ba4023708b459ab8ff3dff6325c2bef",
+        "kafka_step_input.elf": "a7e207a75d68acca60c3d5f5425fefb6ccf0a244cb7219dc42ffab47cd30202a",
+        "kafka_step_proc.elf": "8fef98dbe182877986eb874ebeb0ff64ae80d4d64e1a5604f7f9cfbec8ea2efc",
+        "nclient.elf": "34e54fb0b852f54f997a56bc70d6ddfd037bdab74ce58d6b48188f8e27f52f3f",
+        "net.elf": "6655d31e32759ab37b9a31bbfb5a691d91621123cfaf661c1c03514583f45bb0",
+        "ns.elf": "de73710ac3c0984734eb65d4113eb509c8a8a6837d50b8095d2573d99b204796",
+        "nvme.elf": "548ec21f81e278d77749ee6bac9e50b240bc606424f5a829ae08313131a23272",
+        "nvme_client.elf": "d14e74aebdf58aa6766a06edc877a740f695f7e6eccb78864ae1d3163df0a187",
+        "objstore.elf": "ea21184045b8391e4457f3b3b9b3bb369ef1252c71aef06143be773d0f832259",
+        "objstore_client.elf": "55cbd339afa0d78c9dc71a349c94a4ce4f815417fc82dec1e275b50944372034",
+        "observe.elf": "ff0f5552eb0d3e10edcf57b7bee59d5d3a3ea2bb111a76f68498890cd7e1de22",
+        "raft.elf": "281d4f280903c48e5800326f6826a9b09f5ec8f46dae474cb25e86e4ac4eeda1",
+        "rclient.elf": "a4b9d6d8102ec8bb8449f575d4b5580cd2f3ea525f9f26b8c991202ded52d314",
+        "relmsg.elf": "eeff85710ddd9c4270c2999651308dec8914b3b314ba737ceb6b86989653a9dd",
+        "rng.elf": "a948fdc8f30934bebbc22c85c27e1da76f00b6e6b327bfd27dda1f0a7a655686",
+        "s3.elf": "cc524ffc152d78bc1ad5319a9ffb2d82e1944ef521168e3a7787b9a89547145d",
+        "s3_smoke.elf": "2abe4a752de84bdfa15e93fa38bad3c92b02e2ef2b12fb3d1d0e8091762cb253",
+        "security_probe.elf": "ec5a2a8013149323858942a013dcfcbe136acf1a59b335f1cec05e3b00289c59",
+        "servicemgr.elf": "7e100f389bf431226ae0394238aa1857b72197f3df64823111d44347383bd12f",
+        "shutdown_probe.elf": "58cd8fb289f57358a06df005afeff7a3c242ad4a43ee0d9a062f1fab9bd9ac25",
+        "sitas-user.elf": "fbf1b47a721d84498a64e43bc626a7f962a52d3740e3fa7e14adaeea7fa5f311",
+        "tcpclient.elf": "6eeb6137839b0e78c3c3b27234ee7ee1f7aaa9991a5f1d457884dab87d9b7bbe",
+        "tcpip.elf": "0e24f771f43a3fea52539b8c65721c72957b4e3a09e2fbf42e45394591f91ab6",
+        "time.elf": "d6bf265479d64df812bcc29aa6224427be7562746b7239daef70093ac85d70f7",
+        "uart.elf": "55a8c43ecc6489c1fb9fa1827cfd8e2881068a382918d84eebf4369dbc502009"
+      },
+      "tracked_diff_sha256": "0e6eba86598745c4030009caa9456b4901b742e6b092afd0f09d40b662314f0a",
+      "backend": "smmuv3",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20009 CATTEN_DEPLOY_HOST_PORT=20173 scripts/run-aarch64.sh --security-test --http-test --instance backing-abandonment-arm --fresh-storage --timeout 300",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 20,
+        "failed": 0,
+        "pending": 0
+      },
+      "security_publication_generations": [
+        1,
+        2
+      ],
+      "http_checks_passed": 14,
+      "http_probe_results": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.386s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.260s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.312s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.13s; ingress recovered"
+      ],
+      "http_transport_retries": [
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: EOF followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: abortive peer closes followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 2/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        }
+      ],
+      "selected_controls": [
+        "[+     0.842861] [DMA CPU remap fence] existing shared mapping, read/write remap rejection, three directions, two coherent pins, last-unpin reuse and original charge cleanup passed",
+        "[+     0.874184] [object retirement] bounded lock-separated batches, last-unpin fence, borrower authority, scratch rejection, partial detach, failed barrier, Drop quarantine and foreign-leaf preservation passed (twelve reserved data pages including loan revocation and detached backing)",
+        "[+     1.856599] [backing abandonment] inert reservation-only, private and published owners; all local memory/table/heap/frame/budget/authority guards held for data-owner Drop; two real data pages, three original page/object reservations, complete nodes/authority retained past root retirement and ASID reuse; 128 physical-prefix rejections, 64 post-guard failures and 64 real copy cancellations/publication releases passed",
+        "[+     1.857462] [memory object storage] 128 charged preparation and 64 copied-prefix rejections, 64 heap-held object relinks/detaches, post-physical node/charge disposal, non-reused IDs and terminal release rejection passed; one data page, complete object node and original charge deliberately retained",
+        "[+     2.053210] [IPC borrowed publication] empty and 257-member mixed authority batches with heap held; late transfer/extra namespace rejection preserved every destination/source, cancellation restored baselines; complete mixed commit including payloads needs no heap",
+        "[+     4.084865] [IPC memory delivery] guessed move/copy/result use rejected; receive rollback, vector delivery, cancellation, endpoint/root cleanup and observed ownership passed"
+      ],
+      "serial_sha256": "c8d026bdadf87ca0a12572e93826c09a3eec6d34297752fd5cd2106a32500be1"
+    },
+    {
+      "arch": "x86_64",
+      "instance": "backing-abandonment-intel",
+      "cpus": 4,
+      "revision": "98a2ffde2f7685e115f0f3e159b723f3a4eeb49d",
+      "kernel_sha256": "0ef3386f02eddb1dc42cbbb9b20bec154f83286abad14585ac5aa6e31830fb8d",
+      "boot_image_sha256": "f3d6911c98b45fdca1d08da1d6b56ec6c0253abc0ff18ecad81f76b826da6687",
+      "initial_disk_sha256": "57910192506c25a8070344341c2fe8c897fbb74add47ec91b40bb47b63168089",
+      "bundle_sha256": {
+        "agent.elf": "b07861a2ee5f9509f0a5f1d881041b00f1e7665ca467f698f767c8f065edfdd2",
+        "ahci.elf": "9e21364e4ea8045ad845ddb20a548c4381928666c2f3af96475e01242757bb58",
+        "client.elf": "7587b5e8d3fed85777d90946ce3b6424c57eb228d92330fc15fb58922ed25c7d",
+        "clusterctl.elf": "1b6de1cf910e8dea6a12f68958d83e3af60c3c8958556ac4b203d5398fc4d6fb",
+        "deployd.elf": "ab904ea05674eef9a3fcf1857524391d7ee772b3da0530286750d82f700fc671",
+        "disco.elf": "53a27b5f8747f2feeffb110cd50b55f3e6c558f37ee64d97d7a44c1315fbe7f6",
+        "dns.elf": "cea0a8fa1f24f574965b0a4094cc3bcee971ba980b509d7892a361ca01941699",
+        "e1000e.elf": "cc5b64a43a9ab341211c627d2e52178cdf6464ffbea5e1a34248d2d0b9d94662",
+        "echo.elf": "2408de7305d57704c740871f792ff7598b11cee9fbbe2f58988be54755d918cc",
+        "frouter.elf": "ce5ff26fa4b10becf0e20b1298a0777ece40a9bfd8bfa37bfc381561107ac5cd",
+        "fs.elf": "5f780ba292deeb028c342301ba7907d52fafd4f43189e3fe6d4344178f744eb1",
+        "grantctl.elf": "bd6e4a653f916116ad0d37a705b3bf7a34313047ad270fcda3b6ea9ba1e44d37",
+        "greet.elf": "2a1e920cca22ca6d8d7c2f136d6337d0f7389859387c9c3dc274739cf92564f1",
+        "httpd.elf": "f19d778df57a7d208e3487afd0cdbfc3d694246f2d681e1753df545f6a1cd57f",
+        "kafka.elf": "664c10c762a7591a4ad663430ed3299f644539958c580aa69288df8227094a68",
+        "kafka_smoke.elf": "7ff312e507ab5fa3a88415e09e60860a531ac3fcb0656331e56a9e5b39d7c371",
+        "nclient.elf": "f195c04718844b77f594339e813f39abd7fca746702d7868096b9cdfcbb36d94",
+        "net.elf": "021ca368c9a4f784590264e7722e34431b721041aa14e157e202ca7053b1142f",
+        "ns.elf": "59c1c0521b550020ecb67cdb0a46ea72fe3ce7038611800ad84f68f8bfc13b28",
+        "nvme.elf": "f02e4d95477de1d645fa58285cacb9c82b6e369b4c48e5b5bbdbfea8de18198e",
+        "nvme_client.elf": "ca57cec0ab5136b898acd7a320e8efba6c26480910f6a08fbd6e4448f0e41acd",
+        "objstore.elf": "927faf09a7e20241d3b3f069d26d196e1b2ca38450563e1aee2a4f9affcb287e",
+        "objstore_client.elf": "ea65f4c0c3843d1fdd13157a40142f8798d8183a0f14e3e66c204ed5523f9828",
+        "observe.elf": "2a3b9d9a4108c853ec4a0781a90776783d7b827be5a999cb5097017e3bbf04b7",
+        "raft.elf": "fd92b8cc8a2cb6d254a7a57bc92779dd2cafe126c46f9b9ca79f63dfae028fb9",
+        "rclient.elf": "b6f1f62fbccfe439044f5c360dcb1ac2935a458deaab29d151cbb1336e6396fa",
+        "relmsg.elf": "b4a1e6176e4192bece00b747ec6f97dc7d4f1d289477184f853991ef91ceab8a",
+        "rng.elf": "933b6da80757471d1a20f11594588db9992bddbd3f8a3affa07ea85d92c20424",
+        "s3.elf": "3253a756efc4c64f4fe6e68fc28eae068a85c59abbffceab90c43e218fa9e8de",
+        "s3_smoke.elf": "bf0d862369f2b3e852099ccacef7ad38e159319e20375b2e347281483f9dc417",
+        "security_probe.elf": "1a14d1c94e8410a0d33c04576569360603976a03bb0618ea23de04af5b311edd",
+        "servicemgr.elf": "61474b6524f95d6bb5c004ec665c3274241b4bf0292a118c5b18def84238fa2e",
+        "shutdown_probe.elf": "7fdb39d2fd2e938820d596358cbf8dc8d7b81fd61c417fad076493dd90301b3a",
+        "tcpclient.elf": "3c196aa3478e4838a88e6af40e6761b568b86fe61c4361fd156d332b949074cf",
+        "tcpip.elf": "746d3b20e2fdd4dcc77a1bdd9267a6128607025584b60e46509e59fdbd322227",
+        "time.elf": "17e06ce8b749531328c5b0dc53dbaa29928721420d696f8b3752cdbd6ba30bf1",
+        "virtio_blk.elf": "8cf9c557e37eaa51e360ab454fe5142a759e940d5d53986497410bf981dd65cb"
+      },
+      "tracked_diff_sha256": "0fb3ad0cf896265ef22207c09ab0ca161fe732e40003aa15ea110c5c67194ed0",
+      "backend": "intel",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20010 CATTEN_DEPLOY_HOST_PORT=20174 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance backing-abandonment-intel --fresh-storage --timeout 480",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 18,
+        "failed": 0,
+        "pending": 0
+      },
+      "security_publication_generations": [
+        1,
+        2
+      ],
+      "http_checks_passed": 14,
+      "http_probe_results": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.345s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.317s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.380s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.25s; ingress recovered"
+      ],
+      "http_transport_retries": [
+        {
+          "diagnostic": "HTTP transport TimeoutError; retry 1/2",
+          "eventual_probe_result": "PASS: initial metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: EOF followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: abortive peer closes followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 2/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        }
+      ],
+      "selected_controls": [
+        "[+     0.866115] [DMA CPU remap fence] existing shared mapping, read/write remap rejection, three directions, two coherent pins, last-unpin reuse and original charge cleanup passed",
+        "[+     0.899341] [object retirement] bounded lock-separated batches, last-unpin fence, borrower authority, scratch rejection, partial detach, failed barrier, Drop quarantine and foreign-leaf preservation passed (twelve reserved data pages including loan revocation and detached backing)",
+        "[+     1.678913] [backing abandonment] inert reservation-only, private and published owners; all local memory/table/heap/frame/budget/authority guards held for data-owner Drop; two real data pages, three original page/object reservations, complete nodes/authority retained past root retirement and ASID reuse; 128 physical-prefix rejections, 64 post-guard failures and 64 real copy cancellations/publication releases passed",
+        "[+     1.680952] [memory object storage] 128 charged preparation and 64 copied-prefix rejections, 64 heap-held object relinks/detaches, post-physical node/charge disposal, non-reused IDs and terminal release rejection passed; one data page, complete object node and original charge deliberately retained",
+        "[+     1.835426] [IPC borrowed publication] empty and 257-member mixed authority batches with heap held; late transfer/extra namespace rejection preserved every destination/source, cancellation restored baselines; complete mixed commit including payloads needs no heap",
+        "[+     3.854878] [IPC memory delivery] guessed move/copy/result use rejected; receive rollback, vector delivery, cancellation, endpoint/root cleanup and observed ownership passed"
+      ],
+      "serial_sha256": "493ab53c3bf60e219f90d442668c280f4200dc6787823e5955859e1c5da31477"
+    },
+    {
+      "arch": "x86_64",
+      "instance": "backing-abandonment-amd",
+      "cpus": 4,
+      "revision": "98a2ffde2f7685e115f0f3e159b723f3a4eeb49d",
+      "kernel_sha256": "ecd1d03840b71473b23c60419f36139d6181ae9dd5dd5e7b650d32934616ff71",
+      "boot_image_sha256": "3c47ae6ae0f7b07fa2a562f9ce3467fca54a9ba4e9a53738ec2f7e308483c69b",
+      "initial_disk_sha256": "57910192506c25a8070344341c2fe8c897fbb74add47ec91b40bb47b63168089",
+      "bundle_sha256": {
+        "agent.elf": "b07861a2ee5f9509f0a5f1d881041b00f1e7665ca467f698f767c8f065edfdd2",
+        "ahci.elf": "9e21364e4ea8045ad845ddb20a548c4381928666c2f3af96475e01242757bb58",
+        "client.elf": "7587b5e8d3fed85777d90946ce3b6424c57eb228d92330fc15fb58922ed25c7d",
+        "clusterctl.elf": "1b6de1cf910e8dea6a12f68958d83e3af60c3c8958556ac4b203d5398fc4d6fb",
+        "deployd.elf": "ab904ea05674eef9a3fcf1857524391d7ee772b3da0530286750d82f700fc671",
+        "disco.elf": "53a27b5f8747f2feeffb110cd50b55f3e6c558f37ee64d97d7a44c1315fbe7f6",
+        "dns.elf": "cea0a8fa1f24f574965b0a4094cc3bcee971ba980b509d7892a361ca01941699",
+        "e1000e.elf": "cc5b64a43a9ab341211c627d2e52178cdf6464ffbea5e1a34248d2d0b9d94662",
+        "echo.elf": "2408de7305d57704c740871f792ff7598b11cee9fbbe2f58988be54755d918cc",
+        "frouter.elf": "ce5ff26fa4b10becf0e20b1298a0777ece40a9bfd8bfa37bfc381561107ac5cd",
+        "fs.elf": "5f780ba292deeb028c342301ba7907d52fafd4f43189e3fe6d4344178f744eb1",
+        "grantctl.elf": "bd6e4a653f916116ad0d37a705b3bf7a34313047ad270fcda3b6ea9ba1e44d37",
+        "greet.elf": "2a1e920cca22ca6d8d7c2f136d6337d0f7389859387c9c3dc274739cf92564f1",
+        "httpd.elf": "f19d778df57a7d208e3487afd0cdbfc3d694246f2d681e1753df545f6a1cd57f",
+        "kafka.elf": "664c10c762a7591a4ad663430ed3299f644539958c580aa69288df8227094a68",
+        "kafka_smoke.elf": "7ff312e507ab5fa3a88415e09e60860a531ac3fcb0656331e56a9e5b39d7c371",
+        "nclient.elf": "f195c04718844b77f594339e813f39abd7fca746702d7868096b9cdfcbb36d94",
+        "net.elf": "021ca368c9a4f784590264e7722e34431b721041aa14e157e202ca7053b1142f",
+        "ns.elf": "59c1c0521b550020ecb67cdb0a46ea72fe3ce7038611800ad84f68f8bfc13b28",
+        "nvme.elf": "f02e4d95477de1d645fa58285cacb9c82b6e369b4c48e5b5bbdbfea8de18198e",
+        "nvme_client.elf": "ca57cec0ab5136b898acd7a320e8efba6c26480910f6a08fbd6e4448f0e41acd",
+        "objstore.elf": "927faf09a7e20241d3b3f069d26d196e1b2ca38450563e1aee2a4f9affcb287e",
+        "objstore_client.elf": "ea65f4c0c3843d1fdd13157a40142f8798d8183a0f14e3e66c204ed5523f9828",
+        "observe.elf": "2a3b9d9a4108c853ec4a0781a90776783d7b827be5a999cb5097017e3bbf04b7",
+        "raft.elf": "fd92b8cc8a2cb6d254a7a57bc92779dd2cafe126c46f9b9ca79f63dfae028fb9",
+        "rclient.elf": "b6f1f62fbccfe439044f5c360dcb1ac2935a458deaab29d151cbb1336e6396fa",
+        "relmsg.elf": "b4a1e6176e4192bece00b747ec6f97dc7d4f1d289477184f853991ef91ceab8a",
+        "rng.elf": "933b6da80757471d1a20f11594588db9992bddbd3f8a3affa07ea85d92c20424",
+        "s3.elf": "3253a756efc4c64f4fe6e68fc28eae068a85c59abbffceab90c43e218fa9e8de",
+        "s3_smoke.elf": "bf0d862369f2b3e852099ccacef7ad38e159319e20375b2e347281483f9dc417",
+        "security_probe.elf": "1a14d1c94e8410a0d33c04576569360603976a03bb0618ea23de04af5b311edd",
+        "servicemgr.elf": "61474b6524f95d6bb5c004ec665c3274241b4bf0292a118c5b18def84238fa2e",
+        "shutdown_probe.elf": "7fdb39d2fd2e938820d596358cbf8dc8d7b81fd61c417fad076493dd90301b3a",
+        "tcpclient.elf": "3c196aa3478e4838a88e6af40e6761b568b86fe61c4361fd156d332b949074cf",
+        "tcpip.elf": "746d3b20e2fdd4dcc77a1bdd9267a6128607025584b60e46509e59fdbd322227",
+        "time.elf": "17e06ce8b749531328c5b0dc53dbaa29928721420d696f8b3752cdbd6ba30bf1",
+        "virtio_blk.elf": "8cf9c557e37eaa51e360ab454fe5142a759e940d5d53986497410bf981dd65cb"
+      },
+      "tracked_diff_sha256": "0fb3ad0cf896265ef22207c09ab0ca161fe732e40003aa15ea110c5c67194ed0",
+      "backend": "amd",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20011 CATTEN_DEPLOY_HOST_PORT=20175 scripts/run-x86_64.sh --security-test --http-test --iommu amd --instance backing-abandonment-amd --fresh-storage --timeout 480",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 18,
+        "failed": 0,
+        "pending": 0
+      },
+      "security_publication_generations": [
+        1,
+        2
+      ],
+      "http_checks_passed": 14,
+      "http_probe_results": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.402s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.345s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.349s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.20s; ingress recovered"
+      ],
+      "http_transport_retries": [
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: EOF followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: abortive peer closes followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 2/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        }
+      ],
+      "selected_controls": [
+        "[+     0.879533] [DMA CPU remap fence] existing shared mapping, read/write remap rejection, three directions, two coherent pins, last-unpin reuse and original charge cleanup passed",
+        "[+     0.913376] [object retirement] bounded lock-separated batches, last-unpin fence, borrower authority, scratch rejection, partial detach, failed barrier, Drop quarantine and foreign-leaf preservation passed (twelve reserved data pages including loan revocation and detached backing)",
+        "[+     2.093521] [backing abandonment] inert reservation-only, private and published owners; all local memory/table/heap/frame/budget/authority guards held for data-owner Drop; two real data pages, three original page/object reservations, complete nodes/authority retained past root retirement and ASID reuse; 128 physical-prefix rejections, 64 post-guard failures and 64 real copy cancellations/publication releases passed",
+        "[+     2.095715] [memory object storage] 128 charged preparation and 64 copied-prefix rejections, 64 heap-held object relinks/detaches, post-physical node/charge disposal, non-reused IDs and terminal release rejection passed; one data page, complete object node and original charge deliberately retained",
+        "[+     2.250588] [IPC borrowed publication] empty and 257-member mixed authority batches with heap held; late transfer/extra namespace rejection preserved every destination/source, cancellation restored baselines; complete mixed commit including payloads needs no heap",
+        "[+     4.423808] [IPC memory delivery] guessed move/copy/result use rejected; receive rollback, vector delivery, cancellation, endpoint/root cleanup and observed ownership passed"
+      ],
+      "serial_sha256": "c55f8e0788ebff2b7e19e84214efb916796c0d7be7fd13b6986e3479ded9a182"
+    }
+  ],
+  "unexpected_final_native_failures": [],
+  "fixtures": {
+    "actual_physical_prefix_rejections": 128,
+    "allocated_prefix_lengths": [
+      1,
+      2
+    ],
+    "post_local_guard_rejections": 64,
+    "real_copy_cancellations": 64,
+    "real_copy_publication_close_releases": 64,
+    "stale_target_generation_copy_rejection": "actual target root retirement/reuse; successor capability remains usable",
+    "new_abandonment_retention": {
+      "actual_data_pages": 2,
+      "original_page_reservations": 3,
+      "original_object_reservations": 3,
+      "detached_authority_records": 1,
+      "phases": [
+        "reservation-only",
+        "private",
+        "complete published retirement"
+      ],
+      "guards_held_for_data_owner_drop": [
+        "MEMORY_OBJECTS",
+        "ADDRESS_SPACE_TABLE",
+        "PRIMARY_ALLOCATOR",
+        "PHYSICAL_FRAME_ALLOCATOR",
+        "memory budget ledger",
+        "shared capability registry"
+      ],
+      "irq_state_preserved": true,
+      "original_charges_retained_after_root_retirement_and_successor_reuse": true
+    },
+    "existing_failed_release_retention": {
+      "actual_data_pages": 1,
+      "original_page_object_charge": 1,
+      "complete_retired_object_node": true,
+      "physical_retry": false
+    }
+  },
+  "formal": {
+    "runs": {
+      "CharlotteRootRetirement": {
+        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh <hashed-tla2tools.jar> CharlotteRootRetirement",
+        "exit_status": 0,
+        "cases": 6,
+        "safe_cases": 1,
+        "expected_counterexamples": 5,
+        "safe_generated_states": 3733,
+        "safe_distinct_states": 2978,
+        "safe_depth": 33,
+        "results": [
+          ">>> TLC CharlotteRootRetirement (CharlotteRootRetirement_small.cfg)",
+          "<Allocate line 50, col 1 to line 50, col 8 of module CharlotteRootRetirement>: 29:29",
+          "<Acquire line 64, col 1 to line 64, col 14 of module CharlotteRootRetirement>: 31:56",
+          "<FinishOperation line 73, col 1 to line 73, col 19 of module CharlotteRootRetirement>: 81:280",
+          "<AbandonOperation line 80, col 1 to line 80, col 20 of module CharlotteRootRetirement>: 46:280",
+          "<BeginClose line 87, col 1 to line 87, col 13 of module CharlotteRootRetirement>: 152:152",
+          "<ClosePending line 94, col 1 to line 94, col 15 of module CharlotteRootRetirement>: 92:112",
+          "<FinishCleanup line 101, col 1 to line 101, col 23 of module CharlotteRootRetirement>: 273:273",
+          "<Detach line 111, col 1 to line 111, col 9 of module CharlotteRootRetirement>: 91:91",
+          "<BeginInvalidation line 118, col 1 to line 118, col 20 of module CharlotteRootRetirement>: 91:91",
+          "<InvalidationFailed line 126, col 1 to line 126, col 21 of module CharlotteRootRetirement>: 182:182",
+          "<RetainForRetry line 134, col 1 to line 134, col 17 of module CharlotteRootRetirement>: 182:182",
+          "<ClaimRetry line 143, col 1 to line 143, col 13 of module CharlotteRootRetirement>: 91:91",
+          "<InvalidationSucceeded line 153, col 1 to line 153, col 24 of module CharlotteRootRetirement>: 182:182",
+          "<StartPhysical line 163, col 1 to line 163, col 16 of module CharlotteRootRetirement>: 182:182",
+          "<FinishPhysical line 172, col 1 to line 172, col 27 of module CharlotteRootRetirement>: 364:364",
+          "<Abandon line 186, col 1 to line 186, col 10 of module CharlotteRootRetirement>: 908:1185",
+          "3733 states generated, 2978 distinct states found, 0 states left on queue.",
+          "The depth of the complete state graph search is 33.",
+          ">>> TLC CharlotteRootRetirement (CharlotteRootRetirement_lease_unsafe.cfg, expected counterexample)",
+          "Error: Invariant LeasesRetainRoot is violated.",
+          "<UnsafeDetachWithLease line 209, col 1 to line 209, col 24 of module CharlotteRootRetirement>: 2:3",
+          ">>> TLC CharlotteRootRetirement (CharlotteRootRetirement_release_unsafe.cfg, expected counterexample)",
+          "Error: Invariant PhysicalRequiresInvalidation is violated.",
+          "<UnsafeReleaseBeforeInvalidation line 216, col 1 to line 216, col 34 of module CharlotteRootRetirement>: 2:3",
+          ">>> TLC CharlotteRootRetirement (CharlotteRootRetirement_physical_unsafe.cfg, expected counterexample)",
+          "Error: Invariant PhysicalOnce is violated.",
+          "<UnsafeRetryPhysical line 227, col 1 to line 227, col 22 of module CharlotteRootRetirement>: 2:3",
+          ">>> TLC CharlotteRootRetirement (CharlotteRootRetirement_abandon_unsafe.cfg, expected counterexample)",
+          "Error: Invariant TerminalAbandonment is violated.",
+          "<UnsafeAdoptAbandoned line 234, col 1 to line 234, col 23 of module CharlotteRootRetirement>: 1:2",
+          ">>> TLC CharlotteRootRetirement (CharlotteRootRetirement_refund_unsafe.cfg, expected counterexample)",
+          "Error: Invariant BackingCharged is violated.",
+          "<UnsafeRefundPartial line 242, col 1 to line 242, col 22 of module CharlotteRootRetirement>: 2:3"
+        ]
+      },
+      "CharlottePrincipalBacking": {
+        "command": "JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2 docs/tla/check.sh <hashed-tla2tools.jar> CharlottePrincipalBacking",
+        "exit_status": 0,
+        "cases": 7,
+        "safe_cases": 1,
+        "expected_counterexamples": 6,
+        "safe_generated_states": 290961,
+        "safe_distinct_states": 72344,
+        "safe_depth": 14,
+        "results": [
+          ">>> TLC CharlottePrincipalBacking (CharlottePrincipalBacking_small.cfg)",
+          "<Allocate line 32, col 1 to line 32, col 8 of module CharlottePrincipalBacking>: 3469:23164",
+          "<Grow line 49, col 1 to line 49, col 4 of module CharlottePrincipalBacking>: 997:16272",
+          "<Move line 34, col 1 to line 34, col 4 of module CharlottePrincipalBacking>: 645:33288",
+          "<Retire line 37, col 1 to line 37, col 6 of module CharlottePrincipalBacking>: 10896:108516",
+          "<Restart line 44, col 1 to line 44, col 7 of module CharlottePrincipalBacking (45 5 45 96)>: 2844:13400",
+          "<ConfirmRelease line 46, col 1 to line 46, col 14 of module CharlottePrincipalBacking>: 53492:96320",
+          "290961 states generated, 72344 distinct states found, 0 states left on queue.",
+          "The depth of the complete state graph search is 14.",
+          ">>> TLC CharlottePrincipalBacking (CharlottePrincipalBacking_generation_unsafe.cfg, expected counterexample)",
+          "Error: Invariant PrincipalCeiling is violated.",
+          "<UnsafeGenerationOnly line 55, col 1 to line 55, col 20 of module CharlottePrincipalBacking>: 2:49",
+          ">>> TLC CharlottePrincipalBacking (CharlottePrincipalBacking_refund_unsafe.cfg, expected counterexample)",
+          "Error: Invariant Accounted is violated.",
+          "<UnsafeRetirementRefund line 58, col 1 to line 58, col 22 of module CharlottePrincipalBacking>: 1:2",
+          ">>> TLC CharlottePrincipalBacking (CharlottePrincipalBacking_move_unsafe.cfg, expected counterexample)",
+          "Error: Invariant Accounted is violated.",
+          "<UnsafeMoveSponsor line 62, col 1 to line 62, col 17 of module CharlottePrincipalBacking>: 2:3",
+          ">>> TLC CharlottePrincipalBacking (CharlottePrincipalBacking_reuse_unsafe.cfg, expected counterexample)",
+          "Error: Invariant Accounted is violated.",
+          "<UnsafeReuseSponsor line 67, col 1 to line 67, col 18 of module CharlottePrincipalBacking>: 1:2",
+          ">>> TLC CharlottePrincipalBacking (CharlottePrincipalBacking_growth_unsafe.cfg, expected counterexample)",
+          "Error: Invariant Accounted is violated.",
+          "<UnsafeGrowCharge line 72, col 1 to line 72, col 16 of module CharlottePrincipalBacking>: 2:3",
+          ">>> TLC CharlottePrincipalBacking (CharlottePrincipalBacking_drop_unsafe.cfg, expected counterexample)",
+          "Error: Invariant Accounted is violated.",
+          "<UnsafeDropRefund line 76, col 1 to line 76, col 16 of module CharlottePrincipalBacking>: 2:3"
+        ]
+      }
+    },
+    "safe_cases": 2,
+    "expected_counterexamples": 11,
+    "unchanged_input_sha256": {
+      "docs/tla/CharlottePrincipalBacking.tla": "2ccbab48a90c54294d9ba8b0af5e49496af414e33f8f519aea9ae14ccf90520c",
+      "docs/tla/CharlottePrincipalBacking_drop_unsafe.cfg": "dbf25c547d2f81be26fe4d3e1d37a752b36808832fce90b469c45749377dfe3f",
+      "docs/tla/CharlottePrincipalBacking_generation_unsafe.cfg": "2769ced1188782189179d0cc5e79f3f9356a652b25e62edbab192a2d37690e50",
+      "docs/tla/CharlottePrincipalBacking_growth_unsafe.cfg": "78689baa32a157d660554f88cad578ee3cb649dd64285edd3d33586c709c76a6",
+      "docs/tla/CharlottePrincipalBacking_move_unsafe.cfg": "8201cf63ad6bd9ab9741c8374f184527aff7f4cff5ed5e6a308292cbdf9edc6f",
+      "docs/tla/CharlottePrincipalBacking_refund_unsafe.cfg": "ac39cf53c3cb34cabda30b14059588505c6e202c01dca70a53e8af2739eb783c",
+      "docs/tla/CharlottePrincipalBacking_reuse_unsafe.cfg": "3c1f54bfe704855e8e38ca9f1d7ce9cb560e0d7f049971729555049cfd60869d",
+      "docs/tla/CharlottePrincipalBacking_small.cfg": "60196e21f9b1815b5a92815b1a7e524d3ecdd9da2a3cb566736b44aab2148f91",
+      "docs/tla/CharlotteRootRetirement.tla": "817ce0b352e358ab901f6392354d4a42ca294274080e5f1b979d1105f563d87e",
+      "docs/tla/CharlotteRootRetirement_abandon_unsafe.cfg": "693f4eeb72902cd536fb1fa185b05e7daec0f0fd50f9fe655f1dcbd9396c7202",
+      "docs/tla/CharlotteRootRetirement_lease_unsafe.cfg": "185baa2c91ce27fd6872e654ee522f6b3770f467e0eead8557bb26c60c95c889",
+      "docs/tla/CharlotteRootRetirement_physical_unsafe.cfg": "fa20b8c4b353156b8f39c48362bc3ea995377e31d81a69f742300ca41077edab",
+      "docs/tla/CharlotteRootRetirement_refund_unsafe.cfg": "c01d5c13fbee34239773c05eb0a33db1d5c31dfaa2ecf9a8de25853de659faed",
+      "docs/tla/CharlotteRootRetirement_release_unsafe.cfg": "47ca560b0c4fba4952c7009e3fb6af8c5c3cde906a7bb943d70aea4113dbada5",
+      "docs/tla/CharlotteRootRetirement_small.cfg": "9ee0187ad3b152ba75044f87f71788bb9bd1f5d2af8ebf0a1b1389c487b593d1",
+      "docs/tla/check.sh": "88a486c084021244d01927cb6616dbfd8714c36aa4532c46771cf9c1d90bad58"
+    },
+    "tla_tools_sha256": "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88",
+    "initial_tool_failures": [
+      {
+        "module": "CharlotteRootRetirement",
+        "exit_status": 1,
+        "phase": "TLC local RMI listener; not a semantic counterexample",
+        "diagnostics": [
+          ": java.rmi.server.ExportException: Listen failed on port: 0; nested exception is: ",
+          "\tjava.net.SocketException: Operation not permitted"
+        ]
+      },
+      {
+        "module": "CharlottePrincipalBacking",
+        "exit_status": 1,
+        "phase": "TLC local RMI listener; not a semantic counterexample",
+        "diagnostics": [
+          ": java.rmi.server.ExportException: Listen failed on port: 0; nested exception is: ",
+          "\tjava.net.SocketException: Operation not permitted"
+        ]
+      }
+    ],
+    "scope": "Existing root physical-once/original-charge projections. Concrete constructors, field Drop, local guard exit and wider IRQ/guard contexts remain native/source qualification; no executable refinement."
+  },
+  "manual": {
+    "path": "docs/manual-v2/charlotte.pdf",
+    "sha256": "a5c9c3bf9351d64439803fac5a0ea4b224697808f2a9b5c0e716e7ed9be51552",
+    "source_sha256": "d4b8ef53db424f00f9ec9e1b60450572aaab6ff3de3fa1d0331925ffe3a5b6df",
+    "two_pass_build": "pass",
+    "visually_reviewed_pdf_pages": [
+      51,
+      52,
+      53
+    ],
+    "pages": 249,
+    "overfull_box_warnings": 189,
+    "scope": "Affected and adjacent pages checked; full manual not re-audited."
+  },
+  "limitations": [
+    "Source-confirmed fallback context gap; no hostile cross-domain deadlock or early-frame-reuse exploit reproduced.",
+    "Negative restores only the prior Drop body with final helpers/tests; it does not execute the complete historical baseline.",
+    "Containing transfer/scoped pin destructors and unrelated outer IPC/lifecycle/IRQ contexts remain unqualified.",
+    "Explicit preparation cancellation preserves its original error even when physical cleanup fails; retained original charge is not retry custody.",
+    "No new recovery controller, physical proof, comprehensive principal/heap accounting or sustained concurrent essential-progress claim.",
+    "Documentation evolved between boot captures; all changed Rust stayed frozen. Passing results do not attribute historical first-entry/scheduler, IPC, root-close, metrics or NIC failures."
+  ]
+}

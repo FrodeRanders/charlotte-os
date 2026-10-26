@@ -150,7 +150,17 @@ impl Drop for PreparedTransfer {
         if let Some(destination) = self.destination.take() {
             destination.finish();
         }
-        // Private-copy backing keeps its existing containing field policy.
+        // Preserve the existing containing cleanup order: private-copy backing
+        // follows destination metadata/authority. Its own fallback is inert;
+        // this active transaction destructor still needs outer qualification.
+        if let PreparedPayload::Copy {
+            frames,
+            ..
+        } = &mut self.payload
+            && let Some(frames) = frames.take()
+        {
+            let _ = frames.release();
+        }
     }
 }
 
@@ -640,15 +650,19 @@ pub(super) fn prepare_copy_with(
         let source = copy_pin.as_ref().unwrap();
         // This owner retains the private backing until destination publication.
         // Cancellation never consults a receiver-controlled numeric handle.
-        let staged = allocate(source_handle, source.frames().len())?;
-        for (source, target_frame) in source.frames().iter().zip(staged.prepared_frames().iter()) {
-            let source_ptr: *const u8 = (*source).into();
-            let target_ptr: *mut u8 = (*target_frame).into();
-            unsafe {
-                core::ptr::copy_nonoverlapping(source_ptr, target_ptr, PAGE_SIZE);
-            }
-        }
-        let object = { MEMORY_OBJECTS.lock().allocate_object_id() }?;
+        let (staged, object) =
+            allocate(source_handle, source.frames().len())?.try_prepare(|staged| {
+                for (source, target_frame) in
+                    source.frames().iter().zip(staged.prepared_frames().iter())
+                {
+                    let source_ptr: *const u8 = (*source).into();
+                    let target_ptr: *mut u8 = (*target_frame).into();
+                    unsafe {
+                        core::ptr::copy_nonoverlapping(source_ptr, target_ptr, PAGE_SIZE);
+                    }
+                }
+                MEMORY_OBJECTS.lock().allocate_object_id()
+            })?;
         Ok(PreparedPayload::Copy {
             object,
             frames: Some(staged),

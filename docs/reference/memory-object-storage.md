@@ -91,10 +91,11 @@ reference. Bare partial/full/published abandonment does none of that work.
 Ordinary containing-transfer cleanup explicitly frees unused read-borrower storage
 before consuming destination storage/authority, after its existing source work.
 Successful publication keeps any losing namespace candidate until that explicit
-finish. This does not make `PreparedTransfer`/`PreparedSource`, scoped pin or private
-backing destructors inert; their outer IPC/IRQ/physical cleanup contexts remain
-separate qualification. No new root lease, recovery custody or physical proof is
-introduced.
+finish. `PreparedTransfer`/`PreparedSource` and scoped-pin destructors retain
+their existing active policy. The backing owner's fallback is now inert as
+described below; containing transaction and explicit physical cleanup callers
+still need outer IPC/IRQ qualification. No new root lease, recovery custody or
+physical proof is introduced.
 
 Existing namespace teardown can dispose hidden staged authority even while an
 abandoned preparation retains unused payload nodes and its captured account
@@ -289,9 +290,25 @@ release fence private; its former `Deref`/`DerefMut` payload access is removed.
 Allocation/copy preparation borrows a frame slice and queries the original
 admission through narrow methods. `RetiredMemory` consumes its existing backing
 and metadata through one field-assembly constructor, retaining its root-level
-type and release facade. The allocation and release order are unchanged.
-`ChargedFrames::Drop` remains active; grouping this code does not qualify its
-outer contexts. See the [refactoring evidence](../reports/audits/2026-10-25-refactoring-memory-backing.md).
+type and release facade. The earlier
+[refactoring](../reports/audits/2026-10-25-refactoring-memory-backing.md) preserved
+its active Drop. The [abandonment correction](../reports/audits/2026-10-26-security-backing-abandonment.md)
+now makes that fallback retain every field without physical/heap allocator,
+registry, accounting, callback or logging work, including charge-only prefixes.
+
+Ordinary construction and allocation/copy rejection consume the same owner
+through `try_prepare` after the callback's local guards leave. Success returns
+that owner for consuming publication. Direct allocation retains the memory
+registry guard through authority publication and object/payload handoff; no
+fallible work is added after authority publication. Private copy preparation
+also explicitly cancels if its later object-identity allocation rejects.
+
+Last-copy/DMA-pin cleanup now consumes backing explicitly. The containing
+transfer destructor explicitly releases cancelled private-copy backing after
+destination metadata/authority, preserving its previous field cleanup order.
+That outer destructor remains active and separately unqualified. Error cleanup
+preserves the original preparation error; failed physical cancellation retains
+the complete charge/node owner and supplies no replay permission.
 
 Object removal detaches the complete node into the existing `ChargedFrames`
 backing owner, carried by `RetiredMemory` or the existing last-pin cleanup path.
@@ -305,8 +322,8 @@ are consumed before each allocator call and never retried. The owner records
 its started/failed fence before the first attempt. Its fields use `ManuallyDrop`;
 interruption or rejected release cannot run implicit charge refunds or metadata
 cleanup. Ordinary complete release frees payload and node before dropping the
-original charge, then clears the fence. Ordinary private rollback retains its
-existing release path; this does not qualify every outer destructor context.
+original charge, then clears the fence. Ordinary private rollback uses explicit
+consuming release. Broader caller/IRQ/destructor contexts remain separate.
 
 A failed physical attempt retains the whole published node and original charge,
 even when all frame identities have been consumed. An empty vector is not a

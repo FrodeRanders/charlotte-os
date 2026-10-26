@@ -537,6 +537,19 @@ See [capture](../reports/audits/2026-10-25-security-memory-capability-preparatio
 
 ## C18 publication rollback and detached memory
 
+The [backing abandonment correction](../reports/audits/2026-10-26-security-backing-abandonment.md)
+qualifies `ChargedFrames` fallback separately from its containing callers.
+Charge-only, private and published owners retain complete fields without
+allocator, registry, accounting, callback or logging work. Ordinary preparation
+errors explicitly cancel after local guards; successful publication consumes the
+same owner while retaining serialization. Last-pin and cancelled-copy release
+are explicit, with the previous destination-metadata-before-copy-backing order.
+The containing transfer destructor remains active; wider IRQ/guard contexts and
+physical failure/recovery custody remain open. A native negative control restoring
+the old Drop refunds an unstarted reservation and fails before held-lock tests.
+Guarded data-owner abandonment retains two real pages, three page/object
+reservations and complete metadata/authority through root retirement and reuse.
+
 Owner anchors: [`PreparedTransfer`, `PreparedSource`, `ChargedFrames` and `RetiredMemory`](../../crates/catten/src/memory/object.rs), [`PreparedCall` / `PreparedConnection`](../../crates/catten/src/ipc/mod.rs), [`MemoryAttachments`](../../crates/catten/src/ipc/attachments.rs), [`PreparingDomain`](../../crates/catten/src/service/loader.rs), `PreparingNamespace` in [`capability`](../../crates/catten/src/capability.rs), [`PreparingRecord` / `RetiredRecord`](../../crates/catten/src/capability/record.rs), [`PreparingMailbox` / `RetiredMailbox`](../../crates/catten/src/syscall/mailbox_publication.rs), word-queue `Operation` in [`mailbox_queue`](../../crates/catten/src/syscall/mailbox_queue.rs), and `PreparedDmaDomain` in C13.  Bounded plain-value telemetry scratch in [`statistics`](../../crates/catten/src/syscall/statistics.rs).
 
 Telemetry scratch prepares fallibly outside thread/usage guards under one 1 MiB request

@@ -421,25 +421,27 @@ pub fn allocate(owner: AddressSpaceId, pages: usize) -> Result<MemoryObjectCap, 
     let reservation = cap_storage::Preparing::new(admit_capability(owner, identity)?, identity)?;
 
     let (reservation, cap) = reservation.try_prepare(|reservation| {
-        let staged = ChargedFrames::allocate(identity, pages)?;
-
-        // The frames are exclusively owned and not yet published, so zeroing them
-        // does not require the IRQ-masking allocator lock held across the (up to
-        // 64 MiB) memset.
-        for frame in staged.prepared_frames() {
-            let ptr: *mut u8 = (*frame).into();
-            unsafe {
-                core::ptr::write_bytes(ptr, 0, PAGE_SIZE);
-            }
-        }
-
-        let mut registry = MEMORY_OBJECTS.lock();
-        if !staged.admission_active() {
-            return Err(MemoryObjectError::AddressSpaceMissing);
-        }
-        reservation.validate(&registry)?;
-        let object_id = registry.allocate_object_id()?;
-        reservation.publish()?;
+        let (staged, (mut registry, object_id)) = ChargedFrames::allocate(identity, pages)?
+            .try_prepare(|staged| {
+                // Private unpublished backing needs no allocator hold while
+                // zeroing. Rejection returns after the local registry leaves.
+                for frame in staged.prepared_frames() {
+                    let ptr: *mut u8 = (*frame).into();
+                    unsafe {
+                        core::ptr::write_bytes(ptr, 0, PAGE_SIZE);
+                    }
+                }
+                let mut registry = MEMORY_OBJECTS.lock();
+                if !staged.admission_active() {
+                    return Err(MemoryObjectError::AddressSpaceMissing);
+                }
+                reservation.validate(&registry)?;
+                let object_id = registry.allocate_object_id()?;
+                reservation.publish()?;
+                // Keep publication serialization through consuming handoff;
+                // no fallible work follows successful authority publication.
+                Ok((registry, object_id))
+            })?;
         let cap = reservation.identity();
         let (storage, frames, charge) = staged.into_parts();
         registry.objects.insert(
@@ -946,7 +948,11 @@ fn take_deferred_frames_if_unpinned(
 }
 
 fn deallocate_frames(frames: Option<ChargedFrames>) {
-    drop(frames);
+    if let Some(frames) = frames {
+        // Existing best-effort last-pin policy: failed release retains the
+        // complete owner/charge. The caller still qualifies its outer context.
+        let _ = frames.release();
+    }
 }
 
 /// Check ownership before removing a leaf; a foreign replacement is not ours

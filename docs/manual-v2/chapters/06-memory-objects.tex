@@ -96,7 +96,8 @@ remaining destination storage after source/borrower work. Bare preparation
 abandonment enters no registry, allocator or account destructor. Namespace teardown
 may drain hidden authority while payload metadata retains its original byte/count
 admission; late finish after ASID reuse cannot affect a successor. Containing
-transfer/backing destructors and broader IRQ/guard contexts remain separate.
+transfer destructors and broader IRQ/guard contexts remain separate; the backing
+owner's inert fallback is described below.
 
 Payload and namespace nodes now share requested-layout admission: 4 MiB and
 32768 nodes total, with 3 MiB and 24576 nodes available to ordinary callers.
@@ -157,8 +158,15 @@ Retirement keeps the complete detached object node in the existing backing
 receipt, with its original frame vector, charge and metadata. Physical release
 uses sixteen-frame batches; a started/failed fence precedes allocator entry.
 Only confirmed physical completion and actual payload/node disposal permit
-charge refund. Inert backing fields retain all state after interruption or
-failure, without physical retry. Ordinary rollback and wider caller contexts
+charge refund. The backing owner's Drop now retains charge-only, private and
+published fields without physical/heap allocator, registry, accounting or logging
+work. Ordinary construction and allocation/copy rejection consume that same
+owner explicitly after local guards leave. Publication keeps its original guard
+through consuming handoff. Last-pin release is explicit; the containing transfer
+destructor also explicitly releases cancelled copy backing after destination
+metadata/authority. That outer destructor remains active and separately
+unqualified. Failed physical release retains every original charge and node;
+no physical retry or new recovery owner is added. Wider caller/IRQ contexts
 retain their separate qualification. See
 \repofile|docs/reference/memory-object-storage.md|.
 

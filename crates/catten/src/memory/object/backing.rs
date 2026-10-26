@@ -1,6 +1,6 @@
 //! Complete memory-object backing custody from charged private allocation to
 //! one-shot physical release and post-completion metadata/account disposal.
-//! ChargedFrames Drop remains active; extraction does not qualify outer guards.
+//! Abandonment retains every field; ordinary cleanup consumes the same owner.
 use super::*;
 
 mod storage_tests;
@@ -18,14 +18,34 @@ struct FrameResources {
     failed: bool,
 }
 
+#[must_use]
 pub(super) struct ChargedFrames(core::mem::ManuallyDrop<FrameResources>);
 impl Drop for ChargedFrames {
     fn drop(&mut self) {
-        self.free();
+        // Unknown outer guards/IRQ state cannot authorize physical cleanup,
+        // metadata destruction or refund. Keep the complete original owner,
+        // including charge-only and private preparation prefixes.
     }
 }
 
 impl ChargedFrames {
+    /// Ordinary preparation failure cancels only after the callback's local
+    /// guards leave. Success returns this complete owner for consuming handoff.
+    /// Retain failed physical cancellation; preserve the preparation error.
+    /// Enclosing caller/IRQ contexts remain the containing operation's policy.
+    pub(super) fn try_prepare<T>(
+        mut self,
+        prepare: impl FnOnce(&mut Self) -> Result<T, MemoryObjectError>,
+    ) -> Result<(Self, T), MemoryObjectError> {
+        match prepare(&mut self) {
+            Ok(value) => Ok((self, value)),
+            Err(error) => {
+                let _ = self.release();
+                Err(error)
+            }
+        }
+    }
+
     /// Borrow private unpublished backing; this does not pin a mapped object.
     pub(super) fn prepared_frames(&self) -> &[PAddr] {
         &self.0.frames
@@ -208,6 +228,45 @@ impl ChargedFrames {
         pages: usize,
         allocate_storage: impl FnOnce() -> Result<ObjectStorage, MemoryObjectError>,
     ) -> Result<Self, MemoryObjectError> {
+        Self::allocate_observed(owner, pages, allocate_storage, |_| Ok(()))
+    }
+
+    fn allocate_observed(
+        owner: crate::memory::AddressSpaceHandle,
+        pages: usize,
+        allocate_storage: impl FnOnce() -> Result<ObjectStorage, MemoryObjectError>,
+        mut after_frame: impl FnMut(usize) -> Result<(), MemoryObjectError>,
+    ) -> Result<Self, MemoryObjectError> {
+        let (staged, ()) = Self::prepare(owner, pages)?.try_prepare(|staged| {
+            staged.0.storage = Some(allocate_storage()?);
+            staged
+                .0
+                .frames
+                .try_reserve_exact(pages)
+                .map_err(|_| MemoryObjectError::FrameAllocFailed)?;
+            let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
+            if !crate::resource_policy::frames_available(
+                allocator.free_frames() as u64,
+                allocator.usable_bytes() / PAGE_SIZE as u64,
+                pages as u64,
+            ) {
+                return Err(MemoryObjectError::ResourceLimit);
+            }
+            for _ in 0..pages {
+                staged.0.frames.push(
+                    allocator.allocate_frame().map_err(|_| MemoryObjectError::FrameAllocFailed)?,
+                );
+                after_frame(staged.0.frames.len())?;
+            }
+            Ok(())
+        })?;
+        Ok(staged)
+    }
+
+    fn prepare(
+        owner: crate::memory::AddressSpaceHandle,
+        pages: usize,
+    ) -> Result<Self, MemoryObjectError> {
         let charge = crate::memory::budget::reserve_captured(
             owner,
             crate::memory::budget::Amount {
@@ -219,34 +278,12 @@ impl ChargedFrames {
             crate::memory::budget::Error::StaleDomain => MemoryObjectError::AddressSpaceMissing,
             crate::memory::budget::Error::Limit => MemoryObjectError::ResourceLimit,
         })?;
-        let mut staged = Self(core::mem::ManuallyDrop::new(FrameResources {
+        Ok(Self(core::mem::ManuallyDrop::new(FrameResources {
             frames: Vec::new(),
             charge: Some(charge),
             storage: None,
             retired: None,
             failed: false,
-        }));
-        staged.0.storage = Some(allocate_storage()?);
-        staged
-            .0
-            .frames
-            .try_reserve_exact(pages)
-            .map_err(|_| MemoryObjectError::FrameAllocFailed)?;
-        let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
-        if !crate::resource_policy::frames_available(
-            allocator.free_frames() as u64,
-            allocator.usable_bytes() / PAGE_SIZE as u64,
-            pages as u64,
-        ) {
-            return Err(MemoryObjectError::ResourceLimit);
-        }
-        for _ in 0..pages {
-            staged
-                .0
-                .frames
-                .push(allocator.allocate_frame().map_err(|_| MemoryObjectError::FrameAllocFailed)?);
-        }
-        drop(allocator);
-        Ok(staged)
+        })))
     }
 }
