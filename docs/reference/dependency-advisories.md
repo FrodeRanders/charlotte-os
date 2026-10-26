@@ -46,6 +46,14 @@ arithmetic backport or unverified exception is installed. Migrate and qualify
 that stack before expecting a clean advisory job. Production trust remains
 disabled; functional tests do not prove absence of side channels.
 
+The selected migration target is the pinned **Embassy-based embedded-tls main
+branch**. The [assessment and reproducible probe](../reports/audits/2026-10-26-crypto-bigint-embassy-migration.md)
+compile its crypto stack on both service targets, exercise six host controls and
+scan a candidate graph containing crypto-bigint 0.7.10 without findings.
+Cutover still requires a domain-owned entropy driver, the new verifier/mTLS API,
+an erasing AES-GCM context and complete TLS/native qualification. The isolated
+candidate is not the active root lockfile; the production gate remains red.
+
 CI executes the gate on its existing push/PR triggers. The job must be deployed
 and made required through repository branch-protection settings to enforce merge
 policy; this source change does not configure those external settings. Periodic

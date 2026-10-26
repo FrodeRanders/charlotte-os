@@ -1,0 +1,317 @@
+{
+  "date": "2026-10-26",
+  "baseline_commit": "88694e77d84c39656c76a76635152a89ea91240f",
+  "scope": "Investigation and isolated prototype; no active-workspace dependency or runtime changes.",
+  "disposition": {
+    "SEC-14": "partial",
+    "SEC-15": "partial",
+    "corrected": 29,
+    "partial": 6,
+    "open": 3,
+    "production_trust": "disabled"
+  },
+  "pins": {
+    "embedded-tls": "6487c62bb084c33361822022e21836ddfd48388f",
+    "embassy": "822a76ea91f2c0885c6eb0c65fe91181e31133e1",
+    "unitrait": "bb96601b3d293fa27d1ca2891f6ea148e534e433"
+  },
+  "archived_input_sha256": {
+    "docs/reports/audits/evidence/2026-10-26-embassy-tls-probe/Cargo.lock.txt": "240799f8736da9b49108378a9c685b5b694e6a1f58fe18e664dab3074a267765",
+    "docs/reports/audits/evidence/2026-10-26-embassy-tls-probe/Cargo.toml.in": "5b10ed5319f8f247b77800b1e164e40e647a88175827302c64a315b4e2b6a12e",
+    "docs/reports/audits/evidence/2026-10-26-embassy-tls-probe/lib.rs": "c1f8c5bf7c35f44424a8c0e10baa40ba39b6d86e060e2c8a0ec35fda1c58dd1c"
+  },
+  "unchanged_runtime_input_sha256": {
+    "Cargo.lock": "99e604ecca353001e0968d79dea0cd0ee9f5e052852b69ad96bf1b911aee3474",
+    "Cargo.toml": "dc27f5e5077e07fc7fed9422b825620fb83c6d828b986ca5cbeba175b2148e45",
+    "crates/catten-services/Cargo.toml": "db38bceaf61ecadedbd5e51c7b0d71a9aab5423264620f0d01c9fc8ecd965695",
+    "crates/catten-services/src/tls_client.rs": "f8895d56ef9bea49a36c9dcebcbf8682cd4a6f6712f071b368a47d2cb882e619",
+    ".cargo/config.toml": "5845e3de73e807da085ea0cb8a5c76272a20c145adf70cbd404bb57f58bd4402",
+    "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243"
+  },
+  "toolchain": {
+    "final_host_and_freestanding": "nightly-2026-07-27; rustc 1.99.0-nightly (dc3f85158 2026-07-26); LLVM 22.1.8",
+    "host": "aarch64-apple-darwin",
+    "scanner": "cargo-audit 0.22.2"
+  },
+  "candidate_packages": [
+    {
+      "name": "aes",
+      "version": "0.8.4",
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "name": "aes-gcm",
+      "version": "0.10.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "name": "crypto-bigint",
+      "version": "0.7.10",
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "name": "ctutils",
+      "version": "0.4.6",
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "name": "ecdsa",
+      "version": "0.17.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "name": "elliptic-curve",
+      "version": "0.14.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "name": "embassy-crypto",
+      "version": "0.1.0",
+      "source": "git+https://github.com/embassy-rs/embassy?rev=822a76ea91f2c0885c6eb0c65fe91181e31133e1#822a76ea91f2c0885c6eb0c65fe91181e31133e1"
+    },
+    {
+      "name": "embassy-crypto-rand",
+      "version": "0.1.0",
+      "source": "git+https://github.com/embassy-rs/embassy?rev=822a76ea91f2c0885c6eb0c65fe91181e31133e1#822a76ea91f2c0885c6eb0c65fe91181e31133e1"
+    },
+    {
+      "name": "embassy-crypto-rustcrypto",
+      "version": "0.1.0",
+      "source": "git+https://github.com/embassy-rs/embassy?rev=822a76ea91f2c0885c6eb0c65fe91181e31133e1#822a76ea91f2c0885c6eb0c65fe91181e31133e1"
+    },
+    {
+      "name": "embedded-tls",
+      "version": "0.19.0",
+      "source": "git+https://github.com/embassy-rs/embedded-tls?rev=6487c62bb084c33361822022e21836ddfd48388f#6487c62bb084c33361822022e21836ddfd48388f"
+    },
+    {
+      "name": "ghash",
+      "version": "0.5.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "name": "p256",
+      "version": "0.14.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "name": "p384",
+      "version": "0.14.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "name": "polyval",
+      "version": "0.6.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "name": "signature",
+      "version": "2.2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "name": "signature",
+      "version": "3.0.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "name": "unitrait",
+      "version": "2.0.0",
+      "source": "git+https://github.com/embassy-rs/unitrait?rev=bb96601b3d293fa27d1ca2891f6ea148e534e433#bb96601b3d293fa27d1ca2891f6ea148e534e433"
+    },
+    {
+      "name": "unitrait-macros",
+      "version": "2.0.0",
+      "source": "git+https://github.com/embassy-rs/unitrait?rev=bb96601b3d293fa27d1ca2891f6ea148e534e433#bb96601b3d293fa27d1ca2891f6ea148e534e433"
+    },
+    {
+      "name": "zeroize",
+      "version": "1.9.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    }
+  ],
+  "checks": [
+    {
+      "name": "aarch64 freestanding library compile",
+      "exit_code": 0,
+      "command": "cargo check --manifest-path target/crypto-migration/embassy-probe/Cargo.toml --target crates/catten-services/aarch64-unknown-none.json --target-dir target/crypto-migration/build --locked --offline",
+      "cwd": "repository root",
+      "result": "Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.52s",
+      "scope": "library check only; no target executable link, guest execution or production RNG driver"
+    },
+    {
+      "name": "x86_64 freestanding library compile",
+      "exit_code": 0,
+      "command": "cargo check --manifest-path target/crypto-migration/embassy-probe/Cargo.toml --target crates/catten-services/x86_64-unknown-none.json --target-dir target/crypto-migration/build --locked --offline",
+      "cwd": "repository root",
+      "result": "Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.48s",
+      "scope": "library check only; no target executable link, guest execution or production RNG driver"
+    },
+    {
+      "name": "host debug",
+      "exit_code": 0,
+      "command": "cargo +nightly-2026-07-27 test --manifest-path /Users/froran/Projects/private/charlotte-os/target/crypto-migration/embassy-probe/Cargo.toml --target-dir /Users/froran/Projects/private/charlotte-os/target/crypto-migration/host-build --locked --offline",
+      "cwd": "/private/tmp",
+      "passed": 6,
+      "failed": 0,
+      "doctests": 0,
+      "tests": [
+        "tests::driver_supports_separate_input_and_output",
+        "tests::typed_sec1_parser_preserves_curve_oid_validation",
+        "tests::selected_tls_cipher_known_answer_and_tamper_rejection",
+        "tests::p256_ecdh_agrees_and_rejects_invalid_peer",
+        "tests::p256_signs_and_rejects_changed_digest",
+        "tests::p384_signs_and_rejects_changed_digest"
+      ],
+      "test_executable": "target/crypto-migration/host-build/debug/deps/charlotte_embassy_migration_probe-429703fe43d788a1",
+      "test_executable_sha256": "1eb6875c10febdbb7c555ea85ff9b434510177300f9aed9b4f6f0b4c28885697",
+      "scope": "host links registered crypto drivers using dev-only host RNG; no TLS server interop"
+    },
+    {
+      "name": "host release",
+      "exit_code": 0,
+      "command": "cargo +nightly-2026-07-27 test --manifest-path /Users/froran/Projects/private/charlotte-os/target/crypto-migration/embassy-probe/Cargo.toml --target-dir /Users/froran/Projects/private/charlotte-os/target/crypto-migration/host-build --release --locked --offline",
+      "cwd": "/private/tmp",
+      "passed": 6,
+      "failed": 0,
+      "doctests": 0,
+      "tests": [
+        "tests::driver_supports_separate_input_and_output",
+        "tests::selected_tls_cipher_known_answer_and_tamper_rejection",
+        "tests::typed_sec1_parser_preserves_curve_oid_validation",
+        "tests::p256_signs_and_rejects_changed_digest",
+        "tests::p256_ecdh_agrees_and_rejects_invalid_peer",
+        "tests::p384_signs_and_rejects_changed_digest"
+      ],
+      "test_executable": "target/crypto-migration/host-build/release/deps/charlotte_embassy_migration_probe-3982ebb3418f880b",
+      "test_executable_sha256": "d3fd7b081c6675b4cb126e9a40944ed963d57bce344d0937c46e7c28fac68fb1",
+      "scope": "host links registered crypto drivers using dev-only host RNG; no TLS server interop"
+    }
+  ],
+  "candidate_advisory_scan": {
+    "exit_code": 0,
+    "command": "cargo audit --db target/security-audit/advisory-db --url https://github.com/RustSec/advisory-db.git --file target/crypto-migration/embassy-probe/Cargo.lock --json --deny warnings",
+    "cwd": "repository root; project .cargo/audit.toml policy",
+    "complete_report_validation": "passed scripts/check-dependency-advisories.py validate_report, including notices and unfiltered settings",
+    "report": {
+      "database": {
+        "advisory-count": 1355,
+        "last-commit": "b655eaacb2b622c94865e29bc4c3d2e11d206323",
+        "last-updated": "2026-10-26T13:56:59+01:00"
+      },
+      "lockfile": {
+        "dependency-count": 84
+      },
+      "settings": {
+        "target_arch": [],
+        "target_os": [],
+        "severity": null,
+        "ignore": [],
+        "informational_warnings": [
+          "unmaintained",
+          "unsound",
+          "notice"
+        ]
+      },
+      "vulnerabilities": {
+        "found": false,
+        "count": 0,
+        "list": []
+      },
+      "warnings": {}
+    }
+  },
+  "active_root_advisory_scan": {
+    "exit_code": 1,
+    "command": "python3 scripts/check-dependency-advisories.py",
+    "database": {
+      "advisory-count": 1355,
+      "last-commit": "ea60a296f48f91775a152ff3a0fea89e11001b2e",
+      "last-updated": "2026-10-26T13:58:29+01:00"
+    },
+    "lockfile": {
+      "dependency-count": 180
+    },
+    "settings": {
+      "target_arch": [],
+      "target_os": [],
+      "severity": null,
+      "ignore": [],
+      "informational_warnings": [
+        "unmaintained",
+        "unsound",
+        "notice"
+      ]
+    },
+    "findings": [
+      {
+        "id": "RUSTSEC-2026-0387",
+        "package": "crypto-bigint",
+        "version": "0.5.5",
+        "patched": [
+          ">=0.7.6"
+        ]
+      }
+    ],
+    "warnings": {},
+    "note": "Fresh root and candidate scans captured different database commits; both identities are retained."
+  },
+  "preliminary_and_failed_runs": [
+    {
+      "name": "stock backend initial probe",
+      "results": "Both target stock-backend library checks passed. Its earlier 78-package advisory scan returned no findings; host functional tests were added only after replacing the stock GCM driver.",
+      "limitation": "Initial manifest/lock hashes were not captured; superseded by archived final erasing-driver inputs."
+    },
+    {
+      "name": "extended SEC1 fixture compile",
+      "exit_code": 101,
+      "diagnostics": [
+        "E0277: NistP256: AssociatedOid not satisfied",
+        "E0308: expected &[u8; 32], found &Array<u8, ...>"
+      ],
+      "correction": "Enable direct p256 pkcs8 feature and convert the hybrid-array reference; final helper also zeroizes its scalar temporary."
+    },
+    {
+      "name": "offline dependency attempt after feature correction",
+      "exit_code": 101,
+      "diagnostic": "failed to download pkcs8 v0.11.0: attempting to make an HTTP request, but --offline was specified",
+      "correction": "Permitted --locked fetch/test downloaded pkcs8 0.11.0 and spki 0.8.0 before final offline checks."
+    },
+    {
+      "name": "ambient newer host toolchain",
+      "result": "Four, then six extended tests passed before final toolchain pin.",
+      "toolchain": "rustc 1.100.0-nightly (c54751567 2026-08-22); LLVM 23.1.0",
+      "scope": "Preliminary only; final six debug/release controls rerun with repository toolchain."
+    },
+    {
+      "name": "evidence package-count assertion",
+      "result": "Initial assertion expected the scanner count to exclude the local probe and failed; input and executable hashes all matched.",
+      "correction": "Report the actual 84 locked packages including the probe, rather than subtracting one from the scanner count."
+    }
+  ],
+  "source_observations": [
+    "Pinned stock RustCrypto GCM context is a plain key array; generated opaque Drop forwards context destruction without independently wiping opaque bytes.",
+    "Candidate registers exactly one GCM driver with existing aes-gcm 0.10.3 context and zeroize-enabled AES/GHASH/POLYVAL; no stock GCM driver is selected.",
+    "Both target builds retain compile-time AES ZeroizeOnDrop and GHASH/POLYVAL destructor guards; freestanding x86 inherits polyval_force_soft.",
+    "Embassy secret/signing/shared-secret API owners have erasing destructors; this is not a claim that HKDF/traffic/IV fields, copies or forced termination are erased.",
+    "RNG callback is global and infallible; production domain-owned entropy installation/admission is planned, not implemented in this fixture.",
+    "SEC1 OID test confirms typed wrapper rejects changed OID while upstream scalar-length convenience parser accepts it; no authentication bypass claim."
+  ],
+  "not_executed": [
+    "live TLS adapter port",
+    "production entropy driver",
+    "full-root candidate graph integration",
+    "TLS/mTLS server interop",
+    "native service executable links and boots",
+    "full workspace tests",
+    "service and Sitas bundle rebuilds",
+    "manual PDF rebuild",
+    "side-channel/timing proof",
+    "license and provenance qualification"
+  ],
+  "candidate_package_count": {
+    "total": 84,
+    "includes_probe_package": true,
+    "external_packages": 83
+  }
+}
