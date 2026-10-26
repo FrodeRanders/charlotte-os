@@ -8,10 +8,7 @@
 
 extern crate alloc;
 
-use core::sync::atomic::{
-    Ordering,
-    fence,
-};
+use core::mem::ManuallyDrop;
 
 use catten_rt::{
     Context,
@@ -29,6 +26,13 @@ use catten_services::{
     entropy,
     publication,
     reactor,
+    rng_device::{
+        self,
+        Backend,
+        Device,
+        Limits,
+        Used,
+    },
     virtio,
 };
 use catten_syscall::{
@@ -41,8 +45,9 @@ use charlotte_launch::rng_status as status;
 catten_rt::entry!(main);
 
 const PAGE_SIZE: usize = 4_096;
-const QUEUE_SIZE: u16 = 8;
-const POLL_LIMIT: usize = 1_000_000;
+use rng_device::QUEUE_SIZE;
+const USED_ELEMENT_BYTES: usize = 8; // VirtIO split-ring ABI: u32 id + u32 len.
+const RETAINED_DEVICE_ERROR: u32 = 0xe008;
 
 #[inline]
 unsafe fn mmio_r8(base: *mut u8, offset: usize) -> u8 {
@@ -110,13 +115,18 @@ const fn used_offset() -> usize {
     (avail_offset() + 6 + QUEUE_SIZE as usize * 2).next_multiple_of(PAGE_SIZE)
 }
 
+const fn ring_pages() -> usize {
+    // Include the ignored trailing avail-event u16 in the used-ring layout.
+    (used_offset() + virtio::USED_RING + QUEUE_SIZE as usize * USED_ELEMENT_BYTES + 2)
+        .div_ceil(PAGE_SIZE)
+}
+
 struct VirtioRng<'domain> {
     _mmio: catten_rt::owned::MappedMmio,
     ring: SharedDmaMemory<'domain>,
     entropy: SharedDmaMemory<'domain>,
     common: *mut u8,
     notify: *mut u8,
-    avail_position: u16,
 }
 
 impl<'domain> VirtioRng<'domain> {
@@ -155,7 +165,7 @@ impl<'domain> VirtioRng<'domain> {
             return None;
         }
 
-        let mut ring = OwnedMemory::allocate(2)
+        let mut ring = OwnedMemory::allocate(ring_pages())
             .ok()?
             .map_shared_dma(domain, DmaDirection::Bidirectional)
             .ok()?;
@@ -214,53 +224,44 @@ impl<'domain> VirtioRng<'domain> {
             entropy,
             common,
             notify,
-            avail_position: 0,
+        })
+    }
+}
+
+impl Backend for VirtioRng<'_> {
+    type Error = ();
+
+    fn prepare(&mut self, slot: usize, length: u32) -> Result<(), ()> {
+        (ring_write_u32(&mut self.ring, virtio::DESC_LENGTH, length)
+            && ring_write_u16(&mut self.ring, avail_offset() + virtio::AVAIL_RING + slot * 2, 0))
+        .then_some(())
+        .ok_or(())
+    }
+
+    fn publish(&mut self, next: u16) -> Result<(), ()> {
+        ring_write_u16(&mut self.ring, avail_offset() + virtio::AVAIL_IDX, next)
+            .then_some(())
+            .ok_or(())
+    }
+
+    fn notify(&mut self) {
+        unsafe { mmio_w32(self.notify, 0, 0) };
+    }
+
+    fn used_index(&self) -> Result<u16, ()> {
+        ring_read_u16(&self.ring, used_offset() + virtio::USED_IDX).ok_or(())
+    }
+
+    fn used_entry(&self, slot: usize) -> Result<Used, ()> {
+        let offset = used_offset() + virtio::USED_RING + slot * USED_ELEMENT_BYTES;
+        Ok(Used {
+            descriptor: ring_read_u32(&self.ring, offset).ok_or(())?,
+            length: ring_read_u32(&self.ring, offset + 4).ok_or(())?,
         })
     }
 
-    fn fill(&mut self, output: &mut [u8]) -> bool {
-        if output.is_empty() || output.len() > entropy::MAX_REQUEST {
-            return false;
-        }
-        let mut filled = 0;
-        while filled < output.len() {
-            let requested = output.len() - filled;
-            if !ring_write_u32(&mut self.ring, virtio::DESC_LENGTH, requested as u32) {
-                return false;
-            }
-            let next = self.avail_position.wrapping_add(1);
-            let slot = self.avail_position as usize % QUEUE_SIZE as usize;
-            if !ring_write_u16(&mut self.ring, avail_offset() + virtio::AVAIL_RING + slot * 2, 0) {
-                return false;
-            }
-            fence(Ordering::Release);
-            if !ring_write_u16(&mut self.ring, avail_offset() + virtio::AVAIL_IDX, next) {
-                return false;
-            }
-            unsafe { mmio_w32(self.notify, 0, 0) };
-            let completed = (0..POLL_LIMIT)
-                .any(|_| ring_read_u16(&self.ring, used_offset() + virtio::USED_IDX) == Some(next));
-            if !completed {
-                return false;
-            }
-            fence(Ordering::Acquire);
-            let used_slot = self.avail_position as usize % QUEUE_SIZE as usize;
-            let Some(used_len) =
-                ring_read_u32(&self.ring, used_offset() + virtio::USED_RING + used_slot * 8 + 4)
-            else {
-                return false;
-            };
-            self.avail_position = next;
-            let used_len = used_len as usize;
-            if used_len == 0 || used_len > requested {
-                return false;
-            }
-            if self.entropy.read_volatile_into(0, &mut output[filled..filled + used_len]).is_err() {
-                return false;
-            }
-            filled += used_len;
-        }
-        true
+    fn copy_entropy(&self, destination: &mut [u8]) -> Result<(), ()> {
+        self.entropy.read_volatile_into(0, destination).map_err(|_| ())
     }
 }
 
@@ -275,22 +276,54 @@ fn fail(code: u32) -> ! {
     unsafe { thread_exit() }
 }
 
+struct ServingRng<'domain> {
+    device: Device<VirtioRng<'domain>>,
+    endpoint: Endpoint,
+}
+
+impl ServingRng<'_> {
+    fn retain(self, request: ShutdownRequest, ctx: &Context) -> ! {
+        // Terminal custody in this existing owner, never a reset/retry ticket.
+        // Keep endpoint, MMIO/CPU/DMA mappings, capabilities, original charges
+        // and the shutdown request together. The coordinator must retain this
+        // driver root; there is no device-quiesced acknowledgement.
+        let _retained = ManuallyDrop::new((self, request));
+        catten_rt::logln!(
+            "[rng] terminal device retention: shutdown cannot prove descriptor quiescence"
+        );
+        let cq = ctx.completion_queue_layout();
+        loop {
+            while unsafe { cq_read(cq.base, cq.entries) }.is_some() {}
+            // Deliberate terminal retention, not a productive hardware wait.
+            // No request is received and no backend method or destructor runs.
+            reactor::wait(None, 0);
+        }
+    }
+}
+
 fn serve(ctx: &Context) -> ShutdownRequest {
     let ns_connection = ctx.bootstrap_connection().unwrap_or_else(|| fail(0xe001));
     let dma_cap = config::dma_domain_cap().unwrap_or_else(|| fail(0xe002));
     // SAFETY: the launch environment retains ownership of this borrowed DMA
     // authority for the process lifetime.
     let dma_domain = unsafe { DmaDomain::from_raw(dma_cap) };
-    let mut device = VirtioRng::open(ctx, &dma_domain).unwrap_or_else(|| fail(0xe003));
+    let device = Device::new(
+        VirtioRng::open(ctx, &dma_domain).unwrap_or_else(|| fail(0xe003)),
+        Limits::DEFAULT,
+    );
 
     let endpoint =
         Endpoint::create(entropy::INTERFACE, entropy::VERSION, 32).unwrap_or_else(|_| fail(0xe004));
-    if let Err(error) = endpoint.bind_completion_queue(0) {
+    let mut serving = ServingRng {
+        device,
+        endpoint,
+    };
+    if let Err(error) = serving.endpoint.bind_completion_queue(0) {
         config::write::<u32>(status::ERROR, 0xe007);
         catten_rt::logln!("[rng] endpoint CQ binding rejected: {:?}", error);
         catten_rt::domain_abort();
     }
-    if let Err(error) = publication::register(ns_connection, entropy::NAME, &endpoint) {
+    if let Err(error) = publication::register(ns_connection, entropy::NAME, &serving.endpoint) {
         config::write::<u32>(status::ERROR, 0xe005);
         catten_rt::logln!("[rng] publication rejected: {:?}", error);
         // Initialized device and endpoint remain live through terminal abort.
@@ -305,18 +338,21 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 
     loop {
         if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            if serving.device.retained_failure().is_some() {
+                serving.retain(request, ctx);
+            }
             // Stop admission before resetting the VirtIO device. Dropping the
             // device writes status 0, then tears down every shared DMA mapping
             // before the MMIO grant; only then may the stronger lifecycle
             // acknowledgement be published by `main`.
-            drop(endpoint);
-            drop(device);
+            drop(serving.endpoint);
+            drop(serving.device);
             return request;
         }
         // Drain readiness hints, including already observed publication/backoff
         // completions. No RPC result/attachment is adopted from these entries.
         while unsafe { cq_read(cq.base, cq.entries) }.is_some() {}
-        let Some(message) = endpoint.try_receive().unwrap_or_else(|_| fail(0xe006)) else {
+        let Some(message) = serving.endpoint.try_receive().unwrap_or_else(|_| fail(0xe006)) else {
             // Endpoint publication and exact-root lifecycle requests signal this
             // same CQ. Its generation/recheck contract closes the enqueue race.
             // Rejected wait admission aborts with all device owners live.
@@ -324,7 +360,19 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             continue;
         };
         let length = message.arg0;
-        if catten_services::entropy_service::serve_fill(message, |output| device.fill(output)) {
+        if catten_services::entropy_service::serve_fill(message, |output| {
+            let retained = serving.device.retained_failure().is_some();
+            let result = serving.device.fill(output);
+            if !retained && let Err(rng_device::Error::Retained(reason)) = result {
+                config::write::<u32>(status::ERROR, RETAINED_DEVICE_ERROR);
+                catten_rt::logln!(
+                    "[rng] device retained after {:?}, {:?}; no descriptor replay or cleanup",
+                    reason,
+                    serving.device.retained_attempt()
+                );
+            }
+            result.is_ok()
+        }) {
             bytes_served = bytes_served.saturating_add(length);
             config::write::<u64>(status::BYTES, bytes_served);
         }

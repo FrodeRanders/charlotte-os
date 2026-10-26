@@ -873,6 +873,17 @@ CQ readiness, rechecking lifecycle and endpoint state after every wake; no idle
 and endpoint owners live. This does not replace the bounded hardware-status poll
 or establish hardware shutdown or uncertain-descriptor recovery.
 
+The descriptor owner now arms terminal retention before queue mutation and
+requires the exact next used index, descriptor zero and valid length before
+advancing. Short completions continue only confirmed progress. Timeout or a
+backend fault retains the complete MMIO/CPU/DMA fields and captured attempt;
+later calls cannot touch hardware, even after a late completion. Checked
+completion survives later copy failure. Retained fallback runs no nested
+destructors. A fenced shutdown keeps device, endpoint and shutdown request
+without reset, unmap or a device-quiesced acknowledgement. This fences reuse;
+real hardware recovery and the ordinary healthy-shutdown path need separate
+qualification. See \repofiletext|docs/reference/entropy.md|{the descriptor contract}.
+
 One nonblocking handshake admission owns the static verification clock through
 completion. Overlap rejects before changing the clock, and completion clears
 it. mTLS retains typed P-256 SEC1 validation and constructs its Embassy signing

@@ -64,7 +64,7 @@ impl Peer {
             check(
                 entropy_service::serve_fill(message, |bytes| {
                     if mode == 4 {
-                        return false;
+                        return super::rng_device_contract::rejecting_fill(bytes);
                     }
                     bytes.fill(0x3a);
                     true

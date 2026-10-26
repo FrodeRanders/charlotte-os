@@ -124,6 +124,17 @@ readiness deadlines together in the shared publication module; RNG adds no
 per-instance or live override. Its idle request/lifecycle wait is event-only,
 without a timer policy.
 
+The hardware-polling policy is separate. The central RNG device limits allow
+1000000 completion-index reads per descriptor; the typed constructor requires a
+positive bound. This is an iteration ceiling, not milliseconds or permission to
+retry. Each confirmed short completion may require another bounded step. The
+compile-time queue size is eight; page-rounded ring backing derives from its
+geometry, while bounce storage follows the protocol buffer. Larger queues do
+not increase outstanding descriptors. Rebuild and qualify layout, CPU cost,
+caller deadlines, short completion, timeout/late completion and retained cleanup
+together. No boot-resource or live override is added. Exact inputs are in
+\repofiletext|docs/reference/entropy.md|{the entropy configuration reference}.
+
 \section{Related limits and tuning consequences}
 
 The policy groups domain/ordinary/total capacities and resource dimensions.

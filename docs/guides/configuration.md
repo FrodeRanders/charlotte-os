@@ -103,6 +103,17 @@ separate budgets. Tune all helper consumers, boot ordering and readiness
 deadlines together; this is not live per-instance configuration. RNG idle
 request/lifecycle observation has an event-only CQ wait, with no timer setting.
 
+RNG hardware polling is separate: `rng_device::Limits::DEFAULT` permits
+`1000000` completion-index reads per descriptor; `Limits::new(n)` requires a
+positive bound. The bundled driver selects the central default at construction.
+This is an iteration ceiling, not a wall-clock deadline or replay allowance.
+Its compile-time `QUEUE_SIZE = 8` determines page-rounded ring geometry;
+backing size derives from it, while the entropy bounce buffer follows the
+protocol dimensions above. Larger queues do not increase outstanding work.
+Rebuild and qualify layout/capacity, CPU cost, short completions, original caller
+deadlines, timeout/late completion and retained teardown together. See the
+[descriptor contract](../reference/entropy.md#descriptor-ownership-and-terminal-failure).
+
 ## Related limits
 
 Review these groups together when changing workload targets:

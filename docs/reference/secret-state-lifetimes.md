@@ -10,6 +10,7 @@ records a retained-storage reproduction and the correction's validation.
 
 | Material | Owner and lifetime | Release or transfer |
 |---|---|---|
+| RNG private entropy bounce and queue backing | `rng_device::Device<VirtioRng>` retains the complete MMIO/CPU/DMA backend and original charges | A descriptor timeout/backend failure fences later operations and suppresses every backend field destructor. The bounce buffer can retain entropy bytes while DMA is uncertain; no erasure, reset or physical-release guarantee follows. Fenced shutdown retains the containing device/endpoint/request without a quiesced acknowledgement. Ordinary healthy cleanup and forced termination require separate proofs. See [descriptor ownership](entropy.md#descriptor-ownership-and-terminal-failure). |
 | SHA chaining words, partial input block and length counters | `charlotte_launch::sha256::Sha256` | `Zeroize` erases the named fields; Drop calls it on unfinished hashes and after consuming finalization. Erasure is not a reset to a fresh hash; start again with `Sha256::new`. |
 | Complete input block | Borrow from caller input or the existing hash buffer | Compression does not create a separate 64-byte block copy. A completed buffered block is wiped before further input. The caller still owns its original input. |
 | Expanded 64-word message schedule | Local `Zeroizing<[u32; 64]>` | Drops at compression return. |

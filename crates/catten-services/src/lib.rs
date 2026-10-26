@@ -46,6 +46,10 @@ pub mod kafka_client;
 pub mod publication;
 pub mod raft_clock;
 pub mod reactor;
+pub mod rng_device;
+#[cfg(test)]
+#[path = "rng_device/contract.rs"]
+mod rng_device_contract;
 /// Owned application-side wrappers for the S3 service protocol.
 pub mod s3_client;
 /// Verified, owned TLS client transport shared by network services.

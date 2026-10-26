@@ -100,6 +100,16 @@ signed server and qualify endpoint progress and unrelated/lifecycle-publication
 repark on the replacement. This does not qualify actual hardware shutdown,
 descriptor timeout recovery or broader flood fairness.
 
+The [RNG descriptor-owner correction](../reports/audits/2026-10-26-security-rng-descriptor-fence.md)
+now arms a terminal fence before queue mutation and checks exact completion
+index, descriptor and length before advancing. Timeout/backend failure retains
+the complete DMA/MMIO owner and captured attempt; late completion or another
+request cannot restart it, and fallback cannot destroy nested fields. A fenced
+shutdown retains the endpoint/device/request without a quiesced acknowledgement.
+Host/native fault controls and isolated replay/destructor regression mutations
+qualify the software policy. Real hardware timeout/reset/recovery, partial setup,
+healthy-shutdown proof and full pressure remain separate SEC-06/18 work.
+
 The [HTTP listener correction](../reports/audits/2026-10-10-security-http-progress.md)
 retains listeners through queue-full admission. The
 [deployment ingress follow-up](../reports/audits/2026-10-11-security-deployment-ingress.md)

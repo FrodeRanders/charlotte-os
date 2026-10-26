@@ -134,8 +134,61 @@ unrelated/lifecycle-publication hints, including a failing old-server control.
 This removes request polling, not the bounded VirtIO descriptor/status poll.
 That hardware path has no implemented completion-interrupt notification. A
 device completion timeout can still leave a descriptor's outcome uncertain;
-fencing subsequent reuse and qualifying hardware recovery remain separate
-audit work. An idle CQ wake supplies no permission to replay device work.
+the [descriptor-owner correction](../reports/audits/2026-10-26-security-rng-descriptor-fence.md)
+now fences subsequent reuse. Hardware recovery remains separate work. An idle
+CQ wake supplies no permission to replay device work.
+
+### Descriptor ownership and terminal failure
+
+`rng_device::Device` owns the complete hardware adapter: MMIO, queue/bounce
+CPU and DMA mappings, their original capabilities and charges, and captured
+descriptor context. It arms terminal retention before the first descriptor
+mutation. A successful step requires the exact next wrapping used index,
+descriptor ID zero and a nonzero length no greater than requested. Only then
+can its bytes be copied and the completed position advance. Short successful
+completions continue the remaining prefix; uncertainty never resubmits one.
+
+Preparation/publication/read failure, timeout, unexpected index/descriptor,
+invalid length and failed copy all fence that same owner. Its captured attempt
+retains previous/expected indices, slot, requested length and prior copied
+prefix. A checked completion remains recorded separately from later copy
+failure or interruption. Later fills return the original typed failure without
+any backend call, even if a late completion has appeared. Invalid caller lengths
+reject before mutation and do not fence an otherwise healthy owner.
+
+The retained fallback invokes no backend destructor, reset, unmap, close,
+deallocation or accounting refund. This preserves every nested hardware field;
+it is terminal retention, not a recovery ticket. Valid later IPC requests get
+`ERR_DEVICE`; the first returned failure records diagnostic status `0xe008` and its
+stage/attempt, without exposing entropy. Caller memory remains CPU-only and
+the existing reply transaction never publishes a partial successful count.
+
+On shutdown, a fenced `ServingRng` retains device, endpoint and original shutdown
+request together in an event-only terminal park. It stops receiving requests
+and withholds device-quiesced acknowledgement rather than running the ordinary
+reset/Drop path. The existing node device coordinator retains a driver that
+does not provide that acknowledgement; no force-success or power-off is added.
+This is not a qualified device reset/recovery implementation. Healthy shutdown,
+partial setup, actual hardware fault injection and forced termination retain
+their separate proof requirements.
+
+Hardware policy is centralized in `rng_device.rs`. `Limits::DEFAULT` allows
+`1000000` completion-index polls per descriptor; `Limits::new(n)` accepts only
+a positive bound before backend adoption. The bundled driver passes that
+central default. This is an iteration ceiling, not milliseconds, a total
+request deadline or permission to retry. Each confirmed short completion can
+require a further bounded step. `QUEUE_SIZE = 8` is a compile-time power-of-two
+split-ring dimension; page-rounded ring backing derives from that geometry
+(currently two pages), while entropy bounce storage follows the protocol buffer.
+Larger queues do not add concurrent outstanding descriptors. Changing these
+inputs requires rebuilding and requalifying device capacity/layout, CPU cost,
+short completions, rejection, timeout/late completion, retention and caller
+observation budgets together. No live/manifest/boot-resource override is added.
+
+The adapter still uses the existing bytewise volatile helpers for scalar ring
+fields. Real-device atomicity/cache-ordering qualification and hardware index
+rollover are separate work; the host wrap control checks software sequence
+arithmetic only. Descriptor fencing is not a complete hardware-protocol proof.
 
 ## TCP/IP startup
 

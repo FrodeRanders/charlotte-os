@@ -12,6 +12,8 @@ mod network_random_contract;
 #[path = "../tls_client/entropy_contract.rs"]
 mod entropy_contract;
 
+#[path = "../rng_device/contract.rs"]
+mod rng_device_contract;
 use alloc::vec::Vec;
 
 use catten_rt::{
@@ -32,10 +34,12 @@ use catten_rt::{
 use catten_services::{
     clusterctl_client,
     deadline::Deadline,
+    entropy,
     grant,
     grant_client,
     network_random::NetworkRandom,
     publication,
+    rng_device,
     sleep_ms,
     socket,
 };
@@ -999,6 +1003,11 @@ fn main(ctx: Context) -> ! {
         "silent-call cancellation and all eight slots recovered"
     ));
     entropy_contract::run(silent_connection.as_ref());
+    rng_device_contract::check();
+    catten_rt::logln!(
+        "[security] RNG device: exact completion, short results, terminal timeout/late result, \
+         backend faults and complete field retention; no replay"
+    );
     let scalar_budget = Deadline::after(7_000);
     check(
         matches!(

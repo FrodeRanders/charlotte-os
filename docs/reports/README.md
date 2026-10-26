@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [RNG descriptor ownership and terminal failure](audits/2026-10-26-security-rng-descriptor-fence.md) — One complete fenced backend, checked completion and inert retained field destruction; isolated unsafe regression controls and frozen native qualification, preserving the preliminary ARM deadline failure.
+
 - [RNG publication and idle readiness](audits/2026-10-26-security-rng-readiness.md) — Bounded shared publication and event-only endpoint/lifecycle waits; old signed server fails the exact CQ/no-timer control, replacement passes both publication generations.
 
 - [RNG caller-funded reply backing](audits/2026-10-26-security-rng-caller-buffers.md) — One current caller-buffer protocol, original-charge retention and real producer/caller budget controls; preserves the failed same-domain-loan fixture runs.
