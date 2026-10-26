@@ -1196,6 +1196,14 @@ authentication acceleration is disabled; AES selection and the TLS cipher stay
 unchanged. Hosted x86, complete TLS traffic-key/IV/HKDF erasure, forced termination
 and physical-memory copies remain open. SEC-15 and finding counts are unchanged.
 
+The [network HMAC follow-up](../reports/audits/2026-10-26-security-network-hmac-erasure.md)
+replaces ephemeral-port selection's remaining separate HMAC/SHA-2 state with the
+existing shared erasing helper and its result owner. Initialization owns entropy
+scratch before filling, including partial/error paths. Independent Python vectors
+and the signed probe preserve the existing port sequence, label, counter and
+range. TCP/IP still requires fresh entropy before interface publication. SEC-15
+remains partial; complete TLS state and compiler/physical copies remain separate.
+
 | Order | Finding and acceptance criterion |
 | --- | --- |
 | 1 | **SEC-04:** Authenticate bootstrap policy and the executable boot chain from a protected platform root. Provision independent artifact, deployment and operational authorities and a distinct recipient key; exclude every development fixture. Keep the recipient private key behind a privileged custody boundary, with recovery/rotation rules and rollback-resistant policy state. Test substituted boot images/policies, role reuse, downgrade, enrollment and custody failure. Production must remain disabled until those tests pass. |

@@ -316,6 +316,18 @@ The stack uses smoltcp 0.13. It runs in a userspace service registered as
 \texttt{OP\_RECV}, and \texttt{OP\_CLOSE}). Software that requires
 TCP/IP connects to this service.
 
+TCP/IP obtains fresh entropy before creating its interface and rejects startup
+if that entropy is unavailable. Ephemeral-port selection uses an independent
+32-byte key, a nonwrapping counter and HMAC-SHA-256 over the fixed domain label
+and little-endian counter. It selects the same unbiased 49152--65535 range.
+The port helper now uses the shared erasing HMAC: key pads, hash state,
+intermediates and the digest have erasing owners. Initialization also owns its
+40-byte entropy scratch before filling. Ordinary Drop erases those named fields;
+compiler/register copies, forced termination and physical-memory erasure remain
+separate. The change preserves the existing port sequence; public deterministic
+seeds appear only in opt-in validation, never production initialization. See
+\repofile|docs/reference/secret-state-lifetimes.md|.
+
 \texttt{OP\_ACCEPT} (15) retains the complete request until the listening
 socket reaches Established or CloseWait, then returns scalar zero without
 attachments. Listen and SynReceived remain pending; terminal states or explicit

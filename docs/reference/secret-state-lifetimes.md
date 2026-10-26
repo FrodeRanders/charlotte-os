@@ -1,7 +1,7 @@
 # Secret-derived state lifetimes
 
 This is the current SEC-15 inventory for Charlotte's SHA-256, HMAC, SigV4,
-SCRAM and HPKE recipient helpers. It is a bounded part of the wider secret-copy
+SCRAM, network port selection and HPKE recipient helpers. It is a bounded part of the wider secret-copy
 review.
 The [execution report](../reports/audits/2026-10-19-security-hash-state-erasure.md)
 records a retained-storage reproduction and the correction's validation.
@@ -17,6 +17,8 @@ records a retained-storage reproduction and the correction's validation.
 | SHA digest | Returned `[u8; 32]` | Caller owns the output. Public artifact digests need no secret owner; secret-derived callers wrap the output in zeroizing storage. |
 | Normalized HMAC key, long-key digest, inner/outer pads and inner digest | Local zeroizing owners in the shared `hmac_sha256` helper | Drop after the derivation. Both hash contexts also erase their state. |
 | HMAC result | Returned `Zeroizing<[u8; 32]>` | Ownership continues through derivation or encoding; Drop erases it. No plain-array HMAC helper remains in S3 or SCRAM. |
+| TCP/IP entropy scratch | `NetworkRandom::initialize` owns `Zeroizing<[u8; 40]>` before filling | Success or partial/error return erases the same scratch owner. Fresh entropy and fail-closed startup remain required; original entropy-provider and compiler copies keep separate lifetimes. |
+| Ephemeral-port HMAC state and digest | `NetworkRandom::ephemeral_port` uses the existing erasing `hmac_sha256` helper and retains its `Zeroizing<[u8; 32]>` result | Key normalization, pads, hash state and intermediates follow the shared helper's existing erasing owners. The public domain label and little-endian counter stay in a fixed stack message. State key/seed still erase in `NetworkRandom::Drop`. The selected port, compiler/register copies and forced termination remain outside this guarantee. See the [network HMAC follow-up](../reports/audits/2026-10-26-security-network-hmac-erasure.md). |
 | SigV4 `AWS4`-prefixed secret and date/region/service/signing keys | Existing zeroizing prefix buffer and shared HMAC result owners | Retained through request signing, then dropped. Returned signature/authorization text keeps erasing owners through its protocol-output lifetime. |
 | SigV4 hexadecimal signature and authorization | `Signature` fields are `Zeroizing<String>`; constructed before encoding/concatenation with complete reservations | Drop erases either field, including serialization rejection. No aggregate Debug formatter remains. Canonical request/string-to-sign/header copies now retain erasing owners too; caller inputs keep their own lifetimes. |
 | Canonical SigV4 URI/query, normalized headers, request and transcript | Helpers create `Zeroizing<String>` before copying, including each encoded query/normalized header entry and the scope/hash text | Compute checked complete lengths before reserving; ordinary Drop erases final outputs and temporary copies. `canonical_query` returns `Result<Zeroizing<String>, Error>`. Names/values remain borrowed from caller inputs before copying; original raw paths/profile/request data have separate lifetimes. |

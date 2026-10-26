@@ -6,6 +6,9 @@ extern crate alloc;
 #[path = "../tls_client/gcm_contract.rs"]
 mod gcm_contract;
 
+#[path = "../network_random/contract.rs"]
+mod network_random_contract;
+
 use alloc::vec::Vec;
 
 use catten_rt::{
@@ -28,6 +31,7 @@ use catten_services::{
     deadline::Deadline,
     grant,
     grant_client,
+    network_random::NetworkRandom,
     publication,
     sleep_ms,
     socket,
@@ -716,6 +720,9 @@ fn main(ctx: Context) -> ! {
 
     gcm_contract::check();
     catten_rt::logln!("[security] TLS GCM known-answer, tamper rejection and decrypt passed");
+
+    network_random_contract::check();
+    catten_rt::logln!("[security] ephemeral-port HMAC known-answer sequence passed");
 
     if matches!(ctx.manifest_value(status::MODE_KEY), Some(ManifestValue::Unsigned(2))) {
         let tcpip =

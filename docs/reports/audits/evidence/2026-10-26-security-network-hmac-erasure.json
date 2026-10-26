@@ -1,0 +1,686 @@
+{
+  "schema": "charlotte-security-evidence-v1",
+  "report_date": "2026-10-26",
+  "reviewed_revision": "5eee8acf940c0790ccc10220b1ee82263e726edd",
+  "scope": {
+    "finding": "SEC-15; SEC-22 startup/sequence policy preserved",
+    "gap": "NetworkRandom used a separate non-dropping Hmac<Sha256> owner and plain digest despite erasing its long-lived port key/seed.",
+    "correction": "Existing shared erasing HMAC and typed Zeroizing result; entropy scratch owner installed before provider entry.",
+    "unchanged": [
+      "fresh entropy before interface publication, no public seed fallback",
+      "HMAC algorithm, domain label, little-endian accepted counter sequence, 49152..65535 mapping",
+      "nonwrapping fail-stop exhaustion",
+      "original socket/capability/root owners and physical cleanup proofs",
+      "register/wire ABI and resource limits",
+      "dependency package versions/checksums and shared SHA/HMAC implementation"
+    ],
+    "finding_ledger": {
+      "corrected": 29,
+      "partial": 6,
+      "open": 3,
+      "production_trust": "disabled"
+    }
+  },
+  "source_sha256": {
+    "Cargo.lock": "147e31b7b45a34de5fd957ba057312eb2fd53edfd4f74de6182bd9774e52a9ad",
+    "crates/catten-services/Cargo.toml": "db38bceaf61ecadedbd5e51c7b0d71a9aab5423264620f0d01c9fc8ecd965695",
+    "crates/catten-services/src/bin/security_probe.rs": "541573c45dbad0022cc345ae009a242369a981aa8015cb72abd7b3f832729268",
+    "crates/catten-services/src/network_random.rs": "38a2d027b27a25ce44f4743e348f4b9067791fa41b3746afa0192d4dd356068f",
+    "scripts/run-host-tests.sh": "f88f2989f27e95068ef1de2da0719b703d78a176df1d4268d8002f473380c458",
+    "crates/catten-services/src/network_random/contract.rs": "a95b58191536dd6a5e3dca920fef696340cc5e743af9c0dad74147759a6d1ed6",
+    "scripts/tests/test-network-random.py": "82d99fde724d54292c1b60bfdb2f83e37ab328040623f83e94520594204f5dff"
+  },
+  "shared_hash_source_sha256": "b0583e16bd7afcf983ebdd14f93e7e39ed6b61e1c7b504434926391a0cf4f867",
+  "production_tcpip_source_sha256": "4277752327dac68625ee18c587cd243574723cc23bddc44ec48e6f8080f7ca3f",
+  "pinned_dependency_source_sha256": {
+    "hmac-0.12.1/src/optim.rs": "3c16b46effd4980cd2e98b5b2090aa57049dc9d4a9ea1c87e758875bf1ab0b63",
+    "sha2-0.10.9/src/core_api.rs": "73b160d98bfa6737688875ad73da5e3c2c93582604dc313d208200e12fdab676",
+    "digest-0.10.7/src/core_api/wrapper.rs": "033777bed7d140b158e15d50fda8a6e06557ce89bd0738fcca692be2c39e8b8a",
+    "zeroize-1.9.0/src/lib.rs": "61012679ef3d0cc4e29b6f9c9d6c572c4ba8110e70a1e1c527da6bfaf77494ef"
+  },
+  "checks": {
+    "dependency_graph": "Only catten-services direct hmac 0.12.1 and sha2 0.10.9 edges removed. Every package/version/checksum and all other package records unchanged. TLS transitive owners remain.",
+    "strict_service_clippy": {
+      "aarch64": "cargo clippy --locked -p catten-services --target crates/catten-services/aarch64-unknown-none.json --target-dir crates/catten-services/target --lib --bins -- -D warnings",
+      "x86_64": "cargo clippy --locked -p catten-services --target crates/catten-services/x86_64-unknown-none.json --target-dir crates/catten-services/target --lib --bin tcpip --bin security_probe -- -D warnings",
+      "results": "pass"
+    },
+    "host_suites": {
+      "debug": {
+        "command": "cargo test --locked --offline --manifest-path <repository>/Cargo.toml --target-dir <repository>/target/host-unit-tests -p catten-services -p charlotte-launch --lib (cwd /private/tmp)",
+        "service_tests": 227,
+        "launch_tests": 10,
+        "failed": 0,
+        "selected_results": [
+          "test network_random::tests::exhausted_counter_cannot_wrap_or_restart_the_port_sequence - should panic ... ok",
+          "test network_random::tests::large_counters_keep_the_exact_little_endian_hmac_input ... ok",
+          "test network_random::tests::port_key_is_independent_of_the_interface_seed ... ok",
+          "test network_random::tests::port_sequence_matches_independent_hmac_vectors ... ok",
+          "test network_random::tests::unavailable_or_partial_entropy_cannot_initialize_network_state ... ok",
+          "test network_random::tests::independent_boots_change_protocol_and_port_state ... ok",
+          "test result: ok. 227 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s",
+          "test sha256::erasure_tests::unfinished_drop_erases_named_fields_in_retained_storage ... ok",
+          "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+        ]
+      },
+      "release": {
+        "command": "cargo test --locked --offline --release --manifest-path <repository>/Cargo.toml --target-dir <repository>/target/host-unit-tests -p catten-services -p charlotte-launch --lib (cwd /private/tmp)",
+        "service_tests": 227,
+        "launch_tests": 10,
+        "failed": 0,
+        "selected_results": [
+          "test network_random::tests::exhausted_counter_cannot_wrap_or_restart_the_port_sequence - should panic ... ok",
+          "test network_random::tests::large_counters_keep_the_exact_little_endian_hmac_input ... ok",
+          "test network_random::tests::port_key_is_independent_of_the_interface_seed ... ok",
+          "test network_random::tests::port_sequence_matches_independent_hmac_vectors ... ok",
+          "test network_random::tests::unavailable_or_partial_entropy_cannot_initialize_network_state ... ok",
+          "test network_random::tests::independent_boots_change_protocol_and_port_state ... ok",
+          "test result: ok. 227 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s",
+          "test sha256::erasure_tests::unfinished_drop_erases_named_fields_in_retained_storage ... ok",
+          "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+        ]
+      }
+    },
+    "compile_and_independent_controls": {
+      "source_sha256": "38a2d027b27a25ce44f4743e348f4b9067791fa41b3746afa0192d4dd356068f",
+      "controls": [
+        {
+          "name": "legacy-rejected",
+          "command": [
+            "cargo",
+            "check",
+            "--offline",
+            "--quiet",
+            "--release",
+            "--target-dir",
+            "/Users/froran/Projects/private/charlotte-os/target/network-random-controls"
+          ],
+          "manifest": "[package]\nname=\"network-random-control\"\nversion=\"0.0.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\ncharlotte-launch={path=\"/Users/froran/Projects/private/charlotte-os/crates/charlotte-launch\"}\nzeroize={version=\"=1.9.0\",default-features=false}\nhmac={version=\"=0.12.1\",default-features=false}\nsha2={version=\"=0.10.9\",default-features=false}\n",
+          "source": "const _: () = assert!(core::mem::needs_drop::<hmac::Hmac<sha2::Sha256>>(),\n    \"legacy HMAC lacks Drop\");\nfn main() {}\n",
+          "exit_status": 101,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "diagnostics": [
+            "error[E0080]: evaluation panicked: legacy HMAC lacks Drop",
+            "2 | |     \"legacy HMAC lacks Drop\");",
+            "For more information about this error, try `rustc --explain E0080`."
+          ]
+        },
+        {
+          "name": "production",
+          "command": [
+            "cargo",
+            "run",
+            "--offline",
+            "--quiet",
+            "--release",
+            "--target-dir",
+            "/Users/froran/Projects/private/charlotte-os/target/network-random-controls"
+          ],
+          "manifest": "[package]\nname=\"network-random-control\"\nversion=\"0.0.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\ncharlotte-launch={path=\"/Users/froran/Projects/private/charlotte-os/crates/charlotte-launch\"}\nzeroize={version=\"=1.9.0\",default-features=false}\n",
+          "source": "#[path=\"/Users/froran/Projects/private/charlotte-os/crates/catten-services/src/network_random.rs\"]\nmod network_random;\nconst _: () = assert!(core::mem::needs_drop::<charlotte_launch::sha256::Sha256>());\nfn main() {\n    let mut random = network_random::NetworkRandom::initialize(|bytes| {\n        for (index, byte) in bytes.iter_mut().enumerate() { *byte = index as u8; }\n        Ok::<_, ()>(())\n    }).unwrap();\n    assert_eq!(random.interface_seed(), u64::from_le_bytes([0,1,2,3,4,5,6,7]));\n    for _ in 0..1024 { println!(\"{}\", random.ephemeral_port()); }\n}\n",
+          "exit_status": 0,
+          "stdout_sha256": "f0e5ab2dbd125c7f8e17f8bb1d3709d60c0ee5fbac66e1f8e447933ced86d304",
+          "diagnostics": [],
+          "python_hmac_vectors_matched": 1024
+        }
+      ]
+    },
+    "host_runner_hook": "Direct new hook executed; bash syntax checked, full cross-workspace wrapper not rerun.",
+    "formatting": "pass",
+    "whitespace": "pass"
+  },
+  "fixtures": {
+    "public_entropy_bytes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39
+    ],
+    "native_shared_vector_ports": [
+      64443,
+      60648,
+      61719,
+      64261,
+      51295,
+      53828,
+      61106,
+      49164
+    ],
+    "additional_host_counter_vectors": [
+      {
+        "counter": 255,
+        "port": 58108,
+        "digest": "fce2d235d3b245c62a68ea7b4edd093cd607fc49583f32761783170c4eb35fc3"
+      },
+      {
+        "counter": 65535,
+        "port": 58483,
+        "digest": "73a4372b8504ce48b0de2cb26bfb5797b9891d325f2630c5e46f9d89ed265c6d"
+      },
+      {
+        "counter": 4294967295,
+        "port": 53431,
+        "digest": "b7900a6f1262f3d3477818b0a17b527e8101e4e72f9bac7961058c35315c744f"
+      },
+      {
+        "counter": 18446744073709551614,
+        "port": 51846,
+        "digest": "868a20f435e6979a29514e571d673b56adb8c3e5f1f511d06e5146c43a4497a5"
+      }
+    ],
+    "shared_sha_retained_storage_lengths": [
+      65,
+      1,
+      55,
+      63,
+      64,
+      127,
+      129,
+      0
+    ],
+    "native_post_drop_target_memory_measurement": false
+  },
+  "bundle_builds": {
+    "aarch64": {
+      "command": "scripts/build-catten-services.sh --embed",
+      "exit_status": 0,
+      "bundle_sha256": {
+        "agent.elf": "bdb4bc8d2b9df6096ba90f74506215dd0c4a1da290f9ea9420aba356517af4c7",
+        "cclient.elf": "adfc332e6037651cc945a3e40c496ebf6f0185c5b7df124650296296131f3be6",
+        "client.elf": "3bfce00874daeb77070b3301a5e5baa0b88d0c0c4331c41b714ac0a4fc0b7b3b",
+        "clusterctl.elf": "eebf8a40ff6cbaacfdc2563b07aea64e14caba56b8d85f9930a328d25c6265a4",
+        "deployd.elf": "fd30bee5e14de91d8caf4ac24b8a427471ddc7824a81b86c087885a083f86827",
+        "disco.elf": "605943925e618aca556c29b2949210b802a88e06c25f6d1259a75081d5018747",
+        "dns.elf": "dad8e3ce4a990a5bdf34905a7807ceee56b3e978b255b67cc984706caa481f43",
+        "echo.elf": "2c4b9b256d22db621efa4278450d16902eab4cf546c0ca07dbfac049c5a7ae6d",
+        "frouter.elf": "93f74dd40097ecc36ff1a7aac7131e8c3c8d595b5ccf6423bf80995e001cba2d",
+        "fs.elf": "a088ea8cb49de0b2eda339f639eca4fb6071bd6254a45b43bb03633ff67c1f36",
+        "grantctl.elf": "4fa025285e894bdb53973a4efaf300f92aa7765dbe6582a72dbfbd90e700041d",
+        "greet.elf": "e9ccc15d59efd23f1ac49d363f8b209bb57c07e1c8ace2a9ca00f70f805d49f1",
+        "httpd.elf": "ef4868a5c0f4d544e280ec3867e211e904808452a59d3b4c5e18f009afb8ec46",
+        "kafka.elf": "5125d65e91a427e652b09a6e999d021ebfa54e6e88eb603be8d96653bb64e17c",
+        "kafka_fence_smoke.elf": "5a06b6649dca6fecd18b285802b95f0a0fb6213c0c3d14ce3adb30ea8941059b",
+        "kafka_smoke.elf": "b0cdb18f39c3f457593fed5459d3fb7e25274b0073caa37c2f63b74e52f4b67a",
+        "kafka_step.elf": "cbbdaed8f615711e08d25b8f223c4f7aedd5f1224c57510c8b1a61879368a79e",
+        "kafka_step_input.elf": "a5a809f3cd4b14f6ae2b88c3f71550b2bba6bbb0626c15590aedd2139e2716e0",
+        "kafka_step_proc.elf": "3c4bff81a27e0b541beb3942a9b26494adb1acfb60f67c11586d48a670e13e7c",
+        "nclient.elf": "aec4bb336e8ab0cc4c1203c4daf46be7bb4bbfe8afa3654a707ecb49ec61e7b0",
+        "net.elf": "ac57adb3e7acea30b614df8ed48362ab713bdebc862f7b0bc47f90e9ba181fa9",
+        "ns.elf": "09ab68666d8a8857cfb8f2bcadab5d2c172bbe45588b1f4ae61a3a8430a7389b",
+        "nvme.elf": "9d35594fdcfc8dbdd9dd06bd6c4fca0e8e08c1a66a1ace1c6d3af1b83ec93ab5",
+        "nvme_client.elf": "66a84a2b1d338e7a54837410ffe4531e165a4ce2be926e37bdae637d4fd1e6de",
+        "objstore.elf": "2d6924c1213076d75d4e84f8b94b11e8eac2f97a1867900ecc6f179b332c0b0f",
+        "objstore_client.elf": "7d81c5d1d79a64d8a1e443809ce74b1c20186b97887c98a7adf255f1dc046748",
+        "observe.elf": "119d32e9c4f45502ea06e3c9b9d446128d82f3e40e4dd4ee9be1b9a0451d14bd",
+        "raft.elf": "d90d8553833facc367013bbca644e93e97d1a4a9c0d6b753ecd8a065787f4bf1",
+        "rclient.elf": "c3414e9f5a32d2fad65d9ada9ca02542c9648ae524c3a6c1641ee5582b6d7e6a",
+        "relmsg.elf": "6bd96e5e5daf6922c83d8472ee6ffd2ced547204ac052e950d8a8208eaeb0818",
+        "rng.elf": "af3407c23d300dc503143300838eac0afd68a130f16625f2947e9019b344c4dd",
+        "s3.elf": "22226e59a0fa0604274e4d08db3d1cf9db944192d881be90d547c3017ce6f328",
+        "s3_smoke.elf": "bd09f12e56501d6ce4db7b80adbbef2a5913b1af2f24a3a39f6cdab1c3121b1d",
+        "security_probe.elf": "498c91d0c4bd66cdb3014339e50dca8c9d4ee7438d7e591d7edcc2437110d30b",
+        "servicemgr.elf": "6dd9ed38361030f7efea9b206bc17424eb434dd6c4cb07057ef9825f683b3ff2",
+        "shutdown_probe.elf": "de2273a5c562ebc8cc450997d8f8e43719a429cd76e407b5a5c757e0a3d69231",
+        "sitas-user.elf": "fbf1b47a721d84498a64e43bc626a7f962a52d3740e3fa7e14adaeea7fa5f311",
+        "tcpclient.elf": "f94699bd02a7e78b8e2ab446a7e825f3425ea9042e80d4c0cca4a9598735649f",
+        "tcpip.elf": "190f61734f0c5d23b1d4ce7c652a288ca5482ecb6d51144572ad739422a89d94",
+        "time.elf": "e8e1b94dfc6e9b409419bb2c037b833074fd423ec0a100f0351f091b135bec5f",
+        "uart.elf": "2588a6ccf5a2f989af40b2f4c580879cfd452bd35e60faaacab86cbe5f927745"
+      },
+      "service_count": 40,
+      "unchanged_external_fixtures": [
+        "sitas-user.elf"
+      ]
+    },
+    "x86_64": {
+      "command": "scripts/build-catten-services-x86_64.sh",
+      "exit_status": 0,
+      "bundle_sha256": {
+        "agent.elf": "f1c247d3f84642f73ed4d4891c2cd2fb7bb1af25268a782a19d57fb345416de0",
+        "ahci.elf": "7c961a0ad82935f95b2352a7b8abd940bb49d7007b7954d4d9804e74e46687a3",
+        "client.elf": "e0930b75b7dc80cd0e540c4707bfacaf66f26d1d62dadbdfd8108e6091b5160e",
+        "clusterctl.elf": "97deff8d00a5e6c9313c8b379b8bab53a19bb6141073d881e8e0b2e465f514da",
+        "deployd.elf": "293873ddf3fc4f634751a126d9b80033acb34098f15878c4bca721de6cc9a004",
+        "disco.elf": "8339df5e486990a0d0d14eb05b4bf26abb138d0490ec96332ac010d8c6625c73",
+        "dns.elf": "261ff1fd1a1c5ad3ef448350ef3a8a9af7d01ef1bfdf624f3b6873c96f38e6dd",
+        "e1000e.elf": "040a1381eb1665d5cac86504efc131858a740388c3b68d42cdbc29af9910c260",
+        "echo.elf": "8db81698558cf04e8947605f4046f8b3f9dbc6ffad400b01583bdfe3b5611a90",
+        "frouter.elf": "0e2f0d9de1e838e087aab123fa5d3b7e27f387da5cc5c38d0ef27fc158756a01",
+        "fs.elf": "2f740971b0818e642d13d61c5216ea1a1b76f3f7f2e85a87013be619314dad0c",
+        "grantctl.elf": "dda3d854fc18e9e6786bd68e2d658e71e8f9f7c404306f80634736638e61e5dd",
+        "greet.elf": "b97f0c10cc17edbb40129b869b46349753d7a60a4424879ca93821f8250c7023",
+        "httpd.elf": "a5842248f12a3d9f74ca04d0280ee59197ff463bd1612a038eb84600a712c1fc",
+        "kafka.elf": "8745ba4f1dbf080404f7d39d7dd888f9b3f3563e51acbff57e4d6a63cca6220f",
+        "kafka_smoke.elf": "885e3ecd22f1cfdfbb2e488c14b938488b6a29cd345f53e5ee4711f23fab7118",
+        "nclient.elf": "2d9154ec6c1dc60fb726ab765d464d5a7783764f822d2685e8b277084b779a82",
+        "net.elf": "fd62487806873dfb3bd44877044e3d2ae5575d5fc984a33a348078a742291590",
+        "ns.elf": "168b60114cf181046952a629852b52acb92a00cbcbd399558bf91f932cedcbce",
+        "nvme.elf": "afdc13df7ec1f293c2f45334ac23d1ff1c2510468e3cf4bdb0481babfa73139e",
+        "nvme_client.elf": "baa4473387db648f335cacfff4be1cfc6cfd59589ee99def2188a31d80961fe5",
+        "objstore.elf": "286b04e7ef5358e00e818997a6a8118ab14611386661b224a8aeabdf057c8d7a",
+        "objstore_client.elf": "0e6bda98acea42a4532db63ae12e8037727c9e0fd642c7ed47cc156284845786",
+        "observe.elf": "134a1b8b7b80e99eda1e833a38a36854d9cd2fd317bd5ed5c3185850b66e132e",
+        "raft.elf": "54689601a3178277c1b65d72137d24b5b049b8c86143c686cbd685ecdaf34e05",
+        "rclient.elf": "3ff7dab4251d8c8da99e90708b55a381d5dc8f510e93819ef82fbf045f09208c",
+        "relmsg.elf": "1248d0686402645eee299df2118d49854c0a30456c6be5d2f02fe8d2b8546e63",
+        "rng.elf": "38c464792a8e01d6a0aeb0bb2e48eecb13a114ca9c68f84e25664c95a0da3f61",
+        "s3.elf": "467fd3cd0319488f0fae86f2f3a03ef31a11bb1efa42a6431144eff43f224705",
+        "s3_smoke.elf": "84cf0cb6e96cc2c4cf9bc7484f5dc3b261e6a7af68b432ac7942ca42a821429c",
+        "security_probe.elf": "8057fa3138e5fe9cbd324a63aa8997c02cc96c239ffb147c49134efa74375714",
+        "servicemgr.elf": "70f5efe08ae2f0b969ea5338e7c098178063c56d2fdf55a78052676a153c9063",
+        "shutdown_probe.elf": "35addb3ab96682a45002a349e1aad0a42419c909cd786d3e8c0570dd799ae689",
+        "tcpclient.elf": "14eb8824d170cc06206fde2a832b385141067dead7e3e16e1f806d19b7c3c12a",
+        "tcpip.elf": "539b8622021999e320757348cbfccc49c7c3c1358a94393fc67dc3ae65c1459c",
+        "time.elf": "e6595c9d0d639fcf70133294cfef70319691339d3ef74c5fa54ee4108557752e",
+        "virtio_blk.elf": "ff5b3e4dbad440426096060ae3143cf1ea680582353d6099d525c1b0d073fb56"
+      },
+      "service_count": 37,
+      "unchanged_external_fixtures": []
+    }
+  },
+  "native_runs": [
+    {
+      "arch": "aarch64",
+      "instance": "network-hmac-arm",
+      "cpus": 4,
+      "revision": "5eee8acf940c0790ccc10220b1ee82263e726edd",
+      "kernel_sha256": "425c1a77fbac0ed1aaeb0675d4ac2bda6118bb3a61461768bc02c1355526aa25",
+      "boot_image_sha256": "425286d14128fd4976740231d6bc882276f091c3cd8f68fb52e949ebdb018be4",
+      "initial_disk_sha256": "dd99dfdf9f0aca7305f673fe05536f9389e3ae43b551283a6207bfdb40409e9c",
+      "bundle_sha256": {
+        "agent.elf": "bdb4bc8d2b9df6096ba90f74506215dd0c4a1da290f9ea9420aba356517af4c7",
+        "cclient.elf": "adfc332e6037651cc945a3e40c496ebf6f0185c5b7df124650296296131f3be6",
+        "client.elf": "3bfce00874daeb77070b3301a5e5baa0b88d0c0c4331c41b714ac0a4fc0b7b3b",
+        "clusterctl.elf": "eebf8a40ff6cbaacfdc2563b07aea64e14caba56b8d85f9930a328d25c6265a4",
+        "deployd.elf": "fd30bee5e14de91d8caf4ac24b8a427471ddc7824a81b86c087885a083f86827",
+        "disco.elf": "605943925e618aca556c29b2949210b802a88e06c25f6d1259a75081d5018747",
+        "dns.elf": "dad8e3ce4a990a5bdf34905a7807ceee56b3e978b255b67cc984706caa481f43",
+        "echo.elf": "2c4b9b256d22db621efa4278450d16902eab4cf546c0ca07dbfac049c5a7ae6d",
+        "frouter.elf": "93f74dd40097ecc36ff1a7aac7131e8c3c8d595b5ccf6423bf80995e001cba2d",
+        "fs.elf": "a088ea8cb49de0b2eda339f639eca4fb6071bd6254a45b43bb03633ff67c1f36",
+        "grantctl.elf": "4fa025285e894bdb53973a4efaf300f92aa7765dbe6582a72dbfbd90e700041d",
+        "greet.elf": "e9ccc15d59efd23f1ac49d363f8b209bb57c07e1c8ace2a9ca00f70f805d49f1",
+        "httpd.elf": "ef4868a5c0f4d544e280ec3867e211e904808452a59d3b4c5e18f009afb8ec46",
+        "kafka.elf": "5125d65e91a427e652b09a6e999d021ebfa54e6e88eb603be8d96653bb64e17c",
+        "kafka_fence_smoke.elf": "5a06b6649dca6fecd18b285802b95f0a0fb6213c0c3d14ce3adb30ea8941059b",
+        "kafka_smoke.elf": "b0cdb18f39c3f457593fed5459d3fb7e25274b0073caa37c2f63b74e52f4b67a",
+        "kafka_step.elf": "cbbdaed8f615711e08d25b8f223c4f7aedd5f1224c57510c8b1a61879368a79e",
+        "kafka_step_input.elf": "a5a809f3cd4b14f6ae2b88c3f71550b2bba6bbb0626c15590aedd2139e2716e0",
+        "kafka_step_proc.elf": "3c4bff81a27e0b541beb3942a9b26494adb1acfb60f67c11586d48a670e13e7c",
+        "nclient.elf": "aec4bb336e8ab0cc4c1203c4daf46be7bb4bbfe8afa3654a707ecb49ec61e7b0",
+        "net.elf": "ac57adb3e7acea30b614df8ed48362ab713bdebc862f7b0bc47f90e9ba181fa9",
+        "ns.elf": "09ab68666d8a8857cfb8f2bcadab5d2c172bbe45588b1f4ae61a3a8430a7389b",
+        "nvme.elf": "9d35594fdcfc8dbdd9dd06bd6c4fca0e8e08c1a66a1ace1c6d3af1b83ec93ab5",
+        "nvme_client.elf": "66a84a2b1d338e7a54837410ffe4531e165a4ce2be926e37bdae637d4fd1e6de",
+        "objstore.elf": "2d6924c1213076d75d4e84f8b94b11e8eac2f97a1867900ecc6f179b332c0b0f",
+        "objstore_client.elf": "7d81c5d1d79a64d8a1e443809ce74b1c20186b97887c98a7adf255f1dc046748",
+        "observe.elf": "119d32e9c4f45502ea06e3c9b9d446128d82f3e40e4dd4ee9be1b9a0451d14bd",
+        "raft.elf": "d90d8553833facc367013bbca644e93e97d1a4a9c0d6b753ecd8a065787f4bf1",
+        "rclient.elf": "c3414e9f5a32d2fad65d9ada9ca02542c9648ae524c3a6c1641ee5582b6d7e6a",
+        "relmsg.elf": "6bd96e5e5daf6922c83d8472ee6ffd2ced547204ac052e950d8a8208eaeb0818",
+        "rng.elf": "af3407c23d300dc503143300838eac0afd68a130f16625f2947e9019b344c4dd",
+        "s3.elf": "22226e59a0fa0604274e4d08db3d1cf9db944192d881be90d547c3017ce6f328",
+        "s3_smoke.elf": "bd09f12e56501d6ce4db7b80adbbef2a5913b1af2f24a3a39f6cdab1c3121b1d",
+        "security_probe.elf": "498c91d0c4bd66cdb3014339e50dca8c9d4ee7438d7e591d7edcc2437110d30b",
+        "servicemgr.elf": "6dd9ed38361030f7efea9b206bc17424eb434dd6c4cb07057ef9825f683b3ff2",
+        "shutdown_probe.elf": "de2273a5c562ebc8cc450997d8f8e43719a429cd76e407b5a5c757e0a3d69231",
+        "sitas-user.elf": "fbf1b47a721d84498a64e43bc626a7f962a52d3740e3fa7e14adaeea7fa5f311",
+        "tcpclient.elf": "f94699bd02a7e78b8e2ab446a7e825f3425ea9042e80d4c0cca4a9598735649f",
+        "tcpip.elf": "190f61734f0c5d23b1d4ce7c652a288ca5482ecb6d51144572ad739422a89d94",
+        "time.elf": "e8e1b94dfc6e9b409419bb2c037b833074fd423ec0a100f0351f091b135bec5f",
+        "uart.elf": "2588a6ccf5a2f989af40b2f4c580879cfd452bd35e60faaacab86cbe5f927745"
+      },
+      "tracked_diff_sha256": "b647a2a637b218c9f6942875bf8de88052f6d8f5b7550d0647c94126a9cfda56",
+      "backend": "smmuv3",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20015 CATTEN_DEPLOY_HOST_PORT=20179 scripts/run-aarch64.sh --security-test --http-test --instance network-hmac-arm --fresh-storage --timeout 300",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 20,
+        "failed": 0,
+        "pending": 0
+      },
+      "security_publication_generations": [
+        1,
+        2
+      ],
+      "http_checks_passed": 14,
+      "http_probe_results": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.378s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.346s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.287s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.11s; ingress recovered"
+      ],
+      "http_transport_retries": [
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: EOF followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: abortive peer closes followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 2/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        }
+      ],
+      "selected_controls": [
+        "[+     8.801186] [EL0 LOG] lp=0 asid=150 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+     8.804774] [EL0 LOG] lp=0 asid=150 [security] ephemeral-port HMAC known-answer sequence passed",
+        "[+     9.226368] [EL0 LOG] lp=0 asid=153 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+     9.230937] [EL0 LOG] lp=0 asid=153 [security] ephemeral-port HMAC known-answer sequence passed",
+        "[+     9.268370] [EL0 LOG] lp=0 asid=148 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+     9.269690] [EL0 LOG] lp=0 asid=148 [security] ephemeral-port HMAC known-answer sequence passed",
+        "[+    13.026380] [EL0 LOG] lp=0 asid=148 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    13.027593] [EL0 LOG] lp=0 asid=148 [security] ephemeral-port HMAC known-answer sequence passed",
+        "[+    45.722556] [EL0 LOG] lp=0 asid=148 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    45.724101] [EL0 LOG] lp=0 asid=148 [security] ephemeral-port HMAC known-answer sequence passed"
+      ],
+      "native_port_vector_receipts": 5,
+      "serial_sha256": "25563dac431b94647171e6598622655f427f05d1ab6ef3d2ca8600697175afd5"
+    },
+    {
+      "arch": "x86_64",
+      "instance": "network-hmac-intel",
+      "cpus": 4,
+      "revision": "5eee8acf940c0790ccc10220b1ee82263e726edd",
+      "kernel_sha256": "a35b4e76cdc7f7ef683d1bd4e02fd33d37521e4f9c03c78df7444c016f331a16",
+      "boot_image_sha256": "a9bb18bf02307ba7a507ed28296272c02710c8215f0c9a7e090ca587560661d7",
+      "initial_disk_sha256": "58729f4cd73efb6ac2504db340de19b7a6d80450e6a1767d2c706d7b4d793198",
+      "bundle_sha256": {
+        "agent.elf": "f1c247d3f84642f73ed4d4891c2cd2fb7bb1af25268a782a19d57fb345416de0",
+        "ahci.elf": "7c961a0ad82935f95b2352a7b8abd940bb49d7007b7954d4d9804e74e46687a3",
+        "client.elf": "e0930b75b7dc80cd0e540c4707bfacaf66f26d1d62dadbdfd8108e6091b5160e",
+        "clusterctl.elf": "97deff8d00a5e6c9313c8b379b8bab53a19bb6141073d881e8e0b2e465f514da",
+        "deployd.elf": "293873ddf3fc4f634751a126d9b80033acb34098f15878c4bca721de6cc9a004",
+        "disco.elf": "8339df5e486990a0d0d14eb05b4bf26abb138d0490ec96332ac010d8c6625c73",
+        "dns.elf": "261ff1fd1a1c5ad3ef448350ef3a8a9af7d01ef1bfdf624f3b6873c96f38e6dd",
+        "e1000e.elf": "040a1381eb1665d5cac86504efc131858a740388c3b68d42cdbc29af9910c260",
+        "echo.elf": "8db81698558cf04e8947605f4046f8b3f9dbc6ffad400b01583bdfe3b5611a90",
+        "frouter.elf": "0e2f0d9de1e838e087aab123fa5d3b7e27f387da5cc5c38d0ef27fc158756a01",
+        "fs.elf": "2f740971b0818e642d13d61c5216ea1a1b76f3f7f2e85a87013be619314dad0c",
+        "grantctl.elf": "dda3d854fc18e9e6786bd68e2d658e71e8f9f7c404306f80634736638e61e5dd",
+        "greet.elf": "b97f0c10cc17edbb40129b869b46349753d7a60a4424879ca93821f8250c7023",
+        "httpd.elf": "a5842248f12a3d9f74ca04d0280ee59197ff463bd1612a038eb84600a712c1fc",
+        "kafka.elf": "8745ba4f1dbf080404f7d39d7dd888f9b3f3563e51acbff57e4d6a63cca6220f",
+        "kafka_smoke.elf": "885e3ecd22f1cfdfbb2e488c14b938488b6a29cd345f53e5ee4711f23fab7118",
+        "nclient.elf": "2d9154ec6c1dc60fb726ab765d464d5a7783764f822d2685e8b277084b779a82",
+        "net.elf": "fd62487806873dfb3bd44877044e3d2ae5575d5fc984a33a348078a742291590",
+        "ns.elf": "168b60114cf181046952a629852b52acb92a00cbcbd399558bf91f932cedcbce",
+        "nvme.elf": "afdc13df7ec1f293c2f45334ac23d1ff1c2510468e3cf4bdb0481babfa73139e",
+        "nvme_client.elf": "baa4473387db648f335cacfff4be1cfc6cfd59589ee99def2188a31d80961fe5",
+        "objstore.elf": "286b04e7ef5358e00e818997a6a8118ab14611386661b224a8aeabdf057c8d7a",
+        "objstore_client.elf": "0e6bda98acea42a4532db63ae12e8037727c9e0fd642c7ed47cc156284845786",
+        "observe.elf": "134a1b8b7b80e99eda1e833a38a36854d9cd2fd317bd5ed5c3185850b66e132e",
+        "raft.elf": "54689601a3178277c1b65d72137d24b5b049b8c86143c686cbd685ecdaf34e05",
+        "rclient.elf": "3ff7dab4251d8c8da99e90708b55a381d5dc8f510e93819ef82fbf045f09208c",
+        "relmsg.elf": "1248d0686402645eee299df2118d49854c0a30456c6be5d2f02fe8d2b8546e63",
+        "rng.elf": "38c464792a8e01d6a0aeb0bb2e48eecb13a114ca9c68f84e25664c95a0da3f61",
+        "s3.elf": "467fd3cd0319488f0fae86f2f3a03ef31a11bb1efa42a6431144eff43f224705",
+        "s3_smoke.elf": "84cf0cb6e96cc2c4cf9bc7484f5dc3b261e6a7af68b432ac7942ca42a821429c",
+        "security_probe.elf": "8057fa3138e5fe9cbd324a63aa8997c02cc96c239ffb147c49134efa74375714",
+        "servicemgr.elf": "70f5efe08ae2f0b969ea5338e7c098178063c56d2fdf55a78052676a153c9063",
+        "shutdown_probe.elf": "35addb3ab96682a45002a349e1aad0a42419c909cd786d3e8c0570dd799ae689",
+        "tcpclient.elf": "14eb8824d170cc06206fde2a832b385141067dead7e3e16e1f806d19b7c3c12a",
+        "tcpip.elf": "539b8622021999e320757348cbfccc49c7c3c1358a94393fc67dc3ae65c1459c",
+        "time.elf": "e6595c9d0d639fcf70133294cfef70319691339d3ef74c5fa54ee4108557752e",
+        "virtio_blk.elf": "ff5b3e4dbad440426096060ae3143cf1ea680582353d6099d525c1b0d073fb56"
+      },
+      "tracked_diff_sha256": "17b0658382e559c76986c61fbb78145b72ac33c23a44b8c7309854e640c5deca",
+      "backend": "intel",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20016 CATTEN_DEPLOY_HOST_PORT=20180 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance network-hmac-intel --fresh-storage --timeout 480",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 18,
+        "failed": 0,
+        "pending": 0
+      },
+      "security_publication_generations": [
+        1,
+        2
+      ],
+      "http_checks_passed": 14,
+      "http_probe_results": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.500s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.942s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.579s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.26s; ingress recovered"
+      ],
+      "http_transport_retries": [
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: EOF followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: abortive peer closes followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 2/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        }
+      ],
+      "selected_controls": [
+        "[+    32.555153] [EL0 LOG] lp=0 asid=156 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    32.571381] [EL0 LOG] lp=0 asid=156 [security] ephemeral-port HMAC known-answer sequence passed",
+        "[+    33.848031] [EL0 LOG] lp=0 asid=158 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    33.872892] [EL0 LOG] lp=0 asid=158 [security] ephemeral-port HMAC known-answer sequence passed",
+        "[+    34.067646] [EL0 LOG] lp=0 asid=139 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    34.069549] [EL0 LOG] lp=0 asid=139 [security] ephemeral-port HMAC known-answer sequence passed",
+        "[+    38.078944] [EL0 LOG] lp=0 asid=139 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    38.092026] [EL0 LOG] lp=0 asid=139 [security] ephemeral-port HMAC known-answer sequence passed",
+        "[+    76.606264] [EL0 LOG] lp=0 asid=139 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    76.637268] [EL0 LOG] lp=0 asid=139 [security] ephemeral-port HMAC known-answer sequence passed"
+      ],
+      "native_port_vector_receipts": 5,
+      "serial_sha256": "63ed1bb6ac81b8a2e43ccc57df2ace055458c554307761e669ecb665d322c40a"
+    },
+    {
+      "arch": "x86_64",
+      "instance": "network-hmac-amd",
+      "cpus": 4,
+      "revision": "5eee8acf940c0790ccc10220b1ee82263e726edd",
+      "kernel_sha256": "d2a0396c6f8d9d18e9c72a5ff86baba285f95f9beb705a149b71db236d9d8ecc",
+      "boot_image_sha256": "f0feb2ac068b82bd3cc06feb06444a0dffceb20b1c8a008da862bd810eb9a9e4",
+      "initial_disk_sha256": "58729f4cd73efb6ac2504db340de19b7a6d80450e6a1767d2c706d7b4d793198",
+      "bundle_sha256": {
+        "agent.elf": "f1c247d3f84642f73ed4d4891c2cd2fb7bb1af25268a782a19d57fb345416de0",
+        "ahci.elf": "7c961a0ad82935f95b2352a7b8abd940bb49d7007b7954d4d9804e74e46687a3",
+        "client.elf": "e0930b75b7dc80cd0e540c4707bfacaf66f26d1d62dadbdfd8108e6091b5160e",
+        "clusterctl.elf": "97deff8d00a5e6c9313c8b379b8bab53a19bb6141073d881e8e0b2e465f514da",
+        "deployd.elf": "293873ddf3fc4f634751a126d9b80033acb34098f15878c4bca721de6cc9a004",
+        "disco.elf": "8339df5e486990a0d0d14eb05b4bf26abb138d0490ec96332ac010d8c6625c73",
+        "dns.elf": "261ff1fd1a1c5ad3ef448350ef3a8a9af7d01ef1bfdf624f3b6873c96f38e6dd",
+        "e1000e.elf": "040a1381eb1665d5cac86504efc131858a740388c3b68d42cdbc29af9910c260",
+        "echo.elf": "8db81698558cf04e8947605f4046f8b3f9dbc6ffad400b01583bdfe3b5611a90",
+        "frouter.elf": "0e2f0d9de1e838e087aab123fa5d3b7e27f387da5cc5c38d0ef27fc158756a01",
+        "fs.elf": "2f740971b0818e642d13d61c5216ea1a1b76f3f7f2e85a87013be619314dad0c",
+        "grantctl.elf": "dda3d854fc18e9e6786bd68e2d658e71e8f9f7c404306f80634736638e61e5dd",
+        "greet.elf": "b97f0c10cc17edbb40129b869b46349753d7a60a4424879ca93821f8250c7023",
+        "httpd.elf": "a5842248f12a3d9f74ca04d0280ee59197ff463bd1612a038eb84600a712c1fc",
+        "kafka.elf": "8745ba4f1dbf080404f7d39d7dd888f9b3f3563e51acbff57e4d6a63cca6220f",
+        "kafka_smoke.elf": "885e3ecd22f1cfdfbb2e488c14b938488b6a29cd345f53e5ee4711f23fab7118",
+        "nclient.elf": "2d9154ec6c1dc60fb726ab765d464d5a7783764f822d2685e8b277084b779a82",
+        "net.elf": "fd62487806873dfb3bd44877044e3d2ae5575d5fc984a33a348078a742291590",
+        "ns.elf": "168b60114cf181046952a629852b52acb92a00cbcbd399558bf91f932cedcbce",
+        "nvme.elf": "afdc13df7ec1f293c2f45334ac23d1ff1c2510468e3cf4bdb0481babfa73139e",
+        "nvme_client.elf": "baa4473387db648f335cacfff4be1cfc6cfd59589ee99def2188a31d80961fe5",
+        "objstore.elf": "286b04e7ef5358e00e818997a6a8118ab14611386661b224a8aeabdf057c8d7a",
+        "objstore_client.elf": "0e6bda98acea42a4532db63ae12e8037727c9e0fd642c7ed47cc156284845786",
+        "observe.elf": "134a1b8b7b80e99eda1e833a38a36854d9cd2fd317bd5ed5c3185850b66e132e",
+        "raft.elf": "54689601a3178277c1b65d72137d24b5b049b8c86143c686cbd685ecdaf34e05",
+        "rclient.elf": "3ff7dab4251d8c8da99e90708b55a381d5dc8f510e93819ef82fbf045f09208c",
+        "relmsg.elf": "1248d0686402645eee299df2118d49854c0a30456c6be5d2f02fe8d2b8546e63",
+        "rng.elf": "38c464792a8e01d6a0aeb0bb2e48eecb13a114ca9c68f84e25664c95a0da3f61",
+        "s3.elf": "467fd3cd0319488f0fae86f2f3a03ef31a11bb1efa42a6431144eff43f224705",
+        "s3_smoke.elf": "84cf0cb6e96cc2c4cf9bc7484f5dc3b261e6a7af68b432ac7942ca42a821429c",
+        "security_probe.elf": "8057fa3138e5fe9cbd324a63aa8997c02cc96c239ffb147c49134efa74375714",
+        "servicemgr.elf": "70f5efe08ae2f0b969ea5338e7c098178063c56d2fdf55a78052676a153c9063",
+        "shutdown_probe.elf": "35addb3ab96682a45002a349e1aad0a42419c909cd786d3e8c0570dd799ae689",
+        "tcpclient.elf": "14eb8824d170cc06206fde2a832b385141067dead7e3e16e1f806d19b7c3c12a",
+        "tcpip.elf": "539b8622021999e320757348cbfccc49c7c3c1358a94393fc67dc3ae65c1459c",
+        "time.elf": "e6595c9d0d639fcf70133294cfef70319691339d3ef74c5fa54ee4108557752e",
+        "virtio_blk.elf": "ff5b3e4dbad440426096060ae3143cf1ea680582353d6099d525c1b0d073fb56"
+      },
+      "tracked_diff_sha256": "17b0658382e559c76986c61fbb78145b72ac33c23a44b8c7309854e640c5deca",
+      "backend": "amd",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20017 CATTEN_DEPLOY_HOST_PORT=20181 scripts/run-x86_64.sh --security-test --http-test --iommu amd --instance network-hmac-amd --fresh-storage --timeout 480",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 18,
+        "failed": 0,
+        "pending": 0
+      },
+      "security_publication_generations": [
+        1,
+        2
+      ],
+      "http_checks_passed": 14,
+      "http_probe_results": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.548s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.850s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.512s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.44s; ingress recovered"
+      ],
+      "http_transport_retries": [
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: EOF followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: abortive peer closes followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 2/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        }
+      ],
+      "selected_controls": [
+        "[+    31.994732] [EL0 LOG] lp=0 asid=156 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    31.997787] [EL0 LOG] lp=0 asid=156 [security] ephemeral-port HMAC known-answer sequence passed",
+        "[+    33.529760] [EL0 LOG] lp=0 asid=158 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    33.541009] [EL0 LOG] lp=0 asid=158 [security] ephemeral-port HMAC known-answer sequence passed",
+        "[+    33.759412] [EL0 LOG] lp=0 asid=159 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    33.769479] [EL0 LOG] lp=0 asid=159 [security] ephemeral-port HMAC known-answer sequence passed",
+        "[+    37.444823] [EL0 LOG] lp=0 asid=159 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    37.485831] [EL0 LOG] lp=0 asid=159 [security] ephemeral-port HMAC known-answer sequence passed",
+        "[+    76.729708] [EL0 LOG] lp=0 asid=159 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    76.731806] [EL0 LOG] lp=0 asid=159 [security] ephemeral-port HMAC known-answer sequence passed"
+      ],
+      "native_port_vector_receipts": 5,
+      "serial_sha256": "a3cb2ad822f73e449a6e0e39919b1835383f66ad746a750df07216a2ada1dbad"
+    }
+  ],
+  "unexpected_final_native_failures": [],
+  "manual": {
+    "path": "docs/manual-v2/charlotte.pdf",
+    "sha256": "f4cafda152f0e3be158d6291a4e5779f6bab8d1e3087f3fb9fc8c43a7a58901d",
+    "source_sha256": "27ed473ada9eb9e8544a01140d1114fd8671b88e76778f71e7189d92997fa223",
+    "two_pass_build": "pass",
+    "visually_reviewed_pdf_pages": [
+      108,
+      109
+    ],
+    "pages": 249,
+    "overfull_box_warnings": 189,
+    "scope": "Affected/adjacent pages checked; full manual not re-audited."
+  },
+  "limitations": [
+    "Source-confirmed named-state ownership gap; no cross-domain read or prediction of a live network key demonstrated.",
+    "Legacy E0080 control proves destructor absence for the pinned type, not post-Drop memory retention or a complete historical baseline execution.",
+    "Existing SHA retained-storage fixture covers its named fields; HMAC result and entropy scratch use source/type contracts, without new retained-storage or target-memory probes.",
+    "Native known-answer receipts are functional checks with public fixture entropy, not independent erasure measurements or real startup seeds.",
+    "Ordinary Drop requires execution; forced termination, panic-abort, power loss, explicit/scalar/compiler/register/cache copies and physical memory remain outside scope.",
+    "Complete TLS traffic-key/IV/HKDF and third-party HMAC state, entropy-provider/socket/kernel backing and production custody remain separate.",
+    "No new limit, registry, recovery custody, physical retry authority or formal model/refinement result.",
+    "Documentation evolved between boot captures; seven code/configuration/runner inputs stayed frozen. Passing results do not attribute historical scheduler, IPC, root-close, metrics or NIC failures."
+  ]
+}
