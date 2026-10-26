@@ -1204,6 +1204,16 @@ and the signed probe preserve the existing port sequence, label, counter and
 range. TCP/IP still requires fresh entropy before interface publication. SEC-15
 remains partial; complete TLS state and compiler/physical copies remain separate.
 
+The [dependency gate and ctutils update](../reports/audits/2026-10-26-security-dependency-gate.md)
+add a pinned, fresh, unfiltered advisory CI check with no ignores and explicit
+rejection of successful reports containing notices. A fresh scan found two
+October 23 advisories missed by the older snapshot. Updating `ctutils` 0.4.2 to
+0.4.4 removes RUSTSEC-2026-0385. **The new CI check remains failing** on
+RUSTSEC-2026-0387 (`crypto-bigint` 0.5.5 in the TLS curve stack). Its patched API
+series needs a separately qualified migration; no exception or local arithmetic
+backport is supplied. License/release provenance, required-check deployment and
+production trust remain separate. SEC-14 stays partial; finding counts are unchanged.
+
 | Order | Finding and acceptance criterion |
 | --- | --- |
 | 1 | **SEC-04:** Authenticate bootstrap policy and the executable boot chain from a protected platform root. Provision independent artifact, deployment and operational authorities and a distinct recipient key; exclude every development fixture. Keep the recipient private key behind a privileged custody boundary, with recovery/rotation rules and rollback-resistant policy state. Test substituted boot images/policies, role reuse, downgrade, enrollment and custody failure. Production must remain disabled until those tests pass. |

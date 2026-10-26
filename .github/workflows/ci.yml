@@ -16,6 +16,27 @@ env:
   SITAS_REV: d27f7e7b7a6e3657c9b39e53da02cf0cd8f91a78
 
 jobs:
+  dependency-advisories:
+    name: Dependency advisories (fail closed)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Rust nightly
+        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
+        with:
+          toolchain: nightly-2026-07-27
+
+      - name: Install pinned advisory scanner
+        working-directory: ${{ runner.temp }}
+        run: |
+          cargo install --locked --version "$(cat "$GITHUB_WORKSPACE/.cargo/audit-version")" cargo-audit
+
+      - name: Check complete lockfile, including warnings and yanked packages
+        run: python3 scripts/check-dependency-advisories.py
+
   formatting:
     name: Rust formatting
     runs-on: ubuntu-latest

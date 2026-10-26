@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Dependency advisory gate and ctutils correction](audits/2026-10-26-security-dependency-gate.md) — Fresh scans find two current advisories; patches ctutils, rejects notices and retains the unsuppressed TLS crypto-bigint blocker.
+
 - [Network HMAC state erasure](audits/2026-10-26-security-network-hmac-erasure.md) — Reuses the shared erasing HMAC for port selection, retaining the exact sequence and fresh-entropy startup policy.
 
 - [Read-borrower node admission](audits/2026-10-26-security-borrower-node-admission.md) — Charges the third read-loan node to the existing configurable pool before source mutation, with real pressure and a failing old-factory control.

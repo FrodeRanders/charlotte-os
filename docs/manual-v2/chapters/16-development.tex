@@ -215,6 +215,25 @@ CharlotteOS booting...
 Testing Complete. All Tests Passed!
 \end{verbatim}
 
+\section{Dependency advisories}
+
+CI runs \path{scripts/check-dependency-advisories.py} against the complete root
+lockfile. Its scanner version is pinned in \path{.cargo/audit-version}; project
+policy in \path{.cargo/audit.toml} supersedes a developer's global defaults.
+Fresh RustSec/registry fetches and all architecture, severity, informational and
+yanked-package checks remain enabled, with no ignores. Scanner, network and
+configuration errors reject. A successful status still requires a complete,
+unfiltered JSON report without vulnerabilities or warnings, including notices
+that the pinned scanner can otherwise report without failing.
+
+The 26 October 2026 scan prompted the compatible \texttt{ctutils} 0.4.4 update.
+The new CI check still fails on the unsuppressed \texttt{crypto-bigint} 0.5.5
+advisory in the TLS curve stack; its patched API series needs migration and
+qualification. This does not establish constant-time code generation on every
+platform or close SEC-14. License policy, protected release provenance and
+repository required-check settings remain separate. Current commands, findings
+and evidence are in \repofiletext|docs/reference/dependency-advisories.md|{the dependency advisory reference}.
+
 \section{Self-tests}
 
 The repository combines host-side library tests with boot-time kernel and EL0
@@ -228,9 +247,9 @@ verifier failure fails the boot suite.
     add validators, while explicit negative switches remove runtime features.}
     {fig:boot-and-testing}
 
-Deferred tests register an expected result bit and spawn their verifier through
-\texttt{results::spawn\_verifier}. The result subsystem associates that
-single verifier thread with the test in a fixed atomic table. If the verifier
+Deferred tests register an expected result bit. The
+\texttt{results::spawn\_verifier} helper spawns the verifier and associates its
+single thread with that test in a fixed atomic table. If the verifier
 panics, the panic handler uses a best-effort non-blocking scheduler lookup and
 marks the associated test failed before emitting the panic. Consequently the
 authoritative reporter names the failed test instead of leaving it pending

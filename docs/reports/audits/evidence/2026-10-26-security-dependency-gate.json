@@ -1,0 +1,1377 @@
+{
+  "schema": "charlotte-security-evidence-v1",
+  "report_date": "2026-10-26",
+  "reviewed_revision": "0a79a800f5ed0fd5965937602c1518f891375b6f",
+  "scope": {
+    "finding": "SEC-14 dependency enforcement; current cryptographic advisory findings",
+    "correction": "ctutils 0.4.2 to patched 0.4.4; pinned fresh unfiltered advisory CI gate with no ignores, successful JSON validation and notice rejection.",
+    "remaining_blocker": "RUSTSEC-2026-0387 crypto-bigint 0.5.5 via elliptic-curve 0.13.8 / P-256 / P-384 / embedded-tls. Patched API series >=0.7.6 requires migration and qualification.",
+    "production_gate_current_exit_status": 1,
+    "ci_expected_current_state": "failing on the unsuppressed TLS dependency; not a clean audit",
+    "unchanged": [
+      "every other package/version/checksum",
+      "local arithmetic and dependency source",
+      "runtime/wire/launch ABI and resource limits",
+      "capability/root/pin/sponsorship and physical cleanup proofs",
+      "formal policy inputs/transitions"
+    ],
+    "finding_ledger": {
+      "corrected": 29,
+      "partial": 6,
+      "open": 3,
+      "production_trust": "disabled"
+    }
+  },
+  "source_sha256": {
+    ".github/workflows/ci.yml": "c8fdb3f062b33ef8816e9cde5c5bd4b4ff04c564e0a5c3a7f8a738fe83ae70c1",
+    "Cargo.lock": "99e604ecca353001e0968d79dea0cd0ee9f5e052852b69ad96bf1b911aee3474",
+    "scripts/run-host-tests.sh": "68fde9363414fcc755e88084981e768f39fb639cd3038968f3c336967d7d2883",
+    ".cargo/audit-version": "76dff43b6331e7f1a4f0d1b14bbc1c3e001190af5a7ed008ab165bbc3c815e12",
+    ".cargo/audit.toml": "6dedf4733a1def7aab3bb002f58c005b1d0d05d7a54dea7308847b90e60d3fdd",
+    "scripts/check-dependency-advisories.py": "f0d601732ebf1beef98c10742121c224d38d026d2df41df06e90463a7e8bb379",
+    "scripts/tests/test-dependency-advisories.py": "23c6a94c8c324ff301dbc13ad20002fd9533aad43c94b7626983c31e38d0a276"
+  },
+  "lockfile_before_sha256": "147e31b7b45a34de5fd957ba057312eb2fd53edfd4f74de6182bd9774e52a9ad",
+  "scanner": {
+    "version": "cargo-audit-audit 0.22.2",
+    "local_binary_sha256": "51821c337d0e7801ffee30234942276ddaa7c5fb66ad74b5765cc69a19597add",
+    "ci_install": "cargo install --locked --version \"$(cat \"$GITHUB_WORKSPACE/.cargo/audit-version\")\" cargo-audit (cwd runner.temp)",
+    "remote_ci_and_install_executed": false
+  },
+  "advisory_data_attribution": "RustSec Advisory Database and advisory authors; CC-BY-4.0. Advisory IDs/URLs are preserved in the raw scan reports.",
+  "scans": {
+    "baseline": {
+      "command": "cargo audit --db target/security-audit/advisory-db --url https://github.com/RustSec/advisory-db.git --file Cargo.lock --json --deny warnings",
+      "exit_status": 1,
+      "report": {
+        "database": {
+          "advisory-count": 1355,
+          "last-commit": "115e418ee9a2ff542fee41db641128fa84483383",
+          "last-updated": "2026-10-26T12:14:38+01:00"
+        },
+        "lockfile": {
+          "dependency-count": 180
+        },
+        "settings": {
+          "target_arch": [],
+          "target_os": [],
+          "severity": null,
+          "ignore": [],
+          "informational_warnings": [
+            "unmaintained",
+            "unsound",
+            "notice"
+          ]
+        },
+        "vulnerabilities": {
+          "found": true,
+          "count": 2,
+          "list": [
+            {
+              "advisory": {
+                "id": "RUSTSEC-2026-0387",
+                "package": "crypto-bigint",
+                "title": "Multiple timing variability issues in operations intended to be constant-time",
+                "description": "## Summary\n\nSeveral operations intended to be constant-time could execute secret-dependent\nbranches, depending on the compiler and target CPU. These include subtraction,\nzero counting, division, and Montgomery multiplication.\n\nAdditionally, `UintRef` equality could terminate at the first unequal limb,\nand `BoxedMontyForm::invert` branched on whether an inverse exists.\n\n## Impact\n\nApplications using affected operations on secret integers may leak information\nthrough timing or microarchitectural side channels. This includes information\nabout intermediate arithmetic values, matching limbs, and invertibility.\n\nSuch leakage could potentially enable recovery of cryptographic secrets.\nPractical exploitability depends on the downstream algorithm, compiler, target\nCPU, and an attacker's ability to observe the side channel.\n\n## Resolution\n\nUpgrade to v0.7.6, which removes the identified branches, updates `ctutils` to\ninclude its constant-time fixes, and adds BINSEC-based regression checks using\n`cargo checkct` for arithmetic on multiple targets.",
+                "date": "2026-10-23",
+                "aliases": [],
+                "related": [],
+                "collection": "crates",
+                "categories": [
+                  "crypto-failure"
+                ],
+                "keywords": [],
+                "cvss": null,
+                "informational": null,
+                "references": [],
+                "source": null,
+                "url": "https://github.com/RustCrypto/crypto-bigint/pull/1365",
+                "withdrawn": null,
+                "license": "CC-BY-4.0",
+                "expect-deleted": false
+              },
+              "versions": {
+                "patched": [
+                  ">=0.7.6"
+                ],
+                "unaffected": []
+              },
+              "affected": null,
+              "package": {
+                "name": "crypto-bigint",
+                "version": "0.5.5",
+                "source": "registry+https://github.com/rust-lang/crates.io-index",
+                "checksum": "0dc92fb57ca44df6db8059111ab3af99a63d5d0f8375d9972e319a379c6bab76",
+                "dependencies": [
+                  {
+                    "name": "generic-array",
+                    "version": "0.14.7",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index"
+                  },
+                  {
+                    "name": "rand_core",
+                    "version": "0.6.4",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index"
+                  },
+                  {
+                    "name": "subtle",
+                    "version": "2.6.1",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index"
+                  },
+                  {
+                    "name": "zeroize",
+                    "version": "1.9.0",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index"
+                  }
+                ],
+                "replace": null
+              }
+            },
+            {
+              "advisory": {
+                "id": "RUSTSEC-2026-0385",
+                "package": "ctutils",
+                "title": "Non-constant-time mask generation and `u128` comparisons",
+                "description": "## Summary\n\nThe `ctutils::Choice` type has mask generation functions for each unsigned\ninteger size (`u8`, `u16`, `u32`, `u64`, `u128`). These are `const fn` and\ntherefore can't reuse the `asm!`-backed mask generation in the `cmov` crate\nthat's otherwise used to ensure constant-time.\n\nIn releases prior to v0.4.4, the generated code from these functions could\ninclude a branch on commonly used platforms. This has been corrected in this\nrelease and now verified on several platforms using BINSEC.\n\nAdditionally, `u128` comparison operations provided via `ctutils::Choice` and\nintended to work in constant-time were generating branches on 32-bit targets.\nThis has been resolved via a special case implementation of these functions\nfor such targets.\n\n## Impact\n\nBranch instructions on secret values can potentially leak such values via\ncovert channels. This can enable attackers to potentially recover such secrets.\n\n## Resolution\n\nThis has been resolved by calling `Choice::to_u8()` when generating the mask,\nwhich in turn uses `black_box` as an optimization barrier. Verification that\nthis resulted in the desired change in the generated assembly across a variety\nof target CPU architectures was performed by BINSEC, which now runs\nautomatically in CI using `cargo checkct`.",
+                "date": "2026-10-23",
+                "aliases": [],
+                "related": [
+                  "RUSTSEC-2026-0003"
+                ],
+                "collection": "crates",
+                "categories": [
+                  "crypto-failure"
+                ],
+                "keywords": [],
+                "cvss": null,
+                "informational": null,
+                "references": [],
+                "source": null,
+                "url": "https://github.com/RustCrypto/utils/pull/1569",
+                "withdrawn": null,
+                "license": "CC-BY-4.0",
+                "expect-deleted": false
+              },
+              "versions": {
+                "patched": [
+                  ">=0.4.4"
+                ],
+                "unaffected": []
+              },
+              "affected": null,
+              "package": {
+                "name": "ctutils",
+                "version": "0.4.2",
+                "source": "registry+https://github.com/rust-lang/crates.io-index",
+                "checksum": "7d5515a3834141de9eafb9717ad39eea8247b5674e6066c404e8c4b365d2a29e",
+                "dependencies": [
+                  {
+                    "name": "cmov",
+                    "version": "0.5.4",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index"
+                  }
+                ],
+                "replace": null
+              }
+            }
+          ]
+        },
+        "warnings": {}
+      }
+    },
+    "after_update": {
+      "command": "python3 scripts/check-dependency-advisories.py",
+      "exit_status": 1,
+      "report": {
+        "database": {
+          "advisory-count": 1355,
+          "last-commit": "115e418ee9a2ff542fee41db641128fa84483383",
+          "last-updated": "2026-10-26T12:14:38+01:00"
+        },
+        "lockfile": {
+          "dependency-count": 180
+        },
+        "settings": {
+          "target_arch": [],
+          "target_os": [],
+          "severity": null,
+          "ignore": [],
+          "informational_warnings": [
+            "unmaintained",
+            "unsound",
+            "notice"
+          ]
+        },
+        "vulnerabilities": {
+          "found": true,
+          "count": 1,
+          "list": [
+            {
+              "advisory": {
+                "id": "RUSTSEC-2026-0387",
+                "package": "crypto-bigint",
+                "title": "Multiple timing variability issues in operations intended to be constant-time",
+                "description": "## Summary\n\nSeveral operations intended to be constant-time could execute secret-dependent\nbranches, depending on the compiler and target CPU. These include subtraction,\nzero counting, division, and Montgomery multiplication.\n\nAdditionally, `UintRef` equality could terminate at the first unequal limb,\nand `BoxedMontyForm::invert` branched on whether an inverse exists.\n\n## Impact\n\nApplications using affected operations on secret integers may leak information\nthrough timing or microarchitectural side channels. This includes information\nabout intermediate arithmetic values, matching limbs, and invertibility.\n\nSuch leakage could potentially enable recovery of cryptographic secrets.\nPractical exploitability depends on the downstream algorithm, compiler, target\nCPU, and an attacker's ability to observe the side channel.\n\n## Resolution\n\nUpgrade to v0.7.6, which removes the identified branches, updates `ctutils` to\ninclude its constant-time fixes, and adds BINSEC-based regression checks using\n`cargo checkct` for arithmetic on multiple targets.",
+                "date": "2026-10-23",
+                "aliases": [],
+                "related": [],
+                "collection": "crates",
+                "categories": [
+                  "crypto-failure"
+                ],
+                "keywords": [],
+                "cvss": null,
+                "informational": null,
+                "references": [],
+                "source": null,
+                "url": "https://github.com/RustCrypto/crypto-bigint/pull/1365",
+                "withdrawn": null,
+                "license": "CC-BY-4.0",
+                "expect-deleted": false
+              },
+              "versions": {
+                "patched": [
+                  ">=0.7.6"
+                ],
+                "unaffected": []
+              },
+              "affected": null,
+              "package": {
+                "name": "crypto-bigint",
+                "version": "0.5.5",
+                "source": "registry+https://github.com/rust-lang/crates.io-index",
+                "checksum": "0dc92fb57ca44df6db8059111ab3af99a63d5d0f8375d9972e319a379c6bab76",
+                "dependencies": [
+                  {
+                    "name": "generic-array",
+                    "version": "0.14.7",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index"
+                  },
+                  {
+                    "name": "rand_core",
+                    "version": "0.6.4",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index"
+                  },
+                  {
+                    "name": "subtle",
+                    "version": "2.6.1",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index"
+                  },
+                  {
+                    "name": "zeroize",
+                    "version": "1.9.0",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index"
+                  }
+                ],
+                "replace": null
+              }
+            }
+          ]
+        },
+        "warnings": {}
+      }
+    }
+  },
+  "checks": {
+    "gate_tests": {
+      "command": "CATTEN_ADVISORY_TEST_DB=target/security-audit/advisory-db python3 scripts/tests/test-dependency-advisories.py",
+      "passed": 12,
+      "failed": 0,
+      "results": [
+        "test_ci_installs_the_shared_tool_pin_with_locked_dependencies (__main__.Gate.test_ci_installs_the_shared_tool_pin_with_locked_dependencies) ... ok",
+        "test_complete_lockfile_and_unfiltered_policy_from_repository_context (__main__.Gate.test_complete_lockfile_and_unfiltered_policy_from_repository_context) ... ok",
+        "test_local_policy_overrides_global_defaults_without_exclusions (__main__.Gate.test_local_policy_overrides_global_defaults_without_exclusions) ... ok",
+        "test_malformed_success_is_not_a_clean_audit (__main__.Gate.test_malformed_success_is_not_a_clean_audit) ... ok",
+        "test_narrowing_arguments_cannot_bypass_the_gate (__main__.Gate.test_narrowing_arguments_cannot_bypass_the_gate) ... ok",
+        "test_scanner_findings_and_tool_failure_are_propagated (__main__.Gate.test_scanner_findings_and_tool_failure_are_propagated) ... ok",
+        "test_successful_scanner_cannot_hide_notices_or_narrowed_settings (__main__.Gate.test_successful_scanner_cannot_hide_notices_or_narrowed_settings) ... ok",
+        "test_wrong_tool_version_rejects_before_scanning (__main__.Gate.test_wrong_tool_version_rejects_before_scanning) ... ok",
+        "test_clean_lockfile_passes (__main__.RealScanner.test_clean_lockfile_passes) ... ok",
+        "test_informational_warning_rejects_without_a_vulnerability (__main__.RealScanner.test_informational_warning_rejects_without_a_vulnerability) ... ok",
+        "test_known_vulnerability_rejects (__main__.RealScanner.test_known_vulnerability_rejects) ... ok",
+        "test_notice_requires_the_gate_even_when_scanner_returns_success (__main__.RealScanner.test_notice_requires_the_gate_even_when_scanner_returns_success) ... ok",
+        "",
+        "----------------------------------------------------------------------",
+        "Ran 12 tests in 3.328s",
+        "",
+        "OK"
+      ],
+      "real_scanner_controls": [
+        {
+          "lockfile": "version = 4\n[[package]]\nname = \"audit-fixture\"\nversion = \"0.0.0\"\n",
+          "exit_status": 0,
+          "stdout": "{\"database\":{\"advisory-count\":1355,\"last-commit\":null,\"last-updated\":null},\"lockfile\":{\"dependency-count\":1},\"settings\":{\"target_arch\":[],\"target_os\":[],\"severity\":null,\"ignore\":[],\"informational_warnings\":[\"unmaintained\",\"unsound\",\"notice\"]},\"vulnerabilities\":{\"found\":false,\"count\":0,\"list\":[]},\"warnings\":{}}\n",
+          "stderr": "",
+          "report": {
+            "database": {
+              "advisory-count": 1355,
+              "last-commit": null,
+              "last-updated": null
+            },
+            "lockfile": {
+              "dependency-count": 1
+            },
+            "settings": {
+              "target_arch": [],
+              "target_os": [],
+              "severity": null,
+              "ignore": [],
+              "informational_warnings": [
+                "unmaintained",
+                "unsound",
+                "notice"
+              ]
+            },
+            "vulnerabilities": {
+              "found": false,
+              "count": 0,
+              "list": []
+            },
+            "warnings": {}
+          }
+        },
+        {
+          "lockfile": "version = 4\n[[package]]\nname = \"audit-fixture\"\nversion = \"0.0.0\"\n[[package]]\nname = \"ansi_term\"\nversion = \"0.12.1\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n",
+          "exit_status": 1,
+          "stdout": "{\"database\":{\"advisory-count\":1355,\"last-commit\":null,\"last-updated\":null},\"lockfile\":{\"dependency-count\":2},\"settings\":{\"target_arch\":[],\"target_os\":[],\"severity\":null,\"ignore\":[],\"informational_warnings\":[\"unmaintained\",\"unsound\",\"notice\"]},\"vulnerabilities\":{\"found\":false,\"count\":0,\"list\":[]},\"warnings\":{\"unmaintained\":[{\"kind\":\"unmaintained\",\"package\":{\"name\":\"ansi_term\",\"version\":\"0.12.1\",\"source\":\"registry+https://github.com/rust-lang/crates.io-index\",\"checksum\":null,\"replace\":null},\"advisory\":{\"id\":\"RUSTSEC-2021-0139\",\"package\":\"ansi_term\",\"title\":\"ansi_term is Unmaintained\",\"description\":\"The maintainer has advised that this crate is deprecated and will not receive any maintenance.\\n\\nThe crate does not seem to have much dependencies and may or may not be ok to use as-is.\\n\\nLast release seems to have been three years ago.\\n\\n## Possible Alternative(s)\\n\\n The below list has not been vetted in any way and may or may not contain alternatives;\\n\\n - [ansiterm](https://crates.io/crates/ansiterm)\\n - [anstyle](https://github.com/epage/anstyle)\\n - [console](https://crates.io/crates/console)\\n - [nu-ansi-term](https://crates.io/crates/nu-ansi-term)\\n - [owo-colors](https://crates.io/crates/owo-colors)\\n - [stylish](https://crates.io/crates/stylish)\\n - [yansi](https://crates.io/crates/yansi)\\n\\n## Dependency Specific Migration(s)\\n\\n - [structopt, clap2](https://github.com/clap-rs/clap/discussions/4172)\",\"date\":\"2021-08-18\",\"aliases\":[],\"related\":[],\"collection\":\"crates\",\"categories\":[],\"keywords\":[],\"cvss\":null,\"informational\":\"unmaintained\",\"references\":[],\"source\":null,\"url\":\"https://github.com/ogham/rust-ansi-term/issues/72\",\"withdrawn\":null,\"license\":\"CC0-1.0\",\"expect-deleted\":false},\"affected\":null,\"versions\":{\"patched\":[],\"unaffected\":[]}}]}}\n",
+          "stderr": "",
+          "report": {
+            "database": {
+              "advisory-count": 1355,
+              "last-commit": null,
+              "last-updated": null
+            },
+            "lockfile": {
+              "dependency-count": 2
+            },
+            "settings": {
+              "target_arch": [],
+              "target_os": [],
+              "severity": null,
+              "ignore": [],
+              "informational_warnings": [
+                "unmaintained",
+                "unsound",
+                "notice"
+              ]
+            },
+            "vulnerabilities": {
+              "found": false,
+              "count": 0,
+              "list": []
+            },
+            "warnings": {
+              "unmaintained": [
+                {
+                  "kind": "unmaintained",
+                  "package": {
+                    "name": "ansi_term",
+                    "version": "0.12.1",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "checksum": null,
+                    "replace": null
+                  },
+                  "advisory": {
+                    "id": "RUSTSEC-2021-0139",
+                    "package": "ansi_term",
+                    "title": "ansi_term is Unmaintained",
+                    "description": "The maintainer has advised that this crate is deprecated and will not receive any maintenance.\n\nThe crate does not seem to have much dependencies and may or may not be ok to use as-is.\n\nLast release seems to have been three years ago.\n\n## Possible Alternative(s)\n\n The below list has not been vetted in any way and may or may not contain alternatives;\n\n - [ansiterm](https://crates.io/crates/ansiterm)\n - [anstyle](https://github.com/epage/anstyle)\n - [console](https://crates.io/crates/console)\n - [nu-ansi-term](https://crates.io/crates/nu-ansi-term)\n - [owo-colors](https://crates.io/crates/owo-colors)\n - [stylish](https://crates.io/crates/stylish)\n - [yansi](https://crates.io/crates/yansi)\n\n## Dependency Specific Migration(s)\n\n - [structopt, clap2](https://github.com/clap-rs/clap/discussions/4172)",
+                    "date": "2021-08-18",
+                    "aliases": [],
+                    "related": [],
+                    "collection": "crates",
+                    "categories": [],
+                    "keywords": [],
+                    "cvss": null,
+                    "informational": "unmaintained",
+                    "references": [],
+                    "source": null,
+                    "url": "https://github.com/ogham/rust-ansi-term/issues/72",
+                    "withdrawn": null,
+                    "license": "CC0-1.0",
+                    "expect-deleted": false
+                  },
+                  "affected": null,
+                  "versions": {
+                    "patched": [],
+                    "unaffected": []
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "lockfile": "version = 4\n[[package]]\nname = \"audit-fixture\"\nversion = \"0.0.0\"\n[[package]]\nname = \"crypto-bigint\"\nversion = \"0.5.5\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n",
+          "exit_status": 1,
+          "stdout": "{\"database\":{\"advisory-count\":1355,\"last-commit\":null,\"last-updated\":null},\"lockfile\":{\"dependency-count\":2},\"settings\":{\"target_arch\":[],\"target_os\":[],\"severity\":null,\"ignore\":[],\"informational_warnings\":[\"unmaintained\",\"unsound\",\"notice\"]},\"vulnerabilities\":{\"found\":true,\"count\":1,\"list\":[{\"advisory\":{\"id\":\"RUSTSEC-2026-0387\",\"package\":\"crypto-bigint\",\"title\":\"Multiple timing variability issues in operations intended to be constant-time\",\"description\":\"## Summary\\n\\nSeveral operations intended to be constant-time could execute secret-dependent\\nbranches, depending on the compiler and target CPU. These include subtraction,\\nzero counting, division, and Montgomery multiplication.\\n\\nAdditionally, `UintRef` equality could terminate at the first unequal limb,\\nand `BoxedMontyForm::invert` branched on whether an inverse exists.\\n\\n## Impact\\n\\nApplications using affected operations on secret integers may leak information\\nthrough timing or microarchitectural side channels. This includes information\\nabout intermediate arithmetic values, matching limbs, and invertibility.\\n\\nSuch leakage could potentially enable recovery of cryptographic secrets.\\nPractical exploitability depends on the downstream algorithm, compiler, target\\nCPU, and an attacker's ability to observe the side channel.\\n\\n## Resolution\\n\\nUpgrade to v0.7.6, which removes the identified branches, updates `ctutils` to\\ninclude its constant-time fixes, and adds BINSEC-based regression checks using\\n`cargo checkct` for arithmetic on multiple targets.\",\"date\":\"2026-10-23\",\"aliases\":[],\"related\":[],\"collection\":\"crates\",\"categories\":[\"crypto-failure\"],\"keywords\":[],\"cvss\":null,\"informational\":null,\"references\":[],\"source\":null,\"url\":\"https://github.com/RustCrypto/crypto-bigint/pull/1365\",\"withdrawn\":null,\"license\":\"CC-BY-4.0\",\"expect-deleted\":false},\"versions\":{\"patched\":[\">=0.7.6\"],\"unaffected\":[]},\"affected\":null,\"package\":{\"name\":\"crypto-bigint\",\"version\":\"0.5.5\",\"source\":\"registry+https://github.com/rust-lang/crates.io-index\",\"checksum\":null,\"replace\":null}}]},\"warnings\":{}}\n",
+          "stderr": "",
+          "report": {
+            "database": {
+              "advisory-count": 1355,
+              "last-commit": null,
+              "last-updated": null
+            },
+            "lockfile": {
+              "dependency-count": 2
+            },
+            "settings": {
+              "target_arch": [],
+              "target_os": [],
+              "severity": null,
+              "ignore": [],
+              "informational_warnings": [
+                "unmaintained",
+                "unsound",
+                "notice"
+              ]
+            },
+            "vulnerabilities": {
+              "found": true,
+              "count": 1,
+              "list": [
+                {
+                  "advisory": {
+                    "id": "RUSTSEC-2026-0387",
+                    "package": "crypto-bigint",
+                    "title": "Multiple timing variability issues in operations intended to be constant-time",
+                    "description": "## Summary\n\nSeveral operations intended to be constant-time could execute secret-dependent\nbranches, depending on the compiler and target CPU. These include subtraction,\nzero counting, division, and Montgomery multiplication.\n\nAdditionally, `UintRef` equality could terminate at the first unequal limb,\nand `BoxedMontyForm::invert` branched on whether an inverse exists.\n\n## Impact\n\nApplications using affected operations on secret integers may leak information\nthrough timing or microarchitectural side channels. This includes information\nabout intermediate arithmetic values, matching limbs, and invertibility.\n\nSuch leakage could potentially enable recovery of cryptographic secrets.\nPractical exploitability depends on the downstream algorithm, compiler, target\nCPU, and an attacker's ability to observe the side channel.\n\n## Resolution\n\nUpgrade to v0.7.6, which removes the identified branches, updates `ctutils` to\ninclude its constant-time fixes, and adds BINSEC-based regression checks using\n`cargo checkct` for arithmetic on multiple targets.",
+                    "date": "2026-10-23",
+                    "aliases": [],
+                    "related": [],
+                    "collection": "crates",
+                    "categories": [
+                      "crypto-failure"
+                    ],
+                    "keywords": [],
+                    "cvss": null,
+                    "informational": null,
+                    "references": [],
+                    "source": null,
+                    "url": "https://github.com/RustCrypto/crypto-bigint/pull/1365",
+                    "withdrawn": null,
+                    "license": "CC-BY-4.0",
+                    "expect-deleted": false
+                  },
+                  "versions": {
+                    "patched": [
+                      ">=0.7.6"
+                    ],
+                    "unaffected": []
+                  },
+                  "affected": null,
+                  "package": {
+                    "name": "crypto-bigint",
+                    "version": "0.5.5",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "checksum": null,
+                    "replace": null
+                  }
+                }
+              ]
+            },
+            "warnings": {}
+          }
+        },
+        {
+          "lockfile": "version = 4\n[[package]]\nname = \"audit-fixture\"\nversion = \"0.0.0\"\n[[package]]\nname = \"plutonium\"\nversion = \"0.9.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n",
+          "exit_status": 0,
+          "stdout": "{\"database\":{\"advisory-count\":1355,\"last-commit\":null,\"last-updated\":null},\"lockfile\":{\"dependency-count\":2},\"settings\":{\"target_arch\":[],\"target_os\":[],\"severity\":null,\"ignore\":[],\"informational_warnings\":[\"unmaintained\",\"unsound\",\"notice\"]},\"vulnerabilities\":{\"found\":false,\"count\":0,\"list\":[]},\"warnings\":{\"notice\":[{\"kind\":\"notice\",\"package\":{\"name\":\"plutonium\",\"version\":\"0.9.0\",\"source\":\"registry+https://github.com/rust-lang/crates.io-index\",\"checksum\":null,\"replace\":null},\"advisory\":{\"id\":\"RUSTSEC-2020-0011\",\"package\":\"plutonium\",\"title\":\"Library exclusively intended to obfuscate code.\",\"description\":\"This crate allows you to write safe functions with unsafe bodies without the `unsafe` keyword.\\n\\nThe value this adds is questionable, and hides `unsafe` usages from naive analysis.\",\"date\":\"2020-04-23\",\"aliases\":[\"GHSA-gfg9-x6px-r7gr\"],\"related\":[],\"collection\":\"crates\",\"categories\":[],\"keywords\":[],\"cvss\":null,\"informational\":\"notice\",\"references\":[],\"source\":null,\"url\":\"https://docs.rs/plutonium\",\"withdrawn\":null,\"license\":\"CC0-1.0\",\"expect-deleted\":false},\"affected\":null,\"versions\":{\"patched\":[],\"unaffected\":[]}}]}}\n",
+          "stderr": "",
+          "report": {
+            "database": {
+              "advisory-count": 1355,
+              "last-commit": null,
+              "last-updated": null
+            },
+            "lockfile": {
+              "dependency-count": 2
+            },
+            "settings": {
+              "target_arch": [],
+              "target_os": [],
+              "severity": null,
+              "ignore": [],
+              "informational_warnings": [
+                "unmaintained",
+                "unsound",
+                "notice"
+              ]
+            },
+            "vulnerabilities": {
+              "found": false,
+              "count": 0,
+              "list": []
+            },
+            "warnings": {
+              "notice": [
+                {
+                  "kind": "notice",
+                  "package": {
+                    "name": "plutonium",
+                    "version": "0.9.0",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "checksum": null,
+                    "replace": null
+                  },
+                  "advisory": {
+                    "id": "RUSTSEC-2020-0011",
+                    "package": "plutonium",
+                    "title": "Library exclusively intended to obfuscate code.",
+                    "description": "This crate allows you to write safe functions with unsafe bodies without the `unsafe` keyword.\n\nThe value this adds is questionable, and hides `unsafe` usages from naive analysis.",
+                    "date": "2020-04-23",
+                    "aliases": [
+                      "GHSA-gfg9-x6px-r7gr"
+                    ],
+                    "related": [],
+                    "collection": "crates",
+                    "categories": [],
+                    "keywords": [],
+                    "cvss": null,
+                    "informational": "notice",
+                    "references": [],
+                    "source": null,
+                    "url": "https://docs.rs/plutonium",
+                    "withdrawn": null,
+                    "license": "CC0-1.0",
+                    "expect-deleted": false
+                  },
+                  "affected": null,
+                  "versions": {
+                    "patched": [],
+                    "unaffected": []
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "fixture_scope": "Actual fetched database; fixture scans use --no-fetch --no-yanked, without downloading deliberately old fixture packages. Production keeps fresh/yanked checks.",
+      "notice_regression": "Pinned raw scanner returns zero on RUSTSEC-2020-0011; real report rejected by production validator, also exercised end-to-end through a simulated successful scanner."
+    },
+    "host_hook": {
+      "command": "python3 scripts/tests/test-dependency-advisories.py",
+      "passed": 8,
+      "skipped_opt_in_real_scanner_tests": 4,
+      "results": [
+        "test_ci_installs_the_shared_tool_pin_with_locked_dependencies (__main__.Gate.test_ci_installs_the_shared_tool_pin_with_locked_dependencies) ... ok",
+        "test_complete_lockfile_and_unfiltered_policy_from_repository_context (__main__.Gate.test_complete_lockfile_and_unfiltered_policy_from_repository_context) ... ok",
+        "test_local_policy_overrides_global_defaults_without_exclusions (__main__.Gate.test_local_policy_overrides_global_defaults_without_exclusions) ... ok",
+        "test_malformed_success_is_not_a_clean_audit (__main__.Gate.test_malformed_success_is_not_a_clean_audit) ... ok",
+        "test_narrowing_arguments_cannot_bypass_the_gate (__main__.Gate.test_narrowing_arguments_cannot_bypass_the_gate) ... ok",
+        "test_scanner_findings_and_tool_failure_are_propagated (__main__.Gate.test_scanner_findings_and_tool_failure_are_propagated) ... ok",
+        "test_successful_scanner_cannot_hide_notices_or_narrowed_settings (__main__.Gate.test_successful_scanner_cannot_hide_notices_or_narrowed_settings) ... ok",
+        "test_wrong_tool_version_rejects_before_scanning (__main__.Gate.test_wrong_tool_version_rejects_before_scanning) ... ok",
+        "test_clean_lockfile_passes (__main__.RealScanner.test_clean_lockfile_passes) ... skipped 'real scanner/database controls are opt-in'",
+        "test_informational_warning_rejects_without_a_vulnerability (__main__.RealScanner.test_informational_warning_rejects_without_a_vulnerability) ... skipped 'real scanner/database controls are opt-in'",
+        "test_known_vulnerability_rejects (__main__.RealScanner.test_known_vulnerability_rejects) ... skipped 'real scanner/database controls are opt-in'",
+        "test_notice_requires_the_gate_even_when_scanner_returns_success (__main__.RealScanner.test_notice_requires_the_gate_even_when_scanner_returns_success) ... skipped 'real scanner/database controls are opt-in'",
+        "",
+        "----------------------------------------------------------------------",
+        "Ran 12 tests in 2.268s",
+        "",
+        "OK (skipped=4)"
+      ],
+      "full_host_wrapper_rerun": false
+    },
+    "strict_service_clippy": {
+      "aarch64": "pass: --lib --bins",
+      "x86_64": "pass: --lib --bin tcpip --bin security_probe",
+      "common_command": "cargo clippy --locked -p catten-services --target crates/catten-services/<arch>-unknown-none.json --target-dir crates/catten-services/target <selection> -- -D warnings"
+    },
+    "host_suites": {
+      "debug": {
+        "service": {
+          "passed_in_each_report": [
+            227,
+            10
+          ],
+          "results": [
+            "   Compiling hpke v0.14.0",
+            "test name_catalog::tests::operational_bindings_are_atomic_fenced_and_snapshot_persistent ... ok",
+            "test result: ok. 227 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s",
+            "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+          ],
+          "command": "cargo test --locked --offline --manifest-path <repository>/Cargo.toml -p catten-services -p charlotte-launch --lib (cwd /private/tmp; separate recorded target dirs)"
+        },
+        "launch": {
+          "passed_in_each_report": [
+            10,
+            8,
+            2,
+            4,
+            3,
+            5,
+            4,
+            3,
+            2,
+            3,
+            12,
+            8,
+            1
+          ],
+          "results": [
+            "   Compiling hpke v0.14.0",
+            "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+            "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+            "     Running tests/hpke_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/host-unit-tests/debug/build/charlotte-launch/ca28bfa825d9a715/out/hpke_erasure-ca28bfa825d9a715)",
+            "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+            "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+            "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+            "test envelope_rejects_tampering_even_when_resigned_without_hpke_key ... ok",
+            "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+            "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+            "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+            "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+            "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+            "test bootstrap_key_rejects_fixture_aliases_weak_points_and_operational_role_reuse ... ok",
+            "test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.43s",
+            "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+            "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s"
+          ],
+          "command": "cargo test --locked --offline --manifest-path <repository>/Cargo.toml -p charlotte-launch (cwd /private/tmp; separate recorded target dirs)"
+        },
+        "signer": {
+          "passed_in_each_report": [
+            57,
+            4,
+            5,
+            5,
+            8,
+            6,
+            7,
+            1
+          ],
+          "results": [
+            "test tests::operational_file_limits_accept_bound_and_reject_extra_byte ... ok",
+            "test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+            "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s",
+            "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+            "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+            "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+            "test ordinary_operational_files_preserve_signed_roundtrip ... ok",
+            "test oversized_operational_files_reject_before_decoding_or_connecting ... ok",
+            "test nonregular_operational_files_reject_before_output_or_connect ... ok",
+            "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+            "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+            "test operational_commands_share_bounded_public_key_file_admission ... ok",
+            "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s"
+          ],
+          "command": "cargo test --locked --offline --manifest-path <repository>/tools/cluster-sign/Cargo.toml  (cwd /private/tmp; separate recorded target dirs)"
+        },
+        "distinct_runtime_tests": 384,
+        "doctests": 1,
+        "repeated_launch_unit_tests_excluded_from_total": 10
+      },
+      "release": {
+        "service": {
+          "passed_in_each_report": [
+            227,
+            10
+          ],
+          "results": [
+            "   Compiling hpke v0.14.0",
+            "test name_catalog::tests::operational_bindings_are_atomic_fenced_and_snapshot_persistent ... ok",
+            "test result: ok. 227 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s",
+            "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+          ],
+          "command": "cargo test --locked --offline --release --manifest-path <repository>/Cargo.toml -p catten-services -p charlotte-launch --lib (cwd /private/tmp; separate recorded target dirs)"
+        },
+        "launch": {
+          "passed_in_each_report": [
+            10,
+            8,
+            2,
+            4,
+            3,
+            5,
+            4,
+            3,
+            2,
+            3,
+            12,
+            8,
+            1
+          ],
+          "results": [
+            "   Compiling hpke v0.14.0",
+            "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+            "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+            "     Running tests/hpke_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/host-unit-tests/release/build/charlotte-launch/e57fded3a3fe2fa7/out/hpke_erasure-e57fded3a3fe2fa7)",
+            "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+            "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+            "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+            "test envelope_rejects_tampering_even_when_resigned_without_hpke_key ... ok",
+            "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+            "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+            "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+            "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+            "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+            "test bootstrap_key_rejects_fixture_aliases_weak_points_and_operational_role_reuse ... ok",
+            "test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s",
+            "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+            "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s"
+          ],
+          "command": "cargo test --locked --offline --release --manifest-path <repository>/Cargo.toml -p charlotte-launch (cwd /private/tmp; separate recorded target dirs)"
+        },
+        "signer": {
+          "passed_in_each_report": [
+            57,
+            4,
+            5,
+            5,
+            8,
+            6,
+            7,
+            1
+          ],
+          "results": [
+            "   Compiling hpke v0.14.0",
+            "test tests::operational_file_limits_accept_bound_and_reject_extra_byte ... ok",
+            "test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+            "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.56s",
+            "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+            "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s",
+            "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+            "test ordinary_operational_files_preserve_signed_roundtrip ... ok",
+            "test oversized_operational_files_reject_before_decoding_or_connecting ... ok",
+            "test nonregular_operational_files_reject_before_output_or_connect ... ok",
+            "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s",
+            "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+            "test operational_commands_share_bounded_public_key_file_admission ... ok",
+            "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s"
+          ],
+          "command": "cargo test --locked --offline --release --manifest-path <repository>/tools/cluster-sign/Cargo.toml  (cwd /private/tmp; separate recorded target dirs)"
+        },
+        "distinct_runtime_tests": 384,
+        "doctests": 1,
+        "repeated_launch_unit_tests_excluded_from_total": 10
+      }
+    },
+    "formatting": "pass",
+    "whitespace": "pass"
+  },
+  "initial_failures": [
+    {
+      "phase": "sandbox database fetch",
+      "exit_status": 1,
+      "report_stdout_bytes": 0,
+      "diagnostic": "error: couldn't fetch advisory database: git operation failed: failed to prepare fetch\nCaused by:\n  -> An IO error occurred when talking to the server\n  -> error sending request for url (https://github.com/RustSec/advisory-db.git/info/refs?service=git-upload-pack)",
+      "meaning": "Tool/network failure, not a clean scan or advisory finding."
+    },
+    {
+      "phase": "draft policy construction",
+      "gate_exit_status": 1,
+      "gate_stdout_bytes": 0,
+      "diagnostic": "error: cargo-audit fatal error: parse error: TOML parse error at line 12, column 1\n   |\n12 | [output]\n   | ^^^^^^^^\nmissing field `quiet`",
+      "control_exit_status": 1,
+      "control_errors": 3,
+      "control_diagnostics": [
+        "test_ci_installs_the_shared_tool_pin_with_locked_dependencies (__main__.Gate.test_ci_installs_the_shared_tool_pin_with_locked_dependencies) ... ok",
+        "test_complete_lockfile_and_unfiltered_policy_from_repository_context (__main__.Gate.test_complete_lockfile_and_unfiltered_policy_from_repository_context) ... ok",
+        "test_local_policy_overrides_global_defaults_without_exclusions (__main__.Gate.test_local_policy_overrides_global_defaults_without_exclusions) ... ok",
+        "test_narrowing_arguments_cannot_bypass_the_gate (__main__.Gate.test_narrowing_arguments_cannot_bypass_the_gate) ... ok",
+        "test_scanner_findings_and_tool_failure_are_propagated (__main__.Gate.test_scanner_findings_and_tool_failure_are_propagated) ... ok",
+        "test_wrong_tool_version_rejects_before_scanning (__main__.Gate.test_wrong_tool_version_rejects_before_scanning) ... ok",
+        "test_clean_lockfile_passes (__main__.RealScanner.test_clean_lockfile_passes) ... ERROR",
+        "test_informational_warning_rejects_without_a_vulnerability (__main__.RealScanner.test_informational_warning_rejects_without_a_vulnerability) ... ERROR",
+        "test_known_vulnerability_rejects (__main__.RealScanner.test_known_vulnerability_rejects) ... ERROR",
+        "ERROR: test_clean_lockfile_passes (__main__.RealScanner.test_clean_lockfile_passes)",
+        "  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-dependency-advisories.py\", line 123, in test_clean_lockfile_passes",
+        "    raise JSONDecodeError(\"Expecting value\", s, err.value) from None",
+        "json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)",
+        "ERROR: test_informational_warning_rejects_without_a_vulnerability (__main__.RealScanner.test_informational_warning_rejects_without_a_vulnerability)",
+        "  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-dependency-advisories.py\", line 134, in test_informational_warning_rejects_without_a_vulnerability",
+        "    raise JSONDecodeError(\"Expecting value\", s, err.value) from None",
+        "json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)",
+        "ERROR: test_known_vulnerability_rejects (__main__.RealScanner.test_known_vulnerability_rejects)",
+        "  File \"/Users/froran/Projects/private/charlotte-os/scripts/tests/test-dependency-advisories.py\", line 129, in test_known_vulnerability_rejects",
+        "    raise JSONDecodeError(\"Expecting value\", s, err.value) from None",
+        "json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)",
+        "FAILED (errors=3)"
+      ],
+      "correction": "Add required output.quiet=false; retain raw scanner failure output before parsing in the harness. No findings scanned in that draft attempt."
+    },
+    {
+      "phase": "signer debug under sandbox",
+      "exit_status": 101,
+      "unit_passed": 55,
+      "unit_failed": 2,
+      "failed_tests": [
+        "http_client::tests::expired_exchange_opens_no_socket",
+        "tests::signed_control_notifications_and_apply_reject_before_connecting"
+      ],
+      "diagnostics": [
+        "thread 'http_client::tests::expired_exchange_opens_no_socket' (28047696) panicked at tools/cluster-sign/src/http_client.rs:291:67:",
+        "called `Result::unwrap()` on an `Err` value: Os { code: 1, kind: PermissionDenied, message: \"Operation not permitted\" }",
+        "thread 'tests::signed_control_notifications_and_apply_reject_before_connecting' (28047744) panicked at tools/cluster-sign/src/main.rs:3133:67:",
+        "called `Result::unwrap()` on an `Err` value: Os { code: 1, kind: PermissionDenied, message: \"Operation not permitted\" }"
+      ],
+      "correction": "Permission-enabled rerun without source or expectation change."
+    }
+  ],
+  "dependency_patch": {
+    "name": "ctutils",
+    "before": "0.4.2",
+    "after": "0.4.4",
+    "after_checksum": "12218662ccac37d9714f2191252553d67585b97df8c839cbe49e0bde278dc865",
+    "package_source_sha256": {
+      "Cargo.toml": "0e7a80338f6195bd85c0d0dad3c0d258c626d95da17a29a82307b2f6092902f1",
+      "CHANGELOG.md": "ce578d46c72a36733739aba7077d47eb9105e851066f9f9c043f69ebf5ac41d7",
+      "src/choice.rs": "bf7876cc7427f37c7ae8e90582ae9790faae18f428cde4a4c962fd84afcda5c3",
+      "src/traits/ct_eq.rs": "dfd4ea492d3f34909fe3028e12055c432ba2ba8e2f5377bc6fdf87a378f32238",
+      "src/traits/ct_lt.rs": "51d9e180c659239cac8d7bfaa150d1de2415f128a8d0f8c3ae3a5ae53f18a764"
+    },
+    "local_side_channel_assembly_or_timing_proof": false
+  },
+  "bundle_builds": {
+    "aarch64": {
+      "command": "scripts/build-catten-services.sh --embed",
+      "exit_status": 0,
+      "bundle_sha256": {
+        "agent.elf": "5e6669e5a1d563d25108026ab6d0fb1ade89ec40d8939904b773a75cea3345bf",
+        "cclient.elf": "680fab65f46bbef3cce4e9d935ba5046c66317dc770099355494faa1e9cd7c54",
+        "client.elf": "23015b48e8a65b5f89c4a492a842073660642b41104f598664e0b82355e646dd",
+        "clusterctl.elf": "4c01aa7ac7c26d09e21bfeb874ed4ab82c3386d42537cb4df06f709f97c76cf2",
+        "deployd.elf": "f90ed5977cc4986e46e22f2b5c99aea840c47fbe94d7edcb04312ec215fc1531",
+        "disco.elf": "6ccff33230d99118f4b732d5c8ff668a5186ce7634093c0066635cb1cbc95771",
+        "dns.elf": "ff6eea24cc773fe33d0c21a9cc06a0e06652d6ba8a1382d9425d8b4121f03981",
+        "echo.elf": "834a1b4cf826ecf0cf182da4e26de5dda11dddf650fb94f85913db509c139b77",
+        "frouter.elf": "29e270ca58245607f399b1428b45439d0dab1b77bcebfae244e4d751f1a2284f",
+        "fs.elf": "b828e35ad82011dbe5ca0487f1aeab6bca97307ec87282580ad860c1a1a975ac",
+        "grantctl.elf": "ae64478146113c921d2a8b35c63d3b7b214c4e44c3c4b4ce92c56f9e074c6ff1",
+        "greet.elf": "ac8118499767ff70a259dee6b21d17f7284110b1ba16500e7cafa1779693bdc6",
+        "httpd.elf": "2dbd68ef02db1f650bbd2ad92aad11743298d297a935c2d8ffb272e7fff80224",
+        "kafka.elf": "578e68eeef946c18ee2f476ae576c3b048710c1efeb97e2751426c4bd6fc4087",
+        "kafka_fence_smoke.elf": "4ec63e4652981f98857a029acb08b7c47671218bc208e4817c34734e6f1ca9f0",
+        "kafka_smoke.elf": "b4a32b2f8d5ca902a674dc76ec82af56c74cef277b1f5467c72e70b54d953e4c",
+        "kafka_step.elf": "bdb7fa938eb9fde25ca924d8942e45782a070ef6280bb162255cfd3202961097",
+        "kafka_step_input.elf": "69da768b20ac8e8f39a95c54f28317ee1b9484a1264d981ff0b4fe2f01d136cc",
+        "kafka_step_proc.elf": "74afd194657cc3b9b35f8db9180580136ec74d67eb0464582601af4d783626ed",
+        "nclient.elf": "e1f79220d1a4f1f41da855a506e62b2052232ba26112bd0705ffeb327221dad2",
+        "net.elf": "72e1d28ed5305ffde785699d2421253e9980d567fe34b23033d604f6c8783997",
+        "ns.elf": "5a59b8a0a8b71e2da7c4b6221b4be37aa845ce196c8e8decfc29b4eefc980d05",
+        "nvme.elf": "bb93893e38b3e43650ea9b2c760adf514a68ae5218579cda69b4772c76248365",
+        "nvme_client.elf": "fb1c0ba36adccee7c0d447639c87395b6566494804a8ff666e9874ba94e06a35",
+        "objstore.elf": "1e8dc004b2879393e53b9ac04f31b09e6880d895cfec400a1ebd6b8e1eecf1c7",
+        "objstore_client.elf": "6069e6fe564fba6e90a3f49baf272365f1f3193098c5d0a237849ffcb028162c",
+        "observe.elf": "0628224c4c1cbaa14e9fb74e2406cd6b2c3bd01527b85df5dac0d1e669b33f55",
+        "raft.elf": "3ed4bff85c39990d198065fae66c454d05def43ce6d27fc487a7ed09fb5d5d3c",
+        "rclient.elf": "69cb600aa5287690eb1827cab92f689c5441398ea8ccb3e210c9d1cbe220df43",
+        "relmsg.elf": "14645784f0b5c52da375c63547f5e69b66490d3d5d4a1e98b0269a569bafaab1",
+        "rng.elf": "eb3a6cd79f40a5ca5aa2d5bc89d1cf96f7c5a0b20689f4c73207e4b9241353f7",
+        "s3.elf": "406620249ec63473241860d29572361e5114ca79988af099e1a2316e0eabe6c1",
+        "s3_smoke.elf": "3b6e7b50d394f9b9bc2aee0c67b0a992a04ca1fc588597a0fdf4c594148a90d9",
+        "security_probe.elf": "9234d7f8a08ee69b397a71211d781331304a9c332c219b04eb450910fa6f21b1",
+        "servicemgr.elf": "104444041b3b0b62a542ffa885f76770c67a32d8132a12c65c0aa75be7196f54",
+        "shutdown_probe.elf": "dd3e10d5f4c91da5dda178f56632310ab7fd5ead1478e0640c9b9be65bcc4f1d",
+        "sitas-user.elf": "a97f28fc30e98206e8693262752f674f4ef6a965519541ac58c41c32c95233ee",
+        "tcpclient.elf": "1ebe18be00544d70d4f3c5fe066b72a5e847d3cddb87d5b21717d06a5da05fd8",
+        "tcpip.elf": "29d19d494cba29f383f01d01dfa52d6c1e0d92c64f691d41a15b977368049971",
+        "time.elf": "7151102579b384d44c6f00a0c7fae2673d2fc2925924789ab4251ec4339bd4ae",
+        "uart.elf": "611b4fb654e3e36232ae3ae6521715841d291ebf7f601e209c923797c6fbb6a8"
+      },
+      "service_count": 40,
+      "separate_sitas": {
+        "command": "scripts/build-catten-user.sh --embed",
+        "exit_status": 0,
+        "captured_sha256": "fbf1b47a721d84498a64e43bc626a7f962a52d3740e3fa7e14adaeea7fa5f311",
+        "rebuilt_sha256": "a97f28fc30e98206e8693262752f674f4ef6a965519541ac58c41c32c95233ee",
+        "identical": false
+      }
+    },
+    "x86_64": {
+      "command": "scripts/build-catten-services-x86_64.sh",
+      "exit_status": 0,
+      "bundle_sha256": {
+        "agent.elf": "ed26c972c65051aa62bb2821dca701b50bb8bd9010f783355ade33b1df92829a",
+        "ahci.elf": "b783908fb7bf5e4393c5f2e101bc16a8075fee15691388448e8117b0f29696b5",
+        "client.elf": "79bd73cc8d294967c2ba24434946d953ff6f55eba6bc89017390df723af74e51",
+        "clusterctl.elf": "427b4ffea1d4fade1a009120d6220aa12278f82d7b19b4dc4a244b4af501a56f",
+        "deployd.elf": "27a64f401838c8be0193a0429b791ad5a93b843a93c783564395ef2b95a541ec",
+        "disco.elf": "3d18571fadc885b6b45793714585da57e22e733b0084e558d79859369732f711",
+        "dns.elf": "9a2f3c2850624de36adad7c2bc7ecb4fd95c7d4b869db7e8952ceb3f52cd6f12",
+        "e1000e.elf": "ecbd58237dc92b3f5f082b30a5da0813d0290941534616cbfa3c34d930b7cabd",
+        "echo.elf": "d938ff2812ec2de318075f55a800a7e20af088fb67cc7c4b96ed54da8c2caacc",
+        "frouter.elf": "9caaf1a3ba7ca530129f23f366e223799ef30dccb224986ac4afaadc92d2ff33",
+        "fs.elf": "12984ac392a64da485f766a67cab0b3a03cb1ddefedbc69f00c9e5fc9135b22b",
+        "grantctl.elf": "f3880e80e25ca10bdf490ec3acad6ee1e1ba29bc9c84169e8ee7beb9135e0231",
+        "greet.elf": "75a5f8931c170e3a5ca387597a91dc2e869d30be0ff9594658deeb9755ce2a32",
+        "httpd.elf": "429cce501bd81f4db36d3299c30d66c8865bedb76642749dbcc8ee38a3cb35dd",
+        "kafka.elf": "d6201cd0ae21bf7b2bba0cd551f82701f0e7fd051000181edb888b511dbcf91e",
+        "kafka_smoke.elf": "418d31286fa4ee804d959c920971a1582477a7e41a9b832bb4a4cf5e934ffce7",
+        "nclient.elf": "f7682c533beed93f8777a279c2b9abe6e2e764325adf2b0bcec3682b02b05a9d",
+        "net.elf": "38a30a779d8da2f337eb440137601b1d424272940005c5fc4ae3aef240674db1",
+        "ns.elf": "29ef45db0b9cce960149d9fd1d9b9835217e7d31254454c02376597429d8060b",
+        "nvme.elf": "b63b9d2cbe958bf02390c73ef71413170be5edfc5cf825a54c969054ce1232d2",
+        "nvme_client.elf": "9aa1161ee294feb122a516efb86983441af1a4f8d008ee92a2e5f59bee271561",
+        "objstore.elf": "9413fe442fdd3a498456696c431b607bab9be576e56dc88d46375de1cec3aeb0",
+        "objstore_client.elf": "990838ce84b00ff3ae693ff77c78ccaaf082a347bb322b73208e831d0390b98f",
+        "observe.elf": "1b843c5749328706c318f9859229f9d37ec27f380d806c06b85e2df3c9f7663f",
+        "raft.elf": "bf48fef6b5cdf6bda7aaabe4361ea62051121118794295ca659b25a232114486",
+        "rclient.elf": "a525c3424db15cef014c8f2b19a17a4d98cc5a15fe59688522a2862f533465da",
+        "relmsg.elf": "24b6e333f4932d2878799346f09c2cd7b2421493cb99ffd898fc6ef158d68bd2",
+        "rng.elf": "7b8f2195c666aa0077e62325de061f351c0f6f72a4fef2fbde98ea34ff0bb601",
+        "s3.elf": "bcc3f61a8f3c53957b3e907aee2554fa1cef4bc947bfae6f2ab8b8bd132f5a8e",
+        "s3_smoke.elf": "c4926e83b20943f8c80a9d471f1ccbbc121d392af0e44f0338662283758f8fc1",
+        "security_probe.elf": "ff136315aa1417065326ec9374202ad19c7427017d0c46541992b506d93f0462",
+        "servicemgr.elf": "d3e6aea08798f3e9e77552fafb3fad4723bb9c088c7d2908970842b223469ffa",
+        "shutdown_probe.elf": "1fb4114412cdb0c05211d283f8a4337ca03bee349b3215ef02debf88553229e6",
+        "tcpclient.elf": "4f863613d5b4c91894078a6338a54be8231d055646abaca6185568b1fed6ddb2",
+        "tcpip.elf": "4eada118df631e162065e408343ee04e3a2d80e39664858394f9c98435fd6943",
+        "time.elf": "5eda6d90e2638fc6f57e7a17f96ad546d4880b90988a499622780499339537e8",
+        "virtio_blk.elf": "f6b631b2e191e01df8c92f552345a371a26e7378c986d46bda96475d11bf1d91"
+      },
+      "service_count": 37
+    }
+  },
+  "preliminary_native_runs": [
+    {
+      "arch": "aarch64",
+      "instance": "advisory-ctutils-arm",
+      "cpus": 4,
+      "revision": "0a79a800f5ed0fd5965937602c1518f891375b6f",
+      "kernel_sha256": "ed69c39ebf6b33802955ce2aa62062d7f1cddef2c2863804c3000daa2631f25c",
+      "boot_image_sha256": "05e856d59256a2d42dfee069b2fd7cfb21f6ec36a08491c20478258c971ca3ae",
+      "initial_disk_sha256": "632f2c049618d13648d50452179b510d3294b09795a9ea30b2daf89027b57518",
+      "bundle_sha256": {
+        "agent.elf": "5e6669e5a1d563d25108026ab6d0fb1ade89ec40d8939904b773a75cea3345bf",
+        "cclient.elf": "680fab65f46bbef3cce4e9d935ba5046c66317dc770099355494faa1e9cd7c54",
+        "client.elf": "23015b48e8a65b5f89c4a492a842073660642b41104f598664e0b82355e646dd",
+        "clusterctl.elf": "4c01aa7ac7c26d09e21bfeb874ed4ab82c3386d42537cb4df06f709f97c76cf2",
+        "deployd.elf": "f90ed5977cc4986e46e22f2b5c99aea840c47fbe94d7edcb04312ec215fc1531",
+        "disco.elf": "6ccff33230d99118f4b732d5c8ff668a5186ce7634093c0066635cb1cbc95771",
+        "dns.elf": "ff6eea24cc773fe33d0c21a9cc06a0e06652d6ba8a1382d9425d8b4121f03981",
+        "echo.elf": "834a1b4cf826ecf0cf182da4e26de5dda11dddf650fb94f85913db509c139b77",
+        "frouter.elf": "29e270ca58245607f399b1428b45439d0dab1b77bcebfae244e4d751f1a2284f",
+        "fs.elf": "b828e35ad82011dbe5ca0487f1aeab6bca97307ec87282580ad860c1a1a975ac",
+        "grantctl.elf": "ae64478146113c921d2a8b35c63d3b7b214c4e44c3c4b4ce92c56f9e074c6ff1",
+        "greet.elf": "ac8118499767ff70a259dee6b21d17f7284110b1ba16500e7cafa1779693bdc6",
+        "httpd.elf": "2dbd68ef02db1f650bbd2ad92aad11743298d297a935c2d8ffb272e7fff80224",
+        "kafka.elf": "578e68eeef946c18ee2f476ae576c3b048710c1efeb97e2751426c4bd6fc4087",
+        "kafka_fence_smoke.elf": "4ec63e4652981f98857a029acb08b7c47671218bc208e4817c34734e6f1ca9f0",
+        "kafka_smoke.elf": "b4a32b2f8d5ca902a674dc76ec82af56c74cef277b1f5467c72e70b54d953e4c",
+        "kafka_step.elf": "bdb7fa938eb9fde25ca924d8942e45782a070ef6280bb162255cfd3202961097",
+        "kafka_step_input.elf": "69da768b20ac8e8f39a95c54f28317ee1b9484a1264d981ff0b4fe2f01d136cc",
+        "kafka_step_proc.elf": "74afd194657cc3b9b35f8db9180580136ec74d67eb0464582601af4d783626ed",
+        "nclient.elf": "e1f79220d1a4f1f41da855a506e62b2052232ba26112bd0705ffeb327221dad2",
+        "net.elf": "72e1d28ed5305ffde785699d2421253e9980d567fe34b23033d604f6c8783997",
+        "ns.elf": "5a59b8a0a8b71e2da7c4b6221b4be37aa845ce196c8e8decfc29b4eefc980d05",
+        "nvme.elf": "bb93893e38b3e43650ea9b2c760adf514a68ae5218579cda69b4772c76248365",
+        "nvme_client.elf": "fb1c0ba36adccee7c0d447639c87395b6566494804a8ff666e9874ba94e06a35",
+        "objstore.elf": "1e8dc004b2879393e53b9ac04f31b09e6880d895cfec400a1ebd6b8e1eecf1c7",
+        "objstore_client.elf": "6069e6fe564fba6e90a3f49baf272365f1f3193098c5d0a237849ffcb028162c",
+        "observe.elf": "0628224c4c1cbaa14e9fb74e2406cd6b2c3bd01527b85df5dac0d1e669b33f55",
+        "raft.elf": "3ed4bff85c39990d198065fae66c454d05def43ce6d27fc487a7ed09fb5d5d3c",
+        "rclient.elf": "69cb600aa5287690eb1827cab92f689c5441398ea8ccb3e210c9d1cbe220df43",
+        "relmsg.elf": "14645784f0b5c52da375c63547f5e69b66490d3d5d4a1e98b0269a569bafaab1",
+        "rng.elf": "eb3a6cd79f40a5ca5aa2d5bc89d1cf96f7c5a0b20689f4c73207e4b9241353f7",
+        "s3.elf": "406620249ec63473241860d29572361e5114ca79988af099e1a2316e0eabe6c1",
+        "s3_smoke.elf": "3b6e7b50d394f9b9bc2aee0c67b0a992a04ca1fc588597a0fdf4c594148a90d9",
+        "security_probe.elf": "9234d7f8a08ee69b397a71211d781331304a9c332c219b04eb450910fa6f21b1",
+        "servicemgr.elf": "104444041b3b0b62a542ffa885f76770c67a32d8132a12c65c0aa75be7196f54",
+        "shutdown_probe.elf": "dd3e10d5f4c91da5dda178f56632310ab7fd5ead1478e0640c9b9be65bcc4f1d",
+        "sitas-user.elf": "fbf1b47a721d84498a64e43bc626a7f962a52d3740e3fa7e14adaeea7fa5f311",
+        "tcpclient.elf": "1ebe18be00544d70d4f3c5fe066b72a5e847d3cddb87d5b21717d06a5da05fd8",
+        "tcpip.elf": "29d19d494cba29f383f01d01dfa52d6c1e0d92c64f691d41a15b977368049971",
+        "time.elf": "7151102579b384d44c6f00a0c7fae2673d2fc2925924789ab4251ec4339bd4ae",
+        "uart.elf": "611b4fb654e3e36232ae3ae6521715841d291ebf7f601e209c923797c6fbb6a8"
+      },
+      "tracked_diff_sha256": "0d304a12242db3caadc1546a4fcc0227123d33f4233dea1aaa161ff398c0c85d",
+      "backend": "smmuv3",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20018 CATTEN_DEPLOY_HOST_PORT=20182 scripts/run-aarch64.sh --security-test --http-test --instance advisory-ctutils-arm --fresh-storage --timeout 300",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 20,
+        "failed": 0,
+        "pending": 0
+      },
+      "security_publication_generations": [
+        1,
+        2
+      ],
+      "http_checks_passed": 14,
+      "http_probe_results": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.379s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.237s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.358s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.12s; ingress recovered"
+      ],
+      "http_transport_retries": [
+        {
+          "diagnostic": "HTTP transport TimeoutError; retry 1/2",
+          "eventual_probe_result": "PASS: initial metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: EOF followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: abortive peer closes followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 2/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        }
+      ],
+      "serial_sha256": "71b054221d45292f4b12f827ba1d202dfc9c8976f63312aa3d514f4fa6254d4d"
+    }
+  ],
+  "native_runs": [
+    {
+      "arch": "x86_64",
+      "instance": "advisory-ctutils-intel",
+      "cpus": 4,
+      "revision": "0a79a800f5ed0fd5965937602c1518f891375b6f",
+      "kernel_sha256": "717d9e008b03037a4fae449f59fb7e99828a4490f9f75479aa541589c7c72708",
+      "boot_image_sha256": "c1ec60264fca4a7f30e730add75eec5249d14c328d19e0c3787ef330cc826ae8",
+      "initial_disk_sha256": "e1e049180b91cbcb8bc8d0bc3366fbcce65e63db2c77f03f256621eafafa0a38",
+      "bundle_sha256": {
+        "agent.elf": "ed26c972c65051aa62bb2821dca701b50bb8bd9010f783355ade33b1df92829a",
+        "ahci.elf": "b783908fb7bf5e4393c5f2e101bc16a8075fee15691388448e8117b0f29696b5",
+        "client.elf": "79bd73cc8d294967c2ba24434946d953ff6f55eba6bc89017390df723af74e51",
+        "clusterctl.elf": "427b4ffea1d4fade1a009120d6220aa12278f82d7b19b4dc4a244b4af501a56f",
+        "deployd.elf": "27a64f401838c8be0193a0429b791ad5a93b843a93c783564395ef2b95a541ec",
+        "disco.elf": "3d18571fadc885b6b45793714585da57e22e733b0084e558d79859369732f711",
+        "dns.elf": "9a2f3c2850624de36adad7c2bc7ecb4fd95c7d4b869db7e8952ceb3f52cd6f12",
+        "e1000e.elf": "ecbd58237dc92b3f5f082b30a5da0813d0290941534616cbfa3c34d930b7cabd",
+        "echo.elf": "d938ff2812ec2de318075f55a800a7e20af088fb67cc7c4b96ed54da8c2caacc",
+        "frouter.elf": "9caaf1a3ba7ca530129f23f366e223799ef30dccb224986ac4afaadc92d2ff33",
+        "fs.elf": "12984ac392a64da485f766a67cab0b3a03cb1ddefedbc69f00c9e5fc9135b22b",
+        "grantctl.elf": "f3880e80e25ca10bdf490ec3acad6ee1e1ba29bc9c84169e8ee7beb9135e0231",
+        "greet.elf": "75a5f8931c170e3a5ca387597a91dc2e869d30be0ff9594658deeb9755ce2a32",
+        "httpd.elf": "429cce501bd81f4db36d3299c30d66c8865bedb76642749dbcc8ee38a3cb35dd",
+        "kafka.elf": "d6201cd0ae21bf7b2bba0cd551f82701f0e7fd051000181edb888b511dbcf91e",
+        "kafka_smoke.elf": "418d31286fa4ee804d959c920971a1582477a7e41a9b832bb4a4cf5e934ffce7",
+        "nclient.elf": "f7682c533beed93f8777a279c2b9abe6e2e764325adf2b0bcec3682b02b05a9d",
+        "net.elf": "38a30a779d8da2f337eb440137601b1d424272940005c5fc4ae3aef240674db1",
+        "ns.elf": "29ef45db0b9cce960149d9fd1d9b9835217e7d31254454c02376597429d8060b",
+        "nvme.elf": "b63b9d2cbe958bf02390c73ef71413170be5edfc5cf825a54c969054ce1232d2",
+        "nvme_client.elf": "9aa1161ee294feb122a516efb86983441af1a4f8d008ee92a2e5f59bee271561",
+        "objstore.elf": "9413fe442fdd3a498456696c431b607bab9be576e56dc88d46375de1cec3aeb0",
+        "objstore_client.elf": "990838ce84b00ff3ae693ff77c78ccaaf082a347bb322b73208e831d0390b98f",
+        "observe.elf": "1b843c5749328706c318f9859229f9d37ec27f380d806c06b85e2df3c9f7663f",
+        "raft.elf": "bf48fef6b5cdf6bda7aaabe4361ea62051121118794295ca659b25a232114486",
+        "rclient.elf": "a525c3424db15cef014c8f2b19a17a4d98cc5a15fe59688522a2862f533465da",
+        "relmsg.elf": "24b6e333f4932d2878799346f09c2cd7b2421493cb99ffd898fc6ef158d68bd2",
+        "rng.elf": "7b8f2195c666aa0077e62325de061f351c0f6f72a4fef2fbde98ea34ff0bb601",
+        "s3.elf": "bcc3f61a8f3c53957b3e907aee2554fa1cef4bc947bfae6f2ab8b8bd132f5a8e",
+        "s3_smoke.elf": "c4926e83b20943f8c80a9d471f1ccbbc121d392af0e44f0338662283758f8fc1",
+        "security_probe.elf": "ff136315aa1417065326ec9374202ad19c7427017d0c46541992b506d93f0462",
+        "servicemgr.elf": "d3e6aea08798f3e9e77552fafb3fad4723bb9c088c7d2908970842b223469ffa",
+        "shutdown_probe.elf": "1fb4114412cdb0c05211d283f8a4337ca03bee349b3215ef02debf88553229e6",
+        "tcpclient.elf": "4f863613d5b4c91894078a6338a54be8231d055646abaca6185568b1fed6ddb2",
+        "tcpip.elf": "4eada118df631e162065e408343ee04e3a2d80e39664858394f9c98435fd6943",
+        "time.elf": "5eda6d90e2638fc6f57e7a17f96ad546d4880b90988a499622780499339537e8",
+        "virtio_blk.elf": "f6b631b2e191e01df8c92f552345a371a26e7378c986d46bda96475d11bf1d91"
+      },
+      "tracked_diff_sha256": "fa285ecb7261d4de1fbc706632e80748e8add26713a7413969ef75652d5453d9",
+      "backend": "intel",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20019 CATTEN_DEPLOY_HOST_PORT=20183 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance advisory-ctutils-intel --fresh-storage --timeout 480",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 18,
+        "failed": 0,
+        "pending": 0
+      },
+      "security_publication_generations": [
+        1,
+        2
+      ],
+      "http_checks_passed": 14,
+      "http_probe_results": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.359s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.264s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.338s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.21s; ingress recovered"
+      ],
+      "http_transport_retries": [
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: EOF followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: abortive peer closes followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 2/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        }
+      ],
+      "serial_sha256": "b337960d8c8fc1b29361b0ff251c02a9091c4cfd343d098da4a8060a83b45585"
+    },
+    {
+      "arch": "aarch64",
+      "instance": "advisory-ctutils-arm-final",
+      "cpus": 4,
+      "revision": "0a79a800f5ed0fd5965937602c1518f891375b6f",
+      "kernel_sha256": "7b0e5f490b257360650f3d54fe598742323d8f846aa89c0390d0b2fada594922",
+      "boot_image_sha256": "7400febc2573bd991453171447ae919ed0e7ce9dec511367179e1cf3b3ccc55b",
+      "initial_disk_sha256": "0b320748baad3ec218fb20f74e8341ad181cbd30c23224dc1553f4efbef99fb7",
+      "bundle_sha256": {
+        "agent.elf": "5e6669e5a1d563d25108026ab6d0fb1ade89ec40d8939904b773a75cea3345bf",
+        "cclient.elf": "680fab65f46bbef3cce4e9d935ba5046c66317dc770099355494faa1e9cd7c54",
+        "client.elf": "23015b48e8a65b5f89c4a492a842073660642b41104f598664e0b82355e646dd",
+        "clusterctl.elf": "4c01aa7ac7c26d09e21bfeb874ed4ab82c3386d42537cb4df06f709f97c76cf2",
+        "deployd.elf": "f90ed5977cc4986e46e22f2b5c99aea840c47fbe94d7edcb04312ec215fc1531",
+        "disco.elf": "6ccff33230d99118f4b732d5c8ff668a5186ce7634093c0066635cb1cbc95771",
+        "dns.elf": "ff6eea24cc773fe33d0c21a9cc06a0e06652d6ba8a1382d9425d8b4121f03981",
+        "echo.elf": "834a1b4cf826ecf0cf182da4e26de5dda11dddf650fb94f85913db509c139b77",
+        "frouter.elf": "29e270ca58245607f399b1428b45439d0dab1b77bcebfae244e4d751f1a2284f",
+        "fs.elf": "b828e35ad82011dbe5ca0487f1aeab6bca97307ec87282580ad860c1a1a975ac",
+        "grantctl.elf": "ae64478146113c921d2a8b35c63d3b7b214c4e44c3c4b4ce92c56f9e074c6ff1",
+        "greet.elf": "ac8118499767ff70a259dee6b21d17f7284110b1ba16500e7cafa1779693bdc6",
+        "httpd.elf": "2dbd68ef02db1f650bbd2ad92aad11743298d297a935c2d8ffb272e7fff80224",
+        "kafka.elf": "578e68eeef946c18ee2f476ae576c3b048710c1efeb97e2751426c4bd6fc4087",
+        "kafka_fence_smoke.elf": "4ec63e4652981f98857a029acb08b7c47671218bc208e4817c34734e6f1ca9f0",
+        "kafka_smoke.elf": "b4a32b2f8d5ca902a674dc76ec82af56c74cef277b1f5467c72e70b54d953e4c",
+        "kafka_step.elf": "bdb7fa938eb9fde25ca924d8942e45782a070ef6280bb162255cfd3202961097",
+        "kafka_step_input.elf": "69da768b20ac8e8f39a95c54f28317ee1b9484a1264d981ff0b4fe2f01d136cc",
+        "kafka_step_proc.elf": "74afd194657cc3b9b35f8db9180580136ec74d67eb0464582601af4d783626ed",
+        "nclient.elf": "e1f79220d1a4f1f41da855a506e62b2052232ba26112bd0705ffeb327221dad2",
+        "net.elf": "72e1d28ed5305ffde785699d2421253e9980d567fe34b23033d604f6c8783997",
+        "ns.elf": "5a59b8a0a8b71e2da7c4b6221b4be37aa845ce196c8e8decfc29b4eefc980d05",
+        "nvme.elf": "bb93893e38b3e43650ea9b2c760adf514a68ae5218579cda69b4772c76248365",
+        "nvme_client.elf": "fb1c0ba36adccee7c0d447639c87395b6566494804a8ff666e9874ba94e06a35",
+        "objstore.elf": "1e8dc004b2879393e53b9ac04f31b09e6880d895cfec400a1ebd6b8e1eecf1c7",
+        "objstore_client.elf": "6069e6fe564fba6e90a3f49baf272365f1f3193098c5d0a237849ffcb028162c",
+        "observe.elf": "0628224c4c1cbaa14e9fb74e2406cd6b2c3bd01527b85df5dac0d1e669b33f55",
+        "raft.elf": "3ed4bff85c39990d198065fae66c454d05def43ce6d27fc487a7ed09fb5d5d3c",
+        "rclient.elf": "69cb600aa5287690eb1827cab92f689c5441398ea8ccb3e210c9d1cbe220df43",
+        "relmsg.elf": "14645784f0b5c52da375c63547f5e69b66490d3d5d4a1e98b0269a569bafaab1",
+        "rng.elf": "eb3a6cd79f40a5ca5aa2d5bc89d1cf96f7c5a0b20689f4c73207e4b9241353f7",
+        "s3.elf": "406620249ec63473241860d29572361e5114ca79988af099e1a2316e0eabe6c1",
+        "s3_smoke.elf": "3b6e7b50d394f9b9bc2aee0c67b0a992a04ca1fc588597a0fdf4c594148a90d9",
+        "security_probe.elf": "9234d7f8a08ee69b397a71211d781331304a9c332c219b04eb450910fa6f21b1",
+        "servicemgr.elf": "104444041b3b0b62a542ffa885f76770c67a32d8132a12c65c0aa75be7196f54",
+        "shutdown_probe.elf": "dd3e10d5f4c91da5dda178f56632310ab7fd5ead1478e0640c9b9be65bcc4f1d",
+        "sitas-user.elf": "a97f28fc30e98206e8693262752f674f4ef6a965519541ac58c41c32c95233ee",
+        "tcpclient.elf": "1ebe18be00544d70d4f3c5fe066b72a5e847d3cddb87d5b21717d06a5da05fd8",
+        "tcpip.elf": "29d19d494cba29f383f01d01dfa52d6c1e0d92c64f691d41a15b977368049971",
+        "time.elf": "7151102579b384d44c6f00a0c7fae2673d2fc2925924789ab4251ec4339bd4ae",
+        "uart.elf": "611b4fb654e3e36232ae3ae6521715841d291ebf7f601e209c923797c6fbb6a8"
+      },
+      "tracked_diff_sha256": "b08218d9552a7ef407bca9bfdf48eee13d8c6215818ee84557f4f60db1fd8d13",
+      "backend": "smmuv3",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20020 CATTEN_DEPLOY_HOST_PORT=20184 scripts/run-aarch64.sh --security-test --http-test --instance advisory-ctutils-arm-final --fresh-storage --timeout 300",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 20,
+        "failed": 0,
+        "pending": 0
+      },
+      "security_publication_generations": [
+        1,
+        2
+      ],
+      "http_checks_passed": 14,
+      "http_probe_results": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.347s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.220s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.305s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.13s; ingress recovered"
+      ],
+      "http_transport_retries": [
+        {
+          "diagnostic": "HTTP transport TimeoutError; retry 1/2",
+          "eventual_probe_result": "PASS: initial metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: EOF followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: abortive peer closes followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 2/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        }
+      ],
+      "serial_sha256": "ad77a96ae3c1dd230897705ee39fe5434f6343d2ba26e48d0eb914e5317ae273"
+    },
+    {
+      "arch": "x86_64",
+      "instance": "advisory-ctutils-amd",
+      "cpus": 4,
+      "revision": "0a79a800f5ed0fd5965937602c1518f891375b6f",
+      "kernel_sha256": "5cfdedc51a436cd98aec7c9e6ac3a3bea32e6ebcd03f01598c1a17dfdea805c2",
+      "boot_image_sha256": "962a37f9d31d7d5f7d56a3393a25241f67202a3010a968d1baf16079d4b9ef16",
+      "initial_disk_sha256": "e1e049180b91cbcb8bc8d0bc3366fbcce65e63db2c77f03f256621eafafa0a38",
+      "bundle_sha256": {
+        "agent.elf": "ed26c972c65051aa62bb2821dca701b50bb8bd9010f783355ade33b1df92829a",
+        "ahci.elf": "b783908fb7bf5e4393c5f2e101bc16a8075fee15691388448e8117b0f29696b5",
+        "client.elf": "79bd73cc8d294967c2ba24434946d953ff6f55eba6bc89017390df723af74e51",
+        "clusterctl.elf": "427b4ffea1d4fade1a009120d6220aa12278f82d7b19b4dc4a244b4af501a56f",
+        "deployd.elf": "27a64f401838c8be0193a0429b791ad5a93b843a93c783564395ef2b95a541ec",
+        "disco.elf": "3d18571fadc885b6b45793714585da57e22e733b0084e558d79859369732f711",
+        "dns.elf": "9a2f3c2850624de36adad7c2bc7ecb4fd95c7d4b869db7e8952ceb3f52cd6f12",
+        "e1000e.elf": "ecbd58237dc92b3f5f082b30a5da0813d0290941534616cbfa3c34d930b7cabd",
+        "echo.elf": "d938ff2812ec2de318075f55a800a7e20af088fb67cc7c4b96ed54da8c2caacc",
+        "frouter.elf": "9caaf1a3ba7ca530129f23f366e223799ef30dccb224986ac4afaadc92d2ff33",
+        "fs.elf": "12984ac392a64da485f766a67cab0b3a03cb1ddefedbc69f00c9e5fc9135b22b",
+        "grantctl.elf": "f3880e80e25ca10bdf490ec3acad6ee1e1ba29bc9c84169e8ee7beb9135e0231",
+        "greet.elf": "75a5f8931c170e3a5ca387597a91dc2e869d30be0ff9594658deeb9755ce2a32",
+        "httpd.elf": "429cce501bd81f4db36d3299c30d66c8865bedb76642749dbcc8ee38a3cb35dd",
+        "kafka.elf": "d6201cd0ae21bf7b2bba0cd551f82701f0e7fd051000181edb888b511dbcf91e",
+        "kafka_smoke.elf": "418d31286fa4ee804d959c920971a1582477a7e41a9b832bb4a4cf5e934ffce7",
+        "nclient.elf": "f7682c533beed93f8777a279c2b9abe6e2e764325adf2b0bcec3682b02b05a9d",
+        "net.elf": "38a30a779d8da2f337eb440137601b1d424272940005c5fc4ae3aef240674db1",
+        "ns.elf": "29ef45db0b9cce960149d9fd1d9b9835217e7d31254454c02376597429d8060b",
+        "nvme.elf": "b63b9d2cbe958bf02390c73ef71413170be5edfc5cf825a54c969054ce1232d2",
+        "nvme_client.elf": "9aa1161ee294feb122a516efb86983441af1a4f8d008ee92a2e5f59bee271561",
+        "objstore.elf": "9413fe442fdd3a498456696c431b607bab9be576e56dc88d46375de1cec3aeb0",
+        "objstore_client.elf": "990838ce84b00ff3ae693ff77c78ccaaf082a347bb322b73208e831d0390b98f",
+        "observe.elf": "1b843c5749328706c318f9859229f9d37ec27f380d806c06b85e2df3c9f7663f",
+        "raft.elf": "bf48fef6b5cdf6bda7aaabe4361ea62051121118794295ca659b25a232114486",
+        "rclient.elf": "a525c3424db15cef014c8f2b19a17a4d98cc5a15fe59688522a2862f533465da",
+        "relmsg.elf": "24b6e333f4932d2878799346f09c2cd7b2421493cb99ffd898fc6ef158d68bd2",
+        "rng.elf": "7b8f2195c666aa0077e62325de061f351c0f6f72a4fef2fbde98ea34ff0bb601",
+        "s3.elf": "bcc3f61a8f3c53957b3e907aee2554fa1cef4bc947bfae6f2ab8b8bd132f5a8e",
+        "s3_smoke.elf": "c4926e83b20943f8c80a9d471f1ccbbc121d392af0e44f0338662283758f8fc1",
+        "security_probe.elf": "ff136315aa1417065326ec9374202ad19c7427017d0c46541992b506d93f0462",
+        "servicemgr.elf": "d3e6aea08798f3e9e77552fafb3fad4723bb9c088c7d2908970842b223469ffa",
+        "shutdown_probe.elf": "1fb4114412cdb0c05211d283f8a4337ca03bee349b3215ef02debf88553229e6",
+        "tcpclient.elf": "4f863613d5b4c91894078a6338a54be8231d055646abaca6185568b1fed6ddb2",
+        "tcpip.elf": "4eada118df631e162065e408343ee04e3a2d80e39664858394f9c98435fd6943",
+        "time.elf": "5eda6d90e2638fc6f57e7a17f96ad546d4880b90988a499622780499339537e8",
+        "virtio_blk.elf": "f6b631b2e191e01df8c92f552345a371a26e7378c986d46bda96475d11bf1d91"
+      },
+      "tracked_diff_sha256": "e8c8dfb505471d69e56f88804508a43305f034e9701c8b7d0357c0b59a4b9d0b",
+      "backend": "amd",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20021 CATTEN_DEPLOY_HOST_PORT=20185 scripts/run-x86_64.sh --security-test --http-test --iommu amd --instance advisory-ctutils-amd --fresh-storage --timeout 480",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 18,
+        "failed": 0,
+        "pending": 0
+      },
+      "security_publication_generations": [
+        1,
+        2
+      ],
+      "http_checks_passed": 14,
+      "http_probe_results": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.415s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.425s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.297s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.28s; ingress recovered"
+      ],
+      "http_transport_retries": [
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: EOF followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: abortive peer closes followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 2/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        }
+      ],
+      "serial_sha256": "7572148b8819fe394a35f0f8d6cc9141d53415d8869f6db6826654ae2b4344f8"
+    }
+  ],
+  "unexpected_final_native_failures": [],
+  "manual": {
+    "path": "docs/manual-v2/charlotte.pdf",
+    "sha256": "9b6ea15a8d4829ab9b89807e466652935ea20cc1fd185c9f285fbe167bfe1459",
+    "source_sha256": {
+      "docs/manual-v2/chapters/16-development.tex": "fea387690f1580c957a7a718fa391683f9f291c8478dc30354bb579184755dba",
+      "docs/manual-v2/chapters/22-configuration.tex": "b336b3bad9c6e9ed126ba342292bf71ddbbbf9e0bfd8f918d42524fae665493a"
+    },
+    "two_pass_build": "pass",
+    "visually_reviewed_pdf_pages": [
+      14,
+      197,
+      198,
+      204,
+      205
+    ],
+    "pages": 251,
+    "overfull_box_warnings": 189,
+    "scope": "Affected/adjacent pages and TOC checked; full manual not re-audited."
+  },
+  "limitations": [
+    "Current complete graph still has RUSTSEC-2026-0387; CI advisory job intentionally fails. No ignore, exception or reachability dismissal.",
+    "Scanner checks package advisories, not all source/compiler/side-channel or physical-platform behavior. Local functional tests do not prove constant-time assembly.",
+    "License enforcement, protected release provenance, periodic scans and remote required-check configuration remain separate.",
+    "Local scanner matches the pinned version; remote CI install/job and branch-protection settings were not executed or changed.",
+    "Preliminary AArch64 passing artifact retained old Sitas and is excluded from final complete-bundle qualification; repeat follows actual changed ELF.",
+    "Documentation evolved between runs; seven frozen code/CI/policy/lock inputs stayed unchanged. Passing runs do not attribute historical scheduler, IPC, root-close, metrics or NIC failures."
+  ]
+}

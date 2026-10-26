@@ -9,6 +9,7 @@ This guide matches the manual's **Configuration** chapter.
 
 | Configuration | Current source and lifetime |
 | --- | --- |
+| Dependency advisory policy | `.cargo/audit.toml` and the scanner pin in `.cargo/audit-version`, evaluated by CI/local validation. They do not configure a running node; see [the advisory gate](../reference/dependency-advisories.md). |
 | Kernel resource capacity | One trusted Rust build profile, compiled into the kernel and fixed for the boot. |
 | Bootstrap service assignments | `CATTEN_CLUSTER_SERVICES` at build time; runners accept repeatable `--cluster-service [NAME=]IPv4:PORT`. The first committed signed ingress policy replaces bootstrap assignments. |
 | Launch/grant trust | One prepared kernel boot-trust policy. Resource capacity settings grant no signing authority or platform classification. Production trust remains disabled pending protected provisioning/custody. |

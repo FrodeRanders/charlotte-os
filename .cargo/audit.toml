@@ -1,0 +1,23 @@
+# All lockfile packages and informational categories remain in scope.
+# Project-local policy takes precedence over a developer's global audit.toml.
+[advisories]
+ignore = []
+informational_warnings = ["unmaintained", "unsound", "notice"]
+
+[database]
+url = "https://github.com/RustSec/advisory-db.git"
+fetch = true
+stale = false
+
+[output]
+deny = ["warnings"]
+format = "json"
+quiet = false
+
+[target]
+arch = []
+os = []
+
+[yanked]
+enabled = true
+update_index = true

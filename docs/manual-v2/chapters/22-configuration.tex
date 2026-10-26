@@ -16,6 +16,10 @@ and dimensions are in \repofile|docs/reference/resource-policy.md|.
 
 The following inputs have different authorities and lifetimes:
 \begin{description}
+    \item[Dependency advisory policy.] CI/local validation reads
+        \path{.cargo/audit.toml} and the scanner pin in \path{.cargo/audit-version}.
+        These configure validation, not a running node. Database contents refresh
+        at each invocation; a later advisory can reject the same lockfile.
     \item[Kernel resource policy.] Trusted Rust build input selects capacity
         ceilings, ordinary shares and platform reserves. It is compiled into
         the kernel and remains fixed throughout that boot.
