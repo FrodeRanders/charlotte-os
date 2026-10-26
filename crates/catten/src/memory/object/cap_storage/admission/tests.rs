@@ -21,11 +21,12 @@ fn increment(before: ([u64; 2], [u64; 2]), bytes: usize, count: u64) -> ([u64; 2
 pub(in crate::memory::object::cap_storage) fn run() {
     allocator_rejection::<(MemoryObjectCap, Record)>();
     allocator_rejection::<(AddressSpaceId, AddressSpaceCaps)>();
+    allocator_rejection::<(AddressSpaceId, Borrower)>();
     captured_classification();
     detached_lifetime();
     actual_pressure();
     crate::logln!(
-        "[memory capability node admission] 128 charged allocator rejections; captured \
+        "[memory capability node admission] 192 charged allocator rejections; captured \
          classification, actual ordinary/total exhaustion, trusted reserve, two-node partial \
          rejection, public allocate/move/copy/loan denial without source mutation, \
          published/detached charge lifetime and cleanup at exhaustion passed; no quota reset"
@@ -56,13 +57,17 @@ fn captured_classification() {
         Ok(())
     })
     .unwrap();
-    let bytes = Storage::allocation_bytes() + NamespaceStorage::allocation_bytes();
-    assert_eq!(snapshot(), increment(before, bytes, 2));
+    let borrower = owner.prepare_borrower().unwrap();
+    let bytes = Storage::allocation_bytes()
+        + NamespaceStorage::allocation_bytes()
+        + BorrowerStorage::allocation_bytes();
+    assert_eq!(snapshot(), increment(before, bytes, 3));
     memory::close_user_address_space_handle(handle).unwrap();
-    assert_eq!(snapshot(), increment(before, bytes, 2));
+    assert_eq!(snapshot(), increment(before, bytes, 3));
     let fresh = root();
     assert_eq!(fresh.id(), handle.id());
     assert_ne!(fresh, handle);
+    drop(borrower);
     owner.finish();
     assert_eq!(snapshot(), before);
     memory::close_user_address_space_handle(fresh).unwrap();
@@ -240,5 +245,104 @@ fn actual_pressure() {
         TOTAL_LIMIT[0],
         ORDINARY_LIMIT[1],
         TOTAL_LIMIT[1]
+    );
+}
+
+/// Run before other borrower-charge assertions, so restoring the old uncharged
+/// factory fails here without entering a deliberately held-lock test.
+pub(in crate::memory::object) fn borrower_pressure() {
+    let before = snapshot();
+    let source = root();
+    let target = root();
+    let trusted = root();
+    memory::budget::mark_platform(trusted);
+    let cap = allocate(source.id(), 1).unwrap();
+    let retained_cap = allocate(source.id(), 1).unwrap();
+    let target_cap = allocate(target.id(), 1).unwrap();
+    let trusted_cap = allocate(trusted.id(), 1).unwrap();
+    let retained_loan = lend_read(source.id(), retained_cap, target.id()).unwrap();
+    map_any(target.id(), retained_loan, false).unwrap();
+    let mut ordinary = pressure(false);
+    full(snapshot().1, ORDINARY_LIMIT);
+    drop(ordinary.pop().unwrap());
+    drop(ordinary.pop().unwrap());
+    let two_slots = snapshot();
+    let authority = crate::capability::node_admission_used();
+    let backing = memory::budget::used(source);
+    assert!(
+        matches!(
+            prepare_loan(source.id(), cap, target.id(), false),
+            Err(MemoryObjectError::ResourceLimit)
+        ),
+        "read-loan bypassed third-node metadata admission"
+    );
+    assert_eq!(snapshot(), two_slots);
+    assert_eq!(crate::capability::node_admission_used(), authority);
+    assert_eq!(memory::budget::used(source), backing);
+    {
+        let registry = MEMORY_OBJECTS.lock();
+        let entry = registry.lookup(source.id(), cap).unwrap();
+        let object = &registry.objects[&entry.object];
+        assert!(!entry.transfer_in_flight && !entry.delivery_pending);
+        assert_eq!(object.copy_pins, 0);
+        assert!(!object.lend_state.is_active());
+    }
+    write_bytes(source.id(), cap, &[0x5a]).unwrap();
+    // Write borrowing is inline: it must remain admissible with two slots.
+    drop(prepare_loan(source.id(), cap, target.id(), true).unwrap());
+    assert_eq!(snapshot(), two_slots);
+    assert_eq!(crate::capability::node_admission_used(), authority);
+    write_bytes(source.id(), cap, &[0xa5]).unwrap();
+    let trusted_loan = lend_read(source.id(), cap, trusted.id()).unwrap();
+    assert_eq!(snapshot().1, two_slots.1);
+    map_any(trusted.id(), trusted_loan, false).unwrap();
+    let reserve = pressure(true);
+    let total_full = snapshot();
+    full(total_full.0, TOTAL_LIMIT);
+    memory::budget::mark_platform(target);
+    let bytes = (Storage::allocation_bytes() + BorrowerStorage::allocation_bytes()) as u64;
+    // Mapped revocation needs no new node even at total exhaustion. Promotion
+    // cannot redirect either detached node's original ordinary reservation.
+    revoke_lend(source.id(), retained_cap, target.id(), retained_loan).unwrap();
+    let after_ordinary = (
+        [total_full.0[0] - bytes, total_full.0[1] - 2],
+        [total_full.1[0] - bytes, total_full.1[1] - 2],
+    );
+    assert_eq!(snapshot(), after_ordinary);
+    let authority = crate::capability::node_admission_used();
+    assert!(matches!(
+        prepare_loan(trusted.id(), trusted_cap, target.id(), false),
+        Err(MemoryObjectError::ResourceLimit)
+    ));
+    assert_eq!(snapshot(), after_ordinary);
+    assert_eq!(crate::capability::node_admission_used(), authority);
+    write_bytes(trusted.id(), trusted_cap, &[0x3c]).unwrap();
+    revoke_lend(source.id(), cap, trusted.id(), trusted_loan).unwrap();
+    assert_eq!(
+        snapshot(),
+        ([after_ordinary.0[0] - bytes, after_ordinary.0[1] - 2], after_ordinary.1,)
+    );
+    write_bytes(source.id(), cap, &[0xc3]).unwrap();
+    let counts = (ordinary.len(), reserve.len());
+    drop(reserve);
+    drop(ordinary);
+    close_cap(source.id(), cap).unwrap();
+    close_cap(source.id(), retained_cap).unwrap();
+    close_cap(target.id(), target_cap).unwrap();
+    close_cap(trusted.id(), trusted_cap).unwrap();
+    memory::close_user_address_space_handle(source).unwrap();
+    memory::close_user_address_space_handle(target).unwrap();
+    memory::close_user_address_space_handle(trusted).unwrap();
+    assert_eq!(snapshot(), before);
+    crate::logln!(
+        "[memory borrower admission] {} ordinary + {} reserve pressure nodes; \
+         payload/namespace/borrower layouts {}/{}/{} bytes; ordinary/total third-node rejection, \
+         two-node write cancellation, trusted read reserve and mapped revocation at exhaustion \
+         with original charges passed; exact baseline restored",
+        counts.0,
+        counts.1,
+        Storage::allocation_bytes(),
+        NamespaceStorage::allocation_bytes(),
+        BorrowerStorage::allocation_bytes()
     );
 }

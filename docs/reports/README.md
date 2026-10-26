@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Read-borrower node admission](audits/2026-10-26-security-borrower-node-admission.md) — Charges the third read-loan node to the existing configurable pool before source mutation, with real pressure and a failing old-factory control.
+
 - [SEC-18 backing abandonment](audits/2026-10-26-security-backing-abandonment.md) — Inert complete backing fallback, explicit ordinary cancellation, retained original charges and a failing old-Drop native control.
 
 - [SEC-15 freestanding x86 GCM owner](audits/2026-10-25-security-x86-gcm-owner.md) — Selects erasing software authentication state, rejects unsafe build overrides and checks the selected cipher in the signed guest probe.

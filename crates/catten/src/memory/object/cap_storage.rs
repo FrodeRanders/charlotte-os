@@ -1,12 +1,15 @@
 //! Prepared memory capability/namespace nodes and paired metadata retirement.
 use super::*;
 
-mod admission;
+pub(super) mod admission;
 pub(super) mod tests;
 
 type Storage = PreparedEntry<(MemoryObjectCap, Record), admission::Charge>;
 type NamespaceStorage = PreparedEntry<(AddressSpaceId, AddressSpaceCaps), admission::Charge>;
 pub(super) type Namespaces = AdmittedMap<AddressSpaceId, AddressSpaceCaps, admission::Charge>;
+pub(super) type Borrowers = AdmittedMap<AddressSpaceId, Borrower, admission::Charge>;
+pub(super) type BorrowerStorage = PreparedEntry<(AddressSpaceId, Borrower), admission::Charge>;
+pub(super) type RetiredBorrower = RetiredEntry<(AddressSpaceId, Borrower), admission::Charge>;
 
 #[derive(Debug)]
 struct Record {
@@ -55,6 +58,7 @@ struct Resources {
     namespace: Option<NamespaceStorage>,
     authority: Option<crate::capability::Reservation>,
     handle: super::super::AddressSpaceHandle,
+    platform: bool,
 }
 /// Own every prefix before the first factory. Abandonment retains storage and
 /// exact authority/account without allocator, registry or implicit Arc Drop.
@@ -79,10 +83,12 @@ impl Preparing {
             namespace: None,
             authority: Some(authority),
             handle,
+            platform: false,
         }));
         // Capture trusted classification once before any factory or hook.
         // Promotion/reuse cannot redirect these original node reservations.
         let platform = super::super::budget::platform_identity(handle.id()) == Some(handle);
+        owner.0.platform = platform;
         let result = (|| {
             before(0)?;
             owner.0.payload =
@@ -117,6 +123,12 @@ impl Preparing {
 
     pub(super) fn finish(self) {
         self.finish_with(|_| {});
+    }
+
+    /// Read-loan metadata uses the same captured destination class as its
+    /// payload/namespace nodes. Rejection precedes source escrow and pinning.
+    pub(super) fn prepare_borrower(&self) -> Result<BorrowerStorage, MemoryObjectError> {
+        admission::prepare(self.0.platform).map_err(|_| MemoryObjectError::ResourceLimit)
     }
 
     fn finish_with(mut self, after_storage: impl FnOnce(&Resources)) {

@@ -77,7 +77,7 @@ Review these groups together when changing workload targets:
 | --- | --- |
 | Larger objects | Per-object/domain/principal backing, snapshot bytes, mapping work and pin lifetime. A maximum-sized object must fit an ordinary snapshot. |
 | More mappings | Mapping nodes, scratch extents/namespaces and concurrent/retained snapshots. Preparation and uncertain cleanup also consume capacity. |
-| More memory capabilities | Unified authority plus payload/namespace node bytes and counts. Each overlapping preparation needs two temporary node slots, even for an established namespace; retained metadata stays charged. |
+| More memory capabilities | Unified authority plus shared payload/namespace/read-borrower node bytes and counts. Each overlapping preparation needs two temporary node slots, or three for a read loan, even for an established namespace; retained metadata stays charged. |
 | More outstanding RPCs | Capabilities, connections, pending/reply records, endpoint counts/slots, CQs, waiters, timers and observer lists. Queue backing rounds up to a power of two. |
 | More service publications | Lifecycle watches, observer lists and replacement overlap. A replacement admits its new watch before dropping the old one. |
 | More domains/threads or restarts | Root/principal metadata, thread bundles, stacks, tables and per-principal backing; retiring generations can remain charged. |

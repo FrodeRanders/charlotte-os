@@ -1,0 +1,576 @@
+{
+  "schema": "charlotte-security-evidence-v1",
+  "report_date": "2026-10-26",
+  "reviewed_revision": "316404a5381c5327da0a476d496e1f0ad246307f",
+  "scope": {
+    "finding": "SEC-07 R7-2/R7-3, C05/C18 dependencies",
+    "gap": "Read-loan borrower nodes used raw uncharged prepared/map/retired nodes outside existing memory-capability metadata admission. Shared authority counts did not charge these requested layouts.",
+    "correction": "Same existing byte/count pool and captured destination classification for payload, namespace and read-borrower nodes; all three reserve before source escrow/pinning.",
+    "unchanged": [
+      "memory_capability_nodes limits: 4 MiB/32768 total, 3 MiB/24576 ordinary",
+      "source backing sponsorship",
+      "joint authority and payload publication",
+      "loan mapping, invalidation, scratch and physical completion proofs",
+      "complete containing transfer/revocation/root ownership",
+      "wire/register ABI, userspace inputs, production trust"
+    ],
+    "new_pool_registry_custody_family_or_physical_replay_authority": false,
+    "finding_ledger": {
+      "corrected": 29,
+      "partial": 6,
+      "open": 3,
+      "production_trust": "disabled"
+    }
+  },
+  "source_sha256": {
+    "crates/catten/src/memory/object.rs": "6d710c9b011a22425cedcaba7043dad05872d1de98b53bae7a14cc22ff79615d",
+    "crates/catten/src/memory/object/borrower_storage_tests.rs": "bd744966c1f75ac5590c6615b578bb1b75759ad5d8a190a60afed572465a2431",
+    "crates/catten/src/memory/object/cap_storage.rs": "ddc8d97d98260c681d78aa4a8d9ed7e9d4f9a8bae5b25cfeffe43cb2ed08315b",
+    "crates/catten/src/memory/object/cap_storage/admission.rs": "964f7c350b5f0d04a70c5e032d56cfaab0e0756b58909e9f20c5dea1272dd139",
+    "crates/catten/src/memory/object/cap_storage/admission/tests.rs": "cacc5a9da1beb999f79753dde3b5baa0ca30c68cccccc9dc102b6ed5a7ceda21",
+    "crates/catten/src/memory/object/cap_storage/tests.rs": "59e9ee765540134b085b015dee32824ba81ac1edc2ce59a12dc443e63bb0d468",
+    "crates/catten/src/memory/object/transfer.rs": "1983824fb4325839ca38fce87c0daa55bd720a53a0d278cbdb1b794f6367815b"
+  },
+  "checks": {
+    "strict_base_kernel_clippy": {
+      "aarch64": "pass",
+      "x86_64": "pass",
+      "command": "CATTEN_<ARCH>_SERVICE_BUNDLE=<absolute signed bundle> cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi -- -D warnings"
+    },
+    "frozen_final_source_restored_after_negative": "all seven Rust files byte-identical",
+    "resource_policy_harness": {
+      "command": "python3 scripts/tests/test-resource-policy.py",
+      "passed": 3,
+      "failed": 0,
+      "script_sha256": "86fb3d1f5d71813791aa7d79159a12af0c504633a4356d0ff7b8da14b3e3f6e6",
+      "policy_input_sha256": {
+        "crates/catten/src/resource_policy.rs": "e4f983218bcf62b4caac2ca87f6f0daa036fbf626ae25696810f24db1ea5853d",
+        "crates/catten/src/resource_policy/defaults.rs": "dde1270509f8b4624d806caf7bc7f3ff389852b7daf485e38e51c04dff0061d9",
+        "crates/catten/src/resource_policy/larger.rs": "1b1931ff708012be415b6f6f28429ab77fc919c79613025aefedc764d23a885c"
+      }
+    },
+    "shared_retirement_nodes": {
+      "compile_command": "rustc --edition=2024 --test crates/catten/src/klib/collections/retirement_list.rs -o target/host-self-tests/borrower-retirement-list-tests",
+      "test_command": "target/host-self-tests/borrower-retirement-list-tests",
+      "source_sha256": "ef0447d659221379641fad66a9d93489574062cebb855d01e3247496716a0d65",
+      "test_source_sha256": "063b0983982913ff150fc0ee6af46c5fa2c05418814adfe94fe653129cbbaf69",
+      "passed": 16,
+      "failed": 0,
+      "results": [
+        "",
+        "running 16 tests",
+        "test tests::abandoned_entry_and_list_do_not_destroy_payloads ... ok",
+        "test tests::admission_refund_follows_actual_payload_and_node_deallocation ... ok",
+        "test tests::admitted_map_abandonment_retains_owning_payloads_without_allocator_work ... ok",
+        "test tests::admitted_map_keeps_detached_node_identity_without_allocator_work ... ok",
+        "test tests::charged_map_keeps_admission_through_detachment_payload_and_node_free ... ok",
+        "test tests::empty_preparation_rejects_without_publishing_payload ... ok",
+        "test tests::explicit_payload_disposal_precedes_node_deallocation ... ok",
+        "test tests::independent_heads_preserve_node_identity_and_owned_payloads ... ok",
+        "test tests::abandonment_and_interrupted_disposal_retain_admission_and_storage ... ok",
+        "test tests::ordered_detached_owner_and_list_abandonment_do_no_allocator_work ... ok",
+        "test tests::interrupted_explicit_disposal_retains_its_node ... ok",
+        "test tests::ordered_relink_lookup_and_detachment_do_no_allocator_work ... ok",
+        "test tests::prepared_storage_can_bind_original_admission_before_publication ... ok",
+        "test tests::retained_payload_can_outlive_its_node_without_allocator_work_in_handoff ... ok",
+        "test tests::unused_and_rejected_storage_refund_once_after_allocated_node_is_freed ... ok",
+        "test tests::staging_filtering_requeue_and_release_do_not_allocate ... ok",
+        "",
+        "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        ""
+      ]
+    },
+    "formatting": "pass",
+    "whitespace": "pass"
+  },
+  "native_negative_controls": [
+    {
+      "arch": "aarch64",
+      "instance": "borrower-admission-negative",
+      "cpus": 4,
+      "revision": "316404a5381c5327da0a476d496e1f0ad246307f",
+      "kernel_sha256": "0e2ffeb7b9d9d15c75b8e711d4a2eec535b7e750848daf34ffae5e7b56f4710e",
+      "boot_image_sha256": "eb6fb789f84eddc7641bdf70cc37c69df69801dfeb9218fc458ba32046e37733",
+      "initial_disk_sha256": "6c06135f6e3926b94a41d83512ee69e024540f62a525b02680974c1faaf4fc41",
+      "bundle_sha256": {
+        "agent.elf": "7c9b52a0bed0cc6ddc324af244abfce7a4939132979a7d3b8f34223cd1da9842",
+        "cclient.elf": "47813589646c0657ba4eb5a5a6af243b1f1684a083d780a9744ab3bcc5706248",
+        "client.elf": "5c7ac1151fa707b89db82b49bbefccfa2442f0dea4b213867dc08bdc5c510525",
+        "clusterctl.elf": "018f80fbf1ce9a74f1d99d2379a4d6a6b0bca2b48cf1bcc7467fbba311a72794",
+        "deployd.elf": "69dd9d198b2ab85ec1ea04c8f4dcc7805e0f3b65fe6fd74d1e48d3d479f90547",
+        "disco.elf": "99a7f2c90cb3ef9c0af49e176848aed3305a5ae2c1681855d3af1ef8c27f6462",
+        "dns.elf": "78109d95c5a8bd708816a1b36fac406e68780e4b36854b2b7ecb9544eebef192",
+        "echo.elf": "5c59747d8f6ce8141f0f6ed1c65d4617002cc5338481c1a7ef2060e2b448b5a5",
+        "frouter.elf": "805911205d6254f7b21b5b564bf24cb75a8de4bdf910e435ba38776e31e2bfaa",
+        "fs.elf": "c20931f30fbf42bd93046fa76c8ecb41ac1c496696e90e57e4db159037091a64",
+        "grantctl.elf": "039c27369e2371071c3d0b847b48c33c7f48e237822713577371b4cd793f898d",
+        "greet.elf": "8645845a750b0b312aab080787b8cda772e06d830e027ff3cf3ef11b9fc9c9bb",
+        "httpd.elf": "9034668d4bf50e07b8bd26309d02a6f17222a8e29d252204589938d868e5aae4",
+        "kafka.elf": "11e9b77f45723a6e60d8a0e7d581ff297b6b80f0044049fa389d0abc9752e325",
+        "kafka_fence_smoke.elf": "a3d63ba5b4f3c50c5ca32185521387d8ac98228113faef95541afd706170b9c0",
+        "kafka_smoke.elf": "46a2efaf5ffbab422ada37451e54b5565562dd44db070be2eae0b6b03107e3c2",
+        "kafka_step.elf": "8d8dd751dd49925569e3556d1f6a705d7ba4023708b459ab8ff3dff6325c2bef",
+        "kafka_step_input.elf": "a7e207a75d68acca60c3d5f5425fefb6ccf0a244cb7219dc42ffab47cd30202a",
+        "kafka_step_proc.elf": "8fef98dbe182877986eb874ebeb0ff64ae80d4d64e1a5604f7f9cfbec8ea2efc",
+        "nclient.elf": "34e54fb0b852f54f997a56bc70d6ddfd037bdab74ce58d6b48188f8e27f52f3f",
+        "net.elf": "6655d31e32759ab37b9a31bbfb5a691d91621123cfaf661c1c03514583f45bb0",
+        "ns.elf": "de73710ac3c0984734eb65d4113eb509c8a8a6837d50b8095d2573d99b204796",
+        "nvme.elf": "548ec21f81e278d77749ee6bac9e50b240bc606424f5a829ae08313131a23272",
+        "nvme_client.elf": "d14e74aebdf58aa6766a06edc877a740f695f7e6eccb78864ae1d3163df0a187",
+        "objstore.elf": "ea21184045b8391e4457f3b3b9b3bb369ef1252c71aef06143be773d0f832259",
+        "objstore_client.elf": "55cbd339afa0d78c9dc71a349c94a4ce4f815417fc82dec1e275b50944372034",
+        "observe.elf": "ff0f5552eb0d3e10edcf57b7bee59d5d3a3ea2bb111a76f68498890cd7e1de22",
+        "raft.elf": "281d4f280903c48e5800326f6826a9b09f5ec8f46dae474cb25e86e4ac4eeda1",
+        "rclient.elf": "a4b9d6d8102ec8bb8449f575d4b5580cd2f3ea525f9f26b8c991202ded52d314",
+        "relmsg.elf": "eeff85710ddd9c4270c2999651308dec8914b3b314ba737ceb6b86989653a9dd",
+        "rng.elf": "a948fdc8f30934bebbc22c85c27e1da76f00b6e6b327bfd27dda1f0a7a655686",
+        "s3.elf": "cc524ffc152d78bc1ad5319a9ffb2d82e1944ef521168e3a7787b9a89547145d",
+        "s3_smoke.elf": "2abe4a752de84bdfa15e93fa38bad3c92b02e2ef2b12fb3d1d0e8091762cb253",
+        "security_probe.elf": "ec5a2a8013149323858942a013dcfcbe136acf1a59b335f1cec05e3b00289c59",
+        "servicemgr.elf": "7e100f389bf431226ae0394238aa1857b72197f3df64823111d44347383bd12f",
+        "shutdown_probe.elf": "58cd8fb289f57358a06df005afeff7a3c242ad4a43ee0d9a062f1fab9bd9ac25",
+        "sitas-user.elf": "fbf1b47a721d84498a64e43bc626a7f962a52d3740e3fa7e14adaeea7fa5f311",
+        "tcpclient.elf": "6eeb6137839b0e78c3c3b27234ee7ee1f7aaa9991a5f1d457884dab87d9b7bbe",
+        "tcpip.elf": "0e24f771f43a3fea52539b8c65721c72957b4e3a09e2fbf42e45394591f91ab6",
+        "time.elf": "d6bf265479d64df812bcc29aa6224427be7562746b7239daef70093ac85d70f7",
+        "uart.elf": "55a8c43ecc6489c1fb9fa1827cfd8e2881068a382918d84eebf4369dbc502009"
+      },
+      "tracked_diff_sha256": "fb823c20d93c763cd532080e349fd5f8dd760f1874202a0e2133f0b7cbfeee2c",
+      "mutation": "Restore uncharged Borrowers/BorrowerStorage/RetiredBorrower aliases and raw try_new factory only; all other final Rust and fixtures unchanged",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 scripts/run-aarch64.sh --no-network --instance borrower-admission-negative --fresh-storage --timeout 120",
+      "exit_status": 1,
+      "result": {
+        "reason": "kernel-panic",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 8.344907874939963
+      },
+      "diagnostic": "Kernel panic:\npanicked at crates/catten/src/memory/object/cap_storage/admission/tests.rs:272:5:\nread-loan bypassed third-node metadata admission\nKernel backtrace (raw return addresses; text=0xffffffff80000000..0xffffffff804b69bc, sp=0xffff00005cc29020, fp=0xffff00005cc290a0):\n  #00 0xffffffff80475750\n  #01 0xffffffff803c7cec\n  #02 0xffffffff80481538\n  #03 0xffffffff800111d8\n***\n",
+      "source_sha256": {
+        "crates/catten/src/memory/object.rs": "6d710c9b011a22425cedcaba7043dad05872d1de98b53bae7a14cc22ff79615d",
+        "crates/catten/src/memory/object/borrower_storage_tests.rs": "bd744966c1f75ac5590c6615b578bb1b75759ad5d8a190a60afed572465a2431",
+        "crates/catten/src/memory/object/cap_storage.rs": "73d3ed6461135a5c5a6b4a531ac2378fb3eedb2f733779c08d1ed3da3049a3e9",
+        "crates/catten/src/memory/object/cap_storage/admission.rs": "964f7c350b5f0d04a70c5e032d56cfaab0e0756b58909e9f20c5dea1272dd139",
+        "crates/catten/src/memory/object/cap_storage/admission/tests.rs": "cacc5a9da1beb999f79753dde3b5baa0ca30c68cccccc9dc102b6ed5a7ceda21",
+        "crates/catten/src/memory/object/cap_storage/tests.rs": "59e9ee765540134b085b015dee32824ba81ac1edc2ce59a12dc443e63bb0d468",
+        "crates/catten/src/memory/object/transfer.rs": "1983824fb4325839ca38fce87c0daa55bd720a53a0d278cbdb1b794f6367815b"
+      },
+      "serial_sha256": "db209d92937a5f30ac6aa26e2db6d939ddbb59d32f50dd0e265eaa63e61595c0"
+    }
+  ],
+  "native_runs": [
+    {
+      "arch": "aarch64",
+      "instance": "borrower-admission-arm",
+      "cpus": 4,
+      "revision": "316404a5381c5327da0a476d496e1f0ad246307f",
+      "kernel_sha256": "c93018d56e1d9b4ca376f17f06f9c25d4ca4ea37d18127cec255d0b93a699065",
+      "boot_image_sha256": "11347eaf39d96dee07d07d6cf8849c85fc9aaa5cd73261ea6d9b4bf6bd1ed943",
+      "initial_disk_sha256": "6c06135f6e3926b94a41d83512ee69e024540f62a525b02680974c1faaf4fc41",
+      "bundle_sha256": {
+        "agent.elf": "7c9b52a0bed0cc6ddc324af244abfce7a4939132979a7d3b8f34223cd1da9842",
+        "cclient.elf": "47813589646c0657ba4eb5a5a6af243b1f1684a083d780a9744ab3bcc5706248",
+        "client.elf": "5c7ac1151fa707b89db82b49bbefccfa2442f0dea4b213867dc08bdc5c510525",
+        "clusterctl.elf": "018f80fbf1ce9a74f1d99d2379a4d6a6b0bca2b48cf1bcc7467fbba311a72794",
+        "deployd.elf": "69dd9d198b2ab85ec1ea04c8f4dcc7805e0f3b65fe6fd74d1e48d3d479f90547",
+        "disco.elf": "99a7f2c90cb3ef9c0af49e176848aed3305a5ae2c1681855d3af1ef8c27f6462",
+        "dns.elf": "78109d95c5a8bd708816a1b36fac406e68780e4b36854b2b7ecb9544eebef192",
+        "echo.elf": "5c59747d8f6ce8141f0f6ed1c65d4617002cc5338481c1a7ef2060e2b448b5a5",
+        "frouter.elf": "805911205d6254f7b21b5b564bf24cb75a8de4bdf910e435ba38776e31e2bfaa",
+        "fs.elf": "c20931f30fbf42bd93046fa76c8ecb41ac1c496696e90e57e4db159037091a64",
+        "grantctl.elf": "039c27369e2371071c3d0b847b48c33c7f48e237822713577371b4cd793f898d",
+        "greet.elf": "8645845a750b0b312aab080787b8cda772e06d830e027ff3cf3ef11b9fc9c9bb",
+        "httpd.elf": "9034668d4bf50e07b8bd26309d02a6f17222a8e29d252204589938d868e5aae4",
+        "kafka.elf": "11e9b77f45723a6e60d8a0e7d581ff297b6b80f0044049fa389d0abc9752e325",
+        "kafka_fence_smoke.elf": "a3d63ba5b4f3c50c5ca32185521387d8ac98228113faef95541afd706170b9c0",
+        "kafka_smoke.elf": "46a2efaf5ffbab422ada37451e54b5565562dd44db070be2eae0b6b03107e3c2",
+        "kafka_step.elf": "8d8dd751dd49925569e3556d1f6a705d7ba4023708b459ab8ff3dff6325c2bef",
+        "kafka_step_input.elf": "a7e207a75d68acca60c3d5f5425fefb6ccf0a244cb7219dc42ffab47cd30202a",
+        "kafka_step_proc.elf": "8fef98dbe182877986eb874ebeb0ff64ae80d4d64e1a5604f7f9cfbec8ea2efc",
+        "nclient.elf": "34e54fb0b852f54f997a56bc70d6ddfd037bdab74ce58d6b48188f8e27f52f3f",
+        "net.elf": "6655d31e32759ab37b9a31bbfb5a691d91621123cfaf661c1c03514583f45bb0",
+        "ns.elf": "de73710ac3c0984734eb65d4113eb509c8a8a6837d50b8095d2573d99b204796",
+        "nvme.elf": "548ec21f81e278d77749ee6bac9e50b240bc606424f5a829ae08313131a23272",
+        "nvme_client.elf": "d14e74aebdf58aa6766a06edc877a740f695f7e6eccb78864ae1d3163df0a187",
+        "objstore.elf": "ea21184045b8391e4457f3b3b9b3bb369ef1252c71aef06143be773d0f832259",
+        "objstore_client.elf": "55cbd339afa0d78c9dc71a349c94a4ce4f815417fc82dec1e275b50944372034",
+        "observe.elf": "ff0f5552eb0d3e10edcf57b7bee59d5d3a3ea2bb111a76f68498890cd7e1de22",
+        "raft.elf": "281d4f280903c48e5800326f6826a9b09f5ec8f46dae474cb25e86e4ac4eeda1",
+        "rclient.elf": "a4b9d6d8102ec8bb8449f575d4b5580cd2f3ea525f9f26b8c991202ded52d314",
+        "relmsg.elf": "eeff85710ddd9c4270c2999651308dec8914b3b314ba737ceb6b86989653a9dd",
+        "rng.elf": "a948fdc8f30934bebbc22c85c27e1da76f00b6e6b327bfd27dda1f0a7a655686",
+        "s3.elf": "cc524ffc152d78bc1ad5319a9ffb2d82e1944ef521168e3a7787b9a89547145d",
+        "s3_smoke.elf": "2abe4a752de84bdfa15e93fa38bad3c92b02e2ef2b12fb3d1d0e8091762cb253",
+        "security_probe.elf": "ec5a2a8013149323858942a013dcfcbe136acf1a59b335f1cec05e3b00289c59",
+        "servicemgr.elf": "7e100f389bf431226ae0394238aa1857b72197f3df64823111d44347383bd12f",
+        "shutdown_probe.elf": "58cd8fb289f57358a06df005afeff7a3c242ad4a43ee0d9a062f1fab9bd9ac25",
+        "sitas-user.elf": "fbf1b47a721d84498a64e43bc626a7f962a52d3740e3fa7e14adaeea7fa5f311",
+        "tcpclient.elf": "6eeb6137839b0e78c3c3b27234ee7ee1f7aaa9991a5f1d457884dab87d9b7bbe",
+        "tcpip.elf": "0e24f771f43a3fea52539b8c65721c72957b4e3a09e2fbf42e45394591f91ab6",
+        "time.elf": "d6bf265479d64df812bcc29aa6224427be7562746b7239daef70093ac85d70f7",
+        "uart.elf": "55a8c43ecc6489c1fb9fa1827cfd8e2881068a382918d84eebf4369dbc502009"
+      },
+      "tracked_diff_sha256": "3c2d1258bbba996141d545a91926a7bb29eb18ee1800fdf4a3d857f8a5b5d01c",
+      "backend": "smmuv3",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20012 CATTEN_DEPLOY_HOST_PORT=20176 scripts/run-aarch64.sh --security-test --http-test --instance borrower-admission-arm --fresh-storage --timeout 300",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 20,
+        "failed": 0,
+        "pending": 0
+      },
+      "security_publication_generations": [
+        1,
+        2
+      ],
+      "http_checks_passed": 14,
+      "http_probe_results": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.331s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.324s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.331s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.18s; ingress recovered"
+      ],
+      "http_transport_retries": [
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: EOF followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: abortive peer closes followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 2/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        }
+      ],
+      "selected_controls": [
+        "[+     1.865504] [memory borrower admission] 24537 ordinary + 8189 reserve pressure nodes; payload/namespace/borrower layouts 64/64/56 bytes; ordinary/total third-node rejection, two-node write cancellation, trusted read reserve and mapped revocation at exhaustion with original charges passed; exact baseline restored",
+        "[+     1.882328] [memory borrower storage] 128 pre-escrow rejections, 64 unused cancellations, 64 heap-held two-reader relinks/detaches and 32 reader-preserving revocation/namespace closes passed; borrower cancellation keeps storage before authority refund",
+        "[+     1.924718] [memory capability node pressure] 24544 ordinary + 8189 reserve unused payload nodes; payload/namespace layouts 64/64 bytes, ordinary/total byte ceilings 3145728/4194304, node ceilings 24576/32768; exact baseline after real cleanup and root reuse passed",
+        "[+     1.925304] [memory capability node admission] 192 charged allocator rejections; captured classification, actual ordinary/total exhaustion, trusted reserve, two-node partial rejection, public allocate/move/copy/loan denial without source mutation, published/detached charge lifetime and cleanup at exhaustion passed; no quota reset",
+        "[+     3.960192] [IPC memory delivery] guessed move/copy/result use rejected; receive rollback, vector delivery, cancellation, endpoint/root cleanup and observed ownership passed"
+      ],
+      "borrower_pressure": {
+        "ordinary_nodes": 24537,
+        "reserve_nodes": 8189,
+        "payload_namespace_borrower_bytes": [
+          64,
+          64,
+          56
+        ]
+      },
+      "serial_sha256": "239818959c947389c5e4b44864462fa356316c175ac416fc2c111e9bce644600"
+    },
+    {
+      "arch": "x86_64",
+      "instance": "borrower-admission-intel",
+      "cpus": 4,
+      "revision": "316404a5381c5327da0a476d496e1f0ad246307f",
+      "kernel_sha256": "1c044d6e1697cb37c453a56a72f9dc6e507bc3235d751eb44b9a11b9ec66a694",
+      "boot_image_sha256": "945acfb17ee1db1b4dac99212c4960e71b7caffbbaa961f35131428e223df85f",
+      "initial_disk_sha256": "57910192506c25a8070344341c2fe8c897fbb74add47ec91b40bb47b63168089",
+      "bundle_sha256": {
+        "agent.elf": "b07861a2ee5f9509f0a5f1d881041b00f1e7665ca467f698f767c8f065edfdd2",
+        "ahci.elf": "9e21364e4ea8045ad845ddb20a548c4381928666c2f3af96475e01242757bb58",
+        "client.elf": "7587b5e8d3fed85777d90946ce3b6424c57eb228d92330fc15fb58922ed25c7d",
+        "clusterctl.elf": "1b6de1cf910e8dea6a12f68958d83e3af60c3c8958556ac4b203d5398fc4d6fb",
+        "deployd.elf": "ab904ea05674eef9a3fcf1857524391d7ee772b3da0530286750d82f700fc671",
+        "disco.elf": "53a27b5f8747f2feeffb110cd50b55f3e6c558f37ee64d97d7a44c1315fbe7f6",
+        "dns.elf": "cea0a8fa1f24f574965b0a4094cc3bcee971ba980b509d7892a361ca01941699",
+        "e1000e.elf": "cc5b64a43a9ab341211c627d2e52178cdf6464ffbea5e1a34248d2d0b9d94662",
+        "echo.elf": "2408de7305d57704c740871f792ff7598b11cee9fbbe2f58988be54755d918cc",
+        "frouter.elf": "ce5ff26fa4b10becf0e20b1298a0777ece40a9bfd8bfa37bfc381561107ac5cd",
+        "fs.elf": "5f780ba292deeb028c342301ba7907d52fafd4f43189e3fe6d4344178f744eb1",
+        "grantctl.elf": "bd6e4a653f916116ad0d37a705b3bf7a34313047ad270fcda3b6ea9ba1e44d37",
+        "greet.elf": "2a1e920cca22ca6d8d7c2f136d6337d0f7389859387c9c3dc274739cf92564f1",
+        "httpd.elf": "f19d778df57a7d208e3487afd0cdbfc3d694246f2d681e1753df545f6a1cd57f",
+        "kafka.elf": "664c10c762a7591a4ad663430ed3299f644539958c580aa69288df8227094a68",
+        "kafka_smoke.elf": "7ff312e507ab5fa3a88415e09e60860a531ac3fcb0656331e56a9e5b39d7c371",
+        "nclient.elf": "f195c04718844b77f594339e813f39abd7fca746702d7868096b9cdfcbb36d94",
+        "net.elf": "021ca368c9a4f784590264e7722e34431b721041aa14e157e202ca7053b1142f",
+        "ns.elf": "59c1c0521b550020ecb67cdb0a46ea72fe3ce7038611800ad84f68f8bfc13b28",
+        "nvme.elf": "f02e4d95477de1d645fa58285cacb9c82b6e369b4c48e5b5bbdbfea8de18198e",
+        "nvme_client.elf": "ca57cec0ab5136b898acd7a320e8efba6c26480910f6a08fbd6e4448f0e41acd",
+        "objstore.elf": "927faf09a7e20241d3b3f069d26d196e1b2ca38450563e1aee2a4f9affcb287e",
+        "objstore_client.elf": "ea65f4c0c3843d1fdd13157a40142f8798d8183a0f14e3e66c204ed5523f9828",
+        "observe.elf": "2a3b9d9a4108c853ec4a0781a90776783d7b827be5a999cb5097017e3bbf04b7",
+        "raft.elf": "fd92b8cc8a2cb6d254a7a57bc92779dd2cafe126c46f9b9ca79f63dfae028fb9",
+        "rclient.elf": "b6f1f62fbccfe439044f5c360dcb1ac2935a458deaab29d151cbb1336e6396fa",
+        "relmsg.elf": "b4a1e6176e4192bece00b747ec6f97dc7d4f1d289477184f853991ef91ceab8a",
+        "rng.elf": "933b6da80757471d1a20f11594588db9992bddbd3f8a3affa07ea85d92c20424",
+        "s3.elf": "3253a756efc4c64f4fe6e68fc28eae068a85c59abbffceab90c43e218fa9e8de",
+        "s3_smoke.elf": "bf0d862369f2b3e852099ccacef7ad38e159319e20375b2e347281483f9dc417",
+        "security_probe.elf": "1a14d1c94e8410a0d33c04576569360603976a03bb0618ea23de04af5b311edd",
+        "servicemgr.elf": "61474b6524f95d6bb5c004ec665c3274241b4bf0292a118c5b18def84238fa2e",
+        "shutdown_probe.elf": "7fdb39d2fd2e938820d596358cbf8dc8d7b81fd61c417fad076493dd90301b3a",
+        "tcpclient.elf": "3c196aa3478e4838a88e6af40e6761b568b86fe61c4361fd156d332b949074cf",
+        "tcpip.elf": "746d3b20e2fdd4dcc77a1bdd9267a6128607025584b60e46509e59fdbd322227",
+        "time.elf": "17e06ce8b749531328c5b0dc53dbaa29928721420d696f8b3752cdbd6ba30bf1",
+        "virtio_blk.elf": "8cf9c557e37eaa51e360ab454fe5142a759e940d5d53986497410bf981dd65cb"
+      },
+      "tracked_diff_sha256": "3b790a8ae3d0547533675a8c6721d6b56f2a14e4d2355c3de6c281a41ed672c5",
+      "backend": "intel",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20013 CATTEN_DEPLOY_HOST_PORT=20177 scripts/run-x86_64.sh --security-test --http-test --iommu intel --instance borrower-admission-intel --fresh-storage --timeout 480",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 18,
+        "failed": 0,
+        "pending": 0
+      },
+      "security_publication_generations": [
+        1,
+        2
+      ],
+      "http_checks_passed": 14,
+      "http_probe_results": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.303s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.264s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.281s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.23s; ingress recovered"
+      ],
+      "http_transport_retries": [
+        {
+          "diagnostic": "HTTP transport TimeoutError; retry 1/2",
+          "eventual_probe_result": "PASS: initial metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: EOF followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: abortive peer closes followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 2/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        }
+      ],
+      "selected_controls": [
+        "[+     1.801754] [memory borrower admission] 24521 ordinary + 8189 reserve pressure nodes; payload/namespace/borrower layouts 64/64/56 bytes; ordinary/total third-node rejection, two-node write cancellation, trusted read reserve and mapped revocation at exhaustion with original charges passed; exact baseline restored",
+        "[+     1.818586] [memory borrower storage] 128 pre-escrow rejections, 64 unused cancellations, 64 heap-held two-reader relinks/detaches and 32 reader-preserving revocation/namespace closes passed; borrower cancellation keeps storage before authority refund",
+        "[+     1.932090] [memory capability node pressure] 24528 ordinary + 8189 reserve unused payload nodes; payload/namespace layouts 64/64 bytes, ordinary/total byte ceilings 3145728/4194304, node ceilings 24576/32768; exact baseline after real cleanup and root reuse passed",
+        "[+     1.933484] [memory capability node admission] 192 charged allocator rejections; captured classification, actual ordinary/total exhaustion, trusted reserve, two-node partial rejection, public allocate/move/copy/loan denial without source mutation, published/detached charge lifetime and cleanup at exhaustion passed; no quota reset",
+        "[+     4.357524] [IPC memory delivery] guessed move/copy/result use rejected; receive rollback, vector delivery, cancellation, endpoint/root cleanup and observed ownership passed"
+      ],
+      "borrower_pressure": {
+        "ordinary_nodes": 24521,
+        "reserve_nodes": 8189,
+        "payload_namespace_borrower_bytes": [
+          64,
+          64,
+          56
+        ]
+      },
+      "serial_sha256": "91aa46dff80cb642c8f917a9542c5241b85ee3b1767b67ada0639869d7815a8f"
+    },
+    {
+      "arch": "x86_64",
+      "instance": "borrower-admission-amd",
+      "cpus": 4,
+      "revision": "316404a5381c5327da0a476d496e1f0ad246307f",
+      "kernel_sha256": "f5afb040d4a66b983036d44cbb14bfd13f7e7bc49d57612e54882ea786934e4a",
+      "boot_image_sha256": "124091fa42c9697e6ba2031d9acbfb8c919fe34a784cea792d43ae8475ccaf77",
+      "initial_disk_sha256": "57910192506c25a8070344341c2fe8c897fbb74add47ec91b40bb47b63168089",
+      "bundle_sha256": {
+        "agent.elf": "b07861a2ee5f9509f0a5f1d881041b00f1e7665ca467f698f767c8f065edfdd2",
+        "ahci.elf": "9e21364e4ea8045ad845ddb20a548c4381928666c2f3af96475e01242757bb58",
+        "client.elf": "7587b5e8d3fed85777d90946ce3b6424c57eb228d92330fc15fb58922ed25c7d",
+        "clusterctl.elf": "1b6de1cf910e8dea6a12f68958d83e3af60c3c8958556ac4b203d5398fc4d6fb",
+        "deployd.elf": "ab904ea05674eef9a3fcf1857524391d7ee772b3da0530286750d82f700fc671",
+        "disco.elf": "53a27b5f8747f2feeffb110cd50b55f3e6c558f37ee64d97d7a44c1315fbe7f6",
+        "dns.elf": "cea0a8fa1f24f574965b0a4094cc3bcee971ba980b509d7892a361ca01941699",
+        "e1000e.elf": "cc5b64a43a9ab341211c627d2e52178cdf6464ffbea5e1a34248d2d0b9d94662",
+        "echo.elf": "2408de7305d57704c740871f792ff7598b11cee9fbbe2f58988be54755d918cc",
+        "frouter.elf": "ce5ff26fa4b10becf0e20b1298a0777ece40a9bfd8bfa37bfc381561107ac5cd",
+        "fs.elf": "5f780ba292deeb028c342301ba7907d52fafd4f43189e3fe6d4344178f744eb1",
+        "grantctl.elf": "bd6e4a653f916116ad0d37a705b3bf7a34313047ad270fcda3b6ea9ba1e44d37",
+        "greet.elf": "2a1e920cca22ca6d8d7c2f136d6337d0f7389859387c9c3dc274739cf92564f1",
+        "httpd.elf": "f19d778df57a7d208e3487afd0cdbfc3d694246f2d681e1753df545f6a1cd57f",
+        "kafka.elf": "664c10c762a7591a4ad663430ed3299f644539958c580aa69288df8227094a68",
+        "kafka_smoke.elf": "7ff312e507ab5fa3a88415e09e60860a531ac3fcb0656331e56a9e5b39d7c371",
+        "nclient.elf": "f195c04718844b77f594339e813f39abd7fca746702d7868096b9cdfcbb36d94",
+        "net.elf": "021ca368c9a4f784590264e7722e34431b721041aa14e157e202ca7053b1142f",
+        "ns.elf": "59c1c0521b550020ecb67cdb0a46ea72fe3ce7038611800ad84f68f8bfc13b28",
+        "nvme.elf": "f02e4d95477de1d645fa58285cacb9c82b6e369b4c48e5b5bbdbfea8de18198e",
+        "nvme_client.elf": "ca57cec0ab5136b898acd7a320e8efba6c26480910f6a08fbd6e4448f0e41acd",
+        "objstore.elf": "927faf09a7e20241d3b3f069d26d196e1b2ca38450563e1aee2a4f9affcb287e",
+        "objstore_client.elf": "ea65f4c0c3843d1fdd13157a40142f8798d8183a0f14e3e66c204ed5523f9828",
+        "observe.elf": "2a3b9d9a4108c853ec4a0781a90776783d7b827be5a999cb5097017e3bbf04b7",
+        "raft.elf": "fd92b8cc8a2cb6d254a7a57bc92779dd2cafe126c46f9b9ca79f63dfae028fb9",
+        "rclient.elf": "b6f1f62fbccfe439044f5c360dcb1ac2935a458deaab29d151cbb1336e6396fa",
+        "relmsg.elf": "b4a1e6176e4192bece00b747ec6f97dc7d4f1d289477184f853991ef91ceab8a",
+        "rng.elf": "933b6da80757471d1a20f11594588db9992bddbd3f8a3affa07ea85d92c20424",
+        "s3.elf": "3253a756efc4c64f4fe6e68fc28eae068a85c59abbffceab90c43e218fa9e8de",
+        "s3_smoke.elf": "bf0d862369f2b3e852099ccacef7ad38e159319e20375b2e347281483f9dc417",
+        "security_probe.elf": "1a14d1c94e8410a0d33c04576569360603976a03bb0618ea23de04af5b311edd",
+        "servicemgr.elf": "61474b6524f95d6bb5c004ec665c3274241b4bf0292a118c5b18def84238fa2e",
+        "shutdown_probe.elf": "7fdb39d2fd2e938820d596358cbf8dc8d7b81fd61c417fad076493dd90301b3a",
+        "tcpclient.elf": "3c196aa3478e4838a88e6af40e6761b568b86fe61c4361fd156d332b949074cf",
+        "tcpip.elf": "746d3b20e2fdd4dcc77a1bdd9267a6128607025584b60e46509e59fdbd322227",
+        "time.elf": "17e06ce8b749531328c5b0dc53dbaa29928721420d696f8b3752cdbd6ba30bf1",
+        "virtio_blk.elf": "8cf9c557e37eaa51e360ab454fe5142a759e940d5d53986497410bf981dd65cb"
+      },
+      "tracked_diff_sha256": "6f15e287d14875f814d1f4b06fcda4a9fe3b4af80f4abc3719629959975bb722",
+      "backend": "amd",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20014 CATTEN_DEPLOY_HOST_PORT=20178 scripts/run-x86_64.sh --security-test --http-test --iommu amd --instance borrower-admission-amd --fresh-storage --timeout 480",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 18,
+        "failed": 0,
+        "pending": 0
+      },
+      "security_publication_generations": [
+        1,
+        2
+      ],
+      "http_checks_passed": 14,
+      "http_probe_results": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.377s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.277s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.371s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.22s; ingress recovered"
+      ],
+      "http_transport_retries": [
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: EOF followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: abortive peer closes followed by a successful metrics request"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 1/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        },
+        {
+          "diagnostic": "HTTP transport ConnectionResetError; retry 2/2",
+          "eventual_probe_result": "PASS: idle client timed out without preventing subsequent metrics"
+        }
+      ],
+      "selected_controls": [
+        "[+     1.909834] [memory borrower admission] 24521 ordinary + 8189 reserve pressure nodes; payload/namespace/borrower layouts 64/64/56 bytes; ordinary/total third-node rejection, two-node write cancellation, trusted read reserve and mapped revocation at exhaustion with original charges passed; exact baseline restored",
+        "[+     1.926458] [memory borrower storage] 128 pre-escrow rejections, 64 unused cancellations, 64 heap-held two-reader relinks/detaches and 32 reader-preserving revocation/namespace closes passed; borrower cancellation keeps storage before authority refund",
+        "[+     2.013113] [memory capability node pressure] 24528 ordinary + 8189 reserve unused payload nodes; payload/namespace layouts 64/64 bytes, ordinary/total byte ceilings 3145728/4194304, node ceilings 24576/32768; exact baseline after real cleanup and root reuse passed",
+        "[+     2.014447] [memory capability node admission] 192 charged allocator rejections; captured classification, actual ordinary/total exhaustion, trusted reserve, two-node partial rejection, public allocate/move/copy/loan denial without source mutation, published/detached charge lifetime and cleanup at exhaustion passed; no quota reset",
+        "[+     4.487109] [IPC memory delivery] guessed move/copy/result use rejected; receive rollback, vector delivery, cancellation, endpoint/root cleanup and observed ownership passed"
+      ],
+      "borrower_pressure": {
+        "ordinary_nodes": 24521,
+        "reserve_nodes": 8189,
+        "payload_namespace_borrower_bytes": [
+          64,
+          64,
+          56
+        ]
+      },
+      "serial_sha256": "7beefb52e023bcd2ed4be6ff0c640418faf0133d54e8653c45ce2c3449cdc528"
+    }
+  ],
+  "unexpected_final_native_failures": [],
+  "fixtures": {
+    "allocator_adapter_rejection": {
+      "per_layout": 64,
+      "total": 192,
+      "layouts": [
+        "capability payload",
+        "namespace",
+        "read borrower"
+      ],
+      "observes_reservation_before_allocator_entry": true,
+      "exact_baseline_restored": true
+    },
+    "classification": "All three node reservations keep captured ordinary classification despite platform promotion before the first factory; held through actual root close/reuse before cancellation.",
+    "actual_pressure": "Actual unused payload allocations fill the shared ordinary and total pools, without counter reset. Two slots cannot admit a three-node read preparation; inline write preparation cancels successfully. Trusted read admission uses total reserve; mapped revocation detaches the exact charged borrower and payload at exhaustion. Promotion preserves original ordinary refunds.",
+    "existing_borrower_controls": {
+      "pre_escrow_rejections": 128,
+      "unused_cancellations": 64,
+      "heap_held_two_reader_relinks_detaches": 64,
+      "reader_preserving_revoke_namespace_close": 32
+    },
+    "new_terminal_retention_fixture_allocations": 0
+  },
+  "manual": {
+    "path": "docs/manual-v2/charlotte.pdf",
+    "sha256": "062c77f1bce92eea34d3ee839a250ffeb5d4eb9bbcc24588b7e17be8a7d760c5",
+    "source_sha256": {
+      "docs/manual-v2/chapters/06-memory-objects.tex": "694192b8f0a300f10e10e24c02333910e8695ce365c51ee051d9fa983017ae0b",
+      "docs/manual-v2/chapters/22-configuration.tex": "bae5c4db42b1d9e6bfcc698c57c4dcde96c8be29a2c76762811730b83a2c02a5",
+      "docs/manual-v2/chapters/appendices/implementation-status.tex": "dc7f7548be9faa61b2beff6984ccdec66e058a03930bae85f031b893e66655f4"
+    },
+    "two_pass_build": "pass",
+    "visually_reviewed_pdf_pages": [
+      51,
+      198,
+      237
+    ],
+    "pages": 249,
+    "overfull_box_warnings": 189,
+    "scope": "Affected pages checked; full manual not re-audited."
+  },
+  "limitations": [
+    "Serialized kernel pressure controls, not sustained concurrent hostile EL0 load or fairness qualification.",
+    "Current native requested layouts hit count ceilings before byte ceilings; no independent real-byte-ceiling exhaustion claim.",
+    "Allocator-adapter rejection is controlled failure, not global allocator OOM.",
+    "Restored raw borrower factory/aliases are a scoped native negative mutation, not the complete historical baseline.",
+    "Unused borrower storage still cancels through active containing transfer cleanup. Arbitrary outer IRQ/IPC/lifecycle and destructor contexts remain unqualified.",
+    "Nested authority/account allocations, object nodes, allocator overhead and general principal/heap admission remain separate.",
+    "No new formal model or executable refinement; existing charge/node policy projections are unchanged and not rerun in this batch.",
+    "Documentation evolved between boot captures; all seven changed Rust files stayed frozen. Passing results do not attribute historical scheduler, IPC, root-close, metrics or NIC failures."
+  ]
+}

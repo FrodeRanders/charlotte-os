@@ -83,14 +83,9 @@ fn containing_rejections() {
             Err(MemoryObjectError::UnknownCapability)
         ));
         assert!(matches!(
-            prepare_source_transfer_with(
-                handle.id(),
-                cap,
-                target.id(),
-                Some(false),
-                false,
-                || Err(MemoryObjectError::ResourceLimit)
-            ),
+            prepare_source_transfer_with(handle.id(), cap, target.id(), Some(false), false, |_| {
+                Err(MemoryObjectError::ResourceLimit)
+            }),
             Err(MemoryObjectError::ResourceLimit)
         ));
         assert!(matches!(
@@ -158,6 +153,7 @@ fn guarded_abandonment() {
         namespace: None,
         authority: Some(admit_capability(handle.id(), handle).unwrap()),
         handle,
+        platform: false,
     }));
     let full = Preparing::new(admit_capability(handle.id(), handle).unwrap(), handle).unwrap();
     let first_hidden = partial.identity();

@@ -45,6 +45,12 @@ and [report index](../reports/README.md) retain the evidence. This page gives
 the remaining acceptance criteria, so a completed narrow fix need not reopen
 an unbounded audit loop.
 
+The [read-borrower admission correction](../reports/audits/2026-10-26-security-borrower-node-admission.md)
+extends the existing configurable memory-capability node pool to read-loan
+borrower metadata. All three nodes reserve before source mutation; actual
+ordinary/total pressure, trusted reserve and original-charge revocation exercise
+the production path. SEC-07/18 remain partial; no new limit family is added.
+
 ## SEC-31–38: renewed-audit findings
 
 The [2026-10-10 renewed audit](../reports/audits/2026-10-10-security-audit.md)

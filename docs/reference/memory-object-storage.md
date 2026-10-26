@@ -44,8 +44,13 @@ and original backing refund. Failed physical release retains the whole object.
 
 The [borrower storage follow-up](../reports/audits/2026-10-24-security-memory-borrower-storage.md) records native controls and the
 subsequently corrected capability/namespace-map boundary. Shared capability counts bound
-admitted loans; this adds no separate metadata-byte or aggregate principal
-ceiling. Existing containing IPC/IRQ/destructor contexts remain separate work.
+admitted loans. The [borrower admission follow-up](../reports/audits/2026-10-26-security-borrower-node-admission.md)
+also charges borrower nodes to the existing configurable payload/namespace pool,
+using the same captured destination classification. Read-loan preparation needs
+three temporary nodes before source escrow; write loans need two. The original
+byte/count charge follows the node through publication, revocation, retention and
+actual deallocation. No new pool or default is added. Aggregate principal admission
+and containing IPC/IRQ/destructor contexts remain separate work.
 
 ## Capability and namespace records
 

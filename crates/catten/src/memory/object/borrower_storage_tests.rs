@@ -11,6 +11,7 @@ fn root() -> AddressSpaceHandle {
 }
 
 pub(super) fn run() {
+    cap_storage::admission::tests::borrower_pressure();
     rejection_and_cancel();
     relinking();
     readers_and_namespace_close();
@@ -29,7 +30,7 @@ fn rejection_and_cancel() {
     let frames = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     for _ in 0..128 {
         assert!(matches!(
-            prepare_source_transfer_with(source.id(), cap, target.id(), Some(false), false, || {
+            prepare_source_transfer_with(source.id(), cap, target.id(), Some(false), false, |_| {
                 assert!(MEMORY_OBJECTS.try_lock().is_some());
                 assert!(PRIMARY_ALLOCATOR.try_lock().is_some());
                 assert!(PHYSICAL_FRAME_ALLOCATOR.try_lock().is_some());
@@ -67,10 +68,14 @@ fn rejection_and_cancel() {
 }
 
 fn relinking() {
+    let handle = root();
     let irq = crate::cpu::isa::lp::ops::get_int_state();
     for _ in 0..64 {
-        let first = BorrowerStorage::try_new().unwrap();
-        let second = BorrowerStorage::try_new().unwrap();
+        let owner =
+            cap_storage::Preparing::new(admit_capability(handle.id(), handle).unwrap(), handle)
+                .unwrap();
+        let first = owner.prepare_borrower().unwrap();
+        let second = owner.prepare_borrower().unwrap();
         let mut state = LendState::None;
         let (first, second) = {
             let _registry = MEMORY_OBJECTS.lock();
@@ -94,8 +99,10 @@ fn relinking() {
         };
         first.release();
         second.release();
+        owner.finish();
         assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
     }
+    memory::close_user_address_space_handle(handle).unwrap();
 }
 
 fn readers_and_namespace_close() {

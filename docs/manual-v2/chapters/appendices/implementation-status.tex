@@ -389,7 +389,9 @@ Source, tests, and repository history remain authoritative.
         it explicitly. Guarded bare fallback and late cancellation after root reuse
         are qualified; namespace teardown can drain hidden authority while payload
         metadata retains original requested-byte/count admission: 4 MiB and 32768
-        nodes total, 3 MiB and 24576 ordinary, shared with namespace nodes.
+        nodes total, 3 MiB and 24576 ordinary, shared with namespace and read-borrower
+        nodes. A read loan needs three temporary nodes before source escrow;
+        its borrower charge retains the original destination classification.
         Admission precedes allocation and follows actual node deallocation,
         including unused candidates and abandoned metadata after authority
         teardown. These defaults use the central compile-time policy. Broader outer transfer/backing

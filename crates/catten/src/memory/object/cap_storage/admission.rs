@@ -64,4 +64,4 @@ pub(super) fn with_locked(work: impl FnOnce()) {
     work();
 }
 
-pub(super) mod tests;
+pub(in crate::memory::object) mod tests;

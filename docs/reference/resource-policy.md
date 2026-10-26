@@ -48,7 +48,7 @@ unlimited node capacity.
 | `scratch_nodes` | node-layout bytes; nodes | — | 384 KiB; 6144 nodes | 512 KiB; 8192 nodes |
 | `snapshot_buffers` | vector-buffer bytes; buffers | — | 3 MiB; 6144 buffers | 4 MiB; 8192 buffers |
 | `mapping_nodes` | node-layout bytes; nodes | — | 768 KiB; 6144 nodes | 1 MiB; 8192 nodes |
-| `memory_capability_nodes` | payload/namespace node-layout bytes; nodes | — | 3 MiB; 24576 nodes | 4 MiB; 32768 nodes |
+| `memory_capability_nodes` | payload/namespace/read-borrower node-layout bytes; nodes | — | 3 MiB; 24576 nodes | 4 MiB; 32768 nodes |
 | `memory.objects` | backing objects | 1024 | 6144 | 8192 |
 
 Per-source defaults are 64 scheduler waiters, 128 endpoint/thread watches and
@@ -104,9 +104,10 @@ Changing a node total does not silently rescale other families; changes must be
 explicit in the same reviewed profile.
 
 Memory-capability preparation requires a payload node and a namespace candidate,
-including when an existing namespace will win. Account for two temporary slots
-per overlapping preparation, plus published/retained nodes; unified authority
-counts and [payload-node admission](memory-capability-node-admission.md) remain
+including when an existing namespace will win. Read loans also prepare a borrower
+node in that same pool. Account for two temporary slots per preparation without a read loan
+and three per read-loan preparation, plus published/retained nodes; unified authority
+counts and [node admission](memory-capability-node-admission.md) remain
 independent. Increasing capability counts alone does not raise this pool.
 
 The [host harness](../../scripts/tests/test-resource-policy.py) compiles the

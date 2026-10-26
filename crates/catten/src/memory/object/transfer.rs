@@ -200,9 +200,14 @@ fn prepare_source_transfer(
     loan: Option<bool>,
     read_only: bool,
 ) -> Result<PreparedTransfer, MemoryObjectError> {
-    prepare_source_transfer_with(owner, cap, target, loan, read_only, || {
-        BorrowerStorage::try_new().map_err(|_| MemoryObjectError::ResourceLimit)
-    })
+    prepare_source_transfer_with(
+        owner,
+        cap,
+        target,
+        loan,
+        read_only,
+        cap_storage::Preparing::prepare_borrower,
+    )
 }
 
 pub(super) fn prepare_source_transfer_with(
@@ -211,7 +216,7 @@ pub(super) fn prepare_source_transfer_with(
     target: AddressSpaceId,
     loan: Option<bool>,
     read_only: bool,
-    prepare_borrower: impl FnOnce() -> Result<BorrowerStorage, MemoryObjectError>,
+    prepare_borrower: impl FnOnce(&cap_storage::Preparing) -> Result<BorrowerStorage, MemoryObjectError>,
 ) -> Result<PreparedTransfer, MemoryObjectError> {
     let source_handle = super::super::current_address_space_handle(owner)
         .ok_or(MemoryObjectError::AddressSpaceMissing)?;
@@ -222,11 +227,11 @@ pub(super) fn prepare_source_transfer_with(
     // precedes escrow; ordinary rejection drops this unused prefix after unlock.
     let destination =
         cap_storage::Preparing::new(admit_capability(target, target_handle)?, target_handle)?;
-    let (destination, (borrower_storage, payload)) = destination.try_prepare(|_| {
-        // Shared capability admission bounds live borrower records. Reject a
-        // missing node before changing source authority or taking its pin.
+    let (destination, (borrower_storage, payload)) = destination.try_prepare(|destination| {
+        // All three read-loan nodes share admission before source mutation.
+        // The borrowed preparation retains the original destination class.
         let borrower_storage = if loan == Some(false) {
-            Some(prepare_borrower()?)
+            Some(prepare_borrower(destination)?)
         } else {
             None
         };

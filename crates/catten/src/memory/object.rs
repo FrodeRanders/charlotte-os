@@ -252,7 +252,7 @@ enum LendState {
     /// without holding the registry across the shootdown.
     Revoking,
     Read {
-        borrowers: AdmittedMap<AddressSpaceId, Borrower>,
+        borrowers: cap_storage::Borrowers,
     },
     Write {
         borrower: AddressSpaceId,
@@ -268,8 +268,10 @@ struct Borrower {
     authority: Option<cap_storage::RetiredCapability>,
 }
 
-type BorrowerStorage = PreparedEntry<(AddressSpaceId, Borrower)>;
-type RetiredBorrower = RetiredEntry<(AddressSpaceId, Borrower)>;
+use cap_storage::{
+    BorrowerStorage,
+    RetiredBorrower,
+};
 
 fn release_borrower(node: RetiredBorrower) {
     let mut authority = None;

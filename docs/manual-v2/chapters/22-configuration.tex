@@ -96,9 +96,10 @@ Examples of settings that require joint review include:
     \item Lifecycle watches, publication counts and replacement overlap.
         A name-service replacement needs the new watch before disposing the old
         one; service minima must be tested as part of boot qualification.
-    \item Unified memory authority and payload/namespace node bytes/counts.
-        Every overlapping preparation needs two temporary nodes, including the
-        namespace candidate for an already-established namespace. Published and
+    \item Unified memory authority and shared payload/namespace/read-borrower
+        node bytes/counts. Every overlapping preparation needs two temporary
+        nodes, or three for a read loan, including the namespace candidate for
+        an already-established namespace. Published and
         retained metadata consumes its original quota until deallocation.
     \item Thread bundles, principal thread metadata, stacks and private tables.
         More runnable domains can encounter any of these ceilings before their
