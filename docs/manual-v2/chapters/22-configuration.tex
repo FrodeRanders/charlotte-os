@@ -20,10 +20,11 @@ The following inputs have different authorities and lifetimes:
         \path{.cargo/audit.toml} and the scanner pin in \path{.cargo/audit-version}.
         These configure validation, not a running node. Database contents refresh
         at each invocation; a later advisory can reject the same lockfile.
-    \item[Domain TLS entropy.] Startup consumes a dedicated owned entropy
-        connection once, or explicitly installs architectural-only randomness.
-        It cannot adopt a borrowed launch capability or replace an installed
-        source. This is runtime authority, not a capacity-profile field.
+    \item[Domain TLS entropy.] Startup consumes one \texttt{EntropyConfig}
+        containing an owned entropy connection (or explicit architectural-only
+        source) and positive request budget. It cannot adopt a borrowed launch
+        capability or replace installed source/limits. This is runtime authority
+        and observation policy, not a kernel capacity-profile field.
     \item[Kernel resource policy.] Trusted Rust build input selects capacity
         ceilings, ordinary shares and platform reserves. It is compiled into
         the kernel and remains fixed throughout that boot.
@@ -93,6 +94,17 @@ Driver context layouts and backend erasure flags remain structural build
 contracts. Changing these inputs requires rebuilding and qualifying both service
 variants; the kernel resource profile does not resize them. See
 \repofile|docs/reference/tls-client.md|.
+
+The entropy request deadline is a separate startup API setting in
+\texttt{EntropyLimits}. Bundled S3, Kafka and TCP/IP select its central
+\texttt{5000} ms default; startup Rust code can supply another positive budget.
+No manifest/config-page field or live update is added. Increasing the budget
+retains source checkout, pending metadata, output borrow and possible returned
+backing longer, so timeout/rejection and pressure need joint qualification.
+One original monotonic deadline survives preparation and observation without
+replay. This bounds reply observation, not dependency naming or kernel cleanup
+latency. Details and exact inputs are in
+\repofiletext|docs/reference/tls-client.md|{the TLS configuration reference}.
 
 \section{Related limits and tuning consequences}
 

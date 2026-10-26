@@ -848,6 +848,16 @@ checkout rejects without waiting on an outstanding RPC. Architectural-only
 randomness requires explicit installation. No borrowed launch connection is
 stored globally.
 
+Entropy requests now carry one positive startup-configured observation budget,
+default \texttt{5000} ms, with their source. One consuming read retains its
+pending call and source/output borrows through timeout or wait-admission rejection;
+completion owns returned resources and mapping. Exact byte counts and memory
+without a connection attachment are required. Late results are disposed, and
+explicit cancellation returns its complete owner if rejected. Timeout,
+submission and exact observation rejection remain distinct; none grants replay
+or device-quiescence authority. Dependency lookup, kernel cleanup latency and
+producer-sponsored reply-memory retention remain separate audit work.
+
 One nonblocking handshake admission owns the static verification clock through
 completion. Overlap rejects before changing the clock, and completion clears
 it. mTLS retains typed P-256 SEC1 validation and constructs its Embassy signing

@@ -1,0 +1,942 @@
+{
+  "date": "2026-10-26",
+  "baseline_revision": "3fd5f845429422a00b613f6ac364d83579c05c46",
+  "scope": "Bounded entropy reply observation with complete pending/reply/mapping ownership. No whole-handshake deadline, device quiescence, producer-funded retention closure or complete erasure claim.",
+  "finding_dispositions": {
+    "corrected": 29,
+    "partial": 6,
+    "open": 3,
+    "SEC-06": "partial",
+    "SEC-07": "partial",
+    "SEC-14": "partial",
+    "SEC-15": "partial",
+    "SEC-18": "partial",
+    "production_trust": "disabled"
+  },
+  "source_input_sha256": {
+    "Cargo.toml": "dc27f5e5077e07fc7fed9422b825620fb83c6d828b986ca5cbeba175b2148e45",
+    "Cargo.lock": "a78dc5de15d396815f8659290f8de56d9bb8f564ff26244295e7a3d1a2ef1392",
+    "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
+    ".cargo/config.toml": "5845e3de73e807da085ea0cb8a5c76272a20c145adf70cbd404bb57f58bd4402",
+    ".cargo/audit.toml": "6dedf4733a1def7aab3bb002f58c005b1d0d05d7a54dea7308847b90e60d3fdd",
+    ".cargo/audit-version": "76dff43b6331e7f1a4f0d1b14bbc1c3e001190af5a7ed008ab165bbc3c815e12",
+    "crates/catten-services/Cargo.toml": "3ca9d0b32ccecfeca2745454b98c4632b280f558d1695387315cd7b0ea9b6bb8",
+    "crates/catten-services/src/tls_client.rs": "82377698386036af836a7bce0eddfeb84b63a328badcc0ac508a8c31a5505d0b",
+    "crates/catten-services/src/tls_client/entropy_client.rs": "9b30521575d0b4ad5c6a7b869909d1f739b8d98b9ed03cedcadc7db866f20920",
+    "crates/catten-services/src/tls_client/entropy_contract.rs": "a61232524f22c91035e0ec4f5907d9eca243d50c8ac618574e06f7570cf623e2",
+    "crates/catten-services/src/tls_client/runtime.rs": "657f715ed85a16c86cdf9a428ed307b998d02d5dcac9104c6626d83a831be7ce",
+    "crates/catten-services/src/tls_client/crypto.rs": "e93748db23fde582261b5c042492adbf7f485b659a0089f7e971ad1b18440cb2",
+    "crates/catten-services/src/tls_client/interop.rs": "b5c879c852d76be5534120e2d80a45bcaf0ff19c0fcc5948249e49f1e702bc33",
+    "crates/catten-services/src/tls_client/gcm_contract.rs": "f8f54dc83c5e84faebfc6eac4e4b6f8073a3e45bd4e4c3daaa146b7db4059299",
+    "crates/catten-services/src/deadline.rs": "4fe91d47a40524b52c062496d9b27f9a1e47d54ce04a8f9945b6b4875e0817f6",
+    "crates/catten-services/src/lib.rs": "52213abd8c4972f029a75eff881f2c60df233837273aa8527281477d4bf1e511",
+    "crates/catten-services/src/bin/s3.rs": "63fc692f8beab8ae643a7d51438c919796be2332258450f54591d4377a312863",
+    "crates/catten-services/src/bin/kafka.rs": "69430620ff0c91761c222c9890213fa254b901d3c83a03c6ef7e5cc4dc798518",
+    "crates/catten-services/src/bin/tcpip.rs": "2a4e940ae6f2b35b3a5dd80dd539cd708af915c22708005aee798e0652c97351",
+    "crates/catten-services/src/bin/rng.rs": "4e4cbe3feefa72a1991e341e2c879146d7158f98a65c9c118d9bc9c8613dd672",
+    "crates/catten-services/src/bin/security_probe.rs": "e91844c6c8a942264f508d20157fba4b8c80a3f8a59567f480ca33c7433b3e57",
+    "crates/catten-rt/src/lib.rs": "fc961903e9a614f4c877104135f6c2d439702039358d862e97864d2994463099",
+    "crates/catten-rt/src/owned.rs": "36944a605d5a1a9211cbbf4a3342bd2e08fc950c77a7f579e6a7cae2d46c4c91",
+    "crates/catten-rt/src/owned/ipc.rs": "ca68efa9790d121cc7ccb1cd4f794ae150c30fa1ca14312c3b5c4a948a02d6ed",
+    "crates/catten-rt/src/owned/memory.rs": "c578b79e5dbdc45906a31de769732f76d00ee7b035481290d4a7eac4ccbc9f12",
+    "crates/catten-rt/src/owned/completion.rs": "c9e3db6761c685c55c71a094269fa67f12af84c2f9a3780525178f81b7782910",
+    "crates/catten-user/Cargo.toml": "14c9d30a1057a3e4009da62e0241c54d4a6bd32852465cf3d91693d3a1605de9",
+    "scripts/build-catten-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
+    "scripts/build-catten-services-x86_64.sh": "827ecdb3352742be1bf36152c5c13ec44a5101fa737aa0d3d321ccd715709291",
+    "scripts/tests/test-tls-gcm-backend.py": "216d6e28e514f473804eb6d89beef974163d4b7db5179c6808235205d2837695",
+    "scripts/check-dependency-advisories.py": "f0d601732ebf1beef98c10742121c224d38d026d2df41df06e90463a7e8bb379"
+  },
+  "baseline_lockfile_sha256": "a78dc5de15d396815f8659290f8de56d9bb8f564ff26244295e7a3d1a2ef1392",
+  "lockfile_unchanged": true,
+  "selected_dependencies": [
+    {
+      "name": "aes",
+      "version": "0.8.4",
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "name": "aes-gcm",
+      "version": "0.10.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "name": "crypto-bigint",
+      "version": "0.7.10",
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "name": "ctutils",
+      "version": "0.4.6",
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "name": "elliptic-curve",
+      "version": "0.14.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "name": "embassy-crypto",
+      "version": "0.1.0",
+      "source": "git+https://github.com/embassy-rs/embassy?rev=822a76ea91f2c0885c6eb0c65fe91181e31133e1#822a76ea91f2c0885c6eb0c65fe91181e31133e1"
+    },
+    {
+      "name": "embassy-crypto-rustcrypto",
+      "version": "0.1.0",
+      "source": "git+https://github.com/embassy-rs/embassy?rev=822a76ea91f2c0885c6eb0c65fe91181e31133e1#822a76ea91f2c0885c6eb0c65fe91181e31133e1"
+    },
+    {
+      "name": "embedded-tls",
+      "version": "0.19.0",
+      "source": "git+https://github.com/embassy-rs/embedded-tls?rev=6487c62bb084c33361822022e21836ddfd48388f#6487c62bb084c33361822022e21836ddfd48388f"
+    },
+    {
+      "name": "ghash",
+      "version": "0.5.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "name": "p256",
+      "version": "0.14.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "name": "p384",
+      "version": "0.14.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "name": "polyval",
+      "version": "0.6.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    },
+    {
+      "name": "unitrait",
+      "version": "2.0.0",
+      "source": "git+https://github.com/embassy-rs/unitrait?rev=bb96601b3d293fa27d1ca2891f6ea148e534e433#bb96601b3d293fa27d1ca2891f6ea148e534e433"
+    }
+  ],
+  "entropy_policy": {
+    "default_request_timeout_ms": 5000,
+    "positive_startup_override": true,
+    "installed_with_owned_optional_source": true,
+    "live_replacement": false,
+    "bundled_startup_uses_default": true,
+    "manifest_or_config_page_input": false,
+    "existing_max_request_bytes": 4096,
+    "deadline_scope": "Hardware preparation and service admission/observation; no restart, accepted-request retry or autonomous background cancellation."
+  },
+  "advisory_gate": {
+    "command": "python3 scripts/check-dependency-advisories.py",
+    "exit_code": 0,
+    "scanner": "cargo-audit 0.22.2",
+    "complete_report_validation": "passed production wrapper",
+    "report": {
+      "database": {
+        "advisory-count": 1378,
+        "last-commit": "a78282a1414d6c28cc228c4eae3570451affb0dc",
+        "last-updated": "2026-10-26T14:45:01+01:00"
+      },
+      "lockfile": {
+        "dependency-count": 182
+      },
+      "settings": {
+        "target_arch": [],
+        "target_os": [],
+        "severity": null,
+        "ignore": [],
+        "informational_warnings": [
+          "unmaintained",
+          "unsound",
+          "notice"
+        ]
+      },
+      "vulnerabilities": {
+        "found": false,
+        "count": 0,
+        "list": []
+      },
+      "warnings": {}
+    }
+  },
+  "toolchain": "nightly-2026-07-27; rustc 1.99.0-nightly (dc3f85158 2026-07-26), LLVM 22.1.8; host aarch64-apple-darwin",
+  "openssl": "OpenSSL 4.0.3 29 Sep 2026 (Library: OpenSSL 4.0.3 29 Sep 2026)",
+  "host": [
+    {
+      "mode": "debug",
+      "exit_code": 0,
+      "cwd": "/private/tmp",
+      "command": "cargo +nightly-2026-07-27 test --locked -p catten-services -p catten-rt -p charlotte-transport-tests --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml",
+      "distinct_runtime_tests": 374,
+      "doctests": 1,
+      "explicitly_ignored_runtime_documentation_examples": 2,
+      "harnesses": [
+        {
+          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/catten_rt-7565f8c504a110ab)",
+          "passed": 53,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/debug/deps/catten_rt-7565f8c504a110ab",
+          "executable_sha256": "6b717ab9d72e6a3d6263f6472021447aa273247183d161dda57dceedb831c586"
+        },
+        {
+          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/catten_services-8baf3ad084f7a274)",
+          "passed": 244,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/debug/deps/catten_services-8baf3ad084f7a274",
+          "executable_sha256": "c1d16ce3d58de92cae2c6c12f98cf4d4b33b97c7ed7f75ba043197e761d4782d"
+        },
+        {
+          "harness": "unittests examples/reconnecting_client.rs (/Users/froran/Projects/private/charlotte-os/target/debug/examples/reconnecting_client-aa9411a34c7830e7)",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/debug/examples/reconnecting_client-aa9411a34c7830e7",
+          "executable_sha256": "c42bdf2bc952f19725b5605d13b24f0d040a51e0c9f1aa5a11da6cc0f7de9af1"
+        },
+        {
+          "harness": "kafka_profile_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/kafka_profile_erasure-eb984ed6070dc5b0)",
+          "passed": 7,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/debug/deps/kafka_profile_erasure-eb984ed6070dc5b0",
+          "executable_sha256": "1d6c48ea15a66d6ec9c65feb6dbd08fd4d8beb3545ce8ff90ae1e9ceb5134d0a"
+        },
+        {
+          "harness": "receive_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/receive_erasure-1a5870f1652a158e)",
+          "passed": 9,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/debug/deps/receive_erasure-1a5870f1652a158e",
+          "executable_sha256": "c4b78b72acd7a6e233ba41a0665f4df63b90404494d13b6ee17c087193e21641"
+        },
+        {
+          "harness": "s3_canonical_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/s3_canonical_erasure-b7d8ece69dd89729)",
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/debug/deps/s3_canonical_erasure-b7d8ece69dd89729",
+          "executable_sha256": "57a1a78dde379908796064ebaa93b7f51bc904d30c265e03be268e0cbf7adf4e"
+        },
+        {
+          "harness": "s3_metadata_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/s3_metadata_erasure-3a16b50319ee253d)",
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/debug/deps/s3_metadata_erasure-3a16b50319ee253d",
+          "executable_sha256": "3e45c845ee1e43328aca3c0434165e45396eb175975adbe47e05c4aaaa998565"
+        },
+        {
+          "harness": "s3_path_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/s3_path_erasure-b5c21f95fadacdb1)",
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/debug/deps/s3_path_erasure-b5c21f95fadacdb1",
+          "executable_sha256": "b9d8fe1c88dd63a9219924116442a4b019c17c8fcab8f3e570bf3ef0e05dabda"
+        },
+        {
+          "harness": "s3_profile_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/s3_profile_erasure-cc1e6af1a5ede12f)",
+          "passed": 7,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/debug/deps/s3_profile_erasure-cc1e6af1a5ede12f",
+          "executable_sha256": "46bf9a7cd77358dc9b1feb0ce02e33ff7b7c93b6de9213d67016f77c4f1a513d"
+        },
+        {
+          "harness": "s3_profile_wire_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/s3_profile_wire_erasure-1c01906d06cb42fd)",
+          "passed": 6,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/debug/deps/s3_profile_wire_erasure-1c01906d06cb42fd",
+          "executable_sha256": "5133916da5eb47b7004dafe8877284afd01f8fdb0471381b09576edd8624452f"
+        },
+        {
+          "harness": "s3_request_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/s3_request_erasure-f8dc30e03ab0efe9)",
+          "passed": 5,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/debug/deps/s3_request_erasure-f8dc30e03ab0efe9",
+          "executable_sha256": "e512bc224585d52168216a6fd4c1cd9d30dc8b13b1ee1688eae71770c00c15ad"
+        },
+        {
+          "harness": "s3_response_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/s3_response_erasure-307afd8d7f878956)",
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/debug/deps/s3_response_erasure-307afd8d7f878956",
+          "executable_sha256": "07c015d9e9b479f43dc19945105af9696770f1631bcd7bfd947e60d33bb13ca5"
+        },
+        {
+          "harness": "scram_initial_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/scram_initial_erasure-1ef418169f87dff5)",
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/debug/deps/scram_initial_erasure-1ef418169f87dff5",
+          "executable_sha256": "35541ca44cc27ff1a61b4a746a52938a8d286a6641eb990d5807a941253562b7"
+        },
+        {
+          "harness": "Doc-tests catten_rt",
+          "passed": 1,
+          "failed": 0,
+          "ignored": 2
+        },
+        {
+          "harness": "Doc-tests catten_services",
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0
+        }
+      ],
+      "expected_openssl_rejections": [
+        "C06199FA01000000:error:0A0000C7:SSL routines:tls_process_client_certificate:peer did not return a certificate:ssl/statem/statem_srvr.c:3916:",
+        "verify error:num=18:self-signed certificate",
+        "C06199FA01000000:error:0A000086:SSL routines:tls_process_client_certificate:certificate verify failed:ssl/statem/statem_srvr.c:3929:"
+      ]
+    },
+    {
+      "mode": "release",
+      "exit_code": 0,
+      "cwd": "/private/tmp",
+      "command": "cargo +nightly-2026-07-27 test --locked -p catten-services -p catten-rt -p charlotte-transport-tests --release --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml",
+      "distinct_runtime_tests": 374,
+      "doctests": 1,
+      "explicitly_ignored_runtime_documentation_examples": 2,
+      "harnesses": [
+        {
+          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/catten_rt-f5e796761dc4e325)",
+          "passed": 53,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/release/deps/catten_rt-f5e796761dc4e325",
+          "executable_sha256": "9880a33c3c998bf02362c806f2d75abb7051d2c7965f20220f907d885ad4b9e6"
+        },
+        {
+          "harness": "unittests src/lib.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/catten_services-1557187fb8e52239)",
+          "passed": 244,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/release/deps/catten_services-1557187fb8e52239",
+          "executable_sha256": "f9894d71cfd5f8667019308d35ef63ff57f708867c11ddc743665822048d5daa"
+        },
+        {
+          "harness": "unittests examples/reconnecting_client.rs (/Users/froran/Projects/private/charlotte-os/target/release/examples/reconnecting_client-029c9598e8d81890)",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/release/examples/reconnecting_client-029c9598e8d81890",
+          "executable_sha256": "ecfff6b153ca9580235a44c5fdd44b9e685aaf5ab57fbf59b45eca950b810d07"
+        },
+        {
+          "harness": "kafka_profile_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/kafka_profile_erasure-c1cf507805a43098)",
+          "passed": 7,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/release/deps/kafka_profile_erasure-c1cf507805a43098",
+          "executable_sha256": "2cc2cf86240e60661b637f68996192a71132b158b7000d5a65d5e44f52970f98"
+        },
+        {
+          "harness": "receive_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/receive_erasure-d05892cb78fd2517)",
+          "passed": 9,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/release/deps/receive_erasure-d05892cb78fd2517",
+          "executable_sha256": "aa5118a991d3d85282947d11df4529653032b54a7ae26eaea31c806b990b4275"
+        },
+        {
+          "harness": "s3_canonical_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/s3_canonical_erasure-868c4dd2c0873562)",
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/release/deps/s3_canonical_erasure-868c4dd2c0873562",
+          "executable_sha256": "9f8cf77b802187d2ac1ecbc4cffc84a28c891d72b7d93532b58f623142783711"
+        },
+        {
+          "harness": "s3_metadata_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/s3_metadata_erasure-86c7c432ca3ec0e3)",
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/release/deps/s3_metadata_erasure-86c7c432ca3ec0e3",
+          "executable_sha256": "90aa118de1e899789f86060bd23db1a8e070f7607ad1eb2f1538694ee0c4bfc8"
+        },
+        {
+          "harness": "s3_path_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/s3_path_erasure-8c5ede0cb246dcbf)",
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/release/deps/s3_path_erasure-8c5ede0cb246dcbf",
+          "executable_sha256": "f09a0071298b5d816b63e26ece1af525c11a07d8dd664e74710d6576b28b7169"
+        },
+        {
+          "harness": "s3_profile_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/s3_profile_erasure-5e9626c78e6aab62)",
+          "passed": 7,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/release/deps/s3_profile_erasure-5e9626c78e6aab62",
+          "executable_sha256": "7bcf3fc3d366af96e448de5d3052805f235a9cc967e68789eaef6aa040fc8ddc"
+        },
+        {
+          "harness": "s3_profile_wire_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/s3_profile_wire_erasure-aaf5ccc3a4a2a8cd)",
+          "passed": 6,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/release/deps/s3_profile_wire_erasure-aaf5ccc3a4a2a8cd",
+          "executable_sha256": "14ff0d9c10d9834fd673e976063999ce8b8e532f418bb17f9bc91789c2725f3a"
+        },
+        {
+          "harness": "s3_request_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/s3_request_erasure-e26aa75257da4e2b)",
+          "passed": 5,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/release/deps/s3_request_erasure-e26aa75257da4e2b",
+          "executable_sha256": "885dbbfc5f43b4f03fb1f9d88e36712d0c7959a87c60a6f2f7d4cf43e4a6b8f8"
+        },
+        {
+          "harness": "s3_response_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/s3_response_erasure-6e817382d028e3cd)",
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/release/deps/s3_response_erasure-6e817382d028e3cd",
+          "executable_sha256": "41535bcdef08022d3722057fb8842a2522651147718277f13e529938fd4728ed"
+        },
+        {
+          "harness": "scram_initial_erasure.rs (/Users/froran/Projects/private/charlotte-os/target/release/deps/scram_initial_erasure-0a8ae99bb299c830)",
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0,
+          "executable": "target/release/deps/scram_initial_erasure-0a8ae99bb299c830",
+          "executable_sha256": "db6674c52e9806543bf41d922cdeb16c6b7b3ee8c2f90d400ac0b9326b655223"
+        },
+        {
+          "harness": "Doc-tests catten_rt",
+          "passed": 0,
+          "failed": 0,
+          "ignored": 1
+        },
+        {
+          "harness": "Doc-tests catten_rt",
+          "passed": 1,
+          "failed": 0,
+          "ignored": 1
+        },
+        {
+          "harness": "Doc-tests catten_services",
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0
+        }
+      ],
+      "expected_openssl_rejections": [
+        "C06199FA01000000:error:0A0000C7:SSL routines:tls_process_client_certificate:peer did not return a certificate:ssl/statem/statem_srvr.c:3916:",
+        "verify error:num=18:self-signed certificate",
+        "C06199FA01000000:error:0A000086:SSL routines:tls_process_client_certificate:certificate verify failed:ssl/statem/statem_srvr.c:3929:"
+      ]
+    }
+  ],
+  "format_check": {
+    "command": "cargo fmt --all -- --check",
+    "exit_code": 0
+  },
+  "gcm_backend_controls": {
+    "target": "crates/catten-services/x86_64-unknown-none.json",
+    "guard": "#![no_std]\n#[cfg(any(target_arch = \"aarch64\", all(target_arch = \"x86_64\", target_os = \"none\")))]\nconst _: () = {\n    assert!(core::mem::needs_drop::<polyval::Polyval>());\n    assert!(core::mem::needs_drop::<ghash::GHash>());\n};\n",
+    "guard_sha256": "1c44b3e68dc3fb700b35dd44279a3442b592023900822fcfbbf517a70d35945b",
+    "controls": [
+      {
+        "name": "software-erasing",
+        "zeroize_features": true,
+        "overrides_target_flags": false,
+        "command": [
+          "cargo",
+          "check",
+          "--offline",
+          "--lib",
+          "--manifest-path",
+          "<isolated-control>/Cargo.toml",
+          "--target",
+          "/Users/froran/Projects/private/charlotte-os/crates/catten-services/x86_64-unknown-none.json",
+          "--target-dir",
+          "/Users/froran/Projects/private/charlotte-os/target/tls-gcm-backend-controls"
+        ],
+        "manifest": "[package]\nname=\"tls-gcm-backend-control\"\nversion=\"0.0.0\"\nedition=\"2021\"\n[workspace]\n[dependencies]\npolyval={version=\"=0.6.2\",default-features=false,features=[\"zeroize\"]}\nghash={version=\"=0.5.1\",default-features=false,features=[\"zeroize\"]}\nzeroize={version=\"=1.9.0\",default-features=false}\n",
+        "exit_status": 0,
+        "diagnostics": []
+      },
+      {
+        "name": "dispatcher-rejected",
+        "zeroize_features": true,
+        "overrides_target_flags": true,
+        "command": [
+          "cargo",
+          "check",
+          "--offline",
+          "--lib",
+          "--manifest-path",
+          "<isolated-control>/Cargo.toml",
+          "--target",
+          "/Users/froran/Projects/private/charlotte-os/crates/catten-services/x86_64-unknown-none.json",
+          "--target-dir",
+          "/Users/froran/Projects/private/charlotte-os/target/tls-gcm-backend-controls"
+        ],
+        "manifest": "[package]\nname=\"tls-gcm-backend-control\"\nversion=\"0.0.0\"\nedition=\"2021\"\n[workspace]\n[dependencies]\npolyval={version=\"=0.6.2\",default-features=false,features=[\"zeroize\"]}\nghash={version=\"=0.5.1\",default-features=false,features=[\"zeroize\"]}\nzeroize={version=\"=1.9.0\",default-features=false}\n",
+        "exit_status": 101,
+        "diagnostics": [
+          "error[E0080]: evaluation panicked: assertion failed: core::mem::needs_drop::<polyval::Polyval>()",
+          "4 |     assert!(core::mem::needs_drop::<polyval::Polyval>());",
+          "For more information about this error, try `rustc --explain E0080`."
+        ]
+      },
+      {
+        "name": "software-erasure-disabled",
+        "zeroize_features": false,
+        "overrides_target_flags": false,
+        "command": [
+          "cargo",
+          "check",
+          "--offline",
+          "--lib",
+          "--manifest-path",
+          "<isolated-control>/Cargo.toml",
+          "--target",
+          "/Users/froran/Projects/private/charlotte-os/crates/catten-services/x86_64-unknown-none.json",
+          "--target-dir",
+          "/Users/froran/Projects/private/charlotte-os/target/tls-gcm-backend-controls"
+        ],
+        "manifest": "[package]\nname=\"tls-gcm-backend-control\"\nversion=\"0.0.0\"\nedition=\"2021\"\n[workspace]\n[dependencies]\npolyval={version=\"=0.6.2\",default-features=false}\nghash={version=\"=0.5.1\",default-features=false}\nzeroize={version=\"=1.9.0\",default-features=false}\n",
+        "exit_status": 101,
+        "diagnostics": [
+          "error[E0080]: evaluation panicked: assertion failed: core::mem::needs_drop::<polyval::Polyval>()",
+          "4 |     assert!(core::mem::needs_drop::<polyval::Polyval>());",
+          "For more information about this error, try `rustc --explain E0080`."
+        ]
+      }
+    ]
+  },
+  "strict_service_clippy": [
+    {
+      "target": "aarch64-unknown-none",
+      "exit_code": 0,
+      "command": "cargo clippy -p catten-services --lib --bins --target crates/catten-services/aarch64-unknown-none.json --target-dir target/entropy-deadline-check --locked --offline -- -D warnings"
+    },
+    {
+      "target": "x86_64-unknown-none",
+      "exit_code": 0,
+      "command": "cargo clippy -p catten-services --lib --bins --target crates/catten-services/x86_64-unknown-none.json --target-dir target/entropy-deadline-check --locked --offline -- -D warnings"
+    }
+  ],
+  "build_commands": [
+    {
+      "command": "scripts/build-catten-services.sh --embed",
+      "exit_code": 0,
+      "scope": "Forty AArch64 service images rebuilt and signed; separate Sitas image reused unchanged"
+    },
+    {
+      "command": "scripts/build-catten-services-x86_64.sh",
+      "exit_code": 0,
+      "scope": "Thirty-seven x86-64 service images rebuilt and signed"
+    }
+  ],
+  "bundle_sets": {
+    "aarch64-unknown-none": {
+      "agent.elf": "8d82e6f58b4ae6d292d96561f7f5ea60d892581c887220f40b13e1af3260ba38",
+      "cclient.elf": "243087cfc35e40a2be029060c5138556942bc71a710b28b67f7ec066c1e66ea7",
+      "client.elf": "2b9965b640130880542dcb9402e0d2dfaf53891d27232bc85ae7e1762cfa9b03",
+      "clusterctl.elf": "652c7c86e68f3bdd7cd975e71686b5c1f3b18599f5143d057fd436cbdb8e082e",
+      "deployd.elf": "f16611eac7df4f078105f53dcf07147d4ee313216932bbe9cbf94827ee938eb4",
+      "disco.elf": "779b45fd493ae2bf3438dd772e6bfa504922655522ec3690059054d4db9f7283",
+      "dns.elf": "5f8f96bfd197bed0f1efb5d8f47e04321a57421831fb206d1fcdfa26e10934fb",
+      "echo.elf": "08624ce97b5d2f8dd8d5f7f0745e7e88cfaf6755190cd621992232049497f293",
+      "frouter.elf": "c02e417f032f86f2b741617318153dd67a54c68ec45cdd51050e456400c75167",
+      "fs.elf": "94f497451779d4aaa41e9ed1d4e728697b1cab96b4133e766e31960aec4250b3",
+      "grantctl.elf": "8afd3317034eef9a70990e1d750a79f3641760d76ba660630831ee066fa4c2be",
+      "greet.elf": "9f64339d73e2c43a4effdd6fc0dc5a806b2b6c6949508de9176d15dd0908c1a1",
+      "httpd.elf": "06e6b1f5e8765ee2916aa985207dc7c0941a9debc023580c3afc9d10e653373d",
+      "kafka.elf": "0ad32e567ddb1e84bfaa73ac9434186bdd7df0416a293c36a66dc7d9e18eab7b",
+      "kafka_fence_smoke.elf": "3531e4a192d1e1c272272b0ddbfc33ecebb136bdd06936bda6579d13aec31699",
+      "kafka_smoke.elf": "5d31ffd76fd8057ba1bbae58a8af5c54838133f894338abe8acb323d1abbfea6",
+      "kafka_step.elf": "4f9910f2ce4454aa30d4b9c8aaa8df74d5f29acd57158a42338bf2b97abe9531",
+      "kafka_step_input.elf": "ac59a807af0afe740083c47a35d0e5a135f3a8b649381fd0ef3beac051ee0737",
+      "kafka_step_proc.elf": "18c2a164d6f33a0168c0528347ac1d09aa63f282f036ac8474064b175a24117b",
+      "nclient.elf": "dba1dfb335a12f70a090b15919c99e57cd881fb2a98de7bda3d53bb61f381579",
+      "net.elf": "bd7446e94311cb12c498831785e849d5a0650fa8146464c145474ebbd72d16ad",
+      "ns.elf": "7b351ff495d4474382e51d370db5046544d61626a64d305ae529864268546cc6",
+      "nvme.elf": "38e564cad82b15fb2e523b74d1a0e6bf57d0b93eb6b65edd94320f7e30090242",
+      "nvme_client.elf": "13b1a1ef07f58ad8f1bcc745285a64a1ca3a0576f6c2825429dda851eef372f2",
+      "objstore.elf": "880d13d405ab0dd2ed3a4b29ee34f2e865cca47e56d8d8ca09edc1e8611c549f",
+      "objstore_client.elf": "b49231329745bdbc965d8e9409b9dc674c62fe0d986feadca0ffe4c97f0de2eb",
+      "observe.elf": "96a8d18179214ac1061bc3f3e087377b18ff1ba1a296960c3d30b0a5fb0814e8",
+      "raft.elf": "1bc8e4426c9aaa0a9b51c11f325c94fe525cf66c8a2256028ac3976c3a6cdf41",
+      "rclient.elf": "f58388322e84d8b2048b71cc76e90ce786a2f1fae2df0ff71532681846299cab",
+      "relmsg.elf": "4581d7bb117f009be328693b76a7abbe8fd9eb1fd26d7d7eb9ddaa33bf06a2df",
+      "rng.elf": "6479f405aa88a0ba119cd44a001da912004600bec4b32ba47f8607c503f0a723",
+      "s3.elf": "192a6e93606cc3e21459d1308bf1af85e4a33f5159a881945cdbe880a8248347",
+      "s3_smoke.elf": "79b29a5ff40ff161b3b2e1e928f21f61e4a7ae5b577c039e299ee4af72cdc8f3",
+      "security_probe.elf": "952c4c9a9f93d5bb8be7839aa3c0e892aad2f4dedd736c4b5f7016b30b14ac1b",
+      "servicemgr.elf": "10cf943c06f6b8cece54a65bc5738807860b004eb617c9c1a24f21e5b75f7dcb",
+      "shutdown_probe.elf": "8fc54485b52775240e46343eb8cfff83f3dea16a930712fe576bcdb74b8a1ecf",
+      "sitas-user.elf": "cf1cf39d85f24c0663ae2c7b7d16f9288e097c39803913905126def3913b910c",
+      "tcpclient.elf": "68a62b78cdc76bda03fd9781558c3e802130e0e8777387dc0e5fed21baf2dce4",
+      "tcpip.elf": "79c38f1bb29252e1058df016b6e39d20bdef71ea854147eb54a9d0e1928f5baa",
+      "time.elf": "46b6b05430ef7e0fb5d8488534d28f04857dbd0be5a10ab207f3674a494e6f12",
+      "uart.elf": "5cf80dc937282b27014cbda896ceb936ae10f72a53e8ecabc4117ec2902db658"
+    },
+    "x86_64-unknown-none": {
+      "agent.elf": "29f17d96b51a2a79d37901f4409d781bce3f5cac43579c97d981f4031b8d57c2",
+      "ahci.elf": "d15230eb769766407d18d5b12c196ba0f18713adf01d29ac0ac9f2012bbec694",
+      "client.elf": "5f84fcc933b61f64f6c1d5fbf2c1aef8330e9651e47d74750042e31e205359f8",
+      "clusterctl.elf": "50243d75c0243e3e49b3a9f0ea9fdbb5f9a6b0e6c671d0a028abaf607a8adc93",
+      "deployd.elf": "c3748dca73a4829235cf00e3da78dcf78106ea5e936f8583ff06479ca6e0186b",
+      "disco.elf": "5bd4f8049c9910117d1bfaac0d457f3f676a7766d4d76e6b06a86ce1e07f48da",
+      "dns.elf": "535cef09d922e77303c3da3e4e8aed56b77feb9f6ba8de9f3468db2cb6ad6445",
+      "e1000e.elf": "fc5b39cd037f32d69b4cf496661ea53afe945cf15e1db020447b970f66d1e615",
+      "echo.elf": "545d620630a577f7d417b0b9daff6953580a621ebfa9d99dbf8fd28ea3af9387",
+      "frouter.elf": "93c6e7f0b18a09f2be7e26f39d354fecc729d2ba98826b4c80ac9ea293a4ffc3",
+      "fs.elf": "e89664a5dbab7eca13352b80f9913ade63f3bc634513c568836b161f4282efbc",
+      "grantctl.elf": "d7aebe087b68c7822f72e4d7cadd7844d4616ab56a0a258d24ccfd517d54676d",
+      "greet.elf": "03ca77ce59cc1bf7189bc2ee773133ea0b20cf08b4eade11b244de50e3967d53",
+      "httpd.elf": "faf22f2f48135aea208afb4e8ab7f5904197fe6d7d3688c8656a571586ce236d",
+      "kafka.elf": "05f5d8361f625866bfd04c10bbce926ba64efd978f63ccb37146e56220eed351",
+      "kafka_smoke.elf": "71aa4afbc7dae279d1ac45a8be57b7c9a37112d4a7287fc5e9fccc8bebf3d4a1",
+      "nclient.elf": "15ad8dc89e274f51426aeae3f31d11b505954a4010184a798a4e8ce3efb501f6",
+      "net.elf": "50e50d49035d05b2827e369452049c825ccb494b99b7d5e00ce0a0f723a80deb",
+      "ns.elf": "ef3f2d3e1fbd97c76f7e98156df5c1fd62082e73bb277065cfefc8f5324d967c",
+      "nvme.elf": "4f7925e9bae01962cb43e9caba887c1c0cec7ea4a4a6099be4d16b997654ea78",
+      "nvme_client.elf": "b80b9a8b39a23b85eae18d2fb4a75f94e9ff1a48e1e48c50d20d645ba248d5d5",
+      "objstore.elf": "635ec458646270f28b920e298b4959679386f8e839e24440ee5b5c7abdac6497",
+      "objstore_client.elf": "01ba86b7086337816e968400229f47b043f570962122696b00b6c5beae9019cf",
+      "observe.elf": "1b7fc1727e693ecb0eb607b23e2820f8debfa6793cbd928358446992a35e2a46",
+      "raft.elf": "a549ba7363b67f7f21f76acab36ea92c064fe0be70ffb0c6100df30bb267eaee",
+      "rclient.elf": "b9dda0be06dab3aebc2b760cc74f1a73315b6a5847c558c7cf270e52ce6d23fb",
+      "relmsg.elf": "e9759bdd594c51472fef3e58977aa36d7eea6bd31c6151060be53ad95865bb4c",
+      "rng.elf": "c229439b3ec34918e24dad16af4f5eb463bf4e9c3780cf9a520c5c89fbfd7569",
+      "s3.elf": "d3fcbd3b623f68b091ffd702102e46fed41d3cc1ad3f52f61387e0d9340e4dc6",
+      "s3_smoke.elf": "eb8e97b3feff728cd8fcdb8ac1e1a018dcc074000e5cd7ce933cc77977c12b65",
+      "security_probe.elf": "8d38cdbcf924f048d40607c844a9ae9c3078866488c1685905f02ebfa377d50a",
+      "servicemgr.elf": "50223218fc3549d2e62fbd866223d5f8c8612061207d600014025473bfb2884f",
+      "shutdown_probe.elf": "4a434bbc50521f33e0635f416006de90091ab974be6f830f15fc1fe3ff2af36e",
+      "tcpclient.elf": "102ed8eebe8e58f995425abf55fd08408ccb2dfd9a879ccf026049a1a889b2da",
+      "tcpip.elf": "5a6daef49051c1a3c2de5dae92dc95db616a7c09c080104fca72c019a20a9d50",
+      "time.elf": "14a98275e84e4797f9c604f1b4dc82f27c329758879a70a6335683de92f4e4cd",
+      "virtio_blk.elf": "f41d2479c2555796321393b52353f9237b4770bb524c5b1c32eced83bd609a8f"
+    }
+  },
+  "unchanged_sitas_matches_prior_qualification": true,
+  "native": [
+    {
+      "instance": "entropy-s3-arm",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20140 CATTEN_DEPLOY_HOST_PORT=20240 scripts/run-aarch64.sh --s3-test --security-test --http-test --smp 4 --instance entropy-s3-arm --fresh-storage --timeout 300",
+      "exit_code": 0,
+      "baseline_revision": "3fd5f845429422a00b613f6ac364d83579c05c46",
+      "cpus": 4,
+      "tracked_diff_sha256_at_preparation": "594e8a1fba517a7b4b5ca2ea8ac4297f117acea0ad6aaf2e8af8ad82da5111c1",
+      "kernel_sha256": "087e28bb5f0b2a02b0d5e606b9a13fe771f147e1122fff2c11d10942c43636fe",
+      "boot_image_sha256": "e97a3361c331995b050629306bb2207cd91662c67f861e869a92b72f55f22256",
+      "initial_disk_sha256": "06599da2375d376c33e083b5405ddd28e35b1c8acd257769a95e33338677759e",
+      "bundle_set": "aarch64-unknown-none",
+      "complete_bundle_equals_recorded_set": true,
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 22,
+        "failed": 0,
+        "pending": 0
+      },
+      "entropy_contract_diagnostics": [
+        "[+    25.221108] [EL0 LOG] lp=0 asid=148 [security] entropy read: moved reply, malformed count/missing memory/extra connection, device rejection, cancel/Drop and late-result cleanup; original deadline, queue-full/silent timeout distinct and all eight slots recovered",
+        "[+    57.795608] [EL0 LOG] lp=0 asid=148 [security] entropy read: moved reply, malformed count/missing memory/extra connection, device rejection, cancel/Drop and late-result cleanup; original deadline, queue-full/silent timeout distinct and all eight slots recovered"
+      ],
+      "security_bitmap_diagnostics": [
+        "[+    45.607396] [EL0 LOG] lp=0 asid=148 [security-probe] passed checks=0xffff",
+        "[+    78.163998] [EL0 LOG] lp=0 asid=148 [security-probe] passed checks=0xffff"
+      ],
+      "http_checks": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.377s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.258s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.332s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.19s; ingress recovered"
+      ],
+      "http_retry_diagnostics": [
+        "HTTP transport TimeoutError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 2/2"
+      ],
+      "salient_guest_diagnostics": [
+        "[+     7.458668] [EL0 LOG] lp=0 asid=118 [rng] serving host-backed VirtIO entropy",
+        "[+     8.897098] [EL0 LOG] lp=0 asid=150 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+     9.319758] [EL0 LOG] lp=0 asid=154 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+     9.391024] [EL0 LOG] lp=0 asid=148 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    13.164962] [EL0 LOG] lp=0 asid=148 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    24.820236] [s3-test] SUCCESS: verified 33-byte object round trip",
+        "[+    45.706638] [security] probe passed; retired policy fenced, publication generation=1",
+        "[+    45.790404] [EL0 LOG] lp=0 asid=148 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    78.250532] [security] probe passed; retired policy fenced, publication generation=2"
+      ],
+      "fault_driver_diagnostics": [],
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-aarch64.sh": "42c62c11c20bf928001455b93c1b3c4b971dae9da72ee9d4c4dbae800f2b5973"
+      },
+      "cpu_and_iommu": {
+        "cpu": "cortex-a710",
+        "iommu": "smmuv3"
+      }
+    },
+    {
+      "instance": "entropy-amd",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20141 CATTEN_DEPLOY_HOST_PORT=20241 scripts/run-x86_64.sh --security-test --http-test --iommu amd --smp 4 --instance entropy-amd --fresh-storage --timeout 480",
+      "exit_code": 0,
+      "baseline_revision": "3fd5f845429422a00b613f6ac364d83579c05c46",
+      "cpus": 4,
+      "tracked_diff_sha256_at_preparation": "594e8a1fba517a7b4b5ca2ea8ac4297f117acea0ad6aaf2e8af8ad82da5111c1",
+      "kernel_sha256": "46ccab639afde011c2b7092bbba35d91d440d34aeb2f3f2d76c7dd323a03a4d1",
+      "boot_image_sha256": "6516f4a8923697d10f8c4d6efb22d7544f78bdb8282fabd06ae44042feffd33f",
+      "initial_disk_sha256": "c694507f70861f584ccbaa7a51661a42923a73e4eed3785bba7254b67fed52d8",
+      "bundle_set": "x86_64-unknown-none",
+      "complete_bundle_equals_recorded_set": true,
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 18,
+        "failed": 0,
+        "pending": 0
+      },
+      "entropy_contract_diagnostics": [
+        "[+    42.705923] [EL0 LOG] lp=0 asid=152 [security] entropy read: moved reply, malformed count/missing memory/extra connection, device rejection, cancel/Drop and late-result cleanup; original deadline, queue-full/silent timeout distinct and all eight slots recovered",
+        "[+    76.632946] [EL0 LOG] lp=0 asid=152 [security] entropy read: moved reply, malformed count/missing memory/extra connection, device rejection, cancel/Drop and late-result cleanup; original deadline, queue-full/silent timeout distinct and all eight slots recovered"
+      ],
+      "security_bitmap_diagnostics": [
+        "[+    63.377519] [EL0 LOG] lp=0 asid=152 [security-probe] passed checks=0xffff",
+        "[+    97.264383] [EL0 LOG] lp=0 asid=152 [security-probe] passed checks=0xffff"
+      ],
+      "http_checks": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.405s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.407s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.229s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.32s; ingress recovered"
+      ],
+      "http_retry_diagnostics": [
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 2/2"
+      ],
+      "salient_guest_diagnostics": [
+        "[+    25.389545] [EL0 LOG] lp=0 asid=157 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    26.088308] [EL0 LOG] lp=0 asid=154 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    26.213719] [EL0 LOG] lp=0 asid=152 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    29.805045] [EL0 LOG] lp=0 asid=152 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    63.622615] [security] probe passed; retired policy fenced, publication generation=1",
+        "[+    63.758376] [EL0 LOG] lp=0 asid=152 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    97.455761] [security] probe passed; retired policy fenced, publication generation=2"
+      ],
+      "fault_driver_diagnostics": [],
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-x86_64.sh": "dd82631746d8765526ed3372c8a779851f254ca2b8ad1fa0ee55d49a96067aa4"
+      },
+      "cpu_and_iommu": {
+        "cpu": "max",
+        "iommu": "amd"
+      }
+    },
+    {
+      "instance": "entropy-kafka-arm",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20142 CATTEN_DEPLOY_HOST_PORT=20242 scripts/run-aarch64.sh --kafka-test --smp 4 --instance entropy-kafka-arm --fresh-storage --timeout 300",
+      "exit_code": 0,
+      "baseline_revision": "3fd5f845429422a00b613f6ac364d83579c05c46",
+      "cpus": 4,
+      "tracked_diff_sha256_at_preparation": "594e8a1fba517a7b4b5ca2ea8ac4297f117acea0ad6aaf2e8af8ad82da5111c1",
+      "kernel_sha256": "676d729bea3acb1c4bb922cb241d12f0e857689379cce27796332fa294b1b786",
+      "boot_image_sha256": "22f368d0c260836421c3b5d5a458af643531328c198dfa94af240868c307ea2d",
+      "initial_disk_sha256": "06599da2375d376c33e083b5405ddd28e35b1c8acd257769a95e33338677759e",
+      "bundle_set": "aarch64-unknown-none",
+      "complete_bundle_equals_recorded_set": true,
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 20,
+        "failed": 0,
+        "pending": 0
+      },
+      "entropy_contract_diagnostics": [],
+      "security_bitmap_diagnostics": [],
+      "http_checks": [],
+      "http_retry_diagnostics": [],
+      "salient_guest_diagnostics": [
+        "[+     6.999756] [EL0 LOG] lp=0 asid=118 [rng] serving host-backed VirtIO entropy",
+        "[+    15.935272] [kafka-test] FAULT WINDOW OPEN: route leader kafka2 may now be interrupted",
+        "[+    26.953134] [EL0 LOG] lp=0 asid=149 [kafka] TLS handshake transport failed (6)",
+        "[+    33.236656] [kafka-test] SUCCESS: low-level offset 1, generic step commits=4 produced=4 retries=2 dlq=1 timeouts=1 group_generation=3 heartbeats=3 metadata_refreshes=2 coordinator_refreshes=0 retry_attempts=4 terminal_errors=2 output_route_produced=5 lag=1"
+      ],
+      "fault_driver_diagnostics": [
+        ">>> Killing Kafka route leader kafka2 during the in-guest fault window...",
+        ">>> Restarting Kafka broker kafka2 after the fault window...",
+        "[+    15.935272] [kafka-test] FAULT WINDOW OPEN: route leader kafka2 may now be interrupted"
+      ],
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-aarch64.sh": "42c62c11c20bf928001455b93c1b3c4b971dae9da72ee9d4c4dbae800f2b5973"
+      },
+      "cpu_and_iommu": {
+        "cpu": "cortex-a710",
+        "iommu": "smmuv3"
+      }
+    },
+    {
+      "instance": "entropy-s3-intel",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_HTTP_HOST_PORT=20143 CATTEN_DEPLOY_HOST_PORT=20243 scripts/run-x86_64.sh --s3-test --security-test --http-test --iommu intel --smp 4 --instance entropy-s3-intel --fresh-storage --timeout 480",
+      "exit_code": 0,
+      "baseline_revision": "3fd5f845429422a00b613f6ac364d83579c05c46",
+      "cpus": 4,
+      "tracked_diff_sha256_at_preparation": "594e8a1fba517a7b4b5ca2ea8ac4297f117acea0ad6aaf2e8af8ad82da5111c1",
+      "kernel_sha256": "b7682eb49eb9759c385078124c90e722b11f0aa9ee6601236fdbec38af146655",
+      "boot_image_sha256": "5e62de974229f7c2bc978b3c66be94252a865746f341aec3deb1152b4593c602",
+      "initial_disk_sha256": "c694507f70861f584ccbaa7a51661a42923a73e4eed3785bba7254b67fed52d8",
+      "bundle_set": "x86_64-unknown-none",
+      "complete_bundle_equals_recorded_set": true,
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "deferred": {
+        "passed": 20,
+        "failed": 0,
+        "pending": 0
+      },
+      "entropy_contract_diagnostics": [
+        "[+    30.360241] [EL0 LOG] lp=0 asid=152 [security] entropy read: moved reply, malformed count/missing memory/extra connection, device rejection, cancel/Drop and late-result cleanup; original deadline, queue-full/silent timeout distinct and all eight slots recovered",
+        "[+    63.685732] [EL0 LOG] lp=0 asid=152 [security] entropy read: moved reply, malformed count/missing memory/extra connection, device rejection, cancel/Drop and late-result cleanup; original deadline, queue-full/silent timeout distinct and all eight slots recovered"
+      ],
+      "security_bitmap_diagnostics": [
+        "[+    50.938817] [EL0 LOG] lp=0 asid=152 [security-probe] passed checks=0xffff",
+        "[+    84.212429] [EL0 LOG] lp=0 asid=152 [security-probe] passed checks=0xffff"
+      ],
+      "http_checks": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.364s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.181s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.289s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 30.22s; ingress recovered"
+      ],
+      "http_retry_diagnostics": [
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 2/2"
+      ],
+      "salient_guest_diagnostics": [
+        "[+    13.537109] [EL0 LOG] lp=0 asid=156 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    14.049145] [EL0 LOG] lp=0 asid=160 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    14.102231] [EL0 LOG] lp=0 asid=152 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    17.873523] [EL0 LOG] lp=0 asid=152 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    24.080501] [s3-test] SUCCESS: verified 33-byte object round trip",
+        "[+    51.156753] [security] probe passed; retired policy fenced, publication generation=1",
+        "[+    51.289138] [EL0 LOG] lp=0 asid=152 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    84.362544] [security] probe passed; retired policy fenced, publication generation=2"
+      ],
+      "fault_driver_diagnostics": [],
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-x86_64.sh": "dd82631746d8765526ed3372c8a779851f254ca2b8ad1fa0ee55d49a96067aa4"
+      },
+      "cpu_and_iommu": {
+        "cpu": "max",
+        "iommu": "intel"
+      }
+    }
+  ],
+  "native_totals": {
+    "deferred_passed": 80,
+    "http_passed": 42,
+    "entropy_probe_executions": 6,
+    "http_retry_diagnostics": 13
+  },
+  "failed_preliminary_construction_runs": [
+    {
+      "name": "Initial strict AArch64 service Clippy",
+      "exit_code": 101,
+      "diagnostics": [
+        "error: the `Err`-variant returned from this function is very large",
+        "pub fn cancel(mut self) -> Result<(), (Self, IpcError)>",
+        "the `Err`-variant is at least 176 bytes",
+        "-D clippy::result-large-err implied by -D warnings"
+      ],
+      "correction": "Separate the lean public pending owner from a private completion owner holding returned resources/mapping. No allocation on cancellation failure and no lint suppression."
+    }
+  ],
+  "manual": {
+    "path": "docs/manual-v2/charlotte.pdf",
+    "sha256": "e04a8d9974e9694039a6cca41bc2573e91dc12d81dbf78e8f988a2ced050881b",
+    "pages": 252,
+    "overfull_warnings": 189,
+    "unchanged_global_warning_count": true,
+    "undefined_references": false,
+    "source_sha256": {
+      "docs/manual-v2/charlotte.tex": "42b2f84da83ecf1abf41bcdbcd3dece446936502710951d99c24ed7cda2fe4d8",
+      "docs/manual-v2/chapters/13-networking.tex": "676c533be35a2a0baded6f90f13212d4caf0dd14ad492a26ed475dc3ce160408",
+      "docs/manual-v2/chapters/22-configuration.tex": "348cbe20f188d5a5e5812bcf75978672d8e8f5d1249ba787f875f8c4f2d01bd3"
+    },
+    "build": "Two pdflatex passes",
+    "rendered_and_visually_checked_pages": [
+      14,
+      116,
+      117,
+      118,
+      197,
+      198,
+      199,
+      200
+    ],
+    "scope": "Affected/adjacent pages and Configuration contents; remainder not re-audited"
+  },
+  "limitations": [
+    "Observation deadline excludes dependency lookup, whole TLS/SCRAM exchanges, scheduling progress and blocking kernel mapping/cancellation latency. Deferred start arms no autonomous cancellation.",
+    "New-wrapper mapping failure and forced kernel wait-admission failure were not natively injected. Inspected exact owner/error propagation plus existing runtime timed-loan rejection test is not exhaustive wrapper fault coverage.",
+    "Native deterministic fixture bytes are public data from an unregistered local peer, never installed as RNG or used by crypto. Real Cortex-A710 S3/Kafka uses owned VirtIO RNG because that CPU lacks RNDR.",
+    "RNG service allocates reply backing on its own account. Authority-holding raw callers/deferred owners can retain that backing. Caller-funded replies and retention-pressure qualification remain SEC-07 work; no claim ungranted callers can acquire authority.",
+    "Startup name-service lookup and RNG server publication/receive readiness are separate gaps. Runtime cancellation supplies no DMA quiescence or physical retirement proof.",
+    "Host interop uses cfg(test) host entropy. No new forced cancellation-rejection/domain-abort native test or whole-workspace signing/launch suite rerun in this batch.",
+    "TLS key-schedule/HKDF/IV, compiler-copy and forced-termination erasure, intermediate chains, third-party provenance/license, hardware timing, production trust and other SEC-18 contexts remain unqualified.",
+    "Passing HTTP retries and controlled Kafka recovery do not establish causes for historical intermittent failures. No kernel source behavior or formal model changed."
+  ]
+}

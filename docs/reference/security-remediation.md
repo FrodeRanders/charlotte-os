@@ -75,6 +75,19 @@ R7-4/R7-5 qualification remain open.
 
 ## SEC-06: management progress
 
+The [entropy deadline follow-up](../reports/audits/2026-10-26-security-entropy-deadlines.md)
+bounds client-side accepted RNG reply observation with one configurable
+request budget installed alongside the source. Pending/reply/mapping owners
+retain the original deadline and source/output borrows; timeout and exact
+wait-admission rejection stay distinct, with no replay or fabricated bytes.
+Native reply/attachment, explicit cancel/Drop, late-result and full/silent queue
+controls qualify that scope. This does not bound dependency naming, RNG-server
+publication, kernel mapping/cancellation latency or a complete TLS exchange.
+The RNG protocol still allocates producer-sponsored reply memory: clients
+holding RNG authority can retain it outside this helper. Caller funding and
+retention-pressure qualification remain SEC-07 work; no reachability from an
+ungranted application is asserted. Finding dispositions stay unchanged.
+
 The [HTTP listener correction](../reports/audits/2026-10-10-security-http-progress.md)
 retains listeners through queue-full admission. The
 [deployment ingress follow-up](../reports/audits/2026-10-11-security-deployment-ingress.md)

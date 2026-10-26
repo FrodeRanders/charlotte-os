@@ -453,14 +453,25 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let mut cfg = Config::new(hw);
     // Entropy is obtained before the interface emits any protocol state.
     let random = NetworkRandom::initialize(|bytes| {
-        if catten_services::tls_client::fill_entropy(None, bytes).is_ok() {
+        if catten_services::tls_client::fill_entropy(
+            None,
+            bytes,
+            catten_services::tls_client::EntropyLimits::DEFAULT,
+        )
+        .is_ok()
+        {
             return Ok(());
         }
         // RNG registration precedes network startup and needs no IP traffic.
         let (_, rng) =
             wait_for_registered_name_owned(ns_connection, catten_services::entropy::NAME)
                 .ok_or(())?;
-        catten_services::tls_client::fill_entropy(Some(rng.as_ref()), bytes).map_err(|_| ())
+        catten_services::tls_client::fill_entropy(
+            Some(rng.as_ref()),
+            bytes,
+            catten_services::tls_client::EntropyLimits::DEFAULT,
+        )
+        .map_err(|_| ())
     })
     .unwrap_or_else(|_| fail(0xe00a));
     cfg.random_seed = random.interface_seed();

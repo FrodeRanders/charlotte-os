@@ -29,13 +29,15 @@ complete root graph, including independent consumers of SHA/signature APIs.
 ## Entropy authority and admission
 
 Before publishing TLS/SCRAM consumers, startup calls
-`install_domain_entropy(Option<Connection>)`. S3 and Kafka transfer their
+`install_domain_entropy(EntropyConfig)`. The configuration owns an optional
+`Connection` and its `EntropyLimits`. S3 and Kafka transfer their
 dedicated owned name-service lookup result into this domain context. Never
 adopt a launch-owned connection or store a borrowed `ConnectionRef` globally.
-`None` explicitly installs an architectural-only source. Installation is
-one-shot; a duplicate returns the complete new owner without replacing the
-original source, even while it is checked out. There is no live replacement
-or independent capacity pool.
+`service: None` explicitly installs an architectural-only source. A zero
+request budget returns the complete new configuration without installation.
+Installation is one-shot; a duplicate returns the complete new configuration
+without replacing the original source or limits, even while checked out. There
+is no live replacement or independent capacity pool.
 
 `fill_domain_entropy` briefly takes the connection out of the context into one
 owning lease. It releases the metadata mutex before architectural randomness,
@@ -49,7 +51,42 @@ The source first uses the kernel RNDR/RDRAND interface where available, then
 fills the remainder through its owned `rng` connection. Its pending call and
 returned memory/mapping use the runtime owners. SCRAM uses the fallible
 `fill_domain_entropy` API. TCP/IP's independent startup path retains
-`fill_entropy` with its explicit local borrow, without installing TLS state.
+`fill_entropy` with its explicit local borrow and limits, without installing TLS state.
+
+### Request deadline and operation owner
+
+`EntropyLimits::request_timeout_ms` is a positive startup setting, default
+`5000` milliseconds, aligned with the existing five-second service-observation
+policy as a starting value, not a hardware latency guarantee. Hardware filling
+and service admission/observation share
+one monotonic deadline; no stage restarts its budget. `fill_service_entropy`
+accepts an existing caller deadline and deliberately makes no architectural
+shortcut. The service-only request must fit the protocol's existing
+`1..=entropy::MAX_REQUEST` bound; no prefix is submitted on rejection.
+
+`ServiceEntropyRead::start` owns the accepted pending call and borrows the
+source/output with the original deadline. Consuming `finish` combines it with
+returned owners and a read-only mapping in one completion owner. It requires an
+exact byte count, memory and no connection attachment; negative peer status,
+malformed replies and mapping failure never become successful entropy. A deferred
+`start` does not arm background cancellation: retaining that owner can retain
+accepted work/backing past its deadline until `finish`, `cancel` or Drop. A late
+reply is disposed without publication; a deadline crossed during the final copy
+clears that destination before rejection. Output is usable only on success;
+an architectural prefix may already have been filled when the service fails.
+
+`ExpiredBeforeAdmission`, `Submission`, `Observation` and `ObservationTimeout`
+remain distinct. `Observation` preserves the exact `IpcError`, including wait
+admission rejection; it is never converted to timeout. Accepted work is not
+replayed. The pending owner survives rejection until checked cancellation, and
+explicit `cancel(self)` returns the complete operation/borrows if close rejects.
+Its Drop retains the runtime's domain-abort policy on unsafe cancellation.
+
+This bounds reply observation, not a whole TLS/SCRAM exchange, source lookup,
+kernel mapping/cancellation latency or scheduling progress. Cancellation of a
+request does not prove RNG device DMA quiescence. The service still allocates
+reply backing on its own account; caller funding and retention pressure remain
+separate audit work for holders of RNG authority.
 
 Embassy's RNG callback cannot return an error. Opening TLS preflights entropy
 and returns `EntropyUnavailable` on ordinary admission/source failure. A later
@@ -105,6 +142,15 @@ The related constants are grouped at the top of
 | `TLS_RECORD_BUFFER_LEN` | `16640` per buffer | Two heap allocations per live stream; TLS record framing overhead and upstream minimum record storage must fit. Recheck heap pressure, record-size cases and error cleanup. |
 | `TLS_CERTIFICATE_LEN` | `16384` | The verifier's bounded copy must hold the complete peer Certificate message; increasing it also increases handshake stack usage. It does not add chain validation. |
 
+The separate entropy request budget travels in startup's `EntropyConfig` and
+can be supplied through that Rust API. Bundled S3/Kafka and TCP/IP currently
+select the one `EntropyLimits::DEFAULT` in
+[`entropy_client.rs`](../../crates/catten-services/src/tls_client/entropy_client.rs).
+Changing that default rebuilds services; no launch-profile/config-page field,
+boot-module parser or live update is added. A longer budget also retains the
+source checkout, pending metadata, output borrow and possible reply/mapping
+longer. Qualify failure timing, queue/memory pressure and cleanup together.
+
 These are service build inputs, not kernel resource-profile fields or boot-time
 knobs. Change them together with workload sizing, stack/heap grants and the
 peer's record/certificate behavior, then rebuild both service variants and
@@ -112,6 +158,7 @@ qualify maximum-size and rejection cases. The driver's opaque context layout
 is a pinned upstream structural contract; its generated target-size/alignment
 checks must pass when changing driver types or features.
 
-The [migration report](../reports/audits/2026-10-26-security-embassy-tls.md)
+The [entropy deadline follow-up](../reports/audits/2026-10-26-security-entropy-deadlines.md)
+records the new client ownership/pressure scope. The [migration report](../reports/audits/2026-10-26-security-embassy-tls.md)
 records executed checks, artifact identities and retained failures. SEC-14/15
 remain partial; production trust remains disabled.

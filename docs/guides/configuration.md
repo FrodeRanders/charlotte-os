@@ -9,7 +9,7 @@ This guide matches the manual's **Configuration** chapter.
 
 | Configuration | Current source and lifetime |
 | --- | --- |
-| Domain TLS entropy | Startup consumes a dedicated owned `rng` connection once, or explicitly installs architectural-only randomness. Admission retains that source through each operation; see [TLS configuration](../reference/tls-client.md). |
+| Domain TLS entropy | Startup consumes `EntropyConfig` with an owned `rng` connection (or explicit architectural-only source) and a positive request budget. The compiled default is `5000` ms; admission retains that complete configuration through each operation; see [TLS configuration](../reference/tls-client.md). |
 | Dependency advisory policy | `.cargo/audit.toml` and the scanner pin in `.cargo/audit-version`, evaluated by CI/local validation. They do not configure a running node; see [the advisory gate](../reference/dependency-advisories.md). |
 | Kernel resource capacity | One trusted Rust build profile, compiled into the kernel and fixed for the boot. |
 | Bootstrap service assignments | `CATTEN_CLUSTER_SERVICES` at build time; runners accept repeatable `--cluster-service [NAME=]IPv4:PORT`. The first committed signed ingress policy replaces bootstrap assignments. |
@@ -77,6 +77,15 @@ The [TLS configuration reference](../reference/tls-client.md#compile-time-capaci
 records their defaults, upstream framing/layout requirements and joint stack/heap
 qualification. Backend/source pins and erasure feature changes also require
 both service variants to be rebuilt; they are not live resource-policy settings.
+
+The entropy request budget is a startup API input in `EntropyConfig`, alongside
+its owned source. Bundled consumers use `EntropyLimits::DEFAULT`; changing this
+central `5000` ms default or their Rust startup values requires rebuilding the
+services. There is no manifest/config-page or live-resizing input for it. A
+longer observation budget retains the source lease, pending/output borrow and
+possible returned backing longer; requalify timeouts, rejection and pressure
+without granting replay authority. See the
+[deadline contract](../reference/tls-client.md#request-deadline-and-operation-owner).
 
 ## Related limits
 

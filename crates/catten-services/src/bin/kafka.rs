@@ -2507,7 +2507,11 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         wait_for_registered_name_owned(ns_connection, time::NAME).unwrap_or_else(|| fail(0x4b04));
     let entropy_connection =
         try_registered_name_owned(ns_connection, entropy::NAME).map(|(_, connection)| connection);
-    tls_client::install_domain_entropy(entropy_connection).unwrap_or_else(|_| fail(0x4b0a));
+    tls_client::install_domain_entropy(tls_client::EntropyConfig {
+        service: entropy_connection,
+        limits: tls_client::EntropyLimits::DEFAULT,
+    })
+    .unwrap_or_else(|_| fail(0x4b0a));
     if !wait_for_local_ready_owned(ns_connection) {
         fail(0x4b05);
     }

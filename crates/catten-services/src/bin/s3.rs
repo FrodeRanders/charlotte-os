@@ -858,7 +858,11 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     }
     let entropy_connection =
         try_registered_name_owned(ns_connection, entropy::NAME).map(|(_, connection)| connection);
-    tls_client::install_domain_entropy(entropy_connection).unwrap_or_else(|_| fail(0xe008));
+    tls_client::install_domain_entropy(tls_client::EntropyConfig {
+        service: entropy_connection,
+        limits: tls_client::EntropyLimits::DEFAULT,
+    })
+    .unwrap_or_else(|_| fail(0xe008));
 
     let endpoint = Endpoint::create(protocol::INTERFACE, protocol::VERSION, 32)
         .unwrap_or_else(|_| fail(0xe006));

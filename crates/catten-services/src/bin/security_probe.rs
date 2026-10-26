@@ -9,6 +9,9 @@ mod gcm_contract;
 #[path = "../network_random/contract.rs"]
 mod network_random_contract;
 
+#[path = "../tls_client/entropy_contract.rs"]
+mod entropy_contract;
+
 use alloc::vec::Vec;
 
 use catten_rt::{
@@ -995,6 +998,7 @@ fn main(ctx: Context) -> ! {
         "[security] platform publication: full-queue deadline, ",
         "silent-call cancellation and all eight slots recovered"
     ));
+    entropy_contract::run(silent_connection.as_ref());
     let scalar_budget = Deadline::after(7_000);
     check(
         matches!(

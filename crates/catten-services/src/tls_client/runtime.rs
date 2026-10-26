@@ -13,7 +13,7 @@ use spin::Mutex;
 
 enum State<Source> {
     Uninstalled,
-    Available(Option<Source>),
+    Available(Source),
     Borrowed,
 }
 
@@ -35,7 +35,7 @@ impl<Source> EntropyContext<Source> {
     }
 
     /// On rejection return the new owner; never replace the installed source.
-    pub(super) fn install(&self, source: Option<Source>) -> Result<(), Option<Source>> {
+    pub(super) fn install(&self, source: Source) -> Result<(), Source> {
         let mut state = self.state.lock();
         if !matches!(*state, State::Uninstalled) {
             return Err(source);
@@ -49,7 +49,7 @@ impl<Source> EntropyContext<Source> {
         match core::mem::replace(&mut *state, State::Borrowed) {
             State::Available(source) => Ok(EntropyLease {
                 context: self,
-                source,
+                source: Some(source),
             }),
             State::Uninstalled => {
                 *state = State::Uninstalled;
@@ -66,8 +66,8 @@ pub(super) struct EntropyLease<'context, Source> {
 }
 
 impl<Source> EntropyLease<'_, Source> {
-    pub(super) fn source(&self) -> Option<&Source> {
-        self.source.as_ref()
+    pub(super) fn source(&self) -> &Source {
+        self.source.as_ref().expect("source retained through checkout")
     }
 }
 
@@ -75,7 +75,7 @@ impl<Source> Drop for EntropyLease<'_, Source> {
     fn drop(&mut self) {
         let mut state = self.context.state.lock();
         debug_assert!(matches!(*state, State::Borrowed));
-        *state = State::Available(self.source.take());
+        *state = State::Available(self.source.take().expect("one checkout returns its source"));
     }
 }
 
@@ -188,7 +188,7 @@ mod tests {
 
     #[test]
     fn architectural_only_installation_is_explicit_and_exclusive() {
-        let context = EntropyContext::<()>::new();
+        let context = EntropyContext::<Option<()>>::new();
         assert!(context.install(None).is_ok());
         let lease = context.checkout().unwrap();
         assert!(lease.source().is_none());
@@ -199,7 +199,7 @@ mod tests {
 
     #[test]
     fn checked_out_source_rejects_another_thread_without_waiting() {
-        let context = EntropyContext::<()>::new();
+        let context = EntropyContext::<Option<()>>::new();
         context.install(None).unwrap();
         let lease = context.checkout().unwrap();
         std::thread::scope(|scope| {

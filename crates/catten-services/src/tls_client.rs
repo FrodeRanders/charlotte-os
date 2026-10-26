@@ -11,10 +11,6 @@ use alloc::{
     vec::Vec,
 };
 
-use catten_rt::owned::{
-    Connection,
-    ConnectionRef,
-};
 use embedded_io::{
     ErrorType,
     Read,
@@ -33,18 +29,31 @@ use embedded_tls::{
 };
 use zeroize::Zeroizing;
 
-use crate::{
-    entropy,
-    socket,
-};
+use crate::socket;
 
 mod crypto;
+mod entropy_client;
+#[cfg(test)]
+use entropy_client::{
+    DOMAIN_ENTROPY,
+    EntropySource,
+    SystemRng,
+};
+pub use entropy_client::{
+    EntropyConfig,
+    EntropyError,
+    EntropyLimits,
+    ServiceEntropyRead,
+    fill_domain_entropy,
+    fill_entropy,
+    fill_service_entropy,
+    install_domain_entropy,
+};
 #[cfg(all(test, unix))]
 mod interop;
 mod runtime;
 
 use runtime::{
-    EntropyContext,
     HandshakeClock,
     HandshakeGuard,
 };
@@ -81,49 +90,6 @@ const _: () = {
 // The verifier's static clock is admitted for exactly one handshake. Entropy
 // authority is installed once and owned for this domain's lifetime.
 static HANDSHAKE_CLOCK: HandshakeClock = HandshakeClock::new();
-static DOMAIN_ENTROPY: EntropyContext<EntropySource> = EntropyContext::new();
-
-enum EntropySource {
-    Service(Connection),
-    // Host randomness exists only in this library's unit-test harness.
-    #[cfg(test)]
-    Host,
-}
-
-/// Install the domain's entropy authority before publishing TLS/SCRAM users.
-/// Consumes a dedicated owned connection, never a launch-owned borrowed handle.
-/// `None` explicitly selects architectural randomness only. Rejection returns
-/// the complete new owner and never replaces an already installed source.
-/// There is no live reconfiguration; the kernel retires it with the domain.
-pub fn install_domain_entropy(service: Option<Connection>) -> Result<(), Option<Connection>> {
-    DOMAIN_ENTROPY.install(service.map(EntropySource::Service)).map_err(|source| {
-        source.map(|source| match source {
-            EntropySource::Service(connection) => connection,
-            #[cfg(test)]
-            EntropySource::Host => unreachable!("installation returns its new input only"),
-        })
-    })
-}
-
-/// Fill a caller-owned nonce from the installed source. Admission, submission,
-/// reply and mapping rejection return failure; the source owner returns to the
-/// domain context on every ordinary path without holding its lock across RPC.
-pub fn fill_domain_entropy(destination: &mut [u8]) -> Result<(), EntropyUnavailable> {
-    let lease = DOMAIN_ENTROPY.checkout().map_err(|_| EntropyUnavailable)?;
-    match lease.source() {
-        #[cfg(test)]
-        Some(EntropySource::Host) => getrandom::fill(destination).map_err(|_| EntropyUnavailable),
-        source => fill_entropy(
-            source.map(|source| match source {
-                EntropySource::Service(connection) => connection.as_ref(),
-                #[cfg(test)]
-                EntropySource::Host => unreachable!(),
-            }),
-            destination,
-        ),
-    }
-}
-
 /// Bounds used while adapting message-oriented CharlotteOS sockets to a byte
 /// stream. A timeout is reported as a transport failure to embedded-tls.
 #[derive(Clone, Copy)]
@@ -165,9 +131,6 @@ impl OpenError {
 /// A failure while using or explicitly closing an established TLS stream.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct StreamError;
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct EntropyUnavailable;
 
 /// A verified TLS byte stream that owns all resources needed by the session.
 #[must_use = "dropping the stream closes its TLS session and owned socket"]
@@ -358,52 +321,6 @@ impl EmbeddedWrite for SocketIo<'_> {
     }
 }
 
-/// Fill from an explicitly borrowed source without installing domain crypto.
-/// Used by the TCP/IP driver's independent entropy startup path.
-pub fn fill_entropy(
-    service: Option<ConnectionRef<'_>>,
-    destination: &mut [u8],
-) -> Result<(), EntropyUnavailable> {
-    let mut offset = 0;
-    while offset < destination.len() {
-        let Some(word) = catten_syscall::random_u64() else {
-            break;
-        };
-        let bytes = Zeroizing::new(word.to_ne_bytes());
-        let length = (destination.len() - offset).min(bytes.len());
-        destination[offset..offset + length].copy_from_slice(&bytes[..length]);
-        offset += length;
-    }
-    if offset == destination.len() {
-        return Ok(());
-    }
-    let remaining = destination.len() - offset;
-    let reply = service
-        .ok_or(EntropyUnavailable)?
-        .call(entropy::OP_FILL, remaining as u64)
-        .map_err(|_| EntropyUnavailable)?
-        .wait()
-        .map_err(|_| EntropyUnavailable)?;
-    if reply.result != remaining as i64 {
-        return Err(EntropyUnavailable);
-    }
-    let mapping =
-        reply.memory.ok_or(EntropyUnavailable)?.map_read_only().map_err(|_| EntropyUnavailable)?;
-    let input = mapping.as_slice().get(..remaining).ok_or(EntropyUnavailable)?;
-    destination[offset..].copy_from_slice(input);
-    Ok(())
-}
-
-struct SystemRng;
-impl embassy_crypto::driver::Rng for SystemRng {
-    fn fill_bytes(destination: &mut [u8]) {
-        // The upstream callback cannot return an error. Never replay an
-        // accepted entropy request or fabricate bytes on mid-handshake failure.
-        fill_domain_entropy(destination).expect("system entropy unavailable during TLS crypto");
-    }
-}
-embassy_crypto::rng_impl!(SystemRng);
-
 struct SynchronizedClock;
 impl TlsClock for SynchronizedClock {
     fn now() -> Option<u64> {
@@ -519,7 +436,7 @@ mod tests {
     pub(super) fn host_crypto() -> MutexGuard<'static, ()> {
         let guard = HOST_CRYPTO.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         HOST_ENTROPY.call_once(|| {
-            assert!(super::DOMAIN_ENTROPY.install(Some(super::EntropySource::Host)).is_ok())
+            assert!(super::DOMAIN_ENTROPY.install(super::EntropySource::Host).is_ok())
         });
         guard
     }

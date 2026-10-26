@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Owned entropy request deadlines](audits/2026-10-26-security-entropy-deadlines.md) — Configurable observation budget, complete pending/reply ownership and signed native rejection/cleanup controls; records remaining producer-funded reply pressure.
+
 - [Pinned Embassy TLS migration](audits/2026-10-26-security-embassy-tls.md) — Active patched crypto-bigint graph, domain-owned entropy, typed mTLS and erasing cipher driver; host interop and final ARM/Intel/AMD artifact qualification.
 
 - [crypto-bigint migration through Embassy TLS](audits/2026-10-26-crypto-bigint-embassy-migration.md) — Pinned main-branch candidate, clean advisory graph, two freestanding compile checks and six host controls; records the entropy, mTLS and cipher-erasure work before live cutover.
