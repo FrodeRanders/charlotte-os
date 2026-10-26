@@ -23,7 +23,6 @@ use catten_rt::{
     ShutdownRequest,
     config,
     owned::{
-        Connection,
         ConnectionRef,
         Endpoint,
         OwnedMemory,
@@ -171,7 +170,6 @@ impl Transport<'_> {
 
 fn connect<'connection>(
     tcp: ConnectionRef<'connection>,
-    entropy: Option<ConnectionRef<'connection>>,
     profile: &Profile,
     unix_seconds: u64,
 ) -> Result<Transport<'connection>, ()> {
@@ -181,7 +179,6 @@ fn connect<'connection>(
     if profile.tls {
         let result = tls_client::OwnedTlsStream::open(
             socket,
-            entropy,
             tls_client::OpenConfig {
                 server_name: profile.host,
                 ca_certificate_der: profile.ca_der,
@@ -209,7 +206,9 @@ fn connect<'connection>(
                 catten_rt::logln!("[s3] TLS unavailable: system entropy source failed");
                 Err(())
             }
-            Err(tls_client::OpenError::InvalidConfiguration) => Err(()),
+            Err(
+                tls_client::OpenError::InvalidConfiguration | tls_client::OpenError::CryptoBusy,
+            ) => Err(()),
         }
     } else {
         Ok(Transport::Plain(socket))
@@ -436,7 +435,6 @@ struct Service<'connection> {
     profile: Profile,
     tcp: ConnectionRef<'connection>,
     clock: ConnectionRef<'connection>,
-    entropy: Option<ConnectionRef<'connection>>,
     gets: BTreeMap<u64, GetState<'connection>>,
     puts: BTreeMap<u64, PutState<'connection>>,
     next_id: u64,
@@ -479,8 +477,8 @@ impl<'connection> Service<'connection> {
         }
         let id = self.operation_id().ok_or(protocol::ERR_BUSY)?;
         let (timestamp, unix_seconds) = time_now(self.clock).ok_or(protocol::ERR_UNSYNCHRONIZED)?;
-        let mut socket = connect(self.tcp, self.entropy, &self.profile, unix_seconds)
-            .map_err(|_| protocol::ERR_TRANSPORT)?;
+        let mut socket =
+            connect(self.tcp, &self.profile, unix_seconds).map_err(|_| protocol::ERR_TRANSPORT)?;
         let head =
             signed_head(&self.profile, &request, "GET", timestamp).ok_or(protocol::ERR_INVALID)?;
         if socket.send_all(&head).is_err() {
@@ -539,8 +537,8 @@ impl<'connection> Service<'connection> {
         }
         let id = self.operation_id().ok_or(protocol::ERR_BUSY)?;
         let (timestamp, unix_seconds) = time_now(self.clock).ok_or(protocol::ERR_UNSYNCHRONIZED)?;
-        let mut socket = connect(self.tcp, self.entropy, &self.profile, unix_seconds)
-            .map_err(|_| protocol::ERR_TRANSPORT)?;
+        let mut socket =
+            connect(self.tcp, &self.profile, unix_seconds).map_err(|_| protocol::ERR_TRANSPORT)?;
         let head =
             signed_head(&self.profile, &request, "PUT", timestamp).ok_or(protocol::ERR_INVALID)?;
         if socket.send_all(&head).is_err() {
@@ -563,8 +561,8 @@ impl<'connection> Service<'connection> {
 
     fn simple_request(&self, request: &OwnedRequest, method: &str) -> Result<ResponseHead, i64> {
         let (timestamp, unix_seconds) = time_now(self.clock).ok_or(protocol::ERR_UNSYNCHRONIZED)?;
-        let mut socket = connect(self.tcp, self.entropy, &self.profile, unix_seconds)
-            .map_err(|_| protocol::ERR_TRANSPORT)?;
+        let mut socket =
+            connect(self.tcp, &self.profile, unix_seconds).map_err(|_| protocol::ERR_TRANSPORT)?;
         let request_head =
             signed_head(&self.profile, request, method, timestamp).ok_or(protocol::ERR_INVALID)?;
         if socket.send_all(&request_head).is_err() {
@@ -860,6 +858,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     }
     let entropy_connection =
         try_registered_name_owned(ns_connection, entropy::NAME).map(|(_, connection)| connection);
+    tls_client::install_domain_entropy(entropy_connection).unwrap_or_else(|_| fail(0xe008));
 
     let endpoint = Endpoint::create(protocol::INTERFACE, protocol::VERSION, 32)
         .unwrap_or_else(|_| fail(0xe006));
@@ -893,7 +892,6 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         profile,
         tcp: tcp_connection.as_ref(),
         clock: time_connection.as_ref(),
-        entropy: entropy_connection.as_ref().map(Connection::as_ref),
         gets: BTreeMap::new(),
         puts: BTreeMap::new(),
         next_id: 1,

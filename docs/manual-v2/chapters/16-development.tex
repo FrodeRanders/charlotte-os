@@ -226,13 +226,15 @@ configuration errors reject. A successful status still requires a complete,
 unfiltered JSON report without vulnerabilities or warnings, including notices
 that the pinned scanner can otherwise report without failing.
 
-The 26 October 2026 scan prompted the compatible \texttt{ctutils} 0.4.4 update.
-The new CI check still fails on the unsuppressed \texttt{crypto-bigint} 0.5.5
-advisory in the TLS curve stack; its patched API series needs migration and
-qualification. This does not establish constant-time code generation on every
-platform or close SEC-14. License policy, protected release provenance and
-repository required-check settings remain separate. Current commands, findings
-and evidence are in \repofiletext|docs/reference/dependency-advisories.md|{the dependency advisory reference}.
+The 26 October 2026 scan first prompted a compatible \texttt{ctutils} update.
+The subsequent pinned Embassy-based TLS migration replaces the old curve API
+family with \texttt{crypto-bigint} 0.7.10 and \texttt{ctutils} 0.4.6. The complete
+182-package root graph now passes the fresh advisory gate without ignores.
+This is a point-in-time result, not proof of constant-time code generation on
+every platform or closure of SEC-14. License policy, protected release
+provenance and repository required-check settings remain separate. Current
+commands, exact source/database identities and evidence are in
+\repofiletext|docs/reference/dependency-advisories.md|{the dependency advisory reference}.
 
 \section{Self-tests}
 

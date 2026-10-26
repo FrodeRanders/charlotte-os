@@ -838,6 +838,27 @@ bounded SCRAM exchange validates broker challenges, minimum and maximum
 iteration counts, and the server signature. Passwords, client private keys,
 and derived keys use zeroizing owners and remain outside the application ABI.
 
+The shared transport now uses pinned Embassy-based TLS and crypto-driver
+revisions. Startup transfers its dedicated owned entropy connection into a
+one-shot domain context before publishing TLS/SCRAM consumers. Each entropy
+operation checks that owner out, releases its metadata guard, and retains the
+connection through RPC, returned-memory mapping and copy. Ordinary completion
+returns the same owner. Duplicate installation returns the new owner; busy
+checkout rejects without waiting on an outstanding RPC. Architectural-only
+randomness requires explicit installation. No borrowed launch connection is
+stored globally.
+
+One nonblocking handshake admission owns the static verification clock through
+completion. Overlap rejects before changing the clock, and completion clears
+it. mTLS retains typed P-256 SEC1 validation and constructs its Embassy signing
+key from a zeroizing scalar temporary. A missing source rejects before the
+handshake; failure inside the infallible RNG callback stops the domain rather
+than inventing bytes or replaying an accepted entropy request. Host randomness
+exists only in the unit-test source. Exact revisions and contracts are in
+\repofile|docs/reference/tls-client.md|.
+
+The sole registered Embassy AES-GCM driver retains the previously qualified
+erasing cipher context; the pinned stock driver would retain a plain key array.
 The shared TLS dependency enables erasure of AES expanded round keys on
 ordinary cipher Drop, with build-time checks for its AES-128 owner types.
 GCM authentication-key scratch also erases after construction. The current

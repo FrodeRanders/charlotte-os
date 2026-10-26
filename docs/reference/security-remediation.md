@@ -1208,11 +1208,14 @@ The [dependency gate and ctutils update](../reports/audits/2026-10-26-security-d
 add a pinned, fresh, unfiltered advisory CI check with no ignores and explicit
 rejection of successful reports containing notices. A fresh scan found two
 October 23 advisories missed by the older snapshot. Updating `ctutils` 0.4.2 to
-0.4.4 removes RUSTSEC-2026-0385. **The new CI check remains failing** on
-RUSTSEC-2026-0387 (`crypto-bigint` 0.5.5 in the TLS curve stack). Its patched API
-series needs a separately qualified migration; no exception or local arithmetic
-backport is supplied. License/release provenance, required-check deployment and
-production trust remain separate. SEC-14 stays partial; finding counts are unchanged.
+0.4.4 removes RUSTSEC-2026-0385. The subsequent
+[Embassy TLS migration](../reports/audits/2026-10-26-security-embassy-tls.md)
+replaces the old curve family with crypto-bigint 0.7.10, preserves typed mTLS
+and erasing cipher ownership, and installs domain-owned entropy. Its complete
+root graph passes the fresh advisory gate without ignores. License/release
+provenance, required-check deployment, constant-time/complete-state erasure
+qualification and production trust remain separate. SEC-14/15 stay partial;
+finding counts are unchanged.
 
 | Order | Finding and acceptance criterion |
 | --- | --- |

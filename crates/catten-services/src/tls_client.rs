@@ -10,15 +10,11 @@ use alloc::{
     vec,
     vec::Vec,
 };
-use core::{
-    num::NonZeroU32,
-    sync::atomic::{
-        AtomicU64,
-        Ordering,
-    },
-};
 
-use catten_rt::owned::ConnectionRef;
+use catten_rt::owned::{
+    Connection,
+    ConnectionRef,
+};
 use embedded_io::{
     ErrorType,
     Read,
@@ -27,32 +23,30 @@ use embedded_io::{
 use embedded_tls::{
     Aes128GcmSha256,
     Certificate,
-    CryptoProvider,
-    SignatureScheme,
+    PrivateKey,
     TlsClock,
     TlsConfig,
     TlsContext,
     TlsError,
-    TlsVerifier,
     blocking::TlsConnection,
     pki::CertVerifier,
-};
-use p256::{
-    SecretKey,
-    ecdsa::{
-        DerSignature,
-        SigningKey,
-    },
-};
-use rand_core::{
-    CryptoRng,
-    RngCore,
 };
 use zeroize::Zeroizing;
 
 use crate::{
     entropy,
     socket,
+};
+
+mod crypto;
+#[cfg(all(test, unix))]
+mod interop;
+mod runtime;
+
+use runtime::{
+    EntropyContext,
+    HandshakeClock,
+    HandshakeGuard,
 };
 
 const TLS_RECORD_BUFFER_LEN: usize = 16_640;
@@ -68,9 +62,10 @@ const _: fn() = || {
     erases_on_drop::<aes::Aes128Dec>();
 };
 
-// Keep the dependency feature edges tied to the cipher selected by TLS.
-const _: fn(<Aes128GcmSha256 as embedded_tls::TlsCipherSuite>::Cipher) -> aes_gcm::Aes128Gcm =
-    |cipher| cipher;
+// The selected TLS cipher dispatches to the sole registered erasing driver.
+const _: fn(
+    <Aes128GcmSha256 as embedded_tls::TlsCipherSuite>::Cipher,
+) -> embassy_crypto::Aes128Gcm = |cipher| cipher;
 
 // Require the selected authentication-state owners to have Drop. AArch64's
 // default software backend erases its fields. Freestanding x86 selects it with
@@ -83,12 +78,51 @@ const _: () = {
     assert!(core::mem::needs_drop::<ghash::GHash>());
 };
 
-/// Unix time used by the in-progress TLS handshake. The verifier consults the
-/// clock only while `open` runs to completion, and each service domain is
-/// single-threaded, so one handshake-scoped value is sufficient. It is stored
-/// immediately before the verifier is constructed and replaced by the next
-/// handshake.
-static TLS_UNIX_SECONDS: AtomicU64 = AtomicU64::new(0);
+// The verifier's static clock is admitted for exactly one handshake. Entropy
+// authority is installed once and owned for this domain's lifetime.
+static HANDSHAKE_CLOCK: HandshakeClock = HandshakeClock::new();
+static DOMAIN_ENTROPY: EntropyContext<EntropySource> = EntropyContext::new();
+
+enum EntropySource {
+    Service(Connection),
+    // Host randomness exists only in this library's unit-test harness.
+    #[cfg(test)]
+    Host,
+}
+
+/// Install the domain's entropy authority before publishing TLS/SCRAM users.
+/// Consumes a dedicated owned connection, never a launch-owned borrowed handle.
+/// `None` explicitly selects architectural randomness only. Rejection returns
+/// the complete new owner and never replaces an already installed source.
+/// There is no live reconfiguration; the kernel retires it with the domain.
+pub fn install_domain_entropy(service: Option<Connection>) -> Result<(), Option<Connection>> {
+    DOMAIN_ENTROPY.install(service.map(EntropySource::Service)).map_err(|source| {
+        source.map(|source| match source {
+            EntropySource::Service(connection) => connection,
+            #[cfg(test)]
+            EntropySource::Host => unreachable!("installation returns its new input only"),
+        })
+    })
+}
+
+/// Fill a caller-owned nonce from the installed source. Admission, submission,
+/// reply and mapping rejection return failure; the source owner returns to the
+/// domain context on every ordinary path without holding its lock across RPC.
+pub fn fill_domain_entropy(destination: &mut [u8]) -> Result<(), EntropyUnavailable> {
+    let lease = DOMAIN_ENTROPY.checkout().map_err(|_| EntropyUnavailable)?;
+    match lease.source() {
+        #[cfg(test)]
+        Some(EntropySource::Host) => getrandom::fill(destination).map_err(|_| EntropyUnavailable),
+        source => fill_entropy(
+            source.map(|source| match source {
+                EntropySource::Service(connection) => connection.as_ref(),
+                #[cfg(test)]
+                EntropySource::Host => unreachable!(),
+            }),
+            destination,
+        ),
+    }
+}
 
 /// Bounds used while adapting message-oriented CharlotteOS sockets to a byte
 /// stream. A timeout is reported as a transport failure to embedded-tls.
@@ -116,6 +150,7 @@ pub struct OpenConfig<'a> {
 pub enum OpenError {
     InvalidConfiguration,
     EntropyUnavailable,
+    CryptoBusy,
     Handshake(u32),
 }
 
@@ -176,32 +211,9 @@ impl Drop for TlsRecordBuffers {
 impl<'connection> OwnedTlsStream<'connection> {
     pub fn open(
         socket: socket::OwnedSocket<'connection>,
-        entropy_service: Option<ConnectionRef<'connection>>,
         config: OpenConfig<'_>,
     ) -> Result<Self, OpenError> {
-        if config.server_name.is_empty()
-            || config.ca_certificate_der.is_empty()
-            || config.unix_seconds == 0
-            || config.socket_bounds.send_attempts == 0
-            || config.socket_bounds.receive_attempts == 0
-            || config.socket_bounds.receive_chunk_len == 0
-            || config.client_certificate_der.is_some() != config.client_private_key_der.is_some()
-            || config
-                .client_private_key_der
-                .is_some_and(|key| SecretKey::from_sec1_der(key).is_err())
-        {
-            return Err(OpenError::InvalidConfiguration);
-        }
-        if (SystemRng {
-            service: entropy_service,
-        })
-        .try_fill(&mut [0])
-        .is_err()
-        {
-            return Err(OpenError::EntropyUnavailable);
-        }
-
-        TLS_UNIX_SECONDS.store(config.unix_seconds, Ordering::Relaxed);
+        let handshake = PreparedHandshake::new(&config)?;
         let buffers = TlsRecordBuffers::new();
         // SAFETY: these allocations remain exclusively owned by the wrapper,
         // are not moved, and are reclaimed only after `connection` is dropped.
@@ -214,16 +226,7 @@ impl<'connection> OwnedTlsStream<'connection> {
             bounds: config.socket_bounds,
         };
         let mut connection = TlsConnection::new(io, read_ref, write_ref);
-        let tls_config = TlsConfig::new().with_server_name(config.server_name);
-        let provider = TlsProvider {
-            rng: SystemRng {
-                service: entropy_service,
-            },
-            verifier: CertVerifier::new(Certificate::X509(config.ca_certificate_der)),
-            client_certificate_der: config.client_certificate_der,
-            client_private_key_der: config.client_private_key_der,
-        };
-        if let Err(error) = connection.open(TlsContext::new(&tls_config, provider)) {
+        if let Err(error) = handshake.open(&mut connection) {
             let code = tls_error_code(&error);
             drop(connection);
             // `buffers` is then dropped and wiped on this error path too.
@@ -355,140 +358,109 @@ impl EmbeddedWrite for SocketIo<'_> {
     }
 }
 
-struct SystemRng<'connection> {
-    service: Option<ConnectionRef<'connection>>,
-}
-
-/// Fill a caller-owned buffer from the same architecture/leased entropy path
-/// used by TLS. Protocol clients use this for nonces without gaining raw
-/// device authority.
+/// Fill from an explicitly borrowed source without installing domain crypto.
+/// Used by the TCP/IP driver's independent entropy startup path.
 pub fn fill_entropy(
     service: Option<ConnectionRef<'_>>,
     destination: &mut [u8],
 ) -> Result<(), EntropyUnavailable> {
-    SystemRng {
-        service,
+    let mut offset = 0;
+    while offset < destination.len() {
+        let Some(word) = catten_syscall::random_u64() else {
+            break;
+        };
+        let bytes = Zeroizing::new(word.to_ne_bytes());
+        let length = (destination.len() - offset).min(bytes.len());
+        destination[offset..offset + length].copy_from_slice(&bytes[..length]);
+        offset += length;
     }
-    .try_fill(destination)
-    .map_err(|_| EntropyUnavailable)
+    if offset == destination.len() {
+        return Ok(());
+    }
+    let remaining = destination.len() - offset;
+    let reply = service
+        .ok_or(EntropyUnavailable)?
+        .call(entropy::OP_FILL, remaining as u64)
+        .map_err(|_| EntropyUnavailable)?
+        .wait()
+        .map_err(|_| EntropyUnavailable)?;
+    if reply.result != remaining as i64 {
+        return Err(EntropyUnavailable);
+    }
+    let mapping =
+        reply.memory.ok_or(EntropyUnavailable)?.map_read_only().map_err(|_| EntropyUnavailable)?;
+    let input = mapping.as_slice().get(..remaining).ok_or(EntropyUnavailable)?;
+    destination[offset..].copy_from_slice(input);
+    Ok(())
 }
 
-impl SystemRng<'_> {
-    /// Fill a handshake buffer, retrying a briefly busy entropy service
-    /// before treating the missing randomness as fatal. `RngCore::fill_bytes`
-    /// cannot report an error, so exhaustion remains fail-stop; callers that
-    /// can handle it use [`fill_entropy`] or `try_fill_bytes`.
-    fn fill_or_fail(&self, destination: &mut [u8]) {
-        for attempt in 0..3 {
-            if self.try_fill(destination).is_ok() {
-                return;
-            }
-            if attempt < 2 {
-                crate::sleep_ms(1);
-            }
-        }
-        panic!("system entropy unavailable during a TLS handshake");
-    }
-
-    fn try_fill(&self, destination: &mut [u8]) -> Result<(), rand_core::Error> {
-        let mut offset = 0;
-        while offset < destination.len() {
-            let Some(word) = catten_syscall::random_u64() else {
-                break;
-            };
-            let bytes = word.to_ne_bytes();
-            let length = (destination.len() - offset).min(bytes.len());
-            destination[offset..offset + length].copy_from_slice(&bytes[..length]);
-            offset += length;
-        }
-        if offset == destination.len() {
-            return Ok(());
-        }
-        let remaining = destination.len() - offset;
-        let service = self.service.ok_or_else(rng_error)?;
-        let reply = service
-            .call(entropy::OP_FILL, remaining as u64)
-            .map_err(|_| rng_error())?
-            .wait()
-            .map_err(|_| rng_error())?;
-        if reply.result != remaining as i64 {
-            return Err(rng_error());
-        }
-        let mapping =
-            reply.memory.ok_or_else(rng_error)?.map_read_only().map_err(|_| rng_error())?;
-        let input = mapping.as_slice().get(..remaining).ok_or_else(rng_error)?;
-        destination[offset..].copy_from_slice(input);
-        Ok(())
+struct SystemRng;
+impl embassy_crypto::driver::Rng for SystemRng {
+    fn fill_bytes(destination: &mut [u8]) {
+        // The upstream callback cannot return an error. Never replay an
+        // accepted entropy request or fabricate bytes on mid-handshake failure.
+        fill_domain_entropy(destination).expect("system entropy unavailable during TLS crypto");
     }
 }
-
-fn rng_error() -> rand_core::Error {
-    rand_core::Error::from(
-        NonZeroU32::new(rand_core::Error::CUSTOM_START).expect("nonzero error code"),
-    )
-}
-
-impl RngCore for SystemRng<'_> {
-    fn next_u32(&mut self) -> u32 {
-        self.next_u64() as u32
-    }
-
-    fn next_u64(&mut self) -> u64 {
-        let mut bytes = [0; 8];
-        self.fill_or_fail(&mut bytes);
-        u64::from_ne_bytes(bytes)
-    }
-
-    fn fill_bytes(&mut self, destination: &mut [u8]) {
-        self.fill_or_fail(destination);
-    }
-
-    fn try_fill_bytes(&mut self, destination: &mut [u8]) -> Result<(), rand_core::Error> {
-        self.try_fill(destination)
-    }
-}
-
-impl CryptoRng for SystemRng<'_> {}
+embassy_crypto::rng_impl!(SystemRng);
 
 struct SynchronizedClock;
-
 impl TlsClock for SynchronizedClock {
     fn now() -> Option<u64> {
-        let seconds = TLS_UNIX_SECONDS.load(Ordering::Relaxed);
-        (seconds != 0).then_some(seconds)
+        HANDSHAKE_CLOCK.now()
     }
 }
 
-struct TlsProvider<'connection, 'ca, 'identity> {
-    rng: SystemRng<'connection>,
-    verifier: CertVerifier<'ca, Aes128GcmSha256, SynchronizedClock, TLS_CERTIFICATE_LEN>,
-    client_certificate_der: Option<&'identity [u8]>,
-    client_private_key_der: Option<&'identity [u8]>,
+/// Owns the admitted verification clock and optional erasing identity through
+/// one handshake; no provider borrows a caller's entropy capability globally.
+struct PreparedHandshake<'config, 'data> {
+    config: &'config OpenConfig<'data>,
+    identity: Option<PrivateKey>,
+    _clock: HandshakeGuard<'static>,
 }
 
-impl CryptoProvider for TlsProvider<'_, '_, '_> {
-    type CipherSuite = Aes128GcmSha256;
-    type Signature = DerSignature;
-
-    fn rng(&mut self) -> impl embedded_tls::CryptoRngCore {
-        &mut self.rng
+impl<'config, 'data> PreparedHandshake<'config, 'data> {
+    fn new(config: &'config OpenConfig<'data>) -> Result<Self, OpenError> {
+        if config.server_name.is_empty()
+            || config.ca_certificate_der.is_empty()
+            || config.unix_seconds == 0
+            || config.socket_bounds.send_attempts == 0
+            || config.socket_bounds.receive_attempts == 0
+            || config.socket_bounds.receive_chunk_len == 0
+            || config.client_certificate_der.is_some() != config.client_private_key_der.is_some()
+        {
+            return Err(OpenError::InvalidConfiguration);
+        }
+        let identity = config
+            .client_private_key_der
+            .map(crypto::load_client_key)
+            .transpose()
+            .map_err(|_| OpenError::InvalidConfiguration)?;
+        let clock = HANDSHAKE_CLOCK.begin(config.unix_seconds).ok_or(OpenError::CryptoBusy)?;
+        let mut probe = Zeroizing::new([0; 1]);
+        fill_domain_entropy(&mut *probe).map_err(|_| OpenError::EntropyUnavailable)?;
+        Ok(Self {
+            config,
+            identity,
+            _clock: clock,
+        })
     }
 
-    fn verifier(&mut self) -> Result<&mut impl TlsVerifier<Aes128GcmSha256>, TlsError> {
-        Ok(&mut self.verifier)
-    }
-
-    fn signer(
-        &mut self,
-    ) -> Result<(impl signature::SignerMut<Self::Signature>, SignatureScheme), TlsError> {
-        let private_key = self.client_private_key_der.ok_or(TlsError::InvalidPrivateKey)?;
-        let secret_key =
-            SecretKey::from_sec1_der(private_key).map_err(|_| TlsError::InvalidPrivateKey)?;
-        Ok((SigningKey::from(&secret_key), SignatureScheme::EcdsaSecp256r1Sha256))
-    }
-
-    fn client_cert(&mut self) -> Option<Certificate<impl AsRef<[u8]>>> {
-        self.client_certificate_der.map(Certificate::X509)
+    fn open<Socket: Read + EmbeddedWrite>(
+        self,
+        connection: &mut TlsConnection<'_, Socket, Aes128GcmSha256>,
+    ) -> Result<(), TlsError> {
+        let config = TlsConfig::new().with_server_name(self.config.server_name);
+        let verifier = CertVerifier::<Aes128GcmSha256, SynchronizedClock, TLS_CERTIFICATE_LEN>::new(
+            Certificate::X509(self.config.ca_certificate_der),
+        );
+        let mut context = TlsContext::new(&config, verifier);
+        if let (Some(certificate), Some(key)) =
+            (self.config.client_certificate_der, self.identity.as_ref())
+        {
+            context = context.with_client_cert(Certificate::X509(certificate), key);
+        }
+        connection.open(context)
     }
 }
 
@@ -499,6 +471,8 @@ fn tls_error_code(error: &TlsError) -> u32 {
         TlsError::ConnectionClosed => 1,
         TlsError::Unimplemented => 2,
         TlsError::MissingHandshake => 3,
+        TlsError::MissingPsk => 33,
+        TlsError::MissingServerName => 34,
         TlsError::HandshakeAborted(..) => 4,
         TlsError::AbortHandshake(..) => 5,
         TlsError::IoError | TlsError::Io(_) => 6,
@@ -533,6 +507,23 @@ fn tls_error_code(error: &TlsError) -> u32 {
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
+    use std::sync::{
+        Mutex,
+        MutexGuard,
+        Once,
+    };
+    static HOST_CRYPTO: Mutex<()> = Mutex::new(());
+    static HOST_ENTROPY: Once = Once::new();
+
+    pub(super) fn host_crypto() -> MutexGuard<'static, ()> {
+        let guard = HOST_CRYPTO.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        HOST_ENTROPY.call_once(|| {
+            assert!(super::DOMAIN_ENTROPY.install(Some(super::EntropySource::Host)).is_ok())
+        });
+        guard
+    }
+
     use aes::cipher::{
         BlockDecrypt,
         BlockEncrypt,

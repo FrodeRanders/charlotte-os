@@ -136,18 +136,21 @@ charlotte-s3 = { path = "../charlotte-s3" }
 charlotte-kafka = { path = "../charlotte-kafka" }
 charlotte-kafka-step = { path = "../charlotte-kafka-step" }
 embedded-io = { version = "0.7", default-features = false }
-embedded-tls = { version = "0.19", default-features = false, features = ["alloc", "rustpki", "p384", "ed25519"] }
-# embedded-tls's AES-GCM dependency does not enable round-key erasure.
+# Source version still says 0.19.0; these exact revisions select the Embassy API.
+embedded-tls = { git = "https://github.com/embassy-rs/embedded-tls", rev = "6487c62bb084c33361822022e21836ddfd48388f", default-features = false, features = ["rustpki", "p256", "p384", "ed25519"] }
+embassy-crypto = { git = "https://github.com/embassy-rs/embassy", rev = "822a76ea91f2c0885c6eb0c65fe91181e31133e1" }
+# Register only required operations. Charlotte supplies the RNG and erasing GCM
+# drivers; enabling the stock GCM driver would duplicate its link-time symbols.
+embassy-crypto-rustcrypto = { git = "https://github.com/embassy-rs/embassy", rev = "822a76ea91f2c0885c6eb0c65fe91181e31133e1", default-features = false, features = ["embassy-crypto-sha256", "embassy-crypto-sha384", "embassy-crypto-sha512", "embassy-crypto-hmac-sha256", "embassy-crypto-hmac-sha384", "embassy-crypto-p256-ecdh", "embassy-crypto-p256-ecdsa", "embassy-crypto-p384-ecdsa", "embassy-crypto-ed25519"] }
+# Retain the qualified record-cipher owners behind the Embassy driver API.
 aes = { version = "0.8.4", default-features = false, features = ["zeroize"] }
 # Authentication-key scratch erasure is separately gated in each dependency.
 # POLYVAL's selected software backend also wipes state; hardware gaps remain.
 aes-gcm = { version = "0.10.3", default-features = false, features = ["aes", "zeroize"] }
 ghash = { version = "0.5.1", default-features = false, features = ["zeroize"] }
 polyval = { version = "0.6.2", default-features = false, features = ["zeroize"] }
-rand_core = { version = "0.6", default-features = false }
 zeroize = { version = "1.9", default-features = false, features = ["alloc"] }
-p256 = { version = "0.13", default-features = false, features = ["ecdsa"] }
-signature = { version = "2.2", default-features = false }
+p256 = { version = "0.14", default-features = false, features = ["pkcs8"] }
 
 [target.'cfg(not(target_os = "none"))'.dev-dependencies]
 ed25519-compact = "2.3.1"

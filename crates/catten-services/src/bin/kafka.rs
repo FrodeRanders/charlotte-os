@@ -21,7 +21,6 @@ use catten_rt::{
     ShutdownRequest,
     config,
     owned::{
-        Connection,
         ConnectionRef,
         Endpoint,
         OwnedMemory,
@@ -375,7 +374,6 @@ fn tcpip_has_ipv4(connection: ConnectionRef<'_>) -> bool {
 
 struct BrokerTransport<'connection> {
     tcp: ConnectionRef<'connection>,
-    entropy: Option<ConnectionRef<'connection>>,
     clock: ConnectionRef<'connection>,
     ip: [u8; 4],
     port: u16,
@@ -425,7 +423,6 @@ impl BrokerStream<'_> {
 impl<'connection> BrokerTransport<'connection> {
     fn new(
         tcp: ConnectionRef<'connection>,
-        entropy: Option<ConnectionRef<'connection>>,
         clock: ConnectionRef<'connection>,
         destination: &BrokerDestination,
         tls: bool,
@@ -434,7 +431,6 @@ impl<'connection> BrokerTransport<'connection> {
     ) -> Self {
         Self {
             tcp,
-            entropy,
             clock,
             ip: destination.ip,
             port: destination.port,
@@ -462,7 +458,6 @@ impl<'connection> BrokerTransport<'connection> {
             let unix_seconds = tls_unix_seconds(self.clock).ok_or(protocol::ERR_TLS_REQUIRED)?;
             let stream = tls_client::OwnedTlsStream::open(
                 socket,
-                self.entropy,
                 tls_client::OpenConfig {
                     server_name: &self.host,
                     ca_certificate_der: &self.ca_der,
@@ -502,7 +497,8 @@ impl<'connection> BrokerTransport<'connection> {
                     tls_client::OpenError::EntropyUnavailable => {
                         catten_rt::logln!("[kafka] TLS unavailable: system entropy source failed")
                     }
-                    tls_client::OpenError::InvalidConfiguration => {
+                    tls_client::OpenError::InvalidConfiguration
+                    | tls_client::OpenError::CryptoBusy => {
                         catten_rt::logln!("[kafka] invalid TLS transport profile")
                     }
                 }
@@ -557,7 +553,7 @@ impl<'connection> BrokerTransport<'connection> {
         }
 
         let mut nonce_bytes = Zeroizing::new([0u8; 24]);
-        tls_client::fill_entropy(self.entropy, &mut *nonce_bytes)
+        tls_client::fill_domain_entropy(&mut *nonce_bytes)
             .map_err(|_| protocol::ERR_AUTHENTICATION)?;
         let nonce = wire::scram::base64_encode(&nonce_bytes[..], false);
         let scram = wire::scram::Client::new(&credentials.username, &credentials.password, &nonce)
@@ -663,7 +659,6 @@ enum Coordinator {
 
 struct BrokerSession<'connection> {
     tcp: ConnectionRef<'connection>,
-    entropy: Option<ConnectionRef<'connection>>,
     clock: ConnectionRef<'connection>,
     bootstrap: BrokerTransport<'connection>,
     seeds: Vec<BrokerTransport<'connection>>,
@@ -689,7 +684,6 @@ struct GroupMembership {
 impl<'connection> BrokerSession<'connection> {
     fn new(
         tcp: ConnectionRef<'connection>,
-        entropy: Option<ConnectionRef<'connection>>,
         clock: ConnectionRef<'connection>,
         profile: &Profile,
     ) -> Self {
@@ -699,7 +693,6 @@ impl<'connection> BrokerSession<'connection> {
             .map(|destination| {
                 BrokerTransport::new(
                     tcp,
-                    entropy,
                     clock,
                     destination,
                     profile.tls,
@@ -710,11 +703,9 @@ impl<'connection> BrokerSession<'connection> {
             .collect();
         Self {
             tcp,
-            entropy,
             clock,
             bootstrap: BrokerTransport::new(
                 tcp,
-                entropy,
                 clock,
                 &profile.bootstrap,
                 profile.tls,
@@ -885,7 +876,6 @@ impl<'connection> BrokerSession<'connection> {
                     }
                     _ => BrokerTransport::new(
                         self.tcp,
-                        self.entropy,
                         self.clock,
                         destination,
                         profile.tls,
@@ -967,7 +957,6 @@ impl<'connection> BrokerSession<'connection> {
                 self.brokers.entry(coordinator.node_id).or_insert_with(|| {
                     BrokerTransport::new(
                         self.tcp,
-                        self.entropy,
                         self.clock,
                         destination,
                         profile.tls,
@@ -2518,6 +2507,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         wait_for_registered_name_owned(ns_connection, time::NAME).unwrap_or_else(|| fail(0x4b04));
     let entropy_connection =
         try_registered_name_owned(ns_connection, entropy::NAME).map(|(_, connection)| connection);
+    tls_client::install_domain_entropy(entropy_connection).unwrap_or_else(|_| fail(0x4b0a));
     if !wait_for_local_ready_owned(ns_connection) {
         fail(0x4b05);
     }
@@ -2542,12 +2532,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         }
     }
 
-    let mut broker = BrokerSession::new(
-        tcp_connection.as_ref(),
-        entropy_connection.as_ref().map(Connection::as_ref),
-        time_connection.as_ref(),
-        &profile,
-    );
+    let mut broker =
+        BrokerSession::new(tcp_connection.as_ref(), time_connection.as_ref(), &profile);
     let (non_transactional_producer, transactional_producer) =
         broker.bootstrap(&profile).unwrap_or_else(|error| fail(0x4b00 | (-error as u32 & 0xff)));
 

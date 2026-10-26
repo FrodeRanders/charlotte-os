@@ -20,6 +20,10 @@ The following inputs have different authorities and lifetimes:
         \path{.cargo/audit.toml} and the scanner pin in \path{.cargo/audit-version}.
         These configure validation, not a running node. Database contents refresh
         at each invocation; a later advisory can reject the same lockfile.
+    \item[Domain TLS entropy.] Startup consumes a dedicated owned entropy
+        connection once, or explicitly installs architectural-only randomness.
+        It cannot adopt a borrowed launch capability or replace an installed
+        source. This is runtime authority, not a capacity-profile field.
     \item[Kernel resource policy.] Trusted Rust build input selects capacity
         ceilings, ordinary shares and platform reserves. It is compiled into
         the kernel and remains fixed throughout that boot.
@@ -77,6 +81,18 @@ There is currently no resource-policy boot-module parser, capability, syscall
 or live-resizing interface. The compiled policy does not change after charges
 exist. Boot-time resource input is a future installation mechanism, not an
 implemented fallback for an invalid build profile.
+
+TLS record and certificate capacities are grouped build constants in
+\repofiletext|crates/catten-services/src/tls_client.rs|{the shared TLS adapter}.
+Each stream owns two
+\texttt{16640}-byte record buffers; the verifier admits a complete Certificate
+message up to \texttt{16384} bytes. These values are compile-time adjustable,
+with record-framing requirements, handshake stack usage and heap grants reviewed
+together. Increasing storage does not add intermediate-chain validation.
+Driver context layouts and backend erasure flags remain structural build
+contracts. Changing these inputs requires rebuilding and qualifying both service
+variants; the kernel resource profile does not resize them. See
+\repofile|docs/reference/tls-client.md|.
 
 \section{Related limits and tuning consequences}
 

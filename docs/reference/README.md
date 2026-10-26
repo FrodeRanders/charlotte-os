@@ -3,6 +3,8 @@
 These documents explain current code-facing contracts and invariants. They
 should be updated with the implementation when those contracts change.
 
+- [Owned TLS client](tls-client.md) — pinned Embassy crypto, domain-owned entropy,
+  authentication, record-key erasure and related compile-time capacities.
 - [Secret-derived hash state](secret-state-lifetimes.md) — owned SHA/HMAC/SigV4/SCRAM
   storage, ordinary erasure and remaining limits.
 - [API and protocol simplification](api-simplification.md) — current-only internal

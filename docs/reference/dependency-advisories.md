@@ -30,29 +30,24 @@ mode in the production gate.
 
 ## Current findings: 26 October 2026
 
-The [follow-up and evidence](../reports/audits/2026-10-26-security-dependency-gate.md)
-record a fresh scan at RustSec commit
-`115e418ee9a2ff542fee41db641128fa84483383` (1355 advisories).
-`ctutils` moves from 0.4.2 to patched 0.4.4 for
-[RUSTSEC-2026-0385](https://rustsec.org/advisories/RUSTSEC-2026-0385.html).
-This is the only package/version/checksum change.
+The [earlier follow-up](../reports/audits/2026-10-26-security-dependency-gate.md)
+introduced the gate and patched ctutils 0.4.2 to 0.4.4. Its remaining
+[RUSTSEC-2026-0387](https://rustsec.org/advisories/RUSTSEC-2026-0387.html)
+finding required replacing the TLS curve API family, rather than changing a
+single transitive lockfile version.
 
-**The new CI check currently fails** on
-[RUSTSEC-2026-0387](https://rustsec.org/advisories/RUSTSEC-2026-0387.html):
-`crypto-bigint` 0.5.5 remains through `elliptic-curve` 0.13.8 and the TLS P-256/
-P-384 stack. The advisory lists patched versions from 0.7.6; this is not a
-compatible lockfile-only upgrade of that dependency chain. No ignore, custom
-arithmetic backport or unverified exception is installed. Migrate and qualify
-that stack before expecting a clean advisory job. Production trust remains
-disabled; functional tests do not prove absence of side channels.
+The [Embassy migration](../reports/audits/2026-10-26-security-embassy-tls.md)
+now installs the pinned main-branch TLS/backend, domain-owned entropy driver,
+typed P-256 mTLS parser and erasing GCM context in the **active workspace**.
+The root lockfile contains one crypto-bigint, **0.7.10**, and ctutils **0.4.6**.
+No advisory ignore, local arithmetic backport or target exception is installed.
+The [TLS reference](tls-client.md) records exact source pins and ownership rules.
 
-The selected migration target is the pinned **Embassy-based embedded-tls main
-branch**. The [assessment and reproducible probe](../reports/audits/2026-10-26-crypto-bigint-embassy-migration.md)
-compile its crypto stack on both service targets, exercise six host controls and
-scan a candidate graph containing crypto-bigint 0.7.10 without findings.
-Cutover still requires a domain-owned entropy driver, the new verifier/mTLS API,
-an erasing AES-GCM context and complete TLS/native qualification. The isolated
-candidate is not the active root lockfile; the production gate remains red.
+**The migrated complete root graph passes the advisory gate.** Its fresh
+182-package scan at RustSec commit `a78282a1414d6c28cc228c4eae3570451affb0dc`
+(1378 advisories) has zero vulnerabilities and warnings. This is a point-in-time
+result, not a guarantee about future database contents or constant-time code
+generation. SEC-14 remains partial and production trust stays disabled.
 
 CI executes the gate on its existing push/PR triggers. The job must be deployed
 and made required through repository branch-protection settings to enforce merge

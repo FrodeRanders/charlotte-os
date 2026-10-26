@@ -121,6 +121,11 @@ callers until that bounded wait ends.
 
 ## TLS security boundary
 
+The shared transport uses the pinned Embassy-based TLS API and one domain-owned
+entropy context installed before consumer publication. Its exact revisions,
+one-time ownership/admission, typed mTLS parser and grouped compile-time
+capacities are documented in [Owned TLS client](tls-client.md).
+
 The shared TLS transport enables AES round-key and GCM authentication-key
 scratch erasure. The current AArch64 software POLYVAL backend also erases its
 state on ordinary Drop, with a build guard requiring destructor presence. The
