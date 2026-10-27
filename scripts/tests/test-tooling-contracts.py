@@ -42,7 +42,7 @@ class ToolingContracts(unittest.TestCase):
     def environment(self):
         env = os.environ.copy()
         for name in (*RETIRED, "CLUSTER_SIGN_PRIVATE_KEY", "CARGO_FEATURE_BOOT_TRUST_TEST", "CARGO_FEATURE_DEPLOY_NET_TEST",
-                     "CATTEN_MANAGEMENT_TLS_RESOURCE", "CATTEN_RESOURCE_POLICY"):
+                     "CATTEN_MANAGEMENT_TLS_RESOURCE", "CATTEN_RESOURCE_POLICY", "CATTEN_BOOT_TEST_INSTALLED_POLICY"):
             env.pop(name, None)
         env.update(CATTEN_TRUST_MODE="development", CARGO_CFG_TARGET_ARCH="aarch64",
                    CARGO_MANIFEST_DIR=str(ROOT / "crates/catten"))
@@ -93,6 +93,48 @@ class ToolingContracts(unittest.TestCase):
                     self.assertIn(f"{name} is retired", result.stderr)
                     self.assertNotIn("retired-input-must-not-be-echoed", result.stdout + result.stderr)
                     self.assertNotIn("cargo:rustc-link-arg", result.stdout)
+
+    def test_installed_snapshot_requires_x86_fixture_and_development(self):
+        for changes, diagnostic in (
+            ({"CATTEN_BOOT_TEST_INSTALLED_POLICY": ""}, "requires the boot_trust_test fixture"),
+            ({"CATTEN_BOOT_TEST_INSTALLED_POLICY": "", "CARGO_FEATURE_BOOT_TRUST_TEST": "1"}, "supports only the x86 QEMU fixture"),
+            ({"CARGO_CFG_TARGET_ARCH": "x86_64", "CARGO_FEATURE_BOOT_TRUST_TEST": "1",
+              "CATTEN_TRUST_MODE": "production"}, "production images are disabled"),
+            ({"CARGO_CFG_TARGET_ARCH": "x86_64", "CARGO_FEATURE_BOOT_TRUST_TEST": "1",
+              "CATTEN_BOOT_TEST_INSTALLED_POLICY": "relative.bin"}, "must be an absolute file path"),
+        ):
+            with self.subTest(changes=changes):
+                env = self.environment()
+                env.update(changes)
+                result = subprocess.run([str(self.build)], env=env, capture_output=True, text=True, timeout=10)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(diagnostic, result.stderr)
+                self.assertNotIn("cargo:rustc-link-arg", result.stdout)
+
+    def test_installed_snapshot_is_complete_bounded_and_staged_independently(self):
+        source = ROOT / "crates/catten/src/service/admission"
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            env = self.environment()
+            env.update(CARGO_CFG_TARGET_ARCH="x86_64", CARGO_FEATURE_BOOT_TRUST_TEST="1", OUT_DIR=str(directory))
+            for name in (None, "test-policy-next.bin"):
+                with self.subTest(snapshot=name or "default"):
+                    original = source / (name or "test-policy.bin")
+                    if name:
+                        env["CATTEN_BOOT_TEST_INSTALLED_POLICY"] = str(original)
+                    result = subprocess.run([str(self.build)], env=env, capture_output=True, text=True, timeout=10)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual((directory / "boot-test-installed-policy.bin").read_bytes(), original.read_bytes())
+                    self.assertIn("CATTEN_BOOT_TEST_INSTALLED_POLICY_FILE=", result.stdout)
+            candidate = directory / "malformed.bin"
+            for data in (b"", (source / "test-policy.bin").read_bytes()[:-1],
+                         (source / "test-policy.bin").read_bytes() + b"x", bytes(10000)):
+                candidate.write_bytes(data)
+                env["CATTEN_BOOT_TEST_INSTALLED_POLICY"] = str(candidate)
+                result = subprocess.run([str(self.build)], env=env, capture_output=True, text=True, timeout=10)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("malformed installed fixture snapshot", result.stderr)
+                self.assertNotIn("CATTEN_BOOT_TEST_INSTALLED_POLICY_FILE=", result.stdout)
 
 
 if __name__ == "__main__":

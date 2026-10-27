@@ -1,7 +1,7 @@
 # Security remediation status and completion criteria
 
-Updated 2026-10-27 following native management TLS qualification; SEC-10 moves
-from open to partial. Earlier reviews retain their original dispositions. Source and tests
+Updated 2026-10-27 following native management TLS and restart/rotation qualification;
+SEC-10 remains partial. Earlier reviews retain their original dispositions. Source and tests
 remain authoritative. Historical reports preserve the state at their own
 revision; their remaining-work paragraphs are not a current backlog.
 
@@ -14,8 +14,9 @@ revision; their remaining-work paragraphs are not a current backlog.
 | Open | SEC-08, 09 | The required security boundary is not implemented. |
 
 There are **38 numbered findings: 29 corrected, seven partial and two open**.
-SEC-10 now has native authenticated transport and exact operator roles, with
-protected enrollment and broader rotation/failover qualification still required.
+SEC-10 now has native authenticated transport, exact operator roles and x86
+revision-advance/restart revocation evidence. Protected enrollment, platform
+anti-rollback and broader rotation/failover qualification are still required.
 The [2026-10-10 progress verification](../reports/audits/2026-10-10-security-progress-verification.md)
 temporarily returned SEC-12 to partial for metadata-read failure and automatic-ID
 aliasing. The [follow-up correction](../reports/audits/2026-10-10-security-object-store-follow-up.md)
@@ -1021,6 +1022,20 @@ a failed identity probe cannot be masked by later healthy metrics. Native startu
 evidence and its transport-observation limits are recorded separately from the
 earlier positive HTTPS campaign. SEC-10 remains partial; finding counts and the
 protected-installation, time and cluster-peer gaps are unchanged.
+
+The [management rotation follow-up](../reports/audits/2026-10-27-security-management-rotation.md)
+qualifies x86 signed-policy revision 7-to-8 rebuild/restart, retaining both client
+CA roots while replacing reader/administrator leaf enrollments. Both old roles
+reject on both interfaces with native client-policy events and healthy replacement
+controls. A valid uninstalled successor, a retired module and an old-policy-bound
+TLS resource reject at their exact pre-publication gates. The same persistent
+firmware/data images also accept an older still-authorized kernel and its old
+operators: compiled fixture state supplies no platform rollback resistance.
+Five expected cases pass and one replay limitation is observed. This supersedes
+the native report's pending x86 restart/revocation qualification only. Protected
+installation/custody, native expiry, ARM rotation, live session retirement,
+multi-node movement and broad fault/pressure campaigns remain; SEC-04/10 remain
+partial and production remains disabled.
 
 The [public-key input follow-up](../reports/audits/2026-10-21-security-public-key-input.md) corrects a host-tool input gap:
 ordinary public-key file arguments now share trust-policy's bounded regular-file

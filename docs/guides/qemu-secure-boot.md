@@ -57,11 +57,40 @@ for the whole matrix, and checks its executable/read-only trampoline sections.
 This feature supports only the x86 fixture. It requires exactly one Limine
 module named `charlotte.boot-trust-test`, exactly 328 bytes long, and verifies
 its `CBTRUST1` signature/cluster against compiled public test authority. Expected
-revision 7 and its exact digest are pinned in the test kernel. Shared
+revision 7 and its exact digest are pinned in the default test kernel. Shared
 `verify_for_boot` produces the distinct receipt required by the kernel handoff;
 a valid successor rejects with `UninstalledRevision`. Boot consumes installed
 state without committing a new policy revision. There is no enrollment or
 development fallback when a module/state check fails.
+
+For development rotation tests, `CATTEN_BOOT_TEST_INSTALLED_POLICY` selects an
+absolute regular file containing a complete current signed snapshot. The build
+stages at most the exact format length and rejects incomplete/extended input;
+boot authenticates the compiled snapshot against the pinned fixture authority
+before constructing its exact installed expectation. This input is rejected
+outside the x86 `boot_trust_test` development fixture. The separately supplied
+Limine module cannot select or update this compiled state. A host-verified
+successor must first be committed to the public fixture snapshot and a new
+kernel built; its earlier acceptance by the installation verifier does not
+permit boot against the old snapshot.
+
+The management restart/rotation campaign uses the same signed-chain preparation:
+
+```sh
+scripts/build-catten-services-x86_64.sh
+python3 scripts/run-management-rotation-test.py \
+  --firmware-code /path/to/secure-code.fd --vars-template /path/to/vars.fd
+```
+
+It keeps one firmware-variable image and one data image across the revision
+transition, uses loopback-only management forwards and retains per-case results
+even on failure. Both client CA roots stay trusted at revision 8 while exact
+reader/administrator enrollment changes, distinguishing enrollment removal
+from removal of a CA. It also attempts an uninstalled successor, a retired module,
+a resource bound to the old revision and replay of an older still-signed kernel.
+The latter records the platform rollback gap; it is not a successful revocation
+guarantee across arbitrary signed-kernel selection. All state and keys remain
+public or disposable test material, without protected storage or custody.
 
 The selected recipient is the publicly known test value `[77; 32]`. The public
 policy fixtures are reproducible from seeds documented by the shared-protocol

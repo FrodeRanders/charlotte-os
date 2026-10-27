@@ -20,6 +20,29 @@ pub(super) const BOOTSTRAP_PUBLIC: [u8; 32] = [
     253, 57, 84, 235, 142, 14, 251, 139, 220, 165, 222,
 ];
 
+/// Independently compiled fixture state, never derived from the boot module.
+/// The host fixture commits this public snapshot before building the next
+/// authenticated kernel. It is not rollback-resistant platform storage.
+pub(super) fn installed() -> signed_policy::VerifiedBootPolicy {
+    let bytes = include_bytes!(env!("CATTEN_BOOT_TEST_INSTALLED_POLICY_FILE"));
+    let public = charlotte_launch::trust::AdmissionTrust::decode(
+        &bytes[signed_policy::HEADER_LEN..signed_policy::SIGNATURE_OFFSET],
+    )
+    .expect("valid compiled fixture state");
+    let expected = PolicyExpectation::installed(
+        public.sequence,
+        signed_policy::signature_digest(bytes).expect("valid compiled fixture digest"),
+    )
+    .unwrap();
+    signed_policy::verify_for_boot(
+        bytes,
+        &BootstrapKey::new(BOOTSTRAP_PUBLIC).unwrap(),
+        &charlotte_launch::trust::cluster_id(CLUSTER).unwrap(),
+        &expected,
+    )
+    .expect("compiled installed fixture snapshot must authenticate")
+}
+
 pub(crate) fn prepare() -> PreparedBootTrust {
     let response = crate::environment::boot_protocol::limine::BOOT_POLICY_MODULES_REQUEST
         .response()
@@ -33,9 +56,9 @@ pub(crate) fn prepare() -> PreparedBootTrust {
     // adopted as a runtime capability. Nothing retains this borrow after copy.
     let bytes = module.data();
     assert_eq!(bytes.len(), signed_policy::ENCODED_LEN, "[boot trust fixture] invalid policy size");
-    let expected_digest = signed_policy::signature_digest(include_bytes!("test-policy.bin"))
-        .expect("valid compiled public fixture");
-    let expected = PolicyExpectation::installed(7, expected_digest).unwrap();
+    let state = installed();
+    let expected = PolicyExpectation::installed(state.policy().public().sequence, state.digest())
+        .expect("valid compiled installed state");
     let verified = signed_policy::verify_for_boot(
         bytes,
         &BootstrapKey::new(BOOTSTRAP_PUBLIC).unwrap(),
@@ -43,8 +66,9 @@ pub(crate) fn prepare() -> PreparedBootTrust {
         &expected,
     )
     .unwrap_or_else(|error| panic!("[boot trust fixture] verification rejected: {error:?}"));
+    let revision = verified.policy().public().sequence;
     let prepared = PreparedBootTrust::verified(verified, CLUSTER, Zeroizing::new([77; 32]))
         .unwrap_or_else(|_| panic!("[boot trust fixture] recipient mismatch"));
-    crate::logln!("[boot trust fixture] verified signed module: revision=7");
+    crate::logln!("[boot trust fixture] verified signed module: revision={revision}");
     prepared
 }

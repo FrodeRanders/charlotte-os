@@ -430,7 +430,9 @@ fn missing_unknown_foreign_and_wrong_purpose_clients_reject_before_plaintext() {
         }
         let mut server = Session::new(config(credentials, clock(), Limits::DEFAULT), 0).unwrap();
         let mut peer = client(&fixture, name, "ca");
-        assert!(handshake(&mut server, &mut peer, 97).is_err(), "accepted {name:?}");
+        let error =
+            handshake(&mut server, &mut peer, 97).expect_err("unauthorized client accepted");
+        assert_eq!(error.is_client_policy_rejection(), name == Some("unknown"));
         assert_eq!(server.identity(), None);
         assert!(server.step(11).is_err());
         assert!(server.receive_tls(b"GET /metrics HTTP/1.1\r\n\r\n", 12).is_err());

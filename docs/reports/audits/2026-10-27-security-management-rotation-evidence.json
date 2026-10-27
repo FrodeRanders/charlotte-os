@@ -1,0 +1,563 @@
+{
+  "date": "2026-10-27",
+  "parent_commit": "77e614a7",
+  "disposition": "SEC-04/10 remain partial; 29 corrected in scope, seven partial, two open; production disabled",
+  "native_rotation": {
+    "scope": "x86 Secure Boot public fixture; compiled exact installed snapshots, not protected state/custody",
+    "results": [
+      {
+        "case": "revision-7",
+        "compiled_revision": 7,
+        "module_sha256": "232d26b54b59ff919da47fbadc43532cdee889babd9362e6e54cf815191054d2",
+        "kernel_sha256": "dba3341ec2dc5ede13d49c0e94f47793427fa0f06b1790a428640e64c2b0514d",
+        "signed_loader_sha256": "fa2bca72b24aff78a14c9b12b8b0682e9497e2f97bec0e37d225ffbfb6c60d12",
+        "state": "passed",
+        "clients": [
+          {
+            "generation": "old",
+            "role": "reader",
+            "port": 26443,
+            "status": 200,
+            "server_sha256": "014bcba6fff3a813dc4c6061b224ae0b95695ea92df32fdc16baaa6423484e9b",
+            "session_reused": false,
+            "has_ticket": false
+          },
+          {
+            "generation": "old",
+            "role": "administrator",
+            "port": 26443,
+            "status": 200,
+            "server_sha256": "014bcba6fff3a813dc4c6061b224ae0b95695ea92df32fdc16baaa6423484e9b",
+            "session_reused": false,
+            "has_ticket": false
+          },
+          {
+            "generation": "old",
+            "role": "reader",
+            "port": 26744,
+            "status": 404,
+            "server_sha256": "014bcba6fff3a813dc4c6061b224ae0b95695ea92df32fdc16baaa6423484e9b",
+            "session_reused": false,
+            "has_ticket": false
+          },
+          {
+            "generation": "old",
+            "role": "administrator",
+            "port": 26744,
+            "status": 404,
+            "server_sha256": "014bcba6fff3a813dc4c6061b224ae0b95695ea92df32fdc16baaa6423484e9b",
+            "session_reused": false,
+            "has_ticket": false
+          }
+        ],
+        "observations": [
+          "[+     0.084227] [boot trust fixture] verified signed module: revision=7",
+          "[+    12.869327] [boot trust] admission policy published: revision=7",
+          "[+    16.369734] SELFTEST COMPLETE: passed=16 failed=0 pending=0 passed_bitmap=0x3bbff failed_bitmap=0x0 pending_bitmap=0x0",
+          "[+    19.609915] [EL0 LOG] lp=0 asid=133 [management] connection=1 certificate=6c59f7d8ec4d4350aab10622726157a99d57aef600b461e14688f1f3b3357e02 role=Reader permission=Observe allowed=true",
+          "[+    22.456930] [EL0 LOG] lp=0 asid=133 [management] connection=2 certificate=3c6111193b8736c25dd85ac1f8a168abbc08c16b9e5e11943056ce93fa463882 role=Administrator permission=Observe allowed=true",
+          "[+    25.458166] [EL0 LOG] lp=0 asid=137 [management] connection=1 certificate=6c59f7d8ec4d4350aab10622726157a99d57aef600b461e14688f1f3b3357e02 role=Reader permission=Observe allowed=true",
+          "[+    26.616099] [EL0 LOG] lp=0 asid=137 [management] connection=2 certificate=3c6111193b8736c25dd85ac1f8a168abbc08c16b9e5e11943056ce93fa463882 role=Administrator permission=Observe allowed=true",
+          "[+    27.763980] [EL0 LOG] lp=0 asid=137 [management] connection=3 certificate=6c59f7d8ec4d4350aab10622726157a99d57aef600b461e14688f1f3b3357e02 role=Reader permission=Mutate allowed=false"
+        ],
+        "storage_observations": [
+          "[+    16.356685] [raft-storage] restarted process reached term 2.",
+          "[+    16.368054] [raft-storage] SUCCESS: term/vote state survived Raft process restart on NVMe."
+        ]
+      },
+      {
+        "case": "uninstalled-successor",
+        "compiled_revision": 7,
+        "module_sha256": "486804baad33a35f2a89f1673195e6a9e36c6f95a3c0142958be7eadb9154407",
+        "kernel_sha256": "dba3341ec2dc5ede13d49c0e94f47793427fa0f06b1790a428640e64c2b0514d",
+        "signed_loader_sha256": "b88f24c06bb9c950bfa5a9b9bea4af4df9eae4bf31bf1eb7ecf5850deb2ddbc8",
+        "state": "passed",
+        "clients": [],
+        "observations": [
+          "[boot trust fixture] verification rejected: UninstalledRevision"
+        ],
+        "storage_observations": [],
+        "terminal_panic_observed": true
+      },
+      {
+        "case": "revision-8",
+        "compiled_revision": 8,
+        "module_sha256": "486804baad33a35f2a89f1673195e6a9e36c6f95a3c0142958be7eadb9154407",
+        "kernel_sha256": "7b9be439c9db1eaa2666e718f2f4f2ac8830dd3d998c0e452ec27dc40e574860",
+        "signed_loader_sha256": "38cb634ebe81bdfb8d9d1837cfe62bb3a3346afda8995fe822d83134a7437270",
+        "state": "passed",
+        "clients": [
+          {
+            "generation": "new",
+            "role": "reader",
+            "port": 26443,
+            "status": 200,
+            "server_sha256": "bd5d6759734c653c1afc004dc2e104367c78a3301306e08f5d96e092c467232d",
+            "session_reused": false,
+            "has_ticket": false
+          },
+          {
+            "generation": "new",
+            "role": "administrator",
+            "port": 26443,
+            "status": 200,
+            "server_sha256": "bd5d6759734c653c1afc004dc2e104367c78a3301306e08f5d96e092c467232d",
+            "session_reused": false,
+            "has_ticket": false
+          },
+          {
+            "generation": "new",
+            "role": "reader",
+            "port": 26744,
+            "status": 404,
+            "server_sha256": "bd5d6759734c653c1afc004dc2e104367c78a3301306e08f5d96e092c467232d",
+            "session_reused": false,
+            "has_ticket": false
+          },
+          {
+            "generation": "new",
+            "role": "administrator",
+            "port": 26744,
+            "status": 404,
+            "server_sha256": "bd5d6759734c653c1afc004dc2e104367c78a3301306e08f5d96e092c467232d",
+            "session_reused": false,
+            "has_ticket": false
+          },
+          {
+            "generation": "old",
+            "role": "reader",
+            "port": 26443,
+            "client_policy_rejected": true
+          },
+          {
+            "generation": "old",
+            "role": "administrator",
+            "port": 26443,
+            "client_policy_rejected": true
+          },
+          {
+            "generation": "old",
+            "role": "reader",
+            "port": 26744,
+            "client_policy_rejected": true
+          },
+          {
+            "generation": "old",
+            "role": "administrator",
+            "port": 26744,
+            "client_policy_rejected": true
+          }
+        ],
+        "old_server_root_rejected": true,
+        "observations": [
+          "[+     0.084493] [boot trust fixture] verified signed module: revision=8",
+          "[+    17.068700] [boot trust] admission policy published: revision=8",
+          "[+    17.746858] [launch] management TLS resource rejected before trust publication: WrongPolicy",
+          "[+    21.594201] SELFTEST COMPLETE: passed=16 failed=0 pending=0 passed_bitmap=0x3bbff failed_bitmap=0x0 pending_bitmap=0x0",
+          "[+    24.387067] [EL0 LOG] lp=0 asid=133 [management] connection=1 certificate=516033eb79acf56761aa91dd387d119b1062540ea3bd2cfc5342c9a5313064d3 role=Reader permission=Observe allowed=true",
+          "[+    27.416386] [EL0 LOG] lp=0 asid=133 [management] connection=2 certificate=2de6ee16be59b51a763b2fcbb197d7bb99a925e12210157eb1ae15e40c017e7a role=Administrator permission=Observe allowed=true",
+          "[+    30.474758] [EL0 LOG] lp=0 asid=137 [management] connection=1 certificate=516033eb79acf56761aa91dd387d119b1062540ea3bd2cfc5342c9a5313064d3 role=Reader permission=Observe allowed=true",
+          "[+    31.416648] [EL0 LOG] lp=0 asid=137 [management] connection=2 certificate=2de6ee16be59b51a763b2fcbb197d7bb99a925e12210157eb1ae15e40c017e7a role=Administrator permission=Observe allowed=true",
+          "[+    32.316268] [EL0 LOG] lp=0 asid=137 [management] connection=3 certificate=516033eb79acf56761aa91dd387d119b1062540ea3bd2cfc5342c9a5313064d3 role=Reader permission=Mutate allowed=false",
+          "[+    33.304564] [EL0 LOG] lp=0 asid=133 [management] connection=3 client policy rejected",
+          "[+    34.201538] [EL0 LOG] lp=0 asid=133 [management] connection=4 certificate=516033eb79acf56761aa91dd387d119b1062540ea3bd2cfc5342c9a5313064d3 role=Reader permission=Observe allowed=true",
+          "[+    37.132095] [EL0 LOG] lp=0 asid=133 [management] connection=5 client policy rejected",
+          "[+    38.132334] [EL0 LOG] lp=0 asid=133 [management] connection=6 certificate=516033eb79acf56761aa91dd387d119b1062540ea3bd2cfc5342c9a5313064d3 role=Reader permission=Observe allowed=true",
+          "[+    41.064280] [EL0 LOG] lp=0 asid=137 [management] connection=4 client policy rejected",
+          "[+    42.018152] [EL0 LOG] lp=0 asid=137 [management] connection=5 certificate=516033eb79acf56761aa91dd387d119b1062540ea3bd2cfc5342c9a5313064d3 role=Reader permission=Observe allowed=true",
+          "[+    42.899568] [EL0 LOG] lp=0 asid=137 [management] connection=6 client policy rejected",
+          "[+    43.804791] [EL0 LOG] lp=0 asid=137 [management] connection=7 certificate=516033eb79acf56761aa91dd387d119b1062540ea3bd2cfc5342c9a5313064d3 role=Reader permission=Observe allowed=true"
+        ],
+        "storage_observations": [
+          "[+    21.579445] [raft-storage] restarted process reached term 4.",
+          "[+    21.593121] [raft-storage] SUCCESS: term/vote state survived Raft process restart on NVMe."
+        ]
+      },
+      {
+        "case": "retired-resource",
+        "compiled_revision": 8,
+        "module_sha256": "486804baad33a35f2a89f1673195e6a9e36c6f95a3c0142958be7eadb9154407",
+        "kernel_sha256": "a3c820246e09c1da7f6b9dbc688e164fd85f10453f9a04797dcd81ec298b4284",
+        "signed_loader_sha256": "f2704c8912acd2d8b5b9c0988438d1df7703f1904f6d9880a6bab4d044826858",
+        "state": "passed",
+        "clients": [],
+        "observations": [
+          "[+     0.082277] [boot trust fixture] verified signed module: revision=8",
+          "[+    13.065432] [launch] management TLS resource rejected before trust publication: WrongPolicy",
+          "boot admission trust rejected"
+        ],
+        "storage_observations": [],
+        "terminal_panic_observed": true
+      },
+      {
+        "case": "retired-module",
+        "compiled_revision": 8,
+        "module_sha256": "232d26b54b59ff919da47fbadc43532cdee889babd9362e6e54cf815191054d2",
+        "kernel_sha256": "7b9be439c9db1eaa2666e718f2f4f2ac8830dd3d998c0e452ec27dc40e574860",
+        "signed_loader_sha256": "007af28581d66ed83657abb9d50f1930a0778bffa7239c4db60fc00611397dee",
+        "state": "passed",
+        "clients": [],
+        "observations": [
+          "[boot trust fixture] verification rejected: RevisionRollback"
+        ],
+        "storage_observations": [],
+        "terminal_panic_observed": true
+      },
+      {
+        "case": "retired-kernel-replay",
+        "compiled_revision": 7,
+        "module_sha256": "232d26b54b59ff919da47fbadc43532cdee889babd9362e6e54cf815191054d2",
+        "kernel_sha256": "dba3341ec2dc5ede13d49c0e94f47793427fa0f06b1790a428640e64c2b0514d",
+        "signed_loader_sha256": "1d057230dd87ef3f81d1aa9e04990b09d7d34f42c667480329ecca2f3944df78",
+        "state": "observed-limitation",
+        "clients": [
+          {
+            "generation": "old",
+            "role": "reader",
+            "port": 26443,
+            "status": 200,
+            "server_sha256": "014bcba6fff3a813dc4c6061b224ae0b95695ea92df32fdc16baaa6423484e9b",
+            "session_reused": false,
+            "has_ticket": false
+          },
+          {
+            "generation": "old",
+            "role": "administrator",
+            "port": 26443,
+            "status": 200,
+            "server_sha256": "014bcba6fff3a813dc4c6061b224ae0b95695ea92df32fdc16baaa6423484e9b",
+            "session_reused": false,
+            "has_ticket": false
+          },
+          {
+            "generation": "old",
+            "role": "reader",
+            "port": 26744,
+            "status": 404,
+            "server_sha256": "014bcba6fff3a813dc4c6061b224ae0b95695ea92df32fdc16baaa6423484e9b",
+            "session_reused": false,
+            "has_ticket": false
+          },
+          {
+            "generation": "old",
+            "role": "administrator",
+            "port": 26744,
+            "status": 404,
+            "server_sha256": "014bcba6fff3a813dc4c6061b224ae0b95695ea92df32fdc16baaa6423484e9b",
+            "session_reused": false,
+            "has_ticket": false
+          }
+        ],
+        "observations": [
+          "[+     0.084232] [boot trust fixture] verified signed module: revision=7",
+          "[+    14.312638] [boot trust] admission policy published: revision=7",
+          "[+    17.675962] SELFTEST COMPLETE: passed=16 failed=0 pending=0 passed_bitmap=0x3bbff failed_bitmap=0x0 pending_bitmap=0x0",
+          "[+    21.080913] [EL0 LOG] lp=0 asid=133 [management] connection=1 certificate=6c59f7d8ec4d4350aab10622726157a99d57aef600b461e14688f1f3b3357e02 role=Reader permission=Observe allowed=true",
+          "[+    23.928007] [EL0 LOG] lp=0 asid=133 [management] connection=2 certificate=3c6111193b8736c25dd85ac1f8a168abbc08c16b9e5e11943056ce93fa463882 role=Administrator permission=Observe allowed=true",
+          "[+    27.018856] [EL0 LOG] lp=0 asid=137 [management] connection=1 certificate=6c59f7d8ec4d4350aab10622726157a99d57aef600b461e14688f1f3b3357e02 role=Reader permission=Observe allowed=true",
+          "[+    28.077325] [EL0 LOG] lp=0 asid=137 [management] connection=2 certificate=3c6111193b8736c25dd85ac1f8a168abbc08c16b9e5e11943056ce93fa463882 role=Administrator permission=Observe allowed=true",
+          "[+    29.096719] [EL0 LOG] lp=0 asid=137 [management] connection=3 certificate=6c59f7d8ec4d4350aab10622726157a99d57aef600b461e14688f1f3b3357e02 role=Reader permission=Mutate allowed=false"
+        ],
+        "storage_observations": [
+          "[+    17.663756] [raft-storage] restarted process reached term 6.",
+          "[+    17.675104] [raft-storage] SUCCESS: term/vote state survived Raft process restart on NVMe."
+        ]
+      }
+    ],
+    "commits": [
+      {
+        "revision": 7,
+        "snapshot_sha256": "232d26b54b59ff919da47fbadc43532cdee889babd9362e6e54cf815191054d2",
+        "signature_digest": "3beda1f69704bc6aa17d2ac12c2fbfe7cd9445bb245a21a9873f2ddb64debfd0",
+        "kind": "public host fixture commit before build"
+      },
+      {
+        "revision": 8,
+        "snapshot_sha256": "486804baad33a35f2a89f1673195e6a9e36c6f95a3c0142958be7eadb9154407",
+        "signature_digest": "00a5086c7127a4aa4c07ab459a10209428fd4c7cbd454481670e27e7f3c8709c",
+        "kind": "verified successor; public host fixture commit before build"
+      }
+    ],
+    "firmware_sha256": "32807682a9e5c0e2d192ecb6077941d4be8bcfa6b9cd6e60830c3a9f48c0555a",
+    "credentials_sha256": {
+      "old": {
+        "ca": "90cde2ad3b1d02b2647ed61314dd15bbc5a95cffc5352279d7333ad50c4b78f2",
+        "server": "014bcba6fff3a813dc4c6061b224ae0b95695ea92df32fdc16baaa6423484e9b",
+        "reader": "6c59f7d8ec4d4350aab10622726157a99d57aef600b461e14688f1f3b3357e02",
+        "administrator": "3c6111193b8736c25dd85ac1f8a168abbc08c16b9e5e11943056ce93fa463882"
+      },
+      "new": {
+        "ca": "77f133f8742183c617c79108d81f9c18bcdd07c773de6391e94422b39a59885e",
+        "server": "bd5d6759734c653c1afc004dc2e104367c78a3301306e08f5d96e092c467232d",
+        "reader": "516033eb79acf56761aa91dd387d119b1062540ea3bd2cfc5342c9a5313064d3",
+        "administrator": "2de6ee16be59b51a763b2fcbb197d7bb99a925e12210157eb1ae15e40c017e7a"
+      }
+    },
+    "resources_sha256": {
+      "7": "68002c43c289f7a0a134f39e7e990dd24bba9f8037f22aa044b4da9ec4aa82c3",
+      "8": "2ee4e46b89184c3f95b7f78992ecfc70e82ccd40aa13e5914a485340a415d461"
+    },
+    "platform_rollback_gap_observed": true,
+    "platform_bundle_sha256": {
+      "agent.elf": "5e79756b7fe39138f3e3186fb603a5fe908b386f12d4c18f6124d50cc085fd73",
+      "ahci.elf": "0ff2f3c3a49eadd2cb0d4a2f3a7f1dd0fcd81457cecec3aecbf297dc4c4c6f04",
+      "client.elf": "c53775b6a827e230491607f9cccee338d60a7af4f1259dc5d1e34570053ea025",
+      "clusterctl.elf": "2d01b1c68b40745737a08cc50af2d57a02a796e532caacc5571c89b209f909a9",
+      "deployd.elf": "0b4d8c9bcbb4639306974cbe3d88ade0bd5808954fa7a7027aa4fa39c8017783",
+      "disco.elf": "51b972c12e1b5f7ed167e40b622c03d165715ac6b346f0d90c5e692740dfeab8",
+      "dns.elf": "2f33784ebd90db523aa69008d3551c8028abd5fc7bcd293addddb36e7a041c54",
+      "e1000e.elf": "197d8ed0590fc14ed82988fc4a8af6672e4399de6951ad02c6201fbd9480922a",
+      "echo.elf": "011295ea898e4716f8bdee9bc715238db89db82d54d3eb0139ec00af2c898f22",
+      "frouter.elf": "51278647cbf1072f095a3dab35b4f65fc948b5c0d10dc215fb8c747474db317d",
+      "fs.elf": "588283606605ea50714bd49357315d2643a59a35432675910f4560c4508dc915",
+      "grantctl.elf": "74debec0d03812c3f6f6a3c0a892de1bf6e7390e7d9724731a2a1331e152c25f",
+      "greet.elf": "d6eadde934b3ea4e6e149011f9754187354c17462e9b36f36678ea59626f895d",
+      "httpd.elf": "c52c894f82fb21ee5239b338b60f936d989df2ff80b1d42d5d2b1346f426fed2",
+      "kafka.elf": "a8a3732093a79a06a10c82fbd62fdf981c1a99fc6f6ca8174a50d218539b2acb",
+      "kafka_smoke.elf": "03d8ad8a1a8f84ccbd04963d56de20104374590d908a773ca930c3e23ef7c401",
+      "nclient.elf": "f4a30dceaa345acc7dbe59db720e18694ca70f622e03cf44217a480c3b5f076b",
+      "net.elf": "31ecdba8f7b6ac1694ac203c4ad9ec8f5a226c0767f108217f18e4c132aa43da",
+      "ns.elf": "fc7c3d69286b8c000ec999ffeb841b56ebc61be9eab3e8e259d53caf6b2c1309",
+      "nvme.elf": "e6327a4c87dce1088beb7bfd027c3df023a8de10943cf792bb9240b5de0708ed",
+      "nvme_client.elf": "4c03dff33e85892f8c931dc63bf45755ccab16097d7a8683cbc57c1000243043",
+      "objstore.elf": "bef64fd75cf00e0974be20b2af78531503c0710173b69a4641bc6213a2e993f0",
+      "objstore_client.elf": "247b1087cbe5d74f6d5cdedb1e5bc984b261aab298cac18fd62d1b655456c946",
+      "observe.elf": "4d9af2511d36486b78014662659610fd2180f6bc02b7ef9b39ac6ed6c04fa1e6",
+      "raft.elf": "9f9fbff5071da53f1db0f129ec884af1bb0ed8963eee0db8d3b024c87e168e6f",
+      "rclient.elf": "270a7cc6fb0f19b02dcd4bdc70a6d174443f1b5d7dbec5f9b2893bd69134df24",
+      "relmsg.elf": "f549c5d884c59841f7a797e1bba30d4206e50271ab6741a5c720713ba8c901e6",
+      "rng.elf": "fb1b8e0e5073f1881c360ed2936a7184b3b99c41b82d9bec8c85ffc54b857df8",
+      "s3.elf": "9d3e0aa9c3e92581955fd73f47071ff02bc2d36f9f7782984713439a1708948c",
+      "s3_smoke.elf": "3a51f6eda7ee45de53039c3b532c1bce0f237eb729be8e05938d7b0a2d667a04",
+      "security_probe.elf": "5355d4b4f662ca8b05b9e3c8414e2906abf780192658c55fb1be2ac80d80de4d",
+      "servicemgr.elf": "bfda710c4949142fcdd7cb6c885e81d2a4ea87eead92f9c975db7e0e794fdc72",
+      "shutdown_probe.elf": "d9012b3b1e656b6fb2dbf2c1ce6c94262e864441ef963ee52bcf7ac5c3182f61",
+      "tcpclient.elf": "98d9fd1ad39186a5b7b9489270e864719d9345d8f17751f9f7171f0e9743d7f0",
+      "tcpip.elf": "5c2d697b193da94740f601b04199cb4ffc6f318cd169f663dd0dfc0c8dba96f6",
+      "time.elf": "8a6ad89883f51cdf17adc2c8946a4d8cc1b01b7758ef6afb51448711a7526e4a",
+      "virtio_blk.elf": "9c7ef67382ed52046d9178225367774b7821456569eb8ea72c0fe23500567f16"
+    }
+  },
+  "native_secure_boot_regression": {
+    "test_only": true,
+    "firmware_sha256": "32807682a9e5c0e2d192ecb6077941d4be8bcfa6b9cd6e60830c3a9f48c0555a",
+    "kernel_blake2b": "5cde414d9dfba96fa83e337f8e038c8121f74884b9a755f2eaad372efc0bbfbb5541a2dbc5a67fe7652a73f20474b70d1aaa523156e7a5d274d4a974d805909f",
+    "policy_blake2b": "872e9d9d87e969ef96f0f4ff8a0840d10aa036d276158d4d684a8873d506202b834b286d648c35a79bfad905dd773384293d5cd7ceeba152baaee741eb335ba2",
+    "config_blake2b": "19d267eb546ff9fbb0a79059a3a8a37d862ab585feef97efcab558af03c35fbc68f1bd26571ca293ff209f582ef42ba07dc6b4d9257b05d8a7b825d88414c97e",
+    "kernel_variants_blake2b": {
+      "selected-root": "5cde414d9dfba96fa83e337f8e038c8121f74884b9a755f2eaad372efc0bbfbb5541a2dbc5a67fe7652a73f20474b70d1aaa523156e7a5d274d4a974d805909f"
+    },
+    "platform_bundle_sha256": {
+      "agent.elf": "5e79756b7fe39138f3e3186fb603a5fe908b386f12d4c18f6124d50cc085fd73",
+      "ahci.elf": "0ff2f3c3a49eadd2cb0d4a2f3a7f1dd0fcd81457cecec3aecbf297dc4c4c6f04",
+      "client.elf": "c53775b6a827e230491607f9cccee338d60a7af4f1259dc5d1e34570053ea025",
+      "clusterctl.elf": "2d01b1c68b40745737a08cc50af2d57a02a796e532caacc5571c89b209f909a9",
+      "deployd.elf": "0b4d8c9bcbb4639306974cbe3d88ade0bd5808954fa7a7027aa4fa39c8017783",
+      "disco.elf": "51b972c12e1b5f7ed167e40b622c03d165715ac6b346f0d90c5e692740dfeab8",
+      "dns.elf": "2f33784ebd90db523aa69008d3551c8028abd5fc7bcd293addddb36e7a041c54",
+      "e1000e.elf": "197d8ed0590fc14ed82988fc4a8af6672e4399de6951ad02c6201fbd9480922a",
+      "echo.elf": "011295ea898e4716f8bdee9bc715238db89db82d54d3eb0139ec00af2c898f22",
+      "frouter.elf": "51278647cbf1072f095a3dab35b4f65fc948b5c0d10dc215fb8c747474db317d",
+      "fs.elf": "588283606605ea50714bd49357315d2643a59a35432675910f4560c4508dc915",
+      "grantctl.elf": "74debec0d03812c3f6f6a3c0a892de1bf6e7390e7d9724731a2a1331e152c25f",
+      "greet.elf": "d6eadde934b3ea4e6e149011f9754187354c17462e9b36f36678ea59626f895d",
+      "httpd.elf": "c52c894f82fb21ee5239b338b60f936d989df2ff80b1d42d5d2b1346f426fed2",
+      "kafka.elf": "a8a3732093a79a06a10c82fbd62fdf981c1a99fc6f6ca8174a50d218539b2acb",
+      "kafka_smoke.elf": "03d8ad8a1a8f84ccbd04963d56de20104374590d908a773ca930c3e23ef7c401",
+      "nclient.elf": "f4a30dceaa345acc7dbe59db720e18694ca70f622e03cf44217a480c3b5f076b",
+      "net.elf": "31ecdba8f7b6ac1694ac203c4ad9ec8f5a226c0767f108217f18e4c132aa43da",
+      "ns.elf": "fc7c3d69286b8c000ec999ffeb841b56ebc61be9eab3e8e259d53caf6b2c1309",
+      "nvme.elf": "e6327a4c87dce1088beb7bfd027c3df023a8de10943cf792bb9240b5de0708ed",
+      "nvme_client.elf": "4c03dff33e85892f8c931dc63bf45755ccab16097d7a8683cbc57c1000243043",
+      "objstore.elf": "bef64fd75cf00e0974be20b2af78531503c0710173b69a4641bc6213a2e993f0",
+      "objstore_client.elf": "247b1087cbe5d74f6d5cdedb1e5bc984b261aab298cac18fd62d1b655456c946",
+      "observe.elf": "4d9af2511d36486b78014662659610fd2180f6bc02b7ef9b39ac6ed6c04fa1e6",
+      "raft.elf": "9f9fbff5071da53f1db0f129ec884af1bb0ed8963eee0db8d3b024c87e168e6f",
+      "rclient.elf": "270a7cc6fb0f19b02dcd4bdc70a6d174443f1b5d7dbec5f9b2893bd69134df24",
+      "relmsg.elf": "f549c5d884c59841f7a797e1bba30d4206e50271ab6741a5c720713ba8c901e6",
+      "rng.elf": "fb1b8e0e5073f1881c360ed2936a7184b3b99c41b82d9bec8c85ffc54b857df8",
+      "s3.elf": "9d3e0aa9c3e92581955fd73f47071ff02bc2d36f9f7782984713439a1708948c",
+      "s3_smoke.elf": "3a51f6eda7ee45de53039c3b532c1bce0f237eb729be8e05938d7b0a2d667a04",
+      "security_probe.elf": "5355d4b4f662ca8b05b9e3c8414e2906abf780192658c55fb1be2ac80d80de4d",
+      "servicemgr.elf": "bfda710c4949142fcdd7cb6c885e81d2a4ea87eead92f9c975db7e0e794fdc72",
+      "shutdown_probe.elf": "d9012b3b1e656b6fb2dbf2c1ce6c94262e864441ef963ee52bcf7ac5c3182f61",
+      "tcpclient.elf": "98d9fd1ad39186a5b7b9489270e864719d9345d8f17751f9f7171f0e9743d7f0",
+      "tcpip.elf": "5c2d697b193da94740f601b04199cb4ffc6f318cd169f663dd0dfc0c8dba96f6",
+      "time.elf": "8a6ad89883f51cdf17adc2c8946a4d8cc1b01b7758ef6afb51448711a7526e4a",
+      "virtio_blk.elf": "9c7ef67382ed52046d9178225367774b7821456569eb8ea72c0fe23500567f16"
+    },
+    "signed_loader_sha256": "a328ee5f4fb7bcfe6677043cdd393e795aff8be50f65d8c5c648872d96762473",
+    "results": [
+      {
+        "case": "valid-intel",
+        "evidence": "success",
+        "passed": true,
+        "observations": [
+          "[+     0.080974] [boot trust fixture] verified signed module: revision=7",
+          "[+    14.854580] [boot trust] signed handoff, cluster/recipient rejection, shared manifest/gate policy and one-shot publication passed; early artifact selection retained",
+          "[+    17.559393] SELFTEST COMPLETE: passed=15 failed=0 pending=0 passed_bitmap=0x1bbff failed_bitmap=0x0 pending_bitmap=0x0"
+        ]
+      },
+      {
+        "case": "foreign-loader",
+        "evidence": "firmware",
+        "passed": true,
+        "observations": [
+          "BdsDxe: failed to load Boot0001 \"UEFI QEMU QEMU USB HARDDRIVE 1-0000:00:02.0-1\" from PciRoot(0x0)/Pci(0x2,0x0)/USB(0x0,0x0): Access Denied"
+        ]
+      },
+      {
+        "case": "policy-next",
+        "evidence": "UninstalledRevision",
+        "passed": true,
+        "observations": [
+          "[boot trust fixture] verification rejected: UninstalledRevision"
+        ]
+      },
+      {
+        "case": "policy-signature",
+        "evidence": "InvalidSignature",
+        "passed": true,
+        "observations": [
+          "[boot trust fixture] verification rejected: InvalidSignature"
+        ]
+      },
+      {
+        "case": "kernel-tamper",
+        "evidence": "kernel-hash",
+        "passed": true,
+        "observations": []
+      }
+    ]
+  },
+  "failed_preliminaries": [
+    {
+      "case": "duplicate-disposable-CA-issuer",
+      "state": "failed-before-kernel-build",
+      "observations": [
+        "CN=reader",
+        "error 7 at 0 depth lookup: certificate signature failure"
+      ],
+      "resource_sha256": {
+        "7": "f7e35ad1c51c190891ba69be072fd07ec04673092d91a9e1e89d30bf0c7475b8",
+        "8": "6ba183bb2d1484e25df8be26dc4828cfe53e2f7fe53a8c48ae445c3a80fb8a56"
+      },
+      "correction": "Distinct disposable CA issuer names; final four chain-purpose checks pass."
+    },
+    {
+      "case": "missing-UEFI-fallback-name",
+      "state": "failed-before-kernel-entry",
+      "kernel_sha256": "bb6208c34fc15c8b75034dc80b2c963df8aa6611f87585f049079d18ad0885c8",
+      "diagnostic": "TestFailure: rotation observation deadline expired",
+      "observations": [
+        "BdsDxe: failed to load Boot0001 USB media: Not Found",
+        "BdsDxe: No bootable option or device was found."
+      ],
+      "correction": "Place the signed loader at EFI/BOOT/BOOTX64.EFI."
+    },
+    {
+      "case": "transitional-virtio-without-required-features",
+      "state": "failed-native-network-suite",
+      "kernel_sha256": "64b6e974c81ad7c02e375f5997b4c9a7ebedee2b5ec16b3b34ae6f860435929d",
+      "diagnostic": "TestFailure: positive rotation boot panicked",
+      "observations": [
+        "[+    13.247761] [EL0 LOG] lp=0 asid=126 [net] startup rejected stage=3 error=RequiredFeatures detail=0x101",
+        "Kernel panic:",
+        "panicked at crates/catten/src/self_test/el0_net.rs:105:22:",
+        "self-test deadline expired while waiting for EL0 frame router startup",
+        "[+    43.954156] SELFTEST FAILED: net",
+        "[+    43.954364] SELFTEST COMPLETE: passed=15 failed=1 pending=0 passed_bitmap=0x1bbff failed_bitmap=0x20000 pending_bitmap=0x0"
+      ],
+      "correction": "Use the existing runner configuration: virtio-net-pci-non-transitional with iommu_platform=on."
+    }
+  ],
+  "host_tests": [
+    {
+      "command": "cargo test -p charlotte-management-tls --test server",
+      "passed": 11
+    },
+    {
+      "command": "cargo test -p charlotte-launch --test signed_policy",
+      "passed": 12
+    },
+    {
+      "command": "python3 scripts/tests/test-tooling-contracts.py -v",
+      "passed": 8
+    },
+    {
+      "command": "python3 scripts/tests/test-management-rotation-results.py -v",
+      "passed": 3
+    },
+    {
+      "command": "python3 scripts/tests/test-secure-boot-results.py -v",
+      "passed": 6
+    },
+    {
+      "command": "python3 scripts/tests/test-deployment-status.py -v",
+      "passed": 7
+    }
+  ],
+  "checks": {
+    "bundled_services": [
+      "scripts/build-catten-services.sh --embed",
+      "scripts/build-catten-services-x86_64.sh"
+    ],
+    "strict_clippy": [
+      "host charlotte-management-tls --all-targets",
+      "catten-services httpd/deployd on crates/catten-services/aarch64-unknown-none.json",
+      "catten-services httpd/deployd on crates/catten-services/x86_64-unknown-none.json",
+      "catten acpi on target_specs/aarch64-unknown-none-catten.json with explicit current service bundle",
+      "catten acpi,boot_trust_test,virtio_net_test on target_specs/x86_64-unknown-none-catten.json with explicit current service bundle"
+    ],
+    "native_assembly_permissions": "all three rotation kernels and the default regression kernel passed",
+    "cargo_fmt_all_check": "passed",
+    "python_syntax": "passed",
+    "git_diff_check": "passed",
+    "final_observer_capture_replay": "all six captured native boots accepted with their exact positive/rejection expectations",
+    "invocation_corrections": [
+      "Using the kernel x86 target for a service check correctly trips the software-POLYVAL erasure guard; the actual service target passes.",
+      "Initial direct kernel Clippy calls omitted required service-bundle inputs and failed compilation; corrected explicit-bundle invocations pass."
+    ],
+    "manual": {
+      "pages": 253,
+      "latex_passes": 2,
+      "rendered_and_inspected_pdf_pages": [
+        200,
+        201,
+        202
+      ],
+      "global_preexisting_overfull_warnings": 190,
+      "configuration_overfull_warnings": 0,
+      "undefined_references": false,
+      "sha256": "2d2daee040ff9958af234110a1d156e7ffee0959c1a91951a012dad0bd9c19b8"
+    }
+  },
+  "source_sha256_at_publication": {
+    "crates/catten/build.rs": "2906fb3b5b9a96bb535ccf287272fd14fa0770d275b1508371d57621be402803",
+    "crates/catten/src/service/admission/boot_fixture.rs": "b6820578c34e64b5ae905da85b6d1b25031e19eb346eed82cf04b9d3bb9cd2ee",
+    "crates/catten/src/service/admission/tests.rs": "dd49b938b5abb8988118005f92af2a34f9c4403d3e7ec74afa879b6fe9331a76",
+    "crates/catten-services/src/management_io.rs": "5b37243b9fd7093003607908aadbf9852f5743faac7fe0a15672e4948862cf89",
+    "crates/charlotte-management-tls/src/session.rs": "fc4417467d1c0c0b5d9e2e416ad689d28a3c210919f551206c0a1f17c0395bc7",
+    "crates/charlotte-management-tls/tests/server.rs": "8064d842dd1446f3b9b7654eeb43078ef90076d4913e11d43481acd8d1e63264",
+    "scripts/prepare-management-tls-fixture.py": "805ed8028f19a7291b9f61f180fc0a1c14d9ac212643965574ccd09f718b0d78",
+    "scripts/run-secure-boot-test.py": "fb802328be891153d38f597ed49f085daa7a44eaa6a9230cdfe5f9697ad461e8",
+    "scripts/run-management-rotation-test.py": "c30f1f0263d1f4054f024fe6dce2dfe3fe4d75d320bed104008e2d77dfc84aab",
+    "scripts/tests/test-tooling-contracts.py": "b98c6563e19cd3345455d35966ed1799924661cd7d9396b50f8cb0d0218f2d61",
+    "scripts/tests/test-management-rotation-results.py": "693c15d898e6ba91a6d5c700c8cf5b4e10153b8cf72244cafb21ea03fa6cd2e7",
+    "crates/catten/src/service/admission/test-policy.bin": "232d26b54b59ff919da47fbadc43532cdee889babd9362e6e54cf815191054d2",
+    "crates/catten/src/service/admission/test-policy-next.bin": "486804baad33a35f2a89f1673195e6a9e36c6f95a3c0142958be7eadb9154407",
+    "Cargo.lock": "1c320daef7b13df180c65c7c318a76746cec9f6226890c194a883e4ac4e2f1aa"
+  },
+  "arm_management_services_sha256": {
+    "httpd.elf": "76123574ad269487bf93563659d974fcc939d5149d21a9321e23b5928688aa34",
+    "deployd.elf": "623a57625399e56c316df0370c5c873c391330763c2945e831fda36663471eea"
+  },
+  "verification_limits": [
+    "Public x86 development fixture; ordinary host snapshot commit is neither protected installed state nor a production installer/custody boundary.",
+    "Older still-authorized signed kernel restores its old snapshot and operators. Revocation is conditional on selecting the revision 8 image.",
+    "Native artifacts use final Rust sources. Later host-only changes tighten failed-suite/full-line/terminal boot-gate observation, add SIGTERM cleanup, and label replay as a console limitation; unit gates, syntax checks and final observer replay of all six native captures cover those edits, not another full native run or SIGTERM fault injection.",
+    "Both CA roots stay trusted at revision 8; policy rejection category is qualified by valid chain-purpose checks and replacement-client controls, not treated universally as revocation.",
+    "No native ARM rotation, expiry, hot session retirement, multi-node leader movement, broad fault/pressure or physical-platform claim.",
+    "No dependency change or fresh advisory scan."
+  ]
+}

@@ -8,6 +8,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Management credential rotation across signed-policy restart](audits/2026-10-27-security-management-rotation.md) — Native x86 revision 7-to-8 replacement rejects old enrolled operators with their CA still trusted; exact module/resource rejection and older signed-kernel replay expose the remaining rollback boundary.
 - [Management startup rejection and host gates](audits/2026-10-27-security-management-startup.md) — Shared stack policy also covers missing credentials; exact native startup assertions and a regression control for masked x86 identity failures, with inconclusive transport observations retained separately.
 
 - [Native management TLS and operator authentication](audits/2026-10-27-security-management-tls-native.md) — Policy-bound encrypted boot resource, adjustable limits, owned native transport and verified direct/VIP role controls; SEC-10 advances to partial. Preserves stack/deadline and harness failures.

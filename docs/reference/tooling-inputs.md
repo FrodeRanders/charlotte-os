@@ -9,6 +9,15 @@ existing permission exemption; filenames do not confer that exemption.
 secret-valued variable still rejects without expanding its contents.
 See [signing and trust](../guides/signing-and-trust.md).
 
+The x86 development `boot_trust_test` kernel alone accepts the public test
+snapshot input `CATTEN_BOOT_TEST_INSTALLED_POLICY`. It requires an absolute
+regular-file path and the complete current signed-policy record, with bounded
+reading and a separate staged build copy. The default remains revision 7.
+Boot authenticates that compiled snapshot against its pinned test anchor before
+checking the separately supplied module for an exact installed match. This does
+not enable production, protected installation or rollback-resistant state. See
+[Secure Boot testing](../guides/qemu-secure-boot.md).
+
 Private-key text reserves 4096 bytes plus a growth-detection byte before reading.
 The pinned erasing vector clears its full capacity, including a dirty tail after
 a read error. Normalization now returns its own erasing text owner; callers

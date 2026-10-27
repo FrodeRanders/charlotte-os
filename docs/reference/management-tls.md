@@ -235,6 +235,10 @@ records direct-node/VIP identities, role dispatch, deadlines and healthy progres
 The [startup follow-up](../reports/audits/2026-10-27-security-management-startup.md)
 records missing-resource and malformed-DER startup, envelope policy/signature/AEAD
 rejection, the missing-profile stack correction and host acceptance-gate controls.
+The [rotation follow-up](../reports/audits/2026-10-27-security-management-rotation.md)
+qualifies x86 rebuild/restart from compiled installed revision 7 to 8. It retains
+both client CA roots while replacing exact leaf enrollments, and records the
+remaining ability to replay an older still-authorized kernel separately.
 Historical reports retain their own unqualified scopes and failed runs.
 
 Run the native startup campaign with:
@@ -273,10 +277,29 @@ Host acceptance rejects a failed identity or liveness control even when later
 metrics responses are healthy. Management Python probes reject optimized Python
 execution so their runtime checks cannot silently disappear.
 
-Remaining native campaigns include installed-resource restart/expiry and
-revocation/rotation, multi-node leader changes, new adapter fault injection and
-broad pressure. Shared host controls for peer substitution, replay, partial sends
-and cancellation do not replace those execution qualifications.
+Run `scripts/run-management-rotation-test.py` with explicit `--firmware-code`
+and `--vars-template` paths after building the x86 service bundle. It reuses the
+Secure Boot firmware-authority preparation, owns disposable credentials and
+guest processes, and keeps one firmware-variable image and one data image across
+the revision transition. The test-only `CATTEN_BOOT_TEST_INSTALLED_POLICY`
+selects an absolute complete public signed snapshot compiled into an x86
+`boot_trust_test` kernel, independently of the candidate boot module. The default
+remains revision 7. Boot authenticates the compiled snapshot and requires an
+exact module match; production and other build contexts reject this input.
+
+Native rejection auditing exposes the bounded `client policy rejected` category
+without constructing an authenticated identity or logging raw certificate/error
+contents. This category includes enrollment and the verifier's time/credential/
+capacity gates; it is not universally proof of revocation. The rotation test also
+verifies both old client chains against the combined trust store, confirms current
+replacement clients, and requires that native event before accepting an old
+client's transport failure as a policy rejection. Transport silence alone fails.
+
+Remaining native campaigns include expiry, ARM installed-resource rotation,
+multi-node leader changes, new adapter fault injection and broad pressure.
+Protected installation/rollback and live factory/session retirement remain
+separate boundaries. Shared host controls for peer substitution, replay, partial
+sends and cancellation do not replace those execution qualifications.
 
 SEC-10 remains partial while these qualifications remain incomplete. Protected
 custody, authenticated time, cluster peer authentication and full secret erasure

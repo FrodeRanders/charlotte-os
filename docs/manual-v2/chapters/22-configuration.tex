@@ -244,6 +244,16 @@ reading before its handshake, under the original deadline; this does not
 authenticate the underlying SNTP source. Full execution qualifications and
 remaining gates are recorded in \repofile|docs/reference/management-tls.md|.
 
+The x86 QEMU \texttt{boot\_trust\_test} fixture can compile a different exact
+installed signed-policy snapshot using the absolute file input
+\path{CATTEN_BOOT_TEST_INSTALLED_POLICY}. Its default is the public revision 7
+fixture. The host commits the selected public snapshot before building the
+authenticated kernel; the separate boot module must match it exactly. This
+input rejects outside that development fixture. It supports restart and
+credential-rotation testing, but provides neither protected state nor platform
+rollback resistance: an older still-authorized kernel can carry its older
+snapshot. Production remains disabled.
+
 \section{Planning and validating a policy change}
 
 Use the following process before selecting a profile for a new workload:

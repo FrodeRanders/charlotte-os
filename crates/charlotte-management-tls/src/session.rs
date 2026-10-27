@@ -31,6 +31,20 @@ pub enum Error {
     Closed,
 }
 
+impl Error {
+    /// A bounded audit category, without exposing parser/crypto contents or
+    /// minting an authenticated identity for a rejected peer. This includes
+    /// enrollment and the verifier's credential/time/capacity policy gates.
+    pub fn is_client_policy_rejection(&self) -> bool {
+        matches!(
+            self,
+            Self::Tls(rustls::Error::InvalidCertificate(
+                rustls::CertificateError::ApplicationVerificationFailure
+            ))
+        )
+    }
+}
+
 #[derive(Debug)]
 pub enum Event {
     /// Send `outgoing()` and retain it through confirmed prefix receipts.

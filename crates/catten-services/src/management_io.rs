@@ -503,7 +503,16 @@ impl<'a> Connection<'a> {
                 _ => Advance::Progress,
             });
         }
-        match self.session.as_mut().unwrap().step(milliseconds()?).map_err(Error::Tls)? {
+        let event = self.session.as_mut().unwrap().step(milliseconds()?).map_err(|error| {
+            if error.is_client_policy_rejection() {
+                catten_rt::logln!(
+                    "[management] connection={} client policy rejected",
+                    self.audit_id
+                );
+            }
+            Error::Tls(error)
+        })?;
+        match event {
             charlotte_management_tls::Event::Transmit => {
                 let length = self
                     .session

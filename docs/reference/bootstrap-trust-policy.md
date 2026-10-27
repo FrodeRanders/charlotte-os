@@ -148,6 +148,14 @@ Its boot selector accepts only the exact compiled installed test revision/digest
 an otherwise valid successor cannot publish before its state is installed.
 That check now uses the shared `verify_for_boot` boundary instead of a separate
 fixture-local assertion.
+For restart/rotation qualification, the x86 development fixture can compile a
+different complete signed snapshot selected through
+`CATTEN_BOOT_TEST_INSTALLED_POLICY`. Boot authenticates that snapshot against the
+pinned test anchor; a separately supplied candidate still must match its exact
+revision/digest. The [rotation campaign](../reports/audits/2026-10-27-security-management-rotation.md)
+advances public fixture state before rebuilding and observes older signed-kernel
+replay restoring old authority. This selectable input adds no protected state or
+production installation path.
 The fixture uses public test enrollment/state/recipient material and an isolated
 platform bundle signed by its selected public test artifact root. Images signed
 by the development key reject at the name-service/NVMe loader gate. It is not a

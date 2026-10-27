@@ -143,6 +143,31 @@ def boot(command, serial, stderr, expected, timeout):
                 child.wait()
 
 
+
+def prepare_firmware_authority(private, output, vars_template, openssl, fwvars, preparation):
+    certificates = {}
+    for role in ("pk", "kek", "db", "foreign"):
+        key, cert = private / f"{role}.key", output / f"{role}.crt"
+        run([openssl, "req", "-new", "-x509", "-newkey", "rsa:2048", "-nodes",
+             "-sha256", "-days", "2", "-subj", f"/CN=Disposable CharlotteOS QEMU {role}/",
+             "-keyout", key, "-out", cert], preparation)
+        key.chmod(0o600)
+        certificates[role] = (key, cert)
+    enrolled_vars = private / "enrolled-vars.fd"
+    owner = "57912751-8c52-4aba-a758-0a53f5c634d7"
+    inherited = private / "inherited-vars.fd"
+    # Deliberately start with foreign KEK/db authority. Re-enrollment must
+    # remove it; the foreign-signed boot case proves it is not retained.
+    run([fwvars, "--input", vars_template.resolve(), "--output", inherited,
+         "--add-kek", owner, certificates["foreign"][1],
+         "--add-db", owner, certificates["foreign"][1]], preparation)
+    run([fwvars, "--input", inherited, "--output", enrolled_vars,
+         "--delete", "PK", "--delete", "KEK", "--delete", "db",
+         "--set-pk", owner, certificates["pk"][1], "--add-kek", owner, certificates["kek"][1],
+         "--add-db", owner, certificates["db"][1], "--secure-boot"], preparation)
+    run([fwvars, "--input", enrolled_vars, "--output-json", output / "enrollment.json"], preparation)
+    return certificates, enrolled_vars
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tools-dir", type=Path, default=ROOT / "target/secure-boot-tools")
@@ -176,6 +201,8 @@ def main():
     run([ROOT / "scripts/verify-limine.sh"], preparation)
     environment = os.environ.copy()
     environment["CATTEN_TRUST_MODE"] = "development"
+    environment.pop("CATTEN_BOOT_TEST_INSTALLED_POLICY", None)
+    environment.pop("CATTEN_MANAGEMENT_TLS_RESOURCE", None)
     development_bundle = ROOT / "target/embedded-services/x86_64-unknown-none"
     policy_dir = ROOT / "crates/catten/src/service/admission"
     policy = policy_dir / "test-policy.bin"
@@ -227,27 +254,8 @@ with os.fdopen(os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
                 shutil.copytree(bundle, wrong_bundle)
                 shutil.copyfile(development_bundle / f"{service}.elf", wrong_bundle / f"{service}.elf")
                 kernels[case] = build_kernel(wrong_bundle, f"{case}-kernel")
-        certificates = {}
-        for role in ("pk", "kek", "db", "foreign"):
-            key, cert = private / f"{role}.key", output / f"{role}.crt"
-            run([args.openssl, "req", "-new", "-x509", "-newkey", "rsa:2048", "-nodes",
-                 "-sha256", "-days", "2", "-subj", f"/CN=Disposable CharlotteOS QEMU {role}/",
-                 "-keyout", key, "-out", cert], preparation)
-            key.chmod(0o600)
-            certificates[role] = (key, cert)
-        enrolled_vars = private / "enrolled-vars.fd"
-        owner = "57912751-8c52-4aba-a758-0a53f5c634d7"
-        inherited = private / "inherited-vars.fd"
-        # Deliberately start with foreign KEK/db authority. Re-enrollment must
-        # remove it; the foreign-signed boot case proves it is not retained.
-        run([fwvars, "--input", args.vars_template.resolve(), "--output", inherited,
-             "--add-kek", owner, certificates["foreign"][1],
-             "--add-db", owner, certificates["foreign"][1]], preparation)
-        run([fwvars, "--input", inherited, "--output", enrolled_vars,
-             "--delete", "PK", "--delete", "KEK", "--delete", "db",
-             "--set-pk", owner, certificates["pk"][1], "--add-kek", owner, certificates["kek"][1],
-             "--add-db", owner, certificates["db"][1], "--secure-boot"], preparation)
-        run([fwvars, "--input", enrolled_vars, "--output-json", output / "enrollment.json"], preparation)
+        certificates, enrolled_vars = prepare_firmware_authority(
+            private, output, args.vars_template, args.openssl, fwvars, preparation)
         baseline = configuration(blake2(kernel), blake2(policy))
         config = output / "limine.conf"
         config.write_bytes(baseline)

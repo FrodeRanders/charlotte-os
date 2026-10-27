@@ -47,6 +47,7 @@ fn main() {
             "cargo:warning=boot_trust_test uses public test enrollment/state/recipient fixtures"
         );
     }
+    boot_test_installed_policy();
 
     println!("cargo:rerun-if-env-changed=CATTEN_LOCAL_DEPLOYMENT_FIXTURE");
     if env::var_os("CARGO_FEATURE_DEPLOY_NET_TEST").is_some() {
@@ -79,6 +80,46 @@ fn main() {
         }
         _ => panic!("Invalid ISA"),
     }
+}
+
+/// The public Secure Boot fixture may compile a different exact installed
+/// snapshot. Its candidate module stays separate; this never enables production
+/// enrollment or treats a verified successor as an installed boot policy.
+fn boot_test_installed_policy() {
+    use std::io::Read;
+
+    use charlotte_launch::trust::signed_policy;
+    const INPUT: &str = "CATTEN_BOOT_TEST_INSTALLED_POLICY";
+    println!("cargo:rerun-if-env-changed={INPUT}");
+    let selected = env::var_os(INPUT);
+    let fixture = env::var_os("CARGO_FEATURE_BOOT_TRUST_TEST").is_some();
+    assert!(selected.is_none() || fixture, "{INPUT} requires the boot_trust_test fixture");
+    if !fixture {
+        return;
+    }
+    let path = selected.map_or_else(
+        || {
+            std::path::PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap())
+                .join("src/service/admission/test-policy.bin")
+        },
+        std::path::PathBuf::from,
+    );
+    assert!(path.is_absolute(), "{INPUT} must be an absolute file path");
+    let path = path.canonicalize().expect("installed fixture snapshot must exist");
+    assert!(path.is_file(), "installed fixture snapshot must be a regular file");
+    let name = path.to_str().expect("installed fixture snapshot path must be UTF-8");
+    assert!(!name.contains(['\n', '\r']), "invalid installed snapshot path");
+    let file = std::fs::File::open(&path).expect("open installed fixture snapshot");
+    let mut bytes = Vec::new();
+    file.take((signed_policy::ENCODED_LEN + 1) as u64)
+        .read_to_end(&mut bytes)
+        .expect("read bounded installed fixture snapshot");
+    signed_policy::signature_digest(&bytes).expect("malformed installed fixture snapshot");
+    let staged = std::path::PathBuf::from(env::var_os("OUT_DIR").unwrap())
+        .join("boot-test-installed-policy.bin");
+    std::fs::write(&staged, bytes).expect("stage installed fixture snapshot");
+    println!("cargo:rerun-if-changed={name}");
+    println!("cargo:rustc-env=CATTEN_BOOT_TEST_INSTALLED_POLICY_FILE={}", staged.display());
 }
 
 fn management_resource() {
