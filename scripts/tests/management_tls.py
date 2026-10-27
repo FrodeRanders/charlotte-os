@@ -4,6 +4,9 @@ import socket
 import ssl
 import time
 
+if not __debug__:
+    raise RuntimeError("management TLS probes require enabled runtime checks; Python optimization is unsupported")
+
 
 def context(role=None):
     ca = os.environ["CATTEN_MANAGEMENT_CA_FILE"]

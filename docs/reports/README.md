@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Management startup rejection and host gates](audits/2026-10-27-security-management-startup.md) — Shared stack policy also covers missing credentials; exact native startup assertions and a regression control for masked x86 identity failures, with inconclusive transport observations retained separately.
+
 - [Native management TLS and operator authentication](audits/2026-10-27-security-management-tls-native.md) — Policy-bound encrypted boot resource, adjustable limits, owned native transport and verified direct/VIP role controls; SEC-10 advances to partial. Preserves stack/deadline and harness failures.
 
 - [RNG descriptor ownership and terminal failure](audits/2026-10-26-security-rng-descriptor-fence.md) — One complete fenced backend, checked completion and inert retained field destruction; isolated unsafe regression controls and frozen native qualification, preserving the preliminary ARM deadline failure.

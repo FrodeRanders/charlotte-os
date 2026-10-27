@@ -125,7 +125,11 @@ budgets together. The [reference](../reference/management-tls.md) lists exact
 defaults, structural protocol bounds, file-based enrollment commands and remaining
 qualifications. `management-limits-default` writes every adjustable boot field;
 missing or inconsistent settings reject. Central build-time knobs also bound
-the profile to `65536` bytes and reserve `32` stack pages for both services.
+the profile to `65536` bytes and reserve `32` stack pages for both services,
+including the missing-profile startup path. The native
+[startup campaign](../reference/management-tls.md#execution-qualification-and-remaining-gates)
+checks valid, missing, malformed and substituted resources without altering the
+selected policy or turning transport timeouts into startup rejection proof.
 
 Review these groups together when changing workload targets:
 

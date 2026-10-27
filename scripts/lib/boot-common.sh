@@ -11,6 +11,57 @@ fi
 # Keep all architecture runners and the standalone creator on one default.
 CATTEN_BOOT_DEFAULT_IMAGE_SIZE_MIB=128
 
+# Host assertion mode only: this never selects credentials, keys or kernel policy.
+catten_boot_validate_management_startup() {
+    [ -n "$MANAGEMENT_STARTUP_TEST" ] || return 0
+    case "$MANAGEMENT_STARTUP_TEST" in
+        ready|disabled|WrongPolicy|Signature|Authentication) ;;
+        *) echo "error: invalid --management-startup-test expectation" >&2; return 1 ;;
+    esac
+    if catten_boot_management_expects_rejection && [ "$FAILURE_CAPTURE" = "1" ]; then
+        echo "error: expected boot rejection requires --no-failure-capture" >&2
+        return 1
+    fi
+    if [ -z "$TIMEOUT" ] || [ "$NET_BACKEND" != "user" ] || [ "$NETWORK" != "1" ] \
+        || [ -n "$GDB" ] || [ "$HTTP_TEST" = "1" ] \
+        || [ "${DEPLOYMENT_INGRESS_TEST:-0}" = "1" ] || [ "${SHUTDOWN_INGRESS_TEST:-0}" = "1" ] \
+        || [ "$SECURITY_TEST" = "1" ] || [ "$SHUTDOWN_TEST" = "1" ] || [ "$LIVE_UPGRADE_TEST" = "1" ]; then
+        echo "error: --management-startup-test requires isolated timed user-network observation" >&2
+        return 1
+    fi
+}
+
+catten_boot_management_startup_ready() {
+    # Cheap serial hints only. The Python assertion re-reads the complete
+    # snapshot and checks publication ordering/absence before accepting a result.
+    case "$MANAGEMENT_STARTUP_TEST" in
+        ready)
+            grep -Fq '[launch] steady-state service set published.' "$LOG" \
+                && grep -Fq '[deployd] listening port=7444' "$LOG" \
+                && grep -Fq '[time] synchronized ' "$LOG" ;;
+        disabled)
+            grep -Fq '[launch] steady-state service set published.' "$LOG" \
+                && grep -Fq '[http] management credentials unavailable; ingress disabled' "$LOG" \
+                && grep -Fq '[deployd] management credentials unavailable; ingress disabled' "$LOG" \
+                && grep -Fq 'DHCP assigned ' "$LOG" ;;
+        *) grep -Fq "[launch] management TLS resource rejected before trust publication: ${MANAGEMENT_STARTUP_TEST}" "$LOG" \
+                && grep -Fq 'boot admission trust rejected' "$LOG" ;;
+    esac
+}
+
+catten_boot_probe_management_startup() {
+    python3 "${CATTEN_BOOT_ROOT_DIR}/scripts/tests/test-management-startup.py" \
+        --expect "$MANAGEMENT_STARTUP_TEST" --log "$LOG" --status-port "$HTTP_HOST_PORT" \
+        --deployment-port "$DEPLOY_HOST_PORT"
+}
+
+catten_boot_management_expects_rejection() {
+    case "$MANAGEMENT_STARTUP_TEST" in
+        WrongPolicy|Signature|Authentication) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # Only explicitly invoked management probes generate disposable credentials.
 # A supplied resource keeps its own enrolled client files; it is never replaced.
 catten_boot_prepare_management_fixture() {

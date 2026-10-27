@@ -38,6 +38,7 @@
 #   --tcpip-test  Run the TCP/IP test: smoltcp adapter over the frouter,
 #               exchanging TCP data between two guests (both guests must
 #               run it, implies --net-test)
+#   --management-startup-test EXPECTATION  Assert ready/disabled or exact boot resource rejection
 #   --http-test   Run the HTTP keyhole test: a hardcoded HTTP server on the
 #               guest's tcpip stack serving observable state, reached from
 #               the host via SLIRP hostfwd (single guest, user network)
@@ -92,6 +93,7 @@ DEPLOY_TEST="0"
 TCPIP_TEST="0"
 CLUSTER_INGRESS_TEST="0"
 HTTP_TEST="0"
+MANAGEMENT_STARTUP_TEST=""
 DHCP_TEST="0"
 S3_TEST="0"
 DEPLOYMENT_INGRESS_TEST="0"
@@ -158,6 +160,9 @@ while [ "$#" -gt 0 ]; do
         --dns-test)    NET_TEST="1"; DISCO_TEST="1"; DNS_TEST="1"; shift ;; # implies --disco-test
         --deploy-test)  NET_TEST="1"; DISCO_TEST="1"; DNS_TEST="1"; DEPLOY_TEST="1"; shift ;; # implies --dns-test
         --tcpip-test)  NET_TEST="1"; TCPIP_TEST="1"; shift ;; # implies --net-test
+        --management-startup-test)
+            [ "$#" -ge 2 ] || { echo "Missing startup expectation" >&2; exit 1; }
+            NET_TEST="1"; MANAGEMENT_STARTUP_TEST="$2"; shift 2 ;;
         --http-test)   NET_TEST="1"; HTTP_TEST="1"; shift ;; # implies --net-test
         --dhcp-test)   NET_TEST="1"; DHCP_TEST="1"; shift ;; # includes the driver verifier
         --s3-test)     NET_TEST="1"; DHCP_TEST="1"; S3_TEST="1"; shift ;;
@@ -375,6 +380,8 @@ if [ "$SHUTDOWN_INGRESS_TEST" = "1" ] \
     echo "error: --shutdown-ingress-test requires the default user network and --timeout" >&2
     exit 1
 fi
+
+catten_boot_validate_management_startup
 
 cd "$ROOT_DIR"
 catten_boot_init "$ROOT_DIR"
@@ -954,7 +961,7 @@ if [ "$NETWORK" = "1" ]; then
             fi
             if [ -n "$CLUSTER_SERVICE" ]; then
                 QEMU_OPTS+=(-netdev "user,id=charlotte-net,hostfwd=tcp::${HTTP_HOST_PORT}-${CLUSTER_VIP}:${CLUSTER_TCP_PORT},hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444${APP_FWD}")
-            elif [ "$HTTP_TEST" = "1" ]; then
+            elif [ "$HTTP_TEST" = "1" ] || [ -n "$MANAGEMENT_STARTUP_TEST" ]; then
                 # Host-side keyhole: forward the configurable host port to
                 # guest TLS port 443 so parallel/local runs need not contend for a
                 # hard-coded listener.
@@ -1040,6 +1047,8 @@ if [ -n "$TIMEOUT" ]; then
     if [ "$NET_BACKEND" != "user" ]; then
         CLUSTER_DRAIN_TICKS=150
     fi
+    MANAGEMENT_STARTUP_CHECKED=0
+    MANAGEMENT_STARTUP_OK=0
     HTTP_PROBED=0
     HTTP_PROBE_OK=0
     KAFKA_FAULT_INJECTED=0
@@ -1077,6 +1086,14 @@ if [ -n "$TIMEOUT" ]; then
         fi
         # Probe the guest HTTP keyhole once the httpd reports listening,
         # retrying a few times for the SLIRP/smoltcp path to settle.
+        if [ -n "$MANAGEMENT_STARTUP_TEST" ] && [ "$MANAGEMENT_STARTUP_CHECKED" = "0" ] \
+            && catten_boot_management_startup_ready; then
+            MANAGEMENT_STARTUP_CHECKED=1
+            if catten_boot_probe_management_startup; then MANAGEMENT_STARTUP_OK=1; fi
+            if [ "$MANAGEMENT_STARTUP_OK" != "1" ] || catten_boot_management_expects_rejection; then
+                break
+            fi
+        fi
         if [ "$HTTP_TEST" = "1" ] && [ "$HTTP_PROBED" = "0" ] \
             && grep -Fq "httpd is listening" "$LOG"; then
             HTTP_PROBED=1
@@ -1237,6 +1254,7 @@ if [ -n "$TIMEOUT" ]; then
                 && { [ "$APP_HOLD_SECONDS" -eq 0 ] \
                     || { [ "$DEPLOYMENT_READY_TICK" -ge 0 ] \
                         && [ "$tick" -ge $((DEPLOYMENT_READY_TICK + APP_HOLD_SECONDS * 10)) ]; } } \
+                && { [ -z "$MANAGEMENT_STARTUP_TEST" ] || [ "$MANAGEMENT_STARTUP_OK" = "1" ]; } \
                 && [ "$tick" -ge $((SELFTEST_COMPLETE_TICK + CLUSTER_DRAIN_TICKS)) ]; then
                 break
             fi
@@ -1320,6 +1338,16 @@ if [ -n "$TIMEOUT" ]; then
             exit 1
         fi
         echo ">>> Signed RustFS upload/atomic-release/pull/launch/readiness path validated."
+    fi
+    if [ -n "$MANAGEMENT_STARTUP_TEST" ]; then
+        if [ "$MANAGEMENT_STARTUP_OK" != "1" ]; then
+            echo "error: specific management startup boundary was not verified" >&2
+            exit 1
+        fi
+        if catten_boot_management_expects_rejection; then
+            echo ">>> Expected management resource rejection verified; no self-test success claimed."
+            exit 0
+        fi
     fi
     if [ "$SELFTEST_COMPLETE" -ne 1 ]; then
         echo "error: authoritative self-test result was not produced within ${TIMEOUT}s" >&2

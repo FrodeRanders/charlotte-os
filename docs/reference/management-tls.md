@@ -217,8 +217,11 @@ as a complete handshake. Increase the session budget with request/response/close
 budgets and revocation policy. `MAX_PROFILE_BYTES = 65536` and
 `USER_STACK_PAGES = 32` (131072 reserved bytes, committed on demand) are central
 build-time knobs in `charlotte-launch::management`. Both management services use
-that same stack setting; a four-page general stack faulted during native P-256
-verification. Requalify both architectures when changing the provider or stack.
+that same stack setting, including startup without a credential profile. The
+entry frame exists before credential checks; selecting the general four-page
+stack on the missing-profile branch faulted before deployment could enter its
+disabled state. Native P-256 verification also exceeded that general stack.
+Requalify both architectures when changing the provider or stack.
 The host PEM reader bound is twice the profile ceiling; its certificate/count
 limits currently use compiled `Limits::DEFAULT`, so scale those with a larger
 profile. Existing HTTP framing, concurrency, aggregate bytes and close deadlines
@@ -227,11 +230,53 @@ bound on scheduler delay, allocator work or one cryptographic operation.
 
 ## Execution qualification and remaining gates
 
-Qualify QEMU startup/restart, wrong/missing credentials, reader write rejection,
-   peer substitution, replay, revocation, deadlines, partial sends, cancellation,
-rejected wait admission, slow clients and concurrent healthy traffic, on direct
-node and VIP paths. The [native report](../reports/audits/2026-10-27-security-management-tls-native.md) records the exact executed scope;
-implementation alone is not evidence for unexecuted cases.
+The [native report](../reports/audits/2026-10-27-security-management-tls-native.md)
+records direct-node/VIP identities, role dispatch, deadlines and healthy progress.
+The [startup follow-up](../reports/audits/2026-10-27-security-management-startup.md)
+records missing-resource and malformed-DER startup, envelope policy/signature/AEAD
+rejection, the missing-profile stack correction and host acceptance-gate controls.
+Historical reports retain their own unqualified scopes and failed runs.
+
+Run the native startup campaign with:
+
+```sh
+python3 scripts/run-management-startup-tests.py --architectures x86_64 aarch64
+```
+
+It builds each signed service bundle once and rebuilds each case's exact kernel
+input before booting fresh, isolated storage. `--cases`, `--status-port`,
+`--deployment-port`, `--timeout` and `--build-timeout` select the test scope and
+observation budgets. `--reuse-bundle` requires an already built and signed
+current-source bundle; the report identifies the exact artifacts actually used.
+One temporary directory owns private fixture keys and profiles through the
+campaign. Published evidence must retain concise observations and hashes, not
+links to its temporary captures.
+
+Each runner also accepts `--management-startup-test EXPECTATION` for an isolated
+timed user-network boot: `ready`, `disabled`, `WrongPolicy`, `Signature` or
+`Authentication`. This is a host assertion, never a kernel credential or policy
+override, and it does not automatically create a missing resource. The terminal
+rejection modes require `--no-failure-capture` and make no self-test success claim.
+Missing or malformed-DER credentials must produce both explicit disabled-state
+events after exactly one policy publication. Envelope failures must reach the
+exact terminal boot gate before policy/service publication. The public revision
+publication marker is emitted after the policy guard leaves.
+
+SLIRP's host listener can accept while the guest supplies no terminal TCP result.
+Closed-port EOF/reset/refusal and bounded transport timeouts are recorded
+separately. A timeout is not rejection, physical closure or quiescence proof;
+disabled-state acceptance comes from the explicit native startup events. The
+pre-publication cases use the exact terminal boot rejection, before network
+service composition, rather than host-forwarder silence.
+
+Host acceptance rejects a failed identity or liveness control even when later
+metrics responses are healthy. Management Python probes reject optimized Python
+execution so their runtime checks cannot silently disappear.
+
+Remaining native campaigns include installed-resource restart/expiry and
+revocation/rotation, multi-node leader changes, new adapter fault injection and
+broad pressure. Shared host controls for peer substitution, replay, partial sends
+and cancellation do not replace those execution qualifications.
 
 SEC-10 remains partial while these qualifications remain incomplete. Protected
 custody, authenticated time, cluster peer authentication and full secret erasure

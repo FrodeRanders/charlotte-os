@@ -1013,6 +1013,15 @@ disabled; SEC-04, SEC-08, SEC-09 and SEC-15 retain their separate gaps. The
 historical [engine component report](../reports/audits/2026-10-27-security-management-tls-engine.md)
 continues to describe its earlier unwired checkpoint.
 
+The [management startup follow-up](../reports/audits/2026-10-27-security-management-startup.md)
+corrects a missing-profile launch regression: deployment's entry frame could
+exhaust the general stack before credential rejection. Both launch paths now use
+the same central management stack policy. It also fixes x86 host acceptance so
+a failed identity probe cannot be masked by later healthy metrics. Native startup
+evidence and its transport-observation limits are recorded separately from the
+earlier positive HTTPS campaign. SEC-10 remains partial; finding counts and the
+protected-installation, time and cluster-peer gaps are unchanged.
+
 The [public-key input follow-up](../reports/audits/2026-10-21-security-public-key-input.md) corrects a host-tool input gap:
 ordinary public-key file arguments now share trust-policy's bounded regular-file
 admission and hex parser. Baseline oversized-comment and symlink controls fail;

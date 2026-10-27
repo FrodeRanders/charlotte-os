@@ -658,6 +658,11 @@ fn spawn_management_service(
     manifest: &[ManifestEntry<'_>],
     profile: Option<&[u8]>,
 ) -> ServiceDomain {
+    // The service's entry frame exists before credential admission, including
+    // the missing-profile path which must remain alive for lifecycle handling.
+    let limits = ServiceLimits::default().with_user_stack_size(
+        charlotte_launch::management::USER_STACK_PAGES * charlotte_launch::USER_STACK_PAGE_SIZE,
+    );
     if let Some(profile) = profile {
         crate::service::supervisor::try_spawn_with_read_only_profile_and_manifest_and_limits(
             image,
@@ -665,15 +670,18 @@ fn spawn_management_service(
             ConnectionRights::CALL,
             profile,
             manifest,
-            ServiceLimits::default().with_user_stack_size(
-                charlotte_launch::management::USER_STACK_PAGES
-                    * charlotte_launch::USER_STACK_PAGE_SIZE,
-            ),
+            limits,
         )
         .unwrap_or_else(|error| panic!("[launch] management profile launch rejected: {error:?}"))
     } else {
         // The service rejects missing credentials before opening a listener.
-        crate::service::supervisor::spawn_with_manifest(image, ns, ConnectionRights::CALL, manifest)
+        crate::service::supervisor::spawn_with_manifest_and_limits(
+            image,
+            ns,
+            ConnectionRights::CALL,
+            manifest,
+            limits,
+        )
     }
 }
 
@@ -1030,6 +1038,7 @@ pub(crate) fn launch_steady_state_with_trust(
     // Publish once, before any cluster/deployment consumer receives its
     // manifest. Production has no boot adapter yet and remains disabled.
     let boot_trust = prepared.publish(ns)?;
+    logln!("[boot trust] admission policy published: revision={}", boot_trust.public().sequence);
     // Complete every hardware grant before any sibling driver can submit
     // DMA and temporarily own the shared unit/engine. No replay or polling is
     // needed for this boot batch; dynamic creation keeps its rejection policy.

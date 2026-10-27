@@ -2,6 +2,8 @@
 """Exercise retired tooling inputs before builds, storage or VM launch."""
 
 import os
+import json
+import shutil
 from pathlib import Path
 import subprocess
 import tempfile
@@ -15,11 +17,23 @@ class ToolingContracts(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.temp = tempfile.TemporaryDirectory(prefix="charlotte-tooling-")
-        cls.build = Path(cls.temp.name) / "kernel-build-script"
+        directory = Path(cls.temp.name)
         channel = next(line.split('"')[1] for line in (ROOT / "rust-toolchain.toml").read_text().splitlines()
                        if line.startswith("channel ="))
-        compiler = subprocess.check_output(["rustup", "which", "--toolchain", channel, "rustc"], text=True).strip()
-        subprocess.run([compiler, "--edition=2024", str(ROOT / "crates/catten/build.rs"), "-o", str(cls.build)], check=True)
+        # The actual build script now uses the shared management grammar. Build
+        # it as a host executable with Cargo so dependency and linker policies
+        # remain coherent. This private harness never edits the workspace lock.
+        manifest = directory / "Cargo.toml"
+        manifest.write_text('[package]\nname="kernel-build-script-probe"\nversion="0.0.0"\nedition="2024"\n'
+                            '[workspace]\n[dependencies]\ncharlotte-launch={path=' + json.dumps(str(ROOT / "crates/charlotte-launch")) + '}\n'
+                            '[[bin]]\nname="kernel-build-script-probe"\npath=' + json.dumps(str(ROOT / "crates/catten/build.rs")) + '\n')
+        shutil.copyfile(ROOT / "Cargo.lock", directory / "Cargo.lock")
+        artifacts = subprocess.check_output(
+            ["cargo", "+" + channel, "build", "--offline", "--manifest-path", str(manifest),
+             "--target-dir", str(directory / "target"), "--message-format=json"], cwd=directory, text=True)
+        cls.build = next(Path(artifact["executable"]) for line in artifacts.splitlines()
+                       if (artifact := json.loads(line)).get("reason") == "compiler-artifact"
+                       and artifact["target"]["name"] == "kernel-build-script-probe")
 
     @classmethod
     def tearDownClass(cls):
@@ -27,9 +41,11 @@ class ToolingContracts(unittest.TestCase):
 
     def environment(self):
         env = os.environ.copy()
-        for name in (*RETIRED, "CLUSTER_SIGN_PRIVATE_KEY", "CARGO_FEATURE_BOOT_TRUST_TEST", "CARGO_FEATURE_DEPLOY_NET_TEST"):
+        for name in (*RETIRED, "CLUSTER_SIGN_PRIVATE_KEY", "CARGO_FEATURE_BOOT_TRUST_TEST", "CARGO_FEATURE_DEPLOY_NET_TEST",
+                     "CATTEN_MANAGEMENT_TLS_RESOURCE", "CATTEN_RESOURCE_POLICY"):
             env.pop(name, None)
-        env.update(CATTEN_TRUST_MODE="development", CARGO_CFG_TARGET_ARCH="aarch64")
+        env.update(CATTEN_TRUST_MODE="development", CARGO_CFG_TARGET_ARCH="aarch64",
+                   CARGO_MANIFEST_DIR=str(ROOT / "crates/catten"))
         return env
 
     def runner_rejects(self, args, diagnostic):

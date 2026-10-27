@@ -1,0 +1,381 @@
+{
+  "scope": "Development-root startup states and terminal pre-publication rejection; no installed-state rotation, custody or physical closure proof",
+  "parent_commit": "edf65bd752ebca1f01d67f149cd4e023d1b81912",
+  "results": [
+    {
+      "architecture": "x86_64",
+      "case": "missing",
+      "expected": "disabled",
+      "exit_status": 0,
+      "state": "passed",
+      "resource_sha256": null,
+      "kernel_sha256": "5af18ba35fb926de0fcd30f7ee4b9cfc854cc505f99fa5346641bb07df927e84",
+      "observations": [
+        "OBSERVED: disabled port=25443 tls=False: timeout; transport closure unqualified",
+        "OBSERVED: disabled port=25443 tls=True: EOF/reset/refusal",
+        "OBSERVED: disabled port=25744 tls=False: EOF/reset/refusal",
+        "OBSERVED: disabled port=25744 tls=True: EOF/reset/refusal",
+        "PASS: native startup disabled: both service-disabled entries and single ordered policy publication verified",
+        "[+    12.684430] [boot trust] admission policy published: revision=1",
+        "[+    12.841684] [EL0 LOG] lp=0 asid=133 [http] management credentials unavailable; ingress disabled",
+        "[+    12.914145] [EL0 LOG] lp=0 asid=137 [deployd] management credentials unavailable; ingress disabled",
+        "[+    15.998402] SELFTEST COMPLETE: passed=16 failed=0 pending=0 passed_bitmap=0x3bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "failure_tail": []
+    },
+    {
+      "architecture": "x86_64",
+      "case": "invalid-der",
+      "expected": "disabled",
+      "exit_status": 0,
+      "state": "passed",
+      "resource_sha256": "71bb2256e90383a39466d7122c2d404caf9052f51535e6f8e225610a8d1f0582",
+      "kernel_sha256": "77b6f95264a0953697bc3f5a3ac179a0fd866acb77081386c837abc81722b923",
+      "observations": [
+        "OBSERVED: disabled port=25443 tls=False: timeout; transport closure unqualified",
+        "OBSERVED: disabled port=25443 tls=True: EOF/reset/refusal",
+        "OBSERVED: disabled port=25744 tls=False: EOF/reset/refusal",
+        "OBSERVED: disabled port=25744 tls=True: EOF/reset/refusal",
+        "PASS: native startup disabled: both service-disabled entries and single ordered policy publication verified",
+        "[+    12.537709] [boot trust] admission policy published: revision=1",
+        "[+    12.700898] [EL0 LOG] lp=0 asid=133 [http] management credentials unavailable; ingress disabled",
+        "[+    12.782945] [EL0 LOG] lp=0 asid=137 [deployd] management credentials unavailable; ingress disabled",
+        "[+    12.883197] [launch] management TLS resource rejected before trust publication: WrongPolicy",
+        "[+    15.910143] SELFTEST COMPLETE: passed=16 failed=0 pending=0 passed_bitmap=0x3bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "failure_tail": []
+    },
+    {
+      "architecture": "x86_64",
+      "case": "wrong-policy",
+      "expected": "WrongPolicy",
+      "exit_status": 0,
+      "state": "passed",
+      "resource_sha256": "ef94c59fee6b0809e46ee1a0d75de2b6ca1ac156f698172c39d94504cbe205d2",
+      "kernel_sha256": "92778ed9356a98ee984bfbb125d095921bcd8a5bd107697c872692a473f85538",
+      "observations": [
+        "PASS: native startup WrongPolicy: exact boot rejection before trust/service publication; terminal boot gate",
+        "[+    12.377563] [launch] management TLS resource rejected before trust publication: WrongPolicy",
+        "Kernel panic:",
+        "boot admission trust rejected"
+      ],
+      "failure_tail": []
+    },
+    {
+      "architecture": "x86_64",
+      "case": "signature",
+      "expected": "Signature",
+      "exit_status": 0,
+      "state": "passed",
+      "resource_sha256": "02ab312364c8f4c0a36498c59db2ded6eec5b7be5094e6d1e74dba2cddd27c33",
+      "kernel_sha256": "748ac07fefcff063656326f04f3d5f9f09f2eb47bb237916339ec836cf09dfce",
+      "observations": [
+        "PASS: native startup Signature: exact boot rejection before trust/service publication; terminal boot gate",
+        "[+    12.282834] [launch] management TLS resource rejected before trust publication: Signature",
+        "Kernel panic:",
+        "boot admission trust rejected"
+      ],
+      "failure_tail": []
+    },
+    {
+      "architecture": "x86_64",
+      "case": "ciphertext",
+      "expected": "Authentication",
+      "exit_status": 0,
+      "state": "passed",
+      "resource_sha256": "fa11113c1f89cf8c66e16c360b41eecad4cc829baa1bc2475a0b5dbe233205f5",
+      "kernel_sha256": "389c9e76a759205bbc766fe5b5b89e36b64b0565cd9c7ca961128afb8b0ea223",
+      "observations": [
+        "PASS: native startup Authentication: exact boot rejection before trust/service publication; terminal boot gate",
+        "[+    12.473336] [launch] management TLS resource rejected before trust publication: Authentication",
+        "Kernel panic:",
+        "boot admission trust rejected"
+      ],
+      "failure_tail": []
+    },
+    {
+      "architecture": "x86_64",
+      "case": "valid",
+      "expected": "ready",
+      "exit_status": 0,
+      "state": "passed",
+      "resource_sha256": "aec46dbd3da0628207880763c5d54b9f2eccb1db35723f73ebefabba8657eb15",
+      "kernel_sha256": "6b085ab2455be365b4d4f325e1cd09245b57ea05f157d4e585dc93024664d369",
+      "observations": [
+        "PASS: native startup: verified reader observations and mutation rejection",
+        "[+    12.357002] [boot trust] admission policy published: revision=1",
+        "[+    12.751006] [launch] management TLS resource rejected before trust publication: WrongPolicy",
+        "[+    16.035928] SELFTEST COMPLETE: passed=16 failed=0 pending=0 passed_bitmap=0x3bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "failure_tail": []
+    },
+    {
+      "architecture": "aarch64",
+      "case": "missing",
+      "expected": "disabled",
+      "exit_status": 0,
+      "state": "passed",
+      "resource_sha256": null,
+      "kernel_sha256": "5f579fce278c1b0b95705b270c2433faf30f1c0f6b82b6c2e8de02875be305af",
+      "observations": [
+        "OBSERVED: disabled port=25443 tls=False: timeout; transport closure unqualified",
+        "OBSERVED: disabled port=25443 tls=True: EOF/reset/refusal",
+        "OBSERVED: disabled port=25744 tls=False: EOF/reset/refusal",
+        "OBSERVED: disabled port=25744 tls=True: EOF/reset/refusal",
+        "PASS: native startup disabled: both service-disabled entries and single ordered policy publication verified",
+        "[+     6.726532] [boot trust] admission policy published: revision=1",
+        "[+     7.344984] [EL0 LOG] lp=0 asid=126 [http] management credentials unavailable; ingress disabled",
+        "[+     7.505390] [EL0 LOG] lp=0 asid=130 [deployd] management credentials unavailable; ingress disabled",
+        "[+    11.711096] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x3ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "failure_tail": []
+    },
+    {
+      "architecture": "aarch64",
+      "case": "invalid-der",
+      "expected": "disabled",
+      "exit_status": 0,
+      "state": "passed",
+      "resource_sha256": "71bb2256e90383a39466d7122c2d404caf9052f51535e6f8e225610a8d1f0582",
+      "kernel_sha256": "e6d3f3bf14194e4db3a7d4b300ca304b4e908ac4074d9478e9438b01f153f8ac",
+      "observations": [
+        "OBSERVED: disabled port=25443 tls=False: timeout; transport closure unqualified",
+        "OBSERVED: disabled port=25443 tls=True: EOF/reset/refusal",
+        "OBSERVED: disabled port=25744 tls=False: EOF/reset/refusal",
+        "OBSERVED: disabled port=25744 tls=True: EOF/reset/refusal",
+        "PASS: native startup disabled: both service-disabled entries and single ordered policy publication verified",
+        "[+     6.800054] [boot trust] admission policy published: revision=1",
+        "[+     7.438130] [EL0 LOG] lp=0 asid=126 [http] management credentials unavailable; ingress disabled",
+        "[+     7.604772] [EL0 LOG] lp=0 asid=130 [deployd] management credentials unavailable; ingress disabled",
+        "[+     7.679572] [launch] management TLS resource rejected before trust publication: WrongPolicy",
+        "[+    11.771868] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x3ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "failure_tail": []
+    },
+    {
+      "architecture": "aarch64",
+      "case": "wrong-policy",
+      "expected": "WrongPolicy",
+      "exit_status": 0,
+      "state": "passed",
+      "resource_sha256": "ef94c59fee6b0809e46ee1a0d75de2b6ca1ac156f698172c39d94504cbe205d2",
+      "kernel_sha256": "5cdcab02d7b0af561c4807881c0b81e5b8f30245f36053d1fd3e0ca7a46573de",
+      "observations": [
+        "PASS: native startup WrongPolicy: exact boot rejection before trust/service publication; terminal boot gate",
+        "[+     6.840098] [launch] management TLS resource rejected before trust publication: WrongPolicy",
+        "Kernel panic:",
+        "boot admission trust rejected"
+      ],
+      "failure_tail": []
+    },
+    {
+      "architecture": "aarch64",
+      "case": "signature",
+      "expected": "Signature",
+      "exit_status": 0,
+      "state": "passed",
+      "resource_sha256": "02ab312364c8f4c0a36498c59db2ded6eec5b7be5094e6d1e74dba2cddd27c33",
+      "kernel_sha256": "c84f1d6f16e0d74ad7c8cd79e32b76d8d9d3ea9aaf9c0c440f3572411dc02e34",
+      "observations": [
+        "PASS: native startup Signature: exact boot rejection before trust/service publication; terminal boot gate",
+        "[+     6.809068] [launch] management TLS resource rejected before trust publication: Signature",
+        "Kernel panic:",
+        "boot admission trust rejected"
+      ],
+      "failure_tail": []
+    },
+    {
+      "architecture": "aarch64",
+      "case": "ciphertext",
+      "expected": "Authentication",
+      "exit_status": 0,
+      "state": "passed",
+      "resource_sha256": "fa11113c1f89cf8c66e16c360b41eecad4cc829baa1bc2475a0b5dbe233205f5",
+      "kernel_sha256": "c6aecbab066a62333e58a49695ad69bc7907cabbd1d030698a358df6cd844935",
+      "observations": [
+        "PASS: native startup Authentication: exact boot rejection before trust/service publication; terminal boot gate",
+        "[+     6.752677] [launch] management TLS resource rejected before trust publication: Authentication",
+        "Kernel panic:",
+        "boot admission trust rejected"
+      ],
+      "failure_tail": []
+    },
+    {
+      "architecture": "aarch64",
+      "case": "valid",
+      "expected": "ready",
+      "exit_status": 0,
+      "state": "passed",
+      "resource_sha256": "aec46dbd3da0628207880763c5d54b9f2eccb1db35723f73ebefabba8657eb15",
+      "kernel_sha256": "e1342ed709e7397931ee55ab292e841bc2dace752e7ce7ca2f789ce62acff896",
+      "observations": [
+        "PASS: native startup: verified reader observations and mutation rejection",
+        "[+     6.942724] [boot trust] admission policy published: revision=1",
+        "[+     7.870314] [launch] management TLS resource rejected before trust publication: WrongPolicy",
+        "[+    12.071389] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x3ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "failure_tail": []
+    }
+  ],
+  "command": [
+    "python3",
+    "scripts/run-management-startup-tests.py",
+    "--reuse-bundle",
+    "--cases",
+    "missing",
+    "invalid-der",
+    "wrong-policy",
+    "signature",
+    "ciphertext",
+    "valid"
+  ],
+  "compiler": "rustc 1.99.0-nightly (dc3f85158 2026-07-26)",
+  "source_sha256": {
+    ".cargo/config.toml": "5845e3de73e807da085ea0cb8a5c76272a20c145adf70cbd404bb57f58bd4402",
+    "Cargo.lock": "1c320daef7b13df180c65c7c318a76746cec9f6226890c194a883e4ac4e2f1aa",
+    "crates/catten/src/service/launch.rs": "9ff51f791249595b5524abe8cf66025391bf18c60f20920656a8b2e92356da88",
+    "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
+    "scripts/lib/boot-common.sh": "b6d5d8bd2630e88376659936acc2f5e76464f0fa91f32e100462a0ea1b467207",
+    "scripts/run-aarch64.sh": "b7d8b8c63273334a8fb7a037aabe456ac047f5dbb2cce97168959e158cf584e4",
+    "scripts/run-management-startup-tests.py": "1d900dc7cffad02b510fa08607c37eb598330c14b38d1672831c2a65d5009c6c",
+    "scripts/run-x86_64.sh": "d18a119b4248881fede090ea7383e85aa77bf9b66654b9a21b5251e48fd2751a",
+    "scripts/tests/fixtures/management-x86-http-gate-before.sh": "91bfb1b77cfc23ff8159c47b6978e0c3ecd0ac3c79671fcd75aee4a9ace1110c",
+    "scripts/tests/management_tls.py": "054a47107db5c321dde16b7aa3f284a849f7681b2fb32a6f26ea95377d6c50e6",
+    "scripts/tests/test-management-runner-gates.py": "aced4465ed627dee3725d5d17fe9543500dc1abde0fe4b4e5b067d28d67fa5c9",
+    "scripts/tests/test-management-startup-observations.py": "a1356d8f2d28f10e303e6615e65044d2929bd414573477861ece20bac0860e89",
+    "scripts/tests/test-management-startup.py": "4d03489b51d55f7321176109d8d0ccc76cf69e2ba91f7be26bbe365870c1924a",
+    "scripts/tests/test-tooling-contracts.py": "2e86f2572561a1d60096d6402ddfeff38c38aee83f2c1e3891c1a4201dfb348c"
+  },
+  "service_artifacts": {
+    "aarch64": {
+      "httpd": {
+        "sha256": "8bc0b26cea41879f71b904af4e3e64412172c69c116f1340b83f3650f58d8169",
+        "matches_parent_native_evidence": true
+      },
+      "deployd": {
+        "sha256": "96b72e0d316920376ca26da43800161e6a18addeb14bd170a33375ebad55e693",
+        "matches_parent_native_evidence": true
+      },
+      "security_probe": {
+        "sha256": "5f7af78fa4196995465aa1c5b0f5d82bfd12fb2b397535a7b478a8b67c880af6",
+        "matches_parent_native_evidence": true
+      }
+    },
+    "x86_64": {
+      "httpd": {
+        "sha256": "612357a319e33d580aada619bd503ff7e45cc8a40879dea2721e750bcd0226f4",
+        "matches_parent_native_evidence": true
+      },
+      "deployd": {
+        "sha256": "b75f598e982f2c76b7e9eba4778432c94b1c6a28307e8b9a43a4ebcd789641e1",
+        "matches_parent_native_evidence": true
+      },
+      "security_probe": {
+        "sha256": "f00dfe08ec510e342e9b4dd1566c8f30b26064150f9cb6a22e46ad25e820f45c",
+        "matches_parent_native_evidence": true
+      }
+    }
+  },
+  "fixture_preflight": {
+    "damaged_ciphertext_signature_and_context_verified_before_native_AEAD_case": true,
+    "private_DER_mutation": "public synthetic invalid DER private key",
+    "policy_case": "first byte of envelope policy-context hash flipped; not a policy revision advance test",
+    "signer": "repository public development fixture; file-only temporary PKCS8 for OpenSSL",
+    "private_fixture_directory_removed": true
+  },
+  "host_assertion_tests": {
+    "runner_gates": {
+      "passed": 5,
+      "controls": [
+        "test_identity_rejection_cannot_be_masked_by_healthy_metrics (__main__.RunnerGates.test_identity_rejection_cannot_be_masked_by_healthy_metrics)",
+        "test_liveness_rejection_cannot_be_masked_by_healthy_metrics (__main__.RunnerGates.test_liveness_rejection_cannot_be_masked_by_healthy_metrics)",
+        "test_positive_observations_open_both_gates (__main__.RunnerGates.test_positive_observations_open_both_gates)",
+        "test_prior_x86_gate_accepts_the_same_failed_identity_control (__main__.RunnerGates.test_prior_x86_gate_accepts_the_same_failed_identity_control)",
+        "test_startup_assertions_require_unambiguous_isolated_observation (__main__.RunnerGates.test_startup_assertions_require_unambiguous_isolated_observation)"
+      ]
+    },
+    "startup_observations": {
+      "passed": 7,
+      "controls": [
+        "test_any_application_data_rejects_disabled_claim (__main__.StartupObservations.test_any_application_data_rejects_disabled_claim)",
+        "test_disabled_needs_both_services_and_ordered_single_publication (__main__.StartupObservations.test_disabled_needs_both_services_and_ordered_single_publication)",
+        "test_optimized_python_cannot_disable_security_assertions (__main__.StartupObservations.test_optimized_python_cannot_disable_security_assertions)",
+        "test_ready_needs_real_time_and_rejects_disabled_or_panicked_startup (__main__.StartupObservations.test_ready_needs_real_time_and_rejects_disabled_or_panicked_startup)",
+        "test_refused_transport_is_a_terminal_observation (__main__.StartupObservations.test_refused_transport_is_a_terminal_observation)",
+        "test_rejection_needs_exact_cause_and_no_late_publication (__main__.StartupObservations.test_rejection_needs_exact_cause_and_no_late_publication)",
+        "test_timeout_is_not_rejection_evidence (__main__.StartupObservations.test_timeout_is_not_rejection_evidence)"
+      ]
+    },
+    "tooling_contracts": {
+      "passed": 6,
+      "controls": [
+        "test_canonical_table_builds_on_both_architectures (__main__.ToolingContracts.test_canonical_table_builds_on_both_architectures)",
+        "test_duplicate_endpoint_rejects (__main__.ToolingContracts.test_duplicate_endpoint_rejects)",
+        "test_invalid_assignment_rejects (__main__.ToolingContracts.test_invalid_assignment_rejects)",
+        "test_named_and_platform_assignments_reach_network_validation (__main__.ToolingContracts.test_named_and_platform_assignments_reach_network_validation)",
+        "test_retired_build_variables_reject_without_values (__main__.ToolingContracts.test_retired_build_variables_reject_without_values)",
+        "test_retired_paired_flag_rejects (__main__.ToolingContracts.test_retired_paired_flag_rejects)"
+      ]
+    }
+  },
+  "strict_checks": {
+    "kernel_clippy": {
+      "aarch64": "passed; actual target JSON, acpi,virtio_net_test, -D warnings",
+      "x86_64": "passed; actual target JSON, acpi,virtio_net_test, -D warnings"
+    },
+    "workspace_rustfmt": "passed",
+    "shell_syntax": "passed for both runners and boot-common",
+    "python_syntax": "passed",
+    "whitespace": "git diff --check passed",
+    "dependency_graph": "Cargo.lock unchanged; no new Rust dependencies"
+  },
+  "failed_preliminaries": [
+    {
+      "case": "missing resource before stack fix; x86 only",
+      "kernel_sha256": "d9a667cc216f2043c1d652f84282509180dde4510ac86af7dfa00034fbe90d5e",
+      "diagnostics": [
+        "[+    13.555936] FATAL USER FAULT: ASID=137 vector=14 error=0x6 RIP=VAddr(0x209f3) address=VAddr(0xffff70)",
+        "[+    17.082531] SELFTEST COMPLETE: passed=16 failed=0 pending=0 passed_bitmap=0x3bbff failed_bitmap=0x0 pending_bitmap=0x0",
+        "error: specific management startup boundary was not verified"
+      ],
+      "symbol_resolution": "0x209f3 resolves to deployd::serve in the unchanged signed deployment ELF",
+      "correction": "Apply the central 32-page stack to the missing-profile branch as well."
+    },
+    {
+      "case": "disabled port probe expected terminal TCP result",
+      "kernel_sha256": "5af18ba35fb926de0fcd30f7ee4b9cfc854cc505f99fa5346641bb07df927e84",
+      "diagnostics": [
+        "TimeoutError: timed out",
+        "[+    13.013935] [EL0 LOG] lp=0 asid=133 [http] management credentials unavailable; ingress disabled",
+        "[+    13.085479] [EL0 LOG] lp=0 asid=137 [deployd] management credentials unavailable; ingress disabled",
+        "[+    16.062077] SELFTEST COMPLETE: passed=16 failed=0 pending=0 passed_bitmap=0x3bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "observation_scope": "first probe preceded DHCP; second followed DHCP; missing terminal result cause remains unestablished",
+      "final_policy": "Timeout remains inconclusive. Startup acceptance requires explicit native disabled-state and ordered publication evidence independently."
+    },
+    {
+      "case": "disabled port probe expected terminal TCP result",
+      "kernel_sha256": "5af18ba35fb926de0fcd30f7ee4b9cfc854cc505f99fa5346641bb07df927e84",
+      "diagnostics": [
+        "TimeoutError: timed out",
+        "[+    16.304797] [EL0 LOG] lp=0 asid=133 [http] management credentials unavailable; ingress disabled",
+        "[+    16.445922] [EL0 LOG] lp=0 asid=137 [deployd] management credentials unavailable; ingress disabled",
+        "[+    19.834208] SELFTEST COMPLETE: passed=16 failed=0 pending=0 passed_bitmap=0x3bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "observation_scope": "first probe preceded DHCP; second followed DHCP; missing terminal result cause remains unestablished",
+      "final_policy": "Timeout remains inconclusive. Startup acceptance requires explicit native disabled-state and ordered publication evidence independently."
+    }
+  ],
+  "transport_observations": {
+    "terminal_EOF_reset_refusal": 12,
+    "inconclusive_timeout": 4,
+    "qualification": "Four initial plaintext status-port observations timed out; closure remains unqualified for those observations. No timeout establishes rejection or quiescence."
+  },
+  "limitations": [
+    "No protected installation, custody or rollback-resistant installed state",
+    "No native installed-resource replacement/revocation/expiry or multi-node leader-movement proof",
+    "No closure proof for inconclusive transport observations; cause not established",
+    "No new adapter fault-injection or broad-pressure completion",
+    "No changes to SEC-04/08/09/15 limitations or numbered finding dispositions"
+  ]
+}

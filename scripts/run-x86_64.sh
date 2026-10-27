@@ -48,6 +48,7 @@
 #                  (implies --dns-test; both guests must use this option)
 #   --tcpip-test   Exchange TCP data through the userspace smoltcp service
 #                  (requires two socket-linked guests)
+#   --management-startup-test EXPECTATION  Assert ready/disabled or exact boot resource rejection
 #   --http-test    Serve the HTTP state keyhole through SLIRP host forwarding
 #   --dhcp-test    Acquire a DHCP lease through the tcpip service (single guest)
 #   --live-upgrade-test  Run the isolated persistent service-upgrade test
@@ -98,6 +99,7 @@ DISCO_TEST="0"
 DNS_TEST="0"
 TCPIP_TEST="0"
 HTTP_TEST="0"
+MANAGEMENT_STARTUP_TEST=""
 DHCP_TEST="0"
 DEPLOY_TEST="0"
 LIVE_UPGRADE_TEST="0"
@@ -155,6 +157,9 @@ while [ "$#" -gt 0 ]; do
         --dns-test)    NET_TEST="1"; DISCO_TEST="1"; DNS_TEST="1"; shift ;; # implies --disco-test
         --deploy-test) NET_TEST="1"; DISCO_TEST="1"; DNS_TEST="1"; DEPLOY_TEST="1"; shift ;; # implies --dns-test
         --tcpip-test)  NET_TEST="1"; TCPIP_TEST="1"; shift ;; # implies --net-test
+        --management-startup-test)
+            [ "$#" -ge 2 ] || { echo "Missing startup expectation" >&2; exit 1; }
+            NET_TEST="1"; MANAGEMENT_STARTUP_TEST="$2"; shift 2 ;;
         --http-test)   NET_TEST="1"; HTTP_TEST="1"; shift ;; # implies --net-test
         --dhcp-test)   NET_TEST="1"; DHCP_TEST="1"; shift ;; # implies --net-test
         --s3-test)     NET_TEST="1"; DHCP_TEST="1"; S3_TEST="1"; shift ;;
@@ -254,6 +259,8 @@ if [ "$USE_KVM" = "1" ] && { [ "$(uname -s)" != "Linux" ] || [ ! -r /dev/kvm ] |
     echo "error: --kvm requires a Linux host with accessible /dev/kvm" >&2
     exit 1
 fi
+
+catten_boot_validate_management_startup
 
 cd "$ROOT_DIR"
 catten_boot_init "$ROOT_DIR"
@@ -612,7 +619,7 @@ if [ "$NETWORK" = "1" ]; then
             if [ -n "$APP_HOST_PORT" ]; then
                 APP_FWD=",hostfwd=tcp::${APP_HOST_PORT}-:${APP_GUEST_PORT}"
             fi
-            if [ "$HTTP_TEST" = "1" ]; then
+            if [ "$HTTP_TEST" = "1" ] || [ -n "$MANAGEMENT_STARTUP_TEST" ]; then
                 QEMU_OPTS+=(-netdev "user,id=net0,hostfwd=tcp::${HTTP_HOST_PORT}-:443,hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444${APP_FWD}")
             else
                 QEMU_OPTS+=(-netdev "user,id=net0,hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444${APP_FWD}")
@@ -684,6 +691,8 @@ if [ -n "$TIMEOUT" ]; then
     if [ "$NET_BACKEND" != "user" ]; then
         CLUSTER_DRAIN_TICKS=150
     fi
+    MANAGEMENT_STARTUP_CHECKED=0
+    MANAGEMENT_STARTUP_OK=0
     HTTP_PROBED=0
     HTTP_PROBE_OK=0
     if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
@@ -706,6 +715,14 @@ if [ -n "$TIMEOUT" ]; then
             fi
             exit 1
         fi
+        if [ -n "$MANAGEMENT_STARTUP_TEST" ] && [ "$MANAGEMENT_STARTUP_CHECKED" = "0" ] \
+            && catten_boot_management_startup_ready; then
+            MANAGEMENT_STARTUP_CHECKED=1
+            if catten_boot_probe_management_startup; then MANAGEMENT_STARTUP_OK=1; fi
+            if [ "$MANAGEMENT_STARTUP_OK" != "1" ] || catten_boot_management_expects_rejection; then
+                break
+            fi
+        fi
         if [ "$HTTP_TEST" = "1" ] && [ "$HTTP_PROBED" = "0" ] \
             && grep -Fq "httpd is listening" "$LOG"; then
             HTTP_PROBED=1
@@ -722,7 +739,7 @@ if [ -n "$TIMEOUT" ]; then
                 && [ -n "${CATTEN_MANAGEMENT_UNKNOWN_CERT_FILE:-}" ]; then
                 if ! python3 "${ROOT_DIR}/scripts/tests/test-management-tls.py" \
                     --status-port "$HTTP_HOST_PORT" --deployment-port "$DEPLOY_HOST_PORT"; then
-                    HTTP_LIVENESS_OK=0
+                    DEPLOY_LIVENESS_OK=0
                 fi
             fi
             for _ in 1 2 3 4 5 6 7 8; do
@@ -789,7 +806,8 @@ if [ -n "$TIMEOUT" ]; then
                     echo ">>> Keeping the socket-linked guest alive for a 15s peer drain window."
                 fi
             fi
-            if [ "$tick" -ge $((SELFTEST_COMPLETE_TICK + CLUSTER_DRAIN_TICKS)) ] \
+            if { [ -z "$MANAGEMENT_STARTUP_TEST" ] || [ "$MANAGEMENT_STARTUP_OK" = "1" ]; } \
+                && [ "$tick" -ge $((SELFTEST_COMPLETE_TICK + CLUSTER_DRAIN_TICKS)) ] \
                 && { [ "$HTTP_TEST" != "1" ] || [ "$HTTP_PROBE_OK" = "1" ]; } \
                 && { [ "$DEPLOYMENT_INGRESS_TEST" = "0" ] \
                     || [ -f "$DEPLOYMENT_RESULT_FILE" ]; } \
@@ -828,6 +846,16 @@ if [ -n "$TIMEOUT" ]; then
             exit 1
         fi
         echo ">>> Signed RustFS upload/atomic-release/pull/launch/readiness path validated."
+    fi
+    if [ -n "$MANAGEMENT_STARTUP_TEST" ]; then
+        if [ "$MANAGEMENT_STARTUP_OK" != "1" ]; then
+            echo "error: specific management startup boundary was not verified" >&2
+            exit 1
+        fi
+        if catten_boot_management_expects_rejection; then
+            echo ">>> Expected management resource rejection verified; no self-test success claimed."
+            exit 0
+        fi
     fi
     if [ "$SELFTEST_COMPLETE" -ne 1 ]; then
         echo "error: authoritative self-test result was not produced within ${TIMEOUT}s" >&2
