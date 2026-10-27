@@ -8,6 +8,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Management leader loss and election timing](audits/2026-10-27-security-management-failover.md) — Corrects fixed election jitter and demonstrates survivor-led signed policy admission; full and direct-only TLS campaigns still fail, with diagnostics retained separately.
 - [Native management certificate validity](audits/2026-10-27-security-management-validity.md) — Sixteen enrolled expired/future-client rejection controls on both interfaces and architectures, exact native date categories and healthy-reader recovery; authenticated time remains open.
 - [Management credential rotation across signed-policy restart](audits/2026-10-27-security-management-rotation.md) — Native x86 revision 7-to-8 replacement rejects old enrolled operators with their CA still trusted; exact module/resource rejection and older signed-kernel replay expose the remaining rollback boundary.
 - [Management startup rejection and host gates](audits/2026-10-27-security-management-startup.md) — Shared stack policy also covers missing credentials; exact native startup assertions and a regression control for masked x86 identity failures, with inconclusive transport observations retained separately.

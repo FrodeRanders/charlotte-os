@@ -6,6 +6,27 @@ the Java, C++, and Rust implementations in the Graft repository. CharlotteOS
 substitutes capability IPC, name-service discovery, completion queues, and the
 NVMe object store at the platform boundary.
 
+## Election timing configuration
+
+`RaftNodeConfig::timeout_millis` selects the base election timeout. Native launch
+currently supplies `2000` ms through DNS's `elect-ms` manifest entry. Both the
+initial deadline and subsequent resets derive jitter in `[0, timeout)` from the
+same setting; they no longer share an unrelated fixed `150` ms window. The
+existing failed-election backoff adds `(timeout / 10) * attempts`. Deadline,
+backoff and attempt-count arithmetic saturates instead of wrapping. This is
+scheduling jitter, not a cryptographic entropy or security-time source.
+
+The native launch value is a build/restart setting in
+`crates/catten/src/service/launch.rs`; an embedding caller can supply its own
+`RaftNodeConfig` or launch manifest. Retune it with persistence/link latency,
+heartbeat frequency, bounded-read freshness and original client request budgets.
+Changing elections grants no replay or deadline extension to accepted work.
+The relative timing policy is a platform choice; protobufs, voter eligibility,
+same-term vote retention and quorum rules retain the shared contracts below.
+The bounded models abstract timing; no fresh TLC result is implied by timing
+qualification. See the [management failover report](../reports/audits/2026-10-27-security-management-failover.md)
+for execution evidence and unresolved TLS availability failures.
+
 ## Required behavioral parity
 
 | Concern | CharlotteOS implementation |

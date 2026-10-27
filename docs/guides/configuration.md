@@ -135,6 +135,15 @@ into rejection proof. Select `--cases validity` for the native expired/future
 client controls; this test issues dated fixture certificates and leaves the
 guest clock source in place.
 
+Raft uses `RaftNodeConfig::timeout_millis`; native launch supplies `2000` ms
+through DNS's `elect-ms` manifest entry. Both initial and subsequent jitter
+windows derive from that timeout, with the existing repeated-election backoff
+also proportional to it. Native adjustment is a rebuild/restart choice in
+`crates/catten/src/service/launch.rs`. Review persistence/link latency, heartbeat
+frequency, quorum-read freshness and management budgets together; retuning
+elections cannot restart an accepted request's deadline. See
+[Raft conformance](../reference/raft-conformance.md).
+
 Review these groups together when changing workload targets:
 
 | Target change | Related capacity and consequences |

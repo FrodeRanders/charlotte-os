@@ -323,9 +323,19 @@ on x86 and ARM, each followed by a healthy reader. The current time service is
 still unauthenticated; this qualifies date enforcement at a fresh handshake,
 not a trusted security-time boundary or expiry during an established session.
 
+The [leader-loss follow-up](../reports/audits/2026-10-27-security-management-failover.md)
+corrects election jitter to scale with the configured election timeout. Three
+native ARM voters replace the killed leader from term 1 to term 2; a signed
+mutation through a surviving follower advances policy generation/sequence 1 to
+2, read back on both survivors. Both the full VIP campaign and a direct-node
+repeat nevertheless fail on later TLS handshakes. The direct repeat completes
+only two client-rejection/recovery controls before a healthy reader times out
+at the other survivor. Neither timeout proves authentication rejection. Complete
+management failover availability and the rejection matrix remain unqualified.
+
 Remaining native campaigns include established-session/issuer/server expiry,
-ARM installed-resource rotation,
-multi-node leader changes, new adapter fault injection and broad pressure.
+ARM installed-resource rotation, resolving those multi-node transport failures,
+new adapter fault injection and broad pressure.
 Protected installation/rollback and live factory/session retirement remain
 separate boundaries. Shared host controls for peer substitution, replay, partial
 sends and cancellation do not replace those execution qualifications.

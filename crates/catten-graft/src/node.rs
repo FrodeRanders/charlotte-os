@@ -195,7 +195,9 @@ impl RaftNode {
         let seed =
             me.id.as_bytes().iter().fold(0u64, |a, b| a.wrapping_mul(31).wrapping_add(*b as u64));
         let rand_state = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-        let deadline = current_millis + timeout_millis + ((rand_state >> 33) % 150);
+        let deadline = current_millis
+            .saturating_add(timeout_millis)
+            .saturating_add(Self::election_jitter_millis(timeout_millis, rand_state >> 33));
         let joining_from = join_admission.and_then(|admission| {
             let admission_completed = restored_membership_snapshot
                 && snapshot_index > admission.snapshot_index
@@ -348,9 +350,16 @@ impl RaftNode {
 
     fn election_timeout_millis(&mut self) -> u64 {
         let base = self.timeout_millis;
-        let jitter = self.random() % 150;
-        let backoff = (self.timeout_millis / 10) * self.election_sequence_counter;
-        base + jitter + backoff
+        let jitter = Self::election_jitter_millis(base, self.random());
+        let backoff = (base / 10).saturating_mul(self.election_sequence_counter);
+        base.saturating_add(jitter).saturating_add(backoff)
+    }
+
+    fn election_jitter_millis(timeout: u64, random: u64) -> u64 {
+        // Keep the randomization window proportional to the configured timeout.
+        // A fixed 150 ms window leaves slow, otherwise healthy peers repeatedly
+        // voting for themselves before another candidate's request arrives.
+        random % timeout.max(1)
     }
 
     pub fn check_timeout(&mut self) -> bool {
@@ -368,7 +377,7 @@ impl RaftNode {
         self.transport.set_current_millis(current_millis);
         if self.joining || !self.cluster_configuration.is_voter(&self.me.id) {
             self.state = NodeState::Follower;
-            self.timeout_at_millis = current_millis + self.election_timeout_millis();
+            self.timeout_at_millis = current_millis.saturating_add(self.election_timeout_millis());
             return;
         }
         self.state = NodeState::Candidate;
@@ -377,13 +386,13 @@ impl RaftNode {
         self.persistent_state.set_current_term(self.current_term);
         self.voted_for = Some(self.me.id.clone());
         self.persistent_state.set_voted_for(self.voted_for.clone());
-        self.election_sequence_counter += 1;
+        self.election_sequence_counter = self.election_sequence_counter.saturating_add(1);
         self.known_leader_id = None;
         self.last_successful_leader_sync_millis = None;
         self.granted_votes.clear();
         self.granted_votes.insert(self.me.id.clone());
 
-        self.timeout_at_millis = current_millis + self.election_timeout_millis();
+        self.timeout_at_millis = current_millis.saturating_add(self.election_timeout_millis());
 
         let last_log_index = self.log_store.last_index();
         let last_log_term = self.log_store.last_term();
@@ -433,7 +442,8 @@ impl RaftNode {
                 self.voted_for = Some(req.candidate_id);
                 self.persistent_state.set_voted_for(self.voted_for.clone());
                 self.last_heartbeat_millis = current_millis;
-                self.timeout_at_millis = current_millis + self.election_timeout_millis();
+                self.timeout_at_millis =
+                    current_millis.saturating_add(self.election_timeout_millis());
                 vote_granted = true;
             }
         }
@@ -489,7 +499,7 @@ impl RaftNode {
         self.known_leader_id = None;
         self.last_successful_leader_sync_millis = None;
         self.election_sequence_counter = 0;
-        self.timeout_at_millis = current_millis + self.election_timeout_millis();
+        self.timeout_at_millis = current_millis.saturating_add(self.election_timeout_millis());
     }
 
     fn become_leader(&mut self, current_millis: u64) {
@@ -563,7 +573,7 @@ impl RaftNode {
         }
 
         self.last_heartbeat_millis = current_millis;
-        self.timeout_at_millis = current_millis + self.election_timeout_millis();
+        self.timeout_at_millis = current_millis.saturating_add(self.election_timeout_millis());
         self.known_leader_id = Some(req.leader_id);
 
         // A leader may retry from an index that this follower has already
@@ -762,7 +772,7 @@ impl RaftNode {
         }
 
         self.last_heartbeat_millis = current_millis;
-        self.timeout_at_millis = current_millis + self.election_timeout_millis();
+        self.timeout_at_millis = current_millis.saturating_add(self.election_timeout_millis());
         self.known_leader_id = Some(req.leader_id.clone());
 
         // A delayed or retried snapshot must never move application progress

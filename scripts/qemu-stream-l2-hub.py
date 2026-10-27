@@ -11,11 +11,54 @@ from __future__ import annotations
 import argparse
 import selectors
 import socket
+import time
 from dataclasses import dataclass, field
 
 MAX_FRAME = 65_536
 MAX_QUEUED = 1_048_576
-MAX_TCP_TRACE = 512
+DEFAULT_TRACE_LIMIT = 512
+
+
+def vote_summary(frame):
+    """Bounded public vote metadata only; never retain application payloads."""
+    if len(frame) < 17 or frame[12:14] != b"\x88\xb7" or frame[14] not in (1, 4):
+        return None
+    length = int.from_bytes(frame[15:17], "big")
+    if len(frame) < 17 + length:
+        return None
+    body = frame[17:17+length]
+    position = 0
+    fields = {}
+    def varint():
+        nonlocal position
+        result = 0
+        for shift in range(0, 70, 7):
+            if position == len(body):
+                raise ValueError("truncated protobuf")
+            value = body[position]; position += 1
+            if shift == 63 and value > 1:
+                raise ValueError("oversized varint")
+            result |= (value & 127) << shift
+            if value < 128:
+                return result
+        raise ValueError("oversized varint")
+    try:
+        while position < len(body):
+            tag = varint()
+            if tag & 7 == 0:
+                fields[tag >> 3] = varint()
+            elif tag & 7 == 2:
+                size = varint(); position += size
+                if position > len(body):
+                    return None
+            else:
+                return None
+    except ValueError:
+        return None
+    mac = lambda value: ":".join(f"{byte:02x}" for byte in value)
+    return {"source": mac(frame[6:12]), "destination": mac(frame[:6]), "tag": frame[14],
+            "term": fields.get(1, 0) if frame[14] == 1 else max(fields.get(2, 0), fields.get(4, 0)),
+            "granted": bool(fields.get(3, 0)) if frame[14] == 4 else None}
 
 
 @dataclass
@@ -29,7 +72,11 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--listen", default="127.0.0.1:12042")
     parser.add_argument("--trace-tcp", action="store_true")
+    parser.add_argument("--trace-raft-votes", action="store_true")
+    parser.add_argument("--trace-limit", type=int, default=DEFAULT_TRACE_LIMIT)
     args = parser.parse_args()
+    if args.trace_limit <= 0:
+        parser.error("trace limit must be positive")
     host, port_text = args.listen.rsplit(":", 1)
     port = int(port_text)
 
@@ -42,10 +89,11 @@ def main() -> None:
     selector.register(listener, selectors.EVENT_READ, None)
     peers: dict[socket.socket, Peer] = {}
     tcp_trace_count = 0
+    vote_trace_count = 0
 
     def trace_tcp(frame: bytes) -> None:
         nonlocal tcp_trace_count
-        if not args.trace_tcp or tcp_trace_count >= MAX_TCP_TRACE or len(frame) < 54:
+        if not args.trace_tcp or tcp_trace_count >= args.trace_limit or len(frame) < 54:
             return
         ethertype = frame[12:14]
         ip_offset = 14
@@ -142,6 +190,11 @@ def main() -> None:
                         record = bytes(peer.incoming[:record_length])
                         del peer.incoming[:record_length]
                         trace_tcp(record[4:])
+                        if args.trace_raft_votes and vote_trace_count < args.trace_limit:
+                            vote = vote_summary(record[4:])
+                            if vote is not None:
+                                vote_trace_count += 1
+                                print(f"raft-vote monotonic={time.monotonic():.6f} {vote}", flush=True)
                         for target in list(peers.values()):
                             if target is peer:
                                 continue

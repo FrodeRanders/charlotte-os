@@ -1,6 +1,6 @@
 # Security remediation status and completion criteria
 
-Updated 2026-10-27 following native management TLS, restart/rotation and validity qualification;
+Updated 2026-10-27 following native management TLS, restart/rotation, validity and leader-loss work;
 SEC-10 remains partial. Earlier reviews retain their original dispositions. Source and tests
 remain authoritative. Historical reports preserve the state at their own
 revision; their remaining-work paragraphs are not a current backlog.
@@ -1046,6 +1046,17 @@ qualifies the existing validation path, not a discovered expired-credential
 acceptance defect. Established-session/issuer/server expiry, native time-source
 failure and authenticated time remain separate; SEC-10 stays partial and
 SEC-09 stays open. No finding count changes.
+
+The [management leader-loss follow-up](../reports/audits/2026-10-27-security-management-failover.md)
+corrects fixed-window election jitter; it now scales with the configured base
+timeout, with saturating deadline/backoff arithmetic. A deterministic delayed-link
+regression fails on the parent and passes after correction. Native ARM survivors
+elect term 2 after leader loss, accept a second signed policy through a follower
+and both read back generation/sequence 2. Full and direct-only campaigns still
+fail on subsequent TLS handshakes, including a healthy direct-node reader; only
+two direct client-rejection/recovery controls complete. These failures remain
+explicitly unresolved, alongside an intermittent pre-kernel firmware stall.
+SEC-10 remains partial; no numbered finding or production gate is closed.
 
 The [public-key input follow-up](../reports/audits/2026-10-21-security-public-key-input.md) corrects a host-tool input gap:
 ordinary public-key file arguments now share trust-policy's bounded regular-file

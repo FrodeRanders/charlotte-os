@@ -38,7 +38,7 @@ class ProbeFailure(RuntimeError):
     pass
 
 
-def exchange(policy, port, payload, expected, budget, session=None):
+def exchange(policy, port, payload, expected, budget, session=None, *, include_body=False):
     end = time.monotonic() + budget
     def remaining():
         value = end - time.monotonic()
@@ -89,8 +89,10 @@ def exchange(policy, port, payload, expected, budget, session=None):
             if len(body) < length:
                 continue
             code = int(header.split(b" ", 2)[1])
-            if code != expected:
+            if code not in (expected if isinstance(expected, tuple) else (expected,)):
                 raise ProbeFailure(f"unexpected HTTP result {code}: {body[:length]!r}")
             observed = {"status": code, "server_sha256": hashlib.sha256(client.getpeercert(binary_form=True)).hexdigest(),
                         "session_reused": client.session_reused, "has_ticket": client.session.has_ticket}
+            if include_body:
+                observed["body"] = body[:length].decode("utf-8")
             return observed, client.session

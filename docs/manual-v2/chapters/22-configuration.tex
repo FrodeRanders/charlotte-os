@@ -188,6 +188,18 @@ live backing. Failed physical cleanup retains the original complete owner and
 charge. A larger budget never supplies proof of completion or permission to
 replay accepted work.
 
+Raft election timing is selected by
+\texttt{RaftNodeConfig::timeout\_millis}; native launch supplies 2000 milliseconds
+through the DNS \texttt{elect-ms} manifest entry. Initial and subsequent
+deadlines derive a jitter window of one configured timeout, rather than a fixed
+150 milliseconds. Repeated-election backoff derives from the same timeout, and
+deadline/backoff arithmetic saturates instead of wrapping. Changing the native
+launch value requires rebuilding and restarting the nodes. Review election
+timing together with heartbeat frequency, persistence/transport latency, quorum
+read freshness and management request budgets; a larger timeout does not extend
+an accepted request's original deadline. See
+\repofile|docs/reference/raft-conformance.md|.
+
 \section{Management TLS configuration}
 
 The server collects policy in
