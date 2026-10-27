@@ -198,6 +198,7 @@ pub struct Connection<'a> {
     cq: u32,
     retry: Option<Deadline>,
     audit_id: u64,
+    rejection_logged: bool,
 }
 impl<'a> Connection<'a> {
     pub fn accept_blocking(&mut self, ctx: &Context) -> Result<(), Interrupted> {
@@ -305,6 +306,7 @@ impl<'a> Connection<'a> {
             cq: 0,
             retry: None,
             audit_id: 0,
+            rejection_logged: false,
         }
     }
 
@@ -341,8 +343,33 @@ impl<'a> Connection<'a> {
         Ok(())
     }
 
-    pub fn identity(&self) -> Option<Identity> {
-        self.session.as_ref().and_then(Session::identity)
+    pub fn identity(&mut self) -> Result<Option<Identity>, Error> {
+        let now = milliseconds()?;
+        match self.session.as_mut() {
+            Some(session) => session.identity(now).map_err(|error| self.tls_error(error)),
+            None => Ok(None),
+        }
+    }
+
+    fn tls_error(&mut self, error: charlotte_management_tls::Error) -> Error {
+        if !self.rejection_logged
+            && let Some(rejection) = error.client_rejection()
+        {
+            self.rejection_logged = true;
+            catten_rt::logln!(
+                "[management] connection={} {}",
+                self.audit_id,
+                rejection.audit_message()
+            );
+        }
+        Error::Tls(error)
+    }
+
+    fn check_authority(&mut self) -> Result<(), Error> {
+        if let Some(session) = self.session.as_mut() {
+            session.check_authority(milliseconds()?).map_err(|error| self.tls_error(error))?;
+        }
+        Ok(())
     }
 
     pub fn remaining_ms(&self) -> u64 {
@@ -391,16 +418,19 @@ impl<'a> Connection<'a> {
             }
         }
         catten_rt::logln!(
-            "[management] connection={} certificate={} role={:?} permission={:?} allowed={}",
+            "[management] connection={} certificate={} role={:?} permission={:?} allowed={} \
+             credential_utc={}",
             self.audit_id,
             Digest(identity.certificate_sha256()),
             identity.role(),
             permission,
-            allowed
+            allowed,
+            identity.verified_at_unix_seconds()
         );
     }
 
     fn arm(&mut self, kind: PendingKind, deadline: &Deadline) -> Result<Advance<()>, Error> {
+        self.check_authority()?;
         if deadline.expired() || self.remaining_ms() == 0 {
             return Err(Error::Deadline);
         }
@@ -467,7 +497,11 @@ impl<'a> Connection<'a> {
                 let (memory, length) = chunk.into_parts();
                 let mapping = memory.map_read_only().map_err(|_| Error::Reply)?;
                 let bytes = mapping.as_slice().get(..length).ok_or(Error::Reply)?;
-                self.session.as_mut().unwrap().receive_tls(bytes, now).map_err(Error::Tls)?;
+                self.session
+                    .as_mut()
+                    .unwrap()
+                    .receive_tls(bytes, now)
+                    .map_err(|error| self.tls_error(error))?;
             }
             PendingKind::Send(submitted) => {
                 if reply.memory.is_some()
@@ -481,7 +515,7 @@ impl<'a> Connection<'a> {
                     .as_mut()
                     .unwrap()
                     .transmitted(reply.result as usize, now)
-                    .map_err(Error::Tls)?;
+                    .map_err(|error| self.tls_error(error))?;
             }
         }
         Ok(Advance::Progress)
@@ -491,6 +525,7 @@ impl<'a> Connection<'a> {
         if deadline.expired() || self.remaining_ms() == 0 {
             return Err(Error::Deadline);
         }
+        self.check_authority()?;
         if self.pending.is_some() {
             return self.observe().map(|state| match state {
                 Advance::Waiting => Advance::Waiting,
@@ -503,16 +538,12 @@ impl<'a> Connection<'a> {
                 _ => Advance::Progress,
             });
         }
-        let event = self.session.as_mut().unwrap().step(milliseconds()?).map_err(|error| {
-            if let Some(rejection) = error.client_rejection() {
-                catten_rt::logln!(
-                    "[management] connection={} {}",
-                    self.audit_id,
-                    rejection.audit_message()
-                );
-            }
-            Error::Tls(error)
-        })?;
+        let event = self
+            .session
+            .as_mut()
+            .unwrap()
+            .step(milliseconds()?)
+            .map_err(|error| self.tls_error(error))?;
         match event {
             charlotte_management_tls::Event::Transmit => {
                 let length = self
@@ -547,7 +578,8 @@ impl<'a> Connection<'a> {
             return Err(Error::State);
         }
         if self.pending.is_some() {
-            if self.identity().is_none() || !matches!(self.pending_kind, Some(PendingKind::Receive))
+            if self.identity()?.is_none()
+                || !matches!(self.pending_kind, Some(PendingKind::Receive))
             {
                 return Err(Error::State);
             }
@@ -563,7 +595,7 @@ impl<'a> Connection<'a> {
             .as_mut()
             .ok_or(Error::State)?
             .send_application(bytes, milliseconds()?)
-            .map_err(Error::Tls)?;
+            .map_err(|error| self.tls_error(error))?;
         self.send = Some(Send {
             plaintext: bytes.len(),
             final_response,
@@ -573,6 +605,7 @@ impl<'a> Connection<'a> {
     }
 
     pub fn poll_send(&mut self, deadline: &Deadline) -> Result<Advance<usize>, Error> {
+        self.check_authority()?;
         if !deadline.expired() && self.final_sent() {
             return Ok(Advance::Ready(self.send.take().unwrap().plaintext));
         }
@@ -594,10 +627,14 @@ impl<'a> Connection<'a> {
                     _ => Advance::Progress,
                 });
         }
-        let send = self.send.as_mut().ok_or(Error::State)?;
+        let send = self.send.as_ref().ok_or(Error::State)?;
         if send.final_response && !send.alert_queued {
-            self.session.as_mut().unwrap().close_notify(milliseconds()?).map_err(Error::Tls)?;
-            send.alert_queued = true;
+            self.session
+                .as_mut()
+                .unwrap()
+                .close_notify(milliseconds()?)
+                .map_err(|error| self.tls_error(error))?;
+            self.send.as_mut().unwrap().alert_queued = true;
             return Ok(Advance::Progress);
         }
         Ok(Advance::Ready(self.send.take().unwrap().plaintext))

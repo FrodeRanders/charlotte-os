@@ -212,6 +212,7 @@ impl<'a> Calls for Runtime<'a> {
         if bytes.len() > available {
             return Err(Error::AllocationFailed);
         }
+        let had_header = buffer.has_header();
         let request = buffer.push(&bytes)?;
         let mutation = buffer.requires_administrator()
             || request.as_ref().is_some_and(Request::requires_administrator);
@@ -221,7 +222,7 @@ impl<'a> Calls for Runtime<'a> {
             charlotte_management_tls::Permission::Observe
         };
         let allowed = identity.allows(permission);
-        if request.is_some() || !allowed {
+        if request.is_some() || (!had_header && buffer.has_header()) || !allowed {
             socket.audit(identity, permission, allowed);
         }
         if !allowed {

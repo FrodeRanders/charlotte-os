@@ -1,0 +1,981 @@
+{
+  "date": "2026-10-27",
+  "parent_commit": "721ff016873f77dd5e9ad5f67aa3b35ce3277cc7",
+  "scope": "Development-root native issuer/date and established administrator upload only; no trusted-time, protected custody or broad revocation proof.",
+  "baseline": {
+    "result": "0 passed / 2 failed on parent implementation",
+    "diagnostics": [
+      "established session retained expired authority",
+      "established session ignored lost UTC"
+    ],
+    "cases": [
+      "established_identity_cannot_authorize_after_certificate_expiry",
+      "established_identity_cannot_authorize_without_utc"
+    ]
+  },
+  "failed_native_attempts": [
+    {
+      "scope": "Native development-root startup only; no installed-state rotation or production custody proof",
+      "parent_commit": "721ff016873f77dd5e9ad5f67aa3b35ce3277cc7",
+      "results": [
+        {
+          "architecture": "aarch64",
+          "case": "chain-validity",
+          "expected": "chain-validity",
+          "exit_status": 1,
+          "state": "failed",
+          "resource_sha256": "b64bc048141264ead997284a11a6918acc6675e9d52b9aa1d873719d28f061d6",
+          "kernel_sha256": "28dacaf07f9adf291921b4f319b0845d933656d47b4716cd378ef630fdeb633d",
+          "observations": [
+            "PASS: native startup: verified reader observations and mutation rejection",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"issuer\", \"connection\": 3, \"healthy_reader_status\": 200, \"name\": \"issuer-expired-reader\", \"native_event\": \"client certificate expired\", \"port\": 25443, \"role\": \"reader\", \"source_asid\": 126}",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"issuer\", \"connection\": 5, \"healthy_reader_status\": 200, \"name\": \"issuer-expired-administrator\", \"native_event\": \"client certificate expired\", \"port\": 25443, \"role\": \"administrator\", \"source_asid\": 126}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"issuer\", \"connection\": 7, \"healthy_reader_status\": 200, \"name\": \"issuer-future-reader\", \"native_event\": \"client certificate not yet valid\", \"port\": 25443, \"role\": \"reader\", \"source_asid\": 126}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"issuer\", \"connection\": 9, \"healthy_reader_status\": 200, \"name\": \"issuer-future-administrator\", \"native_event\": \"client certificate not yet valid\", \"port\": 25443, \"role\": \"administrator\", \"source_asid\": 126}",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"issuer\", \"connection\": 4, \"healthy_reader_status\": 404, \"name\": \"issuer-expired-reader\", \"native_event\": \"client certificate expired\", \"port\": 25744, \"role\": \"reader\", \"source_asid\": 130}",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"issuer\", \"connection\": 6, \"healthy_reader_status\": 404, \"name\": \"issuer-expired-administrator\", \"native_event\": \"client certificate expired\", \"port\": 25744, \"role\": \"administrator\", \"source_asid\": 130}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"issuer\", \"connection\": 8, \"healthy_reader_status\": 404, \"name\": \"issuer-future-reader\", \"native_event\": \"client certificate not yet valid\", \"port\": 25744, \"role\": \"reader\", \"source_asid\": 130}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"issuer\", \"connection\": 10, \"healthy_reader_status\": 404, \"name\": \"issuer-future-administrator\", \"native_event\": \"client certificate not yet valid\", \"port\": 25744, \"role\": \"administrator\", \"source_asid\": 130}",
+            "[+     6.879582] [boot trust] admission policy published: revision=1",
+            "[+     7.788308] [launch] management TLS resource rejected before trust publication: WrongPolicy",
+            "[+    11.906526] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x3ffff failed_bitmap=0x0 pending_bitmap=0x0",
+            "[+    13.448568] [EL0 LOG] lp=0 asid=127 [time] synchronized unix_s=1793136835 utc=2026-10-27T21:33:55.417297428Z stratum=3 uncertainty_ms=509 drift_ppb=0",
+            "[+    16.002888] [EL0 LOG] lp=0 asid=126 [management] connection=3 client certificate expired",
+            "[+    17.024694] [EL0 LOG] lp=0 asid=126 [management] connection=5 client certificate expired",
+            "[+    18.267062] [EL0 LOG] lp=0 asid=126 [management] connection=7 client certificate not yet valid",
+            "[+    19.346584] [EL0 LOG] lp=0 asid=126 [management] connection=9 client certificate not yet valid",
+            "[+    20.735406] [EL0 LOG] lp=0 asid=130 [management] connection=4 client certificate expired",
+            "[+    21.476752] [EL0 LOG] lp=0 asid=130 [management] connection=6 client certificate expired",
+            "[+    22.271186] [EL0 LOG] lp=0 asid=130 [management] connection=8 client certificate not yet valid",
+            "[+    23.061510] [EL0 LOG] lp=0 asid=130 [management] connection=10 client certificate not yet valid"
+          ],
+          "diagnostics": [
+            "management_tls.ProbeFailure: expired upload received application bytes"
+          ],
+          "checked_authority_events": [
+            "[+    25.025666] [EL0 LOG] lp=0 asid=130 [management] connection=14 certificate=adfc00e9856fd7bffd97f4cdf9b3aa51ccafc66491c01dd1e03c582d595b885d role=Administrator permission=Mutate allowed=true",
+            "[+    31.290248] [EL0 LOG] lp=0 asid=130 [management] connection=14 certificate=adfc00e9856fd7bffd97f4cdf9b3aa51ccafc66491c01dd1e03c582d595b885d role=Administrator permission=Mutate allowed=true"
+          ]
+        }
+      ],
+      "validity_credentials": [
+        {
+          "name": "expired-reader",
+          "role": "reader",
+          "category": "expired",
+          "not_before": "2026-10-25T21:32:32+00:00",
+          "not_after": "2026-10-26T21:32:32+00:00",
+          "sha256": "80d23748bd41a62686f8f2b21eeb2ff7f827a1b023902d77807b17b1478f2384",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate has expired"
+        },
+        {
+          "name": "expired-administrator",
+          "role": "administrator",
+          "category": "expired",
+          "not_before": "2026-10-25T21:32:32+00:00",
+          "not_after": "2026-10-26T21:32:32+00:00",
+          "sha256": "5bed7ea2a0e38838805d15db46cc985fcca1eeaee7b366459739173f45ff0af3",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate has expired"
+        },
+        {
+          "name": "future-reader",
+          "role": "reader",
+          "category": "future",
+          "not_before": "2026-10-28T21:32:32+00:00",
+          "not_after": "2026-10-29T21:32:32+00:00",
+          "sha256": "ebcfa0111694abb7d0df1351860641c3b5fcbccbb12e026bf46e8cc2a33b9fef",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate is not yet valid"
+        },
+        {
+          "name": "future-administrator",
+          "role": "administrator",
+          "category": "future",
+          "not_before": "2026-10-28T21:32:32+00:00",
+          "not_after": "2026-10-29T21:32:32+00:00",
+          "sha256": "de9e0f017d86aba2c724b495ce295a6a9f8ab91ed6bf36b4674da34d9068eb06",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate is not yet valid"
+        }
+      ],
+      "issuer_validity_credentials": [
+        {
+          "name": "issuer-expired-reader",
+          "role": "reader",
+          "category": "expired",
+          "scope": "issuer",
+          "issuer_not_before": "2026-10-25T21:32:33+00:00",
+          "issuer_not_after": "2026-10-26T21:32:33+00:00",
+          "sha256": "e2df4edc42a58473b13febc77819037a3128e030082c5e0cfd8ea82e7c7dd338",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate has expired"
+        },
+        {
+          "name": "issuer-expired-administrator",
+          "role": "administrator",
+          "category": "expired",
+          "scope": "issuer",
+          "issuer_not_before": "2026-10-25T21:32:33+00:00",
+          "issuer_not_after": "2026-10-26T21:32:33+00:00",
+          "sha256": "a98e4564b3dd284640ca4eb1b0d1c7ddef1f04e2861fac147c22c4906a38212b",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate has expired"
+        },
+        {
+          "name": "issuer-future-reader",
+          "role": "reader",
+          "category": "future",
+          "scope": "issuer",
+          "issuer_not_before": "2026-10-28T21:32:33+00:00",
+          "issuer_not_after": "2026-10-29T21:32:33+00:00",
+          "sha256": "a233736a70a7197cc61424face02728625d3654c579727ef7a2a4569a982916e",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate is not yet valid"
+        },
+        {
+          "name": "issuer-future-administrator",
+          "role": "administrator",
+          "category": "future",
+          "scope": "issuer",
+          "issuer_not_before": "2026-10-28T21:32:33+00:00",
+          "issuer_not_after": "2026-10-29T21:32:33+00:00",
+          "sha256": "92d3e0a1fe558c45b1020fc440e58158ca5e1e75b7b5558d80e55b09a2196db1",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate is not yet valid"
+        }
+      ],
+      "verification_limitation": "Held upload received application bytes. Exact short issuer window and checked native UTC were not captured; deleted disposable issuer cannot be recovered. This fails qualification but does not establish acceptance after native expiry. No final policy readback or response bytes were retained."
+    },
+    {
+      "scope": "Native development-root startup only; no installed-state rotation or production custody proof",
+      "parent_commit": "721ff016873f77dd5e9ad5f67aa3b35ce3277cc7",
+      "results": [
+        {
+          "architecture": "x86_64",
+          "case": "chain-validity",
+          "expected": "chain-validity",
+          "exit_status": 1,
+          "state": "failed",
+          "resource_sha256": "e3a3dfefdc0b99a133264a9cdc4c2a386e8846e8241ff7db97f08f7000c0433c",
+          "kernel_sha256": "f6818dfde5a17e170ac1d0cdcafbd80ea07d85e3582648b10e8d74a4d9b814ad",
+          "observations": [
+            "PASS: native startup: verified reader observations and mutation rejection",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"issuer\", \"connection\": 3, \"healthy_reader_status\": 200, \"name\": \"issuer-expired-reader\", \"native_event\": \"client certificate expired\", \"port\": 26443, \"role\": \"reader\", \"source_asid\": 133}",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"issuer\", \"connection\": 5, \"healthy_reader_status\": 200, \"name\": \"issuer-expired-administrator\", \"native_event\": \"client certificate expired\", \"port\": 26443, \"role\": \"administrator\", \"source_asid\": 133}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"issuer\", \"connection\": 7, \"healthy_reader_status\": 200, \"name\": \"issuer-future-reader\", \"native_event\": \"client certificate not yet valid\", \"port\": 26443, \"role\": \"reader\", \"source_asid\": 133}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"issuer\", \"connection\": 9, \"healthy_reader_status\": 200, \"name\": \"issuer-future-administrator\", \"native_event\": \"client certificate not yet valid\", \"port\": 26443, \"role\": \"administrator\", \"source_asid\": 133}",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"issuer\", \"connection\": 4, \"healthy_reader_status\": 404, \"name\": \"issuer-expired-reader\", \"native_event\": \"client certificate expired\", \"port\": 26744, \"role\": \"reader\", \"source_asid\": 137}",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"issuer\", \"connection\": 6, \"healthy_reader_status\": 404, \"name\": \"issuer-expired-administrator\", \"native_event\": \"client certificate expired\", \"port\": 26744, \"role\": \"administrator\", \"source_asid\": 137}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"issuer\", \"connection\": 8, \"healthy_reader_status\": 404, \"name\": \"issuer-future-reader\", \"native_event\": \"client certificate not yet valid\", \"port\": 26744, \"role\": \"reader\", \"source_asid\": 137}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"issuer\", \"connection\": 10, \"healthy_reader_status\": 404, \"name\": \"issuer-future-administrator\", \"native_event\": \"client certificate not yet valid\", \"port\": 26744, \"role\": \"administrator\", \"source_asid\": 137}",
+            "[+    12.431996] [boot trust] admission policy published: revision=1",
+            "[+    12.816417] [launch] management TLS resource rejected before trust publication: WrongPolicy",
+            "[+    15.862826] SELFTEST COMPLETE: passed=16 failed=0 pending=0 passed_bitmap=0x3bbff failed_bitmap=0x0 pending_bitmap=0x0",
+            "[+    18.214595] [EL0 LOG] lp=0 asid=134 [time] synchronized unix_s=1793136959 utc=2026-10-27T21:35:59.151056007Z stratum=3 uncertainty_ms=511 drift_ppb=0",
+            "[+    20.670707] [EL0 LOG] lp=0 asid=133 [management] connection=3 client certificate expired",
+            "[+    21.624000] [EL0 LOG] lp=0 asid=133 [management] connection=5 client certificate expired",
+            "[+    22.543811] [EL0 LOG] lp=0 asid=133 [management] connection=7 client certificate not yet valid",
+            "[+    23.493420] [EL0 LOG] lp=0 asid=133 [management] connection=9 client certificate not yet valid",
+            "[+    24.958281] [EL0 LOG] lp=0 asid=137 [management] connection=4 client certificate expired",
+            "[+    25.805931] [EL0 LOG] lp=0 asid=137 [management] connection=6 client certificate expired",
+            "[+    26.568489] [EL0 LOG] lp=0 asid=137 [management] connection=8 client certificate not yet valid",
+            "[+    27.326476] [EL0 LOG] lp=0 asid=137 [management] connection=10 client certificate not yet valid"
+          ],
+          "diagnostics": [
+            "management_tls.ProbeFailure: expired upload received application bytes"
+          ],
+          "checked_authority_events": [
+            "[+    29.316714] [EL0 LOG] lp=0 asid=137 [management] connection=14 certificate=687246bd63c30848cf88236736c277741bb82ce34a662b8b52a1bff4396702f5 role=Administrator permission=Mutate allowed=true",
+            "[+    35.313406] [EL0 LOG] lp=0 asid=137 [management] connection=14 certificate=687246bd63c30848cf88236736c277741bb82ce34a662b8b52a1bff4396702f5 role=Administrator permission=Mutate allowed=true"
+          ]
+        }
+      ],
+      "validity_credentials": [
+        {
+          "name": "expired-reader",
+          "role": "reader",
+          "category": "expired",
+          "not_before": "2026-10-25T21:34:39+00:00",
+          "not_after": "2026-10-26T21:34:39+00:00",
+          "sha256": "900840ba509421f05ea4c0fa52be7ba8550102dae4eed4a2dfef33b81ad933bc",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate has expired"
+        },
+        {
+          "name": "expired-administrator",
+          "role": "administrator",
+          "category": "expired",
+          "not_before": "2026-10-25T21:34:39+00:00",
+          "not_after": "2026-10-26T21:34:39+00:00",
+          "sha256": "ea0e03430d13851050a74787a818ca2103dc56a5beacbd85bc5445ee29f3320b",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate has expired"
+        },
+        {
+          "name": "future-reader",
+          "role": "reader",
+          "category": "future",
+          "not_before": "2026-10-28T21:34:39+00:00",
+          "not_after": "2026-10-29T21:34:39+00:00",
+          "sha256": "58d412c3f3235224b551c47940b7ed0667a3c2de5a6a6da586d79597f559c0bd",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate is not yet valid"
+        },
+        {
+          "name": "future-administrator",
+          "role": "administrator",
+          "category": "future",
+          "not_before": "2026-10-28T21:34:39+00:00",
+          "not_after": "2026-10-29T21:34:39+00:00",
+          "sha256": "d647de9e7ba59a30c8fd6ac961e24279e33ba5a4cc2005fde8064f0f1ac5c6bf",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate is not yet valid"
+        }
+      ],
+      "issuer_validity_credentials": [
+        {
+          "name": "issuer-expired-reader",
+          "role": "reader",
+          "category": "expired",
+          "scope": "issuer",
+          "issuer_not_before": "2026-10-25T21:34:39+00:00",
+          "issuer_not_after": "2026-10-26T21:34:39+00:00",
+          "sha256": "a257824583af47a66477e7e92dd780b9221156c7198a89d2f0e76f9a3c25d83d",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate has expired"
+        },
+        {
+          "name": "issuer-expired-administrator",
+          "role": "administrator",
+          "category": "expired",
+          "scope": "issuer",
+          "issuer_not_before": "2026-10-25T21:34:39+00:00",
+          "issuer_not_after": "2026-10-26T21:34:39+00:00",
+          "sha256": "934429181f1b49b28691b000fce0f95a5225764d9a180b108f9233fc8efaf2ba",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate has expired"
+        },
+        {
+          "name": "issuer-future-reader",
+          "role": "reader",
+          "category": "future",
+          "scope": "issuer",
+          "issuer_not_before": "2026-10-28T21:34:39+00:00",
+          "issuer_not_after": "2026-10-29T21:34:39+00:00",
+          "sha256": "0b9accc1317e1b1cbbb2fe6e73e3ead3317343d2981adc59b53196f1176f036a",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate is not yet valid"
+        },
+        {
+          "name": "issuer-future-administrator",
+          "role": "administrator",
+          "category": "future",
+          "scope": "issuer",
+          "issuer_not_before": "2026-10-28T21:34:39+00:00",
+          "issuer_not_after": "2026-10-29T21:34:39+00:00",
+          "sha256": "d5a75cc5c00e67e5369517f2107434155d152b2eacbef9c782113f957ffd152c",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate is not yet valid"
+        }
+      ],
+      "verification_limitation": "Held upload received application bytes. Exact short issuer window and checked native UTC were not captured; deleted disposable issuer cannot be recovered. This fails qualification but does not establish acceptance after native expiry. No final policy readback or response bytes were retained."
+    },
+    {
+      "scope": "Native development-root startup only; no installed-state rotation or production custody proof",
+      "parent_commit": "721ff016873f77dd5e9ad5f67aa3b35ce3277cc7",
+      "results": [
+        {
+          "architecture": "x86_64",
+          "case": "chain-validity",
+          "expected": "chain-validity",
+          "exit_status": 1,
+          "state": "failed",
+          "resource_sha256": "f85281a24bbfea6cec65700c7f4d0e69ea840e04055aeccb03282590bd4e8826",
+          "kernel_sha256": "7233e91e2f677312ab5700d28603331ed875697aa331319e3d2137ab97cc01a7",
+          "observations": [
+            "PASS: native startup: verified reader observations and mutation rejection",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"issuer\", \"connection\": 3, \"healthy_reader_status\": 200, \"name\": \"issuer-expired-reader\", \"native_event\": \"client certificate expired\", \"port\": 26443, \"role\": \"reader\", \"source_asid\": 133}",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"issuer\", \"connection\": 5, \"healthy_reader_status\": 200, \"name\": \"issuer-expired-administrator\", \"native_event\": \"client certificate expired\", \"port\": 26443, \"role\": \"administrator\", \"source_asid\": 133}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"issuer\", \"connection\": 7, \"healthy_reader_status\": 200, \"name\": \"issuer-future-reader\", \"native_event\": \"client certificate not yet valid\", \"port\": 26443, \"role\": \"reader\", \"source_asid\": 133}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"issuer\", \"connection\": 9, \"healthy_reader_status\": 200, \"name\": \"issuer-future-administrator\", \"native_event\": \"client certificate not yet valid\", \"port\": 26443, \"role\": \"administrator\", \"source_asid\": 133}",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"issuer\", \"connection\": 4, \"healthy_reader_status\": 404, \"name\": \"issuer-expired-reader\", \"native_event\": \"client certificate expired\", \"port\": 26744, \"role\": \"reader\", \"source_asid\": 137}",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"issuer\", \"connection\": 6, \"healthy_reader_status\": 404, \"name\": \"issuer-expired-administrator\", \"native_event\": \"client certificate expired\", \"port\": 26744, \"role\": \"administrator\", \"source_asid\": 137}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"issuer\", \"connection\": 8, \"healthy_reader_status\": 404, \"name\": \"issuer-future-reader\", \"native_event\": \"client certificate not yet valid\", \"port\": 26744, \"role\": \"reader\", \"source_asid\": 137}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"issuer\", \"connection\": 10, \"healthy_reader_status\": 404, \"name\": \"issuer-future-administrator\", \"native_event\": \"client certificate not yet valid\", \"port\": 26744, \"role\": \"administrator\", \"source_asid\": 137}",
+            "OBSERVED: management session issuer {\"issuer_not_after\": \"2026-10-27T21:47:04+00:00\", \"issuer_not_before\": \"2026-10-27T21:45:58+00:00\", \"issuer_pem_sha256\": \"4b3db907bf5c8a935141f57250528aa2fc34294dd7c6473dab92edb5f7903984\", \"not_after_unix_seconds\": 1793137624}",
+            "[+    15.980165] [boot trust] admission policy published: revision=1",
+            "[+    16.391713] [launch] management TLS resource rejected before trust publication: WrongPolicy",
+            "[+    19.667946] SELFTEST COMPLETE: passed=16 failed=0 pending=0 passed_bitmap=0x3bbff failed_bitmap=0x0 pending_bitmap=0x0",
+            "[+    21.809249] [EL0 LOG] lp=0 asid=134 [time] synchronized unix_s=1793137606 utc=2026-10-27T21:46:46.215712958Z stratum=3 uncertainty_ms=506 drift_ppb=0",
+            "[+    24.730895] [EL0 LOG] lp=0 asid=133 [management] connection=3 client certificate expired",
+            "[+    25.805108] [EL0 LOG] lp=0 asid=133 [management] connection=5 client certificate expired",
+            "[+    26.854028] [EL0 LOG] lp=0 asid=133 [management] connection=7 client certificate not yet valid",
+            "[+    27.913795] [EL0 LOG] lp=0 asid=133 [management] connection=9 client certificate not yet valid",
+            "[+    29.283934] [EL0 LOG] lp=0 asid=137 [management] connection=4 client certificate expired",
+            "[+    30.054775] [EL0 LOG] lp=0 asid=137 [management] connection=6 client certificate expired",
+            "[+    30.765163] [EL0 LOG] lp=0 asid=137 [management] connection=8 client certificate not yet valid",
+            "[+    31.521782] [EL0 LOG] lp=0 asid=137 [management] connection=10 client certificate not yet valid"
+          ],
+          "diagnostics": [
+            "management_tls.ProbeFailure: session-validity lacked its exact native event"
+          ],
+          "checked_authority_events": [
+            "[+    33.398735] [EL0 LOG] lp=0 asid=137 [management] connection=14 certificate=36b0f5f38abe65276e562c6c03a7c19917a9bc4e0260b9611d3192d48bcc688f role=Administrator permission=Mutate allowed=true"
+          ]
+        }
+      ],
+      "validity_credentials": [
+        {
+          "name": "expired-reader",
+          "role": "reader",
+          "category": "expired",
+          "not_before": "2026-10-25T21:44:51+00:00",
+          "not_after": "2026-10-26T21:44:51+00:00",
+          "sha256": "efe67e89e068f3a2a100c49ee41a3573f642969763befdbdaba1bda7dd52d266",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate has expired"
+        },
+        {
+          "name": "expired-administrator",
+          "role": "administrator",
+          "category": "expired",
+          "not_before": "2026-10-25T21:44:51+00:00",
+          "not_after": "2026-10-26T21:44:51+00:00",
+          "sha256": "1ac87a60391cfff68c9bec420a0ca8505b9eb3c6f7024e0fe9843ef64c4d278e",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate has expired"
+        },
+        {
+          "name": "future-reader",
+          "role": "reader",
+          "category": "future",
+          "not_before": "2026-10-28T21:44:51+00:00",
+          "not_after": "2026-10-29T21:44:51+00:00",
+          "sha256": "13d6f55839d4496f00d95b5370deeac518ee8f66415e50449c8265e49c528739",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate is not yet valid"
+        },
+        {
+          "name": "future-administrator",
+          "role": "administrator",
+          "category": "future",
+          "not_before": "2026-10-28T21:44:51+00:00",
+          "not_after": "2026-10-29T21:44:51+00:00",
+          "sha256": "394333dd981ed66c7794c5f1957e836733db595494de27c3b70732fb6f128a63",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate is not yet valid"
+        }
+      ],
+      "issuer_validity_credentials": [
+        {
+          "name": "issuer-expired-reader",
+          "role": "reader",
+          "category": "expired",
+          "scope": "issuer",
+          "issuer_not_before": "2026-10-25T21:44:52+00:00",
+          "issuer_not_after": "2026-10-26T21:44:52+00:00",
+          "sha256": "764829f8173824b97843f8af9a13af0c810fff72985eb7b03c3ccb95b76e4205",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate has expired"
+        },
+        {
+          "name": "issuer-expired-administrator",
+          "role": "administrator",
+          "category": "expired",
+          "scope": "issuer",
+          "issuer_not_before": "2026-10-25T21:44:52+00:00",
+          "issuer_not_after": "2026-10-26T21:44:52+00:00",
+          "sha256": "12fed162840722d475c527a1c5c8daedac77b91288b60cf270016bfca87a49c5",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate has expired"
+        },
+        {
+          "name": "issuer-future-reader",
+          "role": "reader",
+          "category": "future",
+          "scope": "issuer",
+          "issuer_not_before": "2026-10-28T21:44:52+00:00",
+          "issuer_not_after": "2026-10-29T21:44:52+00:00",
+          "sha256": "1fb665d8935f0a235f9d28fd5fa109736543bb5fb742cf1691412bf1d489c103",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate is not yet valid"
+        },
+        {
+          "name": "issuer-future-administrator",
+          "role": "administrator",
+          "category": "future",
+          "scope": "issuer",
+          "issuer_not_before": "2026-10-28T21:44:52+00:00",
+          "issuer_not_after": "2026-10-29T21:44:52+00:00",
+          "sha256": "21c0ffa1f0aeb68d508b56f7bdd37f1f99ed9e4deb7e93938bb3b4df2edda17b",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate is not yet valid"
+        }
+      ],
+      "verification_limitation": "Started before atomic signed-bundle publication completed. Guest used the earlier adapter without credential_utc auditing. Exact admitted episode could not qualify under the strengthened observer. No final byte was submitted by that observer; this is not an expiry enforcement pass."
+    }
+  ],
+  "passing_preliminary_arm": {
+    "scope": "Native development-root startup only; no installed-state rotation or production custody proof",
+    "parent_commit": "721ff016873f77dd5e9ad5f67aa3b35ce3277cc7",
+    "results": [
+      {
+        "architecture": "aarch64",
+        "case": "chain-validity",
+        "expected": "chain-validity",
+        "exit_status": 0,
+        "state": "passed",
+        "resource_sha256": "d32b750b811958dd25523a68efd5b1a4a03f5326a0c4f4d2ff197f79b91361d2",
+        "kernel_sha256": "f3151d45c4caaf9c58a7ee229435d140e630efa6bdd0b6b3a026a22bd69f1d1e",
+        "observations": [
+          "PASS: native startup: verified reader observations and mutation rejection",
+          "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"issuer\", \"connection\": 3, \"healthy_reader_status\": 200, \"name\": \"issuer-expired-reader\", \"native_event\": \"client certificate expired\", \"port\": 25443, \"role\": \"reader\", \"source_asid\": 126}",
+          "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"issuer\", \"connection\": 5, \"healthy_reader_status\": 200, \"name\": \"issuer-expired-administrator\", \"native_event\": \"client certificate expired\", \"port\": 25443, \"role\": \"administrator\", \"source_asid\": 126}",
+          "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"issuer\", \"connection\": 7, \"healthy_reader_status\": 200, \"name\": \"issuer-future-reader\", \"native_event\": \"client certificate not yet valid\", \"port\": 25443, \"role\": \"reader\", \"source_asid\": 126}",
+          "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"issuer\", \"connection\": 9, \"healthy_reader_status\": 200, \"name\": \"issuer-future-administrator\", \"native_event\": \"client certificate not yet valid\", \"port\": 25443, \"role\": \"administrator\", \"source_asid\": 126}",
+          "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"issuer\", \"connection\": 4, \"healthy_reader_status\": 404, \"name\": \"issuer-expired-reader\", \"native_event\": \"client certificate expired\", \"port\": 25744, \"role\": \"reader\", \"source_asid\": 130}",
+          "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"issuer\", \"connection\": 6, \"healthy_reader_status\": 404, \"name\": \"issuer-expired-administrator\", \"native_event\": \"client certificate expired\", \"port\": 25744, \"role\": \"administrator\", \"source_asid\": 130}",
+          "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"issuer\", \"connection\": 8, \"healthy_reader_status\": 404, \"name\": \"issuer-future-reader\", \"native_event\": \"client certificate not yet valid\", \"port\": 25744, \"role\": \"reader\", \"source_asid\": 130}",
+          "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"issuer\", \"connection\": 10, \"healthy_reader_status\": 404, \"name\": \"issuer-future-administrator\", \"native_event\": \"client certificate not yet valid\", \"port\": 25744, \"role\": \"administrator\", \"source_asid\": 130}",
+          "OBSERVED: management session issuer {\"issuer_not_after\": \"2026-10-27T21:46:01+00:00\", \"issuer_not_before\": \"2026-10-27T21:44:55+00:00\", \"issuer_pem_sha256\": \"19e2682e053630f3f51a2ea636dfa285b22b77e71eeb0ba1dea2ae700e4e7b3e\", \"not_after_unix_seconds\": 1793137561}",
+          "PASS: management established expiry {\"admitted_credential_utc\": 1793137554, \"application_bytes\": 0, \"client_leaf_sha256\": \"adecc17d7075fb9238440264949867ddaa8cd1fbd8ca7f2313084e0de7e76202\", \"connection\": 14, \"final_body_byte_submitted\": true, \"healthy_reader_status\": 200, \"issuer_not_after\": \"2026-10-27T21:46:01+00:00\", \"issuer_not_before\": \"2026-10-27T21:44:55+00:00\", \"issuer_pem_sha256\": \"19e2682e053630f3f51a2ea636dfa285b22b77e71eeb0ba1dea2ae700e4e7b3e\", \"native_admission\": \"Administrator Mutate allowed=true\", \"native_clock_observation\": {\"connection\": 15, \"credential_utc\": 1793137563, \"source_asid\": 130}, \"native_rejection\": \"client certificate expired\", \"not_after_unix_seconds\": 1793137561, \"policy_generation\": 1, \"policy_sequence\": 1, \"rejected_body_sha256\": \"753f89c2509c1ea5e5fe06e303893f23d5716b8e8c7dd2a72bd9ae538f014685\", \"scope\": \"native established administrator upload spanning intermediate expiry\", \"source_asid\": 130, \"transport_result\": \"EOF\"}",
+          "[+     8.061414] [boot trust] admission policy published: revision=1",
+          "[+     9.025926] [launch] management TLS resource rejected before trust publication: WrongPolicy",
+          "[+    13.147867] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x3ffff failed_bitmap=0x0 pending_bitmap=0x0",
+          "[+    14.699080] [EL0 LOG] lp=0 asid=127 [time] synchronized unix_s=1793137544 utc=2026-10-27T21:45:44.166644070Z stratum=3 uncertainty_ms=506 drift_ppb=0",
+          "[+    17.235798] [EL0 LOG] lp=0 asid=126 [management] connection=3 client certificate expired",
+          "[+    18.101852] [EL0 LOG] lp=0 asid=126 [management] connection=5 client certificate expired",
+          "[+    18.920261] [EL0 LOG] lp=0 asid=126 [management] connection=7 client certificate not yet valid",
+          "[+    19.882007] [EL0 LOG] lp=0 asid=126 [management] connection=9 client certificate not yet valid",
+          "[+    21.151121] [EL0 LOG] lp=0 asid=130 [management] connection=4 client certificate expired",
+          "[+    21.854915] [EL0 LOG] lp=0 asid=130 [management] connection=6 client certificate expired",
+          "[+    22.552578] [EL0 LOG] lp=0 asid=130 [management] connection=8 client certificate not yet valid",
+          "[+    23.279055] [EL0 LOG] lp=0 asid=130 [management] connection=10 client certificate not yet valid",
+          "[+    33.362242] [EL0 LOG] lp=0 asid=130 [management] connection=14 client certificate expired"
+        ],
+        "diagnostics": [],
+        "checked_authority_events": [
+          "[+    25.154047] [EL0 LOG] lp=0 asid=130 [management] connection=14 certificate=adecc17d7075fb9238440264949867ddaa8cd1fbd8ca7f2313084e0de7e76202 role=Administrator permission=Mutate allowed=true credential_utc=1793137554",
+          "[+    33.362242] [EL0 LOG] lp=0 asid=130 [management] connection=14 client certificate expired",
+          "[+    33.680925] [EL0 LOG] lp=0 asid=130 [management] connection=15 certificate=c1ddcfbfb657f22449d551bb8eb331ba614dbdca3ab4eb47ece760d1949a5691 role=Reader permission=Observe allowed=true credential_utc=1793137563",
+          "[+    34.068563] [EL0 LOG] lp=0 asid=130 [management] connection=16 certificate=c1ddcfbfb657f22449d551bb8eb331ba614dbdca3ab4eb47ece760d1949a5691 role=Reader permission=Observe allowed=true credential_utc=1793137563"
+        ]
+      },
+      {
+        "architecture": "aarch64",
+        "case": "validity",
+        "expected": "validity",
+        "exit_status": 0,
+        "state": "passed",
+        "resource_sha256": "d32b750b811958dd25523a68efd5b1a4a03f5326a0c4f4d2ff197f79b91361d2",
+        "kernel_sha256": "f3151d45c4caaf9c58a7ee229435d140e630efa6bdd0b6b3a026a22bd69f1d1e",
+        "observations": [
+          "PASS: native startup: verified reader observations and mutation rejection",
+          "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"leaf\", \"connection\": 3, \"healthy_reader_status\": 200, \"name\": \"expired-reader\", \"native_event\": \"client certificate expired\", \"port\": 25443, \"role\": \"reader\", \"source_asid\": 126}",
+          "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"leaf\", \"connection\": 5, \"healthy_reader_status\": 200, \"name\": \"expired-administrator\", \"native_event\": \"client certificate expired\", \"port\": 25443, \"role\": \"administrator\", \"source_asid\": 126}",
+          "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"leaf\", \"connection\": 7, \"healthy_reader_status\": 200, \"name\": \"future-reader\", \"native_event\": \"client certificate not yet valid\", \"port\": 25443, \"role\": \"reader\", \"source_asid\": 126}",
+          "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"leaf\", \"connection\": 9, \"healthy_reader_status\": 200, \"name\": \"future-administrator\", \"native_event\": \"client certificate not yet valid\", \"port\": 25443, \"role\": \"administrator\", \"source_asid\": 126}",
+          "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"leaf\", \"connection\": 4, \"healthy_reader_status\": 404, \"name\": \"expired-reader\", \"native_event\": \"client certificate expired\", \"port\": 25744, \"role\": \"reader\", \"source_asid\": 130}",
+          "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"leaf\", \"connection\": 6, \"healthy_reader_status\": 404, \"name\": \"expired-administrator\", \"native_event\": \"client certificate expired\", \"port\": 25744, \"role\": \"administrator\", \"source_asid\": 130}",
+          "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"leaf\", \"connection\": 8, \"healthy_reader_status\": 404, \"name\": \"future-reader\", \"native_event\": \"client certificate not yet valid\", \"port\": 25744, \"role\": \"reader\", \"source_asid\": 130}",
+          "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"leaf\", \"connection\": 10, \"healthy_reader_status\": 404, \"name\": \"future-administrator\", \"native_event\": \"client certificate not yet valid\", \"port\": 25744, \"role\": \"administrator\", \"source_asid\": 130}",
+          "[+     7.045906] [boot trust] admission policy published: revision=1",
+          "[+     7.965850] [launch] management TLS resource rejected before trust publication: WrongPolicy",
+          "[+    12.121110] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x3ffff failed_bitmap=0x0 pending_bitmap=0x0",
+          "[+    13.633966] [EL0 LOG] lp=0 asid=127 [time] synchronized unix_s=1793137629 utc=2026-10-27T21:47:09.916816319Z stratum=3 uncertainty_ms=508 drift_ppb=0",
+          "[+    16.452582] [EL0 LOG] lp=0 asid=126 [management] connection=3 client certificate expired",
+          "[+    17.413422] [EL0 LOG] lp=0 asid=126 [management] connection=5 client certificate expired",
+          "[+    18.283288] [EL0 LOG] lp=0 asid=126 [management] connection=7 client certificate not yet valid",
+          "[+    19.245874] [EL0 LOG] lp=0 asid=126 [management] connection=9 client certificate not yet valid",
+          "[+    21.377560] [EL0 LOG] lp=0 asid=130 [management] connection=4 client certificate expired",
+          "[+    22.484788] [EL0 LOG] lp=0 asid=130 [management] connection=6 client certificate expired",
+          "[+    23.640608] [EL0 LOG] lp=0 asid=130 [management] connection=8 client certificate not yet valid",
+          "[+    24.753454] [EL0 LOG] lp=0 asid=130 [management] connection=10 client certificate not yet valid"
+        ],
+        "diagnostics": [],
+        "checked_authority_events": []
+      }
+    ],
+    "validity_credentials": [
+      {
+        "name": "expired-reader",
+        "role": "reader",
+        "category": "expired",
+        "not_before": "2026-10-25T21:44:20+00:00",
+        "not_after": "2026-10-26T21:44:20+00:00",
+        "sha256": "37fb6291c742dbe057f20b2477954b25c93b29b811295e687c72e9b5924778db",
+        "chain_purpose_without_time": "verified",
+        "current_time_rejection": "certificate has expired"
+      },
+      {
+        "name": "expired-administrator",
+        "role": "administrator",
+        "category": "expired",
+        "not_before": "2026-10-25T21:44:20+00:00",
+        "not_after": "2026-10-26T21:44:20+00:00",
+        "sha256": "25444bf7ffdca4be0de24892cb733fee18e1463b6b96b2ebc0cc1628098480a3",
+        "chain_purpose_without_time": "verified",
+        "current_time_rejection": "certificate has expired"
+      },
+      {
+        "name": "future-reader",
+        "role": "reader",
+        "category": "future",
+        "not_before": "2026-10-28T21:44:20+00:00",
+        "not_after": "2026-10-29T21:44:20+00:00",
+        "sha256": "bd907fd387fe311505fc0ff83f6e5ba8506c4381b3148813431081bfdd239f25",
+        "chain_purpose_without_time": "verified",
+        "current_time_rejection": "certificate is not yet valid"
+      },
+      {
+        "name": "future-administrator",
+        "role": "administrator",
+        "category": "future",
+        "not_before": "2026-10-28T21:44:20+00:00",
+        "not_after": "2026-10-29T21:44:20+00:00",
+        "sha256": "a14640c577a1ede68adc9749759d696422e9f7021d3a51b61a4dce902f3c81d3",
+        "chain_purpose_without_time": "verified",
+        "current_time_rejection": "certificate is not yet valid"
+      }
+    ],
+    "issuer_validity_credentials": [
+      {
+        "name": "issuer-expired-reader",
+        "role": "reader",
+        "category": "expired",
+        "scope": "issuer",
+        "issuer_not_before": "2026-10-25T21:44:20+00:00",
+        "issuer_not_after": "2026-10-26T21:44:20+00:00",
+        "sha256": "6cdae45175ef964fe48755e14d1c2057dc56db74c07e7821d19dd10084e018c9",
+        "chain_purpose_without_time": "verified",
+        "current_time_rejection": "certificate has expired"
+      },
+      {
+        "name": "issuer-expired-administrator",
+        "role": "administrator",
+        "category": "expired",
+        "scope": "issuer",
+        "issuer_not_before": "2026-10-25T21:44:20+00:00",
+        "issuer_not_after": "2026-10-26T21:44:20+00:00",
+        "sha256": "5b36a06b4f6ee98b1779e1846d5f2b9a54fde405dbc3430a2f4d7450d4a18b25",
+        "chain_purpose_without_time": "verified",
+        "current_time_rejection": "certificate has expired"
+      },
+      {
+        "name": "issuer-future-reader",
+        "role": "reader",
+        "category": "future",
+        "scope": "issuer",
+        "issuer_not_before": "2026-10-28T21:44:20+00:00",
+        "issuer_not_after": "2026-10-29T21:44:20+00:00",
+        "sha256": "0a62696a430d7250573d1bdd97b8e3ea170f76123e3adb56b455f385ae22fea3",
+        "chain_purpose_without_time": "verified",
+        "current_time_rejection": "certificate is not yet valid"
+      },
+      {
+        "name": "issuer-future-administrator",
+        "role": "administrator",
+        "category": "future",
+        "scope": "issuer",
+        "issuer_not_before": "2026-10-28T21:44:20+00:00",
+        "issuer_not_after": "2026-10-29T21:44:20+00:00",
+        "sha256": "bbb94f3c92640ca747f14573851a8be0303aa5ab39ef61e2f9dec16b70a648f2",
+        "chain_purpose_without_time": "verified",
+        "current_time_rejection": "certificate is not yet valid"
+      }
+    ],
+    "verification_limitation": "Passing strengthened observer before the final Clippy-equivalent if-let cleanup; retained separately from final-source execution."
+  },
+  "final_campaigns": [
+    {
+      "scope": "Native development-root startup only; no installed-state rotation or production custody proof",
+      "parent_commit": "721ff016873f77dd5e9ad5f67aa3b35ce3277cc7",
+      "results": [
+        {
+          "architecture": "aarch64",
+          "case": "chain-validity",
+          "expected": "chain-validity",
+          "exit_status": 0,
+          "state": "passed",
+          "resource_sha256": "eec0edf1dddecbf9339ff7f712cb1e2cdb670dc6e5d3659d73009ff34997d03a",
+          "kernel_sha256": "8a7b10fbcf15832704b5df5db66fb3f1c8cf9ed315dcdd5010637ad70e0c7f26",
+          "observations": [
+            "PASS: native startup: verified reader observations and mutation rejection",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"issuer\", \"connection\": 3, \"healthy_reader_status\": 200, \"name\": \"issuer-expired-reader\", \"native_event\": \"client certificate expired\", \"port\": 25443, \"role\": \"reader\", \"source_asid\": 126}",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"issuer\", \"connection\": 5, \"healthy_reader_status\": 200, \"name\": \"issuer-expired-administrator\", \"native_event\": \"client certificate expired\", \"port\": 25443, \"role\": \"administrator\", \"source_asid\": 126}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"issuer\", \"connection\": 7, \"healthy_reader_status\": 200, \"name\": \"issuer-future-reader\", \"native_event\": \"client certificate not yet valid\", \"port\": 25443, \"role\": \"reader\", \"source_asid\": 126}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"issuer\", \"connection\": 9, \"healthy_reader_status\": 200, \"name\": \"issuer-future-administrator\", \"native_event\": \"client certificate not yet valid\", \"port\": 25443, \"role\": \"administrator\", \"source_asid\": 126}",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"issuer\", \"connection\": 4, \"healthy_reader_status\": 404, \"name\": \"issuer-expired-reader\", \"native_event\": \"client certificate expired\", \"port\": 25744, \"role\": \"reader\", \"source_asid\": 130}",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"issuer\", \"connection\": 6, \"healthy_reader_status\": 404, \"name\": \"issuer-expired-administrator\", \"native_event\": \"client certificate expired\", \"port\": 25744, \"role\": \"administrator\", \"source_asid\": 130}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"issuer\", \"connection\": 8, \"healthy_reader_status\": 404, \"name\": \"issuer-future-reader\", \"native_event\": \"client certificate not yet valid\", \"port\": 25744, \"role\": \"reader\", \"source_asid\": 130}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"issuer\", \"connection\": 10, \"healthy_reader_status\": 404, \"name\": \"issuer-future-administrator\", \"native_event\": \"client certificate not yet valid\", \"port\": 25744, \"role\": \"administrator\", \"source_asid\": 130}",
+            "OBSERVED: management session issuer {\"issuer_not_after\": \"2026-10-27T21:50:00+00:00\", \"issuer_not_before\": \"2026-10-27T21:48:54+00:00\", \"issuer_pem_sha256\": \"ec1d5d55a9c0d5b378844a26b719b19ea3242c916f17660fd25771bbc4b4351d\", \"not_after_unix_seconds\": 1793137800}",
+            "PASS: management established expiry {\"admitted_credential_utc\": 1793137794, \"application_bytes\": 0, \"client_leaf_sha256\": \"8c4be94237c7d805382d60aed46e1f4b98c81b0cd15cdc19b34805566f959a50\", \"connection\": 14, \"final_body_byte_submitted\": true, \"healthy_reader_status\": 200, \"issuer_not_after\": \"2026-10-27T21:50:00+00:00\", \"issuer_not_before\": \"2026-10-27T21:48:54+00:00\", \"issuer_pem_sha256\": \"ec1d5d55a9c0d5b378844a26b719b19ea3242c916f17660fd25771bbc4b4351d\", \"native_admission\": \"Administrator Mutate allowed=true\", \"native_clock_observation\": {\"connection\": 15, \"credential_utc\": 1793137801, \"source_asid\": 130}, \"native_rejection\": \"client certificate expired\", \"not_after_unix_seconds\": 1793137800, \"policy_generation\": 1, \"policy_sequence\": 1, \"rejected_body_sha256\": \"ec67cdd84388b1070289bcf1f4b45337d99e76e474260f2f0b41aa8bcf6b13ba\", \"scope\": \"native established administrator upload spanning intermediate expiry\", \"source_asid\": 130, \"transport_result\": \"EOF\"}",
+            "[+     8.018171] [boot trust] admission policy published: revision=1",
+            "[+     8.887345] [launch] management TLS resource rejected before trust publication: WrongPolicy",
+            "[+    13.023039] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x3ffff failed_bitmap=0x0 pending_bitmap=0x0",
+            "[+    14.557649] [EL0 LOG] lp=0 asid=127 [time] synchronized unix_s=1793137783 utc=2026-10-27T21:49:43.770070170Z stratum=3 uncertainty_ms=513 drift_ppb=0",
+            "[+    17.057457] [EL0 LOG] lp=0 asid=126 [management] connection=3 client certificate expired",
+            "[+    17.927589] [EL0 LOG] lp=0 asid=126 [management] connection=5 client certificate expired",
+            "[+    18.786758] [EL0 LOG] lp=0 asid=126 [management] connection=7 client certificate not yet valid",
+            "[+    19.753329] [EL0 LOG] lp=0 asid=126 [management] connection=9 client certificate not yet valid",
+            "[+    21.024748] [EL0 LOG] lp=0 asid=130 [management] connection=4 client certificate expired",
+            "[+    21.727530] [EL0 LOG] lp=0 asid=130 [management] connection=6 client certificate expired",
+            "[+    22.442200] [EL0 LOG] lp=0 asid=130 [management] connection=8 client certificate not yet valid",
+            "[+    23.115152] [EL0 LOG] lp=0 asid=130 [management] connection=10 client certificate not yet valid",
+            "[+    32.116551] [EL0 LOG] lp=0 asid=130 [management] connection=14 client certificate expired"
+          ],
+          "diagnostics": [],
+          "checked_authority_events": [
+            "[+    24.907567] [EL0 LOG] lp=0 asid=130 [management] connection=14 certificate=8c4be94237c7d805382d60aed46e1f4b98c81b0cd15cdc19b34805566f959a50 role=Administrator permission=Mutate allowed=true credential_utc=1793137794",
+            "[+    32.116551] [EL0 LOG] lp=0 asid=130 [management] connection=14 client certificate expired",
+            "[+    32.410147] [EL0 LOG] lp=0 asid=130 [management] connection=15 certificate=72c252a7fa1ebf31696517263795cdd1ecf1ccef294f5c95cf28b735e9b3ad68 role=Reader permission=Observe allowed=true credential_utc=1793137801",
+            "[+    32.827251] [EL0 LOG] lp=0 asid=130 [management] connection=16 certificate=72c252a7fa1ebf31696517263795cdd1ecf1ccef294f5c95cf28b735e9b3ad68 role=Reader permission=Observe allowed=true credential_utc=1793137802"
+          ]
+        },
+        {
+          "architecture": "aarch64",
+          "case": "validity",
+          "expected": "validity",
+          "exit_status": 0,
+          "state": "passed",
+          "resource_sha256": "eec0edf1dddecbf9339ff7f712cb1e2cdb670dc6e5d3659d73009ff34997d03a",
+          "kernel_sha256": "8a7b10fbcf15832704b5df5db66fb3f1c8cf9ed315dcdd5010637ad70e0c7f26",
+          "observations": [
+            "PASS: native startup: verified reader observations and mutation rejection",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"leaf\", \"connection\": 3, \"healthy_reader_status\": 200, \"name\": \"expired-reader\", \"native_event\": \"client certificate expired\", \"port\": 25443, \"role\": \"reader\", \"source_asid\": 126}",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"leaf\", \"connection\": 5, \"healthy_reader_status\": 200, \"name\": \"expired-administrator\", \"native_event\": \"client certificate expired\", \"port\": 25443, \"role\": \"administrator\", \"source_asid\": 126}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"leaf\", \"connection\": 7, \"healthy_reader_status\": 200, \"name\": \"future-reader\", \"native_event\": \"client certificate not yet valid\", \"port\": 25443, \"role\": \"reader\", \"source_asid\": 126}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"leaf\", \"connection\": 9, \"healthy_reader_status\": 200, \"name\": \"future-administrator\", \"native_event\": \"client certificate not yet valid\", \"port\": 25443, \"role\": \"administrator\", \"source_asid\": 126}",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"leaf\", \"connection\": 4, \"healthy_reader_status\": 404, \"name\": \"expired-reader\", \"native_event\": \"client certificate expired\", \"port\": 25744, \"role\": \"reader\", \"source_asid\": 130}",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"leaf\", \"connection\": 6, \"healthy_reader_status\": 404, \"name\": \"expired-administrator\", \"native_event\": \"client certificate expired\", \"port\": 25744, \"role\": \"administrator\", \"source_asid\": 130}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"leaf\", \"connection\": 8, \"healthy_reader_status\": 404, \"name\": \"future-reader\", \"native_event\": \"client certificate not yet valid\", \"port\": 25744, \"role\": \"reader\", \"source_asid\": 130}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"leaf\", \"connection\": 10, \"healthy_reader_status\": 404, \"name\": \"future-administrator\", \"native_event\": \"client certificate not yet valid\", \"port\": 25744, \"role\": \"administrator\", \"source_asid\": 130}",
+            "[+    10.966516] [boot trust] admission policy published: revision=1",
+            "[+    11.885668] [launch] management TLS resource rejected before trust publication: WrongPolicy",
+            "[+    16.046780] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x3ffff failed_bitmap=0x0 pending_bitmap=0x0",
+            "[+    17.587138] [EL0 LOG] lp=0 asid=127 [time] synchronized unix_s=1793137827 utc=2026-10-27T21:50:27.796588873Z stratum=3 uncertainty_ms=506 drift_ppb=0",
+            "[+    19.942084] [EL0 LOG] lp=0 asid=126 [management] connection=3 client certificate expired",
+            "[+    20.804402] [EL0 LOG] lp=0 asid=126 [management] connection=5 client certificate expired",
+            "[+    21.636908] [EL0 LOG] lp=0 asid=126 [management] connection=7 client certificate not yet valid",
+            "[+    22.501428] [EL0 LOG] lp=0 asid=126 [management] connection=9 client certificate not yet valid",
+            "[+    23.795400] [EL0 LOG] lp=0 asid=130 [management] connection=4 client certificate expired",
+            "[+    24.492194] [EL0 LOG] lp=0 asid=130 [management] connection=6 client certificate expired",
+            "[+    25.164330] [EL0 LOG] lp=0 asid=130 [management] connection=8 client certificate not yet valid",
+            "[+    25.849858] [EL0 LOG] lp=0 asid=130 [management] connection=10 client certificate not yet valid"
+          ],
+          "diagnostics": [],
+          "checked_authority_events": []
+        }
+      ],
+      "validity_credentials": [
+        {
+          "name": "expired-reader",
+          "role": "reader",
+          "category": "expired",
+          "not_before": "2026-10-25T21:48:20+00:00",
+          "not_after": "2026-10-26T21:48:20+00:00",
+          "sha256": "687b9bd269d3af5863b0ece7505bc3b5326ae6951e273129952fc339764d5f62",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate has expired"
+        },
+        {
+          "name": "expired-administrator",
+          "role": "administrator",
+          "category": "expired",
+          "not_before": "2026-10-25T21:48:20+00:00",
+          "not_after": "2026-10-26T21:48:20+00:00",
+          "sha256": "bfaf76a1e71c4aeaf1521bf55fcdc1bb78f12bce1e69eba9698db7804d11c00c",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate has expired"
+        },
+        {
+          "name": "future-reader",
+          "role": "reader",
+          "category": "future",
+          "not_before": "2026-10-28T21:48:20+00:00",
+          "not_after": "2026-10-29T21:48:20+00:00",
+          "sha256": "7ea798a26b5a33a0e75873bef96e9fea1441b2e8b1937c5e58d0d82d472da9de",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate is not yet valid"
+        },
+        {
+          "name": "future-administrator",
+          "role": "administrator",
+          "category": "future",
+          "not_before": "2026-10-28T21:48:20+00:00",
+          "not_after": "2026-10-29T21:48:20+00:00",
+          "sha256": "0ed0424bdcf78ac0f4d9628a5f17ec1df023eec9ad3cad50548d5ac4b199e015",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate is not yet valid"
+        }
+      ],
+      "issuer_validity_credentials": [
+        {
+          "name": "issuer-expired-reader",
+          "role": "reader",
+          "category": "expired",
+          "scope": "issuer",
+          "issuer_not_before": "2026-10-25T21:48:20+00:00",
+          "issuer_not_after": "2026-10-26T21:48:20+00:00",
+          "sha256": "631b0c6542d767b30da7ab674c1f8181efd469250d421d1e79d4ac91e8555d79",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate has expired"
+        },
+        {
+          "name": "issuer-expired-administrator",
+          "role": "administrator",
+          "category": "expired",
+          "scope": "issuer",
+          "issuer_not_before": "2026-10-25T21:48:20+00:00",
+          "issuer_not_after": "2026-10-26T21:48:20+00:00",
+          "sha256": "a8e103df2fdc22e278af0a3b737a5e9eb9afb169657686074e205f666c4a4e8e",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate has expired"
+        },
+        {
+          "name": "issuer-future-reader",
+          "role": "reader",
+          "category": "future",
+          "scope": "issuer",
+          "issuer_not_before": "2026-10-28T21:48:20+00:00",
+          "issuer_not_after": "2026-10-29T21:48:20+00:00",
+          "sha256": "592f855b1f866427abb85f9396c1dc932ba7163a51e2c3fd0f5395212e26f21d",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate is not yet valid"
+        },
+        {
+          "name": "issuer-future-administrator",
+          "role": "administrator",
+          "category": "future",
+          "scope": "issuer",
+          "issuer_not_before": "2026-10-28T21:48:20+00:00",
+          "issuer_not_after": "2026-10-29T21:48:20+00:00",
+          "sha256": "ea84855f92606c306029c238833b66f6ff01cfec5145b3950889fd6e561a9d1a",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate is not yet valid"
+        }
+      ]
+    },
+    {
+      "scope": "Native development-root startup only; no installed-state rotation or production custody proof",
+      "parent_commit": "721ff016873f77dd5e9ad5f67aa3b35ce3277cc7",
+      "results": [
+        {
+          "architecture": "x86_64",
+          "case": "chain-validity",
+          "expected": "chain-validity",
+          "exit_status": 0,
+          "state": "passed",
+          "resource_sha256": "d70ef949991c5052df7f4271c9cd6c429be77c5815c4463c434cd43a62a3aeb3",
+          "kernel_sha256": "0277d928dc672bf86130cbbdd874882a181b47f598e75ebcd7182b710d42ed4b",
+          "observations": [
+            "PASS: native startup: verified reader observations and mutation rejection",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"issuer\", \"connection\": 3, \"healthy_reader_status\": 200, \"name\": \"issuer-expired-reader\", \"native_event\": \"client certificate expired\", \"port\": 26443, \"role\": \"reader\", \"source_asid\": 133}",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"issuer\", \"connection\": 5, \"healthy_reader_status\": 200, \"name\": \"issuer-expired-administrator\", \"native_event\": \"client certificate expired\", \"port\": 26443, \"role\": \"administrator\", \"source_asid\": 133}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"issuer\", \"connection\": 7, \"healthy_reader_status\": 200, \"name\": \"issuer-future-reader\", \"native_event\": \"client certificate not yet valid\", \"port\": 26443, \"role\": \"reader\", \"source_asid\": 133}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"issuer\", \"connection\": 9, \"healthy_reader_status\": 200, \"name\": \"issuer-future-administrator\", \"native_event\": \"client certificate not yet valid\", \"port\": 26443, \"role\": \"administrator\", \"source_asid\": 133}",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"issuer\", \"connection\": 4, \"healthy_reader_status\": 404, \"name\": \"issuer-expired-reader\", \"native_event\": \"client certificate expired\", \"port\": 26744, \"role\": \"reader\", \"source_asid\": 137}",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"issuer\", \"connection\": 6, \"healthy_reader_status\": 404, \"name\": \"issuer-expired-administrator\", \"native_event\": \"client certificate expired\", \"port\": 26744, \"role\": \"administrator\", \"source_asid\": 137}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"issuer\", \"connection\": 8, \"healthy_reader_status\": 404, \"name\": \"issuer-future-reader\", \"native_event\": \"client certificate not yet valid\", \"port\": 26744, \"role\": \"reader\", \"source_asid\": 137}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"issuer\", \"connection\": 10, \"healthy_reader_status\": 404, \"name\": \"issuer-future-administrator\", \"native_event\": \"client certificate not yet valid\", \"port\": 26744, \"role\": \"administrator\", \"source_asid\": 137}",
+            "OBSERVED: management session issuer {\"issuer_not_after\": \"2026-10-27T21:51:48+00:00\", \"issuer_not_before\": \"2026-10-27T21:50:42+00:00\", \"issuer_pem_sha256\": \"95da8f36f1eec3e632effdd0a48063fa3d337df64329994c37c142daec75a836\", \"not_after_unix_seconds\": 1793137908}",
+            "PASS: management established expiry {\"admitted_credential_utc\": 1793137902, \"application_bytes\": 0, \"client_leaf_sha256\": \"612720b5653895d2c76f4c9fc39a5c78eb9548936c8913ac9f35790d2886a9e1\", \"connection\": 14, \"final_body_byte_submitted\": true, \"healthy_reader_status\": 200, \"issuer_not_after\": \"2026-10-27T21:51:48+00:00\", \"issuer_not_before\": \"2026-10-27T21:50:42+00:00\", \"issuer_pem_sha256\": \"95da8f36f1eec3e632effdd0a48063fa3d337df64329994c37c142daec75a836\", \"native_admission\": \"Administrator Mutate allowed=true\", \"native_clock_observation\": {\"connection\": 15, \"credential_utc\": 1793137909, \"source_asid\": 137}, \"native_rejection\": \"client certificate expired\", \"not_after_unix_seconds\": 1793137908, \"policy_generation\": 1, \"policy_sequence\": 1, \"rejected_body_sha256\": \"10f0297cb4b1a505d1c8784f66e3c025c0cca9a3d26c0fd0319f311a467677a4\", \"scope\": \"native established administrator upload spanning intermediate expiry\", \"source_asid\": 137, \"transport_result\": \"EOF\"}",
+            "[+    13.248994] [boot trust] admission policy published: revision=1",
+            "[+    13.629060] [launch] management TLS resource rejected before trust publication: WrongPolicy",
+            "[+    16.717730] SELFTEST COMPLETE: passed=16 failed=0 pending=0 passed_bitmap=0x3bbff failed_bitmap=0x0 pending_bitmap=0x0",
+            "[+    18.991589] [EL0 LOG] lp=0 asid=134 [time] synchronized unix_s=1793137890 utc=2026-10-27T21:51:30.377263401Z stratum=3 uncertainty_ms=511 drift_ppb=0",
+            "[+    21.701550] [EL0 LOG] lp=0 asid=133 [management] connection=3 client certificate expired",
+            "[+    22.686731] [EL0 LOG] lp=0 asid=133 [management] connection=5 client certificate expired",
+            "[+    23.592484] [EL0 LOG] lp=0 asid=133 [management] connection=7 client certificate not yet valid",
+            "[+    24.844976] [EL0 LOG] lp=0 asid=133 [management] connection=9 client certificate not yet valid",
+            "[+    26.251273] [EL0 LOG] lp=0 asid=137 [management] connection=4 client certificate expired",
+            "[+    27.022864] [EL0 LOG] lp=0 asid=137 [management] connection=6 client certificate expired",
+            "[+    27.803778] [EL0 LOG] lp=0 asid=137 [management] connection=8 client certificate not yet valid",
+            "[+    28.582839] [EL0 LOG] lp=0 asid=137 [management] connection=10 client certificate not yet valid",
+            "[+    37.794954] [EL0 LOG] lp=0 asid=137 [management] connection=14 client certificate expired"
+          ],
+          "diagnostics": [],
+          "checked_authority_events": [
+            "[+    30.579716] [EL0 LOG] lp=0 asid=137 [management] connection=14 certificate=612720b5653895d2c76f4c9fc39a5c78eb9548936c8913ac9f35790d2886a9e1 role=Administrator permission=Mutate allowed=true credential_utc=1793137902",
+            "[+    37.794954] [EL0 LOG] lp=0 asid=137 [management] connection=14 client certificate expired",
+            "[+    38.098762] [EL0 LOG] lp=0 asid=137 [management] connection=15 certificate=61a679bdab7b137ada26d19187a1ca7b1d4f0dc97d8ab4e5090420cef96019fc role=Reader permission=Observe allowed=true credential_utc=1793137909",
+            "[+    38.539890] [EL0 LOG] lp=0 asid=137 [management] connection=16 certificate=61a679bdab7b137ada26d19187a1ca7b1d4f0dc97d8ab4e5090420cef96019fc role=Reader permission=Observe allowed=true credential_utc=1793137910"
+          ]
+        },
+        {
+          "architecture": "x86_64",
+          "case": "validity",
+          "expected": "validity",
+          "exit_status": 0,
+          "state": "passed",
+          "resource_sha256": "d70ef949991c5052df7f4271c9cd6c429be77c5815c4463c434cd43a62a3aeb3",
+          "kernel_sha256": "0277d928dc672bf86130cbbdd874882a181b47f598e75ebcd7182b710d42ed4b",
+          "observations": [
+            "PASS: native startup: verified reader observations and mutation rejection",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"leaf\", \"connection\": 3, \"healthy_reader_status\": 200, \"name\": \"expired-reader\", \"native_event\": \"client certificate expired\", \"port\": 26443, \"role\": \"reader\", \"source_asid\": 133}",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"leaf\", \"connection\": 5, \"healthy_reader_status\": 200, \"name\": \"expired-administrator\", \"native_event\": \"client certificate expired\", \"port\": 26443, \"role\": \"administrator\", \"source_asid\": 133}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"leaf\", \"connection\": 7, \"healthy_reader_status\": 200, \"name\": \"future-reader\", \"native_event\": \"client certificate not yet valid\", \"port\": 26443, \"role\": \"reader\", \"source_asid\": 133}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"leaf\", \"connection\": 9, \"healthy_reader_status\": 200, \"name\": \"future-administrator\", \"native_event\": \"client certificate not yet valid\", \"port\": 26443, \"role\": \"administrator\", \"source_asid\": 133}",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"leaf\", \"connection\": 4, \"healthy_reader_status\": 404, \"name\": \"expired-reader\", \"native_event\": \"client certificate expired\", \"port\": 26744, \"role\": \"reader\", \"source_asid\": 137}",
+            "PASS: management validity {\"category\": \"expired\", \"certificate_scope\": \"leaf\", \"connection\": 6, \"healthy_reader_status\": 404, \"name\": \"expired-administrator\", \"native_event\": \"client certificate expired\", \"port\": 26744, \"role\": \"administrator\", \"source_asid\": 137}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"leaf\", \"connection\": 8, \"healthy_reader_status\": 404, \"name\": \"future-reader\", \"native_event\": \"client certificate not yet valid\", \"port\": 26744, \"role\": \"reader\", \"source_asid\": 137}",
+            "PASS: management validity {\"category\": \"future\", \"certificate_scope\": \"leaf\", \"connection\": 10, \"healthy_reader_status\": 404, \"name\": \"future-administrator\", \"native_event\": \"client certificate not yet valid\", \"port\": 26744, \"role\": \"administrator\", \"source_asid\": 137}",
+            "[+    12.359900] [boot trust] admission policy published: revision=1",
+            "[+    12.748907] [launch] management TLS resource rejected before trust publication: WrongPolicy",
+            "[+    15.764603] SELFTEST COMPLETE: passed=16 failed=0 pending=0 passed_bitmap=0x3bbff failed_bitmap=0x0 pending_bitmap=0x0",
+            "[+    18.076032] [EL0 LOG] lp=0 asid=134 [time] synchronized unix_s=1793137931 utc=2026-10-27T21:52:11.512532105Z stratum=3 uncertainty_ms=507 drift_ppb=0",
+            "[+    20.587146] [EL0 LOG] lp=0 asid=133 [management] connection=3 client certificate expired",
+            "[+    21.514699] [EL0 LOG] lp=0 asid=133 [management] connection=5 client certificate expired",
+            "[+    22.417596] [EL0 LOG] lp=0 asid=133 [management] connection=7 client certificate not yet valid",
+            "[+    23.347636] [EL0 LOG] lp=0 asid=133 [management] connection=9 client certificate not yet valid",
+            "[+    24.737084] [EL0 LOG] lp=0 asid=137 [management] connection=4 client certificate expired",
+            "[+    25.514979] [EL0 LOG] lp=0 asid=137 [management] connection=6 client certificate expired",
+            "[+    26.267591] [EL0 LOG] lp=0 asid=137 [management] connection=8 client certificate not yet valid",
+            "[+    27.043525] [EL0 LOG] lp=0 asid=137 [management] connection=10 client certificate not yet valid"
+          ],
+          "diagnostics": [],
+          "checked_authority_events": []
+        }
+      ],
+      "validity_credentials": [
+        {
+          "name": "expired-reader",
+          "role": "reader",
+          "category": "expired",
+          "not_before": "2026-10-25T21:50:08+00:00",
+          "not_after": "2026-10-26T21:50:08+00:00",
+          "sha256": "3f9e5a07c84163cdda04eb5da1e01199d179c53916fde7cc55f9b85cedd69588",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate has expired"
+        },
+        {
+          "name": "expired-administrator",
+          "role": "administrator",
+          "category": "expired",
+          "not_before": "2026-10-25T21:50:08+00:00",
+          "not_after": "2026-10-26T21:50:08+00:00",
+          "sha256": "13e2970eb47fa3f692c9ec3b9461b3da343fb5d516d207e95ce8fe3ba5235bad",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate has expired"
+        },
+        {
+          "name": "future-reader",
+          "role": "reader",
+          "category": "future",
+          "not_before": "2026-10-28T21:50:08+00:00",
+          "not_after": "2026-10-29T21:50:08+00:00",
+          "sha256": "480113422d0c7ecc52de57768117106ec63ba099d155e27506acbdf1406190d9",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate is not yet valid"
+        },
+        {
+          "name": "future-administrator",
+          "role": "administrator",
+          "category": "future",
+          "not_before": "2026-10-28T21:50:08+00:00",
+          "not_after": "2026-10-29T21:50:08+00:00",
+          "sha256": "31faaa030c5faeeb7ce612d2847dc99aa0e4aab0ac100ee70db0ee17b501535f",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate is not yet valid"
+        }
+      ],
+      "issuer_validity_credentials": [
+        {
+          "name": "issuer-expired-reader",
+          "role": "reader",
+          "category": "expired",
+          "scope": "issuer",
+          "issuer_not_before": "2026-10-25T21:50:08+00:00",
+          "issuer_not_after": "2026-10-26T21:50:08+00:00",
+          "sha256": "5f8924c2d53f0a8614325b473fbdb33fb178ac0bd19c5a73be5a659eb1196b6f",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate has expired"
+        },
+        {
+          "name": "issuer-expired-administrator",
+          "role": "administrator",
+          "category": "expired",
+          "scope": "issuer",
+          "issuer_not_before": "2026-10-25T21:50:08+00:00",
+          "issuer_not_after": "2026-10-26T21:50:08+00:00",
+          "sha256": "b82d9b4b326b926fa4536b2fa13ed0d2a404d8e3b7d943950165573af87c61c0",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate has expired"
+        },
+        {
+          "name": "issuer-future-reader",
+          "role": "reader",
+          "category": "future",
+          "scope": "issuer",
+          "issuer_not_before": "2026-10-28T21:50:08+00:00",
+          "issuer_not_after": "2026-10-29T21:50:08+00:00",
+          "sha256": "fd6cdb678c7c5699a6137f418077073996936584df8186763b8479b4169face3",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate is not yet valid"
+        },
+        {
+          "name": "issuer-future-administrator",
+          "role": "administrator",
+          "category": "future",
+          "scope": "issuer",
+          "issuer_not_before": "2026-10-28T21:50:08+00:00",
+          "issuer_not_after": "2026-10-29T21:50:08+00:00",
+          "sha256": "d9f31e244398fa0e5242f3af5185d88b06a70124d18cdd8c4dbc8a28be968c95",
+          "chain_purpose_without_time": "verified",
+          "current_time_rejection": "certificate is not yet valid"
+        }
+      ]
+    }
+  ],
+  "build_failures": [
+    {
+      "attempt": "initial x86 service bundle",
+      "diagnostic": "sign-service-elfs.sh: line 71: 7417 Killed: 9 cargo ... elf-sign",
+      "cause": "not established",
+      "publication": "atomic staging did not publish the incomplete bundle; authorized repeat passed"
+    },
+    {
+      "attempt": "final-source x86 service bundle inside sandbox",
+      "diagnostic": "sign-service-elfs.sh: line 71: 16166 Killed: 9 cargo ... elf-sign",
+      "cause": "not established",
+      "publication": "atomic staging did not publish the incomplete bundle; authorized repeat passed"
+    }
+  ],
+  "host_environment_limit": "Sandboxed OpenSSL interoperability listener bind rejected with PermissionDenied / Operation not permitted; authorized complete engine repeat passes.",
+  "host_checks": {
+    "tls_engine": "15 passed",
+    "services_library": "257 passed",
+    "management_python_observations": "28 passed (chain 7, leaf 6, startup 7, runner 5, rotation 3)",
+    "real_management_cli": "7 passed",
+    "strict_clippy": "host TLS engine all targets, actual ARM and x86 httpd/deployd targets pass",
+    "format_and_syntax": "workspace rustfmt, Python compilation, Bash syntax and git diff --check pass",
+    "native_bundles": "both signed bundled-service builds pass",
+    "manual": "254 pages, changed Configuration pages visually checked; no full manual reality sweep",
+    "excluded": "No fresh full host-suite run or advisory scan."
+  },
+  "source_sha256": {
+    "crates/charlotte-management-tls/src/policy.rs": "95de3d7538c8671b020a84b01586dee92569b0193f6328303e582290e0580250",
+    "crates/charlotte-management-tls/src/session.rs": "a70a53250198117210fff402bc65fc34958117272aafe4e79e5d8b231a91afc4",
+    "crates/charlotte-management-tls/tests/server.rs": "53726360d526fae52645292dae15e434ed3c0eb35793d34527773f1f68db55d4",
+    "crates/catten-services/src/management_io.rs": "320b24980dd8ac1eb557b57e389f16ea3cb498356935c75b308b5408d53e4448",
+    "crates/catten-services/src/deployment_input.rs": "7c8a892c301a288520a0ba4a318bcb4d3ab1ec281def8fc9ab7ceeb0b6af7d14",
+    "scripts/prepare-management-tls-fixture.py": "b4a69bfcec72d62b2c3e3880886e47b8d982bd21841421f8546aed3757e5044f",
+    "scripts/run-management-startup-tests.py": "510a3d4e447013b5cd0674dd4c96ba81aa42ffcfebcf4e79cac6c00644eb7bc2",
+    "scripts/tests/test-management-chain-validity.py": "8a8b0e7506003fd54ce8eaa3caa1dba2c27bdb28ec1f9bd64127402d7c6914bd",
+    "scripts/tests/test-management-chain-observations.py": "f76cedf5d37cfc175abbf5d7e341ad42d4e08265085d472586d6754c0c3528fa",
+    "scripts/tests/test-management-validity.py": "4cb4b0a3efab52391e2bb68ecc64153f253e9a361d9e018cb2d5b8fc43a9df51",
+    "scripts/tests/test-management-startup.py": "b508eb2115b9c6ef4af00af254489653208d51ee9aee44fd2eea12382f34462b",
+    "scripts/lib/boot-common.sh": "b17415fe4fb44a8c33e171568778457243ac0b6e59b5f657dede80df4ad42726",
+    "docs/manual-v2/chapters/22-configuration.tex": "5b07b08d3d3bf082e39712ce776cd2ae967ef285c1b33aa4e809b32337ab3a1b",
+    "docs/manual-v2/charlotte.pdf": "eb75cc5b23d070b6c5452d7e40a2b1d4b81e3ab706abab8d7a25a29c390f8e5b"
+  },
+  "signed_service_sha256": {
+    "target/embedded-services/aarch64-unknown-none/httpd.elf": "8cff1832556ca9b03c5ee8633e1dad43ee9c7f3baebb356c031d88a88813a8b8",
+    "target/embedded-services/aarch64-unknown-none/deployd.elf": "bc244a732c8b447e7426667c2cf796e9972efb27c7817d85949fc567feb14cb9",
+    "target/embedded-services/x86_64-unknown-none/httpd.elf": "48eb86615c1cb3e0bf5c7bf1313bb29db67edb7f47afbc3ed3397f418109ca4e",
+    "target/embedded-services/x86_64-unknown-none/deployd.elf": "06482a7a08faeb56a9ee85444f8b086d6f189c370cb3627421b358626d5cb595"
+  }
+}

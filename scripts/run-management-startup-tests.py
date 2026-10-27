@@ -18,7 +18,7 @@ import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-CASES = {"valid": "ready", "validity": "validity", "missing": "disabled", "invalid-der": "disabled",
+CASES = {"valid": "ready", "validity": "validity", "chain-validity": "chain-validity", "missing": "disabled", "invalid-der": "disabled",
          "wrong-policy": "WrongPolicy", "signature": "Signature", "ciphertext": "Authentication"}
 
 
@@ -48,12 +48,12 @@ def command(arguments, log, environment=None, timeout=900):
             raise
 
 
-def resources(private, validity_controls=False):
+def resources(private, validity_controls=False, chain_controls=False):
     spec = importlib.util.spec_from_file_location("management_fixture", ROOT / "scripts/prepare-management-tls-fixture.py")
     generator = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(generator)
     directory = private / "credentials"
-    generator.prepare(directory, validity_controls=validity_controls)
+    generator.prepare(directory, validity_controls=validity_controls, chain_controls=chain_controls)
     signer = ROOT / "target/debug/cluster-sign"
     preparation = private / "preparation.log"
     def tool(*args):
@@ -61,7 +61,7 @@ def resources(private, validity_controls=False):
             raise RuntimeError("management fixture command failed; see private preparation capture")
     policy = directory / "policy.bin"
     original = (directory / "resource.bin").read_bytes()
-    result = {"valid": directory / "resource.bin", "validity": directory / "resource.bin", "missing": None}
+    result = {"valid": directory / "resource.bin", "validity": directory / "resource.bin", "chain-validity": directory / "resource.bin", "missing": None}
     for name, position in (("wrong-policy", 16), ("signature", 112)):
         changed = bytearray(original)
         changed[position] ^= 1
@@ -128,9 +128,12 @@ def main():
     save()
     with tempfile.TemporaryDirectory(prefix="private.", dir=output) as temporary:
         private = Path(temporary)
-        credentials, variants = resources(private, validity_controls="validity" in args.cases)
+        credentials, variants = resources(private, validity_controls="validity" in args.cases, chain_controls="chain-validity" in args.cases)
         if "validity" in args.cases:
             evidence["validity_credentials"] = json.loads((credentials / "validity.json").read_text())
+            save()
+        if "chain-validity" in args.cases:
+            evidence["issuer_validity_credentials"] = json.loads((credentials / "chain-validity.json").read_text())
             save()
         for architecture in args.architectures:
             if not args.reuse_bundle:
@@ -152,7 +155,7 @@ def main():
                                    CATTEN_MANAGEMENT_READER_CERT_FILE=str(credentials / "reader.pem"),
                                    CATTEN_MANAGEMENT_READER_KEY_FILE=str(credentials / "reader.key"),
                                    CATTEN_MANAGEMENT_SERVER_NAME="127.0.0.1")
-                if case == "validity":
+                if case in ("validity", "chain-validity"):
                     environment["CATTEN_MANAGEMENT_VALIDITY_DIR"] = str(credentials)
                 resource = variants[case]
                 if resource:

@@ -21,10 +21,13 @@ def events(text, category):
         + re.escape(EVENTS[category]) + r"\r?$", text, re.MULTILINE)}
 
 
-def probe(log, status_port, deployment_port, budget=12):
+def probe(log, status_port, deployment_port, budget=12, *, scope="leaf"):
     directory = Path(os.environ["CATTEN_MANAGEMENT_VALIDITY_DIR"])
-    records = json.loads((directory / "validity.json").read_text())
-    expected = {(category + "-" + role, category, role) for category in EVENTS for role in ("reader", "administrator")}
+    if scope not in ("leaf", "issuer"):
+        raise ProbeFailure("unknown validity scope")
+    records = json.loads((directory / ("validity.json" if scope == "leaf" else "chain-validity.json")).read_text())
+    prefix = "" if scope == "leaf" else "issuer-"
+    expected = {(prefix + category + "-" + role, category, role) for category in EVENTS for role in ("reader", "administrator")}
     if {(row["name"], row["category"], row["role"]) for row in records} != expected or len(records) != len(expected):
         raise ProbeFailure("validity controls must contain all four distinct enrolled role/date combinations")
     healthy = context("reader")
@@ -58,6 +61,7 @@ def probe(log, status_port, deployment_port, budget=12):
                 raise ProbeFailure("invalid-date enrolled client received management data")
             result, _ = exchange(healthy, port, request, expected_status, budget)
             observation = {"name": row["name"], "role": row["role"], "category": row["category"],
+                           "certificate_scope": scope,
                            "port": port, "native_event": EVENTS[row["category"]],
                            "source_asid": next(iter(new))[0], "connection": next(iter(new))[1],
                            "healthy_reader_status": result["status"]}

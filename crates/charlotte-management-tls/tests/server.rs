@@ -255,7 +255,7 @@ fn serialized_profile_prepares_without_clock_and_activates_only_after_real_time(
     let mut session = Session::new(prepared.activate().unwrap(), 0).unwrap();
     let mut client = client(&fixture, Some("reader"), "ca");
     handshake(&mut session, &mut client, 11).unwrap();
-    assert_eq!(session.identity().unwrap().role(), Role::Reader);
+    assert_eq!(session.identity(10).unwrap().unwrap().role(), Role::Reader);
     source.0.store(0, Ordering::Relaxed);
     assert!(matches!(prepared.activate(), Err(PolicyError::InvalidClock)));
 }
@@ -336,7 +336,7 @@ fn handshake(
             server_to_client(server, client, fragment)?;
         }
         server_to_client(server, client, fragment)?;
-        if !client.is_handshaking() && server.identity().is_some() {
+        if !client.is_handshaking() && server.identity(10)?.is_some() {
             return Ok(());
         }
     }
@@ -351,7 +351,7 @@ fn tls13_authenticates_enrolled_roles_with_fragmented_receipts() {
             Session::new(config(fixture.credentials(), clock(), Limits::DEFAULT), 0).unwrap();
         let mut client = client(&fixture, Some(name), "ca");
         handshake(&mut server, &mut client, 7).unwrap();
-        let identity = server.identity().unwrap();
+        let identity = server.identity(10).unwrap().unwrap();
         assert_eq!(identity.certificate_sha256(), fixture.identity(name, role).certificate_sha256);
         assert_eq!(identity.role(), role);
         client.writer().write_all(b"GET /metrics HTTP/1.1\r\n\r\n").unwrap();
@@ -390,7 +390,7 @@ fn standard_client_rejects_wrong_server_root_and_name() {
         )
         .unwrap();
         assert!(handshake(&mut server, &mut peer, 97).is_err());
-        assert_eq!(server.identity(), None);
+        assert_eq!(server.identity(10).ok().flatten(), None);
     }
 }
 
@@ -436,7 +436,7 @@ fn missing_unknown_foreign_and_wrong_purpose_clients_reject_before_plaintext() {
             error.client_rejection(),
             (name == Some("unknown")).then_some(ClientRejection::Policy)
         );
-        assert_eq!(server.identity(), None);
+        assert_eq!(server.identity(10).ok().flatten(), None);
         assert!(server.step(11).is_err());
         assert!(server.receive_tls(b"GET /metrics HTTP/1.1\r\n\r\n", 12).is_err());
     }
@@ -490,7 +490,7 @@ fn plaintext_tamper_and_replay_are_terminal() {
             server.receive_tls(&original, 12).unwrap();
         }
         assert!(server.step(12).is_err());
-        assert_eq!(server.identity(), None);
+        assert_eq!(server.identity(10).ok().flatten(), None);
         assert!(server.receive_tls(&original, 13).is_err());
         assert!(server.outgoing().is_empty());
     }
@@ -578,7 +578,192 @@ fn validity_and_clock_loss_reject_even_pinned_clients() {
         let error =
             handshake(&mut server, &mut peer, 97).expect_err("invalid-time client accepted");
         assert_eq!(error.client_rejection(), rejection);
-        assert_eq!(server.identity(), None);
+        assert_eq!(server.identity(10).ok().flatten(), None);
+    }
+}
+
+#[test]
+fn established_identity_cannot_authorize_after_certificate_expiry() {
+    let fixture = Fixture::new();
+    let utc = clock();
+    let original = utc.0.load(Ordering::Relaxed);
+    let mut server =
+        Session::new(config(fixture.credentials(), utc.clone(), Limits::DEFAULT), 0).unwrap();
+    let mut peer = client(&fixture, Some("admin"), "ca");
+    handshake(&mut server, &mut peer, 97).unwrap();
+    utc.0.fetch_add(3652 * 86400, Ordering::Relaxed);
+    let result = server.send_application(b"expired authority", 11);
+    assert!(result.is_err(), "established session retained expired authority");
+    assert_eq!(result.unwrap_err().client_rejection(), Some(ClientRejection::Expired));
+    utc.0.store(original, Ordering::Relaxed);
+    assert_eq!(
+        server.check_authority(12).unwrap_err().client_rejection(),
+        Some(ClientRejection::Expired)
+    );
+    assert!(server.identity(12).is_err());
+    assert!(server.outgoing().is_empty());
+}
+
+#[test]
+fn established_identity_revalidates_intermediate_before_its_leaf_expires() {
+    let fixture = Fixture::new();
+    fixture.command(&[
+        "req",
+        "-new",
+        "-newkey",
+        "ec",
+        "-pkeyopt",
+        "ec_paramgen_curve:prime256v1",
+        "-noenc",
+        "-subj",
+        "/CN=Short issuer",
+        "-keyout",
+        "issuer.key",
+        "-out",
+        "issuer.csr",
+    ]);
+    fs::write(
+        fixture.0.join("issuer.ext"),
+        "basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign\n",
+    )
+    .unwrap();
+    fixture.command(&[
+        "x509",
+        "-req",
+        "-in",
+        "issuer.csr",
+        "-CA",
+        "ca.pem",
+        "-CAkey",
+        "ca.key",
+        "-set_serial",
+        "100",
+        "-days",
+        "1",
+        "-extfile",
+        "issuer.ext",
+        "-out",
+        "issuer.pem",
+    ]);
+    fs::write(
+        fixture.0.join("client.ext"),
+        concat!(
+            "basicConstraints=critical,CA:FALSE\n",
+            "keyUsage=critical,digitalSignature\n",
+            "extendedKeyUsage=clientAuth\n",
+        ),
+    )
+    .unwrap();
+    fixture.command(&[
+        "x509",
+        "-req",
+        "-in",
+        "admin.csr",
+        "-CA",
+        "issuer.pem",
+        "-CAkey",
+        "issuer.key",
+        "-set_serial",
+        "101",
+        "-days",
+        "3",
+        "-extfile",
+        "client.ext",
+        "-out",
+        "admin.pem",
+    ]);
+    for name in ["issuer", "admin"] {
+        fixture.command(&[
+            "x509",
+            "-in",
+            &format!("{name}.pem"),
+            "-outform",
+            "DER",
+            "-out",
+            &format!("{name}.der"),
+        ]);
+    }
+    let utc = clock();
+    let original = utc.0.load(Ordering::Relaxed);
+    let mut server =
+        Session::new(config(fixture.credentials(), utc.clone(), Limits::DEFAULT), 0).unwrap();
+    let mut roots = RootCertStore::empty();
+    roots.add(fixture.cert("ca")).unwrap();
+    let mut config =
+        ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+            .with_protocol_versions(&[&rustls::version::TLS13])
+            .unwrap()
+            .with_root_certificates(roots)
+            .with_client_auth_cert(
+                vec![fixture.cert("admin"), fixture.cert("issuer")],
+                fixture.key("admin"),
+            )
+            .unwrap();
+    config.alpn_protocols = vec![b"http/1.1".to_vec()];
+    let mut peer = ClientConnection::new(Arc::new(config), "tls.test".try_into().unwrap()).unwrap();
+    handshake(&mut server, &mut peer, 97).unwrap();
+    assert_eq!(server.identity(10).unwrap().unwrap().verified_at_unix_seconds(), original);
+    utc.0.store(original + 2 * 86400, Ordering::Relaxed);
+    assert_eq!(server.identity(11).unwrap_err().client_rejection(), Some(ClientRejection::Expired));
+    utc.0.store(original, Ordering::Relaxed);
+    assert_eq!(
+        server.send_application(b"restored clock", 12).unwrap_err().client_rejection(),
+        Some(ClientRejection::Expired)
+    );
+    assert!(server.outgoing().is_empty());
+}
+
+#[test]
+fn established_identity_cannot_authorize_without_utc() {
+    let fixture = Fixture::new();
+    let utc = clock();
+    let original = utc.0.load(Ordering::Relaxed);
+    let mut server =
+        Session::new(config(fixture.credentials(), utc.clone(), Limits::DEFAULT), 0).unwrap();
+    let mut peer = client(&fixture, Some("admin"), "ca");
+    handshake(&mut server, &mut peer, 97).unwrap();
+    utc.0.store(0, Ordering::Relaxed);
+    assert!(matches!(
+        server.send_application(b"clockless authority", 11),
+        Err(Error::CredentialClockUnavailable)
+    ));
+    utc.0.store(original, Ordering::Relaxed);
+    assert!(matches!(
+        server.receive_tls(b"later data", 12),
+        Err(Error::CredentialClockUnavailable)
+    ));
+    assert!(server.identity(12).is_err());
+}
+
+#[test]
+fn established_identity_rejects_utc_rollback_and_expired_input_before_plaintext() {
+    let fixture = Fixture::new();
+    for rollback in [false, true] {
+        let utc = clock();
+        let original = utc.0.load(Ordering::Relaxed);
+        let mut server =
+            Session::new(config(fixture.credentials(), utc.clone(), Limits::DEFAULT), 0).unwrap();
+        let mut peer = client(&fixture, Some("admin"), "ca");
+        handshake(&mut server, &mut peer, 97).unwrap();
+        peer.writer().write_all(b"POST /v1/ingress-policy").unwrap();
+        let mut wire = Vec::new();
+        peer.write_tls(&mut wire).unwrap();
+        utc.0.store(
+            if rollback {
+                original - 1
+            } else {
+                original + 3652 * 86400
+            },
+            Ordering::Relaxed,
+        );
+        let error = server.receive_tls(&wire, 11).unwrap_err();
+        if rollback {
+            assert!(matches!(error, Error::CredentialClockRollback));
+        } else {
+            assert_eq!(error.client_rejection(), Some(ClientRejection::Expired));
+        }
+        assert!(server.identity(12).is_err());
+        assert!(server.outgoing().is_empty());
     }
 }
 

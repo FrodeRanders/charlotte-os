@@ -57,6 +57,29 @@ clock. Zero/unavailable time, rollback and arithmetic overflow reject. This is
 not authenticated or rollback-resistant time: the source still uses SNTP/holdover
 and SEC-09 remains open.
 
+Authority is checked throughout an established session. Every engine transition
+and `Session::identity(now_ms)` checks the original monotonic budgets and current
+nonzero UTC. Once authenticated, the exact enrolled peer chain is reverified by
+the same WebPKI verifier when the observed UTC second changes; signature work is
+cached within that second rather than repeated for every TLS fragment. Finished
+also triggers revalidation before identity publication. Expiry, unavailable UTC
+or observed UTC rollback latches failure, erases staged engine input/output and
+removes the identity. Restoring the clock cannot revive that connection.
+
+The native transport checks authority before submitting or observing further
+socket work. Idle owners still wait on their existing CQ interests; no periodic
+expiry polling or new watchdog is added. An expiry check does not prove that an
+already accepted socket/controller operation was cancelled or quiescent. Its
+existing containing owner retains pending work and loans through the original
+close/Drop policy; an uncertain response never authorizes replay. A mutation
+already admitted while credentials were valid may complete after expiry.
+
+Audit decisions include `credential_utc`, the UTC second of their checked
+identity. This is an observation of the current provider, not a trusted-time
+attestation. The first complete deployment header is audited before its body is
+complete, and complete requests retain their dispatch audit; neither record
+means that a controller mutation has committed.
+
 ## Complete boot resource and enrollment
 
 `charlotte-launch::management` defines one current profile, `CMGMTL01`, with an
@@ -257,7 +280,7 @@ campaign. Published evidence must retain concise observations and hashes, not
 links to its temporary captures.
 
 Each runner also accepts `--management-startup-test EXPECTATION` for an isolated
-timed user-network boot: `ready`, `validity`, `disabled`, `WrongPolicy`, `Signature` or
+timed user-network boot: `ready`, `validity`, `chain-validity`, `disabled`, `WrongPolicy`, `Signature` or
 `Authentication`. This is a host assertion, never a kernel credential or policy
 override, and it does not automatically create a missing resource. The terminal
 rejection modes require `--no-failure-capture` and make no self-test success claim.
@@ -277,6 +300,23 @@ current-time expiry/future failure before any guest boots. The ordinary CA key i
 removed after issuing the controls. The host-only
 `CATTEN_MANAGEMENT_VALIDITY_DIR` selects that private probe fixture, not kernel
 trust or service configuration. The startup campaign supplies it automatically.
+
+The `chain-validity` case instead tests expired/future intermediates with valid,
+explicitly enrolled reader/administrator leaves on both interfaces. OpenSSL
+checks client purpose without time, then requires the date error at depth 1.
+It also performs a successful signed policy mutation through an enrolled leaf
+and holds a second signed upload short of its final byte across intermediate
+expiry. A same-service healthy reader supplies checked native UTC past the
+presented issuer's recorded `notAfter` before the last byte is attempted. The
+test requires the exact admitted connection's expiry event, zero application
+bytes and unchanged policy readback. Host wall time, transport silence or a
+different connection's rejection cannot supply this proof.
+
+This case retains its disposable root signer through guest execution to issue
+a short intermediate after the kernel build. The intermediate subject/public
+key and exact pinned leaf remain unchanged. No guest clock, trust, enrollment or
+production limit is overridden. The root signer remains within the restricted
+temporary campaign owner and is removed when that owner terminates.
 
 SLIRP's host listener can accept while the guest supplies no terminal TCP result.
 Closed-port EOF/reset/refusal and bounded transport timeouts are recorded
@@ -347,7 +387,12 @@ excluded from new-flow eligibility; existing flow bindings are retained.
 This qualifies fresh connections after committed convergence, not uninterrupted
 sessions or instantaneous failure detection.
 
-Remaining native campaigns include established-session/issuer/server expiry,
+The [session-validity follow-up](../reports/audits/2026-10-27-security-management-session-validity.md)
+records the established-authority correction, issuer controls and native upload
+qualification, including the failed preliminary attempts and their clock-proof
+limitation. It does not authenticate the UTC provider.
+
+Remaining native campaigns include server expiry, broader established-session faults,
 ARM installed-resource rotation, wider restart/substitution and transport faults,
 new adapter fault injection and broad pressure.
 Protected installation/rollback and live factory/session retirement remain

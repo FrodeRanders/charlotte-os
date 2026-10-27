@@ -25,6 +25,8 @@ pub enum Error {
     HandshakeDeadline,
     SessionDeadline,
     MonotonicClock,
+    CredentialClockUnavailable,
+    CredentialClockRollback,
     Unauthenticated,
     InvalidReceipt,
     NotReady,
@@ -102,6 +104,8 @@ pub struct Session {
     failure: Option<Error>,
     closed: bool,
     closing: bool,
+    last_utc: Option<u64>,
+    verified_utc: Option<u64>,
 }
 
 impl Session {
@@ -126,6 +130,8 @@ impl Session {
             failure: None,
             closed: false,
             closing: false,
+            last_utc: None,
+            verified_utc: None,
         })
     }
 
@@ -146,8 +152,33 @@ impl Session {
         if let Some(error) = error {
             self.fail(error)
         } else {
-            Ok(())
+            self.check_credentials().or_else(|error| self.fail(error))
         }
+    }
+
+    fn check_credentials(&mut self) -> Result<(), Error> {
+        let now = self.config.current_time().ok_or(Error::CredentialClockUnavailable)?;
+        let seconds = now.as_secs();
+        if self.last_utc.is_some_and(|previous| seconds < previous) {
+            return Err(Error::CredentialClockRollback);
+        }
+        self.last_utc = Some(seconds);
+        if let Some(identity) = self.identity.as_mut()
+            && self.verified_utc != Some(seconds)
+        {
+            let chain = self.connection.peer_certificates().ok_or(Error::Unauthenticated)?;
+            self.config.verify_peer(chain, now).map_err(Error::Tls)?;
+            self.verified_utc = Some(seconds);
+            identity.verified_at(seconds);
+        }
+        Ok(())
+    }
+
+    /// Check before admitting application/transport work; idle owners still
+    /// wait on real readiness. Revalidate at most once per observed UTC second,
+    /// not once per TLS fragment. Loss/rollback and verification errors latch.
+    pub fn check_authority(&mut self, now_ms: u64) -> Result<(), Error> {
+        self.check(now_ms)
     }
 
     fn fail<T>(&mut self, error: Error) -> Result<T, Error> {
@@ -179,11 +210,12 @@ impl Session {
     }
 
     /// No caller may extract keys or reconfigure the verifier of a live session.
-    pub fn identity(&self) -> Option<Identity> {
+    pub fn identity(&mut self, now_ms: u64) -> Result<Option<Identity>, Error> {
+        self.check(now_ms)?;
         if self.closed || self.closing || self.failure.is_some() {
-            None
+            Ok(None)
         } else {
-            self.identity
+            Ok(self.identity)
         }
     }
 
@@ -239,6 +271,9 @@ impl Session {
             if self.identity.is_none() {
                 return Err(Error::Unauthenticated);
             }
+            // Finished proves possession; validate again at identity admission
+            // because time may have advanced since the Certificate message.
+            self.check_credentials()?;
         }
         Ok(())
     }

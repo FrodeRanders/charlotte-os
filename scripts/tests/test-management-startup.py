@@ -24,12 +24,12 @@ STEADY = "[launch] steady-state service set published."
 DISABLED = ("[http] management credentials unavailable; ingress disabled",
             "[deployd] management credentials unavailable; ingress disabled")
 REJECTED = "[launch] management TLS resource rejected before trust publication: "
-EXPECTATIONS = ("ready", "validity", "disabled", "WrongPolicy", "Signature", "Authentication")
+EXPECTATIONS = ("ready", "validity", "chain-validity", "disabled", "WrongPolicy", "Signature", "Authentication")
 
 
 def observed(text, expectation):
     """Return readiness for a specific assertion, not success from a timeout."""
-    if expectation in ("ready", "validity"):
+    if expectation in ("ready", "validity", "chain-validity"):
         return STEADY in text and "[deployd] listening port=7444" in text and "[time] synchronized " in text
     if expectation == "disabled":
         return STEADY in text and "DHCP assigned " in text and all(marker in text for marker in DISABLED)
@@ -38,17 +38,17 @@ def observed(text, expectation):
 
 def validate_snapshot(text, expectation):
     assert observed(text, expectation), "specific startup observation is missing"
-    if expectation in ("ready", "validity", "disabled"):
+    if expectation in ("ready", "validity", "chain-validity", "disabled"):
         assert text.count(PUBLISHED) == 1, "startup did not publish exactly one admission policy"
         assert "Kernel panic:" not in text, "startup panicked for an unrelated reason"
         assert text.index(PUBLISHED) < text.index(STEADY), "service set preceded trust publication"
-        if expectation in ("ready", "validity"):
+        if expectation in ("ready", "validity", "chain-validity"):
             assert not any(marker in text for marker in DISABLED), "valid credentials disabled a listener"
     else:
         assert "Kernel panic:" in text, "boot did not terminate at its rejection gate"
         assert PUBLISHED not in text, "rejected resource published admission trust"
         assert STEADY not in text, "rejected resource published steady-state services"
-    if expectation not in ("ready", "validity"):
+    if expectation not in ("ready", "validity", "chain-validity"):
         assert "[deployd] listening port=7444" not in text, "rejected startup opened deployment listener"
 
 
@@ -99,13 +99,19 @@ def main():
     if args.timeout <= 0:
         parser.error("probe timeout must be positive")
     validate_snapshot(text, args.expect)
-    if args.expect in ("ready", "validity"):
+    if args.expect in ("ready", "validity", "chain-validity"):
         identity.healthy(args.status_port, identity.OBSERVE, 200)
         identity.healthy(args.deployment_port, identity.STATUS, 404)
         identity.healthy(args.deployment_port, identity.MUTATE, 403)
         print("PASS: native startup: verified reader observations and mutation rejection", flush=True)
         if args.expect == "validity":
             validity.probe(args.log, args.status_port, args.deployment_port)
+            validate_snapshot(args.log.read_text(), args.expect)
+        if args.expect == "chain-validity":
+            chain_spec = importlib.util.spec_from_file_location("management_chain_probe", Path(__file__).with_name("test-management-chain-validity.py"))
+            chain = importlib.util.module_from_spec(chain_spec)
+            chain_spec.loader.exec_module(chain)
+            chain.probe(args.log, args.status_port, args.deployment_port)
             validate_snapshot(args.log.read_text(), args.expect)
     elif args.expect == "disabled":
         for port, payload in ((args.status_port, identity.OBSERVE),

@@ -43,12 +43,14 @@ pub enum Permission {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Identity {
     enrollment: Enrollment,
+    verified_at: u64,
 }
 
 impl Identity {
     pub(crate) fn authenticated(enrollment: Enrollment) -> Self {
         Self {
             enrollment,
+            verified_at: 0,
         }
     }
 
@@ -58,6 +60,15 @@ impl Identity {
 
     pub fn role(self) -> Role {
         self.enrollment.role
+    }
+
+    /// UTC second of this checked authority, not a trusted-time attestation.
+    pub fn verified_at_unix_seconds(self) -> u64 {
+        self.verified_at
+    }
+
+    pub(crate) fn verified_at(&mut self, seconds: u64) {
+        self.verified_at = seconds;
     }
 
     pub fn allows(self, permission: Permission) -> bool {
@@ -96,6 +107,8 @@ pub struct Config {
     pub(crate) tls: Arc<ServerConfig>,
     pub(crate) operators: Arc<[Enrollment]>,
     pub(crate) limits: Limits,
+    clock: Arc<dyn TimeProvider>,
+    verifier: Arc<EnrolledVerifier>,
 }
 
 /// Credential preparation before time is available. Session accepts only the
@@ -208,6 +221,20 @@ impl Config {
         self.limits
     }
 
+    pub(crate) fn current_time(&self) -> Option<UnixTime> {
+        self.clock.current_time().filter(|time| time.as_secs() != 0)
+    }
+
+    pub(crate) fn verify_peer(
+        &self,
+        chain: &[CertificateDer<'_>],
+        now: UnixTime,
+    ) -> Result<(), rustls::Error> {
+        let (leaf, intermediates) =
+            chain.split_first().ok_or(rustls::Error::NoCertificatesPresented)?;
+        self.verifier.verify_client_cert(leaf, intermediates, now).map(|_| ())
+    }
+
     fn build(
         credentials: Credentials,
         clock: Arc<dyn TimeProvider>,
@@ -253,16 +280,18 @@ impl Config {
                 .build()
                 .map_err(|_| PolicyError::InvalidVerifier)?;
         let operators: Arc<[Enrollment]> = credentials.operators.into();
-        let mut tls = ServerConfig::builder_with_details(provider, Arc::new(NonzeroClock(clock)))
-            .with_protocol_versions(&[&rustls::version::TLS13])
-            .map_err(|_| PolicyError::InvalidVerifier)?
-            .with_client_cert_verifier(Arc::new(EnrolledVerifier {
-                verifier,
-                operators: operators.clone(),
-                limits,
-            }))
-            .with_single_cert(credentials.server_chain, credentials.server_key)
-            .map_err(|_| PolicyError::InvalidServerIdentity)?;
+        let verifier = Arc::new(EnrolledVerifier {
+            verifier,
+            operators: operators.clone(),
+            limits,
+        });
+        let mut tls =
+            ServerConfig::builder_with_details(provider, Arc::new(NonzeroClock(clock.clone())))
+                .with_protocol_versions(&[&rustls::version::TLS13])
+                .map_err(|_| PolicyError::InvalidVerifier)?
+                .with_client_cert_verifier(verifier.clone())
+                .with_single_cert(credentials.server_chain, credentials.server_key)
+                .map_err(|_| PolicyError::InvalidServerIdentity)?;
         // Every connection proves possession against the current enrollment.
         // No PSK/ticket can retain authority from a retired configuration.
         tls.session_storage = Arc::new(rustls::server::NoServerSessionStorage {});
@@ -274,6 +303,8 @@ impl Config {
             tls: Arc::new(tls),
             operators,
             limits,
+            clock,
+            verifier,
         })
     }
 }

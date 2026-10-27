@@ -8,6 +8,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Established management credential validity](audits/2026-10-27-security-management-session-validity.md) — Rechecks active authority with the original chain verifier; native issuer-date and held signed-upload controls retain exact clock/connection evidence and separate preliminary failures.
 - [Committed ingress availability](audits/2026-10-27-security-ingress-availability.md) — Quorum-committed backend eligibility excludes the killed voter from new flows; the complete native direct/VIP management campaign passes, with old-store rejection and flow-affinity controls.
 - [Frame-router readiness and management availability](audits/2026-10-27-security-frame-router-readiness.md) — CQ-binds the normal receive/forward/control reactor; all eight direct-node controls complete after leader loss, while a failed VIP flow is traced to the killed backend.
 - [Management leader loss and election timing](audits/2026-10-27-security-management-failover.md) — Corrects fixed election jitter and demonstrates survivor-led signed policy admission; full and direct-only TLS campaigns still fail, with diagnostics retained separately.

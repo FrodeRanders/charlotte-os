@@ -1083,6 +1083,16 @@ replay. This corrects the observed killed-backend selection gap, without closing
 SEC-10 or supplying peer authentication, protected provisioning, uninterrupted
 sessions, automatic voter removal or physical cleanup authority.
 
+The [established-session validity follow-up](../reports/audits/2026-10-27-security-management-session-validity.md)
+corrects authority that previously survived client expiry or UTC loss during an
+established connection. Checked identity and transport transitions reuse the
+same enrolled-chain verifier, with terminal failure on expiry/loss/rollback and
+verification cached within each observed UTC second. Native issuer and partial
+signed-upload controls qualify this boundary separately from the fresh-leaf
+campaign; preliminary failures retain their missing clock-proof limitation.
+Accepted work keeps its complete pending owner and is never replayed on expiry.
+SEC-10 stays partial, SEC-09 stays open and finding counts are unchanged.
+
 The [public-key input follow-up](../reports/audits/2026-10-21-security-public-key-input.md) corrects a host-tool input gap:
 ordinary public-key file arguments now share trust-policy's bounded regular-file
 admission and hex parser. Baseline oversized-comment and symlink controls fail;

@@ -267,6 +267,15 @@ reading before its handshake, under the original deadline; this does not
 authenticate the underlying SNTP source. Full execution qualifications and
 remaining gates are recorded in \repofile|docs/reference/management-tls.md|.
 
+Established sessions recheck nonzero UTC, the original monotonic budgets and
+the enrolled client chain before admitting further work. Chain verification is
+cached within one observed UTC second. Expiry, unavailable time or observed
+rollback terminates that connection's authority; restoring time does not revive
+it. Idle connections continue to wait on resource readiness rather than periodic
+expiry polling. This does not authenticate time or prove cancellation of an
+already accepted mutation: retain its pending owner and never replay an uncertain
+request. Decision logs include the checked UTC second as diagnostic evidence.
+
 The x86 QEMU \texttt{boot\_trust\_test} fixture can compile a different exact
 installed signed-policy snapshot using the absolute file input
 \path{CATTEN_BOOT_TEST_INSTALLED_POLICY}. Its default is the public revision 7
@@ -303,11 +312,13 @@ Use the following process before selecting a profile for a new workload:
         successful repeats. Requalify after changing the workload or profile.
 \end{enumerate}
 
+\noindent\begin{minipage}{\linewidth}
 \begin{lstlisting}[language=bash]
 CATTEN_RESOURCE_POLICY="$PWD/ops/resource-policy.rs" \
   python3 scripts/tests/test-resource-policy.py
 cargo fmt --all -- --check
 \end{lstlisting}
+\end{minipage}
 
 The policy harness checks both the default and larger example, plus an optional
 operator-selected file. Native evidence for those profiles is listed in the resource-policy reference.
