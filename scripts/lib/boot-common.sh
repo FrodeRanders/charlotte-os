@@ -11,6 +11,36 @@ fi
 # Keep all architecture runners and the standalone creator on one default.
 CATTEN_BOOT_DEFAULT_IMAGE_SIZE_MIB=128
 
+# Only explicitly invoked management probes generate disposable credentials.
+# A supplied resource keeps its own enrolled client files; it is never replaced.
+catten_boot_prepare_management_fixture() {
+    if [ -z "${CATTEN_MANAGEMENT_TLS_RESOURCE:-}" ]; then
+        if [ "${CATTEN_SKIP_KERNEL_BUILD:-0}" = "1" ]; then
+            echo "error: management probes cannot provision a previously built kernel" >&2
+            return 1
+        fi
+        mkdir -p "${CATTEN_BOOT_ROOT_DIR}/target/management-tls-test"
+        local fixture_dir
+        fixture_dir="$(mktemp -d "${CATTEN_BOOT_ROOT_DIR}/target/management-tls-test/run.XXXXXX")"
+        local fixture_args=("$fixture_dir")
+        if [ -n "${CLUSTER_VIP:-}" ]; then
+            fixture_args+=(--address "$CLUSTER_VIP")
+        fi
+        python3 "${CATTEN_BOOT_ROOT_DIR}/scripts/prepare-management-tls-fixture.py" "${fixture_args[@]}"
+        export CATTEN_MANAGEMENT_TLS_RESOURCE="${fixture_dir}/resource.bin"
+        export CATTEN_MANAGEMENT_CA_FILE="${fixture_dir}/ca.pem"
+        export CATTEN_MANAGEMENT_CERT_FILE="${fixture_dir}/administrator.pem"
+        export CATTEN_MANAGEMENT_KEY_FILE="${fixture_dir}/administrator.key"
+        export CATTEN_MANAGEMENT_READER_CERT_FILE="${fixture_dir}/reader.pem"
+        export CATTEN_MANAGEMENT_READER_KEY_FILE="${fixture_dir}/reader.key"
+        export CATTEN_MANAGEMENT_UNKNOWN_CERT_FILE="${fixture_dir}/unknown.pem"
+        export CATTEN_MANAGEMENT_UNKNOWN_KEY_FILE="${fixture_dir}/unknown.key"
+    fi
+    : "${CATTEN_MANAGEMENT_CA_FILE:?management probes require an explicit CA file}"
+    : "${CATTEN_MANAGEMENT_CERT_FILE:?management probes require an enrolled client certificate}"
+    : "${CATTEN_MANAGEMENT_KEY_FILE:?management probes require its client private-key file}"
+}
+
 catten_boot_init() {
     local root_dir="$1"
 

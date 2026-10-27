@@ -21,8 +21,8 @@ use crate::{
     deadline::Deadline,
     deployment_http::Request,
     deployment_input::MAX_CLIENTS,
+    management_io::Connection as OwnedSocket,
     name_catalog,
-    socket::OwnedSocket,
 };
 
 pub type Response = Cow<'static, str>;
@@ -488,13 +488,14 @@ impl<C: Calls> Machine<C> {
     }
 }
 
-struct Runtime<'a> {
+struct Runtime<'a, S> {
     controller: ConnectionRef<'a>,
+    _socket: core::marker::PhantomData<fn() -> S>,
 }
-impl<'a> Calls for Runtime<'a> {
+impl<S> Calls for Runtime<'_, S> {
     type Pending = PendingCall<'static>;
     type Reply = CallResult;
-    type Socket = OwnedSocket<'a>;
+    type Socket = S;
 
     fn now(&self) -> u64 {
         catten_syscall::monotonic_clock().0
@@ -552,28 +553,24 @@ impl<'a> Calls for Runtime<'a> {
 /// budget and receipt-validation envelope. Timeout never replays a mutation.
 /// The reservation bounds active inputs/requests; it does not refund actual
 /// kernel charges or prove the receiver released a transferred request.
-pub struct Controls<'a>(Machine<Runtime<'a>>);
-impl<'a> Controls<'a> {
+pub struct Controls<'a, S = OwnedSocket<'a>>(Machine<Runtime<'a, S>>);
+impl<'a, S> Controls<'a, S> {
     pub fn new(controller: ConnectionRef<'a>, cq: u32) -> Self {
         Self(Machine::new(
             Runtime {
                 controller,
+                _socket: core::marker::PhantomData,
             },
             cq,
         ))
     }
 
-    pub fn start(
-        &mut self,
-        socket: OwnedSocket<'a>,
-        request: Request,
-        available: usize,
-    ) -> Option<Finished<OwnedSocket<'a>>> {
+    pub fn start(&mut self, socket: S, request: Request, available: usize) -> Option<Finished<S>> {
         let (now, frequency) = catten_syscall::monotonic_clock();
         self.0.start(socket, request, available, now, frequency)
     }
 
-    pub fn advance(&mut self) -> Option<Finished<OwnedSocket<'a>>> {
+    pub fn advance(&mut self) -> Option<Finished<S>> {
         self.0.advance()
     }
 

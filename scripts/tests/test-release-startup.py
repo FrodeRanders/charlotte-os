@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise release startup admission and uncertain outcomes through the real CLI."""
 import argparse
+import management_tls_fixture
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import importlib.util
 import json
@@ -26,6 +27,7 @@ class Startup(unittest.TestCase):
     setUp = release_fixture.ReleaseGeneration.setUp
 
     def peer(self, mode="ready", rejection=(409, '{"error":-23}'), delayed=False, timeout=2, runner=None):
+        management_tls_fixture.configure_client()
         events = []
         stop = threading.Event()
         active = threading.Event()
@@ -93,6 +95,7 @@ class Startup(unittest.TestCase):
                 if delayed:
                     server.server_bind()
                 server.server_activate()
+                management_tls_fixture.install(server)
                 active.set()
                 server.serve_forever(poll_interval=0.01)
 

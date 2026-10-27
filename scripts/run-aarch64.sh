@@ -390,6 +390,11 @@ if [ "${CATTEN_SKIP_EMBED_BUILD:-0}" != "1" ] && [ "$CLEAN_BUILD" = "1" ]; then
     cargo clean --target "target_specs/${ARCH}-unknown-none-catten.json"
 fi
 
+if [ "$HTTP_TEST" = "1" ] || [ "${DEPLOYMENT_INGRESS_TEST:-0}" = "1" ] \
+    || [ "${SHUTDOWN_INGRESS_TEST:-0}" = "1" ] || [ "${CLUSTER_INGRESS_TEST:-0}" = "1" ]; then
+    catten_boot_prepare_management_fixture
+fi
+
 RUSTFS_COMPOSE="${ROOT_DIR}/docker/rustfs-s3-test/compose.yaml"
 RUSTFS_RUNNING="0"
 DEPLOYMENT_WORKER_PID=""
@@ -951,9 +956,9 @@ if [ "$NETWORK" = "1" ]; then
                 QEMU_OPTS+=(-netdev "user,id=charlotte-net,hostfwd=tcp::${HTTP_HOST_PORT}-${CLUSTER_VIP}:${CLUSTER_TCP_PORT},hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444${APP_FWD}")
             elif [ "$HTTP_TEST" = "1" ]; then
                 # Host-side keyhole: forward the configurable host port to
-                # guest port 80 so parallel/local runs need not contend for a
+                # guest TLS port 443 so parallel/local runs need not contend for a
                 # hard-coded listener.
-                QEMU_OPTS+=(-netdev "user,id=charlotte-net,hostfwd=tcp::${HTTP_HOST_PORT}-:80,hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444${APP_FWD}")
+                QEMU_OPTS+=(-netdev "user,id=charlotte-net,hostfwd=tcp::${HTTP_HOST_PORT}-:443,hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444${APP_FWD}")
             else
                 QEMU_OPTS+=(-netdev "user,id=charlotte-net,hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444${APP_FWD}")
             fi
@@ -1086,9 +1091,22 @@ if [ -n "$TIMEOUT" ]; then
                 --port "$DEPLOY_HOST_PORT" --ready-log "$LOG"; then
                 HTTP_LIVENESS_OK=0
             fi
+            if [ -n "${CATTEN_MANAGEMENT_READER_CERT_FILE:-}" ] \
+                && [ -n "${CATTEN_MANAGEMENT_UNKNOWN_CERT_FILE:-}" ]; then
+                MANAGEMENT_PROBE_ARGS=()
+                if [ "${CATTEN_QEMU_MONITOR:-0}" = "1" ] && [ -n "$CLUSTER_VIP" ]; then
+                    MANAGEMENT_PROBE_ARGS=(--vip "$CLUSTER_VIP" \
+                        --monitor "/tmp/charlotte${INSTANCE_SUFFIX}-monitor.sock")
+                fi
+                if ! python3 "${ROOT_DIR}/scripts/tests/test-management-tls.py" \
+                    --status-port "$HTTP_HOST_PORT" --deployment-port "$DEPLOY_HOST_PORT" \
+                    "${MANAGEMENT_PROBE_ARGS[@]}"; then
+                    HTTP_LIVENESS_OK=0
+                fi
+            fi
             for _ in 1 2 3 4 5 6 7 8; do
-                HTTP_BODY="$(curl -fsS --max-time 5 "http://127.0.0.1:${HTTP_HOST_PORT}/metrics" 2>&1 || true)"
-                HTTP_CLUSTER_BODY="$(curl -fsS --max-time 5 "http://127.0.0.1:${HTTP_HOST_PORT}/cluster/metrics" 2>&1 || true)"
+                HTTP_BODY="$(curl -fsS --max-time 5 --cacert "$CATTEN_MANAGEMENT_CA_FILE" --cert "$CATTEN_MANAGEMENT_CERT_FILE" --key "$CATTEN_MANAGEMENT_KEY_FILE" "https://127.0.0.1:${HTTP_HOST_PORT}/metrics" 2>&1 || true)"
+                HTTP_CLUSTER_BODY="$(curl -fsS --max-time 5 --cacert "$CATTEN_MANAGEMENT_CA_FILE" --cert "$CATTEN_MANAGEMENT_CERT_FILE" --key "$CATTEN_MANAGEMENT_KEY_FILE" "https://127.0.0.1:${HTTP_HOST_PORT}/cluster/metrics" 2>&1 || true)"
                 if [ "$HTTP_LIVENESS_OK" = "1" ] \
                     && printf '%s' "$HTTP_BODY" | grep -Fq '"http":{"requests":' \
                     && printf '%s' "$HTTP_CLUSTER_BODY" | python3 -c \

@@ -221,6 +221,7 @@ dependencies = [
  "charlotte-kafka",
  "charlotte-kafka-step",
  "charlotte-launch",
+ "charlotte-management-tls",
  "charlotte-protocol-block",
  "charlotte-protocol-disco",
  "charlotte-protocol-dns",
@@ -354,6 +355,7 @@ version = "0.1.0"
 dependencies = [
  "aes",
  "aes-gcm",
+ "charlotte-launch",
  "embassy-crypto",
  "embassy-crypto-rustcrypto",
  "getrandom 0.4.3",
@@ -485,6 +487,7 @@ dependencies = [
  "getrandom 0.4.3",
  "libc",
  "rand_core",
+ "rustls",
  "zeroize",
 ]
 

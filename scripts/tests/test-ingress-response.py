@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Check complete ingress acknowledgements and policy observations with the real CLI."""
 import argparse
+import management_tls_fixture
 import hashlib
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import importlib.util
@@ -79,6 +80,7 @@ class Response(unittest.TestCase):
                 pass
 
         with HTTPServer(("127.0.0.1", 0), Handler) as server:
+            management_tls_fixture.install(server)
             thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01})
             thread.start()
             endpoint = f"127.0.0.1:{server.server_port}"

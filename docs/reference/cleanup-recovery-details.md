@@ -537,6 +537,21 @@ See [capture](../reports/audits/2026-10-25-security-memory-capability-preparatio
 
 ## C18 publication rollback and detached memory
 
+Native management TLS composes the existing socket close family with
+`management_io::Connection`: accepted RPC first, local erasing session second,
+original socket third. Consuming handoff confirms cancellation before releasing
+local state; body deadline rejection cancels the accepted receive before output.
+No accepted send/receive/time RPC is replayed, and rejected CQ binding aborts
+with the complete owner retained. Returned receive memory/mapping remain owned
+through decoding. Encrypted close-notify receipts are protocol evidence only;
+logical close remains best effort and supplies no physical cleanup proof.
+Boot HPKE preparation uses the existing prepared trust owner and zeroizing
+profile storage through both existing launch transactions. No registry, principal
+classification bypass or new recovery family is added. Forced termination,
+launch-backing erasure, aggregate allocation and rejected-wait/fault contexts
+remain separately qualified; see [management contract](management-tls.md).
+
+
 The [backing abandonment correction](../reports/audits/2026-10-26-security-backing-abandonment.md)
 qualifies `ChargedFrames` fallback separately from its containing callers.
 Charge-only, private and published owners retain complete fields without

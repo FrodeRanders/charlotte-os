@@ -28,16 +28,16 @@ advisory is published. Preserve the exact lockfile hash, scanner version and
 report's database commit with an audit result. There is no stale/offline success
 mode in the production gate.
 
-## Current findings: 26 October 2026
+## Current findings: 27 October 2026
 
-The [27 October management TLS component](../reports/audits/2026-10-27-security-management-tls-engine.md)
-adds Rustls `0.23.46` and its independent host test client. Its fresh complete
-**205-package** graph passes at RustSec commit
-`3279c99911354c400e1d41e47c7d60e39258b147` (1378 advisories), with zero
-vulnerabilities/warnings and unchanged policy. Ring/getrandom are host test
-dependencies of that component, absent from its normal freestanding graph.
-This supersedes the package-count/database identity below, without changing
-SEC-14's remaining license/provenance/enforcement/platform gates.
+The [27 October native management TLS migration](../reports/audits/2026-10-27-security-management-tls-native.md)
+retains the complete **205-package** graph, passing at RustSec commit
+`99670cfc0bc574433034b75876a4b791ccaa2efb` (1380 advisories), with zero
+vulnerabilities/warnings and unchanged policy. Rustls remains `0.23.46`;
+ring/getrandom are host-client/test dependencies, absent from the normal native
+server graph. Crypto-bigint remains `0.7.10` and ctutils `0.4.6`. This supersedes
+the database identity in the historical component report without claiming a
+future scan result or changing unrelated finding dispositions.
 
 The [earlier follow-up](../reports/audits/2026-10-26-security-dependency-gate.md)
 introduced the gate and patched ctutils 0.4.2 to 0.4.4. Its remaining

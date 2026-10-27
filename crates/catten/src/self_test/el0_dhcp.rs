@@ -241,7 +241,7 @@ mod inner {
             yield_lp();
         }
         logln!(
-            "[dhcp] httpd listening on port 80; try: curl http://{}.{}.{}.{}/",
+            "[dhcp] management address {}.{}.{}.{}; TLS ingress requires provisioned credentials",
             octets[0],
             octets[1],
             octets[2],

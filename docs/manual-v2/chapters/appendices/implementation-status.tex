@@ -200,7 +200,7 @@ Source, tests, and repository history remain authoritative.
         Discovery/reliable-message peer routes lack cryptographic authentication;
         session correlation and committed Raft membership do not supply it.
         Time synchronization is also not an authenticated security-time source.
-        The security ledger remains 29 corrected in scope, six partial and three
+        The security ledger is 29 corrected in scope, seven partial and two
         open findings out of 38; see
         \repofile|docs/reference/security-remediation.md|.
     \item \textbf{External data-service compatibility:} S3 is fixture-tested
@@ -456,10 +456,15 @@ Source, tests, and repository history remain authoritative.
         fresh applied Raft posture, capacity, placement/readiness, and DSR
         projection; an unnamed platform-service VIP can make it
         location-independent while identifying leader and serving node
-        separately. Both views remain plain HTTP and require network
-        isolation until the planned operations-profiled mTLS frontend exists.
-        \texttt{--http-test} adds QEMU host forwarding and validates the
-        response; it does not enable the service.
+        separately. Both views require an enrolled reader or administrator
+        certificate over TLS on port 443; deployment TLS on port 7444 requires
+        an administrator before mutation dispatch. One signed, encrypted boot
+        resource supplies credentials, roles and adjustable TLS limits to both
+        services; missing credentials disable network admission.
+        \texttt{--http-test} provisions disposable development credentials,
+        adds QEMU forwarding and validates verified HTTPS. Protected enrollment,
+        native rotation/failover and wider pressure qualification remain open;
+        SEC-10 is partial. See Chapter~\ref{chap:configuration}.
     \item \textbf{IOMMU/SMMU integration:} coherent Arm SMMUv3 discovery via
         ACPI IORT, Intel VT-d via DMAR, and AMD-Vi via IVRS provide
         per-requester DMA-domain capabilities, memory pinning, IOVA map/unmap,

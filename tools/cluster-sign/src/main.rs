@@ -8,6 +8,8 @@ mod file_hash;
 mod http_client;
 mod key_encoding;
 mod key_input;
+mod management;
+mod management_tls;
 mod profile_input;
 mod rollout;
 mod trust_policy;
@@ -1721,7 +1723,10 @@ fn release_attempt(
             http_client::ExchangeFailure::BeforeSubmission(message) => {
                 ReleaseFailure::BeforeSubmission(message)
             }
-            http_client::ExchangeFailure::Unconfirmed(message) => ReleaseFailure::Terminal(message),
+            http_client::ExchangeFailure::Configuration(message)
+            | http_client::ExchangeFailure::Unconfirmed(message) => {
+                ReleaseFailure::Terminal(message)
+            }
         })?;
     let status = response.lines().next().unwrap_or_default();
     let body = http_client::response_body(&response)?.to_owned();
@@ -2024,6 +2029,11 @@ fn run() -> Result<()> {
         Some("trust-policy-check") => trust_policy::check(&args[2..]),
         Some("trust-policy-sign") => trust_policy::sign(&args[2..]),
         Some("trust-policy-verify") => trust_policy::verify(&args[2..]),
+        Some("management-limits-default") => management::limits_default(&args[2..]),
+        Some("management-profile-create") => management::profile_create(&args[2..]),
+        Some("management-policy-development") => management::development_policy(&args[2..]),
+        Some("management-resource-seal") => management::resource_seal(&args[2..]),
+        Some("management-resource-verify") => management::resource_verify(&args[2..]),
         Some("operations-recipient-generate") => operations_recipient_generate(&args[2..]),
         Some("operations-signing-generate") => operations_signing_generate(&args[2..]),
         Some("operations-seal") => operations_seal(&args[2..]),
@@ -2183,7 +2193,14 @@ fn run() -> Result<()> {
                   (<target-artifact> <object-key> <envelope>)... | operations-bundle-verify \
                   <bundle> <cluster-id-hex> <release-ed25519-public-key-hex> \
                   <ops-ed25519-public-key-file> <recipient-public-key-file> <now-unix> | \
-                  operations-bundle-notify <bundle> [IP:port] | cluster-id <mnemonic> | selftest"
+                  operations-bundle-notify <bundle> [IP:port] | management-limits-default \
+                  <output> | management-policy-development <output> <cluster-mnemonic> | \
+                  management-profile-create <output> <limits-file> <server-key.der> \
+                  chain=<server-cert.der>... root=<client-ca.der>... \
+                  (reader=<operator-cert.der>|administrator=<operator-cert.der>)... | \
+                  management-resource-seal <output> <public-policy> <ops-private-key-file> \
+                  <private-profile> | management-resource-verify <resource> <public-policy> | \
+                  cluster-id <mnemonic> | selftest"
             .to_owned()),
     }
 }

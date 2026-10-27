@@ -97,7 +97,7 @@ use charlotte_protocol_disco::parse_peer_list;
 use charlotte_protocol_msg::unpack_mac;
 use charlotte_protocol_net::decode_status;
 
-const HTTP_PORT: u16 = 80;
+const HTTP_PORT: u16 = charlotte_launch::MANAGEMENT_STATUS_PORT;
 static TRACE_PHASES: AtomicBool = AtomicBool::new(false);
 
 fn trace_phase(phase: &str) {
@@ -115,17 +115,6 @@ const THREAD_SAMPLE_ROWS: usize = 64;
 const DOMAIN_SAMPLE_ROWS: usize = 128;
 /// Cap on rendered history samples in the JSON report.
 const HISTORY_RENDER_ROWS: usize = 120;
-
-/// Extract the request target from a `GET <path> HTTP/1.1` request line.
-/// Returns `/` when the line is unparsable, so a malformed request still
-/// reaches the dashboard rather than an error page.
-fn request_path(request: &[u8]) -> &[u8] {
-    let line = request.split(|&b| b == b'\r' || b == b'\n').next().unwrap_or(b"");
-    let Some(rest) = line.strip_prefix(b"GET ") else {
-        return b"/";
-    };
-    rest.split(|&b| b == b' ').next().unwrap_or(b"/")
-}
 
 /// Self-refreshing dashboard served at `/`. The embedded script polls
 /// `/metrics` every five seconds and renders the JSON report as cards.
@@ -1379,14 +1368,24 @@ fn build_json(
 /// pressure or a peer racing setup must not terminate the serving domain.
 fn new_listener<'connection>(
     tcp: ConnectionRef<'connection>,
-) -> Result<socket::OwnedSocket<'connection>, ()> {
+    factory: &'connection catten_services::management_io::Factory,
+) -> Result<catten_services::management_io::Connection<'connection>, ()> {
     let socket = socket::OwnedSocket::open(tcp, socket::DOMAIN_TCP).map_err(|_| ())?;
     trace_phase("listen");
     socket.listen(HTTP_PORT).map_err(|_| ())?;
-    Ok(socket)
+    Ok(catten_services::management_io::Connection::unaccepted(socket, factory))
 }
 
 fn serve(ctx: &Context) -> ShutdownRequest {
+    let management = match catten_services::management_io::Factory::load(ctx) {
+        Ok(factory) => factory,
+        Err(catten_services::management_io::StartupError::Shutdown(request)) => return request,
+        Err(_) => {
+            catten_rt::logln!("[http] management credentials unavailable; ingress disabled");
+            config::write::<u32>(status::ERROR, 0xe010);
+            return catten_services::management_io::disabled(ctx);
+        }
+    };
     TRACE_PHASES.store(
         matches!(
             ctx.manifest_value(status::TRACE_KEY),
@@ -1449,7 +1448,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         // Fresh socket + listener per connection (smoltcp's listening socket
         // becomes the established connection, then returns to Closed).
         trace_phase("listener");
-        let socket = match new_listener(services.tcp_conn.as_ref()) {
+        let mut socket = match new_listener(services.tcp_conn.as_ref(), &management) {
             Ok(socket) => socket,
             Err(()) => {
                 sleep_ms(ACCEPT_POLL_MS);
@@ -1457,83 +1456,54 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             }
         };
 
-        // Poll for a connection indefinitely: this is a long-lived keyhole
-        // server, so an idle listener must stay alive rather than abort.
+        // One accepted socket readiness call; lifecycle wakes share the CQ.
         trace_phase("accept");
-        loop {
-            if let Some(request) = ctx.lifecycle().shutdown_requested() {
-                return request;
-            }
-            let call = match socket.call(socket::OP_TRY_ACCEPT, socket.id()) {
-                Ok(call) => call,
-                Err(error) => {
-                    if TRACE_PHASES.load(Ordering::Relaxed) {
-                        catten_rt::logln!(
-                            "[http] accept admission={error:?} socket={}",
-                            socket.id()
-                        );
-                    }
-                    if error
-                        == catten_rt::owned::IpcError::Status(
-                            catten_syscall::ipc_status::QUEUE_FULL,
-                        )
-                    {
-                        // No call was published. Keep this exact listener:
-                        // abandoning it can leave a live remote socket
-                        // accepting traffic while its replacement waits.
-                        sleep_ms(ACCEPT_POLL_MS);
-                        continue;
-                    }
-                    continue 'connections;
-                }
-            };
-            // Admission succeeded: an error observing this call cannot
-            // authorize replay of its request.
-            let result = match call.wait() {
-                Ok(result) => result.result,
-                Err(_) => continue 'connections,
-            };
-            if result == 0 {
-                break;
-            }
-            if result != socket::ERR_WOULD_BLOCK {
-                continue 'connections;
-            }
-            sleep_ms(ACCEPT_POLL_MS);
-        }
-
-        // Read whatever request arrived (the response is hardcoded state, so
-        // even a partial request is fine).
-        trace_phase("receive");
-        let deadline = catten_services::deadline::Deadline::after(5_000);
-        let chunk = loop {
-            if let Some(request) = ctx.lifecycle().shutdown_requested() {
-                return request;
-            }
-            if deadline.expired() {
-                continue 'connections;
-            }
-            match socket.receive_timeout(1, ACCEPT_POLL_MS) {
-                Ok(Some(chunk)) => break chunk,
-                Ok(None) => continue 'connections,
-                Err(socket::SocketError::RetryExhausted) => continue,
-                Err(_) => continue 'connections,
-            }
-        };
-        let (memory, len) = chunk.into_parts();
-        trace_phase("received");
-        let mapping = match memory.map_read_only() {
-            Ok(mapping) => mapping,
+        match socket.accept_blocking(ctx) {
+            Ok(()) => (),
+            Err(catten_services::management_io::Interrupted::Shutdown(request)) => return request,
             Err(_) => continue 'connections,
+        }
+        trace_phase("receive");
+        let deadline = catten_services::deadline::Deadline::after(
+            catten_services::deployment_input::HEADER_MS,
+        );
+        let mut request = zeroize::Zeroizing::new(alloc::vec::Vec::new());
+        const HEADER_BYTES: usize = catten_services::deployment_http::HEADER_LIMIT;
+        if request.try_reserve_exact(HEADER_BYTES).is_err() {
+            continue 'connections;
+        }
+        request.resize(HEADER_BYTES, 0);
+        let mut used = 0;
+        let identity = loop {
+            let (identity, bytes) = match socket.receive_blocking(ctx, &deadline) {
+                Ok(value) => value,
+                Err(catten_services::management_io::Interrupted::Shutdown(request)) => {
+                    return request;
+                }
+                Err(_) => continue 'connections,
+            };
+            if bytes.len() > HEADER_BYTES - used {
+                continue 'connections;
+            }
+            request[used..used + bytes.len()].copy_from_slice(&bytes);
+            used += bytes.len();
+            if request[..used].windows(4).any(|end| end == b"\r\n\r\n") {
+                break identity;
+            }
         };
-        let req_len = len.min(512);
-        let mut req = [0u8; 512];
-        req[..req_len].copy_from_slice(&mapping.as_slice()[..req_len]);
+        let Some(path) = catten_services::management_io::keyhole_path(&request[..used]) else {
+            continue 'connections;
+        };
+        let allowed = identity.allows(charlotte_management_tls::Permission::Observe);
+        socket.audit(identity, charlotte_management_tls::Permission::Observe, allowed);
+        if !allowed {
+            continue 'connections;
+        }
+        trace_phase("received");
 
         // Route on the fixed node/cluster targets. Account for the request up
         // front so the node report includes the request being served.
         counters.requests = counters.requests.wrapping_add(1);
-        let path = request_path(&req[..req_len]);
         let (status_line, content_type, body) = if path == b"/" || path == b"/index.html" {
             counters.root = counters.root.wrapping_add(1);
             ("HTTP/1.1 200 OK", "text/html; charset=utf-8", String::from(DASHBOARD))
@@ -1581,12 +1551,17 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             "\r\nConnection: close\r\n\r\n"
         ));
         response.push_str(&body);
-        if socket.send_all(response.as_bytes(), 100, ACCEPT_POLL_MS).is_err() {
-            continue 'connections;
+        let deadline = catten_services::deadline::Deadline::after(
+            catten_services::deployment_output::OUTPUT_MS,
+        );
+        match socket.send_blocking(ctx, response.as_bytes(), &deadline) {
+            Ok(()) => (),
+            Err(catten_services::management_io::Interrupted::Shutdown(request)) => return request,
+            Err(_) => continue 'connections,
         }
         counters.bytes_sent = counters.bytes_sent.wrapping_add(response.len() as u64);
 
-        let _ = socket.close();
+        let _ = socket.into_socket().close();
 
         config::write::<u32>(status::REQUESTS, counters.requests);
         config::write::<u32>(status::STAGE, SENTINEL);

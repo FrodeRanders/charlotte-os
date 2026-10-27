@@ -511,16 +511,32 @@ fn listener_reactor_probe(ctx: &Context) {
 }
 
 fn output_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>) {
-    use catten_services::deployment_output::{
-        Error,
-        Outputs,
-    };
-    let mut outputs = Outputs::new(0);
+    // Qualify the underlying current wire-send/CQ contract. HTTP outputs now
+    // require a real authenticated TLS session and are exercised by native TLS
+    // host probes; this fixture does not fabricate a management identity.
+    struct WireSend<'a> {
+        pending: Option<PendingCall<'static>>,
+        socket: Option<socket::OwnedSocket<'a>>,
+    }
     let budget = Deadline::after(2_000);
-    for domain in [socket::DOMAIN_TCP, socket::DOMAIN_UDP] {
-        let socket =
-            socket::OwnedSocket::open(tcpip, domain).unwrap_or_else(|_| catten_rt::domain_abort());
-        check(outputs.start(socket, alloc::borrow::Cow::Borrowed("probe")).is_none(), 210);
+    let mut sends: [Option<WireSend<'_>>; 2] = [None, None];
+    for (index, domain) in [socket::DOMAIN_TCP, socket::DOMAIN_UDP].into_iter().enumerate() {
+        let mut send = WireSend {
+            pending: None,
+            socket: Some(
+                socket::OwnedSocket::open(tcpip, domain)
+                    .unwrap_or_else(|_| catten_rt::domain_abort()),
+            ),
+        };
+        send.pending = Some(
+            send.socket
+                .as_ref()
+                .unwrap()
+                .send_call(b"probe", &budget)
+                .unwrap_or_else(|_| catten_rt::domain_abort()),
+        );
+        send.pending.as_mut().unwrap().bind_cq(0).unwrap_or_else(|_| catten_rt::domain_abort());
+        sends[index] = Some(send);
     }
     let cq = ctx.completion_queue_layout();
     let mut completed = 0;
@@ -531,18 +547,27 @@ fn output_reactor_probe(ctx: &Context, tcpip: ConnectionRef<'_>) {
             }
         }
         check(!budget.expired(), 211);
-        if let Some((socket, result)) = outputs.advance().1 {
-            check(matches!(result, Err(Error::Service(socket::ERR_NOT_CONNECTED))), 212);
-            let _ = socket.close();
-            completed += 1;
-            continue;
+        let mut progressed = false;
+        for slot in &mut sends {
+            let Some(send) = slot.as_mut() else {
+                continue;
+            };
+            if let Some(reply) =
+                send.pending.as_mut().unwrap().poll().unwrap_or_else(|_| catten_rt::domain_abort())
+            {
+                denied(reply, socket::ERR_NOT_CONNECTED, 212);
+                drop(send.pending.take());
+                let _ = send.socket.take().unwrap().close();
+                *slot = None;
+                completed += 1;
+                progressed = true;
+            }
         }
-        catten_services::reactor::wait(
-            Some(outputs.remaining_ms().unwrap_or(0).min(budget.remaining_ms())),
-            0,
-        );
+        if !progressed {
+            catten_services::reactor::wait(Some(budget.remaining_ms()), 0);
+        }
     }
-    check(outputs.occupied_slots() == 0, 213);
+    check(sends.iter().all(Option::is_none), 213);
 
     // A current TCP socket still rejects an untagged moved page before enqueue.
     let socket = socket::OwnedSocket::open(tcpip, socket::DOMAIN_TCP)

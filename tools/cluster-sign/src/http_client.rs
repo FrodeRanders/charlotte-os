@@ -5,10 +5,7 @@ use std::{
         Read,
         Write,
     },
-    net::{
-        SocketAddr,
-        TcpStream,
-    },
+    net::SocketAddr,
     time::{
         Duration,
         Instant,
@@ -92,13 +89,16 @@ fn write_with_budget(
 /// Only failure before attempting an HTTP write proves that no request was sent.
 /// An error after that boundary retains uncertainty even if the write reports zero.
 pub(super) enum ExchangeFailure {
+    Configuration(String),
     BeforeSubmission(String),
     Unconfirmed(String),
 }
 impl ExchangeFailure {
     pub(super) fn into_message(self) -> String {
         match self {
-            Self::BeforeSubmission(message) | Self::Unconfirmed(message) => message,
+            Self::Configuration(message)
+            | Self::BeforeSubmission(message)
+            | Self::Unconfirmed(message) => message,
         }
     }
 }
@@ -120,23 +120,13 @@ pub(super) fn exchange_checked(
     body: &[u8],
     deadline: Deadline,
 ) -> std::result::Result<String, ExchangeFailure> {
-    let mut stream = TcpStream::connect_timeout(
-        &endpoint,
-        deadline
-            .remaining()
-            .map_err(|error| ExchangeFailure::BeforeSubmission(error.to_string()))?,
-    )
-    .map_err(|error| {
-        ExchangeFailure::BeforeSubmission(format!(
-            "connect to deployment ingress {endpoint}: {error}"
-        ))
-    })?;
+    let mut stream = crate::management_tls::connect(endpoint, deadline)?;
     for bytes in [header, body] {
         write_with_budget(
             bytes,
             || deadline.remaining(),
             |bytes, remaining| {
-                stream.set_write_timeout(Some(remaining))?;
+                let _ = remaining;
                 stream.write(bytes)
             },
         )
@@ -146,8 +136,13 @@ pub(super) fn exchange_checked(
             ))
         })?;
     }
+    stream.flush().map_err(|error| {
+        ExchangeFailure::Unconfirmed(format!(
+            "flush ingress request: {error}; submitted work may be committed"
+        ))
+    })?;
     let response = read_framed_http_response(|bytes| {
-        stream.set_read_timeout(Some(deadline.remaining()?))?;
+        deadline.remaining()?;
         stream.read(bytes)
     })
     .map_err(|error| {

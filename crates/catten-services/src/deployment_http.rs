@@ -24,6 +24,7 @@ pub enum Error {
     Malformed,
     TooLarge,
     AllocationFailed,
+    Forbidden,
 }
 
 /// Owns the sole request allocation. Completed POST bodies reuse that backing.
@@ -33,6 +34,10 @@ pub struct RequestBuffer {
 }
 
 impl RequestBuffer {
+    pub fn requires_administrator(&self) -> bool {
+        self.bytes.starts_with(b"POST ")
+    }
+
     pub fn buffered_len(&self) -> usize {
         self.bytes.len()
     }
@@ -62,6 +67,12 @@ impl RequestBuffer {
                 route.finish(backing)
             }
         }))
+    }
+}
+
+impl Request {
+    pub fn requires_administrator(&self) -> bool {
+        !matches!(self, Self::Status(_) | Self::IngressPolicyStatus)
     }
 }
 

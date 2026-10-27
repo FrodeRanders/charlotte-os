@@ -800,6 +800,25 @@ pub fn try_spawn_with_read_only_profile_and_limits(
     profile: &[u8],
     limits: ServiceLimits,
 ) -> Result<ServiceDomain, ProfileLaunchError> {
+    try_spawn_with_read_only_profile_and_manifest_and_limits(
+        image,
+        name_service,
+        rights,
+        profile,
+        &[],
+        limits,
+    )
+}
+
+/// The same profile launch transaction, with a complete trusted manifest.
+pub fn try_spawn_with_read_only_profile_and_manifest_and_limits(
+    image: &[u8],
+    name_service: &NameServiceHandle,
+    rights: ConnectionRights,
+    profile: &[u8],
+    manifest: &[bootstrap::ManifestEntry<'_>],
+    limits: ServiceLimits,
+) -> Result<ServiceDomain, ProfileLaunchError> {
     if profile.is_empty() {
         return Err(ProfileLaunchError::EmptyProfile);
     }
@@ -837,7 +856,7 @@ pub fn try_spawn_with_read_only_profile_and_limits(
     };
     bootstrap::write_bootstrap_cap(transaction.loaded().config_frame, connection);
     bootstrap::write_profile_cap(transaction.loaded().config_frame, target, metadata);
-    bootstrap::write_manifest(transaction.loaded().config_frame, &[]);
+    bootstrap::write_manifest(transaction.loaded().config_frame, manifest);
     try_start_domain_with_limits(transaction.finish(), limits, true)
 }
 

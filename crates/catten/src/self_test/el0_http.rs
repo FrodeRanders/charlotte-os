@@ -438,7 +438,10 @@ mod inner {
         verify_ns_status(ns, *fixture);
         logln!("[http] httpd reached the listening stage.");
 
-        logln!("[http] SUCCESS: httpd is listening on port 80; host may curl the hostfwd port.");
+        logln!(
+            "[http] SUCCESS: httpd is listening with TLS on port 443; host must authenticate the \
+             hostfwd connection."
+        );
         crate::self_test::results::pass(crate::self_test::results::TestId::Http);
     }
 }

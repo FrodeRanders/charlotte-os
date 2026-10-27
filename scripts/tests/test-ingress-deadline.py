@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Check real ingress CLI deadlines with a bounded, owned loopback peer."""
 import argparse
+import management_tls_fixture
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
@@ -84,6 +85,7 @@ class Deadline(unittest.TestCase):
                 pass
 
         with Server(("127.0.0.1", 0), Handler) as server:
+            management_tls_fixture.install(server)
             thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01})
             thread.start()
             endpoint = f'{"localhost" if hostname else "127.0.0.1"}:{server.server_port}'

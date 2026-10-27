@@ -185,9 +185,11 @@ handshake, transfers a payload, and verifies the echoed bytes.
 
 ## HTTP keyhole / full report
 
-`httpd.elf` turns the stack into a read-only "keyhole": a hardcoded HTTP
-server on port 80 that answers every request with a JSON report of observable
-state aggregated across the node:
+`httpd.elf` turns the stack into a read-only "keyhole": a TLS 1.3 server on
+port 443 requiring an enrolled reader or administrator certificate. Its exact
+bodyless GET routes serve dashboards and JSON reports aggregated across the
+node; missing credentials disable admission. See [management TLS](management-tls.md).
+The report includes:
 
 - `meta` — wall-clock derived from the observe snapshot's monotonic counter:
   `uptime_ms`, `interval_ms` (time since the previous request), `counter_hz`

@@ -16,6 +16,7 @@ pub(crate) mod admission;
 pub mod bootstrap;
 pub mod launch;
 pub mod loader;
+mod management;
 pub mod shutdown;
 pub mod store;
 pub mod supervisor;

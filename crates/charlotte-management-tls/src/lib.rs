@@ -21,6 +21,7 @@ pub use policy::{
     Limits,
     Permission,
     PolicyError,
+    PreparedConfig,
     Role,
     fingerprint,
 };

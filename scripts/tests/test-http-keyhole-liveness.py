@@ -12,10 +12,11 @@ from pathlib import Path
 import socket
 import struct
 import time
+from management_tls import connect
 
 
 def read_metrics(port, require_dns_catalog=False, require_ns_status=False):
-    with socket.create_connection(("127.0.0.1", port), timeout=12) as client:
+    with connect(port, timeout=12) as client:
         client.settimeout(12)
         client.sendall(b"GET /metrics HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
         response = bytearray()

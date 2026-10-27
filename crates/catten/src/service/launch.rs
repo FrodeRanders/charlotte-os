@@ -603,6 +603,7 @@ pub fn launch_network_appliance(ns: &NameServiceHandle, persist_time: bool) -> N
         &[],
         true,
         TcpipSocketPolicy::default(),
+        None,
     )
 }
 
@@ -619,6 +620,7 @@ pub fn launch_network_appliance_with_service(
         service.as_slice(),
         true,
         TcpipSocketPolicy::default(),
+        None,
     )
 }
 
@@ -633,6 +635,7 @@ pub fn launch_network_appliance_with_services(
         services,
         true,
         TcpipSocketPolicy::default(),
+        None,
     )
 }
 
@@ -646,7 +649,32 @@ pub fn launch_network_appliance_with_policy(
     services: &[ClusterTcpService],
     policy: TcpipSocketPolicy,
 ) -> NetworkAppliance {
-    launch_network_appliance_with_services_mode(ns, persist_time, services, true, policy)
+    launch_network_appliance_with_services_mode(ns, persist_time, services, true, policy, None)
+}
+
+fn spawn_management_service(
+    image: &[u8],
+    ns: &NameServiceHandle,
+    manifest: &[ManifestEntry<'_>],
+    profile: Option<&[u8]>,
+) -> ServiceDomain {
+    if let Some(profile) = profile {
+        crate::service::supervisor::try_spawn_with_read_only_profile_and_manifest_and_limits(
+            image,
+            ns,
+            ConnectionRights::CALL,
+            profile,
+            manifest,
+            ServiceLimits::default().with_user_stack_size(
+                charlotte_launch::management::USER_STACK_PAGES
+                    * charlotte_launch::USER_STACK_PAGE_SIZE,
+            ),
+        )
+        .unwrap_or_else(|error| panic!("[launch] management profile launch rejected: {error:?}"))
+    } else {
+        // The service rejects missing credentials before opening a listener.
+        crate::service::supervisor::spawn_with_manifest(image, ns, ConnectionRights::CALL, manifest)
+    }
 }
 
 fn launch_network_appliance_with_services_mode(
@@ -655,6 +683,7 @@ fn launch_network_appliance_with_services_mode(
     services: &[ClusterTcpService],
     dhcp: bool,
     socket_policy: TcpipSocketPolicy,
+    management: Option<&[u8]>,
 ) -> NetworkAppliance {
     const DHCP_KEY: u64 = charlotte_launch::manifest_key(b"dhcp");
     const INGRESS_SERVICES_KEY: u64 = charlotte_launch::manifest_key(b"vips");
@@ -708,15 +737,15 @@ fn launch_network_appliance_with_services_mode(
         ns,
         &manifest[..manifest_len],
     );
-    let httpd = crate::service::supervisor::spawn_with_manifest(
+    let httpd = spawn_management_service(
         crate::service::store::service_elf(b"httpd").expect("[launch] httpd.elf"),
         ns,
-        ConnectionRights::CALL,
         &[ManifestEntry {
             key: charlotte_launch::httpd_status::TRACE_KEY,
             flags: 0,
             value: ManifestValue::Unsigned(u64::from(cfg!(feature = "http_net_test"))),
         }],
+        management,
     );
     const NTP_IP_KEY: u64 = charlotte_launch::manifest_key(b"ntp_ip");
     const PERSIST_KEY: u64 = charlotte_launch::manifest_key(b"persist");
@@ -754,6 +783,7 @@ fn launch_network_appliance_with_services_mode(
 fn launch_deployment_plane(
     boot_trust: &super::admission::BootTrust,
     cluster: &[u8],
+    management: Option<&[u8]>,
 ) -> DeploymentPlane {
     let ns = boot_trust.name_service();
     let trust = boot_trust.public();
@@ -789,15 +819,15 @@ fn launch_deployment_plane(
         &artifact_trust,
     );
     crate::service::supervisor::authorize_deployment_agent(&agent);
-    let ingress = crate::service::supervisor::spawn_with_manifest(
+    let ingress = spawn_management_service(
         crate::service::store::service_elf(b"deployd").expect("[launch] deployd.elf"),
         ns,
-        ConnectionRights::CALL,
         &[ManifestEntry {
             key: charlotte_launch::deployd_status::TRACE_KEY,
             flags: 0,
             value: ManifestValue::Unsigned(u64::from(cfg!(feature = "http_net_test"))),
         }],
+        management,
     );
     logln!(
         "[launch] deployment plane spawned: clusterctl={} agent={} ingress={} port={}",
@@ -989,6 +1019,13 @@ pub(crate) fn launch_steady_state_with_trust(
     if !prepared.matches_cluster(cluster_mnemonic) {
         return Err(prepared);
     }
+    let management = match super::management::prepare(&prepared) {
+        Ok(profile) => profile,
+        Err(error) => {
+            logln!("[launch] management TLS resource rejected before trust publication: {error:?}");
+            return Err(prepared);
+        }
+    };
     let ns = crate::service::supervisor::node_name_service();
     // Publish once, before any cluster/deployment consumer receives its
     // manifest. Production has no boot adapter yet and remains disabled.
@@ -1031,12 +1068,17 @@ pub(crate) fn launch_steady_state_with_trust(
                 &cluster_services,
                 option_env!("CATTEN_CLUSTER_STATIC_NETWORK") != Some("1"),
                 TcpipSocketPolicy::default(),
+                management.as_ref().map(|profile| profile.bytes()),
             )),
         ),
         None => (None, None),
     };
     let deployment = if storage.is_some() && network.is_some() {
-        Some(launch_deployment_plane(&boot_trust, cluster_mnemonic))
+        Some(launch_deployment_plane(
+            &boot_trust,
+            cluster_mnemonic,
+            management.as_ref().map(|profile| profile.bytes()),
+        ))
     } else {
         None
     };

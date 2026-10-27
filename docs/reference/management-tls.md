@@ -1,9 +1,10 @@
 # Management TLS and operator authentication
 
-SEC-10 is being addressed as one migration of status and deployment ingress.
-The current first component is `charlotte-management-tls`: a socket-independent,
-`no_std` TLS 1.3 server engine. **It is not yet connected to either native
-listener. Existing listeners remain plaintext and SEC-10 remains open.**
+Status (`443`) and deployment ingress (`7444`) now use the same mandatory
+mutual TLS 1.3 engine and boot credential resource. There is no plaintext backend
+or fallback. Missing credentials disable network admission while preserving
+cooperative shutdown. SEC-10 is partial pending the broader execution qualifications
+listed below; public development trust is not production enrollment.
 
 ## Implemented protocol component
 
@@ -35,16 +36,109 @@ preserves curve/OID checks and the server certificate/key must match.
 An authenticated `Identity` has private fields and is issued only after the
 handshake completes. Its certificate digest supplies an audit identifier.
 `Observe` is permitted to either role; `Mutate` requires `Administrator`.
-Native HTTP dispatch must enforce that permission **before invoking its
-handler**, and retain all existing signed mutation-body checks. The component's
-role predicate does not itself protect an unwired handler.
+Native HTTP dispatch enforces that permission **before invoking its handler**,
+and retains all existing signed mutation-body checks. Status requires `Observe`;
+deployment status/ingress-policy reads require `Observe`; every mutation requires
+`Mutate`. A reader's incomplete POST is rejected without awaiting its body or
+starting a controller RPC. Logs bind the full certificate digest, role, permission
+and decision to a nonreused local connection ID; request bodies and keys are not
+logged. Local controller capability authorization remains a separate boundary.
 
 The configuration is immutable. A replacement excludes revoked leaves from new
 connections; callers must also retire old sessions/configuration factories.
 Tickets, PSKs and early data cannot carry old authority into a reconnect.
 Protected enrollment, rotation installation and rollback-resistant state remain
-SEC-04/08 work. The UTC provider must return nonzero time at construction and
-certificate verification, but its authenticity/freshness is still SEC-09.
+SEC-04 work; cluster peer authentication remains SEC-08. `PreparedConfig` checks
+credentials without inventing UTC; only `activate()` with nonzero real time
+produces the configuration accepted by `Session`. Each accepted native client
+obtains a fresh positive time-service reply under its original handshake budget.
+Certificate verification uses that UTC projected through the kernel monotonic
+clock. Zero/unavailable time, rollback and arithmetic overflow reject. This is
+not authenticated or rollback-resistant time: the source still uses SNTP/holdover
+and SEC-09 remains open.
+
+## Complete boot resource and enrollment
+
+`charlotte-launch::management` defines one current profile, `CMGMTL01`, with an
+exact 128-byte header, all eleven limits, explicit counts, ordered server chain,
+client roots, exact leaf/role records and the private server DER key. Counts and
+lengths are checked before use; missing fields, unknown roles, duplicates,
+reserved bytes, retired tags, every truncation and extensions reject. No aliases
+or per-field manifest defaults fill missing policy.
+
+The `CMGTENC1` envelope has a 176-byte header and HPKE ciphertext. It uses the
+existing RFC 9180 X25519/HKDF-SHA256/ChaCha20-Poly1305 suite with a distinct
+management context, and an Ed25519 operations signature. The context binds the
+**entire canonical selected admission policy**, including cluster, sequence and
+all four keys. Signature/context verification precedes private work. Opening
+checks the zeroizing recipient owner's public binding, decrypts into an existing
+erasing owner, then checks the complete profile. It is not an operations-bundle
+variant or an exception to that bundle's expiry checks.
+
+The kernel build accepts only an absolute regular-file
+`CATTEN_MANAGEMENT_TLS_RESOURCE` input and embeds ciphertext. Boot opens it using
+the same `PreparedBootTrust` before trust publication or management service
+publication. The prepared plaintext lives through launch of both services, each
+receiving its own read-only launch memory through the existing owning launch
+transaction. No service receives the operations signer or HPKE recipient key.
+Invalid envelope/policy input rejects steady-state launch; invalid DER/config
+prevents the affected service from opening its listener. An absent resource
+leaves both network interfaces disabled, with no plaintext substitute.
+
+Host commands use files, never inline secret key arguments:
+
+```sh
+cluster-sign management-limits-default limits.txt
+# Review every limit; DER inputs must be P-256 ECDSA identities.
+cluster-sign management-profile-create private-profile.bin limits.txt server-key.der \
+  chain=server.der root=client-ca.der reader=reader.der administrator=operator.der
+cluster-sign management-resource-seal management.bin policy.bin operations-key-file private-profile.bin
+cluster-sign management-resource-verify management.bin policy.bin
+```
+
+The private profile is created exclusively with mode `0600`. Keep it and the
+server key in restricted storage and remove disposable copies explicitly.
+Verification checks signature/context against the supplied public policy; it
+does not install policy or prove custody. `management-policy-development` exports
+only the repository's public development fixture; it cannot enroll production.
+
+For replacement/revocation, advance the installed policy revision, regenerate
+and seal the complete profile, rebuild the kernel with that ciphertext and
+restart both services. Existing configurations/sessions never resize or acquire
+new roles. The current resource transport is a build input delivered as a boot
+resource, not a live control-plane update. Policy binding does not select a
+unique resource among competing signatures at the same revision, nor supply
+protected installation, rollback-resistant storage or recipient custody.
+Production images remain disabled under SEC-04.
+
+Verified `cluster-sign` management commands require PEM files in
+`CATTEN_MANAGEMENT_CA_FILE`, `CATTEN_MANAGEMENT_CERT_FILE` and
+`CATTEN_MANAGEMENT_KEY_FILE`. Numeric endpoint addresses are certificate-checked
+as IP identities; optional `CATTEN_MANAGEMENT_SERVER_NAME` selects a DNS/IP
+certificate identity and SNI. It does not disable verification. No application
+bytes are submitted before TLS completes. Configuration/verification rejection
+is terminal; accepted HTTP uncertainty never authorizes replay. One original
+deadline covers connect, handshake and every socket I/O, including internal
+Rustls reads/writes.
+
+For browser access, distribute the server CA through the organization's trusted
+channel and issue a P-256 client certificate with `clientAuth` EKU. Enroll that
+exact DER leaf in the selected role. A browser can import a password-protected
+PKCS#12 containing its client identity; for example,
+`openssl pkcs12 -export -inkey operator.key -in operator.pem -certfile client-ca.pem -out operator.p12`
+prompts for its export password rather than putting it in argv. Import the
+identity into the browser/OS client-certificate store and open an HTTPS name
+covered by the server certificate's SAN. A client CA and server CA may differ:
+the profile's `root=` inputs authenticate clients, while the host/browser CA
+authenticates the server. Installing a browser identity does not enroll its
+leaf or assign its role. There is no password, bearer-key or JavaScript bypass.
+
+Explicit runner probes generate fresh short-lived fixture credentials in a
+mode-`0700` directory and use the public development authorities. A supplied
+resource is never replaced by the runner; corresponding client file settings
+are required. Reusing a built kernel requires its exact existing resource and
+clients. Fixture directories retain client keys for repeatable probes and must
+be removed when no longer needed; they are not published audit evidence.
 
 ## Ownership and reactor contract
 
@@ -68,6 +162,18 @@ justifies timer-driven receive polling. Socket cancellation, rejected CQ binding
 lifecycle observation and remote close belong to the containing service owner;
 the protocol engine has no kernel capability, socket teardown or cleanup registry.
 
+`catten_services::management_io::Connection` is the containing owner. Its pending
+RPC precedes session/socket fields, so confirmed observation/cancellation ends
+before local TLS state or raw socket release. Receives own returned memory and
+mappings; output retains encrypted prefixes until positive receipts. A final
+plaintext receipt also confirms encrypted close-notify output. Consuming logical
+close moves the original socket into the existing close pool, without claiming
+physical cleanup. Rejected CQ binding aborts with accepted work retained.
+Queue-full retry applies only before admission, under the original deadline;
+accepted calls are never retried. The sequential keyhole waits on that CQ and
+lifecycle, while deployment rotates its existing input/control/output/close
+phases so a slow TLS peer cannot monopolize a blocking handshake.
+
 Erasure of the named local buffers, IV/nonce and selected cipher owners does not
 qualify all Rustls/Embassy HKDF, HMAC, transcript, traffic-key or parser copies,
 compiler spills, allocator history, forced termination or physical memory.
@@ -75,11 +181,12 @@ SEC-15 remains partial.
 
 ## Configuration and related dimensions
 
-All component policy is collected in `Limits` in
-`crates/charlotte-management-tls/src/policy.rs`. `Config::new` validates and
-captures a complete value before creating sessions. These are constructor inputs,
-**not yet a platform boot-resource or manifest interface**. Changing compiled
-defaults requires a rebuild; existing configurations never resize in place.
+All TLS workload policy is collected in `Limits` in
+`crates/charlotte-launch/src/management/limits.rs`, reexported by the engine.
+The complete resource carries these boot settings; `management-limits-default`
+writes every named setting without grouping separators. Missing/unknown/duplicate
+settings and invalid relationships reject before private input or output
+publication. Existing configurations never resize in place.
 
 | Field | Default | Unit / relation |
 | --- | ---: | --- |
@@ -107,27 +214,28 @@ Co-size roots, enrollments, chains, certificates, output flights, all concurrent
 session buffers and service heap/stack admission. Larger chains/root hints can
 still exceed a selected output-flight budget and reject; no prefix is accepted
 as a complete handshake. Increase the session budget with request/response/close
-budgets and revocation policy. These are observation/admission budgets, not a
+budgets and revocation policy. `MAX_PROFILE_BYTES = 65536` and
+`USER_STACK_PAGES = 32` (131072 reserved bytes, committed on demand) are central
+build-time knobs in `charlotte-launch::management`. Both management services use
+that same stack setting; a four-page general stack faulted during native P-256
+verification. Requalify both architectures when changing the provider or stack.
+The host PEM reader bound is twice the profile ceiling; its certificate/count
+limits currently use compiled `Limits::DEFAULT`, so scale those with a larger
+profile. Existing HTTP framing, concurrency, aggregate bytes and close deadlines
+remain their own documented service dimensions. These are observation/admission budgets, not a
 bound on scheduler delay, allocator work or one cryptographic operation.
 
-## Remaining migration gates
+## Execution qualification and remaining gates
 
-1. Supply one authenticated, complete startup credential/role/limit resource
-   from the kernel's published trust context. Missing or invalid input must
-   reject before listener publication; no independently chosen service trust.
-2. Carry this engine in the existing owned, CQ-bound input/output/close phases
-   for both status and deployment ingress. Authorize readers and administrators
-   before dispatch; preserve signed mutation validation and multi-client progress.
-3. Replace plaintext direct-node and VIP paths together, with standard verified
-   host clients and explicit certificate-name checks. A proxy with an exposed
-   plaintext backend does not meet this gate.
-4. Qualify QEMU startup/restart, wrong/missing credentials, reader write rejection,
+Qualify QEMU startup/restart, wrong/missing credentials, reader write rejection,
    peer substitution, replay, revocation, deadlines, partial sends, cancellation,
-   rejected wait admission, slow clients and concurrent healthy traffic.
+rejected wait admission, slow clients and concurrent healthy traffic, on direct
+node and VIP paths. The [native report](../reports/audits/2026-10-27-security-management-tls-native.md) records the exact executed scope;
+implementation alone is not evidence for unexecuted cases.
 
-These gates deliberately remain substantial SEC-10 work. Component interop and
-freestanding compilation do not establish native listener protection, protected
-custody, authenticated time or production readiness. See the
+SEC-10 remains partial while these qualifications remain incomplete. Protected
+custody, authenticated time, cluster peer authentication and full secret erasure
+remain separate gaps. Preserve the historical
 [component evidence](../reports/audits/2026-10-27-security-management-tls-engine.md).
 
 Primary API reference: [Rustls CryptoProvider](https://docs.rs/rustls/0.23.46/rustls/crypto/struct.CryptoProvider.html).

@@ -6,7 +6,6 @@ use crate::{
     deployment_input::MAX_CLIENTS,
     socket::{
         ClosingSocket,
-        OwnedSocket,
         SocketError,
     },
 };
@@ -140,14 +139,14 @@ impl<C: Calls> Machine<C> {
 struct Runtime<'a>(core::marker::PhantomData<&'a ()>);
 impl<'a> Calls for Runtime<'a> {
     type Owner = ClosingSocket<'a>;
-    type Socket = OwnedSocket<'a>;
+    type Socket = ClosingSocket<'a>;
 
     fn now(&self) -> (u64, u64) {
         catten_syscall::monotonic_clock()
     }
 
     fn prepare(socket: Self::Socket) -> Self::Owner {
-        socket.into_closing()
+        socket
     }
 
     fn submit(&mut self, owner: &mut Self::Owner) -> Result<(), IpcError> {
@@ -167,6 +166,27 @@ impl<'a> Calls for Runtime<'a> {
         catten_rt::domain_abort()
     }
 }
+mod sealed_owner {
+    pub trait Sealed {}
+    impl Sealed for crate::socket::OwnedSocket<'_> {}
+    impl Sealed for crate::management_io::Connection<'_> {}
+}
+/// Only unstarted socket owners enter this close pool. An already armed close
+/// is not admissible. TLS teardown first confirms cancellation of its pending
+/// wire operation; neither adapter reconstructs a remote scalar owner.
+pub trait SocketForClose<'a>: sealed_owner::Sealed {
+    fn prepare_close(self) -> ClosingSocket<'a>;
+}
+impl<'a> SocketForClose<'a> for crate::socket::OwnedSocket<'a> {
+    fn prepare_close(self) -> ClosingSocket<'a> {
+        self.into_closing()
+    }
+}
+impl<'a> SocketForClose<'a> for crate::management_io::Connection<'a> {
+    fn prepare_close(self) -> ClosingSocket<'a> {
+        self.into_socket().into_closing()
+    }
+}
 /// Closing consumes one of the same four client positions. Only a confirmed
 /// logical acknowledgement releases it; uncertain close aborts with the pool live.
 pub struct Closes<'a>(Machine<Runtime<'a>>);
@@ -175,8 +195,8 @@ impl<'a> Closes<'a> {
         Self(Machine::new(Runtime(core::marker::PhantomData), cq))
     }
 
-    pub fn start(&mut self, socket: OwnedSocket<'a>) {
-        if let Err(_socket) = self.0.start(socket) {
+    pub fn start(&mut self, socket: impl SocketForClose<'a>) {
+        if let Err(_socket) = self.0.start(socket.prepare_close()) {
             // A full close pool here would violate the containing four-phase
             // admission accounting. Retain the complete arriving socket too.
             catten_rt::domain_abort();

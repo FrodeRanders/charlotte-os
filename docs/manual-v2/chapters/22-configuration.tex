@@ -16,10 +16,12 @@ and dimensions are in \repofile|docs/reference/resource-policy.md|.
 
 The following inputs have different authorities and lifetimes:
 \begin{description}
-    \item[Management TLS component.] The new freestanding server engine captures
-        a complete \texttt{Limits} value in immutable configuration. Its limits
-        are constructor inputs; neither native listener is wired to it yet, and
-        no boot-resource/manifest interface exists for them. SEC-10 remains open.
+    \item[Management TLS.] A complete signed, encrypted boot resource supplies
+        server credentials, client roots, exact operator roles and all eleven
+        TLS limits. The kernel verifies it against its selected admission policy
+        before publishing trust, then supplies read-only launch profiles to both
+        management services. Missing credentials disable network admission.
+        Protected installation and authenticated time remain audit gaps.
     \item[Dependency advisory policy.] CI/local validation reads
         \path{.cargo/audit.toml} and the scanner pin in \path{.cargo/audit-version}.
         These configure validation, not a running node. Database contents refresh
@@ -186,17 +188,36 @@ live backing. Failed physical cleanup retains the original complete owner and
 charge. A larger budget never supplies proof of completion or permission to
 replay accepted work.
 
-\section{Management TLS component limits}
+\section{Management TLS configuration}
 
-The server component collects policy in
-\repofile|crates/charlotte-management-tls/src/policy.rs|. Defaults allow 8 client
+The server collects policy in
+\repofile|crates/charlotte-launch/src/management/limits.rs|. Defaults allow 8 client
 CA roots, 64 enrolled leaf/role entries, 4 certificates per chain and 8192 bytes
 per certificate or server key. Each session permits 65536 input bytes,
 65536 output bytes and 16384 application bytes. The send-fragment setting is
 4096 bytes; the original handshake and session budgets are respectively
 5000 and 60000 milliseconds. One engine step performs at most 32 local TLS
-transitions. Construction validates and captures these settings; changing the
-compiled defaults requires a rebuild and cannot resize existing sessions.
+transitions. These are fields of the complete boot profile, not scattered
+constants or live overrides. Construction validates and captures them; existing
+sessions cannot resize in place.
+
+Generate a complete editable limits file with
+\texttt{cluster-sign management-limits-default}. The profile-creation command
+requires every named limit, server key/chain, client roots and explicit reader
+or administrator enrollments. Unknown, duplicate, missing and inconsistent
+settings reject. Seal the private profile with the selected policy's operations
+signing key and recipient public key; set
+\path{CATTEN_MANAGEMENT_TLS_RESOURCE} to its absolute file path when
+building the kernel. Only ciphertext is embedded. The resource is verified and
+decrypted at boot using the same prepared kernel trust owner; no service can
+select an independent authority. The current delivery mechanism requires a
+kernel rebuild and restart to replace the resource.
+
+The exact formats are \texttt{CMGMTL01} inside \texttt{CMGTENC1}. Their central
+profile ceiling is 65536 bytes. Both native management services reserve 32 stack
+pages (131072 bytes), committed on demand. The management module's
+\path{USER_STACK_PAGES} selects this build-time reservation. Review both
+dimensions with credentials, buffers, concurrency and service admission.
 
 Smaller fragments increase wire overhead: Rustls subtracts its five-byte header
 allowance, and each AES-GCM application fragment adds 22 wire bytes. Validation
@@ -208,10 +229,20 @@ every Rustls allocation; its current internal handshake-message ceiling is
 workload policy. Exact fields, structural bounds and integration gates are in
 \repofile|docs/reference/management-tls.md|.
 
-This is a tested protocol component, not deployed management protection. Native
-socket/CQ ownership, startup credentials, handler authorization and replacement
-of both plaintext direct-node and VIP paths remain required. Nonzero certificate
-time does not authenticate the time source or establish protected provisioning.
+Status uses TLS on port 443; deployment ingress uses TLS on port 7444. Both
+require an enrolled client certificate. Readers can observe; mutations require
+an administrator before controller dispatch and still require their signed
+bodies. Verified host tools require explicit CA, certificate and private-key
+files, with an optional server-name override for certificate matching. There is
+no plaintext listener fallback.
+
+Rotation or revocation replaces the complete resource, advances the installed
+policy revision and restarts both services; existing sessions are not hot
+reconfigured. Public development authorities do not establish protected custody
+or rollback resistance. Each client obtains a fresh positive time-service
+reading before its handshake, under the original deadline; this does not
+authenticate the underlying SNTP source. Full execution qualifications and
+remaining gates are recorded in \repofile|docs/reference/management-tls.md|.
 
 \section{Planning and validating a policy change}
 

@@ -72,6 +72,19 @@ impl PreparedBootTrust {
         }
     }
 
+    /// Borrow this same selected policy/key owner before any final trust or
+    /// service publication. The management resource cannot install its own root.
+    #[cfg(catten_management_resource)]
+    pub(super) fn management_profile(
+        &self,
+        resource: &[u8],
+    ) -> Result<
+        charlotte_launch::management::sealed::PreparedProfile,
+        charlotte_launch::management::sealed::Error,
+    > {
+        charlotte_launch::management::sealed::open(resource, &self.public, &self.recipient)
+    }
+
     /// Rejection returns the entire preparation owner after unlocking. An
     /// installed policy is never replaced, even by the same revision/key.
     #[allow(clippy::result_large_err)] // Bounded inline owner; rejection must not allocate a box.

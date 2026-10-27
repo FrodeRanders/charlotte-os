@@ -40,11 +40,25 @@ const ALLOCATION_FAILURE_RESPONSE: &str = concat!(
     "{\"error\":\"allocation failed\"}\n",
 );
 
+const FORBIDDEN_RESPONSE: &str = concat!(
+    "HTTP/1.1 403 Forbidden\r\n",
+    "Content-Type: application/json\r\nContent-Length: 22\r\nConnection: close\r\n\r\n",
+    "{\"error\":\"forbidden\"}\n",
+);
+
 fn fail() -> ! {
     unsafe { thread_exit() }
 }
 
 fn serve(ctx: &Context) -> ShutdownRequest {
+    let management = match catten_services::management_io::Factory::load(ctx) {
+        Ok(factory) => factory,
+        Err(catten_services::management_io::StartupError::Shutdown(request)) => return request,
+        Err(_) => {
+            catten_rt::logln!("[deployd] management credentials unavailable; ingress disabled");
+            return catten_services::management_io::disabled(ctx);
+        }
+    };
     let names = ctx.bootstrap_connection().unwrap_or_else(|| fail());
     let (_, tcp) = match wait_for_registered_name_or_shutdown_owned(ctx, names, socket::NAME) {
         Ok(found) => found,
@@ -115,6 +129,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         }
         if let Some((socket, accepted)) = finished {
             if accepted {
+                let mut socket =
+                    catten_services::management_io::Connection::unaccepted(socket, &management);
+                if socket.accepted().is_err() {
+                    closes.start(socket);
+                    continue;
+                }
                 if let Err((socket, _)) = inputs.admit(socket) {
                     closes.start(socket);
                 }
@@ -140,6 +160,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 Err(error) => Some((
                     socket,
                     alloc::borrow::Cow::Borrowed(match error {
+                        RequestError::Forbidden => FORBIDDEN_RESPONSE,
                         RequestError::AllocationFailed => ALLOCATION_FAILURE_RESPONSE,
                         _ => BAD_REQUEST_RESPONSE,
                     }),
@@ -179,7 +200,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 }
 
 fn retire_output<'a>(
-    socket: socket::OwnedSocket<'a>,
+    socket: catten_services::management_io::Connection<'a>,
     result: Result<(), catten_services::deployment_output::Error>,
     closes: &mut catten_services::deployment_close::Closes<'a>,
     trace: bool,

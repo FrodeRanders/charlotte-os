@@ -9,7 +9,7 @@ This guide matches the manual's **Configuration** chapter.
 
 | Configuration | Current source and lifetime |
 | --- | --- |
-| Management TLS component | `charlotte-management-tls::Limits` is a complete constructor input, captured in immutable `Config`. It is not yet a native boot/manifest input and neither management listener is wired to it; see [management TLS](../reference/management-tls.md#configuration-and-related-dimensions). |
+| Management TLS | One complete signed/encrypted `CMGTENC1` resource contains credentials, exact leaf/role enrollments and all eleven `Limits` fields. `CATTEN_MANAGEMENT_TLS_RESOURCE` selects its absolute ciphertext path when building; boot verifies it against the same selected admission policy and supplies read-only launch profiles to both services. Replacement currently requires rebuild/restart; see [management TLS](../reference/management-tls.md). |
 | Domain TLS entropy | Startup consumes `EntropyConfig` with an owned `rng` connection (or explicit architectural-only source) and a positive request budget. The compiled default is `5000` ms; admission retains that complete configuration through each operation; see [TLS configuration](../reference/tls-client.md). |
 | Dependency advisory policy | `.cargo/audit.toml` and the scanner pin in `.cargo/audit-version`, evaluated by CI/local validation. They do not configure a running node; see [the advisory gate](../reference/dependency-advisories.md). |
 | Kernel resource capacity | One trusted Rust build profile, compiled into the kernel and fixed for the boot. |
@@ -121,8 +121,11 @@ Management TLS groups enrollment/certificate counts, record buffers, fragmentati
 handshake/session budgets and reactor work in one `Limits` value. Reducing fragment
 size increases aggregate wire overhead; increasing concurrency multiplies retained
 buffers and crypto state. Validate those relationships and service memory/progress
-budgets together. The [component reference](../reference/management-tls.md) lists
-exact defaults, structural protocol bounds and remaining native integration gates.
+budgets together. The [reference](../reference/management-tls.md) lists exact
+defaults, structural protocol bounds, file-based enrollment commands and remaining
+qualifications. `management-limits-default` writes every adjustable boot field;
+missing or inconsistent settings reject. Central build-time knobs also bound
+the profile to `65536` bytes and reserve `32` stack pages for both services.
 
 Review these groups together when changing workload targets:
 

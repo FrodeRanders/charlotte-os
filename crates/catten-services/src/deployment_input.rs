@@ -1,11 +1,6 @@
 //! Bounded deployment request inputs sharing one completion queue.
 //!
 //! Controller work and response transmission are separate from this input pool.
-use catten_rt::owned::{
-    CallResult,
-    PendingCall,
-};
-
 use crate::{
     deadline::Deadline,
     deployment_http::{
@@ -14,7 +9,10 @@ use crate::{
         Request,
         RequestBuffer,
     },
-    socket::OwnedSocket,
+    management_io::{
+        Advance,
+        Connection as OwnedSocket,
+    },
 };
 
 pub const MAX_CLIENTS: usize = 4;
@@ -26,9 +24,18 @@ trait Calls {
     type Socket;
     type Pending;
     type Reply;
-    fn receive(&mut self, socket: &Self::Socket, cq: u32) -> Result<Self::Pending, Error>;
-    fn poll(&mut self, pending: &mut Self::Pending) -> Result<Option<Self::Reply>, Error>;
+    fn receive(&mut self, socket: &mut Self::Socket, cq: u32) -> Result<Self::Pending, Error>;
+    fn poll(
+        &mut self,
+        socket: &mut Self::Socket,
+        pending: &mut Self::Pending,
+        deadline: &Deadline,
+    ) -> Result<Advance<Self::Reply>, Error>;
+    fn remaining(_socket: &Self::Socket) -> u64 {
+        u64::MAX
+    }
     fn append(
+        socket: &Self::Socket,
         reply: Self::Reply,
         buffer: &mut RequestBuffer,
         available: usize,
@@ -96,7 +103,7 @@ impl<C: Calls> Machine<C> {
             header: Deadline::at(now, frequency, HEADER_MS),
             total: Deadline::at(now, frequency, REQUEST_MS),
         };
-        match self.calls.receive(&input.socket, self.cq) {
+        match self.calls.receive(&mut input.socket, self.cq) {
             Ok(pending) => input.pending = Some(pending),
             Err(error) => return Err((input.socket, error)),
         }
@@ -117,19 +124,37 @@ impl<C: Calls> Machine<C> {
             let result = if input.remaining(now) == 0 {
                 Err(Error::Malformed)
             } else {
-                match self.calls.poll(input.pending.as_mut().expect("admitted receive")) {
-                    Ok(None) => continue,
+                let deadline = if input.buffer.has_header() {
+                    input.total
+                } else {
+                    input.header
+                };
+                match self.calls.poll(
+                    &mut input.socket,
+                    input.pending.as_mut().expect("admitted receive"),
+                    &deadline,
+                ) {
+                    Ok(Advance::Waiting) => continue,
+                    Ok(Advance::Progress) => {
+                        self.cursor = (index + 1) % MAX_CLIENTS;
+                        return (true, None);
+                    }
                     Err(error) => Err(error),
-                    Ok(Some(reply)) => {
+                    Ok(Advance::Ready(reply)) => {
                         drop(input.pending.take());
-                        C::append(reply, &mut input.buffer, self.byte_limit.saturating_sub(used))
+                        C::append(
+                            &input.socket,
+                            reply,
+                            &mut input.buffer,
+                            self.byte_limit.saturating_sub(used),
+                        )
                     }
                 }
             };
             self.cursor = (index + 1) % MAX_CLIENTS;
             let result = match result {
                 Ok(Some(request)) => Ok(request),
-                Ok(None) => match self.calls.receive(&input.socket, self.cq) {
+                Ok(None) => match self.calls.receive(&mut input.socket, self.cq) {
                     Ok(pending) => {
                         input.pending = Some(pending);
                         return (true, None);
@@ -150,46 +175,59 @@ impl<C: Calls> Machine<C> {
     }
 
     fn remaining(&self, now: u64) -> Option<u64> {
-        self.inputs.iter().flatten().map(|i| i.remaining(now)).min()
+        self.inputs.iter().flatten().map(|i| i.remaining(now).min(C::remaining(&i.socket))).min()
     }
 }
 
 struct Runtime<'a>(core::marker::PhantomData<&'a ()>);
 
 impl<'a> Calls for Runtime<'a> {
-    type Pending = PendingCall<'static>;
-    type Reply = CallResult;
+    type Pending = ();
+    type Reply = (charlotte_management_tls::Identity, zeroize::Zeroizing<alloc::vec::Vec<u8>>);
     type Socket = OwnedSocket<'a>;
 
-    fn receive(&mut self, socket: &Self::Socket, cq: u32) -> Result<Self::Pending, Error> {
-        let mut pending = socket.receive_call().map_err(|_| Error::AllocationFailed)?;
-        if pending.bind_cq(cq).is_err() {
-            // Submission was accepted. Keep this pending owner and the entire
-            // containing input pool through abort; no receive replay is safe.
-            catten_rt::domain_abort();
-        }
-        Ok(pending)
+    fn receive(&mut self, socket: &mut Self::Socket, cq: u32) -> Result<(), Error> {
+        socket.begin_receive(cq).map_err(|_| Error::Malformed)
     }
 
-    fn poll(&mut self, pending: &mut Self::Pending) -> Result<Option<Self::Reply>, Error> {
-        pending.poll().map_err(|_| Error::Malformed)
+    fn poll(
+        &mut self,
+        socket: &mut Self::Socket,
+        _: &mut (),
+        deadline: &Deadline,
+    ) -> Result<Advance<Self::Reply>, Error> {
+        socket.poll_receive(deadline).map_err(|_| Error::Malformed)
+    }
+
+    fn remaining(socket: &Self::Socket) -> u64 {
+        socket.remaining_ms()
     }
 
     fn append(
-        reply: Self::Reply,
+        socket: &Self::Socket,
+        (identity, bytes): Self::Reply,
         buffer: &mut RequestBuffer,
         available: usize,
     ) -> Result<Option<Request>, Error> {
-        let chunk = OwnedSocket::decode_receive(reply)
-            .map_err(|_| Error::Malformed)?
-            .ok_or(Error::Malformed)?;
-        if chunk.len() > available {
+        if bytes.len() > available {
             return Err(Error::AllocationFailed);
         }
-        let (memory, length) = chunk.into_parts();
-        let mapping = memory.map_read_only().map_err(|_| Error::AllocationFailed)?;
-        let bytes = mapping.as_slice().get(..length).ok_or(Error::Malformed)?;
-        buffer.push(bytes)
+        let request = buffer.push(&bytes)?;
+        let mutation = buffer.requires_administrator()
+            || request.as_ref().is_some_and(Request::requires_administrator);
+        let permission = if mutation {
+            charlotte_management_tls::Permission::Mutate
+        } else {
+            charlotte_management_tls::Permission::Observe
+        };
+        let allowed = identity.allows(permission);
+        if request.is_some() || !allowed {
+            socket.audit(identity, permission, allowed);
+        }
+        if !allowed {
+            return Err(Error::Forbidden);
+        }
+        Ok(request)
     }
 }
 
@@ -210,6 +248,8 @@ impl<'a> Inputs<'a> {
     }
 
     /// Start budgets when this reactor observes accept completion.
+    // Rejection must return the complete owner without a new fallible allocation.
+    #[allow(clippy::result_large_err)]
     pub fn admit(&mut self, socket: OwnedSocket<'a>) -> Result<(), (OwnedSocket<'a>, Error)> {
         let (now, frequency) = catten_syscall::monotonic_clock();
         self.0.admit(socket, now, frequency)
@@ -280,7 +320,7 @@ mod tests {
         type Reply = Result<Vec<u8>, Error>;
         type Socket = Socket;
 
-        fn receive(&mut self, socket: &Socket, cq: u32) -> Result<Pending, Error> {
+        fn receive(&mut self, socket: &mut Socket, cq: u32) -> Result<Pending, Error> {
             assert_eq!(cq, 7);
             if core::mem::take(&mut self.reject) {
                 return Err(Error::AllocationFailed);
@@ -292,11 +332,20 @@ mod tests {
             })
         }
 
-        fn poll(&mut self, pending: &mut Pending) -> Result<Option<Self::Reply>, Error> {
-            Ok(pending.replies.borrow_mut().pop_front())
+        fn poll(
+            &mut self,
+            _socket: &mut Socket,
+            pending: &mut Pending,
+            _deadline: &Deadline,
+        ) -> Result<Advance<Self::Reply>, Error> {
+            Ok(match pending.replies.borrow_mut().pop_front() {
+                Some(reply) => Advance::Ready(reply),
+                None => Advance::Waiting,
+            })
         }
 
         fn append(
+            _socket: &Socket,
             reply: Self::Reply,
             buffer: &mut RequestBuffer,
             available: usize,

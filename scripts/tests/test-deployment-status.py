@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Check complete named deployment observations through the real status CLI."""
 import argparse
+import management_tls_fixture
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 from pathlib import Path
@@ -44,6 +45,7 @@ class Status(unittest.TestCase):
                 pass
 
         with HTTPServer(("127.0.0.1", 0), Handler) as server:
+            management_tls_fixture.install(server)
             thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01})
             thread.start()
             start = time.monotonic()

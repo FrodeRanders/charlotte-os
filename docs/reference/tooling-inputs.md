@@ -256,3 +256,27 @@ missing/directory paths reject. Cargo tracks selection and file changes; these
 capacity values are compiled into the kernel and fixed for that boot. The input
 is trusted build source, never an application/deployment/boot-trust override.
 See [Configuration](../guides/configuration.md) and [policy](resource-policy.md).
+
+## Management credentials and limits
+
+`management-limits-default` writes all eleven decimal `NAME=NUMBER` settings.
+`management-profile-create` requires that complete file plus DER server key/chain,
+client roots and explicit reader/administrator certificate files. Missing,
+unknown, duplicate, signed/nondecimal or inconsistent limits reject before key
+input/output. Private profile output is exclusive and mode `0600`.
+`management-resource-seal` accepts the public admission-policy file, operations
+private-key file and private profile; the result is signed HPKE ciphertext bound
+to that exact policy. `management-resource-verify` checks signature/context only.
+The kernel build embeds only the absolute `CATTEN_MANAGEMENT_TLS_RESOURCE` file;
+boot verifies/opens it before trust publication. Replacement needs rebuild and
+restart with an advanced installed policy revision. Development policy export
+is explicitly a public fixture, not production enrollment.
+
+Every management read/write uses verified TLS. Supply PEM file paths through
+`CATTEN_MANAGEMENT_CA_FILE`, `CATTEN_MANAGEMENT_CERT_FILE` and
+`CATTEN_MANAGEMENT_KEY_FILE`; optional `CATTEN_MANAGEMENT_SERVER_NAME` overrides
+the endpoint IP's certificate identity without weakening verification. No HTTP
+byte precedes handshake completion. Missing credentials or verification failure
+are terminal, with no plaintext or insecure fallback. The reader bound is twice
+the central profile ceiling; compiled default certificate/count bounds must be
+reviewed with larger server profiles. See [management TLS](management-tls.md).

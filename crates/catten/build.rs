@@ -1,6 +1,7 @@
 use std::env;
 
 fn main() {
+    management_resource();
     // Compile-time policy is trusted Rust build input. Require an absolute path
     // so invocation cwd cannot silently select a different operator profile.
     println!("cargo:rerun-if-env-changed=CATTEN_RESOURCE_POLICY");
@@ -78,4 +79,38 @@ fn main() {
         }
         _ => panic!("Invalid ISA"),
     }
+}
+
+fn management_resource() {
+    use std::io::Read;
+
+    use charlotte_launch::management::sealed;
+    println!("cargo:rustc-check-cfg=cfg(catten_management_resource)");
+    println!("cargo:rerun-if-env-changed=CATTEN_MANAGEMENT_TLS_RESOURCE");
+    let Some(path) = env::var_os("CATTEN_MANAGEMENT_TLS_RESOURCE") else {
+        return;
+    };
+    let path = std::path::PathBuf::from(path);
+    assert!(path.is_absolute(), "CATTEN_MANAGEMENT_TLS_RESOURCE must be an absolute file path");
+    let path = path.canonicalize().expect("management TLS resource must exist");
+    let name = path.to_str().expect("management resource path must be UTF-8");
+    assert!(!name.contains(['\n', '\r']), "management resource path cannot contain newlines");
+    let file = std::fs::File::open(&path).expect("open management TLS resource");
+    assert!(
+        file.metadata().expect("management resource metadata").is_file(),
+        "management TLS resource must be a regular file"
+    );
+    let mut bytes = Vec::new();
+    file.take((sealed::MAX_RESOURCE_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)
+        .expect("read bounded management TLS resource");
+    // A canonical sealed shape is required before embedding; signature/context
+    // verification uses the installed boot policy at runtime, never this file.
+    sealed::signature_digest(&bytes).expect("malformed management TLS sealed resource");
+    println!("cargo:rerun-if-changed={name}");
+    let staged = std::path::PathBuf::from(env::var_os("OUT_DIR").unwrap())
+        .join("management-tls-resource.bin");
+    std::fs::write(&staged, bytes).expect("stage sealed management TLS resource");
+    println!("cargo:rustc-env=CATTEN_MANAGEMENT_TLS_RESOURCE_FILE={}", staged.display());
+    println!("cargo:rustc-cfg=catten_management_resource");
 }

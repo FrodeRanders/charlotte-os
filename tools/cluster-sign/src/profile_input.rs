@@ -24,6 +24,18 @@ impl ProfileInput {
 }
 
 pub(super) fn read_file(path: &str) -> io::Result<ProfileInput> {
+    read_bounded_file(path, MAX_PROFILE_LEN)
+}
+
+pub(super) fn read_bounded_file(path: &str, maximum: usize) -> io::Result<ProfileInput> {
+    read_file_with_policy(path, maximum, false)
+}
+
+pub(super) fn read_bounded_private_file(path: &str, maximum: usize) -> io::Result<ProfileInput> {
+    read_file_with_policy(path, maximum, true)
+}
+
+fn read_file_with_policy(path: &str, maximum: usize, private: bool) -> io::Result<ProfileInput> {
     let mut options = OpenOptions::new();
     options.read(true);
     #[cfg(unix)]
@@ -39,16 +51,33 @@ pub(super) fn read_file(path: &str) -> io::Result<ProfileInput> {
             "plaintext profile must be a regular file",
         ));
     }
-    if metadata.len() == 0 || metadata.len() > MAX_PROFILE_LEN as u64 {
+    #[cfg(unix)]
+    if private {
+        use std::os::unix::fs::MetadataExt;
+        if metadata.uid() != unsafe { libc::geteuid() } || metadata.mode() & 0o077 != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "management private input must belong to the effective user with no group/other \
+                 permissions",
+            ));
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = private;
+    if metadata.len() == 0 || metadata.len() > maximum as u64 {
         return Err(invalid_length());
     }
-    read_profile(file)
+    read_profile_bounded(file, maximum)
 }
 
 /// The file adapter checks its captured descriptor before this byte reader.
 /// One extra byte detects growth beyond the envelope's existing profile bound.
-pub(super) fn read_profile(mut reader: impl Read) -> io::Result<ProfileInput> {
-    let mut bytes = Zeroizing::new(vec![0; MAX_PROFILE_LEN + 1]);
+pub(super) fn read_profile_bounded(
+    mut reader: impl Read,
+    maximum: usize,
+) -> io::Result<ProfileInput> {
+    let capacity = maximum.checked_add(1).filter(|_| maximum != 0).ok_or_else(invalid_length)?;
+    let mut bytes = Zeroizing::new(vec![0; capacity]);
     let mut len = 0;
     loop {
         let destination = &mut bytes[len..];
@@ -67,7 +96,7 @@ pub(super) fn read_profile(mut reader: impl Read) -> io::Result<ProfileInput> {
             break;
         }
         len += count;
-        if len > MAX_PROFILE_LEN {
+        if len > maximum {
             return Err(invalid_length());
         }
     }
@@ -81,5 +110,8 @@ pub(super) fn read_profile(mut reader: impl Read) -> io::Result<ProfileInput> {
 }
 
 fn invalid_length() -> io::Error {
-    io::Error::new(io::ErrorKind::InvalidData, "plaintext profile must contain 1..=65536 bytes")
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        "plaintext profile length is outside configured bounds",
+    )
 }

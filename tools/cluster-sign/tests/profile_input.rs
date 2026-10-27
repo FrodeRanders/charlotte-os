@@ -12,8 +12,11 @@ use zeroize::Zeroizing;
 mod profile_input;
 #[path = "../../../tests/transport/support.rs"]
 mod support;
-use profile_input::read_profile;
 use support::observe;
+
+fn read_profile(reader: impl Read) -> io::Result<profile_input::ProfileInput> {
+    profile_input::read_profile_bounded(reader, MAX_PROFILE_LEN)
+}
 
 #[test]
 fn successful_input_erases_without_growth() {
@@ -236,6 +239,21 @@ fn file_adapter_rejects_unsafe_sources_and_cli_preserves_envelope_contract() {
     assert!(profile_input::read_file(fifo.to_str().unwrap()).is_err());
     let plaintext = vec![b'Z'; MAX_PROFILE_LEN];
     fs::write(&input, &plaintext).unwrap();
+    fs::set_permissions(&input, fs::Permissions::from_mode(0o644)).unwrap();
+    assert_eq!(
+        profile_input::read_bounded_private_file(input.to_str().unwrap(), MAX_PROFILE_LEN)
+            .err()
+            .unwrap()
+            .kind(),
+        io::ErrorKind::PermissionDenied
+    );
+    fs::set_permissions(&input, fs::Permissions::from_mode(0o600)).unwrap();
+    assert_eq!(
+        profile_input::read_bounded_private_file(input.to_str().unwrap(), MAX_PROFILE_LEN)
+            .unwrap()
+            .as_bytes(),
+        plaintext
+    );
     assert_eq!(profile_input::read_file(input.to_str().unwrap()).unwrap().as_bytes(), plaintext);
     assert!(seal(&input).status.success());
     let encoded = fs::read(&output).unwrap();

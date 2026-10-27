@@ -186,7 +186,7 @@ issuing replies.
 Endpoint IPC is the implemented observability protocol. The `httpd` keyhole
 service in userspace is that adapter in practice: it looks up `observe`,
 requests a machine-wide snapshot, and merges it with per-service status into
-a JSON report served over TCP port 80. It remains a replaceable userspace
+a JSON report served over mutually authenticated TLS on TCP port 443. It remains a replaceable userspace
 adapter rather than moving HTTP into the kernel.
 
 The TCP/IP service provides the complete server-side
@@ -196,8 +196,10 @@ snapshot plus the `net`/`tcpip`/`frouter`/`ns`/`dns`/`disco`/`relmsg` status
 ops into one JSON page, reachable from the host via SLIRP `hostfwd`
 (`scripts/run-aarch64.sh --http-test` or
 `scripts/run-x86_64.sh --http-test`). The `httpd` service itself starts during
-an ordinary networked boot; `--http-test` adds host forwarding and validates
-the response rather than enabling the service. The name-service section preserves
+an ordinary networked boot; network admission requires the complete management
+credential resource. `--http-test` supplies disposable development credentials,
+adds host forwarding and validates verified HTTPS. Readers and administrators
+can observe; see [enrollment/configuration](management-tls.md). The name-service section preserves
 printable registry names as JSON strings and represents internal binary keys as
 `hex:<bytes>`; those hexadecimal entries are intentional opaque identifiers,
 not unnamed threads or malformed text.

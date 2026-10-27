@@ -41,6 +41,7 @@ impl embassy_crypto::driver::Rng for HostEntropy {
 embassy_crypto::rng_impl!(HostEntropy);
 
 struct Fixture(PathBuf);
+static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
 
 impl Drop for Fixture {
     fn drop(&mut self) {
@@ -60,8 +61,9 @@ impl Fixture {
 
     fn new() -> Self {
         let fixture = Self(std::env::temp_dir().join(format!(
-            "charlotte-management-tls-{}-{}",
+            "charlotte-management-tls-{}-{}-{}",
             std::process::id(),
+            NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed),
             SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
         )));
         fs::create_dir(&fixture.0).unwrap();
@@ -219,6 +221,43 @@ fn clock() -> Arc<Clock> {
 
 fn config(credentials: Credentials, clock: Arc<Clock>, limits: Limits) -> Config {
     Config::new(credentials, clock, limits).unwrap()
+}
+
+#[test]
+fn serialized_profile_prepares_without_clock_and_activates_only_after_real_time() {
+    use charlotte_launch::management::{
+        self,
+        ProfileInput,
+    };
+    let fixture = Fixture::new();
+    let key = zeroize::Zeroizing::new(fs::read(fixture.0.join("server-key.der")).unwrap());
+    let chain = [fixture.cert("server")];
+    let roots = [fixture.cert("ca")];
+    let operators =
+        [fixture.identity("reader", Role::Reader), fixture.identity("admin", Role::Administrator)];
+    let mut bytes = zeroize::Zeroizing::new(vec![0; management::MAX_PROFILE_BYTES]);
+    let length = management::encode(
+        &ProfileInput {
+            limits: Limits::DEFAULT,
+            server_chain: &[chain[0].as_ref()],
+            client_roots: &[roots[0].as_ref()],
+            operators: &operators,
+            server_key: &key,
+        },
+        &mut bytes,
+    )
+    .unwrap();
+    bytes.truncate(length);
+    let source = Arc::new(Clock(AtomicU64::new(0)));
+    let prepared = PreparedConfig::from_profile(&bytes, source.clone()).unwrap();
+    assert!(matches!(prepared.activate(), Err(PolicyError::InvalidClock)));
+    source.0.store(clock().0.load(Ordering::Relaxed), Ordering::Relaxed);
+    let mut session = Session::new(prepared.activate().unwrap(), 0).unwrap();
+    let mut client = client(&fixture, Some("reader"), "ca");
+    handshake(&mut session, &mut client, 11).unwrap();
+    assert_eq!(session.identity().unwrap().role(), Role::Reader);
+    source.0.store(0, Ordering::Relaxed);
+    assert!(matches!(prepared.activate(), Err(PolicyError::InvalidClock)));
 }
 
 fn client_config(fixture: &Fixture, name: Option<&str>, root: &str) -> Arc<ClientConfig> {

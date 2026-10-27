@@ -113,6 +113,7 @@ test = false
 bench = false
 
 [dependencies]
+charlotte-management-tls = { path = "../charlotte-management-tls" }
 charlotte-authorization = { path = "../charlotte-authorization" }
 catten-rt = { path = "../catten-rt" }
 charlotte-launch = { path = "../charlotte-launch" }

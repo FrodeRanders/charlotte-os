@@ -1,5 +1,7 @@
 #![no_std]
 
+extern crate alloc;
+
 pub mod execution_target;
 
 pub const CONFIG_VADDR: usize = 0x0000_0000_0001_0000;
@@ -59,6 +61,7 @@ const _: () = assert!(HEAP_VADDR + HEAP_SIZE <= STATUS_VADDR);
 pub const MAX_ARTIFACT_ELF_SIZE: usize = 4 * 1024 * 1024;
 /// Guest TCP port of the bounded signed-descriptor notification ingress.
 pub const DEPLOY_NOTIFY_PORT: u16 = 7444;
+pub const MANAGEMENT_STATUS_PORT: u16 = 443;
 
 /// DNS service status-page ABI shared by the EL0 service and its kernel boot
 /// verifier. Every field is an aligned little-endian `u32` byte offset.
@@ -67,6 +70,7 @@ pub mod sha256;
 pub mod deployment;
 pub mod ingress;
 pub mod ingress_policy;
+pub mod management;
 pub mod operations;
 pub mod operations_bundle;
 pub mod operations_pickup;

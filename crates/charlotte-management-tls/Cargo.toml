@@ -5,6 +5,7 @@ edition = "2024"
 description = "Freestanding mutually authenticated CharlotteOS management TLS"
 
 [dependencies]
+charlotte-launch = { path = "../charlotte-launch" }
 rustls = { version = "=0.23.46", default-features = false, features = ["custom-provider"] }
 embassy-crypto = { git = "https://github.com/embassy-rs/embassy", rev = "822a76ea91f2c0885c6eb0c65fe91181e31133e1" }
 p256 = { version = "0.14", default-features = false, features = ["pkcs8", "ecdsa", "alloc"] }

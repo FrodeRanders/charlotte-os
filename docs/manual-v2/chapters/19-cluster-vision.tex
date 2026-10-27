@@ -680,7 +680,8 @@ decisions that drive placement, while retaining a per-node freshness marker
 so a committed resource promise is not confused with a recent capacity
 measurement.
 
-An unnamed operations VIP on port 80 can identify the built-in keyhole. The
+An unnamed operations VIP on port 443 can identify the built-in TLS keyhole.
+An enrolled reader or administrator certificate is required. The
 leader normally advertises that VIP, but DSR may deliver the connection to any
 admitted, non-draining member. Consequently each reply names both the leader
 and the serving node. Leadership movement changes the advertiser without
@@ -696,14 +697,15 @@ management-endpoint record can support an authenticated
 \path{/cluster/nodes/{node-key}/metrics} proxy, keeping node drill-down
 behind the same policy as the cluster view.
 
-The current port-80 adapter is unauthenticated and belongs only on a protected
-operations network or test forwarding. Production use requires a separate
-mTLS frontend with attenuated read capabilities. Its encrypted operational
-profile should contain the server identity and observer-client trust anchor;
-neither belongs in the application descriptor or Raft log. A browser then
+The current native adapter requires mutual TLS on port 443 for both direct
+node and VIP access. Its signed, encrypted boot resource supplies the server
+identity, client roots and exact leaf/role enrollments; neither credentials nor
+private keys belong in the application descriptor or Raft log. A browser
 uses an operations-issued PKCS\#12 client identity with \texttt{clientAuth},
 not the cluster signing key. The complete boundary and browser setup are
-documented in \repofile|docs/architecture/cluster-observability.md|.
+documented in \repofile|docs/architecture/cluster-observability.md|. Public
+development trust is not protected enrollment, and native rotation/revocation
+and leader movement still require qualification.
 
 \subsection{Focused stateless-handoff validation}
 
@@ -854,10 +856,14 @@ deployment uses the host's \texttt{cluster-sign deployment-notify} command.
 Signed scoped launch remains the application launch contract. Retired opcodes
 reject rather than translating their old payloads.
 
-The normal service set also starts \texttt{deployd}. Its bounded plaintext
-HTTP endpoint accepts a \texttt{POST} to \texttt{/v1/deployments} on guest port 7444 with
-exactly one signed descriptor as the body. The signature is the authorization
-and integrity envelope and the descriptor carries no secret. Lower sequences
+The normal service set also starts \texttt{deployd}. Its bounded, mutually
+authenticated TLS endpoint accepts a \texttt{POST} to
+\texttt{/v1/deployments} on guest port 7444 with exactly one signed descriptor
+as the body. The client must be an enrolled administrator before controller
+dispatch; the signature remains the descriptor's authorization and integrity
+envelope. Readers can observe status but cannot mutate. Missing management
+credentials disable network admission without a plaintext fallback; see
+Chapter~\ref{chap:configuration}. Lower sequences
 are rejected, different bytes at an existing sequence conflict, and identical
 notifications are idempotent. QEMU's user network forwards host port 8081 by
 default; \texttt{cluster-sign deployment-notify} is the corresponding host

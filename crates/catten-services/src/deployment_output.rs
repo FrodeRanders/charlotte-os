@@ -1,18 +1,15 @@
 //! Owning, CQ-bound deployment response sends with confirmed prefix receipts.
-use catten_rt::owned::{
-    CallResult,
-    IpcError,
-    PendingCall,
-};
+use catten_rt::owned::IpcError;
 
 use crate::{
     deadline::Deadline,
     deployment_control::Response,
     deployment_input::MAX_CLIENTS,
-    socket::{
-        OwnedSocket,
-        SocketError,
+    management_io::{
+        Advance,
+        Connection as OwnedSocket,
     },
+    socket::SocketError,
     socket_send::MAX_PAYLOAD,
 };
 
@@ -27,6 +24,7 @@ pub enum Error {
     InvalidReply,
     Deadline,
     Capacity,
+    Transport(crate::management_io::Error),
 }
 
 trait Calls {
@@ -36,13 +34,25 @@ trait Calls {
     fn now(&self) -> u64;
     fn submit(
         &mut self,
-        socket: &Self::Socket,
+        socket: &mut Self::Socket,
         bytes: &[u8],
         deadline: &Deadline,
+        cq: u32,
+        final_response: bool,
     ) -> Result<Self::Pending, Error>;
     fn bind(&mut self, pending: &mut Self::Pending, cq: u32) -> Result<(), ()>;
     fn abort(&mut self, pending: &Self::Pending, socket: &Self::Socket) -> !;
-    fn poll(&mut self, pending: &mut Self::Pending) -> Result<Option<Self::Reply>, Error>;
+    fn poll(
+        &mut self,
+        socket: &mut Self::Socket,
+        pending: &mut Self::Pending,
+    ) -> Result<Advance<Self::Reply>, Error>;
+    fn chunk_size(_socket: &Self::Socket) -> usize {
+        MAX_PAYLOAD
+    }
+    fn remaining(_socket: &Self::Socket) -> u64 {
+        u64::MAX
+    }
     fn receipt(reply: Self::Reply, submitted: usize) -> Result<usize, Error>;
 }
 
@@ -89,10 +99,16 @@ impl<C: Calls> Machine<C> {
         if owner.deadline.expired_at(self.calls.now()) {
             return Err(Error::Deadline);
         }
-        let end = owner.response.len().min(owner.offset + MAX_PAYLOAD);
+        let end = owner.response.len().min(owner.offset + C::chunk_size(&owner.socket));
         let bytes = &owner.response.as_bytes()[owner.offset..end];
         owner.submitted = bytes.len();
-        owner.pending = Some(self.calls.submit(&owner.socket, bytes, &owner.deadline)?);
+        owner.pending = Some(self.calls.submit(
+            &mut owner.socket,
+            bytes,
+            &owner.deadline,
+            self.cq,
+            end == owner.response.len(),
+        )?);
         if self.calls.bind(owner.pending.as_mut().unwrap(), self.cq).is_err() {
             self.calls.abort(owner.pending.as_ref().unwrap(), &owner.socket);
         }
@@ -143,9 +159,16 @@ impl<C: Calls> Machine<C> {
             let result = if owner.deadline.expired_at(now) {
                 Err(Error::Deadline)
             } else {
-                match self.calls.poll(owner.pending.as_mut().expect("accepted send")) {
-                    Ok(None) => continue,
-                    Ok(Some(reply)) => {
+                match self
+                    .calls
+                    .poll(&mut owner.socket, owner.pending.as_mut().expect("accepted send"))
+                {
+                    Ok(Advance::Waiting) => continue,
+                    Ok(Advance::Progress) => {
+                        self.cursor = (index + 1) % MAX_CLIENTS;
+                        return (true, None);
+                    }
+                    Ok(Advance::Ready(reply)) => {
                         drop(owner.pending.take());
                         C::receipt(reply, owner.submitted)
                     }
@@ -172,7 +195,11 @@ impl<C: Calls> Machine<C> {
 
     fn remaining_ms(&self) -> Option<u64> {
         let now = self.calls.now();
-        self.outputs.iter().flatten().map(|owner| owner.deadline.remaining_ms_at(now)).min()
+        self.outputs
+            .iter()
+            .flatten()
+            .map(|owner| owner.deadline.remaining_ms_at(now).min(C::remaining(&owner.socket)))
+            .min()
     }
 
     fn occupied_slots(&self) -> usize {
@@ -182,8 +209,8 @@ impl<C: Calls> Machine<C> {
 
 struct Runtime<'a>(core::marker::PhantomData<&'a ()>);
 impl<'a> Calls for Runtime<'a> {
-    type Pending = PendingCall<'static>;
-    type Reply = CallResult;
+    type Pending = Deadline;
+    type Reply = usize;
     type Socket = OwnedSocket<'a>;
 
     fn now(&self) -> u64 {
@@ -192,40 +219,48 @@ impl<'a> Calls for Runtime<'a> {
 
     fn submit(
         &mut self,
-        socket: &Self::Socket,
+        socket: &mut Self::Socket,
         bytes: &[u8],
         deadline: &Deadline,
+        cq: u32,
+        final_response: bool,
     ) -> Result<Self::Pending, Error> {
-        socket.send_call(bytes, deadline).map_err(|error| match error {
-            SocketError::RetryExhausted => Error::Deadline,
-            other => Error::Submission(other),
-        })
+        socket.begin_send(bytes, final_response, cq).map_err(Error::Transport)?;
+        Ok(*deadline)
     }
 
-    fn bind(&mut self, pending: &mut Self::Pending, cq: u32) -> Result<(), ()> {
-        pending.bind_cq(cq).map_err(|_| ())
+    // Local output admission precedes wire submission. Each accepted wire RPC
+    // binds inside its complete management connection and aborts on rejection.
+    fn bind(&mut self, _: &mut Deadline, _: u32) -> Result<(), ()> {
+        Ok(())
     }
 
-    fn abort(&mut self, _pending: &Self::Pending, _socket: &Self::Socket) -> ! {
+    fn abort(&mut self, _: &Deadline, _: &Self::Socket) -> ! {
         catten_rt::domain_abort()
     }
 
-    fn poll(&mut self, pending: &mut Self::Pending) -> Result<Option<Self::Reply>, Error> {
-        pending.poll().map_err(Error::Observation)
+    fn poll(
+        &mut self,
+        socket: &mut Self::Socket,
+        deadline: &mut Deadline,
+    ) -> Result<Advance<usize>, Error> {
+        socket.poll_send(deadline).map_err(Error::Transport)
     }
 
-    fn receipt(reply: Self::Reply, submitted: usize) -> Result<usize, Error> {
-        if reply.memory.is_some() || reply.connection.is_some() {
-            return Err(Error::InvalidReply);
-        }
-        if reply.result < 0 {
-            return Err(Error::Service(reply.result));
-        }
-        let count = usize::try_from(reply.result).map_err(|_| Error::InvalidReply)?;
+    fn receipt(count: usize, submitted: usize) -> Result<usize, Error> {
         if count == 0 || count > submitted {
-            return Err(Error::InvalidReply);
+            Err(Error::InvalidReply)
+        } else {
+            Ok(count)
         }
-        Ok(count)
+    }
+
+    fn chunk_size(socket: &Self::Socket) -> usize {
+        MAX_PAYLOAD.min(socket.plaintext_capacity())
+    }
+
+    fn remaining(socket: &Self::Socket) -> u64 {
+        socket.remaining_ms()
     }
 }
 
@@ -312,9 +347,11 @@ mod tests {
 
         fn submit(
             &mut self,
-            socket: &Socket,
+            socket: &mut Socket,
             bytes: &[u8],
             deadline: &Deadline,
+            _cq: u32,
+            _final_response: bool,
         ) -> Result<Pending, Error> {
             if self.reject {
                 return Err(Error::Capacity);
@@ -338,8 +375,15 @@ mod tests {
             panic!("send bind rejected with both owners live")
         }
 
-        fn poll(&mut self, pending: &mut Pending) -> Result<Option<i64>, Error> {
-            self.replies[pending.0].pop_front().transpose()
+        fn poll(
+            &mut self,
+            _socket: &mut Socket,
+            pending: &mut Pending,
+        ) -> Result<Advance<i64>, Error> {
+            match self.replies[pending.0].pop_front() {
+                Some(reply) => reply.map(Advance::Ready),
+                None => Ok(Advance::Waiting),
+            }
         }
 
         fn receipt(result: i64, submitted: usize) -> Result<usize, Error> {

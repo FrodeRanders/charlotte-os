@@ -14,6 +14,7 @@ import socket
 import signal
 import struct
 import time
+from management_tls import connect
 
 
 STATUS_REQUEST = (
@@ -22,8 +23,8 @@ STATUS_REQUEST = (
 )
 
 
-def read_response(client, deadline):
-    response = bytearray()
+def read_response(client, deadline, initial=b""):
+    response = bytearray(initial)
     body_start = None
     length = None
     while True:
@@ -55,7 +56,7 @@ def request(port, payload, expected):
     for attempt in range(3):
         try:
             deadline = time.monotonic() + 12
-            with socket.create_connection(("127.0.0.1", port), timeout=12) as client:
+            with connect(port, timeout=12) as client:
                 client.sendall(payload)
                 status, body = read_response(client, deadline)
             assert status == expected, (status, body)
@@ -76,7 +77,7 @@ def trickled_body(port):
     # One connection with an incomplete but length-valid signed-descriptor
     # envelope. Individual receive waits must not restart the total deadline.
     time.sleep(0.5)
-    with socket.create_connection(("127.0.0.1", port), timeout=12) as client:
+    with connect(port, timeout=12) as client:
         start = time.monotonic()
         deadline = start + 35
         client.sendall(
@@ -94,12 +95,12 @@ def trickled_body(port):
                 client.sendall(b"x")
                 next_byte = now + 1
             try:
-                first = client.recv(1, socket.MSG_PEEK)
+                first = client.recv(1)
                 if not first:
                     raise EOFError("trickled body closed without deadline rejection")
             except socket.timeout:
                 continue
-        code, body = read_response(client, deadline)
+        code, body = read_response(client, deadline, first)
         elapsed = time.monotonic() - start
         assert code == 400, (code, body)
         # Ensure this sampled the total body deadline rather than immediate
@@ -123,13 +124,13 @@ def concurrent_input(port):
         peers = []
         try:
             for payload in payloads:
-                peer = socket.create_connection(("127.0.0.1", port), timeout=3)
+                peer = connect(port, timeout=3)
                 peers.append(peer)
                 peer.sendall(payload)
                 time.sleep(0.15)
             start = time.monotonic()
             deadline = start + 3
-            with socket.create_connection(("127.0.0.1", port), timeout=3) as healthy:
+            with connect(port, timeout=3) as healthy:
                 healthy.sendall(STATUS_REQUEST)
                 code, body = read_response(healthy, deadline)
             elapsed = time.monotonic() - start
@@ -138,10 +139,10 @@ def concurrent_input(port):
             # The healthy reply must arrive before the stalled peers are
             # rejected. Do not count eventual serial deadline recovery as fairness.
             for peer in peers:
-                peer.settimeout(0)
+                peer.settimeout(0.001)
                 try:
-                    observed = peer.recv(1, socket.MSG_PEEK)
-                except BlockingIOError:
+                    observed = peer.recv(1)
+                except (BlockingIOError, socket.timeout):
                     continue
                 raise AssertionError((name, "stalled peer already completed", observed))
             print(f"PASS: concurrent {name}: {len(peers)} stalled peers; healthy reply in {elapsed:.3f}s", flush=True)
@@ -197,7 +198,7 @@ def main():
         client.shutdown(socket.SHUT_WR)
     status(args.port)
     print("PASS: deployment EOF recovery", flush=True)
-    with socket.create_connection(("127.0.0.1", args.port), timeout=12) as client:
+    with connect(args.port, timeout=12) as client:
         client.sendall(STATUS_REQUEST)
         client.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
     status(args.port)

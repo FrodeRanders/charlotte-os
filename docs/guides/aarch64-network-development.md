@@ -78,11 +78,14 @@ To configure the operational distributed-ingress path (without adding a test
 workload), supply a cluster service to every participating guest:
 
 ```sh
-./scripts/run-aarch64.sh release --cluster-service 10.0.2.42:80
+./scripts/run-aarch64.sh release --http-test --cluster-service 10.0.2.42:443
 ```
 
 On the default single-guest SLIRP network the runner forwards host port 8080
-to that VIP and port, which provides a basic HTTP demonstrator. For a real
+to that VIP and port, which provides the mutually authenticated TLS keyhole.
+The explicit probe creates disposable development credentials; ordinary boot
+requires a supplied management resource and verified client files as described
+in [management TLS](../reference/management-tls.md). For a real
 multi-node load-sharing exercise, place all guests and the client on a shared
 tap/bridge or socket-backed L2 fixture and use the same `VIP:port` on every
 node.

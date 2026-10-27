@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Check the real deployment-apply CLI against a local scripted ingress peer."""
 import argparse
+import management_tls_fixture
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 import subprocess
@@ -81,6 +82,7 @@ class Generation(unittest.TestCase):
                 pass
 
         with HTTPServer(("127.0.0.1", 0), Handler) as server:
+            management_tls_fixture.install(server)
             thread = threading.Thread(target=server.serve_forever,
                                       kwargs={"poll_interval": 0.01}, daemon=True)
             thread.start()

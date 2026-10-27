@@ -1,7 +1,7 @@
 # Security remediation status and completion criteria
 
-Reviewed 2026-10-15 against `1109d05a`, following the security audits and
-subsequent fixes; numbered finding dispositions are unchanged. Source and tests
+Updated 2026-10-27 following native management TLS qualification; SEC-10 moves
+from open to partial. Earlier reviews retain their original dispositions. Source and tests
 remain authoritative. Historical reports preserve the state at their own
 revision; their remaining-work paragraphs are not a current backlog.
 
@@ -10,10 +10,12 @@ revision; their remaining-work paragraphs are not a current backlog.
 | State | Findings | Meaning |
 | --- | --- | --- |
 | Corrected in the documented scope | SEC-01, 02, 03, 05, 11, 12, 13, 16, 17, 19–38 | The identified defect has a correction and recorded validation. This is not a claim of complete subsystem security. |
-| Partly corrected or mitigated | SEC-04, 06, 07, 14, 15, 18 | Specific paths are strengthened; the broader finding still has required work. |
-| Open | SEC-08, 09, 10 | The required security boundary is not implemented. |
+| Partly corrected or mitigated | SEC-04, 06, 07, 10, 14, 15, 18 | Specific paths are strengthened; the broader finding still has required work. |
+| Open | SEC-08, 09 | The required security boundary is not implemented. |
 
-There are **38 numbered findings: 29 corrected, six partial and three open**.
+There are **38 numbered findings: 29 corrected, seven partial and two open**.
+SEC-10 now has native authenticated transport and exact operator roles, with
+protected enrollment and broader rotation/failover qualification still required.
 The [2026-10-10 progress verification](../reports/audits/2026-10-10-security-progress-verification.md)
 temporarily returned SEC-12 to partial for metadata-read failure and automatic-ID
 aliasing. The [follow-up correction](../reports/audits/2026-10-10-security-object-store-follow-up.md)
@@ -995,16 +997,21 @@ The next priority is trust and authenticated communication. Work on SEC-07/18
 continues against the finite criteria above; it does not substitute for these
 missing boundaries.
 
-The [27 October management TLS component](../reports/audits/2026-10-27-security-management-tls-engine.md)
-starts SEC-10's native server migration. Its mandatory mTLS, exact operator
-enrollment/roles, bounded protocol engine and standard-client controls are
-implemented and compile for both service targets. **Neither native listener is
-wired to it yet; existing management traffic remains plaintext.** Startup trust,
-CQ-owned transport integration, handler authorization, direct/VIP replacement
-and QEMU qualification remain the next gates in the
-[management TLS contract](management-tls.md). SEC-10 stays open, finding counts
-are unchanged and production remains disabled. This component is not new SEC-04
-custody, SEC-08 peer authentication or SEC-09 time authority.
+The [27 October native management TLS migration](../reports/audits/2026-10-27-security-management-tls-native.md)
+replaces both plaintext listeners with mandatory TLS 1.3 and exact enrolled
+reader/administrator identities. One signed HPKE boot resource supplies server
+credentials, client roots, roles and all eleven adjustable limits from the same
+prepared kernel trust owner. Handler authorization precedes controller dispatch;
+signed mutation bodies remain required. Verified host/browser setup and native
+CQ ownership are documented in the [management contract](management-tls.md).
+Final ARM single-node VIP and x86 direct-node tests reject unauthorized clients,
+reader mutations, wrong names/roots and plaintext while preserving healthy
+progress and original deadlines. SEC-10 moves to **partial**, not corrected:
+protected credential installation/custody, native resource replacement/revocation,
+leader movement and broader fault/pressure qualification remain. Production stays
+disabled; SEC-04, SEC-08, SEC-09 and SEC-15 retain their separate gaps. The
+historical [engine component report](../reports/audits/2026-10-27-security-management-tls-engine.md)
+continues to describe its earlier unwired checkpoint.
 
 The [public-key input follow-up](../reports/audits/2026-10-21-security-public-key-input.md) corrects a host-tool input gap:
 ordinary public-key file arguments now share trust-policy's bounded regular-file

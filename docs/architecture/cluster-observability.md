@@ -26,7 +26,7 @@ and renders JSON. A stale or malformed view becomes HTTP 503.
 The cluster keyhole can be assigned an operations-owned VIP, for example:
 
 ```text
-scripts/run-aarch64.sh release --cluster-service 10.0.2.42:80
+scripts/run-aarch64.sh release --http-test --cluster-service 10.0.2.42:443
 ```
 
 An unnamed assignment denotes a platform service, so its new-flow backend set
@@ -71,28 +71,29 @@ network, but it should use the same observer identity policy.
 
 ## Access control and browser certificates
 
-The current `httpd` implements plain HTTP and has no server-side TLS stack or
-request identity. Both node and cluster endpoints therefore belong only on an
-isolated operations network, VPN, or equivalent trusted test segment. They
-must not be exposed to an untrusted LAN or the public Internet. DSR supplies a
-stable address; authentication must come from another mechanism.
+The native `httpd` requires mutual TLS on port `443` for direct node and
+cluster/VIP views. Deployment ingress uses the same mandatory TLS engine on
+`7444`. An exact DER leaf digest is enrolled as reader or administrator; a
+CA-issued but unenrolled certificate grants nothing. Readers can observe;
+mutations require an administrator before controller dispatch and still require
+the signed operation bodies. DSR is a routing identity, not authorization.
 
-Production access should use mutual TLS at a dedicated cluster-keyhole
-frontend:
+One complete signed HPKE boot resource carries server key/chain, client roots,
+explicit enrollments and all eleven adjustable TLS limits. The kernel checks
+its exact selected admission policy before trust publication and supplies
+read-only launch profiles to both services. There is no separately selected
+frontend authority or exposed plaintext backend. Missing credentials disable
+network admission. Server certificate SANs must cover the expected DNS/IP name;
+client certificates need `clientAuth` EKU and proof of private-key possession.
+See [management TLS](../reference/management-tls.md) for file-based enrollment,
+verified host clients, resource installation and related limits.
 
-1. Operations provisions a server certificate whose subject alternative name
-   contains the keyhole DNS name (and, if policy permits it, the VIP), plus a
-   separate trust anchor for observer client certificates.
-2. The encrypted operational profile delivers the server private key,
-   certificate chain, and client trust anchor directly to connector launch
-   memory. Secrets do not enter the application descriptor, Raft log,
-   observability output, or unencrypted object-store objects.
-3. The frontend requires a client certificate with the `clientAuth` extended
-   key usage and an operator-approved observer role. Short-lived certificates
-   and overlapping trust generations permit rotation and revocation.
-4. The frontend receives attenuated read capabilities only: cluster snapshot,
-   node snapshot proxy, or both. It receives no deployment or policy-mutation
-   capability.
+Public development roots, unauthenticated SNTP and incomplete custody mean
+production remains disabled. Native single-node direct/VIP qualification does
+not establish protected installation, full rotation/revocation or multi-node
+leader movement. Replacement requires advancing the installed policy revision,
+replacing the complete resource and restarting both services; old sessions are
+not hot reconfigured.
 
 The observer certificate is not the cluster signing key and must not reuse
 that key material. Signing establishes authority over committed cluster
@@ -100,8 +101,7 @@ records; an observer client identity authorizes a human or tool to read a
 particular view. Keeping those credentials separate preserves the development,
 operations, and cluster trust boundaries.
 
-Once server-side TLS and the keyhole operational profile are implemented, a
-browser is configured as follows:
+A browser is configured as follows:
 
 1. Operations issues a password-protected PKCS#12 (`.p12`/`.pfx`) bundle
    containing the observer's client certificate and private key.
@@ -116,8 +116,10 @@ browser is configured as follows:
 4. Select the observer certificate when prompted. Never export or install a
    cluster signing private key in the browser.
 
-This describes the setup we want. The current port-80 implementation does not
-enforce mTLS; access control still depends on network isolation.
+Importing an identity does not enroll its leaf or assign its role. Both the
+client trust store and the server enrollment must match the reviewed policy.
+`--http-test` uses disposable test credentials; ordinary boot requires the
+explicit resource. No insecure verification or plaintext fallback is provided.
 
 Version 2 removes the local object ID from deployment observations and the
 JSON keyhole; deployment placement and readiness are represented by actual
