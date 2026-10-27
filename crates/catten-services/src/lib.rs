@@ -73,6 +73,7 @@ pub mod cluster_ingress;
 pub mod cluster_observe;
 /// Complete, bounded DNS catalog observations shared by DNS and HTTP.
 pub mod dns_catalog;
+pub mod ingress_availability;
 /// Replicated name catalog: the Raft state machine for the distributed name
 /// service.
 pub mod name_catalog;

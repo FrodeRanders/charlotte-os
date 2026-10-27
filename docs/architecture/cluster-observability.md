@@ -30,7 +30,12 @@ scripts/run-aarch64.sh release --http-test --cluster-service 10.0.2.42:443
 ```
 
 An unnamed assignment denotes a platform service, so its new-flow backend set
-is the admitted, non-draining membership. DSR follows its normal semantics:
+is the admitted, non-draining membership intersected with the committed
+[availability projection](../reference/ingress-availability.md). The leader
+derives it from recent successful current-term replication; a term/membership
+mismatch fences new-flow admission until a replacement commits. Followers use
+the same applied set, and existing flow bindings retain their original epoch.
+DSR follows its normal semantics:
 the selected advertiser answers ARP for the VIP and forwards a flow directly
 to one eligible member. The leader is normally the advertiser, but it need not
 terminate the HTTP connection. Any eligible member can serve a fresh applied

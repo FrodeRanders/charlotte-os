@@ -17,6 +17,9 @@ There are **38 numbered findings: 29 corrected, seven partial and two open**.
 SEC-10 now has native authenticated transport, exact operator roles and x86
 revision-advance/restart revocation evidence. Protected enrollment, platform
 anti-rollback and broader rotation/failover qualification are still required.
+Fresh ARM direct/VIP connections after committed leader-loss convergence now
+have scoped authentication/role/recovery evidence; established sessions and
+interrupted accepted work remain separate.
 The [2026-10-10 progress verification](../reports/audits/2026-10-10-security-progress-verification.md)
 temporarily returned SEC-12 to partial for metadata-read failure and automatic-ID
 aliasing. The [follow-up correction](../reports/audits/2026-10-10-security-object-store-follow-up.md)
@@ -1068,6 +1071,17 @@ at VIP recovery; TCP metadata now identifies SYNs forwarded to the killed node.
 Backend availability/drain policy remains unresolved. These results do not
 qualify the entire network stack, automatic membership removal or broad pressure
 fairness; SEC-06/10 and all finding counts retain their existing dispositions.
+
+The [ingress-availability follow-up](../reports/audits/2026-10-27-security-ingress-availability.md)
+commits a bounded leader/term/membership-fenced backend set from recent
+current-term replication acknowledgements. A silent voter remains a member but
+does not receive new flows after the projection converges; existing bindings
+keep their original epoch. The full native ARM management campaign now passes
+signed follower mutations and all twelve direct/VIP rejection/recovery controls.
+Catalog-v19/pair-v4 persist the projection and reject older stores before
+replay. This corrects the observed killed-backend selection gap, without closing
+SEC-10 or supplying peer authentication, protected provisioning, uninterrupted
+sessions, automatic voter removal or physical cleanup authority.
 
 The [public-key input follow-up](../reports/audits/2026-10-21-security-public-key-input.md) corrects a host-tool input gap:
 ordinary public-key file arguments now share trust-policy's bounded regular-file

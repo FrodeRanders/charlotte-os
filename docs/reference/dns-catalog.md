@@ -1,7 +1,7 @@
 # Complete DNS catalog observations
 
 `dns::OP_CATALOG` returns one locally applied active catalog. It is diagnostic
-metadata, separate from persistent catalog-v18, Raft pair-v3 and linearizable
+metadata, separate from persistent catalog-v19, Raft pair-v4 and linearizable
 lookup. The request has `arg0 = 0` and no attachments. Invalid requests consume
 their unique received attachments and return `ERR_BAD_OPCODE`.
 

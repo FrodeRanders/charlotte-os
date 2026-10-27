@@ -130,7 +130,7 @@ stale connections fail and clients can re-lookup a replacement generation.
 
 The operational DNS node requires persistent storage. One jointly opened pair
 of stable objects derived from cluster/node identity holds tagged
-\texttt{CRFTSTA3} term/vote/join-admission state and \texttt{CRFTLOG3}
+\texttt{CRFTSTA4} term/vote/join-admission state and \texttt{CRFTLOG4}
 snapshot/log state. Only two absent objects authorize initialization;
 incomplete, corrupt and unsupported records reject without reset or a volatile
 fallback. Older layouts are not migrated. Mutations are followed by an NVMe
@@ -140,14 +140,20 @@ changes must ship an explicit, interruption-tested migration preserving
 election, admission and committed state. See
 \path{docs/reference/raft-persistence.md}.
 
-The catalog accepts only its complete version-18 snapshot, identified by
-\texttt{CATALOGI}. It retains mandatory execution profiles and per-replica signed variant indices,
+The catalog accepts only its complete version-19 snapshot, identified by
+\texttt{CATALOGJ}. It retains mandatory execution profiles and per-replica signed variant indices,
 without redundant object IDs, primary nodes or variant-zero digests. Earlier snapshot decoders and synthesized generations,
 digests, descriptors, replica sets and authorization signatures are removed.
 Every registration command carries an explicit deployment generation: zero
 for system services, or the exact desired generation for applications. Missing
-suffixes reject before catalog mutation; all callers use one encoder. Pair-v3
-and catalog-v18 tags reject earlier logs and snapshots before replay.
+suffixes reject before catalog mutation; all callers use one encoder. Pair-v4
+and catalog-v19 tags reject earlier logs and snapshots before replay.
+The current catalog also persists a bounded ingress-availability projection:
+generation, leader term, membership epoch, leader identity and eligible voters.
+The leader derives it from recent successful replication of current-term
+entries and publishes it through the same quorum log. A term or membership
+mismatch fences the projection until a replacement commits. Availability
+does not remove a voter, authenticate a peer or prove quiescence.
 Unsupported or malformed application snapshots reject explicitly before Raft
 publishes snapshot progress or membership. Recovery stops on rejection;
 network installation returns failure and retains the existing applied state.

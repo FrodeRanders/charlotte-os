@@ -1,0 +1,2148 @@
+{
+  "date": "2026-10-27",
+  "parent_commit": "434be15a",
+  "scope": "Two full native ARM campaigns pass after committed convergence. Public development trust, unauthenticated L2/SNTP. No instantaneous failure detection, session migration, accepted mutation replay or audit closure. Production disabled.",
+  "source_sha256": {
+    "crates/catten-services/src/ingress_availability.rs": "c927d2188d0b7babe165fdf9f4b718ea32a6c971eadf401bcc020eba164afe74",
+    "crates/catten-services/src/ingress_availability/tests.rs": "b676133921f985fd383e8c65a7fb46ed86c4efcaea51ddbb7249b419f8db4a79",
+    "crates/catten-services/src/bin/dns.rs": "b72c50c4c0d35a6226b0a9339ea3e9302df4673d94c0a8573b4427c7411b33d4",
+    "crates/catten-services/src/cluster_ingress.rs": "ce1c922b6347e4f348f15c5f29f79637bca6066ef162ccd30e476e275f627c5c",
+    "crates/catten-services/src/name_catalog.rs": "156015453f4bf01c08d20fe32333eea6f3a07f26122632486a1a4754d50c6df9",
+    "crates/catten-services/src/name_catalog/snapshot.rs": "fd31946e18b10c7da10ab1e5d72c1386596149a75c6cca3ed15f90f539994d7a",
+    "crates/catten-services/src/name_catalog/tests.rs": "39db05bc465c39b4bc6f881f45158bc8a00720cc6ac2fcc672a2d44833857bcf",
+    "crates/catten-services/src/disk_raft.rs": "29dc93fac1f4b5f26a000ad82f3f426a3518eb57e4659f8748f776ec0e5c4581",
+    "crates/catten-services/src/lib.rs": "b3fdf067a907992d6f32f5e01ee21932852d5eeb13201d9db8d9bc7e12af0c19",
+    "scripts/run-management-failover-test.py": "ed09333c610451e59c3e092001e162dddfbeae1ad15c1fb7a446be03456c2737",
+    "scripts/tests/test-management-failover-observations.py": "bbebcbd133f1e1e0aed69c5757aa08710ac52188497472119aae41e51746d86a"
+  },
+  "persistence": {
+    "catalog": "CATALOGJ version 19",
+    "pair": [
+      "CRFTSTA4",
+      "CRFTLOG4"
+    ],
+    "retired": "catalog versions 1..18 and Raft pairs 1..3 reject, including log-only stores, before writes/replay; no reset/migration fallback"
+  },
+  "limits": {
+    "existing_backend_bound": 64,
+    "existing_source_contact_age_ms": 1000,
+    "existing_router_refresh_ms": 1000,
+    "existing_router_lease_ms": 5000,
+    "probe_original_total_seconds": 12,
+    "phase_original_seconds": 150,
+    "trace_per_class": 4096
+  },
+  "host_validation": {
+    "service_library_passed": 257,
+    "new_integration_codec_restore_tests": 3,
+    "observer_python_passed": 6,
+    "trace_python_passed": 3,
+    "strict_clippy": [
+      "ARM dns/frouter/httpd/deployd service target JSON",
+      "x86 dns/frouter/httpd/deployd service target JSON"
+    ],
+    "bundles_rebuilt": [
+      "ARM",
+      "x86"
+    ],
+    "rustfmt": "passed",
+    "python_syntax": "passed",
+    "fresh_full_host_suite": false,
+    "fresh_TLC": false,
+    "fresh_advisory_scan": false,
+    "initial_sandboxed_library_attempt": {
+      "passed": 251,
+      "loopback_fixtures_denied": 3,
+      "diagnostic": "Os { code: 1, kind: PermissionDenied, message: \"Operation not permitted\" } at tls_client/interop.rs:186",
+      "separate_authorized_final_run": "257 passed; zero failed"
+    }
+  },
+  "historical_failure": {
+    "evidence": "2026-10-27-security-frame-router-readiness-evidence.json",
+    "evidence_sha256": "091938c5170d0ea6fc7bb43c0d3b758d3aa2f136caceff97e029143de26a4198",
+    "kernel_sha256": "846f51815a32c4cf43dc01b2dbcf03ee459cf74fd088afc960e2b50846afc3c7",
+    "state": "failed",
+    "diagnostic": "TimeoutError: _ssl.c:999: The handshake operation timed out",
+    "TCP_metadata": [
+      "tcp path=external dst-mac=52:54:00:12:34:01 10.0.2.2:57437 -> 10.0.2.42:443 flags=0x02 seq=14592001 ack=0 payload=0 monotonic=2110971.955311",
+      "tcp path=forwarded dst-mac=52:54:00:12:34:03 10.0.2.2:57437 -> 10.0.2.42:443 flags=0x02 seq=14592001 ack=0 payload=0 monotonic=2110971.968006",
+      "tcp path=forwarded dst-mac=52:54:00:12:34:03 10.0.2.2:57437 -> 10.0.2.42:443 flags=0x02 seq=14592001 ack=0 payload=0 monotonic=2110971.971392",
+      "tcp path=external dst-mac=52:54:00:12:34:01 10.0.2.2:57437 -> 10.0.2.42:443 flags=0x02 seq=14592001 ack=0 payload=0 monotonic=2110977.680427",
+      "tcp path=forwarded dst-mac=52:54:00:12:34:03 10.0.2.2:57437 -> 10.0.2.42:443 flags=0x02 seq=14592001 ack=0 payload=0 monotonic=2110977.694098",
+      "tcp path=forwarded dst-mac=52:54:00:12:34:03 10.0.2.2:57437 -> 10.0.2.42:443 flags=0x02 seq=14592001 ack=0 payload=0 monotonic=2110977.694783"
+    ],
+    "note": "Retained separately. That flow selected the killed member before availability projections existed."
+  },
+  "shared_native_ARM_service_sha256": {
+    "agent.elf": "6691b60584980e9dfdb0fa21bd0053d4b8ca30caf4e9e9854f96be35f9419489",
+    "cclient.elf": "27b25db1e3fe778ef7a4ddc90117b0a3eea29f47d679e5dde108edce47ded3fc",
+    "client.elf": "23fc1e82fd841367a16b477bab171f5723a8f5005ea70d08a2d318731074898e",
+    "clusterctl.elf": "b68e20073ab0d293e5dc38c4af3673b779bfe8208afc4e8fb38895ed8852b704",
+    "deployd.elf": "e3b339978d3c4d87bac35d72976251f5b6658ee4d3ba60d817e93581219631db",
+    "disco.elf": "0c6bc79a96ae5241258b110079c94bc03eaed4aed26531322de7dea1a417cd53",
+    "dns.elf": "c87b0e78e60a6731f2beb2a95a79801759a2b69ab02485493a287b793b2f5364",
+    "echo.elf": "19eb9344757349a98307bae268306ab838cc4886c5c94a9deac3659d34e5ca13",
+    "frouter.elf": "f78fbe9726ebf96d585ec1da3fa87c9bb1c24126d053ff411897273eb730fbfa",
+    "fs.elf": "feef48e6708b615d2536da6ad2802fce23c01e7c643660bc054dcf06ed3f227c",
+    "grantctl.elf": "6691e9bca6221a0c8bfb8bb54af5d90cf64f5e386da5d1e421f1e1ff1259ae2c",
+    "greet.elf": "b5930389d495dd9b7bffc990df36073eac7c49707b0a79eacd2837616428ccc5",
+    "httpd.elf": "6c8ad17d43d86cd3f2577bd6e25f1b3c62df33335187ac1cb60b9b386f635295",
+    "kafka.elf": "f043fa1d68c50d6aceaf9792ce2a8f5969a8c49cf128d095da0ccede39d9468c",
+    "kafka_fence_smoke.elf": "7a37b7efb756d824346e3af52faa2c499e1f4d56da5eb11b155615e6c4b0a7d8",
+    "kafka_smoke.elf": "40cb560a9e84e2ce1f34e1d7dc38690924380d567c8ed9e02a4f1c8b24d2a2df",
+    "kafka_step.elf": "66434c9769f73c2996d899ec9fd89573cc3e0e65cdad51b561dd6204ac7d2405",
+    "kafka_step_input.elf": "eed8678519797d0f90def9db0d9cd9ecfeadb18c92ebb1b19ae7249fad66cd8f",
+    "kafka_step_proc.elf": "85c308bad6373d184f3f0a7f171b016768c5977d58cda66ae8b41446ae921420",
+    "nclient.elf": "d01c896f759fda61952134e6e5d9e0a910e9c7570c615df02984f3a175e2c341",
+    "net.elf": "fc1d9f8ccc96421caf580142fa19b99baa72681b6a9897025a44fa48e2913eb3",
+    "ns.elf": "c5c8c72999608e8d0c942f9213be770d4be4d76f816e8607ab8a04d8cab955ed",
+    "nvme.elf": "83b4592f94f70e899286fd8f68d95fbc326ec41716be8f6acc0f89075f9958f1",
+    "nvme_client.elf": "d9a92a922b64413f48eb065b038bd107c44ed741aa7a668fe31f03fd61a6c370",
+    "objstore.elf": "737b05e3576f3ff529ed42ed5dfd5782ac5251dce0ffdf331d72ac311802fc25",
+    "objstore_client.elf": "74bdf184522b6e96468334bbfc0d8a243903a98663352bfa19df529d34993950",
+    "observe.elf": "0f49e907867d0b74993459ea4917c2f8d6be19b6c3fe1f7d147311d6022cfbf9",
+    "raft.elf": "229ce2b046198f69d9cc948e3176804d8c0033a54fef80155bd2da30397ef315",
+    "rclient.elf": "95858816553b840c512a0e5f9da0fc99e73bc03513964eb7b44be904a373c3ce",
+    "relmsg.elf": "e98c06ed64506303ea6ef9a35df1e0b7685fe663b0905bc40b62b8b3a6d3b80e",
+    "rng.elf": "2f6b2fece1f0fba0961946b5b044b2d774ac3bf58590100a9c862097eaf49d51",
+    "s3.elf": "a3dc291a306499e3aa9932a87742effe56ceeed3cc4122b19cebd3f609f06bdb",
+    "s3_smoke.elf": "f091605245744e1152adbe91b388e107b83d820bc2f5c4aa7f6b7a5cb935ff37",
+    "security_probe.elf": "6ca4e913d8d22dae4229f5f91c44ac1009f23fab42acf5745d4dd276f298ace6",
+    "servicemgr.elf": "1a478797edc563196f19f9d9290e6f620cd691915e780b4e12effd6f54a80796",
+    "shutdown_probe.elf": "9e020ef5489e502c40b84febd34a79fc12fb1586c92ad21d2bbe72a0e0af4849",
+    "sitas-user.elf": "a20aafd9434e1a37beaff58c2a4863327a91c386cbe41858f452719ec12b4212",
+    "tcpclient.elf": "a1afdf9a6a7397bc68f4120b75c09cc0781210d4b93f67aeed8373195b5e393c",
+    "tcpip.elf": "668281f0842b6f1b67f2d0c0779d599678c12598f2133bbeaadae6a6829ce58c",
+    "time.elf": "6b5b257e4e89bc8ec84ef7717111a68d1a52f8f52a4d107b96e68df6fb83c7e4",
+    "uart.elf": "2cf52955253f62d4080d93e53cb2d25056df56d4a9738c195039da147d55ab11"
+  },
+  "rebuilt_x86_selected_service_sha256": {
+    "dns.elf": "6cb368c9e38b3815c918a4a43414339f57429afd81aaff57b27d0945166d1405",
+    "raft.elf": "d095c6bf14bbe2746aa921ea03bb248901c9bb0d622302e02c4584d97503b290",
+    "frouter.elf": "0df992078956bf479e9207a9c427a37a83e68a42c5accfc8e7994b3d0a6ac646",
+    "httpd.elf": "3f0361aecc2368d39724d24127b5232d6486f334ae8ede37504af68729392591",
+    "deployd.elf": "31e7a685578aade86d2f464b5f4387519bdec8c47a976d81a230c3ebf8a1e065"
+  },
+  "manual": {
+    "sha256": "84d2755138106cecc9b97b463d0a71f83c0ec858e43b1676387449341391509b",
+    "pages": 254,
+    "rendered_inspected_pages": [
+      123,
+      124,
+      133,
+      154,
+      155,
+      201,
+      202,
+      203
+    ],
+    "global_overfull_warnings": 190,
+    "undefined_reference_warnings": 0
+  },
+  "runs": [
+    {
+      "state": "passed",
+      "qualification": "direct-and-vip",
+      "kernel_sha256": "b1f7238dccc9a10f4318c1546c517f40f9fc4364fb55a0ebdf8c9a4ad43ffaca",
+      "resource_sha256": "0c79e25df48b771ae613e5cc4c772ac6819713e69d22d7680a48aac32790ac6a",
+      "firmware_sha256": "47765fe344818cbc464b1c14ae658fb4b854f5c2ceffa982411731eb4865594d",
+      "run": "r1",
+      "raw_evidence_sha256": "0c37eafb89f5d8c29caf297f2b8528060bdaa27af1ed1e8e78c4bc8281355a00",
+      "read_observation_failures": {},
+      "phases": [
+        {
+          "phase": "three-voter-ready",
+          "owner": "node-0",
+          "leader": "charlotte:42e27584",
+          "term": 1,
+          "snapshots": {
+            "node-0": {
+              "schema": "charlotte.cluster.v2",
+              "fresh_committed": true,
+              "served_by_leader": true,
+              "truncated": false,
+              "raft": {
+                "state": "leader",
+                "term": 1,
+                "commit_index": 19,
+                "membership_epoch": 15,
+                "observed_millis": 54040,
+                "leader": "charlotte:42e27584",
+                "served_by": "charlotte:42e27584"
+              },
+              "ingress": [
+                {
+                  "vip": "10.0.2.42",
+                  "port": 443,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 10217577795359256770,
+                  "advertiser_node": "0000000042e27584",
+                  "eligible_nodes": [
+                    "0000000042e27584",
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                },
+                {
+                  "vip": "10.0.2.42",
+                  "port": 7444,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 10217577795359256770,
+                  "advertiser_node": "0000000042e27584",
+                  "eligible_nodes": [
+                    "0000000042e27584",
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                }
+              ],
+              "member_keys": [
+                "0000000042e27584",
+                "0000000042e27737",
+                "0000000042e278ea"
+              ],
+              "self_node": [
+                "0000000042e27584"
+              ]
+            },
+            "node-1": {
+              "schema": "charlotte.cluster.v2",
+              "fresh_committed": true,
+              "served_by_leader": false,
+              "truncated": false,
+              "raft": {
+                "state": "follower",
+                "term": 1,
+                "commit_index": 19,
+                "membership_epoch": 15,
+                "observed_millis": 33446,
+                "leader": "charlotte:42e27584",
+                "served_by": "charlotte:42e27737"
+              },
+              "ingress": [
+                {
+                  "vip": "10.0.2.42",
+                  "port": 443,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 10217577795359256770,
+                  "advertiser_node": "0000000042e27584",
+                  "eligible_nodes": [
+                    "0000000042e27584",
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                },
+                {
+                  "vip": "10.0.2.42",
+                  "port": 7444,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 10217577795359256770,
+                  "advertiser_node": "0000000042e27584",
+                  "eligible_nodes": [
+                    "0000000042e27584",
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                }
+              ],
+              "member_keys": [
+                "0000000042e27584",
+                "0000000042e27737",
+                "0000000042e278ea"
+              ],
+              "self_node": [
+                "0000000042e27737"
+              ]
+            },
+            "node-2": {
+              "schema": "charlotte.cluster.v2",
+              "fresh_committed": true,
+              "served_by_leader": false,
+              "truncated": false,
+              "raft": {
+                "state": "follower",
+                "term": 1,
+                "commit_index": 19,
+                "membership_epoch": 15,
+                "observed_millis": 8892,
+                "leader": "charlotte:42e27584",
+                "served_by": "charlotte:42e278ea"
+              },
+              "ingress": [
+                {
+                  "vip": "10.0.2.42",
+                  "port": 443,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 10217577795359256770,
+                  "advertiser_node": "0000000042e27584",
+                  "eligible_nodes": [
+                    "0000000042e27584",
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                },
+                {
+                  "vip": "10.0.2.42",
+                  "port": 7444,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 10217577795359256770,
+                  "advertiser_node": "0000000042e27584",
+                  "eligible_nodes": [
+                    "0000000042e27584",
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                }
+              ],
+              "member_keys": [
+                "0000000042e27584",
+                "0000000042e27737",
+                "0000000042e278ea"
+              ],
+              "self_node": [
+                "0000000042e278ea"
+              ]
+            }
+          }
+        },
+        {
+          "phase": "follower-admission",
+          "follower": "node-1",
+          "denied": {
+            "error": "forbidden"
+          },
+          "receipt": {
+            "generation": 1
+          },
+          "policy_sha256": "8f08b885e490871d74b9e8091a4374200c403b4c1dce6d15a23935bfce6c1086"
+        },
+        {
+          "phase": "initial-ingress-projection",
+          "snapshots": {
+            "node-0": {
+              "schema": "charlotte.cluster.v2",
+              "fresh_committed": true,
+              "served_by_leader": true,
+              "truncated": false,
+              "raft": {
+                "state": "leader",
+                "term": 1,
+                "commit_index": 20,
+                "membership_epoch": 15,
+                "observed_millis": 58114,
+                "leader": "charlotte:42e27584",
+                "served_by": "charlotte:42e27584"
+              },
+              "ingress": [
+                {
+                  "vip": "10.0.2.42",
+                  "port": 443,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 11748847592329511601,
+                  "advertiser_node": "0000000042e27584",
+                  "eligible_nodes": [
+                    "0000000042e27584",
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                },
+                {
+                  "vip": "10.0.2.42",
+                  "port": 7444,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 11748847592329511601,
+                  "advertiser_node": "0000000042e27584",
+                  "eligible_nodes": [
+                    "0000000042e27584",
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                }
+              ],
+              "member_keys": [
+                "0000000042e27584",
+                "0000000042e27737",
+                "0000000042e278ea"
+              ],
+              "self_node": [
+                "0000000042e27584"
+              ]
+            },
+            "node-1": {
+              "schema": "charlotte.cluster.v2",
+              "fresh_committed": true,
+              "served_by_leader": false,
+              "truncated": false,
+              "raft": {
+                "state": "follower",
+                "term": 1,
+                "commit_index": 20,
+                "membership_epoch": 15,
+                "observed_millis": 37528,
+                "leader": "charlotte:42e27584",
+                "served_by": "charlotte:42e27737"
+              },
+              "ingress": [
+                {
+                  "vip": "10.0.2.42",
+                  "port": 443,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 11748847592329511601,
+                  "advertiser_node": "0000000042e27584",
+                  "eligible_nodes": [
+                    "0000000042e27584",
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                },
+                {
+                  "vip": "10.0.2.42",
+                  "port": 7444,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 11748847592329511601,
+                  "advertiser_node": "0000000042e27584",
+                  "eligible_nodes": [
+                    "0000000042e27584",
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                }
+              ],
+              "member_keys": [
+                "0000000042e27584",
+                "0000000042e27737",
+                "0000000042e278ea"
+              ],
+              "self_node": [
+                "0000000042e27737"
+              ]
+            },
+            "node-2": {
+              "schema": "charlotte.cluster.v2",
+              "fresh_committed": true,
+              "served_by_leader": false,
+              "truncated": false,
+              "raft": {
+                "state": "follower",
+                "term": 1,
+                "commit_index": 20,
+                "membership_epoch": 15,
+                "observed_millis": 12975,
+                "leader": "charlotte:42e27584",
+                "served_by": "charlotte:42e278ea"
+              },
+              "ingress": [
+                {
+                  "vip": "10.0.2.42",
+                  "port": 443,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 11748847592329511601,
+                  "advertiser_node": "0000000042e27584",
+                  "eligible_nodes": [
+                    "0000000042e27584",
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                },
+                {
+                  "vip": "10.0.2.42",
+                  "port": 7444,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 11748847592329511601,
+                  "advertiser_node": "0000000042e27584",
+                  "eligible_nodes": [
+                    "0000000042e27584",
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                }
+              ],
+              "member_keys": [
+                "0000000042e27584",
+                "0000000042e27737",
+                "0000000042e278ea"
+              ],
+              "self_node": [
+                "0000000042e278ea"
+              ]
+            }
+          }
+        },
+        {
+          "phase": "replacement-leader",
+          "old_owner": "node-0",
+          "owner": "node-2",
+          "leader": "charlotte:42e278ea",
+          "term": 2,
+          "committed_before": {
+            "node-0": {
+              "generation": 1,
+              "sequence": 1,
+              "assignments": 2,
+              "not_before_unix_seconds": 1793134572,
+              "expires_unix_seconds": 1793136432
+            },
+            "node-1": {
+              "generation": 1,
+              "sequence": 1,
+              "assignments": 2,
+              "not_before_unix_seconds": 1793134572,
+              "expires_unix_seconds": 1793136432
+            },
+            "node-2": {
+              "generation": 1,
+              "sequence": 1,
+              "assignments": 2,
+              "not_before_unix_seconds": 1793134572,
+              "expires_unix_seconds": 1793136432
+            }
+          },
+          "snapshots": {
+            "node-1": {
+              "schema": "charlotte.cluster.v2",
+              "fresh_committed": true,
+              "served_by_leader": false,
+              "truncated": false,
+              "raft": {
+                "state": "follower",
+                "term": 2,
+                "commit_index": 20,
+                "membership_epoch": 15,
+                "observed_millis": 42081,
+                "leader": "charlotte:42e278ea",
+                "served_by": "charlotte:42e27737"
+              },
+              "ingress": [
+                {
+                  "vip": "10.0.2.42",
+                  "port": 443,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": false,
+                  "member_count": 0,
+                  "epoch": 0,
+                  "advertiser_node": null,
+                  "eligible_nodes": []
+                },
+                {
+                  "vip": "10.0.2.42",
+                  "port": 7444,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": false,
+                  "member_count": 0,
+                  "epoch": 0,
+                  "advertiser_node": null,
+                  "eligible_nodes": []
+                }
+              ],
+              "member_keys": [
+                "0000000042e27584",
+                "0000000042e27737",
+                "0000000042e278ea"
+              ],
+              "self_node": [
+                "0000000042e27737"
+              ]
+            },
+            "node-2": {
+              "schema": "charlotte.cluster.v2",
+              "fresh_committed": true,
+              "served_by_leader": true,
+              "truncated": false,
+              "raft": {
+                "state": "leader",
+                "term": 2,
+                "commit_index": 24,
+                "membership_epoch": 15,
+                "observed_millis": 17523,
+                "leader": "charlotte:42e278ea",
+                "served_by": "charlotte:42e278ea"
+              },
+              "ingress": [
+                {
+                  "vip": "10.0.2.42",
+                  "port": 443,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 1008155536403264292,
+                  "advertiser_node": "0000000042e278ea",
+                  "eligible_nodes": [
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                },
+                {
+                  "vip": "10.0.2.42",
+                  "port": 7444,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 1008155536403264292,
+                  "advertiser_node": "0000000042e278ea",
+                  "eligible_nodes": [
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                }
+              ],
+              "member_keys": [
+                "0000000042e27584",
+                "0000000042e27737",
+                "0000000042e278ea"
+              ],
+              "self_node": [
+                "0000000042e278ea"
+              ]
+            }
+          }
+        },
+        {
+          "phase": "post-failover-admission",
+          "follower": "node-1",
+          "receipt": {
+            "generation": 2
+          },
+          "policy_sha256": "4af53f4124fe1b6386b18ed5f946b8baf0926f18e6c4af6b0894bf7ff594f6fc",
+          "policy_status": {
+            "node-1": {
+              "generation": 2,
+              "sequence": 2,
+              "assignments": 2,
+              "not_before_unix_seconds": 1793134581,
+              "expires_unix_seconds": 1793136441
+            },
+            "node-2": {
+              "generation": 2,
+              "sequence": 2,
+              "assignments": 2,
+              "not_before_unix_seconds": 1793134581,
+              "expires_unix_seconds": 1793136441
+            }
+          },
+          "previous_receipt": {
+            "generation": 1
+          }
+        },
+        {
+          "phase": "survivor-ingress-projection",
+          "snapshots": {
+            "node-1": {
+              "schema": "charlotte.cluster.v2",
+              "fresh_committed": true,
+              "served_by_leader": false,
+              "truncated": false,
+              "raft": {
+                "state": "follower",
+                "term": 2,
+                "commit_index": 25,
+                "membership_epoch": 15,
+                "observed_millis": 45242,
+                "leader": "charlotte:42e278ea",
+                "served_by": "charlotte:42e27737"
+              },
+              "ingress": [
+                {
+                  "vip": "10.0.2.42",
+                  "port": 443,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 13025965246310971927,
+                  "advertiser_node": "0000000042e278ea",
+                  "eligible_nodes": [
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                },
+                {
+                  "vip": "10.0.2.42",
+                  "port": 7444,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 13025965246310971927,
+                  "advertiser_node": "0000000042e278ea",
+                  "eligible_nodes": [
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                }
+              ],
+              "member_keys": [
+                "0000000042e27584",
+                "0000000042e27737",
+                "0000000042e278ea"
+              ],
+              "self_node": [
+                "0000000042e27737"
+              ]
+            },
+            "node-2": {
+              "schema": "charlotte.cluster.v2",
+              "fresh_committed": true,
+              "served_by_leader": true,
+              "truncated": false,
+              "raft": {
+                "state": "leader",
+                "term": 2,
+                "commit_index": 25,
+                "membership_epoch": 15,
+                "observed_millis": 20707,
+                "leader": "charlotte:42e278ea",
+                "served_by": "charlotte:42e278ea"
+              },
+              "ingress": [
+                {
+                  "vip": "10.0.2.42",
+                  "port": 443,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 13025965246310971927,
+                  "advertiser_node": "0000000042e278ea",
+                  "eligible_nodes": [
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                },
+                {
+                  "vip": "10.0.2.42",
+                  "port": 7444,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 13025965246310971927,
+                  "advertiser_node": "0000000042e278ea",
+                  "eligible_nodes": [
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                }
+              ],
+              "member_keys": [
+                "0000000042e27584",
+                "0000000042e27737",
+                "0000000042e278ea"
+              ],
+              "self_node": [
+                "0000000042e278ea"
+              ]
+            }
+          }
+        },
+        {
+          "phase": "survivor-client-rejections",
+          "cases": [
+            {
+              "port": 28443,
+              "client": "unknown",
+              "state": "passed",
+              "transport_result": "EOFError",
+              "native_policy_rejection": true,
+              "application_bytes": 0,
+              "healthy_reader_status": 200
+            },
+            {
+              "port": 28443,
+              "client": "missing",
+              "state": "passed",
+              "transport_result": "EOFError",
+              "application_bytes": 0,
+              "healthy_reader_status": 200
+            },
+            {
+              "port": 28445,
+              "client": "unknown",
+              "state": "passed",
+              "transport_result": "EOFError",
+              "native_policy_rejection": true,
+              "application_bytes": 0,
+              "healthy_reader_status": 200
+            },
+            {
+              "port": 28445,
+              "client": "missing",
+              "state": "passed",
+              "transport_result": "EOFError",
+              "application_bytes": 0,
+              "healthy_reader_status": 200
+            },
+            {
+              "port": 28444,
+              "client": "unknown",
+              "state": "passed",
+              "transport_result": "EOFError",
+              "native_policy_rejection": true,
+              "application_bytes": 0,
+              "healthy_reader_status": 200
+            },
+            {
+              "port": 28444,
+              "client": "missing",
+              "state": "passed",
+              "transport_result": "EOFError",
+              "application_bytes": 0,
+              "healthy_reader_status": 200
+            },
+            {
+              "port": 28446,
+              "client": "unknown",
+              "state": "passed",
+              "transport_result": "EOFError",
+              "native_policy_rejection": true,
+              "application_bytes": 0,
+              "healthy_reader_status": 200
+            },
+            {
+              "port": 28446,
+              "client": "missing",
+              "state": "passed",
+              "transport_result": "EOFError",
+              "application_bytes": 0,
+              "healthy_reader_status": 200
+            }
+          ],
+          "port": 28446,
+          "path": "/v1/ingress-policy",
+          "step": "complete"
+        },
+        {
+          "phase": "vip-client-rejections",
+          "cases": [
+            {
+              "port": 28447,
+              "client": "unknown",
+              "state": "passed",
+              "transport_result": "EOFError",
+              "native_policy_rejection": true,
+              "application_bytes": 0,
+              "healthy_reader_status": 200
+            },
+            {
+              "port": 28447,
+              "client": "missing",
+              "state": "passed",
+              "transport_result": "EOFError",
+              "application_bytes": 0,
+              "healthy_reader_status": 200
+            },
+            {
+              "port": 28448,
+              "client": "unknown",
+              "state": "passed",
+              "transport_result": "EOFError",
+              "native_policy_rejection": true,
+              "application_bytes": 0,
+              "healthy_reader_status": 200
+            },
+            {
+              "port": 28448,
+              "client": "missing",
+              "state": "passed",
+              "transport_result": "EOFError",
+              "application_bytes": 0,
+              "healthy_reader_status": 200
+            }
+          ],
+          "port": 28448,
+          "path": "/v1/ingress-policy",
+          "step": "complete"
+        },
+        {
+          "phase": "post-control-ingress-projection",
+          "snapshots": {
+            "node-1": {
+              "schema": "charlotte.cluster.v2",
+              "fresh_committed": true,
+              "served_by_leader": false,
+              "truncated": false,
+              "raft": {
+                "state": "follower",
+                "term": 2,
+                "commit_index": 25,
+                "membership_epoch": 15,
+                "observed_millis": 61695,
+                "leader": "charlotte:42e278ea",
+                "served_by": "charlotte:42e27737"
+              },
+              "ingress": [
+                {
+                  "vip": "10.0.2.42",
+                  "port": 443,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 13025965246310971927,
+                  "advertiser_node": "0000000042e278ea",
+                  "eligible_nodes": [
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                },
+                {
+                  "vip": "10.0.2.42",
+                  "port": 7444,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 13025965246310971927,
+                  "advertiser_node": "0000000042e278ea",
+                  "eligible_nodes": [
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                }
+              ],
+              "member_keys": [
+                "0000000042e27584",
+                "0000000042e27737",
+                "0000000042e278ea"
+              ],
+              "self_node": [
+                "0000000042e27737"
+              ]
+            },
+            "node-2": {
+              "schema": "charlotte.cluster.v2",
+              "fresh_committed": true,
+              "served_by_leader": true,
+              "truncated": false,
+              "raft": {
+                "state": "leader",
+                "term": 2,
+                "commit_index": 25,
+                "membership_epoch": 15,
+                "observed_millis": 37162,
+                "leader": "charlotte:42e278ea",
+                "served_by": "charlotte:42e278ea"
+              },
+              "ingress": [
+                {
+                  "vip": "10.0.2.42",
+                  "port": 443,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 13025965246310971927,
+                  "advertiser_node": "0000000042e278ea",
+                  "eligible_nodes": [
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                },
+                {
+                  "vip": "10.0.2.42",
+                  "port": 7444,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 13025965246310971927,
+                  "advertiser_node": "0000000042e278ea",
+                  "eligible_nodes": [
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                }
+              ],
+              "member_keys": [
+                "0000000042e27584",
+                "0000000042e27737",
+                "0000000042e278ea"
+              ],
+              "self_node": [
+                "0000000042e278ea"
+              ]
+            }
+          }
+        }
+      ],
+      "post_election_new_VIP_flows": {
+        "cutoff": "first granted vote for replacement term",
+        "vote_metadata": [
+          "raft-vote monotonic=2112523.635211 {'source': '52:54:00:12:34:02', 'destination': '52:54:00:12:34:01', 'tag': 4, 'term': 2, 'granted': True}"
+        ],
+        "count": 10,
+        "flow_peer_and_service_ports": [
+          [
+            "57747",
+            "443"
+          ],
+          [
+            "57748",
+            "443"
+          ],
+          [
+            "57749",
+            "443"
+          ],
+          [
+            "57750",
+            "443"
+          ],
+          [
+            "57751",
+            "443"
+          ],
+          [
+            "57752",
+            "7444"
+          ],
+          [
+            "57753",
+            "7444"
+          ],
+          [
+            "57754",
+            "7444"
+          ],
+          [
+            "57755",
+            "7444"
+          ],
+          [
+            "57756",
+            "7444"
+          ]
+        ],
+        "SYN_metadata": [
+          "tcp path=external dst-mac=52:54:00:12:34:01 10.0.2.2:57747 -> 10.0.2.42:443 flags=0x02 seq=14848001 ack=0 payload=0 monotonic=2112538.239297",
+          "tcp path=forwarded dst-mac=52:54:00:12:34:02 10.0.2.2:57747 -> 10.0.2.42:443 flags=0x02 seq=14848001 ack=0 payload=0 monotonic=2112538.247845",
+          "tcp path=external dst-mac=52:54:00:12:34:01 10.0.2.2:57748 -> 10.0.2.42:443 flags=0x02 seq=14976001 ack=0 payload=0 monotonic=2112539.007143",
+          "tcp path=forwarded dst-mac=52:54:00:12:34:01 10.0.2.2:57748 -> 10.0.2.42:443 flags=0x02 seq=14976001 ack=0 payload=0 monotonic=2112539.024771",
+          "tcp path=external dst-mac=52:54:00:12:34:01 10.0.2.2:57749 -> 10.0.2.42:443 flags=0x02 seq=15104001 ack=0 payload=0 monotonic=2112539.258379",
+          "tcp path=forwarded dst-mac=52:54:00:12:34:02 10.0.2.2:57749 -> 10.0.2.42:443 flags=0x02 seq=15104001 ack=0 payload=0 monotonic=2112539.264412",
+          "tcp path=external dst-mac=52:54:00:12:34:01 10.0.2.2:57750 -> 10.0.2.42:443 flags=0x02 seq=15232001 ack=0 payload=0 monotonic=2112540.036163",
+          "tcp path=forwarded dst-mac=52:54:00:12:34:01 10.0.2.2:57750 -> 10.0.2.42:443 flags=0x02 seq=15232001 ack=0 payload=0 monotonic=2112540.051662",
+          "tcp path=external dst-mac=52:54:00:12:34:01 10.0.2.2:57751 -> 10.0.2.42:443 flags=0x02 seq=15360001 ack=0 payload=0 monotonic=2112540.335583",
+          "tcp path=forwarded dst-mac=52:54:00:12:34:01 10.0.2.2:57751 -> 10.0.2.42:443 flags=0x02 seq=15360001 ack=0 payload=0 monotonic=2112540.347355",
+          "tcp path=external dst-mac=52:54:00:12:34:01 10.0.2.2:57752 -> 10.0.2.42:7444 flags=0x02 seq=15488001 ack=0 payload=0 monotonic=2112540.822877",
+          "tcp path=forwarded dst-mac=52:54:00:12:34:02 10.0.2.2:57752 -> 10.0.2.42:7444 flags=0x02 seq=15488001 ack=0 payload=0 monotonic=2112540.847362",
+          "tcp path=external dst-mac=52:54:00:12:34:01 10.0.2.2:57753 -> 10.0.2.42:7444 flags=0x02 seq=15616001 ack=0 payload=0 monotonic=2112541.379952",
+          "tcp path=forwarded dst-mac=52:54:00:12:34:02 10.0.2.2:57753 -> 10.0.2.42:7444 flags=0x02 seq=15616001 ack=0 payload=0 monotonic=2112541.389520",
+          "tcp path=external dst-mac=52:54:00:12:34:01 10.0.2.2:57754 -> 10.0.2.42:7444 flags=0x02 seq=15744001 ack=0 payload=0 monotonic=2112541.876522",
+          "tcp path=forwarded dst-mac=52:54:00:12:34:02 10.0.2.2:57754 -> 10.0.2.42:7444 flags=0x02 seq=15744001 ack=0 payload=0 monotonic=2112541.882782",
+          "tcp path=external dst-mac=52:54:00:12:34:01 10.0.2.2:57755 -> 10.0.2.42:7444 flags=0x02 seq=15872001 ack=0 payload=0 monotonic=2112542.441081",
+          "tcp path=forwarded dst-mac=52:54:00:12:34:02 10.0.2.2:57755 -> 10.0.2.42:7444 flags=0x02 seq=15872001 ack=0 payload=0 monotonic=2112542.444449",
+          "tcp path=external dst-mac=52:54:00:12:34:01 10.0.2.2:57756 -> 10.0.2.42:7444 flags=0x02 seq=16000001 ack=0 payload=0 monotonic=2112542.857059",
+          "tcp path=forwarded dst-mac=52:54:00:12:34:02 10.0.2.2:57756 -> 10.0.2.42:7444 flags=0x02 seq=16000001 ack=0 payload=0 monotonic=2112542.861927"
+        ],
+        "killed_backend_SYN_count": 0
+      },
+      "native_observations": {
+        "node-0": [
+          "[+    12.480861] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x3ffff failed_bitmap=0x0 pending_bitmap=0x0",
+          "[+    12.673043] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=0 joint=false members=1 commit=0 last=0 finalize_pending=false term=0 leader=false",
+          "[+    12.674140] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=0 leader=None millis=464 pending=0 queued=0",
+          "[+    14.011037] [EL0 LOG] lp=0 asid=127 [time] synchronized unix_s=1793134578 utc=2026-10-27T20:56:18.612824127Z stratum=3 uncertainty_ms=511 drift_ppb=0",
+          "[+    16.444437] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e27584\") millis=3976 pending=0 queued=0",
+          "[+    16.825638] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e27584 epoch=16659783171272698911 backends=1/1",
+          "[+    16.827580] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:7444 node=42e27584 epoch=16659783171272698911 backends=1/1",
+          "[+    38.253104] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=5 joint=true members=2 commit=5 last=5 finalize_pending=false term=1 leader=true",
+          "[+    39.513798] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=8 joint=false members=2 commit=8 last=10 finalize_pending=false term=1 leader=true",
+          "[+    39.889810] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e27584 epoch=16241512488801660716 backends=2/2",
+          "[+    39.891326] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:7444 node=42e27584 epoch=16241512488801660716 backends=2/2",
+          "[+    64.838918] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=14 joint=true members=3 commit=14 last=16 finalize_pending=true term=1 leader=true",
+          "[+    65.385076] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=15 joint=false members=3 commit=16 last=18 finalize_pending=false term=1 leader=true",
+          "[+    65.900191] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e27584 epoch=10217577795359256770 backends=3/3",
+          "[+    65.901727] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:7444 node=42e27584 epoch=10217577795359256770 backends=3/3",
+          "[+    68.904111] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e27584 epoch=11748847592329511601 backends=3/3",
+          "[+    68.907378] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:7444 node=42e27584 epoch=11748847592329511601 backends=3/3"
+        ],
+        "node-1": [
+          "[+    11.855361] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x3ffff failed_bitmap=0x0 pending_bitmap=0x0",
+          "[+    12.041751] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=0 joint=false members=1 commit=0 last=0 finalize_pending=false term=0 leader=false",
+          "[+    12.044185] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=0 leader=None millis=448 pending=0 queued=0",
+          "[+    13.373548] [EL0 LOG] lp=0 asid=127 [time] synchronized unix_s=1793134599 utc=2026-10-27T20:56:39.699349060Z stratum=3 uncertainty_ms=509 drift_ppb=0",
+          "[+    15.481508] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e27737\") millis=3652 pending=0 queued=0",
+          "[+    15.877104] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=1 leader=Some(\"charlotte:42e27584\") millis=4284 pending=1 queued=0",
+          "[+    17.270688] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=5 joint=true members=2 commit=5 last=7 finalize_pending=false term=1 leader=false",
+          "[+    18.120071] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=8 joint=false members=2 commit=8 last=10 finalize_pending=false term=1 leader=false",
+          "[+    43.543337] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=14 joint=true members=3 commit=14 last=16 finalize_pending=false term=1 leader=false",
+          "[+    44.032997] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=15 joint=false members=3 commit=16 last=18 finalize_pending=false term=1 leader=false",
+          "[+    46.055865] [EL0 LOG] lp=0 asid=130 [management] connection=1 certificate=8b3192b7abd68ea5389e26216884a73bb6f188d3068b8f348934157430144f62 role=Reader permission=Mutate allowed=false",
+          "[+    46.502076] [EL0 LOG] lp=0 asid=130 [management] connection=2 certificate=bbc052d4daa95cf929b2ed924cac7e1ead98378136347314e4dd7bebcae46e10 role=Administrator permission=Mutate allowed=true",
+          "[+    53.082369] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=2 leader=None millis=41489 pending=2 queued=0",
+          "[+    54.649033] [EL0 LOG] lp=0 asid=130 [management] connection=4 certificate=8b3192b7abd68ea5389e26216884a73bb6f188d3068b8f348934157430144f62 role=Reader permission=Mutate allowed=false",
+          "[+    55.104517] [EL0 LOG] lp=0 asid=130 [management] connection=5 certificate=bbc052d4daa95cf929b2ed924cac7e1ead98378136347314e4dd7bebcae46e10 role=Administrator permission=Mutate allowed=true",
+          "[+    58.567143] [EL0 LOG] lp=0 asid=126 [management] connection=10 client policy rejected",
+          "[+    64.239420] [EL0 LOG] lp=0 asid=130 [management] connection=8 client policy rejected",
+          "[+    71.318057] [EL0 LOG] lp=0 asid=130 [management] connection=13 client policy rejected"
+        ],
+        "node-2": [
+          "[+    11.904353] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x3ffff failed_bitmap=0x0 pending_bitmap=0x0",
+          "[+    12.096666] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=0 joint=false members=1 commit=0 last=0 finalize_pending=false term=0 leader=false",
+          "[+    12.097414] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=0 leader=None millis=469 pending=0 queued=0",
+          "[+    13.441451] [EL0 LOG] lp=0 asid=127 [time] synchronized unix_s=1793134624 utc=2026-10-27T20:57:04.686934850Z stratum=3 uncertainty_ms=507 drift_ppb=0",
+          "[+    15.470675] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e278ea\") millis=3633 pending=0 queued=0",
+          "[+    15.548367] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e278ea epoch=16451997729215121455 backends=1/1",
+          "[+    15.550430] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:7444 node=42e278ea epoch=16451997729215121455 backends=1/1",
+          "[+    15.894759] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=1 leader=Some(\"charlotte:42e27584\") millis=4268 pending=1 queued=0",
+          "[+    17.189005] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=8 joint=false members=2 commit=12 last=13 finalize_pending=false term=1 leader=false",
+          "[+    18.556368] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=14 joint=true members=3 commit=14 last=16 finalize_pending=false term=1 leader=false",
+          "[+    19.069230] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=15 joint=false members=3 commit=16 last=18 finalize_pending=false term=1 leader=false",
+          "[+    27.899677] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Candidate term=2 leader=None millis=16135 pending=2 queued=1",
+          "[+    28.301744] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=2 leader=Some(\"charlotte:42e278ea\") millis=16672 pending=2 queued=2",
+          "[+    29.289519] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e278ea epoch=1008155536403264292 backends=2/3",
+          "[+    29.290780] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:7444 node=42e278ea epoch=1008155536403264292 backends=2/3",
+          "[+    31.293580] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e278ea epoch=13025965246310971927 backends=2/3",
+          "[+    31.294811] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:7444 node=42e278ea epoch=13025965246310971927 backends=2/3",
+          "[+    36.643549] [EL0 LOG] lp=0 asid=126 [management] connection=10 client policy rejected",
+          "[+    41.392248] [EL0 LOG] lp=0 asid=130 [management] connection=4 client policy rejected",
+          "[+    43.719633] [EL0 LOG] lp=0 asid=126 [management] connection=14 client policy rejected"
+        ]
+      }
+    },
+    {
+      "state": "passed",
+      "qualification": "direct-and-vip",
+      "kernel_sha256": "d6bbcfa6a1e6ea37a3cb77824b0c10d5a8fdc9b5cc03a1015e79597d630084bb",
+      "resource_sha256": "025b786fc64382409385eb987417d3bf234fa855228c00e08053c10da100237c",
+      "firmware_sha256": "47765fe344818cbc464b1c14ae658fb4b854f5c2ceffa982411731eb4865594d",
+      "run": "r2",
+      "raw_evidence_sha256": "96a13e6858dc692c87cbc615b785240c8853d41021097c90f22946a322ad5817",
+      "read_observation_failures": {},
+      "phases": [
+        {
+          "phase": "three-voter-ready",
+          "owner": "node-0",
+          "leader": "charlotte:42e27584",
+          "term": 1,
+          "snapshots": {
+            "node-0": {
+              "schema": "charlotte.cluster.v2",
+              "fresh_committed": true,
+              "served_by_leader": true,
+              "truncated": false,
+              "raft": {
+                "state": "leader",
+                "term": 1,
+                "commit_index": 18,
+                "membership_epoch": 15,
+                "observed_millis": 53436,
+                "leader": "charlotte:42e27584",
+                "served_by": "charlotte:42e27584"
+              },
+              "ingress": [
+                {
+                  "vip": "10.0.2.42",
+                  "port": 443,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 10217577795359256770,
+                  "advertiser_node": "0000000042e27584",
+                  "eligible_nodes": [
+                    "0000000042e27584",
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                },
+                {
+                  "vip": "10.0.2.42",
+                  "port": 7444,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 10217577795359256770,
+                  "advertiser_node": "0000000042e27584",
+                  "eligible_nodes": [
+                    "0000000042e27584",
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                }
+              ],
+              "member_keys": [
+                "0000000042e27584",
+                "0000000042e27737",
+                "0000000042e278ea"
+              ],
+              "self_node": [
+                "0000000042e27584"
+              ]
+            },
+            "node-1": {
+              "schema": "charlotte.cluster.v2",
+              "fresh_committed": true,
+              "served_by_leader": false,
+              "truncated": false,
+              "raft": {
+                "state": "follower",
+                "term": 1,
+                "commit_index": 18,
+                "membership_epoch": 15,
+                "observed_millis": 32927,
+                "leader": "charlotte:42e27584",
+                "served_by": "charlotte:42e27737"
+              },
+              "ingress": [
+                {
+                  "vip": "10.0.2.42",
+                  "port": 443,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 10217577795359256770,
+                  "advertiser_node": "0000000042e27584",
+                  "eligible_nodes": [
+                    "0000000042e27584",
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                },
+                {
+                  "vip": "10.0.2.42",
+                  "port": 7444,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 10217577795359256770,
+                  "advertiser_node": "0000000042e27584",
+                  "eligible_nodes": [
+                    "0000000042e27584",
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                }
+              ],
+              "member_keys": [
+                "0000000042e27584",
+                "0000000042e27737",
+                "0000000042e278ea"
+              ],
+              "self_node": [
+                "0000000042e27737"
+              ]
+            },
+            "node-2": {
+              "schema": "charlotte.cluster.v2",
+              "fresh_committed": true,
+              "served_by_leader": false,
+              "truncated": false,
+              "raft": {
+                "state": "follower",
+                "term": 1,
+                "commit_index": 18,
+                "membership_epoch": 15,
+                "observed_millis": 8451,
+                "leader": "charlotte:42e27584",
+                "served_by": "charlotte:42e278ea"
+              },
+              "ingress": [
+                {
+                  "vip": "10.0.2.42",
+                  "port": 443,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 10217577795359256770,
+                  "advertiser_node": "0000000042e27584",
+                  "eligible_nodes": [
+                    "0000000042e27584",
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                },
+                {
+                  "vip": "10.0.2.42",
+                  "port": 7444,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 10217577795359256770,
+                  "advertiser_node": "0000000042e27584",
+                  "eligible_nodes": [
+                    "0000000042e27584",
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                }
+              ],
+              "member_keys": [
+                "0000000042e27584",
+                "0000000042e27737",
+                "0000000042e278ea"
+              ],
+              "self_node": [
+                "0000000042e278ea"
+              ]
+            }
+          }
+        },
+        {
+          "phase": "follower-admission",
+          "follower": "node-1",
+          "denied": {
+            "error": "forbidden"
+          },
+          "receipt": {
+            "generation": 1
+          },
+          "policy_sha256": "9816c92f966de8216d874404857a2798544bcfcd882ec52760df848bf66ad141"
+        },
+        {
+          "phase": "initial-ingress-projection",
+          "snapshots": {
+            "node-0": {
+              "schema": "charlotte.cluster.v2",
+              "fresh_committed": true,
+              "served_by_leader": true,
+              "truncated": false,
+              "raft": {
+                "state": "leader",
+                "term": 1,
+                "commit_index": 20,
+                "membership_epoch": 15,
+                "observed_millis": 57832,
+                "leader": "charlotte:42e27584",
+                "served_by": "charlotte:42e27584"
+              },
+              "ingress": [
+                {
+                  "vip": "10.0.2.42",
+                  "port": 443,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 11748847592329511601,
+                  "advertiser_node": "0000000042e27584",
+                  "eligible_nodes": [
+                    "0000000042e27584",
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                },
+                {
+                  "vip": "10.0.2.42",
+                  "port": 7444,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 11748847592329511601,
+                  "advertiser_node": "0000000042e27584",
+                  "eligible_nodes": [
+                    "0000000042e27584",
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                }
+              ],
+              "member_keys": [
+                "0000000042e27584",
+                "0000000042e27737",
+                "0000000042e278ea"
+              ],
+              "self_node": [
+                "0000000042e27584"
+              ]
+            },
+            "node-1": {
+              "schema": "charlotte.cluster.v2",
+              "fresh_committed": true,
+              "served_by_leader": false,
+              "truncated": false,
+              "raft": {
+                "state": "follower",
+                "term": 1,
+                "commit_index": 20,
+                "membership_epoch": 15,
+                "observed_millis": 37323,
+                "leader": "charlotte:42e27584",
+                "served_by": "charlotte:42e27737"
+              },
+              "ingress": [
+                {
+                  "vip": "10.0.2.42",
+                  "port": 443,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 11748847592329511601,
+                  "advertiser_node": "0000000042e27584",
+                  "eligible_nodes": [
+                    "0000000042e27584",
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                },
+                {
+                  "vip": "10.0.2.42",
+                  "port": 7444,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 11748847592329511601,
+                  "advertiser_node": "0000000042e27584",
+                  "eligible_nodes": [
+                    "0000000042e27584",
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                }
+              ],
+              "member_keys": [
+                "0000000042e27584",
+                "0000000042e27737",
+                "0000000042e278ea"
+              ],
+              "self_node": [
+                "0000000042e27737"
+              ]
+            },
+            "node-2": {
+              "schema": "charlotte.cluster.v2",
+              "fresh_committed": true,
+              "served_by_leader": false,
+              "truncated": false,
+              "raft": {
+                "state": "follower",
+                "term": 1,
+                "commit_index": 20,
+                "membership_epoch": 15,
+                "observed_millis": 12861,
+                "leader": "charlotte:42e27584",
+                "served_by": "charlotte:42e278ea"
+              },
+              "ingress": [
+                {
+                  "vip": "10.0.2.42",
+                  "port": 443,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 11748847592329511601,
+                  "advertiser_node": "0000000042e27584",
+                  "eligible_nodes": [
+                    "0000000042e27584",
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                },
+                {
+                  "vip": "10.0.2.42",
+                  "port": 7444,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 11748847592329511601,
+                  "advertiser_node": "0000000042e27584",
+                  "eligible_nodes": [
+                    "0000000042e27584",
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                }
+              ],
+              "member_keys": [
+                "0000000042e27584",
+                "0000000042e27737",
+                "0000000042e278ea"
+              ],
+              "self_node": [
+                "0000000042e278ea"
+              ]
+            }
+          }
+        },
+        {
+          "phase": "replacement-leader",
+          "old_owner": "node-0",
+          "owner": "node-2",
+          "leader": "charlotte:42e278ea",
+          "term": 2,
+          "committed_before": {
+            "node-0": {
+              "generation": 1,
+              "sequence": 1,
+              "assignments": 2,
+              "not_before_unix_seconds": 1793134752,
+              "expires_unix_seconds": 1793136612
+            },
+            "node-1": {
+              "generation": 1,
+              "sequence": 1,
+              "assignments": 2,
+              "not_before_unix_seconds": 1793134752,
+              "expires_unix_seconds": 1793136612
+            },
+            "node-2": {
+              "generation": 1,
+              "sequence": 1,
+              "assignments": 2,
+              "not_before_unix_seconds": 1793134752,
+              "expires_unix_seconds": 1793136612
+            }
+          },
+          "snapshots": {
+            "node-1": {
+              "schema": "charlotte.cluster.v2",
+              "fresh_committed": true,
+              "served_by_leader": false,
+              "truncated": false,
+              "raft": {
+                "state": "follower",
+                "term": 2,
+                "commit_index": 20,
+                "membership_epoch": 15,
+                "observed_millis": 41901,
+                "leader": "charlotte:42e278ea",
+                "served_by": "charlotte:42e27737"
+              },
+              "ingress": [
+                {
+                  "vip": "10.0.2.42",
+                  "port": 443,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": false,
+                  "member_count": 0,
+                  "epoch": 0,
+                  "advertiser_node": null,
+                  "eligible_nodes": []
+                },
+                {
+                  "vip": "10.0.2.42",
+                  "port": 7444,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": false,
+                  "member_count": 0,
+                  "epoch": 0,
+                  "advertiser_node": null,
+                  "eligible_nodes": []
+                }
+              ],
+              "member_keys": [
+                "0000000042e27584",
+                "0000000042e27737",
+                "0000000042e278ea"
+              ],
+              "self_node": [
+                "0000000042e27737"
+              ]
+            },
+            "node-2": {
+              "schema": "charlotte.cluster.v2",
+              "fresh_committed": true,
+              "served_by_leader": true,
+              "truncated": false,
+              "raft": {
+                "state": "leader",
+                "term": 2,
+                "commit_index": 24,
+                "membership_epoch": 15,
+                "observed_millis": 17430,
+                "leader": "charlotte:42e278ea",
+                "served_by": "charlotte:42e278ea"
+              },
+              "ingress": [
+                {
+                  "vip": "10.0.2.42",
+                  "port": 443,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 1008155536403264292,
+                  "advertiser_node": "0000000042e278ea",
+                  "eligible_nodes": [
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                },
+                {
+                  "vip": "10.0.2.42",
+                  "port": 7444,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 1008155536403264292,
+                  "advertiser_node": "0000000042e278ea",
+                  "eligible_nodes": [
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                }
+              ],
+              "member_keys": [
+                "0000000042e27584",
+                "0000000042e27737",
+                "0000000042e278ea"
+              ],
+              "self_node": [
+                "0000000042e278ea"
+              ]
+            }
+          }
+        },
+        {
+          "phase": "post-failover-admission",
+          "follower": "node-1",
+          "receipt": {
+            "generation": 2
+          },
+          "policy_sha256": "f0d40fbfc443514e5e766e391324fc1248f9be07cfc4bc0b27d5833ebd55aacf",
+          "policy_status": {
+            "node-1": {
+              "generation": 2,
+              "sequence": 2,
+              "assignments": 2,
+              "not_before_unix_seconds": 1793134761,
+              "expires_unix_seconds": 1793136621
+            },
+            "node-2": {
+              "generation": 2,
+              "sequence": 2,
+              "assignments": 2,
+              "not_before_unix_seconds": 1793134761,
+              "expires_unix_seconds": 1793136621
+            }
+          },
+          "previous_receipt": {
+            "generation": 1
+          }
+        },
+        {
+          "phase": "survivor-ingress-projection",
+          "snapshots": {
+            "node-1": {
+              "schema": "charlotte.cluster.v2",
+              "fresh_committed": true,
+              "served_by_leader": false,
+              "truncated": false,
+              "raft": {
+                "state": "follower",
+                "term": 2,
+                "commit_index": 25,
+                "membership_epoch": 15,
+                "observed_millis": 45332,
+                "leader": "charlotte:42e278ea",
+                "served_by": "charlotte:42e27737"
+              },
+              "ingress": [
+                {
+                  "vip": "10.0.2.42",
+                  "port": 443,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 13025965246310971927,
+                  "advertiser_node": "0000000042e278ea",
+                  "eligible_nodes": [
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                },
+                {
+                  "vip": "10.0.2.42",
+                  "port": 7444,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 13025965246310971927,
+                  "advertiser_node": "0000000042e278ea",
+                  "eligible_nodes": [
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                }
+              ],
+              "member_keys": [
+                "0000000042e27584",
+                "0000000042e27737",
+                "0000000042e278ea"
+              ],
+              "self_node": [
+                "0000000042e27737"
+              ]
+            },
+            "node-2": {
+              "schema": "charlotte.cluster.v2",
+              "fresh_committed": true,
+              "served_by_leader": true,
+              "truncated": false,
+              "raft": {
+                "state": "leader",
+                "term": 2,
+                "commit_index": 25,
+                "membership_epoch": 15,
+                "observed_millis": 20864,
+                "leader": "charlotte:42e278ea",
+                "served_by": "charlotte:42e278ea"
+              },
+              "ingress": [
+                {
+                  "vip": "10.0.2.42",
+                  "port": 443,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 13025965246310971927,
+                  "advertiser_node": "0000000042e278ea",
+                  "eligible_nodes": [
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                },
+                {
+                  "vip": "10.0.2.42",
+                  "port": 7444,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 13025965246310971927,
+                  "advertiser_node": "0000000042e278ea",
+                  "eligible_nodes": [
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                }
+              ],
+              "member_keys": [
+                "0000000042e27584",
+                "0000000042e27737",
+                "0000000042e278ea"
+              ],
+              "self_node": [
+                "0000000042e278ea"
+              ]
+            }
+          }
+        },
+        {
+          "phase": "survivor-client-rejections",
+          "cases": [
+            {
+              "port": 28443,
+              "client": "unknown",
+              "state": "passed",
+              "transport_result": "EOFError",
+              "native_policy_rejection": true,
+              "application_bytes": 0,
+              "healthy_reader_status": 200
+            },
+            {
+              "port": 28443,
+              "client": "missing",
+              "state": "passed",
+              "transport_result": "EOFError",
+              "application_bytes": 0,
+              "healthy_reader_status": 200
+            },
+            {
+              "port": 28445,
+              "client": "unknown",
+              "state": "passed",
+              "transport_result": "EOFError",
+              "native_policy_rejection": true,
+              "application_bytes": 0,
+              "healthy_reader_status": 200
+            },
+            {
+              "port": 28445,
+              "client": "missing",
+              "state": "passed",
+              "transport_result": "EOFError",
+              "application_bytes": 0,
+              "healthy_reader_status": 200
+            },
+            {
+              "port": 28444,
+              "client": "unknown",
+              "state": "passed",
+              "transport_result": "EOFError",
+              "native_policy_rejection": true,
+              "application_bytes": 0,
+              "healthy_reader_status": 200
+            },
+            {
+              "port": 28444,
+              "client": "missing",
+              "state": "passed",
+              "transport_result": "EOFError",
+              "application_bytes": 0,
+              "healthy_reader_status": 200
+            },
+            {
+              "port": 28446,
+              "client": "unknown",
+              "state": "passed",
+              "transport_result": "EOFError",
+              "native_policy_rejection": true,
+              "application_bytes": 0,
+              "healthy_reader_status": 200
+            },
+            {
+              "port": 28446,
+              "client": "missing",
+              "state": "passed",
+              "transport_result": "EOFError",
+              "application_bytes": 0,
+              "healthy_reader_status": 200
+            }
+          ],
+          "port": 28446,
+          "path": "/v1/ingress-policy",
+          "step": "complete"
+        },
+        {
+          "phase": "vip-client-rejections",
+          "cases": [
+            {
+              "port": 28447,
+              "client": "unknown",
+              "state": "passed",
+              "transport_result": "EOFError",
+              "native_policy_rejection": true,
+              "application_bytes": 0,
+              "healthy_reader_status": 200
+            },
+            {
+              "port": 28447,
+              "client": "missing",
+              "state": "passed",
+              "transport_result": "EOFError",
+              "application_bytes": 0,
+              "healthy_reader_status": 200
+            },
+            {
+              "port": 28448,
+              "client": "unknown",
+              "state": "passed",
+              "transport_result": "EOFError",
+              "native_policy_rejection": true,
+              "application_bytes": 0,
+              "healthy_reader_status": 200
+            },
+            {
+              "port": 28448,
+              "client": "missing",
+              "state": "passed",
+              "transport_result": "EOFError",
+              "application_bytes": 0,
+              "healthy_reader_status": 200
+            }
+          ],
+          "port": 28448,
+          "path": "/v1/ingress-policy",
+          "step": "complete"
+        },
+        {
+          "phase": "post-control-ingress-projection",
+          "snapshots": {
+            "node-1": {
+              "schema": "charlotte.cluster.v2",
+              "fresh_committed": true,
+              "served_by_leader": false,
+              "truncated": false,
+              "raft": {
+                "state": "follower",
+                "term": 2,
+                "commit_index": 25,
+                "membership_epoch": 15,
+                "observed_millis": 61556,
+                "leader": "charlotte:42e278ea",
+                "served_by": "charlotte:42e27737"
+              },
+              "ingress": [
+                {
+                  "vip": "10.0.2.42",
+                  "port": 443,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 13025965246310971927,
+                  "advertiser_node": "0000000042e278ea",
+                  "eligible_nodes": [
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                },
+                {
+                  "vip": "10.0.2.42",
+                  "port": 7444,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 13025965246310971927,
+                  "advertiser_node": "0000000042e278ea",
+                  "eligible_nodes": [
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                }
+              ],
+              "member_keys": [
+                "0000000042e27584",
+                "0000000042e27737",
+                "0000000042e278ea"
+              ],
+              "self_node": [
+                "0000000042e27737"
+              ]
+            },
+            "node-2": {
+              "schema": "charlotte.cluster.v2",
+              "fresh_committed": true,
+              "served_by_leader": true,
+              "truncated": false,
+              "raft": {
+                "state": "leader",
+                "term": 2,
+                "commit_index": 25,
+                "membership_epoch": 15,
+                "observed_millis": 37093,
+                "leader": "charlotte:42e278ea",
+                "served_by": "charlotte:42e278ea"
+              },
+              "ingress": [
+                {
+                  "vip": "10.0.2.42",
+                  "port": 443,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 13025965246310971927,
+                  "advertiser_node": "0000000042e278ea",
+                  "eligible_nodes": [
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                },
+                {
+                  "vip": "10.0.2.42",
+                  "port": 7444,
+                  "protocol": 6,
+                  "backend_name": null,
+                  "projection_present": true,
+                  "member_count": 3,
+                  "epoch": 13025965246310971927,
+                  "advertiser_node": "0000000042e278ea",
+                  "eligible_nodes": [
+                    "0000000042e27737",
+                    "0000000042e278ea"
+                  ]
+                }
+              ],
+              "member_keys": [
+                "0000000042e27584",
+                "0000000042e27737",
+                "0000000042e278ea"
+              ],
+              "self_node": [
+                "0000000042e278ea"
+              ]
+            }
+          }
+        }
+      ],
+      "post_election_new_VIP_flows": {
+        "cutoff": "first granted vote for replacement term",
+        "vote_metadata": [
+          "raft-vote monotonic=2112704.231623 {'source': '52:54:00:12:34:02', 'destination': '52:54:00:12:34:01', 'tag': 4, 'term': 2, 'granted': True}"
+        ],
+        "count": 10,
+        "flow_peer_and_service_ports": [
+          [
+            "57836",
+            "443"
+          ],
+          [
+            "57837",
+            "443"
+          ],
+          [
+            "57838",
+            "443"
+          ],
+          [
+            "57839",
+            "443"
+          ],
+          [
+            "57840",
+            "443"
+          ],
+          [
+            "57841",
+            "7444"
+          ],
+          [
+            "57842",
+            "7444"
+          ],
+          [
+            "57843",
+            "7444"
+          ],
+          [
+            "57844",
+            "7444"
+          ],
+          [
+            "57845",
+            "7444"
+          ]
+        ],
+        "SYN_metadata": [
+          "tcp path=external dst-mac=52:54:00:12:34:01 10.0.2.2:57836 -> 10.0.2.42:443 flags=0x02 seq=14848001 ack=0 payload=0 monotonic=2112719.145405",
+          "tcp path=forwarded dst-mac=52:54:00:12:34:02 10.0.2.2:57836 -> 10.0.2.42:443 flags=0x02 seq=14848001 ack=0 payload=0 monotonic=2112719.151771",
+          "tcp path=external dst-mac=52:54:00:12:34:01 10.0.2.2:57837 -> 10.0.2.42:443 flags=0x02 seq=14976001 ack=0 payload=0 monotonic=2112719.919693",
+          "tcp path=forwarded dst-mac=52:54:00:12:34:02 10.0.2.2:57837 -> 10.0.2.42:443 flags=0x02 seq=14976001 ack=0 payload=0 monotonic=2112719.927743",
+          "tcp path=external dst-mac=52:54:00:12:34:01 10.0.2.2:57838 -> 10.0.2.42:443 flags=0x02 seq=15104001 ack=0 payload=0 monotonic=2112720.408122",
+          "tcp path=forwarded dst-mac=52:54:00:12:34:02 10.0.2.2:57838 -> 10.0.2.42:443 flags=0x02 seq=15104001 ack=0 payload=0 monotonic=2112720.416365",
+          "tcp path=external dst-mac=52:54:00:12:34:01 10.0.2.2:57839 -> 10.0.2.42:443 flags=0x02 seq=15296001 ack=0 payload=0 monotonic=2112721.257960",
+          "tcp path=forwarded dst-mac=52:54:00:12:34:01 10.0.2.2:57839 -> 10.0.2.42:443 flags=0x02 seq=15296001 ack=0 payload=0 monotonic=2112721.280414",
+          "tcp path=external dst-mac=52:54:00:12:34:01 10.0.2.2:57840 -> 10.0.2.42:443 flags=0x02 seq=15360001 ack=0 payload=0 monotonic=2112721.567543",
+          "tcp path=forwarded dst-mac=52:54:00:12:34:01 10.0.2.2:57840 -> 10.0.2.42:443 flags=0x02 seq=15360001 ack=0 payload=0 monotonic=2112721.579520",
+          "tcp path=external dst-mac=52:54:00:12:34:01 10.0.2.2:57841 -> 10.0.2.42:7444 flags=0x02 seq=15488001 ack=0 payload=0 monotonic=2112722.056620",
+          "tcp path=forwarded dst-mac=52:54:00:12:34:01 10.0.2.2:57841 -> 10.0.2.42:7444 flags=0x02 seq=15488001 ack=0 payload=0 monotonic=2112722.060646",
+          "tcp path=external dst-mac=52:54:00:12:34:01 10.0.2.2:57842 -> 10.0.2.42:7444 flags=0x02 seq=15616001 ack=0 payload=0 monotonic=2112722.382042",
+          "tcp path=forwarded dst-mac=52:54:00:12:34:02 10.0.2.2:57842 -> 10.0.2.42:7444 flags=0x02 seq=15616001 ack=0 payload=0 monotonic=2112722.393634",
+          "tcp path=external dst-mac=52:54:00:12:34:01 10.0.2.2:57843 -> 10.0.2.42:7444 flags=0x02 seq=15744001 ack=0 payload=0 monotonic=2112722.802144",
+          "tcp path=forwarded dst-mac=52:54:00:12:34:02 10.0.2.2:57843 -> 10.0.2.42:7444 flags=0x02 seq=15744001 ack=0 payload=0 monotonic=2112722.813757",
+          "tcp path=external dst-mac=52:54:00:12:34:01 10.0.2.2:57844 -> 10.0.2.42:7444 flags=0x02 seq=15872001 ack=0 payload=0 monotonic=2112723.414617",
+          "tcp path=forwarded dst-mac=52:54:00:12:34:01 10.0.2.2:57844 -> 10.0.2.42:7444 flags=0x02 seq=15872001 ack=0 payload=0 monotonic=2112723.426016",
+          "tcp path=external dst-mac=52:54:00:12:34:01 10.0.2.2:57845 -> 10.0.2.42:7444 flags=0x02 seq=15936001 ack=0 payload=0 monotonic=2112723.662140",
+          "tcp path=forwarded dst-mac=52:54:00:12:34:01 10.0.2.2:57845 -> 10.0.2.42:7444 flags=0x02 seq=15936001 ack=0 payload=0 monotonic=2112723.678874"
+        ],
+        "killed_backend_SYN_count": 0
+      },
+      "native_observations": {
+        "node-0": [
+          "[+    11.765765] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x3ffff failed_bitmap=0x0 pending_bitmap=0x0",
+          "[+    11.972229] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=0 joint=false members=1 commit=0 last=0 finalize_pending=false term=0 leader=false",
+          "[+    11.973408] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=0 leader=None millis=432 pending=0 queued=0",
+          "[+    13.311612] [EL0 LOG] lp=0 asid=127 [time] synchronized unix_s=1793134759 utc=2026-10-27T20:59:19.201043153Z stratum=3 uncertainty_ms=512 drift_ppb=0",
+          "[+    15.749324] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e27584\") millis=3973 pending=0 queued=0",
+          "[+    16.089019] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e27584 epoch=16659783171272698911 backends=1/1",
+          "[+    16.093139] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:7444 node=42e27584 epoch=16659783171272698911 backends=1/1",
+          "[+    37.488479] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=5 joint=true members=2 commit=5 last=5 finalize_pending=false term=1 leader=true",
+          "[+    38.706631] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=8 joint=false members=2 commit=8 last=10 finalize_pending=false term=1 leader=true",
+          "[+    39.138612] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e27584 epoch=16241512488801660716 backends=2/2",
+          "[+    39.139890] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:7444 node=42e27584 epoch=16241512488801660716 backends=2/2",
+          "[+    63.475640] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=13 joint=true members=3 commit=13 last=14 finalize_pending=false term=1 leader=true",
+          "[+    64.057668] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=15 joint=false members=3 commit=15 last=17 finalize_pending=false term=1 leader=true",
+          "[+    65.182822] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e27584 epoch=10217577795359256770 backends=3/3",
+          "[+    65.185342] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:7444 node=42e27584 epoch=10217577795359256770 backends=3/3",
+          "[+    68.188250] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e27584 epoch=11748847592329511601 backends=3/3",
+          "[+    68.189807] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:7444 node=42e27584 epoch=11748847592329511601 backends=3/3"
+        ],
+        "node-1": [
+          "[+    11.768349] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x3ffff failed_bitmap=0x0 pending_bitmap=0x0",
+          "[+    12.008246] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=0 joint=false members=1 commit=0 last=0 finalize_pending=false term=0 leader=false",
+          "[+    12.010278] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=0 leader=None millis=482 pending=0 queued=0",
+          "[+    13.337861] [EL0 LOG] lp=0 asid=127 [time] synchronized unix_s=1793134780 utc=2026-10-27T20:59:40.213115186Z stratum=3 uncertainty_ms=508 drift_ppb=0",
+          "[+    15.433991] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e27737\") millis=3651 pending=0 queued=0",
+          "[+    15.798077] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=1 leader=Some(\"charlotte:42e27584\") millis=4273 pending=1 queued=0",
+          "[+    17.194705] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=5 joint=true members=2 commit=5 last=7 finalize_pending=false term=1 leader=false",
+          "[+    18.045205] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=8 joint=false members=2 commit=8 last=10 finalize_pending=false term=1 leader=false",
+          "[+    42.894115] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=13 joint=true members=3 commit=13 last=15 finalize_pending=false term=1 leader=false",
+          "[+    43.441738] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=15 joint=false members=3 commit=15 last=17 finalize_pending=false term=1 leader=false",
+          "[+    45.469329] [EL0 LOG] lp=0 asid=130 [management] connection=1 certificate=463010ecf6885bd549b30eeb01d797ad8b85581733acdceb6bc13892525a63f3 role=Reader permission=Mutate allowed=false",
+          "[+    45.923377] [EL0 LOG] lp=0 asid=130 [management] connection=2 certificate=0fb133301ab08fa7384d4eae279460455a5effc52c0c2f1cdf90c1bfe4549219 role=Administrator permission=Mutate allowed=true",
+          "[+    53.068766] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=2 leader=None millis=41543 pending=2 queued=0",
+          "[+    54.379129] [EL0 LOG] lp=0 asid=130 [management] connection=4 certificate=463010ecf6885bd549b30eeb01d797ad8b85581733acdceb6bc13892525a63f3 role=Reader permission=Mutate allowed=false",
+          "[+    54.829045] [EL0 LOG] lp=0 asid=130 [management] connection=5 certificate=0fb133301ab08fa7384d4eae279460455a5effc52c0c2f1cdf90c1bfe4549219 role=Administrator permission=Mutate allowed=true",
+          "[+    58.615471] [EL0 LOG] lp=0 asid=126 [management] connection=11 client policy rejected",
+          "[+    64.486811] [EL0 LOG] lp=0 asid=130 [management] connection=8 client policy rejected",
+          "[+    69.240411] [EL0 LOG] lp=0 asid=126 [management] connection=16 client policy rejected",
+          "[+    71.635129] [EL0 LOG] lp=0 asid=130 [management] connection=12 client policy rejected"
+        ],
+        "node-2": [
+          "[+    11.844607] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x3ffff failed_bitmap=0x0 pending_bitmap=0x0",
+          "[+    12.043138] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=0 joint=false members=1 commit=0 last=0 finalize_pending=false term=0 leader=false",
+          "[+    12.045120] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=0 leader=None millis=433 pending=0 queued=0",
+          "[+    13.366277] [EL0 LOG] lp=0 asid=127 [time] synchronized unix_s=1793134805 utc=2026-10-27T21:00:05.089688790Z stratum=3 uncertainty_ms=507 drift_ppb=0",
+          "[+    15.490293] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=1 leader=Some(\"charlotte:42e278ea\") millis=3635 pending=0 queued=0",
+          "[+    15.864466] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Follower term=1 leader=Some(\"charlotte:42e27584\") millis=4255 pending=1 queued=0",
+          "[+    16.706785] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=8 joint=false members=2 commit=12 last=12 finalize_pending=false term=1 leader=false",
+          "[+    18.032132] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=13 joint=true members=3 commit=13 last=15 finalize_pending=false term=1 leader=false",
+          "[+    18.571722] [EL0 LOG] lp=0 asid=124 [dns] MEMBERSHIP epoch=15 joint=false members=3 commit=15 last=17 finalize_pending=false term=1 leader=false",
+          "[+    27.961988] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Candidate term=2 leader=None millis=16215 pending=2 queued=1",
+          "[+    28.414994] [EL0 LOG] lp=0 asid=124 [dns] RAFT STATE state=Leader term=2 leader=Some(\"charlotte:42e278ea\") millis=16806 pending=1 queued=1",
+          "[+    29.219486] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e278ea epoch=1008155536403264292 backends=2/3",
+          "[+    29.220863] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:7444 node=42e278ea epoch=1008155536403264292 backends=2/3",
+          "[+    31.219634] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:443 node=42e278ea epoch=13025965246310971927 backends=2/3",
+          "[+    31.220908] [EL0 LOG] lp=0 asid=121 [frouter] VIP ADVERTISER ACQUIRED vip=10.0.2.42:7444 node=42e278ea epoch=13025965246310971927 backends=2/3",
+          "[+    36.792461] [EL0 LOG] lp=0 asid=126 [management] connection=10 client policy rejected",
+          "[+    41.751092] [EL0 LOG] lp=0 asid=130 [management] connection=4 client policy rejected"
+        ]
+      }
+    }
+  ],
+  "ledger": {
+    "corrected_in_scope": 29,
+    "partial": 7,
+    "open": 2,
+    "SEC-10": "partial"
+  }
+}

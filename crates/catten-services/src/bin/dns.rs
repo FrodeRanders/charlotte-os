@@ -51,12 +51,7 @@ use catten_rt::{
 };
 use catten_services::{
     broker::EventBroker,
-    cluster_ingress::{
-        Backend,
-        BackendSnapshot,
-        load_balancing_epoch,
-        service_load_balancing_epoch,
-    },
+    cluster_ingress::BackendSnapshot,
     cluster_observe,
     clusterctl,
     disco,
@@ -393,10 +388,6 @@ fn queue_local_unregistration(
     }
 }
 
-/// Materialize one all-or-nothing view of committed ingress eligibility.
-/// Discovery supplies only the Ethernet route for each already-admitted
-/// identity. If any route is missing, callers retain their previous snapshot
-/// instead of selecting from inconsistent partial sets on different nodes.
 fn ingress_membership_snapshot(
     node: &RaftNode,
     transport: &RelmsgRaftTransport,
@@ -404,92 +395,13 @@ fn ingress_membership_snapshot(
     local_mac: [u8; 6],
     service_name: Option<&[u8]>,
 ) -> Option<BackendSnapshot> {
-    let self_node = node_identity::key_from_name(node.me.id.as_bytes())?;
-    let mut members = Vec::new();
-    for peer in node.cluster_configuration.active_voting_members() {
-        let node_id = node_identity::key_from_name(peer.id.as_bytes())?;
-        let mac = if peer.id == node.me.id {
-            local_mac
-        } else {
-            transport.mac_for_peer(&peer.id)?
-        };
-        members.push(Backend {
-            node_id,
-            mac,
-        });
-    }
-    let mut draining = catalog
-        .ingress_draining_nodes()
-        .into_iter()
-        .filter(|(node_id, _)| members.iter().any(|member| member.node_id == *node_id))
-        .collect::<Vec<_>>();
-    draining.sort_unstable_by_key(|(node_id, _)| *node_id);
-    let ingress_nodes = members
-        .iter()
-        .filter(|member| {
-            draining.binary_search_by_key(&member.node_id, |(node_id, _)| *node_id).is_err()
-        })
-        .map(|member| member.node_id)
-        .collect::<Vec<_>>();
-    let (deployment_generation, service_generation, placed_nodes) = service_name.map_or_else(
-        || (0, 0, None),
-        |name| {
-            catalog.ingress_placement(name).map_or((0, 0, Some(Vec::new())), |placement| {
-                (
-                    placement.deployment_generation,
-                    placement.service_generation,
-                    Some(placement.ready_nodes),
-                )
-            })
-        },
-    );
-    let eligible_nodes = placed_nodes.map_or_else(
-        || ingress_nodes.clone(),
-        |placed| {
-            ingress_nodes
-                .iter()
-                .copied()
-                .filter(|node_id| placed.contains(node_id))
-                .collect::<Vec<_>>()
-        },
-    );
-    let leader = if node.state == NodeState::Leader {
-        Some(node.me.id.as_str())
-    } else {
-        node.known_leader_id.as_deref()
-    };
-    let advertiser_node = leader
-        .filter(|leader| {
-            node.cluster_configuration
-                .active_voting_members()
-                .iter()
-                .any(|peer| peer.id.as_str() == *leader)
-        })
-        .and_then(|leader| node_identity::key_from_name(leader.as_bytes()))
-        .filter(|leader| ingress_nodes.contains(leader))
-        .or_else(|| ingress_nodes.iter().copied().min())
-        .filter(|_| !eligible_nodes.is_empty());
-    let assignment_sequence = catalog
-        .ingress_policy()
-        .and_then(|entry| {
-            charlotte_launch::ingress_policy::decode(&entry.envelope).map(|policy| policy.sequence)
-        })
-        .unwrap_or(0);
-    let epoch = service_name.map_or_else(
-        || load_balancing_epoch(node.membership_epoch(), &draining),
-        |name| {
-            service_load_balancing_epoch(
-                node.membership_epoch(),
-                name,
-                assignment_sequence,
-                deployment_generation,
-                service_generation,
-                &eligible_nodes,
-                &draining,
-            )
-        },
-    );
-    BackendSnapshot::new_with_members(epoch, self_node, advertiser_node, members, eligible_nodes)
+    catten_services::ingress_availability::snapshot(
+        node,
+        catalog,
+        local_mac,
+        service_name,
+        |peer| transport.mac_for_peer(peer),
+    )
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1747,6 +1659,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         fatal(16)
     });
     let mut raft_clock = catten_services::raft_clock::start();
+    let mut availability_publisher = catten_services::ingress_availability::Publisher::default();
     let mut node = RaftNode::new(catten_graft::node::RaftNodeConfig {
         me: me.clone(),
         timeout_millis: election_timeout_ms,
@@ -2976,6 +2889,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 
         catten_services::raft_clock::refresh(&mut node, &mut raft_clock);
         let completed = node.poll_transport(node.millis());
+        if let Err(reason) = availability_publisher.drive(&mut node, &catalog) {
+            catten_rt::logln!("[dns] {reason}; retaining reactor");
+            catten_rt::domain_abort();
+        }
         if completed > 0 {
             config::write_u32_release(dns::status::TRANSPORT_COMPLETIONS, completed as u32);
         }

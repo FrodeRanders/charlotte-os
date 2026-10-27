@@ -19,7 +19,7 @@ nonzero. A reply generation of zero explicitly reports failed registration or
 activation; it is never an absent-field default.
 
 Retired `0x14/0x15/0x16` tags reject. Relabelling their old u8 bodies does not
-make them current frames. Catalog-v18, Raft pair-v3 and runtime ABI 3 remain
+make them current frames. Catalog-v19, Raft pair-v4 and runtime ABI 3 remain
 unchanged; DNS interface 4 changes only client invocation. Both architectures rebuild/sign DNS together.
 
 ## Admission and ownership

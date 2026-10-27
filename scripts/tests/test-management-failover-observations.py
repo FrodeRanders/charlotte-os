@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """A failover proof needs coherent fresh membership/term/leader observations."""
 import importlib.util
+import copy
 from pathlib import Path
 import unittest
 
@@ -17,6 +18,28 @@ def snapshots():
 
 
 class FailoverObservations(unittest.TestCase):
+    def projections(self):
+        rows = [{"vip": "10.0.2.42", "port": port, "protocol": 6, "backend_name": None,
+                 "projection_present": True, "member_count": 3, "eligible_nodes": ["a", "b"],
+                 "advertiser_node": "a", "epoch": 7} for port in (443, 7444)]
+        return {name: {"ingress": copy.deepcopy(rows)} for name in ("a", "b")}
+
+    def test_complete_survivor_projection_agrees_without_removing_the_dead_voter(self):
+        self.assertIsNotNone(fixture.ingress_projection(self.projections(), {"a", "b"}))
+        self.assertIsNone(fixture.ingress_projection(self.projections(), {"a"}))
+
+    def test_unavailable_partial_duplicate_and_dead_backend_projections_reject(self):
+        for replacement in ([], [None], self.projections()["a"]["ingress"][:1]):
+            values = self.projections(); values["b"]["ingress"] = replacement
+            self.assertIsNone(fixture.ingress_projection(values, {"a", "b"}))
+        for field, value in (("projection_present", False), ("member_count", 2),
+                             ("eligible_nodes", ["a", "b", "dead"]), ("eligible_nodes", ["b", "a"]),
+                             ("epoch", 8), ("advertiser_node", "dead"), ("backend_name", "other")):
+            values = self.projections(); values["b"]["ingress"][0][field] = value
+            with self.subTest(field=field, value=value):
+                self.assertIsNone(fixture.ingress_projection(values, {"a", "b"}))
+        values = self.projections(); values["b"]["ingress"][1] = values["b"]["ingress"][0]
+        self.assertIsNone(fixture.ingress_projection(values, {"a", "b"}))
     def test_initial_and_replacement_leader_require_coherent_term(self):
         initial = snapshots()
         self.assertEqual(fixture.topology(initial, 3), ("a", "a", 4))

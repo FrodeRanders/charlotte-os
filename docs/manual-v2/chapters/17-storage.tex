@@ -327,8 +327,8 @@ qualification remain operational work.
 The Raft service selects memory (\texttt{storage=0}, or omitted) or required
 persistence (\texttt{storage=2}); retired mode 1 and malformed policy values
 reject. Required mode waits for \texttt{"obj"} through the name service.
-One jointly validated two-object pair holds \texttt{CRFTSTA3}
-term/vote/join-admission state and \texttt{CRFTLOG3} snapshot/log state.
+One jointly validated two-object pair holds \texttt{CRFTSTA4}
+term/vote/join-admission state and \texttt{CRFTLOG4} snapshot/log state.
 Only two absent records authorize initialization; existing empty, incomplete,
 corrupt or unsupported records reject without reset or a memory fallback.
 Older decoders and split-store migration are removed. Each mutation writes

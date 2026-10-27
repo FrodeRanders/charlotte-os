@@ -17,6 +17,7 @@ impl NameCatalog {
         let shutdown_intents = self.shutdown_intents.lock();
         let node_capacity = self.node_capacity.lock();
         let ingress_policy = self.ingress_policy.lock();
+        let availability = self.ingress_availability.lock();
         let mut size = 8 + 4; // magic + entry count
         for (name, entry) in entries.iter() {
             size += 4 + name.len() + 4 + entry.node.len() + 8 + 1 + 8;
@@ -65,8 +66,9 @@ impl NameCatalog {
         for _ in node_capacity.values() {
             size += 8 + 8 + 8 + 8 + 8 + 2 + 16;
         }
+        size += 1 + availability.as_ref().map_or(0, |entry| 8 + 4 + entry.view.encoded_len());
         let mut buf = Vec::with_capacity(size);
-        buf.extend_from_slice(&CATALOG_MAGIC_V18.to_le_bytes());
+        buf.extend_from_slice(&CATALOG_MAGIC_V19.to_le_bytes());
         buf.extend_from_slice(&(entries.len() as u32).to_le_bytes());
         for (name, entry) in entries.iter() {
             buf.extend_from_slice(&(name.len() as u32).to_le_bytes());
@@ -170,6 +172,15 @@ impl NameCatalog {
             buf.extend_from_slice(&entry.cpu_load_permille.to_le_bytes());
             buf.extend_from_slice(&entry.target.encode().unwrap_or([0; 16]));
         }
+        if let Some(entry) = availability.as_ref() {
+            let command = entry.view.encode().expect("validated availability");
+            buf.push(1);
+            buf.extend_from_slice(&entry.generation.to_le_bytes());
+            buf.extend_from_slice(&(command.len() as u32).to_le_bytes());
+            buf.extend_from_slice(&command);
+        } else {
+            buf.push(0);
+        }
         buf
     }
 
@@ -178,7 +189,7 @@ impl NameCatalog {
             return Err(SnapshotError::Malformed);
         }
         let magic = u64::from_le_bytes(data[0..8].try_into().ok().unwrap_or_default());
-        if magic != CATALOG_MAGIC_V18 {
+        if magic != CATALOG_MAGIC_V19 {
             return Err(SnapshotError::Unsupported);
         }
         let count = u32::from_le_bytes(data[8..12].try_into().ok().unwrap_or_default()) as usize;
@@ -754,6 +765,29 @@ impl NameCatalog {
             }
         }
 
+        let availability = match data.get(pos) {
+            Some(0) => {
+                pos += 1;
+                None
+            }
+            Some(1) => {
+                let (generation, after_generation) =
+                    read_u64(data, pos + 1).ok_or(SnapshotError::Malformed)?;
+                let (command, end) =
+                    take_len_bytes(data, after_generation).ok_or(SnapshotError::Malformed)?;
+                let view = crate::ingress_availability::View::decode(command)
+                    .ok_or(SnapshotError::Malformed)?;
+                if generation == 0 || generation > i64::MAX as u64 {
+                    return Err(SnapshotError::Malformed);
+                }
+                pos = end;
+                Some(crate::ingress_availability::Entry {
+                    generation,
+                    view,
+                })
+            }
+            _ => return Err(SnapshotError::Malformed),
+        };
         if pos != data.len() {
             return Err(SnapshotError::Malformed);
         }
@@ -769,6 +803,7 @@ impl NameCatalog {
         *self.deployment_replicas.lock() = deployment_replicas;
         *self.node_capacity.lock() = node_capacity;
         *self.ingress_policy.lock() = ingress_policy;
+        *self.ingress_availability.lock() = availability;
         *self.cluster_key.lock() = cluster_key;
         *self.cluster_key_generation.lock() = cluster_key_generation;
         Ok(())

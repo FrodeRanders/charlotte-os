@@ -583,7 +583,7 @@ replica and affinity ranking; explicit pins undergo the same checks.
 An ARM-only revision therefore cannot count x86 nodes toward its replicas.
 
 Selection uses signed priority, feature specificity and descriptor order.
-Raft commits the chosen variant index beside each replica node; catalog-v18
+Raft commits the chosen variant index beside each replica node; catalog-v19
 snapshots and queries preserve that pin. A later CPU report cannot change an
 existing generation's executable. If a new node incarnation loses support for
 its pin, the controller commits a compatible replacement in a new generation,
@@ -608,7 +608,7 @@ instances per node, minimum distinct nodes, \emph{every eligible node}, an
 affinity group, and an anti-affinity group. A request for concurrent
 replicas is invalid unless the artifact's signed CLS2 metadata contains
 \texttt{PARALLEL\_INSTANCES}. \texttt{CDEPLOY6} signs this policy, the
-leader resolves it to concrete assignments, and catalog-v18 snapshots retain
+leader resolves it to concrete assignments, and catalog-v19 snapshots retain
 both the desired set and per-node readiness. Affinity groups share a stable
 ranking seed; anti-affinity groups require unused nodes and fail closed when
 the eligible set cannot satisfy the separation. A policy that needs more
@@ -683,7 +683,13 @@ measurement.
 An unnamed operations VIP on port 443 can identify the built-in TLS keyhole.
 An enrolled reader or administrator certificate is required. The
 leader normally advertises that VIP, but DSR may deliver the connection to any
-admitted, non-draining member. Consequently each reply names both the leader
+admitted, non-draining member in the committed availability projection. Recent
+current-term replication acknowledgements supply the leader's receive-time
+evidence; followers use the replicated set rather than local peer timers.
+Missing or stale term/membership projections admit no new VIP flows. Health
+changes commit a new generation and flow epoch while retaining the full voter
+set and previous flow bindings. Existing TCP/TLS traffic is not rehashed or
+replayed to make another backend complete it. Consequently each reply names both the leader
 and the serving node. Leadership movement changes the advertiser without
 making browser polling part of consensus or requiring the leader to terminate
 every connection.
@@ -704,8 +710,8 @@ private keys belong in the application descriptor or Raft log. A browser
 uses an operations-issued PKCS\#12 client identity with \texttt{clientAuth},
 not the cluster signing key. The complete boundary and browser setup are
 documented in \repofile|docs/architecture/cluster-observability.md|. Public
-development trust is not protected enrollment, and native rotation/revocation
-and leader movement still require qualification.
+development trust is not protected enrollment; live-session retirement,
+protected custody and broad pressure remain separately unqualified.
 
 \subsection{Focused stateless-handoff validation}
 

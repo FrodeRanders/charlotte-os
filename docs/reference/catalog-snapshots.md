@@ -1,11 +1,11 @@
 # Catalog snapshots and deployment query records
 
-The catalog accepts only version 18, numeric magic `0x434154414c4f4749`
-(`CATALOGI`), encoded little endian. Its deployment records retain generation,
+The catalog accepts only version 19, numeric magic `0x434154414c4f474a`
+(`CATALOGJ`), encoded little endian. Its deployment records retain generation,
 signed descriptor and exact replica variant pins. Object ID, diagnostic primary
-node and variant-zero digest are removed. Versions 1–17 reject; no production
+node and variant-zero digest are removed. Versions 1–18 reject; no production
 stores need conversion for this pre-production change. The Raft pair uses
-`CRFTSTA3` / `CRFTLOG3` so old command logs also reject without a snapshot.
+`CRFTSTA4` / `CRFTLOG4` so old command logs also reject without a snapshot.
 
 ## Complete snapshot
 
@@ -28,6 +28,10 @@ widths. Presence and active flags accept exactly zero or one.
 8. Cluster key: presence, generation and 32-byte key. Absence requires both
    generation and key bytes to be zero; presence requires a nonzero generation.
 9. Node capacity: complete node/boot/epoch/frame/load samples and canonical 16-byte execution targets.
+10. Ingress availability: presence, then a positive generation, command length
+    and complete term/membership/leader/eligible-node projection when present.
+    The absent flag is explicit unknown state, never an all-voters default.
+    See [projection grammar and fences](ingress-availability.md).
 
 Restore rejects missing sections, truncation, trailing bytes, duplicate keys,
 noncanonical flags and counts above the existing collection limits. Service,
@@ -108,7 +112,8 @@ replay the suffix-free grammar, including stores without a snapshot.
 
 ## DNS observation boundary
 
-Persistent catalog-v18 and Raft pair-v3 remain unchanged by S08b2b. The DNS
+S08b2b changed the observation boundary only; current persistence uses
+catalog-v19 and Raft pair-v4. The DNS
 `OP_CATALOG` local observation uses the separate complete bounded
 [CDNSCAT1 grammar](dns-catalog.md). Its former untagged one-page writer and
 partial HTTP reader are removed; this read does not restore state or establish
@@ -116,11 +121,11 @@ a linearizable lookup. Full identities and repeated replica names survive.
 
 The correlated follower read-barrier relay is separately versioned by current
 [0x24/0x25 query tags](dns-query-relay.md). Its full identity lengths and bounded
-fallible preparation do not change catalog-v18 or Raft pair-v3. Retired query
+fallible preparation do not change catalog-v19 or Raft pair-v4. Retired query
 frames reject before read-barrier processing; membership, correlation and
 exact-generation source checks remain necessary.
 
 The registration and automatic-retraction network relays use the
 [full-name correlated grammar](dns-registration-relay.md) on `0x28/0x29/0x2a`.
 They preserve the explicit deployment generation in catalog commands; this
-network-only replacement leaves catalog-v18 and Raft pair-v3 unchanged.
+network-only replacement leaves catalog-v19 and Raft pair-v4 unchanged.

@@ -14,7 +14,7 @@ Writers retain the complete bytes; decoders validate bounds, tag and exact frame
 termination before fallible identity copies. Retired `0x10/0x11` frames reject.
 The old request u8 grammar cannot be upgraded by relabelling; the reply retains
 its explicit fixed fields under the new tag. No absent field gets a default.
-Persistent catalog-v18, Raft pair-v3 and runtime ABI 3 remain unchanged. DNS
+Persistent catalog-v19, Raft pair-v4 and runtime ABI 3 remain unchanged. DNS
 interface 4 changes client invocation to mandatory full-name moved memory; both
 architectures rebuild/sign DNS together.
 

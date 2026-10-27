@@ -265,7 +265,7 @@ the corrected RPC polling paths, and the remaining notification gaps.
   See `docs/reference/object-store-format.md`.
   Catalog registration uses one record/encoder with an explicit deployment
   generation, including zero for system services. Missing suffixes reject;
-  catalog-v18 and Raft pair-v3 reject earlier stores before replay. S3 launches
+  catalog-v19 and Raft pair-v4 reject earlier stores before replay. S3 launches
   require the complete immutable CHS3PF1 profile in read-only launch memory;
   per-field manifest aliases and defaults supply no fallback. See
   `docs/reference/catalog-snapshots.md` and `docs/reference/s3-client.md`.

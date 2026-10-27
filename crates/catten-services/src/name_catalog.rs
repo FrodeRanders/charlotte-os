@@ -29,6 +29,7 @@
 //! ingress:    0x0c | envelope_len:u32 | signed_ingress_policy
 //! capacity:   0x0d | node_key:u64 | boot_nonce:u64 | epoch:u64 |
 //!             free_frames:u64 | usable_frames:u64 | cpu_load_permille:u16
+//! availability: 0x0f | term:u64 | membership_epoch:u64 | leader:u64 | count:u16 | nodes:[u64]
 //! ```
 use alloc::{
     collections::{
@@ -72,7 +73,7 @@ const MAX_RELEASES: usize = 4_096;
 const MAX_OPERATIONAL_BINDINGS: usize = 8_192;
 const MAX_SHUTDOWN_INTENTS: usize = 4_096;
 const MAX_NODE_CAPACITY_ENTRIES: usize = 256;
-const CATALOG_MAGIC_V18: u64 = 0x4341_5441_4c4f_4749; // "CATALOGI"
+const CATALOG_MAGIC_V19: u64 = 0x4341_5441_4c4f_474a; // "CATALOGJ"
 
 /// Query tag prefix for a name lookup.
 const QUERY_LOOKUP: u8 = 0x01;
@@ -217,6 +218,7 @@ pub struct NameCatalog {
     shutdown_intents: spin::Mutex<BTreeMap<u64, ShutdownIntentEntry>>,
     node_capacity: spin::Mutex<BTreeMap<u64, NodeCapacityEntry>>,
     ingress_policy: spin::Mutex<Option<IngressPolicyEntry>>,
+    ingress_availability: spin::Mutex<Option<crate::ingress_availability::Entry>>,
     cluster_key: spin::Mutex<Option<[u8; 32]>>,
     cluster_key_generation: spin::Mutex<u64>,
     /// Launch-owned deployment/release authority used before an optional
@@ -415,6 +417,7 @@ impl NameCatalog {
             shutdown_intents: spin::Mutex::new(BTreeMap::new()),
             node_capacity: spin::Mutex::new(BTreeMap::new()),
             ingress_policy: spin::Mutex::new(None),
+            ingress_availability: spin::Mutex::new(None),
             cluster_key: spin::Mutex::new(None),
             cluster_key_generation: spin::Mutex::new(0),
             bootstrap_deployment_key,
@@ -665,8 +668,45 @@ impl NameCatalog {
         crate::dns_catalog::encode(ordinary.chain(deployed))
     }
 
-    fn apply_command(&self, command: &[u8]) -> Vec<u8> {
+    pub fn ingress_availability(&self) -> Option<crate::ingress_availability::Entry> {
+        self.ingress_availability.lock().clone()
+    }
+
+    fn apply_command(&self, term: u64, command: &[u8]) -> Vec<u8> {
         match command.first().copied() {
+            Some(crate::ingress_availability::COMMAND) => {
+                let Some(view) = crate::ingress_availability::View::decode(command) else {
+                    return Vec::new();
+                };
+                if view.term != term {
+                    return Vec::new();
+                }
+                let mut current = self.ingress_availability.lock();
+                if let Some(previous) = current.as_ref() {
+                    if view.term < previous.view.term
+                        || view.membership_epoch < previous.view.membership_epoch
+                        || (view.term == previous.view.term
+                            && view.leader_node != previous.view.leader_node)
+                    {
+                        return Vec::new();
+                    }
+                    if view == previous.view {
+                        return (previous.generation as i64).to_le_bytes().to_vec();
+                    }
+                }
+                let Some(generation) = current
+                    .as_ref()
+                    .map_or(Some(1), |entry| entry.generation.checked_add(1))
+                    .filter(|value| *value <= i64::MAX as u64)
+                else {
+                    return Vec::new();
+                };
+                *current = Some(crate::ingress_availability::Entry {
+                    generation,
+                    view,
+                });
+                (generation as i64).to_le_bytes().to_vec()
+            }
             Some(CMD_REGISTER) => {
                 let Some((name, after_name)) = take_len_bytes(command, 1) else {
                     return Vec::new();
@@ -1555,8 +1595,8 @@ impl NameCatalog {
 }
 
 impl StateMachine for NameCatalog {
-    fn apply(&self, _term: u64, command: &[u8]) {
-        let result = self.apply_command(command);
+    fn apply(&self, term: u64, command: &[u8]) {
+        let result = self.apply_command(term, command);
         *self.last_apply.lock() = if result.is_empty() {
             None
         } else {
@@ -1564,8 +1604,8 @@ impl StateMachine for NameCatalog {
         };
     }
 
-    fn apply_with_result(&self, _term: u64, command: &[u8]) -> Vec<u8> {
-        let result = self.apply_command(command);
+    fn apply_with_result(&self, term: u64, command: &[u8]) -> Vec<u8> {
+        let result = self.apply_command(term, command);
         *self.last_apply.lock() = if result.is_empty() {
             None
         } else {
@@ -1594,6 +1634,7 @@ impl StateMachine for NameCatalog {
         self.shutdown_intents.lock().clear();
         self.node_capacity.lock().clear();
         *self.ingress_policy.lock() = None;
+        *self.ingress_availability.lock() = None;
         *self.cluster_key.lock() = None;
         *self.cluster_key_generation.lock() = 0;
         *self.last_apply.lock() = None;

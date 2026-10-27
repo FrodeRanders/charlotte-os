@@ -144,6 +144,15 @@ frequency, quorum-read freshness and management budgets together; retuning
 elections cannot restart an accepted request's deadline. See
 [Raft conformance](../reference/raft-conformance.md).
 
+New VIP flows use the committed availability projection in addition to member,
+drain and placement state. Its replication-contact age uses the frame router's
+existing `SNAPSHOT_SOURCE_MAX_AGE_MS` (1000 ms), derived from
+`SNAPSHOT_REFRESH_MS`; local VIP leases are five refresh intervals.
+`cluster_ingress::MAX_BACKENDS` (64) bounds both member and availability records.
+These service settings require rebuild/restart. Review election timing, source
+latency, projection convergence and flow-history capacity together. See
+[ingress availability](../reference/ingress-availability.md).
+
 Review these groups together when changing workload targets:
 
 | Target change | Related capacity and consequences |

@@ -265,6 +265,16 @@ pub fn service_load_balancing_epoch(
     avalanche(hash)
 }
 
+/// Fence recovery of the same backend set by its committed availability
+/// generation. A new projection cannot reuse a historical flow's epoch.
+pub fn availability_load_balancing_epoch(epoch: u64, generation: u64) -> u64 {
+    let mut hash = 0xcbf2_9ce4_8422_2325u64;
+    hash_bytes(&mut hash, b"Charlotte ingress availability v1\0");
+    hash_bytes(&mut hash, &epoch.to_le_bytes());
+    hash_bytes(&mut hash, &generation.to_le_bytes());
+    avalanche(hash)
+}
+
 /// Select one backend using highest-random-weight (rendezvous) hashing.
 ///
 /// `snapshot.epoch` deliberately does not seed the score. The epoch selects

@@ -909,7 +909,7 @@ fn retired_catalog_snapshots_reject_without_changing_live_state() {
     let before = catalog.snapshot();
     let current = fixture_catalog().snapshot();
     // Historical magics, including the original CATALOGM tag.
-    for tag in b"M23456789ABCDEFGH" {
+    for tag in b"M23456789ABCDEFGHI" {
         let mut retired = current.clone();
         let magic = 0x4341_5441_4c4f_4700u64 | u64::from(*tag);
         retired[..8].copy_from_slice(&magic.to_le_bytes());

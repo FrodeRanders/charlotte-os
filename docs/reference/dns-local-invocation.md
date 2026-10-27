@@ -20,8 +20,8 @@ framing returns `ERR_BAD_OPCODE`, boundary/length rejection `ERR_TOO_LARGE`, and
 mapping/copy admission rejection `ERR_RESOURCE_LIMIT`. No absent opcode, argument
 or name gets a default. The unique incoming memory, connection and reply token
 are adopted together at the receive ABI boundary and disposed through their
-runtime owners. No register layout changes: runtime ABI remains 3; catalog-v18,
-Raft pair-v3 and remote relay tags `0x24` through `0x2a` remain current.
+runtime owners. No register layout changes: runtime ABI remains 3; catalog-v19,
+Raft pair-v4 and remote relay tags `0x24` through `0x2a` remain current.
 
 ## Operation ownership and readiness
 

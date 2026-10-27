@@ -104,6 +104,34 @@ def topology(snapshots, expected_members, old_leader=None, previous_term=0):
     return owners[0], leader, term
 
 
+def ingress_projection(snapshots, expected_nodes):
+    """Observe complete agreeing projections, never infer liveness from silence."""
+    targets = {("10.0.2.42", 443, 6), ("10.0.2.42", 7444, 6)}
+    observed = {}
+    if not snapshots or not expected_nodes:
+        return None
+    for name, snapshot in snapshots.items():
+        if not isinstance(snapshot, dict) or not isinstance(snapshot.get("ingress"), list):
+            return None
+        rows = snapshot["ingress"]
+        if len(rows) != len(targets):
+            return None
+        current = {}
+        for row in rows:
+            if not isinstance(row, dict):
+                return None
+            key = (row.get("vip"), row.get("port"), row.get("protocol"))
+            if key not in targets or key in current or row.get("projection_present") is not True or row.get("backend_name") is not None:
+                return None
+            if row.get("member_count") != 3 or row.get("eligible_nodes") != sorted(expected_nodes) or type(row.get("epoch")) is not int or row.get("advertiser_node") not in expected_nodes:
+                return None
+            current[key] = (row["epoch"], row["advertiser_node"])
+        if observed and current != next(iter(observed.values())):
+            return None
+        observed[name] = current
+    return observed
+
+
 @contextmanager
 def journal(output, evidence):
     try:
@@ -284,6 +312,20 @@ def main():
             return values if all(isinstance(value, dict) and value.get("sequence") == sequence for value in values.values()) else None
         end = time.monotonic()+args.phase_timeout
         committed = wait_for(lambda: policy_status(1, end), children(), end, "first policy on all nodes")
+        def projection_barrier(phase, old=None, previous_term=0):
+            end = time.monotonic()+args.phase_timeout
+            def ready_projection():
+                if not observe(old, previous_term, end):
+                    return None
+                own_rows = [[row["node_key"] for row in value["nodes"] if row.get("self")] for value in snapshots.values()]
+                if any(len(rows) != 1 for rows in own_rows):
+                    return None
+                expected = {rows[0] for rows in own_rows}
+                return ingress_projection(snapshots, expected) if len(expected) == len(nodes) else None
+            wait_for(ready_projection, children(), end, phase)
+            evidence["phases"].append({"phase": phase, "snapshots": dict(snapshots)})
+            save()
+        projection_barrier("initial-ingress-projection")
         if not args.direct_only:
             get(vip_status, "/cluster/metrics")
         killed = nodes.pop(owner)
@@ -304,6 +346,7 @@ def main():
         evidence["phases"].append({"phase": "post-failover-admission", "follower": new_follower, "receipt": accepted, "policy_sha256": sha(second), "policy_status": values,
                                   "previous_receipt": receipt})
         save()
+        projection_barrier("survivor-ingress-projection", leader, term)
         def clients(endpoints, phase):
             cases = []
             progress = {"phase": phase, "cases": cases}
@@ -340,6 +383,7 @@ def main():
                 [(node["deploy"], "/v1/ingress-policy") for node in nodes.values()], "survivor-client-rejections")
         if not args.direct_only:
             clients([(vip_status, "/metrics"), (vip_deploy, "/v1/ingress-policy")], "vip-client-rejections")
+        projection_barrier("post-control-ingress-projection", leader, term)
         evidence["qualification"] = "direct-node-only" if args.direct_only else "direct-and-vip"
         evidence["native_observations"] = {name: [line for line in (output / (name + ".serial.log")).read_text().splitlines() if any(marker in line for marker in (
             "SELFTEST COMPLETE:", "MEMBERSHIP epoch=", "[time] synchronized ", "[management] connection=", "admission policy published:", "VIP ADVERTISER"))]

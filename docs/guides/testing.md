@@ -1723,8 +1723,8 @@ application invocation remains separate work; do not weaken local policy to
 make the old forwarding fixture pass.
 
 
-Current deployment persistence uses `CATALOGI` v18 inside the
-`CRFTSTA3` / `CRFTLOG3` pair. Unsupported earlier stores reject before replay;
+Current deployment persistence uses `CATALOGJ` v19 inside the
+`CRFTSTA4` / `CRFTLOG4` pair. Unsupported earlier stores reject before replay;
 only explicitly fresh fixture storage may initialize. Deployment queries use
 `CDEPQR01` and preserve aligned node/variant pins, without object ID, primary
 node or variant-zero digest. The linked fixture exercises descriptor-only

@@ -200,6 +200,17 @@ read freshness and management request budgets; a larger timeout does not extend
 an accepted request's original deadline. See
 \repofile|docs/reference/raft-conformance.md|.
 
+The frame router's shared refresh interval is 1000 milliseconds, selected by
+\texttt{SNAPSHOT\_REFRESH\_MS} in
+\repofile|crates/catten-services/src/lib.rs|. Route refresh, ingress projection
+queries and source freshness share that interval; the local VIP admission lease
+is five intervals. Backend eligibility uses replication contact no older than
+the source-freshness interval, with an acknowledged current-term log entry.
+Only a committed availability projection changes the new-flow backend set.
+These settings require a service rebuild/restart. Review election timing,
+replication latency, projection convergence and flow-history retention together;
+a readiness signal or availability change cannot authorize request replay.
+
 \section{Management TLS configuration}
 
 The server collects policy in

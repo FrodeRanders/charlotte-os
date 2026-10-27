@@ -37,8 +37,8 @@ Local allocation rejection during record reconstruction also rejects through
 `MalformedRecord`; runtime buffer/admission failures can return `Io`. These
 labels alone do not establish on-disk corruption or authorize reformatting.
 
-The version-3 pair tags cover the current catalog command grammar as well as
-snapshot bytes. Former v1/v2 pairs reject even when their application
+The version-4 pair tags cover the current catalog command grammar as well as
+snapshot bytes, including committed ingress availability. Former v1/v2/v3 pairs reject even when their application
 snapshot is empty: an old log cannot replay retired deployment
 commands into an apparently empty catalog. Field widths and object IDs remain
 as below. No tag rewrite or automatic reset is permitted.
@@ -49,7 +49,7 @@ All numeric fields are little endian. The state record is:
 
 | Bytes | Field |
 | --- | --- |
-| 0–7 | `CRFTSTA3` |
+| 0–7 | `CRFTSTA4` |
 | 8–15 | Current term, u64 |
 | 16–19 | Voted-for byte length, u32, at most 256 |
 | 20–23 | Join-anchor byte length, u32, at most 256 |
@@ -60,11 +60,11 @@ Zero voter length means no vote. Zero anchor length means no admission and
 requires snapshot index zero. A present vote or admission cannot have an
 empty identifier. All join fields are required even when admission is absent.
 
-The current log record uses `CRFTLOG3`:
+The current log record uses `CRFTLOG4`:
 
 | Bytes | Field |
 | --- | --- |
-| 0–7 | `CRFTLOG3` |
+| 0–7 | `CRFTLOG4` |
 | 8–15 | Snapshot index, u64 |
 | 16–23 | Snapshot term, u64 |
 | 24–31 | Snapshot byte length, u64 |

@@ -335,12 +335,20 @@ then binds the receive/forward/control owners to their CQ, removing the separate
 unknown/missing-client controls with healthy-reader recovery after leader loss.
 An independent direct-only repeat passes the entire narrower campaign, including
 the signed-policy receipts/readbacks; no read-observation retry is needed.
-That full campaign still fails at VIP recovery: traced SYNs select the killed
-node's MAC. Complete VIP availability and its rejection matrix remain
-unqualified. No timeout proves authentication rejection.
+That historical full campaign fails at VIP recovery: traced SYNs select the
+killed node's MAC. No timeout proves authentication rejection.
+
+The [committed-availability follow-up](../reports/audits/2026-10-27-security-ingress-availability.md)
+adds a term/membership-fenced backend projection from the current leader's
+recent replication evidence. After convergence, a complete native ARM campaign
+passes signed follower mutations and all twelve direct/VIP client-rejection
+and healthy-reader recovery controls. The killed node remains a voter and is
+excluded from new-flow eligibility; existing flow bindings are retained.
+This qualifies fresh connections after committed convergence, not uninterrupted
+sessions or instantaneous failure detection.
 
 Remaining native campaigns include established-session/issuer/server expiry,
-ARM installed-resource rotation, resolving those multi-node transport failures,
+ARM installed-resource rotation, wider restart/substitution and transport faults,
 new adapter fault injection and broad pressure.
 Protected installation/rollback and live factory/session retirement remain
 separate boundaries. Shared host controls for peer substitution, replay, partial
