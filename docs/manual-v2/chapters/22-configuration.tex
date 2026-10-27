@@ -16,6 +16,10 @@ and dimensions are in \repofile|docs/reference/resource-policy.md|.
 
 The following inputs have different authorities and lifetimes:
 \begin{description}
+    \item[Management TLS component.] The new freestanding server engine captures
+        a complete \texttt{Limits} value in immutable configuration. Its limits
+        are constructor inputs; neither native listener is wired to it yet, and
+        no boot-resource/manifest interface exists for them. SEC-10 remains open.
     \item[Dependency advisory policy.] CI/local validation reads
         \path{.cargo/audit.toml} and the scanner pin in \path{.cargo/audit-version}.
         These configure validation, not a running node. Database contents refresh
@@ -181,6 +185,33 @@ charge, and root retirement, ASID reuse or later platform promotion cannot refun
 live backing. Failed physical cleanup retains the original complete owner and
 charge. A larger budget never supplies proof of completion or permission to
 replay accepted work.
+
+\section{Management TLS component limits}
+
+The server component collects policy in
+\repofile|crates/charlotte-management-tls/src/policy.rs|. Defaults allow 8 client
+CA roots, 64 enrolled leaf/role entries, 4 certificates per chain and 8192 bytes
+per certificate or server key. Each session permits 65536 input bytes,
+65536 output bytes and 16384 application bytes. The send-fragment setting is
+4096 bytes; the original handshake and session budgets are respectively
+5000 and 60000 milliseconds. One engine step performs at most 32 local TLS
+transitions. Construction validates and captures these settings; changing the
+compiled defaults requires a rebuild and cannot resize existing sessions.
+
+Smaller fragments increase wire overhead: Rustls subtracts its five-byte header
+allowance, and each AES-GCM application fragment adds 22 wire bytes. Validation
+checks that maximum application output still fits the selected storage.
+Certificates, root hints and all concurrent session buffers must also fit the
+service heap/stack and original operation budgets. External buffers do not bound
+every Rustls allocation; its current internal handshake-message ceiling is
+65535 bytes. Protocol dimensions and cipher safety ceilings are separate from
+workload policy. Exact fields, structural bounds and integration gates are in
+\repofile|docs/reference/management-tls.md|.
+
+This is a tested protocol component, not deployed management protection. Native
+socket/CQ ownership, startup credentials, handler authorization and replacement
+of both plaintext direct-node and VIP paths remain required. Nonzero certificate
+time does not authenticate the time source or establish protected provisioning.
 
 \section{Planning and validating a policy change}
 

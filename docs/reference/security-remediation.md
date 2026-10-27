@@ -995,6 +995,17 @@ The next priority is trust and authenticated communication. Work on SEC-07/18
 continues against the finite criteria above; it does not substitute for these
 missing boundaries.
 
+The [27 October management TLS component](../reports/audits/2026-10-27-security-management-tls-engine.md)
+starts SEC-10's native server migration. Its mandatory mTLS, exact operator
+enrollment/roles, bounded protocol engine and standard-client controls are
+implemented and compile for both service targets. **Neither native listener is
+wired to it yet; existing management traffic remains plaintext.** Startup trust,
+CQ-owned transport integration, handler authorization, direct/VIP replacement
+and QEMU qualification remain the next gates in the
+[management TLS contract](management-tls.md). SEC-10 stays open, finding counts
+are unchanged and production remains disabled. This component is not new SEC-04
+custody, SEC-08 peer authentication or SEC-09 time authority.
+
 The [public-key input follow-up](../reports/audits/2026-10-21-security-public-key-input.md) corrects a host-tool input gap:
 ordinary public-key file arguments now share trust-policy's bounded regular-file
 admission and hex parser. Baseline oversized-comment and symlink controls fail;

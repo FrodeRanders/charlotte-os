@@ -30,6 +30,15 @@ mode in the production gate.
 
 ## Current findings: 26 October 2026
 
+The [27 October management TLS component](../reports/audits/2026-10-27-security-management-tls-engine.md)
+adds Rustls `0.23.46` and its independent host test client. Its fresh complete
+**205-package** graph passes at RustSec commit
+`3279c99911354c400e1d41e47c7d60e39258b147` (1378 advisories), with zero
+vulnerabilities/warnings and unchanged policy. Ring/getrandom are host test
+dependencies of that component, absent from its normal freestanding graph.
+This supersedes the package-count/database identity below, without changing
+SEC-14's remaining license/provenance/enforcement/platform gates.
+
 The [earlier follow-up](../reports/audits/2026-10-26-security-dependency-gate.md)
 introduced the gate and patched ctutils 0.4.2 to 0.4.4. Its remaining
 [RUSTSEC-2026-0387](https://rustsec.org/advisories/RUSTSEC-2026-0387.html)

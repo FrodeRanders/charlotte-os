@@ -1,0 +1,139 @@
+{
+  "scope": "TLS protocol component only; no native listener integration or QEMU execution",
+  "parent_commit": "3d21edc27b6d0f19ab497d25920803a8cd9ed95f",
+  "compiler": "rustc 1.99.0-nightly (dc3f85158 2026-07-26)",
+  "source_sha256": {
+    "Cargo.lock": "0453bd69430eec94b1b02b2fa98df773cb618aa87f033e38da41dc1c2748b883",
+    "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
+    ".cargo/config.toml": "5845e3de73e807da085ea0cb8a5c76272a20c145adf70cbd404bb57f58bd4402",
+    "crates/catten-services/x86_64-unknown-none.json": "2b0725bd2ac5562f68b110a420e5f780df3e3f5f407abecb02ea7f86b82f7a59",
+    "crates/catten-services/aarch64-unknown-none.json": "30316f866d52fd0a2c42fd8ac6164dfc1a267c334423cadf14c0772bbab536fc",
+    "crates/charlotte-management-tls/src/crypto.rs": "26d6f3c3374b1b46c3383f94940e9829425e096e1d207f0d4417b0b56a297dba",
+    "crates/charlotte-management-tls/src/lib.rs": "fee0d94efdc8b5dd7a6451d03351dac1389972bc72c3194ccd540435a71a4d26",
+    "crates/charlotte-management-tls/src/policy.rs": "7b0beffdb457e2eaf38439e7e7d3c2b25ad79ac8f21b81f8500a196753ed4cd8",
+    "crates/charlotte-management-tls/src/session.rs": "3f7421a403bcc256594fe37eba88ea0b0d28381b7557930b90f7bfa0101cb3e1",
+    "crates/charlotte-management-tls/tests/server.rs": "67491fc4119687c81c548903e70f65fcffa2a49952ff494109652cc86d62a025",
+    "crates/charlotte-management-tls/Cargo.toml": "6733cfe2f41fce9d5554837132605699ea301699af94339e983dddc6ee35a7a6"
+  },
+  "host_tests": {
+    "debug": {
+      "passed": 10,
+      "failed": 0,
+      "ignored": 0,
+      "controls": [
+        "minimum_fragments_and_maximum_plaintext_co_scale_the_wire_budget",
+        "configuration_rejects_ambiguous_roles_missing_material_and_unusable_clock",
+        "standard_client_rejects_wrong_server_root_and_name",
+        "plaintext_tamper_and_replay_are_terminal",
+        "missing_unknown_foreign_and_wrong_purpose_clients_reject_before_plaintext",
+        "removing_enrollment_revokes_reconnect_and_does_not_resume_old_authority",
+        "original_deadlines_capacity_and_invalid_receipts_fence_sessions",
+        "openssl_client_interoperates_with_the_freestanding_server_engine",
+        "tls13_authenticates_enrolled_roles_with_fragmented_receipts",
+        "validity_and_clock_loss_reject_even_pinned_clients"
+      ],
+      "binary_sha256": "068b7a6e7f904d384e5a2c9908a4b024e30f6c904984864bfd973919e0891a32"
+    },
+    "release": {
+      "passed": 10,
+      "failed": 0,
+      "ignored": 0,
+      "controls": [
+        "original_deadlines_capacity_and_invalid_receipts_fence_sessions",
+        "minimum_fragments_and_maximum_plaintext_co_scale_the_wire_budget",
+        "configuration_rejects_ambiguous_roles_missing_material_and_unusable_clock",
+        "missing_unknown_foreign_and_wrong_purpose_clients_reject_before_plaintext",
+        "standard_client_rejects_wrong_server_root_and_name",
+        "plaintext_tamper_and_replay_are_terminal",
+        "removing_enrollment_revokes_reconnect_and_does_not_resume_old_authority",
+        "openssl_client_interoperates_with_the_freestanding_server_engine",
+        "tls13_authenticates_enrolled_roles_with_fragmented_receipts",
+        "validity_and_clock_loss_reject_even_pinned_clients"
+      ],
+      "binary_sha256": "b5bd6751265054bbc6172cdf2936ca8369c5a9463d1ca410b089489c4421a46f"
+    }
+  },
+  "native_compilation": {
+    "targets": [
+      "crates/catten-services/aarch64-unknown-none.json",
+      "crates/catten-services/x86_64-unknown-none.json"
+    ],
+    "check_exit_status": 0,
+    "strict_clippy_exit_status": 0,
+    "execution": false,
+    "native_ring_dependency": false
+  },
+  "host_strict_clippy_exit_status": 0,
+  "backend_override_negative_control": {
+    "command": [
+      "cargo",
+      "check",
+      "--locked",
+      "-p",
+      "charlotte-management-tls",
+      "--lib",
+      "--target",
+      "crates/catten-services/x86_64-unknown-none.json",
+      "--target-dir",
+      "<isolated-target-dir>"
+    ],
+    "override": "CARGO_ENCODED_RUSTFLAGS=-D<unit-separator>warnings",
+    "exit_status": 101,
+    "diagnostics": [
+      "error: management TLS requires the erasing software POLYVAL backend",
+      "83 | compile_error!(\"management TLS requires the erasing software POLYVAL backend\");",
+      "error[E0080]: evaluation panicked: assertion failed: core::mem::needs_drop::<polyval::Polyval>()",
+      "87 |     assert!(core::mem::needs_drop::<polyval::Polyval>());",
+      "For more information about this error, try `rustc --explain E0080`."
+    ]
+  },
+  "advisories": {
+    "database": {
+      "advisory-count": 1378,
+      "last-commit": "3279c99911354c400e1d41e47c7d60e39258b147",
+      "last-updated": "2026-10-26T22:32:25+01:00"
+    },
+    "lockfile": {
+      "dependency-count": 205
+    },
+    "settings": {
+      "target_arch": [],
+      "target_os": [],
+      "severity": null,
+      "ignore": [],
+      "informational_warnings": [
+        "unmaintained",
+        "unsound",
+        "notice"
+      ]
+    },
+    "vulnerabilities": {
+      "found": false,
+      "count": 0,
+      "list": []
+    },
+    "warnings": {}
+  },
+  "manual": {
+    "sha256": "2d45fbb7f32b9863f6eda1f2685730f4151856b3232678a111355cdce211440e",
+    "pages": 253,
+    "overfull_warnings": 190,
+    "changed_chapter_overfull_warnings": 0,
+    "visually_reviewed_physical_pages": [
+      14,
+      198,
+      199,
+      200,
+      201,
+      202,
+      203
+    ]
+  },
+  "unchanged_gaps": [
+    "SEC-04 provisioning/custody",
+    "SEC-08 peer authentication",
+    "SEC-09 authenticated time",
+    "SEC-10 native listener integration",
+    "SEC-15 complete secret-state qualification"
+  ]
+}
