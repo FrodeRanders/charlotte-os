@@ -1058,6 +1058,17 @@ two direct client-rejection/recovery controls complete. These failures remain
 explicitly unresolved, alongside an intermittent pre-kernel firmware stall.
 SEC-10 remains partial; no numbered finding or production gate is closed.
 
+The [frame-router readiness follow-up](../reports/audits/2026-10-27-security-frame-router-readiness.md)
+removes the normal receive reactor's separate 50 ms polling gate and CQ-binds
+its existing receive, route, forwarding and control owners. The corrected native
+ARM campaign completes all eight direct client-rejection/recovery controls after
+leader replacement and signed follower admission; a separate direct-only repeat
+passes to completion. The full campaign still fails
+at VIP recovery; TCP metadata now identifies SYNs forwarded to the killed node.
+Backend availability/drain policy remains unresolved. These results do not
+qualify the entire network stack, automatic membership removal or broad pressure
+fairness; SEC-06/10 and all finding counts retain their existing dispositions.
+
 The [public-key input follow-up](../reports/audits/2026-10-21-security-public-key-input.md) corrects a host-tool input gap:
 ordinary public-key file arguments now share trust-policy's bounded regular-file
 admission and hex parser. Baseline oversized-comment and symlink controls fail;

@@ -54,6 +54,7 @@ use catten_services::{
         select_backend,
         snapshot_for_flow,
     },
+    deadline::Deadline,
     disco,
     dns,
     frouter,
@@ -61,7 +62,6 @@ use catten_services::{
     ns,
     raft,
     relmsg,
-    sleep_ms,
     socket,
     wait_for_registered_name_owned,
 };
@@ -76,10 +76,6 @@ const ARP_ETHERTYPE: u16 = 0x0806;
 const FRAME_MAX: usize = 4096;
 const ETHERTYPE_OFFSET: usize = 12;
 const ETHERNET_HEADER_MIN: usize = 14;
-/// Poll interval for the NIC receive call and deferred route lookups. The
-/// driver's `OP_RECV` reply only completes when a frame arrives, so while no
-/// frames are flowing we poll it rather than blocking the router reactor.
-const ROUTE_RETRY_MS: u64 = 50;
 const MAX_PENDING_PER_ROUTE: usize = 8;
 const MAX_PENDING_L2_SENDS: usize = 32;
 const FLOW_EPOCH_CAPACITY: usize = 1024;
@@ -88,6 +84,17 @@ const INGRESS_SERVICES_KEY: u64 = charlotte_launch::manifest_key(b"vips");
 
 /// Monotonic reactor-tick counter for periodic heartbeat logging.
 static HEARTBEAT_TICKS: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+
+/// Readiness is a hint only: the same pending owner still observes the result
+/// and its returned attachments. Rejected binding retains accepted work and
+/// the containing reactor through terminal abort, never replay or polling.
+fn cq_bound(mut call: PendingCall<'static>) -> PendingCall<'static> {
+    if call.bind_cq(0).is_err() {
+        catten_rt::logln!("[frouter] accepted call CQ binding rejected; retaining reactor");
+        catten_rt::domain_abort();
+    }
+    call
+}
 
 struct Route {
     ethertype: u16,
@@ -169,12 +176,14 @@ impl MembershipClient {
             }
         }
         if self.connection.is_none() {
-            self.lookup = ns_conn.call(ns::OP_LOOKUP, dns::NAME).ok();
+            if refresh_due {
+                self.lookup = ns_conn.call(ns::OP_LOOKUP, dns::NAME).ok().map(cq_bound);
+            }
             return None;
         }
         if refresh_due {
             self.request = self.connection.as_ref().and_then(|connection| {
-                connection.call(dns::OP_INGRESS_MEMBERSHIP, service.pack()).ok()
+                connection.call(dns::OP_INGRESS_MEMBERSHIP, service.pack()).ok().map(cq_bound)
             });
         }
         None
@@ -246,14 +255,17 @@ impl AssignmentClient {
             }
         }
         if self.connection.is_none() {
-            self.lookup = ns_conn.call(ns::OP_LOOKUP, dns::NAME).ok();
+            if refresh_due {
+                self.lookup = ns_conn.call(ns::OP_LOOKUP, dns::NAME).ok().map(cq_bound);
+            }
             return None;
         }
         if refresh_due {
             self.request = self
                 .connection
                 .as_ref()
-                .and_then(|connection| connection.call(dns::OP_INGRESS_ASSIGNMENTS, 0).ok());
+                .and_then(|connection| connection.call(dns::OP_INGRESS_ASSIGNMENTS, 0).ok())
+                .map(cq_bound);
         }
         None
     }
@@ -516,15 +528,18 @@ fn refresh_routes(
     routes: &mut Vec<Route>,
     lookups: &mut [RouteLookup],
     ns_conn: ConnectionRef<'_>,
+    refresh_due: bool,
 ) {
     for lookup in lookups {
         if lookup.call.is_none() {
-            // OP_LOOKUP intentionally remains pending while the service is
-            // absent. Re-issue it after every completion so a service that
-            // re-registers (a restart, an upgrade, or a replacement instance)
-            // becomes the route target instead of the first registration
-            // being kept forever.
-            lookup.call = ns_conn.call(ns::OP_LOOKUP, lookup.name).ok();
+            // An absent service's lookup stays subscribed. Installed routes
+            // are refreshed at the protocol cadence, not after every frame or
+            // CQ wake: successful lookups would otherwise keep us runnable.
+            // Rejected submission has no readiness source and waits for this
+            // same bounded refresh before another admission attempt.
+            if refresh_due {
+                lookup.call = ns_conn.call(ns::OP_LOOKUP, lookup.name).ok().map(cq_bound);
+            }
             continue;
         }
 
@@ -635,10 +650,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     ];
     let mut pending_forwards: Vec<PendingForward> = Vec::new();
     let mut pending_l2_sends: Vec<PendingCall<'static>> = Vec::new();
-    let mut membership_timer = Completion::timer(frouter::SNAPSHOT_REFRESH_MS).ok();
+    let mut refresh = Deadline::after(frouter::SNAPSHOT_REFRESH_MS);
     let mut membership_due = true;
     let mut assignments = AssignmentClient::new();
-    refresh_routes(&mut routes, &mut route_lookups, ns_conn);
+    refresh_routes(&mut routes, &mut route_lookups, ns_conn, true);
     config::write::<u32>(status::ROUTES, routes.len() as u32);
 
     let mut rx_total: u32 = 0;
@@ -665,8 +680,16 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             );
             return request;
         }
-        let mut receive = net_conn.call(net::OP_RECV, 0).unwrap_or_else(|_| fail());
+        let mut receive = cq_bound(net_conn.call(net::OP_RECV, 0).unwrap_or_else(|_| fail()));
         loop {
+            // Drain hints before checking every current owner. Draining after
+            // polling could consume the last hint before the enclosing wait.
+            let cq = ctx.completion_queue_layout();
+            for _ in 0..cq.entries {
+                if unsafe { catten_syscall::cq_read(cq.base, cq.entries) }.is_none() {
+                    break;
+                }
+            }
             if let Some(request) = ctx.lifecycle().shutdown_requested() {
                 catten_rt::logln!(
                     "[frouter] shutdown: cancelling NIC receive, {} lookup(s), {} protocol \
@@ -681,12 +704,6 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             // be localized: if rx stops advancing here, frames are not reaching
             // the demultiplexer from the NIC driver.
             let tick = HEARTBEAT_TICKS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
-            if tick & 0x3f == 0 {
-                // Re-resolve consumer routes so a newer registration (for
-                // example a restarted service) takes over from a stale one.
-                refresh_routes(&mut routes, &mut route_lookups, ns_conn);
-                config::write::<u32>(status::ROUTES, routes.len() as u32);
-            }
             if tick & 0xff == 0 {
                 catten_rt::logln!(
                     "[frouter] hb rx={} fwd={} dropped={} unknown={} routes={} ingress={}/{}/{} \
@@ -785,19 +802,11 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             // Poll each bounded deferred name-service lookup. A newly
             // registered consumer becomes routable without ever parking this
             // single-owner NIC reactor.
-            refresh_routes(&mut routes, &mut route_lookups, ns_conn);
-            if let Some(timer) = membership_timer.as_mut() {
-                match timer.poll() {
-                    Ok(Some(_)) => {
-                        membership_timer = Completion::timer(frouter::SNAPSHOT_REFRESH_MS).ok();
-                        membership_due = true;
-                    }
-                    Ok(None) => {}
-                    Err(_) => membership_timer = None,
-                }
-            } else {
-                membership_timer = Completion::timer(frouter::SNAPSHOT_REFRESH_MS).ok();
+            if refresh.expired() {
+                refresh = Deadline::after(frouter::SNAPSHOT_REFRESH_MS);
+                membership_due = true;
             }
+            refresh_routes(&mut routes, &mut route_lookups, ns_conn, membership_due);
             if let Some(services) = assignments.poll(ns_conn, membership_due) {
                 reconcile_ingress_services(&mut ingress_services, &services);
             }
@@ -873,7 +882,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         snapshot.backends().len(),
                         snapshot.members().len()
                     );
-                    pending_l2_sends.push(call);
+                    pending_l2_sends.push(cq_bound(call));
                 }
                 state.vip_advertiser = new_advertiser;
                 state.logged_epoch = Some(snapshot.epoch);
@@ -992,8 +1001,11 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 
             let received = match receive.poll() {
                 Ok(None) => {
-                    // No frame yet; yield briefly, then poll again.
-                    sleep_ms(ROUTE_RETRY_MS);
+                    // NIC receive, endpoint work, route/control replies and
+                    // L2 sends all signal this CQ. The timeout is solely the
+                    // next periodic route/assignment/membership refresh; an
+                    // unrelated wake does not restart that deadline.
+                    catten_services::reactor::wait(Some(refresh.remaining_ms()), 0);
                     continue;
                 }
                 Ok(Some(result)) => result,
@@ -1067,7 +1079,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     };
                     match net_conn.call_move(net::OP_SEND, forwarded_len as u64, memory) {
                         Ok(call) => {
-                            pending_l2_sends.push(call);
+                            pending_l2_sends.push(cq_bound(call));
                             if ingress_forwarded == 0 {
                                 catten_rt::logln!(
                                     "[frouter] FIRST REMOTE VIP FRAME \
@@ -1123,7 +1135,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             }
             match routes[route_index].conn.call_move(route_opcode, frame_len as u64, memory) {
                 Ok(call) => pending_forwards.push(PendingForward {
-                    call,
+                    call: cq_bound(call),
                     route_ethertype,
                 }),
                 Err((_memory, _)) => {

@@ -124,6 +124,13 @@ is a separate protocol. TCP/IP retains its 50 ms timed transport cadence;
 deferred send completion supplies a real reply notification, without making the
 whole stack event-driven. See the [output audit](../reports/audits/2026-10-22-security-deployment-output.md).
 
+The frame router binds its normal receive/forward/control operations to the
+same CQ as its serving endpoint and snapshot leases. Its route/assignment
+refresh keeps one shared periodic deadline across unrelated wakes; it no longer
+paces pending replies with a separate 50 ms sleep. See the
+[frame-router contract](frame-router-readiness.md) for configuration, ownership
+and the remaining discovery/restart contexts.
+
 For reactors, `OwnedSocket::into_closing` consumes the socket into a
 `ClosingSocket`. `submit` attempts the existing `OP_CLOSE` (8) once, `bind_cq`
 registers the accepted reply, and `poll` decodes only `Started` (0) or

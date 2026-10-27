@@ -79,3 +79,19 @@ Kernel SHA-256: ARM combined `a3397a700cec0074afff090dfbce8e23f2b0f86403490cad8a
 Reproduce host checks with `scripts/run-host-tests.sh`. ARM combined uses `--security-test --http-test --dhcp-test --fresh-storage --timeout 180`; x86 uses `--http-test --dhcp-test --iommu intel` or `amd --fresh-storage --timeout 180`; shutdown uses separate `--shutdown-ingress-test --fresh-storage --timeout 180`. Give concurrent guests distinct instances and forwarded ports. Reuse a kernel only for identical profile/bundles. Static candidates can be regenerated with `git diff --unified=0 BASE HEAD -- '*.rs' '*.c' '*.h' '*.S' '*.s' '*.py'` and the expression above, preserving added-line numbers.
 
 Normal passes establish operation and ownership behavior in these fixtures. They do not prove every wait is registered, measure production CPU savings, or resolve the historical Intel object-store read rejection or AMD NIC startup failure.
+
+## 27 October follow-up: normal frame-router receive reactor
+
+The [frame-router follow-up](2026-10-27-security-frame-router-readiness.md)
+CQ-binds the existing pending NIC receive, consumer lookups, assignment/membership
+queries, frame forwards and L2 sends. Its endpoint and snapshot leases share
+that CQ. It observes each result through the original owner and retains one
+periodic refresh deadline across unrelated wakes. Installed routes no longer
+reissue successful lookups on every completion, avoiding an immediately runnable
+lookup loop. The independent 50 ms receive-poll gate is removed.
+
+This supersedes that normal frouter context only. TCP/IP transport cadence,
+initial/terminal NIC discovery, driver queues, restart/shutdown, admission
+pressure and the other historical gaps retain their separate scope. The full
+management VIP campaign remains failed, with its timed-out SYN traced to the
+killed backend. No blanket event-driven-stack or audit-closure claim follows.

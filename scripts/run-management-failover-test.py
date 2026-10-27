@@ -127,8 +127,10 @@ def main():
     parser.add_argument("--port-base", type=int, default=28440)
     parser.add_argument("--smp", type=int, default=4)
     parser.add_argument("--direct-only", action="store_true", help="qualify direct-node failover; explicitly leave VIP reconnection unqualified")
+    parser.add_argument("--trace-tcp", action="store_true", help="capture bounded TCP packet metadata, including data lengths but no payload bytes")
+    parser.add_argument("--trace-limit", type=int, default=512)
     args = parser.parse_args()
-    if not args.firmware.is_file() or min(args.phase_timeout, args.probe_timeout, args.build_timeout, args.smp) <= 0:
+    if not args.firmware.is_file() or min(args.phase_timeout, args.probe_timeout, args.build_timeout, args.smp, args.trace_limit) <= 0:
         parser.error("firmware and positive fixture budgets required")
     if not 1024 <= args.port_base <= 65526:
         parser.error("port base must leave ten distinct unprivileged ports")
@@ -176,7 +178,8 @@ def main():
         save()
         reader, administrator, unknown, missing = (context(credentials, name) for name in ("reader", "administrator", "unknown", None))
         hub_port, vip_status, vip_deploy = args.port_base, args.port_base + 7, args.port_base + 8
-        hub = owners.enter_context(process(["python3", ROOT / "scripts/qemu-stream-l2-hub.py", "--listen", f"127.0.0.1:{hub_port}", "--trace-raft-votes"], output / "hub.log"))
+        trace = ["--trace-tcp", "--trace-tcp-data"] if args.trace_tcp else []
+        hub = owners.enter_context(process(["python3", ROOT / "scripts/qemu-stream-l2-hub.py", "--listen", f"127.0.0.1:{hub_port}", "--trace-raft-votes", "--trace-limit", str(args.trace_limit), *trace], output / "hub.log"))
         wait_for(lambda: "QEMU L2 hub listening" in (output / "hub.log").read_text(), [hub], time.monotonic() + 5, "L2 hub")
         forwards = [f"hostfwd=tcp:127.0.0.1:{vip_status}-10.0.2.42:443", f"hostfwd=tcp:127.0.0.1:{vip_deploy}-10.0.2.42:7444"]
         for i in range(3):
@@ -195,6 +198,7 @@ def main():
                 if "Kernel panic:" in text(name) or "FATAL USER FAULT:" in text(name):
                     raise RuntimeError("native failure on " + name)
         def get(port, path, policy=reader, *, observation=False, end=None):
+            evidence["current_probe"] = {"port": port, "path": path, "kind": "read", "monotonic": time.monotonic()}; save()
             budget = args.probe_timeout if end is None else min(args.probe_timeout, max(0, end-time.monotonic()))
             try:
                 result, _ = tls.exchange(policy, port, f"GET {path} HTTP/1.1\r\nHost: localhost\r\n\r\n".encode(), (200, 404, 409, 503), budget, include_body=True)
@@ -313,6 +317,7 @@ def main():
                     progress["step"] = "reject-" + label
                     cases.append(case); save()
                     before = sum(text(name).count("client policy rejected") for name in nodes)
+                    evidence["current_probe"] = {"port": port, "path": path, "kind": label, "monotonic": time.monotonic()}; save()
                     end = time.monotonic()+args.probe_timeout
                     try:
                         tls.exchange(peer, port, f"GET {path} HTTP/1.1\r\nHost: localhost\r\n\r\n".encode(), None, max(0, end-time.monotonic()))

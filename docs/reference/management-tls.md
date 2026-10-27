@@ -327,11 +327,17 @@ The [leader-loss follow-up](../reports/audits/2026-10-27-security-management-fai
 corrects election jitter to scale with the configured election timeout. Three
 native ARM voters replace the killed leader from term 1 to term 2; a signed
 mutation through a surviving follower advances policy generation/sequence 1 to
-2, read back on both survivors. Both the full VIP campaign and a direct-node
-repeat nevertheless fail on later TLS handshakes. The direct repeat completes
-only two client-rejection/recovery controls before a healthy reader times out
-at the other survivor. Neither timeout proves authentication rejection. Complete
-management failover availability and the rejection matrix remain unqualified.
+2, read back on both survivors. Its full VIP and direct-node repeats fail on
+later TLS handshakes; only two direct rejection/recovery controls complete.
+The [frame-router readiness follow-up](../reports/audits/2026-10-27-security-frame-router-readiness.md)
+then binds the receive/forward/control owners to their CQ, removing the separate
+50 ms polling gate. Its full native ARM campaign completes all eight direct-node
+unknown/missing-client controls with healthy-reader recovery after leader loss.
+An independent direct-only repeat passes the entire narrower campaign, including
+the signed-policy receipts/readbacks; no read-observation retry is needed.
+That full campaign still fails at VIP recovery: traced SYNs select the killed
+node's MAC. Complete VIP availability and its rejection matrix remain
+unqualified. No timeout proves authentication rejection.
 
 Remaining native campaigns include established-session/issuer/server expiry,
 ARM installed-resource rotation, resolving those multi-node transport failures,

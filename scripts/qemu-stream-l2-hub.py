@@ -72,6 +72,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--listen", default="127.0.0.1:12042")
     parser.add_argument("--trace-tcp", action="store_true")
+    parser.add_argument("--trace-tcp-data", action="store_true", help="include bounded TCP data-packet metadata; never payload bytes")
     parser.add_argument("--trace-raft-votes", action="store_true")
     parser.add_argument("--trace-limit", type=int, default=DEFAULT_TRACE_LIMIT)
     args = parser.parse_args()
@@ -120,7 +121,7 @@ def main() -> None:
         # Handshake/teardown packets carry the most useful bounded trace. ACK
         # data traffic is normally omitted; retain it for the three attributed
         # flows so failover diagnostics expose both envelope hops.
-        if flags & 0x07 == 0 and flags & 0x02 == 0 and not selected_probe_flow:
+        if flags & 0x07 == 0 and flags & 0x02 == 0 and not selected_probe_flow and not args.trace_tcp_data:
             return
         tcp_trace_count += 1
         source = ".".join(str(octet) for octet in frame[ip_offset + 12 : ip_offset + 16])
@@ -134,7 +135,7 @@ def main() -> None:
         print(
             f"tcp path={path} dst-mac={destination_mac} {source}:{source_port} -> "
             f"{destination}:{destination_port} flags=0x{flags:02x} seq={sequence} "
-            f"ack={acknowledgement} payload={payload_length}",
+            f"ack={acknowledgement} payload={payload_length} monotonic={time.monotonic():.6f}",
             flush=True,
         )
 
