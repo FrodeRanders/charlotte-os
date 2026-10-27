@@ -34,6 +34,7 @@ pub use rustls::{
     time_provider::TimeProvider,
 };
 pub use session::{
+    ClientRejection,
     Error,
     Event,
     Session,

@@ -257,7 +257,7 @@ campaign. Published evidence must retain concise observations and hashes, not
 links to its temporary captures.
 
 Each runner also accepts `--management-startup-test EXPECTATION` for an isolated
-timed user-network boot: `ready`, `disabled`, `WrongPolicy`, `Signature` or
+timed user-network boot: `ready`, `validity`, `disabled`, `WrongPolicy`, `Signature` or
 `Authentication`. This is a host assertion, never a kernel credential or policy
 override, and it does not automatically create a missing resource. The terminal
 rejection modes require `--no-failure-capture` and make no self-test success claim.
@@ -265,6 +265,18 @@ Missing or malformed-DER credentials must produce both explicit disabled-state
 events after exactly one policy publication. Envelope failures must reach the
 exact terminal boot gate before policy/service publication. The public revision
 publication marker is emitted after the policy guard leaves.
+
+The `validity` assertion adds four deliberately enrolled client leaves: expired
+and future-dated readers and administrators. Run just that qualification with
+`python3 scripts/run-management-startup-tests.py --cases validity`. The disposable
+fixture signs explicit date windows around current host UTC and retains their
+public hashes/windows in the campaign evidence; it does not override guest time.
+Its complete resource includes all six enrollments. OpenSSL verifies each control's
+signature, chain and client purpose with time disabled, then requires the exact
+current-time expiry/future failure before any guest boots. The ordinary CA key is
+removed after issuing the controls. The host-only
+`CATTEN_MANAGEMENT_VALIDITY_DIR` selects that private probe fixture, not kernel
+trust or service configuration. The startup campaign supplies it automatically.
 
 SLIRP's host listener can accept while the guest supplies no terminal TCP result.
 Closed-port EOF/reset/refusal and bounded transport timeouts are recorded
@@ -295,7 +307,24 @@ verifies both old client chains against the combined trust store, confirms curre
 replacement clients, and requires that native event before accepting an old
 client's transport failure as a policy rejection. Transport silence alone fails.
 
-Remaining native campaigns include expiry, ARM installed-resource rotation,
+`Error::client_rejection()` returns one bounded `ClientRejection` category for
+policy, expiry or future validity. The native adapter logs only the existing
+connection ID and its static message, without authenticating or naming a rejected
+peer. Validity probes require a new exact expiry/future event from a distinct
+native service/connection episode, no application byte (including partial HTTP), and a verified healthy
+reader after each rejection. UART delivery and transport close share the same
+original probe deadline; a timeout or server-verification failure cannot satisfy
+the assertion. The verified exchange helper is shared with the rotation campaign;
+both campaigns' negative exchanges reject partial application data immediately.
+
+The [validity follow-up](../reports/audits/2026-10-27-security-management-validity.md)
+qualifies sixteen expired/future enrolled-client controls across both interfaces
+on x86 and ARM, each followed by a healthy reader. The current time service is
+still unauthenticated; this qualifies date enforcement at a fresh handshake,
+not a trusted security-time boundary or expiry during an established session.
+
+Remaining native campaigns include established-session/issuer/server expiry,
+ARM installed-resource rotation,
 multi-node leader changes, new adapter fault injection and broad pressure.
 Protected installation/rollback and live factory/session retirement remain
 separate boundaries. Shared host controls for peer substitution, replay, partial

@@ -129,8 +129,11 @@ missing or inconsistent settings reject. Central build-time knobs also bound
 the profile to `65536` bytes and reserve `32` stack pages for both services,
 including the missing-profile startup path. The native
 [startup campaign](../reference/management-tls.md#execution-qualification-and-remaining-gates)
-checks valid, missing, malformed and substituted resources without altering the
-selected policy or turning transport timeouts into startup rejection proof.
+checks valid, missing, malformed and substituted resources and enrolled client
+date windows without altering the selected policy or turning transport timeouts
+into rejection proof. Select `--cases validity` for the native expired/future
+client controls; this test issues dated fixture certificates and leaves the
+guest clock source in place.
 
 Review these groups together when changing workload targets:
 

@@ -432,7 +432,10 @@ fn missing_unknown_foreign_and_wrong_purpose_clients_reject_before_plaintext() {
         let mut peer = client(&fixture, name, "ca");
         let error =
             handshake(&mut server, &mut peer, 97).expect_err("unauthorized client accepted");
-        assert_eq!(error.is_client_policy_rejection(), name == Some("unknown"));
+        assert_eq!(
+            error.client_rejection(),
+            (name == Some("unknown")).then_some(ClientRejection::Policy)
+        );
         assert_eq!(server.identity(), None);
         assert!(server.step(11).is_err());
         assert!(server.receive_tls(b"GET /metrics HTTP/1.1\r\n\r\n", 12).is_err());
@@ -562,13 +565,19 @@ fn configuration_rejects_ambiguous_roles_missing_material_and_unusable_clock() {
 #[test]
 fn validity_and_clock_loss_reject_even_pinned_clients() {
     let fixture = Fixture::new();
-    for seconds in [1, u64::MAX / 2, 0] {
+    for (seconds, rejection) in [
+        (1, Some(ClientRejection::NotYetValid)),
+        (u64::MAX / 2, Some(ClientRejection::Expired)),
+        (0, None),
+    ] {
         let clock = clock();
         let config = config(fixture.credentials(), clock.clone(), Limits::DEFAULT);
         clock.0.store(seconds, Ordering::Relaxed);
         let mut server = Session::new(config, 0).unwrap();
         let mut peer = client(&fixture, Some("reader"), "ca");
-        assert!(handshake(&mut server, &mut peer, 97).is_err());
+        let error =
+            handshake(&mut server, &mut peer, 97).expect_err("invalid-time client accepted");
+        assert_eq!(error.client_rejection(), rejection);
         assert_eq!(server.identity(), None);
     }
 }

@@ -15,7 +15,7 @@ CATTEN_BOOT_DEFAULT_IMAGE_SIZE_MIB=128
 catten_boot_validate_management_startup() {
     [ -n "$MANAGEMENT_STARTUP_TEST" ] || return 0
     case "$MANAGEMENT_STARTUP_TEST" in
-        ready|disabled|WrongPolicy|Signature|Authentication) ;;
+        ready|validity|disabled|WrongPolicy|Signature|Authentication) ;;
         *) echo "error: invalid --management-startup-test expectation" >&2; return 1 ;;
     esac
     if catten_boot_management_expects_rejection && [ "$FAILURE_CAPTURE" = "1" ]; then
@@ -35,7 +35,7 @@ catten_boot_management_startup_ready() {
     # Cheap serial hints only. The Python assertion re-reads the complete
     # snapshot and checks publication ordering/absence before accepting a result.
     case "$MANAGEMENT_STARTUP_TEST" in
-        ready)
+        ready|validity)
             grep -Fq '[launch] steady-state service set published.' "$LOG" \
                 && grep -Fq '[deployd] listening port=7444' "$LOG" \
                 && grep -Fq '[time] synchronized ' "$LOG" ;;

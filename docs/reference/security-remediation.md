@@ -1,6 +1,6 @@
 # Security remediation status and completion criteria
 
-Updated 2026-10-27 following native management TLS and restart/rotation qualification;
+Updated 2026-10-27 following native management TLS, restart/rotation and validity qualification;
 SEC-10 remains partial. Earlier reviews retain their original dispositions. Source and tests
 remain authoritative. Historical reports preserve the state at their own
 revision; their remaining-work paragraphs are not a current backlog.
@@ -1033,9 +1033,19 @@ firmware/data images also accept an older still-authorized kernel and its old
 operators: compiled fixture state supplies no platform rollback resistance.
 Five expected cases pass and one replay limitation is observed. This supersedes
 the native report's pending x86 restart/revocation qualification only. Protected
-installation/custody, native expiry, ARM rotation, live session retirement,
+installation/custody, ARM rotation, live session retirement,
 multi-node movement and broad fault/pressure campaigns remain; SEC-04/10 remain
 partial and production remains disabled.
+
+The [management validity follow-up](../reports/audits/2026-10-27-security-management-validity.md)
+qualifies fresh-handshake date enforcement on both native architectures. The
+complete resource deliberately enrolls expired and future-dated readers and
+administrators under the ordinary trusted CA. Sixteen date/interface controls
+reject with exact native validity events and healthy-reader recovery. This
+qualifies the existing validation path, not a discovered expired-credential
+acceptance defect. Established-session/issuer/server expiry, native time-source
+failure and authenticated time remain separate; SEC-10 stays partial and
+SEC-09 stays open. No finding count changes.
 
 The [public-key input follow-up](../reports/audits/2026-10-21-security-public-key-input.md) corrects a host-tool input gap:
 ordinary public-key file arguments now share trust-policy's bounded regular-file

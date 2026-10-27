@@ -504,10 +504,11 @@ impl<'a> Connection<'a> {
             });
         }
         let event = self.session.as_mut().unwrap().step(milliseconds()?).map_err(|error| {
-            if error.is_client_policy_rejection() {
+            if let Some(rejection) = error.client_rejection() {
                 catten_rt::logln!(
-                    "[management] connection={} client policy rejected",
-                    self.audit_id
+                    "[management] connection={} {}",
+                    self.audit_id,
+                    rejection.audit_message()
                 );
             }
             Error::Tls(error)

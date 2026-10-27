@@ -31,17 +31,42 @@ pub enum Error {
     Closed,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ClientRejection {
+    Policy,
+    Expired,
+    NotYetValid,
+}
+impl ClientRejection {
+    pub fn audit_message(self) -> &'static str {
+        match self {
+            Self::Policy => "client policy rejected",
+            Self::Expired => "client certificate expired",
+            Self::NotYetValid => "client certificate not yet valid",
+        }
+    }
+}
 impl Error {
     /// A bounded audit category, without exposing parser/crypto contents or
     /// minting an authenticated identity for a rejected peer. This includes
     /// enrollment and the verifier's credential/time/capacity policy gates.
-    pub fn is_client_policy_rejection(&self) -> bool {
-        matches!(
-            self,
-            Self::Tls(rustls::Error::InvalidCertificate(
-                rustls::CertificateError::ApplicationVerificationFailure
-            ))
-        )
+    pub fn client_rejection(&self) -> Option<ClientRejection> {
+        use rustls::CertificateError;
+        match self {
+            Self::Tls(rustls::Error::InvalidCertificate(error)) => match error {
+                CertificateError::ApplicationVerificationFailure => Some(ClientRejection::Policy),
+                CertificateError::Expired
+                | CertificateError::ExpiredContext {
+                    ..
+                } => Some(ClientRejection::Expired),
+                CertificateError::NotValidYet
+                | CertificateError::NotValidYetContext {
+                    ..
+                } => Some(ClientRejection::NotYetValid),
+                _ => None,
+            },
+            _ => None,
+        }
     }
 }
 

@@ -18,7 +18,7 @@ import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-CASES = {"valid": "ready", "missing": "disabled", "invalid-der": "disabled",
+CASES = {"valid": "ready", "validity": "validity", "missing": "disabled", "invalid-der": "disabled",
          "wrong-policy": "WrongPolicy", "signature": "Signature", "ciphertext": "Authentication"}
 
 
@@ -48,12 +48,12 @@ def command(arguments, log, environment=None, timeout=900):
             raise
 
 
-def resources(private):
+def resources(private, validity_controls=False):
     spec = importlib.util.spec_from_file_location("management_fixture", ROOT / "scripts/prepare-management-tls-fixture.py")
     generator = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(generator)
     directory = private / "credentials"
-    generator.prepare(directory)
+    generator.prepare(directory, validity_controls=validity_controls)
     signer = ROOT / "target/debug/cluster-sign"
     preparation = private / "preparation.log"
     def tool(*args):
@@ -61,7 +61,7 @@ def resources(private):
             raise RuntimeError("management fixture command failed; see private preparation capture")
     policy = directory / "policy.bin"
     original = (directory / "resource.bin").read_bytes()
-    result = {"valid": directory / "resource.bin", "missing": None}
+    result = {"valid": directory / "resource.bin", "validity": directory / "resource.bin", "missing": None}
     for name, position in (("wrong-policy", 16), ("signature", 112)):
         changed = bytearray(original)
         changed[position] ^= 1
@@ -128,7 +128,10 @@ def main():
     save()
     with tempfile.TemporaryDirectory(prefix="private.", dir=output) as temporary:
         private = Path(temporary)
-        credentials, variants = resources(private)
+        credentials, variants = resources(private, validity_controls="validity" in args.cases)
+        if "validity" in args.cases:
+            evidence["validity_credentials"] = json.loads((credentials / "validity.json").read_text())
+            save()
         for architecture in args.architectures:
             if not args.reuse_bundle:
                 builder = [ROOT / "scripts/build-catten-services.sh", "--embed"] if architecture == "aarch64" else [ROOT / "scripts/build-catten-services-x86_64.sh"]
@@ -137,7 +140,7 @@ def main():
             for case in args.cases:
                 instance = f"management-startup-{architecture[:3]}-{case}-{private.name[-6:]}"
                 environment = dict(os.environ)
-                for name in ("CATTEN_MANAGEMENT_TLS_RESOURCE", "CATTEN_SKIP_KERNEL_BUILD", "CATTEN_CLUSTER_SERVICES",
+                for name in ("CATTEN_MANAGEMENT_TLS_RESOURCE", "CATTEN_MANAGEMENT_VALIDITY_DIR", "CATTEN_BOOT_TEST_INSTALLED_POLICY", "CATTEN_SKIP_KERNEL_BUILD", "CATTEN_CLUSTER_SERVICES",
                              "CATTEN_CLUSTER_STATIC_NETWORK", "CATTEN_RESOURCE_POLICY", "CATTEN_LIMINE_CONFIG",
                              "CATTEN_QEMU_PID_FILE", "CATTEN_QEMU_MONITOR", "CATTEN_QEMU_DEBUG_STUB"):
                     environment.pop(name, None)
@@ -149,6 +152,8 @@ def main():
                                    CATTEN_MANAGEMENT_READER_CERT_FILE=str(credentials / "reader.pem"),
                                    CATTEN_MANAGEMENT_READER_KEY_FILE=str(credentials / "reader.key"),
                                    CATTEN_MANAGEMENT_SERVER_NAME="127.0.0.1")
+                if case == "validity":
+                    environment["CATTEN_MANAGEMENT_VALIDITY_DIR"] = str(credentials)
                 resource = variants[case]
                 if resource:
                     environment["CATTEN_MANAGEMENT_TLS_RESOURCE"] = str(resource)
@@ -177,7 +182,8 @@ def main():
                           "observations": [line.rstrip() for line in text.splitlines() if line.startswith(("PASS:", "OBSERVED:")) or
                                            any(marker in line for marker in ("admission policy published:", "credentials unavailable; ingress disabled",
                                                                             "management TLS resource rejected before trust publication:", "SELFTEST COMPLETE:",
-                                                                            "Kernel panic:", "boot admission trust rejected"))],
+                                                                            "Kernel panic:", "boot admission trust rejected", "[time] synchronized ",
+                                                                            "client certificate expired", "client certificate not yet valid"))],
                           "failure_tail": text.splitlines()[-20:] if status else []})
                 save()
                 print(f"{'PASS' if status == 0 else 'FAIL'} {architecture} {case}", flush=True)

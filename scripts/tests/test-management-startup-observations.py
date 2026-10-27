@@ -42,11 +42,12 @@ class StartupObservations(unittest.TestCase):
 
     def test_ready_needs_real_time_and_rejects_disabled_or_panicked_startup(self):
         text = probe.PUBLISHED + "1\n" + probe.STEADY + "\n[deployd] listening port=7444\n[time] synchronized unix_s=1\n"
-        probe.validate_snapshot(text, "ready")
-        for changed in (text.replace("[time] synchronized ", "no time "),
-                        text + probe.DISABLED[1], text + "Kernel panic: unrelated"):
-            with self.assertRaises(AssertionError):
-                probe.validate_snapshot(changed, "ready")
+        for mode in ("ready", "validity"):
+            probe.validate_snapshot(text, mode)
+            for changed in (text.replace("[time] synchronized ", "no time "),
+                            text + probe.DISABLED[1], text + "Kernel panic: unrelated"):
+                with self.assertRaises(AssertionError):
+                    probe.validate_snapshot(changed, mode)
 
     def test_timeout_is_not_rejection_evidence(self):
         with patch.object(probe.socket, "create_connection", side_effect=TimeoutError), self.assertRaises(TimeoutError):

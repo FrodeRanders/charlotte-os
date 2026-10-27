@@ -1,0 +1,470 @@
+{
+  "date": "2026-10-27",
+  "parent_commit": "b5208b65",
+  "disposition": "SEC-10 remains partial; SEC-09 open; 29 corrected in scope, seven partial, two open",
+  "native_campaign": {
+    "scope": "Native development-root startup only; no installed-state rotation or production custody proof",
+    "parent_commit": "b5208b65b973a9b3445e4f5211e174d84d6a0054",
+    "results": [
+      {
+        "architecture": "x86_64",
+        "case": "validity",
+        "expected": "validity",
+        "exit_status": 0,
+        "state": "passed",
+        "resource_sha256": "c44c8722813de52fc5c587355cd6b36dffe2b669b2fad26ab571ba9fb9454f0c",
+        "kernel_sha256": "215d5634c6bf58af0bd678a15a0e76a5d9ad2870af8c1fc5f9c9b91bf81e944d",
+        "observations": [
+          "[+    12.627668] [boot trust] admission policy published: revision=1",
+          "[+    16.053638] SELFTEST COMPLETE: passed=16 failed=0 pending=0 passed_bitmap=0x3bbff failed_bitmap=0x0 pending_bitmap=0x0",
+          "[+    18.391500] [EL0 LOG] lp=0 asid=134 [time] synchronized unix_s=1793125814 utc=2026-10-27T18:30:14.785533992Z stratum=3 uncertainty_ms=509 drift_ppb=0",
+          "[+    19.395410] [EL0 LOG] lp=0 asid=133 [management] connection=1 certificate=2740fe3db3d1d2ec82364214803490e548dcd3570e4a57602b6bbffc2964cf90 role=Reader permission=Observe allowed=true",
+          "[+    22.548961] [EL0 LOG] lp=0 asid=137 [management] connection=1 certificate=2740fe3db3d1d2ec82364214803490e548dcd3570e4a57602b6bbffc2964cf90 role=Reader permission=Observe allowed=true",
+          "[+    23.489643] [EL0 LOG] lp=0 asid=137 [management] connection=2 certificate=2740fe3db3d1d2ec82364214803490e548dcd3570e4a57602b6bbffc2964cf90 role=Reader permission=Mutate allowed=false",
+          "[+    24.558332] [EL0 LOG] lp=0 asid=133 [management] connection=2 certificate=2740fe3db3d1d2ec82364214803490e548dcd3570e4a57602b6bbffc2964cf90 role=Reader permission=Observe allowed=true",
+          "[+    27.771897] [EL0 LOG] lp=0 asid=133 [management] connection=3 client certificate expired",
+          "[+    28.791469] [EL0 LOG] lp=0 asid=133 [management] connection=4 certificate=2740fe3db3d1d2ec82364214803490e548dcd3570e4a57602b6bbffc2964cf90 role=Reader permission=Observe allowed=true",
+          "[+    31.666603] [EL0 LOG] lp=0 asid=133 [management] connection=5 client certificate expired",
+          "[+    32.692397] [EL0 LOG] lp=0 asid=133 [management] connection=6 certificate=2740fe3db3d1d2ec82364214803490e548dcd3570e4a57602b6bbffc2964cf90 role=Reader permission=Observe allowed=true",
+          "[+    35.955347] [EL0 LOG] lp=0 asid=133 [management] connection=7 client certificate not yet valid",
+          "[+    36.926721] [EL0 LOG] lp=0 asid=133 [management] connection=8 certificate=2740fe3db3d1d2ec82364214803490e548dcd3570e4a57602b6bbffc2964cf90 role=Reader permission=Observe allowed=true",
+          "[+    40.027772] [EL0 LOG] lp=0 asid=133 [management] connection=9 client certificate not yet valid",
+          "[+    41.061451] [EL0 LOG] lp=0 asid=133 [management] connection=10 certificate=2740fe3db3d1d2ec82364214803490e548dcd3570e4a57602b6bbffc2964cf90 role=Reader permission=Observe allowed=true",
+          "[+    44.328869] [EL0 LOG] lp=0 asid=137 [management] connection=3 certificate=2740fe3db3d1d2ec82364214803490e548dcd3570e4a57602b6bbffc2964cf90 role=Reader permission=Observe allowed=true",
+          "[+    45.335433] [EL0 LOG] lp=0 asid=137 [management] connection=4 client certificate expired",
+          "[+    46.369117] [EL0 LOG] lp=0 asid=137 [management] connection=5 certificate=2740fe3db3d1d2ec82364214803490e548dcd3570e4a57602b6bbffc2964cf90 role=Reader permission=Observe allowed=true",
+          "[+    47.419030] [EL0 LOG] lp=0 asid=137 [management] connection=6 client certificate expired",
+          "[+    48.463447] [EL0 LOG] lp=0 asid=137 [management] connection=7 certificate=2740fe3db3d1d2ec82364214803490e548dcd3570e4a57602b6bbffc2964cf90 role=Reader permission=Observe allowed=true",
+          "[+    49.464201] [EL0 LOG] lp=0 asid=137 [management] connection=8 client certificate not yet valid",
+          "[+    50.536801] [EL0 LOG] lp=0 asid=137 [management] connection=9 certificate=2740fe3db3d1d2ec82364214803490e548dcd3570e4a57602b6bbffc2964cf90 role=Reader permission=Observe allowed=true",
+          "[+    51.600507] [EL0 LOG] lp=0 asid=137 [management] connection=10 client certificate not yet valid",
+          "[+    52.630173] [EL0 LOG] lp=0 asid=137 [management] connection=11 certificate=2740fe3db3d1d2ec82364214803490e548dcd3570e4a57602b6bbffc2964cf90 role=Reader permission=Observe allowed=true"
+        ],
+        "probes": [
+          {
+            "category": "expired",
+            "connection": 3,
+            "healthy_reader_status": 200,
+            "name": "expired-reader",
+            "native_event": "client certificate expired",
+            "port": 25443,
+            "role": "reader",
+            "source_asid": 133
+          },
+          {
+            "category": "expired",
+            "connection": 5,
+            "healthy_reader_status": 200,
+            "name": "expired-administrator",
+            "native_event": "client certificate expired",
+            "port": 25443,
+            "role": "administrator",
+            "source_asid": 133
+          },
+          {
+            "category": "future",
+            "connection": 7,
+            "healthy_reader_status": 200,
+            "name": "future-reader",
+            "native_event": "client certificate not yet valid",
+            "port": 25443,
+            "role": "reader",
+            "source_asid": 133
+          },
+          {
+            "category": "future",
+            "connection": 9,
+            "healthy_reader_status": 200,
+            "name": "future-administrator",
+            "native_event": "client certificate not yet valid",
+            "port": 25443,
+            "role": "administrator",
+            "source_asid": 133
+          },
+          {
+            "category": "expired",
+            "connection": 4,
+            "healthy_reader_status": 404,
+            "name": "expired-reader",
+            "native_event": "client certificate expired",
+            "port": 25744,
+            "role": "reader",
+            "source_asid": 137
+          },
+          {
+            "category": "expired",
+            "connection": 6,
+            "healthy_reader_status": 404,
+            "name": "expired-administrator",
+            "native_event": "client certificate expired",
+            "port": 25744,
+            "role": "administrator",
+            "source_asid": 137
+          },
+          {
+            "category": "future",
+            "connection": 8,
+            "healthy_reader_status": 404,
+            "name": "future-reader",
+            "native_event": "client certificate not yet valid",
+            "port": 25744,
+            "role": "reader",
+            "source_asid": 137
+          },
+          {
+            "category": "future",
+            "connection": 10,
+            "healthy_reader_status": 404,
+            "name": "future-administrator",
+            "native_event": "client certificate not yet valid",
+            "port": 25744,
+            "role": "administrator",
+            "source_asid": 137
+          }
+        ]
+      },
+      {
+        "architecture": "aarch64",
+        "case": "validity",
+        "expected": "validity",
+        "exit_status": 0,
+        "state": "passed",
+        "resource_sha256": "c44c8722813de52fc5c587355cd6b36dffe2b669b2fad26ab571ba9fb9454f0c",
+        "kernel_sha256": "1e1723c36c43e79e461f823a31a575eb065229816d9aa2b486e080f5b00f6ba0",
+        "observations": [
+          "[+     6.935166] [boot trust] admission policy published: revision=1",
+          "[+    11.951784] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x3ffff failed_bitmap=0x0 pending_bitmap=0x0",
+          "[+    13.408822] [EL0 LOG] lp=0 asid=127 [time] synchronized unix_s=1793125931 utc=2026-10-27T18:32:11.573284680Z stratum=3 uncertainty_ms=508 drift_ppb=0",
+          "[+    14.274386] [EL0 LOG] lp=0 asid=126 [management] connection=1 certificate=2740fe3db3d1d2ec82364214803490e548dcd3570e4a57602b6bbffc2964cf90 role=Reader permission=Observe allowed=true",
+          "[+    17.274772] [EL0 LOG] lp=0 asid=130 [management] connection=1 certificate=2740fe3db3d1d2ec82364214803490e548dcd3570e4a57602b6bbffc2964cf90 role=Reader permission=Observe allowed=true",
+          "[+    18.335588] [EL0 LOG] lp=0 asid=130 [management] connection=2 certificate=2740fe3db3d1d2ec82364214803490e548dcd3570e4a57602b6bbffc2964cf90 role=Reader permission=Mutate allowed=false",
+          "[+    19.312086] [EL0 LOG] lp=0 asid=126 [management] connection=2 certificate=2740fe3db3d1d2ec82364214803490e548dcd3570e4a57602b6bbffc2964cf90 role=Reader permission=Observe allowed=true",
+          "[+    22.223510] [EL0 LOG] lp=0 asid=126 [management] connection=3 client certificate expired",
+          "[+    23.190746] [EL0 LOG] lp=0 asid=126 [management] connection=4 certificate=2740fe3db3d1d2ec82364214803490e548dcd3570e4a57602b6bbffc2964cf90 role=Reader permission=Observe allowed=true",
+          "[+    25.954436] [EL0 LOG] lp=0 asid=126 [management] connection=5 client certificate expired",
+          "[+    26.990186] [EL0 LOG] lp=0 asid=126 [management] connection=6 certificate=2740fe3db3d1d2ec82364214803490e548dcd3570e4a57602b6bbffc2964cf90 role=Reader permission=Observe allowed=true",
+          "[+    29.901032] [EL0 LOG] lp=0 asid=126 [management] connection=7 client certificate not yet valid",
+          "[+    30.920968] [EL0 LOG] lp=0 asid=126 [management] connection=8 certificate=2740fe3db3d1d2ec82364214803490e548dcd3570e4a57602b6bbffc2964cf90 role=Reader permission=Observe allowed=true",
+          "[+    33.748630] [EL0 LOG] lp=0 asid=126 [management] connection=9 client certificate not yet valid",
+          "[+    34.734766] [EL0 LOG] lp=0 asid=126 [management] connection=10 certificate=2740fe3db3d1d2ec82364214803490e548dcd3570e4a57602b6bbffc2964cf90 role=Reader permission=Observe allowed=true",
+          "[+    38.060078] [EL0 LOG] lp=0 asid=130 [management] connection=3 certificate=2740fe3db3d1d2ec82364214803490e548dcd3570e4a57602b6bbffc2964cf90 role=Reader permission=Observe allowed=true",
+          "[+    39.017664] [EL0 LOG] lp=0 asid=130 [management] connection=4 client certificate expired",
+          "[+    40.086156] [EL0 LOG] lp=0 asid=130 [management] connection=5 certificate=2740fe3db3d1d2ec82364214803490e548dcd3570e4a57602b6bbffc2964cf90 role=Reader permission=Observe allowed=true",
+          "[+    41.037442] [EL0 LOG] lp=0 asid=130 [management] connection=6 client certificate expired",
+          "[+    42.009206] [EL0 LOG] lp=0 asid=130 [management] connection=7 certificate=2740fe3db3d1d2ec82364214803490e548dcd3570e4a57602b6bbffc2964cf90 role=Reader permission=Observe allowed=true",
+          "[+    42.977354] [EL0 LOG] lp=0 asid=130 [management] connection=8 client certificate not yet valid",
+          "[+    44.064526] [EL0 LOG] lp=0 asid=130 [management] connection=9 certificate=2740fe3db3d1d2ec82364214803490e548dcd3570e4a57602b6bbffc2964cf90 role=Reader permission=Observe allowed=true",
+          "[+    44.959212] [EL0 LOG] lp=0 asid=130 [management] connection=10 client certificate not yet valid",
+          "[+    46.036596] [EL0 LOG] lp=0 asid=130 [management] connection=11 certificate=2740fe3db3d1d2ec82364214803490e548dcd3570e4a57602b6bbffc2964cf90 role=Reader permission=Observe allowed=true"
+        ],
+        "probes": [
+          {
+            "category": "expired",
+            "connection": 3,
+            "healthy_reader_status": 200,
+            "name": "expired-reader",
+            "native_event": "client certificate expired",
+            "port": 25443,
+            "role": "reader",
+            "source_asid": 126
+          },
+          {
+            "category": "expired",
+            "connection": 5,
+            "healthy_reader_status": 200,
+            "name": "expired-administrator",
+            "native_event": "client certificate expired",
+            "port": 25443,
+            "role": "administrator",
+            "source_asid": 126
+          },
+          {
+            "category": "future",
+            "connection": 7,
+            "healthy_reader_status": 200,
+            "name": "future-reader",
+            "native_event": "client certificate not yet valid",
+            "port": 25443,
+            "role": "reader",
+            "source_asid": 126
+          },
+          {
+            "category": "future",
+            "connection": 9,
+            "healthy_reader_status": 200,
+            "name": "future-administrator",
+            "native_event": "client certificate not yet valid",
+            "port": 25443,
+            "role": "administrator",
+            "source_asid": 126
+          },
+          {
+            "category": "expired",
+            "connection": 4,
+            "healthy_reader_status": 404,
+            "name": "expired-reader",
+            "native_event": "client certificate expired",
+            "port": 25744,
+            "role": "reader",
+            "source_asid": 130
+          },
+          {
+            "category": "expired",
+            "connection": 6,
+            "healthy_reader_status": 404,
+            "name": "expired-administrator",
+            "native_event": "client certificate expired",
+            "port": 25744,
+            "role": "administrator",
+            "source_asid": 130
+          },
+          {
+            "category": "future",
+            "connection": 8,
+            "healthy_reader_status": 404,
+            "name": "future-reader",
+            "native_event": "client certificate not yet valid",
+            "port": 25744,
+            "role": "reader",
+            "source_asid": 130
+          },
+          {
+            "category": "future",
+            "connection": 10,
+            "healthy_reader_status": 404,
+            "name": "future-administrator",
+            "native_event": "client certificate not yet valid",
+            "port": 25744,
+            "role": "administrator",
+            "source_asid": 130
+          }
+        ]
+      }
+    ],
+    "validity_credentials": [
+      {
+        "name": "expired-reader",
+        "role": "reader",
+        "category": "expired",
+        "not_before": "2026-10-25T18:28:56+00:00",
+        "not_after": "2026-10-26T18:28:56+00:00",
+        "sha256": "a340257318d9b1d9bb743b0077cd223903c796c042ec32bd7021ac5defc18450",
+        "chain_purpose_without_time": "verified",
+        "current_time_rejection": "certificate has expired"
+      },
+      {
+        "name": "expired-administrator",
+        "role": "administrator",
+        "category": "expired",
+        "not_before": "2026-10-25T18:28:56+00:00",
+        "not_after": "2026-10-26T18:28:56+00:00",
+        "sha256": "e06460651d4a01b4c4ebd25f3cbd24a7e61e92689a18ab399a50324fd6778ece",
+        "chain_purpose_without_time": "verified",
+        "current_time_rejection": "certificate has expired"
+      },
+      {
+        "name": "future-reader",
+        "role": "reader",
+        "category": "future",
+        "not_before": "2026-10-28T18:28:56+00:00",
+        "not_after": "2026-10-29T18:28:56+00:00",
+        "sha256": "62df119b357a7194ec2d21122946708eac8d4c4989b0ae97bc45498c90cf35ff",
+        "chain_purpose_without_time": "verified",
+        "current_time_rejection": "certificate is not yet valid"
+      },
+      {
+        "name": "future-administrator",
+        "role": "administrator",
+        "category": "future",
+        "not_before": "2026-10-28T18:28:56+00:00",
+        "not_after": "2026-10-29T18:28:56+00:00",
+        "sha256": "9cbda519373399fc45f1bb584e08643c94aedf7a2e80c7d54ead65b26b0582a7",
+        "chain_purpose_without_time": "verified",
+        "current_time_rejection": "certificate is not yet valid"
+      }
+    ]
+  },
+  "probe_acceptance_gap": {
+    "parent_script_sha256": "c30f1f0263d1f4054f024fe6dce2dfe3fe4d75d320bed104008e2d77dfc84aab",
+    "controlled_input": "TLS client recv yields application byte H, then EOF",
+    "parent_result": "EOFError: no complete HTTP response; the old negative probe accepted this error if its native category event existed",
+    "corrected_result": "ProbeFailure: unauthorized client received application bytes; fails before EOF and is not accepted by the negative probe",
+    "shared_effect": "Validity and rotation negative exchanges now require expected=None and reject every returned application byte.",
+    "preliminary_native_results": [
+      {
+        "architecture": "x86_64",
+        "state": "passed",
+        "kernel_sha256": "0dbc062ec616d015e0c279f3009ab02e63e8ea7329b663ea70408a98c68fb01f",
+        "resource_sha256": "05abbd3d392762c01bd5832a97ba714a5efdf84e233015abc027d13acfd490a9"
+      },
+      {
+        "architecture": "aarch64",
+        "state": "passed",
+        "kernel_sha256": "f8e7fe0f60a66e5e7ec5e0908d15cad3802185eef3d170a21f13987cbc5f899e",
+        "resource_sha256": "05abbd3d392762c01bd5832a97ba714a5efdf84e233015abc027d13acfd490a9"
+      }
+    ],
+    "verification_limit": "The preliminary native runs completed their category/recovery checks, but the incomplete-HTTP probe did not independently exclude partial application bytes. No such unauthorized byte was observed from either guest. The final full campaign repeats both architectures with the strict helper."
+  },
+  "host_tests": [
+    {
+      "command": "cargo test -p charlotte-management-tls --test server",
+      "passed": 11
+    },
+    {
+      "command": "python3 scripts/tests/test-management-validity-observations.py -v",
+      "passed": 6
+    },
+    {
+      "command": "python3 scripts/tests/test-management-startup-observations.py -v",
+      "passed": 7
+    },
+    {
+      "command": "python3 scripts/tests/test-management-runner-gates.py -v",
+      "passed": 5
+    },
+    {
+      "command": "python3 scripts/tests/test-management-rotation-results.py -v",
+      "passed": 3
+    },
+    {
+      "command": "python3 scripts/tests/test-tooling-contracts.py -v",
+      "passed": 8
+    },
+    {
+      "command": "python3 scripts/tests/test-deployment-status.py -v",
+      "passed": 7
+    }
+  ],
+  "checks": {
+    "service_builds": [
+      "scripts/build-catten-services.sh --embed",
+      "scripts/build-catten-services-x86_64.sh"
+    ],
+    "strict_clippy": [
+      "host charlotte-management-tls --all-targets",
+      "catten-services httpd/deployd on crates/catten-services/aarch64-unknown-none.json",
+      "catten-services httpd/deployd on crates/catten-services/x86_64-unknown-none.json"
+    ],
+    "native_assembly_sections": "both exact final kernels passed runner validation",
+    "workspace_fmt": "passed",
+    "python_shell_syntax": "passed",
+    "git_diff_check": "passed",
+    "dependency_change": false,
+    "fresh_advisory_scan": false,
+    "manual_pdf_rebuilt": false
+  },
+  "service_bundle_sha256": {
+    "x86_64": {
+      "agent.elf": "d9607c7f511556729de6e59aae2c53b2cb2cfee2736370da80172bc8a52f1a96",
+      "ahci.elf": "24f9e389c00a43683eb7280aa0c700208bf219bd5286b814a6ddd4a0b1814446",
+      "client.elf": "34275fa9e794925fe1829b35bdeae7dc511f00e9c9505ff547415fd123002ca4",
+      "clusterctl.elf": "1a7de78c00f1b91750746643f8c74f4292bde04ec08cd0bb0bcfb6ac009045eb",
+      "deployd.elf": "7e553863587de373353ee6a1bc576b908ce3b66cdc08c7f924aa182f9c8a746c",
+      "disco.elf": "aff408d004f68b9dfe9e385a0d66d5f03fa884afc3665e8851516f5030ca9bba",
+      "dns.elf": "3fedbfb3b1e05a122afb31325b08ac2cfedc88df359ff7d6d29eaa6a2ec28669",
+      "e1000e.elf": "adc196dd1d8f8b6b89bfc828090983dc8a42c41a138634afe380f891273117a9",
+      "echo.elf": "dc87359f14fa41ce4f64dc53c018081940c85f7fa53cb98548c7459501acba52",
+      "frouter.elf": "ff1a672bf848ad2028c77270674a92168696345e04e5f5d22642fc892639c9c7",
+      "fs.elf": "a543dd7e8ae3dca9a0a4fe3e68c6567246dd85369f2231996e55b7894c2507b1",
+      "grantctl.elf": "d08f4b23711bdf79b1ed7c2dd909ca1b9db5934671371ae0bfa0e778b7494fb5",
+      "greet.elf": "5b4f1c8236ebaf4909a217d544358e4dd01899dc1a4deabb8c42e3f71f293ed4",
+      "httpd.elf": "7286564755f0c03027aed14a78f6d18a1280bf971f45b330299aefb9425f416b",
+      "kafka.elf": "a7fc072e885fa63ec275e493dada4ccddd0b718503655136167e7472fc68b160",
+      "kafka_smoke.elf": "260e904051fcb69311ec6c27f23b22504a2ba2a2133b3b79c59e22eac943f6bc",
+      "nclient.elf": "e01e5d6021030b850c8f71f3424f285c347e35b7e5c23b3d5e625224c8556b69",
+      "net.elf": "90345ceabd1b1ae09dfa0eadd849a93c6cf8c8646db317049109db569e85ebc0",
+      "ns.elf": "4eaac6e23334208eeca84f367d1de428b0471a73aa68e8e51877d4ad613dae93",
+      "nvme.elf": "c9dda15c31a0d064e21bb105a181e8fbeb686a1306fd1e209cae3a1527f0e0f3",
+      "nvme_client.elf": "e351ca8dcadb116eac005862de6a981fb885566ced169914cbb4c33fd5918c9c",
+      "objstore.elf": "3bba2274caa65abfcc7f2e205447fdb28245d20b6d6b4d2a70464d627954de86",
+      "objstore_client.elf": "050eab4a67dac76f4ee51a901f266c293660ce89191ff4fb14cec68d14340249",
+      "observe.elf": "334f58fc7d3a61debc2ee41281181c800a6ea651b7557a1e785be992b96a5bb3",
+      "raft.elf": "1b60f868bc4afd84ac1645a58f2c5b8f77be7cb3320532a138169bfbdf95a669",
+      "rclient.elf": "e06b3b248aa26ba39ab850db59d5ca0c520d3ff826bcc105ac73cfe73845ed27",
+      "relmsg.elf": "ae83f49865715f9d3b856e00275df0a0ba9e8a183c95cb48298c3f4d4030243d",
+      "rng.elf": "cc4291189138d1922e49c280074c62598d3fb6618fd990ddc4f0ba9fb3fe877c",
+      "s3.elf": "eaf6199756336b9ba41c092c049cbd1c230570bd11afdfe37248f9a3d92e3bcf",
+      "s3_smoke.elf": "389b2a289ddf45ce73c16620ebff3ec0cddc02b99df0a322641a2726e8a8fd6e",
+      "security_probe.elf": "4a95e73eb4fdc33e58388fc6460dfc19912d7d94e3faacd1cd8fdb34e705a47e",
+      "servicemgr.elf": "6f4f5978663d4bd2f29414b325e4903c65b5fec5f29ee7bdb8a67819956e5792",
+      "shutdown_probe.elf": "216af5e4de4740071c25eda777c6550b287bd17d8233a66c18c27885377c4c50",
+      "tcpclient.elf": "4462984da2d775139b51aa75fecf2657fb684dc64434ae1e0999d26b28c7fc9b",
+      "tcpip.elf": "8d09625748f60bf93b26f53abb420de2dc8696e86f1ffda6e0082926cc7bc55c",
+      "time.elf": "a7d41f44fadd87200b7a47f993bc60a5aef1d9be9b13b5a67b4fc99bd5dbf2e8",
+      "virtio_blk.elf": "d2e250516375ab61102860142a6dd6ba1322238740174c99283f1693ea3c3cc9"
+    },
+    "aarch64": {
+      "agent.elf": "71f2fe3e02cf2100520d83bee10778205a1b47b4e5083832ba88595bc2337a2a",
+      "cclient.elf": "0328607d57d376a8137480d9d3d4460a815fd70826c1affa79326f6c6d0dcc0e",
+      "client.elf": "9f50ded1e0056d9eab113b2e773a7d8ed0be8a7da5a1870ced0137394b1e84c8",
+      "clusterctl.elf": "89cdf3c844e74d0ee726817e1e56ba1d140d97123f2d866d16dee294eda02f05",
+      "deployd.elf": "7bd3e3e36c3ed11768f315166dfc4433dc4b5a33cd4488ea8799a146e422da72",
+      "disco.elf": "47c4bde555dbbc7ab924bd89a18b7e203ec3641ab823636344d00a48c44510b2",
+      "dns.elf": "4b595d897cf774e22bc4a6e6ca3a1e4960214043b29c102356ff0df4198fc5e9",
+      "echo.elf": "80d0083a1fca701a0a4c1cbacd421adcc78bf0078ad98511a2743654122b8483",
+      "frouter.elf": "b1d027a18d4f052f6ff55245686ddd7f7c867a0bb46eb53b36ce76d2896149a2",
+      "fs.elf": "68ad3b95c247958e676b0953221316b57db184e48de9b4080373fc98e5ecc8ae",
+      "grantctl.elf": "f582561afa56fdd85d494860eaa46a9fcc70045d610f7a0b570279810edae743",
+      "greet.elf": "8a501708ad2d5146c3fbb60731983014dec211594080cd875adf2ca9c856c63f",
+      "httpd.elf": "e85f459fb1f8cfccd90096fc4aedb64aa045e373ad307d3a47ddb94aebca81df",
+      "kafka.elf": "1ec2b9876bf9b643cbeac538dea2b473fda2fd9c0810b99cac2306b770fae0c2",
+      "kafka_fence_smoke.elf": "5e86c6af221f99e39ec5fd0b79fdda5ec68e8a7f345aa3594ceb09e31a48d859",
+      "kafka_smoke.elf": "4a12d2f2a988112f212a64358d054d091e916cfadf5234782b5a0873af6e584d",
+      "kafka_step.elf": "2915c97b56cf16ed420bae4248961811a6cf682904688776903d20e4878dab82",
+      "kafka_step_input.elf": "ec8eea977546bdb00d7bb7ea7cb401bb03a77c2f101e7fdade61703111809955",
+      "kafka_step_proc.elf": "8061debd32b1080b09356c3f6465a06f1dfea1eede1673792aff3d49651c94a1",
+      "nclient.elf": "3b6c05bddb455865899f12e997e1a859bc055467611615e4902d10a3b97a66cb",
+      "net.elf": "0aa6e249e6c26ae30a8ffa2165c2a5f66b16be341d8f03fbcfd2c00d5da763fd",
+      "ns.elf": "c231b5d44830690241647bb3db25b3776a5640196187a0458088e71ccfc60590",
+      "nvme.elf": "18d2bd385b14a28797caa63e31a912cd82a8d3f1b876bc554f34a70363863625",
+      "nvme_client.elf": "7a7d5fadec4d0f47594ef5e336baec9cdb22a94a5c5f2c7f6abe33817fb86790",
+      "objstore.elf": "f35c4446724a4c40b9428da708a5fdf65ae724e4343e63a083b06d8aa32a97d7",
+      "objstore_client.elf": "3069a4e02865ab92fd46a9c2ddaac67afac53f150648a7db246a0c1fc30b1dd1",
+      "observe.elf": "0eced4b91d609ee220aec6ad09d86af819b0fe831dbde81e6e286d36043bb21c",
+      "raft.elf": "0b6752cf3bfe81e386d64175a5f3b20cb46c40b661d88f963add2ad3e3d03495",
+      "rclient.elf": "d6ca76cb00d541512a5617bfbdf574ea87345f26d3b37454e9abfe47264e02af",
+      "relmsg.elf": "4dce983c03dbf32415c0a783587b7b44abee10c641e40c93710d6a54c536755f",
+      "rng.elf": "cc9a75401a3ad8b80b0b555cf1381e6d09508986a07719b22a6a3a69136a59a7",
+      "s3.elf": "618e07d00ba9ef854d1c9ef2fbb3d8e5f16a634ac5ce403e247a93af147fc3a5",
+      "s3_smoke.elf": "2c2982845e47ff7f3a44a3cd60b5949343085341cce7fc6e71c0c6b2065b78dd",
+      "security_probe.elf": "b6e4dd1427027aba946979529178bd09c7f00c9b7ea48b2f47dfd2f61df226bc",
+      "servicemgr.elf": "b9bbee4a25e7c7739e821fb4428a7a10db9ab34f6f0851649f2e3129663b306e",
+      "shutdown_probe.elf": "f9be162164880cd7d931b1f72ae2a991f9aad44d1e2d57afd73b946111649837",
+      "sitas-user.elf": "a20aafd9434e1a37beaff58c2a4863327a91c386cbe41858f452719ec12b4212",
+      "tcpclient.elf": "e2a9d218124f36377c6244575fdc7c4053ca828634eb87d4100974410358aba6",
+      "tcpip.elf": "c1e97243008d3dcdd673230f8ca3693f84900fefb342b489a7670a0f0ce3ce68",
+      "time.elf": "ead663b841ec7744b3ba3c67e0fff721a9ee8dccf62a28dee54338ded115c7f2",
+      "uart.elf": "9c971cc830bc1824ec3d48b9356936671ce3015c515618bf108d4052d310331e"
+    }
+  },
+  "source_sha256_at_publication": {
+    "crates/charlotte-management-tls/src/lib.rs": "c3ebba0aedd68acb9266473a85ac7c78d05b4ff97ae52f349937a7c915c27567",
+    "crates/charlotte-management-tls/src/session.rs": "0dc7f110a8062cea21963211468be4edbdcaba7afcfb1b9dd48ae07da94e10ea",
+    "crates/charlotte-management-tls/src/policy.rs": "f2c9ea126ad5690c4bd2f994906aa9275b830aee3b6182ed0b2e2e70325b3e8b",
+    "crates/charlotte-management-tls/tests/server.rs": "f9a7e5563155d3e4722bf5b4be0d8d4bfb002568e053e3d71870c257355d8eee",
+    "crates/catten-services/src/management_io.rs": "4cbde63cfff75f9e1d463295e0c929c5ce444c98c05b90049aa9df4e39d8990c",
+    "scripts/prepare-management-tls-fixture.py": "05ff3661865afafdd7317d2cf6fcf392b9c5dcdd4796ead5b2d40bdaf796a2d1",
+    "scripts/run-management-startup-tests.py": "18debdb38ae3e7196ce24979bc8841586867ebfab1a568ab5f8c3891cbe8dd84",
+    "scripts/run-management-rotation-test.py": "152ae4a3a3d7172f43f5033f6333721b28ca85123f0eb75279d662276ed60bdc",
+    "scripts/lib/boot-common.sh": "6bb35dd6b759d4393bbd806d4b8c3c453a56b837abdc750a1b3a75e74784a59c",
+    "scripts/run-aarch64.sh": "b7d8b8c63273334a8fb7a037aabe456ac047f5dbb2cce97168959e158cf584e4",
+    "scripts/run-x86_64.sh": "d18a119b4248881fede090ea7383e85aa77bf9b66654b9a21b5251e48fd2751a",
+    "scripts/run-host-tests.sh": "4a13896ef3da23be8c4f547fe196d6c7f8bf3de0ad48c7c853c0b1033391a2f4",
+    "scripts/tests/management_tls.py": "ef622843c9f22213f1b0b681202906304db45ab66fd25089baa4ed994d5c0b1a",
+    "scripts/tests/test-management-startup.py": "89aafad15651b3e7b098746c39bc00b93770221d820660f9141b07237fbf3452",
+    "scripts/tests/test-management-validity.py": "5c71c8f4a49e0b677a4ac3c1ac4addcdeeec021a94ed4d5bf0a4aff66cc262a3",
+    "scripts/tests/test-management-validity-observations.py": "43a9eaa99350b73969a8a8ddd66b41c1ac4dc3d98102169135dccf89aa0d6862",
+    "scripts/tests/test-management-startup-observations.py": "26e72507b84e5870a92b4cf7c124eb2b6aa745d29861bb5dae5f052a51ba71b9",
+    "Cargo.lock": "1c320daef7b13df180c65c7c318a76746cec9f6226890c194a883e4ac4e2f1aa"
+  },
+  "remaining_gates": [
+    "authenticated time (SEC-09)",
+    "protected installation/custody and platform rollback protection (SEC-04)",
+    "expiry during an established session, issuer/intermediate and server expiry",
+    "native time-source loss/rollback",
+    "live factory/session retirement",
+    "ARM installed-policy rotation",
+    "multi-node leader movement and broad fault/pressure qualification"
+  ]
+}
