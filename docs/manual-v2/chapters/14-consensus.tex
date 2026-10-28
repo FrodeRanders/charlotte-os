@@ -377,4 +377,21 @@ Neither path needs a dedicated sleeping thread or a spinning timeout loop.
         consensus implementation.
 \end{enumerate}
 
+\paragraph{Configuration entries and recovery.}
+Election eligibility is reconstructed from the snapshot and retained configuration
+entries before a restarted node can vote.  Recovering that membership does not
+claim application commitment or application replay.  The joint entry requires both
+old and proposed voter majorities; proposed voters remain replication targets
+before commitment.  Local peer discovery uses that same replication peer set.
+Finalization retains the joint-majority requirement until its
+fence commits, including when a later no-op would otherwise cover that fence.
+
+
+The 29 October 2026 native qualification passed the 17-test no-network boot
+and both 20-test socket-LAN guests, including catalog replication and remote
+invocation.  A targeted QEMU kill after durable term 1 recovered and advanced
+to term 2 on the reused virtual NVMe disk.  Host caches remained live; this
+does not qualify physical power loss, interrupted log/snapshot publication,
+or simultaneous multi-voter restart.
+
 \endinput

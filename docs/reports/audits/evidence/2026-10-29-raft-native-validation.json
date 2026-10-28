@@ -1,0 +1,205 @@
+{
+  "schema": "charlotte.raft-native-validation.v1",
+  "date": "2026-10-29",
+  "source_revision": "9f3d5203e4604c3113afb07e25b28ef6cd0db48c",
+  "source_dirty": true,
+  "source_sha256": {
+    "crates/catten-graft/src/node.rs": "83f689d84c05413c475814b7823fb843e95d0f112283882f66832e0b51422f71",
+    "crates/catten-services/src/bin/raft.rs": "ff76f59a361a7b7133df82e0cca141f654c5b6d9e9f98c30029d22b0274d46df"
+  },
+  "fixtures": [
+    {
+      "name": "baseline",
+      "serial_sha256": "0095c41299e62cf243a4f325f7a069a45c3929093b441ec5cf4c7a5f1ce29d0b",
+      "excerpts": [
+        "[+     9.286366] [raft-storage] testing NVMe-backed Raft recovery...",
+        "[+     9.341158] [raft-storage] first process waiting: stage=0, state=0, term=0, durable=0",
+        "[+     9.824978] [raft-storage] first process reached term 1.",
+        "[+     9.859818] [raft-storage] restarted process waiting: stage=0, state=0, term=0, durable=0",
+        "[+    10.231154] [raft-storage] restarted process reached term 2.",
+        "[+    10.242255] [raft-storage] SUCCESS: term/vote state survived Raft process restart on NVMe.",
+        "[+    11.945116] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x1ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "kernel_sha256": "88f58b7a98ba44d5be188524f1f29da571400ae55b90dae16a8bab2891d15476",
+      "tracked_diff_sha256": "b018d7ae53828e59b1c6ee3a66db8a264b47150f62450fcc9279d4ba667820d2",
+      "bundle_sha256": {
+        "dns.elf": "35ad3469c79e53737a1e18c0aaa7243b71d122f2291c4d1034880f6bc05fdd44",
+        "nvme.elf": "bf2f52a73c23a1d78f207d8354bbe4aafb9e2c77b6b85fb23d849a489eb6a299",
+        "objstore.elf": "96b9595f3d11b40ad2b44b673d4ba7e872892b42c14f0dc021d2f1fd1d5571a9",
+        "raft.elf": "b019df6d7154bb00eae619a746b2bbd1e5253b1d655c176470e9005b72d44e90"
+      },
+      "request": {
+        "reason": "complete",
+        "snapshot": false
+      }
+    },
+    {
+      "name": "interrupted",
+      "serial_sha256": "76652732befbe7342c0b670209cc60ec625f2a88ab7d8013dcf8dd611ae78828",
+      "excerpts": [
+        "[+     9.224084] [raft-storage] testing NVMe-backed Raft recovery...",
+        "[+     9.261292] [raft-storage] first process waiting: stage=0, state=0, term=0, durable=0",
+        "[+     9.778492] [raft-storage] first process reached term 1."
+      ],
+      "kernel_sha256": "88f58b7a98ba44d5be188524f1f29da571400ae55b90dae16a8bab2891d15476",
+      "tracked_diff_sha256": "b018d7ae53828e59b1c6ee3a66db8a264b47150f62450fcc9279d4ba667820d2",
+      "bundle_sha256": {
+        "dns.elf": "35ad3469c79e53737a1e18c0aaa7243b71d122f2291c4d1034880f6bc05fdd44",
+        "nvme.elf": "bf2f52a73c23a1d78f207d8354bbe4aafb9e2c77b6b85fb23d849a489eb6a299",
+        "objstore.elf": "96b9595f3d11b40ad2b44b673d4ba7e872892b42c14f0dc021d2f1fd1d5571a9",
+        "raft.elf": "b019df6d7154bb00eae619a746b2bbd1e5253b1d655c176470e9005b72d44e90"
+      },
+      "request": {
+        "reason": "runner-exit",
+        "snapshot": false
+      }
+    },
+    {
+      "name": "recovered",
+      "serial_sha256": "99d9020217cd4f69684c519d4a82bacf1beccd47456d0dbd0f58290c42100eb2",
+      "excerpts": [
+        "[+     9.744772] [raft-storage] testing NVMe-backed Raft recovery...",
+        "[+     9.792344] [raft-storage] first process waiting: stage=1, state=0, term=0, durable=0",
+        "[+    10.254264] [raft-storage] first process reached term 2.",
+        "[+    10.301474] [raft-storage] restarted process waiting: stage=0, state=0, term=0, durable=0",
+        "[+    10.729672] [raft-storage] restarted process reached term 3.",
+        "[+    10.740738] [raft-storage] SUCCESS: term/vote state survived Raft process restart on NVMe.",
+        "[+    12.467964] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x1ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "kernel_sha256": "88f58b7a98ba44d5be188524f1f29da571400ae55b90dae16a8bab2891d15476",
+      "tracked_diff_sha256": "b018d7ae53828e59b1c6ee3a66db8a264b47150f62450fcc9279d4ba667820d2",
+      "bundle_sha256": {
+        "dns.elf": "35ad3469c79e53737a1e18c0aaa7243b71d122f2291c4d1034880f6bc05fdd44",
+        "nvme.elf": "bf2f52a73c23a1d78f207d8354bbe4aafb9e2c77b6b85fb23d849a489eb6a299",
+        "objstore.elf": "96b9595f3d11b40ad2b44b673d4ba7e872892b42c14f0dc021d2f1fd1d5571a9",
+        "raft.elf": "b019df6d7154bb00eae619a746b2bbd1e5253b1d655c176470e9005b72d44e90"
+      },
+      "request": {
+        "reason": "complete",
+        "snapshot": false
+      }
+    },
+    {
+      "name": "network-listener",
+      "serial_sha256": "2ae02afe2c20a3501dd6adb677bf85470c3db9c6fc61136df9e9014a1335946d",
+      "excerpts": [
+        "[+    17.785102] [raft-storage] testing NVMe-backed Raft recovery...",
+        "[+    17.835362] [raft-storage] first process waiting: stage=0, state=0, term=0, durable=0",
+        "[+    18.498554] [raft-storage] first process reached term 1.",
+        "[+    18.547952] [raft-storage] restarted process waiting: stage=0, state=0, term=0, durable=0",
+        "[+    18.962320] [raft-storage] restarted process reached term 2.",
+        "[+    18.974022] [raft-storage] SUCCESS: term/vote state survived Raft process restart on NVMe.",
+        "[+   122.840272] [dns] SUCCESS: Raft-elected name service replicated the catalog, served a remote invocation, and automatically fenced endpoint-death unregister by generation.",
+        "[+   122.841366] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0xfffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "kernel_sha256": "ff8d3400a7687d64a0cf8aa76c68a4aa538501c884305c728c605cf9d72293a6",
+      "tracked_diff_sha256": "b018d7ae53828e59b1c6ee3a66db8a264b47150f62450fcc9279d4ba667820d2",
+      "bundle_sha256": {
+        "dns.elf": "35ad3469c79e53737a1e18c0aaa7243b71d122f2291c4d1034880f6bc05fdd44",
+        "nvme.elf": "bf2f52a73c23a1d78f207d8354bbe4aafb9e2c77b6b85fb23d849a489eb6a299",
+        "objstore.elf": "96b9595f3d11b40ad2b44b673d4ba7e872892b42c14f0dc021d2f1fd1d5571a9",
+        "raft.elf": "b019df6d7154bb00eae619a746b2bbd1e5253b1d655c176470e9005b72d44e90"
+      },
+      "request": {
+        "reason": "complete",
+        "snapshot": false
+      }
+    },
+    {
+      "name": "network-connector",
+      "serial_sha256": "293d9463111a270baf2a6fc1f8418f4a934747f611c27a77976428145ba46b50",
+      "excerpts": [
+        "[+    10.350008] [raft-storage] testing NVMe-backed Raft recovery...",
+        "[+    10.402430] [raft-storage] first process waiting: stage=0, state=0, term=0, durable=0",
+        "[+    11.011912] [raft-storage] first process reached term 1.",
+        "[+    11.066572] [raft-storage] restarted process waiting: stage=0, state=0, term=0, durable=0",
+        "[+    11.483652] [raft-storage] restarted process reached term 2.",
+        "[+    11.494904] [raft-storage] SUCCESS: term/vote state survived Raft process restart on NVMe.",
+        "[+    27.899642] [dns] SUCCESS: Raft-elected name service replicated the catalog, served a remote invocation, and automatically fenced endpoint-death unregister by generation.",
+        "[+    27.900256] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0xfffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "kernel_sha256": "ff8d3400a7687d64a0cf8aa76c68a4aa538501c884305c728c605cf9d72293a6",
+      "tracked_diff_sha256": "b018d7ae53828e59b1c6ee3a66db8a264b47150f62450fcc9279d4ba667820d2",
+      "bundle_sha256": {
+        "dns.elf": "35ad3469c79e53737a1e18c0aaa7243b71d122f2291c4d1034880f6bc05fdd44",
+        "nvme.elf": "bf2f52a73c23a1d78f207d8354bbe4aafb9e2c77b6b85fb23d849a489eb6a299",
+        "objstore.elf": "96b9595f3d11b40ad2b44b673d4ba7e872892b42c14f0dc021d2f1fd1d5571a9",
+        "raft.elf": "b019df6d7154bb00eae619a746b2bbd1e5253b1d655c176470e9005b72d44e90"
+      },
+      "request": {
+        "reason": "complete",
+        "snapshot": false
+      }
+    }
+  ],
+  "limitations": [
+    "Development QEMU AArch64 fixtures, four vCPUs, new host-backed virtual NVMe disks.",
+    "Abrupt termination observes acknowledged term recovery and the ordinary durable-term advancement fixture; it does not independently check same-term vote retention across a VM crash, interrupted log/snapshot publication, or physical power loss.",
+    "Two guests exercise the native Raft-backed catalog, remote invocation and generation-fenced unregister; they do not join a Java/C++/Rust TCP cluster.",
+    "No simultaneous multi-voter restart, storage fault injection, new TLA+ execution, throughput or management TLS availability qualification."
+  ],
+  "abrupt_recovery": {
+    "kind": "abrupt-qemu-termination-and-disk-reuse",
+    "instance": "raft-validation-powercut-20261028-a",
+    "acknowledged_term": 1,
+    "recovered_and_advanced_term": 2,
+    "interrupted_runner_exit": 1,
+    "recovery_runner_exit": 0,
+    "serial_before_sha256": "76652732befbe7342c0b670209cc60ec625f2a88ab7d8013dcf8dd611ae78828",
+    "serial_after_sha256": "99d9020217cd4f69684c519d4a82bacf1beccd47456d0dbd0f58290c42100eb2",
+    "limitation": "QEMU process loss with a host-backed virtual NVMe disk; not physical power-loss qualification"
+  },
+  "network": [
+    {
+      "instance": "raft-validation-dns-20261029-1",
+      "command": [
+        "./scripts/run-aarch64.sh",
+        "--dns-test",
+        "--instance",
+        "raft-validation-dns-20261029-1",
+        "--mac",
+        "52:54:00:12:34:01",
+        "--timeout",
+        "180",
+        "--smp",
+        "4",
+        "--net-listen",
+        "12911"
+      ],
+      "exit_code": 0,
+      "serial_sha256": "2ae02afe2c20a3501dd6adb677bf85470c3db9c6fc61136df9e9014a1335946d",
+      "selftest": {
+        "passed": 20,
+        "failed": 0,
+        "pending": 0
+      },
+      "dns_success": true
+    },
+    {
+      "instance": "raft-validation-dns-20261029-2",
+      "command": [
+        "./scripts/run-aarch64.sh",
+        "--dns-test",
+        "--instance",
+        "raft-validation-dns-20261029-2",
+        "--mac",
+        "52:54:00:12:34:02",
+        "--timeout",
+        "180",
+        "--smp",
+        "4",
+        "--net-connect",
+        "127.0.0.1:12911"
+      ],
+      "exit_code": 0,
+      "serial_sha256": "293d9463111a270baf2a6fc1f8418f4a934747f611c27a77976428145ba46b50",
+      "selftest": {
+        "passed": 20,
+        "failed": 0,
+        "pending": 0
+      },
+      "dns_success": true
+    }
+  ],
+  "interrupt_guard": "The kernel fixture emits the matched first-term line only after stage >= 6, leader state, term > 0, and durable == 1."
+}

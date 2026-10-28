@@ -178,3 +178,35 @@ this is a static comparison, with no upstream failure reproduction or Jepsen
 rerun. Shared wire/storage formats are unchanged. An immutable byte image per
 sender/term/boundary remains an assumption; same-episode image replacement and
 transport authentication need separate qualification.
+
+## Joint-entry quorum and uncompacted membership recovery
+
+The 28 October consensus correction reconstructs candidate-index membership from
+snapshot metadata and configuration commands in the retained log. The joint entry
+requires both voter majorities, including proposed voters that have not yet
+entered the committed configuration. Those peers remain replication targets while
+the joint entry is pending. FINALIZE retains the stronger joint-majority policy;
+a later no-op cannot bypass an uncommitted finalization fence.
+
+Construction derives election eligibility and decommissioning from the same
+retained configuration entries. A removed node cannot resume voting merely because
+its removal has not reached the ordinary snapshot threshold. This recovery does
+not advance application commitment or replay uncommitted application commands.
+Ordinary configuration application still proceeds in log order after commitment.
+
+The permanent regressions are
+`node::tests::uncommitted_joint_requires_old_and_new_majorities` and
+`node::tests::restart_recovers_removal_from_uncompacted_configuration_entries`.
+The host core suite passes 58 unit tests and two election-latency tests; the
+AArch64 core also passes a cross-target check. The [29 October native qualification](../reports/audits/2026-10-29-raft-native-validation.md)
+subsequently passed the 17-test no-network boot and both 20-test network guests,
+including native catalog replication. A targeted abrupt-QEMU recovery advanced
+an acknowledged term from 1 to 2 on the same virtual NVMe disk. Physical power
+loss, interrupted log/snapshot publication, simultaneous multi-voter restart and
+throughput remain unqualified.
+
+The service uses `replication_peers()` for connection discovery as well as for
+outbound replication. This includes proposed voters recovered from retained log
+entries, before application replay. The regression
+`recovery_discovers_new_only_voters_before_application_replay` verifies that their
+exact service names survive recovery without claiming application commitment.

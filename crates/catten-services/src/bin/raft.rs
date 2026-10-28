@@ -621,23 +621,11 @@ fn main(ctx: Context) -> ! {
         // Keep one deferred name-service lookup outstanding for each missing
         // peer. Registration completes that call; the reactor only polls the
         // existing call and never creates retry storms or blocks on a peer.
-        // Membership is replicated, so discovery must follow the committed
-        // configuration rather than remaining frozen at the boot manifest.
-        // Connect targets are the committed membership plus peers admitted
-        // by committed JOIN entries that are pending promotion: the leader
-        // must replicate those joiners up to their fences before they enter
-        // the joint configuration.
-        let mut active_peer_ids: Vec<String> = Vec::new();
-        for peer in node.cluster_configuration.all_members() {
-            if !active_peer_ids.contains(&peer.id) {
-                active_peer_ids.push(peer.id.clone());
-            }
-        }
-        for peer in node.pending_joiners() {
-            if !active_peer_ids.contains(&peer.id) {
-                active_peer_ids.push(peer.id.clone());
-            }
-        }
+        // Discovery follows the same retained configuration and admitted
+        // joiners as replication, including immediately after recovery.
+        let replication_peers = node.replication_peers();
+        let active_peer_ids: Vec<String> =
+            replication_peers.iter().map(|peer| peer.id.clone()).collect();
         peer_specs.retain(|(peer_id, _, pending)| {
             if active_peer_ids.contains(peer_id) {
                 true
@@ -653,18 +641,10 @@ fn main(ctx: Context) -> ! {
             if peer_id == &node.me.id || peer_specs.iter().any(|spec| &spec.0 == peer_id) {
                 continue;
             }
-            let peer_name = node
-                .cluster_configuration
-                .all_members()
+            let peer_name = replication_peers
                 .iter()
                 .find(|peer| &peer.id == peer_id)
                 .map(|peer| peer.service_name)
-                .or_else(|| {
-                    node.pending_joiners()
-                        .iter()
-                        .find(|peer| &peer.id == peer_id)
-                        .map(|peer| peer.service_name)
-                })
                 .unwrap_or_else(|| catten_services::raft_name(peer_id.as_bytes()));
             peer_specs.push((peer_id.clone(), peer_name, 0));
         }
