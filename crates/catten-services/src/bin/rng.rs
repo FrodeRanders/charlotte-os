@@ -84,7 +84,7 @@ fn ring_write(ring: &mut SharedDmaMemory<'_>, offset: usize, bytes: &[u8]) -> bo
 }
 
 fn ring_write_u16(ring: &mut SharedDmaMemory<'_>, offset: usize, value: u16) -> bool {
-    ring_write(ring, offset, &value.to_le_bytes())
+    ring.write_volatile_u16_le(offset, value).is_ok()
 }
 
 fn ring_write_u32(ring: &mut SharedDmaMemory<'_>, offset: usize, value: u32) -> bool {
@@ -96,9 +96,7 @@ fn ring_write_u64(ring: &mut SharedDmaMemory<'_>, offset: usize, value: u64) -> 
 }
 
 fn ring_read_u16(ring: &SharedDmaMemory<'_>, offset: usize) -> Option<u16> {
-    let mut bytes = [0; 2];
-    ring.read_volatile_into(offset, &mut bytes).ok()?;
-    Some(u16::from_le_bytes(bytes))
+    ring.read_volatile_u16_le(offset)
 }
 
 fn ring_read_u32(ring: &SharedDmaMemory<'_>, offset: usize) -> Option<u32> {

@@ -4,6 +4,8 @@ These documents explain current code-facing contracts and invariants. They
 should be updated with the implementation when those contracts change.
 
 - [Management TLS](management-tls.md) — boot credentials/limits, exact operator roles, verified clients and remaining qualifications.
+- [Bounded status observations](status-observation.md) — one snapshot deadline,
+  owned RPC cancellation and unavailable dependency results.
 - [Owned TLS client](tls-client.md) — pinned Embassy crypto, domain-owned entropy,
   authentication, record-key erasure and related compile-time capacities.
 - [Secret-derived hash state](secret-state-lifetimes.md) — owned SHA/HMAC/SigV4/SCRAM

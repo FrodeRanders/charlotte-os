@@ -19,6 +19,7 @@ mod socket_close;
 pub mod socket_lifetime;
 pub mod socket_send;
 pub mod socket_state;
+pub mod status_observation;
 
 /// Authorization policy state machine shared by a co-located name/policy
 /// service and a possible future standalone policy service.

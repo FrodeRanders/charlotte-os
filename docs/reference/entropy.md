@@ -185,10 +185,18 @@ inputs requires rebuilding and requalifying device capacity/layout, CPU cost,
 short completions, rejection, timeout/late completion, retention and caller
 observation budgets together. No live/manifest/boot-resource override is added.
 
-The adapter still uses the existing bytewise volatile helpers for scalar ring
-fields. Real-device atomicity/cache-ordering qualification and hardware index
-rollover are separate work; the host wrap control checks software sequence
-arithmetic only. Descriptor fencing is not a complete hardware-protocol proof.
+Ring indices now use the runtime owner's checked aligned little-endian u16
+volatile accesses. Byte-copy reads can combine the low byte before a device
+update with the high byte after it; byte-copy publication can expose an
+intermediate available index. Descriptor preparation still precedes the same
+release fence and available-index publication, and the acquire fence still
+precedes used-entry/payload access. Stable descriptor fields and the entropy
+payload retain their byte-copy helpers. Misaligned, overflowing or out-of-range
+halfwords reject before access. No shared Rust slice or raw pointer is exported.
+See the [ring-access follow-up](../reports/audits/2026-10-28-security-rng-ring-access.md)
+for the captured ARM failure, deterministic access controls and native repeated
+service requests. Real-device cache-ordering and full hardware u16 rollover
+remain separate; descriptor fencing is not a complete hardware-protocol proof.
 
 ## TCP/IP startup
 

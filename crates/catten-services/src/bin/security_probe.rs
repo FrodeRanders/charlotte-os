@@ -14,6 +14,8 @@ mod entropy_contract;
 
 #[path = "../rng_device/contract.rs"]
 mod rng_device_contract;
+#[path = "../status_observation/contract.rs"]
+mod status_observation_contract;
 use alloc::vec::Vec;
 
 use catten_rt::{
@@ -949,6 +951,28 @@ fn main(ctx: Context) -> ! {
 
     let tcpip = grant_client::acquire(controller, &descriptor, b"tcpip", deployment::RIGHT_CALL)
         .unwrap_or_else(|_| catten_rt::domain_abort());
+    // Explicit fixture grant; bypass architectural entropy so the real VirtIO
+    // queue crosses at least two low-byte rollovers, regardless of its start.
+    let rng = grant_client::acquire(controller, &descriptor, b"rng", deployment::RIGHT_CALL)
+        .unwrap_or_else(|_| catten_rt::domain_abort());
+    let entropy_deadline = Deadline::after(30_000);
+    let mut scratch = zeroize::Zeroizing::new([0u8; 32]);
+    for _ in 0..512 {
+        if let Err(error) = catten_services::tls_client::fill_service_entropy(
+            rng.as_ref(),
+            &mut *scratch,
+            entropy_deadline,
+        ) {
+            catten_rt::logln!("[security] hardware entropy rollover rejected: {:?}", error);
+            check(false, 400);
+        }
+    }
+    drop(rng);
+    drop(scratch);
+    catten_rt::logln!(
+        "[security] hardware entropy: 512 service-only 32-byte requests passed; no entropy bytes \
+         logged"
+    );
     check(
         matches!(
             tcpip.send(socket::OP_FRAME, 0),
@@ -1108,6 +1132,7 @@ fn main(ctx: Context) -> ! {
         })
     });
     drop(recovered_rpc_queue);
+    status_observation_contract::run(silent_connection.as_ref(), tcpip.as_ref(), &mut allocations);
     drop(silent_connection);
     // Healthy status returns the same caller-sponsored page. Temporary
     // admission rejection may retry this read-only control, within its own

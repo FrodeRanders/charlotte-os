@@ -1,7 +1,7 @@
 //! Minimal hardcoded HTTP server exposing a full report of a node's state.
 //!
-//! Listens on TCP port 80 through the tcpip service, and for each connection
-//! reads the request, then replies with a JSON document aggregating
+//! Listens with mandatory mutual TLS on TCP port 443 through the tcpip service, and for each
+//! connection reads the request, then replies with a JSON document aggregating
 //! observable state across the node:
 //!
 //! - `node`    — NIC MAC + link state (`net::OP_STATUS`)
@@ -27,9 +27,9 @@
 //! lifetime totals.
 //!
 //! Services that are not running are rendered as `null`; the aggregator uses
-//! non-blocking `ns::OP_TRY_LOOKUP` so an absent service never stalls a
-//! request. The server exposes a fixed set of read-only targets,
-//! has no keep-alive, and serves one
+//! `ns::OP_TRY_LOOKUP` and one total dependency-observation deadline so a
+//! missing publication or silent service cannot wait indefinitely. The server exposes a fixed set
+//! of read-only targets, has no keep-alive, and serves one
 //! connection at a time.
 //!
 //! The request target selects either the node or cluster view:
@@ -67,6 +67,7 @@ use catten_rt::{
 };
 use catten_services::{
     cluster_observe,
+    deadline::Deadline,
     disco,
     dns,
     frouter,
@@ -77,6 +78,10 @@ use catten_services::{
     relmsg,
     sleep_ms,
     socket,
+    status_observation::{
+        SNAPSHOT_MS,
+        Snapshot,
+    },
     wait_for_local_ready_or_shutdown,
     wait_for_registered_name_owned,
 };
@@ -229,25 +234,31 @@ fn fail(code: u32) -> ! {
 }
 
 /// Non-blocking name-service lookup; `None` if the service is not registered.
-fn try_lookup(ns_conn: ConnectionRef<'_>, name: u64) -> Option<Connection> {
-    let result = ns_conn.call(ns::OP_TRY_LOOKUP, name).ok()?.wait().ok()?;
+fn try_lookup(snapshot: &Snapshot, ns_conn: ConnectionRef<'_>, name: u64) -> Option<Connection> {
+    let result = snapshot.call(ns_conn, ns::OP_TRY_LOOKUP, name).ok()?;
     (result.result >= 1).then_some(result.connection?)
 }
 
 /// Scalar status call; `None` on failure.
-fn call_scalar(conn: ConnectionRef<'_>, opcode: u32, arg0: u64) -> Option<i64> {
-    conn.call(opcode, arg0).ok()?.wait().ok().map(|reply| reply.result)
+fn call_scalar(
+    snapshot: &Snapshot,
+    conn: ConnectionRef<'_>,
+    opcode: u32,
+    arg0: u64,
+) -> Option<i64> {
+    snapshot.call(conn, opcode, arg0).ok().map(|reply| reply.result)
 }
 
 /// Call `opcode` and copy `words` little-endian u32 words out of the moved
 /// reply page.
 fn read_words(
+    snapshot: &Snapshot,
     conn: ConnectionRef<'_>,
     opcode: u32,
     arg0: u64,
     words: usize,
 ) -> Option<alloc::vec::Vec<u32>> {
-    let bytes = read_moved(conn, opcode, arg0, words.checked_mul(4)?)?;
+    let bytes = read_moved(snapshot, conn, opcode, arg0, words.checked_mul(4)?)?;
     if bytes.len() != words * 4 {
         return None;
     }
@@ -258,12 +269,13 @@ fn read_words(
 /// reply. Reject lengths above `max_len` or backing capacity; never decode a
 /// clamped prefix (variable-length peer lists and cluster status use this too).
 fn read_moved(
+    snapshot: &Snapshot,
     conn: ConnectionRef<'_>,
     opcode: u32,
     arg0: u64,
     max_len: usize,
 ) -> Option<alloc::vec::Vec<u8>> {
-    let result = conn.call(opcode, arg0).ok()?.wait().ok()?;
+    let result = snapshot.call(conn, opcode, arg0).ok()?;
     if result.result < 0 {
         return None;
     }
@@ -301,9 +313,14 @@ fn push_node_key(s: &mut String, node_key: u64) {
     let _ = write!(s, "\"{node_key:016x}\"");
 }
 
-fn build_cluster_json(dns_conn: ConnectionRef<'_>) -> Option<String> {
-    let bytes =
-        read_moved(dns_conn, dns::OP_CLUSTER_SNAPSHOT, 0, cluster_observe::MAX_SNAPSHOT_LEN)?;
+fn build_cluster_json(snapshot: &Snapshot, dns_conn: ConnectionRef<'_>) -> Option<String> {
+    let bytes = read_moved(
+        snapshot,
+        dns_conn,
+        dns::OP_CLUSTER_SNAPSHOT,
+        0,
+        cluster_observe::MAX_SNAPSHOT_LEN,
+    )?;
     let snapshot = cluster_observe::decode(&bytes)?;
     let mut s = String::new();
     let _ = write!(
@@ -564,14 +581,14 @@ struct HistoryReport {
 
 /// Fetch and parse the observe service's system-wide thread snapshot
 /// (`CCOSTAT1` wire format).
-fn thread_report(observe_conn: ConnectionRef<'_>) -> Option<ThreadReport> {
+fn thread_report(snapshot: &Snapshot, observe_conn: ConnectionRef<'_>) -> Option<ThreadReport> {
     let header_words = THREAD_STATISTICS_HEADER_U64S;
     let word_bytes = core::mem::size_of::<u64>();
     let max_len = (header_words
         + THREAD_SAMPLE_ROWS * THREAD_STATISTICS_RECORD_U64S
         + DOMAIN_SAMPLE_ROWS * THREAD_STATISTICS_DOMAIN_RECORD_U64S)
         .checked_mul(word_bytes)?;
-    let bytes = read_moved(observe_conn, observability::OP_THREAD_SNAPSHOT, 0, max_len)?;
+    let bytes = read_moved(snapshot, observe_conn, observability::OP_THREAD_SNAPSHOT, 0, max_len)?;
     let len = bytes.len();
     let mut header = [0u64; THREAD_STATISTICS_HEADER_U64S];
     for (slot, word) in header.iter_mut().zip(bytes.chunks_exact(word_bytes)) {
@@ -658,7 +675,7 @@ fn thread_report(observe_conn: ConnectionRef<'_>) -> Option<ThreadReport> {
 }
 
 /// Fetch and parse the observe service's bounded resource history.
-fn history_report(observe_conn: ConnectionRef<'_>) -> Option<HistoryReport> {
+fn history_report(snapshot: &Snapshot, observe_conn: ConnectionRef<'_>) -> Option<HistoryReport> {
     use observability::{
         HISTORY_MAGIC,
         HISTORY_VERSION,
@@ -669,7 +686,7 @@ fn history_report(observe_conn: ConnectionRef<'_>) -> Option<HistoryReport> {
     let word_bytes = core::mem::size_of::<u64>();
     let max_len = (header::WORDS + observability::HISTORY_CAPACITY * record::WORDS)
         .checked_mul(word_bytes)?;
-    let bytes = read_moved(observe_conn, observability::OP_HISTORY, 0, max_len)?;
+    let bytes = read_moved(snapshot, observe_conn, observability::OP_HISTORY, 0, max_len)?;
     let len = bytes.len();
     let mut history_header_words = [0u64; header::WORDS];
     for (slot, word) in history_header_words.iter_mut().zip(bytes.chunks_exact(word_bytes)) {
@@ -732,8 +749,8 @@ fn thread_state_name(state: u64) -> &'static str {
     }
 }
 
-fn render_dns(s: &mut String, dns_conn: ConnectionRef<'_>) {
-    if let Some(result) = call_scalar(dns_conn, dns::OP_STATUS, 0) {
+fn render_dns(snapshot: &Snapshot, s: &mut String, dns_conn: ConnectionRef<'_>) {
+    if let Some(result) = call_scalar(snapshot, dns_conn, dns::OP_STATUS, 0) {
         let v = result as u64;
         let _ = write!(
             s,
@@ -743,9 +760,13 @@ fn render_dns(s: &mut String, dns_conn: ConnectionRef<'_>) {
         );
         // Validate the entire set before emitting rows. Repeated names are
         // distinct replicas, so preserve them in an array rather than JSON keys.
-        if let Some(bytes) =
-            read_moved(dns_conn, dns::OP_CATALOG, 0, catten_services::dns_catalog::MAX_SNAPSHOT_LEN)
-            && let Some(catalog) = catten_services::dns_catalog::decode(&bytes)
+        if let Some(bytes) = read_moved(
+            snapshot,
+            dns_conn,
+            dns::OP_CATALOG,
+            0,
+            catten_services::dns_catalog::MAX_SNAPSHOT_LEN,
+        ) && let Some(catalog) = catten_services::dns_catalog::decode(&bytes)
         {
             let _ = write!(
                 s,
@@ -769,7 +790,7 @@ fn render_dns(s: &mut String, dns_conn: ConnectionRef<'_>) {
         let _ = write!(s, ",\"registered_count\":{}", (v >> 32) & 0xffff_ffff);
         // Raft cluster posture: commit index, member count, and ids. Served on
         // the same endpoint as the dns opcodes.
-        if let Some(bytes) = read_moved(dns_conn, raft::OP_CLUSTER_STATUS, 0, 256)
+        if let Some(bytes) = read_moved(snapshot, dns_conn, raft::OP_CLUSTER_STATUS, 0, 256)
             && let Some((_state, _term, commit_index, members, leader, self_id)) =
                 raft::parse_cluster_status(&bytes)
         {
@@ -931,9 +952,10 @@ fn render_history(s: &mut String, history: &HistoryReport) {
     s.push_str("]}");
 }
 
-fn render_ns(s: &mut String, ns_conn: ConnectionRef<'_>) {
+fn render_ns(snapshot: &Snapshot, s: &mut String, ns_conn: ConnectionRef<'_>) {
     use catten_services::ns_generation::snapshot;
-    let Some(bytes) = read_moved(ns_conn, ns::OP_STATUS, 0, snapshot::MAX_SNAPSHOT_LEN) else {
+    let Some(bytes) = read_moved(snapshot, ns_conn, ns::OP_STATUS, 0, snapshot::MAX_SNAPSHOT_LEN)
+    else {
         s.push_str("\"ns\":null");
         return;
     };
@@ -976,13 +998,13 @@ fn disco_role_name(role: u32) -> &'static str {
     }
 }
 
-fn render_disco(s: &mut String, disco_conn: ConnectionRef<'_>) {
-    let scalar = call_scalar(disco_conn, disco::OP_STATUS, 0);
+fn render_disco(snapshot: &Snapshot, s: &mut String, disco_conn: ConnectionRef<'_>) {
+    let scalar = call_scalar(snapshot, disco_conn, disco::OP_STATUS, 0);
     let (running, peers) = scalar.map_or((0u64, 0u64), |r| {
         let v = r as u64;
         (v & 0xff, (v >> 8) & 0xff)
     });
-    let diag = read_words(disco_conn, disco::OP_DIAG, 0, disco::DIAG_WORDS)
+    let diag = read_words(snapshot, disco_conn, disco::OP_DIAG, 0, disco::DIAG_WORDS)
         .filter(|w| w[disco::DIAG_OFFSET_MAGIC as usize] == disco::DIAG_MAGIC);
 
     if let Some(d) = &diag {
@@ -1006,7 +1028,7 @@ fn render_disco(s: &mut String, disco_conn: ConnectionRef<'_>) {
 
     // Live peer table (MAC + node id) from the cached discovery state.
     s.push_str(",\"peers_list\":[");
-    if let Some(bytes) = read_moved(disco_conn, disco::OP_LIST_PEERS, 0, 4096) {
+    if let Some(bytes) = read_moved(snapshot, disco_conn, disco::OP_LIST_PEERS, 0, 4096) {
         let list = parse_peer_list(&bytes);
         for (i, (pmac, node_id)) in list.iter().enumerate() {
             if i > 0 {
@@ -1024,15 +1046,15 @@ fn render_disco(s: &mut String, disco_conn: ConnectionRef<'_>) {
     s.push_str("]},");
 }
 
-fn render_relmsg(s: &mut String, relmsg_conn: ConnectionRef<'_>) {
-    if let Some(result) = call_scalar(relmsg_conn, relmsg::OP_STATUS, 0) {
+fn render_relmsg(snapshot: &Snapshot, s: &mut String, relmsg_conn: ConnectionRef<'_>) {
+    if let Some(result) = call_scalar(snapshot, relmsg_conn, relmsg::OP_STATUS, 0) {
         let local_mac = unpack_mac(result as u64);
         let _ = write!(
             s,
             "\"relmsg\":{{\"local_mac\":\"{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}\"",
             local_mac[0], local_mac[1], local_mac[2], local_mac[3], local_mac[4], local_mac[5]
         );
-        if let Some(d) = read_words(relmsg_conn, relmsg::OP_DIAG, 0, relmsg::DIAG_WORDS)
+        if let Some(d) = read_words(snapshot, relmsg_conn, relmsg::OP_DIAG, 0, relmsg::DIAG_WORDS)
             .filter(|w| w[relmsg::DIAG_OFFSET_MAGIC as usize] == relmsg::DIAG_MAGIC)
         {
             let _ = write!(
@@ -1054,6 +1076,7 @@ fn render_relmsg(s: &mut String, relmsg_conn: ConnectionRef<'_>) {
 }
 
 fn build_json(
+    snapshot: &Snapshot,
     mac: &[u8; 6],
     link: u8,
     services: &ServiceSet<'_>,
@@ -1066,7 +1089,8 @@ fn build_json(
     // request interval, and per-counter rates all derive from its monotonic
     // counter and frequency.
     trace_phase("observe");
-    let report = services.observe_conn.as_ref().and_then(|conn| thread_report(conn.as_ref()));
+    let report =
+        services.observe_conn.as_ref().and_then(|conn| thread_report(snapshot, conn.as_ref()));
     let (freq_hz, mono_ticks) = report.as_ref().map_or((0, 0), |r| (r.freq_hz, r.mono_ticks));
     let uptime_ms = mono_ticks.saturating_mul(1000).checked_div(freq_hz).unwrap_or(0);
     let interval_ms = if prev.initialized && freq_hz > 0 && mono_ticks > prev.mono_ticks {
@@ -1077,9 +1101,9 @@ fn build_json(
 
     // node + tcpip (both mandatory at startup).
     trace_phase("tcpip");
-    let status = socket::buffered_call(services.tcp_conn.as_ref(), socket::OP_STATUS, 0)
+    let status = snapshot
+        .buffered_call(services.tcp_conn.as_ref(), socket::OP_STATUS, 0)
         .ok()
-        .and_then(|call| call.wait().ok())
         .and_then(|result| {
             if result.result != (socket::STATUS_WORDS * 4) as i64 {
                 return None;
@@ -1195,15 +1219,19 @@ fn build_json(
 
     // name service: registered-services catalog.
     trace_phase("ns");
-    render_ns(&mut s, services.ns_conn);
+    render_ns(snapshot, &mut s, services.ns_conn);
     s.push(',');
 
     // frouter counters.
     trace_phase("frouter");
     if let Some(frouter_conn) = services.frouter_conn.as_ref() {
-        if let Some(w) =
-            read_words(frouter_conn.as_ref(), frouter::OP_STATUS, 0, frouter::STATUS_WORDS)
-        {
+        if let Some(w) = read_words(
+            snapshot,
+            frouter_conn.as_ref(),
+            frouter::OP_STATUS,
+            0,
+            frouter::STATUS_WORDS,
+        ) {
             let frouter_rx = w[frouter::STATUS_OFFSET_RX as usize];
             let forwarded = w[frouter::STATUS_OFFSET_FORWARDED as usize];
             let rx_delta = if prev.initialized {
@@ -1268,8 +1296,8 @@ fn build_json(
     trace_phase("dns");
     // Resolve once for this requested observation. DNS may publish or restart
     // after httpd starts; a cached optional startup miss is not permanent absence.
-    if let Some(dns_conn) = try_lookup(services.ns_conn, dns::NAME) {
-        render_dns(&mut s, dns_conn.as_ref());
+    if let Some(dns_conn) = try_lookup(snapshot, services.ns_conn, dns::NAME) {
+        render_dns(snapshot, &mut s, dns_conn.as_ref());
         s.push(',');
     } else {
         s.push_str("\"dns\":null,");
@@ -1278,7 +1306,7 @@ fn build_json(
     // disco: probe-traffic counters + live peer table.
     trace_phase("disco");
     if let Some(disco_conn) = services.disco_conn.as_ref() {
-        render_disco(&mut s, disco_conn.as_ref());
+        render_disco(snapshot, &mut s, disco_conn.as_ref());
     } else {
         s.push_str("\"disco\":null,");
     }
@@ -1286,7 +1314,7 @@ fn build_json(
     // relmsg: transport counters + delivery/retransmit diagnostics.
     trace_phase("relmsg");
     if let Some(relmsg_conn) = services.relmsg_conn.as_ref() {
-        render_relmsg(&mut s, relmsg_conn.as_ref());
+        render_relmsg(snapshot, &mut s, relmsg_conn.as_ref());
     } else {
         s.push_str("\"relmsg\":null,");
     }
@@ -1301,7 +1329,7 @@ fn build_json(
 
     // observe: bounded resource history from the same service.
     trace_phase("history");
-    match services.observe_conn.as_ref().and_then(|conn| history_report(conn.as_ref())) {
+    match services.observe_conn.as_ref().and_then(|conn| history_report(snapshot, conn.as_ref())) {
         Some(history) => {
             render_history(&mut s, &history);
             s.push(',');
@@ -1399,7 +1427,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         wait_for_registered_name_owned(ns_conn, net::NAME).unwrap_or_else(|| fail(0xe002));
     config::write::<u32>(status::STAGE, 2);
 
-    let status = call_scalar(net_conn.as_ref(), net::OP_STATUS, 0).unwrap_or_else(|| fail(0xe002));
+    let snapshot = &Snapshot::new(Deadline::after(SNAPSHOT_MS));
+    let status =
+        call_scalar(snapshot, net_conn.as_ref(), net::OP_STATUS, 0).unwrap_or_else(|| fail(0xe002));
     let (link, mac) = decode_status(status);
     drop(net_conn);
     config::write::<u32>(status::STAGE, 3);
@@ -1408,14 +1438,16 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         wait_for_registered_name_owned(ns_conn, socket::NAME).unwrap_or_else(|| fail(0xe003));
     config::write::<u32>(status::STAGE, 4);
 
-    // Optional report sources; absent services render as null.
+    // Optional report sources share one bounded startup observation.
+    let snapshot = &Snapshot::new(Deadline::after(SNAPSHOT_MS));
+    // Absent or unavailable services render as null.
     let services = ServiceSet {
         ns_conn,
         tcp_conn,
-        frouter_conn: try_lookup(ns_conn, frouter::NAME),
-        disco_conn: try_lookup(ns_conn, disco::NAME),
-        relmsg_conn: try_lookup(ns_conn, relmsg::NAME),
-        observe_conn: try_lookup(ns_conn, observability::NAME),
+        frouter_conn: try_lookup(snapshot, ns_conn, frouter::NAME),
+        disco_conn: try_lookup(snapshot, ns_conn, disco::NAME),
+        relmsg_conn: try_lookup(snapshot, ns_conn, relmsg::NAME),
+        observe_conn: try_lookup(snapshot, ns_conn, observability::NAME),
     };
     config::write::<u32>(status::STAGE, 5);
 
@@ -1500,6 +1532,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             continue 'connections;
         }
         trace_phase("received");
+        // Every dependency in this response shares this original budget.
+        let snapshot = &Snapshot::new(Deadline::after(SNAPSHOT_MS));
 
         // Route on the fixed node/cluster targets. Account for the request up
         // front so the node report includes the request being served.
@@ -1512,15 +1546,15 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             (
                 "HTTP/1.1 200 OK",
                 "application/json",
-                build_json(&mac, link, &services, &counters, &mut prev),
+                build_json(snapshot, &mac, link, &services, &counters, &mut prev),
             )
         } else if path == b"/cluster" || path == b"/cluster/" || path == b"/cluster/index.html" {
             counters.root = counters.root.wrapping_add(1);
             ("HTTP/1.1 200 OK", "text/html; charset=utf-8", String::from(CLUSTER_DASHBOARD))
         } else if path == b"/cluster/metrics" {
             counters.metrics = counters.metrics.wrapping_add(1);
-            match try_lookup(services.ns_conn, dns::NAME)
-                .and_then(|connection| build_cluster_json(connection.as_ref()))
+            match try_lookup(snapshot, services.ns_conn, dns::NAME)
+                .and_then(|connection| build_cluster_json(snapshot, connection.as_ref()))
             {
                 Some(snapshot) => ("HTTP/1.1 200 OK", "application/json", snapshot),
                 None => (

@@ -607,6 +607,10 @@ QEMU_OPTS=(
     -drive "if=none,file=${DATA_IMAGE},format=raw,id=data0"
     "${BLOCK_DEVICE[@]}"
     -device "$IOMMU_DEVICE"
+    # Ordinary runtime hardware, independent of networking/verifier selection.
+    # Service-only entropy controls must not silently use RDRAND instead.
+    -object "rng-random,filename=/dev/urandom,id=charlotte-rng"
+    -device "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on"
     -display none
     -no-reboot
     -nic none
@@ -724,7 +728,7 @@ if [ -n "$TIMEOUT" ]; then
             fi
         fi
         if [ "$HTTP_TEST" = "1" ] && [ "$HTTP_PROBED" = "0" ] \
-            && grep -Fq "httpd is listening" "$LOG"; then
+            && catten_boot_http_probe_ready; then
             HTTP_PROBED=1
             echo ">>> Probing guest node and cluster keyholes through port ${HTTP_HOST_PORT} ..."
             DEPLOY_LIVENESS_OK=0

@@ -485,6 +485,35 @@ impl SharedDmaMemory<'_> {
         Ok(())
     }
 
+    fn u16_pointer(&self, offset: usize) -> Option<*mut u16> {
+        if offset.checked_add(core::mem::size_of::<u16>())? > self.len() {
+            return None;
+        }
+        let address = self.base.checked_add(offset)?;
+        address.is_multiple_of(core::mem::align_of::<u16>()).then_some(address as *mut u16)
+    }
+
+    /// One aligned little-endian halfword access to a device-shared field.
+    /// Byte-copy access can tear an asynchronously updated ring index. This
+    /// does not supply protocol ordering or synchronize competing CPU writers;
+    /// the device adapter must still apply its publication/completion fences.
+    pub fn read_volatile_u16_le(&self, offset: usize) -> Option<u16> {
+        let pointer = self.u16_pointer(offset)?;
+        // SAFETY: the complete aligned halfword is inside this live mapping.
+        Some(u16::from_le(unsafe { core::ptr::read_volatile(pointer) }))
+    }
+
+    /// Publish one aligned little-endian halfword without intermediate byte
+    /// values. The adapter owns the field and its required ordering contract.
+    pub fn write_volatile_u16_le(&mut self, offset: usize, value: u16) -> Result<(), MemoryError> {
+        let pointer = self.u16_pointer(offset).ok_or(MemoryError::InvalidCapability)?;
+        // SAFETY: the complete aligned halfword is inside this live mapping.
+        unsafe { core::ptr::write_volatile(pointer, value.to_le()) };
+        Ok(())
+    }
+
+    /// Copy separate volatile bytes; this is not a coherent observation of a
+    /// concurrently updated scalar. Use the aligned word accessor for indices.
     pub fn read_volatile_into(&self, offset: usize, output: &mut [u8]) -> Result<(), MemoryError> {
         let end = offset.checked_add(output.len()).ok_or(MemoryError::InvalidCapability)?;
         if end > self.len() {
@@ -497,6 +526,7 @@ impl SharedDmaMemory<'_> {
         Ok(())
     }
 
+    /// Copy separate volatile bytes, without a scalar publication guarantee.
     pub fn write_volatile_from(&mut self, offset: usize, input: &[u8]) -> Result<(), MemoryError> {
         let end = offset.checked_add(input.len()).ok_or(MemoryError::InvalidCapability)?;
         if end > self.len() {

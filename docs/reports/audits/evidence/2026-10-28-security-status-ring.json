@@ -1,0 +1,725 @@
+{
+  "date": "2026-10-28",
+  "parent": "9f3d5203e4604c3113afb07e25b28ef6cd0db48c",
+  "toolchain": "nightly-2026-07-27",
+  "scope": "Status-only preliminary runs and ring-corrected runs remain separate. No overall pass is inferred from individual control receipts.",
+  "source_sha256": {
+    "crates/catten-rt/src/owned.rs": "4ed9e61e7ccb004cec59b67f7c2ff6f9507a2514201b3b783411c2380696c010",
+    "crates/catten-rt/src/owned/memory.rs": "8af6988dababe95aef2e8ada0ff44c7e383a5a39dd28e58a7951636f17ec099d",
+    "crates/catten-services/src/status_observation.rs": "29380db5c6cc8350330ed5165053f7d845d6d0ff7083ee5f80d7b8c266aeeaa2",
+    "crates/catten-services/src/status_observation/contract.rs": "8eab21df0aa96a7b50804fb2491f5becfe16908bf68a2afbc50d1f22e7daa3a4",
+    "crates/catten-services/src/bin/httpd.rs": "cf3b2ec01890cecdac3d27fb9f8fdc95741600bb65f9e9cf9a4a75088f54b5cd",
+    "crates/catten-services/src/bin/rng.rs": "873b8c53baece3f89dd6993b2ba51d118d306c970f7b02cf34c6cf290a2efd9d",
+    "crates/catten-services/src/bin/security_probe.rs": "bf210fb565b9b45e188a7450f399816e569a974967c6cfd75e3a443484417c35",
+    "scripts/tests/test-rng-ring-access.py": "8cec94a54c6c066535b2ad4f549083b4558cc361c5b26d9f8ef1553c4ef620cf",
+    "scripts/generate-security-test-fixtures.sh": "24f08db6a22591b0135d568de80dcd8588396807bd10b4e7452a8f4bc7928c98",
+    "scripts/run-x86_64.sh": "35c895f3532ea5ee960bd31b2e96021865953ea78a6a57ad2396ee6161109489",
+    "scripts/run-host-tests.sh": "87718a762c9341eb1807536fb7f7fa1da92870c355ac4420729dd1079cb6d5c0",
+    "scripts/lib/boot-common.sh": "8decb90a7623c084870f56bfecc5f2e58184958d1fb0073a59773a1d0b227b13",
+    "scripts/run-aarch64.sh": "84a143ff1b50749ea3e4f8076f5d1b17353063a7cf0056372016cef1b6b55fcc",
+    "scripts/tests/test-management-runner-gates.py": "f374d17ad69434e5af677c4a2ca4f62d64806d41fcf65b05ac3722f81c2eb2d0",
+    "crates/catten-services/src/lib.rs": "cc4d6a6d54c6f430b8435fe4f1a11bfa597a883c82acd26887f0412fc8167183"
+  },
+  "signed_bundle_sha256": {
+    "aarch64-unknown-none": {
+      "agent.elf": "bf36cab66db3ff870ac8446aef8350c15e4a136c5b5b900f4d8f7b1d1f899ef9",
+      "cclient.elf": "88f2a79a9a000f8591ad29668c5bc250611dd60335a7f7bcdbffac829d9fd602",
+      "client.elf": "098ed321304baeb5c441772448f7bafcbb0eab5cc1a272df8a0328eafcdf570f",
+      "clusterctl.elf": "97e69e2b763a5ec6871069af74918701ae93b013d1dbe807784de2133423dd22",
+      "deployd.elf": "95c838e9ef9dfdd22b37ae74ec7d4e351cb1f1c8a4b3d9c647df95f75ccc5092",
+      "disco.elf": "75f8ae83ebf7de7579d8c1f3a62a0267d0417849a1f2dec0a3830820e97132d1",
+      "dns.elf": "8dda4f3599306e4efba0d1ae83e62130a9d5672786b61fd1f6616d86fe55cea2",
+      "echo.elf": "38f88667b0a07050f6448f2221ec2a0095ab9be67e30983d031525bb5677ccde",
+      "frouter.elf": "9a09fd57c652d50fc0f26406382331b582f79af7ac88325c1da93765547b2ccb",
+      "fs.elf": "a31f5bf6fe2dfdd7c31f0945c5ac1c210ff2a5e9c5869c2aa5708b8bd0410e83",
+      "grantctl.elf": "a09374ccea339f21fb049a714f3e06ce1e16534420dfca3823a3896edbcca8e4",
+      "greet.elf": "152bcfc32278eaa752a0dd50e4e57bfb04b3f6d203e2a98f97b34dff47df98aa",
+      "httpd.elf": "b6bca3286554ea07f82e6ec2c699bdd20891d0459e78d4719300c2ef65430840",
+      "kafka.elf": "de4cc13871f2ff58b1d3e4f3bd3eae66fdbe336e8e8d62802136d85fd3de541d",
+      "kafka_fence_smoke.elf": "0b46a113089c7e2f945bf423ce0737c24c1a392419807cc451fc0da6e9d40995",
+      "kafka_smoke.elf": "569ce51a5c395701b0f5013d4b0a2afa006979ab9df2e48d4eba4c8d4f53d9be",
+      "kafka_step.elf": "2780e9bc741e408c4a806922b7498909dfa3e31ab959f0b4c3cb51e535c8a072",
+      "kafka_step_input.elf": "f7a6618c80244296eb4c314708cdf45d2994880b4a8c6e3fa0c48456f73f198d",
+      "kafka_step_proc.elf": "8e8d1125c30d3047040f35f1716fb9a7b8a2952f947e25f420a2cb83928c5e86",
+      "nclient.elf": "27e93650aa6d744ead70c5ad9459ff399b24a06208555d42cc2fc3be2a26df86",
+      "net.elf": "5c6c70723daca502662acae896fd997eb01f55ef3fba227fa56eb303ff50ef9d",
+      "ns.elf": "f1eaf448787d677cc10c6a68d0960887559d2620a1c795de5dede4631b0dd011",
+      "nvme.elf": "bf2f52a73c23a1d78f207d8354bbe4aafb9e2c77b6b85fb23d849a489eb6a299",
+      "nvme_client.elf": "1867a18b6a4152590e7dfbd7ea7ed333de556b625eda8d3ccff09c7170732305",
+      "objstore.elf": "0a5ed436b1b3113a5c45a85c380ca7108537f220608ecfb9ef7b1687664f6ac7",
+      "objstore_client.elf": "e372d709e8d56d813380c2af6c668e1f50805d8e5e1438d80081a14b1f2c930a",
+      "observe.elf": "cfe94f8c30d3c92379b35db269f27a828e956b61f98fdb3d99d9037324bca851",
+      "raft.elf": "6ffb5f519bddf36f91f5d712213665cf759c207794484d4f88dcbcda2cee3364",
+      "rclient.elf": "fc23a2c487974dc274a8d955fad7d08264d3c37232c0a24ba8347826491f5c8a",
+      "relmsg.elf": "05d51874f2bc4371f2ea9cc7b98c777672466aa2bc1ee61d7211873e2732e6ec",
+      "rng.elf": "33eab263c594ede33f5ce5495f13f3e9185075ed23ae7f46a7440f76b88c7c14",
+      "s3.elf": "b50a0d9fafb6cef42ff5f7b2d46146bf5b6634a81787b52e545b918f326f510c",
+      "s3_smoke.elf": "da1fb9ec1e909b7d9f397ed07ecd592c96dcb86c3cc2a0ef74137051df408bb9",
+      "security_probe.elf": "1ab9074ad3627547269ff2e6d80c35da8ddb0aeb678e4aae23392014cc962319",
+      "servicemgr.elf": "5c179c39792f8ffa0d56fdf5c961605ce0d79ba25d9989ab6ac308a51ea50725",
+      "shutdown_probe.elf": "47d7e31c10f072a7878b580cb51e6b8f7bf00c582eb7e858210ccf3229f5649d",
+      "sitas-user.elf": "a20aafd9434e1a37beaff58c2a4863327a91c386cbe41858f452719ec12b4212",
+      "tcpclient.elf": "fa38d71cf1447ac7174e787bd67861ce2aa67cb787cf9285cfbb67915a5719e6",
+      "tcpip.elf": "30cfd3760e9adddfc9bee476fdd784894d79a24e0fb17e6961493fd548a80e98",
+      "time.elf": "57269586e9fb670a50150c0524083de22c3e40fe2cf6266da546845a9ae07757",
+      "uart.elf": "fe1ec57a9bfccd43fc2fc0fb3d49a7086db95de22ec60ea362ecdd3b29e4f543"
+    },
+    "x86_64-unknown-none": {
+      "agent.elf": "232ad243d2b19b05b26eb00fbabb326a9c3fd60f9803db1800ff3f547853afe5",
+      "ahci.elf": "f5ce3a8959d5371c870245d7e96b6459d3b0e4aa57ad3b6e082ffcf1234edbf3",
+      "client.elf": "71ef70718cd1aea903dc4cab2eb86b668c9f981cb2718523ba4794326fe7dfe3",
+      "clusterctl.elf": "d4d9c48d9e8ada52cb33c9121886c369cd86b8f9b12a1d17f28abce03aed7761",
+      "deployd.elf": "dc65bad4da8e4db965dc9f55d828a665a0479a7a20be95fc5c13ff5eabc24208",
+      "disco.elf": "5fab479c5cf91041f85a9a332e27dc7902ab3ed47afa98ddbce9a9b154464254",
+      "dns.elf": "f8c3794811b0729c523634adb1392e62812a52684cbd88ee354a3bb2f88c2292",
+      "e1000e.elf": "f21e1ff5b2b4cd7f9cc29a28ed57fcdc9c0a54ba94640a04222595b93d2e78e0",
+      "echo.elf": "d196dba63cbf25995f495c5d77668b2d3331da5b3c09dadae6d9d36eb8f6847d",
+      "frouter.elf": "5eb1c0165f28b9e2f9ba70dcb4fcabaf67b80f12eaf880adbac6e465403b41ce",
+      "fs.elf": "d510de9fce212a8cebbcd86593a413c03c1356b7945d834385141c261b8f918a",
+      "grantctl.elf": "a647ef0a0f36f4990b4d500bf08720bac657bd0f357e5d0c99f3b755a905ff17",
+      "greet.elf": "9d1ed1fb82825449adebf3ea64b6f3f605c2d459bfbb3751b2771facd5dda303",
+      "httpd.elf": "c06715e5dbc8ea92c08803abf345e98bfd5d8a815eea7602da563c9a11b03cb7",
+      "kafka.elf": "bda1e3884731092bee786a2977968c881520d3afeb1545438d4b379f1376b033",
+      "kafka_smoke.elf": "7fe18e07f3904f2826f5429940ae4f0566864c70149cff8d9e253f1a13e8b325",
+      "nclient.elf": "6724ef8fc8008a02d9fb48b0a9d157f342c93a58924dfe4370c34ec15d1ea853",
+      "net.elf": "c4428d5c73983b3770261ff25a601ebdadf92d532bc4f1e3082ab9c60c4634ec",
+      "ns.elf": "78c495c48d76a9bd0d4f65aea0f99eabd801c26a0e645702be90cb4a3c34ee91",
+      "nvme.elf": "8c313db0a8e8f4ced0d5cf9351190d35530e62bcaf735446c0c6579b30b2ac1a",
+      "nvme_client.elf": "3713eeb6827cd5dbf3468a70e0ecb42ba6b72a43aa6587fb3b63d47144312bc2",
+      "objstore.elf": "2f81af7eeb4518ad17f11c8bbd4af2fd80a3f8d1b945efe9ffc0a0709dce83ad",
+      "objstore_client.elf": "c01217a9b67e5b56d7a02d0fc5614f5f1d665687f0245a360d2b75ee227dae1b",
+      "observe.elf": "42d053e91c14610b4a88e017c71eb4482f30c30745843d3341335fab23b5c490",
+      "raft.elf": "e99cb3ce5e3455d2a9ec0e48a0c3fe8265a8523a9e1cee92f874f64ba28c3d92",
+      "rclient.elf": "01a8400fa21b070989d6b45b1911ec25761c704549fc930663e2f1d1426d5e9b",
+      "relmsg.elf": "7526400d9549158ddb7fa06592460c569e8f2c5569c2aa96efece960ea5b970e",
+      "rng.elf": "143a3181b8651e5e79c59443de85a342da82892e1af29ba51ae306f1b55510ca",
+      "s3.elf": "8aae29bf0a990978d1802257de3a5659a4c0ffeba839aae150b76e75a32e5eee",
+      "s3_smoke.elf": "adf9c1379513b436b7bbea0df96b77519ad50f0d03a957a347b3aaaba1e5f460",
+      "security_probe.elf": "5bc9dae980fd6db71f19bcd4e233d0bdae45af6b8e393470dc12984b7432c783",
+      "servicemgr.elf": "a773caecad72b3d8b7c7c309274eff3af9ed7156666d61d26e9666ff56de6803",
+      "shutdown_probe.elf": "d68a041333648737e2cc5f88a96c2c8da591004c7f963cfe07d1e943c3931512",
+      "tcpclient.elf": "1a9b08e6b5e2c9728be4b072fc11fc634fd8b56a03dd90d8982b91240cf60bd6",
+      "tcpip.elf": "d9914cc1dbb5a5b05eb709d3d615b564f60b16998ef09b0d64b24317d88581cd",
+      "time.elf": "a2251558644e495f91f5cf3d7a1371809a55056a2a87c3c32fd07ba640c8bbca",
+      "virtio_blk.elf": "bc8b988573257a53a14c51bd5d72a2437ec7eb21c33f0a11ac0bd5c7fb5ac2ad"
+    }
+  },
+  "runs": [
+    {
+      "name": "pre_ring_x86",
+      "architecture": "x86_64",
+      "runner_exit_code": 0,
+      "kernel_sha256": "e5ea2bec67f2d84c37eef61155ad232dc1f82c178041ac61d2391e928f60ad7b",
+      "management_resource_sha256": "bb09ae5b164b77a73f3f4e762c8370a42b64e86ca791b7114ed297eec1b2abb4",
+      "self_test_summary": {
+        "passed": 18,
+        "failed": 0,
+        "pending": 0
+      },
+      "host_controls": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.737s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.565s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.618s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 29.85s; ingress recovered",
+        "PASS: port 28443: verified TLS 1.3 reader and administrator observations",
+        "PASS: port 28443: missing/unregistered certificate, wrong name/root and plaintext rejected; reader recovered",
+        "PASS: port 28744: verified TLS 1.3 reader and administrator observations",
+        "PASS: port 28744: missing/unregistered certificate, wrong name/root and plaintext rejected; reader recovered",
+        "PASS: reader mutation rejected before incomplete signed body/controller dispatch",
+        "PASS: cluster-sign verified reader observation; wrong server name rejected before HTTP submission"
+      ],
+      "host_transport_retries": [
+        "HTTP transport SSLEOFError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 2/2"
+      ],
+      "native_new_controls": [
+        "[+    56.076136] [EL0 LOG] lp=0 asid=152 [security] status snapshot: shared deadline, expired admission, scalar/moved timeout, eight slots, rejected/cancelled/returned page charges and healthy status passed",
+        "[+    90.308096] [EL0 LOG] lp=0 asid=152 [security] status snapshot: shared deadline, expired admission, scalar/moved timeout, eight slots, rejected/cancelled/returned page charges and healthy status passed"
+      ],
+      "relevant_diagnostics": [],
+      "native_clock_samples": [
+        "[+    33.131083] [EL0 LOG] lp=0 asid=134 [time] synchronized unix_s=1793175804 utc=2026-10-28T08:23:24.243750146Z stratum=3 uncertainty_ms=319 drift_ppb=0"
+      ],
+      "native_driver_preparation": [
+        "[+    17.453447] [launch] driver grant batch prepared before threads: storage=true entropy=false network=true"
+      ],
+      "host_failures": [],
+      "scoped_probe_file_sha256": "a0ff5e1bf372b5ba1ffb92d0411cc4f482921b6d1a344451577d0b8f24b4047e",
+      "implementation_phase": "Status adapter only; byte-copy RNG indices; no RNG in x86 runner.",
+      "command": [
+        "scripts/run-x86_64.sh",
+        "--security-test",
+        "--http-test",
+        "--instance",
+        "security-status-snapshot-x86-native",
+        "--fresh-storage",
+        "--timeout",
+        "150",
+        "--no-failure-capture"
+      ],
+      "environment": {
+        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "CATTEN_HTTP_HOST_PORT": "28443",
+        "CATTEN_DEPLOY_HOST_PORT": "28744"
+      }
+    },
+    {
+      "name": "pre_ring_arm_failure",
+      "architecture": "aarch64",
+      "runner_exit_code": 1,
+      "kernel_sha256": "c6ae7dd8b4ac6810fbc129ecac516b18bbab2a4d64468ae898c037e83ece15dd",
+      "management_resource_sha256": "069c4ac09241d0c8223e91981f4e3f4346f955ea0219ca267dbda546d10e22a0",
+      "self_test_summary": {
+        "passed": 20,
+        "failed": 0,
+        "pending": 0
+      },
+      "host_controls": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.444s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.501s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.458s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 29.81s; ingress recovered",
+        "PASS: port 29443: verified TLS 1.3 reader and administrator observations",
+        "PASS: port 29443: missing/unregistered certificate, wrong name/root and plaintext rejected; reader recovered",
+        "PASS: port 29744: verified TLS 1.3 reader and administrator observations"
+      ],
+      "host_transport_retries": [
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 2/2"
+      ],
+      "native_new_controls": [
+        "[+    45.339378] [EL0 LOG] lp=0 asid=155 [security] status snapshot: shared deadline, expired admission, scalar/moved timeout, eight slots, rejected/cancelled/returned page charges and healthy status passed",
+        "[+    78.340289] [EL0 LOG] lp=0 asid=155 [security] status snapshot: shared deadline, expired admission, scalar/moved timeout, eight slots, rejected/cancelled/returned page charges and healthy status passed"
+      ],
+      "relevant_diagnostics": [
+        "[+    90.413007] [EL0 LOG] lp=0 asid=130 [deployd] response ended: Transport(Tls(Tls(InvalidCertificate(ApplicationVerificationFailure))))",
+        "[+    90.680532] [EL0 LOG] lp=0 asid=118 [rng] device retained after UnexpectedIndex { expected: 256, observed: 511 }, Some(Attempt { previous_index: 255, expected_index: 256, slot: 7, requested: 32, copied_prefix: 0, checked_completion: None }); no descriptor replay or cleanup",
+        "[+    90.682713] [EL0 LOG] lp=0 asid=130 [panic] panicked at crates/catten-services/src/tls_client/entropy_client.rs:310:42:",
+        "system entropy unavailable during TLS crypto: Rejected(-2)",
+        "[+    90.683494] Aborting user address space 130",
+        "[+   102.630006] [EL0 LOG] lp=0 asid=126 [panic] panicked at crates/catten-services/src/tls_client/entropy_client.rs:310:42:",
+        "[+   102.631150] Aborting user address space 126"
+      ],
+      "native_clock_samples": [
+        "[+    18.705784] [EL0 LOG] lp=0 asid=127 [time] synchronized unix_s=1793175861 utc=2026-10-28T08:24:21.809998054Z stratum=3 uncertainty_ms=505 drift_ppb=0"
+      ],
+      "native_driver_preparation": [
+        "[+     7.098096] [launch] driver grant batch prepared before threads: storage=true entropy=true network=true"
+      ],
+      "host_failures": [
+        "TimeoutError: _ssl.c:999: The handshake operation timed out",
+        "curl: (35) Recv failure: Connection reset by peer",
+        "curl: (35) Recv failure: Connection reset by peer",
+        "error: guest HTTP keyholes did not return both expected JSON views",
+        "error: guest HTTP keyhole was not validated from the host"
+      ],
+      "scoped_probe_file_sha256": "3f0333bc27e391d6c3985780f279882f2919a788f11d9d1f5a78d52019fd75a4",
+      "implementation_phase": "Status adapter only; byte-copy RNG indices.",
+      "command": [
+        "scripts/run-aarch64.sh",
+        "--security-test",
+        "--http-test",
+        "--instance",
+        "security-status-snapshot-arm-native",
+        "--fresh-storage",
+        "--timeout",
+        "150",
+        "--no-failure-capture"
+      ],
+      "environment": {
+        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "CATTEN_HTTP_HOST_PORT": "29443",
+        "CATTEN_DEPLOY_HOST_PORT": "29744"
+      }
+    },
+    {
+      "name": "corrected_arm",
+      "architecture": "aarch64",
+      "runner_exit_code": 0,
+      "kernel_sha256": "25bd81f10df2ed66e9635a490a13411c1694dda15ba9175bdb9184a16723ed5f",
+      "management_resource_sha256": "4213817ebc9fca3b66b466a33af629b7612c32265f0eb3dea6868820f6d32559",
+      "self_test_summary": {
+        "passed": 20,
+        "failed": 0,
+        "pending": 0
+      },
+      "host_controls": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.444s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.446s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.459s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 29.80s; ingress recovered",
+        "PASS: port 29443: verified TLS 1.3 reader and administrator observations",
+        "PASS: port 29443: missing/unregistered certificate, wrong name/root and plaintext rejected; reader recovered",
+        "PASS: port 29744: verified TLS 1.3 reader and administrator observations",
+        "PASS: port 29744: missing/unregistered certificate, wrong name/root and plaintext rejected; reader recovered",
+        "PASS: reader mutation rejected before incomplete signed body/controller dispatch",
+        "PASS: cluster-sign verified reader observation; wrong server name rejected before HTTP submission"
+      ],
+      "host_transport_retries": [
+        "HTTP transport SSLEOFError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 2/2"
+      ],
+      "native_new_controls": [
+        "[+    15.527369] [EL0 LOG] lp=0 asid=150 [security] hardware entropy: 512 service-only 32-byte requests passed; no entropy bytes logged",
+        "[+    47.098321] [EL0 LOG] lp=0 asid=150 [security] status snapshot: shared deadline, expired admission, scalar/moved timeout, eight slots, rejected/cancelled/returned page charges and healthy status passed",
+        "[+    49.618080] [EL0 LOG] lp=0 asid=150 [security] hardware entropy: 512 service-only 32-byte requests passed; no entropy bytes logged",
+        "[+    81.112840] [EL0 LOG] lp=0 asid=150 [security] status snapshot: shared deadline, expired admission, scalar/moved timeout, eight slots, rejected/cancelled/returned page charges and healthy status passed"
+      ],
+      "relevant_diagnostics": [],
+      "native_clock_samples": [
+        "[+    25.589280] [EL0 LOG] lp=0 asid=127 [time] synchronized unix_s=1793176511 utc=2026-10-28T08:35:11.059042572Z stratum=3 uncertainty_ms=506 drift_ppb=0"
+      ],
+      "native_driver_preparation": [
+        "[+     8.057148] [launch] driver grant batch prepared before threads: storage=true entropy=true network=true"
+      ],
+      "host_failures": [],
+      "scoped_probe_file_sha256": "080054d287d135f39dfa3af23bbbc75d41844ce0d7f67ed7aac1e15fef7def4b",
+      "implementation_phase": "Corrected RNG and real-entropy controls; before host UTC gate.",
+      "command": [
+        "scripts/run-aarch64.sh",
+        "--security-test",
+        "--http-test",
+        "--instance",
+        "security-status-ring-arm-final",
+        "--fresh-storage",
+        "--timeout",
+        "180",
+        "--no-failure-capture"
+      ],
+      "environment": {
+        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "CATTEN_HTTP_HOST_PORT": "29443",
+        "CATTEN_DEPLOY_HOST_PORT": "29744"
+      }
+    },
+    {
+      "name": "x86_missing_rng",
+      "architecture": "x86_64",
+      "runner_exit_code": 1,
+      "kernel_sha256": "73ba77d069a4127ba5ec1969af77ffd778c418a2c4a9974158d03d93362a6f6f",
+      "management_resource_sha256": "a5e175af6fc599faf842a0325ff82a1f97a55bf1bcdc8922e476fe51da8824fa",
+      "self_test_summary": {
+        "passed": 17,
+        "failed": 1,
+        "pending": 0
+      },
+      "host_controls": [],
+      "host_transport_retries": [
+        "HTTP transport TimeoutError; retry 1/2",
+        "HTTP transport TimeoutError; retry 2/2"
+      ],
+      "native_new_controls": [],
+      "relevant_diagnostics": [
+        "panicked at crates/catten/src/self_test/el0_security.rs:116:9:",
+        "security probe exited before adversarial application grant checks",
+        "Kernel backtrace (raw return addresses; text=0xffffffff80000000..0xffffffff804f963a, sp=0xffff810000340700, fp=0xffff8100003407a0):",
+        "***",
+        "[+    24.428568] SELFTEST FAILED: scoped-launch-security",
+        "[+    24.429372] SELFTEST COMPLETE: passed=17 failed=1 pending=0 passed_bitmap=0x23bbff failed_bitmap=0x20000000 pending_bitmap=0x0"
+      ],
+      "native_clock_samples": [],
+      "native_driver_preparation": [
+        "[+    12.682024] [launch] driver grant batch prepared before threads: storage=true entropy=false network=true"
+      ],
+      "host_failures": [
+        "TimeoutError: _ssl.c:999: The handshake operation timed out",
+        "TimeoutError: _ssl.c:999: The handshake operation timed out",
+        "curl: (28) Connection timed out after 5001 milliseconds",
+        "curl: (28) Connection timed out after 5001 milliseconds",
+        "error: guest HTTP keyhole was not validated from the host"
+      ],
+      "scoped_probe_file_sha256": "e138f2bbe9f9f0646f966976922d2581a15afa1d0550ef321fc49f95511b58da",
+      "implementation_phase": "Corrected services; x86 runner still lacked RNG hardware.",
+      "command": [
+        "scripts/run-x86_64.sh",
+        "--security-test",
+        "--http-test",
+        "--instance",
+        "security-status-ring-x86-final",
+        "--fresh-storage",
+        "--timeout",
+        "180",
+        "--no-failure-capture"
+      ],
+      "environment": {
+        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "CATTEN_HTTP_HOST_PORT": "28443",
+        "CATTEN_DEPLOY_HOST_PORT": "28744"
+      }
+    },
+    {
+      "name": "x86_retirement_failure",
+      "architecture": "x86_64",
+      "runner_exit_code": 1,
+      "kernel_sha256": "2d5a1eab245476b4da6167d22925285d326f7f19ac967bf876c5e818d0b4eda6",
+      "management_resource_sha256": "1e587aa256bb590d13e7a3d740a70874ca4e014c077f0484f19cd69921044afb",
+      "self_test_summary": {
+        "passed": 17,
+        "failed": 1,
+        "pending": 0
+      },
+      "host_controls": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.514s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.508s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.507s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 29.84s; ingress recovered",
+        "PASS: port 28444: verified TLS 1.3 reader and administrator observations",
+        "PASS: port 28444: missing/unregistered certificate, wrong name/root and plaintext rejected; reader recovered",
+        "PASS: port 28745: verified TLS 1.3 reader and administrator observations"
+      ],
+      "host_transport_retries": [
+        "HTTP transport SSLEOFError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2"
+      ],
+      "native_new_controls": [
+        "[+    21.130235] [EL0 LOG] lp=0 asid=153 [security] hardware entropy: 512 service-only 32-byte requests passed; no entropy bytes logged",
+        "[+    52.803191] [EL0 LOG] lp=0 asid=153 [security] status snapshot: shared deadline, expired admission, scalar/moved timeout, eight slots, rejected/cancelled/returned page charges and healthy status passed",
+        "[+    56.116429] [EL0 LOG] lp=0 asid=153 [security] hardware entropy: 512 service-only 32-byte requests passed; no entropy bytes logged",
+        "[+    87.686931] [EL0 LOG] lp=0 asid=153 [security] status snapshot: shared deadline, expired admission, scalar/moved timeout, eight slots, rejected/cancelled/returned page charges and healthy status passed"
+      ],
+      "relevant_diagnostics": [
+        "[+    93.048801] [domain retirement] root=157:8 error=AddressSpace(OperationDrainTimedOut) pending=Some(Memory(PendingMemory { object: 35194, authority: false, transfer_in_flight: false, retirement_pins: 1, dma_pins: 0, copy_pins: 0, revoking: false }))",
+        "panicked at crates/catten/src/self_test/el0_security.rs:55:61:",
+        "security probe reclamation: AddressSpace(OperationDrainTimedOut)",
+        "Kernel backtrace (raw return addresses; text=0xffffffff80000000..0xffffffff804f963a, sp=0xffff8100002a7590, fp=0xffff8100002a7630):",
+        "***",
+        "[+    93.832350] SELFTEST FAILED: scoped-launch-security",
+        "[+    93.833562] SELFTEST COMPLETE: passed=17 failed=1 pending=0 passed_bitmap=0x23bbff failed_bitmap=0x20000000 pending_bitmap=0x0"
+      ],
+      "native_clock_samples": [
+        "[+    24.020526] [EL0 LOG] lp=0 asid=135 [time] synchronized unix_s=1793176890 utc=2026-10-28T08:41:30.938440276Z stratum=3 uncertainty_ms=505 drift_ppb=0"
+      ],
+      "native_driver_preparation": [
+        "[+    12.821960] [launch] driver grant batch prepared before threads: storage=true entropy=true network=true"
+      ],
+      "host_failures": [
+        "TimeoutError: _ssl.c:999: The handshake operation timed out",
+        "curl: (28) Connection timed out after 5001 milliseconds",
+        "curl: (28) Connection timed out after 5001 milliseconds",
+        "error: guest HTTP keyhole was not validated from the host"
+      ],
+      "scoped_probe_file_sha256": "85ec164ec42b2c596bd09fd59e15c458f714e8a3e3b3953a161f6c313ad5c902",
+      "implementation_phase": "Corrected services and x86 RNG; before host UTC gate.",
+      "command": [
+        "scripts/run-x86_64.sh",
+        "--security-test",
+        "--http-test",
+        "--instance",
+        "security-status-ring-x86-rng",
+        "--fresh-storage",
+        "--timeout",
+        "180",
+        "--no-failure-capture"
+      ],
+      "environment": {
+        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "CATTEN_HTTP_HOST_PORT": "28444",
+        "CATTEN_DEPLOY_HOST_PORT": "28745"
+      }
+    },
+    {
+      "name": "x86_pre_utc_repeat",
+      "architecture": "x86_64",
+      "runner_exit_code": 1,
+      "kernel_sha256": "90f49fc187e725eaddc21b981afeb2e541583370cbdb63e9653a733f752f4643",
+      "management_resource_sha256": "a4565cd4bc5cad3fffd2d43af8b207af3c00f34fc602fd14c3e883db8e1ed7f3",
+      "self_test_summary": {
+        "passed": 18,
+        "failed": 0,
+        "pending": 0
+      },
+      "host_controls": [],
+      "host_transport_retries": [
+        "HTTP transport SSLEOFError; retry 1/2",
+        "HTTP transport SSLEOFError; retry 2/2"
+      ],
+      "native_new_controls": [
+        "[+    20.902338] [EL0 LOG] lp=0 asid=142 [security] hardware entropy: 512 service-only 32-byte requests passed; no entropy bytes logged",
+        "[+    52.415776] [EL0 LOG] lp=0 asid=142 [security] status snapshot: shared deadline, expired admission, scalar/moved timeout, eight slots, rejected/cancelled/returned page charges and healthy status passed",
+        "[+    55.561203] [EL0 LOG] lp=0 asid=142 [security] hardware entropy: 512 service-only 32-byte requests passed; no entropy bytes logged",
+        "[+    87.045128] [EL0 LOG] lp=0 asid=142 [security] status snapshot: shared deadline, expired admission, scalar/moved timeout, eight slots, rejected/cancelled/returned page charges and healthy status passed"
+      ],
+      "relevant_diagnostics": [],
+      "native_clock_samples": [
+        "[+    82.702303] [EL0 LOG] lp=0 asid=135 [time] synchronized unix_s=1793177170 utc=2026-10-28T08:46:10.168216385Z stratum=3 uncertainty_ms=504 drift_ppb=0"
+      ],
+      "native_driver_preparation": [
+        "[+    12.766487] [launch] driver grant batch prepared before threads: storage=true entropy=true network=true"
+      ],
+      "host_failures": [
+        "ssl.SSLEOFError: [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1016)",
+        "ssl.SSLEOFError: [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1016)",
+        "curl: (35) TLS connect error: error:0A000126:SSL routines::unexpected eof while reading",
+        "curl: (35) TLS connect error: error:0A000126:SSL routines::unexpected eof while reading",
+        "error: guest HTTP keyhole was not validated from the host"
+      ],
+      "scoped_probe_file_sha256": "b34cae9a14a27464e56de22f85fdf3be4a22e3dbadce8be64de56f0f5f586df8",
+      "implementation_phase": "Same services and RNG as retirement failure; before host UTC gate.",
+      "command": [
+        "scripts/run-x86_64.sh",
+        "--security-test",
+        "--http-test",
+        "--instance",
+        "security-status-ring-x86-repeat",
+        "--fresh-storage",
+        "--timeout",
+        "180",
+        "--no-failure-capture"
+      ],
+      "environment": {
+        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "CATTEN_HTTP_HOST_PORT": "28445",
+        "CATTEN_DEPLOY_HOST_PORT": "28746"
+      }
+    },
+    {
+      "name": "corrected_x86_ready",
+      "architecture": "x86_64",
+      "runner_exit_code": 0,
+      "kernel_sha256": "a98dfc30c7b93f89d1bfb7ca3e154756c56461b6792ad479d6ffa41af616b38a",
+      "management_resource_sha256": "f7c095a3f9b6cd24e8604d23c15ae7833546f8e4e5f0373378dafab542336be8",
+      "self_test_summary": {
+        "passed": 18,
+        "failed": 0,
+        "pending": 0
+      },
+      "host_controls": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.517s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.517s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.493s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 29.84s; ingress recovered",
+        "PASS: port 28544: verified TLS 1.3 reader and administrator observations",
+        "PASS: port 28544: missing/unregistered certificate, wrong name/root and plaintext rejected; reader recovered",
+        "PASS: port 28844: verified TLS 1.3 reader and administrator observations",
+        "PASS: port 28844: missing/unregistered certificate, wrong name/root and plaintext rejected; reader recovered",
+        "PASS: reader mutation rejected before incomplete signed body/controller dispatch",
+        "PASS: cluster-sign verified reader observation; wrong server name rejected before HTTP submission"
+      ],
+      "host_transport_retries": [
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2"
+      ],
+      "native_new_controls": [
+        "[+    20.711841] [EL0 LOG] lp=0 asid=153 [security] hardware entropy: 512 service-only 32-byte requests passed; no entropy bytes logged",
+        "[+    52.353854] [EL0 LOG] lp=0 asid=153 [security] status snapshot: shared deadline, expired admission, scalar/moved timeout, eight slots, rejected/cancelled/returned page charges and healthy status passed",
+        "[+    55.655689] [EL0 LOG] lp=0 asid=153 [security] hardware entropy: 512 service-only 32-byte requests passed; no entropy bytes logged",
+        "[+    87.340279] [EL0 LOG] lp=0 asid=153 [security] status snapshot: shared deadline, expired admission, scalar/moved timeout, eight slots, rejected/cancelled/returned page charges and healthy status passed"
+      ],
+      "relevant_diagnostics": [],
+      "native_clock_samples": [
+        "[+    23.474019] [EL0 LOG] lp=0 asid=135 [time] synchronized unix_s=1793177512 utc=2026-10-28T08:51:52.562939212Z stratum=3 uncertainty_ms=509 drift_ppb=0"
+      ],
+      "native_driver_preparation": [
+        "[+    12.641915] [launch] driver grant batch prepared before threads: storage=true entropy=true network=true"
+      ],
+      "host_failures": [],
+      "scoped_probe_file_sha256": "94270188e92914b2a2286656e059afc91d8ffded74ad164630701da617644409",
+      "implementation_phase": "Corrected services, x86 RNG and final shared UTC gate.",
+      "command": [
+        "scripts/run-x86_64.sh",
+        "--security-test",
+        "--http-test",
+        "--instance",
+        "security-status-ring-x86-ready",
+        "--fresh-storage",
+        "--timeout",
+        "180",
+        "--no-failure-capture"
+      ],
+      "environment": {
+        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "CATTEN_HTTP_HOST_PORT": "28544",
+        "CATTEN_DEPLOY_HOST_PORT": "28844"
+      }
+    }
+  ],
+  "host_validation": {
+    "runtime_library": {
+      "passed": 54,
+      "failed": 0
+    },
+    "services_library": {
+      "passed": 257,
+      "failed": 0
+    },
+    "ring_access_python_controls": {
+      "passed": 3,
+      "failed": 0
+    },
+    "existing_descriptor_fence_controls": {
+      "passed": 3,
+      "failed": 0
+    },
+    "management_runner_gates": {
+      "passed": 8,
+      "failed": 0
+    },
+    "ci_runtime_input_controls": {
+      "passed": 4,
+      "failed": 0
+    },
+    "boot_image_controls": {
+      "passed": 2,
+      "failed": 0
+    },
+    "tooling_contract_controls": {
+      "passed": 8,
+      "failed": 0
+    },
+    "strict_clippy": [
+      "catten-rt host all targets",
+      "AArch64 services library/httpd/rng/security_probe",
+      "freestanding x86 services library/httpd/rng/security_probe"
+    ],
+    "formatting": "cargo fmt --all -- --check",
+    "whitespace": "git diff --check"
+  },
+  "isolated_ring_access_controls": [
+    {
+      "mutation": [
+        "ring.read_volatile_u16_le(offset)",
+        "let mut bytes = [0; 2]; ring.read_volatile_into(offset, &mut bytes).ok()?; Some(u16::from_le_bytes(bytes))"
+      ],
+      "harness": "#![allow(dead_code)]\n\nuse std::{cell::Cell, marker::PhantomData};\nstruct SharedDmaMemory<'a> {\n    word: Cell<u16>, transition: Cell<bool>, published: Cell<u16>,\n    lifetime: PhantomData<&'a ()>,\n}\n#[allow(dead_code)]\nimpl SharedDmaMemory<'_> {\n    fn new() -> Self { Self { word: Cell::new(0xff), transition: Cell::new(true),\n        published: Cell::new(0xff), lifetime: PhantomData } }\n    fn step(&self) { if self.transition.replace(false) { self.word.set(0x100); } }\n    fn read_volatile_into(&self, _: usize, bytes: &mut [u8]) -> Result<(), ()> {\n        for (index, byte) in bytes.iter_mut().enumerate() {\n            *byte = self.word.get().to_le_bytes()[index];\n            self.step();\n        }\n        Ok(())\n    }\n    fn read_volatile_u16_le(&self, _: usize) -> Option<u16> {\n        let word = self.word.get(); self.step(); Some(word)\n    }\n    fn write_volatile_from(&mut self, _: usize, bytes: &[u8]) -> Result<(), ()> {\n        for (index, byte) in bytes.iter().copied().enumerate() {\n            let mut word = self.word.get().to_le_bytes(); word[index] = byte;\n            self.word.set(u16::from_le_bytes(word));\n            if index == 0 { self.published.set(self.word.get()); }\n        }\n        Ok(())\n    }\n    fn write_volatile_u16_le(&mut self, _: usize, word: u16) -> Result<(), ()> {\n        self.word.set(word); self.published.set(word); Ok(())\n    }\n}\n#[test]\nfn completion_index_is_one_observation() {\n    let ring = SharedDmaMemory::new();\n    let observed = ring_read_u16(&ring, 0).unwrap();\n    assert!(matches!(observed, 0xff | 0x100), \"torn used index: {observed:#x}\");\n    assert_eq!(ring_read_u16(&ring, 0), Some(0x100));\n}\n#[test]\nfn publication_has_no_intermediate_index() {\n    let mut ring = SharedDmaMemory::new();\n    assert!(ring_write_u16(&mut ring, 0, 0x100));\n    assert_eq!(ring.word.get(), 0x100);\n    assert_eq!(ring.published.get(), 0x100, \"torn available index\");\n}\nfn ring_write(ring: &mut SharedDmaMemory<'_>, offset: usize, bytes: &[u8]) -> bool {\n    ring.write_volatile_from(offset, bytes).is_ok()\n}\nfn ring_write_u16(ring: &mut SharedDmaMemory<'_>, offset: usize, value: u16) -> bool {\n    ring.write_volatile_u16_le(offset, value).is_ok()\n}\nfn ring_read_u16(ring: &SharedDmaMemory<'_>, offset: usize) -> Option<u16> {\n    let mut bytes = [0; 2]; ring.read_volatile_into(offset, &mut bytes).ok()?; Some(u16::from_le_bytes(bytes))\n}",
+      "harness_sha256": "327455af0108dca7d41af7bd7a693c0cec6a7757756dfa97a81700e830780511",
+      "executable_sha256": "6a4870a1bffa3bb4721c62e689d18953db2ca7af528268ec84310a9d86f2e1d4",
+      "exit_code": 101,
+      "diagnostics": [
+        "",
+        "running 1 test",
+        "test completion_index_is_one_observation ... FAILED",
+        "",
+        "failures:",
+        "",
+        "---- completion_index_is_one_observation stdout ----",
+        "",
+        "thread 'completion_index_is_one_observation' (300118) panicked at <control>/probe.rs:39:5:",
+        "torn used index: 0x1ff",
+        "note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
+        "",
+        "",
+        "failures:",
+        "    completion_index_is_one_observation",
+        "",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s",
+        ""
+      ]
+    },
+    {
+      "mutation": [
+        "ring.write_volatile_u16_le(offset, value).is_ok()",
+        "ring_write(ring, offset, &value.to_le_bytes())"
+      ],
+      "harness": "#![allow(dead_code)]\n\nuse std::{cell::Cell, marker::PhantomData};\nstruct SharedDmaMemory<'a> {\n    word: Cell<u16>, transition: Cell<bool>, published: Cell<u16>,\n    lifetime: PhantomData<&'a ()>,\n}\n#[allow(dead_code)]\nimpl SharedDmaMemory<'_> {\n    fn new() -> Self { Self { word: Cell::new(0xff), transition: Cell::new(true),\n        published: Cell::new(0xff), lifetime: PhantomData } }\n    fn step(&self) { if self.transition.replace(false) { self.word.set(0x100); } }\n    fn read_volatile_into(&self, _: usize, bytes: &mut [u8]) -> Result<(), ()> {\n        for (index, byte) in bytes.iter_mut().enumerate() {\n            *byte = self.word.get().to_le_bytes()[index];\n            self.step();\n        }\n        Ok(())\n    }\n    fn read_volatile_u16_le(&self, _: usize) -> Option<u16> {\n        let word = self.word.get(); self.step(); Some(word)\n    }\n    fn write_volatile_from(&mut self, _: usize, bytes: &[u8]) -> Result<(), ()> {\n        for (index, byte) in bytes.iter().copied().enumerate() {\n            let mut word = self.word.get().to_le_bytes(); word[index] = byte;\n            self.word.set(u16::from_le_bytes(word));\n            if index == 0 { self.published.set(self.word.get()); }\n        }\n        Ok(())\n    }\n    fn write_volatile_u16_le(&mut self, _: usize, word: u16) -> Result<(), ()> {\n        self.word.set(word); self.published.set(word); Ok(())\n    }\n}\n#[test]\nfn completion_index_is_one_observation() {\n    let ring = SharedDmaMemory::new();\n    let observed = ring_read_u16(&ring, 0).unwrap();\n    assert!(matches!(observed, 0xff | 0x100), \"torn used index: {observed:#x}\");\n    assert_eq!(ring_read_u16(&ring, 0), Some(0x100));\n}\n#[test]\nfn publication_has_no_intermediate_index() {\n    let mut ring = SharedDmaMemory::new();\n    assert!(ring_write_u16(&mut ring, 0, 0x100));\n    assert_eq!(ring.word.get(), 0x100);\n    assert_eq!(ring.published.get(), 0x100, \"torn available index\");\n}\nfn ring_write(ring: &mut SharedDmaMemory<'_>, offset: usize, bytes: &[u8]) -> bool {\n    ring.write_volatile_from(offset, bytes).is_ok()\n}\nfn ring_write_u16(ring: &mut SharedDmaMemory<'_>, offset: usize, value: u16) -> bool {\n    ring_write(ring, offset, &value.to_le_bytes())\n}\nfn ring_read_u16(ring: &SharedDmaMemory<'_>, offset: usize) -> Option<u16> {\n    ring.read_volatile_u16_le(offset)\n}",
+      "harness_sha256": "1e2e9c63fe4726264337a6cf3fe77257f98aaf64dae4213ce3beca955db0bdfc",
+      "executable_sha256": "68b978e31e0f624c6590f05001d56a58a077d2c4f55dd51d6c09392ad48ae030",
+      "exit_code": 101,
+      "diagnostics": [
+        "",
+        "running 1 test",
+        "test publication_has_no_intermediate_index ... FAILED",
+        "",
+        "failures:",
+        "",
+        "---- publication_has_no_intermediate_index stdout ----",
+        "",
+        "thread 'publication_has_no_intermediate_index' (300174) panicked at <control>/probe.rs:47:5:",
+        "assertion `left == right` failed: torn available index",
+        "  left: 0",
+        " right: 256",
+        "note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
+        "",
+        "",
+        "failures:",
+        "    publication_has_no_intermediate_index",
+        "",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s",
+        ""
+      ]
+    },
+    {
+      "mutation": null,
+      "harness": "#![allow(dead_code)]\n\nuse std::{cell::Cell, marker::PhantomData};\nstruct SharedDmaMemory<'a> {\n    word: Cell<u16>, transition: Cell<bool>, published: Cell<u16>,\n    lifetime: PhantomData<&'a ()>,\n}\n#[allow(dead_code)]\nimpl SharedDmaMemory<'_> {\n    fn new() -> Self { Self { word: Cell::new(0xff), transition: Cell::new(true),\n        published: Cell::new(0xff), lifetime: PhantomData } }\n    fn step(&self) { if self.transition.replace(false) { self.word.set(0x100); } }\n    fn read_volatile_into(&self, _: usize, bytes: &mut [u8]) -> Result<(), ()> {\n        for (index, byte) in bytes.iter_mut().enumerate() {\n            *byte = self.word.get().to_le_bytes()[index];\n            self.step();\n        }\n        Ok(())\n    }\n    fn read_volatile_u16_le(&self, _: usize) -> Option<u16> {\n        let word = self.word.get(); self.step(); Some(word)\n    }\n    fn write_volatile_from(&mut self, _: usize, bytes: &[u8]) -> Result<(), ()> {\n        for (index, byte) in bytes.iter().copied().enumerate() {\n            let mut word = self.word.get().to_le_bytes(); word[index] = byte;\n            self.word.set(u16::from_le_bytes(word));\n            if index == 0 { self.published.set(self.word.get()); }\n        }\n        Ok(())\n    }\n    fn write_volatile_u16_le(&mut self, _: usize, word: u16) -> Result<(), ()> {\n        self.word.set(word); self.published.set(word); Ok(())\n    }\n}\n#[test]\nfn completion_index_is_one_observation() {\n    let ring = SharedDmaMemory::new();\n    let observed = ring_read_u16(&ring, 0).unwrap();\n    assert!(matches!(observed, 0xff | 0x100), \"torn used index: {observed:#x}\");\n    assert_eq!(ring_read_u16(&ring, 0), Some(0x100));\n}\n#[test]\nfn publication_has_no_intermediate_index() {\n    let mut ring = SharedDmaMemory::new();\n    assert!(ring_write_u16(&mut ring, 0, 0x100));\n    assert_eq!(ring.word.get(), 0x100);\n    assert_eq!(ring.published.get(), 0x100, \"torn available index\");\n}\nfn ring_write(ring: &mut SharedDmaMemory<'_>, offset: usize, bytes: &[u8]) -> bool {\n    ring.write_volatile_from(offset, bytes).is_ok()\n}\nfn ring_write_u16(ring: &mut SharedDmaMemory<'_>, offset: usize, value: u16) -> bool {\n    ring.write_volatile_u16_le(offset, value).is_ok()\n}\nfn ring_read_u16(ring: &SharedDmaMemory<'_>, offset: usize) -> Option<u16> {\n    ring.read_volatile_u16_le(offset)\n}",
+      "harness_sha256": "d57e206d9be23025fb5261261d46900eee0ad3b31fa7939af964d62ce1da8bb2",
+      "executable_sha256": "6b4b13ff5e5c6ef321f05552a345922d50fc7c70f435ccc6b2913f852bbb4fb5",
+      "exit_code": 0,
+      "diagnostics": [
+        "",
+        "running 2 tests",
+        "test publication_has_no_intermediate_index ... ok",
+        "test completion_index_is_one_observation ... ok",
+        "",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        ""
+      ]
+    }
+  ],
+  "reproduction_notes": [
+    "Build the signed bundles with scripts/build-catten-services.sh --embed and scripts/build-catten-services-x86_64.sh before final commands.",
+    "Default development fixtures only; no production provisioning or protected time.",
+    "Source and bundle hash maps describe the final implementation; each earlier campaign records its intermediate phase and exact kernel/probe/resource hashes separately.",
+    "Host socket binding/QEMU forwarded sockets required authorized execution outside the local sandbox.",
+    "Full selected results and failure diagnostics are embedded; temporary logs are not evidence dependencies."
+  ]
+}

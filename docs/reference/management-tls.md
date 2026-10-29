@@ -6,6 +6,12 @@ or fallback. Missing credentials disable network admission while preserving
 cooperative shutdown. SEC-10 is partial pending the broader execution qualifications
 listed below; public development trust is not production enrollment.
 
+The serial status handler now shares one five-second dependency-observation
+budget across all RPCs in a requested snapshot. A silent source cannot restart
+that budget for the next source; accepted calls retain checked cancellation.
+This is separate from TLS/input/output deadlines and from flood fairness. See
+[bounded status observations](status-observation.md).
+
 ## Implemented protocol component
 
 Rustls `0.23.46` implements the handshake, transcript, record sequence, peer
@@ -328,6 +334,15 @@ service composition, rather than host-forwarder silence.
 Host acceptance rejects a failed identity or liveness control even when later
 metrics responses are healthy. Management Python probes reject optimized Python
 execution so their runtime checks cannot silently disappear.
+
+The ordinary HTTP campaigns wait for listener publication and a positive native
+`[time] synchronized unix_s=...` sample before beginning their HTTPS exchanges.
+The serial sample is only a host-test readiness hint under the runner's existing
+budget. Each native TLS connection still requires a fresh positive time-service
+reply and normal certificate verification; this does not authenticate SNTP or
+turn a missing/zero UTC response into success. The
+[ring-access report](../reports/audits/2026-10-28-security-rng-ring-access.md)
+preserves the earlier x86 run that began probing before its delayed time sample.
 
 Run `scripts/run-management-rotation-test.py` with explicit `--firmware-code`
 and `--vars-template` paths after building the x86 service bundle. It reuses the

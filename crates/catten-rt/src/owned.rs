@@ -918,6 +918,40 @@ mod tests {
     }
 
     #[test]
+    fn shared_dma_halfwords_check_alignment_bounds_and_little_endian_access() {
+        let _guard = setup();
+        // ABI fixture: this aligned local backing stands in for the kernel's
+        // mapped page and outlives its sole SharedDmaMemory owner.
+        let mut backing = [0u16; 2048];
+        kernel::update(|state| {
+            state.memory_map_any =
+                (catten_syscall::memory_status::OK, backing.as_mut_ptr() as usize);
+        });
+        let memory = OwnedMemory::allocate(1).expect("memory allocation");
+        let domain = unsafe { DmaDomain::from_raw(7) };
+        let mut shared =
+            memory.map_shared_dma(&domain, DmaDirection::Bidirectional).expect("mapping");
+        for value in [0x00ff, 0x0100, 0xffff, 0] {
+            shared.write_volatile_u16_le(0, value).unwrap();
+            assert_eq!(shared.read_volatile_u16_le(0), Some(value));
+            let mut bytes = [0; 2];
+            shared.read_volatile_into(0, &mut bytes).unwrap();
+            assert_eq!(bytes, value.to_le_bytes());
+        }
+        shared.write_volatile_u16_le(4094, 0xabcd).unwrap();
+        assert_eq!(shared.read_volatile_u16_le(4094), Some(0xabcd));
+        for offset in [1, 4095, 4096, usize::MAX] {
+            assert_eq!(shared.read_volatile_u16_le(offset), None);
+            assert_eq!(
+                shared.write_volatile_u16_le(offset, 0x1234),
+                Err(MemoryError::InvalidCapability)
+            );
+        }
+        assert_eq!(shared.read_volatile_u16_le(4094), Some(0xabcd));
+        drop(shared);
+    }
+
+    #[test]
     fn shared_dma_drop_unmaps_device_before_cpu_and_close() {
         let _guard = setup();
         let memory = OwnedMemory::allocate(1).expect("memory allocation");

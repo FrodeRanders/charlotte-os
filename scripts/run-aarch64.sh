@@ -1095,7 +1095,7 @@ if [ -n "$TIMEOUT" ]; then
             fi
         fi
         if [ "$HTTP_TEST" = "1" ] && [ "$HTTP_PROBED" = "0" ] \
-            && grep -Fq "httpd is listening" "$LOG"; then
+            && catten_boot_http_probe_ready; then
             HTTP_PROBED=1
             echo ">>> Probing guest node and cluster keyholes through port ${HTTP_HOST_PORT} ..."
             HTTP_LIVENESS_OK=0

@@ -8,6 +8,10 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [RNG ring-index accesses](audits/2026-10-28-security-rng-ring-access.md) — Captured ARM entropy failure at the byte rollover, checked halfword access, deterministic old-access rejection and real-service turnover controls.
+
+- [Bounded status dependency observation](audits/2026-10-28-security-status-observation.md) — One deadline across status RPC sources, typed rejection and owned cancellation, with native queue/backing recovery controls.
+
 - [Established management credential validity](audits/2026-10-27-security-management-session-validity.md) — Rechecks active authority with the original chain verifier; native issuer-date and held signed-upload controls retain exact clock/connection evidence and separate preliminary failures.
 - [Committed ingress availability](audits/2026-10-27-security-ingress-availability.md) — Quorum-committed backend eligibility excludes the killed voter from new flows; the complete native direct/VIP management campaign passes, with old-store rejection and flow-affinity controls.
 - [Frame-router readiness and management availability](audits/2026-10-27-security-frame-router-readiness.md) — CQ-binds the normal receive/forward/control reactor; all eight direct-node controls complete after leader loss, while a failed VIP flow is traced to the killed backend.

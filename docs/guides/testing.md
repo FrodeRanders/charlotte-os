@@ -118,6 +118,16 @@ pass, publication generations must advance, and the retired descriptor must no
 longer attest. The ordinary boot suite, network verifier and security verifier
 register 19 tests in this configuration.
 
+Both primary launches also use an explicit signed `rng=call` grant for 512
+sequential service-only 32-byte entropy requests under one 30-second deadline.
+The normal ARM and x86 QEMU configurations attach a protected VirtIO RNG;
+architectural entropy cannot bypass this control. The probe logs a completion
+receipt without entropy bytes. Its status-snapshot controls then exercise one
+shared deadline, exact queue/page recovery and a healthy TCP/IP reply at the
+caller memory ceiling. See [RNG ring access](../reports/audits/2026-10-28-security-rng-ring-access.md)
+and [status observation](../reports/audits/2026-10-28-security-status-observation.md)
+for scope, failure captures and artifact receipts.
+
 The eleventh bit exercises aggregate memory-object admission: the primary
 holds many one-page allocations until allocation is refused, completes scalar
 IPC while its allocation budget is full, drops the owning batch, and acquires

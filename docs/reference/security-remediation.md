@@ -289,6 +289,23 @@ and lifecycle shutdown evidence on supported targets. Signatures checked after r
 not protect listener availability. Passing deadline/rejection probes do not
 complete these fairness gates or SEC-07's essential-service pressure matrix.
 
+The [28 October status-observation follow-up](../reports/audits/2026-10-28-security-status-observation.md)
+replaces the serial status renderer's indefinite dependency waits with one
+five-second snapshot deadline, including lookup and caller-buffered TCP/IP
+status. Accepted calls retain their original pending owners through checked
+cancellation; expired snapshots reject subsequent sources before preparation.
+This advances the render/dependency boundary without qualifying serial-listener
+flood fairness, blocking cleanup or changing SEC-06/18 and finding counts.
+
+That campaign also exposed a real ARM RNG failure at used index 255-to-256,
+followed by entropy rejection and management-domain aborts. The
+[ring-access follow-up](../reports/audits/2026-10-28-security-rng-ring-access.md)
+replaces split byte accesses to the live indices with checked aligned u16
+volatile reads/writes. Deterministic interleavings reject the old access patterns;
+native fixture grants force repeated real service requests. Existing descriptor
+validation, terminal retention and cleanup fences remain unchanged. SEC-06/18
+remain partial; this adds no device recovery or physical quiescence proof.
+
 ## SEC-07: bounded resource admission
 
 Implemented owners now cover capabilities, memory objects, heap/image frames,

@@ -31,6 +31,13 @@ catten_boot_validate_management_startup() {
     fi
 }
 
+catten_boot_http_probe_ready() {
+    # Test precondition hints, not authentication or trusted security time.
+    # TLS still requires a fresh positive reply from the real time service.
+    grep -Fq 'httpd is listening' "$LOG" \
+        && grep -Eq '\[time\] synchronized unix_s=[1-9][0-9]*([[:space:]]|$)' "$LOG"
+}
+
 catten_boot_management_startup_ready() {
     # Cheap serial hints only. The Python assertion re-reads the complete
     # snapshot and checks publication ordering/absence before accepting a result.

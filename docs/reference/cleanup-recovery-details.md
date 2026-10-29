@@ -683,6 +683,14 @@ See the [HTTP progress
 follow-up](../reports/audits/2026-10-10-security-http-progress.md) for failed captures
 and passing pressure evidence.
 
+The [status-observation follow-up](../reports/audits/2026-10-28-security-status-observation.md)
+retains each accepted status RPC in its original `PendingCall` through one
+shared snapshot deadline. Timeout/wait admission rejection uses the existing
+checked cancellation-or-abort policy; it grants no replay or physical proof.
+Caller-funded moved backing and returned memory keep their original owners and
+charges. Serial listener, receiver-held cleanup and outer-context qualification
+remain separate.
+
 The [deployment ingress
 follow-up](../reports/audits/2026-10-11-security-deployment-ingress.md) extends this
 same userspace protocol-owner boundary: shared borrowed listener setup consumes request

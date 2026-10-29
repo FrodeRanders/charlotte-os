@@ -25,8 +25,8 @@ install -m 0755 "$SOURCE" "$OUTPUT/probe.elf"
 "$SIGNER" deployment-sign "$OUTPUT/admitted.cdep" security_probe security/probe.elf \
     "$OUTPUT/probe.elf" 0 1 8 1 5000 "$OUTPUT/deployment.hex" \
     secavail=publish secavail=client security.missing=call tcpip=call \
-    security.silent=publish security.silent=call
+    security.silent=publish security.silent=call rng=call
 "$SIGNER" deployment-sign "$OUTPUT/alternate.cdep" security_probe security/probe.elf \
     "$OUTPUT/probe.elf" 0 2 8 1 5000 "$OUTPUT/deployment.hex" \
     secavail=publish secavail=client security.missing=call tcpip=client \
-    security.silent=publish security.silent=call
+    security.silent=publish security.silent=call rng=call

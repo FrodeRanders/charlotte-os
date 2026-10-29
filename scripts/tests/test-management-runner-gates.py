@@ -32,13 +32,19 @@ class RunnerGates(unittest.TestCase):
                                     env=dict(base, **change), capture_output=True, text=True, timeout=5)
             self.assertEqual(result.returncode == 0, accepted, result.stderr)
 
-    def run_gate(self, architecture, identity=0, liveness=0, baseline=False):
+    def run_gate(self, architecture, identity=0, liveness=0, baseline=False, serial=None,
+                 listener_only=False):
         source = (ROOT / "scripts" / f"run-{architecture}.sh").read_text()
         if baseline:
             source = (ROOT / "scripts/tests/fixtures/management-x86-http-gate-before.sh").read_text()
+        if listener_only:
+            self.assertEqual(source.count('&& catten_boot_http_probe_ready; then'), 1)
+            source = source.replace('&& catten_boot_http_probe_ready; then',
+                                    '&& grep -Fq "httpd is listening" "$LOG"; then')
         with tempfile.TemporaryDirectory(prefix="charlotte-management-gate-") as directory:
             log = Path(directory) / "serial"
-            log.write_text("httpd is listening\n")
+            log.write_text(serial if serial is not None else
+                           "httpd is listening\n[time] synchronized unix_s=1793177170 utc=fixture\n")
             environment = dict(os.environ, LOG=str(log), HTTP_TEST="1", HTTP_PROBED="0",
                                HTTP_PROBE_OK="0", ROOT_DIR=str(ROOT), HTTP_HOST_PORT="1",
                                DEPLOY_HOST_PORT="2", IDENTITY_STATUS=str(identity),
@@ -50,6 +56,7 @@ class RunnerGates(unittest.TestCase):
                                CATTEN_MANAGEMENT_UNKNOWN_CERT_FILE="fixture-unregistered")
             harness = r'''
 set -eu
+source "$ROOT_DIR/scripts/lib/boot-common.sh"
 python3() {
     case "$1" in
         *test-management-tls.py) return "$IDENTITY_STATUS" ;;
@@ -73,6 +80,25 @@ sleep() { :; }
     def test_positive_observations_open_both_gates(self):
         for architecture in ("aarch64", "x86_64"):
             self.assertEqual(self.run_gate(architecture), "GATE=1")
+
+    def test_listener_without_positive_native_time_does_not_start_probes(self):
+        for architecture in ("aarch64", "x86_64"):
+            for sample in ("", "[time] synchronized unix_s=0 ",
+                           "[time] synchronized unix_s=12bad ",
+                           "[peer] synchronized unix_s=1793177170 "):
+                with self.subTest(architecture=architecture, sample=sample):
+                    self.assertEqual(self.run_gate(architecture, serial="httpd is listening\n" + sample),
+                                     "GATE=0")
+
+    def test_time_without_listener_does_not_start_probes(self):
+        for architecture in ("aarch64", "x86_64"):
+            self.assertEqual(self.run_gate(architecture, serial="[time] synchronized unix_s=1793177170\n"),
+                             "GATE=0")
+
+    def test_prior_listener_only_gate_starts_without_time(self):
+        for architecture in ("aarch64", "x86_64"):
+            self.assertEqual(self.run_gate(architecture, serial="httpd is listening\n",
+                                           listener_only=True), "GATE=1")
 
     def test_identity_rejection_cannot_be_masked_by_healthy_metrics(self):
         for architecture in ("aarch64", "x86_64"):
