@@ -29,7 +29,7 @@ class ToolingContracts(unittest.TestCase):
                             '[[bin]]\nname="kernel-build-script-probe"\npath=' + json.dumps(str(ROOT / "crates/catten/build.rs")) + '\n')
         shutil.copyfile(ROOT / "Cargo.lock", directory / "Cargo.lock")
         artifacts = subprocess.check_output(
-            ["cargo", "+" + channel, "build", "--offline", "--manifest-path", str(manifest),
+            ["cargo", "+" + channel, "build", "--manifest-path", str(manifest),
              "--target-dir", str(directory / "target"), "--message-format=json"], cwd=directory, text=True)
         cls.build = next(Path(artifact["executable"]) for line in artifacts.splitlines()
                        if (artifact := json.loads(line)).get("reason") == "compiler-artifact"

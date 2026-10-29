@@ -449,12 +449,14 @@ catten_boot_diagnostics_archive() {
 }
 
 catten_boot_diagnostics_finish() {
-    local reason="$1" snapshot="${2:-0}" extra=()
+    local reason="$1" snapshot="${2:-0}"
     if [ -z "$CATTEN_DIAGNOSTICS_WATCHER" ]; then return; fi
-    if [ "$snapshot" = "1" ]; then extra+=(--snapshot); fi
-    if ! python3 "${CATTEN_BOOT_ROOT_DIR}/scripts/boot-diagnostics.py" finish \
-        --directory "$CATTEN_DIAGNOSTICS_DIR" --watcher "$CATTEN_DIAGNOSTICS_WATCHER" \
-        --reason "$reason" "${extra[@]}"; then
+    # Bash 3.2 treats empty arrays as unset under nounset. Keep the required
+    # arguments in the same nonempty array as the optional snapshot flag.
+    local finish_args=(finish --directory "$CATTEN_DIAGNOSTICS_DIR"
+                       --watcher "$CATTEN_DIAGNOSTICS_WATCHER" --reason "$reason")
+    if [ "$snapshot" = "1" ]; then finish_args+=(--snapshot); fi
+    if ! python3 "${CATTEN_BOOT_ROOT_DIR}/scripts/boot-diagnostics.py" "${finish_args[@]}"; then
         echo "warning: diagnostic finalization failed; see ${CATTEN_DIAGNOSTICS_DIR}" >&2
     fi
     wait "$CATTEN_DIAGNOSTICS_WATCHER" 2>/dev/null || true

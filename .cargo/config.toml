@@ -9,7 +9,9 @@ build-std-features = ["compiler-builtins-mem"]
 # Target flags override build.rustflags, so retain the denied-warning policy
 # here too. CI uses CARGO_BUILD_RUSTFLAGS; global RUSTFLAGS would shadow these.
 [target.x86_64-unknown-none-catten]
-rustflags = ["-D", "warnings", "-C", "force-frame-pointers=yes"]
+# Workspace Clippy also compiles management TLS for the kernel target.
+# Keep the same erasing POLYVAL backend as the x86 service target below.
+rustflags = ["-D", "warnings", "-C", "force-frame-pointers=yes", "--cfg", "polyval_force_soft"]
 
 [target.aarch64-unknown-none-catten]
 rustflags = ["-D", "warnings", "-C", "force-frame-pointers=yes"]

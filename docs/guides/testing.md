@@ -44,6 +44,12 @@ Before switching to the temporary host directory, the wrapper also runs
 and `rust-src` to compile the production authentication-state guard for
 freestanding x86, even on an AArch64 development host. Repository backend flags
 must compile; removing software selection or its erasure feature must fail.
+The TLS and network-random probes fetch their isolated dependency graphs before
+running locked, offline controls. This supports fresh CI caches, including the
+retired HMAC dependency used only by a negative control. Fetch failures abort
+setup rather than count as expected compiler rejection. The tooling probe may
+also download its host-build dependencies; the wrapper needs network access
+until these dependencies and the pinned toolchain are cached.
 These are compile controls, not emulated guest execution. The public GCM vector
 is shared with the signed `security_probe`, which emits a separate native
 known-answer/tamper/decrypt receipt. See the

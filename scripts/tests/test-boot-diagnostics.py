@@ -35,6 +35,38 @@ class BootDiagnostics(unittest.TestCase):
         DIAG.watch(argparse.Namespace(directory=str(self.directory), pid=os.getpid(), qemu=[]))
         return json.loads((self.directory / "result.json").read_text())
 
+    def test_shell_finish_preserves_arguments_under_nounset(self):
+        arguments = self.directory / "finish-arguments"
+        for snapshot in ("", "0", "1"):
+            with self.subTest(snapshot=snapshot):
+                result = subprocess.run(
+                    ["/bin/bash", "-euo", "pipefail", "-c", r'''
+source "$1/scripts/lib/boot-common.sh"
+CATTEN_BOOT_ROOT_DIR="$1"
+CATTEN_DIAGNOSTICS_DIR="$2"
+probe_arguments="$3"
+python3() { printf '%s\0' "$@" > "$probe_arguments"; }
+true &
+CATTEN_DIAGNOSTICS_WATCHER=$!
+if [ -n "$4" ]; then
+    catten_boot_diagnostics_finish "selftests complete" "$4"
+else
+    catten_boot_diagnostics_finish "selftests complete"
+fi
+[ -z "$CATTEN_DIAGNOSTICS_WATCHER" ]
+[ "$CATTEN_DIAGNOSTICS_FAILED" = "0" ]
+''', "boot-finish-test", str(ROOT), str(self.directory / "diagnostics with spaces"),
+                     str(arguments), snapshot], capture_output=True, text=True,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                expected = [str(ROOT / "scripts/boot-diagnostics.py"), "finish", "--directory",
+                            str(self.directory / "diagnostics with spaces"), "--watcher"]
+                actual = arguments.read_bytes().decode().split("\0")[:-1]
+                self.assertEqual(actual[:5], expected)
+                self.assertTrue(actual[5].isdigit())
+                self.assertEqual(actual[6:], ["--reason", "selftests complete"]
+                                 + (["--snapshot"] if snapshot == "1" else []))
+
     def test_failure_markers_and_terminal_results_never_turn_into_success(self):
         self.assertIsNone(DIAG.failure_reason(SUCCESS))
         self.assertIsNone(DIAG.failure_reason(b"FATAL USER FAULT\nFATAL EL0 DATA/INST ABORT\n"))

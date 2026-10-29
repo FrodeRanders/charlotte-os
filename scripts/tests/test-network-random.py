@@ -50,7 +50,12 @@ class NetworkRandom(unittest.TestCase):
                          'sha2={version="=0.10.9",default-features=false}\n')
         (directory / "Cargo.toml").write_text(manifest)
         (directory / "src/main.rs").write_text(source)
-        command = ["cargo", "check" if legacy else "run", "--offline", "--quiet", "--release",
+        # The retired HMAC version is deliberately outside the workspace graph.
+        # Fetch each isolated graph before evaluating its offline control, even
+        # when the production dependencies have already been cached.
+        subprocess.run(["cargo", "fetch", "--manifest-path", str(directory / "Cargo.toml")],
+                       cwd=directory, check=True)
+        command = ["cargo", "check" if legacy else "run", "--locked", "--offline", "--quiet", "--release",
                    "--target-dir", str(ROOT / "target/network-random-controls")]
         result = subprocess.run(command, cwd=directory, capture_output=True, text=True)
         type(self).results.append({
