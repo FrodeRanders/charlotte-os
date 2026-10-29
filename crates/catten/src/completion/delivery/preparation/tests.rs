@@ -168,7 +168,7 @@ fn physical_publication() {
         assert!(prepared.0.state.is_none() && prepared.0.node.is_none());
         assert!(retired.is_none());
         assert_eq!(account.used()[0], 1);
-        assert_eq!(unsafe { (*cq_ring_of(CLIENT, DEFAULT_CQ).unwrap()).capacity }, 8);
+        assert_eq!(unsafe { (*cq_ring_of(CLIENT, DEFAULT_CQ).unwrap()).capacity() }, 8);
     }
     if let Some(retired) = retired {
         retired.finish();

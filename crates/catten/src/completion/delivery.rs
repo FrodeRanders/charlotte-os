@@ -221,7 +221,9 @@ impl CqState {
     /// an out-of-range value is treated as empty so producer arithmetic stays
     /// bounded by the kernel-side capacity.
     fn shared_tail(&self) -> u32 {
-        let tail = unsafe { core::ptr::read_volatile(&(*self.ring).tail) };
+        // SAFETY: the registry retains this mapping. Acquire pairs with the
+        // sole consumer's release before any slot can be reused.
+        let tail = unsafe { (*self.ring).consumer_tail() };
         if tail < self.ring_capacity {
             tail
         } else {
@@ -246,25 +248,31 @@ impl CqState {
     /// producer cursor. Returns `false` when the ring is full.
     fn push_completion(&mut self, operation: u64, cookie: u64, status: u32, result: i64) -> bool {
         if !self.ring_has_space() {
-            let overflow = unsafe { core::ptr::read_volatile(&(*self.ring).overflow) };
+            // SAFETY: the captured queue owns this live mapping; overflow is
+            // only a shared diagnostic and does not govern producer bounds.
             unsafe {
-                core::ptr::write_volatile(&mut (*self.ring).overflow, overflow.wrapping_add(1));
+                (*self.ring).record_overflow();
             }
             return false;
         }
         let head = self.ring_head;
-        let entry = unsafe { &mut *(*self.ring).entry_ptr(head as usize) };
+        // SAFETY: kernel-private head/capacity bound this free slot. Registry
+        // serialization excludes other producers, and acquired tail confirms
+        // the consumer finished its prior read before the slot is reused.
         unsafe {
-            core::ptr::write_volatile(&mut entry.operation, operation);
-            core::ptr::write_volatile(&mut entry.cookie, cookie);
-            core::ptr::write_volatile(&mut entry.status, status);
-            core::ptr::write_volatile(&mut entry.flags, 0u32);
-            core::ptr::write_volatile(&mut entry.result, result);
+            (*self.ring).entry_ptr(head as usize).write_volatile(cq::CqEntry {
+                operation,
+                cookie,
+                status,
+                flags: 0,
+                result,
+            });
         }
-        core::sync::atomic::fence(core::sync::atomic::Ordering::Release);
         let next = (head + 1) % self.ring_capacity;
+        // SAFETY: the complete entry precedes release publication. The mapping
+        // remains owned by this queue; EL0 must acquire head before reading.
         unsafe {
-            core::ptr::write_volatile(&mut (*self.ring).head, next);
+            (*self.ring).publish_head(next);
         }
         self.ring_head = next;
         true

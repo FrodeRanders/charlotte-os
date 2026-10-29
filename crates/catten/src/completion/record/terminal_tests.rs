@@ -149,7 +149,7 @@ fn public_terminal(cancel_pending: bool, replace_queue: bool) {
                 assert_ne!(queue.work_generation(), 0);
                 // SAFETY: this private heap ring has no concurrent consumer;
                 // the registry retains its whole backing through this read.
-                let entry = unsafe { core::ptr::read((*queue.ring_ptr()).entries.as_ptr()) };
+                let entry = unsafe { (*queue.ring_ptr()).entry_ptr(0).read_volatile() };
                 assert_eq!(entry.cookie, cap);
                 assert_eq!(cq::fields_to_op_result(entry.status, entry.result), expected);
             }

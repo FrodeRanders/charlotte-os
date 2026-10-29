@@ -29,7 +29,7 @@ pub fn test_cq_ring() {
     let (_buf, ring_ptr) = cq::CompletionQueueRing::new_page(32).unwrap();
     let ring = unsafe { &mut *ring_ptr };
 
-    assert_eq!(ring.capacity, 32);
+    assert_eq!(ring.capacity(), 32);
     assert_eq!(ring.pending(), 0);
     assert!(!ring.is_full());
 
@@ -56,7 +56,7 @@ pub fn test_cq_ring() {
     assert!(ring.read().is_none());
 
     // --- fill the ring to capacity - 1, then overflow --------------------------
-    let cap = ring.capacity as usize;
+    let cap = ring.capacity() as usize;
     for i in 0..cap - 1 {
         assert!(ring.write(0, (i + 100) as u64, 0, i as i64));
     }
@@ -65,7 +65,7 @@ pub fn test_cq_ring() {
     // Overflow: write one more, it must be dropped and overflow counter bumped.
     let dropped = !ring.write(0, 999, 0, 42);
     assert!(dropped, "write to full ring must return false");
-    assert_eq!(ring.overflow, 1);
+    assert_eq!(ring.overflow_count(), 1);
 
     // Drain everything, then the ring should be empty again.
     let mut count = 0;

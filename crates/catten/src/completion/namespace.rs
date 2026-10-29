@@ -134,8 +134,8 @@ impl Namespace {
 //
 // All safe kernel dereferences of `ring` and mutations of CQ producer state are
 // serialized by the `COMPLETIONS` write lock. The mapped EL0 consumer may update
-// the ring tail concurrently; the ring implementation uses volatile accesses
-// and acquire/release fences for that producer/consumer protocol. The only raw
+// the ring tail concurrently; the ring uses atomic acquire/release cursor accesses and volatile
+// payload copies for that producer/consumer ownership transfer. The only raw
 // pointer escape, `cq_ring_of`, is unsafe and places its quiescence/lifetime
 // obligation on its test/inspection caller. These invariants make moving or
 // sharing the registry between kernel threads sound.

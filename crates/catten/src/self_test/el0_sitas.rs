@@ -13,7 +13,7 @@
 //! assembler index demo, which writes its verified record count next to it,
 //! and finally a join probe that spawns value-returning shard threads and
 //! joins them through the kernel-backed join handle. The verifier checks all
-//! three status-page words.
+//! four status-page words, including the shared-CQ reader probe.
 
 #[cfg(target_arch = "aarch64")]
 use crate::completion;
@@ -438,19 +438,6 @@ extern "C" fn verify_el0_sitas() {
     let deadline = crate::self_test::results::Deadline::after_millis(10_000);
     loop {
         let sentinel = unsafe { core::ptr::read_volatile(result) };
-        if sentinel == 0xc0de {
-            let sum = unsafe { core::ptr::read_volatile(result.add(2)) }; // computed
-            let expected = 42u32.wrapping_add(7).wrapping_add(0xfeed_f00d);
-            assert_eq!(
-                sum, expected,
-                "[sitas] adder: expected sum 42+7+0xFEED_F00D = {:#x}, got {:#x}",
-                expected, sum
-            );
-            logln!("[sitas] SUCCESS: adder program computed the correct sum.");
-            crate::self_test::results::pass(crate::self_test::results::TestId::Sitas);
-            teardown_sitas_domain();
-            return;
-        }
         if sentinel == 3 {
             // basic_kv result present: wait for the mailbox-index demo, which
             // writes its verified record count one u32 further on.
@@ -460,11 +447,19 @@ extern "C" fn verify_el0_sitas() {
                 // writes the sum of its joined shard values after that.
                 let join = unsafe { core::ptr::read_volatile(result.add(2)) };
                 if join == SITAS_JOIN_PROBE_SUM {
+                    let cq = unsafe { core::ptr::read_volatile(result.add(3)) };
+                    if cq == 0 {
+                        deadline.assert_pending("SITAS CQ probe");
+                        yield_lp();
+                        continue;
+                    }
+                    assert_eq!(cq, 64, "[sitas] shared-CQ reader probe failed");
                     logln!(
                         "[sitas] SUCCESS: basic_kv total_len=3, mailbox index verified {} \
-                         records, join probe sum {}",
+                         records, join probe sum {}, SDK/Sitas CQ probe verified {} records",
                         index,
-                        join
+                        join,
+                        cq
                     );
                     crate::self_test::results::pass(crate::self_test::results::TestId::Sitas);
                     teardown_sitas_domain();
@@ -484,7 +479,7 @@ extern "C" fn verify_el0_sitas() {
                     SITAS_MAILBOX_INDEX_COUNT, index
                 );
             }
-        } else if sentinel != 0 && sentinel != 0xc0de {
+        } else if sentinel != 0 {
             assert_eq!(
                 sentinel, 3,
                 "[sitas] basic_kv: expected total_len result 3, got {:#x}",

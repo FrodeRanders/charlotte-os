@@ -116,7 +116,7 @@ pub fn test_completion_caps() {
 
     let ring_ptr = unsafe { completion::cq_ring_of(cq_asid, 0) }.expect("CQ ring must exist");
     assert_eq!(unsafe { &*ring_ptr }.pending(), 1, "small CQ should hold the first entry");
-    assert_eq!(unsafe { &*ring_ptr }.overflow, 1, "second entry should hit a full ring");
+    assert_eq!(unsafe { &*ring_ptr }.overflow_count(), 1, "second entry should hit a full ring");
 
     let first = unsafe { &mut *ring_ptr }.read().expect("first CQ entry must be present");
     assert_eq!(first.cookie, cap_a);

@@ -87,3 +87,20 @@ CI supplies its warning policy through `CARGO_BUILD_RUSTFLAGS`. A global
 kernel's required frame pointers. Both kernel targets retain denied warnings
 and frame pointers explicitly; userspace keeps its existing code generation.
 This preserves panic diagnostics without widening the SITAS verifier deadline.
+
+## Shared ring ordering and consumer ownership
+
+The 16-byte CQ header and 32-byte records retain their ABI 3 layout. Cursor
+accesses are atomic: the serialized kernel producer copies a whole record
+before storing `head` with release ordering; the sole consumer acquires `head`
+before copying it. The consumer releases `tail` only after that copy, and the
+producer acquires `tail` before reusing a slot. Volatile payload accesses alone
+do not supply this ordering. Kernel-private producer head/capacity remain
+authoritative; writable userspace header mirrors never establish kernel bounds.
+
+The SDK's `unsafe cq_read` requires a retained mapping and one consumer. It may
+not race another SDK or Sitas reader on the same queue. Sitas serializes its safe
+readers internally, but its lock cannot serialize an independent raw SDK reader.
+The guest probe alternates the two readers sequentially after worker joins.
+Neither consuming a record nor receiving readiness observes an operation result
+or adopts a capability. See the [CQ ordering audit](../reports/audits/2026-10-29-cq-ring-ordering.md).

@@ -25,6 +25,9 @@
 //! ```
 #![no_std]
 
+#[cfg(test)]
+extern crate std;
+
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 use core::arch::asm;
 use core::ops::BitOr;
@@ -1069,10 +1072,10 @@ pub struct CqEntry {
 
 #[repr(C)]
 struct CompletionQueueRing {
-    head: u32,
-    tail: u32,
-    capacity: u32,
-    overflow: u32,
+    head: core::sync::atomic::AtomicU32,
+    tail: core::sync::atomic::AtomicU32,
+    capacity: core::sync::atomic::AtomicU32,
+    overflow: core::sync::atomic::AtomicU32,
     entries: [CqEntry; 0],
 }
 
@@ -1080,32 +1083,46 @@ struct CompletionQueueRing {
 ///
 /// # Safety
 /// `base` must be the base address and `entries` the advertised capacity of
-/// the caller's mapped completion queue. Only its owning reactor may consume
-/// the queue.
+/// the caller's live, writable 4 KiB completion queue, aligned for its header
+/// and entries. Exactly one consumer may access its tail or entries at a time.
+/// In particular, do not mix this raw reader with another SDK/Sitas reactor
+/// consuming the same queue without external serialization. Kernel producers
+/// may run concurrently; their private cursors and release head publication
+/// form the other half of this protocol. A record is only a readiness hint:
+/// observe the corresponding operation owner before acting on its result.
 #[inline]
 pub unsafe fn cq_read(base: usize, entries: u32) -> Option<CqEntry> {
     let ring = base as *mut CompletionQueueRing;
-    if ring.is_null() {
+    use core::sync::atomic::Ordering;
+    if ring.is_null() || !base.is_multiple_of(core::mem::align_of::<CompletionQueueRing>()) {
         return None;
     }
-    let capacity = unsafe { core::ptr::read_volatile(&(*ring).capacity) };
-    if capacity < 2 || capacity > entries {
+    // SAFETY: the caller retains the aligned mapping. Capacity is initialized
+    // before publication; indices are accessed atomically throughout its life.
+    let capacity = unsafe { (*ring).capacity.load(Ordering::Relaxed) };
+    let maximum = ((4096 - core::mem::size_of::<CompletionQueueRing>())
+        / core::mem::size_of::<CqEntry>()) as u32;
+    if capacity < 2 || capacity > entries || capacity > maximum {
         return None;
     }
-    let head = unsafe { core::ptr::read_volatile(&(*ring).head) };
-    let tail = unsafe { core::ptr::read_volatile(&(*ring).tail) };
+    // SAFETY: acquire pairs with the producer's release publication so the
+    // entire payload is initialized before copying. Tail belongs to this reader.
+    let head = unsafe { (*ring).head.load(Ordering::Acquire) };
+    // SAFETY: the caller guarantees sole-consumer ownership of this live ring.
+    let tail = unsafe { (*ring).tail.load(Ordering::Relaxed) };
     if head == tail || head >= capacity || tail >= capacity {
         return None;
     }
-    core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire);
+    // SAFETY: validated indices bound this initialized entry inside the page.
     let entry = unsafe {
         let entries_base = core::ptr::addr_of!((*ring).entries).cast::<CqEntry>();
         core::ptr::read_volatile(entries_base.add(tail as usize))
     };
+    // SAFETY: release the slot only after the payload copy. The kernel's
+    // acquire tail load must precede reusing this storage.
     unsafe {
-        core::ptr::write_volatile(&mut (*ring).tail, (tail + 1) % capacity);
+        (*ring).tail.store((tail + 1) % capacity, Ordering::Release);
     }
-    core::sync::atomic::fence(core::sync::atomic::Ordering::Release);
     Some(entry)
 }
 
@@ -2370,3 +2387,6 @@ mod cq_abi_tests {
         assert_eq!(SyscallNumber::try_from(88), Ok(SyscallNumber::CqWaitChecked));
     }
 }
+
+#[cfg(test)]
+mod cq_ring_tests;

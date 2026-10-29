@@ -1,10 +1,11 @@
 //! CharlotteOS sitas smoke image — runs `basic_kv`, the mailbox-index demo,
-//! and a thread-join probe behind the crt0 contract.
+//! a thread-join probe and a shared-CQ probe behind the crt0 contract.
 //!
 //! Results are written to the status page: `basic_kv` writes its verified key
 //! count at offset 0, the mailbox-index demo writes its verified record count
 //! at offset 1, and the join probe writes the sum of the joined shard values
-//! at offset 2 (a `u32` each). The kernel self-test verifier checks all three.
+//! at offset 2, and the CQ probe writes its verified count at offset 3 (a `u32`
+//! each). The kernel self-test verifier checks all four.
 #![no_std]
 #![no_main]
 
@@ -16,7 +17,7 @@ use catten_rt::{
 use catten_syscall::thread_exit;
 use sitas_charlotte::CharlotteReactor;
 
-fn main(_ctx: Context) -> ! {
+fn main(ctx: Context) -> ! {
     let reactor = CharlotteReactor::new(0);
     let output = config::output_ptr::<u32>();
 
@@ -24,6 +25,14 @@ fn main(_ctx: Context) -> ! {
         sitas_core::basic_kv::basic_kv_test(&reactor, output);
         sitas_core::mailbox_index::mailbox_index_test(&reactor, output.add(1));
         run_join_probe(&reactor, output.add(2));
+        // SAFETY: output is the live writable status page supplied by crt0.
+        output.add(3).write_volatile(
+            if run_cq_probe(ctx, &reactor) {
+                64
+            } else {
+                0xdead
+            },
+        );
     }
 
     unsafe {
@@ -72,6 +81,68 @@ fn run_join_probe(reactor: &CharlotteReactor, out: *mut u32) {
     }
 
     unsafe { core::ptr::write_volatile(out, sum as u32) };
+}
+
+/// Sequentially alternate the SDK and Sitas readers on the same kernel CQ.
+/// All shard threads have joined; main is the only CQ0 consumer. A shared
+/// monotonic deadline bounds readiness waits, including unrelated wakeups.
+fn run_cq_probe(ctx: Context, reactor: &CharlotteReactor) -> bool {
+    let layout = ctx.completion_queue_layout();
+    let (started, frequency) = catten_syscall::monotonic_clock();
+    if frequency == 0 {
+        return false;
+    }
+    for index in 0..64 {
+        let Ok(mut timer) = catten_rt::owned::Completion::timer(0) else {
+            return false;
+        };
+        loop {
+            let (now, current_frequency) = catten_syscall::monotonic_clock();
+            if current_frequency != frequency || now < started {
+                return false;
+            }
+            let elapsed = u128::from(now - started) * 1000;
+            let budget = u128::from(frequency) * 2000;
+            if elapsed >= budget {
+                return false;
+            }
+            let entry = if index % 2 == 0 {
+                // SAFETY: crt0 retains this mapped CQ page; all workers have
+                // joined. SDK and Sitas readers alternate on this one thread,
+                // never concurrently accessing tail or entries.
+                unsafe { catten_syscall::cq_read(layout.base, layout.entries) }
+            } else {
+                reactor.cq().read_one().map(|entry| catten_syscall::CqEntry {
+                    operation: entry.operation,
+                    cookie: entry.cookie,
+                    status: entry.status,
+                    flags: entry.flags,
+                    result: entry.result,
+                })
+            };
+            if let Some(entry) = entry {
+                // Old notifications are hints, never authority to adopt a cap.
+                if timer.matches_cq(&entry) {
+                    if entry.status != 0
+                        || entry.flags != 0
+                        || timer.poll() != Ok(Some(entry.result))
+                    {
+                        return false;
+                    }
+                    break;
+                }
+            } else {
+                let remaining_ms = (budget - elapsed).div_ceil(u128::from(frequency)) as u64;
+                if !matches!(
+                    catten_rt::cq::wait(Some(remaining_ms), 0),
+                    Ok(catten_rt::cq::WaitOutcome::Ready)
+                ) {
+                    return false;
+                }
+            }
+        }
+    }
+    true
 }
 
 catten_rt::entry!(main);

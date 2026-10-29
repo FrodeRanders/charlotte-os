@@ -3,8 +3,8 @@
 //! Field order: operation: u64, cookie: u64, status: u32, flags: u32, result: i64.
 
 use core::sync::atomic::{
+    AtomicU32,
     Ordering,
-    fence,
 };
 
 use crate::{
@@ -61,11 +61,11 @@ pub fn i64_to_op_result(r: i64) -> OpResult {
 
 #[repr(C)]
 pub struct CompletionQueueRing {
-    pub head: u32,
-    pub tail: u32,
-    pub capacity: u32,
-    pub overflow: u32,
-    pub entries: [CqEntry; 0],
+    head: AtomicU32,
+    tail: AtomicU32,
+    capacity: AtomicU32,
+    overflow: AtomicU32,
+    entries: [CqEntry; 0],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -101,11 +101,13 @@ impl CompletionQueueRing {
         }
         buf.resize(512, 0u64);
         let ptr = buf.as_mut_ptr() as *mut Self;
+        // SAFETY: aligned, exclusively owned full-page backing is initialized
+        // before the ring is published to any producer or consumer.
         unsafe {
-            (*ptr).head = 0;
-            (*ptr).tail = 0;
-            (*ptr).capacity = cap;
-            (*ptr).overflow = 0;
+            (*ptr).head = AtomicU32::new(0);
+            (*ptr).tail = AtomicU32::new(0);
+            (*ptr).capacity = AtomicU32::new(cap);
+            (*ptr).overflow = AtomicU32::new(0);
         }
         Ok((buf, ptr))
     }
@@ -124,71 +126,106 @@ impl CompletionQueueRing {
         let cap = Self::capacity_for(num_entries);
         let ptr: *mut Self = frame.into();
         for i in 0..4096 {
+            // SAFETY: caller grants exclusive access to this aligned 4 KiB frame.
             unsafe {
                 (frame.into_hhdm_mut::<u8>()).add(i).write_volatile(0);
             }
         }
+        // SAFETY: aligned, exclusively owned full-page backing is initialized
+        // before the ring is published to any producer or consumer.
         unsafe {
-            (*ptr).head = 0;
-            (*ptr).tail = 0;
-            (*ptr).capacity = cap;
-            (*ptr).overflow = 0;
+            (*ptr).head = AtomicU32::new(0);
+            (*ptr).tail = AtomicU32::new(0);
+            (*ptr).capacity = AtomicU32::new(cap);
+            (*ptr).overflow = AtomicU32::new(0);
         }
         Ok(ptr)
     }
 
+    /// Diagnostic mirror only. Production uses CqState's private capacity.
+    pub fn capacity(&self) -> u32 {
+        self.capacity.load(Ordering::Relaxed)
+    }
+
+    pub fn published_head(&self) -> u32 {
+        self.head.load(Ordering::Acquire)
+    }
+
+    pub fn overflow_count(&self) -> u32 {
+        self.overflow.load(Ordering::Relaxed)
+    }
+
+    /// Acquire the consumer's release before reusing a slot it has finished.
+    pub(super) fn consumer_tail(&self) -> u32 {
+        self.tail.load(Ordering::Acquire)
+    }
+
+    /// Caller has initialized every entry up to this private producer cursor.
+    pub(super) fn publish_head(&self, head: u32) {
+        self.head.store(head, Ordering::Release);
+    }
+
+    pub(super) fn record_overflow(&self) {
+        self.overflow.fetch_add(1, Ordering::Relaxed);
+    }
+
     pub fn pending(&self) -> u32 {
-        core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire);
-        let h = unsafe { core::ptr::read_volatile(&self.head) };
-        let t = unsafe { core::ptr::read_volatile(&self.tail) };
-        if h >= t {
-            h - t
+        let head = self.published_head();
+        let tail = self.consumer_tail();
+        let capacity = self.capacity();
+        if capacity < 2 || head >= capacity || tail >= capacity {
+            return 0;
+        }
+        if head >= tail {
+            head - tail
         } else {
-            h + self.capacity - t
+            head + capacity - tail
         }
     }
 
-    /// Consume all pending entries, advancing `tail` to `head`. This discards
-    /// their ring notifications; callers must retain the corresponding operation
-    /// owners and observe any needed results separately. CQ waiting uses work
-    /// generations, so an undrained old entry does not force a wait to spin.
+    /// Discard the currently published notifications, not operation owners.
     ///
     /// # Safety
-    ///
-    /// No other agent may concurrently consume the ring or update its tail.
+    /// No other agent may concurrently consume this ring or update its tail.
+    /// The backing allocation must remain live through the operation.
     pub unsafe fn drain(&mut self) {
-        // SAFETY: &mut self guarantees exclusive access.
-        let h = unsafe { core::ptr::read_volatile(&self.head) };
-        unsafe { core::ptr::write_volatile(&mut self.tail, h) };
-        fence(Ordering::Release);
+        let head = self.published_head();
+        self.tail.store(head, Ordering::Release);
     }
 
     pub fn is_full(&self) -> bool {
-        core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire);
-        let n = (unsafe { core::ptr::read_volatile(&self.head) } + 1) % self.capacity;
-        n == unsafe { core::ptr::read_volatile(&self.tail) }
+        let capacity = self.capacity();
+        let head = self.head.load(Ordering::Relaxed);
+        capacity >= 2 && head < capacity && (head + 1) % capacity == self.consumer_tail()
     }
 
+    /// Serialized fixture producer. Runtime delivery uses its private cursor
+    /// and capacity, never these writable shared mirrors.
     pub fn write(&mut self, op: u64, cookie: u64, status: u32, result: i64) -> bool {
-        let h = unsafe { core::ptr::read_volatile(&self.head) };
-        let t = unsafe { core::ptr::read_volatile(&self.tail) };
-        let next = (h + 1) % self.capacity;
-        if next == t {
-            self.overflow = self.overflow.wrapping_add(1);
+        let head = self.head.load(Ordering::Relaxed);
+        let tail = self.consumer_tail();
+        let capacity = self.capacity();
+        if capacity < 2 || head >= capacity || tail >= capacity {
             return false;
         }
-        let e = self.entry_ptr(h as usize);
-        unsafe {
-            core::ptr::write_volatile(&mut (*e).operation, op);
-            core::ptr::write_volatile(&mut (*e).cookie, cookie);
-            core::ptr::write_volatile(&mut (*e).status, status);
-            core::ptr::write_volatile(&mut (*e).flags, 0u32);
-            core::ptr::write_volatile(&mut (*e).result, result);
+        let next = (head + 1) % capacity;
+        if next == tail {
+            self.record_overflow();
+            return false;
         }
-        fence(Ordering::Release);
+        // SAFETY: this full-page ring has one serialized producer. Acquire of
+        // tail establishes that the consumer finished the free slot; head is
+        // released only after all payload fields have been initialized.
         unsafe {
-            core::ptr::write_volatile(&mut self.head, next);
+            self.entry_ptr(head as usize).write_volatile(CqEntry {
+                operation: op,
+                cookie,
+                status,
+                flags: 0,
+                result,
+            });
         }
+        self.publish_head(next);
         true
     }
 
@@ -196,64 +233,66 @@ impl CompletionQueueRing {
     where
         I: Iterator<Item = &'a (u64, u64, u32, i64)>,
     {
-        let h = unsafe { core::ptr::read_volatile(&self.head) };
-        let t = unsafe { core::ptr::read_volatile(&self.tail) };
-        let pending = if h >= t {
-            h - t
+        let head = self.head.load(Ordering::Relaxed);
+        let tail = self.consumer_tail();
+        let capacity = self.capacity();
+        if capacity < 2 || head >= capacity || tail >= capacity {
+            return 0;
+        }
+        let pending = if head >= tail {
+            head - tail
         } else {
-            h + self.capacity - t
+            head + capacity - tail
         };
-        let free = (self.capacity - 1 - pending) as usize;
-        let mut written: usize = 0;
-        for (op, cookie, status, result) in entries.take(free) {
-            let slot = ((h as usize) + written) % self.capacity as usize;
-            let e = self.entry_ptr(slot);
+        let free = (capacity - 1 - pending) as usize;
+        let mut written = 0;
+        for &(operation, cookie, status, result) in entries.take(free) {
+            let slot = (head as usize + written) % capacity as usize;
+            // SAFETY: the acquired tail bounds this batch to free slots in
+            // the full-page backing. No other producer may write these slots.
             unsafe {
-                core::ptr::write_volatile(&mut (*e).operation, *op);
-                core::ptr::write_volatile(&mut (*e).cookie, *cookie);
-                core::ptr::write_volatile(&mut (*e).status, *status);
-                core::ptr::write_volatile(&mut (*e).flags, 0u32);
-                core::ptr::write_volatile(&mut (*e).result, *result);
+                self.entry_ptr(slot).write_volatile(CqEntry {
+                    operation,
+                    cookie,
+                    status,
+                    flags: 0,
+                    result,
+                });
             }
             written += 1;
         }
-        if written > 0 {
-            fence(Ordering::Release);
-            let next = ((h as usize + written) % self.capacity as usize) as u32;
-            unsafe {
-                core::ptr::write_volatile(&mut self.head, next);
-            }
+        if written != 0 {
+            self.publish_head((head + written as u32) % capacity);
         }
         written
     }
 
+    /// Serialized fixture consumer. Published queues are consumed by their
+    /// owning EL0 reactor, not by simultaneous kernel inspection readers.
     pub fn read(&mut self) -> Option<CqEntry> {
-        let h = unsafe { core::ptr::read_volatile(&self.head) };
-        let t = unsafe { core::ptr::read_volatile(&self.tail) };
-        if h == t {
+        let head = self.published_head();
+        let tail = self.tail.load(Ordering::Relaxed);
+        let capacity = self.capacity();
+        if capacity < 2 || head >= capacity || tail >= capacity || head == tail {
             return None;
         }
-        let e = self.entry_ptr(t as usize);
-        fence(Ordering::Acquire);
-        let op = unsafe { core::ptr::read_volatile(&(*e).operation) };
-        let cookie = unsafe { core::ptr::read_volatile(&(*e).cookie) };
-        let status = unsafe { core::ptr::read_volatile(&(*e).status) };
-        let r = unsafe { core::ptr::read_volatile(&(*e).result) };
-        unsafe {
-            core::ptr::write_volatile(&mut self.tail, (t + 1) % self.capacity);
-        }
-        Some(CqEntry {
-            operation: op,
-            cookie,
-            status,
-            flags: 0,
-            result: r,
-        })
+        // SAFETY: the acquire head load observes the complete initialized
+        // entry. The sole consumer finishes copying before releasing tail.
+        let entry = unsafe { self.entry_ptr(tail as usize).read_volatile() };
+        self.tail.store((tail + 1) % capacity, Ordering::Release);
+        Some(entry)
     }
 
     pub(crate) fn entry_ptr(&self, idx: usize) -> *mut CqEntry {
         let base = self as *const Self as *mut u8;
-        let off = core::mem::offset_of!(Self, entries);
-        unsafe { base.add(off).add(idx * core::mem::size_of::<CqEntry>()) as *mut CqEntry }
+        base.wrapping_add(core::mem::offset_of!(Self, entries))
+            .wrapping_add(idx.wrapping_mul(core::mem::size_of::<CqEntry>()))
+            .cast()
     }
 }
+
+const _: () = {
+    assert!(core::mem::size_of::<CompletionQueueRing>() == 16);
+    assert!(core::mem::offset_of!(CompletionQueueRing, entries) == 16);
+    assert!(core::mem::size_of::<CqEntry>() == 32);
+};
