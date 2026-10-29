@@ -1,0 +1,116 @@
+{
+  "date": "2026-10-29",
+  "firmware": {
+    "sources": {
+      "tf-a": "f2735ebccf5173f74c0458736ec526276106097e",
+      "edk2": "58206682fe3212b80f662f6a62c375cce85d595e",
+      "edk2-platforms": "a46be4f60a0dd7b6aae0f46e6237a398a5f4151a",
+      "edk2-non-osi": "7ac12d81e02b323bffdf1ef3c188ea33c2185c91"
+    },
+    "patches_sha256": {
+      "tf-a/0001-sbsa-gic-disable-security-ds.patch": "5062c358dc4ce890f49c1af67e4559dd0f2dcdf257af4abb9aa66e194c4d93b7",
+      "tf-a/0002-sbsa-bl33-entry-el1.patch": "3b9afd0018f8ad4c68be1a823af7376f446f7624ecb37f58b43924203ece4ad7",
+      "tf-a/0003-sbsa-sip-smc-cpu-topology.patch": "574d16bd88e4c40155cb58400885e78a9bbc5c03f97f10495c4b72ea82210777",
+      "edk2/0001-build-py-pathclass-p.patch": "63258e94c7bba898f2f1ffa593a365a3951651d494f53c96b3c71112dfec9ad6"
+    },
+    "make": "GNU Make 4.4.1",
+    "compiler": "aarch64-elf-gcc (GCC) 16.2.0",
+    "artifacts_sha256": {
+      "SBSA_FLASH0.fd": "6b9026f5140d5259d3f2545c25323f56b8021341cf6b0abfc71639b29d74e114",
+      "SBSA_FLASH1.fd": "c2ef722d910ab5f0de1639f9da6565c37d059a5aa00977b9636977f88ea63e5e",
+      "bl1.bin": "51f95aada64d7d2a4b2ada13e8c98b3c35195ef82136409b3d6271417211563a",
+      "fip.bin": "794393045268c40e41f81018c6ea4f633d9429921dc86ee6c2616df10ae08536"
+    }
+  },
+  "qemu": "11.1.2",
+  "platform": {
+    "machine": "sbsa-ref",
+    "cpu": "neoverse-n1",
+    "lps": 4,
+    "memory_mib": 512,
+    "handoff": "EL1"
+  },
+  "loader": {
+    "version": "12.9.6",
+    "sha256": "11288bad5042853c8fbad27ddf65f9bc53675959a87e0e67908a173ce1571479"
+  },
+  "kernel_sha256": "0965f06694a34c2e820f8f0f99601097da894e43659bf86e3bacdaab269cb4b3",
+  "host_checks": {
+    "basetools_tests_passed": 318,
+    "unsupported_make_rejected_before_checkout": true,
+    "crlf_patch_application_checked": true
+  },
+  "failed_attempts": [
+    {
+      "phase": "BaseTools with system GNU Make 3.81",
+      "diagnostic": "VfrLexer.cpp:1492:26: error: redefinition of 'act2' as different kind of symbol; 692225 warnings and 3 errors generated",
+      "observation": "ANTLR and DLG generators each invoked concurrently for the same output group; grouped-target feature absent",
+      "capture_limitation": "The former recipe overwrote the original full compiler log; diagnostic excerpts were captured and are retained here."
+    },
+    {
+      "phase": "Legacy SBSA disk layout",
+      "kernel_sha256": "e17c0207b545a0bbc1a49adeea659cf6a94405e6e024eabd84250df74b61da7c",
+      "observations": [
+        "TF-A 2.11 BL1/BL2/BL31, UEFI, Limine and all four kernel LPs started",
+        "objstore stage=40 error=0xe5 detail=0x41",
+        "[nvme] objstore registration deadline expired"
+      ],
+      "serial_sha256": "e1dec73bd5d655cbb2d0c1f7b2db1db9a290bc227f600201604cca4ffaa284bd"
+    },
+    {
+      "phase": "First separate-disk launch",
+      "diagnostic": "PCI: slot 2 function 0 not available for nvme, in use by qemu-xhci,id=boot-usb",
+      "guest_entered": false,
+      "resolution": "Assign boot USB controller PCI slot 3; retain NVMe slot 2"
+    },
+    {
+      "phase": "Separate disks with old LPI geometry",
+      "kernel_sha256": "e17c0207b545a0bbc1a49adeea659cf6a94405e6e024eabd84250df74b61da7c",
+      "observations": [
+        "NVMe driver and object store both initialised and registered",
+        "12 KiB PRP-list write/flush/read round trip verified",
+        "[nvme] MSI-X completion interrupt was not delivered"
+      ],
+      "serial_sha256": "6693c60329c7ccdee169cea6c3d179600412434923c13270c06fd9ac20d876a0"
+    }
+  ],
+  "lpi_geometry": {
+    "idbits": 13,
+    "intid_limit_exclusive": 16384,
+    "first_lpi": 8192,
+    "property_bytes": 8192,
+    "property_frames": 2,
+    "pending_bytes_required": 2048,
+    "pending_frame_bytes": 4096
+  },
+  "boot_results": [
+    {
+      "machine": "sbsa-ref",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 scripts/run-aarch64.sh --sbsa-ref --no-network --fresh-storage --timeout 240 --instance sbsa-limine1296-lpi",
+      "result": "SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x1ffff failed_bitmap=0x0 pending_bitmap=0x0",
+      "serial_sha256": "a007ace062428e8e2c9cc1e098a25cd38efb42a27f766ff8aa70becd1c4dfb62",
+      "kernel_sha256": "0965f06694a34c2e820f8f0f99601097da894e43659bf86e3bacdaab269cb4b3",
+      "msix_completion_interrupts": 76,
+      "dma_faults": 0,
+      "raft_restart_recovery": true
+    },
+    {
+      "machine": "virt",
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_SKIP_KERNEL_BUILD=1 scripts/run-aarch64.sh --fresh-storage --timeout 180 --instance limine1296-virt-lpi",
+      "result": "SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x1ffff failed_bitmap=0x0 pending_bitmap=0x0",
+      "serial_sha256": "6a5fc3a712be06daa334ed1f554b87314b5859e1bcb8815e517fd1c28560695a",
+      "kernel_sha256": "0965f06694a34c2e820f8f0f99601097da894e43659bf86e3bacdaab269cb4b3"
+    }
+  ],
+  "firmware_templates_unchanged_after_boot": true,
+  "source_files_sha256": {
+    "scripts/build-sbsa-firmware.sh": "5c20c7d63c4a21b72fb5d85a519d42e540dd0baaf620ed53ab698782ca1e1349",
+    "scripts/run-aarch64.sh": "16743d5f8d19d6d7478a04041bbac348e32284577c84daf368d96c8ca52b5c8d",
+    "crates/catten/src/cpu/isa/aarch64/interrupts/gic/lpi.rs": "823c8d355bdd64975055291e0523f9442d9ed8b180b907373fdc159527b0e7db"
+  },
+  "checks": [
+    "cargo fmt --all -- --check",
+    "bash -n scripts/build-sbsa-firmware.sh scripts/run-aarch64.sh",
+    "git diff --check"
+  ]
+}

@@ -255,7 +255,7 @@ only way to set `DS` (the NS write mask forbids it).
 deltas are *not* vendored (the sources stay upstream); each is tracked as a
 patch file under `patches/` and applied by `scripts/build-sbsa-firmware.sh`
 (via a single `apply_patch` helper that runs `git apply` on the checkout,
-guarded by a marker grep so re-runs are idempotent):
+guarded by a marker grep so re-runs are idempotent; CRLF context is accepted):
 
 - `patches/tf-a/0001-sbsa-gic-disable-security-ds.patch` — the `DS=1` change
   to `plat/qemu/qemu_sbsa/sbsa_gic.c`;
@@ -267,12 +267,13 @@ guarded by a marker grep so re-runs are idempotent):
 - `patches/edk2/0001-build-py-pathclass-p.patch` — convert a `-p`-given
   `PlatformFile` string to a `PathClass` in edk2's `build.py`.
 
-The build script pins the TF-A clone to the **v2.11** tag (the images are
-built from v2.11; the prebuilt upstream BL1 is v2.11.0-774, and later TF-A
-moved the SRAM layout so a v2.11 BL1 cannot load a master BL2); edk2 /
-edk2-platforms / edk2-non-osi are cloned from their default branches, matching
-the original build. The resulting `SBSA_FLASH0.fd` places the original BL1 at
-`0x0` and the new FIP (BL2 + BL31, `--tb-fw`/`--soc-fw`) at `0x12000`.
+The build script pins TF-A to **v2.11** and all three edk2 repositories to
+exact commits. It builds BL1, BL2 and BL31 from that same TF-A revision; the
+2026-10-29 investigation below supersedes the earlier prebuilt-BL1 workaround.
+The resulting `SBSA_FLASH0.fd` places BL1 at `0x0` and the FIP (BL2 + BL31,
+`--tb-fw`/`--soc-fw`) at `0x12000`. Firmware hashes, source revisions, patch
+hashes and tool versions are emitted in `out/provenance.json`; each build has
+its own log directory so failed attempts are not overwritten.
 
 Build tooling notes (macOS): TF-A's v2.11 makefiles need GNU make 4.x
 (`gmake`) and GNU sed (`gsed`) on `PATH` — the system make 3.81 / BSD sed
@@ -380,7 +381,71 @@ Where the bring-up landed and what happened to the earlier plan:
   Front Page -> Boot Manager -> UEFI Shell -> `fs0:` -> `\EFI\BOOT\BOOTAA64.EFI`.
 - `sbsa-ref` uses `-pflash` for the two flash images; `-cpu neoverse-n1`
   (or `max`); RAM at 1 TiB (`0x10000000000`).
-- Limine: the checked-in EFI executables are pinned to 12.6.0. Their official
+- Limine: the checked-in EFI executables are pinned to 12.9.6. The current
+  17-test suite passes on SBSA after the build, disk-layout and LPI fixes below.
+  The official
   release digest and per-file checksums are recorded under `limine-binary/`;
   `scripts/verify-limine.sh --release` verifies them against a fresh upstream
   download. See `docs/guides/limine.md` for the update and boot-security policy.
+
+## 2026-10-29: build and current-suite requalification
+
+Limine 12.9.6 now boots the complete current 17-test suite on `sbsa-ref` with
+four `neoverse-n1` LPs, 512 MiB RAM and QEMU 11.1.2 TCG. The earlier milestones
+above describe historical configurations and test counts. The follow-up found
+three independent problems:
+
+1. **Host generation race.** macOS GNU Make 3.81 ran multiple ANTLR/DLG
+   generators over the same files. The compiler reported 692225 warnings and
+   three errors, including `VfrLexer.cpp:1492:26: redefinition of 'act2'`.
+   edk2's [grouped-target fix](https://github.com/tianocore/edk2/commit/9fc0aca51e83afda703963ea177feeb78a125cbc)
+   requires a Make version that implements `&:`. A clean GNU Make 4.4.1 build
+   ran the generator once and passed all 318 BaseTools tests. The script now
+   checks the `grouped-target` feature before cloning/building and selects
+   that Make for recursive calls. It also handles CRLF patch context, initializes
+   standard Conf files, separates the macOS host fiptool build, and passes
+   edk2's worker count through `-n` (`-j` is a log-file option).
+2. **Boot disk mistaken for object storage.** The original runner exposed
+   its FAT ESP as the only NVMe disk. The kernel booted on all four LPs, but
+   object-store mount rejected the foreign metadata (`stage=40 error=0xe5
+   detail=0x41`), followed by `objstore registration deadline expired`.
+   SBSA now uses a read-only USB ESP at PCI slot 3 and a separate signed,
+   staged NVMe store at slot 2, matching the separation used on other runners.
+   The first separate-disk attempt collided at PCI slot 2 before guest entry;
+   explicit USB placement corrected that. UEFI variable writes use a per-instance
+   flash copy; built firmware templates retain their recorded hashes.
+3. **LPI INTID range excluded every LPI.** After mount was fixed, the 12 KiB
+   PRP-list round trip succeeded but the suite rejected zero MSI-X completions.
+   The September bounds correction had set `GICR_PROPBASER.IDBits=11` to fit
+   one property page. IDBits counts the entire INTID space, including IDs below
+   8192; the [QEMU redistributor](https://github.com/qemu/qemu/blob/v11.1.2/hw/intc/arm_gicv3_redist.c)
+   rejects LPIs above that advertised limit. The kernel now uses IDBits 13:
+   INTIDs 0..16383, 8192 LPI property bytes in two contiguous pages, and 2048
+   pending bytes within the existing aligned page. Bounds remain enforced in
+   both property writes and ITS allocation, with compile-time capacity checks.
+
+The complete patched TF-A v2.11 BL1/BL2/BL31 triplet boots successfully; the
+old prebuilt-BL1 fallback was unnecessary in this run and has been removed.
+All firmware repository revisions are pinned in the build script, and each
+attempt keeps separate logs. Reproduce with:
+
+```sh
+scripts/build-sbsa-firmware.sh
+scripts/run-aarch64.sh --sbsa-ref --no-network --fresh-storage --timeout 240
+```
+
+The successful SBSA run observed 76 MSI-X completion interrupts, no DMA
+translation faults, persistent Raft term/vote recovery after restart and:
+
+```text
+SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x1ffff failed_bitmap=0x0 pending_bitmap=0x0
+```
+
+The AArch64 `virt` regression run passed the same 17 tests. Both used kernel
+SHA-256 `0965f06694a34c2e820f8f0f99601097da894e43659bf86e3bacdaab269cb4b3`.
+[Evidence](../reports/audits/evidence/2026-10-29-sbsa-limine.json) records exact
+firmware/loader hashes, source/tool versions, test commands and failed runs
+separately from the passing boots. The original full Make 3.81 compiler log was
+overwritten by the former recipe; its captured diagnostics are retained in that
+evidence with this limitation. The test retains the existing EL1 firmware
+adaptation and does not qualify EL2/VHE or physical hardware.

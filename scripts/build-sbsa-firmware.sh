@@ -14,7 +14,8 @@
 #
 # Requires (Homebrew on macOS):
 #   aarch64-elf-gcc, aarch64-elf-binutils, autoconf, automake, acpica (iasl),
-#   openssl@3. A cross-compiler for edk2's UEFI is provided by aarch64-elf-gcc.
+#   openssl@3, make (GNU Make 4.3+), gnu-sed, Python 3.11+. A cross-compiler for edk2's UEFI
+#   is provided by aarch64-elf-gcc.
 #
 # Usage:
 #   scripts/build-sbsa-firmware.sh [WORKDIR]
@@ -23,34 +24,70 @@
 
 set -euo pipefail
 
-WORKDIR="${1:-$PWD/target/firmware-src}"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+WORKDIR="${1:-$ROOT_DIR/target/firmware-src}"
+mkdir -p "$WORKDIR"
+WORKDIR="$(cd "$WORKDIR" && pwd)"
 OUT="$WORKDIR/out"
 mkdir -p "$OUT"
+LOG_DIR="$(mktemp -d "$OUT/build.XXXXXX")"
 NCPU="$(sysctl -n hw.ncpu 2>/dev/null || echo 8)"
 
+# edk2's VfrCompile uses grouped targets (&:). Make 3.81 accepts that syntax
+# without enforcing the group, running generators concurrently over the same
+# files. Check the feature, including recursive invocations from edk2.
+MAKE_BIN=""
+for candidate in gmake make; do
+    command -v "$candidate" >/dev/null 2>&1 || continue
+    features="$("$candidate" -s -f - <<'MAKE'
+features:
+	@echo $(.FEATURES)
+MAKE
+)"
+    case " $features " in
+        *" grouped-target "*) MAKE_BIN="$(command -v "$candidate")"; break ;;
+    esac
+done
+if [ -z "$MAKE_BIN" ]; then
+    echo "error: SBSA firmware requires GNU Make 4.3+ (grouped-target support)" >&2
+    exit 1
+fi
+HOST_TOOLS="$WORKDIR/host-tools/bin"
+mkdir -p "$HOST_TOOLS"
+ln -sf "$MAKE_BIN" "$HOST_TOOLS/make"
+if command -v gsed >/dev/null 2>&1; then
+    ln -sf "$(command -v gsed)" "$HOST_TOOLS/sed"
+fi
+export PATH="$HOST_TOOLS:$PATH"
+
 echo ">>> Working directory: $WORKDIR"
+echo ">>> GNU Make: $MAKE_BIN"
+echo ">>> Build logs: $LOG_DIR"
 
 clone() {
-    local repo="$1" dir="$2" branch="${3:-}"
+    local repo="$1" dir="$2" revision="$3"
     if [ ! -d "$dir" ]; then
-        if [ -n "$branch" ]; then
-            git clone --depth 1 --branch "$branch" "$repo" "$dir"
-        else
-            git clone --depth 1 "$repo" "$dir"
-        fi
+        git init "$dir"
+        git -C "$dir" remote add origin "$repo"
+        git -C "$dir" fetch --depth 1 origin "$revision"
+        git -C "$dir" checkout --detach FETCH_HEAD
     else
         echo "    (reusing $dir)"
+    fi
+    if [ "$(git -C "$dir" rev-parse HEAD)" != "$revision" ]; then
+        echo "error: $dir must be at pinned revision $revision; existing checkout left intact" >&2
+        exit 1
     fi
 }
 
 echo ">>> Cloning sources"
-# TF-A v2.11: the sbsa-ref images are built from the v2.11 tag (the prebuilt
-# upstream BL1 in edk2-non-osi is v2.11.0-774, and later TF-A moved the SRAM
-# layout so a v2.11 BL1 cannot load a master BL2).
-clone https://github.com/ARM-software/arm-trusted-firmware.git "$WORKDIR/tf-a" v2.11
-clone https://github.com/tianocore/edk2.git "$WORKDIR/edk2"
-clone https://github.com/tianocore/edk2-platforms.git "$WORKDIR/edk2-platforms"
-clone https://github.com/tianocore/edk2-non-osi.git "$WORKDIR/edk2-non-osi"
+# Keep all three TF-A stages on v2.11, including our EL1/GIC adaptations.
+# Pin the edk2 family too: floating default branches made the old build recipe
+# depend on whichever BaseTools and platform revisions happened to be current.
+clone https://github.com/ARM-software/arm-trusted-firmware.git "$WORKDIR/tf-a" f2735ebccf5173f74c0458736ec526276106097e
+clone https://github.com/tianocore/edk2.git "$WORKDIR/edk2" 58206682fe3212b80f662f6a62c375cce85d595e
+clone https://github.com/tianocore/edk2-platforms.git "$WORKDIR/edk2-platforms" a46be4f60a0dd7b6aae0f46e6237a398a5f4151a
+clone https://github.com/tianocore/edk2-non-osi.git "$WORKDIR/edk2-non-osi" 7ac12d81e02b323bffdf1ef3c188ea33c2185c91
 
 # =============================================================================
 # Third-party patches (tracked patch files under patches/, applied with git
@@ -62,13 +99,14 @@ apply_patch() {
     local repo="$1" patch="$2" marker="$3" file="$4" what="$5"
     if ! grep -q "$marker" "$repo/$file"; then
         echo ">>> $what"
-        git -C "$repo" apply "$patch"
+        # edk2 keeps CRLF sources; the tracked patch has LF context lines.
+        git -C "$repo" apply --ignore-space-change "$patch"
     else
         echo "    ($(basename "$patch") already applied)"
     fi
 }
 
-PATCHES="$PWD/patches"
+PATCHES="$ROOT_DIR/patches"
 
 # (1) Hand BL33 (UEFI/Limine) off at EL1 instead of EL2 (QEMU TCG EL2 is
 #     unreliable and the kernel targets EL1/EL0).
@@ -98,28 +136,23 @@ apply_patch "$WORKDIR/tf-a" \
 # Build TF-A + fiptool + FIP
 # =============================================================================
 echo ">>> Building TF-A (qemu_sbsa)"
+# Build the firmware first; the top-level `fip` target rebuilds its host tool
+# without the macOS flags below. Pack the FIP explicitly after that tool build.
 make -C "$WORKDIR/tf-a" PLAT=qemu_sbsa CROSS_COMPILE=aarch64-elf- \
-    aarch64-oc=aarch64-elf-objcopy DEBUG=0 all fip -j"$NCPU" > "$OUT/tfa-build.log" 2>&1
+    aarch64-oc=aarch64-elf-objcopy DEBUG=0 all -j"$NCPU" > "$LOG_DIR/tfa-build.log" 2>&1
 
 echo ">>> Building fiptool"
 OPENSSL_DIR="$(brew --prefix openssl@3 2>/dev/null || echo /usr)"
 make -C "$WORKDIR/tf-a/tools/fiptool" OPENSSL_DIR="$OPENSSL_DIR" \
-    CPPFLAGS="-D_GNU_SOURCE -D_DARWIN_C_SOURCE -D_UUID_T" > "$OUT/fiptool-build.log" 2>&1
+    CPPFLAGS="-D_GNU_SOURCE -D_DARWIN_C_SOURCE -D_UUID_T" > "$LOG_DIR/fiptool-build.log" 2>&1
 FIPTOOL="$WORKDIR/tf-a/tools/fiptool/fiptool"
 
-# The freshly built BL1 panics when built with aarch64-elf-gcc (a toolchain
-# quirk); the upstream BL1 works, so we reuse it from the upstream FIP.
-echo ">>> Extracting upstream BL1 and packing FIP (orig BL1 + rebuilt BL2/BL31)"
+# BL1 is a separate flash payload, not a member of the FIP. Build it with the
+# same revision and compiler as BL2/BL31 instead of silently mixing upstream
+# binaries or falling back after a failed unpack. This triplet boots under TCG.
+echo ">>> Staging matching BL1 and packing BL2/BL31 FIP"
 TFA="$WORKDIR/tf-a/build/qemu_sbsa/release"
-UPSTREAM_FIP="$WORKDIR/edk2-non-osi/Platform/Qemu/Sbsa/fip.bin"
-# The upstream prebuilt FIP in edk2-non-osi is a full FIP; unpack to get BL1.
-rm -rf "$WORKDIR/fiptool-unpack" && mkdir -p "$WORKDIR/fiptool-unpack"
-"$FIPTOOL" unpack "$UPSTREAM_FIP" --force --outdir "$WORKDIR/fiptool-unpack" > /dev/null 2>&1 || true
-# If the upstream FIP has no BL1, fall back to the freshly built one.
-if [ ! -f "$WORKDIR/fiptool-unpack/bl1.bin" ]; then
-    cp "$TFA/bl1.bin" "$WORKDIR/fiptool-unpack/bl1.bin"
-fi
-cp "$WORKDIR/fiptool-unpack/bl1.bin" "$WORKDIR/fiptool-unpack/bl1.bin.orig"
+cp "$TFA/bl1.bin" "$OUT/bl1.bin"
 "$FIPTOOL" create --tb-fw "$TFA/bl2.bin" --soc-fw "$TFA/bl31.bin" "$OUT/fip.bin" > /dev/null 2>&1
 
 # =============================================================================
@@ -137,20 +170,22 @@ apply_patch "$WORKDIR/edk2" \
 # =============================================================================
 echo ">>> Building edk2 QemuSbsa (this takes a while)"
 cd "$WORKDIR/edk2"
-git submodule update --init --depth 1 > /dev/null 2>&1 || true
-make -C BaseTools clean > /dev/null 2>&1 || true
-make -C BaseTools -j"$NCPU" > "$OUT/edk2-basetools.log" 2>&1
+git submodule update --init --depth 1 > "$LOG_DIR/edk2-submodules.log" 2>&1
+make -C BaseTools clean > "$LOG_DIR/edk2-clean.log" 2>&1
+make -C BaseTools -j"$NCPU" > "$LOG_DIR/edk2-basetools.log" 2>&1
 
 # Point the flash composition at our TF-A images.
 cp "$OUT/fip.bin" "$WORKDIR/edk2-non-osi/Platform/Qemu/Sbsa/fip.bin"
-cp "$WORKDIR/fiptool-unpack/bl1.bin.orig" "$WORKDIR/edk2-non-osi/Platform/Qemu/Sbsa/bl1.bin"
+cp "$OUT/bl1.bin" "$WORKDIR/edk2-non-osi/Platform/Qemu/Sbsa/bl1.bin"
 
 # Workspace: edk2-platforms and edk2-non-osi must be real subdirectories of
 # WORKSPACE; edk2's own Conf is symlinked so $WORKSPACE/Conf resolves.
 ln -sfn "$WORKDIR/edk2/Conf" "$WORKDIR/Conf"
-sed -i '' 's|^ACTIVE_PLATFORM.*|ACTIVE_PLATFORM       = edk2-platforms/Platform/Qemu/SbsaQemu/SbsaQemu.dsc|' "$WORKDIR/edk2/Conf/target.txt"
-sed -i '' 's|^TARGET_ARCH.*|TARGET_ARCH           = AARCH64|' "$WORKDIR/edk2/Conf/target.txt"
-sed -i '' 's|^TOOL_CHAIN_TAG.*|TOOL_CHAIN_TAG       = GCC|' "$WORKDIR/edk2/Conf/target.txt"
+for config in target tools_def build_rule; do
+    if [ ! -f "$WORKDIR/edk2/Conf/$config.txt" ]; then
+        cp "$WORKDIR/edk2/BaseTools/Conf/$config.template" "$WORKDIR/edk2/Conf/$config.txt"
+    fi
+done
 
 export WORKSPACE="$WORKDIR"
 export PACKAGES_PATH="$WORKDIR/edk2:$WORKDIR/edk2-platforms:$WORKDIR/edk2-non-osi"
@@ -160,7 +195,8 @@ export PATH="$WORKDIR/edk2/BaseTools/BinWrappers/PosixLike:/opt/homebrew/bin:$PA
 export GCC_AARCH64_PREFIX=aarch64-elf-
 
 python3 "$WORKDIR/edk2/BaseTools/Source/Python/build/build.py" \
-    -b RELEASE -a AARCH64 -t GCC -j"$NCPU" > "$OUT/edk2-build.log" 2>&1
+    -p edk2-platforms/Platform/Qemu/SbsaQemu/SbsaQemu.dsc \
+    -b RELEASE -a AARCH64 -t GCC -n "$NCPU" > "$LOG_DIR/edk2-build.log" 2>&1
 
 # =============================================================================
 # Package the flash images
@@ -171,13 +207,37 @@ cp "$WORKDIR/Build/SbsaQemu/RELEASE_GCC/FV/SBSA_FLASH1.fd" "$OUT/SBSA_FLASH1.fd"
 truncate -s 256M "$OUT/SBSA_FLASH0.fd"
 truncate -s 256M "$OUT/SBSA_FLASH1.fd"
 
+python3 - "$WORKDIR" "$ROOT_DIR/patches" "$MAKE_BIN" <<'PY'
+import hashlib
+import json
+from pathlib import Path
+import subprocess
+import sys
+
+work, patches = map(Path, sys.argv[1:3])
+def digest(path):
+    with path.open('rb') as stream:
+        return hashlib.file_digest(stream, 'sha256').hexdigest()
+provenance = {
+    'sources': {name: subprocess.check_output(
+        ['git', '-C', str(work / name), 'rev-parse', 'HEAD'], text=True).strip()
+        for name in ('tf-a', 'edk2', 'edk2-platforms', 'edk2-non-osi')},
+    'patches_sha256': {str(p.relative_to(patches)): digest(p)
+        for family in ('tf-a', 'edk2') for p in sorted((patches / family).glob('*.patch'))},
+    'make': subprocess.check_output([sys.argv[3], '--version'], text=True).splitlines()[0],
+    'compiler': subprocess.check_output(['aarch64-elf-gcc', '--version'], text=True).splitlines()[0],
+    'artifacts_sha256': {name: digest(work / 'out' / name)
+        for name in ('SBSA_FLASH0.fd', 'SBSA_FLASH1.fd', 'bl1.bin', 'fip.bin')},
+}
+(work / 'out' / 'provenance.json').write_text(json.dumps(provenance, indent=2) + '\n')
+PY
+
 echo
 echo ">>> Done. Outputs:"
 echo "    $OUT/SBSA_FLASH0.fd  (TF-A: EL1 handoff + CPU-topology SMC)"
 echo "    $OUT/SBSA_FLASH1.fd  (edk2 QemuSbsa UEFI)"
 echo
 echo ">>> To run:"
-echo "    qemu-system-aarch64 -M sbsa-ref -cpu neoverse-n1 -smp 1 -m 512M \\"
-echo "      -pflash $OUT/SBSA_FLASH0.fd -pflash $OUT/SBSA_FLASH1.fd \\"
-echo "      -drive if=none,file=<boot.img>,format=raw,id=nvme0 \\"
-echo "      -device nvme,drive=nvme0,serial=cat0"
+echo "    CATTEN_SBSA_FLASH0='$OUT/SBSA_FLASH0.fd' \\"
+echo "    CATTEN_SBSA_FLASH1='$OUT/SBSA_FLASH1.fd' \\"
+echo "      '$ROOT_DIR/scripts/run-aarch64.sh' --sbsa-ref --no-network --timeout 240"

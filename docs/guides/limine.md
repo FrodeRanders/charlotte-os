@@ -8,7 +8,7 @@ CharlotteOS uses two independently versioned Limine components:
   implement that protocol.
 
 Both are exact pins. The kernel uses `limine` crate **0.6.5**, whose base
-revision 6 request layout matches the checked-in Limine loader **12.6.0**.
+revision 6 request layout matches the checked-in Limine loader **12.9.6**.
 Do not turn either pin back into a lower-bound dependency: Limine crate 0.x
 releases may change their Rust API, while loader releases can change the
 architecture-specific entry state.
@@ -66,6 +66,85 @@ A loader update can affect the whole boot path. Check it as a platform change:
 
 The Rust crate should be updated separately when a new protocol binding is
 needed. Review its ABI/API changes and keep it on an exact version.
+
+### 12.9.6 update (2026-10-29)
+
+The loader was updated from 12.6.0 to the latest immutable upstream release,
+[12.9.6](https://github.com/Limine-Bootloader/Limine/releases/tag/v12.9.6).
+The complete intervening [changelog](https://github.com/Limine-Bootloader/Limine/blob/v12.9.6/ChangeLog)
+was reviewed. Relevant changes include x86 AP/APIC startup fixes, AArch64
+non-global and execute-protected mappings, a fix for the highest memory-map
+entry being omitted from page tables, UEFI graphics/config parsing fixes, and
+disabling the UEFI Shell shortcut under enrolled Secure Boot. Existing configs
+already place global options before their first entry, as the updated parser
+requires. The revision 6 Rust binding remains pinned to 0.6.5.
+
+The official `limine-binary.tar.xz` SHA-256 is
+`939f670e0831cc940453fd3a0ddfb2b324c0b4e3c5d0e741c190aa0d13df0103`,
+checked against the immutable GitHub release asset metadata. All 16 upstream
+payload files, including the new third-party license notices, are covered by
+`SHA256SUMS` and were compared byte-for-byte with a second fresh download using
+`scripts/verify-limine.sh --release`. This verifies the published digest;
+the detached GPG signature was not independently verified.
+
+The host C99 utility builds and reports 12.9.6, both boot-image packaging
+integration tests pass, and the offline verifier rejects a one-byte EFI
+alteration. Both target kernels were rebuilt along with their signed service
+bundles. Four-LP boots with fresh NVMe storage passed:
+
+| Runner (`--timeout 180 --fresh-storage`) | Authoritative result | Kernel SHA-256 |
+| --- | --- | --- |
+| `scripts/run-aarch64.sh --instance limine1296-virt` | 17 passed, 0 failed/pending; bitmap `0x1ffff` | `e17c0207b545a0bbc1a49adeea659cf6a94405e6e024eabd84250df74b61da7c` |
+| `scripts/run-x86_64.sh --instance limine1296-x86` | 15 passed, 0 failed/pending; bitmap `0x1bbff` | `55983e2bdcfea1b615df345d47ce9de910e337f7e37e71e00ba7f9dfff63d89e` |
+
+The first launch attempt was blocked by the host sandbox's QMP socket policy
+before guest entry; the successful run used normal host socket access.
+
+All 16 disposable Secure Boot cases passed across two runs of
+`scripts/run-secure-boot-test.py --timeout 180` with Homebrew's
+`edk2-x86_64-secure-code.fd` and `edk2-i386-vars.fd`. The initial run passed
+valid Intel/AMD boots, unsigned/foreign/tampered-loader rejection,
+config/kernel/policy tamper rejection, and policy signature/rollback rejection.
+It then stopped at `policy-conflict` with `kernel panicked for an unrelated
+reason`; the captured diagnostic ended at
+`[boot trust fixture] verification rejected: RevisionC` (serial SHA-256
+`46156f12909f3547196e9a9fe965d628ed4400af548091da599c47715f8694b7`).
+That incomplete capture was not counted as a pass; its cause is unconfirmed.
+A separate run selecting `policy-conflict,policy-next,missing-module,duplicate-module,platform-ns-root,platform-driver-root`
+passed all six cases with their exact expected rejection messages. No complete
+single-run matrix pass is claimed.
+
+Both Secure Boot runs used the same selected-root kernel BLAKE2B-512:
+`7e64aa520b7aee9f645ae0c6dc2602e31bbe59390a84e325d96eca33e5c4c80ec082155739a21152b976d927d9cddd1788c760d0b1ba0969298664e862689b67`.
+The firmware code SHA-256 was
+`32807682a9e5c0e2d192ecb6077941d4be8bcfa6b9cd6e60830c3a9f48c0555a`;
+the second run's enrolled/signed loader SHA-256 was
+`b56202032187c6aa64d35dc9cb6fb9ff45010c0366ea262dd974bc40ca09ab5a`.
+All certificates were disposable test authority, and both runs removed their
+private keys and mutable VM artifacts on exit.
+
+SBSA qualification was completed in the follow-up investigation on the same
+date. The initial firmware build failed in `VfrCompile` (`redefinition of
+'act2'`, expected semicolon and extraneous closing brace): macOS Make 3.81
+did not enforce edk2's grouped generator targets. Rebuilding with GNU Make
+4.4.1 passed all 318 BaseTools tests and produced the firmware. The build
+script now requires grouped-target support, pins all firmware source commits,
+prepares standard edk2 configs and records artifact provenance.
+
+The first guest boot exposed the runner's FAT boot disk to the object store,
+which correctly rejected it. Separating the USB boot volume from NVMe data
+then exposed a kernel LPI geometry regression: IDBits 11 excluded all LPIs,
+whose first INTID is 8192. IDBits 13 with two contiguous property-table pages
+preserves bounds and permits delivery. With these fixes,
+`scripts/run-aarch64.sh --sbsa-ref --no-network --fresh-storage --timeout 240`
+passed all 17 registered tests (bitmap `0x1ffff`, zero failed/pending), including
+76 MSI-X completions, fault-free DMA and Raft restart recovery. A `virt`
+regression boot also passed all 17 tests with the same corrected kernel SHA-256
+`0965f06694a34c2e820f8f0f99601097da894e43659bf86e3bacdaab269cb4b3`.
+This qualifies the existing EL1/TCG boot path. See the
+[SBSA investigation](../platforms/sbsa-ref.md#2026-10-29-build-and-current-suite-requalification)
+and its [version-controlled evidence](../reports/audits/evidence/2026-10-29-sbsa-limine.json)
+for distinct failed attempts, exact source revisions and artifact hashes.
 
 ## AArch64 EL2 status
 

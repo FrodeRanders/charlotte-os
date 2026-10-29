@@ -819,29 +819,29 @@ catten_boot_create_uefi_image \
     "$KERNEL" \
     "$LIMINE_CONFIG"
 
-# --- NVMe persistent disk image (virt only; sbsa-ref boots the image itself) ---
-if [ "$SBSA_REF" != "1" ]; then
-    NVME_IMAGE="${IMAGE_DIR}/nvme-disk${INSTANCE_SUFFIX}.img"
-    NVME_BUNDLE_HASH="${NVME_IMAGE}.bundle-sha256"
-    CURRENT_BUNDLE_HASH="$(catten_boot_bundle_sha256 "$CATTEN_AARCH64_SERVICE_BUNDLE")"
-    STORED_BUNDLE_HASH="$(test -f "$NVME_BUNDLE_HASH" && tr -d '[:space:]' < "$NVME_BUNDLE_HASH" || true)"
-    if [ "$REUSE_STORAGE" = "1" ] && [ -f "$NVME_IMAGE" ]; then
-        echo ">>> Reusing NVMe disk image ${NVME_IMAGE} by explicit request."
-        if [ "$STORED_BUNDLE_HASH" != "$CURRENT_BUNDLE_HASH" ]; then
-            echo "warning: its service bundle is stale; store-loaded services may not match this build" >&2
-        fi
-    elif [ ! -f "$NVME_IMAGE" ] || [ "$FRESH_STORAGE" = "1" ] \
-        || [ "$STORED_BUNDLE_HASH" != "$CURRENT_BUNDLE_HASH" ]; then
-        # The initial image is produced host-side: an object-store volume
-        # pre-seeded with the signed service ELFs the kernel loads from the
-        # store at boot (the embedded bundle covers only the bootstrap set).
-        echo ">>> Producing initial NVMe disk image ${NVME_IMAGE} from the signed bundle..."
-        python3 "${ROOT_DIR}/scripts/make-nvme-image.py" \
-            "$NVME_IMAGE" "$CATTEN_AARCH64_SERVICE_BUNDLE"
-        printf '%s\n' "$CURRENT_BUNDLE_HASH" > "$NVME_BUNDLE_HASH"
-    else
-        echo ">>> Reusing NVMe disk image ${NVME_IMAGE} (blessed bundle unchanged)."
+# --- Persistent NVMe data image, separate from the FAT boot volume. ---
+# SBSA used to expose the boot FAT as its only NVMe disk. The object store
+# correctly rejects that nonblank foreign format; give it its own signed store.
+NVME_IMAGE="${IMAGE_DIR}/nvme-disk${INSTANCE_SUFFIX}.img"
+NVME_BUNDLE_HASH="${NVME_IMAGE}.bundle-sha256"
+CURRENT_BUNDLE_HASH="$(catten_boot_bundle_sha256 "$CATTEN_AARCH64_SERVICE_BUNDLE")"
+STORED_BUNDLE_HASH="$(test -f "$NVME_BUNDLE_HASH" && tr -d '[:space:]' < "$NVME_BUNDLE_HASH" || true)"
+if [ "$REUSE_STORAGE" = "1" ] && [ -f "$NVME_IMAGE" ]; then
+    echo ">>> Reusing NVMe disk image ${NVME_IMAGE} by explicit request."
+    if [ "$STORED_BUNDLE_HASH" != "$CURRENT_BUNDLE_HASH" ]; then
+        echo "warning: its service bundle is stale; store-loaded services may not match this build" >&2
     fi
+elif [ ! -f "$NVME_IMAGE" ] || [ "$FRESH_STORAGE" = "1" ] \
+    || [ "$STORED_BUNDLE_HASH" != "$CURRENT_BUNDLE_HASH" ]; then
+    # The initial image is produced host-side: an object-store volume
+    # pre-seeded with the signed service ELFs the kernel loads from the
+    # store at boot (the embedded bundle covers only the bootstrap set).
+    echo ">>> Producing initial NVMe disk image ${NVME_IMAGE} from the signed bundle..."
+    python3 "${ROOT_DIR}/scripts/make-nvme-image.py" \
+        "$NVME_IMAGE" "$CATTEN_AARCH64_SERVICE_BUNDLE"
+    printf '%s\n' "$CURRENT_BUNDLE_HASH" > "$NVME_BUNDLE_HASH"
+else
+    echo ">>> Reusing NVMe disk image ${NVME_IMAGE} (blessed bundle unchanged)."
 fi
 
 # --- sbsa-ref firmware check ---
@@ -881,6 +881,10 @@ if [ "$SBSA_REF" = "1" ]; then
         exit 1
     fi
     echo ">>> sbsa-ref firmware: $SBSA_FLASH0 / $SBSA_FLASH1"
+    # UEFI variables are mutable. Keep the built firmware template intact and
+    # give this instance its own copy rather than changing its provenance hash.
+    SBSA_FLASH1_INSTANCE="${IMAGE_DIR}/sbsa-flash1${INSTANCE_SUFFIX}.fd"
+    cp "$SBSA_FLASH1" "$SBSA_FLASH1_INSTANCE"
 fi
 
 # --- QEMU options ---
@@ -890,10 +894,11 @@ if [ "$SBSA_REF" = "1" ]; then
         -M "$MACHINE"
         -cpu neoverse-n1
         -m 512M
-        -pflash "$SBSA_FLASH0"
-        -pflash "$SBSA_FLASH1"
-        -drive "if=none,file=${IMAGE},format=raw,id=nvme0"
-        -device "nvme,drive=nvme0,serial=cat0"
+        -drive "if=pflash,unit=0,format=raw,readonly=on,file=${SBSA_FLASH0}"
+        -drive "if=pflash,unit=1,format=raw,file=${SBSA_FLASH1_INSTANCE}"
+        -drive "if=none,file=${IMAGE},format=raw,id=boot0,readonly=on"
+        -device "qemu-xhci,id=boot-usb,addr=3"
+        -device "usb-storage,bus=boot-usb.0,drive=boot0,bootindex=1"
     )
 else
     MACHINE="virt,gic-version=3,msi=gicv2m"
@@ -941,15 +946,10 @@ if [ "${CATTEN_QEMU_MONITOR:-0}" = "1" ]; then
     QEMU_OPTS+=(-monitor "unix:/tmp/charlotte${INSTANCE_SUFFIX}-monitor.sock,server=on,wait=off")
 fi
 
-if [ "$SBSA_REF" != "1" ]; then
-    # The sbsa-ref boot image already IS the NVMe drive (see the sbsa-ref
-    # QEMU_OPTS above); the virt flow's separate persistent NVMe disk does not
-    # apply there.
-    QEMU_OPTS+=(
-        -drive "if=none,file=${NVME_IMAGE},format=raw,id=nvme0"
-        -device "nvme,drive=nvme0,serial=cat0,max_ioqpairs=4,addr=2"
-    )
-fi
+QEMU_OPTS+=(
+    -drive "if=none,file=${NVME_IMAGE},format=raw,id=nvme0"
+    -device "nvme,drive=nvme0,serial=cat0,max_ioqpairs=4,addr=2"
+)
 
 QEMU_OPTS+=(-nic none)
 if [ "$NETWORK" = "1" ]; then

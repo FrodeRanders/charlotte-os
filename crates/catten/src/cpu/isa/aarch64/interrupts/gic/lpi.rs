@@ -11,7 +11,10 @@ use spin::LazyLock;
 
 use crate::{
     cpu::isa::{
-        aarch64::memory::address::paddr::PAddr,
+        aarch64::memory::{
+            address::paddr::PAddr,
+            paging::PAGE_SIZE,
+        },
         interface::memory::address::PhysicalAddress,
     },
     memory::PHYSICAL_FRAME_ALLOCATOR,
@@ -28,14 +31,24 @@ const GICR_PENDBASER: usize = 0x0078;
 
 // QEMU's GICR_PROPBASER / GICR_PENDBASER layouts: IDBits at bits [0:5],
 // PhysicalAddress at bits [51:12] (PROP) or [51:16] (PEND, 64 KiB aligned).
-// The property table is 2^(IDBits + 1) bytes, so IDBits must describe exactly
-// the single allocated frame: 11 gives 4 KiB covering 4096 LPIs.
-const GICR_PROP_IDBITS: u64 = 11;
+// IDBits describes the complete INTID space, including IDs below LPI_BASE.
+// The minimum usable value is 13: INTIDs 0..16383, with property bytes only
+// for LPIs 8192..16383. Advertising 11 excludes every LPI from delivery.
+const GICR_PROP_IDBITS: u64 = 13;
 const GICR_PROP_PHYADDR: u64 = 0x0000_ffff_ffff_f000; // bits [51:12]
 const GICR_PEND_PHYADDR: u64 = 0x0000_ffff_ffff_0000; // bits [51:16]
 
-/// Number of LPIs covered by the property table: `2^(IDBits + 1)`.
-pub const LPI_COUNT: u32 = 1 << (GICR_PROP_IDBITS + 1);
+const INTID_LIMIT: u32 = 1 << (GICR_PROP_IDBITS + 1);
+/// Number of property bytes: the advertised INTID range excludes non-LPIs.
+pub const LPI_COUNT: u32 = INTID_LIMIT - LPI_BASE;
+const PROP_TABLE_FRAMES: usize = (LPI_COUNT as usize).div_ceil(PAGE_SIZE);
+// Pending bits use absolute INTID indexes, unlike property bytes. The full
+// advertised pending range must fit in its single, 64 KiB-aligned frame.
+const _: () = {
+    assert!(INTID_LIMIT > LPI_BASE);
+    assert!((LPI_COUNT as usize) <= PROP_TABLE_FRAMES * PAGE_SIZE);
+    assert!((INTID_LIMIT as usize).div_ceil(8) <= PAGE_SIZE);
+};
 
 /// LPI priority (upper nibble of the config byte). Numerically lower values are
 /// higher priority; the value must sit below the `ICC_PMR_EL1` threshold
@@ -68,14 +81,12 @@ fn alloc_aligned_frame(alignment: usize) -> Option<PAddr> {
 }
 
 /// Shared property table: one byte per LPI, indexed by `intid - LPI_BASE`.
+/// Retain both contiguous frames for the lifetime of the boot GIC tables.
 static PROP_TABLE: LazyLock<Option<PAddr>> = LazyLock::new(|| {
-    let frame = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame().ok()?;
+    let frame =
+        PHYSICAL_FRAME_ALLOCATOR.lock().allocate_contiguous(PROP_TABLE_FRAMES, PAGE_SIZE).ok()?;
     unsafe {
-        core::ptr::write_bytes(
-            frame.into_hhdm_mut::<u8>(),
-            0,
-            crate::cpu::isa::aarch64::memory::paging::PAGE_SIZE,
-        )
+        core::ptr::write_bytes(frame.into_hhdm_mut::<u8>(), 0, PROP_TABLE_FRAMES * PAGE_SIZE)
     };
     Some(frame)
 });

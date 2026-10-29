@@ -49,8 +49,8 @@ The generated configuration hashes the exact kernel and policy-module bytes
 with BLAKE2B-512, enables hash-mismatch panic and disables editing. Its own hash
 is enrolled into a copy of Limine **before** EFI signing. Signing the stock
 unenrolled loader would leave its configuration/kernel policy unprotected.
-This follows [Limine 12.6.0's Secure Boot contract](https://github.com/Limine-Bootloader/Limine/blob/v12.6.0/USAGE.md#secure-boot)
-and [hashed-path format](https://github.com/Limine-Bootloader/Limine/blob/v12.6.0/CONFIG.md#paths).
+This follows [Limine 12.9.6's Secure Boot contract](https://github.com/Limine-Bootloader/Limine/blob/v12.9.6/USAGE.md#secure-boot)
+and [hashed-path format](https://github.com/Limine-Bootloader/Limine/blob/v12.9.6/CONFIG.md#paths).
 
 The test builds `catten` with `acpi,boot_trust_test`, snapshots its exact bytes
 for the whole matrix, and checks its executable/read-only trampoline sections.
