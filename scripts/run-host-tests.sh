@@ -57,10 +57,18 @@ mkdir -p "$repo_root/target/host-self-tests"
     -o "$repo_root/target/host-self-tests/retirement-list-tests"
 "$repo_root/target/host-self-tests/retirement-list-tests"
 
-# Diagnostic capture prepares bounded scratch before entering source guards.
-"$host_rustc" --edition=2024 --test \
-    "$repo_root/crates/catten/src/klib/collections/snapshot.rs" \
-    -o "$repo_root/target/host-self-tests/snapshot-tests"
+# Diagnostic capture uses the production compile-time resource policy too.
+# Compile both modules together rather than treating snapshot.rs as a crate root.
+CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
+"$host_rustc" --edition=2024 --test --crate-name snapshot_tests - \
+    -o "$repo_root/target/host-self-tests/snapshot-tests" <<EOF
+#![allow(dead_code)]
+extern crate alloc;
+#[path = "$repo_root/crates/catten/src/resource_policy.rs"]
+mod resource_policy;
+#[path = "$repo_root/crates/catten/src/klib/collections/snapshot.rs"]
+mod snapshot;
+EOF
 "$repo_root/target/host-self-tests/snapshot-tests"
 
 # Scheduler FIFO links are inline in their existing exact thread owners.

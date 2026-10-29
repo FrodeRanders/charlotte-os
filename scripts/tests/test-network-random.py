@@ -20,9 +20,12 @@ class NetworkRandom(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         packages = tomllib.loads((ROOT / "Cargo.lock").read_text())["package"]
-        for name, version in (("hmac", "0.12.1"), ("sha2", "0.10.9"), ("zeroize", "1.9.0")):
+        # Legacy HMAC/SHA versions are intentional negative-control inputs in
+        # an isolated manifest; they need not remain in the production graph.
+        # Only the current control's zeroize pin must match the workspace lock.
+        for name, version in (("zeroize", "1.9.0"),):
             if not any(p["name"] == name and p["version"] == version for p in packages):
-                raise ValueError(f"Requalify the legacy owner control for {name} {version}")
+                raise ValueError(f"Requalify the network-random control for {name} {version}")
         cls.temporary = tempfile.TemporaryDirectory(prefix="charlotte-network-random-")
         cls.directory = Path(cls.temporary.name)
 
