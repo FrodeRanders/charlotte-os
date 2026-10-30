@@ -68,6 +68,11 @@ A serialized kernel fixture exercises the production preparation, rejected and
 successful callbacks, unlocked construction and Pending retirement against an
 exact unstarted root. Native concurrent EL0 launch flooding and real profile-OOM
 injection remain separate qualification.
+The [mixed-ISA deployment control](../reports/audits/evidence/2026-10-30-controller-query-validation.json)
+also drives the real agent through scoped launch, pinned generations 1–3,
+kernel-returned principals, cooperative migration and zero-grace forced
+retirement on ARM/Intel. It qualifies serial launch and slot reuse, without
+exercising simultaneous launch pressure or full registry occupancy.
 The [qualification record](../reports/audits/evidence/2026-10-30-deployment-record-admission.json)
 retains the pre-boot signing interruption separately from the passing native
 security/management and isolated shutdown controls.

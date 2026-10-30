@@ -331,7 +331,11 @@ fn validate(opcode: u32, bytes: &[u8], key: &[u8; 32]) -> Result<(), i64> {
             charlotte_launch::ingress_policy::decode(bytes).is_some()
         }
         clusterctl::OP_STATUS | clusterctl::OP_ROLLOUT => {
-            charlotte_launch::deployment::valid_artifact_name(bytes)
+            // These operations carry an unsigned identity, not a descriptor.
+            // Keep name grammar rejection distinct from notification trust.
+            return charlotte_launch::deployment::valid_artifact_name(bytes)
+                .then_some(())
+                .ok_or(clusterctl::ERR_TOO_LARGE);
         }
         _ => false,
     };
@@ -856,6 +860,30 @@ mod tests {
         assert!(reply_bound(clusterctl::OP_ROLLOUT, clusterctl::ROLLOUT_STATUS_LEN, 4096));
         assert!(!reply_bound(clusterctl::OP_ROLLOUT, clusterctl::ROLLOUT_STATUS_LEN, 8192));
         assert!(!reply_bound(clusterctl::OP_STATUS, usize::MAX, 4096));
+    }
+
+    #[test]
+    fn query_name_grammar_rejects_without_a_descriptor_authentication_error() {
+        let key = [0; 32];
+        for opcode in [clusterctl::OP_STATUS, clusterctl::OP_ROLLOUT] {
+            for invalid in [b"bad x".as_slice(), b"", b"bad\xffname", b"bad\0name", &[b'a'; 49]] {
+                assert_eq!(validate(opcode, invalid, &key), Err(clusterctl::ERR_TOO_LARGE));
+            }
+            for valid in
+                [b"agent".as_slice(), b"valid/name", b"not-a-deployment-long-name", &[b'a'; 48]]
+            {
+                assert_eq!(validate(opcode, valid, &key), Ok(()));
+            }
+        }
+        for opcode in [
+            clusterctl::OP_NOTIFY,
+            clusterctl::OP_NOTIFY_RELEASE,
+            clusterctl::OP_NOTIFY_OPERATIONS,
+            clusterctl::OP_NOTIFY_SHUTDOWN,
+            clusterctl::OP_NOTIFY_INGRESS_POLICY,
+        ] {
+            assert_eq!(validate(opcode, b"bad x", &key), Err(clusterctl::ERR_UNTRUSTED_DESCRIPTOR));
+        }
     }
     fn descriptor(name: &[u8], sequence: u64) -> Vec<u8> {
         use charlotte_launch::{

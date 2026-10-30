@@ -855,6 +855,11 @@ wraps the DNS manifest operations and object store behind:
 \end{itemize}
 
 Controller interface version 3 requires full-name status queries. The
+status and rollout names use the signed descriptor's 1--48-byte printable
+ASCII grammar. Malformed names return $-3$ without attachments before DNS
+forwarding; a valid absent name returns $-1$. Notification validation retains
+its separate $-13$ result.
+The
 unsigned \texttt{deploy} command and packed DNS deploy/query operations are
 removed, as is descriptor-less launch syscall 64. The serial test console
 provides \texttt{upload} for short names and \texttt{status} for full names;

@@ -29,6 +29,7 @@ mod inner {
     const CTL_OP_UPLOAD: u32 = 1;
     const RETIRED_CTL_DEPLOY: u32 = 2;
     const CTL_OP_STATUS: u32 = 3;
+    const CTL_OP_ROLLOUT: u32 = 8;
     const CTL_OP_KEYCEREMONY: u32 = 4;
     const CTL_OP_KEY: u32 = 5;
     // "agent" packed LE. This artifact is independently signed as `agent`;
@@ -226,24 +227,26 @@ mod inner {
             );
         }
         let _ = ipc::close_cap(KERNEL_ASID, dns);
-        for name in [b"agent".as_slice(), b"not-a-deployment-long-name"] {
-            assert_eq!(
-                call_with_memory_reply(ctl_conn, CTL_OP_STATUS, name.len() as u64, name)
-                    .map(|(result, _)| result),
-                Some(-1),
-            );
-        }
-        for (len, bytes) in [(0, b"agent".as_slice()), (5, b"bad x"), (129, b"agent")] {
-            assert_eq!(
-                call_with_memory_reply(ctl_conn, CTL_OP_STATUS, len, bytes)
-                    .map(|(result, _)| result),
-                Some(-3),
-                "[clusterctl] malformed full-name query",
-            );
+        for opcode in [CTL_OP_STATUS, CTL_OP_ROLLOUT] {
+            for name in [b"agent".as_slice(), b"not-a-deployment-long-name"] {
+                assert_eq!(
+                    call_with_memory_reply(ctl_conn, opcode, name.len() as u64, name),
+                    Some((-1, None)),
+                );
+            }
+            for (len, bytes) in
+                [(0, b"agent".as_slice()), (5, b"bad x"), (5, b"bad\0x"), (129, b"agent")]
+            {
+                assert_eq!(
+                    call_with_memory_reply(ctl_conn, opcode, len, bytes),
+                    Some((-3, None)),
+                    "[clusterctl] malformed full-name query opcode={opcode} length={len}",
+                );
+            }
         }
         logln!(
-            "[clusterctl] retired opcodes reject; full-name status accepts long names and rejects \
-             malformed names"
+            "[clusterctl] retired opcodes reject; full-name status/rollout accept long names and \
+             reject malformed names"
         );
 
         // --- Key ceremony ---

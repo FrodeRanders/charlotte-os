@@ -1,0 +1,168 @@
+{
+  "date": "2026-10-30",
+  "base_revision": "029357412744a7d5422342ffed4d5de3674a8313",
+  "scope": "Restore query-name grammar rejection ERR_TOO_LARGE (-3) in the shared controller relay while notification validation retains ERR_UNTRUSTED_DESCRIPTOR (-13). Existing grammar, signature/permission gates, deadlines and owned cleanup remain unchanged.",
+  "source_sha256": {
+    "crates/catten-services/src/clusterctl_relay.rs": "a2300194ef12e64e1a5a5419efab7c798a9489055cf4ea8d8fa5242c0825c8bb",
+    "crates/catten/src/self_test/el0_clusterctl.rs": "09a97bc59f1208b8a569c1dc19c44ee090b06a3fb33cbfeb68833ef511236374"
+  },
+  "source_confirmed_cause": "The shared validate helper treated invalid unsigned query names as an untrusted descriptor. It rejected the request locally, but returned the wrong contract code. Both native fixtures stopped on the same exact assertion; no authority bypass was observed.",
+  "host_negative_control": {
+    "result": "New error-category regression failed against the original helper: 0 passed, 1 failed, 263 filtered out.",
+    "diagnostics": [
+      "query_name_grammar_rejects_without_a_descriptor_authentication_error ... FAILED",
+      "left: Err(-13)",
+      "right: Err(-3)"
+    ],
+    "limitation": "Original host test binary overwritten by corrected build; native negative controls retain exact kernel/service hashes."
+  },
+  "host_corrected": {
+    "service_library_tests": 264,
+    "passed": 264,
+    "failed": 0,
+    "regression": "Both query opcodes check empty, whitespace, NUL, non-ASCII and oversized names; valid full-length/printable names pass. Five notification kinds retain their separate rejection code.",
+    "static": [
+      "Strict Clippy for all service binaries on AArch64 and x86_64 passed",
+      "cargo fmt --all -- --check passed",
+      "git diff --check passed"
+    ]
+  },
+  "matrix": {
+    "cpus_per_guest": 4,
+    "fresh_storage": true,
+    "guest_timeout_seconds": 300,
+    "macs": [
+      "52:54:00:12:34:01",
+      "52:54:00:12:34:02"
+    ],
+    "fixture": "Both signed native bundles staged before generating the same six-record signed variant fixture. ARM listens before Intel connects; --deploy-test exercises the real deployment agent.",
+    "principal_reference": "0xa31bf89d72682689",
+    "principal_algorithm": "Low 63 bits of big-endian first eight SHA-256(name) bytes, with bit 63 set; independently checked using Python hashlib."
+  },
+  "bundle_digest_algorithm": "sha256 of UTF-8 JSON bundle_sha256 map, sorted keys and compact separators",
+  "native_runs": [
+    {
+      "target": "aarch64",
+      "instance": "deploy-abi-20261030-arm",
+      "cpus": 4,
+      "timeout_seconds": 300,
+      "kernel_sha256": "5e1266b693d7f9750c7f709f8b4e47d13146bfec33db4d80e11a63f1910981cc",
+      "controller_sha256": "692e7679a2d55474c9fae63d679895a04f9b950d0c4e0431ac1b66100bfe18dc",
+      "bundle_map_sha256": "d98bac6b534e20bbbe14182fa0004c35e0b18038c5a61b96787737c579f89594",
+      "runner_exit": 1,
+      "result": {
+        "reason": "kernel-panic",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 22.39187491600751
+      },
+      "diagnostics": [
+        "Kernel panic:",
+        "panicked at crates/catten/src/self_test/el0_clusterctl.rs:237:13:",
+        "assertion `left == right` failed: [clusterctl] malformed full-name query",
+        "  left: Some(-13)",
+        " right: Some(-3)"
+      ],
+      "scope": "Controller fixture failed before signed deployment launch; no launch/retirement qualification."
+    },
+    {
+      "target": "x86_64-intel",
+      "instance": "deploy-abi-20261030-intel",
+      "cpus": 4,
+      "timeout_seconds": 300,
+      "kernel_sha256": "8bcd3900147884a2169a624cacb45568b76a2cf9b9e4017a603d28cb25c796f4",
+      "controller_sha256": "2a272228ab183e3c3d3d96679fd8d81c458fb86c865c0f7bf05d8f2bbcb9861b",
+      "bundle_map_sha256": "7c28711002a2c1d69ed8d2e11937674eb4dfbae6a537b2bd905316ddcf0487a2",
+      "runner_exit": 1,
+      "result": {
+        "reason": "kernel-panic",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 19.199381125014042
+      },
+      "diagnostics": [
+        "Kernel panic:",
+        "panicked at crates/catten/src/self_test/el0_clusterctl.rs:237:13:",
+        "assertion `left == right` failed: [clusterctl] malformed full-name query",
+        "  left: Some(-13)",
+        " right: Some(-3)"
+      ],
+      "scope": "Controller fixture failed before signed deployment launch; no launch/retirement qualification."
+    },
+    {
+      "target": "aarch64",
+      "instance": "deploy-abi-20261030-arm-repeat",
+      "cpus": 4,
+      "timeout_seconds": 300,
+      "kernel_sha256": "2af0ff6018941d8e5285481d86ea72142cdd912a4573302ae990f2f080edd3e7",
+      "controller_sha256": "bd1a301b489bef32c6d85945b74f6d36559ab8818d370d00e4339f10f0750549",
+      "bundle_map_sha256": "500e9484fe517a8b7c0aaa211370022bc781d1314d56a51181bde356e1f5e87e",
+      "runner_exit": 0,
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "diagnostics": [
+        "[+   111.200372] SELFTEST COMPLETE: passed=22 failed=0 pending=0 passed_bitmap=0xcfffff failed_bitmap=0x0 pending_bitmap=0x0",
+        "[+    14.251618] [clusterctl] retired opcodes reject; full-name status/rollout accept long names and reject malformed names",
+        "[+    17.703926] [clusterctl] SUCCESS: clusterctl verified upload, rejected retired opcodes and malformed queries, and completed key ceremony; serial console listening.",
+        "[+    99.543186] [EL0 LOG] lp=0 asid=130 [agent] selected variant=0 architecture=Aarch64 abi=3 required_features=0x0",
+        "[+    99.571758] [EL0 LOG] lp=0 asid=130 [agent] verified selected variant in local artifact cache",
+        "[+    99.592416] [EL0 LOG] lp=0 asid=130 [agent] launched \"greet\" generation=1 asid=156 principal=0xa31bf89d72682689",
+        "[+   101.427492] [deploy] controller full-name status generation=1 node=0x42e278ea variant=0",
+        "[+   106.002998] [deploy] controller full-name status generation=2 node=0x42e27737 variant=1",
+        "[+   108.557388] [EL0 LOG] lp=0 asid=130 [agent] selected variant=0 architecture=Aarch64 abi=3 required_features=0x0",
+        "[+   108.593084] [EL0 LOG] lp=0 asid=130 [agent] verified selected variant in local artifact cache",
+        "[+   108.610010] [EL0 LOG] lp=0 asid=130 [agent] launched \"greet\" generation=3 asid=156 principal=0xa31bf89d72682689",
+        "[+   110.689702] [deploy] controller full-name status generation=3 node=0x42e278ea variant=0",
+        "[+   111.198994] [deploy] SUCCESS: signed architecture variants reached readiness across three pinned generations, with cooperative and zero-grace forced retirement; legacy forwarding remained denied."
+      ],
+      "signed_descriptor_fixture_sha256": "7685463ab6f7346ba2bc6a2fd34e45a677bb31185e3e9e6484dd9690664aff54"
+    },
+    {
+      "target": "x86_64-intel",
+      "instance": "deploy-abi-20261030-intel-repeat",
+      "cpus": 4,
+      "timeout_seconds": 300,
+      "kernel_sha256": "6e665a18788e73cd056ae7637ed66b45dbf7a9be07896b64a8430339f33169a1",
+      "controller_sha256": "6efe652154f52d1dcf5e5da4e6475fdf1124cf77113ec696f50550348630390a",
+      "bundle_map_sha256": "a5d9456d6f1b9c3809bf1c9a3305acd28fa784ec4b35426eeef2487812829bff",
+      "runner_exit": 0,
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "diagnostics": [
+        "[+    46.095840] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0xcfbbff failed_bitmap=0x0 pending_bitmap=0x0",
+        "[+    19.388411] [clusterctl] retired opcodes reject; full-name status/rollout accept long names and reject malformed names",
+        "[+    22.889393] [clusterctl] SUCCESS: clusterctl verified upload, rejected retired opcodes and malformed queries, and completed key ceremony; serial console listening.",
+        "[+    36.386425] [deploy] controller full-name status generation=1 node=0x42e278ea variant=0",
+        "[+    39.239805] [EL0 LOG] lp=0 asid=138 [agent] selected variant=1 architecture=X86_64 abi=3 required_features=0x0",
+        "[+    39.265514] [EL0 LOG] lp=0 asid=138 [agent] verified selected variant in local artifact cache",
+        "[+    39.279543] [EL0 LOG] lp=0 asid=138 [agent] launched \"greet\" generation=2 asid=154 principal=0xa31bf89d72682689",
+        "[+    40.769584] [deploy] controller full-name status generation=2 node=0x42e27737 variant=1",
+        "[+    45.574000] [deploy] controller full-name status generation=3 node=0x42e278ea variant=0",
+        "[+    46.093632] [deploy] SUCCESS: signed architecture variants reached readiness across three pinned generations, with cooperative and zero-grace forced retirement; legacy forwarding remained denied."
+      ],
+      "signed_descriptor_fixture_sha256": "7685463ab6f7346ba2bc6a2fd34e45a677bb31185e3e9e6484dd9690664aff54"
+    }
+  ],
+  "limits": [
+    "Failed native controls preserve the protocol assertion only; they never reached application launch.",
+    "The corrected pair qualifies exercised serial launch/migration and retirement paths, not concurrent real-EL0 launch flooding, full registry occupancy or profile allocation/OOM rejection.",
+    "Cooperative and zero-grace forced retirement retain their original root/charge/quiescence contracts. No physical recovery authority or general fairness proof is added.",
+    "Finding dispositions and historical unresolved failure attributions remain unchanged."
+  ]
+}

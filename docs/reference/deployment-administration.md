@@ -19,6 +19,17 @@ scalar status requests reject. Status returns the complete current
 and aligned replica node/variant pins. Rollout returns the canonical 40-byte
 `RolloutStatus`; exact-generation readiness remains distinct from admission.
 
+Status and rollout names use the descriptor's 1–48-byte printable ASCII grammar
+(`0x21..=0x7e`). Empty, oversized or malformed names return
+`ERR_TOO_LARGE` (`-3`) with no attachments before forwarding to DNS. A valid
+absent name returns `ERR_NOT_FOUND` (`-1`). Query identity grammar is separate
+from notification validation: malformed or untrusted notification envelopes
+retain `ERR_UNTRUSTED_DESCRIPTOR` (`-13`). Relay capacity (`-20`) and
+RPC deadlines (`-22`) remain distinct outcomes. No rejection permits replay of
+an accepted mutation.
+The [query-validation controls](../reports/audits/evidence/2026-10-30-controller-query-validation.json)
+retain the failing native error-code assertions and corrected mixed-ISA run.
+
 The controller forwards through the sole named DNS query operations (16/18).
 It adopts each complete incoming transaction once and retains source mapping,
 reply authority and accepted DNS call in `clusterctl_relay::Relays`. Eight fixed

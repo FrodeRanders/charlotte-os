@@ -196,6 +196,9 @@ Use one complete bounded internal grammar. Validate counts, lengths, full
 identities, attachments and tags before mutation. A clamped prefix or missing
 field default can change identity or authority while appearing successful.
 Update parser, encoder, SDK, fixtures and living documentation together.
+Preserve each operation's rejection categories when sharing validation: identity
+grammar, signature rejection, capacity and timeout carry different meanings for
+callers.
 
 Distinguish an absent store from unreadable, corrupt, unsupported or incomplete
 metadata. For example, only two successfully read zero-filled object-store

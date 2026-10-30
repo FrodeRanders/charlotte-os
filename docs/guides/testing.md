@@ -535,12 +535,20 @@ invocation authority through a legacy lookup. The security profile also checks
 exact live query generations, no returned capabilities, continued legacy denial
 and rejection after endpoint retirement.
 
-The two-guest `--deploy-test` exercises the runtime retirement paths. It moves
-one exact signed artifact between nodes, so both guests must use the same
-architecture and service bundle. Use the expected MAC suffixes `01` and `02`;
-the clusterctl verifier targets the second identity explicitly. Mixed ARM/x86
-guests can validate `--dns-test`, but their distinct ELF bytes cannot satisfy
-this deployment fixture's shared artifact digest.
+The two-guest `--deploy-test` exercises signed scoped launch and runtime
+retirement. Build and stage both native service bundles before preparing an
+ARM/x86 pair. When both are present, the fixture helper signs one descriptor
+with ARM variant 0 and x86 variant 1; each replica's committed pin selects its
+exact architecture, runtime ABI and ELF digest. Each agent verifies its selected
+local cache image before the kernel rechecks launch. The guests share the full
+signed descriptor, rather than one architecture's ELF bytes. A same-architecture
+pair can use a single native variant.
+
+Use MACs `52:54:00:12:34:01` and `52:54:00:12:34:02`; the clusterctl verifier
+targets the second identity explicitly. Start the listening guest before the
+connecting guest. Use fresh stores, four LPs and `--timeout 300` per guest. This fixture
+qualifies serial launch/migration and retirement; simultaneous EL0 launch
+pressure and full registry occupancy remain separate controls.
 
 The deployment test moves the lifecycle-aware `greet` domain between nodes and requires an acknowledged
 cooperative exit, then returns the assignment with a test-injected zero grace
