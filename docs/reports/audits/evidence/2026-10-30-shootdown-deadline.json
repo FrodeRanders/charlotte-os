@@ -1,0 +1,116 @@
+{
+  "date": "2026-10-30",
+  "base_revision": "94326e3c618e12ad850ea05a697ab04f95f85072",
+  "scope": "Correct x86 acknowledgement/deadline observation on the same owned shootdown epoch. Preserve the 500 ms admission and 100 ms acknowledgement budgets, IRQ policy, send count and typed cleanup ownership. No finding disposition changes.",
+  "source_sha256": {
+    "crates/charlotte-lifecycle/src/shootdown.rs": "fa30c25adfd41531dd3b90b7ecc107a6aea4dceb4abc778928f6615ec782ac1f",
+    "crates/catten/src/cpu/isa/x86_64/interrupts/fixed/ipis/mod.rs": "36426f7ddaef8d0e05a7ab7d1273af1625ee25db2411c13caf610461dbad7f0b",
+    "crates/catten/src/memory/object/mapping/tests.rs": "baf596b608addfddc04dc6ce0473e73c7b8baae858150bd164480b905858c5d1"
+  },
+  "bundle_digest_algorithm": "sha256 of UTF-8 JSON bundle_sha256 map, sorted keys and compact separators",
+  "negative_control": {
+    "kind": "Host regression against the former kernel completion/deadline/diagnostic order, extracted into Attempt::observe before correction",
+    "original_kernel_source_sha256": "ca11bb845741325de6018bc24dac8be33ab2ca8d6d685436f03298357acca5c5",
+    "binary_sha256": "67c6d64c1acc8195dfcfeba7cdcae919bd62d3582ab5f4601e5ee2df39dc1c6c",
+    "exit_code": 101,
+    "passed": 8,
+    "failed": 1,
+    "diagnostic": [
+      "final_ack_between_initial_check_and_deadline_observation_completes",
+      "left: TimedOut { first_missing: None }",
+      "right: Complete"
+    ]
+  },
+  "host_validation": {
+    "lifecycle_library": "37 passed, 0 failed",
+    "optimized_shootdown_module": "9 passed, 0 failed",
+    "kernel_clippy": "x86_64 and AArch64: --no-default-features --features acpi -- -D warnings passed",
+    "workspace_fmt": "passed"
+  },
+  "stress_failure_before_correction": {
+    "instance": "retirement-pin-stress-20261030-f",
+    "cpus": 8,
+    "kernel_sha256": "fb4e9cebc868550d332dfce4bcfb98bcebbd55b909fccd1b0440d3186ca2f577",
+    "bundle_sha256": "c07303c6715255a72852190ea3bd61aed526e3356c47252508e9e0f910a337f6",
+    "result": {
+      "reason": "kernel-panic",
+      "errors": [],
+      "qmp": "captured",
+      "lldb": {
+        "exit_code": 0,
+        "reported_errors": false
+      },
+      "cpu_count": 8,
+      "snapshot": "captured",
+      "elapsed_seconds": 85.81429416700848
+    },
+    "verdict": "[+    83.748348] SELFTEST COMPLETE: passed=17 failed=1 pending=0 passed_bitmap=0x23bbff failed_bitmap=0x20000000 pending_bitmap=0x0",
+    "host_check_groups_passed": 7,
+    "transport_retry_diagnostics": [
+      "HTTP transport ConnectionResetError; retry 1/2",
+      "HTTP transport ConnectionResetError; retry 1/2",
+      "HTTP transport ConnectionResetError; retry 1/2",
+      "HTTP transport ConnectionResetError; retry 2/2"
+    ],
+    "retention_observations": "12 expected early injected controls; no later retained mapping diagnostic",
+    "runner_exit": 1,
+    "failure": "self-test deadline expired while waiting for adversarial application grant checks",
+    "unchanged_fixture_budget_ms": 45000,
+    "progress_before_failure": [
+      "[+    55.900266] [EL0 LOG] lp=0 asid=154 [security] hardware entropy: 512 service-only 32-byte requests passed; no entropy bytes logged",
+      "[+    67.220071] [EL0 LOG] lp=0 asid=154 [security] entropy read: caller buffer, malformed count/missing memory/extra connection/size, device rejection, cancel/Drop and late-result cleanup; original deadline, queue-full/silent timeout distinct and all eight slots recovered",
+      "[+    83.096059] [EL0 LOG] lp=0 asid=154 [security] immediate socket send: full ID, UDP enqueue, retired/missing/reserved/tail/length/extended rejection and high-half isolation"
+    ],
+    "host_failure": "TimeoutError: _ssl.c:999: The handshake operation timed out"
+  },
+  "fixed_four_cpu_runs": [
+    {
+      "instance": "shootdown-deadline-20261030-g",
+      "cpus": 4,
+      "kernel_sha256": "dfe39b0654617cd07ef4b8fc7c2d92c8717f23f1a926a0f5e6097bc67d1dcbb6",
+      "bundle_sha256": "c07303c6715255a72852190ea3bd61aed526e3356c47252508e9e0f910a337f6",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "verdict": "[+    88.477827] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x2023bbff failed_bitmap=0x0 pending_bitmap=0x0",
+      "host_check_groups_passed": 20,
+      "transport_retry_diagnostics": [
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 2/2"
+      ],
+      "retention_observations": "12 expected early injected controls; no later retained mapping diagnostic",
+      "runner_exit": 0,
+      "withheld_target_control": "[+    13.520277] [root recovery] cross-LP delivery rejection and missing acknowledgement retained root/charge; fresh rendezvous completed physical teardown"
+    },
+    {
+      "instance": "shootdown-deadline-20261030-h",
+      "cpus": 4,
+      "kernel_sha256": "cd474ea1f64e9890dbb09bf42efd4eb6c2776000413f31d5ac93c7544d594d1f",
+      "bundle_sha256": "c07303c6715255a72852190ea3bd61aed526e3356c47252508e9e0f910a337f6",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "verdict": "[+    88.378093] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x2023bbff failed_bitmap=0x0 pending_bitmap=0x0",
+      "host_check_groups_passed": 20,
+      "transport_retry_diagnostics": [
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2"
+      ],
+      "retention_observations": "12 expected early injected controls; no later retained mapping diagnostic",
+      "runner_exit": 0,
+      "withheld_target_control": "[+    13.529436] [root recovery] cross-LP delivery rejection and missing acknowledgement retained root/charge; fresh rendezvous completed physical teardown"
+    }
+  ],
+  "limits": [
+    "The host regression reproduces a source-confirmed false-timeout interleaving, not the historical root 157:8/object 35194 failure. Its cause remains unresolved.",
+    "The eight-CPU AMD failure remains a separate progress/latency qualification gap. Four-CPU passes do not establish its cause or close it.",
+    "The native withheld-IPI control exercises genuine missing acknowledgement retention and fresh-epoch root recovery. Host deadline tests model the final acknowledgement interleaving; they are not a new physical-hardware timing capture.",
+    "No timeout, wake or diagnostic missing-target scalar grants cleanup authority; only the retained attempt observing its full epoch acknowledgements does.",
+    "Three Rust sources stayed byte-identical across final Intel and AMD-Vi runs; documentation was updated during qualification.",
+    "No new physical hardware, ARM guest, aggregate-pressure or general fairness qualification."
+  ]
+}

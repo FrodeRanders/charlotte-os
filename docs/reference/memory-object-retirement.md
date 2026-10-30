@@ -203,8 +203,10 @@ created.
 
 Kernel map/map-any/unmap errors now preserve `InvalidationFailed(cause)` per
 call. x86 distinguishes busy admission, masked context, epoch exhaustion,
-delivery rejection and timeout; timeout includes the owned epoch and a sampled
-first missing target. A later sample can be empty after a racing acknowledgement.
+delivery rejection and timeout; timeout includes the owned epoch and the missing
+CPU captured by its [final deadline check](hardware-quiescence.md#cpu-completion).
+An acknowledgement completing during the clock observation completes that same
+attempt, without replay or an artificial retained pin.
 AArch64 preserves missing-root rejection. These observations authorize no
 backing release or replay. Invalidation failure takes precedence if installation
 or detachment also rejected; it does not imply those earlier steps succeeded.

@@ -72,6 +72,16 @@ pub struct Attempt<'a> {
     coordinator: &'a Shootdown,
     epoch: u64,
 }
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Observation {
+    Complete,
+    Pending,
+    TimedOut {
+        first_missing: usize,
+    },
+}
+
 impl Attempt<'_> {
     pub fn epoch(&self) -> u64 {
         self.epoch
@@ -81,9 +91,33 @@ impl Attempt<'_> {
         self.first_incomplete(targets).is_none()
     }
 
-    /// Diagnostic sample for this owned epoch. A timeout's later sample may
-    /// find no missing target if an acknowledgement arrived between reads.
-    /// This observation supplies no backing-release or retry authority.
+    /// Observe this owned epoch before sampling its original deadline, and
+    /// recheck acknowledgements if the deadline expires between observations.
+    /// This never retries a request or changes its epoch/deadline. The caller
+    /// retains the attempt across Pending and TimedOut outcomes.
+    pub fn observe(
+        &self,
+        targets: &[Acknowledgement],
+        expired: impl FnOnce() -> bool,
+    ) -> Observation {
+        if self.completed(targets) {
+            Observation::Complete
+        } else if expired() {
+            match self.first_incomplete(targets) {
+                Some(target) => Observation::TimedOut {
+                    first_missing: target,
+                },
+                None => Observation::Complete,
+            }
+        } else {
+            Observation::Pending
+        }
+    }
+
+    /// Sample this owned epoch. A standalone diagnostic sample can race with
+    /// acknowledgement delivery and supplies no cleanup/retry authority.
+    /// `observe` uses the same acquire pass to decide completion or identify
+    /// an actually missing target after observing the deadline.
     pub fn first_incomplete(&self, targets: &[Acknowledgement]) -> Option<usize> {
         targets.iter().position(|ack| ack.0.load(Ordering::Acquire) < self.epoch)
     }
@@ -181,5 +215,65 @@ mod diagnostic_tests {
         }
         assert_eq!(next.first_incomplete(&acks), None);
         assert!(next.completed(&acks));
+    }
+}
+
+#[cfg(test)]
+mod deadline_tests {
+    use super::*;
+
+    #[test]
+    fn final_ack_between_initial_check_and_deadline_observation_completes() {
+        let coordinator = Shootdown::new();
+        let attempt = coordinator.try_begin().unwrap();
+        let acks = [Acknowledgement::new(), Acknowledgement::new()];
+        acks[0].complete(attempt.epoch());
+        let observed = attempt.observe(&acks, || {
+            // Model a real handler finishing after the first completion check
+            // but before the clock observation decides to time out.
+            acks[1].complete(attempt.epoch());
+            true
+        });
+        assert_eq!(observed, Observation::Complete);
+        assert!(matches!(coordinator.try_begin(), Err(BeginError::Busy)));
+    }
+
+    #[test]
+    fn stale_ack_at_deadline_cannot_complete_the_current_epoch() {
+        let coordinator = Shootdown::new();
+        let old = coordinator.try_begin().unwrap();
+        let epoch = old.epoch();
+        drop(old);
+        let current = coordinator.try_begin().unwrap();
+        let acks = [Acknowledgement::new(), Acknowledgement::new()];
+        acks[0].complete(current.epoch());
+        let observed = current.observe(&acks, || {
+            acks[1].complete(epoch);
+            true
+        });
+        assert_eq!(
+            observed,
+            Observation::TimedOut {
+                first_missing: 1
+            }
+        );
+        assert!(!current.completed(&acks));
+        assert!(matches!(coordinator.try_begin(), Err(BeginError::Busy)));
+        acks[1].complete(current.epoch());
+        assert_eq!(
+            current.observe(&acks, || panic!("completed epoch sampled its deadline")),
+            Observation::Complete
+        );
+    }
+
+    #[test]
+    fn pending_observation_keeps_the_same_attempt_without_acknowledging_a_target() {
+        let coordinator = Shootdown::new();
+        let current = coordinator.try_begin().unwrap();
+        let acks = [Acknowledgement::new(), Acknowledgement::new()];
+        acks[0].complete(current.epoch());
+        assert_eq!(current.observe(&acks, || false), Observation::Pending);
+        assert_eq!(current.first_incomplete(&acks), Some(1));
+        assert!(matches!(coordinator.try_begin(), Err(BeginError::Busy)));
     }
 }

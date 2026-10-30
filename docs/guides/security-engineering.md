@@ -77,6 +77,11 @@ Carry one monotonic deadline from preparation through observation. After prepari
 watchdog/subscription storage, recompute the remaining budget. Unrelated wakes,
 new reactor phases and routing results must not restart it.
 
+At expiry, recheck the actual producer state through the retained owner before
+classifying a timeout. Completion can arrive while the clock is being read.
+Keep that final observation and its failure diagnostic together; a separate
+later sample can describe a different state.
+
 | Observation | Required treatment |
 | --- | --- |
 | Submission rejected before acceptance | Follow the typed unstarted-rejection contract; retain or explicitly cancel the original preparation. |

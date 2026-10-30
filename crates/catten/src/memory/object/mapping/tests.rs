@@ -135,7 +135,7 @@ fn causes() -> &'static [InvalidationError] {
             InvalidationError::Delivery(2),
             InvalidationError::TimedOut {
                 epoch: 91,
-                first_missing: Some(2),
+                first_missing: 2,
             },
         ]
     }

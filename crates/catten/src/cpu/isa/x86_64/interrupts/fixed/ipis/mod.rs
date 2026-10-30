@@ -17,6 +17,7 @@ use alloc::vec::Vec;
 use charlotte_lifecycle::shootdown::{
     Acknowledgement,
     BeginError,
+    Observation,
     Shootdown,
 };
 
@@ -34,7 +35,7 @@ pub enum ShootdownError {
     Delivery(u32),
     TimedOut {
         epoch: u64,
-        first_missing: Option<usize>,
+        first_missing: usize,
     },
 }
 
@@ -150,16 +151,20 @@ fn rendezvous(mut send: impl FnMut(u32) -> bool) -> Result<(), ShootdownError> {
     if let Err(lp) = send_to_remote_lps(acks.len() as u32, self_id, &mut send) {
         return Err(ShootdownError::Delivery(lp));
     }
-    while !attempt.completed(acks) {
-        if crate::cpu::scheduler::monotonic_millis() >= deadline {
-            return Err(ShootdownError::TimedOut {
-                epoch: attempt.epoch(),
-                first_missing: attempt.first_incomplete(acks),
-            });
+    loop {
+        match attempt.observe(acks, || crate::cpu::scheduler::monotonic_millis() >= deadline) {
+            Observation::Complete => return Ok(()),
+            Observation::Pending => core::hint::spin_loop(),
+            Observation::TimedOut {
+                first_missing,
+            } => {
+                return Err(ShootdownError::TimedOut {
+                    epoch: attempt.epoch(),
+                    first_missing,
+                });
+            }
         }
-        core::hint::spin_loop();
     }
-    Ok(())
 }
 
 /// Mandatory legacy callers cannot release backing on rejection. Owned cleanup
@@ -221,12 +226,20 @@ pub(crate) fn test_failed_delivery() {
 /// physical acknowledgement; the caller keeps its retired root on rejection.
 pub(crate) fn test_incomplete_rendezvous(timeout: bool) -> Result<(), ShootdownError> {
     assert!(SYNC_SHOOTDOWN_READY.load(Ordering::Acquire));
-    let mut omitted = false;
-    rendezvous(|lp| {
-        if !omitted {
-            omitted = true;
+    let mut omitted = None;
+    let result = rendezvous(|lp| {
+        if omitted.is_none() {
+            omitted = Some(lp as usize);
             return timeout;
         }
         send_hardware(lp)
-    })
+    });
+    if let Err(ShootdownError::TimedOut {
+        first_missing,
+        ..
+    }) = result
+    {
+        assert_eq!(Some(first_missing), omitted, "timeout lost its withheld physical target");
+    }
+    result
 }

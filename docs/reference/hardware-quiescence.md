@@ -14,6 +14,25 @@ late or duplicate completion cannot satisfy a newer request. Coordinator
 admission yields without an owner and has a 500 ms budget; after admission,
 acknowledgement has a separate 100 ms budget. No failed send is counted.
 
+The owned attempt checks acknowledgements before reading that fixed deadline.
+If the deadline is reached, it performs one final acquire pass for the same
+epoch. A final acknowledgement arriving during the clock observation completes
+the existing request; a timeout records the CPU still missing in that final
+pass. The timeout type requires a concrete target. This neither resends IPIs nor
+changes the deadline, epoch, IRQ context or physical-release policy. Stale and
+duplicate acknowledgements still cannot complete a newer request.
+
+The policy lives in
+[`shootdown::Attempt::observe`](../../crates/charlotte-lifecycle/src/shootdown.rs)
+and is used by the x86 rendezvous. Its host controls put the last acknowledgement
+inside the deadline observation, preserve a missing target with a stale epoch,
+and keep coordinator ownership through Pending/timeout. The native withheld-IPI
+control separately checks that a real timeout identifies its withheld target.
+The [focused control record](../reports/audits/evidence/2026-10-30-shootdown-deadline.json)
+keeps the failing old-order regression and eight-CPU stress sample separate from
+the corrected host and four-CPU Intel/AMD-Vi results. These results do not
+attribute the historical retirement-pin failure.
+
 Post-bootstrap initiators must have IRQs enabled and hold no masking guard.
 Only local identity capture/flush is briefly masked. An unsupported masked
 context returns `InterruptsMasked`; legacy mandatory wrappers panic. Owned
