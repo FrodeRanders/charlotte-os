@@ -1,0 +1,41 @@
+name: Dependency advisory watch
+
+permissions:
+  contents: read
+
+on:
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_BUILD_RUSTFLAGS: "-D warnings"
+
+jobs:
+  dependency-advisories:
+    name: Dependency advisories (fail closed)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Rust nightly
+        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
+        with:
+          toolchain: nightly-2026-07-27
+
+      - name: Install pinned advisory scanner
+        working-directory: ${{ runner.temp }}
+        run: |
+          cargo install --locked --version "$(cat "$GITHUB_WORKSPACE/.cargo/audit-version")" cargo-audit
+
+      - name: Record advisory inputs
+        run: |
+          cargo audit --version
+          sha256sum Cargo.lock .cargo/audit.toml .cargo/audit-version scripts/check-dependency-advisories.py
+
+      - name: Check complete lockfile, including warnings and yanked packages
+        run: python3 scripts/check-dependency-advisories.py

@@ -99,13 +99,15 @@ else:
         self.assertEqual(policy["database"], {"url": "https://github.com/RustSec/advisory-db.git", "fetch": True, "stale": False})
         self.assertEqual(policy["yanked"], {"enabled": True, "update_index": True})
 
-    def test_ci_installs_the_shared_tool_pin_with_locked_dependencies(self):
-        workflow = (ROOT / ".github/workflows/ci.yml").read_text()
-        job = workflow.split("  dependency-advisories:\n", 1)[1].split("  formatting:\n", 1)[0]
-        self.assertIn('cargo install --locked --version "$(cat "$GITHUB_WORKSPACE/.cargo/audit-version")" cargo-audit', job)
-        self.assertIn("working-directory: ${{ runner.temp }}", job)
-        self.assertIn("run: python3 scripts/check-dependency-advisories.py", job)
-        self.assertNotIn("continue-on-error", job)
+    def test_workflows_install_the_shared_tool_pin_and_enforce_the_gate(self):
+        for name in ("ci.yml", "dependency-advisories.yml"):
+            with self.subTest(workflow=name):
+                workflow = (ROOT / ".github/workflows" / name).read_text()
+                job = workflow.split("  dependency-advisories:\n", 1)[1].split("  formatting:\n", 1)[0]
+                self.assertIn('cargo install --locked --version "$(cat "$GITHUB_WORKSPACE/.cargo/audit-version")" cargo-audit', job)
+                self.assertIn("working-directory: ${{ runner.temp }}", job)
+                self.assertIn("run: python3 scripts/check-dependency-advisories.py", job)
+                self.assertNotIn("continue-on-error", job)
 
 
 @unittest.skipUnless(os.environ.get("CATTEN_ADVISORY_TEST_DB"), "real scanner/database controls are opt-in")

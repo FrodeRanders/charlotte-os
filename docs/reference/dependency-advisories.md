@@ -28,38 +28,47 @@ advisory is published. Preserve the exact lockfile hash, scanner version and
 report's database commit with an audit result. There is no stale/offline success
 mode in the production gate.
 
-## Current findings: 27 October 2026
+## Latest recorded scan: 30 October 2026
 
-The [27 October native management TLS migration](../reports/audits/2026-10-27-security-management-tls-native.md)
-retains the complete **205-package** graph, passing at RustSec commit
-`99670cfc0bc574433034b75876a4b791ccaa2efb` (1380 advisories), with zero
-vulnerabilities/warnings and unchanged policy. Rustls remains `0.23.46`;
-ring/getrandom are host-client/test dependencies, absent from the normal native
-server graph. Crypto-bigint remains `0.7.10` and ctutils `0.4.6`. This supersedes
-the database identity in the historical component report without claiming a
-future scan result or changing unrelated finding dispositions.
+The complete root graph passes the production gate with fresh database and
+registry access. Scanner, policy and lockfile are unchanged by the scheduled
+workflow addition.
 
-The [earlier follow-up](../reports/audits/2026-10-26-security-dependency-gate.md)
-introduced the gate and patched ctutils 0.4.2 to 0.4.4. Its remaining
-[RUSTSEC-2026-0387](https://rustsec.org/advisories/RUSTSEC-2026-0387.html)
-finding required replacing the TLS curve API family, rather than changing a
-single transitive lockfile version.
+| Input or result | Recorded value |
+| --- | --- |
+| cargo-audit | `0.22.2` |
+| Cargo.lock SHA-256 | `1c320daef7b13df180c65c7c318a76746cec9f6226890c194a883e4ac4e2f1aa` |
+| Dependencies | 205 |
+| RustSec commit | `2295466c4e9df26647fd67d8fa1c705ac2fc7f81` |
+| Database update | `2026-10-30T12:12:39+01:00` |
+| Advisories | 1395 |
+| Vulnerabilities / warnings | 0 / 0 |
+| Gate exit status | 0 |
 
-The [Embassy migration](../reports/audits/2026-10-26-security-embassy-tls.md)
-now installs the pinned main-branch TLS/backend, domain-owned entropy driver,
-typed P-256 mTLS parser and erasing GCM context in the **active workspace**.
-The root lockfile contains one crypto-bigint, **0.7.10**, and ctutils **0.4.6**.
-No advisory ignore, local arithmetic backport or target exception is installed.
-The [TLS reference](tls-client.md) records exact source pins and ownership rules.
+This is a point-in-time result, not a future scan result or a constant-time
+code-generation guarantee. The [original gate](../reports/audits/2026-10-26-security-dependency-gate.md)
+and [native TLS migration](../reports/audits/2026-10-27-security-management-tls-native.md)
+retain earlier findings, corrections and database identities. The
+[TLS reference](tls-client.md) records current source pins and ownership rules.
 
-**The migrated complete root graph passes the advisory gate.** Its fresh
-182-package scan at RustSec commit `a78282a1414d6c28cc228c4eae3570451affb0dc`
-(1378 advisories) has zero vulnerabilities and warnings. This is a point-in-time
-result, not a guarantee about future database contents or constant-time code
-generation. SEC-14 remains partial and production trust stays disabled.
+## Periodic operation and remaining boundaries
 
-CI executes the gate on its existing push/PR triggers. The job must be deployed
-and made required through repository branch-protection settings to enforce merge
-policy; this source change does not configure those external settings. Periodic
-scans, license enforcement, protected release provenance and third-party source/
-compiler/platform qualification remain separate SEC-14 work.
+[Dependency advisory watch](../../.github/workflows/dependency-advisories.yml)
+requests a scan every Monday at 05:23 UTC and supports manual dispatch. It runs
+only the advisory job, using the same tool pin, locked installation outside the
+workspace and unfiltered gate as the push/PR job. Both jobs have a 20-minute
+limit and record scanner version plus hashes of the lockfile, policy, version
+pin and gate before scanning. The gate prints the complete JSON report, including
+database identity, into the job log. Findings or scanner/network failures fail
+the job; neither workflow suppresses them or restores a cached clean result.
+
+Scheduled execution requires this workflow on the default branch with Actions
+enabled. GitHub may delay or drop scheduled runs; its schedule is not a freshness
+guarantee. See [GitHub's schedule contract](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
+Local validation covers YAML and the gate's regression controls, not a hosted
+workflow run or repository settings. No hosted activation is claimed here.
+
+The existing push/PR check still needs deployment and required-check enforcement
+through repository settings. License enforcement, protected release provenance
+and third-party source/compiler/platform qualification remain separate SEC-14
+work. SEC-14 remains partial and production trust stays disabled.
