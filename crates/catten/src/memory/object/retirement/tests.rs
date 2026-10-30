@@ -1,7 +1,7 @@
 //! Single-mutator boot fixtures at the raw kernel ownership boundary. Fault
 //! adapters exercise the same detach/finish helpers as runtime teardown.
-//! Quarantine probes intentionally reserve twelve data pages for the guest's
-//! lifetime; there is no test-only re-adoption/release escape hatch.
+//! Quarantine probes intentionally retain data pages and original charges for
+//! the guest's lifetime; there is no test-only re-adoption/release escape hatch.
 
 use super::{
     mapping::{

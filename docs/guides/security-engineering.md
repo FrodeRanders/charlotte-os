@@ -132,6 +132,11 @@ Changing an inner owner's destructor to retain backing does not qualify an activ
 containing destructor. That parent can still enter physical release or destroy
 metadata. Test the relevant parent path with the actual enclosing guards held.
 
+Capture failure diagnostics alongside the original operation before entering
+the failing phase. A reporting helper that looks up the registry again can
+deadlock beneath a caller's retained guard. Copied identity/phase fields can
+explain a failure without granting cleanup or retry authority.
+
 Read [locking](../reference/locking.md),
 [cleanup gates G1/G4](../reference/cleanup-recovery.md#named-gaps-and-acceptance-gates)
 and [publication boundaries](../reference/cleanup-recovery-details.md#c18-publication-rollback-and-detached-memory).

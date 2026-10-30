@@ -21,6 +21,9 @@ pub(super) struct RetiredObjectMappings {
 pub(super) struct MappingRetirementPin {
     object: MemoryObjectId,
     retired_mapping: Option<mapping::storage::RetiredMapping>,
+    // Copied under the existing publication/claim hold. Reporting must not
+    // reenter the registry from a guarded rollback or retaining error path.
+    diagnostic_mapping: Option<MemoryMappingState>,
 }
 
 impl Drop for MappingRetirementPin {
@@ -48,6 +51,49 @@ impl MappingRetirementPin {
         self.retired_mapping.as_ref()
     }
 
+    pub(super) fn with_mapping(mut self, mapping: MemoryMappingState) -> Self {
+        self.diagnostic_mapping = Some(mapping);
+        self
+    }
+
+    pub(super) fn record_mapping_prefix(&mut self, installed_pages: usize) {
+        self.diagnostic_mapping
+            .as_mut()
+            .expect("mapping pin lost its diagnostics")
+            .installed_pages = installed_pages;
+    }
+
+    /// Explicit observation, never a Drop action. The original pin captures
+    /// metadata at publication/claim; a detached rollback record supplies its
+    /// later prefix. No registry, allocator or root lookup occurs. The copied
+    /// state supplies no cleanup/retry authority.
+    pub(super) fn report_failure(
+        &self,
+        asid: AddressSpaceId,
+        pages: usize,
+        phase: &'static str,
+        error: MemoryObjectError,
+        prior: Result<(), MemoryObjectError>,
+    ) {
+        let mapping = self
+            .retired_mapping
+            .as_ref()
+            .filter(|mapping| mapping.value().0 == asid)
+            .map(|mapping| mapping.value().1.state)
+            .or(self.diagnostic_mapping.filter(|mapping| mapping.address_space.id() == asid));
+        crate::early_logln!(
+            "[memory mapping retained] object={} asid={} phase={} error={:?} prior={:?} pages={} \
+             mapping={:?}",
+            self.object,
+            asid,
+            phase,
+            error,
+            prior,
+            pages,
+            mapping
+        );
+    }
+
     pub(super) fn acquire(registry: &mut MemoryObjectRegistry, object: MemoryObjectId) -> Self {
         let entry = registry.objects.get_mut(&object).expect("pinning object missing");
         entry.retirement_pins =
@@ -55,6 +101,7 @@ impl MappingRetirementPin {
         Self {
             object,
             retired_mapping: None,
+            diagnostic_mapping: None,
         }
     }
 

@@ -211,6 +211,32 @@ or detachment also rejected; it does not imply those earlier steps succeeded.
 The syscall boundary still reports status 9 for uncertain invalidation, without
 exporting the detailed cause to userspace.
 
+Retained map/unmap failures emit a `[memory mapping retained]` diagnostic before
+the original pin is abandoned. It identifies the object, caller, failure phase,
+typed maintenance/scratch/detachment error and exact captured mapping generation,
+base and installed prefix. Failed maintenance or scratch completion also records
+the preceding map/unmap result. This connects a later
+namespace-close pin count to the operation that fenced it; a count alone cannot
+identify that operation or authorize cleanup.
+
+The pin copies diagnostic mapping state under the existing publication/claim
+hold and updates its prefix after table work. A detached rollback record supplies
+its own captured state. Reporting reads only those original fields and the serial
+writer, preserving IRQ state; it performs no registry/root lookup, allocation,
+physical cleanup or replay. Drop remains inert. In particular, failure reporting
+must not reacquire a registry that a guarded rollback caller still holds.
+
+The native controls cover invalidation rejection after both a successful map and
+a rolled-back prefix, including reporting under held registry/allocator guards.
+An unmap control detaches its leaf, rejects confirmation once and checks that its
+original mapping/pin/scratch/page charge remain fenced, close stays Pending and
+repeated unmap rejects. These injected failures establish the retaining policy;
+they do not reproduce or explain a historical hardware timeout.
+
+The [focused control record](../reports/audits/evidence/2026-10-30-mapping-diagnostics.json)
+retains the Intel/SMMUv3 artifact identities and observations, including the
+intermediate registry-reentry failure separately from the corrected runs.
+
 The [mapping admission follow-up](../reports/audits/2026-10-23-security-map-admission.md)
 records denial/prefix controls and retained-failure tests. Its historical queued
 loan panic remains causally unresolved; removing maintenance from pin-free

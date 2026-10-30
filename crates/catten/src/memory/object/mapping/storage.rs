@@ -71,7 +71,7 @@ impl Preparing {
                 cleanup_lease: None,
             },
         );
-        MappingRetirementPin::acquire(registry, object)
+        MappingRetirementPin::acquire(registry, object).with_mapping(mapping)
     }
 
     pub(in crate::memory::object) fn frames(&self) -> &[PAddr] {

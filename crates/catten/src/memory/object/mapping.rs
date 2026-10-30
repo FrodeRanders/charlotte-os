@@ -60,11 +60,13 @@ fn finish_mapping(
         usize,
     ) -> Result<(), crate::cpu::isa::memory::tlb::InvalidationError>,
 ) -> Result<(), MemoryObjectError> {
-    if pin.is_some() {
+    if let Some(pin) = pin.as_ref() {
         if let Err(cause) = invalidate(asid, base, pages) {
             // Keep scratch, installed/rollback metadata and backing pin. The
             // per-call cause diagnoses rejection; it cannot authorize replay.
-            return Err(MemoryObjectError::InvalidationFailed(cause));
+            let error = MemoryObjectError::InvalidationFailed(cause);
+            pin.report_failure(asid, pages, "map-invalidation", error, result);
+            return Err(error);
         }
     } else {
         assert!(result.is_err(), "successful mapping lost its backing pin");
@@ -73,14 +75,23 @@ fn finish_mapping(
         result,
         Err(MemoryObjectError::UnmapFailed | MemoryObjectError::InvalidationFailed(_))
     ) {
+        if let (Some(pin), Err(error)) = (pin.as_ref(), result) {
+            pin.report_failure(asid, pages, "map-rollback", error, Ok(()));
+        }
         return result;
     }
     let scratch_released = if scratch && result.is_err() {
-        let released = release_scratch(asid, base, pages).is_ok();
-        if !released {
-            crate::early_logln!("[memory object] map rollback scratch release failed asid={asid}");
+        let released = release_scratch(asid, base, pages);
+        if let Err(error) = released {
+            if let Some(pin) = pin.as_ref() {
+                pin.report_failure(asid, pages, "map-scratch", error, result);
+            } else {
+                crate::early_logln!(
+                    "[memory object] unused map scratch release failed asid={asid} error={error:?}"
+                );
+            }
         }
-        released
+        released.is_ok()
     } else {
         true
     };
@@ -309,6 +320,7 @@ fn map_locked_with_preparation(
                 Err(_) => Err(MemoryObjectError::AddressSpaceMissing),
             }
         };
+        pin.as_mut().unwrap().record_mapping_prefix(mapped_pages);
         {
             let mut registry = MEMORY_OBJECTS.lock();
             if let Some(object) = registry.objects.get_mut(&object_id)
@@ -342,6 +354,18 @@ pub fn unmap(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), MemoryObj
 /// serialization. Retirement drains IPC before memory cleanup, so mapped-loan
 /// revocation must not acquire lifecycle from underneath the IPC guard.
 fn unmap_serialized(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), MemoryObjectError> {
+    unmap_with_invalidation(asid, cap, crate::cpu::isa::memory::tlb::try_inval_range_user)
+}
+
+fn unmap_with_invalidation(
+    asid: AddressSpaceId,
+    cap: MemoryObjectCap,
+    invalidate: impl FnOnce(
+        AddressSpaceId,
+        VAddr,
+        usize,
+    ) -> Result<(), crate::cpu::isa::memory::tlb::InvalidationError>,
+) -> Result<(), MemoryObjectError> {
     let (mapping, pages, mut pin) = {
         let mut registry = MEMORY_OBJECTS.lock();
         let cap_entry = registry.lookup(asid, cap)?;
@@ -354,18 +378,23 @@ fn unmap_serialized(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), Me
         }
         let mapping = object.mappings.get(&asid).ok_or(MemoryObjectError::NotMapped)?.state;
         let pages = object.frames.len();
-        let pin = MappingRetirementPin::acquire(&mut registry, cap_entry.object);
+        let pin =
+            MappingRetirementPin::acquire(&mut registry, cap_entry.object).with_mapping(mapping);
         (mapping, pages, pin)
     };
     let result = pin.unmap_with(asid, mapping.base, mapping.installed_pages, unmap_pages);
-    if let Err(cause) =
-        crate::cpu::isa::memory::tlb::try_inval_range_user(asid, mapping.base, pages)
-    {
+    if let Err(cause) = invalidate(asid, mapping.base, pages) {
         // Leaves may be detached, but neither scratch nor its pin may complete.
-        return Err(MemoryObjectError::InvalidationFailed(cause));
+        let error = MemoryObjectError::InvalidationFailed(cause);
+        pin.report_failure(asid, pages, "unmap-invalidation", error, result);
+        return Err(error);
     }
-    if result.is_ok() && mapping.scratch {
-        release_scratch(asid, mapping.base, pages)?;
+    if result.is_ok()
+        && mapping.scratch
+        && let Err(error) = release_scratch(asid, mapping.base, pages)
+    {
+        pin.report_failure(asid, pages, "unmap-scratch", error, result);
+        return Err(error);
     }
     if result.is_ok() {
         pin.retain_detached_mapping(
@@ -373,6 +402,8 @@ fn unmap_serialized(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), Me
         );
         assert!(pin.retired_mapping().is_some(), "confirmed unmap lost its mapping record");
         pin.release(None);
+    } else if let Err(error) = result {
+        pin.report_failure(asid, pages, "unmap-detachment", error, Ok(()));
     }
     result
 }

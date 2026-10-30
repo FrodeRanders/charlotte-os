@@ -1,0 +1,116 @@
+{
+  "date": "2026-10-30",
+  "base_revision": "3e208ba3a8170cfcf6432a2b86cb6e78aff820c6",
+  "scope": "C05/C18 failure diagnostics and one added unmap-confirmation rejection control. No new cleanup or retry authority.",
+  "source_sha256": {
+    "crates/catten/src/memory/object/mapping.rs": "d0661e6e8c9bb4c445e7634d6ae22e45986043aad37f7042df2deedb709c3782",
+    "crates/catten/src/memory/object/mapping/tests.rs": "50513449847b22d9c6369fa1b100160419ff2ec8e496d5fc46fea793acf48543",
+    "crates/catten/src/memory/object/mapping/storage.rs": "f7d87a9883e11c178db81c2730f0dbd95f97c8b447ba51d358ba5a2a16225bdb",
+    "crates/catten/src/memory/object/retirement.rs": "e6aba23a3dfe2a9430a52e01700a6f8194d49e4d12e41cbb23118862420b675b",
+    "crates/catten/src/memory/object/retirement/tests.rs": "bac8765b1e12da6839ea5b856a1d543de7a2b000a938360224b7ad527807910d"
+  },
+  "checks": {
+    "kernel_clippy_x86_64": "pass, --no-default-features --features acpi -- -D warnings",
+    "kernel_clippy_aarch64": "pass, same feature/lint policy",
+    "workspace_fmt": "pass",
+    "signed_aarch64_bundle_rebuilt": true
+  },
+  "setup_rejection": {
+    "instance": "retirement-pin-baseline-20261030-a",
+    "runner_exit": 1,
+    "stage": "QEMU before guest execution",
+    "diagnostic": "Failed to bind QMP Unix socket: Operation not permitted",
+    "scope": "Sandbox socket restriction; not a native test failure or pass."
+  },
+  "baseline": {
+    "instance": "retirement-pin-baseline-20261030-b",
+    "kernel_sha256": "578c44b3b2efcbecffbd55c6741630056960f1a118238f298191767c3e140d0e",
+    "bundle_digest_algorithm": "sha256 of UTF-8 JSON bundle_sha256 map, sorted keys and compact separators",
+    "bundle_sha256": "c07303c6715255a72852190ea3bd61aed526e3356c47252508e9e0f910a337f6",
+    "runner_exit": 0,
+    "result": {
+      "reason": "complete",
+      "snapshot": "not-requested"
+    },
+    "verdict": "[+    87.964890] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x2023bbff failed_bitmap=0x0 pending_bitmap=0x0",
+    "scope": "Fresh Intel baseline before the diagnostic change; complete HTTP/mTLS campaign also returned exit 0. No reproduction of the historical retirement-pin timeout."
+  },
+  "introduced_diagnostic_failure": {
+    "instance": "retirement-pin-diagnostics-20261030-c",
+    "kernel_sha256": "cc311a087e82063c254c58b434d2da6218e5d5789d17d7e7c341af49fd21fde0",
+    "runner_exit": 1,
+    "result": {
+      "reason": "deadline",
+      "errors": [],
+      "qmp": "captured",
+      "lldb": {
+        "exit_code": 0,
+        "reported_errors": false
+      },
+      "cpu_count": 4,
+      "snapshot": "captured",
+      "elapsed_seconds": 180.10051762498915
+    },
+    "diagnosis": "Intermediate report_failure reacquired MEMORY_OBJECTS beneath uncertain_rollback, which deliberately held that registry and the heap allocator. BSP blocked recursively; APs remained at their boot barrier. Corrected by carrying copied mapping diagnostics in the original pin; the existing guarded control remains enabled.",
+    "symbolized_frames": [
+      "frame #3: 0xffffffff80192d29 kernel.elf`<lock_api::mutex::Mutex<catten::cpu::multiprocessor::spin::mutex::MutexCore, catten::memory::object::MemoryObjectRegistry>>::lock(self=<unavailable>) at mutex.rs:213:18 [inlined]",
+      "frame #4: 0xffffffff80192d29 kernel.elf`<catten::memory::object::retirement::MappingRetirementPin>::report_failure(self=<unavailable>, asid=36, phase=(data_ptr = \"map-invalidation@\", length = 16), error=MemoryObjectError @ 0xffff80001df848e0, prior=Result<(), catten::memory::object::MemoryObjectError> @ 0xffff80001df84600) at retirement.rs:64:43",
+      "frame #10: 0xffffffff8032da2b kernel.elf`catten::memory::object::mapping::storage::tests::uncertain_rollback at tests.rs:430:18"
+    ],
+    "historical_attribution": "This introduced reporting error does not establish the cause of the October 28 retirement-pin timeout or any older incident."
+  },
+  "final_runs": [
+    {
+      "instance": "retirement-pin-diagnostics-20261030-d",
+      "kernel_sha256": "2202122fb182e96157de0e5c113d5b1ec6381535f4ec5d93e5f7216b3001b94c",
+      "bundle_digest_algorithm": "sha256 of UTF-8 JSON bundle_sha256 map, sorted keys and compact separators",
+      "bundle_sha256": "c07303c6715255a72852190ea3bd61aed526e3356c47252508e9e0f910a337f6",
+      "runner_exit": 0,
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "verdict": "[+    88.426819] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x2023bbff failed_bitmap=0x0 pending_bitmap=0x0",
+      "host_check_groups_passed": 20,
+      "transport_retry_diagnostics": [
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2"
+      ],
+      "injected_retention_count": 12,
+      "guarded_rollback_observation": "[+     1.889833] [memory mapping retained] object=576 asid=35 phase=map-invalidation error=InvalidationFailed(Busy) prior=Err(MapFailed) pages=2 mapping=Some(MemoryMappingState { address_space: AddressSpaceHandle { id: 35, generation: 64 }, base: VAddr(0x200000), installed_pages: 1, writable: true, scratch: false })",
+      "unmap_observation": "[+     0.871972] [memory mapping retained] object=59 asid=14 phase=unmap-invalidation error=InvalidationFailed(TimedOut { epoch: 91, first_missing: Some(2) }) prior=Ok(()) pages=1 mapping=Some(MemoryMappingState { address_space: AddressSpaceHandle { id: 14, generation: 1 }, base: VAddr(0x40000000), installed_pages: 1, writable: true, scratch: true })",
+      "guarded_control": "[+     1.891821] [memory mapping storage] 192 unlocked record/snapshot prefix rejections, source-close revalidation, 64 heap-held snapshot fills/node publications/detachments, 32 rollback receipts through confirmed maintenance, and guarded uncertain rollback passed; two data pages, their mapping node/root and original charge deliberately retained"
+    },
+    {
+      "instance": "retirement-pin-diagnostics-20261030-e",
+      "kernel_sha256": "698f1a724981c83f592a7b236ee0553582de43f1de21b6850a6b9e8f48979469",
+      "bundle_digest_algorithm": "sha256 of UTF-8 JSON bundle_sha256 map, sorted keys and compact separators",
+      "bundle_sha256": "288adf425b164cfb215fff5d3adf51edf1d2edd2434f954924cb9d07f491bfe3",
+      "runner_exit": 0,
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "verdict": "[+    79.791168] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x2023ffff failed_bitmap=0x0 pending_bitmap=0x0",
+      "host_check_groups_passed": 20,
+      "transport_retry_diagnostics": [
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 2/2",
+        "HTTP transport ConnectionResetError; retry 1/2"
+      ],
+      "injected_retention_count": 4,
+      "guarded_rollback_observation": "[+     1.831592] [memory mapping retained] object=571 asid=27 phase=map-invalidation error=InvalidationFailed(AddressSpaceMissing) prior=Err(MapFailed) pages=2 mapping=Some(MemoryMappingState { address_space: AddressSpaceHandle { id: 27, generation: 64 }, base: VAddr(0x200000), installed_pages: 1, writable: true, scratch: false })",
+      "unmap_observation": "[+     0.860040] [memory mapping retained] object=51 asid=5 phase=unmap-invalidation error=InvalidationFailed(AddressSpaceMissing) prior=Ok(()) pages=1 mapping=Some(MemoryMappingState { address_space: AddressSpaceHandle { id: 5, generation: 24 }, base: VAddr(0x40000000), installed_pages: 1, writable: true, scratch: true })",
+      "guarded_control": "[+     1.832728] [memory mapping storage] 192 unlocked record/snapshot prefix rejections, source-close revalidation, 64 heap-held snapshot fills/node publications/detachments, 32 rollback receipts through confirmed maintenance, and guarded uncertain rollback passed; two data pages, their mapping node/root and original charge deliberately retained"
+    }
+  ],
+  "limits": [
+    "The original root 157:8/object 35194 timeout did not reproduce; its cause remains unresolved.",
+    "Confirmation failures in the new control and guarded rollback are injected, not claims of physical shootdown/device failure.",
+    "Healthy host campaigns retained bounded transport retry diagnostics; no flood fairness or error-free transport claim.",
+    "No new AMD-Vi, physical-device, aggregate-pressure or general recovery qualification.",
+    "Five runtime Rust sources stayed byte-identical through final runs; documentation was updated during qualification."
+  ]
+}

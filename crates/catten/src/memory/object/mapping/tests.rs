@@ -40,10 +40,13 @@ pub(in crate::memory::object) fn run(create: &mut impl FnMut(&str) -> usize) {
             failed_invalidation(create, cause, scratch);
         }
     }
+    let cause = *causes().last().unwrap();
+    failed_unmap_invalidation(create, cause);
     crate::logln!(
         "[object mapping admission] 256 pin-free denials skipped maintenance and recovered \
          scratch; admitted success/rolled-back prefix still invalidate; per-call causes retain \
-         exact mapping/backing pin and original charge without replay"
+         exact mapping/backing pin and original charge without replay; rollback/unmap failures \
+         capture the original mapping identity and cause"
     );
 }
 
@@ -185,4 +188,47 @@ fn failed_invalidation(
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), before);
     // Keep the actual mapping, pin, root and original charge. No fixture-only
     // adoption or synthetic completion may recover this uncertain operation.
+}
+
+fn failed_unmap_invalidation(create: &mut impl FnMut(&str) -> usize, cause: InvalidationError) {
+    let owner = create("unmap invalidation failure retains mapping identity");
+    let handle = current_address_space_handle(owner).unwrap();
+    let cap = allocate(owner, 1).unwrap();
+    let object = MEMORY_OBJECTS.lock().lookup(owner, cap).unwrap().object;
+    let base = map_any(owner, cap, true).unwrap();
+    let charge = budget::used(handle);
+    let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    let mut calls = 0;
+    assert_eq!(
+        with_address_space_operation(owner, || {
+            unmap_with_invalidation(owner, cap, |asid, address, pages| {
+                calls += 1;
+                assert_eq!((asid, address, pages), (owner, base, 1));
+                assert!(MEMORY_OBJECTS.try_lock().is_some());
+                assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());
+                Err(cause)
+            })
+        }),
+        Err(MemoryObjectError::InvalidationFailed(cause)),
+    );
+    assert_eq!(calls, 1);
+    {
+        let registry = MEMORY_OBJECTS.lock();
+        let record = &registry.objects[&object];
+        assert_eq!(record.retirement_pins, 1);
+        let mapping = record.mappings.get(&owner).unwrap().state;
+        assert_eq!(mapping.address_space, handle);
+        assert_eq!((mapping.base, mapping.installed_pages, mapping.scratch), (base, 1, true));
+    }
+    assert_eq!(budget::used(handle), charge);
+    assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
+    assert_eq!(close_cap(owner, cap), Err(MemoryObjectError::LendingActive));
+    assert_eq!(unmap(owner, cap), Err(MemoryObjectError::LendingActive));
+    assert_ne!(scratch_candidate(owner), base);
+    assert!(matches!(
+        close_test_address_space(owner),
+        Err(crate::memory::AddressSpaceCloseError::OperationsInFlight)
+    ));
+    // The same single page, mapping and original charge stay retained. No
+    // success is fabricated from the completed leaf detachment alone.
 }
