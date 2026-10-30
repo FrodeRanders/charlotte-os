@@ -68,6 +68,13 @@ client progress, not sustained full-pool flooding or aggregate pressure.
 The [control record](../reports/audits/evidence/2026-10-30-status-client-progress.json)
 keeps the failed serial-server run separate from the corrected native matrix.
 
+The [ARM management-drain control](../reports/audits/evidence/2026-10-30-management-drain.json)
+also holds two idle TLS clients per ingress during signed whole-node shutdown.
+Both services must observe active inputs and empty every client phase before
+their exact cooperative retirement outcomes and verified PSCI power-off. This
+extends idle-client shutdown qualification, without covering receiver-held
+cancellation, stalled output/controller work or all enclosing destructors.
+
 Snapshot dependency collection and rendering remain synchronous within each
 completed request. A silent dependency can still occupy the observation budget;
 the reactor does not make formatting, allocation, cryptography or receiver-held

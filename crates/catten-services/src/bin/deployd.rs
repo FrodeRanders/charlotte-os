@@ -102,24 +102,73 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         }
         if shutdown.is_none() {
             shutdown = ctx.lifecycle().shutdown_requested();
+            if shutdown.is_some() {
+                catten_rt::logln!(
+                    "[deployd] management drain begin inputs={} controls={} outputs={} \
+                     listeners={} closes={}",
+                    inputs.occupied_slots(),
+                    controls.occupied_slots(),
+                    outputs.occupied_slots(),
+                    listeners.occupied_slots(),
+                    closes.occupied_slots()
+                );
+            }
         }
         if shutdown.is_some() {
-            // Finish accepted setup under its original budget. Cancel idle
-            // accepts into the same close pool while all other phases stay live.
+            // Stop incomplete input, but finish already accepted control and
+            // output work under its original budgets. A shutdown notification
+            // may itself still own its controller reply/HTTP response here.
+            let mut progressed = false;
+            if let Some(socket) = inputs.cancel_one() {
+                closes.start(socket);
+                progressed = true;
+            }
             let (listener_progress, finished) = listeners.advance(true);
+            progressed |= listener_progress;
             if let Some((socket, _)) = finished {
                 closes.start(socket);
             }
-            let close_progress = closes.advance();
-            if listeners.occupied_slots() == 0 && closes.occupied_slots() == 0 {
+            if let Some((socket, reply)) = controls.advance() {
+                progressed = true;
+                if let Some((socket, result)) = outputs.start(socket, reply) {
+                    retire_output(socket, result, &mut closes, trace);
+                }
+            }
+            let (output_progress, finished) = outputs.advance();
+            progressed |= output_progress;
+            if let Some((socket, result)) = finished {
+                retire_output(socket, result, &mut closes, trace);
+            }
+            progressed |= closes.advance();
+            if inputs.occupied_slots()
+                + controls.occupied_slots()
+                + outputs.occupied_slots()
+                + listeners.occupied_slots()
+                + closes.occupied_slots()
+                == 0
+            {
+                catten_rt::logln!(
+                    "[deployd] management drain complete inputs={} controls={} outputs={} \
+                     listeners={} closes={}",
+                    inputs.occupied_slots(),
+                    controls.occupied_slots(),
+                    outputs.occupied_slots(),
+                    listeners.occupied_slots(),
+                    closes.occupied_slots()
+                );
                 return shutdown.take().unwrap();
             }
-            if !listener_progress && !close_progress {
+            if !progressed {
                 catten_services::reactor::wait(
-                    [listeners.remaining_ms(false), closes.remaining_ms()]
-                        .into_iter()
-                        .flatten()
-                        .min(),
+                    [
+                        listeners.remaining_ms(false),
+                        controls.remaining_ms(),
+                        outputs.remaining_ms(),
+                        closes.remaining_ms(),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .min(),
                     0,
                 );
             }

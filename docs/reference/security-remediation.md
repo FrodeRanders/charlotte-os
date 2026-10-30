@@ -61,6 +61,10 @@ projection convergence.
 Status ingress now rotates four owned client positions across CQ-bound setup,
 TLS/header input, output and logical close. Snapshot collection/rendering remains
 synchronous; bounded concurrency alone does not establish flood fairness.
+Deployment shutdown cancels incomplete input, continues accepted controller/output
+work under original budgets, and drains all five client phases before acknowledging.
+An [ARM idle-client shutdown control](../reports/audits/evidence/2026-10-30-management-drain.json)
+checks this narrow boundary; stalled dependencies and wider cleanup contexts remain open.
 
 Current contracts: [management TLS](management-tls.md),
 [status observation](status-observation.md), [entropy](entropy.md),

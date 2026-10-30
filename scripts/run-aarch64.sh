@@ -961,7 +961,8 @@ if [ "$NETWORK" = "1" ]; then
             fi
             if [ -n "$CLUSTER_SERVICE" ]; then
                 QEMU_OPTS+=(-netdev "user,id=charlotte-net,hostfwd=tcp::${HTTP_HOST_PORT}-${CLUSTER_VIP}:${CLUSTER_TCP_PORT},hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444${APP_FWD}")
-            elif [ "$HTTP_TEST" = "1" ] || [ -n "$MANAGEMENT_STARTUP_TEST" ]; then
+            elif [ "$HTTP_TEST" = "1" ] || [ "$SHUTDOWN_INGRESS_TEST" = "1" ] \
+                || [ -n "$MANAGEMENT_STARTUP_TEST" ]; then
                 # Host-side keyhole: forward the configurable host port to
                 # guest TLS port 443 so parallel/local runs need not contend for a
                 # hard-coded listener.
@@ -1229,19 +1230,10 @@ if [ -n "$TIMEOUT" ]; then
                 "$CLUSTER_SIGN_BIN" shutdown-sign "$SHUTDOWN_INTENT" \
                     "$SHUTDOWN_NOW" "$SHUTDOWN_TARGET" "$SHUTDOWN_NOW" \
                     "$((SHUTDOWN_NOW + 300))" 60000 5000 "$SHUTDOWN_KEY_FILE"
-                SHUTDOWN_ACCEPTED=0
-                for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-                    if "$CLUSTER_SIGN_BIN" shutdown-notify "$SHUTDOWN_INTENT" \
-                        "127.0.0.1:${DEPLOY_HOST_PORT}"; then
-                        SHUTDOWN_ACCEPTED=1
-                        break
-                    fi
-                    sleep 1
-                done
-                if [ "$SHUTDOWN_ACCEPTED" != "1" ]; then
-                    echo "error: signed shutdown intent was not accepted by a Raft leader" >&2
-                    exit 1
-                fi
+                python3 "${ROOT_DIR}/scripts/tests/test-management-drain.py" submit \
+                    --intent "$SHUTDOWN_INTENT" --client-tool "$CLUSTER_SIGN_BIN" \
+                    --status-port "$HTTP_HOST_PORT" --deployment-port "$DEPLOY_HOST_PORT" \
+                    --serial-log "$LOG"
                 SHUTDOWN_INGRESS_SUBMITTED=1
                 echo ">>> Signed shutdown intent accepted; waiting for verified PSCI poweroff."
             fi
@@ -1362,6 +1354,9 @@ if [ -n "$TIMEOUT" ]; then
         && { [ "$KAFKA_FAULT_INJECTED" != "1" ] || [ "$KAFKA_FAULT_RESTARTED" != "1" ]; }; then
         echo "error: Kafka broker fault injection did not complete" >&2
         exit 1
+    fi
+    if [ "$SHUTDOWN_INGRESS_TEST" = "1" ]; then
+        python3 "${ROOT_DIR}/scripts/tests/test-management-drain.py" verify "$LOG"
     fi
     catten_boot_validate_selftest_log "$LOG" "$KERNEL"
 else

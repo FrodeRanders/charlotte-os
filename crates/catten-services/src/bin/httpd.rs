@@ -1538,6 +1538,15 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         catten_services::management_io::drain(ctx);
         if shutdown.is_none() {
             shutdown = ctx.lifecycle().shutdown_requested();
+            if shutdown.is_some() {
+                catten_rt::logln!(
+                    "[http] management drain begin inputs={} outputs={} listeners={} closes={}",
+                    inputs.occupied_slots(),
+                    outputs.occupied_slots(),
+                    listeners.occupied_slots(),
+                    closes.occupied_slots()
+                );
+            }
         }
         if shutdown.is_some() {
             // Transfer complete owners into logical close. Cancellation of any
@@ -1563,6 +1572,13 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 + closes.occupied_slots()
                 == 0
             {
+                catten_rt::logln!(
+                    "[http] management drain complete inputs={} outputs={} listeners={} closes={}",
+                    inputs.occupied_slots(),
+                    outputs.occupied_slots(),
+                    listeners.occupied_slots(),
+                    closes.occupied_slots()
+                );
                 return shutdown.take().unwrap();
             }
             if !progressed {

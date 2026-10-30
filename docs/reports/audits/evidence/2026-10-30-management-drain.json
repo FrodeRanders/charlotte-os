@@ -1,0 +1,187 @@
+{
+  "date": "2026-10-30",
+  "base_revision": "816137bde16c3a6c22e3f6ceb69c0af33349259a",
+  "scope": "Keep deployment ingress inside its CQ reactor until every input/control/output/setup/close owner has completed its defined handoff. Finish accepted controller/output work under original budgets; cancel incomplete input into consuming logical close. No new physical cleanup proof or finding closure.",
+  "source_sha256": {
+    "crates/catten-services/src/bin/deployd.rs": "c00b5a333dd608d69fefad1fbefe398fb8558f70123f7cf033212a24e09bf306",
+    "crates/catten-services/src/bin/httpd.rs": "732aedb1208ac7399c4a76f60401341e37b18a68fc5b0ff541242b1b04c1fda5",
+    "crates/catten-services/src/deployment_input.rs": "0aca5a9357675a52fb888a70ecd45b2e7879b3558a76cbb13a45f0cc1ab554a7",
+    "scripts/run-aarch64.sh": "9d25fd1abe93b983b95a167a5c6369b6dab3d76abc94032a255e350e8ea0e2f3",
+    "scripts/tests/test-management-drain.py": "7ab117293137ce96a0f31429710778bbb7bbed3a9c86ca12161dcdcd2eef1b3a",
+    "scripts/tests/test-management-drain-observations.py": "9d9a85d3e075a72bec894389124b00892e75f1ec078c0efd576e973f3ddd7f1b",
+    "scripts/run-host-tests.sh": "6a36451c647a671cf117dbdc2261590c7163b17318514cf18e6542a5a9edfa53"
+  },
+  "bundle_digest_algorithm": "sha256 of UTF-8 JSON bundle_sha256 map, sorted keys and compact separators",
+  "matrix": {
+    "target": "AArch64 QEMU/SMMUv3",
+    "cpus": 4,
+    "fresh_storage": true,
+    "campaign_seconds": 240,
+    "node_grace_ms": 60000,
+    "phase_grace_ms": 5000,
+    "host_budget_seconds": 45,
+    "held_idle_tls_peers_per_ingress": 2,
+    "shutdown_submissions": 1,
+    "mutation_retry": false,
+    "preconditions": "Both listeners, positive time synchronization and singleton DNS leader observations precede network checks; TLS still verifies fresh time/credentials."
+  },
+  "fixture_precondition_failures": [
+    {
+      "instance": "management-drain-before-20261030-r",
+      "cpus": 4,
+      "kernel_sha256": "1ed41dd74cb50e77810d990068b2fbe01b7cb8d4ed343f016c95c57530567e95",
+      "bundle_sha256": "c9fc1796d8a092c7037478ab33870f51a3c1ec54b897166c476b5141c7a98119",
+      "result": {
+        "reason": "runner-exit",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 19.41085791599471
+      },
+      "kernel_diagnostics": [
+        "[+    11.832825] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x103ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "host_diagnostics": [
+        "ConnectionRefusedError: [Errno 61] Connection refused"
+      ],
+      "status_forward_present": false,
+      "runner_exit": 1,
+      "classification": "Fixture precondition failure before held peers or signed shutdown submission; no runtime drain qualification.",
+      "observation": "Status host forward absent, although guest listeners were ready. Initial commentary attributing this to listener startup was corrected."
+    },
+    {
+      "instance": "management-drain-before-20261030-s",
+      "cpus": 4,
+      "kernel_sha256": "3fd4f09f1838fd166b9d06feaf1e3985b8aa7639c309d0549cb097b9cbecdd79",
+      "bundle_sha256": "c9fc1796d8a092c7037478ab33870f51a3c1ec54b897166c476b5141c7a98119",
+      "result": {
+        "reason": "runner-exit",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 19.51652274999651
+      },
+      "kernel_diagnostics": [
+        "[+    12.020904] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x103ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "host_diagnostics": [
+        "ConnectionRefusedError: [Errno 61] Connection refused"
+      ],
+      "status_forward_present": false,
+      "runner_exit": 1,
+      "classification": "Fixture precondition failure before held peers or signed shutdown submission; no runtime drain qualification.",
+      "observation": "Status host forward still absent; listener-readiness observation alone could not repair network wiring."
+    },
+    {
+      "instance": "management-drain-before-20261030-t",
+      "cpus": 4,
+      "kernel_sha256": "c5aed53aefbe9edc37b6e012d0689b62e8cbf7897988cac7d8347e8456346335",
+      "bundle_sha256": "c9fc1796d8a092c7037478ab33870f51a3c1ec54b897166c476b5141c7a98119",
+      "result": {
+        "reason": "runner-exit",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 19.239850959012983
+      },
+      "kernel_diagnostics": [
+        "[+    11.982596] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x103ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "host_diagnostics": [
+        "ssl.SSLEOFError: [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1016)"
+      ],
+      "status_forward_present": true,
+      "runner_exit": 1,
+      "classification": "Fixture precondition failure before held peers or signed shutdown submission; no runtime drain qualification.",
+      "observation": "Forwarding repaired. First TLS health observation failed with SSLEOF; the first time synchronization appears after the self-test verdict. A time-service readiness hint was missing. Exact transport rejection cause was not captured; no credential or cleanup cause is established."
+    }
+  ],
+  "negative_control": {
+    "instance": "management-drain-before-20261030-u",
+    "cpus": 4,
+    "kernel_sha256": "3fde17a7f099a28ad787b5276a9c31619f006e2d509e95ebd6691c74f3b067f0",
+    "bundle_sha256": "c9fc1796d8a092c7037478ab33870f51a3c1ec54b897166c476b5141c7a98119",
+    "result": {
+      "reason": "guest-exited",
+      "snapshot": "unavailable"
+    },
+    "kernel_diagnostics": [
+      "[+    11.954686] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x103ffff failed_bitmap=0x0 pending_bitmap=0x0",
+      "[+    18.279383] [EL0 LOG] lp=0 asid=131 [deployd] management drain begin inputs=2 controls=0 outputs=1 listeners=1 closes=0",
+      "[+    18.281761] [EL0 LOG] lp=0 asid=131 [deployd] management drain complete inputs=2 controls=0 outputs=1 listeners=0 closes=0",
+      "[+    18.296831] [shutdown] DeploymentIngress: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+      "[+    18.307999] [EL0 LOG] lp=0 asid=127 [http] management drain begin inputs=2 outputs=0 listeners=2 closes=0",
+      "[+    18.312217] [EL0 LOG] lp=0 asid=127 [http] management drain complete inputs=0 outputs=0 listeners=0 closes=0",
+      "[+    18.314452] [shutdown] HttpIngress: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+      "[+    18.344219] [shutdown] POWER-OFF REQUESTED via PSCI Hvc"
+    ],
+    "host_diagnostics": [
+      "management drain: holding two idle TLS peers on each ingress",
+      "PASS: signed shutdown submitted once; all four held peers closed",
+      "ValueError: deployd: reported completion with live client positions"
+    ],
+    "status_forward_present": true,
+    "runner_exit": 1
+  },
+  "negative_control_source_sha256": {
+    "crates/catten-services/src/bin/deployd.rs": "eba5e3cbb1b86c7e2b959159d270b58fd1d18592fd3b8d30a9673c910ad9bf68",
+    "crates/catten-services/src/bin/httpd.rs": "732aedb1208ac7399c4a76f60401341e37b18a68fc5b0ff541242b1b04c1fda5",
+    "crates/catten-services/src/deployment_input.rs": "7c8a892c301a288520a0ba4a318bcb4d3ab1ec281def8fc9ab7ceeb0b6af7d14"
+  },
+  "qualification": {
+    "instance": "management-drain-after-20261030-v",
+    "cpus": 4,
+    "kernel_sha256": "9f0a577c5b02ed8db1391569901ad63e60fff7355f885187a8cf62d1a3aa1482",
+    "bundle_sha256": "6131ad13cf6d2d35ccbb7633278960c60f1a65895e145651d6f1939cf396360d",
+    "result": {
+      "reason": "guest-exited",
+      "snapshot": "unavailable"
+    },
+    "kernel_diagnostics": [
+      "[+    12.019112] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x103ffff failed_bitmap=0x0 pending_bitmap=0x0",
+      "[+    18.300576] [EL0 LOG] lp=0 asid=131 [deployd] management drain begin inputs=2 controls=0 outputs=0 listeners=2 closes=0",
+      "[+    18.304316] [EL0 LOG] lp=0 asid=131 [deployd] management drain complete inputs=0 controls=0 outputs=0 listeners=0 closes=0",
+      "[+    18.306630] [shutdown] DeploymentIngress: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+      "[+    18.316248] [EL0 LOG] lp=0 asid=127 [http] management drain begin inputs=2 outputs=0 listeners=2 closes=0",
+      "[+    18.320852] [EL0 LOG] lp=0 asid=127 [http] management drain complete inputs=0 outputs=0 listeners=0 closes=0",
+      "[+    18.324147] [shutdown] HttpIngress: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+      "[+    18.365331] [shutdown] POWER-OFF REQUESTED via PSCI Hvc"
+    ],
+    "host_diagnostics": [
+      "management drain: holding two idle TLS peers on each ingress",
+      "PASS: signed shutdown submitted once; all four held peers closed",
+      "PASS: active status/deployment clients drained before cooperative retirement and PSCI"
+    ],
+    "status_forward_present": true,
+    "runner_exit": 0
+  },
+  "static_validation": {
+    "service_library": "263 passed, 0 failed, including input handoff cancellation/disposal and TLS local-socket interoperability",
+    "drain_observations_and_single_submission": "7 passed, 0 failed",
+    "existing_management_runner_gates": "8 passed, 0 failed",
+    "service_clippy": "all service binaries, release, core/alloc, -- -D warnings passed on AArch64 and x86_64"
+  },
+  "limits": [
+    "The instrumented pre-correction control passed 19 kernel tests, received a signed-shutdown response, closed peers and powered off. It failed the new explicit owner-state gate. This does not establish early kernel physical release or an unsafe READY publication; remaining owners could run synchronous Drop before acknowledgement.",
+    "The corrected control observes two active inputs on each service, all client positions empty before cooperative retirement, acknowledged=1/unacknowledged=0/forced=0 for each ingress and actual QEMU PSCI exit. No held controller RPC or delayed output/cancellation is injected.",
+    "Setup failures remain distinct from the failed drain control and passing qualification; no shutdown was submitted in the setup failures.",
+    "Local operation budgets and node/phase grace are unchanged. Exhausted grace can still force termination; full-pool admission fairness and total shutdown latency are not qualified.",
+    "Only ARM/SMMUv3 native shutdown is executed here. x86_64 receives strict compile/host-core coverage, not a new active-client native shutdown or physical hardware qualification.",
+    "No attribution of historical retirement-pin, exact-thread-exit, stack or persistence incidents. Logical close/cancellation does not prove receiver rollback, physical socket cleanup or refund of remote original charges."
+  ]
+}

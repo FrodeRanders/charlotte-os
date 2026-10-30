@@ -184,13 +184,38 @@ still requires Started/Unavailable without attachments. See the
 On lifecycle shutdown, listener replenishment stops. Accepted creation/listen
 operations remain owned and observed under their original setup budgets. An
 observed new socket and cancelled idle accept move into the same close pool;
-no further listen/accept operation is submitted. Existing closes drain under
-their original deadlines while other client owners stay live. Cancelling an
-idle accept proves no remote rollback or physical socket release. Other phases'
-shutdown destructors still use ordinary blocking `OwnedSocket` close. Syscall
-return latency, all containing destructors, DNS execution and legacy controller handlers remain
-separate boundaries; total shutdown latency is unqualified.
-See the [listener evidence](../reports/audits/2026-10-22-security-deployment-listener.md).
+no further listen/accept operation is submitted. Incomplete headers/bodies transfer
+their original connections into logical close, cancelling their exact receive
+before request-buffer disposal. They are never forwarded to the controller.
+
+Already accepted controller and output operations continue on the same CQ under
+their original budgets. In particular, the signed shutdown request can still own
+its controller reply or HTTP output when lifecycle drain begins. Finishing that
+work does not admit another mutation, replay an uncertain request or restart a
+deadline. Terminal input, control and output owners move into the same close
+pool. Completion requires **all five phase counts** to be zero, including input,
+controller and output; empty listeners/closes alone are insufficient. This avoids
+leaving active client cleanup to synchronous field destructors after returning
+from the reactor. The reverse dependency order keeps the controller and TCP/IP
+alive until deployment ingress retires.
+
+The [management-drain control](../reports/audits/evidence/2026-10-30-management-drain.json)
+holds two idle TLS clients on each management ingress during one signed ARM
+shutdown. It checks live input observations, empty client positions before
+cooperative retirement, zero forced/unacknowledged ingress exits and PSCI power-off.
+The pre-correction control reached kernel success/power-off while deployment
+reported two inputs and an output still owned; that overall fixture remains failed.
+The host submits the mutation once, after listener, time-service and singleton
+leader readiness hints. TLS still requires fresh time and credential verification.
+No failed or timed-out mutation is retried.
+
+Logical close or cancellation proves no remote rollback, physical socket release
+or refund of receiver-held charges. Unresponsive controller/output phases,
+receiver-held cancellation, syscall return latency, other containing destructors,
+DNS execution and legacy controller handlers remain separate boundaries. Local
+budgets must fit the enclosing phase grace; total shutdown latency is unqualified.
+The [listener evidence](../reports/audits/2026-10-22-security-deployment-listener.md)
+retains its earlier limited shutdown scope.
 
 The [output evidence](../reports/audits/2026-10-22-security-deployment-output.md)
 records this boundary. The [input-isolation evidence](../reports/audits/2026-10-22-security-deployment-input.md)

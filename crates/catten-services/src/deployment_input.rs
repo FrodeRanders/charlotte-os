@@ -177,6 +177,22 @@ impl<C: Calls> Machine<C> {
     fn remaining(&self, now: u64) -> Option<u64> {
         self.inputs.iter().flatten().map(|i| i.remaining(now).min(C::remaining(&i.socket))).min()
     }
+
+    fn cancel_one(&mut self) -> Option<C::Socket> {
+        let index = self.inputs.iter().position(Option::is_some)?;
+        let Input {
+            pending,
+            socket,
+            buffer,
+            ..
+        } = self.inputs[index].take().unwrap();
+        // End the exact accepted receive before releasing request backing.
+        // The returned TLS connection retains its wire RPC until logical close
+        // confirms cancellation; no incomplete request reaches the controller.
+        drop(pending);
+        drop(buffer);
+        Some(socket)
+    }
 }
 
 struct Runtime<'a>(core::marker::PhantomData<&'a ()>);
@@ -246,6 +262,14 @@ impl<'a> Inputs<'a> {
 
     pub fn available_slots(&self) -> usize {
         self.0.inputs.iter().filter(|input| input.is_none()).count()
+    }
+
+    pub fn occupied_slots(&self) -> usize {
+        self.0.inputs.iter().flatten().count()
+    }
+
+    pub fn cancel_one(&mut self) -> Option<OwnedSocket<'a>> {
+        self.0.cancel_one()
     }
 
     /// Start budgets when this reactor observes accept completion.
@@ -384,6 +408,29 @@ mod tests {
         m.calls.replies[id].borrow_mut().push_back(Ok(bytes.to_vec()));
     }
     const STATUS: &[u8] = b"GET /v1/deployments/healthy HTTP/1.1\r\nHost: test\r\n\r\n";
+
+    #[test]
+    fn shutdown_handoff_cancels_input_before_returning_socket_and_keeps_other_budgets() {
+        let (mut m, log) = setup();
+        for id in 0..MAX_CLIENTS {
+            admit(&mut m, id);
+        }
+        data(&mut m, 0, b"POST /v1/deployments HTTP/1.1\r\nHost: test\r\n");
+        assert!(matches!(m.advance(100, 0), (true, None)));
+        log.borrow_mut().clear();
+        let socket = m.cancel_one().unwrap();
+        assert_eq!(socket.id, 0);
+        assert_eq!(&*log.borrow(), &[("pending", 0)]);
+        assert_eq!(m.remaining(4999), Some(1));
+        assert_eq!(m.inputs.iter().flatten().count(), MAX_CLIENTS - 1);
+        drop(socket);
+        assert_eq!(&*log.borrow(), &[("pending", 0), ("socket", 0)]);
+        while let Some(socket) = m.cancel_one() {
+            drop(socket);
+        }
+        assert!(m.cancel_one().is_none());
+        assert_eq!(m.remaining(4999), None);
+    }
 
     #[test]
     fn healthy_input_finishes_with_three_stalled_peers() {

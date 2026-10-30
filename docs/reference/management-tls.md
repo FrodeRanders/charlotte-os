@@ -205,6 +205,9 @@ Status's exact header owner is separate from deployment's signed-body parser;
 snapshot rendering still runs synchronously. Unused blocking transport adapters
 are removed. See [status progress](status-observation.md#client-progress-and-ownership)
 for budgets, shutdown handoff and qualification limits.
+Deployment shutdown continues accepted controller/output work while incomplete
+inputs transfer into logical close. All five owning phase counts must reach zero
+before the service acknowledges drain; see [deployment ingress](deployment-ingress.md).
 
 Erasure of the named local buffers, IV/nonce and selected cipher owners does not
 qualify all Rustls/Embassy HKDF, HMAC, transcript, traffic-key or parser copies,

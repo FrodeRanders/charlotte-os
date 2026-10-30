@@ -467,6 +467,11 @@ Source, tests, and repository history remain authoritative.
         use the existing five-second output budget. Shutdown drains all client
         phases through consuming logical close. Snapshot collection/rendering
         remains synchronous; full-pool flood fairness is not established.
+        Deployment ingress cancels incomplete input during shutdown, continues
+        accepted controller/output work under original budgets, and requires
+        all five client phases empty before acknowledgement. The signed ARM
+        shutdown fixture checks held idle TLS clients and cooperative retirement;
+        stalled controller/output and receiver-held cleanup remain separate.
         \texttt{--http-test} provisions disposable development credentials,
         adds QEMU forwarding and validates verified HTTPS. Protected enrollment,
         native rotation/failover and wider pressure qualification remain open;
