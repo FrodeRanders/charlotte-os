@@ -1,0 +1,354 @@
+# Audit archive
+
+These are historical records of particular revisions and experiments. Their
+findings and remaining-work lists can be superseded. Use current documentation
+for everyday engineering:
+
+- [Security engineering lessons](../../guides/security-engineering.md): reusable
+  rules, examples and failure patterns.
+- [Current security status](../../reference/security-remediation.md): dispositions,
+  acceptance gates and unresolved incidents.
+- [Cleanup contracts](../../reference/cleanup-recovery.md): current owners,
+  continuation rules and qualification limits.
+
+Existing reports and evidence remain at their original paths. Routine fixes
+update the living contract and their change's validation summary; a new dated
+report is useful for a significant investigation or qualification checkpoint.
+
+## Reports
+
+- [Native Raft recovery and catalog qualification](2026-10-29-raft-native-validation.md) — Process-restart and interrupted-VM recovery, native catalog replication and explicit durability limits.
+- [CQ cursor ordering and consumer ownership](2026-10-29-cq-ring-ordering.md) — Acquire/release slot ownership, serialized consumers and bounded wraparound controls.
+
+- [RNG ring-index accesses](2026-10-28-security-rng-ring-access.md) — Captured ARM entropy failure at the byte rollover, checked halfword access, deterministic old-access rejection and real-service turnover controls.
+
+- [Bounded status dependency observation](2026-10-28-security-status-observation.md) — One deadline across status RPC sources, typed rejection and owned cancellation, with native queue/backing recovery controls.
+
+- [Established management credential validity](2026-10-27-security-management-session-validity.md) — Rechecks active authority with the original chain verifier; native issuer-date and held signed-upload controls retain exact clock/connection evidence and separate preliminary failures.
+- [Committed ingress availability](2026-10-27-security-ingress-availability.md) — Quorum-committed backend eligibility excludes the killed voter from new flows; the complete native direct/VIP management campaign passes, with old-store rejection and flow-affinity controls.
+- [Frame-router readiness and management availability](2026-10-27-security-frame-router-readiness.md) — CQ-binds the normal receive/forward/control reactor; all eight direct-node controls complete after leader loss, while a failed VIP flow is traced to the killed backend.
+- [Management leader loss and election timing](2026-10-27-security-management-failover.md) — Corrects fixed election jitter and demonstrates survivor-led signed policy admission; full and direct-only TLS campaigns still fail, with diagnostics retained separately.
+- [Native management certificate validity](2026-10-27-security-management-validity.md) — Sixteen enrolled expired/future-client rejection controls on both interfaces and architectures, exact native date categories and healthy-reader recovery; authenticated time remains open.
+- [Management credential rotation across signed-policy restart](2026-10-27-security-management-rotation.md) — Native x86 revision 7-to-8 replacement rejects old enrolled operators with their CA still trusted; exact module/resource rejection and older signed-kernel replay expose the remaining rollback boundary.
+- [Management startup rejection and host gates](2026-10-27-security-management-startup.md) — Shared stack policy also covers missing credentials; exact native startup assertions and a regression control for masked x86 identity failures, with inconclusive transport observations retained separately.
+
+- [Native management TLS and operator authentication](2026-10-27-security-management-tls-native.md) — Policy-bound encrypted boot resource, adjustable limits, owned native transport and verified direct/VIP role controls; SEC-10 advances to partial. Preserves stack/deadline and harness failures.
+
+- [RNG descriptor ownership and terminal failure](2026-10-26-security-rng-descriptor-fence.md) — One complete fenced backend, checked completion and inert retained field destruction; isolated unsafe regression controls and frozen native qualification, preserving the preliminary ARM deadline failure.
+
+- [RNG publication and idle readiness](2026-10-26-security-rng-readiness.md) — Bounded shared publication and event-only endpoint/lifecycle waits; old signed server fails the exact CQ/no-timer control, replacement passes both publication generations.
+
+- [RNG caller-funded reply backing](2026-10-26-security-rng-caller-buffers.md) — One current caller-buffer protocol, original-charge retention and real producer/caller budget controls; preserves the failed same-domain-loan fixture runs.
+
+- [Owned entropy request deadlines](2026-10-26-security-entropy-deadlines.md) — Configurable observation budget, complete pending/reply ownership and signed native rejection/cleanup controls; records remaining producer-funded reply pressure.
+
+- [Pinned Embassy TLS migration](2026-10-26-security-embassy-tls.md) — Active patched crypto-bigint graph, domain-owned entropy, typed mTLS and erasing cipher driver; host interop and final ARM/Intel/AMD artifact qualification.
+
+- [crypto-bigint migration through Embassy TLS](2026-10-26-crypto-bigint-embassy-migration.md) — Pinned main-branch candidate, clean advisory graph, two freestanding compile checks and six host controls; records the entropy, mTLS and cipher-erasure work before live cutover.
+
+- [Dependency advisory gate and ctutils correction](2026-10-26-security-dependency-gate.md) — Fresh scans find two current advisories; patches ctutils, rejects notices and retains the unsuppressed TLS crypto-bigint blocker.
+
+- [Network HMAC state erasure](2026-10-26-security-network-hmac-erasure.md) — Reuses the shared erasing HMAC for port selection, retaining the exact sequence and fresh-entropy startup policy.
+
+- [Read-borrower node admission](2026-10-26-security-borrower-node-admission.md) — Charges the third read-loan node to the existing configurable pool before source mutation, with real pressure and a failing old-factory control.
+
+- [SEC-18 backing abandonment](2026-10-26-security-backing-abandonment.md) — Inert complete backing fallback, explicit ordinary cancellation, retained original charges and a failing old-Drop native control.
+
+- [SEC-15 freestanding x86 GCM owner](2026-10-25-security-x86-gcm-owner.md) — Selects erasing software authentication state, rejects unsafe build overrides and checks the selected cipher in the signed guest probe.
+
+- [Memory-capability node admission](2026-10-25-security-memory-capability-node-admission.md) — Requested-byte/count ceilings follow payload and namespace nodes through preparation, publication and retained cleanup.
+
+- [Memory capability preparation ownership](2026-10-25-security-memory-capability-preparation.md) — Inert partial metadata/authority retention, consuming ordinary cleanup and generation-safe late cancellation.
+
+- [Central resource policy and Configuration chapter](2026-10-25-security-resource-policy.md) — Typed compile-time profiles, grouped capacities, validation, tuning process and native profile qualification.
+
+- [Mapping-node admission](2026-10-25-security-mapping-node-admission.md) — Requested-layout/count ceilings follow actual prepared, published and retained mapping-node allocation lifetime.
+
+- [Shared snapshot-buffer admission](2026-10-25-security-snapshot-buffer-admission.md) — Byte/count ceilings follow mapping/copy/DMA buffer lifetime, with real allocation pressure and explicit audit acceptance scope.
+
+- [Mapping preparation ownership](2026-10-25-security-mapping-preparation-ownership.md) — Inert partial node/snapshot custody, explicit post-guard ordinary disposal and captured-generation publication checks.
+
+- [DMA-pin snapshot storage](2026-10-25-security-dma-snapshot-storage.md) — Shared fallible snapshot preparation before DMA pin publication, exact-source revalidation and inert bare-pin fallback.
+
+- [Copy-pin snapshot storage](2026-10-25-security-copy-snapshot-storage.md) — Pin-free snapshot preparation outside memory serialization, captured source revalidation and inert bare-pin fallback.
+
+- [Scratch metadata admission](2026-10-25-security-scratch-admission.md) — Requested-layout/count ceilings follow candidates and retained root metadata through actual deallocation.
+
+- [Scratch namespace and extent storage](2026-10-25-security-scratch-storage.md) — Prepared virtual-range metadata, atomic MMIO claim revalidation and complete root-receipt retention.
+
+- [Memory mapping storage](2026-10-25-security-memory-mapping-storage.md) — Unlocked record/snapshot preparation and complete mapping-node retention through maintenance and retirement.
+
+- [Memory capability and namespace storage](2026-10-24-security-memory-capability-storage.md) — Prepared payload publication and complete paired metadata retirement through existing cleanup owners.
+
+- [Read-loan borrower storage](2026-10-24-security-memory-borrower-storage.md) — Fallible preparation before source escrow and paired borrower/authority retirement after proof.
+
+- [Memory-object record storage](2026-10-24-security-memory-object-storage.md) — Prepared global records and complete backing/node retirement before original charge refund.
+
+- [Borrowed authority publication](2026-10-24-security-ipc-borrowed-publication.md) — Stable borrowed batches replace the temporary vector; complete prepared scalar call commit needs no heap.
+
+- [Unlocked call and endpoint preparation](2026-10-24-security-ipc-unlocked-preparation.md) — Exact-root authority/payload and pending waiter-list factories outside IPC.
+
+- [IPC capability payload storage](2026-10-24-security-ipc-capability-storage.md) — Fallible preparation before authority mutation and paired payload/authority disposal outside IPC.
+
+- [IPC endpoint storage](2026-10-24-security-ipc-endpoint-storage.md) — Charged preparation and queue growth outside IPC, with complete endpoint metadata retirement after unlock.
+
+- [IPC reply-token storage](2026-10-24-security-ipc-reply-storage.md) — Charged second-node preparation and post-IPC token retirement across reply and close paths.
+
+- [IPC pending-call storage](2026-10-24-security-ipc-pending-storage.md) — Exact-root, charged preparation outside IPC and post-guard node disposal.
+
+- [IPC namespace publication](2026-10-24-security-ipc-namespace-publication.md) — Fallible namespace/account preparation, leased root handoff and post-IPC disposal.
+
+- [Root-record storage admission](2026-10-24-security-root-metadata-admission.md) — Shared byte/count limits and partial root preparation rejection.
+
+- [SEC-07 principal table and stack admission](2026-10-23-security-principal-structure.md) — Initial/private table pages and full user-thread stack capacity share the principal limit, with original cleanup fences.
+
+- [SEC-07 aggregate principal backing](2026-10-23-security-principal-backing.md) — Shared object/heap/image limits across instances and retained generations; exact cleanup retention and signed-launch controls.
+
+- [Release startup retry boundary](2026-10-23-security-release-startup.md) — One command and deadline; uncertain responses and accepted rollout failures cannot restart admission.
+
+- [SEC-06 controller server relays](2026-10-22-security-controller-relay.md) — Owned CQ forwarding isolates slow DNS replies; failed preflight queries cannot authorize submission.
+
+- [SEC-06 deployment listener setup reactor](2026-10-22-security-deployment-listener.md) — Creation, listen and accept retain owners and one setup deadline on the shared CQ; shutdown drains setup into the existing close pool.
+
+- [IPC namespace selection recheck](2026-10-22-ipc-namespace-selection.md) — Real peer-close interleaving reproduces stale Pending; exact presence recheck preserves live claims and original backing charges.
+
+- [Exact-root retirement pending diagnostics](2026-10-22-root-retirement-diagnostics.md) — Captured Pending stages separate lease, IPC and memory observations; historical reclamation timeout remains unresolved.
+
+- [Immediate socket send: complete IDs and owned frames](2026-10-22-security-immediate-send.md) — retires packed selectors and raw send cleanup; native frame rejection and high-half isolation controls.
+
+- [SEC-06 synchronous socket-close ownership](2026-10-22-security-synchronous-close.md) — Explicit close and Drop consume the same owner once, carry one deadline, and cannot restore an ID after accepted uncertainty.
+
+- [SEC-06 deployment logical-close reactor](2026-10-22-security-deployment-close.md) — Consuming close owners retain capacity and original budgets through CQ observation; accepted work is never replayed.
+
+- [SEC-06 deployment response reactor](2026-10-22-security-deployment-output.md) — Deferred sends retain response owners and original budgets; positive prefix receipts advance output without replaying uncertainty.
+
+- [SEC-06 deployment controller reactor](2026-10-22-security-deployment-control.md) — CQ-bound controller operations retain their sockets and original budgets; healthy reply observation proceeds beside a held request without replay.
+
+- [SEC-06 deployment input isolation](2026-10-22-security-deployment-input.md) — Four bounded CQ-driven inputs, deferred accept/EOF notifications, native stalled-peer controls and a finite scheduling model; controller/send/close fairness remains open.
+
+- [SEC-15 GCM authentication-state erasure](2026-10-22-security-gcm-erasure.md) — Enables constructor-scratch and software-state erasure, with an AArch64 backend guard and explicit x86/PMULL gaps.
+
+- [SEC-15 TLS AES round-key erasure](2026-10-21-security-aes-erasure.md) — Enables the dependency's existing wiping feature and rejects its removal at compile time; wider TLS state remains open.
+
+- [SEC-15 private-key input review](2026-10-21-security-private-key-input.md) — Verifies existing read-error tail erasure and makes normalization return an erasing owner directly.
+
+- [Complete ingress acknowledgement and policy readers](2026-10-21-security-ingress-response.md) — Validates all scalar notification successes, preserves complete bodies and checks current policy observations.
+
+- [Complete named deployment observations](2026-10-21-security-named-status.md) — Validates standalone status and preserves full status bodies for all apply/status callers, with false-success controls.
+
+- [Host ingress operation deadlines](2026-10-21-security-ingress-deadline.md) — Shares one checked budget across preparation, notification and observation, bounds network phases and retires hostname resolution in signer commands.
+
+- [Binding release rollout to component admissions](2026-10-21-security-release-generation.md) — Carries complete digest-bound receipts through local/follower admission and fixes capacity charges skipped by optimized builds.
+
+- [Binding descriptor rollout observation to admission](2026-10-21-security-deployment-generation.md) — Captures each admitted generation and rejects stale, superseded or malformed readiness as completion; records the separate release-client gap.
+- [Publishing the local deployment fixture bundle](2026-10-21-security-fixture-publication.md) — Stages a complete bundle before named replacement, preserving link targets and earlier output on staging failure.
+- [Retaining host output after failure](2026-10-21-security-output-retention.md) — Removes pathname deletion from failed writes and key generation, with real CLI partial-write controls.
+- [Exclusive structured control outputs](2026-10-21-security-control-output.md) — Preserves existing files and link targets across deployment, release and shutdown signing; gives boot fixtures fresh record directories.
+- [Rewriting the opened ELF file](2026-10-21-security-artifact-edit.md) — Retains the opened file and image through consuming publication, with deterministic path-replacement controls.
+- [Artifact input bounds and streaming hash](2026-10-21-security-artifact-input.md) — Enforces the launch ELF limit before host reads/output growth, checks variant count early and streams arbitrary-file hashing.
+- [Bounded structured control inputs](2026-10-21-security-control-input.md) — Covers deployment, release, shutdown and ingress file reads, with early release descriptor-count rejection.
+- [Bounded operational file inputs](2026-10-21-security-operational-input.md) — Bounds ciphertext and bundle references before decoding or notification, with early binding-count rejection and actual CLI controls.
+- [Bounded public-key file inputs](2026-10-21-security-public-key-input.md) — Shares trust-policy admission and decoding with operational and ingress-policy file arguments; preserves baseline rejection failures.
+- [SEC-15 host plaintext profile input](2026-10-20-security-host-profile-input.md) — Owns the bounded read destination before I/O and rejects unsafe Unix file sources before sealing.
+- [SEC-15 host key-file encoding](2026-10-20-security-host-key-encoding.md) — Reserves the complete erasing hex-plus-newline buffer for key generation, avoiding output growth.
+
+- [SEC-15 SCRAM initial owners](2026-10-20-security-scram-initial-owners.md) — Removes escaped-username scratch and owns the phase-local nonce through consuming transitions.
+
+- [SEC-15 Kafka profile encoding](2026-10-20-security-kafka-profile-encoding.md) — Returns the credential-bearing frame under an erasing owner and removes aggregate profile/authentication Debug.
+
+- [SEC-15 S3 profile encoding](2026-10-20-security-s3-profile-encoding.md) — Returns the credential-bearing frame under an erasing owner and removes aggregate profile Debug.
+
+- [SEC-15 S3 profile owners](2026-10-20-security-s3-profile-owners.md) — Keeps the service-local profile in one erasing frame and owns reserved HTTP authority text.
+
+- [SEC-15 request-key/raw-path owners](2026-10-20-security-s3-path-owners.md) — Owns the decoded key and reserved raw path while preserving the IPC mapping boundary and path rules.
+
+- [SEC-15 response metadata owners](2026-10-20-security-s3-metadata-owners.md) — Consumes the response header and lends metadata ranges, removing independent metadata string copies.
+
+- [SEC-15 canonical signing owners](2026-10-20-security-s3-canonical-owners.md) — Owns and reserves canonical URI/query/header copies and returned signing metadata.
+
+- [SEC-15 S3 request owners](2026-10-19-security-s3-request-owners.md) — Owns authorization/signature text and reserves the complete erasing HTTP request header.
+
+- [SEC-15 S3 response buffers](2026-10-19-security-s3-response-buffers.md) — Removes header/decoder output growth and erases consumed or abandoned chunk-framing scratch.
+
+- [SEC-15 receive owners](2026-10-19-security-receive-owners.md) — Owns TLS/plain receive chunks and Kafka partial frames, removes frame growth, and fences failed source episodes.
+
+- [SEC-15 SASL frame ownership](2026-10-19-security-sasl-frames.md) — Removes reply authentication copies, consumes complete frames on rejection, and validates request size before guarded encoding.
+
+- [SEC-15 Base64 scratch](2026-10-19-security-base64-scratch.md) — Reproduced decoded-prefix retention on rejection and decoder growth; helpers now create and transfer zeroizing output owners.
+
+- [SEC-15 HPKE erasure](2026-10-19-security-hpke-erasure.md) — Reproduced missing X25519 Drop erasure, required its dependency feature, and transferred generated private bytes in a zeroizing owner.
+
+- [SEC-15 SCRAM phase ownership](2026-10-19-security-scram-phases.md) — Consuming challenge/final phases release transient secrets and prevent reuse after rejection, with host and broker-fault execution evidence.
+
+- [SEC-15 hash-state erasure](2026-10-19-security-hash-state-erasure.md) — Reproduced unfinished SHA state retention, erased owned hash scratch, and shared owned HMAC results across SigV4/SCRAM.
+
+- [SEC-04 early platform artifact authority — 19 October 2026](2026-10-19-security-platform-artifact-authority.md): one selected key before platform loading, wrong-root NS/NVMe controls, and extended boot-trust models; protected state and custody remain open.
+
+- [SEC-04 exact boot-verification receipts](2026-10-19-security-boot-receipts.md) — Shared exact-installed verification and a distinct kernel input, retaining production refusal and protected-state/custody limits.
+
+- [Raft snapshot continuation ownership](2026-10-19-raft-snapshot-streams.md) — Reproduces mixed-stream installation, binds buffered chunks to leader/term, and adds owner/offset model controls.
+
+- [Raft per-read quorum fences](2026-10-19-raft-read-fences.md) — Replaces the query lease; the former stale read rejects, with owned asynchronous DNS routing and four model controls.
+
+- [Raft elapsed time and reproduced lease gap](2026-10-18-raft-clock-lease-gap.md) — Corrects reactor clock accounting; an honest delayed reply still enables a stale application read.
+
+- [Raft read prerequisites](2026-10-18-raft-read-prerequisites.md) — Rejects reads before current-term commit/application; timing and correlation remain open.
+
+- [Graft membership parity and demoted leadership](2026-10-18-raft-membership-parity.md) — Restored proposed-member catch-up, immediate learner step-down with vote retention, and a dated Java/C++/Rust and Jepsen scope comparison.
+
+- [Raft response term and progress fencing](2026-10-18-raft-response-fencing.md) — Reproduced stale-term unsafe commit, corrected response admission/progress, and repaired snapshot join-completion coverage.
+
+- [Application snapshot acceptance model](2026-10-18-snapshot-restore-model.md) — Rejected restore preserves live state and Raft publication; recovery requires acceptance, with seven required counterexamples.
+
+- [Boot trust and conditional installation model](2026-10-18-boot-trust-model.md) — Exact installed boot acceptance, immutable shared policy and conditional commit/reboot ordering; protected production boundaries remain absent.
+
+- [NS publication and endpoint-death model](2026-10-18-name-publication-model.md) — Public/policy gates, admitted watch ownership, exact death retirement and corrected signed generation exhaustion.
+
+- [Coherent-DMA CPU remap fence](2026-10-18-coherent-dma-remap-fence.md) — Reproduced and closed fresh CPU mapping while coherent DMA pins remain; ARM and Intel execution evidence.
+- [DMA operation and readiness model](2026-10-18-dma-operation-model.md) — Complete unit claims, map/unmap admission versus completion, restricted failure owners and non-replayable cleanup.
+
+- [Capability and IPC publication model](2026-10-18-ipc-publication-model.md) — Captured record admission, source escrow, hidden delivery, namespace reuse and detached metadata charges.
+
+- [Security model synchronization](2026-10-18-security-model-sync.md) — Root-retirement and fallible-wait safety models, required counterexamples and remaining formal coverage gaps.
+
+- [Telemetry snapshot preparation and status-page lifetime](2026-10-18-telemetry-snapshot-preparation.md) — Bounded fallible capture/encoding, exact-generation heap reads and borrowed closing-root sampling.
+
+- [Manual and living-documentation source comparison](2026-10-18-documentation-reality-sweep.md) — Corrects capability/API, recovery, admission, trust, bootstrap and build/CI claims; records the source scope and verification limits.
+
+- [Principal history preparation](2026-10-18-principal-history-preparation.md) — Prepares admitted history storage before root publication and retains its original metadata through retirement.
+
+- [Signed-authority slot preparation](2026-10-18-root-authority-preparation.md) — Prepares identity storage with the root; exact generation installation and receipt retention through invalidation.
+
+- [Root policy and telemetry metadata preparation](2026-10-18-root-policy-preparation.md) — Fallible limit/usage nodes before publication; exact nodes retained in the root retirement receipt through invalidation.
+
+- [Memory sponsor metadata preparation](2026-10-18-memory-sponsor-preparation.md) — Fallible account/sponsor preparation before root publication; exact generation lifetimes and post-ledger metadata disposal.
+
+- [Kernel stack range ownership](2026-10-17-kernel-stack-ownership.md) — Removes infallible guard-map allocations; exact stack owners fence teardown while retaining the containing root and admission.
+
+- [Security status source review](2026-10-17-security-status-review.md) — Current finding accounting, sampled corrections, concrete remaining allocation/destructor boundaries and fresh host validation.
+
+- [Detached submission preparation](2026-10-16-detached-submission-preparation.md) — Record/event admission and node/observer allocation leave the registry; exact namespace/CQ revalidation and once-only enqueue retain original charges.
+
+- [Detached timer terminal disposal](2026-10-16-detached-timer-disposal.md) — Complete timer-bearing records leave the registry before disposal; direct/backlog charge lifetimes and exact-source notification remain distinct.
+
+- [CQ payload preparation](2026-10-16-cq-payload-preparation.md) — CQ admission, list/backlog/ring storage and partial rejection leave the registry; exact namespace revalidation precedes physical writes and replacement.
+
+- [Terminal completion observer disposal](2026-10-16-completion-terminal-disposal.md) — Detached event/worker owners leave local completion guards; installation disposal and terminal wakes preserve exact source identity.
+
+- [Completion callback preparation and source disposal](2026-10-15-completion-callback-preparation.md) — Exact-operation callback preparation outside registry/inner guards; complete successful namespace/CQ detachments dispose after unlock.
+- [Waiter source preparation](2026-10-15-waiter-source-preparation.md) — Lazy list allocation and IPC/CQ entries leave local source guards; exact-source revalidation, readiness races and post-guard disposal.
+- [Scheduler wait preparation and publication](2026-10-15-scheduler-wait-publication.md) — Registration and cancellation leave local LP/table guards; early hints and exact installed-wait identity close publication races.
+- [Inline scheduler run queues](2026-10-15-inline-scheduler-run-queues.md) — Ready storage follows each complete thread; no ring growth, migration rejects before source removal, and linked owners reject physical cleanup.
+- [Scheduler selection storage and x86 dispatch gate](2026-10-15-scheduler-selection-storage.md) — Allocation-free load/candidate scans, explicit caller inventory and never-dispatched-only x86 migration; run-queue growth remains open.
+- [Retained stack-growth execution ownership](2026-10-15-stack-growth-execution-owner.md) — Original thread/root/stack charges retained through growth outside the thread table; real EL0 growth, deferred-abort and foreign-leaf rollback evidence.
+- [Thread-exit watch preparation](2026-10-15-thread-exit-watch-preparation.md) — Captured-generation preparation outside the thread table/source mutex, allocation-free publication and exact-episode rejection; scoped C16/R7/G1/G4 evidence.
+- [Captured park-delivery fixture panic and current-build matrix](2026-10-15-captured-park-fixture-panic.md) — Spontaneous all-LP failure capture, forced-switch reproduction of an invalid Running-only assertion, and bounded cross-architecture follow-up.
+- [Automatic guest failure capture](2026-10-15-automatic-failure-capture.md) — Independent ARM/x86 watcher, private all-LP snapshots and immutable run inputs; native deadline controls and explicit capture limitations.
+- [Raft persistence failure diagnostics](2026-10-15-raft-persistence-diagnostics.md) — Per-call typed errors and distinct write/flush fail-stop context through existing owners; historical attribution remains open.
+- [2026-10-15 audit process and outstanding failure review](2026-10-15-audit-process-review.md) — Current SEC accounting, corrected versus unattributed panics, diagnostic gaps and ordered next work; fresh host validation, no new guest claims.
+- [First-dispatch retirement/readiness correction](2026-10-15-first-dispatch-delivery.md) — Incoming-stack handoff, failing negative control and passing ARM/x86 suites; historical IPC/persistence attribution remains open.
+- [CI Sitas runtime pin and panic diagnostics](2026-10-15-ci-sitas-runtime-pin.md) — Reproduced obsolete-wait failure, corrected dependency pin and restored frame pointers.
+- [IPC close-worker exit investigation](2026-10-14-ipc-close-exit-investigation.md) — Exact-source/phase diagnostics and bounded four-LP repeated closes; historical timeout remains open.
+- [Correlated DNS registration/retraction](2026-10-14-protocol-simplification-dns-registration-relay.md) — Full names, prepared replies and owned registration phases; mixed/HTTP execution and separately retained IPC exit timeout.
+- [Current security remediation ledger and completion criteria](../../reference/security-remediation.md)
+  — living status; historical reports below retain their original scope.
+- [One scoped launch owner](2026-10-13-protocol-simplification-launch.md) — Signed launch returns its verified principal; packed/name aliases and zero-principal singleton retirement are removed.
+- [Current-only catalog snapshots](2026-10-13-protocol-simplification-catalog.md) — Retired snapshot decoders removed; explicit restore rejection precedes Raft log/membership publication; deployment queries require complete sections.
+- [Current-only Raft persistence](2026-10-13-protocol-simplification-raft.md) — Tagged two-object pair, strict recovery, owned IPC transport and future migration policy.
+- [Current-only discovery advertisements](2026-10-13-protocol-simplification-discovery.md) — Complete declared-length payloads replace optional cluster fields and base-only fallbacks.
+- [Current-only deployment descriptors](2026-10-13-protocol-simplification-deployment.md) — First simplification batch: retired signed grammars reject; current writers, callers and living documentation agree.
+- [Timed completion outcomes (SEC-18 / C16, C18)](2026-10-12-completion-wait-outcomes.md) — Explicit kernel wait admission errors, shared deadline loop and exact-generation close-fixture diagnostics.
+- [DMA-map failure ownership (SEC-18 / C13, C18)](2026-10-12-dma-map-failure-ownership.md) — Per-call rejection diagnostics and restricted shared-DMA failure ownership.
+- [DMA startup preparation and typed failures (SEC-18 / C01, C15, C18)](2026-10-12-dma-startup-preparation.md) — Boot-driver grant ordering, retained-root preparation and per-return cause/cancellation diagnostics.
+- [Exact IPC close-claim readiness (SEC-18 / C07–C09)](2026-10-12-ipc-close-readiness.md) — Retained-root and claim-epoch waits, rollback/failure notifications and owned endpoint-front readiness.
+- [Exact transfer-close readiness (SEC-18 / C18)](2026-10-12-memory-close-readiness.md) — Retained-root waits, charged source disposal and shared producer-LP deferred waiter delivery.
+- [Event-driven LP reapers (SEC-18 / C16)](2026-10-12-reaper-readiness.md) — Owned retirement-head waits and deferred exact-LP wakes replace one-millisecond idle polling.
+- [Pending reply CQ readiness](2026-10-12-reply-cq-readiness.md) — Owning reply interests, exact CQ identity and lifecycle notification for multi-source controllers.
+- [Thread metadata retention (SEC-18 / C16 / G1)](2026-10-12-thread-metadata-retention.md) — Complete guarded fallback retention and explicit metadata disposal after confirmed stack-pair release.
+- [Weekly wait/readiness sweep](2026-10-12-wait-readiness-sweep.md) — Reply polling replaced by owned timed readiness waits; remaining cleanup, reaper and shootdown notification gaps documented.
+- [Object-store readiness and unreadable mount metadata](2026-10-12-security-object-store-readiness.md) — Explicit serving state, immutable first-I/O diagnostics and fail-closed metadata read policy; historical Intel failure retained.
+- [Deployment controller RPC deadlines](2026-10-12-security-controller-deadlines.md) — Seven bounded ingress RPCs, scalar/moved cancellation and original-sponsor page/queue recovery under pressure.
+- [Platform publication deadlines](2026-10-12-security-publication-deadlines.md) — Bounded TCP/IP registration, five further owner-based startup paths, accepted-call cancellation and full-queue/silent-endpoint recovery evidence.
+- [Network endpoint publication under admission pressure](2026-10-12-security-network-publication.md) — Retained AMD startup failure, NIC diagnostics, owned publication and exact delegated admission status.
+- [Deployment ingress and scoped publication progress](2026-10-11-security-deployment-ingress.md) — Connection-local setup/accept failure, fallible parser backing, ownership-preserving identity publication and deployment HTTP recovery probes.
+- [HTTP listener progress under security queue pressure](2026-10-10-security-http-progress.md) — Failed packet/phase captures, exact admission errors and listener-preserving retries.
+- [TCP/IP caller buffers and negative audit probes](2026-10-10-security-tcpip-caller-buffers.md) — Receive/status sponsorship, retention and lifecycle evidence; legacy lookup, upgrade and fragment rejection.
+- [2026-10-10 object-store isolation fixes, policy revocation and mutex-context probes](2026-10-10-security-object-store-follow-up.md)
+- [2026-10-10 commit progress verification and SEC-12 isolation follow-up](2026-10-10-security-progress-verification.md)
+- [2026-10-10 object-store operator scope policy (SEC-12)](2026-10-10-security-object-store-scope-policy.md)
+- [2026-10-10 object-store per-object ownership (SEC-12)](2026-10-10-security-object-store-ownership.md)
+- [2026-10-10 object-store reserved-namespace authority (SEC-12)](2026-10-10-security-object-store-reserved-namespace.md)
+- [2026-10-10 intermittent user-stack lease timeout investigation](2026-10-10-security-user-stack-lease-timeout.md)
+- [2026-10-10 live-upgrade IOMMU boot initialization regression](2026-10-10-security-live-upgrade-iommu-init.md)
+- [2026-10-10 renewed-audit remediation (SEC-36–38)](2026-10-10-security-audit-remediation-2.md)
+- [2026-10-10 renewed-audit remediation (SEC-31–35)](2026-10-10-security-audit-remediation.md)
+- [2026-10-10 renewed security audit (SEC-31–38)](2026-10-10-security-audit.md)
+- [2026-10-10 mailbox word-ring backing admission](2026-10-10-security-mailbox-backing-admission.md)
+- [2026-10-10 mailbox word-queue storage](2026-10-10-security-mailbox-queue-storage.md)
+- [2026-10-10 final-root mailbox and authority metadata retirement (SEC-07/18)](2026-10-10-security-root-metadata-retirement.md)
+- [2026-10-10 mailbox publication and explicit close contexts (SEC-07/18)](2026-10-10-security-mailbox-publication.md)
+- [2026-10-10 admitted DMA mapping records and SMMU walker cache (SEC-07/18)](2026-10-10-security-dma-metadata-storage.md)
+- [2026-10-09 admitted IOMMU backend registry storage (SEC-07/18)](2026-10-09-security-backend-registry-storage.md)
+- [2026-10-09 device authority preparation and retirement contexts (SEC-07/18)](2026-10-09-security-device-authority-context.md)
+- [2026-10-09 prepared unified capability authority records (SEC-07/18)](2026-10-09-security-capability-record-storage.md)
+- [2026-10-09 prepared unified capability namespace storage (SEC-07/18)](2026-10-09-security-capability-namespace-storage.md)
+- [2026-10-09 prepared device registry storage and post-guard disposal (SEC-07/18)](2026-10-09-security-device-registry-storage.md)
+- [2026-10-09 DMA close claim without allocating reinsertion (SEC-18)](2026-10-09-security-dma-close-claim.md)
+- [2026-10-09 complete-unit DMA creation outside local serialization (SEC-18)](2026-10-09-security-dma-creation-phases.md)
+- [2026-10-09 PCI reset claim retained through DMA publication (SEC-18)](2026-10-09-security-pci-reset-claim.md)
+- [2026-10-09 complete DMA map/unmap ownership through unlocked maintenance (SEC-18)](2026-10-09-security-dma-mapping-maintenance.md)
+- [2026-10-09 claimed IOMMU boot initialization (SEC-18)](2026-10-09-security-iommu-unit-initialization.md)
+- [2026-10-09 typed private DMA construction rollback (SEC-18)](2026-10-09-security-dma-private-rollback.md)
+- [2026-10-09 concurrent abort-sweep executor ownership (SEC-18)](2026-10-09-security-abort-executor.md)
+- [2026-10-09 abort-sweep root completion before caller retirement (SEC-18)](2026-10-09-security-abort-handoff.md)
+- [2026-10-09 IOMMU table/region preparation abandonment (SEC-18)](2026-10-09-security-iommu-preparation-abandonment.md)
+- [2026-10-09 explicit published stack-pair retirement (SEC-18)](2026-10-09-security-published-stack-retirement.md)
+- [2026-10-09 initial/growth stack preparation abandonment (SEC-18)](2026-10-09-security-stack-preparation-abandonment.md)
+- [2026-10-09 table/raw-frame abandonment and stack-retirement diagnostics (SEC-18)](2026-10-09-security-table-abandonment.md)
+- [2026-10-09 heap/image and kernel-range abandonment without cleanup (SEC-18)](2026-10-09-security-preparation-abandonment.md)
+- [2026-10-08 cross-category cleanup and recovery strategy (SEC-07/18)](2026-10-08-security-recovery-strategy.md)
+- [2026-10-08 bounded final-root recovery receipts (SEC-18)](2026-10-08-security-root-recovery.md)
+- [2026-10-08 cooperative shutdown runtime-page ownership (SEC-18)](2026-10-08-security-cooperative-pages.md)
+- [2026-10-08 QEMU Secure Boot chain and signed-policy consumption (SEC-04)](2026-10-08-security-qemu-secure-boot.md)
+- [2026-10-07 one-shot kernel boot trust handoff (SEC-04)](2026-10-07-security-boot-trust-handoff.md)
+- [2026-10-07 signed bootstrap policy and revision lineage (SEC-04)](2026-10-07-security-signed-trust-policy.md)
+- [2026-10-07 public trust preflight and remediation criteria (SEC-04/07/18)](2026-10-07-security-trust-preflight.md)
+- [2026-10-07 whole-domain thread abort ownership (SEC-07/18)](2026-10-07-security-domain-thread-abort.md)
+- [2026-10-07 prepared deferred thread retirement (SEC-07/18)](2026-10-07-security-thread-retirement.md)
+- [2026-10-07 prepared slot-return storage (SEC-07/18)](2026-10-07-security-slot-return-storage.md)
+- [2026-10-07 fallible timer observer allocation (SEC-07/18)](2026-10-07-security-timer-observer-allocation.md)
+- [2026-10-07 provisional kernel-frame preparation (SEC-18)](2026-10-07-security-kernel-preparation.md)
+- [2026-10-07 observer-list backing admission (SEC-07)](2026-10-07-security-observer-lists.md)
+- [2026-10-07 timer backing admission (SEC-07)](2026-10-07-security-timer-backing.md)
+- [2026-10-07 completion backing admission (SEC-07)](2026-10-07-security-completion-backing.md)
+- [2026-10-07 bounded kernel-frame release (SEC-18)](2026-10-07-security-kernel-release.md)
+- [2026-10-07 IOMMU backing admission (SEC-07)](2026-10-07-security-iommu-admission.md)
+- [2026-10-07 runtime stack admission (SEC-07)](2026-10-07-security-stack-admission.md)
+- [2026-10-06 shared kernel-table admission (SEC-07)](2026-10-06-security-kernel-table-admission.md)
+- [2026-10-06 private translation-table admission (SEC-07)](2026-10-06-security-table-admission.md)
+- [2026-10-06 staged-copy rollback and QEMU quiescence/recovery (SEC-18)](2026-10-06-security-staged-quiescence.md)
+
+- [2026-10-06 IPC backing release outside serialization (SEC-18 follow-up)](2026-10-06-security-ipc-backing-release.md)
+
+- [2026-10-06 returned-memory source qualification (SEC-18 follow-up)](2026-10-06-security-source-qualification.md)
+
+- [2026-10-06 IPC connection delivery visibility (SEC-30)](2026-10-06-security-connection-delivery.md)
+
+- [2026-10-06 IPC owned-memory delivery visibility (SEC-29)](2026-10-06-security-memory-delivery.md)
+
+- [2026-10-06 owned memory retirement and unmapped revocation peers (SEC-18/28)](2026-10-06-security-memory-retirement.md)
+
+- [2026-10-06 owned device retirement and DMA loan revocation (SEC-18/27)](2026-10-06-security-device-retirement.md)
+
+- [2026-10-06 owned namespace loan cleanup and assembly permissions (SEC-18/26)](2026-10-06-security-namespace-close.md)
+- [2026-10-06 owned explicit endpoint close (SEC-18 follow-up)](2026-10-06-security-endpoint-close.md)
+- [2026-10-06 bulk IPC cleanup failure propagation (SEC-18 follow-up)](2026-10-06-security-bulk-cleanup.md)
+- [2026-10-05 security follow-up and remediation (SEC-23–25)](2026-10-05-security-follow-up.md)
+
+- [2026-10-05 security remediation](2026-10-05-security-remediation.md)
+- [2026-10-05 renewed security audit](2026-10-05-security-audit.md)
+- [2026-10-03 security audit](2026-10-03-security-audit.md)
+- [2026-10-03 security remediation and remaining work](2026-10-03-security-remediation.md)
+- [2026-08 code/documentation cross-check](2026-08-code-documentation-cross-check.md)
+- [2026-08 distributed-systems audit](2026-08-distributed-systems.md)
+- [2026-07 functionality and logic audit](2026-07-functionality-and-logic.md)

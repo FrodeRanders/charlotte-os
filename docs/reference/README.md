@@ -3,6 +3,11 @@
 These documents explain current code-facing contracts and invariants. They
 should be updated with the implementation when those contracts change.
 
+- [Subsystem contributor contracts](contributor-contracts.md) — detailed rules
+  selected by the repository's contributor reading map.
+- [Security engineering lessons](../guides/security-engineering.md) — recurring
+  failure patterns, design rules and pointers to current subsystem contracts.
+
 - [Management TLS](management-tls.md) — boot credentials/limits, exact operator roles, verified clients and remaining qualifications.
 - [Bounded status observations](status-observation.md) — one snapshot deadline,
   owned RPC cancellation and unavailable dependency results.
@@ -22,9 +27,11 @@ should be updated with the implementation when those contracts change.
   finite SEC-07/18 completion criteria and production security milestones.
 - [IPC namespace publication](ipc-namespace-publication.md) — fallible root-owned
   preparation, exact-root handoff and post-IPC empty-node disposal.
-- [Cleanup ownership and recovery strategy](cleanup-recovery.md) — source-reviewed
+- [Cleanup ownership and recovery strategy](cleanup-recovery.md) — current
   owner-family coverage, retry boundaries, shared controller requirements and
   cross-category completion gates.
+- [Thread and publication cleanup contracts](cleanup-recovery-details.md) — C16/C18
+  release order, containing-owner obligations and remaining qualification limits.
 - [Signed bootstrap trust policy](bootstrap-trust-policy.md) — fixed public
   policy authentication, explicit revision lineage and protected integration gaps.
 - [Private translation admission](translation-admission.md) — root/intermediate

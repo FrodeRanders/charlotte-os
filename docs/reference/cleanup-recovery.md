@@ -1,16 +1,15 @@
 # Cleanup ownership and recovery strategy
 
-Initial inventory reviewed 2026-10-08 against revision `ec8a5383`; summaries
-reconciled 2026-10-15 through park/first-dispatch delivery at `1109d05a`.
-This is the cross-category
-coverage map and implementation plan for SEC-18, with SEC-07 accounting
-dependencies. It documents current owners separately from required controller
-behavior. It adds no recovery API and does not close either finding.
+Current owner-family map and acceptance gates, consolidated 2026-10-30. This
+page describes operation ownership and supported continuation; it does not
+record a new execution campaign or close SEC-07/18. Use the
+[security engineering guide](../guides/security-engineering.md) for the learned
+patterns and the [security ledger](security-remediation.md) for remaining
+milestones and unresolved incidents.
 
-The unit of **design** is a resource/operation category. The unit of **custody**
-is one exact owned operation, which may retain several objects and roots.
-An IPC cancellation, for example, cannot be split into independent retries for
-its token, loans and roots. They form one completion transaction.
+The unit of design is a resource/operation category. Custody retains one exact
+complete operation, possibly spanning several roots and objects. An IPC
+cancellation's token, loans and roots cannot become independent retries.
 
 ## Common lifecycle
 
@@ -65,153 +64,72 @@ later phase fails; restarting the entire sequence can repeat irreversible work.
 
 ## Receipt coverage map
 
-These 18 rows cover the identified CPU-memory, IPC, device and domain-teardown
-owner families. They group composing types, not individual allocations. Each
-row names its current continuation boundary and a concrete remaining gap.
-Source links identify implementation anchors; category contracts contain the
-existing regression evidence. **No row means that all its caller contexts have
-been qualified.** G1–G7 below are the remaining shared work items.
+Each row names the complete owner and its continuation boundary. Detailed
+subsystem contracts define the physical proof and disposal order. Keep this map
+current; execution chronology belongs in [historical reports](../reports/README.md).
 
-| ID and category | Current owner / completion boundary | Current continuation and gap |
+| Family | Owner / contract | Continuation and remaining qualification |
 | --- | --- | --- |
-| C01: live root retention | [`AddressSpaceOperation`](../../crates/catten/src/memory/operation.rs), backed by `SlotLease`; explicit `release` completes the exact generation's count. | A dependency, not a cleanup engine. Drop retains the count. Abandoned counts cannot be decremented by a controller. Caller must also own backing, authority and scratch. Whole-domain abort owns its exact executor before root admission; pending abort requests defer retirement/migration through root completion, then the final mask releases that executor. Abandonment retains both fences; broader kernel-operation contexts remain G1/G2/G7. The [driver grant batch](../reports/audits/2026-10-12-dma-startup-preparation.md) composes this existing exact-root lease with LoadedDomain in PreparedDriver through hardware preparation and consuming thread start. Its complete ManuallyDrop fallback retains the root/count and configuration identities without cleanup; no custody registry or retry owner is added. [DMA unit readiness](../reports/audits/2026-10-12-dma-unit-readiness.md) retains the original grant lease/count and authority reservation through scheduled admission waiting; only ordinary consuming completion releases it. Availability is not root or physical quiescence. The [grant cancellation readiness](../reports/audits/2026-10-12-dma-grant-cancellation-readiness.md) follow-up keeps that same root/count through one consuming rollback's pre-destruction admission, including staged close, without reacquisition or force-clear. |
-| C02: staged domain close | [`ClosingAddressSpace`](../../crates/catten/src/memory/retirement.rs), `ClosingSlot`, `RetirementProgress` and `CloseProgress`. | Final heap sampling now borrows this same closing owner and verifies its exact status mapping before metadata detaches ([telemetry evidence](../reports/audits/2026-10-18-telemetry-snapshot-preparation.md)). Pending returns the same owner. Cleanup errors consume the request and leave its fence/root retained; no general error-owner retry API. Cleanup admission seals only after exact device/IPC/memory completion and zero leases. Final mailbox/queue/unified authority and exact-generation policy/usage/signed-authority node detachment, including any unused principal-history candidate, now stays in this owner through root extraction; fallback retains all fields. Complete admitted queue nodes now detach without destruction; queue charges now follow requested backing lifetime; metadata/principal budgets and other final bookkeeping remain G1/G4; G2/G5. The [weekly wait sweep](../reports/audits/2026-10-12-wait-readiness-sweep.md) records timer/yield polling of operation/domain drain without exact lease/pin/claim completion subscriptions; existing owners/fences remain required. S08a uses the same borrowed block-page pending owners while enforcing current store metadata before mount mutation. Unsupported/nonblank-invalid roots, incompatible layouts, owner-zero headers and dual invalid directory copies reject without formatting or public authority defaults. The shared codec owns no resource and adds no cleanup receipt, custody or physical retry proof; see the [format evidence](../reports/audits/2026-10-13-protocol-simplification-object-store.md). The [reply CQ follow-up](../reports/audits/2026-10-12-reply-cq-readiness.md) wakes default-CQ lifecycle interest only after exact-root request publication and local table-guard exit. It adds no cleanup/lease-drain notification or quiescence proof. The [pending-diagnostic follow-up](../reports/audits/2026-10-22-root-retirement-diagnostics.md) retains an inline Copy observation inside this same ClosingAddressSpace: exact preflight lease count/stage, selected IPC token/call/captured roots/epoch/flags/loan count, or memory object/authority/transfer/revocation/pin state. Counts are captured under the same checked preflight hold; memory fields at actual Pending; IPC selection precedes preparation and may become stale across a changed claim episode. Supervisor terminal observation logs the captured root/generation and last Pending before closing-owner abandonment, after local guards. Cached failure remains terminal. No new root/pin/registry/family/custody, allocation, callback, physical cleanup, release/replay authority or policy timeout is added. Existing root/namespace retention and post-proof destruction remain authoritative; outer caller contexts and unresolved historical timeout causality remain separate. The [namespace-selection correction](../reports/audits/2026-10-22-ipc-namespace-selection.md) rechecks an exact nonreused token after rejected preparation. A confirmed missing selection permits rescan through the same ClosingAddressSpace; every still-present token, including active or changed-epoch claims and other admission rejection, remains Pending. No authority is removed by that check, no physical operation is retried, and no new root/pin/registry/family/recovery owner or deadline is added. Fenced namespace admission/quiescent callers bound rescans to actual token removal. Native controls use real queued/delivered peer closes, preserve delivered moved backing and its original sponsor charge past caller retirement, and retain a different live claim until its owner finishes. The historical live timeout remains causally unresolved. The [principal backing ceiling](principal-backing-admission.md) follows these same heap/image owners through staged close, final invalidation and physical release. Logical exit and slot reuse do not refund it. Failed/abandoned cleanup retains its original aggregate share; no new custody or retry proof is added. Principal-history candidates now carry requested node-byte/count admission in the same authority slot/root receipt. Source classification comes from trusted preparation; reuse/promotion does not reclassify it. Failed invalidation and abandonment retain node plus charge, including losing duplicate candidates. Confirmed metadata disposal deallocates the node before refund; published history stays charged for the boot lifetime. Existing post-guard contexts and complete-root cleanup proofs remain required. No new root/pin, registry, family, retry owner or custody is added. See [history admission evidence](../reports/audits/2026-10-23-security-history-admission.md). Limits/usage/authority nodes now reserve exact requested layout bytes and one node each before allocation. Charges stay in those same admitted nodes through partial preparation, publication and detached-root failure. Ordinary unused cancellation frees nodes before refund; confirmed final metadata disposal does the same. Abandonment retains all fields without counter/allocator entry. Later platform promotion cannot change the original class or late refund. The containing root, slot, backing, history candidate and all proof/context requirements are unchanged; no new family, root/pin, registry, custody or retry owner. See [root metadata admission](../reports/audits/2026-10-24-security-root-metadata-admission.md). The same metadata/root receipt now also carries the complete scratch namespace and extent nodes from sealed detachment through final invalidation. Rejection/abandonment retains them; confirmation permits post-lifecycle/scratch disposal before root backing/slot completion. Existing custody/attempt/physical policies are unchanged, with no separate ticket or family. See [scratch storage evidence](../reports/audits/2026-10-25-security-scratch-storage.md). Scratch namespace/extent requested bytes and node counts now reserve before allocation and stay in these same owners through actual node free; partial/terminal abandonment retains original charges without counter entry. Promotion/reuse cannot reclassify refunds. See [scratch admission evidence](../reports/audits/2026-10-25-security-scratch-admission.md). |
-| C03: detached final root | [`RetiredAddressSpace` and root registry](../../crates/catten/src/memory/retirement/recovery.rs), with `id_table::RetiredEntry` and linear slot completion. | Complete failed-invalidation owner has bounded explicit retry: eight slots, two attempts, checked serials. It now retains detached mailbox/complete admitted queue/unified authority metadata, policy/usage/signed-authority nodes, unused principal-history candidates and original record charges alongside the root. Confirmed invalidation releases metadata post-guard, then backing/slot once; rejected barrier retains all fields. Physical rejection/abandonment is terminal. The [execution-target validation](../reports/audits/2026-10-13-execution-targets.md) corrects the native post-guard fixture to observe current-LP mutex ownership: global try-lock contention cannot diagnose a local leaked guard. Root custody and retry policy are unchanged. Trusted kernel hook only; no operator controller or supervisor reconciliation; G5/G6. The [principal backing ceiling](principal-backing-admission.md) follows these same heap/image owners through staged close, final invalidation and physical release. Logical exit and slot reuse do not refund it. Failed/abandoned cleanup retains its original aggregate share; no new custody or retry proof is added. Private-table accounts now retain a shared principal owner, attached before signed root construction. Confirmed unpublished/root release refunds it; cached prefixes, failed walks and abandoned preparation retain it. Atomic identity binding verifies a prebound sponsor without a second charge. See [table/stack evidence](../reports/audits/2026-10-23-security-principal-structure.md). Principal-history candidates now carry requested node-byte/count admission in the same authority slot/root receipt. Source classification comes from trusted preparation; reuse/promotion does not reclassify it. Failed invalidation and abandonment retain node plus charge, including losing duplicate candidates. Confirmed metadata disposal deallocates the node before refund; published history stays charged for the boot lifetime. Existing post-guard contexts and complete-root cleanup proofs remain required. No new root/pin, registry, family, retry owner or custody is added. See [history admission evidence](../reports/audits/2026-10-23-security-history-admission.md). Limits/usage/authority nodes now reserve exact requested layout bytes and one node each before allocation. Charges stay in those same admitted nodes through partial preparation, publication and detached-root failure. Ordinary unused cancellation frees nodes before refund; confirmed final metadata disposal does the same. Abandonment retains all fields without counter/allocator entry. Later platform promotion cannot change the original class or late refund. The containing root, slot, backing, history candidate and all proof/context requirements are unchanged; no new family, root/pin, registry, custody or retry owner. See [root metadata admission](../reports/audits/2026-10-24-security-root-metadata-admission.md). The same metadata/root receipt now also carries the complete scratch namespace and extent nodes from sealed detachment through final invalidation. Rejection/abandonment retains them; confirmation permits post-lifecycle/scratch disposal before root backing/slot completion. Existing custody/attempt/physical policies are unchanged, with no separate ticket or family. See [scratch storage evidence](../reports/audits/2026-10-25-security-scratch-storage.md). Scratch namespace/extent requested bytes and node counts now reserve before allocation and stay in these same owners through actual node free; partial/terminal abandonment retains original charges without counter entry. Promotion/reuse cannot reclassify refunds. See [scratch admission evidence](../reports/audits/2026-10-25-security-scratch-admission.md). |
-| C04: detached kernel range | [`RetiredKernelRange`](../../crates/catten/src/memory/allocators/memory.rs). | Same mutable receipt can retry failed invalidation before `release_started`. Incomplete detach rejects; physical failure/interruption is terminal. Inline 256-extent preparation, 16-frame release batches. Drop now only records atomic diagnostics; a guarded-drop fixture preserves backing. No retained-owner controller adapter; caller context/dependencies remain G1/G2. The [weekly wait sweep](../reports/audits/2026-10-12-wait-readiness-sweep.md) leaves x86 coordinator admission and epoch acknowledgement polling open; bounded polling does not qualify readiness notifications or change physical retry policy. |
-| C05: memory mapping retirement | [`MappingRetirementPin` and `RetiredObjectMappings`](../../crates/catten/src/memory/object/retirement.rs) ([owner evidence](../reports/audits/2026-10-25-refactoring-mapping-retirement.md)), composed with [map preparation/invalidation](../../crates/catten/src/memory/object/mapping.rs) ([refactoring evidence](../reports/audits/2026-10-25-refactoring-memory-mapping.md)). | Pin, detached mapping records and peer leases prevent early release. Consuming completion does not return a retry owner on detach/invalidation/scratch error. Mapping-node/peer-lease fallback now retains complete records with the existing fence; wider outer contexts and recovery boundaries remain G1/G2. The [transfer-close follow-up](../reports/audits/2026-10-12-memory-close-readiness.md) corrects the explicit source-escrow yield loop through C18. Ordinary DMA/copy/loan/mapping pins still reject close with LendingActive; namespace/lease/pin drains retain their separate notification gap. No custody or physical retry boundary changes. Public map/map-any completion now uses the existing pin as its pre-mutation boundary: no pin on returned rejection means no table/metadata publication by that call, so unused scratch cancels without maintenance. Admitted/rejected prefixes retain the pin through confirmed invalidation; failed rollback or invalidation retains its original scratch/backing/charge. Per-call invalidation cause, owned timeout epoch and sampled missing target supply diagnostics only. The syscall still reports uncertain status 9. No new root/pin, registry, retry owner, physical proof or custody is added. Existing exact-root leases and post-guard invalidation contexts remain; broader outer contexts and historical x86 cause remain open. See [map admission evidence](../reports/audits/2026-10-23-security-map-admission.md). Final backing extraction now detaches the complete object record into the existing backing owner after its pins/mappings permit destruction. Payload/node disposal follows physical completion outside the local registry; the original charge returns last. Failed release retains the complete record/charge and no retry authority. See [object storage evidence](../reports/audits/2026-10-24-security-memory-object-storage.md). Read-borrower nodes now detach with their exact authority after existing cleanup proof; post-registry disposal frees the node before authority admission. Final object release drains remaining borrower nodes only after physical completion. See [borrower storage evidence](../reports/audits/2026-10-24-security-memory-borrower-storage.md). Retired object/backing receipts now also retain detached memory-capability payload/authority nodes through physical proof; failed release retains those original authority charges. Disposal frees payload nodes before shared authority refund. Namespace metadata leaves the memory guard in its complete node. See [memory capability storage evidence](../reports/audits/2026-10-24-security-memory-capability-storage.md). Mapping node/snapshot preparation now leaves memory serialization; final revalidation precedes relink/pin publication. Rollback keeps the exact detached node/published prefix in the existing pin through maintenance, then frees it before pin decrement. Explicit unmap keeps its live record through scratch completion. Whole-object failure/abandonment retains complete nodes/peer leases; physical success frees nodes before peer-lease completion. See [mapping storage evidence](../reports/audits/2026-10-25-security-memory-mapping-storage.md). Scratch extent completion now detaches its existing admitted node under scratch serialization and frees it afterward; uncertain mapping completion still retains the range/pin and original charges. Whole-root scratch cleanup moves into the existing final receipt, not an early lifecycle-held destructor. Scalar range/nonce and wider contexts remain gaps. See [scratch storage evidence](../reports/audits/2026-10-25-security-scratch-storage.md). Scratch namespace/extent requested bytes and node counts now reserve before allocation and stay in these same owners through actual node free; partial/terminal abandonment retains original charges without counter entry. Promotion/reuse cannot reclassify refunds. See [scratch admission evidence](../reports/audits/2026-10-25-security-scratch-admission.md). Copy-pin snapshot capacity now prepares outside memory serialization before frame identity/pin capture, then revalidates exact namespace/source/state before allocation-free fill and pin publication. Bare preparation/pin fallback retains metadata and the original backing fence; explicit snapshot disposal precedes pin decrement. Scoped/source-transfer destructors, DMA snapshots and aggregate snapshot admission remain wider G1/G4/G7 work. See [copy snapshot evidence](../reports/audits/2026-10-25-security-copy-snapshot-storage.md). DMA snapshot capacity now shares inert pin-free preparation with copy snapshots outside memory serialization. Captured source/access validation precedes allocation-free fill and both pin-counter publications; bare fallback retains snapshot/fences, and explicit snapshot free precedes typed unpin. Original DMA hardware proof and complete operation/maintenance ownership remain required. See [DMA snapshot evidence](../reports/audits/2026-10-25-security-dma-snapshot-storage.md). Mapping preparation now owns partial node/shared-snapshot storage inertly before factories; ordinary constructed returns explicitly finish after local memory/table guards. Captured namespace-generation checks precede mapping/pin publication. Guarded partial/full/published fallback retains metadata without allocator entry. Existing roots, physical proofs and uncertainty fences remain required; no retry owner/custody. See [preparation evidence](../reports/audits/2026-10-25-security-mapping-preparation-ownership.md). Mapping/copy/DMA snapshot buffers now share requested-byte/count admission before allocation. Their existing typed buffer owner retains original charges through publication, root retirement and abandonment; actual buffer free precedes refund, with immutable captured classification. Existing roots, backing/hardware proofs and retry policies remain required. See [snapshot admission](snapshot-buffer-admission.md). Mapping nodes now reserve requested-layout bytes/count before allocation; the same node retains original captured-classification admission through preparation, publication and selected/whole-map retirement. Confirmed actual node free precedes refund and peer-root completion; guarded abandonment retains all fields without counter entry. No new physical proof, custody or replay owner. See [mapping-node admission](mapping-node-admission.md). Capacity defaults now come from the immutable compiled [resource policy](resource-policy.md); selecting another build profile does not resize a live account, reclassify a sponsor, refund retained work or add cleanup/replay authority.  Read-borrower requested bytes/counts now share the existing memory-capability node pool, capturing destination classification once before source escrow. Mapped revocation at actual exhaustion releases original node charges after deallocation, including after promotion; no new cleanup proof, custody or retry authority. See [borrower admission evidence](../reports/audits/2026-10-26-security-borrower-node-admission.md). |
-| C06: loan revocation | [`LoanRevocation` and `LeasedRevocation`](../../crates/catten/src/memory/object/revocation.rs). | `cancel_prepared` restores only unstarted admission. Started `finish` consumes the owner; error retains Revoking/pin, not a retry receipt. Direct ordinary error explicitly releases its root leases; abandonment retains them. Other adapters have their own lease policy; G2. Read-loan prior state now owns admitted borrower nodes; failed completion/guarded abandonment retains them with the existing Revoking/pin fence. Confirmed removal pairs the node and original detached authority through post-guard node-first disposal; no new retry owner or custody. See [borrower storage evidence](../reports/audits/2026-10-24-security-memory-borrower-storage.md). Borrower retirement now pairs the complete capability payload node and original authority, preserving borrower-before-payload-before-authority disposal. Write loans carry that same typed payload/authority receipt. Existing physical/root proofs and failure fences remain. See [memory capability storage evidence](../reports/audits/2026-10-24-security-memory-capability-storage.md). Confirmed loan detachment now keeps its admitted mapping node in the same retirement pin until post-registry disposal; failures retain the original live record/fence. No new proof or retry owner. See [mapping storage evidence](../reports/audits/2026-10-25-security-memory-mapping-storage.md). Copy-pin snapshot capacity now prepares outside memory serialization before frame identity/pin capture, then revalidates exact namespace/source/state before allocation-free fill and pin publication. Bare preparation/pin fallback retains metadata and the original backing fence; explicit snapshot disposal precedes pin decrement. Scoped/source-transfer destructors, DMA snapshots and aggregate snapshot admission remain wider G1/G4/G7 work. See [copy snapshot evidence](../reports/audits/2026-10-25-security-copy-snapshot-storage.md). DMA snapshot capacity now shares inert pin-free preparation with copy snapshots outside memory serialization. Captured source/access validation precedes allocation-free fill and both pin-counter publications; bare fallback retains snapshot/fences, and explicit snapshot free precedes typed unpin. Original DMA hardware proof and complete operation/maintenance ownership remain required. See [DMA snapshot evidence](../reports/audits/2026-10-25-security-dma-snapshot-storage.md). |
-| C07: reply completion | [`PreparedReply` and `ReturnedConnection`](../../crates/catten/src/ipc/reply.rs), [scalar `ReplyCompletion`](../../crates/catten/src/ipc/transaction.rs), loans, returned-connection claim and returned-memory `PreparedTransfer`. | Ordinary error restores unstarted receipts and unpublished returns, releases leases and leaves failed loan backing fenced. Abandonment retains the reply/source claim and lease counts. Successful publication jointly installs outputs before result visibility; polling visibility can precede final producer root-lease completion. The scheduled waiter fixture drains exact roots under a deadline on mutation-free busy-close rejection. Claim completion/rollback now closes its exact epoch source through producer-LP deferred notification/disposal for C08/C09 waiters; no failed-operation custody adapter or physical retry proof. See [claim readiness](../reports/audits/2026-10-12-ipc-close-readiness.md); G1/G2/G4/G7. Reply readiness can now wake an owned pending-call CQ interest without observing hidden returned grants; the [CQ evidence](../reports/audits/2026-10-12-reply-cq-readiness.md) retains both observation and exact queue-lifetime qualification. Reply-token nodes now detach into the existing claimed reply owner and dispose after IPC unlock, before its roots finish. Scalar `ReplyCompletion` retains the node and detached notifications together; explicit finish frees storage before notifying, while fallback retains both without cleanup. Original count charge follows actual node release; claim-source classification is captured at call admission. See [reply storage evidence](../reports/audits/2026-10-24-security-ipc-reply-storage.md). Scalar completion now keeps returned-connection preparation and detached payload/shared-authority metadata in the same inert owner; claimed reply retains both through post-IPC disposal before its existing roots finish. See [capability storage evidence](../reports/audits/2026-10-24-security-ipc-capability-storage.md). |
-| C08: call/reply cancellation | [`PreparedCancellation`](../../crates/catten/src/ipc/cancellation.rs) and the existing [reply-CQ interest](../../crates/catten/src/ipc/readiness.rs) retained by its pending call, composed through [common close dispatch](../../crates/catten/src/ipc/close.rs) ([mode evidence](../reports/audits/2026-10-25-refactoring-ipc-close.md)). | Queue/token remain claimed during unlocked revocation. Ordinary failure marks `cleanup_failed`, restores unstarted loans and releases admitted leases without publishing a terminal result. Abandonment retains claim/roots/pins. Consumed failed loan cannot be retried from token IDs; G2. Userspace platform publication now cancels its exact pending owner after a five-second observation deadline, without replay or authority inferred from timeout. Pending-call Drop still aborts the domain if close rejects; a timer is not a cleanup receipt. The [publication deadline evidence](../reports/audits/2026-10-12-security-publication-deadlines.md) tests a queued, unreceived delegation and complete queue-capacity recovery, not uncertain loan/physical cleanup. The [controller deadline follow-up](../reports/audits/2026-10-12-security-controller-deadlines.md) composes the same pending-call cancellation for scalar and moved deployment RPCs; a consumed request is not reconstructed on timeout. Accepted remote mutation remains uncertain; there is no replay or added physical retry/guard qualification. The [weekly wait sweep](../reports/audits/2026-10-12-wait-readiness-sweep.md) replaces client reply timer polling with owned readiness registration plus watchdog. Timeout and rejected waiter admission retain the same pending owner/borrow; application error still explicitly drops it through existing cancellation/abort policy. The [claim-readiness follow-up](../reports/audits/2026-10-12-ipc-close-readiness.md) replaces explicit close yield loops with exact-root, capability and claim-epoch subscriptions. Charged source/disposal preparation precedes IPC relinking; the existing producer-LP transport defers notification and source destruction. Completion, ordinary rollback and cleanup failure close the exact source; failure still publishes no terminal call result and admits no physical retry. Wait/source rejection leaves authority and loan fences intact; close/source fallback retains all fields. Closing a pending-call owner cancels its CQ subscription in the existing record; wait/interest rejection still retains the owner and Rust borrow. See [reply CQ evidence](../reports/audits/2026-10-12-reply-cq-readiness.md). Namespace/lease drains, broader metadata/Drop contexts and pressure qualification remain open; G1/G2/G4/G7. The [Raft persistence simplification](../reports/audits/2026-10-13-protocol-simplification-raft.md) replaces its scalar object-store connection and scratch cleanup with one shared owning Connection and PreparedWrite memory owners. PendingCall::wait consumes exact accepted requests; returned attachments use existing owned cleanup. Persistent object IDs are names and are never deleted by Drop. Admission/write/flush failure does not replay or repair an uncertain record; this adds no kernel cleanup receipt, custody or physical completion proof. The [persistence diagnostic follow-up](../reports/audits/2026-10-15-raft-persistence-diagnostics.md) preserves operation/object/stage and typed memory/IPC/service rejection through these same owners, with separate write-versus-flush fail-stop context. Returned preparation/submission owners retain existing runtime disposal; diagnostic scalars authorize no replay, refund or physical cleanup. The [catalog restore contract](../reports/audits/2026-10-13-protocol-simplification-catalog.md) rejects application snapshots before Raft log/membership publication; it changes no pending-call cancellation ownership and grants no physical cleanup or replay authority. The raw clusterctl verifier copies returned bytes through the existing bounded kernel snapshot boundary and explicitly closes its unique cap; it cannot use the user-root mapping API or infer a successful read from an empty vector. Pending-call storage now detaches as a complete admitted node after confirmed cancellation; this owner leaves IPC before explicit payload/node disposal and original record-charge refund. Failed cleanup retains the live node/count. No new recovery family or retry permission; see [pending storage evidence](../reports/audits/2026-10-24-security-ipc-pending-storage.md). Token and pending nodes now remain in the same cancellation owner through post-IPC disposal before root release. Failed cleanup leaves the live token/count fenced; abandonment retains complete detached metadata. Serialized call close collects detached token nodes in an admitted, allocation-free local list and frees them after IPC unlock. See [reply storage evidence](../reports/audits/2026-10-24-security-ipc-reply-storage.md). Final hidden-connection cleanup now carries detached closed endpoint nodes in the same cancellation owner through post-IPC disposal before roots finish; node admission returns after actual free. See [endpoint storage evidence](../reports/audits/2026-10-24-security-ipc-endpoint-storage.md). Capability removal now pairs its complete payload node with shared RetiredRecord authority in this same metadata list. Connection-count refund follows post-IPC payload/node free; fallback retains both original accounts. See [capability storage evidence](../reports/audits/2026-10-24-security-ipc-capability-storage.md). |
-| C09: endpoint close | [`PreparedEndpointClose`](../../crates/catten/src/ipc/endpoint_close.rs). | Owns one server lease and processes existing queue storage one call at a time. Ordinary rejection clears the endpoint claim and releases the server lease, but failed call/loan fences remain. Abandonment retains claim/root. No whole-endpoint replay after partial progress; G2/G4. Userspace `Endpoint::close` now consumes confirmed close or returns the exact rejected owner; NIC shutdown retains any rejected/uncertain owner in its existing terminal park without retry. This is not a physical retry proof. See the [network publication follow-up](../reports/audits/2026-10-12-security-network-publication.md). The [claim-readiness follow-up](../reports/audits/2026-10-12-ipc-close-readiness.md) parks owned endpoint close on the exact claimed front, borrowing its existing server lease. Its transient interest is retained with that owner; ordinary completion/rejection disposes it after IPC. Competing explicit closes subscribe to the endpoint claim epoch. Success/rejection closes that source; failed call fences remain authoritative. No new custody registry, failed receipt retry or terminal result inference; G1/G4/G7. Serialized endpoint drain now uses detached token nodes as its bounded post-IPC retirement list; owned per-front cancellation retains its exact roots and nodes. Original token charges refund after actual node disposal. This does not qualify other endpoint/queue payload destructors or outer contexts. See [reply storage evidence](../reports/audits/2026-10-24-security-ipc-reply-storage.md). The endpoint-close owner now retains detached endpoint nodes from its queue and final close, disposing them outside IPC before releasing its existing server lease. Fallback retains the complete list. See [endpoint storage evidence](../reports/audits/2026-10-24-security-ipc-endpoint-storage.md). The same close list now carries detached per-capability payload and shared authority nodes for post-IPC disposal, alongside endpoint nodes and before its server lease finishes. See [capability storage evidence](../reports/audits/2026-10-24-security-ipc-capability-storage.md). |
-| C10: namespace IPC cleanup | [`namespace_close::close_with`](../../crates/catten/src/ipc/namespace_close.rs), borrowing the closing root and composing per-token cancellation, followed by [serialized capability drain](../../crates/catten/src/ipc/close.rs). | Pending is resumed by C02. Physical error retains failed token/backing and prevents final-root progress. The empty namespace node now detaches into the shared `RetiredEntry` after fenced capability/loan drain; explicit node/account-reference disposal leaves IPC first. Fallback retains both accounts and the node; delegated endpoint/record charges retain their original accounts independently. No separately movable physical namespace receipt, custody or retry permission is added. Guarded payload/authority factories and wider caller contexts remain G2/G4. Root registration fallibly prepares this namespace and both accounts in its existing owner; its first exact-generation operation lease protects post-lifecycle/table namespace publication. See [publication evidence](../reports/audits/2026-10-24-security-ipc-namespace-publication.md). Per-token namespace cleanup uses those same cancellation/serialized-close owners for detached reply storage and post-IPC disposal; failed loans still prevent token removal. No new namespace receipt, root, registry or retry authority is introduced. See [reply storage evidence](../reports/audits/2026-10-24-security-ipc-reply-storage.md). The final namespace sweep detaches complete closed endpoint nodes into an allocation-free temporary owning list and releases it after IPC unlock; original record charges follow actual node disposal. See [endpoint storage evidence](../reports/audits/2026-10-24-security-ipc-endpoint-storage.md). Namespace drain uses prepared per-capability nodes as its ordered work list; each detached payload/shared-authority pair leaves IPC in the existing cleanup operation. No teardown snapshot or new registry is added. See [capability storage evidence](../reports/audits/2026-10-24-security-ipc-capability-storage.md). |
-| C11: namespace memory cleanup | [`PreparingNamespaceObject`, `PreparedNamespaceObject`, `NamespaceObjectClosed` and `NamespaceMemoryClosed`](../../crates/catten/src/memory/object/namespace_close.rs). | Admit mapped peers in existing records before moving mappings; cancel only unstarted admission. Pending preserves C02. Physical/scratch failure consumes the receipt and retains pins, affected peer counts and closing fence; no controller retry; G1/G2. |
-| C12: namespace device cleanup | [`PreparedNamespaceDevices` and `NamespaceDevicesClosed`](../../crates/catten/src/device/retirement.rs). | Borrows C02; owns the detached admitted namespace `RetiredEntry` and its ordered capability nodes. Detachment only relinks existing nodes; confirmed post-guard completion carries current unified authority in its original charged retirement owner, then explicitly releases payload and authority nodes before the empty namespace node. Confirmed records are removed one at a time; error/abandonment retains unfinished records/authority. Outer lifecycle/device guards leave before finish, but backend guards are separate. Borrowed owner is not a static custody payload; G2/G3. |
-| C13: explicit device/MMIO close | [`PreparedClose`](../../crates/catten/src/device/close.rs) and [`close_cap_with`](../../crates/catten/src/device/mod.rs), an operation lease and reset-visible MMIO descriptor claim. | Non-DMA close owns descriptor, exact root and both detached metadata owners together. Uncertain MMIO retains descriptor, scratch, root count and original authority charge after logical detachment; only confirmed completion disposes metadata and then releases the root. Guarded IRQ abandonment retains its detached payload/authority without touching a successor route. DMA close retains its original payload cell and authority under the shared in-flight claim through backend destruction; ordinary rejection completes its public claim without extracting/reinserting metadata, while abandonment retains the exact root/claim. Confirmed success revalidates the exact cap/domain, then consumes authority and payload once. Public DMA map/unmap/close retains an exact root/capability claim in [`DmaOperation`](../../crates/catten/src/device/mapping.rs); explicit close/namespace preparation rejects its busy claim before extraction. Ordinary completion releases it explicitly; abandonment retains root and authority. Endpoint reset claims also exclude overlapping BAR/ECAM MMIO close and namespace preparation before authority mutation. No uniform typed close receipt; IRQ route removal has a distinct serialized boundary. All three grant categories now prepare device namespace/payload nodes fallibly in shared `GrantAdmission` before local guards/hardware, with exact root/reservation ownership. Successful close detaches payload and unified authority nodes for post-guard disposal before root completion. Unified authority preparation now joins the grant before local guards, retaining captured generation and memory-budget admission checks. The [DMA unmap phase correction](../reports/audits/2026-10-12-dma-unmap-phases.md) preserves the actual domain/engine admission boundary through this public operation owner and the status ABI; only pre-work busy rejection authorizes another submission. It does not alter close completion, root retention or physical cleanup proofs. Other authority callers, broader backend ledger/heap metadata and wider context proof remain required; G1/G2/G3/G4. The [DMA-map failure ownership](../reports/audits/2026-10-12-dma-map-failure-ownership.md) follow-up preserves per-return public admission/backend/completion diagnostics in the same root/capability owner; diagnostics prove neither rollback nor replay permission. The [map-readiness follow-up](../reports/audits/2026-10-14-dma-map-readiness.md) retains this same exact-root/public claim with its original PendingPin and transient interest before actual backend admission. Unstarted rejection releases pin/interest outside backend/device guards, root last; abandonment retains all fields and cannot complete a claim while preparation remains. No close completion, custody or physical retry boundary changes. MMIO scratch node preparation now leaves both scratch and device registries while the original exact-root lease/descriptor claim stays armed. Claim admission atomically rechecks mapped state; ordinary rejection releases only unstarted preparation. Hardware and uncertain teardown policy stay unchanged. See [scratch storage evidence](../reports/audits/2026-10-25-security-scratch-storage.md). Scratch namespace/extent requested bytes and node counts now reserve before allocation and stay in these same owners through actual node free; partial/terminal abandonment retains original charges without counter entry. Promotion/reuse cannot reclassify refunds. See [scratch admission evidence](../reports/audits/2026-10-25-security-scratch-admission.md). |
-| C14: DMA domain and requester retirement | [`vt_d::destroy_domain`](../../crates/catten/src/device/vt_d.rs), [`amd_vi::destroy_domain`](../../crates/catten/src/device/amd_vi.rs), [`smmu::destroy_domain`](../../crates/catten/src/device/smmu.rs), [`Maintenance` / `DetachedDomain`](../../crates/catten/src/device/detached_domain.rs), [`Preparing`](../../crates/catten/src/device/domain_creation.rs), admitted domain slots and [data pins](../../crates/catten/src/memory/object/dma.rs). | Explicit destruction moves the complete domain and actual command engine after descriptor detachment, before maintenance. Empty engine admission fences all ordinary backend mutation/reset with `OperationInFlight`; the empty domain cell and nonzero source remain. Configuration/drain waits run outside backend guards. Ordinary hardware rejection restores the actual engine state and exact retiring domain under one original hold; abandonment retains both and permanently fences the unit. Confirmed maintenance returns the engine before unlocked physical release; rejected physical release restores the frozen domain without allocation, and physical abandonment retains its domain claim. Creation rejection uses this same destruction path through C18 after local guards leave. Explicit DMA close now also carries C13's exact root and original claimed capability cell through maintenance/physical release, with no rejection reinsertion. Requester reset now retains an exact endpoint config/BAR/ECAM claim inside C18; config/device/lifecycle/backend holds leave polling through complete-unit creation ownership. Ordinary config/MSI and overlapping MMIO access reject it; activation follows exact busy-cap publication. Reset uncertainty/abandonment retains the complete grant without destructor writes. Private domain construction errors now travel in C18's complete grant; known-private backing/metadata cancellation leaves lifecycle/device/backend/config guards first. Boot unit initialization now claims its existing typed slot and leaves serialization before allocation, control, waits and private cancellation; uncertain control/publication or abandonment retains the complete unit and claim. Ordinary map/unmap and installed-prefix rollback move the complete domain, actual engine and pending pin into `MappingMaintenance`; walking/maintenance run unlocked, exact restoration precedes confirmed post-guard unpin. Failed unmap quarantines without allocating reinsertion; abandonment retains backend and public claims. Initial creation owns the complete installed unit in its existing claimed slot outside lifecycle/backend holds; reject absent engines or any detached domain cell before extraction, preserving physical finalization. Restore exact state on ordinary return; abandonment retains all fields and permanently fences the unit. Domain cells, requester fences and VT-d context metadata now use shared admitted nodes prepared inside the existing grant before reset/IDs/backing. The original cell/source claim survives all data unpins before domain-node detach and post-guard disposal; zero fences reuse their exact node. Shared mapping nodes now admit before data leaves, follow original pins through detach/typed maintenance and relink into quarantine without allocation; confirmed unpin/node disposal leaves backend guards. The [DMA unit readiness follow-up](../reports/audits/2026-10-12-dma-unit-readiness.md) adds a charged source in this same fixed slot: complete creation restoration and maintenance restoration close it only when the actual engine and every domain cell are present. Engine return during physical finalization does not signal; an abandoned unit/domain claim stays nonready. Deferred availability notifications grant no completion, requester reset or frozen-domain retry authority. The [DMA unmap phase correction](../reports/audits/2026-10-12-dma-unmap-phases.md) now carries typed Admission versus Completion errors through all three backends. Only pre-claim busy maps to device status 20; completion errors remain terminal status 14, even if their underlying cause looks busy. This preserves the original root/capability cell and uncertain pins without replay or physical refund. The [grant cancellation readiness](../reports/audits/2026-10-12-dma-grant-cancellation-readiness.md) follow-up now borrows the armed creation from its consuming grant through shared slot admission, then claims exact registered domain/engine under the same hold before one existing destruction. Missing or nonpublished/frozen backing rejects before descriptor/hardware mutation. No wait or replay follows maintenance/physical failure; the original grant remains terminally retained. Broader ledger/heap metadata and wider contexts remain G1/G4; custody/policy G6 and concurrency/physical evidence G7. Map/map-exclusive syscall preparation now borrows the same fixed source and rechecks before one domain/actual-engine/pin extraction under the backend hold. Creation and map restoration use the existing producer-LP deferred signal, requiring every domain cell as well as the engine. Serialized/raw fixtures keep rejecting admission; busy masked/nonscheduled callers reject without enabling IRQs. This is pre-work readiness, never map replay, unmap/close readiness or physical completion. See [map readiness](../reports/audits/2026-10-14-dma-map-readiness.md). DMA snapshot capacity now shares inert pin-free preparation with copy snapshots outside memory serialization. Captured source/access validation precedes allocation-free fill and both pin-counter publications; bare fallback retains snapshot/fences, and explicit snapshot free precedes typed unpin. Original DMA hardware proof and complete operation/maintenance ownership remain required. See [DMA snapshot evidence](../reports/audits/2026-10-25-security-dma-snapshot-storage.md) and the [DMA-pin consolidation](../reports/audits/2026-10-25-refactoring-dma-pin.md), which preserves the existing completion and release requirements. Mapping/copy/DMA snapshot buffers now share requested-byte/count admission before allocation. Their existing typed buffer owner retains original charges through publication, root retirement and abandonment; actual buffer free precedes refund, with immutable captured classification. Existing roots, backing/hardware proofs and retry policies remain required. See [snapshot admission](snapshot-buffer-admission.md). |
-| C15: IOMMU table backing | [`dma_tables::Tables` and `PreparingRegion`](../../crates/catten/src/device/dma_tables.rs). | Table/region fallback retains backing, original scope/charge and ledger storage without physical/heap allocator, pool, guards or logging, including reservation-only abandonment. Region interruption fences its exclusively borrowed parent. Ordinary private cancellation/prefix rollback is explicit across all three backends; successful release also disposes ledger metadata explicitly. Published backing still needs typed backend completion and `Frozen` forbids partial physical retry. Domain-private constructor errors now retain a typed `PrivateDomain` in the enclosing grant; physical/metadata cancellation occurs after local guards, and physical rejection retains the frozen private payload/root/authority. Boot unit preparation/cancellation now uses the existing slot's `Vacant`/`Claimed`/`Installed` fence and a complete typed owner outside serialization; started control or published failure is terminally retained; explicit domain destruction and C18's published creation rejection release backing/ledger storage outside it while retaining C14's complete owner/slot claim. Map/unmap walkers now borrow complete domain/engine/pending-pin ownership outside backend serialization; failed-unmap pin quarantine needs no exceptional reinsertion. Initial creation/reset, constructor allocation and registry preparation now run under complete-unit ownership outside local lifecycle/backend holds. Domain/source/context nodes are admitted before reset/backing, owned by the complete grant through rejection, and domain-node disposal follows table/pin completion outside guards; SMMU cache nodes now admit before branch linking, retain unused storage through partial walks, and dispose only after confirmed table cancellation/release. Broader ledger/heap metadata and wider contexts remain G1/G4; explicit destruction's maintenance is now also outside its backend guard. No generic table retry or custody. The [grant cancellation readiness](../reports/audits/2026-10-12-dma-grant-cancellation-readiness.md) path now checks that exact registered domain backing is published and unfrozen before its first descriptor mutation. Shared availability is not a table-release receipt, and consuming rollback remains one-shot through waiter or physical rejection. The [IPC readiness matrix](../reports/audits/2026-10-12-ipc-close-readiness.md) also retains a final-source Intel NIC startup DmaUnavailable panic, followed by an identical-artifact passing repeat. The historical cause remains unverified. The [startup preparation follow-up](../reports/audits/2026-10-12-dma-startup-preparation.md) now returns exact stream/backend/reset stages and causes with Confirmed or Retained consuming-cancellation outcomes. A real claimed-unit grant probe preserves OperationInFlight and its original authority accounting. Boot prepares all sibling grants before driver threads can own the shared unit/engine. The [DMA unit readiness](../reports/audits/2026-10-12-dma-unit-readiness.md) follow-up now parks scheduled driver grant admission on a charged source in the existing unit slot, retaining C18's exact root/reservation. Creation and maintenance restoration signal only with the actual engine present and no detached domain cells; abandoned claims do not wake. This is availability for fresh admission, never physical completion or permission to retry a frozen domain. Hardware waits, historical causality and broader pressure remain open; no hardware/physical retry or force-clear is authorized. DMA snapshot capacity now shares inert pin-free preparation with copy snapshots outside memory serialization. Captured source/access validation precedes allocation-free fill and both pin-counter publications; bare fallback retains snapshot/fences, and explicit snapshot free precedes typed unpin. Original DMA hardware proof and complete operation/maintenance ownership remain required. See [DMA snapshot evidence](../reports/audits/2026-10-25-security-dma-snapshot-storage.md). Mapping/copy/DMA snapshot buffers now share requested-byte/count admission before allocation. Their existing typed buffer owner retains original charges through publication, root retirement and abandonment; actual buffer free precedes refund, with immutable captured classification. Existing roots, backing/hardware proofs and retry policies remain required. See [snapshot admission](snapshot-buffer-admission.md). |
-| C16: thread retirement and stack pair | [`ReapBatch` / thread retirement](../../crates/catten/src/cpu/scheduler/threads/mod.rs), [`RetirementList`](../../crates/catten/src/klib/collections/retirement_list.rs), [`Stacks`](../../crates/catten/src/memory/thread_stack/stacks.rs), and the complete `Thread` metadata owner. | Owner-LP reapers require exact thread quiescence before one-shot physical pair release. Failed pairs retain the entire thread/context and original charges in their existing node; scans never retry a started release. Thread/stack fallback retains all fields without physical cleanup, callbacks or metadata destruction. Explicit post-guard disposal follows confirmed pair release. First-entry deferred delivery supplies readiness, not physical-release proof or attribution of historical timeouts. Wider caller/IRQ contexts, interruption, principal/aggregate admission and sustained service progress remain G1/G6/G7 work. See [qualification details and evidence](cleanup-recovery-details.md#c16-thread-retirement-and-stack-pair). |
-| C17: provisional CPU backing | [`PreparingUserBacking`](../../crates/catten/src/memory/preparation.rs), [`PreparingTable`](../../crates/catten/src/memory/translation.rs), [`PreparingUserFrame`](../../crates/catten/src/memory/mod.rs), `PreparingKernelFrame` in C04, and `PreparingStackPage` / `Growth` in C16. | Joint heap/image, raw-frame and private/shared-table Drop now only retain captured backing/admission, including reservation-only abandonment, without locks/free/logging. Shared charge fallback uses an atomic diagnostic. Ordinary errors cancel/rollback explicitly, including Arm hardware-tag rejection; physical rollback still borrows the table/account. Initial/growth stack fallback and implicit slot destruction now also retain without cleanup; ordinary constructor/growth rejection cancels explicitly. Published stack-pair physical release is now explicit in C16; outer ordinary rollback contexts remain work. Borrowed account/table context prevents simply moving these owners to a global registry; G1/G2. Private-table accounts now retain a shared principal owner, attached before signed root construction. Confirmed unpublished/root release refunds it; cached prefixes, failed walks and abandoned preparation retain it. Atomic identity binding verifies a prebound sponsor without a second charge. See [table/stack evidence](../reports/audits/2026-10-23-security-principal-structure.md). |
-| C18: publication rollback and detached memory | [Memory transfer](../../crates/catten/src/memory/object/transfer.rs) / [backing](../../crates/catten/src/memory/object/backing.rs) / [copy pins](../../crates/catten/src/memory/object/copy.rs), [IPC preparation/reply](../../crates/catten/src/ipc/transaction.rs) / [message delivery](../../crates/catten/src/ipc/message.rs) / [readiness subscriptions](../../crates/catten/src/ipc/readiness.rs), [completion records](../../crates/catten/src/completion/record.rs) / [producers](../../crates/catten/src/completion/producers.rs), [detached operations](../../crates/catten/src/completion/detached.rs), [namespace lifecycle](../../crates/catten/src/completion/namespace.rs) and [CQ payloads](../../crates/catten/src/completion/delivery/preparation.rs) / [readiness](../../crates/catten/src/completion/delivery/readiness.rs), composed with capability reservations/escrow. | Prepare fallible metadata before publication; preserve exact source/destination generations, pins, authority, backing and original charges in the containing transaction. Ordinary rejection explicitly disposes unused storage after local guards; qualified bare preparation fallbacks retain fields. The backing owner now retains charge-only/private/published fields without allocator, registry, accounting or logging work in Drop. Ordinary rejection and last-pin/cancelled-copy release consume it explicitly; the containing transfer destructor remains active and separately unqualified. See [backing abandonment](../reports/audits/2026-10-26-security-backing-abandonment.md). Scratch, snapshot and mapping admission follows actual allocation lifetime; independent byte accounting and aggregate principal/heap coverage are incomplete. No timeout, retained allocation or readiness signal authorizes physical replay. G1/G6/G7 and SEC-07/18 remain open/partial as tracked. See [qualification details and evidence](cleanup-recovery-details.md#c18-publication-rollback-and-detached-memory) and [copy-pin consolidation](../reports/audits/2026-10-25-refactoring-copy-pin.md). Payload/namespace nodes now share requested-layout byte/count admission before allocation; complete prepared/published/retired nodes retain original charges through actual node free, including metadata retained after authority teardown. See [node admission](memory-capability-node-admission.md). Freestanding x86 TLS records now select the existing erasing software authentication owner; its destructor only clears local crypto fields and adds no capability/root cleanup or physical proof. See [backend qualification](../reports/audits/2026-10-25-security-x86-gcm-owner.md).  Read-borrower requested bytes/counts now share the existing memory-capability node pool, capturing destination classification once before source escrow. Mapped revocation at actual exhaustion releases original node charges after deallocation, including after promotion; no new cleanup proof, custody or retry authority. See [borrower admission evidence](../reports/audits/2026-10-26-security-borrower-node-admission.md).  Ephemeral-port derivation now uses the existing erasing HMAC/hash owners and a zeroizing digest; initialization owns its entropy scratch before filling. These are local field erasures without allocator, guard, wait or remote teardown work; physical proofs, capability ownership and forced-termination scope are unchanged. See [network HMAC evidence](../reports/audits/2026-10-26-security-network-hmac-erasure.md). The [Embassy TLS migration](../reports/audits/2026-10-26-security-embassy-tls.md) retains the same socket/buffer owners and erasing record-cipher context. Its domain-owned entropy connection transfers through one lease outside metadata guards for RPC/mapping; ordinary success or rejection returns the same owner. Duplicate installation returns its new owner; busy/reentrant admission grants no retry authority. A prepared handshake retains its optional erasing mTLS key and exclusive verification clock through consuming completion. Static source retirement and forced-termination erasure remain domain/kernel boundaries, not new physical proof. The [entropy deadline follow-up](../reports/audits/2026-10-26-security-entropy-deadlines.md) carries one original deadline and source/output borrows in `ServiceEntropyRead`; consuming completion retains reply/mapping owners, including mapping rejection and late results. Wait-admission rejection stays distinct from timeout. Explicit cancel returns the complete operation on rejection; default pending cleanup confirms cancellation or aborts before ending its borrows. No replay, device quiescence or physical cleanup proof follows from a timeout. RNG v2 now moves caller-funded backing through that read; preparation retains a rejected submission buffer. The shared server transaction retains the incoming request, returned backing and writable mapping until local access ends before reply/loan cancellation. No producer reply allocation remains; original backing charges survive return, unobserved retention and sponsor retirement. See [caller-buffer evidence](../reports/audits/2026-10-26-security-rng-caller-buffers.md). RNG now binds that endpoint before shared bounded publication and parks idle request/lifecycle observation on the default CQ, retaining device/endpoint owners through fail-closed rejection. Readiness supplies no reply, shutdown, DMA or physical-retirement proof. See [readiness evidence](../reports/audits/2026-10-26-security-rng-readiness.md). The RNG descriptor owner now arms before mutation, retains complete MMIO/CPU/DMA fields and exact attempt through timeout/backend failure, and refuses every later backend call. Its retained fallback invokes no nested destructor; a fenced shutdown keeps endpoint/device/request without reset, unmap or a quiesced acknowledgement. Checked completion survives later copy failure in its captured attempt; no extraction/recovery API or new registry is added. Invalid caller length remains unstarted rejection. Partial setup, healthy shutdown, real device-fault retention and forced termination remain separately unqualified. See [descriptor-fence evidence](../reports/audits/2026-10-26-security-rng-descriptor-fence.md). The [management TLS component](management-tls.md) adds local record/crypto owners only: erasing buffers, IV/nonce and selected cipher fields perform no capability, allocator callback, wait or remote teardown in their local cleanup. Native `management_io::Connection` now retains the exact pending RPC, erasing session and original socket in drop order; deadline response cancels the accepted receive before output, and logical close consumes the same socket through the existing close pool. CQ binding rejection retains accepted work through abort. No new cleanup registry, retry authority or physical proof is claimed. See [native TLS contract](management-tls.md). The [established-authority correction](../reports/audits/2026-10-27-security-management-session-validity.md) latches expiry/clock failure before further socket admission or observation while retaining that same connection, pending RPC and original socket. Local staged plaintext/ciphertext erasure gives no cancellation, quiescence or replay proof. Existing consuming close/Drop still confirms loan cleanup or aborts; accepted controller work may already have committed. No custody, cleanup registry or physical proof is added. The [frame-router readiness follow-up](../reports/audits/2026-10-27-security-frame-router-readiness.md) CQ-binds the existing normal receive, lookup, control, forwarding and L2-send owners and retains them through binding/wait admission rejection via terminal abort. CQ hints are observed through those same pending owners; moved backing and original charges retain their existing cleanup policy. No scalar reconstruction, new custody registry, replay authority or physical proof is added. Initial/terminal NIC discovery, forced shutdown, fault and pressure contexts remain separate. The [status-observation follow-up](../reports/audits/2026-10-28-security-status-observation.md) retains each pending RPC and moved buffer through one snapshot deadline and checked cancellation; timeout/wait rejection supplies no replay or physical proof. Serial listener and receiver-held cleanup remain separate. The [RNG ring-access correction](../reports/audits/2026-10-28-security-rng-ring-access.md) uses checked halfword index accesses while preserving the same armed descriptor, exact completion and complete retained backend; it supplies no reset, replay or cleanup authority. |
+| C01: live root retention | [`AddressSpaceOperation`](live-address-space-operations.md), exact `SlotLease` | Explicit completion releases the captured generation; abandonment retains it. A root lease needs containing backing/authority/scratch ownership. It cannot recover an abandoned count. |
+| C02: staged domain close | [`ClosingAddressSpace`](address-space-retirement.md), closing slot and progress | Pending returns the same owner; terminal failure retains the fence/root. Device, IPC and memory receipts plus zero leases precede admission sealing. Final metadata joins the root owner; no general error-owner retry API exists. |
+| C03: detached final root | [`RetiredAddressSpace` / recovery](root-recovery.md), detached namespace metadata and linear slot completion | Eight custody slots, two bounded invalidation retries and checked serials. Confirmed invalidation precedes metadata/backing/slot release. Physical rejection or abandonment is terminal. Supervisor reconciliation/operator policy remain G5/G6. |
+| C04: detached kernel range | [`RetiredKernelRange`](kernel-frame-retirement.md) | Failed invalidation may retry on the same receipt before physical release starts. Incomplete detach rejects; physical failure/interruption is terminal. Bounded extents and sixteen-frame release batches; no controller adapter. |
+| C05: memory mapping retirement | [`MappingRetirementPin` / `RetiredObjectMappings`](memory-object-retirement.md), detached mapping nodes and peer leases | Retain backing through leaf detachment, invalidation and scratch completion. Last DMA/copy unpin cannot bypass the retirement pin. Failure retains the complete dependency set; current consumed errors provide no retry owner. |
+| C06: loan revocation | [`LoanRevocation` / `LeasedRevocation`](../../crates/catten/src/memory/object/revocation.rs) | Own both exact roots and borrower state through physical completion and authority removal. Unstarted receipts may roll back; uncertain cleanup retains the Revoking fence/pin. CPU invalidation cannot discharge DMA pins. |
+| C07: reply completion | [`PreparedReply` / returned resources](../../crates/catten/src/ipc/reply.rs), `ReplyCompletion` and memory `PreparedTransfer` | Exclusive reply and source claims retain roots, loans and returned grants. Hidden outputs publish jointly after cleanup. Abandonment keeps uncertain claims/dependencies; ordinary rejection rolls back only unstarted work. |
+| C08: call/reply cancellation | [`PreparedCancellation`](../../crates/catten/src/ipc/cancellation.rs), exact claim epoch and reply-CQ interest | Revoke outside IPC, then publish terminal results. Failed cleanup retains live authority and fences delivery. Waiting preserves the same transaction; rejection or wake cannot authorize replay. |
+| C09: endpoint close | [`PreparedEndpointClose`](../../crates/catten/src/ipc/endpoint_close.rs), retained server lease and active call | Fence enqueue/receive/mint/resize; cancel one front at a time borrowing the server owner. No fresh lease beneath staged close. Final completion signals death; ordinary rejection re-signals productive work. Failure retains the claim. |
+| C10: namespace IPC cleanup | [`namespace_close`](../../crates/catten/src/ipc/namespace_close.rs), closing root and per-token cancellation | Retain captured peers, including closing generations, before claiming. Cleanup runs outside lifecycle/IPC without snapshots; exact receipts precede drain/seal. Serialized raw adapters remain boot fixtures. |
+| C11: namespace memory cleanup | [`PreparingNamespaceObject` / completion receipts](../../crates/catten/src/memory/object/namespace_close.rs) | Acquire mapped-peer leases before registry detachment; retain pin, mappings, scratch and closing root across failure. No lifecycle-under-registry acquisition, snapshot or implicit retry. |
+| C12: namespace device cleanup | [`PreparedNamespaceDevices` / `NamespaceDevicesClosed`](../../crates/catten/src/device/retirement.rs) | Detach admitted records/routes under lifecycle/device guards, then release guards for MMIO/DMA cleanup. Authority and original node storage survive failure; exact completion precedes IPC cleanup. |
+| C13: explicit device/MMIO close | [`PreparedClose`](../../crates/catten/src/device/close.rs), exact root/capability and reset-visible descriptor | Keep claimed payload/authority through invalidation, scratch or backend completion. Ordinary rejection restores only proven unstarted state. Failure retains the claim; consumed errors are not custody. |
+| C14: DMA domain and requester retirement | [`Maintenance` / `DetachedDomain`](../../crates/catten/src/device/detached_domain.rs), complete domain/engine and original pin | Claim before unlocked maintenance; preserve requester fence and command state after uncertainty. Confirm DMA completion separately from CPU teardown. Physical partial release is terminal. Reset/reassignment requires its own hardware contract. |
+| C15: IOMMU table backing | [`Tables` / `PreparingRegion`](iommu-table-admission.md) | Charge before allocation; retain ledger/backing through hardware reachability, weak or detached lifetime and failed release. Explicit private cancellation needs confirmed completion; no physical cleanup from abandonment. |
+| C16: thread retirement and stack pair | [`ReapBatch`, complete thread and `Stacks`](cleanup-recovery-details.md#c16-thread-retirement-and-stack-pair) | Owner-LP IRQ-enabled reapers require exact thread quiescence, then one-shot pair release and explicit metadata disposal. Failed pairs remain terminal in their nodes. Wider caller/IRQ/implicit-drop qualification remains G1/G7. |
+| C17: provisional CPU backing | [`PreparingUserBacking`](kernel-backing-preparation.md), table/frame/stack preparations | Retain exact borrowed account, backing and original reservation before publication. Ordinary unused cancellation is consuming and explicit. Failed/interrupted cleanup keeps the complete charge; address-based re-adoption is forbidden. |
+| C18: publication rollback and detached memory | [Complete transfer, IPC, completion and service operations](cleanup-recovery-details.md#c18-publication-rollback-and-detached-memory) | Admit storage before mutation; retain source escrow, destination authority, pins, backing and original charges together. Bare preparation retention does not qualify active parent destructors. No error, timeout or retained allocation supplies physical replay authority. |
 
-Generic `id_table` retirement/lease tokens and `retirement_list` nodes underpin
-several rows; they do not establish the payload's quiescence. `FrameRelease`
-governs root account refund, not controller authority. Capability reservations
-and escrow govern publication rollback, not hardware recovery. None should be
-wrapped as an independently retryable object while its containing operation owns
-the physical progress.
-
-Existing contracts and evidence: [live operations](live-address-space-operations.md),
-[final roots](address-space-retirement.md), [root retry](root-recovery.md),
-[kernel ranges](kernel-frame-retirement.md), [memory/IPC](memory-object-retirement.md),
-[thread retirement](thread-retirement.md), [stacks](stack-admission.md),
-[translation](translation-admission.md), [IOMMU admission](iommu-table-admission.md)
-and [hardware quiescence](hardware-quiescence.md).
+Generic slot leases, retirement nodes, reservations and escrow support these
+families. Each remains inside its containing transaction; none independently
+establishes payload quiescence or a recovery right.
 
 ### Formal coverage of ownership boundaries
 
-The [18 October model synchronization](../reports/audits/2026-10-18-security-model-sync.md)
-adds a bounded projection of C01–C03 in
-[`CharlotteRootRetirement`](../tla/CharlotteRootRetirement.tla): exact leases,
-staged close, complete-owner invalidation retry, terminal abandonment and
-once-only physical release with retained charges. Subsystem completion,
-thread quiescence and genuine hardware acknowledgement are inputs. It does
-not qualify the outer contexts, interruption inside physical teardown or the
-other owner families in this table.
-[`CharlotteCheckedWait`](../tla/CharlotteCheckedWait.tla) separately checks
-retention through wait admission rejection and timeout, a fixed deadline,
-readiness/result separation and accepted-request fencing. It assumes the
-source's notification contract; remaining G1–G7 work and SEC-07/18 status are
-unchanged.
-
-The [IPC publication model](../reports/audits/2026-10-18-ipc-publication-model.md)
-adds a projection of C18's reservation/escrow rollback and detached authority
-charges, together with the hidden output boundaries used by C07–C11. It checks
-receive failure, unobserved cancellation, first observation and exact namespace
-replacement isolation. It assumes confirmed payload retirement and supplies no
-loan, physical release or outer-context proof for those owner families.
-
-The [DMA operation model](../reports/audits/2026-10-18-dma-operation-model.md)
-adds selected C13/C14/C18 admission and failure-ownership boundaries: fixed-unit
-availability, pending pin/root retention, non-replayable started attempts,
-confirmed DMA versus CPU teardown and original backing charges. It assumes
-genuine backend acknowledgement and confirmed physical release. Hardware
-completion, grant cancellation, physical recovery and outer contexts remain
-separate qualification work.
-
-### Entry boundaries checked in this review
-
-| Entry | Observed local boundary | Qualification still needed |
+| Projection | Checked policy boundary | Assumed or outside the projection |
 | --- | --- | --- |
-| `DomainAbortSweep::begin` / `run` / rejection | Exact executor admission precedes root admission; short LP/thread guards leave before lifecycle. Scheduling, wake and reaping use the same retirement-ready predicate. Root completion precedes executor release under the final mask. Drop retains inline executor ownership without cleanup. | This category does not protect arbitrary kernel operations. Abandoned/terminal callers retain their root/stack/fences permanently; no recovery controller exists. Force-request callback outer contexts and general scheduler metadata remain G1/G2/G7. |
-| `DomainTeardown::poll` → `ClosingAddressSpace::poll` | Supervisor documents guard-free entry; Pending retains one owner, terminal error is cached. Close prepares under lifecycle/table and finishes device, loan and mapping work after leaving its own guards. | Every deployment/node/device/loader caller and exceptional field drop; cached-error correlation; backend inner guards. |
-| `recovery::retry` → final root release | IRQ-enabled check precedes claim. Registry guard leaves before invalidation/physical walk and completion disarms abandonment before reuse. | Absence of unrelated nonmasking guards is a caller obligation, not enforced by the IRQ check. Operator policy is absent. |
-| `PreparedClose` / `mapping::close_with` → MMIO/IRQ/DMA cleanup | Exact root admission precedes lifecycle/device claim. MMIO authority detaches; DMA retains its original payload/authority under the shared busy claim. Local guards leave before physical work. DMA ordinary rejection clears the exact claim without extracting/reinserting metadata, then completes its root lease. Confirmed backend success precedes exact cap/domain revalidation and authority/payload consumption; abandonment retains the root/claim. | Heap-held synthetic rejection proves lookup-only error completion; real QEMU rejected-drain and pre/post-maintenance probes qualify the public claim. Device payload and unified authority nodes now detach into their containing close owner for explicit post-guard destruction before root completion. MMIO charge follows invalidation/scratch uncertainty; IRQ abandonment retains both metadata owners. Namespace cleanup carries original admitted nodes plus current authority retirement. Other capability-table callers, broader backend ledger/heap metadata, every outer caller and cross-LP interruption remain G1/G4/G7. |
-| `PreparedDmaDomain` / `DmaCreation` → creation/publication rejection / fallback | Root operation precedes lifecycle/subsystems; reservation is borrowed through publication and retained with the registered backend domain's rollback obligation, recorded before any reachable descriptor. Published creation errors return with that obligation armed. Ordinary rejection explicitly destroys after local lifecycle/device guards leave, then refunds and finishes the root. Rejection/abandonment retains reservation metadata and root count; no destructor invokes hardware, registry, allocator or logging. | Fake-backend fixtures qualify adapter ordering and guarded implicit field retention; real NVMe fixtures qualify success and injected creation rejection after real configuration, including config availability and disabled bus mastering during actual maintenance/physical cleanup. Endpoint reset claims now retain config/BAR/ECAM exclusion through busy-cap publication; config/device guards leave polling and no reset destructor touches hardware. Explicit activation/cancellation and uncertain reset retain the containing grant. RAM config plus complete-grant guarded fixtures retain two additional roots/reservations, with no new table/data charge. Complete-unit creation now releases local lifecycle/backend holds through reset, construction and configuration; root close can stage Pending and rejects publication before activation. Backend node preparation/disposal now stays in this grant outside local guards; node rejection precedes reset/IDs/backing. Guarded metadata-only abandonment retains one extra exact root/reservation and unused nodes without new IOMMU table/data charge. Unrelated enclosing masks/guards, inner provisional fallback and broader ledger/heap metadata remain G1/G4. No publication retry/custody interface. |
-| `PreparingRecord` / `RetiredRecord` → authority publication/detach/disposal | Fallible storage precedes `CAPABILITIES`; prepared insertion, escrow/restoration and detach do not allocate or destroy nodes. Original charges remain with the node through explicit release. Batch move source retirement stays in its exact transfer until payload completion and memory unlock. New owner fallback retains all fields without locks or heap work. | Captured admission can hold lifecycle/subsystem guards; ordinary remove and active token Drop leave only their local capability guard before disposal. Per-operation probes preserve already masked entry state; they do not qualify every outer caller. Guarded abandonment retains two original ordinary charges after root reuse. Device and mailbox complete owners now prepare before local guards and retain authority through explicit post-guard disposal/root completion; final-root metadata now stays in C02/C03 through post-guard release. Word-queue nodes/backing now prepare fallibly outside guards with the same captured family account and original set/byte charge; metadata/principal admission, completion/accounting teardown and other callers remain separate. No retry/custody; G1/G4/G7. |
-| `PreparedReply` / `PreparedCancellation` → `LoanRevocation::finish` | Root admission precedes IPC; claim persists while IPC/lifecycle/registry/table guards leave for loan finish. | Outer caller masks, metadata/implicit field destruction, and custody of consumed failures. Ordinary error and abandonment have different lease policies. |
-| `PreparedNamespaceObject::finish` | Peer leases precede record detachment; fixed frame batches avoid registry/table nesting. Completion releases peers only after scratch/backing success. | Exceptional mapping-storage destruction and outer context; per-phase retry ownership is absent. |
-| `PreparingUserBacking::new` / `map_with` / Drop | Production heap first-touch and image loader retain the exact table borrow. Ordinary tracking/allocation rejection refunds explicitly; mapper rejection explicitly rolls back. Fallback Drop only mutates captured account counts and disarms tokens; probes hold the table, allocator and original pool simultaneously. | Ordinary physical rollback still occurs under the known table guard. Outer ordinary rollback callers remain unqualified; this scoped fallback change does not close C17/G1. |
-| `PreparingTable::allocate` / `publish` / Drop | x86 root/intermediate and Arm intermediate publication follow zeroing without further fallible work. Arm lazy-root tag rejection explicitly cancels. Fallback and implicit shared charge Drop use only the captured account/atomic state; probes hold both table guards, allocator and private/shared pools. | Explicit cancellation/constructor refunds still borrow the table/account; no global custody owner exists for those borrows. Simulated interruption does not qualify all architecture caller contexts or stack wrappers. |
-| `PreparingStackPage` / `Growth` / implicit `StackSlot` destruction | Fallback performs no allocator, table/pool/root lookup, callback or logger. Initial cancellation follows local mapper unlock. Production growth retains its exact executing thread with the shared `ThreadExecution` fence, captures/fences the original stack under the thread table, then runs allocation, mapping and rejected-map physical rollback outside that table. A completed exact root/slot/capacity/prefix handback publishes progress before execution release. | Actual EL0 success/deferred-abort/foreign-leaf rollback, unfinished/foreign handback rejection, guarded abandonment and completed physical-rejection handback qualify this scope; see [growth evidence](../reports/audits/2026-10-15-stack-growth-execution-owner.md). Inner address-space walker, heap/image, constructor and other caller contexts remain G1. Unknown publication/abandonment retains original slot/root/reservation and execution fences; completed rollback rejection keeps the slot uncertain. No complete retry owner survives abandoned provisional cleanup. |
-| `PreparingRegion` / `Tables` fallback → implicit ledger destruction | Region fallback only fences its captured parent; table fallback forgets its ledger storage to avoid implicit heap deallocation. Guarded probes hold backend registries, lifecycle, both CPU table guards, heap/physical allocators and original pool simultaneously. Ordinary metadata/allocator rejection explicitly refunds the unused region; private prefix preparation explicitly cancels. | Domain-private constructor rollback now retains the complete grant and typed payload until unlocked cancellation; unit boot initialization similarly retains its typed payload and slot claim through unlocked preparation/cancellation. Domain allocation/ledger preparation now runs under a complete installed-unit claim outside backend/lifecycle holds; internal field destruction and general metadata admission remain separately qualified. Explicit domain destruction now disposes its ledger outside that guard through C14's complete owner. Partial physical failure/unknown handoff is terminal, not an admitted retry owner. Started control/published-unit failure retains the complete payload and claim but has no recovery adapter; G1/G3/G4 remain. |
-| backend `destroy_domain` → maintenance → `Tables::release` | The registry marks retiring, publishes a rejecting descriptor, then moves the complete domain and actual command engine into `Maintenance`. Empty engine admission fences ordinary backend mutation/reset. Maintenance executes outside the guard; exact engine state and rejected domain restore together without allocation. After confirmed completion the engine returns and `DetachedDomain` owns unlocked table/ledger/pin cleanup. Physical finalization uses a registered-state hold even if another domain owns the engine. | Real QEMU pre-maintenance/post-drain probes verify backend/lifecycle/device/physical/heap guard availability, caller IRQ state and competing create/map/unmap/destroy/reset exclusion. Private RAM register/ring tests cover stale epochs, timeout producers, ring pressure and Intel busy-command preservation. Map/unmap/prefix maintenance now also extracts complete domain/engine/pending-pin ownership, with an exact public root/capability claim and post-restoration unpin. Creation now claims the complete installed unit outside backend/lifecycle holds and rejects any detached cell, including physical finalization; domain/source/context nodes now admit fallibly before reset/backing, and domain-node disposal follows all data unpins outside the backend guard; broader ledger/heap metadata and full enclosing contexts remain G4/G1; reentrant probes are not cross-LP stress. |
-| `DomainAbortSweep::run` → exact executing self-request → root-operation completion | Caller TID/generation is captured in a short local mask, then deferred during peer requests. Final local request qualifies LP handle, generation and root with no peer scan, IPI, staging or allocation. Its short mask survives scheduler guard release through scalar root-lease completion and preserves enclosing IRQ state. | A scheduled two-thread EL0 fixture rejects stale identity/root, requests the peer and yields eight times before self-request; masked completion retains the outgoing handle/Arm CPU ownership, and normal teardown closes the exact root. Concurrent sweeps/unrelated remote aborts may interrupt earlier; outer resource/drop contexts and historical timeout causation remain G1/G2/G7. |
-| Scheduler `prepare_wait` / `publish_wait` / wake admission | Capture generation/state/sponsor under a short table borrow, then fallible registration outside local LP/table guards. Publication revalidates before scalar queue/state changes; remembered early hints and exact installed-waker callbacks close the race. Wake moves the complete old subscription out through the caller's LP scope before cancellation/destruction, including a later error. | The outer system read/park masks remain, as do allocations under source registry or initialization guards. Explicit generation-only condition/watchdog admission remains a separate hint. General metadata/principal accounting, overload progress and full cross-LP interruption qualification remain G1/G4/G7. No operation completion, root quiescence or physical/replay authority follows. |
-| Lazy `WaiterSource` / IPC and CQ waiter publication | Lazy source registration now captures original sponsor/weak observer before list work in one inert transaction, retaining candidate, first winner and shared waiter child. Losing release remains post-slot and before entry admission; ordinary results finish explicitly and all six handoff-stage fallbacks retain complete fields. Published tokens retain their own authority. Shared completed private entry preparation now retains its complete entry without cleanup on abandonment. Direct registration and all three containing owner families consume explicit child finish after local guards; emptied finish does not refund published entries. Active linked/token/batch/source disposal remains separate. Shared waiter preparation now captures exact source/sponsor/weak observer before admission in one inert owner. Its entry factory borrows that owner; ordinary outcomes explicitly finish transient entry/admission before source and sponsor disposal after local guards. Three phase fallbacks retain all fields through source closure and sponsor retirement. Shared entry preparation retains its exact weak observer, original entry charge and any empty Box through allocation; rejection disposes backing/weak before admission after callback return, private initialization is allocation-free, and partial fallback is inert. Candidate list admission/allocation leaves its slot mutex. Shared holder and Arc payload construction retain their complete value/reservation while allocating empty storage; ordinary rejection cancels after callback return and abandonment retains every field. IPC/CQ capture an owning list reference, prepare the charged entry outside registries, then revalidate exact identity and readiness before borrowed publication. Losing and rejected preparation is released after local guards. | Source destruction, callback/watch/record allocation, broader metadata/principal budgeting and outer caller masks remain G1/G4/G7. Concurrent first-use candidates consume bounded transient admission; a drained generic source still needs its caller's durable condition recheck. No root lease, physical proof or replay authority. |
-| Completion callback and exit-watch preparation / namespace-CQ and terminal subscription disposal | Exit-watch preparation now retains captured candidate source, weak observer and already-admitted watch charge before list/entry allocation. Its scheduler hook borrows the owner; ordinary outcomes explicitly finish transient entry/admission before candidate source disposal after local guards. Four phase fallbacks retain all fields, without a target/root lease. Callback preparation now captures exact record/account/source and weak observer before watch/list/entry admission in one inert owner. Entry factories borrow it; ordinary error and successful/ready publication explicitly finish transient fields before releasing the captured target, then notify readiness. All four phase fallbacks retain complete fields without cleanup. Captured operation, root/account and original source survive fallible preparation outside registry/inner guards. Borrowed publication revalidates retirement and terminal state; losing/ready/rejected preparation releases after unlock. Successful namespace close/replacement and CQ replacement return their complete old payload before source/field destruction. Terminal event/worker transitions and installation return detached/rejected owners for post-registry/inner disposal; wakes retain the exact published CQ source. CQ payload list/backlog/ring preparation and partial rejection now run outside the registry; captured namespace revalidation precedes physical initialization and replacement. Detached terminal posting returns its complete timer-bearing record and exact CQ source for post-registry disposal; direct-result charges leave with it, backlog charges remain retained. Detached record/event admission and node/observer preparation now run outside the registry; exact namespace/CQ revalidation precedes borrowed publication and once-only post-guard enqueue. CQ metadata now prepares fallibly with that same owner; replacement carries the complete admitted node through explicit post-guard release, with node deallocation before payload/charge disposal. Fallback retains every field. | Aggregate namespace/account admission, authority close/disposal, terminal timer cleanup, backlog reconciliation and outer caller/queue/IRQ contexts remain G1/G4/G7; capability-backed construction is qualified in the next row. Consumer/root quiescence is still required; no physical receipt, custody registry or operation replay owner. |
-| Capability-backed plain/watch/timer preparation → hidden reservation → joint publication | Captured root/accounts/capacity/classification and original buffer precede operation-ID and record/watch admission. Early quota rejection retains any record charge with the buffer, and record factories borrow this complete owner. Explicit pre-record rollback disposes buffer before admission; all three early phase fallbacks retain every field. Record/list/watch and authority preparation stays outside COMPLETIONS. Hidden reservation revalidates the captured namespace before relinking prepared metadata. Timer cancellation/node/producer construction leaves the registry; final borrowed batch publication rechecks identity/retirement before installing the payload. Ordinary success/error explicitly finishes the complete owner after local guards; abandonment retains all fields. Timers preserve one absolute deadline and teardown-before-enqueue cancellation. | Aggregate metadata admission, backlog reconciliation, authority close, terminal timer disposal and arbitrary enclosing guards/IRQ contexts remain G1/G4/G7. No physical root lease, quiescence receipt, custody or public retry owner. |
-| Timer queue mutation / due-prefix capture → complete delivery and disposal | Shared cancellation Arc payload preparation retains its value and original admission outside empty allocation, with post-allocator explicit cancellation and inert fallback. Raw event preparation now retains source/callback and original admission through shared holder/cancellation construction, with explicit payload-before-uninstalled-charge rejection cleanup and inert phase abandonment. Partial node construction captures the already charged event/source and outside admission before fallible empty storage allocation; abandonment retains either phase, while completion initializes once and rejection cancels after allocator return. Completed private preparation retains its complete node on abandonment; consuming unused disposal shares the existing retirement owner after local guards. Sleep node preparation precedes its own publication mask; timed waits and both submission owners explicitly consume unused nodes. Exact cancellation retains its state Arc in a complete CancelledTimer handback with any removed node/source until post-guard finish; bare handles use explicit reference release and inert abandonment. Filter/rejection returns complete retirement owners. Due processing captures one cutoff, preserves anonymous FIFO/quantum-first ties and rearms before queue unlock. Non-Send/non-Sync PendingDelivery retains selected/purged payloads and original admission through post-queue callback/waiter delivery, temporary observer destruction and iterative disposal on the same masked LP. Inline claim fences recursion; callback enqueue waits for the next pass, selected cancellation rechecks state before signal, and handback reconciles current comparator state. | Preparation/cancellation handback abandonment retains complete fields; delivery abandonment also retains its claim. Fixtures abandon no real LP delivery claim. Queue absence/fired counters are no notification, completion or physical proof. IRQ execution, unrelated outer guards, completed raw event/payload destruction, waiter preparation, raw cancellation references and arbitrary blocking callbacks remain G1/G4/G7. No root release, replay or recovery custody. |
-| CQ backlog drain → delivered-record refund | Ring publication/slot updates remain serialized; admitted nodes relink into the shared retirement list and original charges into at most two inline class-separated owners. No allocation/free/refund under COMPLETIONS. After unlock, node release precedes charge refunds; CQ waits finish before parking and producers before notification. Failed writes retain entry/node/charge. | Aggregate namespace/account admission, timer callback and arbitrary enclosing guard/IRQ contexts remain G1/G4/G7. Logical delivery/refund supplies no physical proof, root release or retry owner. |
-| Completion global/detached maps / namespace payload → explicit disposal | PreparedEntry storage and complete record/timer preparation leave COMPLETIONS. Publication validates exact root/accounts/source; removal transfers the node to direct/backlog/refund ownership. Global namespace nodes and all four accounts now prepare fallibly outside the registry too. Namespace close/replacement detaches the complete global node, then explicitly frees it before draining all live/backlogged/CQ nodes and original accounts after local unlock. Namespace/preparation/terminal fallback retains complete payload, original charges and sources; constructor/publication rejection finishes explicitly. | Whole namespace fallback is terminal retention, never recovery custody or a physical root lease. Aggregate namespace/account bounds, authority revocation and wider queue/IRQ/producer guards remain open. |
-| Capability completion retirement → payload/authority disposal | Completion record preparation now captures buffer/operation/original charge before holder and list allocation; explicit early rejection frees buffer and unused list before admission, and all three phase fallbacks retain complete fields. Success hands the same payload to shared holder/Arc preparation with post-allocator rejection cleanup, payload before backing and refund. Payload node storage joins the existing charged preparation before hidden authority. Shared admitted-map publication/removal allocates/frees nothing under COMPLETIONS. Detached authority stays in that same node through explicit post-guard release; a charged completion Arc outlives both node frees. Namespace close drains complete nodes. Shared RetiredRecord refund follows actual node deallocation. Close/abort/event rollback remove exact retained CQ rows before releasing slots. | Inert retired-node fallback retains every field and original charge. Aggregate namespace/account admission, other authority consumers' outer guards, timer/observer destruction and wider IRQ/caller contexts remain open. Logical revocation is no physical receipt, recovery custody or replay permission. |
-| `reap_dead_threads` → explicit pair release → `RetiredEntry::release_with` | Production rejects a masked caller before claiming nodes. Both architectures run pinned IRQ-enabled workers; Arm IRQ-tail yield no longer reaps. Exact node remains owned across metadata notification and stack release outside staging/table guards. Only confirmed pair completion destroys it; failure requeues the same terminal owner. | Boot fixtures use a private never-admitted-context adapter. Complete thread fallback now retains every field with only an atomic diagnostic. Selected-generation success checks staging/thread/root/allocator guard availability before consuming metadata disposal; guarded kernel/user abandonment checks no callback, waiter cancellation, usage/frame refund and exact-root busy close. General ordinary metadata deallocation and every constructor/syscall caller's outer masks/guards still need qualification. This is terminal retention, not retry custody. |
+| [`CharlotteRootRetirement`](../tla/CharlotteRootRetirement.tla) | Exact leases, staged close, complete-owner invalidation retry, terminal retention and physical-once charges | Subsystem/thread/hardware completion, arbitrary outer contexts and interruption inside physical teardown |
+| [`CharlotteCheckedWait`](../tla/CharlotteCheckedWait.tla) | Fixed deadline, admission/timeout retention, accepted-request fencing and readiness/result separation | The source's real notification contract and full implementation refinement |
+| [`CharlotteIpcPublication`](../tla/CharlotteIpcPublication.tla) | Reservation/escrow rollback, hidden output and exact namespace replacement | Confirmed loan/payload retirement, physical release and outer-context safety |
+| [`CharlotteDmaOperation`](../tla/CharlotteDmaOperation.tla) | Fixed-unit admission, pending pin/root retention and non-replayable started attempts | Genuine backend acknowledgements, physical release, grant cancellation and recovery |
 
-This table records source observations, not a proof that all entries are safe.
-In particular, no universal destructor safety claim follows from the common
-lifecycle above. Existing physical-release destructors need explicit context
-qualification or replacement under G1.
+Models and local controls cover their specified boundaries. They do not close
+the call-chain inventory or integrated pressure gates.
+
+<a id="entry-boundaries-checked-in-this-review"></a>
+
+### Entry boundaries and caller obligations
+
+| Entry | Required composition | Remaining caller qualification |
+| --- | --- | --- |
+| Domain abort / cooperative runtime-page access | Retain exact executor/root before publication; validate fixed image mappings before access; complete root before executor | Force-request callers, exceptional paths and unrelated retained operations |
+| Domain teardown / staged close | Enter without unrelated guards; retain the same closing owner and cached failure episode | Every deployment/node/device/loader caller and implicit field drop; completion reconciliation |
+| Final-root recovery | Reject masked callers before claim; leave the registry for invalidation/release; disarm once before slot reuse | IRQ-enabled entry alone cannot establish absence of unrelated locks; operator authorization is separate |
+| Memory/device map, unmap and close | Capture root/capability before subsystem claim; leave local guards for physical work; retain complete rollback/retirement metadata | Enclosing IPC/lifecycle/allocator masks, active transfer/scoped-pin destructors and hardware failure phases |
+| Completion, observer and timer production/disposal | Prepare captures/storage before local publication; notify and dispose detached nodes/charges after guards leave | Active token/source/final-handle/parent destruction, callback contexts and aggregate allocation |
+| Thread reaping / metadata disposal | Pinned owner-LP worker, exact stack quiescence, pair completion before metadata/node release | Ordinary constructor/syscall rollback and all enclosing masks/guards; serialized fixtures establish only their own scope |
 
 ### Coverage boundary
 
-The [scheduler selection follow-up](../reports/audits/2026-10-15-scheduler-selection-storage.md)
-inventories rebalance callers and removes temporary load/candidate allocation.
-Yield tails enter with IRQs masked after their local switch guards leave,
-then take the system scheduler, LP pair and master table in that order.
-At that checkpoint destination queue growth remained open. The subsequent
-[inline-queue follow-up](../reports/audits/2026-10-15-inline-scheduler-run-queues.md)
-qualifies that splice and unlink-before-retirement using the existing complete
-thread owner. The [wait-publication follow-up](../reports/audits/2026-10-15-scheduler-wait-publication.md)
-then moves scheduler waiter preparation/cancellation outside local LP/table
-guards, retaining early hints and exact installed-wait identity. Wider table,
-source/outer-guard, timer and heap contexts remain R7/R18 work. x86 only
-permits never-dispatched migration; Arm retains its assembly handoff.
+C01–C18 are an owner-family inventory. R18-1 still requires every production call
+chain and implicit field drop, including scheduler/IRQ/observer/allocator paths,
+supervisor preparation and service-local protocol owners. R7-1 separately needs
+each allocation's bytes/count, sponsor, lifetime and rejection behavior.
 
-The [stack-growth execution-owner follow-up](../reports/audits/2026-10-15-stack-growth-execution-owner.md)
-subsequently qualifies growth outside the master thread-table guard through the
-shared execution fence. Earlier per-batch notes below retain their historical
-context; inner walker and other outer cleanup contexts remain separate gaps.
-
-The [2026-10-15 process review](../reports/audits/2026-10-15-audit-process-review.md)
-separates corrected ordering/fixture defects from unexplained incidents. The
-IPC exact-exit timeout reproduced on both architectures after its initial
-192 passing episodes. Later park/first-dispatch corrections have failing
-negative controls and passing suites, but do not establish historical causality
-or complete C16/C18/G1/G7. Read earlier per-batch observations in that sequence.
-
-This is an owner-family inventory, **not completion of R18-1's full call-chain
-audit**. It does not yet enumerate every outer lock, interrupt state, allocation
-or implicit field destructor at every production call site. CQ/completion/timer/
-waiter/watch cancellation, scheduler migration storage, IRQ infrastructure,
-kernel heap/arena metadata, supervisor upgrade/observer preparation and service
-local/protocol owners must be included in that wider audit. Their existing
-admission contracts do not automatically qualify their exceptional destructors.
-R7-1's byte/principal allocation inventory is also still separate work.
-
-Inherited boot roots/stacks and runtime shared kernel/IOMMU unit backing are
-explicit lifetime exclusions from *ordinary domain recovery*, not exclusions
-from locking or admission review. Boot-fixture serialized adapters are evidence
-fixtures and cannot become production recovery fallbacks. Physical platform
-qualification remains R18-6; this plan targets QEMU first.
+Inherited boot roots/stacks and shared kernel/IOMMU unit backing are lifetime
+exclusions from ordinary domain recovery; they still need locking and admission
+review. Serialized fixture adapters cannot become production fallbacks. x86's
+never-dispatched migration and ARM's switch handoff remain architecture-specific.
+Physical qualification is R18-6; the immediate recovery milestone targets QEMU.
 
 ## Shared recovery controller contract
 
@@ -246,647 +164,34 @@ it is not a fallback transition in this controller.
 
 ## Named gaps and acceptance gates
 
-These work items replace adding registries category by category without a
-coverage decision. They refine existing R18/R7 deliverables; they add no new SEC
-finding numbers or closure claims.
+These gates refine the [R7/R18 deliverables](security-remediation.md). Update
+their current boundary in place when work changes it.
 
-| Gap | Required change and acceptance evidence |
+| Gap | Remaining acceptance |
 | --- | --- |
-| G1: destructor and outer-context qualification | Inventory all production callers/implicit field drops for C01–C18 and the wider coverage boundary. Start with remaining C16/C17/C15/C18 destructors; joint heap/image, raw-frame/table and initial/growth stack/slot fallback plus C04 logging are corrected in the scoped evidence below. Published stack physical destruction is now explicit, and IOMMU table/region fallback also retains ledger storage; complete thread metadata fallback is also corrected through C16, while outer ordinary rollback and explicit callback contexts remain separate. Move unsafe cleanup to explicit admitted owners or prove the specific context; abandonment must retain state without cleanup. Test rejection/abandonment while the relevant guards are held. Keep Arm worker qualification distinct from masked boot-fixture adapters. Complete R18-1 only when the call-site inventory has no unexplained entry. |
-| G2: recoverable owner boundaries | For each row, classify every phase as unstarted rollback, Pending, owner-preserving retry or terminal retention. Consumed failed receipts in C02/C05–C12/C16 cannot enter custody today. Where retry is justified, return/retain the complete typed transaction with recorded progress and dependencies; otherwise document permanent fencing. Test no repeated detach/scratch completion/physical release and no stale-generation access. Do not make every category retryable. |
-| G3: backend phase separation | In all three IOMMU backends, own/fence the domain and command completion state before releasing backend serialization for maintenance and table teardown. Preserve command queues after timeout and requester fences through reset. Explicit destruction now moves its actual engine and domain before unlocked maintenance, restoring exact state on ordinary rejection. Published creation rejection now composes that same unlocked boundary through its enclosing C18 preparation, recorded before hardware publication. Domain-private constructor rollback now also composes C18's exact root/reservation and typed payload before unlocked private release. Boot unit initialization now claims its existing typed slot and performs preparation, control, waits and private rollback outside serialization; started hardware uncertainty and abandonment retain the whole unit and claim without replay. Ordinary map/unmap and installed-prefix cleanup now move the complete domain/engine/pending pin before unlocked walking and maintenance, retaining an exact public root/capability claim. Restore exact state before confirmed post-guard unpin; rejected unmap quarantines without allocating reinsertion. Endpoint reset now uses a logical config/BAR/ECAM claim in C18 through explicit post-publication activation or confirmed post-guard cancellation; config/device holds leave polling and uncertainty/abandonment never invokes hardware from Drop. Complete-unit creation now also claims its existing slot and releases lifecycle/backend serialization through reset/construction/configuration. Reject absent command engines and detached cells before extraction, restore exact state on ordinary return, and revalidate the captured closing root before publication. General metadata admission and full caller contexts remain open. Prove concurrent create/map/unmap/destroy/reset cannot steal the claim; allocator/backend guards must be available at cleanup boundaries. Separate physical table rejection from retryable maintenance rejection. |
-| G4: publication and metadata destruction | Enumerate allocation/destruction below IPC/device/lifecycle guards, including prepared transfers, calls, attachments, observer metadata and device registry storage. Explicit DMA close rejection preserves its original cell without extraction/reinsertion. Device payload/namespace nodes now prepare fallibly before local guards and detach into post-guard owning disposal; unified namespace nodes now also prepare fallibly and detach through the same shared `AdmittedMap`. Unified authority records now prepare fallibly before capability serialization and detach owning nodes for post-capability-unlock disposal. Batch source retirement survives in its containing transfer until payload completion and memory unlock. Device unified preparation/retirement now joins its complete grant/close owner outside local guards, including exact memory-budget policy and original charge retention. Backend domain/source/context nodes now prepare fallibly in the existing complete grant before reset/IDs/backing, and domain-node disposal follows table/pin completion outside backend guards. Mapping nodes now prepare before data leaves and retain exact pins/pages through detached completion or allocation-free quarantine. SMMU cache nodes prepare before branch links and dispose only after table completion. Mailbox publication now prepares shared authority and payload nodes in its exact-root owner before local guards; explicit close releases charged nodes post-guard and root last. Guarded abandonment retains complete preparations/retirements. Final mailbox/queue/unified authority metadata now stays in C02/C03 through confirmed final invalidation, post-guard release and root/slot completion. Word-queue nodes/backing now prepare fallibly before local guards and detach whole; shared set/requested byte admission retains original charges through final-root completion. Metadata/principal admission, completion/accounting teardown, other active reservation/escrow Drop, outer namespace/subsystem callers and broader ledger/heap metadata remain separate. Admit storage before mutation and move destruction outside serialization where required; preserve source escrow and hidden delivery. Validate success and ordinary rollback plus abandonment. Coordinate with R7-1/2 rather than declaring logical admission a general heap bound. |
-| G5: supervisor completion correlation | Preserve exact teardown episode/dependency state through custody and cached errors. Add an explicit completion reconciliation path with tests for stale tickets, concurrent polls, a completed root with failed earlier cleanup, and recovery without authorized restart. Never clear a cached error solely because an ASID is absent or reusable. |
-| G6: common custody and authorized policy | After G1–G3 establish a second eligible complete owner, reuse bounded custody/claim/diagnostic primitives instead of creating another unrelated registry. Define target authority, freshness, quotas and outcome admission before exposing mutation. Test capacity/serial exhaustion, competing claims, unauthorized/stale requests and terminal rejection. SEC-08/10 remains a dependency for external operator access. |
-| G7: integrated qualification | Run the R18-5 concurrency matrix with R7 pressure/progress constraints on VT-d, AMD-Vi and SMMUv3. Include actual outstanding I/O for R18-4, maintenance timeout, lost/stale CPU acknowledgement, peer close, interrupted publication and partial release. Assert exact charges, no early reuse and measured essential progress; per-category isolated successes are insufficient. |
+| G1: destructor and outer-context qualification | Enumerate every relevant production caller and implicit field drop. Qualify enclosing locks/IRQ state, allocation, notification, callbacks and physical cleanup. Test rejection/abandonment under the relevant guards. Inner post-guard disposal alone is insufficient. |
+| G2: recoverable owner boundaries | Classify phases as unstarted rollback, Pending, owner-preserving retry or terminal retention. Continue only with a complete typed owner and recorded dependencies; consumed error receipts cannot enter custody. Test no repeated detach, scratch completion or physical release. Keep unsupported categories terminal. |
+| G3: backend phase separation | Across VT-d, AMD-Vi and SMMUv3, preserve the complete domain/unit/engine/pin claim while releasing serialization for maintenance, reset and physical work. Qualify all caller contexts and concurrency/timeout paths; distinguish retryable pre-release rejection from terminal physical failure. |
+| G4: publication and metadata destruction | Complete allocation/destruction inventory below IPC/device/lifecycle guards. Prepared nodes and authority escrow must survive publication, rollback, retirement and real deallocation with original charges. Cover active parent destructors and remaining ledger/account/heap bookkeeping. |
+| G5: supervisor completion correlation | Correlate exact teardown episode and dependencies with cached errors. Test stale tickets, concurrent observations and root completion with earlier cleanup still failed. Authorize restart separately; missing/reused ASIDs cannot clear errors. |
+| G6: common custody and authorized policy | After a second complete eligible adapter is justified, share bounded custody/claim/diagnostic policy. Define authority, freshness, quotas and outcome admission; test competing/stale/unauthorized requests and terminal/exhausted states. External access depends on enrolled authenticated channels. |
+| G7: integrated qualification | Combine R18-5 concurrency/fault cases with R7 pressure/progress on VT-d, AMD-Vi and SMMUv3. Include actual outstanding I/O, maintenance timeout, lost/stale acknowledgements, peer close, interrupted publication and partial release. Check exact charges, no early reuse and measured essential progress. |
 
 ### Implementation order and stopping criteria
 
-The [2026-10-12 thread metadata follow-up](../reports/audits/2026-10-12-thread-metadata-retention.md)
-removes exit/wait/usage cleanup and implicit field destruction from `Thread`
-fallback. Its complete payload stays retained; explicit consuming disposal
-follows confirmed stack-pair release and precedes retirement-node destruction.
-This updates C16/G1 without a new registry, physical retry or SEC-18 closure.
+1. Identify the affected owner family, exact reachable call path and required
+   property. Qualify its enclosing context and allocation boundary first.
+2. Preserve typed completion and all containing dependencies while moving unsafe
+   work outside serialization. Add custody only for a complete eligible owner.
+3. Validate success, unstarted rejection, cancellation/abandonment and terminal
+   physical failure as applicable. Keep expected controls and unexpected failures
+   separate; do not widen deadlines to convert an unexplained failure into a pass.
+4. Run a predefined integrated matrix with real backing and essential-progress
+   bounds. Local success does not close G7; QEMU does not close physical scope.
 
-Scoped progress: the [2026-10-09 abandonment change](../reports/audits/2026-10-09-security-preparation-abandonment.md)
-separates ordinary rollback from `PreparingUserBacking` fallback. The fallback
-retains frames and exact original charges without pool/allocator/table access,
-even before allocation; ordinary constructor errors refund unused reservation
-and explicit cancellation reports physical failure. `RetiredKernelRange` fallback
-no longer logs. These update C17/C04 under G1 without adding any custody registry.
-
-The [table/raw-frame abandonment change](../reports/audits/2026-10-09-security-table-abandonment.md)
-extends that fallback contract to private/shared table preparation and raw
-frames, with explicit normal cancellation and Arm hardware-tag rejection.
-Guarded probes retain eight physical frames and eight table charges, including
-two reservation-only charges. User-stack phase counters and fixture timeout
-snapshots improve evidence for C16 without changing its cleanup owner boundary.
-
-The [stack preparation correction](../reports/audits/2026-10-09-security-stack-preparation-abandonment.md)
-extends the same retention rule to initial/growth page preparation and implicit
-slot/lease/charge destruction. Explicit cancellation preserves normal allocation
-and mapping rejection, including ordinary growth allocation failure. Guarded
-probes retain sixteen original roots/slots and 272 reservation pages, with ten
-provisional frames; successful committed-prefix cleanup cannot refund abandoned
-growth admission. No extra registry or retry authority is introduced. Published
-stack retirement was the next boundary; the correction below makes physical
-release explicit. Outer constructor callers and growth's enclosing master
-thread-table guard remain C16/C17/G1/G2 work.
-
-The [published stack-pair correction](../reports/audits/2026-10-09-security-published-stack-retirement.md)
-removes physical cleanup from stack/context field destruction. Both architectures
-use IRQ-enabled pinned workers, retaining failed complete pairs in their existing
-nodes with a one-shot phase fence. Ordinary rejection explicitly cleans up after
-local serialization; thread-context allocation precedes generation/backing.
-Guarded pair abandonment retains two roots/slots and 34 reservation/data pages;
-a rejected kernel pair stays in its original node through repeated scans.
-Metadata fallback, outer ordinary caller contexts and growth's enclosing guard
-remain G1; no new custody registry or retry claim is introduced.
-
-The [IOMMU preparation correction](../reports/audits/2026-10-09-security-iommu-preparation-abandonment.md)
-extends fallback retention to both table ledgers and exclusively borrowed regions.
-Ordinary metadata/allocator rejection and private construction-prefix failures
-cancel explicitly across VT-d, AMD-Vi and SMMUv3. Guarded probes retain fourteen
-original charges (seven domain), ten frames and their ledger storage without
-entering either allocator, the pool or a backend. Confirmed completion disposes
-ledger storage explicitly, avoiding a metadata leak on ordinary success. This
-updates C15/G1; ordinary rollback and hardware waits still need backend phase
-separation under G3. Explicit destruction's published physical release is now
-separated as recorded below. No new custody registry or retry claim is introduced.
-
-The [detached DMA-domain correction](../reports/audits/2026-10-09-security-iommu-detached-release.md)
-updates C14/C15/G3 across VT-d, AMD-Vi and SMMUv3. Confirmed maintenance precedes
-extraction of the complete owner; the original admitted slot and requester fence
-remain. Physical release and successful ledger disposal occur outside backend
-serialization. Partial rejection restores the frozen owner without allocation;
-abandonment retains all metadata and pins, leaving an empty permanently fenced
-slot. Guarded private probes retain three additional domain charges/two frames.
-No command queue is copied or reset. Creation/map/unmap/initialization waits and
-private rollback remain serialized; explicit destroy maintenance is addressed
-below. Full G3 and common recovery custody remain open.
-
-The [command-engine correction](../reports/audits/2026-10-09-security-iommu-command-maintenance.md)
-extends C14/G3 to explicit destruction's hardware maintenance. The containing
-owner moves the actual engine, not a queue/tail/epoch snapshot, and fences all
-ordinary backend mutation while it is absent. Timeout restores the exact engine
-and retiring domain without allocation. Abandonment retains both and the unit
-fence; no automatic engine restoration runs in Drop. Confirmed maintenance
-restores the engine before unlocked physical cleanup, whose finalization remains
-available during another domain's maintenance. Intel additionally rejects
-submission while an older invalidation register is busy. Private RAM timeout
-probes restore all their charges/backing; the existing guarded complete-owner
-probe now retains command metadata too, without adding frames/charges. Creation,
-map/unmap, initialization and private rollback remain serialized G3 work.
-
-The [DMA grant rollback correction](../reports/audits/2026-10-09-security-dma-grant-rollback.md)
-updates C18/G1 without adding a family or custody registry. The publication owner
-now retains its exact user-root operation, capability reservation (including its
-implicit namespace Arc destruction) and registered backend rollback obligation.
-Normal rejection releases the grant's local lifecycle/device guards before
-one-shot explicit destruction. Only confirmed destruction refunds the staged
-authority and completes the root. Failed/abandoned cleanup retains the complete
-preparation; the owner rejects another rollback attempt. Guarded fake-backend
-fixtures retain four original roots/reservations and prove successor isolation.
-Real QEMU NVMe paths still exercise normal grant/retirement/reset. The
-backend-error handoff is extended by the creation correction below. Private
-construction/reset contexts, payload metadata admission and every unrelated
-outer caller context remain separate work.
-
-The [published-creation rollback correction](../reports/audits/2026-10-09-security-dma-creation-rollback.md)
-extends C18/C14/C15/G3. All three backends borrow the enclosing creation owner
-and record the admitted domain before a reachable descriptor. Creation failure
-marks retiring/publishes abort, then returns without rollback waits, table release
-or logging beneath the backend. Explicit grant cancellation uses C14's unlocked
-maintenance/physical phase only after lifecycle/device/config guards leave.
-Failed cancellation retains the original root/reservation and registered retiring
-domain; confirmed completion refunds/closes normally. Armed owner reuse rejects
-before initialization/reset/allocation. Fake failed cleanup retains one additional
-root/reservation (five total grant fixtures); actual QEMU NVMe configuration
-followed by injected rejection confirms real drain, disabled bus mastering,
-config/registry availability, charge refund and root close. Initial creation/reset
-waits and private construction rollback remain serialized; this adds no custody
-registry, owner-family row or generic retry authority.
-
-The earlier Intel user-stack timeout reproduced in the initial IOMMU follow-up
-execution: ASID 90, root generation 6 remained leased after a null-read fault,
-with 14 tests passed and one failed. User-half aggregate starts/releases each
-advanced by seven without additional recorded rejection; that does not identify
-a particular pair or prove kernel/admission completion. The first failed
-execution and this recurrence remain evidence for C16/G1/G2/G7. Exact staged-node
-snapshots now retain the thread generation, captured root, LP, started fence and
-reported pair failure (kernel validation/detach/physical/unconfirmed classified
-separately). Global x86 shootdown outcomes are independent atomic observations,
-not correlated completion receipts. Missing snapshots can mean an in-flight
-batch. These diagnostics never retry, extend a deadline, clear a lease or imply
-that fresh-run success resolves the cause.
-
-The [published-creation follow-up](../reports/audits/2026-10-09-security-dma-creation-rollback.md)
-also records a fresh AMD recurrence: ASID 95, generation three remained leased
-after divide-by-zero; 14 tests passed and one failed. User-retirement starts and
-releases again advanced together, with no new recorded rejection or staged-node
-snapshot. An unchanged-artifact AMD repeat passed all fifteen tests; both results
-remain evidence. `OperationsInFlight` can denote any retained root operation,
-so the fixture's stack-lease label does not identify the owner.
-
-The [abort-sweep self-handoff correction](../reports/audits/2026-10-09-security-abort-handoff.md)
-addresses the identified source window: the caller is deferred while peers are
-requested, then its exact local self-request and root-operation completion share
-one short IRQ-state-preserving mask. A real EL0 fault with a spinning peer forces
-eight pre-handoff scheduler boundaries; stale-generation/wrong-root requests
-reject, the caller remains live, and normal thread/root teardown completes.
-This changes neither retry nor deadline/count policy and adds no family or custody
-registry. It qualifies this self-request boundary, not earlier unrelated remote
-interruption or concurrent sweeps. The original intermittent captures remain
-unresolved; successful executions do not establish historical causation.
-
-The [mutex-context probe follow-up](../reports/audits/2026-10-10-security-object-store-follow-up.md) adds atomic LP ownership observations to the existing mutexes. The scheduled handoff rejects its own enclosing lifecycle/publication/table holds while permitting legitimate remote contention. A bounded two-LP fixture forces that contention and checks local lock/try-lock detection, unlock clearing and exact IRQ-state preservation. This extends C16/G1 evidence without changing cleanup, retry, custody or physical-release policy. The original intermittent AMD holder and historical stack-timeout causes remain unknown.
-
-The [concurrent abort-executor correction](../reports/audits/2026-10-09-security-abort-executor.md)
-extends C01/C16 to an explicit executing-lifetime owner acquired before the root
-lease. Mutual or unrelated abort requests remain pending while that owner is
-live. Run-queue selection, exact wakes and retirement share a retirement-ready
-predicate; migration/placement preserve its captured LP. The root completes
-before the final mask releases the executor. Ordinary root/publication rejection
-releases the executor explicitly; abandonment retains it with the root and stack,
-without a destructor or force-cleared count. Two real faulting executors request
-each other, wait on timers and yield eight times each before completing and
-closing the exact root. This qualifies abort-sweep progress for that episode;
-broader retained kernel operations and historical timeout causation remain open.
-An additional AMD run stopped before these scheduled checks when a device
-creation rollback's single heap `try_lock` rejected. The capture identifies
-contention, not the holder. Callback probes now bound global lock availability
-without yielding or changing entry IRQ state; a caller-retained lock still fails.
-This improves C14/G1/G3 evidence without claiming full outer-context safety.
-A later Intel run passed the executor/fault checks but rejected immediate server
-root close in an asynchronous IPC waiter fixture. C07 publishes reply visibility
-before its final lease releases; that fixture now retains exact roots and drains
-mutation-free busy-close rejection under a shared five-second deadline. The
-captured individual operation remains unidentified; no count/fence is cleared.
-
-The [private-domain construction correction](../reports/audits/2026-10-09-security-dma-private-rollback.md)
-extends the same C18/C14/C15 owner boundary to never hardware-published roots,
-CDs, MSI prefixes and metadata. Constructor errors return complete typed payloads;
-VT-d context-table rejection retains that private payload too. `DmaCreation`
-keeps it beside the original root operation and authority reservation until
-post-guard cancellation. Physical failure/abandonment retains all of them and
-cannot retry. This is unstarted rollback, not hardware maintenance/recovery or
-new custody. Real QEMU prefix/complete-preparation rejection checks exact refund
-and root close, while guarded complete-payload retention and partial-release
-fixtures preserve their charges. At that checkpoint unit initialization still
-needed separation; the correction below replaces it. Domain allocation/reservation
-preparation, initial waits/reset fallback and full outer contexts remain
-G1/G3/G4/G7; the eighteen-family/seven-gate map is unchanged.
-
-The [unit-initialization correction](../reports/audits/2026-10-09-security-iommu-unit-initialization.md)
-removes lazy initialization below ordinary DMA callers. Boot claims each existing
-typed backend slot, then allocates/prepares the complete unit and waits outside
-its registry. Known-private errors cancel backing/metadata before clearing that
-claim. A started hardware control write, published failure, partial release or
-abandonment retains the complete unit and claim; even unpublished tables cannot
-authorize control replay. No new registry, recovery controller or family row is
-added. Real boot prefixes/complete preparation and successful hardware waits
-are qualified on QEMU; synthetic guarded/partial/uncertain retention adds five
-unit charges/four frames. Domain creation/reset, map/unmap and metadata/context
-work remained G1/G3/G4/G7 at that checkpoint; neither finding nor the historical intermittent episodes
-are closed.
-
-The [mapping-maintenance correction](../reports/audits/2026-10-09-security-dma-mapping-maintenance.md)
-extends C13/C14/C15 without a new row or registry. Public `DmaOperation` retains
-exact root/capability admission while `MappingMaintenance` owns the complete
-domain, actual engine and detached pending pin. Walkers and hardware waits leave
-backend serialization; one original hold restores exact domain/engine before
-confirmed unpin. Failed unmap quarantines without exceptional allocating
-reinsertion, and abandonment retains every field and claim without cleanup.
-Real map/unmap/prefix probes and rejected-unmap/actual-retirement evidence qualify
-these boundaries on QEMU. A synthetic containing owner adds one domain-table
-charge/frame and two separately charged data frames, plus their exact root and
-authority. Initial creation/reset, constructor allocation/registry metadata,
-outer contexts, concurrency/outstanding I/O and custody remain G1/G3/G4/G6/G7;
-SEC-18 and the eighteen-family/seven-gate inventory remain open and unchanged.
-
-The [PCI reset-claim correction](../reports/audits/2026-10-09-security-pci-reset-claim.md)
-composes C13/C14/C18's exact grant/root/reservation with the endpoint's existing
-config cell. Captured BAR/ECAM exclusion survives released config/device guards,
-uncertain reset and abandonment. Ordinary config/MSI and overlapping MMIO access
-reject it. Explicit activation follows busy-cap publication; confirmed backend
-cleanup precedes unstarted/confirmed-reset cancellation. No destructor touches
-hardware or clears a claim. Real QEMU staged exclusion, reset wait and final
-publication probes qualify this scope; RAM-backed guarded grants retain two
-additional roots/reservations without new table/data charges. Wider lifecycle/
-backend creation/reset holds remained open at that checkpoint and are addressed
-below; preparation metadata, concurrency/outstanding I/O and custody remain open. No row, registry, recovery controller or finding closure
-is added; the eighteen-family/seven-gate strategy remains unchanged.
-
-The [complete-unit creation correction](../reports/audits/2026-10-09-security-dma-creation-phases.md)
-extends C14/C15/C18 without a new row or registry. The existing installed-unit
-slot stays claimed through unlocked reset, construction and initial configuration;
-the retaining owner carries the actual engine, tables, registries and existing
-pins. Admission rejects absent engines and any detached domain cell, preserving
-an older domain's physical-finalization access. Ordinary return restores the same
-unit; abandonment retains it and the complete grant. Lifecycle leaves after exact
-root/reservation admission and rechecks captured generation/closing state before
-publication. Real boundaries and staged-close rejection qualify this scope;
-synthetic guarded retention adds two table charges/frames, two independently
-charged data frames and an exact root/reservation. General metadata admission,
-inner fallback, wider contexts, concurrency/outstanding I/O and custody remain
-G1/G2/G4/G6/G7. SEC-18 and the eighteen-family/seven-gate map remain unchanged.
-
-The [DMA close-claim correction](../reports/audits/2026-10-09-security-dma-close-claim.md)
-extends C13/C14 through the existing shared `DmaOperation` owner. The original
-capability record remains claimed through backend destruction; no failure path
-extracts or reinserts its metadata. Ordinary rejection preserves authority and
-clears only the exact public claim after backend restoration/retention. Confirmed
-success consumes authority/payload before root completion. Abandonment retains
-root/claim; no new receipt, registry or owner family is introduced. Heap-held
-synthetic rejection, staged root-close completion and real maintenance/physical
-boundaries qualify this scope. General grant admission, successful metadata
-removal, wider contexts and cross-LP/physical evidence remain G1/G4/G7. No extra
-fixture table/data/root retention is added, and SEC-18 remains partial.
-
-The [prepared device-registry correction](../reports/audits/2026-10-09-security-device-registry-storage.md)
-extends C12/C13/C18 and G4 through the existing retirement-list node machinery.
-All three grant categories retain their exact root, original reservation and
-prepared namespace/capability nodes in shared `GrantAdmission`; DMA preserves
-its typed reset/private/registered obligation alongside them. Publication and
-detachment only relink nodes. Successful close and namespace completion dispose
-owning nodes after local guards; failure/abandonment retains the original nodes.
-Host allocation/deallocation tracing and guest rejection/relink/disposal probes
-qualify this scope. No new family or registry is introduced. Unified capability
-metadata, backend registry storage, byte/principal admission, wider contexts and
-pressure/progress evidence remain open; SEC-07/18 and the eighteen/seven map are
-unchanged.
-
-The [unified namespace-storage correction](../reports/audits/2026-10-09-security-capability-namespace-storage.md)
-extends C18/G4 with the same shared `AdmittedMap`. User namespace node/account
-preparation precedes local lifecycle/table guards and ASID publication; inert
-fallback retains both allocations, while ordinary unused storage cancels
-explicitly. Final namespace removal owns its complete detached node and original
-account through post-`CAPABILITIES` destruction. Real generation namespaces
-cannot be recreated by captured admission, and late tokens retain their original
-account identity. Host tracing and heap-held guest publication/detachment plus
-preparation rejection and guarded abandonment qualify this scope. At that checkpoint individual authority records remained open; the next correction
-below addresses their local storage boundary. Containing outer guards, backend
-metadata and byte/progress admission remain open; the eighteen/seven map and SEC-07/18 counts are unchanged.
-
-The [authority-record storage correction](../reports/audits/2026-10-09-security-capability-record-storage.md)
-extends C18/G4 with the same admitted nodes for all six kinds. Fallible storage
-preparation precedes capability serialization and charge/serial mutation. Both
-preparation and detached retirement retain original charges on abandonment,
-including root teardown/reuse. Batch move publication carries source retirement
-in the exact escrow until the containing transfer completes payload work and
-leaves the memory registry. Ordinary release follows capability unlock; active
-token Drop and wider lifecycle/IPC/device callers still require qualification.
-Six-kind rejection, heap-held admission/publication/detach, mixed-batch rejection,
-late cancellation and guarded retention probes plus real NVMe boundary probes
-qualify that scope. No additional family or registry is introduced; backend
-storage, byte/progress admission and finding counts remain unchanged.
-
-The [device authority-context correction](../reports/audits/2026-10-09-security-device-authority-context.md)
-extends C12/C13/C18/G4 through those existing owners. Shared `PreparedReservation`
-retains all fallible authority storage before local grant guards, and captured
-memory-budget policy is still checked under lifecycle. Device close carries its
-unified retirement node/charge through payload completion and post-guard disposal,
-finishing the exact root last. Non-DMA claim/cleanup phases now live in one inert
-owner; uncertain MMIO and IRQ abandonment retains the complete operation. Five
-terminal probes retain five roots/authority charges and four scratch pages, while
-ordinary success and staged close complete explicitly. Heap-held grant admission/
-close detach, allocation rejection and real NVMe context probes qualify local
-boundaries. Wider callers, backend metadata and byte/progress/custody work remain
-open; the eighteen-family/seven-gate map and finding counts are unchanged.
-
-The [backend registry-storage correction](../reports/audits/2026-10-09-security-backend-registry-storage.md)
-extends C14/C15/C18/G4 with shared admitted nodes for domain cells, requester
-fences and VT-d context metadata. Typed preparation stays in the original grant
-before reset, ID mutation or physical backing. Publication relinks; exact zero
-fences reuse their original node. The cell/source claim stays through table
-release and all data unpins before post-guard domain-node disposal. Real node
-rejection and allocation/disposal entry probes plus heap-held linkage qualify
-this scope. Guarded metadata-only abandonment retains one extra exact root/
-reservation and unused nodes, without new IOMMU table/data charge. Per-domain
-mapping/walker metadata, other authority callers, byte/principal/progress admission,
-wider contexts, concurrency and custody remain G1/G4/G6/G7. No new family,
-registry, custody interface or finding closure changes the eighteen/seven map.
-
-The [mapping/cache metadata correction](../reports/audits/2026-10-10-security-dma-metadata-storage.md)
-extends C14/C15/C18/G4 with shared admitted mapping nodes. Exact pending pins
-retain unused or detached storage through maintenance; failed unmap relinks its
-original node and failed prefix consumes its pre-leaf node into quarantine.
-SMMU cache misses prepare before branch links and retain unused storage across
-partial walks. Confirmed table completion permits explicit cache disposal;
-no implicit fallback frees nodes. Heap-held relink/retirement adapters, real
-mapping/walker rejection and local context probes qualify this scope. Existing
-guarded complete-owner retention includes those metadata nodes without adding
-root/table/data charges. Ledger/heap admission, other authority callers, wider
-contexts, concurrency and custody remain G1/G4/G6/G7; no new family/registry or
-finding closure changes the eighteen/seven map.
-
-The [mailbox publication-context correction](../reports/audits/2026-10-10-security-mailbox-publication.md) extends C18/G4 with the
-same admitted nodes and shared `PreparedReservation`. `PreparingMailbox` retains
-its exact root and all fallible storage before local lifecycle/mailbox guards;
-publication revalidates generation/retirement/closing policy. Receiver reuse is
-lookup-only. Explicit `RetiredMailbox` keeps both charged nodes through post-guard
-release and completes the root last. Ordinary unstarted rollback refunds;
-abandonment is terminal retention, preserving two roots, two mailbox and two
-shared charges in guarded probes. Staged root close rejects publication and
-finishes after ordinary operation completion. The follow-ups below qualify
-final-root metadata release and queue nodes/backing; metadata/principal admission, other
-authority callers, heap/principal bounds and wider contexts remain G1/G4/G7. No new owner family,
-registry or retry authority; SEC-07/18 remain partial.
-
-The [final-root metadata correction](../reports/audits/2026-10-10-security-root-metadata-retirement.md) extends C02/C03/C18/G4 inside the
-existing closing and retired-root owners. Mailbox payload/queue backing and the
-complete unified authority namespace retain original charges through detachment
-and failed final invalidation. Confirmed invalidation releases them outside local
-guards before the existing one-shot root walk and slot completion. The existing
-bounded root custody owns all fields; no new registry/ticket or generic retry.
-Guarded actual-attempt abandonment retains one additional complete root/slot,
-two mailbox and three shared charges, one heap page plus CPU tables/queue backing.
-Physical-rejection coverage extends its existing fixture without adding another
-retained root/frame episode. Queue/account metadata and principal admission,
-completion/bookkeeping,
-other authority callers and wider contexts remain G1/G4/G7. Eighteen families,
-seven gates and partial SEC-07/18 remain unchanged.
-
-The [word-queue storage correction](../reports/audits/2026-10-10-security-mailbox-queue-storage.md) continues C02/C03/C18/G4 with the same admitted-node machinery.
-Operations retain the exact generation before registry access, prepare nodes and
-queue backing outside local guards, and revalidate before relinking. Losing
-creators dispose unused storage after guards and release the root last; final
-teardown retains the complete admitted queue node with the existing root receipt.
-Node rejection, FIFO/backpressure/wrap, heap-held publication/final detach,
-retired/staged/stale roots and guarded complete-owner abandonment qualify this
-boundary. Abandonment retains one additional root/CPU tables, unused node and
-256-word queue per LP, with no data frames or record charges. The backing
-follow-up below adds original queue charges to those same retained fields.
-Metadata/principal/heap budgets, completion/bookkeeping, other authority callers
-and enclosing contexts remain G1/G4/G7. No new family,
-registry or retry authority; eighteen families, seven gates and partial SEC-07/18
-remain unchanged.
-
-The [word-ring backing correction](../reports/audits/2026-10-10-security-mailbox-backing-admission.md) continues C02/C03/C18/G4 using the existing mailbox family account.
-Legacy/capability callers and competing creators share its exact captured
-identity. Fallible account/node preparation precedes local guards; backing
-admission reserves queue sets and requested bytes with original classification
-before a fallible fixed-ring allocation. Short IRQ-state-preserving per-LP holds
-leave before notification. Ordinary losing/rejected preparation disposes backing
-then its charge post-guard; root completion stays last. Final invalidation retry
-retains the same queue charge, while confirmed root metadata completion refunds
-after ring deallocation. Terminal fallback retains charge/backing together.
-Backing rejection, overflow, shared domain ceilings, isolated node byte/set
-saturation/progress reserve, old/successor charge separation, guarded abandonment
-and real custody retry/physical rejection qualify this scope without additional
-retained roots/frames. Namespace/account metadata, principal/aggregate heap
-budgets and other teardown contexts remain G1/G4/G7. No new family or custody;
-eighteen families, seven gates and partial SEC-07/18 remain unchanged.
-
-1. **Complete the context inventory and owner classification (G1/G2).** Record
-   every known family and wider call-site exclusion. Prioritize stack reaping,
-   provisional backing and hardware preparation, which still contain unqualified metadata fallback or ordinary physical
-   rollback contexts. This checkpoint is reached only when each production entry has its
-   outer guards/IRQ state, phase result and destructor behavior accounted for.
-2. **Separate backend work and qualify one further complete receipt (G3).**
-   C04 kernel ranges are a candidate for shared custody, but only when their
-   caller retains the enclosing stack/admission dependencies where applicable
-   and their Drop/context issues are resolved. Do not register a range alone
-   and thereby lose its stack reservation/root. Backend recovery remains typed.
-3. **Consolidate custody and reconciliation (G5/G6), with G4 storage admission.**
-   Reuse the tested claim/serial/terminal-state protocol. Implement trusted local
-   policy first; external authenticated control is a separate security milestone.
-   No checkpoint authorizes a general quarantine reclamation operation.
-4. **Execute combined QEMU pressure/recovery evidence (G7).** Keep physical
-   qualification explicitly open. SEC-18 closure still requires all its original
-   deliverables, including R18-6; this map does not reduce their acceptance bar.
-
-Every subsequent cleanup/recovery change must update its row, named gap and
-evidence. Add a row only for a newly introduced owner family or a genuinely
-different completion contract. A new object instance is not a new work item.
-
-The [DMA unit readiness follow-up](../reports/audits/2026-10-12-dma-unit-readiness.md)
-extends C01/C14/C15/C18 and G1/G3/G4/G7 using the same fixed installed-unit slots
-and complete grant preparations. First-wait source admission captures the exact
-root's classification before backend serialization. Charged observer/disposal
-storage is prepared outside guards and relinked only after slot revalidation.
-Registration touches only the independent list beneath scheduler serialization;
-producer-LP deferred transport carries detached notifications and source disposal.
-The wait retains the original root/count and reservation, and rechecks current
-availability before one complete-unit claim and one hardware creation attempt.
-An engine returned before a detached domain's physical finalization is nonready.
-Closed-source late registration and a competing claim do not transfer ownership.
-Unarmed ordinary rejection completes admission explicitly; source/interest and
-complete-unit abandonment retain their fields without cleanup or synthetic wake.
-No new owner family, recovery registry, deadline, custody or physical retry is
-introduced. Hardware polling and public DMA map/unmap/close rejection, uncertain
-rollback contention, indefinite retained claims and broader outer contexts stay
-separate. Scheduled evidence uses a private fixture slot and the production
-publication owner; it does not prove arbitrary live-hardware concurrent progress.
-
-The [DMA unmap phase correction](../reports/audits/2026-10-12-dma-unmap-phases.md)
-continues C13/C14/C18 and G2/G3/G7. Actual backend claim establishes the
-admission/completion boundary; register status preserves pre-work busy rejection
-without treating later errors as permission to repeat cleanup. Existing safe
-runtime owners record terminal progress before kernel entry, retain memory on
-ambiguous failure, and skip repeated DMA work on subsequent finish/Drop. Success
-requires actual backend completion and existing pin release. CPU mapping cleanup
-and capability-close fallback remain best-effort, with uncertain kernel pins
-and original charges retained. This adds no wait, registry, custody or physical
-retry; public-operation readiness and broader CPU/MMIO cleanup remain separate.
-
-The [grant cancellation readiness follow-up](../reports/audits/2026-10-12-dma-grant-cancellation-readiness.md)
-extends C01/C14/C15/C18 and G1/G2/G3/G4/G7 through the same fixed unit slots,
-charged sources and complete preparations. Shared admission calls its claim once
-and carries the extracted retaining owner past backend guard exit before unused
-interest disposal. Fresh creation still rejects an armed owner; consuming grant
-cancellation borrows that owner only before first descriptor detachment. Missing
-or nonpublished/frozen backing rejects before hardware. Original rollback-started,
-root/reservation/reset and partial metadata survive wait failure, interruption
-and backend rejection; no successful readiness signal refunds them or permits
-retry. The unchanged detached retirement body supplies actual completion before
-metadata/reset/root release. Public map/unmap/close, whole-domain device cleanup,
-indefinite claims and broad outer contexts keep their separate qualification.
-No new registry, coverage row, custody, physical retry or polling path is added. The follow-up also retains a failed AMD boot separately: net rejected a three-page DMA mapping, then its router verifier timed out with net failed and HTTP/DHCP pending. The identical-artifact repeat passed; the map ABI loses the precise cause, so public DMA progress and historical causality remain unresolved.
-
-The [DMA-map failure ownership follow-up](../reports/audits/2026-10-12-dma-map-failure-ownership.md)
-continues C13/C18 and G2/G3/G7. Existing `DmaOperation` retains the exact root
-and capability claim through backend work. The map ABI preserves per-return
-status and original backend rejection instead of discarding it as zero; backend
-stage includes admission and maintenance and grants no replay permission. A
-late public-completion rejection exposes no IOVA. Safe shared-DMA setup errors
-now retain their CPU mapping in a restricted wrapper with no Rust slices or
-pointers, including after rejected CPU unmap. Kernel quarantine still owns
-uncertain pins and charges until existing confirmed domain retirement; local
-cleanup is not a DMA completion proof. No wait, new kernel owner family,
-registry, custody or physical retry is added. Public readiness/IRQ qualification
-and the historical AMD failure's exact cause remain unresolved. A first Intel
-scheduled-close/ingress failure is preserved separately from its exact-artifact
-passing repeat; its cause remains open. The old ABI cannot retroactively recover
-that lost cause.
-
-The [timed completion outcome correction](../reports/audits/2026-10-12-completion-wait-outcomes.md)
-continues C16/C18 and G2/G7. Kernel completion waiting no longer collapses
-admission failure into timeout; the syscall shares the same retained completion
-and absolute-deadline loop rather than returning after one unrelated wake.
-Fallible preparation precedes the helper's park-publication mask with the exact
-sponsor/generation; full watchdog rejection precedes observer allocation and
-remaining budget is recomputed after preparation. Any caller mask remains
-unchanged. Neither rejection nor deadline expiry consumes the pending
-operation/buffer. Existing runtime owners preserve their cancel/terminal-wait/close policy. Exact
-worker-generation, return-phase and staged-retirement observations strengthen
-failed scheduled memory-close diagnostics without claiming source, exit or
-physical completion. No source producer, root count, stack ownership, cleanup
-receipt, registry, custody or physical retry changes. Historical Intel
-scheduled-close/ingress causality and broader IRQ/callback qualification remain
-open; this correction does not establish the old failure's cause.
-
-
-The [owned DNS invocation batch](../reports/audits/2026-10-14-protocol-simplification-dns-local-invocation.md)
-continues C18 without a new family or registry. Its seven state-machine controls
-exercise success, rejection, cancellation/drop, returned-capability cleanup and
-unchanged deadlines with owning fake resources. Three strict codec controls cover
-full identities and retired client framing. Native short-name echo uses the
-full-name memory path; it does not qualify native long-name retraction or kernel
-allocator/physical failures. Runtime fallback may abort the domain when cleanup
-cannot safely release ownership. Existing unregister/watch/receive/transport
-adapters and outer contexts remain separate qualification work.
-
-
-The [NS generation batch](../reports/audits/2026-10-14-protocol-simplification-name-generations.md)
-continues C18 with the existing pending list and runtime ownership. Its codec,
-authorization and fake-owner controls qualify exact identity/generation framing,
-principal decisions, CQ binding, retained admission failure, deadlines and Drop.
-The linked long-name fixture observes producer cleanup without performing it.
-Fail-closed domain retention is not a custody/retry owner; typed successful
-logical removal is not hardware/physical completion. Wider registry, watch,
-receive/transport and outer-context work remains open.
-
-The first long-name linked control assumed DNS could retire echo's independently
-published NS binding and failed its 30-second local observation. Registrar/manager
-denial is retained; the final fixture explicitly delegates a separate alias to
-DNS so it owns that publication. At that batch, dead third-party bindings still
-needed their own NS producer/delegation contract; the later endpoint-death
-follow-up below supplies it. The existing publication claim is shared by
-Raft-commit and scan cleanup, preventing duplicate accepted RPCs. Failed and
-passing artifacts remain separate in the batch report.
-
-The fully signed NS generation runs now reproduce the historical C16/C18 exact
-exit-watch failure on x86 and ARM. The [batch evidence](../reports/audits/2026-10-14-protocol-simplification-name-generations.md)
-retains source closed/registration counts, stage/return markers and exact live
-or staged snapshots with kernel/service hashes. Successful new DNS controls and
-x86 20/0/0 do not close G1/G7 or authorize physical release from those snapshots.
-
-The [park-boundary correction](../reports/audits/2026-10-14-park-deferred-delivery.md)
-continues C16/C18 in the existing producer-LP transport. Guard-free wait setup
-flushes pending delivery before publishing Blocked, so IRQ restoration cannot
-strand a dependent worker wake behind its parked producer. Timed readiness
-retains its original absolute budget after callbacks; event-only, sleep and
-untimed completion paths preserve the same ordering and caller masks. The
-negative control detects omitted delivery before registration without physical
-cleanup, saturation or a replacement wake. Historical exact-exit and subsequent
-persistence failures remain distinct, with no retrospective causal conclusion.
-
-The corrected park-boundary pair and its unchanged-payload fresh-store repeat
-both completed ARM **22/0/0** and x86 **20/0/0**, with all **256** exact-generation
-IPC close/exit episodes passing. The bounded omitted-drain negative control
-failed before event-only registration with delivery count 0 instead of 1.
-Results/hashes and qualification limits are inline in the correction report;
-these passing repeats do not retrospectively attribute historical failures.
-
-The [NS endpoint-death producer](../reports/audits/2026-10-14-ns-endpoint-death.md)
-continues C18 using the existing registry and kernel endpoint-watch/CQ contract.
-A publication owns its connection and completion; watch submission precedes
-policy mutation, and replacement or logical retirement disposes the watch
-before the source. Only an exact owned endpoint-close result unpublishes the
-current name/generation. A CQ hint, error, cancellation or absent entry supplies
-no death/physical proof; uncertainty and rejected CQ waits retain the complete
-registry through terminal abort. The trusted NS constructor prepares its
-bounded 65-operation account before threads/events; ordinary launch budgets,
-captured platform classification and node admission remain. No new custody
-registry, authority delegation or physical retry boundary is introduced. Raw
-receive/reply adapters, broader metadata admission and physical close proofs
-remain separate G1/G2/G4/G7 contexts.
-
-NS endpoint-death execution completed two unchanged-signed-payload fresh-store
-pairs: ARM **22/0/0**, x86 **20/0/0** each time, with **256** exact IPC close/exit
-episodes and old-endpoint replacement survival passing. The leader observed
-both DNS-owned and third-party Echo-owned bindings absent through read-only
-lookups; no fixture removal supplied the result. The host suite passed 479 tests
-with zero failures and four ignored tests. Exact hashes, diagnostics and scoped
-qualification limits are retained in the NS producer report; neither these
-passes nor watch death establish physical completion or historical causality.
-
-The [NS bearer removal](../reports/audits/2026-10-15-ns-bearer-removal.md)
-continues C18 through the existing IncomingMessage owner at unsupported-request
-rejection. It removes key fields, the permissive decoder and scalar cleanup
-branches; all attachments/reply authority transfer once at the receive boundary.
-The retired opcodes cannot enter publication or public lookup. ARM and x86
-opt-in security suites exercise copied connection/memory attachments, current
-metadata before/after endpoint death, retired-shape rejection and denial of
-protected services through every active public lookup. This supplies no physical
-cleanup proof, retry owner or broader raw-adapter/metadata qualification.
-
-The [NS status batch](../reports/audits/2026-10-15-ns-status-snapshot.md)
-extends the same C18 userspace transaction family. The complete incoming request
-is consumed before scalar fallback; its status owner retains output backing and
-reply authority through fallible allocation/mapping, explicit unmap and consuming
-move. Ordinary rejection disposes existing owners without retry; abandonment
-uses the runtime policy with backing before unused reply authority. HTTP validates
-all records before rendering. Native invalid-attachment and multi-page controls
-supply logical disposal/observation evidence, not physical quiescence, custody or
-wider kernel IRQ/Drop qualification.
-
-The [IPC namespace publication follow-up](../reports/audits/2026-10-24-security-ipc-namespace-publication.md)
-continues C10 and the existing root-registration owner. All partial namespace
-storage and both accounts precede publication guards. The same containing owner
-retains the exact root operation across lifecycle/table unlock and IPC relinking;
-abandonment retains preparation and lease. Ordinary unused cancellation and
-empty-node disposal run after their local guards. Failed loan cleanup still
-prevents node detachment and final-root progress; outstanding foreign charges
-keep their original accounts. This adds no root, pin, registry, physical retry
-owner or custody. Per-record payload/map destruction, account byte/principal
-admission and enclosing IRQ/guard contexts remain separate.
-
-The [root policy/telemetry preparation follow-up](../reports/audits/2026-10-18-root-policy-preparation.md)
-continues C02/C03/C18 and G1/G4 through existing owners and shared admitted nodes.
-Limit/usage storage prepares fallibly with the unpublished root, namespace and
-sponsor account. Ordinary unused metadata finishes after local publication guards;
-partial/complete fallback retains all fields. Both exact-generation nodes detach
-only after admission seals and join the closing/final-root receipt. Failed final
-invalidation retains the complete receipt; confirmed invalidation disposes these
-nodes outside local guards before backing/slot completion. Physical failure and
-abandonment remain terminal, and existing bounded invalidation retry is unchanged.
-Principal high-water/snapshot allocations, aggregate metadata
-budgets, linear-list hold-time pressure and outer caller contexts remain open.
-
-The [signed-authority slot follow-up](../reports/audits/2026-10-18-root-authority-preparation.md)
-extends C02/C03/C18 and G1/G4 within the same metadata preparation/root receipt.
-The third node prepares fallibly before local publication guards and initially
-grants no identity. The signed loader fills only the assigned generation's slot,
-without allocation or replacing a previous principal. Cleanup samples principal
-usage after dropping its local authority borrow, then detaches the whole slot.
-Failed final invalidation retains even its populated identity/descriptor binding;
-confirmed invalidation disposes the node post-guard before backing/slot completion.
-Partial/complete and final-root abandonment retain every field. General budgets,
-principal high-water/snapshot allocation and wider contexts remain open. This
-introduces no recovery registry, replay permission or platform trust enrollment.
-
-The [principal-history preparation follow-up](../reports/audits/2026-10-18-principal-history-preparation.md)
-continues the same C02/C03/C18 owners. Each root admits a fourth node before
-publication, retaining it through partial preparation and the authority slot.
-A new signed principal consumes it into the combined boot-lifetime stack/heap
-history; an existing principal leaves the candidate with that root. Final
-sampling mutates existing counters beneath lifecycle without allocating.
-Unused candidates stay in the complete closing/final-root receipt through
-invalidation rejection. Confirmed invalidation explicitly disposes them after
-local guards and before backing/slot completion; fallback retains them without
-allocator or registry activity. Published history is deliberately retained
-across generations. This closes the high-water insertion gap recorded above,
-while aggregate/history heap admission, snapshot allocation, linear lookup
-pressure and wider caller/IRQ contexts remain G1/G4 work. No recovery registry,
-physical retry authority or numbered disposition change is added.
-
-The [telemetry snapshot follow-up](../reports/audits/2026-10-18-telemetry-snapshot-preparation.md)
-qualifies the thread-statistics path's C18 capture/encoding scratch: one bounded
-fallible request budget prepares outside thread/usage guards and rejects a source
-that outgrew its buffer without publishing a prefix. Live heap reads retain their
-captured generation through status-mapping validation; C02 final sampling borrows
-its existing closing owner. These are diagnostic values, not physical completion
-or custody. Other snapshot/metadata allocations, aggregate heap/principal limits,
-pressure hold times and enclosing syscall/destructor contexts remain open.
+Update the existing family row and its linked contract when behavior changes.
+Keep significant failure captures in dated reports and the current
+[incident list](security-remediation.md#unresolved-incidents). Do not append each
+implementation batch to this page. New object instances need no new family or
+registry. A future general controller must not invent a retry owner from retained
+backing, wake events or diagnostic IDs.

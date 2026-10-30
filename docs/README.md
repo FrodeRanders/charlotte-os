@@ -7,6 +7,12 @@ are. Start with the LaTeX
 use the sections below for deeper design, implementation, or historical
 context.
 
+For knowledge from the security work, start with
+[security engineering lessons](guides/security-engineering.md). The
+[current security ledger](reference/security-remediation.md) gives unfinished
+milestones and incidents; the [audit archive](reports/audits/README.md) is for
+historical investigations.
+
 ## Which documents are authoritative?
 
 Use this order when two documents disagree:
@@ -53,3 +59,9 @@ configuration. We need current checks before relying on it for a later build.
   or update the corresponding living document.
 - Prefer relative Markdown links and validate them after moving or renaming
   documentation.
+- Consolidate audit learning into current contracts, failure patterns and
+  limitations. Update those explanations in place; keep patch chronology,
+  experiment receipts and significant failure captures in dated reports.
+- Keep the security ledger to current dispositions, finite acceptance gates and
+  unresolved incidents. Documentation compaction must preserve open failures and
+  qualification limits without repeating the reasoning for completed patches.

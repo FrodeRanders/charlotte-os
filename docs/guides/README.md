@@ -2,6 +2,9 @@
 
 These documents contain repeatable workflows rather than architectural claims.
 
+- [Security engineering lessons](security-engineering.md) — operation ownership,
+  admission, readiness, cleanup context, shared-memory ordering and review limits.
+
 - [Testing](testing.md) — host suites, QEMU target tests, and validation scope.
 - [Kernel panic backtraces](kernel-panic-backtraces.md) — fail-stop behavior,
   build-matched symbol maps, and offline function/source lookup.
