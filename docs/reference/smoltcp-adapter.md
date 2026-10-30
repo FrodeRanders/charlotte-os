@@ -288,8 +288,10 @@ catalog nor status is a linearizable read or authority to invoke a service.
 
 The aggregator uses non-blocking `ns::OP_TRY_LOOKUP`, so an absent service
 renders as `null` rather than stalling a request. It consumes the same socket
-API as the smoke client — one connection at a time, no keep-alive,
-deliberately not a web server.
+API as the smoke client, with no keep-alive and a fixed set of read-only targets.
+Four owned client positions share CQ-driven setup, TLS/header input, output and
+logical close; see [status progress](status-observation.md#client-progress-and-ownership).
+Snapshot collection and rendering remain synchronous.
 
 The fixed request targets select a node or cluster view:
 
@@ -305,7 +307,7 @@ The fixed request targets select a node or cluster view:
 
 Anything else is a `404`.
 
-An operations-owned, unnamed `--cluster-service VIP:80` assignment makes the
+An operations-owned, unnamed `--cluster-service VIP:443` assignment makes the
 cluster dashboard location-independent. Normal DSR semantics still apply: the
 leader normally advertises the VIP, while any admitted, non-draining member
 may terminate the selected flow and serve a fresh applied snapshot. The JSON

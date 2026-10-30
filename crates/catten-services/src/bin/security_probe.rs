@@ -409,8 +409,11 @@ fn listener_reactor_probe(ctx: &Context) {
     endpoint.bind_completion_queue(0).unwrap_or_else(|_| catten_rt::domain_abort());
     let connection =
         endpoint.connect(IpcRights::CALL).unwrap_or_else(|_| catten_rt::domain_abort());
-    let mut listeners =
-        catten_services::deployment_listener::Listeners::new(connection.as_ref(), 0);
+    let mut listeners = catten_services::deployment_listener::Listeners::new(
+        connection.as_ref(),
+        catten_services::clusterctl::NOTIFY_PORT,
+        0,
+    );
     let mut closes = catten_services::deployment_close::Closes::new(0);
     listeners.replenish(2);
     let mut held = None;

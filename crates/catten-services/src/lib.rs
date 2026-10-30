@@ -54,6 +54,7 @@ pub mod rng_device;
 mod rng_device_contract;
 /// Owned application-side wrappers for the S3 service protocol.
 pub mod s3_client;
+pub mod status_input;
 /// Verified, owned TLS client transport shared by network services.
 pub mod tls_client;
 

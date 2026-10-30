@@ -80,10 +80,17 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let cq = ctx.completion_queue_layout();
     let mut inputs = catten_services::deployment_input::Inputs::new(0);
     let mut controls = catten_services::deployment_control::Controls::new(controller.as_ref(), 0);
-    let mut outputs = catten_services::deployment_output::Outputs::new(0);
+    let mut outputs = catten_services::deployment_output::Outputs::new(
+        0,
+        catten_services::deployment_output::MAX_RESPONSE_BYTES,
+    );
     let mut closes = catten_services::deployment_close::Closes::new(0);
     let mut shutdown = None;
-    let mut listeners = catten_services::deployment_listener::Listeners::new(tcp.as_ref(), 0);
+    let mut listeners = catten_services::deployment_listener::Listeners::new(
+        tcp.as_ref(),
+        clusterctl::NOTIFY_PORT,
+        0,
+    );
     let mut announced = false;
     loop {
         // CQ entries are hints. Drain before checking the exact pending owners;
@@ -201,7 +208,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 
 fn retire_output<'a>(
     socket: catten_services::management_io::Connection<'a>,
-    result: Result<(), catten_services::deployment_output::Error>,
+    result: Result<usize, catten_services::deployment_output::Error>,
     closes: &mut catten_services::deployment_close::Closes<'a>,
     trace: bool,
 ) {

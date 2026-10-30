@@ -58,6 +58,9 @@ fenced descriptor owner with checked halfword ring-index accesses. The frame
 router observes its existing receive/forward/control interests on one CQ;
 committed ingress eligibility excludes a silent backend from new flows after
 projection convergence.
+Status ingress now rotates four owned client positions across CQ-bound setup,
+TLS/header input, output and logical close. Snapshot collection/rendering remains
+synchronous; bounded concurrency alone does not establish flood fairness.
 
 Current contracts: [management TLS](management-tls.md),
 [status observation](status-observation.md), [entropy](entropy.md),
@@ -66,7 +69,8 @@ Current contracts: [management TLS](management-tls.md),
 Still required:
 
 - Sustained healthy-client progress under hostile connections, packets and
-  admitted-client pressure, including the serial status listener.
+  admitted-client pressure, including full status-pool occupancy and synchronous
+  snapshot/rendering work.
 - Qualification of rendering, listener setup, receiver-held cancellation and
   teardown beyond their individual observation/input/output budgets.
 - Integrated essential-service allocation and latency checks under R7-4/R7-5.

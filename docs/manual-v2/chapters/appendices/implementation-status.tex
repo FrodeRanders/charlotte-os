@@ -461,6 +461,12 @@ Source, tests, and repository history remain authoritative.
         an administrator before mutation dispatch. One signed, encrypted boot
         resource supplies credentials, roles and adjustable TLS limits to both
         services; missing credentials disable network admission.
+        Status and deployment rotate four owned client positions across CQ-bound
+        setup, TLS/header input, output and logical close. Status input keeps its
+        original five-second deadline; responses retain at most 512\,KiB and
+        use the existing five-second output budget. Shutdown drains all client
+        phases through consuming logical close. Snapshot collection/rendering
+        remains synchronous; full-pool flood fairness is not established.
         \texttt{--http-test} provisions disposable development credentials,
         adds QEMU forwarding and validates verified HTTPS. Protected enrollment,
         native rotation/failover and wider pressure qualification remain open;

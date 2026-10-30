@@ -29,8 +29,8 @@
 //! Services that are not running are rendered as `null`; the aggregator uses
 //! `ns::OP_TRY_LOOKUP` and one total dependency-observation deadline so a
 //! missing publication or silent service cannot wait indefinitely. The server exposes a fixed set
-//! of read-only targets, has no keep-alive, and serves one
-//! connection at a time.
+//! of read-only targets, has no keep-alive, and rotates four owned client positions
+//! across listener setup, TLS/header input, response output and logical close.
 //!
 //! The request target selects either the node or cluster view:
 //!
@@ -76,8 +76,8 @@ use catten_services::{
     observability,
     raft,
     relmsg,
-    sleep_ms,
     socket,
+    status_input::Target,
     status_observation::{
         SNAPSHOT_MS,
         Snapshot,
@@ -110,7 +110,8 @@ fn trace_phase(phase: &str) {
         catten_rt::logln!("[http] phase={phase}");
     }
 }
-const ACCEPT_POLL_MS: u64 = 50;
+// At most four retained responses, independent of TLS wire-flight bounds.
+const MAX_RESPONSE_BYTES: usize = 512 * 1024;
 const SENTINEL: u32 = 0x4854_5450; // "HTTP"
 /// Cap on rendered thread rows. Set above the steady-state thread count so
 /// every scheduler-visible thread (including this service) is represented; the
@@ -1392,16 +1393,66 @@ fn build_json(
     s
 }
 
-/// Failure drops the entire partially constructed listener. Runtime capacity
-/// pressure or a peer racing setup must not terminate the serving domain.
-fn new_listener<'connection>(
-    tcp: ConnectionRef<'connection>,
-    factory: &'connection catten_services::management_io::Factory,
-) -> Result<catten_services::management_io::Connection<'connection>, ()> {
-    let socket = socket::OwnedSocket::open(tcp, socket::DOMAIN_TCP).map_err(|_| ())?;
-    trace_phase("listen");
-    socket.listen(HTTP_PORT).map_err(|_| ())?;
-    Ok(catten_services::management_io::Connection::unaccepted(socket, factory))
+fn response(
+    target: Target,
+    mac: &[u8; 6],
+    link: u8,
+    services: &ServiceSet<'_>,
+    counters: &mut HttpCounters,
+    prev: &mut Prev,
+) -> String {
+    // Every dependency in this response shares this original budget.
+    let snapshot = &Snapshot::new(Deadline::after(SNAPSHOT_MS));
+
+    // Route on the fixed node/cluster targets. Account for the request up
+    // front so the node report includes the request being served.
+    counters.requests = counters.requests.wrapping_add(1);
+    let (status_line, content_type, body) = if target == Target::NodeDashboard {
+        counters.root = counters.root.wrapping_add(1);
+        ("HTTP/1.1 200 OK", "text/html; charset=utf-8", String::from(DASHBOARD))
+    } else if target == Target::NodeMetrics {
+        counters.metrics = counters.metrics.wrapping_add(1);
+        (
+            "HTTP/1.1 200 OK",
+            "application/json",
+            build_json(snapshot, mac, link, services, counters, prev),
+        )
+    } else if target == Target::ClusterDashboard {
+        counters.root = counters.root.wrapping_add(1);
+        ("HTTP/1.1 200 OK", "text/html; charset=utf-8", String::from(CLUSTER_DASHBOARD))
+    } else if target == Target::ClusterMetrics {
+        counters.metrics = counters.metrics.wrapping_add(1);
+        match try_lookup(snapshot, services.ns_conn, dns::NAME)
+            .and_then(|connection| build_cluster_json(snapshot, connection.as_ref()))
+        {
+            Some(snapshot) => ("HTTP/1.1 200 OK", "application/json", snapshot),
+            None => (
+                "HTTP/1.1 503 Service Unavailable",
+                "application/json",
+                String::from("{\"error\":\"fresh cluster snapshot unavailable\"}"),
+            ),
+        }
+    } else {
+        counters.other = counters.other.wrapping_add(1);
+        ("HTTP/1.1 404 Not Found", "text/plain; charset=utf-8", String::from("not found"))
+    };
+    let mut response = String::new();
+    response.push_str(status_line);
+    response.push_str("\r\nContent-Type: ");
+    response.push_str(content_type);
+    response.push_str("\r\nContent-Length: ");
+    let _ = write!(response, "{}", body.len());
+    response.push_str(concat!(
+        "\r\nCache-Control: no-store",
+        "\r\nX-Content-Type-Options: nosniff",
+        "\r\nX-Frame-Options: DENY",
+        "\r\nContent-Security-Policy: default-src 'self'; script-src 'unsafe-inline'; ",
+        "style-src 'unsafe-inline'; connect-src 'self'; object-src 'none'; ",
+        "frame-ancestors 'none'",
+        "\r\nConnection: close\r\n\r\n"
+    ));
+    response.push_str(&body);
+    response
 }
 
 fn serve(ctx: &Context) -> ShutdownRequest {
@@ -1473,133 +1524,140 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         heap_allocations: 0,
         cpu_busy_ticks: 0,
     };
-    'connections: loop {
-        if let Some(request) = ctx.lifecycle().shutdown_requested() {
-            return request;
+    let mut inputs = catten_services::status_input::Inputs::new(0);
+    let mut outputs = catten_services::deployment_output::Outputs::new(0, MAX_RESPONSE_BYTES);
+    let mut closes = catten_services::deployment_close::Closes::new(0);
+    let mut listeners = catten_services::deployment_listener::Listeners::new(
+        services.tcp_conn.as_ref(),
+        HTTP_PORT,
+        0,
+    );
+    let mut shutdown = None;
+    let mut announced = false;
+    loop {
+        catten_services::management_io::drain(ctx);
+        if shutdown.is_none() {
+            shutdown = ctx.lifecycle().shutdown_requested();
         }
-        // Fresh socket + listener per connection (smoltcp's listening socket
-        // becomes the established connection, then returns to Closed).
-        trace_phase("listener");
-        let mut socket = match new_listener(services.tcp_conn.as_ref(), &management) {
-            Ok(socket) => socket,
-            Err(()) => {
-                sleep_ms(ACCEPT_POLL_MS);
-                continue;
+        if shutdown.is_some() {
+            // Transfer complete owners into logical close. Cancellation of any
+            // accepted TLS RPC is confirmed by that existing consuming adapter.
+            let mut progressed = false;
+            if let Some(socket) = inputs.cancel_one() {
+                closes.start(socket);
+                progressed = true;
             }
-        };
-
-        // One accepted socket readiness call; lifecycle wakes share the CQ.
-        trace_phase("accept");
-        match socket.accept_blocking(ctx) {
-            Ok(()) => (),
-            Err(catten_services::management_io::Interrupted::Shutdown(request)) => return request,
-            Err(_) => continue 'connections,
-        }
-        trace_phase("receive");
-        let deadline = catten_services::deadline::Deadline::after(
-            catten_services::deployment_input::HEADER_MS,
-        );
-        let mut request = zeroize::Zeroizing::new(alloc::vec::Vec::new());
-        const HEADER_BYTES: usize = catten_services::deployment_http::HEADER_LIMIT;
-        if request.try_reserve_exact(HEADER_BYTES).is_err() {
-            continue 'connections;
-        }
-        request.resize(HEADER_BYTES, 0);
-        let mut used = 0;
-        let identity = loop {
-            let (identity, bytes) = match socket.receive_blocking(ctx, &deadline) {
-                Ok(value) => value,
-                Err(catten_services::management_io::Interrupted::Shutdown(request)) => {
-                    return request;
-                }
-                Err(_) => continue 'connections,
-            };
-            if bytes.len() > HEADER_BYTES - used {
-                continue 'connections;
+            if let Some(socket) = outputs.cancel_one() {
+                closes.start(socket);
+                progressed = true;
             }
-            request[used..used + bytes.len()].copy_from_slice(&bytes);
-            used += bytes.len();
-            if request[..used].windows(4).any(|end| end == b"\r\n\r\n") {
-                break identity;
+            let (listener_progress, finished) = listeners.advance(true);
+            progressed |= listener_progress;
+            if let Some((socket, _)) = finished {
+                closes.start(socket);
             }
-        };
-        let Some(path) = catten_services::management_io::keyhole_path(&request[..used]) else {
-            continue 'connections;
-        };
-        let allowed = identity.allows(charlotte_management_tls::Permission::Observe);
-        socket.audit(identity, charlotte_management_tls::Permission::Observe, allowed);
-        if !allowed {
-            continue 'connections;
-        }
-        trace_phase("received");
-        // Every dependency in this response shares this original budget.
-        let snapshot = &Snapshot::new(Deadline::after(SNAPSHOT_MS));
-
-        // Route on the fixed node/cluster targets. Account for the request up
-        // front so the node report includes the request being served.
-        counters.requests = counters.requests.wrapping_add(1);
-        let (status_line, content_type, body) = if path == b"/" || path == b"/index.html" {
-            counters.root = counters.root.wrapping_add(1);
-            ("HTTP/1.1 200 OK", "text/html; charset=utf-8", String::from(DASHBOARD))
-        } else if path == b"/metrics" || path == b"/metric" {
-            counters.metrics = counters.metrics.wrapping_add(1);
-            (
-                "HTTP/1.1 200 OK",
-                "application/json",
-                build_json(snapshot, &mac, link, &services, &counters, &mut prev),
-            )
-        } else if path == b"/cluster" || path == b"/cluster/" || path == b"/cluster/index.html" {
-            counters.root = counters.root.wrapping_add(1);
-            ("HTTP/1.1 200 OK", "text/html; charset=utf-8", String::from(CLUSTER_DASHBOARD))
-        } else if path == b"/cluster/metrics" {
-            counters.metrics = counters.metrics.wrapping_add(1);
-            match try_lookup(snapshot, services.ns_conn, dns::NAME)
-                .and_then(|connection| build_cluster_json(snapshot, connection.as_ref()))
+            progressed |= closes.advance();
+            if inputs.occupied_slots()
+                + outputs.occupied_slots()
+                + listeners.occupied_slots()
+                + closes.occupied_slots()
+                == 0
             {
-                Some(snapshot) => ("HTTP/1.1 200 OK", "application/json", snapshot),
-                None => (
-                    "HTTP/1.1 503 Service Unavailable",
-                    "application/json",
-                    String::from("{\"error\":\"fresh cluster snapshot unavailable\"}"),
-                ),
+                return shutdown.take().unwrap();
             }
-        } else {
-            counters.other = counters.other.wrapping_add(1);
-            ("HTTP/1.1 404 Not Found", "text/plain; charset=utf-8", String::from("not found"))
-        };
-        catten_syscall::el0_log(0x4854_5444, 1);
-        trace_phase("send");
-        let mut response = String::new();
-        response.push_str(status_line);
-        response.push_str("\r\nContent-Type: ");
-        response.push_str(content_type);
-        response.push_str("\r\nContent-Length: ");
-        let _ = write!(response, "{}", body.len());
-        response.push_str(concat!(
-            "\r\nCache-Control: no-store",
-            "\r\nX-Content-Type-Options: nosniff",
-            "\r\nX-Frame-Options: DENY",
-            "\r\nContent-Security-Policy: default-src 'self'; script-src 'unsafe-inline'; ",
-            "style-src 'unsafe-inline'; connect-src 'self'; object-src 'none'; ",
-            "frame-ancestors 'none'",
-            "\r\nConnection: close\r\n\r\n"
-        ));
-        response.push_str(&body);
-        let deadline = catten_services::deadline::Deadline::after(
-            catten_services::deployment_output::OUTPUT_MS,
-        );
-        match socket.send_blocking(ctx, response.as_bytes(), &deadline) {
-            Ok(()) => (),
-            Err(catten_services::management_io::Interrupted::Shutdown(request)) => return request,
-            Err(_) => continue 'connections,
+            if !progressed {
+                catten_services::reactor::wait(
+                    [listeners.remaining_ms(false), closes.remaining_ms()]
+                        .into_iter()
+                        .flatten()
+                        .min(),
+                    0,
+                );
+            }
+            continue;
         }
-        counters.bytes_sent = counters.bytes_sent.wrapping_add(response.len() as u64);
+        let available = catten_services::deployment_input::MAX_CLIENTS.saturating_sub(
+            inputs.occupied_slots() + outputs.occupied_slots() + closes.occupied_slots(),
+        );
+        listeners.replenish(available);
+        let (mut progressed, finished) = listeners.advance(false);
+        if !announced && listeners.accepting() {
+            catten_rt::logln!("[http] listening port={HTTP_PORT}; bounded client reactor");
+            announced = true;
+        }
+        if let Some((socket, accepted)) = finished {
+            if accepted {
+                let mut socket =
+                    catten_services::management_io::Connection::unaccepted(socket, &management);
+                if socket.accepted().is_err() {
+                    closes.start(socket);
+                    continue;
+                }
+                trace_phase("receive");
+                if let Err(socket) = inputs.admit(socket) {
+                    closes.start(socket);
+                }
+            } else {
+                closes.start(socket);
+            }
+        }
+        let (input_progress, finished) = inputs.advance();
+        progressed |= input_progress;
+        if let Some((socket, target)) = finished {
+            match target {
+                Ok(target) => {
+                    trace_phase("received");
+                    let reply = response(target, &mac, link, &services, &mut counters, &mut prev);
+                    catten_syscall::el0_log(0x4854_5444, 1);
+                    trace_phase("send");
+                    if let Some((socket, result)) =
+                        outputs.start(socket, alloc::borrow::Cow::Owned(reply))
+                    {
+                        retire_output(socket, result, &mut closes, &mut counters);
+                    }
+                }
+                Err(()) => closes.start(socket),
+            }
+        }
+        let (output_progress, finished) = outputs.advance();
+        progressed |= output_progress;
+        if let Some((socket, result)) = finished {
+            retire_output(socket, result, &mut closes, &mut counters);
+        }
+        progressed |= closes.advance();
+        let available = catten_services::deployment_input::MAX_CLIENTS.saturating_sub(
+            inputs.occupied_slots() + outputs.occupied_slots() + closes.occupied_slots(),
+        );
+        listeners.replenish(available);
+        if !progressed {
+            catten_services::reactor::wait(
+                [
+                    inputs.remaining_ms(),
+                    outputs.remaining_ms(),
+                    closes.remaining_ms(),
+                    listeners.remaining_ms(available > listeners.occupied_slots()),
+                ]
+                .into_iter()
+                .flatten()
+                .min(),
+                0,
+            );
+        }
+    }
+}
 
-        let _ = socket.into_socket().close();
-
+fn retire_output<'a>(
+    socket: catten_services::management_io::Connection<'a>,
+    result: Result<usize, catten_services::deployment_output::Error>,
+    closes: &mut catten_services::deployment_close::Closes<'a>,
+    counters: &mut HttpCounters,
+) {
+    if let Ok(bytes) = result {
+        counters.bytes_sent = counters.bytes_sent.wrapping_add(bytes as u64);
         config::write::<u32>(status::REQUESTS, counters.requests);
         config::write::<u32>(status::STAGE, SENTINEL);
     }
+    closes.start(socket);
 }
 
 fn main(ctx: Context) -> ! {

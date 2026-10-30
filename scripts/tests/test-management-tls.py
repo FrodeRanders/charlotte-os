@@ -6,6 +6,7 @@ uses a fresh connection; rejection must precede any HTTP response. A healthy
 reader request after each rejection verifies that the listener remains usable.
 """
 import argparse
+from contextlib import ExitStack
 import os
 from pathlib import Path
 import socket
@@ -13,7 +14,7 @@ import ssl
 import subprocess
 import time
 
-from management_tls import connect, context
+from management_tls import connect, context, exchange
 
 
 OBSERVE = b"GET /metrics HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
@@ -77,6 +78,38 @@ def rejected(port, policy, payload, server_name="127.0.0.1", verification=False)
             raise
 
 
+def status_peer_progress(port):
+    # Complete a healthy response inside three seconds, while peers retain
+    # their original five-second handshake/header budgets. No HTTP replay.
+    policy = context("reader")
+    for _ in range(3):
+        for idle_count in (1, 3):
+            with ExitStack() as held:
+                peers = [held.enter_context(socket.create_connection(("127.0.0.1", port), timeout=3))
+                         for _ in range(idle_count)]
+                time.sleep(0.2)  # Let the idle peers reach the guest before the healthy peer.
+                started = time.monotonic()
+                exchange(policy, port, OBSERVE, 200, 3)
+                elapsed = time.monotonic() - started
+                for peer in peers:
+                    peer.setblocking(False)
+                    try:
+                        peer.recv(1)
+                    except BlockingIOError:
+                        pass
+                    else:
+                        raise AssertionError("idle peer ended or produced bytes before healthy progress")
+                print(f"status progress: idle_tls_peers={idle_count} healthy_seconds={elapsed:.3f}", flush=True)
+            healthy(port, OBSERVE, 200)
+        with connect(port, role="reader") as held:
+            held.sendall(b"GET /metrics HTTP/1.1\r\nHost:")
+            started = time.monotonic()
+            exchange(policy, port, OBSERVE, 200, 3)
+            print(f"status progress: partial_header=1 healthy_seconds={time.monotonic() - started:.3f}", flush=True)
+        healthy(port, OBSERVE, 200)
+    print("PASS: healthy status requests beside idle TLS peers and incomplete authenticated headers", flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--status-port", type=int, required=True)
@@ -92,6 +125,8 @@ def main():
         for role in ("reader", None):
             healthy(port, payload, code, role)
         print(f"PASS: port {port}: verified TLS 1.3 reader and administrator observations", flush=True)
+        if port == args.status_port:
+            status_peer_progress(port)
         no_certificate = ssl.create_default_context(cafile=os.environ["CATTEN_MANAGEMENT_CA_FILE"])
         no_certificate.minimum_version = ssl.TLSVersion.TLSv1_3
         no_certificate.set_alpn_protocols(["http/1.1"])

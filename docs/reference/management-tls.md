@@ -6,7 +6,7 @@ or fallback. Missing credentials disable network admission while preserving
 cooperative shutdown. SEC-10 is partial pending the broader execution qualifications
 listed below; public development trust is not production enrollment.
 
-The serial status handler now shares one five-second dependency-observation
+The status handler shares one five-second dependency-observation
 budget across all RPCs in a requested snapshot. A silent source cannot restart
 that budget for the next source; accepted calls retain checked cancellation.
 This is separate from TLS/input/output deadlines and from flood fairness. See
@@ -199,9 +199,12 @@ plaintext receipt also confirms encrypted close-notify output. Consuming logical
 close moves the original socket into the existing close pool, without claiming
 physical cleanup. Rejected CQ binding aborts with accepted work retained.
 Queue-full retry applies only before admission, under the original deadline;
-accepted calls are never retried. The sequential keyhole waits on that CQ and
-lifecycle, while deployment rotates its existing input/control/output/close
-phases so a slow TLS peer cannot monopolize a blocking handshake.
+accepted calls are never retried. Status and deployment both rotate four owning
+client positions through CQ-driven input/output/close and listener setup.
+Status's exact header owner is separate from deployment's signed-body parser;
+snapshot rendering still runs synchronously. Unused blocking transport adapters
+are removed. See [status progress](status-observation.md#client-progress-and-ownership)
+for budgets, shutdown handoff and qualification limits.
 
 Erasure of the named local buffers, IV/nonce and selected cipher owners does not
 qualify all Rustls/Embassy HKDF, HMAC, transcript, traffic-key or parser copies,

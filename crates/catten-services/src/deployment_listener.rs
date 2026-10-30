@@ -229,6 +229,7 @@ impl Drop for Owner<'_> {
 }
 struct Runtime<'a> {
     tcp: ConnectionRef<'a>,
+    port: u16,
 }
 impl<'a> Calls for Runtime<'a> {
     type Owner = Owner<'a>;
@@ -252,9 +253,7 @@ impl<'a> Calls for Runtime<'a> {
                 owner.opening = Some(OwnedSocket::open_call(self.tcp, socket::DOMAIN_TCP)?)
             }
             Stage::Listen => {
-                owner.pending = Some(
-                    owner.socket.as_ref().unwrap().listen_call(crate::clusterctl::NOTIFY_PORT)?,
-                )
+                owner.pending = Some(owner.socket.as_ref().unwrap().listen_call(self.port)?)
             }
             Stage::Accept => owner.pending = Some(owner.socket.as_ref().unwrap().accept_call()?),
         }
@@ -324,10 +323,11 @@ impl<'a> Calls for Runtime<'a> {
 /// Setup and idle accepts consume the same positions as input/control/output/close.
 pub struct Listeners<'a>(Machine<Runtime<'a>>);
 impl<'a> Listeners<'a> {
-    pub fn new(tcp: ConnectionRef<'a>, cq: u32) -> Self {
+    pub fn new(tcp: ConnectionRef<'a>, port: u16, cq: u32) -> Self {
         Self(Machine::new(
             Runtime {
                 tcp,
+                port,
             },
             cq,
         ))

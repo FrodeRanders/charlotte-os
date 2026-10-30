@@ -1,0 +1,216 @@
+{
+  "date": "2026-10-30",
+  "base_revision": "ec99564c",
+  "scope": "Bounded status TLS/header/output client progression using the existing owning management transport, listener/output/close reactors. Snapshot collection and rendering remain synchronous. No finding disposition changes.",
+  "source_sha256": {
+    "crates/catten-services/src/bin/httpd.rs": "becdc52ffdc72ed998a3163e27884b3ad1f914f2443a6910c84bd1b7e847d659",
+    "crates/catten-services/src/bin/deployd.rs": "c093854aa9b94533a0694d05d1a9d6ba5ea33535aa8b2f202652ffcbd22dd771",
+    "crates/catten-services/src/bin/security_probe.rs": "ad697ae1a571eaf645506542f06e81ac8f658c463122cbb595b87cb666cdec77",
+    "crates/catten-services/src/status_input.rs": "0f9b9fbe3c5fec28b208f42bbc709f1f64bef4fb5ba3c0c68dc7371f0c8817ec",
+    "crates/catten-services/src/deployment_listener.rs": "1798f3c703fba562b402c3f915490577f90c9970aef6912c8d39c3788e48c779",
+    "crates/catten-services/src/deployment_output.rs": "587a69d2e6b5f8e130c0bc2d8c9cba9bd78cf79691b1f21e4d09c4d221b7ad9e",
+    "crates/catten-services/src/management_io.rs": "c589309b17f915c3f151af0a73626e3cb3a422de55e1945f48eabbcb09703469",
+    "crates/catten-services/src/lib.rs": "78dcf9ef846f9316b0244cd2ba507982fc54d48a46234cde3cfb31cb44ad0305",
+    "scripts/tests/test-management-tls.py": "e5845666c34025380fd409aa6bb4be2faa961683178e294002cf7bb3fcb25153"
+  },
+  "bundle_digest_algorithm": "sha256 of UTF-8 JSON bundle_sha256 map, sorted keys and compact separators",
+  "fixed_matrix": {
+    "targets": [
+      "Intel VT-d/4 CPUs",
+      "AMD-Vi/4 CPUs",
+      "ARM SMMUv3/4 CPUs"
+    ],
+    "campaign_seconds": 180,
+    "fresh_storage": true,
+    "healthy_response_wall_budget_seconds": 3,
+    "idle_tls_peer_counts": [
+      1,
+      3
+    ],
+    "partial_authenticated_headers": 1,
+    "repetitions_each": 3,
+    "idle_peer_assertion": "nonblocking read must report no available bytes after the healthy response; neither EOF nor server output passes",
+    "production_header_ms": 5000,
+    "default_handshake_ms": 5000,
+    "production_output_ms": 5000,
+    "client_positions": 4,
+    "status_response_capacity_bytes": 524288,
+    "deployment_response_capacity_bytes": 65536
+  },
+  "negative_control": {
+    "instance": "status-progress-before-20261030-n",
+    "cpus": 4,
+    "kernel_sha256": "95a81c51d6367b36103efea7b95369a9d809e1f3dc7f39123c80d0a919828021",
+    "bundle_sha256": "33deaaf9f17e90c6bedf41bcb990cf799ed683bf2ab9f2c2d40eff842ca0e86d",
+    "result": {
+      "reason": "deadline",
+      "errors": [],
+      "qmp": "captured",
+      "lldb": {
+        "exit_code": 0,
+        "reported_errors": false
+      },
+      "cpu_count": 4,
+      "snapshot": "captured",
+      "elapsed_seconds": 180.09957891699742
+    },
+    "kernel_diagnostics": [
+      "[+     0.969998] [domain retirement] root=26:6 error=AddressSpace(OperationDrainTimedOut) pending=Some(InitialOperations { leases: 1 })",
+      "[+     0.973757] [domain retirement] root=26:6 error=AddressSpace(CloseInProgress) pending=None",
+      "[+     0.974431] [domain retirement] root=26:6 error=AddressSpace(CloseInProgress) pending=None",
+      "[+     0.977936] [domain retirement] root=32:3 error=AddressSpace(StaleHandle) pending=None",
+      "[+    88.614599] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x2023bbff failed_bitmap=0x0 pending_bitmap=0x0"
+    ],
+    "host_check_groups_passed": 15,
+    "progress_receipts": [],
+    "host_failure": [
+      "AssertionError: idle peer expired before healthy progress"
+    ],
+    "transport_retry_diagnostics": [],
+    "retained_mapping_diagnostics": 12,
+    "runner_exit": 1
+  },
+  "negative_control_test_sha256": "f5d166bad753332e952fcd6402983518e3119807b74117d2f8e23d392df2b5b1",
+  "qualification_runs": [
+    {
+      "iommu": "Intel VT-d",
+      "architecture": "x86_64",
+      "instance": "status-progress-after-20261030-o",
+      "cpus": 4,
+      "kernel_sha256": "ff1fa2623a550cd0aa27dbd9fe46ddba39bb1cf7451a2ef44f3a61036a13d4b5",
+      "bundle_sha256": "32944972a1fda56fb6213d637ba4c0863dc2644b2cac06566890ab1a180889dc",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "kernel_diagnostics": [
+        "[+     0.976301] [domain retirement] root=26:6 error=AddressSpace(OperationDrainTimedOut) pending=Some(InitialOperations { leases: 1 })",
+        "[+     0.979857] [domain retirement] root=26:6 error=AddressSpace(CloseInProgress) pending=None",
+        "[+     0.980522] [domain retirement] root=26:6 error=AddressSpace(CloseInProgress) pending=None",
+        "[+     0.983855] [domain retirement] root=32:3 error=AddressSpace(StaleHandle) pending=None",
+        "[+    89.062578] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x2023bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "host_check_groups_passed": 21,
+      "progress_receipts": [
+        "status progress: idle_tls_peers=1 healthy_seconds=1.257",
+        "status progress: idle_tls_peers=3 healthy_seconds=1.298",
+        "status progress: partial_header=1 healthy_seconds=1.182",
+        "status progress: idle_tls_peers=1 healthy_seconds=1.371",
+        "status progress: idle_tls_peers=3 healthy_seconds=0.858",
+        "status progress: partial_header=1 healthy_seconds=0.813",
+        "status progress: idle_tls_peers=1 healthy_seconds=0.979",
+        "status progress: idle_tls_peers=3 healthy_seconds=0.762",
+        "status progress: partial_header=1 healthy_seconds=0.873"
+      ],
+      "host_failure": [],
+      "transport_retry_diagnostics": [],
+      "retained_mapping_diagnostics": 12,
+      "runner_exit": 0,
+      "retention_scope": "All retained mapping diagnostics precede boot driver thread publication in the intentional early controls; none during the scoped/client probes.",
+      "healthy_response_wall_seconds_range": [
+        0.762,
+        1.371
+      ]
+    },
+    {
+      "instance": "status-progress-after-20261030-p",
+      "iommu": "AMD-Vi",
+      "architecture": "x86_64",
+      "cpus": 4,
+      "kernel_sha256": "83005616fbf9e47b1e258f934ea9cfc98e9e170ac957ec76ab964a0f15e1950b",
+      "bundle_sha256": "32944972a1fda56fb6213d637ba4c0863dc2644b2cac06566890ab1a180889dc",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "kernel_diagnostics": [
+        "[+     0.970556] [domain retirement] root=26:6 error=AddressSpace(OperationDrainTimedOut) pending=Some(InitialOperations { leases: 1 })",
+        "[+     0.974258] [domain retirement] root=26:6 error=AddressSpace(CloseInProgress) pending=None",
+        "[+     0.974931] [domain retirement] root=26:6 error=AddressSpace(CloseInProgress) pending=None",
+        "[+     0.978295] [domain retirement] root=32:3 error=AddressSpace(StaleHandle) pending=None",
+        "[+    89.391292] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x2023bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "host_check_groups_passed": 21,
+      "progress_receipts": [
+        "status progress: idle_tls_peers=1 healthy_seconds=1.336",
+        "status progress: idle_tls_peers=3 healthy_seconds=1.442",
+        "status progress: partial_header=1 healthy_seconds=0.719",
+        "status progress: idle_tls_peers=1 healthy_seconds=0.873",
+        "status progress: idle_tls_peers=3 healthy_seconds=0.909",
+        "status progress: partial_header=1 healthy_seconds=0.814",
+        "status progress: idle_tls_peers=1 healthy_seconds=0.827",
+        "status progress: idle_tls_peers=3 healthy_seconds=1.103",
+        "status progress: partial_header=1 healthy_seconds=0.823"
+      ],
+      "host_failure": [],
+      "transport_retry_diagnostics": [
+        "HTTP transport ConnectionResetError; retry 1/2"
+      ],
+      "retained_mapping_diagnostics": 12,
+      "runner_exit": 0,
+      "retention_scope": "All retained mapping diagnostics precede boot driver thread publication in the intentional early controls; none during the scoped/client probes.",
+      "healthy_response_wall_seconds_range": [
+        0.719,
+        1.442
+      ]
+    },
+    {
+      "instance": "status-progress-after-20261030-q",
+      "iommu": "SMMUv3",
+      "architecture": "AArch64",
+      "cpus": 4,
+      "kernel_sha256": "1915f5b7002b7e05635aee2a2452594b41747e0ee7018efc15937a3439ca88eb",
+      "bundle_sha256": "23d451956d680c469016f34e1cf72e2017ce5f4e7bdab6adcec5298a30aa8586",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "kernel_diagnostics": [
+        "[+     0.937802] [domain retirement] root=18:6 error=AddressSpace(OperationDrainTimedOut) pending=Some(InitialOperations { leases: 1 })",
+        "[+     0.939844] [domain retirement] root=18:6 error=AddressSpace(CloseInProgress) pending=None",
+        "[+     0.940234] [domain retirement] root=18:6 error=AddressSpace(CloseInProgress) pending=None",
+        "[+     0.942076] [domain retirement] root=24:3 error=AddressSpace(StaleHandle) pending=None",
+        "[+    80.898710] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x2023ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "host_check_groups_passed": 21,
+      "progress_receipts": [
+        "status progress: idle_tls_peers=1 healthy_seconds=1.176",
+        "status progress: idle_tls_peers=3 healthy_seconds=1.315",
+        "status progress: partial_header=1 healthy_seconds=1.055",
+        "status progress: idle_tls_peers=1 healthy_seconds=1.204",
+        "status progress: idle_tls_peers=3 healthy_seconds=1.409",
+        "status progress: partial_header=1 healthy_seconds=1.537",
+        "status progress: idle_tls_peers=1 healthy_seconds=1.465",
+        "status progress: idle_tls_peers=3 healthy_seconds=1.238",
+        "status progress: partial_header=1 healthy_seconds=1.376"
+      ],
+      "host_failure": [],
+      "transport_retry_diagnostics": [
+        "HTTP transport ConnectionResetError; retry 1/2"
+      ],
+      "retained_mapping_diagnostics": 4,
+      "runner_exit": 0,
+      "retention_scope": "All retained mapping diagnostics precede boot driver thread publication in the intentional early controls; none during the scoped/client probes.",
+      "healthy_response_wall_seconds_range": [
+        1.055,
+        1.537
+      ]
+    }
+  ],
+  "static_validation": {
+    "service_library": "262 passed, 0 failed, including TLS local-socket interoperability",
+    "x86_service_clippy": "all bins, release, build-std=core,alloc, -- -D warnings passed",
+    "workspace_fmt": "passed",
+    "arm_service_clippy": "all bins, release, build-std=core,alloc, -- -D warnings passed",
+    "documentation": "Living Markdown and LaTeX updated; local targets checked; historical reports unchanged."
+  },
+  "limits": [
+    "The negative control kernel suite passed while the overall host campaign failed. Its serial server ended the idle peer before healthy progress; a passing kernel verdict is not a passing host campaign.",
+    "The final idle-peer check also rejects any unexpected wire output; the negative control already failed on EOF under the earlier check. The three-second budget and request path are unchanged.",
+    "All production Rust sources stayed unchanged across the final native matrix; documentation can change during qualification.",
+    "Default four-CPU QEMU controls qualify finite spare-slot progress, not saturated admission fairness, larger CPU-count latency, aggregate allocation pressure, physical platforms or continuous packet floods.",
+    "Snapshot dependency collection/rendering and cryptographic operations remain synchronous. A silent dependency can occupy its existing five-second observation budget.",
+    "These native controls do not request whole-node shutdown with clients held, inject receiver-held cleanup, or establish physical socket/device quiescence. Host controls cover phase handoff; existing consuming close/Drop retains fail-closed cancellation policy.",
+    "No attribution of historical retirement-pin, thread-exit or stack-reclamation incidents."
+  ]
+}

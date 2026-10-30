@@ -67,20 +67,22 @@ struct Output<P, S> {
     deadline: Deadline,
 }
 
-type Finished<S> = (S, Result<(), Error>);
+type Finished<S> = (S, Result<usize, Error>);
 struct Machine<C: Calls> {
     outputs: [Option<Output<C::Pending, C::Socket>>; MAX_CLIENTS],
     calls: C,
     cursor: usize,
     cq: u32,
+    response_limit: usize,
 }
 impl<C: Calls> Machine<C> {
-    fn new(calls: C, cq: u32) -> Self {
+    fn new(calls: C, cq: u32, response_limit: usize) -> Self {
         Self {
             outputs: core::array::from_fn(|_| None),
             calls,
             cursor: 0,
             cq,
+            response_limit,
         }
     }
 
@@ -88,10 +90,11 @@ impl<C: Calls> Machine<C> {
         let Output {
             pending,
             socket,
+            response,
             ..
         } = self.outputs[index].take().unwrap();
         drop(pending);
-        (socket, result)
+        (socket, result.map(|()| response.len()))
     }
 
     fn arm(&mut self, index: usize) -> Result<(), Error> {
@@ -129,11 +132,11 @@ impl<C: Calls> Machine<C> {
             alloc::borrow::Cow::Borrowed(bytes) => bytes.len(),
             alloc::borrow::Cow::Owned(bytes) => bytes.capacity(),
         };
-        if retained > MAX_RESPONSE_BYTES {
+        if retained > self.response_limit {
             return Some((socket, Err(Error::Capacity)));
         }
         if response.is_empty() {
-            return Some((socket, Ok(())));
+            return Some((socket, Ok(0)));
         }
         self.outputs[index] = Some(Output {
             pending: None,
@@ -205,6 +208,11 @@ impl<C: Calls> Machine<C> {
     fn occupied_slots(&self) -> usize {
         self.outputs.iter().flatten().count()
     }
+
+    fn cancel_one(&mut self) -> Option<C::Socket> {
+        let index = self.outputs.iter().position(Option::is_some)?;
+        Some(self.finish(index, Err(Error::Deadline)).0)
+    }
 }
 
 struct Runtime<'a>(core::marker::PhantomData<&'a ()>);
@@ -270,8 +278,8 @@ impl<'a> Calls for Runtime<'a> {
 /// this output without replay; explicit logical socket close remains separate.
 pub struct Outputs<'a>(Machine<Runtime<'a>>);
 impl<'a> Outputs<'a> {
-    pub fn new(cq: u32) -> Self {
-        Self(Machine::new(Runtime(core::marker::PhantomData), cq))
+    pub fn new(cq: u32, response_limit: usize) -> Self {
+        Self(Machine::new(Runtime(core::marker::PhantomData), cq, response_limit))
     }
 
     pub fn start(
@@ -293,6 +301,12 @@ impl<'a> Outputs<'a> {
 
     pub fn occupied_slots(&self) -> usize {
         self.0.occupied_slots()
+    }
+
+    /// Consuming phase handoff for shutdown. The same connection retains any
+    /// accepted wire RPC until the close adapter confirms cancellation.
+    pub fn cancel_one(&mut self) -> Option<OwnedSocket<'a>> {
+        self.0.cancel_one()
     }
 }
 
@@ -407,6 +421,7 @@ mod tests {
                 replies: core::array::from_fn(|_| VecDeque::new()),
             },
             7,
+            MAX_RESPONSE_BYTES,
         )
     }
     fn start(m: &mut Machine<Fake>, id: usize, response: Response) -> Option<Finished<Socket>> {
@@ -424,7 +439,7 @@ mod tests {
         m.calls.replies[1].push_back(Ok(7));
         let (socket, result) = m.advance().1.unwrap();
         assert_eq!(socket.0, 1);
-        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 7);
         drop(socket);
         assert_eq!(m.remaining_ms(), Some(OUTPUT_MS - 1234));
         m.calls.now.set(OUTPUT_MS);
@@ -498,6 +513,20 @@ mod tests {
         let log = m.calls.log.clone();
         start(&mut m, 0, Cow::Borrowed("abc"));
         drop(m);
+        assert_eq!(&*log.borrow(), &[("pending", 0), ("socket", 0)]);
+    }
+
+    #[test]
+    fn service_response_bound_and_shutdown_return_the_same_owner() {
+        let mut m = setup();
+        m.response_limit = MAX_RESPONSE_BYTES * 2;
+        let log = m.calls.log.clone();
+        assert!(start(&mut m, 0, Cow::Owned("x".repeat(MAX_RESPONSE_BYTES + 1))).is_none());
+        let socket = m.cancel_one().unwrap();
+        assert_eq!(socket.0, 0);
+        assert_eq!(m.occupied_slots(), 0);
+        assert_eq!(&*log.borrow(), &[("pending", 0)]);
+        drop(socket);
         assert_eq!(&*log.borrow(), &[("pending", 0), ("socket", 0)]);
     }
     #[test]

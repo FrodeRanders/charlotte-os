@@ -55,10 +55,6 @@ pub enum StartupError {
     Entropy,
     Shutdown(ShutdownRequest),
 }
-pub enum Interrupted {
-    Shutdown(ShutdownRequest),
-    Transport(Error),
-}
 #[derive(Debug)]
 pub enum Error {
     Socket(SocketError),
@@ -174,7 +170,6 @@ impl Factory {
 
 #[derive(Clone, Copy)]
 enum PendingKind {
-    Accept,
     Time,
     Receive,
     Send(usize),
@@ -201,99 +196,6 @@ pub struct Connection<'a> {
     rejection_logged: bool,
 }
 impl<'a> Connection<'a> {
-    pub fn accept_blocking(&mut self, ctx: &Context) -> Result<(), Interrupted> {
-        let admission = Deadline::after(crate::deployment_listener::SETUP_MS);
-        loop {
-            if let Some(request) = ctx.lifecycle().shutdown_requested() {
-                return Err(Interrupted::Shutdown(request));
-            }
-            drain(ctx);
-            let state = if self.pending.is_some() {
-                self.observe()
-            } else {
-                self.arm(PendingKind::Accept, &admission)
-            }
-            .map_err(Interrupted::Transport)?;
-            if self.started_ms.is_some() {
-                return Ok(());
-            }
-            match state {
-                Advance::Progress => continue,
-                _ => {
-                    crate::reactor::wait(
-                        if self.pending.is_some() {
-                            None
-                        } else {
-                            Some(
-                                admission
-                                    .remaining_ms()
-                                    .min(self.retry.map_or(u64::MAX, |retry| retry.remaining_ms())),
-                            )
-                        },
-                        0,
-                    );
-                }
-            }
-        }
-    }
-
-    /// Sequential status service adapter. The deployment reactor uses the
-    /// nonblocking transitions directly, preserving its multi-client fairness.
-    pub fn receive_blocking(
-        &mut self,
-        ctx: &Context,
-        deadline: &Deadline,
-    ) -> Result<Application, Interrupted> {
-        self.begin_receive(0).map_err(Interrupted::Transport)?;
-        loop {
-            if let Some(request) = ctx.lifecycle().shutdown_requested() {
-                return Err(Interrupted::Shutdown(request));
-            }
-            drain(ctx);
-            match self.poll_receive(deadline).map_err(Interrupted::Transport)? {
-                Advance::Ready(bytes) => return Ok(bytes),
-                Advance::Progress => continue,
-                Advance::Waiting => {
-                    crate::reactor::wait(Some(deadline.remaining_ms().min(self.remaining_ms())), 0);
-                }
-            }
-        }
-    }
-
-    pub fn send_blocking(
-        &mut self,
-        ctx: &Context,
-        bytes: &[u8],
-        deadline: &Deadline,
-    ) -> Result<(), Interrupted> {
-        let mut offset = 0;
-        while offset < bytes.len() {
-            let end = bytes.len().min(offset + self.plaintext_capacity());
-            self.begin_send(&bytes[offset..end], end == bytes.len(), 0)
-                .map_err(Interrupted::Transport)?;
-            loop {
-                if let Some(request) = ctx.lifecycle().shutdown_requested() {
-                    return Err(Interrupted::Shutdown(request));
-                }
-                drain(ctx);
-                match self.poll_send(deadline).map_err(Interrupted::Transport)? {
-                    Advance::Ready(count) => {
-                        offset += count;
-                        break;
-                    }
-                    Advance::Progress => continue,
-                    Advance::Waiting => {
-                        crate::reactor::wait(
-                            Some(deadline.remaining_ms().min(self.remaining_ms())),
-                            0,
-                        );
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-
     pub fn unaccepted(socket: OwnedSocket<'a>, factory: &'a Factory) -> Self {
         Self {
             pending: None,
@@ -312,14 +214,6 @@ impl<'a> Connection<'a> {
 
     fn socket(&self) -> &OwnedSocket<'a> {
         self.socket.as_ref().expect("management socket owner")
-    }
-
-    pub fn listen_call(&self, port: u16) -> Result<PendingCall<'static>, SocketError> {
-        self.socket().listen_call(port)
-    }
-
-    pub fn accept_call(&self) -> Result<PendingCall<'static>, IpcError> {
-        self.socket().accept_call()
     }
 
     pub fn accepted(&mut self) -> Result<(), Error> {
@@ -439,7 +333,6 @@ impl<'a> Connection<'a> {
         }
         self.retry = None;
         let call = match kind {
-            PendingKind::Accept => self.socket().accept_call().map_err(SocketError::Ipc),
             PendingKind::Time => {
                 self.factory.time.call(crate::time::OP_UNIX_SECONDS, 0).map_err(SocketError::Ipc)
             }
@@ -473,12 +366,6 @@ impl<'a> Connection<'a> {
         drop(self.pending.take());
         let now = milliseconds()?;
         match self.pending_kind.take().unwrap() {
-            PendingKind::Accept => {
-                if reply.memory.is_some() || reply.connection.is_some() || reply.result != 0 {
-                    return Err(Error::Reply);
-                }
-                self.accepted()?;
-            }
             PendingKind::Time => {
                 if reply.memory.is_some() || reply.connection.is_some() || reply.result <= 0 {
                     return Err(Error::Clock);
