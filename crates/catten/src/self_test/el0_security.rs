@@ -114,6 +114,17 @@ fn wait_for_budget(
             word(domain, status::FAILURE)
         );
         assert!(!supervisor::domain_exited(domain), "security probe exited before {what}");
+        if deadline.is_expired() {
+            logln!(
+                "[security] fixture deadline root={}:{} phase={what} budget_ms={budget_ms} \
+                 stage={} checks={:#x} completed_requests={}",
+                domain.address_space.id(),
+                domain.address_space.generation(),
+                word(domain, status::STAGE),
+                word(domain, status::CHECKS),
+                word(domain, status::REQUESTS)
+            );
+        }
         deadline.assert_pending(what);
         sleep_millis(10);
     }
@@ -644,6 +655,22 @@ extern "C" fn verify() {
     let mut previous_generation = 0;
     let mut previous_domain: Option<crate::memory::AddressSpaceHandle> = None;
     for _ in 0..2 {
+        // Rollover has its own unchanged 30-second client deadline. Do not
+        // compose it with the grant probe's deliberate serial timeout controls
+        // beneath one 45-second outer deadline. Both still run under the flood.
+        let rollover = spawn(&artifact_key, &deployment_key, status::MODE_ENTROPY_ROLLOVER);
+        let started = monotonic_millis();
+        wait_for_budget(
+            rollover.get(),
+            |domain| word(domain, status::STAGE) == status::PASSED,
+            "hardware entropy rollover",
+            45_000,
+        );
+        assert_eq!(word(rollover.get(), status::REQUESTS), 512);
+        let elapsed = monotonic_millis().saturating_sub(started);
+        rollover.stop();
+        logln!("[security] standalone entropy rollover passed in {elapsed} ms; domain retired");
+
         let probe = spawn(&artifact_key, &deployment_key, 0);
         if let Some(retired) = previous_domain {
             assert!(!crate::memory::launch_descriptor_matches(
@@ -652,9 +679,9 @@ extern "C" fn verify() {
                 &charlotte_launch::sha256::digest(POLICY)
             ));
         }
-        // This aggregate includes serial five-second cancellation fixtures,
-        // including the new controller CQ/moved-request case. Keep each inner
-        // production deadline unchanged; allow the complete fixture to finish.
+        // Includes serial five-second cancellation fixtures. Their production
+        // deadlines and this grant-check budget remain unchanged.
+        let started = monotonic_millis();
         wait_for_budget(
             probe.get(),
             |domain| word(domain, status::STAGE) == status::PASSED,
@@ -662,6 +689,8 @@ extern "C" fn verify() {
             45_000,
         );
         assert_eq!(word(probe.get(), status::CHECKS), status::EXPECTED_CHECKS);
+        let elapsed = monotonic_millis().saturating_sub(started);
+        logln!("[security] adversarial grant checks passed in {elapsed} ms");
         let mut retained_buffers = alloc::vec![verify_caller_buffers(
             &supervisor::node_name_service(),
             probe.get().address_space

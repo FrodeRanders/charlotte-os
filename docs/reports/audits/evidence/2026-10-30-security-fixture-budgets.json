@@ -1,0 +1,232 @@
+{
+  "date": "2026-10-30",
+  "scope": "Separate hardware entropy rollover from serial timeout controls in the opt-in security fixture. No runtime or production deadline change; the combined fixture allowance increases.",
+  "source_sha256": {
+    "crates/catten-services/src/bin/security_probe.rs": "3f3d52e5e076d990fb4e571dae27825ab7dbbcc1c34086954005f6470c916b4d",
+    "crates/catten/src/self_test/el0_security.rs": "abbd8190142342262c85e613dd77eaf93dc1c836499fa397a532776dffb95b5e",
+    "crates/charlotte-launch/src/lib.rs": "ea544389fab03abd44c4257598fc7faf7a561784d74867258654febc3fb5077f"
+  },
+  "bundle_digest_algorithm": "sha256 of UTF-8 JSON bundle_sha256 map, sorted keys and compact separators",
+  "fixed_matrix": {
+    "amd_vi_cpus": 8,
+    "intel_vtd_cpus": 4,
+    "arm_smmuv3_cpus": 4,
+    "outer_campaign_seconds": 180,
+    "rollover_request_count_per_run": 512,
+    "rollover_runs": 2,
+    "rollover_client_deadline_ms": 30000,
+    "rollover_parent_budget_ms": 45000,
+    "grant_probe_runs": 2,
+    "grant_probe_budget_ms": 45000,
+    "concurrent_cancellation_traffic": true,
+    "storage": "fresh per run"
+  },
+  "failed_comparisons": [
+    {
+      "instance": "progress-baseline-20261030-i",
+      "purpose": "Unchanged latest-commit baseline reproduces the aggregate grant-check timeout.",
+      "cpus": 8,
+      "base_revision": "091ecfe8a5b5de9c10ec50ec1e999c574b0b7835",
+      "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "kernel_sha256": "70163d694005812e972ac846bbd493e5bae23903e3ddc27ef3ce8aea97bbcbf7",
+      "bundle_sha256": "c07303c6715255a72852190ea3bd61aed526e3356c47252508e9e0f910a337f6",
+      "result": {
+        "reason": "kernel-panic",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 8,
+        "snapshot": "captured",
+        "elapsed_seconds": 84.64068499999121
+      },
+      "diagnostics": [
+        "[+    56.051615] [EL0 LOG] lp=0 asid=154 [security] hardware entropy: 512 service-only 32-byte requests passed; no entropy bytes logged",
+        "[+    67.247761] [EL0 LOG] lp=0 asid=154 [security] platform publication: full-queue deadline, silent-call cancellation and all eight slots recovered",
+        "[+    67.469821] [EL0 LOG] lp=0 asid=154 [security] entropy read: caller buffer, malformed count/missing memory/extra connection/size, device rejection, cancel/Drop and late-result cleanup; original deadline, queue-full/silent timeout distinct and all eight slots recovered",
+        "[+    77.632380] [EL0 LOG] lp=0 asid=154 [security] deployment control CQ: healthy moved reply beside held moved request; original timeout, no replay and receiver-owned backing retained",
+        "self-test deadline expired while waiting for adversarial application grant checks",
+        "[+    82.742325] SELFTEST COMPLETE: passed=17 failed=1 pending=0 passed_bitmap=0x23bbff failed_bitmap=0x20000000 pending_bitmap=0x0"
+      ],
+      "host_check_groups_passed": 7,
+      "host_failure": "TLS handshake TimeoutError",
+      "retained_mapping_diagnostics": 12,
+      "runner_exit": 1
+    },
+    {
+      "instance": "progress-flush-20261030-j",
+      "purpose": "Rejected CR4-write experiment: skip unchanged CR4 writes when PGE is clear, retain CR3 flush, same targets/epochs/deadlines. Native state control exercises PGE clear/set under an IRQ-preserving mask. No useful progress improvement; all experimental source edits removed.",
+      "cpus": 8,
+      "base_revision": "091ecfe8a5b5de9c10ec50ec1e999c574b0b7835",
+      "tracked_diff_sha256": "133952940d09ae73628f6c0aaaaa4c1b023e4c67a06891fb003a5fb0ddca09b8",
+      "kernel_sha256": "481e462e4f4aab0f238bcd111509aab06d76529f7dcb0f862b6581edecc884fd",
+      "bundle_sha256": "c07303c6715255a72852190ea3bd61aed526e3356c47252508e9e0f910a337f6",
+      "result": {
+        "reason": "kernel-panic",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 8,
+        "snapshot": "captured",
+        "elapsed_seconds": 85.70195329200942
+      },
+      "diagnostics": [
+        "[+    32.922831] [ipi] local full flush preserved CR4 and IRQ state with PGE disabled/enabled",
+        "[+    55.849358] [EL0 LOG] lp=0 asid=156 [security] hardware entropy: 512 service-only 32-byte requests passed; no entropy bytes logged",
+        "[+    66.924481] [EL0 LOG] lp=0 asid=156 [security] platform publication: full-queue deadline, silent-call cancellation and all eight slots recovered",
+        "[+    67.160416] [EL0 LOG] lp=0 asid=156 [security] entropy read: caller buffer, malformed count/missing memory/extra connection/size, device rejection, cancel/Drop and late-result cleanup; original deadline, queue-full/silent timeout distinct and all eight slots recovered",
+        "[+    77.250941] [EL0 LOG] lp=0 asid=156 [security] deployment control CQ: healthy moved reply beside held moved request; original timeout, no replay and receiver-owned backing retained",
+        "[+    82.270619] [EL0 LOG] lp=0 asid=156 [security] controller server CQ: healthy returned record beside held DNS; malformed returned connection rejected, original timeout/no replay; incoming mapping ended and DNS copy retained",
+        "self-test deadline expired while waiting for adversarial application grant checks",
+        "[+    83.490071] SELFTEST COMPLETE: passed=17 failed=1 pending=0 passed_bitmap=0x23bbff failed_bitmap=0x20000000 pending_bitmap=0x0"
+      ],
+      "host_check_groups_passed": 8,
+      "host_failure": "TLS handshake TimeoutError",
+      "retained_mapping_diagnostics": 12,
+      "runner_exit": 1
+    }
+  ],
+  "qualification_runs": [
+    {
+      "instance": "progress-isolated-20261030-k",
+      "architecture": "x86_64",
+      "iommu": "AMD-Vi",
+      "cpus": 8,
+      "kernel_sha256": "ed59e8fe1bb2e4c3356bb2907fb9943a0612ef02fce1e42a997b912f42671e09",
+      "bundle_sha256": "33deaaf9f17e90c6bedf41bcb990cf799ed683bf2ab9f2c2d40eff842ca0e86d",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "diagnostics": [
+        "[+    53.732499] [security] standalone entropy rollover passed in 13168 ms; domain retired",
+        "[+    90.696434] [EL0 LOG] lp=0 asid=154 [security-probe] passed checks=0xffff",
+        "[+    90.699943] [security] adversarial grant checks passed in 36835 ms",
+        "[+    92.551543] [caller backing] original sponsor close retained TCP/IP/RNG reply charges; physical release refunded original account and left successor unaffected",
+        "[+    92.552307] [security] probe passed; retired policy fenced, publication generation=1",
+        "[+   105.673380] [security] standalone entropy rollover passed in 12898 ms; domain retired",
+        "[+   142.555770] [EL0 LOG] lp=0 asid=154 [security-probe] passed checks=0xffff",
+        "[+   142.566001] [security] adversarial grant checks passed in 36739 ms",
+        "[+   145.017452] [caller backing] original sponsor close retained TCP/IP/RNG reply charges; physical release refunded original account and left successor unaffected",
+        "[+   145.018020] [security] probe passed; retired policy fenced, publication generation=2",
+        "[+   145.030848] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x2023bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "hardware_rollover_receipts": 2,
+      "host_check_groups_passed": 20,
+      "transport_retry_diagnostics": [
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 2/2"
+      ],
+      "retained_mapping_diagnostics": 12,
+      "runner_exit": 0,
+      "status_snapshot_receipts": 2,
+      "publication_generations": [
+        1,
+        2
+      ],
+      "retention_scope": "All retention diagnostics precede boot driver thread publication and belong to the early injected controls; none occurs during the scoped probes."
+    },
+    {
+      "instance": "progress-isolated-20261030-l",
+      "architecture": "x86_64",
+      "iommu": "Intel VT-d",
+      "cpus": 4,
+      "kernel_sha256": "2b87f39b408f33158538859e05cc7d126d2c8328c522f21bd51fc6caf9f60e8c",
+      "bundle_sha256": "33deaaf9f17e90c6bedf41bcb990cf799ed683bf2ab9f2c2d40eff842ca0e86d",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "diagnostics": [
+        "[+    20.609636] [security] standalone entropy rollover passed in 2229 ms; domain retired",
+        "[+    53.688645] [EL0 LOG] lp=0 asid=142 [security-probe] passed checks=0xffff",
+        "[+    53.693152] [security] adversarial grant checks passed in 32970 ms",
+        "[+    53.906312] [caller backing] original sponsor close retained TCP/IP/RNG reply charges; physical release refunded original account and left successor unaffected",
+        "[+    53.906897] [security] probe passed; retired policy fenced, publication generation=1",
+        "[+    55.578085] [security] standalone entropy rollover passed in 1527 ms; domain retired",
+        "[+    88.695933] [EL0 LOG] lp=0 asid=142 [security-probe] passed checks=0xffff",
+        "[+    88.701246] [security] adversarial grant checks passed in 33029 ms",
+        "[+    89.206572] [caller backing] original sponsor close retained TCP/IP/RNG reply charges; physical release refunded original account and left successor unaffected",
+        "[+    89.207176] [security] probe passed; retired policy fenced, publication generation=2",
+        "[+    89.210882] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x2023bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "hardware_rollover_receipts": 2,
+      "host_check_groups_passed": 20,
+      "transport_retry_diagnostics": [
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 2/2"
+      ],
+      "retained_mapping_diagnostics": 12,
+      "runner_exit": 0,
+      "status_snapshot_receipts": 2,
+      "publication_generations": [
+        1,
+        2
+      ],
+      "retention_scope": "All retention diagnostics precede boot driver thread publication and belong to the early injected controls; none occurs during the scoped probes."
+    },
+    {
+      "instance": "progress-isolated-20261030-m",
+      "architecture": "AArch64",
+      "iommu": "SMMUv3",
+      "cpus": 4,
+      "kernel_sha256": "338b3e11c543d4b27bd1c3734df117943d175aafff09b694dadd8be755e5b45a",
+      "bundle_sha256": "f7f0e1e217b62c8c1c7d94f7ea53d92758a3536ddcf01fa529bbd85962445495",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "diagnostics": [
+        "[+    13.928684] [security] standalone entropy rollover passed in 1025 ms; domain retired",
+        "[+    46.411397] [EL0 LOG] lp=0 asid=149 [security-probe] passed checks=0xffff",
+        "[+    46.413826] [security] adversarial grant checks passed in 32432 ms",
+        "[+    46.546833] [caller backing] original sponsor close retained TCP/IP/RNG reply charges; physical release refunded original account and left successor unaffected",
+        "[+    46.547930] [security] probe passed; retired policy fenced, publication generation=1",
+        "[+    47.383816] [security] standalone entropy rollover passed in 745 ms; domain retired",
+        "[+    80.099416] [EL0 LOG] lp=0 asid=149 [security-probe] passed checks=0xffff",
+        "[+    80.100820] [security] adversarial grant checks passed in 32668 ms",
+        "[+    80.239700] [caller backing] original sponsor close retained TCP/IP/RNG reply charges; physical release refunded original account and left successor unaffected",
+        "[+    80.240177] [security] probe passed; retired policy fenced, publication generation=2",
+        "[+    80.243933] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x2023ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "hardware_rollover_receipts": 2,
+      "host_check_groups_passed": 20,
+      "transport_retry_diagnostics": [
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 1/2",
+        "HTTP transport ConnectionResetError; retry 2/2"
+      ],
+      "retained_mapping_diagnostics": 4,
+      "runner_exit": 0,
+      "status_snapshot_receipts": 2,
+      "publication_generations": [
+        1,
+        2
+      ],
+      "retention_scope": "All retention diagnostics precede boot driver thread publication and belong to the early injected controls; none occurs during the scoped probes."
+    }
+  ],
+  "limits": [
+    "The earlier TLS-GCM-to-rollover log interval includes preceding grant and cancellation checks; it does not measure only the 512 entropy requests. New standalone elapsed receipts bound the dedicated probe from parent observation.",
+    "The failed original composition remains failed. Separate probes do not satisfy the former combined 45-second assertion; combined wall-clock allowance is larger.",
+    "Every rollover request still uses the production service-only owned client under one 30-second deadline. No accepted request replay, kernel scheduling change or invalidation change is included.",
+    "No attribution of the historical root 157:8/object 35194 retirement-pin failure; expected early injected retention diagnostics are not that failure.",
+    "Finite concurrent cancellation and host checks do not qualify sustained fairness, aggregate pressure or physical hardware.",
+    "Probe elapsed receipts include startup/grant and concurrent cancellation work. Different CPU/IOMMU configurations are not an isolated performance benchmark."
+  ],
+  "static_validation": {
+    "kernel_clippy": "x86_64 and AArch64 with acpi,security_test and -- -D warnings passed",
+    "probe_binary_clippy": "x86_64 and AArch64 release, build-std=core,alloc, --bin security_probe and -- -D warnings passed",
+    "workspace_fmt": "cargo fmt --all -- --check passed",
+    "source_stability": "Three recorded Rust source hashes unchanged across all three qualification runs; experimental tlb.rs/ipi.rs edits fully removed."
+  }
+}

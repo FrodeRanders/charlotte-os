@@ -3,7 +3,7 @@
 Current status consolidated 2026-10-30. This page records implemented scope,
 remaining acceptance gates and unresolved incidents. Finding dispositions are
 unchanged by documentation consolidation. Source and executable tests define
-current behavior; this edit performs no new security qualification.
+current behavior; qualification records cover only their executed scope.
 
 Start with [security engineering lessons](../guides/security-engineering.md) for
 the reusable reasoning and [subsystem contributor contracts](contributor-contracts.md)
@@ -153,7 +153,7 @@ does not resolve an earlier failure.
 
 | Observation | Current status and next useful information |
 | --- | --- |
-| October 30 AMD-Vi, eight CPUs: adversarial-probe deadline, 17 passed/1 failed | Unresolved progress qualification. At `94326e3c`, the probe advanced through entropy and controller/socket controls but missed its unchanged 45-second grant-check fixture budget; host TLS also timed out. All 12 mapping-retention diagnostics were the expected early injected controls. Capture per-phase latency and scheduling under this load; this is not a reproduction or attribution of the retirement-pin timeout. [Failure record](../reports/audits/evidence/2026-10-30-shootdown-deadline.json). |
+| October 30 AMD-Vi, eight CPUs: adversarial-probe deadline, 17 passed/1 failed | Fixture budget collision reproduced at `091ecfe8`. Separately bounded rollover and grant probes take about 13 and 37 seconds respectively under cancellation traffic; their sum exceeds the former shared 45-second budget. Separated AMD/8 and Intel/4 campaigns pass 18/0/0; ARM/4 passes 20/0/0, each with 20 host check groups and both repetitions/teardown required. Combined fixture allowance is larger; production deadlines and invalidation policy are unchanged. Sustained fairness and latency scaling remain unqualified. [Failed comparisons and qualification](../reports/audits/evidence/2026-10-30-security-fixture-budgets.json); no attribution of the historical retirement-pin failure. |
 | October 28 Intel root `157:8`, object `35194`: `OperationDrainTimedOut`, one retirement pin, 17 passed/1 failed | Unresolved. On recurrence correlate the pin with the [captured map/unmap phase, generation and typed cause](memory-object-retirement.md#mapping-rejection-and-maintenance). The original capture cannot authorize a refund or attribute the failure to the RNG fix. [Captured failure](../reports/audits/2026-10-28-security-rng-ring-access.md#separate-x86-fixture-and-retirement-failures). |
 | October 25 ARM scheduled first-entry exit-watch fixture deadline | Unresolved. The four-LP capture lacks the exact awaited target tuple. Failure-only target/generation/typed-wait diagnostics were added; passing repeats establish no cause. [Recorded scope and capture](../reports/audits/2026-10-25-security-memory-capability-preparation.md#preserved-initial-arm-failure). |
 | IPC-close and memory-close exact-worker exit timeouts on historical builds | Historical attribution remains open. Park/first-dispatch corrections have their own regression evidence. On recurrence retain exact generation, exit publication, wait result, dispatch and staged-owner state. [Incident register](../reports/audits/2026-10-15-audit-process-review.md#unresolved-incident-register). |

@@ -1058,6 +1058,7 @@ pub mod security_probe_status {
     pub const EXPECTED_CHECKS: u32 = 0xffff;
     pub const FOREIGN_THREAD_KEY: u64 = super::manifest_key(b"secttid");
     pub const MODE_KEY: u64 = super::manifest_key(b"sectmode");
+    pub const MODE_ENTROPY_ROLLOVER: u64 = 3;
     pub const ALTERNATE_KEY: u64 = super::manifest_key(b"sectalt");
     pub const DEPLOYMENT_KEY: u64 = super::manifest_key(b"sectkey");
 }

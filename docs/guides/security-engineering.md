@@ -231,6 +231,14 @@ repeat does not explain a failed run. Finite models check their stated
 abstractions; QEMU process loss does not qualify device power-loss durability or
 physical hardware recovery.
 
+Budget fixture composition explicitly. A rollover workload with its own deadline
+and several deliberate timeout controls can each behave correctly while their
+sum exceeds an unrelated outer verifier budget. Run independent properties in
+separately bounded owning probes, retain the concurrent pressure, and require all
+results and teardown before passing. Record that change in qualification scope:
+separating fixtures neither improves production latency nor proves fairness.
+Do not restart an accepted operation's deadline when reporting phase progress.
+
 Read [production milestones](../reference/security-remediation.md#production-security-milestones),
 [secret-state limits](../reference/secret-state-lifetimes.md),
 [resource qualification](../reference/security-remediation.md#sec-07-bounded-resource-admission)

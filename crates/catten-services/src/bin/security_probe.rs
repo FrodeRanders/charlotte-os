@@ -810,6 +810,47 @@ fn main(ctx: Context) -> ! {
         }
     }
 
+    if matches!(
+        ctx.manifest_value(status::MODE_KEY),
+        Some(ManifestValue::Unsigned(status::MODE_ENTROPY_ROLLOVER))
+    ) {
+        // Keep real-device rollover independent of the grant probe's serial
+        // timeout controls. The parent runs both probes twice under the same
+        // cancellation traffic; neither deadline restarts on progress.
+        // Explicit service calls bypass architectural entropy so each run
+        // crosses at least two low-byte ring-index boundaries.
+        let rng = grant_client::acquire(controller, &descriptor, b"rng", deployment::RIGHT_CALL)
+            .unwrap_or_else(|_| catten_rt::domain_abort());
+        let entropy_deadline = Deadline::after(30_000);
+        let mut scratch = zeroize::Zeroizing::new([0u8; 32]);
+        for completed in 1..=512u32 {
+            if let Err(error) = catten_services::tls_client::fill_service_entropy(
+                rng.as_ref(),
+                &mut *scratch,
+                entropy_deadline,
+            ) {
+                catten_rt::logln!("[security] hardware entropy rollover rejected: {:?}", error);
+                check(false, 400);
+            }
+            config::write::<u32>(status::REQUESTS, completed);
+        }
+        drop(rng);
+        drop(scratch);
+        catten_rt::logln!(
+            "[security] hardware entropy: 512 service-only 32-byte requests passed; no entropy \
+             bytes logged"
+        );
+        config::write::<u32>(status::STAGE, status::PASSED);
+        loop {
+            if let Some(shutdown) = ctx.lifecycle().shutdown_requested() {
+                drop(endpoint);
+                shutdown.complete();
+            }
+            let (_, result) = catten_syscall::cq_wait_checked(None, 0);
+            check(result == catten_syscall::completion_status::READY, 401);
+        }
+    }
+
     let Some(ManifestValue::Bytes(alternate)) = ctx.manifest_value(status::ALTERNATE_KEY) else {
         catten_rt::domain_abort()
     };
@@ -951,28 +992,6 @@ fn main(ctx: Context) -> ! {
 
     let tcpip = grant_client::acquire(controller, &descriptor, b"tcpip", deployment::RIGHT_CALL)
         .unwrap_or_else(|_| catten_rt::domain_abort());
-    // Explicit fixture grant; bypass architectural entropy so the real VirtIO
-    // queue crosses at least two low-byte rollovers, regardless of its start.
-    let rng = grant_client::acquire(controller, &descriptor, b"rng", deployment::RIGHT_CALL)
-        .unwrap_or_else(|_| catten_rt::domain_abort());
-    let entropy_deadline = Deadline::after(30_000);
-    let mut scratch = zeroize::Zeroizing::new([0u8; 32]);
-    for _ in 0..512 {
-        if let Err(error) = catten_services::tls_client::fill_service_entropy(
-            rng.as_ref(),
-            &mut *scratch,
-            entropy_deadline,
-        ) {
-            catten_rt::logln!("[security] hardware entropy rollover rejected: {:?}", error);
-            check(false, 400);
-        }
-    }
-    drop(rng);
-    drop(scratch);
-    catten_rt::logln!(
-        "[security] hardware entropy: 512 service-only 32-byte requests passed; no entropy bytes \
-         logged"
-    );
     check(
         matches!(
             tcpip.send(socket::OP_FRAME, 0),

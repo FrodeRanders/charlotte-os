@@ -198,6 +198,28 @@ for the captured ARM failure, deterministic access controls and native repeated
 service requests. Real-device cache-ordering and full hardware u16 rollover
 remain separate; descriptor fencing is not a complete hardware-protocol proof.
 
+### Native rollover fixture
+
+The opt-in security campaign runs the 512 service-only 32-byte reads in a
+dedicated scoped probe (`MODE_ENTROPY_ROLLOVER`). Each run bypasses architectural
+entropy and carries one 30-second client deadline across all requests. Its parent
+allows 45 seconds from launch observation, requires exactly 512 completed reads,
+and retires that domain through the existing explicit close path. Progress
+updates do not reset either deadline. Scratch is zeroizing; logs contain counts
+and elapsed time, never entropy bytes.
+
+Both rollover and adversarial grant probes run twice under the existing
+concurrent cancellation traffic. Grant probes keep their separate 45-second
+budget, full expected check bitmap and deliberate timeout/rejection controls.
+The campaign cannot pass until both kinds of probe and their teardown complete.
+This separates real-device rollover from serial timeout fixtures that formerly
+shared one outer budget. The combined wall-clock allowance is consequently
+larger; no production operation deadline, request count, ring protocol or
+runtime invalidation policy changes. This is finite fixture qualification,
+not a service latency or sustained fairness guarantee.
+The [fixture budget record](../reports/audits/evidence/2026-10-30-security-fixture-budgets.json)
+keeps the failed combined-budget runs separate from the scoped qualifications.
+
 ## TCP/IP startup
 
 TCP/IP initializes its smoltcp interface only after obtaining 40 fresh entropy
