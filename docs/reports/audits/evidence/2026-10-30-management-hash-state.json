@@ -1,0 +1,126 @@
+{
+  "date": "2026-10-30",
+  "base_revision": "b3d811ceb05bd8036317c7cd0936a511c9789a5d",
+  "scope": "Management TLS provider SHA-256/HMAC state uses Charlotte erasing owners. The existing one-shot HMAC delegates to the same incremental implementation. No cipher, handshake, wire, deadline or capability change; no finding closure.",
+  "source_sha256": {
+    "crates/charlotte-launch/src/sha256.rs": "2e58fd347dd77e93576325bd06f32300fcd752cf927266b80628325607807c30",
+    "crates/charlotte-launch/tests/sha256.rs": "35f540fdbebb5976f7f3606557e0833f08abcb3b897dea3a2bb0d11bf0fce9bb",
+    "crates/charlotte-management-tls/src/crypto.rs": "cd7d05a76b1726cdffc56d2307a4adc1d207a567bb5dad13ed4ecee801100a51"
+  },
+  "bundle_digest_algorithm": "sha256 of UTF-8 JSON bundle_sha256 map, sorted keys and compact separators",
+  "qualification": {
+    "launch_tests": 75,
+    "management_tls_tests": 15,
+    "service_library_tests": 263,
+    "retained_storage": "Drop of original and cloned unfinished HMAC contexts covers two keyed SHA states each, five key lengths and six input lengths; checks initialized state words, buffer, buffer length and total length without inspecting padding or freed memory. Existing unfinished SHA checks remain.",
+    "vectors": "Existing independent Python hashlib/hmac vectors: 16 SHA message lengths, seven HMAC key lengths; incremental HMAC and clones each cover every split of a 129-byte input. SHA forks preserve the original transcript.",
+    "interop": "Independent Rustls/ring client and OpenSSL client authenticate the freestanding server engine. Native verified TLS covers both management interfaces.",
+    "static": [
+      "cargo fmt --all -- --check",
+      "strict Clippy for all service binaries on AArch64 and x86_64",
+      "git diff --check"
+    ]
+  },
+  "fixture_restrictions": [
+    {
+      "case": "First host management TLS suite without local socket permission",
+      "result": "14 passed; OpenSSL interoperability failed before accepting a connection",
+      "diagnostic": "server.rs:774: called Result::unwrap() on Err: Os { code: 1, kind: PermissionDenied, message: Operation not permitted }",
+      "classification": "Host sandbox socket restriction; subsequent explicitly authorized full suite passed 15/15. No native protocol failure attribution."
+    }
+  ],
+  "native_runs": [
+    {
+      "target": "aarch64",
+      "cpus": 4,
+      "instance": "tls-hash-20261030-arm",
+      "kernel_sha256": "927578f80e81d5c1112bae19e76819593679bc3ff288e67f2254839e83538ce2",
+      "bundle_map_sha256": "d98bac6b534e20bbbe14182fa0004c35e0b18038c5a61b96787737c579f89594",
+      "management_service_sha256": {
+        "httpd.elf": "fc591b397615cb1d4005c12c985ac0d0d74c116a68b49a339547215368156d4b",
+        "deployd.elf": "29f8a51412208b2c15922337af753c89736c7f648626b644463814952e610858"
+      },
+      "timeout_seconds": 240,
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "kernel_diagnostics": [
+        "[+    80.479688] SELFTEST COMPLETE: passed=21 failed=0 pending=0 passed_bitmap=0x2123ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "host_checks": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.476s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.469s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.491s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 29.80s; ingress recovered",
+        "PASS: port 22681: verified TLS 1.3 reader and administrator observations",
+        "PASS: healthy status requests beside idle TLS peers and incomplete authenticated headers",
+        "PASS: port 22681: missing/unregistered certificate, wrong name/root and plaintext rejected; reader recovered",
+        "PASS: port 22445: verified TLS 1.3 reader and administrator observations",
+        "PASS: port 22445: missing/unregistered certificate, wrong name/root and plaintext rejected; reader recovered",
+        "PASS: reader mutation rejected before incomplete signed body/controller dispatch",
+        "PASS: cluster-sign verified reader observation; wrong server name rejected before HTTP submission"
+      ]
+    },
+    {
+      "target": "x86_64-intel",
+      "cpus": 4,
+      "instance": "tls-hash-20261030-intel",
+      "kernel_sha256": "3df0c5a80c5f385eae02d48bbe56301f44daddbc43c518a16eebd027d8908f98",
+      "bundle_map_sha256": "7c28711002a2c1d69ed8d2e11937674eb4dfbae6a537b2bd905316ddcf0487a2",
+      "management_service_sha256": {
+        "httpd.elf": "4eb231683fc6e48fd413c930f9934ad3ca1af25cfaab539e6e0a58549608cc25",
+        "deployd.elf": "4ddaa34f6defba3b04111f91f82a96f43361a1089cc4e0470b46b6b91a477a80"
+      },
+      "timeout_seconds": 240,
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "kernel_diagnostics": [
+        "[+   103.436201] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2123bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "host_checks": [
+        "PASS: initial metrics request",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.510s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.507s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.507s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 29.84s; ingress recovered",
+        "PASS: port 23681: verified TLS 1.3 reader and administrator observations",
+        "PASS: healthy status requests beside idle TLS peers and incomplete authenticated headers",
+        "PASS: port 23681: missing/unregistered certificate, wrong name/root and plaintext rejected; reader recovered",
+        "PASS: port 23445: verified TLS 1.3 reader and administrator observations",
+        "PASS: port 23445: missing/unregistered certificate, wrong name/root and plaintext rejected; reader recovered",
+        "PASS: reader mutation rejected before incomplete signed body/controller dispatch",
+        "PASS: cluster-sign verified reader observation; wrong server name rejected before HTTP submission"
+      ]
+    }
+  ],
+  "limits": [
+    "Pinned original provider driver contexts lacked an erasure policy in source; no runtime retained-storage reproduction of that original opaque provider was performed.",
+    "Retained-storage checks qualify initialized fields of the shared owner, not every provider/Rustls allocation or stack/register copy.",
+    "Rustls returned hash/tag, HKDF, traffic-key, transcript/parser copies and the connector TLS client Embassy contexts retain separate lifetimes.",
+    "Ordinary Drop cannot establish erasure after forced termination, allocator-history erasure, physical erasure, protected custody or remote cleanup.",
+    "Native management controls establish the executed finite workloads, not sustained flood fairness or all hardware qualification.",
+    "SEC-15 remains partial; finding counts and unresolved incident attributions are unchanged."
+  ]
+}

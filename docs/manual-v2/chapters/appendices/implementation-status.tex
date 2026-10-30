@@ -461,6 +461,10 @@ Source, tests, and repository history remain authoritative.
         an administrator before mutation dispatch. One signed, encrypted boot
         resource supplies credentials, roles and adjustable TLS limits to both
         services; missing credentials disable network admission.
+        The management provider shares erasing incremental SHA-256/HMAC owners
+        for keyed state and transcript forks, including unfinished Drop.
+        Rustls output/key copies, connector-client state, forced termination and
+        physical erasure remain separate SEC-15 boundaries.
         Status and deployment rotate four owned client positions across CQ-bound
         setup, TLS/header input, output and logical close. Status input keeps its
         original five-second deadline; responses retain at most 512\,KiB and

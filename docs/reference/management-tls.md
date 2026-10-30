@@ -15,16 +15,16 @@ This is separate from TLS/input/output deadlines and from flood fairness. See
 ## Implemented protocol component
 
 Rustls `0.23.46` implements the handshake, transcript, record sequence, peer
-possession proof and TLS state machine. Its explicit custom provider uses the
-same pinned Embassy SHA-256/HMAC/P-256 operations and erasing RustCrypto
-AES-128-GCM family as the existing TLS client. The supported suite is
+possession proof and TLS state machine. Its explicit custom provider uses
+Charlotte's erasing SHA-256 and incremental HMAC-SHA-256 owners, pinned Embassy
+P-256 operations and the erasing RustCrypto AES-128-GCM family. The supported suite is
 TLS_AES_128_GCM_SHA256 with P-256 ECDH and ECDSA/SHA-256 certificates and
 handshake signatures. There is no RSA, alternate cipher, TLS 1.2, insecure
 verification fallback, early data or session resumption. This provider adapter
 does not introduce a new handshake or cryptographic primitive.
 
-The native provider requires the embedding domain's existing Embassy drivers,
-including its domain-owned entropy driver. An infallible crypto RNG callback
+The native provider requires the embedding domain's Embassy P-256 and
+domain-owned entropy drivers. An infallible crypto RNG callback
 must abort on entropy failure; it cannot fabricate bytes or replay an accepted
 request. Host fixtures register host entropy only in their test binary. Ring is
 used by the independent host test client, **not by the native server**: its
@@ -209,10 +209,20 @@ Deployment shutdown continues accepted controller/output work while incomplete
 inputs transfer into logical close. All five owning phase counts must reach zero
 before the service acknowledges drain; see [deployment ingress](deployment-ingress.md).
 
-Erasure of the named local buffers, IV/nonce and selected cipher owners does not
-qualify all Rustls/Embassy HKDF, HMAC, transcript, traffic-key or parser copies,
-compiler spills, allocator history, forced termination or physical memory.
-SEC-15 remains partial.
+Provider hash contexts, their transcript forks and keyed HMAC contexts now use
+`charlotte_launch::sha256::{Sha256, HmacSha256}`. Both HMAC hash states erase on
+ordinary Drop, including unfinished operations and clones. Normalization, pads,
+inner digests and provider-local hash/tag outputs retain zeroizing owners. The
+one-shot signing/SCRAM helper delegates to the same incremental HMAC algorithm;
+TLS concatenation does not allocate a message copy. Compile-time
+`ZeroizeOnDrop` bounds reject provider types that lose this contract.
+
+The [provider-state checks](../reports/audits/evidence/2026-10-30-management-hash-state.json)
+cover retained initialized SHA/HMAC fields, independent vectors and native TLS
+interoperability. Erasure of these fields, local buffers, IV/nonce and selected
+cipher owners does not qualify Rustls's returned hash/tag, HKDF, traffic-key or
+parser copies, the connector TLS client's Embassy state, compiler spills,
+allocator history, forced termination or physical memory. SEC-15 remains partial.
 
 ## Configuration and related dimensions
 

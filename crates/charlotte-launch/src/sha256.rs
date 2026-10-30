@@ -15,6 +15,7 @@ use zeroize::{
 ///
 /// `update` accepts arbitrarily split input; `finalize` pads per FIPS 180-4
 /// (the 0x80 byte, zeros, and the 64-bit bit length) and returns the digest.
+#[derive(Clone)]
 pub struct Sha256 {
     state: [u32; 8],
     buffer: [u8; 64],
@@ -221,30 +222,73 @@ pub fn digest(data: &[u8]) -> [u8; 32] {
     hasher.finalize()
 }
 
+/// Incremental HMAC-SHA-256. Each clone owns its keyed hash states and erases
+/// them through `Sha256::drop`, including unfinished computations. No raw key
+/// is retained after construction; normalization and pads have local owners.
+#[derive(Clone)]
+pub struct HmacSha256 {
+    inner: Sha256,
+    outer: Sha256,
+}
+
+impl Zeroize for HmacSha256 {
+    fn zeroize(&mut self) {
+        self.inner.zeroize();
+        self.outer.zeroize();
+    }
+}
+
+// Both fields erase on Drop, including after consuming finalization. Keeping
+// field Drop permits moving each state into Sha256::finalize without a copy.
+impl ZeroizeOnDrop for HmacSha256 {}
+
+impl HmacSha256 {
+    pub fn new(key: &[u8]) -> Self {
+        let mut block = Zeroizing::new([0u8; 64]);
+        if key.len() > block.len() {
+            let hashed_key = Zeroizing::new(digest(key));
+            block[..32].copy_from_slice(&hashed_key[..]);
+        } else {
+            block[..key.len()].copy_from_slice(key);
+        }
+        let mut inner_pad = Zeroizing::new([0x36u8; 64]);
+        let mut outer_pad = Zeroizing::new([0x5cu8; 64]);
+        for index in 0..block.len() {
+            inner_pad[index] ^= block[index];
+            outer_pad[index] ^= block[index];
+        }
+        let mut inner = Sha256::new();
+        inner.update(&inner_pad[..]);
+        let mut outer = Sha256::new();
+        outer.update(&outer_pad[..]);
+        Self {
+            inner,
+            outer,
+        }
+    }
+
+    pub fn update(&mut self, bytes: &[u8]) {
+        self.inner.update(bytes);
+    }
+
+    /// Consume both keyed states and return the tag in its erasing owner.
+    pub fn finalize(self) -> Zeroizing<[u8; 32]> {
+        let Self {
+            inner,
+            mut outer,
+        } = self;
+        let inner_digest = Zeroizing::new(inner.finalize());
+        outer.update(&inner_digest[..]);
+        Zeroizing::new(outer.finalize())
+    }
+}
+
 /// HMAC-SHA-256 with owned, erased key normalization, pads and intermediate
 /// digests. The result keeps its zeroizing owner through further derivation.
 pub fn hmac_sha256(key: &[u8], message: &[u8]) -> Zeroizing<[u8; 32]> {
-    let mut block = Zeroizing::new([0u8; 64]);
-    if key.len() > block.len() {
-        let hashed_key = Zeroizing::new(digest(key));
-        block[..32].copy_from_slice(&hashed_key[..]);
-    } else {
-        block[..key.len()].copy_from_slice(key);
-    }
-    let mut inner_pad = Zeroizing::new([0x36u8; 64]);
-    let mut outer_pad = Zeroizing::new([0x5cu8; 64]);
-    for index in 0..block.len() {
-        inner_pad[index] ^= block[index];
-        outer_pad[index] ^= block[index];
-    }
-    let mut inner = Sha256::new();
-    inner.update(&inner_pad[..]);
-    inner.update(message);
-    let inner_digest = Zeroizing::new(inner.finalize());
-    let mut outer = Sha256::new();
-    outer.update(&outer_pad[..]);
-    outer.update(&inner_digest[..]);
-    Zeroizing::new(outer.finalize())
+    let mut context = HmacSha256::new(key);
+    context.update(message);
+    context.finalize()
 }
 
 /// Digest of `data` with the byte range `[skip_start, skip_start + skip_len)`
@@ -282,6 +326,37 @@ mod erasure_tests {
     };
 
     use super::*;
+
+    #[test]
+    fn unfinished_hmac_and_its_clone_erase_both_keyed_states_in_retained_storage() {
+        for key_len in [0, 32, 64, 65, 131] {
+            for input_len in [0, 1, 55, 64, 65, 129] {
+                let mut context = HmacSha256::new(&[0x5a; 131][..key_len]);
+                context.update(&[0x36; 129][..input_len]);
+                let clone = context.clone();
+                for value in [context, clone] {
+                    let mut storage = MaybeUninit::new(value);
+                    let owner = storage.as_mut_ptr();
+                    // As in the SHA control below, keep the allocation and
+                    // inspect only initialized fields after one exact Drop.
+                    // Both keyed states must erase even without finalization.
+                    unsafe {
+                        let inner = ptr::addr_of!((*owner).inner);
+                        let outer = ptr::addr_of!((*owner).outer);
+                        assert_ne!(ptr::read_volatile(ptr::addr_of!((*inner).state)), [0; 8]);
+                        assert_ne!(ptr::read_volatile(ptr::addr_of!((*outer).state)), [0; 8]);
+                        ptr::drop_in_place(owner);
+                        for hash in [inner, outer] {
+                            assert_eq!(ptr::read_volatile(ptr::addr_of!((*hash).state)), [0; 8]);
+                            assert_eq!(ptr::read_volatile(ptr::addr_of!((*hash).buffer)), [0; 64]);
+                            assert_eq!(ptr::read_volatile(ptr::addr_of!((*hash).buffer_len)), 0);
+                            assert_eq!(ptr::read_volatile(ptr::addr_of!((*hash).total_len)), 0);
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn unfinished_drop_erases_named_fields_in_retained_storage() {

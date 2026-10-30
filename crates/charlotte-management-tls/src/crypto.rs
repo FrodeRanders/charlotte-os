@@ -1,7 +1,8 @@
 //! Rustls provider over Charlotte's existing portable crypto operations.
 //!
 //! Only TLS 1.3 AES-128-GCM/SHA-256, P-256 ECDH and P-256/SHA-256 ECDSA.
-//! The embedding domain supplies the pinned Embassy SHA/HMAC/P-256/RNG drivers.
+//! Hash/HMAC state uses Charlotte's erasing owners. The embedding domain
+//! supplies the pinned Embassy P-256/RNG drivers.
 //! RNG callbacks are infallible: the domain's existing entropy owner must abort
 //! on unavailable entropy, never invent bytes or replay accepted work.
 
@@ -17,11 +18,12 @@ use aes_gcm::{
     AeadInPlace,
     KeyInit,
 };
-use embassy_crypto::{
+use charlotte_launch::sha256::{
     HmacSha256,
     Sha256,
-    p256 as ec,
+    digest,
 };
+use embassy_crypto::p256 as ec;
 use p256::pkcs8::{
     DecodePrivateKey,
     EncodePublicKey,
@@ -93,6 +95,8 @@ const _: fn() = || {
     erases::<aes::Aes128>();
     erases::<aes::Aes128Enc>();
     erases::<aes::Aes128Dec>();
+    erases::<Sha256>();
+    erases::<HmacSha256>();
 };
 
 pub(super) fn provider() -> CryptoProvider {
@@ -134,7 +138,8 @@ impl crypto::hash::Hash for Hash {
     }
 
     fn hash(&self, bytes: &[u8]) -> crypto::hash::Output {
-        crypto::hash::Output::new(&Sha256::digest(bytes))
+        let digest = Zeroizing::new(digest(bytes));
+        crypto::hash::Output::new(&*digest)
     }
 
     fn output_len(&self) -> usize {
@@ -148,7 +153,8 @@ impl crypto::hash::Hash for Hash {
 struct HashContext(Sha256);
 impl crypto::hash::Context for HashContext {
     fn fork_finish(&self) -> crypto::hash::Output {
-        crypto::hash::Output::new(&self.0.clone().finalize())
+        let digest = Zeroizing::new(self.0.clone().finalize());
+        crypto::hash::Output::new(&*digest)
     }
 
     fn fork(&self) -> Box<dyn crypto::hash::Context> {
@@ -156,7 +162,8 @@ impl crypto::hash::Context for HashContext {
     }
 
     fn finish(self: Box<Self>) -> crypto::hash::Output {
-        crypto::hash::Output::new(&self.0.finalize())
+        let digest = Zeroizing::new(self.0.finalize());
+        crypto::hash::Output::new(&*digest)
     }
 
     fn update(&mut self, bytes: &[u8]) {
@@ -183,7 +190,7 @@ impl crypto::hmac::Key for HmacKey {
             context.update(bytes);
         }
         context.update(last);
-        let tag = Zeroizing::new(context.finalize());
+        let tag = context.finalize();
         crypto::hmac::Tag::new(&*tag)
     }
 
@@ -304,7 +311,7 @@ impl Signer for P256Signer {
     fn sign(&self, message: &[u8]) -> Result<Vec<u8>, Error> {
         let signature = self
             .0
-            .sign_prehash(&Sha256::digest(message))
+            .sign_prehash(&digest(message))
             .map_err(|_| Error::General("management signing failed".into()))?;
         let signature = p256::ecdsa::Signature::from_slice(&signature.to_bytes())
             .map_err(|_| Error::General("management signature encoding failed".into()))?;
@@ -339,7 +346,7 @@ impl SignatureVerificationAlgorithm for VerifyP256 {
             p256::ecdsa::Signature::from_der(signature).map_err(|_| InvalidSignature)?;
         let signature = ec::Signature::from_bytes((&signature.to_bytes()).into())
             .map_err(|_| InvalidSignature)?;
-        key.verify_prehash(&Sha256::digest(message), &signature).map_err(|_| InvalidSignature)
+        key.verify_prehash(&digest(message), &signature).map_err(|_| InvalidSignature)
     }
 }
 

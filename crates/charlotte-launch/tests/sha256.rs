@@ -2,6 +2,7 @@
 //! of Charlotte's implementation. Boundary lengths exercise padding and block
 //! transitions; every split must match the same reference digest.
 use charlotte_launch::sha256::{
+    HmacSha256,
     Sha256,
     digest,
     hmac_sha256,
@@ -70,5 +71,31 @@ fn hmac_matches_reference_with_short_and_hashed_keys() {
         let key: Vec<u8> = (0..len).map(|index| (index % 251) as u8).collect();
         let result: zeroize::Zeroizing<[u8; 32]> = hmac_sha256(&key, &message);
         assert_eq!(*result, decode(expected), "key length {len}");
+        for split in 0..=message.len() {
+            let mut mac = HmacSha256::new(&key);
+            mac.update(&message[..split]);
+            // Rustls keeps a keyed starting context and clones it for each
+            // concatenated signing operation. A clone must not consume or
+            // modify its source, including at partial block boundaries.
+            let mut fork = mac.clone();
+            fork.update(&message[split..]);
+            assert_eq!(*fork.finalize(), decode(expected), "key {len}, fork {split}");
+            mac.update(&[]);
+            mac.update(&message[split..]);
+            assert_eq!(*mac.finalize(), decode(expected), "key {len}, split {split}");
+        }
+    }
+}
+
+#[test]
+fn sha256_forks_leave_the_original_transcript_unchanged() {
+    let input = [0x5a; 129];
+    for split in 0..=input.len() {
+        let mut original = Sha256::new();
+        original.update(&input[..split]);
+        let mut fork = original.clone();
+        fork.update(&input[split..]);
+        assert_eq!(fork.finalize(), digest(&input));
+        assert_eq!(original.finalize(), digest(&input[..split]));
     }
 }
