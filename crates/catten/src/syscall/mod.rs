@@ -1973,8 +1973,6 @@ fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
                 ..=charlotte_launch::deployment::MAX_DESCRIPTOR_LEN)
                 .contains(&size)
         })
-        || crate::service::supervisor::DEPLOYED_DOMAINS.lock().len()
-            >= crate::service::supervisor::MAX_DEPLOYED_DOMAINS
     {
         close_inputs();
         frame.regs[0] = 0;
@@ -2013,38 +2011,24 @@ fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
         return;
     }
     let principal = charlotte_launch::artifact_principal_id(decoded.artifact_name);
-    if crate::service::supervisor::DEPLOYED_DOMAINS
-        .lock()
-        .iter()
-        .any(|deployed| deployed.principal == principal)
-    {
+    let Some(preparation) = crate::service::supervisor::PreparingDeployment::reserve(principal)
+    else {
         frame.regs[0] = 0;
         return;
-    }
-    let domain = match crate::service::supervisor::try_spawn_with_deployment_descriptor(
-        &image,
-        &descriptor,
-        &trust.deployment_key,
-        &trust.artifact_key,
-    ) {
-        Ok(domain) => domain,
-        Err(_) => {
-            frame.regs[0] = 0;
-            return;
-        }
     };
-    crate::service::supervisor::DEPLOYED_DOMAINS.lock().push(
-        crate::service::supervisor::DeployedDomain {
-            principal,
-            domain,
-            shutdown_grace_ms: decoded.shutdown_grace_ms,
-            retirement_deadline_ms: None,
-            retirement_reason: charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
-            force_requested: false,
-            teardown: crate::service::supervisor::DeploymentTeardown::NotStarted,
-            retirement_acknowledged: false,
-        },
-    );
+    let Some(domain) = preparation.launch(|| {
+        crate::service::supervisor::try_spawn_with_deployment_descriptor(
+            &image,
+            &descriptor,
+            &trust.deployment_key,
+            &trust.artifact_key,
+        )
+        .ok()
+        .map(|domain| (domain, decoded.shutdown_grace_ms))
+    }) else {
+        frame.regs[0] = 0;
+        return;
+    };
     frame.regs[0] = domain.asid as u64;
     frame.regs[1] = principal;
 }
@@ -2066,8 +2050,6 @@ fn sys_spawn_operational_connector(frame: &mut TrapFrame) {
                 ..=charlotte_launch::operations_pickup::MAX_PICKUP_LEN)
                 .contains(&size)
         })
-        || crate::service::supervisor::DEPLOYED_DOMAINS.lock().len()
-            >= crate::service::supervisor::MAX_DEPLOYED_DOMAINS
     {
         close_input();
         frame.regs[0] = 0;
@@ -2088,12 +2070,7 @@ fn sys_spawn_operational_connector(frame: &mut TrapFrame) {
         return;
     };
     let principal = charlotte_launch::artifact_principal_id(pickup.binding.target_artifact);
-    if requested_principal != principal
-        || crate::service::supervisor::DEPLOYED_DOMAINS
-            .lock()
-            .iter()
-            .any(|deployed| deployed.principal == principal)
-    {
+    if requested_principal != principal {
         frame.regs[0] = 0;
         return;
     }
@@ -2149,58 +2126,52 @@ fn sys_spawn_operational_connector(frame: &mut TrapFrame) {
                 return None;
             }
 
-            let mut profile = zeroize::Zeroizing::new(alloc::vec![0; envelope.ciphertext.len()]);
-            let profile_len = charlotte_launch::operations::open(
-                pickup.envelope,
-                recipient_private_key,
-                &trust.operations_key,
-                &trust.cluster_id,
-                &pickup.binding.release_digest,
-                pickup.now_unix_seconds,
-                &mut profile,
-            )
-            .ok()?;
-            let profile = profile.get(..profile_len)?;
-            let valid_profile = match pickup.binding.profile_kind {
-                charlotte_launch::operations::PROFILE_KIND_S3 => {
-                    charlotte_protocol_s3::Profile::decode(profile).is_some()
+            let preparation = crate::service::supervisor::PreparingDeployment::reserve(principal)?;
+            preparation.launch(|| {
+                let mut profile = zeroize::Zeroizing::new(alloc::vec::Vec::new());
+                profile.try_reserve_exact(envelope.ciphertext.len()).ok()?;
+                profile.resize(envelope.ciphertext.len(), 0);
+                let profile_len = charlotte_launch::operations::open(
+                    pickup.envelope,
+                    recipient_private_key,
+                    &trust.operations_key,
+                    &trust.cluster_id,
+                    &pickup.binding.release_digest,
+                    pickup.now_unix_seconds,
+                    &mut profile,
+                )
+                .ok()?;
+                let profile = profile.get(..profile_len)?;
+                let valid_profile = match pickup.binding.profile_kind {
+                    charlotte_launch::operations::PROFILE_KIND_S3 => {
+                        charlotte_protocol_s3::Profile::decode(profile).is_some()
+                    }
+                    charlotte_launch::operations::PROFILE_KIND_KAFKA => {
+                        charlotte_protocol_kafka::Profile::decode(profile).is_ok()
+                    }
+                    _ => false,
+                };
+                if !valid_profile {
+                    return None;
                 }
-                charlotte_launch::operations::PROFILE_KIND_KAFKA => {
-                    charlotte_protocol_kafka::Profile::decode(profile).is_ok()
-                }
-                _ => false,
-            };
-            if !valid_profile {
-                return None;
-            }
-            let domain = crate::service::supervisor::try_spawn_with_read_only_profile_and_limits(
-                pickup.artifact,
-                name_service,
-                crate::ipc::ConnectionRights::CALL,
-                profile,
-                crate::service::supervisor::ServiceLimits::for_deployment(&descriptor),
-            )
-            .ok()?;
-            Some((domain, descriptor.shutdown_grace_ms))
+                let domain =
+                    crate::service::supervisor::try_spawn_with_read_only_profile_and_limits(
+                        pickup.artifact,
+                        name_service,
+                        crate::ipc::ConnectionRights::CALL,
+                        profile,
+                        crate::service::supervisor::ServiceLimits::for_deployment(&descriptor),
+                    )
+                    .ok()?;
+                Some((domain, descriptor.shutdown_grace_ms))
+            })
         },
     )
     .flatten();
-    let Some((domain, shutdown_grace_ms)) = launched else {
+    let Some(domain) = launched else {
         frame.regs[0] = 0;
         return;
     };
-    crate::service::supervisor::DEPLOYED_DOMAINS.lock().push(
-        crate::service::supervisor::DeployedDomain {
-            principal,
-            domain,
-            shutdown_grace_ms,
-            retirement_deadline_ms: None,
-            retirement_reason: charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
-            force_requested: false,
-            teardown: crate::service::supervisor::DeploymentTeardown::NotStarted,
-            retirement_acknowledged: false,
-        },
-    );
     frame.regs[0] = domain.asid as u64;
 }
 
@@ -2312,9 +2283,9 @@ pub(crate) fn retire_deployed_artifact(
 
 // Kernel-only fixture boundary: isolated bookkeeping uses the same ownership
 // state machine without leaving a synthetic deployment in the live registry.
-pub(crate) fn retire_deployed_artifact_with_registry(
+pub(crate) fn retire_deployed_artifact_with_registry<const N: usize>(
     registry: &crate::cpu::multiprocessor::spin::mutex::Mutex<
-        alloc::vec::Vec<crate::service::supervisor::DeployedDomain>,
+        crate::service::supervisor::DeployedRegistry<N>,
     >,
     principal: u64,
     force: bool,
@@ -2330,9 +2301,9 @@ pub(crate) fn retire_deployed_artifact_with_registry(
         return u64::MAX;
     }
     let mut deployed = registry.lock();
-    let position = deployed.iter().position(|entry| entry.principal == principal);
+    let position = deployed.position(|entry| entry.principal == principal);
     let Some(position) = position else {
-        return 0;
+        return u64::from(deployed.preparing(principal));
     };
     let domain = deployed[position].domain;
     use crate::service::supervisor::DeploymentTeardown;
@@ -2399,7 +2370,6 @@ pub(crate) fn retire_deployed_artifact_with_registry(
     let result = teardown.poll();
     let mut deployed = registry.lock();
     let position = deployed
-        .iter()
         .position(|entry| entry.domain.address_space == domain.address_space)
         .expect("claimed deployment retirement entry lost");
     match result {
@@ -2420,7 +2390,8 @@ pub(crate) fn retire_deployed_artifact_with_registry(
         }
         Ok(true) => {}
     }
-    let retired = deployed.swap_remove(position);
+    let retired = deployed.remove(position);
+    drop(deployed);
     let acknowledged = retired.retirement_acknowledged;
     if retired.retirement_reason == charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN {
         if retired.force_requested {

@@ -149,6 +149,12 @@ the corrected RPC polling paths, and the remaining notification gaps.
 
 ## Trust, boot and placement
 
+- Deployment syscalls reserve one `PreparingDeployment` in the existing fixed
+  registry before domain construction. Preparing/published principals share its
+  capacity and duplicate fence. Consume that exact preparation for ordinary
+  rejection or publication; never restore a separate preflight plus growable
+  insertion after launch. Abandonment retains its slot, and retirement of a
+  preparing principal remains Pending. See `docs/reference/scoped-deployment-launch.md`.
 - Kernel admission policy is published once through
   `service::admission::PreparedBootTrust`. Cluster/deployment manifests borrow
   its `BootTrust` view; never configure their policy independently of the kernel

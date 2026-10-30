@@ -1,0 +1,127 @@
+{
+  "date": "2026-10-30",
+  "base_revision": "2cddafadcaa9e61d0e3c3fd9bfc15a33f9b81243",
+  "scope": "Both authorized deployment launch syscalls reserve fixed registry capacity and principal identity before construction. Publication consumes the same exact serial without allocation. No ABI, signature gate, production deadline or physical cleanup policy change.",
+  "source_sha256": {
+    "crates/catten/src/self_test/el0_shutdown.rs": "f4664a9e779e4366364c3e0910fd058a96c15dd8219226f67f03f690a580049e",
+    "crates/catten/src/service/shutdown/tests.rs": "ccabfc141e82665abb477b135d9b3302fa8e37ef99f37f33fdcb64c3746f38fd",
+    "crates/catten/src/service/supervisor.rs": "1bc41cf1ea1d3f3138e4c5cdede7d23fd746d14becbe3c6b784f908e1237058a",
+    "crates/catten/src/service/supervisor/retirement/tests.rs": "47a394bbc80700ca2a0531e9cf48f0376ccc2b9fceacc24cb9a40fd83e4e4844",
+    "crates/catten/src/syscall/mod.rs": "1065d1b22266a0c339b99b0cef73b15a63df15878cdb22e4147298f300d250ec",
+    "crates/catten/src/service/supervisor/deployments.rs": "df55b94bd9b0c17c1008d72a271aba8a0cb3bf0e8a16619748dc516a0d29971d",
+    "crates/catten/src/service/supervisor/deployments/storage.rs": "46f0984caa5abedf57c14f0a5233cc85dc9fc1ad95daf58e23c53dbbd4122ffd",
+    "crates/catten/src/service/supervisor/deployments/storage_tests.rs": "c051e10994d5c4e305d0b92cb5a1612296a4e4aecef4b49283bcb57563cbbeb3",
+    "scripts/run-host-tests.sh": "cb2a7721c9830f4a5c3c2187ef7a85aac8fb00fa477d8bfc3601771955b1f655"
+  },
+  "source_review": "The former separate length/duplicate checks and later Vec::push leave a window for concurrent authorized agent threads. The agent inherits the default 16-thread ceiling. The defect is source-confirmed; no original concurrent EL0 launch capture was produced.",
+  "host_tests": {
+    "passed": 7,
+    "concurrency": "Sixteen host threads hold every reserve attempt before publication; four distinct principals or exactly one shared principal admit in a four-slot registry.",
+    "other_controls": [
+      "64 preparing entries reject a 65th despite zero published entries",
+      "zero/duplicate/exhausted admission rejects without mutation",
+      "cancel/reuse changes serial and rejects stale identity",
+      "removal preserves other preparations and published slot indices",
+      "abandoned preparation/registry retain capacity and payloads",
+      "explicit removal transfers the payload before disposal",
+      "256 complete registry cycles make zero allocation/deallocation calls"
+    ]
+  },
+  "kernel_fixture": "The production containing preparation runs callbacks once outside its exact registry lock; ordinary rejection releases bookkeeping, success publishes the exact unstarted root/grace, and retirement of Preparing returns Pending without reading dummy service pages. Existing terminal-retirement/root retention controls remain enabled.",
+  "validation": [
+    "Seven standalone production-storage host tests passed",
+    "Strict kernel Clippy on AArch64 and x86_64 with acpi configuration passed",
+    "cargo fmt --all -- --check passed",
+    "bash -n scripts/run-host-tests.sh passed",
+    "git diff --check passed"
+  ],
+  "pre_boot_failures": [
+    {
+      "instance": "deployment-registry-20261030-arm",
+      "runner_exit": 137,
+      "diagnostic": "scripts/sign-service-elfs.sh: line 71: 12680 Killed: 9                  cargo +\"$SIGN_TOOLCHAIN\" run --locked --quiet --manifest-path \"$ROOT/tools/cluster-sign/Cargo.toml\" -- elf-sign \"$elf\" \"$name\" \"$KEY_FILE\" \"$class\" \"$version\" \"$rollback\" \"$flags\" \"$provenance\" > /dev/null",
+      "output_sha256": "06c18912614de0d56f4e6adb449edec85797d70ad72e2e554ae90039c5b2978e",
+      "classification": "Signing subprocess killed before kernel build/guest boot; cause unconfirmed. No original partial bundle snapshot retained. Passing repeat is separate."
+    }
+  ],
+  "bundle_digest_algorithm": "sha256 of UTF-8 JSON bundle_sha256 map, sorted keys and compact separators",
+  "native_runs": [
+    {
+      "target": "aarch64",
+      "instance": "deployment-registry-20261030-arm-repeat",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "kernel_sha256": "56f6598aed9de33413e1695196662cd60b387de1db189be89a6b48f784a33700",
+      "bundle_map_sha256": "d98bac6b534e20bbbe14182fa0004c35e0b18038c5a61b96787737c579f89594",
+      "runner_exit": 0,
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "kernel_diagnostics": [
+        "[+    81.571721] SELFTEST COMPLETE: passed=21 failed=0 pending=0 passed_bitmap=0x2123ffff failed_bitmap=0x0 pending_bitmap=0x0",
+        "[+     0.936843] [deployment registry] reserved capacity/identity, Pending retirement, unlocked one-shot launch, rejection and publication passed"
+      ],
+      "host_check_groups": 21
+    },
+    {
+      "target": "x86_64-intel",
+      "instance": "deployment-registry-20261030-intel",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "kernel_sha256": "690d11324603e872efc2c70ef0b57ea7da48c15d099ec2741f51a301628eefe9",
+      "bundle_map_sha256": "7c28711002a2c1d69ed8d2e11937674eb4dfbae6a537b2bd905316ddcf0487a2",
+      "runner_exit": 0,
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "kernel_diagnostics": [
+        "[+    89.469331] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2123bbff failed_bitmap=0x0 pending_bitmap=0x0",
+        "[+     0.956587] [deployment registry] reserved capacity/identity, Pending retirement, unlocked one-shot launch, rejection and publication passed"
+      ],
+      "host_check_groups": 21
+    },
+    {
+      "target": "aarch64-shutdown",
+      "instance": "deployment-registry-20261030-shutdown",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "kernel_sha256": "d7f5955b527afded2af00ddf7905f628a7fe74cf05fed138aa35fc7e1746baa9",
+      "bundle_map_sha256": "d98bac6b534e20bbbe14182fa0004c35e0b18038c5a61b96787737c579f89594",
+      "runner_exit": 0,
+      "result": {
+        "reason": "guest-exited",
+        "snapshot": "unavailable"
+      },
+      "kernel_diagnostics": [
+        "[+     1.459794] SELFTEST COMPLETE: passed=1 failed=0 pending=0 passed_bitmap=0x8000000 failed_bitmap=0x0 pending_bitmap=0x0",
+        "[+     1.081818] Testing cooperative and forced protected-domain shutdown...",
+        "[+     1.130370] [shutdown] cooperative cleanup acknowledged and domain reclaimed",
+        "[+     1.297804] [shutdown] HttpIngress: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+        "[+     1.301016] [shutdown] Time: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+        "[+     1.310780] [shutdown] ObjectStore: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+        "[+     1.337428] [shutdown] DeploymentIngress: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+        "[+     1.347956] [shutdown] DeploymentControl: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+        "[+     1.358604] [shutdown] DeploymentAgent: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+        "[+     1.369164] [shutdown] HttpIngress: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+        "[+     1.379662] [shutdown] Time: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+        "[+     1.390378] [shutdown] ClusterCatalog: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+        "[+     1.400962] [shutdown] ReliableMessaging: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+        "[+     1.411674] [shutdown] Discovery: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+        "[+     1.422200] [shutdown] TcpIp: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+        "[+     1.433102] [shutdown] FrameRouter: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+        "[+     1.443618] [shutdown] ObjectStore: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+        "[+     1.459334] [shutdown] SUCCESS: bounded domain retirement and reverse-order service drain verified",
+        "[+     1.460724] [shutdown] POWER-OFF REQUESTED via PSCI Hvc"
+      ],
+      "host_check_groups": 0
+    }
+  ],
+  "limits": [
+    "Host threads exercise production storage, not concurrent real-EL0 launch flooding. The kernel containing-owner fixture uses an exact unstarted root; it does not execute cryptographic or syscall launch traffic.",
+    "Connector plaintext scratch now reserves fallibly before HPKE writes; actual OOM rejection was not injected through the operational-launch syscall.",
+    "Ordinary cancellation refunds bookkeeping only. Failed constructor rollback retains its existing root/backing policy and grants no physical retry authority. Abandoned preparations remain fenced, without recovery custody.",
+    "Fixed node bookkeeping does not establish general kernel heap/principal admission, all destructor/IRQ contexts, sustained fairness or physical-platform qualification. SEC-07/18 and historical incident dispositions remain unchanged."
+  ]
+}

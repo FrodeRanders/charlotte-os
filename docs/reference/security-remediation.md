@@ -89,6 +89,7 @@ Still required:
 | Shared verified-principal limits for object/heap/image/private-table backing, full user-thread stack capacity and context/retirement metadata | Other families and general kernel heap; independent principals can still reach ordinary node limits |
 | Original-charge retention through moves, weak references, quarantine, root retirement and generation reuse | Concurrent pressure/restart qualification and sustained essential-service progress |
 | Central typed compile-time resource policy and reserved platform shares | Capacity sizing and fairness across complete multi-pool operations |
+| One fixed 64-slot deployment registry reserves pending and published principals before launch; publication allocates no record backing | Native concurrent EL0 launch pressure, real connector-profile OOM and general heap/principal admission remain separate. See [deployment record admission](scoped-deployment-launch.md#deployment-record-admission). |
 
 Contracts: [resource policy](resource-policy.md),
 [principal backing](principal-backing-admission.md),

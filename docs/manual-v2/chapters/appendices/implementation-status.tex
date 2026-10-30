@@ -220,6 +220,10 @@ Source, tests, and repository history remain authoritative.
         and trust-anchor rotation remain controller work. The generic step
         runner, named connector/procedure grants, scoped deployment launch, and
         generation-fenced Kafka commits are implemented. Deployed domains also
+        share a fixed 64-slot node registry: preparation reserves capacity and
+        principal identity before construction, and publication consumes that
+        exact slot without allocation. Preparing retirement remains Pending;
+        abandonment retains the fence. Deployed domains
         receive a kernel-authenticated cooperative drain request and a signed,
         bounded grace period before forced retirement. An off-cluster operator
         can submit a signed, node-targeted shutdown intent to any deployment

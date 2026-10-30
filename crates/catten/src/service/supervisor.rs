@@ -17,7 +17,13 @@ use core::sync::atomic::{
     Ordering,
 };
 
+mod deployments;
 pub(crate) mod observer_tests;
+pub(crate) use deployments::{
+    DEPLOYED_DOMAINS,
+    DeployedRegistry,
+    PreparingDeployment,
+};
 pub(crate) mod retirement;
 pub use retirement::DomainTeardownError;
 pub(crate) use retirement::{
@@ -289,16 +295,6 @@ pub(crate) struct DeployedDomain {
     pub teardown: DeploymentTeardown,
     pub retirement_acknowledged: bool,
 }
-
-/// Domains currently owned by the deployment agent on this node.
-///
-/// Admission enforces this limit independently of the wire format. It keeps a
-/// compromised deployment agent from growing kernel bookkeeping without
-/// bound while allowing a useful set of co-located application components.
-pub(crate) const MAX_DEPLOYED_DOMAINS: usize = 64;
-pub(crate) static DEPLOYED_DOMAINS: spin::LazyLock<
-    crate::cpu::multiprocessor::spin::mutex::Mutex<Vec<DeployedDomain>>,
-> = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(Vec::new()));
 
 /// Retirement outcomes retained for self-tests and debugger observability.
 /// These counters support inspection only; synchronization must use the lifecycle state.

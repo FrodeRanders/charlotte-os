@@ -52,6 +52,13 @@ mkdir -p "$repo_root/target/host-self-tests"
     -o "$repo_root/target/host-self-tests/id-table-tests"
 "$repo_root/target/host-self-tests/id-table-tests"
 
+# Deployment launch capacity includes unpublished reservations. Exercise the
+# exact fixed registry with competing host threads before any publication.
+"$host_rustc" --edition=2024 --test \
+    "$repo_root/crates/catten/src/service/supervisor/deployments/storage.rs" \
+    -o "$repo_root/target/host-self-tests/deployment-registry-tests"
+"$repo_root/target/host-self-tests/deployment-registry-tests"
+
 # Thread retirement storage is prepared before publication; linking/filtering
 # and explicit node release run through a host allocation tracer.
 "$host_rustc" --edition=2024 --test \

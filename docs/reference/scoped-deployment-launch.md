@@ -37,6 +37,41 @@ The old packed-name scoped API and its named wrappers are removed together.
 Scoped launch now accepts signed `CDEPLOY6` variant descriptors; all services must be rebuilt
 for this register contract. No earlier arity is decoded or translated.
 
+## Deployment record admission
+
+Scoped application launch and encrypted connector pickup share one fixed
+64-slot node registry. A slot is reserved for the descriptor-derived nonzero
+principal before the launch callback runs. Preparing and published entries both
+consume capacity and fence duplicate principals. Concurrent callers cannot
+pass independent length/name checks and then overbook the registry.
+
+The consuming preparation retains its exact slot, principal and nonreused serial
+while cryptography and domain construction run outside the registry guard.
+Successful signed launch publishes its complete `DeployedDomain` into that same
+slot without allocation. Removing another record does not move slots or invalidate
+an outstanding preparation. Completed retirement detaches its record before
+post-guard disposal. Connector plaintext scratch reserves fallibly, under its
+existing zeroizing owner, before HPKE writes; allocation rejection starts no domain.
+
+| Phase/outcome | Registry treatment |
+| --- | --- |
+| Full registry, zero/duplicate principal or exhausted serial | Reject before entering the launch callback. |
+| Ordinary launch rejection returning no running domain | Consume the exact preparation and release its bookkeeping slot. This does not refund root/backing charges or prove physical rollback. |
+| Launch success | Consume the preparation and publish once; no second admission or fallible record allocation. |
+| Abandoned preparation | Keep its principal/capacity fenced. There is no automatic cancellation, takeover or recovery owner. |
+| Retirement observes a preparing principal | Return Pending, without runtime-page access, forced cleanup or an absent/completed result. |
+
+Fixed bookkeeping uses inline kernel storage; it does not establish general heap/principal
+admission or sustained fairness. Host controls hold all concurrent preflights
+before publication, check slot/serial reuse and trace allocation-free cycles.
+A serialized kernel fixture exercises the production preparation, rejected and
+successful callbacks, unlocked construction and Pending retirement against an
+exact unstarted root. Native concurrent EL0 launch flooding and real profile-OOM
+injection remain separate qualification.
+The [qualification record](../reports/audits/evidence/2026-10-30-deployment-record-admission.json)
+retains the pre-boot signing interruption separately from the passing native
+security/management and isolated shutdown controls.
+
 ## Retirement owner
 
 Keep `DeployedArtifact` until explicit `poll_retire` returns `Ok(true)`. Pending

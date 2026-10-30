@@ -24,7 +24,11 @@ pub(crate) fn test_rejected_thread_abort(stale: ServiceDomain) {
     // Drop observes the cached failure and performs no retry/status write.
     drop(node);
     let counter = supervisor::DEPLOYMENT_FORCED_RETIREMENTS.load(Ordering::Relaxed);
-    let registry = crate::cpu::multiprocessor::spin::mutex::Mutex::new(alloc::vec![
+    let registry = crate::cpu::multiprocessor::spin::mutex::Mutex::new(
+        supervisor::DeployedRegistry::<1>::new(),
+    );
+    registry.lock().insert(
+        0x6162_6f72_745f_7465,
         supervisor::DeployedDomain {
             principal: 0x6162_6f72_745f_7465,
             domain: stale,
@@ -35,7 +39,7 @@ pub(crate) fn test_rejected_thread_abort(stale: ServiceDomain) {
             retirement_acknowledged: false,
             teardown: supervisor::DeploymentTeardown::NotStarted,
         },
-    ]);
+    );
     for _ in 0..2 {
         assert_eq!(
             crate::syscall::retire_deployed_artifact_with_registry(
@@ -169,7 +173,11 @@ pub(crate) fn test_rejected_service_pages(domain: ServiceDomain) {
         assert!(devices.domains[0].teardown.is_none());
     }
     let counter = supervisor::DEPLOYMENT_ACKNOWLEDGED_RETIREMENTS.load(Ordering::Relaxed);
-    let registry = crate::cpu::multiprocessor::spin::mutex::Mutex::new(alloc::vec![
+    let registry = crate::cpu::multiprocessor::spin::mutex::Mutex::new(
+        supervisor::DeployedRegistry::<1>::new(),
+    );
+    registry.lock().insert(
+        0x7061_6765_7465_7374,
         supervisor::DeployedDomain {
             principal: 0x7061_6765_7465_7374,
             domain,
@@ -180,7 +188,7 @@ pub(crate) fn test_rejected_service_pages(domain: ServiceDomain) {
             retirement_acknowledged: false,
             teardown: supervisor::DeploymentTeardown::NotStarted,
         },
-    ]);
+    );
     for _ in 0..2 {
         assert_eq!(
             crate::syscall::retire_deployed_artifact_with_registry(

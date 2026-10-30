@@ -86,7 +86,7 @@ pub fn test_el0_shutdown() {
         .load(core::sync::atomic::Ordering::Relaxed);
     let forced_before =
         supervisor::NODE_SHUTDOWN_FORCED_RETIREMENTS.load(core::sync::atomic::Ordering::Relaxed);
-    supervisor::DEPLOYED_DOMAINS.lock().extend([
+    for entry in [
         supervisor::DeployedDomain {
             principal: COOPERATIVE_PRINCIPAL,
             domain: cooperative,
@@ -107,7 +107,9 @@ pub fn test_el0_shutdown() {
             teardown: supervisor::DeploymentTeardown::NotStarted,
             retirement_acknowledged: false,
         },
-    ]);
+    ] {
+        supervisor::DEPLOYED_DOMAINS.lock().insert(entry.principal, entry);
+    }
     *TEST_STATE.lock() = Some(TestState {
         cooperative,
         stubborn,

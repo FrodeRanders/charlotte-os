@@ -21,6 +21,7 @@ use crate::{
 
 pub(crate) fn run() {
     crate::service::bootstrap::tests::run();
+    supervisor::deployments::test_preparation(domain());
     test_pending_success();
     test_timeout_registry();
     test_stale_owner();
@@ -95,17 +96,22 @@ fn test_timeout_registry() {
     let owner = DomainTeardown::with_deadline(domain, 0);
     let counter =
         supervisor::DEPLOYMENT_ACKNOWLEDGED_RETIREMENTS.load(core::sync::atomic::Ordering::Relaxed);
-    let registry = crate::cpu::multiprocessor::spin::mutex::Mutex::new(alloc::vec::Vec::new());
-    registry.lock().push(supervisor::DeployedDomain {
-        principal: PRINCIPAL,
-        domain,
-        shutdown_grace_ms: 0,
-        retirement_deadline_ms: Some(0),
-        retirement_reason: charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
-        force_requested: false,
-        retirement_acknowledged: true,
-        teardown: DeploymentTeardown::Polling,
-    });
+    let registry = crate::cpu::multiprocessor::spin::mutex::Mutex::new(
+        supervisor::DeployedRegistry::<1>::new(),
+    );
+    registry.lock().insert(
+        PRINCIPAL,
+        supervisor::DeployedDomain {
+            principal: PRINCIPAL,
+            domain,
+            shutdown_grace_ms: 0,
+            retirement_deadline_ms: Some(0),
+            retirement_reason: charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
+            force_requested: false,
+            retirement_acknowledged: true,
+            teardown: DeploymentTeardown::Polling,
+        },
+    );
     let poll = || {
         crate::syscall::retire_deployed_artifact_with_registry(
             &registry,
