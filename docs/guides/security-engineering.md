@@ -137,6 +137,12 @@ Changing an inner owner's destructor to retain backing does not qualify an activ
 containing destructor. That parent can still enter physical release or destroy
 metadata. Test the relevant parent path with the actual enclosing guards held.
 
+Prepare failure-handling storage before pressure can prevent it. A coordinator
+with a fixed production roster can keep its complete plan inline, avoiding
+fresh allocation while publishing shutdown or transferring teardown owners.
+That removes one admission dependency; worker creation and each later cleanup
+operation still require their own rejection and progress policy.
+
 Capture failure diagnostics alongside the original operation before entering
 the failing phase. A reporting helper that looks up the registry again can
 deadlock beneath a caller's retained guard. Copied identity/phase fields can
@@ -244,6 +250,11 @@ separately bounded owning probes, retain the concurrent pressure, and require al
 results and teardown before passing. Record that change in qualification scope:
 separating fixtures neither improves production latency nor proves fairness.
 Do not restart an accepted operation's deadline when reporting phase progress.
+
+Keep verifier admission consistent with the selected fixture's registered set.
+An isolated shutdown must not start an unrelated verifier whose later success
+is unregistered. Early poweroff on one architecture can hide that background
+failure while another architecture exposes it after the shutdown verdict.
 
 Read [production milestones](../reference/security-remediation.md#production-security-milestones),
 [secret-state limits](../reference/secret-state-lifetimes.md),

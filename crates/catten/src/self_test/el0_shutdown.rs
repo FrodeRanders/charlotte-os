@@ -294,12 +294,12 @@ extern "C" fn verify_el0_shutdown() {
     let mut coordinator = NodeShutdownCoordinator::new(
         node_deadline,
         1_000,
-        alloc::vec![
+        [
             ShutdownPhaseSpec::one(ShutdownPhase::HttpIngress, phased[0]),
             ShutdownPhaseSpec::one(ShutdownPhase::Time, phased[1]),
             ShutdownPhaseSpec::one(ShutdownPhase::ObjectStore, phased[2]),
         ],
-        alloc::vec![DeviceShutdownDomain::new(DeviceShutdownKind::EntropyDriver, device)],
+        [DeviceShutdownDomain::new(DeviceShutdownKind::EntropyDriver, device)],
     );
     assert_eq!(
         coordinator.poll(),

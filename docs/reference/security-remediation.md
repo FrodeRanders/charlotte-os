@@ -90,6 +90,7 @@ Still required:
 | Original-charge retention through moves, weak references, quarantine, root retirement and generation reuse | Concurrent pressure/restart qualification and sustained essential-service progress |
 | Central typed compile-time resource policy and reserved platform shares | Capacity sizing and fairness across complete multi-pool operations |
 | One fixed 64-slot deployment registry reserves pending and published principals before launch; publication allocates no record backing | Native concurrent EL0 launch pressure, real connector-profile OOM and general heap/principal admission remain separate. See [deployment record admission](scoped-deployment-launch.md#deployment-record-admission). |
+| [Inline node/device shutdown plans](live-address-space-operations.md#node-shutdown-plan-ownership) retain eleven service phases and three hardware owners without plan allocation or active abandonment cleanup | Shutdown worker construction/publication still uses mandatory thread spawning. Later cleanup admission, readiness and progress under real backing pressure remain open. |
 
 Contracts: [resource policy](resource-policy.md),
 [principal backing](principal-backing-admission.md),

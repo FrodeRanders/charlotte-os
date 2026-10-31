@@ -183,6 +183,32 @@ and physical-platform quiescence remain open. See
 [hardware quiescence](hardware-quiescence.md). No new wire API, capability right
 or metadata budget follows from these ownership boundaries.
 
+## Node shutdown plan ownership
+
+The node coordinator stores its complete plan inline: at most eleven ordered
+service phases with one domain each, followed by three hardware domains (NIC,
+block and entropy). These are structural bounds from `SteadyState`, not a new
+application quota. Missing boot groups compact without changing dependency
+order. Plan construction, entry removal and device-owner transfer allocate no
+bookkeeping backing, including construction under the coordinator publication guard.
+Each entry keeps its captured service identity and existing `DomainTeardown`.
+Only confirmed reclamation removes it; hardware domains transfer once after
+every high-level phase completes and still require device-quiesced exit.
+
+Both containing coordinators retain every unfinished entry on abandonment.
+Their inline arrays suppress nested field destruction without root/thread
+lookups, aborts, callbacks, logging or allocation. Abandonment is terminal: it
+does not restore the steady-state roster, resume polling through copied handles
+or authorize cleanup/replay. Explicit polling remains outside the coordinator
+guard and retains the original deadlines and physical completion requirements.
+
+The [qualification record](../reports/audits/evidence/2026-10-31-shutdown-plan-storage.json)
+covers storage and containing-owner behavior. It does not establish shutdown
+under general heap exhaustion: worker thread construction/publication still
+uses the mandatory spawn path, and later teardown has its own admission and
+progress boundaries. The worker's readiness/polling and exceptional caller
+contexts remain separate SEC-06/07/18 work.
+
 ## Supervisor runtime-page access
 
 `service::bootstrap::with_service_pages(domain, callback)` admits an exact

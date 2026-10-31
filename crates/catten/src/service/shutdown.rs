@@ -6,13 +6,13 @@
 //! drivers are retained as an explicit remainder because aborting a domain is
 //! not proof that its device has stopped DMA or completed durable flushes.
 
-extern crate alloc;
-
-use alloc::vec::Vec;
+mod storage;
 use core::sync::atomic::{
     AtomicU64,
     Ordering,
 };
+
+use storage::RetainedArray;
 
 use crate::{
     cpu::scheduler::{
@@ -76,6 +76,7 @@ pub enum ShutdownPhase {
 }
 
 const SHUTDOWN_PHASE_COUNT: usize = ShutdownPhase::ObjectStore as usize + 1;
+const MAX_DEVICE_DOMAINS: usize = 3;
 
 /// How domains in one reverse-dependency phase actually retired.
 ///
@@ -164,7 +165,7 @@ struct DomainRetirement {
 
 pub(crate) struct ShutdownPhaseSpec {
     phase: ShutdownPhase,
-    domains: Vec<DomainRetirement>,
+    domains: RetainedArray<DomainRetirement, 1>,
     deadline_ms: Option<u64>,
 }
 
@@ -172,7 +173,7 @@ impl ShutdownPhaseSpec {
     pub(crate) fn one(phase: ShutdownPhase, domain: ServiceDomain) -> Self {
         Self {
             phase,
-            domains: alloc::vec![DomainRetirement {
+            domains: [DomainRetirement {
                 domain,
                 request_published: false,
                 page_failed: false,
@@ -180,7 +181,8 @@ impl ShutdownPhaseSpec {
                 abort_failed: false,
                 teardown: None,
                 lifecycle_status: None,
-            }],
+            }]
+            .into(),
             deadline_ms: None,
         }
     }
@@ -193,8 +195,8 @@ impl ShutdownPhaseSpec {
 pub struct NodeShutdownCoordinator {
     node_deadline_ms: u64,
     phase_grace_ms: u64,
-    phases: Vec<ShutdownPhaseSpec>,
-    device_domains: Vec<DeviceShutdownDomain>,
+    phases: RetainedArray<ShutdownPhaseSpec, SHUTDOWN_PHASE_COUNT>,
+    device_domains: RetainedArray<DeviceShutdownDomain, MAX_DEVICE_DOMAINS>,
     device_domains_transferred: bool,
     phase_outcomes: [ShutdownPhaseOutcome; SHUTDOWN_PHASE_COUNT],
 }
@@ -203,14 +205,14 @@ impl NodeShutdownCoordinator {
     pub(crate) fn new(
         node_deadline_ms: u64,
         phase_grace_ms: u64,
-        phases: Vec<ShutdownPhaseSpec>,
-        device_domains: Vec<DeviceShutdownDomain>,
+        phases: impl Into<RetainedArray<ShutdownPhaseSpec, SHUTDOWN_PHASE_COUNT>>,
+        device_domains: impl Into<RetainedArray<DeviceShutdownDomain, MAX_DEVICE_DOMAINS>>,
     ) -> Self {
         Self {
             node_deadline_ms,
             phase_grace_ms,
-            phases,
-            device_domains,
+            phases: phases.into(),
+            device_domains: device_domains.into(),
             device_domains_transferred: false,
             phase_outcomes: [ShutdownPhaseOutcome::default(); SHUTDOWN_PHASE_COUNT],
         }
@@ -224,52 +226,57 @@ impl NodeShutdownCoordinator {
         node_deadline_ms: u64,
         phase_grace_ms: u64,
     ) -> Self {
-        let mut phases = Vec::new();
-        if let Some(deployment) = state.deployment {
-            phases
-                .push(ShutdownPhaseSpec::one(ShutdownPhase::DeploymentIngress, deployment.ingress));
-            phases.push(ShutdownPhaseSpec::one(
-                ShutdownPhase::DeploymentControl,
-                deployment.clusterctl,
-            ));
-            phases.push(ShutdownPhaseSpec::one(ShutdownPhase::DeploymentAgent, deployment.agent));
-        }
-        if let Some(appliance) = state.appliance {
-            phases.push(ShutdownPhaseSpec::one(ShutdownPhase::HttpIngress, appliance.httpd));
-            phases.push(ShutdownPhaseSpec::one(ShutdownPhase::Time, appliance.time));
-        }
-        if let Some(cluster) = state.cluster {
-            phases.push(ShutdownPhaseSpec::one(ShutdownPhase::ClusterCatalog, cluster.dns));
-            phases.push(ShutdownPhaseSpec::one(ShutdownPhase::ReliableMessaging, cluster.relmsg));
-            phases.push(ShutdownPhaseSpec::one(ShutdownPhase::Discovery, cluster.disco));
-        }
-        if let Some(appliance) = state.appliance {
-            phases.push(ShutdownPhaseSpec::one(ShutdownPhase::TcpIp, appliance.tcpip));
-        }
-        if let Some(network) = state.network {
-            phases.push(ShutdownPhaseSpec::one(ShutdownPhase::FrameRouter, network.frouter));
-        }
-        if let Some(storage) = state.storage {
-            phases.push(ShutdownPhaseSpec::one(ShutdownPhase::ObjectStore, storage.objstore));
-        }
-
-        let mut device_domains = Vec::new();
-        if let Some(network) = state.network {
-            device_domains.push(DeviceShutdownDomain::new(
-                DeviceShutdownKind::NetworkDriver(network.driver_elf),
-                network.driver,
-            ));
-        }
-        if let Some(storage) = state.storage {
-            device_domains.push(DeviceShutdownDomain::new(
-                DeviceShutdownKind::BlockDriver(storage.driver_elf),
-                storage.driver,
-            ));
-        }
-        if let Some(entropy) = state.entropy {
-            device_domains
-                .push(DeviceShutdownDomain::new(DeviceShutdownKind::EntropyDriver, entropy));
-        }
+        // One statically bounded entry per production service. Optional boot
+        // groups compact in dependency order without heap allocation, even
+        // while begin_node_shutdown retains its masking publication guard.
+        let phases = RetainedArray::from_options([
+            state.deployment.map(|group| {
+                ShutdownPhaseSpec::one(ShutdownPhase::DeploymentIngress, group.ingress)
+            }),
+            state.deployment.map(|group| {
+                ShutdownPhaseSpec::one(ShutdownPhase::DeploymentControl, group.clusterctl)
+            }),
+            state
+                .deployment
+                .map(|group| ShutdownPhaseSpec::one(ShutdownPhase::DeploymentAgent, group.agent)),
+            state
+                .appliance
+                .map(|group| ShutdownPhaseSpec::one(ShutdownPhase::HttpIngress, group.httpd)),
+            state.appliance.map(|group| ShutdownPhaseSpec::one(ShutdownPhase::Time, group.time)),
+            state
+                .cluster
+                .map(|group| ShutdownPhaseSpec::one(ShutdownPhase::ClusterCatalog, group.dns)),
+            state.cluster.map(|group| {
+                ShutdownPhaseSpec::one(ShutdownPhase::ReliableMessaging, group.relmsg)
+            }),
+            state
+                .cluster
+                .map(|group| ShutdownPhaseSpec::one(ShutdownPhase::Discovery, group.disco)),
+            state.appliance.map(|group| ShutdownPhaseSpec::one(ShutdownPhase::TcpIp, group.tcpip)),
+            state
+                .network
+                .map(|group| ShutdownPhaseSpec::one(ShutdownPhase::FrameRouter, group.frouter)),
+            state
+                .storage
+                .map(|group| ShutdownPhaseSpec::one(ShutdownPhase::ObjectStore, group.objstore)),
+        ]);
+        let device_domains = RetainedArray::from_options([
+            state.network.map(|group| {
+                DeviceShutdownDomain::new(
+                    DeviceShutdownKind::NetworkDriver(group.driver_elf),
+                    group.driver,
+                )
+            }),
+            state.storage.map(|group| {
+                DeviceShutdownDomain::new(
+                    DeviceShutdownKind::BlockDriver(group.driver_elf),
+                    group.driver,
+                )
+            }),
+            state
+                .entropy
+                .map(|domain| DeviceShutdownDomain::new(DeviceShutdownKind::EntropyDriver, domain)),
+        ]);
 
         Self::new(node_deadline_ms, phase_grace_ms, phases, device_domains)
     }
@@ -420,7 +427,9 @@ impl NodeShutdownCoordinator {
 
     /// Hardware-root domains become available only after every higher-level
     /// service has exited and been reclaimed.
-    pub(crate) fn take_device_domains(&mut self) -> Option<Vec<DeviceShutdownDomain>> {
+    pub(crate) fn take_device_domains(
+        &mut self,
+    ) -> Option<RetainedArray<DeviceShutdownDomain, MAX_DEVICE_DOMAINS>> {
         if !self.phases.is_empty() || self.device_domains_transferred {
             return None;
         }
@@ -441,14 +450,17 @@ impl NodeShutdownCoordinator {
 #[must_use = "a device shutdown coordinator must be retained until quiescence is verified"]
 pub struct DeviceShutdownCoordinator {
     deadline_ms: u64,
-    domains: Vec<DeviceShutdownDomain>,
+    domains: RetainedArray<DeviceShutdownDomain, MAX_DEVICE_DOMAINS>,
 }
 
 impl DeviceShutdownCoordinator {
-    pub(crate) fn new(deadline_ms: u64, domains: Vec<DeviceShutdownDomain>) -> Self {
+    pub(crate) fn new(
+        deadline_ms: u64,
+        domains: impl Into<RetainedArray<DeviceShutdownDomain, MAX_DEVICE_DOMAINS>>,
+    ) -> Self {
         Self {
             deadline_ms,
-            domains,
+            domains: domains.into(),
         }
     }
 
@@ -535,66 +547,10 @@ impl DeviceShutdownCoordinator {
     }
 }
 
-impl Drop for DeviceShutdownCoordinator {
-    fn drop(&mut self) {
-        if !self.domains.is_empty() {
-            crate::logln!(
-                "[shutdown] retaining {} unverified hardware-root domain(s)",
-                self.domains.len()
-            );
-            core::mem::forget(core::mem::take(&mut self.domains));
-        }
-    }
-}
-
-impl Drop for NodeShutdownCoordinator {
-    fn drop(&mut self) {
-        for phase in &mut self.phases {
-            for retirement in &mut phase.domains {
-                if retirement.teardown.is_none()
-                    && !retirement.force_requested
-                    && !retirement.abort_failed
-                    && !retirement.page_failed
-                    && !supervisor::domain_exited(&retirement.domain)
-                {
-                    match abort_domain_threads_with_request(
-                        retirement.domain.address_space,
-                        |root| {
-                            let pages = bootstrap::ServicePages::borrow(root, &retirement.domain)
-                                .map_err(|_| {
-                                crate::cpu::scheduler::system_scheduler::Error::ThreadTerminated
-                            })?;
-                            pages.write_request(
-                                charlotte_launch::lifecycle::STATE_FORCE_TERMINATING,
-                                charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
-                                self.node_deadline_ms,
-                            );
-                            Ok(())
-                        },
-                    ) {
-                        Ok(()) => retirement.force_requested = true,
-                        Err(error) => crate::logln!(
-                            "[shutdown] retained domain after exact thread abort rejection: {:?}",
-                            error
-                        ),
-                    }
-                }
-            }
-        }
-        // Hardware-root domains cannot be safely aborted until their adapter
-        // has acknowledged device reset/quiescence and IOMMU invalidation.
-        // There is no generic device-quiescence owner yet, so an exceptional
-        // coordinator drop deliberately leaves those domains running rather
-        // than converting uncertainty into unsafe teardown.
-        if !self.device_domains_transferred && !self.device_domains.is_empty() {
-            crate::logln!(
-                "[shutdown] coordinator dropped with {} hardware-root domain(s) still live",
-                self.device_domains.len()
-            );
-            core::mem::forget(core::mem::take(&mut self.device_domains));
-        }
-    }
-}
+// Both coordinators retain their complete inline arrays on abandonment.
+// RetainedArray suppresses every payload destructor: no abort, root lookup,
+// callback, logging or allocator work may run beneath unknown caller guards.
+// Explicit poll removes only owners with confirmed phase-specific completion.
 
 /// Atomically transfer the published service set into the shutdown state
 /// machine. This is a kernel-internal authority boundary; a replicated and

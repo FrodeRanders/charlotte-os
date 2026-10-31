@@ -1148,6 +1148,14 @@ the frame router; and finally the object store. Each phase must be
 generation-safely reclaimed before the next receives its request. Per-phase
 grace is capped by the enclosing node deadline.
 
+The plan uses inline storage for eleven single-domain service phases and three
+hardware domains. Construction and owner transfer allocate no plan backing.
+Abandoning either coordinator retains every unfinished teardown owner without
+root lookups, thread aborts, logging, or nested field destruction; explicit
+polling remains the only way to advance reclamation. This does not establish
+shutdown under heap exhaustion: worker construction and later cleanup admission
+retain separate allocation and progress requirements.
+
 The remaining NIC, block, and entropy domains transfer exactly once to a
 device-quiescence coordinator. It never converts a deadline into an
 unconditional driver abort. Ordinary lifecycle readiness is insufficient: a

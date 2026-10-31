@@ -576,13 +576,22 @@ propagated `NodeShutdown` request. The other is deliberately unresponsive: its
 signed child grace expires before the enclosing node deadline, so it must be
 forcibly terminated and reclaimed. The test also requires the distinct
 acknowledged/forced node-shutdown counters to advance. The same switch is
-available through `scripts/run-x86_64.sh`. Three additional cooperative probes
+available through `scripts/run-x86_64.sh`. The isolated profile admits neither
+the async demonstration nor the separate scheduler-lifecycle verifier; its
+registered deferred set contains only shutdown. Three additional cooperative probes
 exercise the generic node-service coordinator and require ingress, dependent
 service, and storage phases to remain strictly gated; hardware-root domain
 ownership must not become available until all three phases are reclaimed. A
 fourth probe represents a hardware adapter: the device coordinator must publish
 its request, observe the distinct `DEVICE_QUIESCED` acknowledgement and thread
 exit, and only then reclaim its domain.
+
+Synchronous kernel probes also construct the full eleven-phase/three-device
+production plan and abandon both containing coordinators while the actual
+lifecycle, root, thread-table and heap guards are held. This checks inline
+bookkeeping and inert fallback, not general heap-pressure progress. The host
+suite exercises the same storage with allocation/deallocation tracing, all
+2,048 optional-phase subsets, explicit owner removal and nested abandonment.
 
 The verifier then exercises the production steady-state owners in addition to
 the probes. It drains and reclaims the real object store, transfers the actual NVMe,

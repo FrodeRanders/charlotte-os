@@ -1,0 +1,153 @@
+{
+  "date": "2026-10-31",
+  "base_revision": "5d7f96dccbffd0179b55cd14aeb482cdaf2cca2d",
+  "scope": "SEC-07/18 shutdown-plan bookkeeping and containing-owner abandonment. Fixed eleven-phase/three-device inline storage removes plan allocation under the coordinator guard; terminal abandonment performs no cleanup. Explicit phase/device completion policy and deadlines are unchanged. Isolated fixture admission also excludes its unregistered scheduler verifier and async demonstration.",
+  "source_sha256": {
+    "crates/catten/src/main.rs": "5f808322ff43745065cb5a5406e6473dc66a309955e571d2efe5eab613d35842",
+    "crates/catten/src/self_test/el0_shutdown.rs": "0f47364d85ac888b561fba916e2d3b665eae54b4a91b79c192f8485be9d1caf2",
+    "crates/catten/src/service/shutdown.rs": "a180a742184d1f96044af2d52fef83ec57cdd961867d91af0c089227f0f19cf8",
+    "crates/catten/src/service/shutdown/tests.rs": "5a64352abf4b34300d486fd1d8d567a630d6e237620096d26fdbbeaef056125f",
+    "crates/catten/src/service/shutdown/storage.rs": "f09326f81aab05f6d4ab7650cb8111397e4e9aad2ada8086d3752deaff6b59ed",
+    "crates/catten/src/service/shutdown/storage_tests.rs": "1e284d0bf72a4010934fed2ddb84e6440039f46a93b5e81b183a6f2c66a65748",
+    "scripts/run-host-tests.sh": "ae11ccce68d04c369dcd2c2a539f50e672b910c2989209d8c426cac0353d4fbb"
+  },
+  "source_review": {
+    "baseline_shutdown_sha256": "063a1845808220a63ddd89ddadf63f98f6f72cdf9afcfde05302a6d2e437969a",
+    "baseline_main_sha256": "8a018c87df65126f72940afbb19c54139c222d3f27f77ac580eeb2d45d59a423",
+    "finding": "The old production plan allocates phase, per-phase and device Vec backing during begin_node_shutdown under its masking coordinator guard. Its parent Drop looks up/aborts domains and later destroys phase backing; device Drop logs. This is source-confirmed; no general heap-exhaustion failure was induced."
+  },
+  "host_tests": {
+    "passed": 5,
+    "controls": [
+      "256 full inline construction/removal/device-transfer cycles: zero allocation/deallocation calls",
+      "all 2048 optional-phase subsets preserve order",
+      "nested parent abandonment invokes zero payload destructors and zero allocator calls",
+      "explicit ordered/swap removal transfers exactly one owner before destruction",
+      "zero-capacity and empty plans"
+    ],
+    "capacity_negative_control": "A four-entry array into capacity three fails rustc with E0080: assertion failed: M <= N."
+  },
+  "kernel_probe": "Actual maximum production constructor, blocked premature device transfer, one-time post-phase device transfer, and both containing fallbacks run while actual lifecycle, address-space-table, master-thread-table and heap guards are held. Includes an initialized but unstarted DomainTeardown; generic host payload probes separately observe nested destructor suppression. Node/device owner sizes are 5856/1168 bytes on both targets. Existing stale-page, rejected abort, failed reclamation and poll-claim probes remain enabled in the ordinary suite.",
+  "failed_guest_run": {
+    "instance": "shutdown-storage-20261031-intel",
+    "target": "x86_64-intel",
+    "cpus": 4,
+    "kernel_sha256": "b6a68bd18157e223dd569e0974d431ca7ef7bf9d5c174c4d134ed5e3291c0a3b",
+    "serial_sha256": "9e4fb174615cbe532c67a135d9075fe421361a87c04211d0e658d3733e1d8962",
+    "runner_exit": 1,
+    "result": {
+      "reason": "kernel-panic",
+      "errors": [],
+      "qmp": "captured",
+      "lldb": {
+        "exit_code": 0,
+        "reported_errors": false
+      },
+      "cpu_count": 4,
+      "snapshot": "captured",
+      "elapsed_seconds": 3.2019594170269556
+    },
+    "diagnostics": [
+      "[+     1.107265] SELFTEST COMPLETE: passed=1 failed=0 pending=0 passed_bitmap=0x8000000 failed_bitmap=0x0 pending_bitmap=0x0",
+      "[+     1.131257] [scheduler remote abort] target stayed on LP1 through request, late admission was rejected, and owner-side retirement completed off-CPU.",
+      "Kernel panic:",
+      "panicked at crates/catten/src/self_test/results.rs:335:5:",
+      "unregistered deferred self-test reported success"
+    ],
+    "cause": "The isolated profile registers only Shutdown, but main still starts scheduler-lifecycle workers. Their later SchedulerLifecycle success reaches the exact unregistered-result assertion after Shutdown passed. The main cfg correction is the only subsequent Rust behavior change before the corrected isolated repeat. The initial ARM isolated pass powered off before this verifier completed; it supplies no evidence that the old fixture composition was safe."
+  },
+  "native_runs": [
+    {
+      "target": "aarch64",
+      "profile": "ordinary",
+      "instance": "shutdown-plan-guards-20261031-arm",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "kernel_sha256": "fa496953a79328367680ea272a32e030df8b05eac05c81239ec49a5e89c13674",
+      "bundle_map_sha256": "69a65dc9795c838d67fe3afdc92eb123ccf4ec8c0f85c74e61739d4833de6895",
+      "runner_exit": 0,
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "host_check_groups": 21,
+      "diagnostics": [
+        "[+     1.365954] [shutdown storage] full 11-phase/3-device plan, one-time transfer and inert parent abandonment passed beneath lifecycle/root/thread/heap guards; node_bytes=5856 device_bytes=1168",
+        "[+    16.922602] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x23ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "target": "x86_64-intel",
+      "profile": "ordinary",
+      "instance": "shutdown-plan-guards-20261031-intel",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "kernel_sha256": "350facbaa2082f314a46f072d451d40e3fddfb2cb379340b1efedc62010106fe",
+      "bundle_map_sha256": "b020d0c3db9b86f0abd466eab16504c11c05f864d00b9f71502dd70f79b8cd84",
+      "runner_exit": 0,
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "host_check_groups": 21,
+      "diagnostics": [
+        "[+     0.959888] [shutdown storage] full 11-phase/3-device plan, one-time transfer and inert parent abandonment passed beneath lifecycle/root/thread/heap guards; node_bytes=5856 device_bytes=1168",
+        "[+    21.017100] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x23bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "target": "aarch64",
+      "profile": "isolated-shutdown-fixed",
+      "instance": "shutdown-storage-20261031-arm-fixed",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "kernel_sha256": "839310ef784903b023051efdbeb138aeb08a610f014512a5b4ae4b2b9bc4f28c",
+      "bundle_map_sha256": "69a65dc9795c838d67fe3afdc92eb123ccf4ec8c0f85c74e61739d4833de6895",
+      "runner_exit": 0,
+      "result": {
+        "reason": "guest-exited",
+        "snapshot": "unavailable"
+      },
+      "host_check_groups": 0,
+      "diagnostics": [
+        "[+     2.472092] [shutdown] production object store and 3 device adapter(s) flushed/reset and quiesced",
+        "[+     2.473024] SELFTEST COMPLETE: passed=1 failed=0 pending=0 passed_bitmap=0x8000000 failed_bitmap=0x0 pending_bitmap=0x0",
+        "[+     2.473972] [shutdown] POWER-OFF REQUESTED via PSCI Hvc"
+      ]
+    },
+    {
+      "target": "x86_64-intel",
+      "profile": "isolated-shutdown-fixed",
+      "instance": "shutdown-storage-20261031-intel-fixed",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "kernel_sha256": "60bb9dd7451199439353c3d57371ca5e626daae9a3b9892741168be4aec6a1c0",
+      "bundle_map_sha256": "b020d0c3db9b86f0abd466eab16504c11c05f864d00b9f71502dd70f79b8cd84",
+      "runner_exit": 0,
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "host_check_groups": 0,
+      "diagnostics": [
+        "[+     1.053929] [shutdown] production object store and 3 device adapter(s) flushed/reset and quiesced",
+        "[+     1.054805] SELFTEST COMPLETE: passed=1 failed=0 pending=0 passed_bitmap=0x8000000 failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    }
+  ],
+  "bundle_digest_algorithm": "sha256 of UTF-8 JSON bundle_sha256 map, sorted keys and compact separators",
+  "static_validation": [
+    "Strict kernel Clippy: acpi, no default features, AArch64 and x86_64, -D warnings",
+    "cargo fmt --all -- --check",
+    "bash -n scripts/run-host-tests.sh",
+    "git diff --check"
+  ],
+  "limits": [
+    "No finding disposition changes; no sustained pressure/fairness, full heap accounting or arbitrary outer-context qualification.",
+    "Shutdown worker creation/publication still uses mandatory spawning; later teardown admission and readiness are separate work.",
+    "Abandonment is terminal retention, not recoverable custody, physical-release proof or replay authority.",
+    "Isolated shutdown checks actual object-store and three device-adapter flush/reset/quiescence, not outstanding-I/O fault recovery or physical platforms.",
+    "Ordinary ARM ran before the isolated-only main cfg correction; its ordinary-profile selection and storage code are unchanged.",
+    "Temporary full traces and QMP/LLDB snapshots are not version-controlled; the relevant failure signature, result and artifact identities are preserved here."
+  ]
+}

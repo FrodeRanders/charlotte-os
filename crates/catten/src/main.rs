@@ -332,11 +332,14 @@ extern "C" fn finish_boot() {
     // Spawn the async-syscall demonstration (submit -> async worker -> complete
     // -> wake), exercising the completion ABI end-to-end once the scheduler is
     // active.
-    #[cfg(not(feature = "live_upgrade_test"))]
+    #[cfg(not(any(feature = "live_upgrade_test", feature = "shutdown_test")))]
     crate::demo::spawn_async_syscall_demo();
     // Admit the controlled scheduler-rebalancing workload last so its initial
     // co-location cannot be cancelled out by later least-loaded admissions.
-    #[cfg(not(feature = "live_upgrade_test"))]
+    // Isolated shutdown registers only its own verifier. Unregistered
+    // lifecycle workers can otherwise report success after shutdown's verdict
+    // (x86) or be hidden by earlier platform power-off (Arm).
+    #[cfg(not(any(feature = "live_upgrade_test", feature = "shutdown_test")))]
     crate::self_test::scheduler_lifecycle::test_scheduler_lifecycle();
     crate::self_test::results::finalize_and_start_coordinator();
     // Publish the node's boot-done marker once the boot storm settles, so

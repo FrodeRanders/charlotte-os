@@ -59,6 +59,13 @@ mkdir -p "$repo_root/target/host-self-tests"
     -o "$repo_root/target/host-self-tests/deployment-registry-tests"
 "$repo_root/target/host-self-tests/deployment-registry-tests"
 
+# Shutdown bookkeeping stays inline during construction, phase advancement,
+# one-time device transfer and abandonment, including nested owner retention.
+"$host_rustc" --edition=2024 --test \
+    "$repo_root/crates/catten/src/service/shutdown/storage.rs" \
+    -o "$repo_root/target/host-self-tests/shutdown-storage-tests"
+"$repo_root/target/host-self-tests/shutdown-storage-tests"
+
 # Thread retirement storage is prepared before publication; linking/filtering
 # and explicit node release run through a host allocation tracer.
 "$host_rustc" --edition=2024 --test \

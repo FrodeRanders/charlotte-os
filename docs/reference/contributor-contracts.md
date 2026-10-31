@@ -659,6 +659,11 @@ the corrected RPC polling paths, and the remaining notification gaps.
   staged close or write a physical frame from a copied service handle. Cache
   rejected access without advancing acknowledgement, authority or device gating.
   Complete ordinary access explicitly; abandonment retains root/image backing.
+  Node/device shutdown plans stay inline at their fixed production maxima.
+  Abandoning either containing coordinator retains every unfinished teardown
+  owner without aborts, root/thread lookup, logging or nested destruction.
+  Only explicit polling in a qualified context may advance or remove entries;
+  device ownership transfers once after complete high-level reclamation.
   Final user-root close detaches into `RetiredAddressSpace`/`RetiredEntry`,
   leasing the software slot through post-guard invalidation and destruction.
   Never take/drop a published user root under the address-space table guard or
