@@ -21,6 +21,7 @@ use crate::memory::{
 pub(super) const DOMAIN_PAGES: u64 = crate::resource_policy::POLICY.memory.dma_domain_pages;
 const UNIT_PAGES: u64 = crate::resource_policy::POLICY.memory.dma_unit_pages;
 const PAGE: usize = 4096;
+#[cfg(any(test, feature = "kernel_tests"))]
 mod tests;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -112,6 +113,7 @@ impl Tables {
 
     /// Prepare private backing before hardware publication. Ordinary rejection
     /// explicitly rolls back its prefix; abandonment never runs physical work.
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn prepare_unpublished<T>(
         scope: Scope,
         prepare: impl FnOnce(&mut Self) -> Result<T, Error>,
@@ -128,6 +130,7 @@ impl Tables {
 
     /// This consumes only a private, never hardware-published owner. Rejected
     /// physical release freezes the original charge; Drop cannot retry it.
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn cancel_unpublished(mut self) -> Result<(), Error> {
         if self.state != State::Unpublished {
             return Err(Error::MapFailed);
@@ -168,13 +171,13 @@ impl Tables {
         // in this exact private ledger, never frees it under the backend guard.
         if self.scope == Scope::Domain
             && self.state == State::Unpublished
-            && super::test_reject_private_allocation(self.pages)
+            && test_fault!(super::test_reject_private_allocation(self.pages))
         {
             return Err(Error::MapFailed);
         }
         if self.scope == Scope::Unit
             && self.state == State::Unpublished
-            && super::unit_initialization::reject_allocation()
+            && test_fault!(super::unit_initialization::reject_allocation())
         {
             return Err(Error::MapFailed);
         }
@@ -286,10 +289,12 @@ impl Tables {
         Ok(())
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn pages(&self) -> u64 {
         self.pages
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn set_limit(&mut self, pages: u64) {
         assert!(
             pages >= self.pages
@@ -372,12 +377,16 @@ impl Drop for PreparingRegion<'_> {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn used() -> (u64, u64) {
     let pool = POOL.lock();
     (pool.total.used().pages, pool.clients.used().pages)
 }
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) struct ClientPressure(Amount);
+#[cfg(any(test, feature = "kernel_tests"))]
 impl ClientPressure {
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn new() -> Self {
         let mut pool = POOL.lock();
         let old = pool.clients.limit();
@@ -386,15 +395,18 @@ impl ClientPressure {
         Self(old)
     }
 }
+#[cfg(any(test, feature = "kernel_tests"))]
 impl Drop for ClientPressure {
     fn drop(&mut self) {
         POOL.lock().clients.set_limit(self.0).unwrap();
     }
 }
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_admission() {
     tests::run();
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_drop_under_guards(action: impl FnOnce()) {
     tests::drop_under_guards(action);
 }

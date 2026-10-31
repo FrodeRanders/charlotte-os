@@ -85,6 +85,7 @@ impl PendingPin {
             release_record(record);
         }
         if self.0.value_mut().preparing.is_some() {
+            #[cfg(feature = "kernel_tests")]
             tests::boundary(true);
             drop(self.0.value_mut().preparing.take());
         }
@@ -146,12 +147,14 @@ impl Records {
 }
 fn release_record(mut record: RetiredMapping) {
     object::unpin_dma(record.value_mut().1.pin.take().unwrap());
+    #[cfg(feature = "kernel_tests")]
     tests::boundary(true);
     record.release();
 }
-fn prepare<T>(stage: usize) -> Result<PreparedEntry<T>, Error> {
+fn prepare<T>(_stage: usize) -> Result<PreparedEntry<T>, Error> {
+    #[cfg(feature = "kernel_tests")]
     tests::boundary(false);
-    if tests::reject(stage) {
+    if test_fault!(tests::reject(_stage)) {
         return Err(Error::Memory);
     }
     PreparedEntry::try_new().map_err(|_| Error::Memory)
@@ -191,15 +194,18 @@ impl WalkerCache {
 
     pub(super) fn release(mut self) {
         if let Some(node) = self.preparing.take() {
+            #[cfg(feature = "kernel_tests")]
             tests::boundary(true);
             drop(node);
         }
         while let Some((&key, _)) = self.tables.first_key_value() {
             let node = self.tables.take(&key).unwrap();
+            #[cfg(feature = "kernel_tests")]
             tests::boundary(true);
             node.release();
         }
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) mod tests;

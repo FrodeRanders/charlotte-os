@@ -185,6 +185,7 @@ pub(crate) fn prepare_backing(principal: u64, platform: bool) -> Result<BackingC
     Ok(BackingCharge::try_new(principal, Amount::default()).expect("prepared principal missing"))
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn backing_used(principal: u64) -> Amount {
     HISTORY.lock().get(&principal).map_or(Amount::default(), |entry| entry.backing.used())
 }
@@ -209,19 +210,26 @@ pub(super) fn heap_peak(principal: u64) -> u64 {
     HISTORY.lock().get(&principal).map_or(0, |entry| entry.heap_bytes)
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn with_locked<R>(work: impl FnOnce() -> R) -> R {
     let _history = HISTORY.lock();
     work()
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn available() -> bool {
     HISTORY.try_lock().is_some()
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(in crate::memory) mod admission_tests;
+#[cfg(any(test, feature = "kernel_tests"))]
 mod storage_tests;
+#[cfg(any(test, feature = "kernel_tests"))]
 mod structural_tests;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) mod tests;
+#[cfg(any(test, feature = "kernel_tests"))]
 mod thread_metadata_tests;
 
 /// Separate dimensions for requested heap bytes and complete thread bundles.

@@ -505,10 +505,14 @@ pub(super) fn submit_timer_with_ids(
     result
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 mod metadata_tests;
+#[cfg(any(test, feature = "kernel_tests"))]
 mod preparation_tests;
+#[cfg(any(test, feature = "kernel_tests"))]
 mod retirement_tests;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_lifecycle() {
     retirement_tests::run();
     preparation_tests::run();

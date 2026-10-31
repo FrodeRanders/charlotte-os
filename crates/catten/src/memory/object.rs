@@ -8,6 +8,8 @@
 use alloc::vec::Vec;
 use core::mem::ManuallyDrop;
 
+#[cfg(feature = "kernel_tests")]
+use crate::memory::ADDRESS_SPACE_LIFECYCLE;
 use crate::{
     cpu::isa::interface::memory::{
         AddressSpaceInterface,
@@ -20,7 +22,6 @@ use crate::{
         RetirementList,
     },
     memory::{
-        ADDRESS_SPACE_LIFECYCLE,
         ADDRESS_SPACE_TABLE,
         AddressSpaceId,
         PHYSICAL_FRAME_ALLOCATOR,
@@ -44,13 +45,15 @@ const PAGE_SIZE: usize = 4096;
 const RETIREMENT_FRAME_BATCH: usize = 16;
 
 mod backing;
+#[cfg(any(test, feature = "kernel_tests"))]
 mod borrower_storage_tests;
 mod cap_storage;
 mod copy;
+#[cfg(feature = "kernel_tests")]
+pub(crate) use copy::unpin_copy;
 pub(crate) use copy::{
     CopyPin,
     pin_for_copy,
-    unpin_copy,
 };
 use copy::{
     ScopedCopyPin,
@@ -71,6 +74,7 @@ pub use mapping::{
 mod snapshot_storage;
 use backing::ChargedFrames;
 pub(crate) use backing::RetiredMemory;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_object_storage() {
     snapshot_storage::tests::run();
     backing::test_storage();
@@ -81,12 +85,15 @@ pub(crate) fn test_object_storage() {
     dma::tests::run();
     scratch_namespace::tests::run();
 }
+#[cfg(any(test, feature = "kernel_tests"))]
 mod publication_tests;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_publication_batch() {
     publication_tests::run();
 }
 pub(crate) mod namespace_close;
 mod retirement;
+#[cfg(feature = "kernel_tests")]
 pub(crate) use retirement::tests as retirement_tests;
 use retirement::{
     MappingRetirementPin,
@@ -97,10 +104,11 @@ mod revocation;
 pub(crate) use revocation::LoanRevocation;
 mod close;
 mod transfer;
+#[cfg(feature = "kernel_tests")]
+pub(crate) use transfer::commit_transfers_with_authority;
 pub(crate) use transfer::{
     PreparedTransfer,
     commit_transfers,
-    commit_transfers_with_authority,
     commit_undelivered_transfers,
     commit_undelivered_transfers_with_authority,
     deliver_memory,
@@ -108,6 +116,7 @@ pub(crate) use transfer::{
     prepare_loan,
     prepare_move,
 };
+#[cfg(feature = "kernel_tests")]
 use transfer::{
     commit_transfers_with_delivery,
     prepare_copy_with,
@@ -121,6 +130,7 @@ pub use transfer::{
     move_to,
 };
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_transfer_close_readiness(
     hold_ipc: fn(&mut dyn FnMut()),
     ipc_available: fn() -> bool,
@@ -128,6 +138,7 @@ pub(crate) fn test_transfer_close_readiness(
     close::tests::serialized(hold_ipc, ipc_available);
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_scheduled_transfer_close() {
     close::tests::scheduled();
 }
@@ -650,14 +661,17 @@ pub(in crate::memory) fn detach_scratch(
     scratch_namespace::detach(handle)
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(in crate::memory) fn scratch_registry_available() -> bool {
     SCRATCH_WINDOWS.try_lock().is_some()
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(in crate::memory) fn scratch_admission_snapshot() -> ([u64; 2], [u64; 2]) {
     scratch_namespace::admission::snapshot()
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(in crate::memory) fn test_with_scratch_locked(work: impl FnOnce()) {
     let _windows = SCRATCH_WINDOWS.lock();
     scratch_namespace::admission::with_locked(work);
@@ -739,6 +753,7 @@ pub fn close_cap(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), Memor
 
 /// Thread-context close and deterministic boot interleaving adapter. Callers
 /// must not hold IPC/lifecycle/registry guards while a transfer can be live.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn close_cap_with_wait(
     asid: AddressSpaceId,
     cap: MemoryObjectCap,
@@ -753,6 +768,7 @@ pub(crate) fn close_cap_with_wait(
 /// Nonwaiting raw kernel fixture adapter. Published IPC cleanup instead retains
 /// try_retire_cap's owner and releases it after serialization. Busy rejection
 /// consumes no authority; normal teardown retains pinned backing.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn try_close_cap(
     asid: AddressSpaceId,
     cap: MemoryObjectCap,
@@ -873,6 +889,7 @@ fn clear_borrower(object: &mut MemoryObject, asid: AddressSpaceId) -> Option<Ret
 
 /// Raw boot fixtures serialize this adapter against address-space reuse.
 /// Production root close uses namespace_close's retained generation owners.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn close_address_space_fixture(asid: AddressSpaceId) {
     // Process one object at a time. Moving its existing mapping tree avoids
     // infallible Vec allocations of object IDs, invalidations and backing in

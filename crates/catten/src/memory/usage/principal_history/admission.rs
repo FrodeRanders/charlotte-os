@@ -35,11 +35,13 @@ impl Drop for Charge {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(in crate::memory) fn snapshot() -> ([u64; 2], [u64; 2]) {
     let pool = POOL.lock();
     pool.used()
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn with_locked(work: impl FnOnce()) {
     let _pool = POOL.lock();
     work();

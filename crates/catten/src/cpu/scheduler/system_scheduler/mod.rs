@@ -29,9 +29,11 @@ use core::sync::atomic::{
 };
 
 mod domain_abort;
+#[cfg(any(test, feature = "kernel_tests"))]
 mod selection_tests;
 mod wait;
 use wait::with_detached_wait;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_rebalance_selection() {
     selection_tests::run();
     super::lp_schedulers::round_robin::test_migration_selection();
@@ -41,9 +43,11 @@ pub(crate) use domain_abort::{
     abort_domain_threads,
     abort_domain_threads_with_request,
 };
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_domain_abort() {
     domain_abort::tests::run();
 }
+#[cfg(feature = "kernel_tests")]
 pub(crate) use domain_abort::tests::{
     arm_concurrent_handoff,
     arm_self_handoff,

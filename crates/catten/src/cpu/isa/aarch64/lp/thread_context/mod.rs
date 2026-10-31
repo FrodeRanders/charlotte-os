@@ -129,6 +129,7 @@ impl ThreadContext {
         self._stacks.release()
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn reject_stack_release_for_test(
         &mut self,
     ) -> Result<(), crate::memory::thread_stack::RetirementError> {

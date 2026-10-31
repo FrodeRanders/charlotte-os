@@ -65,7 +65,9 @@ use crate::{
 
 const SCHED_TRACE: bool = false;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 mod selection_tests;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_migration_selection() {
     selection_tests::run();
 }

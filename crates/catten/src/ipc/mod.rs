@@ -53,6 +53,7 @@ use crate::{
 
 mod attachments;
 mod close;
+#[cfg(feature = "kernel_tests")]
 pub(crate) use close::close_address_space_fixture;
 pub use close::close_cap;
 mod message;
@@ -67,29 +68,38 @@ pub use message::{
     receive_vec,
 };
 pub(crate) mod budget;
+#[cfg(any(test, feature = "kernel_tests"))]
 mod call_storage_tests;
 pub(crate) mod cancellation;
 mod cap_storage;
 pub(crate) mod claim_wait;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod delivery_tests;
 mod endpoint_close;
 mod endpoint_storage;
 pub(crate) mod namespace;
 pub(crate) mod namespace_close;
+#[cfg(any(test, feature = "kernel_tests"))]
 mod preparation_tests;
+#[cfg(any(test, feature = "kernel_tests"))]
 mod publication_tests;
 pub(crate) mod record_budget;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod record_tests;
 pub(crate) mod reply;
+#[cfg(any(test, feature = "kernel_tests"))]
 mod reply_storage_tests;
 mod submission;
 mod transaction;
+#[cfg(feature = "kernel_tests")]
 use transaction::{
     PendingStorage,
+    ReplyStorage,
+};
+use transaction::{
     PreparedCall,
     PreparedConnection,
     ReplyCompletion,
-    ReplyStorage,
     RetiredCall,
     RetiredReplies,
     RetiredReply,
@@ -100,6 +110,7 @@ use cap_storage::{
     PreparingCapability,
     RetiredMetadata,
 };
+#[cfg(feature = "kernel_tests")]
 pub(crate) use readiness::waiter_tests;
 pub use readiness::{
     IPC_WAIT_ADMISSION_RETRIES,
@@ -438,6 +449,7 @@ impl IpcRegistry {
             .map_err(|_| IpcError::ResourceLimit)
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     fn reserve_cap(
         &mut self,
         owner: AddressSpaceId,
@@ -566,6 +578,7 @@ fn cap_admission_error(error: crate::capability::AllocationError) -> IpcError {
 }
 
 /// Kernel diagnostics retain the original namespace even after ASID reuse.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn endpoint_admission(owner: AddressSpaceId) -> Option<Arc<budget::DomainBudget>> {
     IPC.read().caps.get(&owner).map(|caps| caps.endpoint_budget.clone())
 }
@@ -1147,6 +1160,7 @@ fn endpoint_referenced(ipc: &IpcRegistry, endpoint: EndpointId) -> bool {
     })
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn connection_close_watch_count(
     asid: AddressSpaceId,
     cap: CapabilityId,

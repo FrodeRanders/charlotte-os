@@ -322,6 +322,7 @@ impl ClosingAddressSpace {
     /// Bounded polling/sleep happens only after this owner's lifecycle/table
     /// guards are gone. Timeout drops the request into retained closing state;
     /// it does not refund backing, clear the fence, or pretend close completed.
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn wait(mut self, timeout_ms: u64) -> Result<(), AddressSpaceCloseError> {
         let deadline = crate::cpu::scheduler::monotonic_millis().saturating_add(timeout_ms);
         loop {
@@ -472,6 +473,11 @@ fn invalidate(space: &AddressSpace, handle: AddressSpaceHandle) -> bool {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod metadata_tests;
+// Keep the real retained-root continuation API in minimal images. Operator
+// retry wiring remains an acceptance gate; currently only native fixtures call it.
+#[cfg_attr(not(feature = "kernel_tests"), allow(dead_code))]
 pub(crate) mod recovery;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod tests;

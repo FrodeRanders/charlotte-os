@@ -10,6 +10,7 @@ use crate::klib::collections::retirement_list::AdmittedMap;
 
 mod preparation;
 pub(crate) use preparation::PreparingAccount;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod tests;
 
 pub use charlotte_lifecycle::resources::Amount;
@@ -348,6 +349,7 @@ pub(crate) fn forget(handle: AddressSpaceHandle) {
 
 /// Kernel launch policy/testing hook; callers retain the exact handle.
 /// It can only choose a limit within the node's default per-domain ceiling.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn set_limit(handle: AddressSpaceHandle, limit: Amount) -> Result<(), Error> {
     let table = super::ADDRESS_SPACE_TABLE.lock();
     if table.generation(handle.id()).ok() != Some(handle.generation()) {
@@ -366,6 +368,7 @@ pub(crate) fn set_limit(handle: AddressSpaceHandle, limit: Amount) -> Result<(),
     account.budget.set_limit(limit).map_err(|_| Error::Limit)
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn used(handle: AddressSpaceHandle) -> Amount {
     LEDGER
         .lock()
@@ -374,6 +377,7 @@ pub(crate) fn used(handle: AddressSpaceHandle) -> Amount {
         .map_or(Amount::default(), |account| account.budget.used())
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn node_snapshot() -> (Budget, Budget) {
     let ledger = LEDGER.lock();
     (ledger.total, ledger.ordinary)

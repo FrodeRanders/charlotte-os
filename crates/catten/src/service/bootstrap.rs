@@ -379,4 +379,5 @@ pub fn write_manifest(config_frame: PAddr, entries: &[ManifestEntry<'_>]) {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod tests;

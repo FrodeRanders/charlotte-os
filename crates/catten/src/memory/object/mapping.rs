@@ -4,6 +4,7 @@
 use super::*;
 
 pub(super) mod storage;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) mod tests;
 
 /// Map a memory object into the calling address space's scratch window at a

@@ -16,20 +16,22 @@ cd "$ROOT"
 
 MODE="build"
 CLEAN=0
+BUNDLE_MODE="test"
+source "$ROOT/scripts/lib/service-bundle.sh"
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        --mode) [ "$#" -ge 2 ] || exit 1; BUNDLE_MODE="$2"; shift 2 ;;
         --embed) MODE="embed"; shift ;;
         --check) MODE="check"; shift ;;
         --clean) CLEAN=1; shift ;;
-        *) echo "usage: $0 [--embed|--check] [--clean]" >&2; exit 1 ;;
+        *) echo "usage: $0 [--embed|--check] [--clean] [--mode minimal|test]" >&2; exit 1 ;;
     esac
 done
 
 MANIFEST="crates/catten-services/Cargo.toml"
 TARGET="crates/catten-services/aarch64-unknown-none.json"
 OUTPUT="crates/catten-services/target/aarch64-unknown-none/release"
-BUNDLE="$ROOT/target/embedded-services/aarch64-unknown-none"
-SERVICES=(ns echo client uart cclient servicemgr raft nvme nvme_client objstore objstore_client fs net nclient relmsg rclient tcpip tcpclient httpd time s3 s3_smoke kafka kafka_smoke kafka_fence_smoke kafka_step kafka_step_proc kafka_step_input rng observe disco frouter dns agent clusterctl deployd grantctl greet shutdown_probe security_probe)
+catten_service_bundle aarch64 "$BUNDLE_MODE" "$ROOT"
 
 if [ "$CLEAN" = "1" ]; then
     echo ">>> Cleaning service target artifacts..."
@@ -39,17 +41,26 @@ if [ "$CLEAN" = "1" ]; then
     echo ">>> Forcing clean rebuild of all EL0 services..."
 fi
 
+build_bins=()
+for service in "${SERVICES[@]}"; do build_bins+=(--bin "$service"); done
+
 cargo build --locked --manifest-path "$MANIFEST" --target "$TARGET" \
     --target-dir crates/catten-services/target \
-    --release -Z build-std=core,alloc
+    --release -Z build-std=core,alloc "${build_bins[@]}"
 
 if [ "$MODE" = "embed" ]; then
-    mkdir -p "$BUNDLE"
+    mkdir -p "$(dirname "$BUNDLE")"
+    STAGING="$(mktemp -d "$(dirname "$BUNDLE")/.aarch64-services.XXXXXX")"
+    trap 'rm -rf -- "$STAGING"' EXIT
     for service in "${SERVICES[@]}"; do
         install -m 0755 "$OUTPUT/$service" \
-            "$BUNDLE/$service.elf"
+            "$STAGING/$service.elf"
     done
-    "$ROOT/scripts/sign-service-elfs.sh" "$BUNDLE" "${SERVICES[@]}"
+    "$ROOT/scripts/sign-service-elfs.sh" "$STAGING" "${SERVICES[@]}"
+    rm -rf -- "$BUNDLE"
+    mv "$STAGING" "$BUNDLE"
+    trap - EXIT
+    catten_validate_service_bundle "$BUNDLE_MODE" aarch64
     echo ">>> Staged and signed AArch64 EL0 service bundle at $BUNDLE."
 elif [ "$MODE" = "check" ]; then
     # Reproduce the signed bundle from the just-built binaries and compare it
@@ -61,6 +72,7 @@ elif [ "$MODE" = "check" ]; then
         install -m 0755 "$OUTPUT/$service" "$CHECK_BUNDLE/$service.elf"
     done
     "$ROOT/scripts/sign-service-elfs.sh" "$CHECK_BUNDLE" >/dev/null
+    catten_validate_service_bundle "$BUNDLE_MODE" aarch64
     stale=0
     for service in "${SERVICES[@]}"; do
         if [ ! -f "$BUNDLE/$service.elf" ]; then

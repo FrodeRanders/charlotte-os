@@ -294,4 +294,5 @@ pub(crate) fn retry(ticket: Ticket) -> Result<Status, RetryError> {
     })
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod tests;

@@ -17,6 +17,29 @@ def gate(source):
 
 
 class RunnerGates(unittest.TestCase):
+    def test_positive_startup_requires_all_host_fixture_inputs_before_build(self):
+        names = ("CATTEN_MANAGEMENT_TLS_RESOURCE", "CATTEN_MANAGEMENT_CA_FILE",
+                 "CATTEN_MANAGEMENT_READER_CERT_FILE", "CATTEN_MANAGEMENT_READER_KEY_FILE")
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = Path(directory) / "input"
+            fixture.touch()
+            environment = dict(os.environ, MANAGEMENT_STARTUP_TEST="ready", TIMEOUT="90",
+                               NET_BACKEND="user", NETWORK="1", GDB="", HTTP_TEST="0",
+                               SECURITY_TEST="0", SHUTDOWN_TEST="0", LIVE_UPGRADE_TEST="0",
+                               FAILURE_CAPTURE="0", DEPLOYMENT_INGRESS_TEST="0",
+                               SHUTDOWN_INGRESS_TEST="0", **dict.fromkeys(names, str(fixture)))
+            for missing in (*names, None):
+                selected = environment.copy()
+                if missing:
+                    del selected[missing]
+                result = subprocess.run(
+                    ["bash", "-c", 'source "$1"; catten_boot_validate_management_startup',
+                     "management-validation", str(ROOT / "scripts/lib/boot-common.sh")],
+                    env=selected, capture_output=True, text=True, timeout=5)
+                self.assertEqual(result.returncode == 0, missing is None, result.stderr)
+                if missing:
+                    self.assertIn(missing, result.stderr)
+
     def test_startup_assertions_require_unambiguous_isolated_observation(self):
         base = dict(os.environ, MANAGEMENT_STARTUP_TEST="disabled", TIMEOUT="90", NET_BACKEND="user",
                     NETWORK="1", GDB="", HTTP_TEST="0", DEPLOYMENT_INGRESS_TEST="0",

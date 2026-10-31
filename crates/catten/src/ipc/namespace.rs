@@ -93,6 +93,7 @@ impl PreparingNamespace {
         drop(self.0.node.take());
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn test_reject_at(reject: u8) -> Result<Self, AllocError> {
         Self::prepare(|stage| {
             assert!(IPC.try_write().is_some());
@@ -118,6 +119,7 @@ pub(crate) const fn fixture_id(id: usize) -> AddressSpaceId {
 
 /// Explicit fixture preparation runs outside subsystem/lifecycle guards. It
 /// grants no trusted classification and is never a runtime admission fallback.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn prepare_fixture(id: AddressSpaceId) {
     assert_eq!(fixture_id(id), id, "fixture namespace overlaps real root slots");
     assert!(crate::memory::current_address_space_handle(id).is_none());
@@ -140,8 +142,10 @@ pub(crate) fn prepare_fixture(id: AddressSpaceId) {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 mod tests;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_preparation() {
     tests::run();
 }

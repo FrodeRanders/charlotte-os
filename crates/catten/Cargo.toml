@@ -11,7 +11,13 @@ test = false
 bench = false
 
 [features]
-default = ["acpi", "display"]
+default = ["acpi", "display", "kernel_tests"]
+
+# Native regression fixtures (including failure injection and retained owners).
+# Mandatory startup validation is always compiled, independently of this flag.
+# Development defaults keep the suite; --no-default-features --features acpi
+# builds a headless node with validation and operational services only.
+kernel_tests = []
 
 acpi = []
 devicetree = ["dep:flat_device_tree"]
@@ -27,7 +33,7 @@ hvf_compat = []
 # Run the userspace virtio-net integration verifier. Ordinary boots attach a
 # NIC and launch network services without this feature; it only adds test
 # registration, readiness assertions, and pass/fail reporting.
-virtio_net_test = []
+virtio_net_test = ["kernel_tests"]
 # Extend the virtio-net test across a QEMU socket LAN with the reliable
 # message service. Requires virtio_net_test and a second guest.
 relmsg_net_test = ["virtio_net_test"]
@@ -73,20 +79,20 @@ kafka_coordinator_test = ["kafka_test"]
 # transactional identity and require the first connector to fail closed.
 kafka_fencing_test = ["kafka_test"]
 # Run only the EL0 service lifecycle/live-upgrade deferred integration test.
-# Synchronous kernel subsystem tests still run.
-live_upgrade_test = []
+# Unrelated synchronous subsystem fixtures are omitted in this isolated mode.
+live_upgrade_test = ["kernel_tests"]
 # Run only the isolated cooperative/forced domain-shutdown deferred test.
-# Synchronous kernel subsystem tests still run.
-shutdown_test = []
+# Unrelated synchronous subsystem fixtures are omitted in this isolated mode.
+shutdown_test = ["kernel_tests"]
 # Adversarial scoped-launch/grant/raw-frame checks with independently signed
 # test artifacts from CATTEN_SECURITY_TEST_DIR. Adds to the normal boot suite.
 security_test = ["virtio_net_test"]
 # Disposable x86 QEMU Secure Boot fixture: require an authenticated test-policy
 # module and select its public, known test recipient. Never production custody.
-boot_trust_test = []
+boot_trust_test = ["kernel_tests"]
 # Run the x86_64 EL0 smoke test: loads a real Rust ELF (the `smoke` service)
 # into ring 3. Requires CATTEN_X86_64_SMOKE_ELF to point at the signed ELF.
-x86_el0_smoke = []
+x86_el0_smoke = ["kernel_tests"]
 qemu = ["virtio_gpu"]
 
 [dependencies]

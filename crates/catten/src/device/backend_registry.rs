@@ -65,6 +65,7 @@ impl<D, S: Ord + Copy> Nodes<D, S> {
     }
 
     pub(super) fn finish(mut self) {
+        #[cfg(feature = "kernel_tests")]
         tests::boundary(true);
         // Only unused empty nodes remain; published nodes belong to the unit.
         drop(self.0.context.take());
@@ -79,9 +80,10 @@ impl<D, S> Drop for Nodes<D, S> {
     }
 }
 
-fn prepare<T>(stage: usize) -> Result<PreparedEntry<T>, Error> {
+fn prepare<T>(_stage: usize) -> Result<PreparedEntry<T>, Error> {
+    #[cfg(feature = "kernel_tests")]
     tests::boundary(false);
-    if tests::reject(stage) {
+    if test_fault!(tests::reject(_stage)) {
         return Err(Error::MapFailed);
     }
     PreparedEntry::try_new().map_err(|_| Error::MapFailed)
@@ -122,7 +124,9 @@ impl Preparing {
 }
 
 pub(super) fn release<T>(node: RetiredEntry<T>) {
+    #[cfg(feature = "kernel_tests")]
     tests::boundary(true);
     node.release();
 }
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) mod tests;

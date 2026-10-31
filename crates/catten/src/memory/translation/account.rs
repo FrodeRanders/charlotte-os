@@ -162,6 +162,7 @@ impl Account {
         self.refundable = true;
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn set_limit(&mut self, pages: u64) -> Result<(), ()> {
         if self.retired || pages > DOMAIN_TABLE_PAGES || pages < self.pages {
             return Err(());
@@ -191,6 +192,7 @@ impl Drop for Account {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_pool() {
     let mut pool = Pool::new(8);
     let ordinary = pool.ordinary.limit().pages;
@@ -213,19 +215,24 @@ pub(super) fn test_pool() {
     assert_eq!(pool.ordinary.used().pages, 0);
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_used_pages() -> u64 {
     POOL.lock().total.used().pages
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_ordinary_pages() -> u64 {
     POOL.lock().ordinary.used().pages
 }
 
 /// Single-mutator boot admission adapter: exhaust only ordinary admission,
 /// leaving real counters, platform reserve and physical memory intact.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) struct OrdinaryPressure(Amount);
 
+#[cfg(any(test, feature = "kernel_tests"))]
 impl OrdinaryPressure {
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn new() -> Self {
         let mut pool = POOL.lock();
         let old = pool.ordinary.limit();
@@ -235,6 +242,7 @@ impl OrdinaryPressure {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 impl Drop for OrdinaryPressure {
     fn drop(&mut self) {
         POOL.lock().ordinary.set_limit(self.0).unwrap();
@@ -242,6 +250,7 @@ impl Drop for OrdinaryPressure {
 }
 
 /// Boot probe: preparation abandonment borrows only the captured account.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_with_pool_locked(action: impl FnOnce()) {
     let _pool = POOL.lock();
     action();

@@ -30,6 +30,7 @@ pub trait Observable {
 pub struct WaitSponsor(Arc<waiter_budget::DomainBudget>);
 impl WaitSponsor {
     /// Mandatory trusted fixture construction; runtime root preparation is fallible.
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn new(platform: bool) -> Self {
         Self::try_new(platform).expect("mandatory waiter sponsor allocation failed")
     }
@@ -46,6 +47,7 @@ impl WaitSponsor {
         self.0.mark_platform();
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn used(&self) -> usize {
         self.0.used()
     }
@@ -79,6 +81,8 @@ impl WaitSponsor {
 #[must_use = "retain an owning waiter registration until wake or cancellation"]
 #[derive(Debug)]
 pub struct WaitRegistration {
+    // Cancellation ownership is required even when fixture introspection is absent.
+    #[allow(dead_code)]
     owned: Option<registration::Registration<waiter_budget::Charge>>,
     ready: bool,
 }
@@ -94,6 +98,7 @@ impl WaitRegistration {
         self.ready
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn is_owned(&self) -> bool {
         self.owned.is_some()
     }

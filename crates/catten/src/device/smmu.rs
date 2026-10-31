@@ -530,16 +530,18 @@ fn initialize(
         }
         smmu.commands.as_mut().unwrap().cmdq = smmu._tables.allocate_frame()?;
         let eventq = smmu._tables.allocate_frame()?;
-        if unit_initialization::reject_complete() {
+        if test_fault!(unit_initialization::reject_complete()) {
             return Err(Error::MapFailed);
         }
         rollback_private = false; // Hardware control starts; no initialization replay.
         write32(config.base, CR0, 0);
+        #[cfg(feature = "kernel_tests")]
         unit_initialization::wait_boundary();
         wait_ack(config.base, CR0_ACK, 0)?;
         // Inner-shareable WB table and queue walks.
         write32(config.base, CR1, (3 << 10) | (1 << 8) | (1 << 6) | (3 << 4) | (1 << 2) | 1);
         write32(config.base, CR2, (1 << 2) | (1 << 1));
+        #[cfg(feature = "kernel_tests")]
         unit_initialization::publication_boundary();
         smmu._tables.publish();
         write64(config.base, STRTAB_BASE, u64::from(smmu.strtab) | (1 << 62));
@@ -552,16 +554,20 @@ fn initialize(
         write32(config.base, EVTQ_CONS, 0);
         barrier();
         write32(config.base, CR0, CR0_CMDQEN);
+        #[cfg(feature = "kernel_tests")]
         unit_initialization::wait_boundary();
         wait_ack(config.base, CR0_ACK, CR0_CMDQEN)?;
         smmu.issue([0x04, 0])?;
         smmu.issue([0x30, 0])?;
+        #[cfg(feature = "kernel_tests")]
         unit_initialization::wait_boundary();
         smmu.sync()?;
         write32(config.base, CR0, CR0_CMDQEN | CR0_EVTQEN | CR0_SMMUEN);
+        #[cfg(feature = "kernel_tests")]
         unit_initialization::wait_boundary();
         wait_ack(config.base, CR0_ACK, CR0_CMDQEN | CR0_EVTQEN | CR0_SMMUEN)?;
         write32(config.base, IRQ_CTRL, IRQ_EVTQ | IRQ_GERROR);
+        #[cfg(feature = "kernel_tests")]
         unit_initialization::wait_boundary();
         wait_ack(config.base, IRQ_CTRL_ACK, IRQ_EVTQ | IRQ_GERROR)?;
         IRQ_MMIO.store(config.base, Ordering::Release);
@@ -622,6 +628,7 @@ pub fn initialize_early() -> Result<(), Error> {
     unit_initialization::initialize(&SMMU, prepare_unit, |unit| unit.commands.is_some())
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_initialization() {
     unit_initialization::test_real(&SMMU, prepare_unit, 3, 5);
 }
@@ -666,6 +673,7 @@ pub(crate) fn create_domain_with_reset(
                 None => reset(false, creation)?,
             }
             smmu.next_domain = next;
+            #[cfg(feature = "kernel_tests")]
             super::domain_creation::boundary(super::domain_creation::Phase::Allocate);
             let domain = match Domain::new(asid, sid, smmu.oas, msi_address) {
                 Ok(domain) => domain,
@@ -674,7 +682,7 @@ pub(crate) fn create_domain_with_reset(
                     return Err(error);
                 }
             };
-            if super::test_reject_private_complete() {
+            if test_fault!(super::test_reject_private_complete()) {
                 creation.retain_private(super::private_domain::PrivateDomain::Smmu(
                     super::detached_domain::DetachedDomain::new(domain),
                 ));
@@ -687,8 +695,11 @@ pub(crate) fn create_domain_with_reset(
             nodes.publish_source(&mut smmu.streams, sid, id);
             smmu.domains.get_mut(&id).and_then(Option::as_mut).unwrap().tables.publish();
             creation.record(id);
+            #[cfg(feature = "kernel_tests")]
             super::domain_creation::boundary(super::domain_creation::Phase::Configure);
-            let configured = smmu.write_ste(sid, Some(cd)).and_then(|()| {
+            let configured = smmu.write_ste(sid, Some(cd));
+            #[cfg(feature = "kernel_tests")]
+            let configured = configured.and_then(|()| {
                 if super::test_reject_creation() {
                     Err(Error::HardwareTimeout)
                 } else {
@@ -842,7 +853,7 @@ fn map_inner(
         Err((error, prefix)) => {
             if prefix {
                 before_completion(super::mapping::Phase::Rollback);
-                if super::test_reject_map_rollback()
+                if test_fault!(super::test_reject_map_rollback())
                     || owner
                         .held
                         .commands
@@ -907,7 +918,7 @@ fn unmap_owned_at(
         Ok(mapping) => {
             owner.pending.retain_record(mapping);
             before_completion(super::mapping::Phase::Unmap);
-            let completed = if super::test_reject_unmap_completion() {
+            let completed = if test_fault!(super::test_reject_unmap_completion()) {
                 Err(Error::HardwareTimeout)
             } else {
                 owner.held.commands.value_mut().invalidate_asid(owner.held.domain.value_mut().asid)
@@ -994,7 +1005,7 @@ fn finish_retirement(
     let asid = owner.domain.value_mut().asid;
     let completed = (|| {
         owner.commands.value_mut().invalidate_ste(sid)?;
-        if super::test_reject_retirement() {
+        if test_fault!(super::test_reject_retirement()) {
             return Err(Error::HardwareTimeout);
         }
         owner.commands.value_mut().invalidate_asid(asid)
@@ -1105,11 +1116,13 @@ pub fn pending_fault_events() -> u32 {
 }
 
 /// Boundary probe; does not initialize hardware or spin on contention.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_assert_backend_available() {
     drop(SMMU.try_lock().expect("physical release holds backend registry"));
 }
 
 /// Private RAM registers/ring, never installed in the SMMU.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_command_engines() {
     let (tables, (registers, cmdq)) = Tables::prepare_unpublished(Scope::Unit, |tables| {
         Ok((tables.allocate_frame()?, tables.allocate_frame()?))
@@ -1160,12 +1173,14 @@ pub(super) fn test_command_engines() {
 }
 
 /// Guarded abandonment probe; does not initialize or publish hardware.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_with_backend_locked(action: impl FnOnce()) {
     let _guard = SMMU.lock();
     action();
 }
 
 /// Private typed payload with real tables/metadata, never in the registry.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_private_domain() -> super::private_domain::PrivateDomain {
     let domain = Domain::new(1, 0, 5, Some(0xfee0_0000)).unwrap_or_else(|(error, mut owner)| {
         owner.value_mut().tables.cancel_private().unwrap();
@@ -1177,6 +1192,7 @@ pub(super) fn test_private_domain() -> super::private_domain::PrivateDomain {
 }
 
 /// Private, never hardware-published walkers; the data frame is borrowed.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_table_admission() {
     let baseline = super::dma_tables::used();
     let data = crate::memory::PreparingUserFrame::allocate_zeroed().unwrap();
@@ -1211,6 +1227,7 @@ pub(super) fn test_table_admission() {
 }
 
 /// Serialized fixture places the next map across a cached/fresh leaf-table boundary.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_reject_sparse_map(id: u64) {
     with_smmu(|unit| {
         let domain = unit.domains.get_mut(&id).and_then(Option::as_mut).unwrap();
@@ -1221,6 +1238,7 @@ pub(super) fn test_reject_sparse_map(id: u64) {
     .unwrap();
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_registry_snapshot(sid: u32) -> (u64, Option<u64>, usize, usize) {
     with_registered(|smmu| {
         Ok((smmu.next_domain, smmu.streams.get(&sid).copied(), smmu.domains.iter().count(), 0))
@@ -1231,6 +1249,7 @@ pub(super) fn test_registry_snapshot(sid: u32) -> (u64, Option<u64>, usize, usiz
 /// Serialized pre-driver probe: retain the complete actual unit in the
 /// existing creation owner, without creation/reset or descriptor mutation.
 /// Its caller retains the real mapped-domain root through the probe.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_with_claimed_unit(action: impl FnOnce()) {
     let mut preparation = super::DmaCreation::new();
     super::domain_creation::prepare(
@@ -1245,6 +1264,7 @@ pub(super) fn test_with_claimed_unit(action: impl FnOnce()) {
     .unwrap();
     assert!(!preparation.is_armed());
 }
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_registered_unit_waiters() -> usize {
     SMMU.lock().readiness.as_ref().map_or(0, |source| source.registered())
 }

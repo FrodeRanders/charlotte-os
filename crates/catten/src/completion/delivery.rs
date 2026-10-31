@@ -11,10 +11,7 @@ pub(in crate::completion) use readiness::signal_cq_source;
 pub(crate) use readiness::{
     CqInterest,
     capture_cq_interest,
-    cq_waiter_count,
     prepare_wake,
-    test_irq_wake_reentrancy,
-    test_prepared_wake_identity,
 };
 pub use readiness::{
     CqWaitError,
@@ -23,14 +20,23 @@ pub use readiness::{
     wait_on_cq_checked,
     wake,
 };
+#[cfg(feature = "kernel_tests")]
+pub(crate) use readiness::{
+    cq_waiter_count,
+    test_irq_wake_reentrancy,
+    test_prepared_wake_identity,
+};
 
 mod preparation;
+#[cfg(feature = "kernel_tests")]
 pub(super) use preparation::{
     Prepared,
+    test_preparation,
+};
+pub(super) use preparation::{
     RetiredCq,
     attach,
     open_namespace,
-    test_preparation,
 };
 
 pub(super) enum BacklogOwner {
@@ -93,6 +99,7 @@ impl CqState {
         self.work_generation
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn work_generation(&self) -> u64 {
         self.work_generation
     }
@@ -110,18 +117,22 @@ impl CqState {
         self.ring
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn ring_capacity(&self) -> u32 {
         self.ring_capacity
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn producer_head(&self) -> u32 {
         self.ring_head
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn backlog_len(&self) -> usize {
         self.backlog.len()
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn backlog_is_empty(&self) -> bool {
         self.backlog.is_empty()
     }

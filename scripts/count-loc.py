@@ -70,6 +70,8 @@ def dedicated_test(path):
     p = Path(path)
     return (
         component(path) == "Userspace test applications"
+        or path in {"crates/catten-services/src/bin/raft.rs",
+                    "crates/catten-services/src/bin/servicemgr.rs"}
         or path in VALIDATION_FILES
         or any(part in {"tests", "self_test", "test_data", "test_support", "fixtures"}
                or part.endswith("_tests") for part in p.parts)
@@ -137,9 +139,11 @@ ITEM_START = re.compile(
 
 def item_end(mask, start):
     parens = brackets = 0
+    macro_call = False
     for index in range(start, len(mask)):
         char = mask[index]
         if char == "(":
+            macro_call |= mask[start:index].rstrip().endswith("!")
             parens += 1
         elif char == ")":
             parens -= 1
@@ -148,7 +152,7 @@ def item_end(mask, start):
         elif char == "]":
             brackets -= 1
         elif not parens and not brackets:
-            if char == ";":
+            if char == ";" or (char == "," and macro_call):
                 return index + 1
             if char == "{":
                 depth = 1
@@ -163,9 +167,19 @@ def item_end(mask, start):
 def split_rust(text):
     mask = rust_mask(text)
     flags = [False] * len(text.splitlines(keepends=True))
-    for match in ITEM_START.finditer(mask):
-        end = item_end(mask, match.start())
-        first_line = text.count("\n", 0, match.start())
+    starts = {match.start() for match in ITEM_START.finditer(mask)}
+    for match in re.finditer(r"#\s*\[\s*cfg\s*\(", mask):
+        end = mask.index("]", match.end()) + 1
+        gate = re.sub(r"\s+", "", text[match.start():end])
+        # These gates require tests on every target. Do not classify a generic
+        # any(kernel_tests, target_arch=...) gate as purely test-related.
+        if gate in {'#[cfg(feature="kernel_tests")]',
+                    '#[cfg(any(test,feature="kernel_tests"))]'} or gate.startswith(
+                        '#[cfg(all(feature="kernel_tests",'):
+            starts.add(match.start())
+    for start in sorted(starts):
+        end = item_end(mask, start)
+        first_line = text.count("\n", 0, start)
         last_line = text.count("\n", 0, end - 1)
         flags[first_line:last_line + 1] = [True] * (last_line - first_line + 1)
     lines = text.splitlines(keepends=True)
@@ -271,17 +285,22 @@ def main():
                                 width=79, subsequent_indent="  "),
                   "- Runtime service binaries are separate from the shared catten-services SDK,",
                   "  catten-rt/syscall, protocol, connector, crypto and Raft libraries.",
+                  "  Standalone raft/servicemgr fixture servers remain in the services category",
+                  "  with their code counted as test-related; production DNS owns durable Raft.",
                   "- Dedicated tests/self_test/*_tests/fixtures paths, test/check/verify and",
                   "  smoke/probe filenames, CI workflows, selected fixture-generation inputs and",
                   "  boot_fixture/hash_contract/audit_receive_lease files count as validation.",
-                  "- Inline Rust cfg(test) items, test modules, #[test] items and test_* helpers",
+                  "- Inline Rust test-only cfg items (including kernel_tests), test modules,",
+                  "  #[test] items and test_* helpers",
                   "  are split into fragments; cloc checks test + other == original per file.",
                   "- This is an identifiable-source lower bound, not a build-size estimate.",
                   "  Already cfg(test)-gated code is included; scattered fixture constants,",
                   "  imports, call sites and mixed boot/test-runner branches may remain in other",
                   "  code. No claim is made that all other code belongs in a stripped image.",
-                  "  A future test-free image also needs gated boot registrations and bundle",
-                  "  selection, with artifact checks proving that probes/fixtures are absent.",
+                  "  Test-free images require gated boot registrations and bundle",
+                  "  selection; docs/reference/boot-modes.md defines the implemented profiles",
+                  "  and artifact checks. Mandatory startup memory validation is operational",
+                  "  code; these counts do not classify every runtime invariant as a test.",
                   "- Formal models, model configurations and audit evidence are below, not in",
                   "  the source/test percentage. Prose and data also appear as cloc 'code'.", "",
                   "DOCUMENTATION, VERIFICATION MODELS AND RECORDS", "",

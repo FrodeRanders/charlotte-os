@@ -7,17 +7,20 @@
 #
 # Usage:
 #   scripts/build-vmware-x86_64.sh [debug|release] [--data-size-mib N]
-#                                      [--clean] [--replace]
+#                                      [--minimal|--tests] [--clean] [--replace]
 set -euo pipefail
 
 PROFILE="release"
 DATA_SIZE_MIB="1024"
 CLEAN="0"
 REPLACE="0"
+BOOT_MODE="test"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
         debug|release) PROFILE="$1"; shift ;;
+        --minimal) BOOT_MODE="minimal"; shift ;;
+        --tests) BOOT_MODE="test"; shift ;;
         --data-size-mib)
             [ "$#" -ge 2 ] || { echo "Missing value for --data-size-mib" >&2; exit 1; }
             DATA_SIZE_MIB="$2"; shift 2 ;;
@@ -40,6 +43,11 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 APPLIANCE_DIR="${ROOT_DIR}/os-images/vmware/CharlotteOS.vmwarevm"
+INSTANCE="vmware"
+if [ "$BOOT_MODE" = "minimal" ]; then
+    APPLIANCE_DIR="${ROOT_DIR}/os-images/vmware/CharlotteOS-Minimal.vmwarevm"
+    INSTANCE="vmware-minimal"
+fi
 if [ -e "$APPLIANCE_DIR" ] && [ "$REPLACE" != "1" ]; then
     echo "error: VMware appliance already exists: $APPLIANCE_DIR" >&2
     echo "       move it aside, or pass --replace to discard its persistent data disk" >&2
@@ -58,10 +66,11 @@ BUILD_ARGS=(
 if [ "$CLEAN" = "1" ]; then
     BUILD_ARGS+=(--clean)
 fi
+if [ "$BOOT_MODE" = "minimal" ]; then BUILD_ARGS+=(--minimal); fi
 "${ROOT_DIR}/scripts/run-x86_64.sh" "${BUILD_ARGS[@]}"
 
-RAW_BOOT="${ROOT_DIR}/os-images/charlotte-x86_64-${PROFILE}-vmware.img"
-RAW_DATA="${ROOT_DIR}/os-images/x86-data-vmware.img"
+RAW_BOOT="${ROOT_DIR}/os-images/charlotte-x86_64-${PROFILE}-${INSTANCE}.img"
+RAW_DATA="${ROOT_DIR}/os-images/x86-data-${INSTANCE}.img"
 BOOT_VMDK="${APPLIANCE_DIR}/charlotte-boot.vmdk"
 DATA_VMDK="${APPLIANCE_DIR}/charlotte-data.vmdk"
 

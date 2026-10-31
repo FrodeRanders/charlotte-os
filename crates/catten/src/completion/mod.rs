@@ -31,6 +31,7 @@ use capability_metadata::{
     CapabilityRecord,
     RetiredCapability,
 };
+#[cfg(feature = "kernel_tests")]
 pub(crate) use record::callback_tests;
 pub use record::{
     Completion,
@@ -52,10 +53,7 @@ use delivery::{
 pub(crate) use delivery::{
     CqInterest,
     capture_cq_interest,
-    cq_waiter_count,
     prepare_wake,
-    test_irq_wake_reentrancy,
-    test_prepared_wake_identity,
 };
 pub use delivery::{
     CqWaitError,
@@ -63,6 +61,12 @@ pub use delivery::{
     cq_work_generation,
     wait_on_cq_checked,
     wake,
+};
+#[cfg(feature = "kernel_tests")]
+pub(crate) use delivery::{
+    cq_waiter_count,
+    test_irq_wake_reentrancy,
+    test_prepared_wake_identity,
 };
 mod detached;
 use detached::{
@@ -86,6 +90,7 @@ pub use namespace::{
     close_address_space,
     open_address_space,
 };
+#[cfg(any(test, feature = "kernel_tests"))]
 mod operation_id_tests;
 mod operation_ids;
 mod producers;
@@ -97,9 +102,12 @@ use producers::{
 pub(crate) use producers::{
     EventSubmission,
     abort_submission,
-    exit_tests,
     observe_own_thread_exit,
     observe_thread_exit_with_generation,
+};
+#[cfg(feature = "kernel_tests")]
+pub(crate) use producers::{
+    exit_tests,
     timer_tests,
 };
 pub use producers::{
@@ -598,22 +606,27 @@ pub fn wait_timeout(
     .map_err(|_| CapError::WaitAdmissionFailed)
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn timer_events_used(asid: AddressSpaceId) -> usize {
     COMPLETIONS.read().get(&asid).map_or(0, |entries| entries.timer_budget.used())
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn waiter_count(asid: AddressSpaceId, cap: CompletionCap) -> usize {
     completion_of(asid, cap).map_or(0, |completion| completion.waiters.registered())
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn record_admission(asid: AddressSpaceId) -> Option<Arc<budget::DomainBudget>> {
     COMPLETIONS.read().get(&asid).map(|entries| entries.record_budget.clone())
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn cq_admission(asid: AddressSpaceId) -> Option<Arc<cq_budget::DomainBudget>> {
     COMPLETIONS.read().get(&asid).map(|entries| entries.cq_budget.clone())
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn watch_admission(asid: AddressSpaceId) -> Option<Arc<watch_budget::DomainBudget>> {
     COMPLETIONS.read().get(&asid).map(|entries| entries.watch_budget.clone())
 }

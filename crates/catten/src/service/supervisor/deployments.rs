@@ -70,6 +70,7 @@ impl<'a, const N: usize> PreparingDeployment<'a, N> {
 
 /// Serialized kernel fixture: the root has no running thread or service pages.
 /// Pending preparation must reject retirement before attempting page access.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_preparation(domain: ServiceDomain) {
     const PRINCIPAL: u64 = 0x6465_706c_7072_6570;
     let registry = Mutex::new(DeployedRegistry::<1>::new());

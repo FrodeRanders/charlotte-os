@@ -1,8 +1,7 @@
 //! EL0 (userspace) variant of the async + cross-LP demo.
 //!
-//! Where [`crate::demo`] drives the completion and shard primitives from
-//! EL1 kernel threads by calling the in-kernel APIs directly, this exercise
-//! drives the *same* async round-trip entirely from EL0 through the raw syscall ABI,
+//! This registered verifier drives the async round-trip entirely from EL0
+//! through the raw syscall ABI,
 //! and demonstrates cross-LP work placement via the `SPAWN_THREAD` syscall.
 //!
 //! Two hand-written EL0 stubs run in one user address space:

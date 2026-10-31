@@ -2,6 +2,7 @@
 
 pub mod allocators;
 pub(crate) mod backing_budget;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod backing_release_tests;
 pub mod budget;
 pub mod linear;
@@ -10,6 +11,7 @@ pub(crate) mod operation;
 pub mod physical;
 pub(crate) mod preparation;
 mod registration;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod registration_tests;
 pub(crate) mod retirement;
 pub(crate) mod thread_stack;
@@ -405,6 +407,7 @@ impl Drop for PreparingUserFrame {
 }
 
 impl PreparingUserFrame {
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn allocate_zeroed() -> Option<Self> {
         let preparation = Self::allocate()?;
         preparation.zero();
@@ -451,6 +454,7 @@ impl PreparingUserFrame {
 
     /// Explicit fixture/adapter cleanup after proving this backing is
     /// unpublished, or detached and quiescent. Drop cannot supply that proof.
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn release(self) -> Result<(), physical::Error> {
         self.release_with(|frame| PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame))
     }

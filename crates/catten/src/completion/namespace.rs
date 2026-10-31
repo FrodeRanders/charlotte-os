@@ -13,10 +13,11 @@ use core::{
 use super::*;
 
 mod preparation;
+#[cfg(feature = "kernel_tests")]
+pub(super) use preparation::test_preparation;
 pub(super) use preparation::{
     Preparing,
     RetiredNamespace,
-    test_preparation,
 };
 pub(super) type Registry = AdmittedMap<AddressSpaceId, Namespace>;
 
@@ -61,6 +62,7 @@ impl DerefMut for Namespace {
 
 impl Namespace {
     // Mandatory private boot fixture; runtime publication uses fallible Preparing.
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn for_fixture(asid: AddressSpaceId, capacity: usize) -> Self {
         Self::try_new(crate::memory::current_address_space_handle(asid), capacity, &mut |_| Ok(()))
             .expect("mandatory completion namespace allocation failed")

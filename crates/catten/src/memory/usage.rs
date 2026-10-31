@@ -14,6 +14,7 @@
 use alloc::vec::Vec;
 
 pub(super) mod principal_history;
+#[cfg(any(test, feature = "kernel_tests"))]
 mod snapshot_tests;
 pub(super) use principal_history::PreparingHistory;
 
@@ -299,22 +300,27 @@ pub(crate) fn principal_stack_high_water(principal: u64) -> u64 {
 }
 
 /// Kernel evidence only; this is not an external observability ABI.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn principal_backing_used(principal: u64) -> charlotte_lifecycle::resources::Amount {
     principal_history::backing_used(principal)
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_principal_history() {
     principal_history::tests::run();
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn with_principal_history_locked<R>(work: impl FnOnce() -> R) -> R {
     principal_history::with_locked(work)
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn principal_history_available() -> bool {
     principal_history::available()
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_snapshot_heap() {
     snapshot_tests::run();
 }

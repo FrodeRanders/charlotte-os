@@ -141,6 +141,7 @@ impl Account {
         })
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     fn commit(&mut self, mut charge: PageCharge) {
         self.commit_prepared(&mut charge);
     }
@@ -203,6 +204,7 @@ impl Account {
     }
 
     /// Kernel policy/testing only; virtual capacity remains independent.
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn set_limit(&mut self, pages: u64) -> Result<(), ()> {
         if self.retired || pages > self.kind.domain_pages() || pages < self.pages {
             return Err(());
@@ -363,6 +365,7 @@ impl Drop for PageCharge {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_pool() {
     let mut pool = Pool::new(8);
     let ordinary = pool.ordinary.limit().pages;
@@ -404,16 +407,19 @@ pub(crate) fn test_pool() {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_used_pages(kind: Kind) -> u64 {
     kind.pool().lock().total.used().pages
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_ordinary_pages(kind: Kind) -> u64 {
     kind.pool().lock().ordinary.used().pages
 }
 
 /// Serialized boot fixture: prove an abandonment path cannot enter its original
 /// admission pool. Preparation has already initialized/reserved that pool.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_with_pool_locked(kind: Kind, action: impl FnOnce()) {
     let _pool = kind.pool().lock();
     action();

@@ -135,6 +135,7 @@ extern "C" fn ih_non_maskable_interrupt(rip: u64, cs: u64, rflags: u64, rsp: u64
     panic!("Non-maskable interrupt");
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_fault_origin() {
     assert!(user_origin(gdt::USER_CODE_SELECTOR as u64));
     assert!(!user_origin(gdt::KERNEL_CODE_SELECTOR as u64));

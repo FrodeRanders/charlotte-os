@@ -46,6 +46,7 @@ impl GrantAdmission {
                 return Err(error);
             }
         }
+        #[cfg(feature = "kernel_tests")]
         registry::tests::authority_boundary(false);
         match crate::capability::PreparedReservation::try_new(
             owner,
@@ -121,10 +122,12 @@ impl GrantAdmission {
             storage.release();
         }
         if let Some(authority) = self.resources.authority.take() {
+            #[cfg(feature = "kernel_tests")]
             registry::tests::authority_boundary(true);
             authority.finish();
         }
         if self.resources.reservation.is_some() {
+            #[cfg(feature = "kernel_tests")]
             registry::tests::authority_boundary(true);
         }
         drop(self.resources.reservation.take());

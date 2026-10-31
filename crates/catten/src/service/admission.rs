@@ -22,6 +22,8 @@ pub(crate) struct PreparedBootTrust {
 }
 
 #[derive(Debug, Eq, PartialEq)]
+// Protected boot installation is not wired yet; retain its real admission API.
+#[cfg_attr(not(feature = "kernel_tests"), allow(dead_code))]
 pub(crate) enum PreparationError {
     WrongCluster,
     RecipientMismatch,
@@ -35,6 +37,7 @@ impl PreparedBootTrust {
     /// The caller must authenticate the boot chain, commit protected policy
     /// state and obtain the key from custody before calling this boundary.
     /// The exact-state boot receipt proves none of those platform conditions.
+    #[cfg_attr(not(feature = "kernel_tests"), allow(dead_code))]
     pub(crate) fn verified(
         policy: VerifiedBootPolicy,
         cluster: &[u8],
@@ -260,6 +263,7 @@ fn with_installed_trust<T>(
     Some(f(&view.public, &recipient, &view.name_service))
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod tests;
 
 #[cfg(feature = "boot_trust_test")]

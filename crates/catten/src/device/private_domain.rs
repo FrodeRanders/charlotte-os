@@ -1,6 +1,7 @@
 //! Never hardware-published domain ownership, carried by the complete grant.
 //! The owner permits rollback before hardware publication. Hardware retirement needs a separate
 //! receipt.
+#[cfg(any(test, feature = "kernel_tests"))]
 mod tests;
 
 use super::{
@@ -44,10 +45,12 @@ impl PrivateDomain {
         mut self,
         release: impl FnOnce(&mut Tables) -> Result<(), Error>,
     ) -> Result<(), Self> {
+        #[cfg(feature = "kernel_tests")]
         super::recovery_tests::probe_private_release();
         if release(self.tables()).is_err() {
             return Err(self);
         }
+        #[cfg(feature = "kernel_tests")]
         super::recovery_tests::probe_private_release();
         self.dispose();
         Ok(())
@@ -68,6 +71,7 @@ impl PrivateDomain {
 // Variant payloads use ManuallyDrop through DetachedDomain. No automatic table,
 // mapping/cache node, pin or ledger destruction runs on error/abandonment.
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_admission() {
     tests::run();
 }

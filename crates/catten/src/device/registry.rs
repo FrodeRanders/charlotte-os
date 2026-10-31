@@ -21,17 +21,20 @@ impl PreparedStorage {
     pub(super) fn try_new() -> Result<Self, DeviceError> {
         // Both allocations precede local lifecycle/device/backend holds. A
         // second-node rejection destroys only empty first-node storage here.
-        if tests::reject(1) {
+        if test_fault!(tests::reject(1)) {
             return Err(DeviceError::ResourceLimit);
         }
         let namespace = PreparedEntry::try_new().map_err(|_| DeviceError::ResourceLimit)?;
+        #[cfg(feature = "kernel_tests")]
         tests::boundary(false);
-        if tests::reject(2) {
+        if test_fault!(tests::reject(2)) {
+            #[cfg(feature = "kernel_tests")]
             tests::boundary(true);
             drop(namespace);
             return Err(DeviceError::ResourceLimit);
         }
         let capability = PreparedEntry::try_new().map_err(|_| DeviceError::ResourceLimit)?;
+        #[cfg(feature = "kernel_tests")]
         tests::boundary(false);
         Ok(Self(ManuallyDrop::new(Storage {
             namespace: Some(namespace),
@@ -57,17 +60,21 @@ impl PreparedStorage {
     }
 
     pub(super) fn release(self) {
+        #[cfg(feature = "kernel_tests")]
         tests::boundary(true);
         drop(ManuallyDrop::into_inner(self.0));
     }
 }
 
 pub(super) fn release<K, V>(entry: RetiredEntry<(K, V)>) {
+    #[cfg(feature = "kernel_tests")]
     tests::boundary(true);
     entry.release();
 }
 pub(super) fn release_authority(record: crate::capability::RetiredRecord) {
+    #[cfg(feature = "kernel_tests")]
     tests::authority_boundary(true);
     record.release();
 }
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) mod tests;

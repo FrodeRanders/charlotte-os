@@ -41,6 +41,7 @@ pub enum ShootdownError {
 
 // Independent global observations only; no operation identity or retry proof.
 static SHOOTDOWN_PROGRESS: [AtomicU64; 6] = [const { AtomicU64::new(0) }; 6];
+#[cfg(feature = "kernel_tests")]
 pub(crate) fn shootdown_progress() -> [u64; 6] {
     core::array::from_fn(|index| SHOOTDOWN_PROGRESS[index].load(Ordering::Relaxed))
 }
@@ -188,6 +189,7 @@ fn send_to_remote_lps(
 
 /// Single-mutator boot fixture, using an independent coordinator and fake send.
 /// No hardware state/barrier is reset to simulate success.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_failed_delivery() {
     assert!(!SYNC_SHOOTDOWN_READY.load(Ordering::Acquire));
     let coordinator = Shootdown::new();
@@ -224,6 +226,7 @@ pub(crate) fn test_failed_delivery() {
 
 /// Deferred guest adapter omits one actual remote delivery. This never fakes a
 /// physical acknowledgement; the caller keeps its retired root on rejection.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_incomplete_rendezvous(timeout: bool) -> Result<(), ShootdownError> {
     assert!(SYNC_SHOOTDOWN_READY.load(Ordering::Acquire));
     let mut omitted = None;

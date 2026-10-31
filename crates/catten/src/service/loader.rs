@@ -55,6 +55,7 @@ pub const SHARD_CQ_COUNT: usize = 4;
 pub const PAGE_SIZE: usize = 4096;
 const MAX_ELF_PROGRAM_HEADERS: usize = 64;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod admission_tests;
 
 const ELF_MAGIC: &[u8; 4] = b"\x7fELF";

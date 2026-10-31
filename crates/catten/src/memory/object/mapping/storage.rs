@@ -2,6 +2,7 @@
 use super::*;
 
 mod admission;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(in crate::memory::object) mod tests;
 
 type Storage = PreparedEntry<(AddressSpaceId, MemoryMappingRecord), admission::Charge>;

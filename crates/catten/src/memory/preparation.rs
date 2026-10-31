@@ -141,6 +141,7 @@ impl<'a> PreparingUserBacking<'a> {
     /// Explicit ordinary cancellation of a definitely unpublished preparation.
     /// Caller supplies a physical-release context, including its outer guards.
     /// This does not move physical rollback outside the borrowed table context.
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn cancel_unpublished(mut self) -> Result<(), physical::Error> {
         assert!(!self.may_be_published);
         self.rollback_with(|frame| PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame))
@@ -200,4 +201,5 @@ impl Drop for PreparingUserBacking<'_> {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod tests;

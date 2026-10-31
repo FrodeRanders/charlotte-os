@@ -112,12 +112,15 @@ impl Drop for WaiterSource {
 }
 
 mod preparation;
+#[cfg(any(test, feature = "kernel_tests"))]
 mod tests;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_preparation() {
     tests::run();
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_owner_preparation() {
     preparation::test_preparation();
 }

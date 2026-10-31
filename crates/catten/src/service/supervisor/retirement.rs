@@ -143,4 +143,5 @@ pub(crate) enum DeploymentTeardown {
     Failed(DomainTeardownError),
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod tests;

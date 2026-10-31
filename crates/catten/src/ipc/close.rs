@@ -20,6 +20,7 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
     owner.finish(result)
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn close_cap_with_wait(
     asid: AddressSpaceId,
     cap: CapabilityId,
@@ -244,6 +245,7 @@ pub(super) fn close_cap_with_cleanup(
 /// that have no ClosingAddressSpace. Production root close exclusively uses
 /// namespace_close with a borrowed closing owner; do not use this serialized
 /// loan adapter for published runtime domains.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn close_address_space_fixture(asid: AddressSpaceId) -> Result<(), IpcError> {
     {
         let mut ipc = IPC.write();

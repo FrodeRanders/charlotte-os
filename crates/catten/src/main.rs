@@ -21,12 +21,27 @@ compile_error!(
 
 extern crate alloc;
 
+// Fault injection has no callable hook, state or argument evaluation in a
+// validation-only build. Keep ordinary rejection and cleanup paths identical.
+macro_rules! test_fault {
+    ($fault:expr) => {{
+        #[cfg(feature = "kernel_tests")]
+        {
+            $fault
+        }
+        #[cfg(not(feature = "kernel_tests"))]
+        {
+            false
+        }
+    }};
+}
+
+pub mod boot_validation;
 pub mod capability;
 pub mod completion;
 pub mod cpu;
 pub mod debug_trace;
 pub mod deferred_work_manager;
-pub mod demo;
 pub mod device;
 pub mod device_management;
 pub mod environment;
@@ -37,6 +52,7 @@ pub mod log;
 pub mod memory;
 pub mod panic;
 mod resource_policy;
+#[cfg(feature = "kernel_tests")]
 pub mod self_test;
 pub mod service;
 pub mod syscall;
@@ -50,7 +66,11 @@ use spin::{
     LazyLock,
 };
 
-#[cfg(all(not(feature = "hvf_compat"), not(feature = "live_upgrade_test")))]
+#[cfg(all(
+    feature = "kernel_tests",
+    not(feature = "hvf_compat"),
+    not(feature = "live_upgrade_test")
+))]
 use crate::{
     cpu::scheduler::spawn_thread,
     memory::KERNEL_ASID,
@@ -74,10 +94,7 @@ use crate::{
                 start_secondary_lps,
             },
         },
-        scheduler::{
-            system_scheduler::SYSTEM_SCHEDULER,
-            yield_lp,
-        },
+        scheduler::yield_lp,
     },
     device_management::topology::DEVICE_TOPOLOGY,
 };
@@ -180,6 +197,7 @@ pub extern "C" fn bsp_main() -> ! {
     }
     early_logln!("BSP assigned ID 0.");
     init::bsp_init();
+    boot_validation::validate_memory();
     crate::service::admission::initialize_boot_policy();
     // Construct global queues that can later be reached from interrupt or
     // preemptible runtime context while execution is still BSP-only. Their
@@ -225,6 +243,7 @@ pub extern "C" fn bsp_main() -> ! {
         // device operations never initialize hardware beneath their callers'
         // guards. The focused live-upgrade build needs the installed unit for
         // its storage and recovery fixtures, so it initializes here too.
+        #[cfg(feature = "kernel_tests")]
         crate::device::smmu::test_initialization();
         match crate::device::smmu::initialize_early() {
             Ok(()) => logln!("[smmu] early initialization complete."),
@@ -238,6 +257,7 @@ pub extern "C" fn bsp_main() -> ! {
     {
         // Same boot-claim rule as AArch64: the focused live-upgrade build
         // initializes the unit before its storage and recovery fixtures.
+        #[cfg(feature = "kernel_tests")]
         crate::device::iommu::test_initialization();
         match crate::device::iommu::initialize_early() {
             Ok(()) => logln!("[iommu] early initialization complete."),
@@ -249,6 +269,7 @@ pub extern "C" fn bsp_main() -> ! {
             Err(error) => panic!("[iommu] early initialization failed: {:?}", error),
         }
     }
+    #[cfg(feature = "kernel_tests")]
     self_test::run_synchronous_self_tests();
     // The remaining boot work resolves store-backed ELFs and therefore may
     // yield while the NVMe/object-store bootstrap domains run. Execute it in a
@@ -298,15 +319,19 @@ extern "C" fn finish_boot() {
         // Topology publication is complete. Stack preparation can rendezvous
         // with APs, so do not inherit this boot-only local interrupt mask.
         unmask_interrupts!();
-        logln!("Spawning initial kernel thread to probe device topology...");
-        let thread_id = spawn_thread(KERNEL_ASID, probe_device_topology);
-        logln!("Initial thread spawned with ID = {thread_id}.");
+        #[cfg(feature = "kernel_tests")]
+        {
+            logln!("Spawning kernel diagnostic thread to print device topology...");
+            let thread_id = spawn_thread(KERNEL_ASID, probe_device_topology);
+            logln!("Topology diagnostic thread spawned with ID = {thread_id}.");
+        }
     }
     #[cfg(all(feature = "hvf_compat", not(feature = "live_upgrade_test")))]
     logln!("PCI topology probe skipped (hvf_compat: ECAM MMIO triggers HVF assertion).");
     unmask_interrupts!();
     crate::cpu::scheduler::threads::start_reapers();
-    #[cfg(not(feature = "hvf_compat"))]
+    #[cfg(all(feature = "kernel_tests", not(feature = "hvf_compat")))]
+    #[cfg(feature = "kernel_tests")]
     crate::device::recovery_tests::run();
     // Reach the operational service composition before admitting tests that
     // consume it. In particular, AArch64's UART test loads cclient.elf from
@@ -325,22 +350,22 @@ extern "C" fn finish_boot() {
     // and deliberately ran as one transaction. The deferred half runs like
     // ordinary kernel work and may yield while the services launched above
     // become ready.
+    #[cfg(feature = "kernel_tests")]
     self_test::run_deferred_self_tests();
 
     // Thread preparation can rendezvous. Keep interrupts enabled; each
     // scheduler publication below supplies its own short serialization.
-    // Spawn the async-syscall demonstration (submit -> async worker -> complete
-    // -> wake), exercising the completion ABI end-to-end once the scheduler is
-    // active.
-    #[cfg(not(any(feature = "live_upgrade_test", feature = "shutdown_test")))]
-    crate::demo::spawn_async_syscall_demo();
     // Admit the controlled scheduler-rebalancing workload last so its initial
     // co-location cannot be cancelled out by later least-loaded admissions.
     // Isolated shutdown registers only its own verifier. Unregistered
     // lifecycle workers can otherwise report success after shutdown's verdict
     // (x86) or be hidden by earlier platform power-off (Arm).
-    #[cfg(not(any(feature = "live_upgrade_test", feature = "shutdown_test")))]
+    #[cfg(all(
+        feature = "kernel_tests",
+        not(any(feature = "live_upgrade_test", feature = "shutdown_test"))
+    ))]
     crate::self_test::scheduler_lifecycle::test_scheduler_lifecycle();
+    #[cfg(feature = "kernel_tests")]
     crate::self_test::results::finalize_and_start_coordinator();
     // Publish the node's boot-done marker once the boot storm settles, so
     // network-initiating services wait until this node is through boot before
@@ -402,17 +427,9 @@ pub unsafe extern "C" fn ap_main(_cpuinfo: &MpInfo) -> ! {
 }
 
 #[unsafe(no_mangle)]
+#[cfg(feature = "kernel_tests")]
 pub extern "C" fn probe_device_topology() {
     logln!("LP {}: Probing device topology...", (get_lp_id()));
     let device_topology = &*DEVICE_TOPOLOGY;
     logln!("LP {}: Device Topology:\n{}", (get_lp_id()), device_topology);
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn test_fn() {
-    let thread_id = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid().unwrap();
-    let lp_id = get_lp_id();
-    loop {
-        logln!("Logging from thread {thread_id} on LP {lp_id}!");
-    }
 }

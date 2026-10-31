@@ -157,6 +157,7 @@ static HW_ASID_ALLOCATOR: LazyLock<Mutex<HwAsidAllocator>> =
 pub static CURRENT_LOGICAL_ASID: [AtomicUsize; MAX_TRACKED_LPS] =
     [const { AtomicUsize::new(KERNEL_ASID) }; MAX_TRACKED_LPS];
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn self_test_hw_asid_allocator() {
     let mut allocator = HwAsidAllocator {
         next: 1,
@@ -271,6 +272,7 @@ impl AddressSpace {
         self.owned_frames.try_reserve(1)
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn test_table_preparation() {
         walker::Walker::test_table_preparation();
     }
@@ -693,6 +695,7 @@ impl AddressSpace {
         self.release_owned_with(deallocate)
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn test_backing_release() {
         crate::memory::backing_release_tests::run(|space, deallocate| {
             space.release_owned_with(deallocate)

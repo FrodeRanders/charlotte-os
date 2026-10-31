@@ -35,6 +35,7 @@ impl CancelledTimer {
         self.0.retired = retired;
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn removed(&self) -> bool {
         self.0.removed
     }
@@ -56,8 +57,10 @@ impl CancelledTimer {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 mod tests;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_disposal() {
     tests::run();
 }

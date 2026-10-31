@@ -83,6 +83,7 @@ impl<C> ScratchWindow<C> {
         Ok(self.occupied.take(&offset).expect("validated scratch extent missing"))
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn extent_count(&self) -> usize {
         self.occupied.iter().count()
     }

@@ -223,17 +223,9 @@ extern "C" fn verify_el0_nvme() {
 
     logln!("[nvme] NVMe driver and object store both initialised and registered.");
 
-    // A newly installed appliance may provide an empty persistent disk rather
-    // than a host-preseeded QEMU image. The object store formats such a disk at
-    // mount; populate its missing service objects from the immutable signed
-    // boot bundle before any store-dependent lifecycle work begins.
-    let seeded = crate::service::store::seed_embedded_services()
-        .expect("[store] embedded service seed failed");
-    logln!(
-        "[store] bootstrap seed complete: retained={} written={}",
-        seeded.retained,
-        seeded.written
-    );
+    // The operational launcher already seeded its signed bootstrap artifacts,
+    // including blank disks. This verifier observes that same storage stack;
+    // it must never perform initialization required by a test-free boot.
 
     // Start the client immediately. Its single deferred lookup must be woken
     // by the driver's later registration; verifier ordering must not mask a

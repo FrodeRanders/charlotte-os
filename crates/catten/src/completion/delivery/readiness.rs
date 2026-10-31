@@ -3,6 +3,7 @@
 //! source identity retains no ring backing or physical completion authority.
 use super::*;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 mod waiter_tests;
 
 pub(in crate::completion) fn signal_cq_source(
@@ -23,6 +24,7 @@ pub(in crate::completion) fn signal_cq_source(
     );
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn cq_waiter_count(asid: AddressSpaceId, cq: CqId) -> usize {
     COMPLETIONS
         .read()
@@ -128,6 +130,7 @@ pub(crate) fn capture_cq_interest(asid: AddressSpaceId, cq: CqId) -> Option<CqIn
 impl CqInterest {
     /// Borrow the captured admitted source for existing completion-family
     /// fixtures. This adds no ring/root lease or result-observation authority.
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(in crate::completion) fn waiter_source(
         &self,
     ) -> &crate::klib::observer::registration::ListRef<crate::klib::observer::waiter_budget::Charge>
@@ -262,6 +265,7 @@ pub fn wait_on_cq_checked(
 /// Kernel fixture: a detached wake batch retains its captured CQ across
 /// numeric ASID/CQ reuse. Reentrant callbacks
 /// also exercise the rule that no registry/device guard survives notification.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_prepared_wake_identity() {
     waiter_tests::run();
     use core::sync::atomic::{
@@ -325,6 +329,7 @@ pub(crate) fn test_prepared_wake_identity() {
 /// registries. This fixture owns its registration and waits for an LP that may
 /// already have claimed the global mailbox, rather than assuming local drain
 /// is always the winning consumer.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_irq_wake_reentrancy(asid: AddressSpaceId, intid: u32) {
     use core::sync::atomic::{
         AtomicUsize,

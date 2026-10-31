@@ -349,10 +349,14 @@ pub(in crate::completion) fn submit_timer(
     result
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 mod initial_tests;
+#[cfg(any(test, feature = "kernel_tests"))]
 mod metadata_tests;
+#[cfg(any(test, feature = "kernel_tests"))]
 mod tests;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_preparation() {
     tests::run();
     metadata_tests::run();

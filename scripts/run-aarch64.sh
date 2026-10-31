@@ -9,9 +9,12 @@
 # For display (flanterm framebuffer console), use --display.
 #
 # Usage:
-#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot|--no-failure-capture] [--scheduler-trace] [--hvf] [--no-network] [--cluster-service [NAME=]VIP:PORT]... [--net-test|--relmsg-test|--disco-test|--dhcp-test|--s3-test|--deployment-ingress-test|--shutdown-ingress-test|--kafka-test|--kafka-coordinator-test|--kafka-fencing-test] [--net-listen PORT|--net-connect HOST:PORT|--net-mcast GROUP:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test|--shutdown-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
+#   scripts/run-aarch64.sh [debug|release] [--minimal|--tests] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot|--no-failure-capture] [--scheduler-trace] [--hvf] [--no-network] [--cluster-service [NAME=]VIP:PORT]... [--net-test|--relmsg-test|--disco-test|--dhcp-test|--s3-test|--deployment-ingress-test|--shutdown-ingress-test|--kafka-test|--kafka-coordinator-test|--kafka-fencing-test] [--net-listen PORT|--net-connect HOST:PORT|--net-mcast GROUP:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test|--shutdown-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
 #
-#   debug|release  Build profile (default: debug)
+#   --minimal      Boot validation + operational services; omit guest regression fixtures
+#   --build-only   Produce boot/data images without starting QEMU
+#   --tests        Include the registered native regression suite (development default)
+#   debug|release  Optimization/debug-info profile, independent of --minimal/--tests
 #   --clean        Remove all cached AArch64 target artifacts before building
 #   --display      Build with framebuffer console (flanterm), boot with ramfb
 #   --sbsa-ref     Boot the QEMU sbsa-ref machine with the TF-A + edk2 firmware
@@ -75,11 +78,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # shellcheck source=lib/boot-common.sh
 source "${SCRIPT_DIR}/lib/boot-common.sh"
+source "${SCRIPT_DIR}/lib/service-bundle.sh"
 source "${SCRIPT_DIR}/lib/signing-policy.sh"
 catten_require_development_trust
 
 ARCH="aarch64"
 PROFILE="debug"
+BOOT_MODE="test"
+BUILD_ONLY="0"
 GDB=""
 GDB_PORT="1234"
 DISPLAY_MODE="0"
@@ -137,6 +143,10 @@ CLUSTER_TCP_PORT=""
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        --minimal) BOOT_MODE="minimal"; shift ;;
+        --tests) BOOT_MODE="test"; shift ;;
+        --build-only) BUILD_ONLY="1"; shift ;;
+        --help|-h) sed -n '/^# Usage:/,/^set -euo pipefail/p' "$0" | sed '$d; s/^# *//'; exit 0 ;;
         debug|release) PROFILE="$1"; shift ;;
         --clean)       CLEAN_BUILD="1"; shift ;;
         --display)     DISPLAY_MODE="1"; shift ;;
@@ -162,7 +172,7 @@ while [ "$#" -gt 0 ]; do
         --tcpip-test)  NET_TEST="1"; TCPIP_TEST="1"; shift ;; # implies --net-test
         --management-startup-test)
             [ "$#" -ge 2 ] || { echo "Missing startup expectation" >&2; exit 1; }
-            NET_TEST="1"; MANAGEMENT_STARTUP_TEST="$2"; shift 2 ;;
+            MANAGEMENT_STARTUP_TEST="$2"; shift 2 ;;
         --http-test)   NET_TEST="1"; HTTP_TEST="1"; shift ;; # implies --net-test
         --dhcp-test)   NET_TEST="1"; DHCP_TEST="1"; shift ;; # includes the driver verifier
         --s3-test)     NET_TEST="1"; DHCP_TEST="1"; S3_TEST="1"; shift ;;
@@ -200,6 +210,25 @@ while [ "$#" -gt 0 ]; do
         *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
 done
+
+# Development keeps the registered suite by default. Minimal boots retain
+# validation/operational composition, and cannot silently enable a test feature.
+if [ "$BOOT_MODE" = "minimal" ]; then
+    if [ "$NET_TEST" = "1" ] || [ "$LIVE_UPGRADE_TEST" = "1" ] \
+        || [ "$SHUTDOWN_TEST" = "1" ] || [ "$SECURITY_TEST" = "1" ] \
+        || [ "${EL0_SMOKE:-0}" = "1" ] || [ "${USE_HVF:-0}" = "1" ]; then
+        echo "error: --minimal is incompatible with guest test options and the HVF fixture" >&2
+        exit 1
+    fi
+    if [ "$REUSE_STORAGE" = "1" ]; then
+        echo "error: --minimal cannot reuse an unchecked installed disk; omit --reuse-storage" >&2
+        exit 1
+    fi
+    INSTANCE="${INSTANCE:-default}-minimal"
+elif [ -n "$MANAGEMENT_STARTUP_TEST" ]; then
+    NET_TEST="1"
+fi
+catten_service_bundle "$ARCH" "$BOOT_MODE" "$ROOT_DIR"
 
 if [ "$DEBUG_SNAPSHOT" = "1" ]; then
     if [ -z "$TIMEOUT" ]; then
@@ -623,15 +652,20 @@ if [ "${CATTEN_SKIP_EMBED_BUILD:-0}" = "1" ]; then
     echo ">>> Reusing staged AArch64 EL0 bundle."
 elif [ "$CLEAN_BUILD" = "1" ]; then
     echo ">>> Cleaning and rebuilding embedded EL0 service bundle..."
-    "${ROOT_DIR}/scripts/build-catten-services.sh" --embed --clean
+    "${ROOT_DIR}/scripts/build-catten-services.sh" --embed --clean --mode "$BOOT_MODE"
 else
     echo ">>> Rebuilding embedded EL0 service bundle..."
-    "${ROOT_DIR}/scripts/build-catten-services.sh" --embed
+    "${ROOT_DIR}/scripts/build-catten-services.sh" --embed --mode "$BOOT_MODE"
 fi
-if [ "${CATTEN_SKIP_EMBED_BUILD:-0}" != "1" ]; then
+if [ "$BOOT_MODE" = "test" ] && [ "${CATTEN_SKIP_EMBED_BUILD:-0}" != "1" ]; then
     "${ROOT_DIR}/scripts/build-catten-user.sh" --embed
 fi
-export CATTEN_AARCH64_SERVICE_BUNDLE="${ROOT_DIR}/target/embedded-services/aarch64-unknown-none"
+catten_validate_service_bundle "$BOOT_MODE" "$ARCH"
+if [ "$BOOT_MODE" = "test" ] && [ ! -f "$BUNDLE/sitas-user.elf" ]; then
+    echo "error: test bundle requires sitas-user.elf; run scripts/build-catten-user.sh --embed" >&2
+    exit 1
+fi
+export CATTEN_AARCH64_SERVICE_BUNDLE="$BUNDLE"
 if [ "$SECURITY_TEST" = "1" ]; then
     mkdir -p "$ROOT_DIR/target/security-test"
     CATTEN_SECURITY_TEST_DIR="$(mktemp -d "$ROOT_DIR/target/security-test/fixture.XXXXXX")"
@@ -713,6 +747,10 @@ if [ "$DISPLAY_MODE" = "1" ]; then
     echo ">>> Building Catten kernel (${ARCH}, ${PROFILE}, display)..."
 else
     echo ">>> Building Catten kernel (${ARCH}, ${PROFILE}, headless)..."
+fi
+
+if [ "$BOOT_MODE" = "test" ]; then
+    FEATURES="${FEATURES},kernel_tests"
 fi
 
 if [ "$USE_HVF" = "1" ]; then
@@ -809,6 +847,7 @@ else
         --no-default-features --features "$FEATURES" $RELEASE_FLAG
 fi
 
+python3 "$ROOT_DIR/scripts/check-boot-profile.py" --kernel "$KERNEL" --mode "$BOOT_MODE"
 catten_boot_report_kernel "$KERNEL"
 
 # --- Build a FAT32 EFI System Partition image with mtools. ---
@@ -842,6 +881,13 @@ elif [ ! -f "$NVME_IMAGE" ] || [ "$FRESH_STORAGE" = "1" ] \
     printf '%s\n' "$CURRENT_BUNDLE_HASH" > "$NVME_BUNDLE_HASH"
 else
     echo ">>> Reusing NVMe disk image ${NVME_IMAGE} (blessed bundle unchanged)."
+fi
+
+if [ "$BUILD_ONLY" = "1" ]; then
+    echo ">>> Image build complete ($BOOT_MODE)."
+    echo ">>> Boot image: $IMAGE"
+    echo ">>> Data image: $NVME_IMAGE"
+    exit 0
 fi
 
 # --- sbsa-ref firmware check ---
@@ -1210,11 +1256,11 @@ if [ -n "$TIMEOUT" ]; then
                 echo ">>> Deployment ready; keeping the guest alive for ${APP_HOLD_SECONDS}s for host probes."
             fi
         fi
-        if [ "$SELFTEST_COMPLETE" = "1" ] || catten_boot_has_selftest_result "$LOG"; then
+        if [ "$SELFTEST_COMPLETE" = "1" ] || catten_boot_has_selected_result "$LOG"; then
             SELFTEST_COMPLETE=1
             if [ "$SELFTEST_COMPLETE_TICK" -lt 0 ]; then
                 SELFTEST_COMPLETE_TICK=$tick
-                echo ">>> Authoritative self-test result observed after $(((tick + 1) / 10))s."
+                echo ">>> Selected boot result observed after $(((tick + 1) / 10))s."
                 if [ "$CLUSTER_DRAIN_TICKS" -gt 0 ]; then
                     echo ">>> Keeping the socket-linked guest alive for a 15s peer drain window."
                 fi
@@ -1342,7 +1388,7 @@ if [ -n "$TIMEOUT" ]; then
         fi
     fi
     if [ "$SELFTEST_COMPLETE" -ne 1 ]; then
-        echo "error: authoritative self-test result was not produced within ${TIMEOUT}s" >&2
+        echo "error: selected boot result was not produced within ${TIMEOUT}s" >&2
         exit 1
     fi
     if { [ "$SHUTDOWN_TEST" = "1" ] || [ "$SHUTDOWN_INGRESS_TEST" = "1" ]; } \
@@ -1358,7 +1404,7 @@ if [ -n "$TIMEOUT" ]; then
     if [ "$SHUTDOWN_INGRESS_TEST" = "1" ]; then
         python3 "${ROOT_DIR}/scripts/tests/test-management-drain.py" verify "$LOG"
     fi
-    catten_boot_validate_selftest_log "$LOG" "$KERNEL"
+    catten_boot_validate_selected_log "$LOG" "$KERNEL"
 else
     QEMU_OPTS+=(-serial stdio)
     if [ "$DISPLAY_MODE" = "1" ]; then

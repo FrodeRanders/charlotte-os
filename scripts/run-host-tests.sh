@@ -4,6 +4,8 @@ set -euo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 bash "$repo_root/scripts/tests/test-signing-policy.sh"
 python3 "$repo_root/scripts/tests/test-boot-results.py"
+python3 "$repo_root/scripts/tests/test-boot-profiles.py"
+python3 "$repo_root/scripts/tests/test-sign-service-batch.py"
 python3 "$repo_root/scripts/tests/test-boot-diagnostics.py"
 python3 "$repo_root/scripts/tests/test-boot-images.py"
 python3 "$repo_root/scripts/tests/test-secure-boot-results.py"

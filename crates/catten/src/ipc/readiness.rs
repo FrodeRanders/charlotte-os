@@ -4,6 +4,7 @@
 use super::*;
 
 mod waiter_source;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod waiter_tests;
 
 /// Debugger-visible cooperative admission retries: readable wait, reply wait.
@@ -425,6 +426,7 @@ impl Observable for PendingCallObservable {
 }
 
 impl EndpointObservable {
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn new(endpoint: EndpointId) -> Self {
         Self {
             endpoint,
@@ -433,6 +435,7 @@ impl EndpointObservable {
 }
 
 impl PendingCallObservable {
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn new(call: PendingCallId) -> Self {
         Self {
             call,

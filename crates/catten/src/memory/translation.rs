@@ -105,6 +105,8 @@ impl<'a> PreparingTable<'a> {
 
     /// Cancel only definitely unpublished backing. Ordinary cancellation is
     /// explicit; abandoning this owner retains its original admission instead.
+    // Arm hardware-tag rejection uses this consuming rollback in normal boot.
+    #[cfg_attr(target_arch = "x86_64", allow(dead_code))]
     pub(crate) fn cancel_unpublished(mut self) -> Result<(), super::physical::Error> {
         self.rollback_with(|frame| super::PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame))
     }
@@ -147,6 +149,7 @@ impl<'a> PreparingTable<'a> {
         // pool reservation remains consumed without taking the pool guard.
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn test_policy() {
         let floor = crate::resource_policy::POLICY.memory.physical_reserve.of(80).max(1);
         assert!(!allowed(TableScope::PrivateUser, false, floor, 80));
@@ -166,6 +169,9 @@ impl Drop for PreparingTable<'_> {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 mod admission_tests;
+#[cfg(any(test, feature = "kernel_tests"))]
 mod shared_tests;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod tests;

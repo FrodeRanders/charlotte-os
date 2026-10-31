@@ -42,6 +42,7 @@ use crate::{
 };
 
 pub(crate) mod deferred;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod exit_watch_tests;
 pub mod lp_schedulers;
 pub(crate) mod prepared;
@@ -123,6 +124,7 @@ pub fn spawn_thread(asid: AddressSpaceId, entry_point: extern "C" fn()) -> Threa
 /// Create a thread, publish caller-owned metadata keyed by its TID, and only
 /// then admit it to the scheduler. This closes the spawn-vs-first-instruction
 /// race for facilities such as self-test panic attribution.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn spawn_thread_after_publish(
     asid: AddressSpaceId,
     entry_point: extern "C" fn(),

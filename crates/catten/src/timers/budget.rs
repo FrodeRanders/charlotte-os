@@ -43,6 +43,7 @@ struct Account {
 pub(crate) struct DomainBudget(Mutex<Account>);
 
 impl DomainBudget {
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn new(completion_capacity: usize) -> Arc<Self> {
         Self::try_new(completion_capacity).expect("mandatory timer account allocation failed")
     }
@@ -57,6 +58,7 @@ impl DomainBudget {
         })))
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn used(&self) -> usize {
         self.0.lock().count.used()
     }
@@ -69,6 +71,7 @@ pub(crate) struct SchedulerSponsor(Arc<DomainBudget>);
 
 impl SchedulerSponsor {
     /// Mandatory trusted fixture construction; runtime root preparation is fallible.
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn new(platform: bool) -> Self {
         Self::try_new(platform).expect("mandatory scheduler timer sponsor allocation failed")
     }
@@ -91,6 +94,7 @@ impl SchedulerSponsor {
         self.0.0.lock().platform = true;
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn used(&self) -> usize {
         self.0.used()
     }
@@ -142,6 +146,7 @@ impl Drop for Charge {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn node_used() -> (usize, usize) {
     let node = NODE.lock();
     (node.total.used(), node.ordinary.used())

@@ -21,6 +21,7 @@ use crate::{
     },
 };
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod retirement_tests;
 
 #[derive(Debug)]

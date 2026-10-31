@@ -6,6 +6,26 @@ repeat every runtime fixture. Scope and source anchors are recorded in
 the \repofiletext|docs/reports/audits/2026-10-18-documentation-reality-sweep.md|{dated source comparison}.
 Source, tests, and repository history remain authoritative.
 
+\section{Boot validation and test selection}
+
+Startup memory validation is mandatory and independent of native regressions.
+It checks physical availability, private-frame readback and accounting, heap
+reserve bounds and one aligned 8 KiB heap readback. Actual hardware discovery,
+IOMMU initialization, signatures, admission and service readiness remain normal
+boot requirements. The operational launcher seeds signed bootstrap service
+artifacts before publishing its service set, including when no NVMe verifier
+runs; valid installed artifacts are retained.
+
+Both QEMU runners accept \texttt{--minimal} for an operational node without
+native fixtures or bundled probe applications. Their development default,
+\texttt{--tests}, enables the \texttt{kernel\_tests} feature; integration features
+imply it. Optimization selection (\texttt{debug}/\texttt{release}) is independent.
+\texttt{--build-only} creates the selected images without starting QEMU.
+Minimal and development bundles/disks are separated and cached kernel modes
+are checked before image creation. Minimal completion follows confirmed local
+storage readiness and does not synthesize a self-test verdict. See
+\repofile|docs/reference/boot-modes.md| for the contract and retired exercises.
+
 \section{Implementation phases}
 
 \begin{longtable}{|p{1.1cm}|p{7.4cm}|p{3cm}|}

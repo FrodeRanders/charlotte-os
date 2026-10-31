@@ -4,6 +4,28 @@ CharlotteOS has two intentionally different test environments. Pure logic
 should run on the development host. Kernel behavior and EL0 entry-point wiring
 must run on the CharlotteOS target, normally under QEMU.
 
+## Minimal boot and development selection
+
+Startup validation is a separate, mandatory part of boot. `--minimal` omits
+native regression fixtures and probe applications while retaining memory
+readback/accounting, actual hardware initialization, signed launch and the
+operational service set. `--tests` keeps the registered native suite and is the
+development default, independently of `debug` or `release`.
+
+```sh
+scripts/run-aarch64.sh release --minimal --timeout 120
+scripts/run-x86_64.sh release --minimal --build-only
+scripts/run-aarch64.sh debug --tests --security-test --timeout 180
+```
+
+The [boot-mode contract](../reference/boot-modes.md) describes feature/bundle
+selection, distinct completion events, cache checks and retired exercises.
+Minimal boots do not publish a synthetic self-test result. New native tests and
+fault hooks must be behind `kernel_tests`; host logic retains `#[cfg(test)]`.
+Do not move required runtime validation, admission or device initialization
+behind a test flag. Preserve a failure discriminator before retiring a lower-level
+test in favor of a broader scenario.
+
 ## Host-testable logic
 
 Run every host-side Rust suite and tool self-test with:
@@ -121,8 +143,8 @@ See the [publication deadline evidence](../reports/audits/2026-10-12-security-pu
 The primary probe performs 384 cancelled requests in each of two launches. A
 concurrent probe submits at least 512 more. All sixteen result bits (`0xffff`) must
 pass, publication generations must advance, and the retired descriptor must no
-longer attest. The ordinary boot suite, network verifier and security verifier
-register 19 tests in this configuration.
+longer attest. The coordinator reports the architecture-specific registered count and bitmap;
+all ordinary, network and security entries must finish.
 
 Both primary launches also use an explicit signed `rng=call` grant for 512
 sequential service-only 32-byte entropy requests under one 30-second deadline.

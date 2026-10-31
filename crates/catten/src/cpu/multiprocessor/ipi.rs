@@ -182,10 +182,8 @@ pub extern "C" fn ih_interprocessor_interrupt(ipi_queue: &'static mut Mutex<VecD
 /// (on AArch64 the invalidation itself is broadcast in hardware) and a wakeup
 /// RPC marks a context switch pending so the dispatcher's yield takes effect.
 ///
-/// Cross-LP SGI delivery is exercised end-to-end by `demo::cross_lp_demo`,
-/// which delivers a message from LP0 to LP1 under QEMU SMP. The delivery path
-/// (SGI encoding, GIC initialization, LP topology and barriers) is validated
-/// there.
+/// The optional kernel suite exercises cross-LP delivery through the EL0
+/// completion, CQ-wake and scheduler lifecycle verifiers under QEMU SMP.
 pub fn drain_local_ipi_queue() {
     let lp_id = get_lp_id() as usize;
     while let Some(ipi) = IPI_CMD_QUEUES.pop_local(lp_id) {

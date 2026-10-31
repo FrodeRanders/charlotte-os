@@ -21,6 +21,7 @@ should be updated with the implementation when those contracts change.
   relays, captured reply correlation and owning local publication phases.
 - [Discovery protocol](discovery-protocol.md) — complete peer advertisements,
   declared lengths, Ethernet padding and current-only rollout.
+- [Boot modes](boot-modes.md) — mandatory startup validation, optional native regressions, signed bundle selection and retired exercises.
 - [Configuration](../guides/configuration.md) — build profiles, configuration authority, related limits and workload qualification.
 - [Kernel resource policy](resource-policy.md) — central defaults, dimensions, validation and remaining configuration inventory.
 - [Security remediation](security-remediation.md) — current finding ledger,

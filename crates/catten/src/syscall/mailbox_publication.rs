@@ -62,17 +62,18 @@ impl PreparingMailbox {
     }
 
     fn prepare(&mut self, asid: AddressSpaceId, captured: MailboxIdentity) -> Result<(), Error> {
+        #[cfg(feature = "kernel_tests")]
         tests::metadata_boundary(false);
-        if tests::reject(1) {
+        if test_fault!(tests::reject(1)) {
             return Err(Error::AllocationFailed);
         }
         self.0.namespace_node =
             Some(PreparedEntry::try_new().map_err(|_| Error::AllocationFailed)?);
-        if tests::reject(2) {
+        if test_fault!(tests::reject(2)) {
             return Err(Error::AllocationFailed);
         }
         self.0.endpoint_node = Some(PreparedEntry::try_new().map_err(|_| Error::AllocationFailed)?);
-        if tests::reject(3) {
+        if test_fault!(tests::reject(3)) {
             return Err(Error::AllocationFailed);
         }
         self.0.namespace = Some(AsMailboxCaps::try_new(captured.address_space)?);
@@ -146,6 +147,7 @@ impl PreparingMailbox {
     }
 
     fn finish(mut self) -> Result<(), Error> {
+        #[cfg(feature = "kernel_tests")]
         tests::metadata_boundary(true);
         if let Some(authority) = self.0.authority.take() {
             authority.finish();
@@ -271,6 +273,7 @@ impl RetiredMailbox {
     }
 
     fn finish(mut self) -> Result<(), Error> {
+        #[cfg(feature = "kernel_tests")]
         tests::metadata_boundary(true);
         if let Some(payload) = self.0.payload.take() {
             payload.release();
@@ -297,4 +300,5 @@ fn admission_error(error: crate::capability::AllocationError) -> Error {
 }
 
 #[path = "mailbox_publication_tests.rs"]
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) mod tests;

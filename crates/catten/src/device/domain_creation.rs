@@ -44,6 +44,7 @@ impl<'slot, 'grant, T> Preparing<'slot, 'grant, T> {
         })
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     fn begin_with(
         slot: &'slot Mutex<UnitSlot<T>>,
         grant: &'grant mut DmaCreation,
@@ -91,8 +92,10 @@ pub(super) fn prepare<T>(
     work: impl FnOnce(&mut T, &mut DmaCreation) -> Result<(), Error>,
 ) -> Result<(), Error> {
     let mut owner = Preparing::begin(slot, grant, &ready)?;
+    #[cfg(feature = "kernel_tests")]
     tests::boundary(Phase::Claim);
     let result = work(owner.unit.value_mut(), owner.grant);
+    #[cfg(feature = "kernel_tests")]
     tests::boundary(Phase::Restore);
     // Ordinary hardware errors restore actual queue/epoch/registry state, never
     // reconstruct it. The enclosing grant still owns private/published rollback.
@@ -101,6 +104,7 @@ pub(super) fn prepare<T>(
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg(feature = "kernel_tests")]
 pub(super) enum Phase {
     Claim,
     Allocate,
@@ -108,10 +112,14 @@ pub(super) enum Phase {
     Restore,
 }
 
+#[cfg(feature = "kernel_tests")]
 pub(super) fn boundary(phase: Phase) {
+    #[cfg(feature = "kernel_tests")]
     tests::boundary(phase);
 }
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_admission() {
     tests::run();
 }
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) mod tests;

@@ -208,6 +208,7 @@ impl ReplyCompletion {
         Ok(())
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn new(token: RetiredReply, observers: WaitNotifications) -> Self {
         Self(ManuallyDrop::new(ReplyCompletionResources {
             token: Some(token),
@@ -298,6 +299,7 @@ impl PreparedCall {
         Ok(())
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn try_new(caller: AddressSpaceId) -> Result<Self, IpcError> {
         Self::prepare(
             caller,
@@ -306,6 +308,7 @@ impl PreparedCall {
         )
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn prepare(
         caller: AddressSpaceId,
         allocate: impl FnOnce() -> Result<PendingStorage, IpcError>,

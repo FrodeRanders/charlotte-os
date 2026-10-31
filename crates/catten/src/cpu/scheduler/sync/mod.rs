@@ -8,6 +8,7 @@
 
 pub mod mutex;
 pub mod rwlock;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod tests;
 
 /// Debugger-visible runnable retries after lock-wait admission rejection.

@@ -46,6 +46,7 @@ impl Preparing {
         Ok(preparing)
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(in crate::completion) fn is_published(&self) -> bool {
         self.0.entries.is_none()
     }
@@ -154,8 +155,10 @@ pub(in crate::completion) fn open(
     Ok(())
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 mod tests;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(in crate::completion) fn test_preparation() {
     tests::run();
 }

@@ -18,6 +18,7 @@ use core::sync::atomic::{
 };
 
 mod deployments;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod observer_tests;
 pub(crate) use deployments::{
     DEPLOYED_DOMAINS,
@@ -691,6 +692,8 @@ pub fn publish_local_ready() {
         .expect("[supervisor] boot-done registration result missing");
     let generation = result.map(|reply| reply.result).unwrap_or(0);
     crate::logln!("[node] boot-done marker registered (generation {generation}).");
+    #[cfg(not(feature = "kernel_tests"))]
+    crate::logln!("BOOT COMPLETE: validation passed; local storage ready; services submitted");
 }
 
 /// Obtain the running node-local name service.
@@ -1499,12 +1502,11 @@ pub fn try_spawn_upgrade(
 }
 
 /// Return the embedded ELF image for a given upgrade selector.
-/// 0 = echo service.  Returns None for unknown selectors.
+/// 0 = optional echo service. Unknown selectors or absent images return None;
+/// a minimal bundle intentionally contains no echo fixture.
 pub fn elf_for_selector(selector: u64) -> Option<&'static [u8]> {
     match selector {
-        0 => Some(
-            crate::service::store::service_elf(b"echo").expect("[supervisor] echo service elf"),
-        ),
+        0 => crate::service::store::service_elf(b"echo"),
         _ => None,
     }
 }

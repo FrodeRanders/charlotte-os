@@ -65,6 +65,7 @@ impl Source {
         deferred::publish(payload.list.close(), Some(payload.disposal.publish(payload.list)));
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(in crate::device) fn registered(&self) -> usize {
         self.0.list.registered()
     }

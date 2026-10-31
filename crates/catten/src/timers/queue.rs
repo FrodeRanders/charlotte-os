@@ -190,6 +190,7 @@ impl Events {
         }
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn retire(self) -> RetiredEvents {
         RetiredEvents(self)
     }

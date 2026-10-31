@@ -309,7 +309,9 @@ links to its temporary captures.
 Each runner also accepts `--management-startup-test EXPECTATION` for an isolated
 timed user-network boot: `ready`, `validity`, `chain-validity`, `disabled`, `WrongPolicy`, `Signature` or
 `Authentication`. This is a host assertion, never a kernel credential or policy
-override, and it does not automatically create a missing resource. The terminal
+override, and it does not automatically create a missing resource. Positive
+expectations require readable resource, CA and reader certificate/key files
+before build; they also work with `--minimal` without guest regression features. The terminal
 rejection modes require `--no-failure-capture` and make no self-test success claim.
 Missing or malformed-DER credentials must produce both explicit disabled-state
 events after exactly one policy publication. Envelope failures must reach the

@@ -3,11 +3,14 @@
 use super::*;
 
 mod admission;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) mod tests;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn admitted() -> ([u64; 2], [u64; 2]) {
     admission::snapshot()
 }
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn with_budget_locked<T>(work: impl FnOnce() -> T) -> T {
     admission::with_locked(work)
 }
@@ -37,6 +40,7 @@ impl core::ops::Deref for Snapshot {
     }
 }
 impl Snapshot {
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn as_slice(&self) -> &[PAddr] {
         self
     }

@@ -38,6 +38,7 @@ pub mod smmu;
 #[cfg(target_arch = "x86_64")]
 pub mod vt_d;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod admission_tests;
 mod backend_registry;
 mod close;
@@ -52,63 +53,78 @@ mod private_domain;
 mod publication;
 mod registry;
 use publication::GrantAdmission;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod recovery_tests;
 pub(crate) mod retirement;
 mod unit_initialization;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_scheduled_creation_readiness() {
     domain_creation::tests::scheduled();
 }
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_scheduled_mapping_readiness() {
     mapping::test_scheduled_readiness();
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 static REJECT_RETIREMENT: core::sync::atomic::AtomicBool =
     core::sync::atomic::AtomicBool::new(false);
 
 // Serialized pre-driver fixture rejects after real initial configuration
 // maintenance. Rollback must still perform its own actual drain/completion.
+#[cfg(any(test, feature = "kernel_tests"))]
 static REJECT_CREATION: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
 
+#[cfg(any(test, feature = "kernel_tests"))]
 fn test_reject_creation() -> bool {
     REJECT_CREATION.swap(false, Ordering::AcqRel)
 }
 
 // Serialized pre-driver fixture, never caller-controlled policy. Allocated
 // private prefixes stay with the complete grant until post-guard cancellation.
+#[cfg(any(test, feature = "kernel_tests"))]
 static REJECT_PRIVATE_ALLOCATION: core::sync::atomic::AtomicU64 =
     core::sync::atomic::AtomicU64::new(0);
+#[cfg(any(test, feature = "kernel_tests"))]
 static REJECT_PRIVATE_COMPLETE: core::sync::atomic::AtomicBool =
     core::sync::atomic::AtomicBool::new(false);
 
+#[cfg(any(test, feature = "kernel_tests"))]
 fn test_reject_private_allocation(pages: u64) -> bool {
     REJECT_PRIVATE_ALLOCATION
         .compare_exchange(pages, 0, Ordering::AcqRel, Ordering::Relaxed)
         .is_ok()
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 fn test_reject_private_complete() -> bool {
     REJECT_PRIVATE_COMPLETE.swap(false, Ordering::AcqRel)
 }
 
 // Single-mutator, pre-driver boot fixture. Reject after hardware detachment;
 // never fake a hardware acknowledgement or discharge backing ownership.
+#[cfg(any(test, feature = "kernel_tests"))]
 fn test_reject_retirement() -> bool {
     REJECT_RETIREMENT.swap(false, Ordering::AcqRel)
 }
 
 // Serialized boot fixture rejects completion after clearing an installed prefix.
 // The real hardware completion remains required before releasing its pin.
+#[cfg(any(test, feature = "kernel_tests"))]
 static REJECT_MAP_ROLLBACK: core::sync::atomic::AtomicBool =
     core::sync::atomic::AtomicBool::new(false);
 
+#[cfg(any(test, feature = "kernel_tests"))]
 fn test_reject_map_rollback() -> bool {
     REJECT_MAP_ROLLBACK.swap(false, Ordering::AcqRel)
 }
 
 // Serialized pre-driver fixture: failed unmap must retain its data pin.
+#[cfg(any(test, feature = "kernel_tests"))]
 static REJECT_UNMAP_COMPLETION: core::sync::atomic::AtomicBool =
     core::sync::atomic::AtomicBool::new(false);
+#[cfg(any(test, feature = "kernel_tests"))]
 fn test_reject_unmap_completion() -> bool {
     REJECT_UNMAP_COMPLETION.swap(false, Ordering::AcqRel)
 }
@@ -302,6 +318,7 @@ impl MmioOperation {
 /// Exercise the exclusion state held across public MMIO mapping syscalls.
 /// Kept crate-private for the boot self-test; applications cannot manufacture
 /// this transient claim directly.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn self_test_mmio_close_in_flight(asid: AddressSpaceId, cap: DeviceCap) {
     let handle = crate::memory::current_address_space_handle(asid)
         .expect("[device] MMIO close test address space missing");
@@ -497,6 +514,7 @@ impl DmaCreation {
 }
 
 impl PreparedDmaDomain {
+    #[cfg(any(test, feature = "kernel_tests"))]
     fn new(
         owner: AddressSpaceId,
         destroy: fn(u64) -> Result<(), dma::Error>,
@@ -565,7 +583,9 @@ impl PreparedDmaDomain {
     /// finish the operation only after leaving those local guards.
     fn complete(mut self, owner: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError> {
         assert!(self.resources.creation.private.is_none(), "publishing private DMA backing");
+        #[cfg(feature = "kernel_tests")]
         if let Some(reset) = self.resources.creation.reset.as_ref() {
+            #[cfg(feature = "kernel_tests")]
             crate::device_management::drivers::busses::pci_express::topology::reset::tests::before_activation(reset, owner, cap);
         }
         {
@@ -977,10 +997,12 @@ fn create_dma_domain(
     Ok(())
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_reset_devices_available() -> bool {
     DEVICES.try_lock().is_some()
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_reset_backend_available() {
     dma::test_assert_backend_available();
 }

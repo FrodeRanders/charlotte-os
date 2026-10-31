@@ -4,7 +4,9 @@
 //! contract. Active fallback and outer guard/IRQ qualification are unchanged.
 use super::*;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod exit_tests;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod timer_tests;
 
 /// An [`Observer`] that completes a capability when the worker thread it is
@@ -41,6 +43,7 @@ pub(super) struct CompletionTimerObserver {
 
 impl CompletionTimerObserver {
     /// Captured identifier only; this borrow grants no capability ownership.
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn cap(&self) -> CompletionCap {
         self.cap
     }

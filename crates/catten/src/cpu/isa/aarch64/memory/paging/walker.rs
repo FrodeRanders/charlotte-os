@@ -66,6 +66,7 @@ impl<'vas> Walker<'vas> {
         Self::with_preparer(address_space, vaddr, |_| true)
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn test_table_preparation() {
         // A prepared but unpublished lazy root must be released when tag
         // admission fails, without touching the active hardware root.

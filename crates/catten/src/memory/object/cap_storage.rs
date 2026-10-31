@@ -2,6 +2,7 @@
 use super::*;
 
 pub(super) mod admission;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) mod tests;
 
 type Storage = PreparedEntry<(MemoryObjectCap, Record), admission::Charge>;
@@ -33,6 +34,7 @@ impl Caps {
         self.0.get_mut(cap).map(|record| &mut record.payload)
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn contains_key(&self, cap: &MemoryObjectCap) -> bool {
         self.get(cap).is_some()
     }

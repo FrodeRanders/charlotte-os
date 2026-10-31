@@ -59,6 +59,7 @@ impl DomainAbortSweep {
     fn run(self, mut before_abort: impl FnMut(ThreadId, ThreadGeneration)) -> Result<(), Error> {
         let handle = self.root.handle();
         let caller = self.executor.identity();
+        #[cfg(feature = "kernel_tests")]
         tests::before_concurrent_sweep(handle, caller);
         let mut deferred_caller = None;
         let outcome = (|| {
@@ -87,7 +88,9 @@ impl DomainAbortSweep {
             }
             Ok(())
         })();
+        #[cfg(feature = "kernel_tests")]
         tests::before_self_handoff(handle, deferred_caller);
+        #[cfg(feature = "kernel_tests")]
         tests::before_concurrent_completion(handle, deferred_caller);
         // Only the final executing-thread request and scalar lease completion
         // are non-preemptible. No sweep, callback, physical cleanup or yield is
@@ -105,7 +108,9 @@ impl DomainAbortSweep {
         // Pending thread contexts retain their stack/root owners until reaped.
         self.root.release().map_err(|_| Error::ThreadRetirementFailed)?;
         self.executor.release(&handoff);
+        #[cfg(feature = "kernel_tests")]
         tests::after_self_handoff(handle, deferred_caller, outcome.is_ok());
+        #[cfg(feature = "kernel_tests")]
         tests::after_concurrent_completion(handle, deferred_caller, outcome.is_ok());
         outcome
     }
@@ -134,4 +139,5 @@ pub(crate) fn abort_domain_threads_with_request(
     sweep.run(|_, _| {})
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod tests;

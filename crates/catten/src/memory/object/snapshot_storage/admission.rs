@@ -29,10 +29,12 @@ impl Drop for Charge {
         pool.release(self.platform, self.amount).expect("snapshot buffer admission underflow");
     }
 }
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn snapshot() -> ([u64; 2], [u64; 2]) {
     let pool = POOL.lock();
     pool.used()
 }
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn with_locked<T>(work: impl FnOnce() -> T) -> T {
     let _pool = POOL.lock();
     work()

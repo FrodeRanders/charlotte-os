@@ -263,6 +263,11 @@ results and teardown before passing. Record that change in qualification scope:
 separating fixtures neither improves production latency nor proves fairness.
 Do not restart an accepted operation's deadline when reporting phase progress.
 
+Boot a configuration that never admits regression fixtures. A successful
+integration suite can conceal operational initialization performed by its own
+verifier. Keep first-boot service installation and readiness in the operational
+launcher; tests observe that boundary without being required to create it.
+
 Keep verifier admission consistent with the selected fixture's registered set.
 An isolated shutdown must not start an unrelated verifier whose later success
 is unregistered. Early poweroff on one architecture can hide that background

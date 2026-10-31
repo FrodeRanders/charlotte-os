@@ -3,7 +3,9 @@
 //! Abandonment retains every field; ordinary cleanup consumes the same owner.
 use super::*;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 mod storage_tests;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_storage() {
     storage_tests::run();
 }

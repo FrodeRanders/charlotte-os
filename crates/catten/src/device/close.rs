@@ -163,4 +163,5 @@ pub(super) fn run(
     owner.finish()
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) mod tests;

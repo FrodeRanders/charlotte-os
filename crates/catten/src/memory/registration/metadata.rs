@@ -144,6 +144,7 @@ impl RetiredMetadata {
         }
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(in crate::memory) fn test_assert_retained(&self, handle: AddressSpaceHandle) {
         if let Some(scratch) = &self.scratch {
             scratch.test_assert_retained(handle);
@@ -156,15 +157,18 @@ impl RetiredMetadata {
         assert!(!DOMAIN_AUTHORITIES.lock().contains_key(&handle.id()));
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(in crate::memory) fn test_scratch_extents(&self) -> usize {
         self.scratch.as_ref().map_or(0, |scratch| scratch.test_extent_count())
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(in crate::memory) fn test_authority(&self) -> Option<DomainAuthority> {
         self.authority.value().1.authority
     }
 
     pub(in crate::memory) fn release(self) {
+        #[cfg(feature = "kernel_tests")]
         super::super::retirement::metadata_tests::policy_boundary();
         if let Some(scratch) = self.scratch {
             scratch.release();
@@ -175,8 +179,10 @@ impl RetiredMetadata {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 mod tests;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(in crate::memory) fn test_preparation() {
     tests::run();
 }

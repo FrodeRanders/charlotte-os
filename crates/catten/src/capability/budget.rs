@@ -40,6 +40,7 @@ impl DomainBudget {
         self.0.lock().retired = true;
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn used(&self) -> usize {
         self.0.lock().used.used()
     }
@@ -111,11 +112,13 @@ impl Drop for Charge {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn node_used() -> (usize, usize) {
     let node = NODE.lock();
     (node.total.used(), node.ordinary.used())
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_node_admission() {
     use super::AllocationError;
     let mut node = NodeBudget::new();

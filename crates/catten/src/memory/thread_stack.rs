@@ -14,19 +14,24 @@ pub(crate) use stacks::{
     RetirementError,
     Stacks,
 };
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn retirement_progress() -> [u64; 6] {
     stacks::retirement_progress()
 }
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(in crate::memory) fn test_used_pages() -> u64 {
     budget::used().0
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_admission() {
     stacks::tests::run();
 }
 
 #[derive(Debug)]
 pub(crate) enum PreparationError {
+    // Preserve the typed physical cause even for callers that only reject admission.
+    #[allow(dead_code)]
     Physical(super::physical::Error),
     Slot,
 }

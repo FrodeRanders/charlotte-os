@@ -158,6 +158,7 @@ impl PreparedEndpointClose {
         Err(error)
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn finish_with(
         self,
         finish: impl FnMut(LoanRevocation) -> Result<(), MemoryObjectError>,

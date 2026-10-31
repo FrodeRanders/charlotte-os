@@ -6,8 +6,8 @@
 //! the object store on the boot disk. All boot hardware images must be available
 //! before storage threads start, otherwise preparing the driver batch would wait
 //! for the object store that its own unstarted storage driver must serve.
-//! The x86_64 parity suite currently embeds its complete tested service set and
-//! stages the same signed artifacts in the persistent object-store image. An
+//! The x86_64 kernel embeds its operational service set plus optional test images;
+//! the runner stages the selected signed artifacts in the persistent store image. An
 //! image produced by `scripts/make-nvme-image.py` can be attached through NVMe,
 //! AHCI, or virtio-blk. The registry reads non-embedded services from the store
 //! on first use and caches them for the rest of the boot. The userspace loader
@@ -37,6 +37,7 @@ const OBJ_OP_APPLY_SCOPE: u32 = 11;
 const OBJ_ERR_OK: i64 = 0;
 const OBJ_ERR_EXISTS: i64 = 5;
 /// Mirrors `charlotte_protocol_objstore::EXECUTABLE_ECHO_ID`.
+#[cfg(feature = "kernel_tests")]
 const OBJ_EXECUTABLE_ECHO_ID: u64 = 0xffff_0000_0000_0001;
 
 // This bounds loader resource use independently of the object-store format.
@@ -81,19 +82,24 @@ const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
     // domain. Keep its explicitly non-storage compatibility suite useful
     // without weakening DMA isolation or blocking on an unavailable store.
     #[cfg(feature = "hvf_compat")]
+    #[cfg(feature = "kernel_tests")]
     bootstrap_elf!(b"cclient", "cclient"),
     #[cfg(feature = "hvf_compat")]
+    #[cfg(feature = "kernel_tests")]
     bootstrap_elf!(b"sitas-user", "sitas-user"),
     #[cfg(feature = "hvf_compat")]
+    #[cfg(feature = "kernel_tests")]
     bootstrap_elf!(b"echo", "echo"),
     #[cfg(feature = "hvf_compat")]
+    #[cfg(feature = "kernel_tests")]
     bootstrap_elf!(b"client", "client"),
     #[cfg(feature = "hvf_compat")]
+    #[cfg(feature = "kernel_tests")]
     bootstrap_elf!(b"servicemgr", "servicemgr"),
 ];
 
-// x86_64 embeds the same service set exercised by its storage, lifecycle, and
-// networking suites. The runner also stages these signed artifacts on the
+// x86_64 embeds its operational set, adding development applications only
+// when native regressions are enabled. The runner also stages these signed artifacts on the
 // separate persistent block image used by store-backed service loading.
 #[cfg(target_arch = "x86_64")]
 const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
@@ -102,27 +108,37 @@ const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
     bootstrap_elf!(b"grantctl", "grantctl"),
     bootstrap_elf!(b"nvme", "nvme"),
     bootstrap_elf!(b"objstore", "objstore"),
+    #[cfg(feature = "kernel_tests")]
     bootstrap_elf!(b"nvme_client", "nvme_client"),
+    #[cfg(feature = "kernel_tests")]
     bootstrap_elf!(b"objstore_client", "objstore_client"),
+    #[cfg(feature = "kernel_tests")]
     bootstrap_elf!(b"echo", "echo"),
+    #[cfg(feature = "kernel_tests")]
     bootstrap_elf!(b"raft", "raft"),
+    #[cfg(feature = "kernel_tests")]
     bootstrap_elf!(b"client", "client"),
+    #[cfg(feature = "kernel_tests")]
     bootstrap_elf!(b"servicemgr", "servicemgr"),
     bootstrap_elf!(b"ahci", "ahci"),
     bootstrap_elf!(b"virtio_blk", "virtio_blk"),
     bootstrap_elf!(b"net", "net"),
     bootstrap_elf!(b"e1000e", "e1000e"),
+    #[cfg(feature = "kernel_tests")]
     bootstrap_elf!(b"nclient", "nclient"),
     bootstrap_elf!(b"disco", "disco"),
     bootstrap_elf!(b"frouter", "frouter"),
     bootstrap_elf!(b"dns", "dns"),
     bootstrap_elf!(b"agent", "agent"),
+    #[cfg(feature = "kernel_tests")]
     bootstrap_elf!(b"greet", "greet"),
     #[cfg(feature = "shutdown_test")]
     bootstrap_elf!(b"shutdown_probe", "shutdown_probe"),
     bootstrap_elf!(b"relmsg", "relmsg"),
+    #[cfg(feature = "kernel_tests")]
     bootstrap_elf!(b"rclient", "rclient"),
     bootstrap_elf!(b"tcpip", "tcpip"),
+    #[cfg(feature = "kernel_tests")]
     bootstrap_elf!(b"tcpclient", "tcpclient"),
     bootstrap_elf!(b"httpd", "httpd"),
     bootstrap_elf!(b"time", "time"),
@@ -368,12 +384,14 @@ fn write_store_artifact(connection: u64, name: &[u8], image: &[u8]) -> Result<()
 /// store connection denies reserved-namespace mutation to ordinary domains;
 /// the kernel stages this object with its own principal before the EL0 object
 /// client reads it back.
+#[cfg(feature = "kernel_tests")]
 pub fn write_store_executable(image: &[u8]) -> Result<(), &'static str> {
     write_store_kernel_object(OBJ_EXECUTABLE_ECHO_ID, image)
 }
 
 /// Stage a kernel-owned ordinary object. The EL0 ownership fixture uses this
 /// to prove a foreign domain cannot read or delete another principal's object.
+#[cfg(feature = "kernel_tests")]
 pub fn write_store_test_object(object_id: u64, bytes: &[u8]) -> Result<(), &'static str> {
     write_store_kernel_object(object_id, bytes)
 }
@@ -391,6 +409,7 @@ pub fn apply_store_scope(bytes: &[u8]) -> Result<(), &'static str> {
     Ok(())
 }
 
+#[cfg(feature = "kernel_tests")]
 fn write_store_kernel_object(object_id: u64, bytes: &[u8]) -> Result<(), &'static str> {
     let obj_conn = connect_objstore().ok_or("object-store connection unavailable")?;
     write_store_object(obj_conn.raw(), object_id, bytes)?;

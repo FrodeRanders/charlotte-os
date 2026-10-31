@@ -51,8 +51,9 @@ impl Operation {
     }
 
     fn prepare(&mut self) -> Result<(), Error> {
+        #[cfg(feature = "kernel_tests")]
         tests::boundary(false);
-        if tests::reject() {
+        if test_fault!(tests::reject()) {
             return Err(Error::AllocationFailed);
         }
         self.prepare_budget()?;
@@ -66,7 +67,7 @@ impl Operation {
             mailbox_words::Words::backing_bytes_for(n)?,
         )?);
         self.0.node = Some(PreparedEntry::try_new().map_err(|_| Error::AllocationFailed)?);
-        if tests::reject_backing() {
+        if test_fault!(tests::reject_backing()) {
             return Err(Error::AllocationFailed);
         }
         let rings = mailbox_words::Words::prepare(n)?;
@@ -158,6 +159,7 @@ impl Operation {
     }
 
     fn finish(mut self) -> Result<(), Error> {
+        #[cfg(feature = "kernel_tests")]
         tests::boundary(true);
         drop(self.0.queue.take());
         drop(self.0.node.take());
@@ -200,4 +202,5 @@ pub(super) fn receive(asid: AddressSpaceId, captured: MailboxIdentity) -> Option
 }
 
 #[path = "mailbox_queue_tests.rs"]
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) mod tests;

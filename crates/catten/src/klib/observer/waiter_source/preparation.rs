@@ -47,6 +47,7 @@ impl Preparing {
         self.0.candidate.as_ref().unwrap()
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn selected(&self) -> &List {
         self.0.selected.as_ref().unwrap()
     }
@@ -103,8 +104,10 @@ impl Preparing {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 mod tests;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_preparation() {
     tests::run();
 }

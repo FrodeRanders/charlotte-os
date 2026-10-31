@@ -1,4 +1,4 @@
-build-catten arch="x86_64" profile="debug" features="":
+build-catten arch="x86_64" profile="debug" features="kernel_tests":
     cargo build --package catten \
         --target {{ if arch == "x86_64" { "target_specs/x86_64-unknown-none-catten.json" } else if arch == "aarch64" { "target_specs/aarch64-unknown-none-catten.json" } else if arch == "riscv64" { "target_specs/riscv64gc-unknown-none-catten.json" } else { arch + "-unknown-none" } }} \
         --no-default-features --features "acpi{{ if features != "" { "," + features } else { "" } }}" \
@@ -8,19 +8,19 @@ build-catten-docs arch="x86_64" profile="debug" features="":
     cargo doc --package catten --target {{ if arch == "x86_64" { "target_specs/x86_64-unknown-none-catten.json" } else if arch == "aarch64" { "target_specs/aarch64-unknown-none-catten.json" } else if arch == "riscv64" { "target_specs/riscv64gc-unknown-none-catten.json" } else { arch + "-unknown-none" } }} {{ if profile == "release" { "--release" } else { "" } }} {{ if features !=
     "" {"--features " + features} else {""} }} --no-deps --open
 
-# Rebuild the reference EL0 service ELFs (name service, echo, client) and
-# refresh the copies embedded in the kernel self-tests.
-build-el0-services:
-    cd crates/catten-services && cargo build -p catten-services --release --target aarch64-unknown-none.json -Z build-std=core,alloc
-    cp crates/catten-services/target/aarch64-unknown-none/release/ns crates/catten/src/self_test/ns.elf
-    cp crates/catten-services/target/aarch64-unknown-none/release/echo crates/catten/src/self_test/echo.elf
-    cp crates/catten-services/target/aarch64-unknown-none/release/client crates/catten/src/self_test/client.elf
-    cp crates/catten-services/target/aarch64-unknown-none/release/uart crates/catten/src/self_test/uart.elf
-    cp crates/catten-services/target/aarch64-unknown-none/release/cclient crates/catten/src/self_test/cclient.elf
-    cp crates/catten-services/target/aarch64-unknown-none/release/servicemgr crates/catten/src/self_test/servicemgr.elf
+# Build and sign the architecture-qualified bundle used by the boot runners.
+build-el0-services mode="test":
+    ./scripts/build-catten-services.sh --embed --mode "{{mode}}"
+
+# Complete image workflows; debug/release is independent of test selection.
+boot-minimal arch="aarch64" profile="release":
+    ./scripts/run-{{arch}}.sh {{profile}} --minimal --timeout 120
+
+boot-test arch="aarch64" profile="debug":
+    ./scripts/run-{{arch}}.sh {{profile}} --tests --timeout 300
 
 image_dir := "./os-images"
-create-image arch="x86_64" profile="debug" features="": (build-catten arch profile features)
+create-image arch="x86_64" profile="debug" features="kernel_tests": (build-catten arch profile features)
     ./scripts/create-boot-image.sh --arch "{{arch}}" --profile "{{profile}}"
 
 verify-limine:
@@ -56,14 +56,7 @@ qemu-run-riscv64 profile="debug" gdb="false": (create-image "riscv64" profile)
         {{ if gdb == "true" {"-s -S"} else {""} }}
 
 update-loc:
-    tokei \
-        --exclude target \
-        --exclude .git \
-        --exclude .vscode \
-        --exclude .github \
-        --exclude limine-binary \
-        --exclude os-images \
-    > loc.txt
+    python3 scripts/count-loc.py
 
 clean:
     cargo clean

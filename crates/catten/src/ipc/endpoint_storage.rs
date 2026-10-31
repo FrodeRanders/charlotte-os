@@ -365,8 +365,10 @@ pub(super) fn resize(
     result.map(|()| capacity)
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 mod tests;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_storage() {
     tests::run();
 }

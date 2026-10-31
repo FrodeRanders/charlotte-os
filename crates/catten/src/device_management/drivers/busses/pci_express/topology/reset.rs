@@ -57,6 +57,7 @@ impl ResetSource<'_> {
         ranges
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn test_config_base(&self) -> usize {
         self.config_base
     }
@@ -172,6 +173,7 @@ impl ResetSource<'_> {
             return Err(());
         }
         unsafe { write_volatile(configuration, value & !1) };
+        #[cfg(feature = "kernel_tests")]
         tests::probe(self);
         before_wait();
         let deadline = crate::cpu::scheduler::monotonic_millis().saturating_add(100);
@@ -235,6 +237,7 @@ fn find_bus(bus: &PcieBusSegment, wanted: u32, depth: u8) -> Option<&PcieEndpoin
     None
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_target(topology: &PcieTopology) -> Option<(usize, u32)> {
     if topology.segments.len() != 1 {
         return None;
@@ -276,6 +279,7 @@ pub(crate) fn supports_qemu_nvme(topology: &PcieTopology, requester: u32) -> boo
 }
 
 /// Pre-driver rollback probe; no config mutation or hardware acknowledgement.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_assert_disabled_config_available(topology: &PcieTopology) {
     assert_eq!(topology.segments.len(), 1);
     let bus = &topology.segments[0].root_bus;
@@ -433,7 +437,9 @@ pub(crate) fn claimed_range(topology: &PcieTopology, base: usize, bytes: usize) 
     topology.segments.iter().any(|segment| bus_claimed(&segment.root_bus, base, end))
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod tests;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_admission() {
     tests::run();
 }

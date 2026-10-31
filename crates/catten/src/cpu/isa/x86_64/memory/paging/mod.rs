@@ -97,6 +97,7 @@ impl AddressSpace {
     }
 
     /// Trusted ambient supervisor construction; no userspace input selects it.
+    #[cfg(feature = "kernel_tests")]
     pub(crate) fn try_new_platform_user() -> Result<Self, super::Error> {
         Self::try_new_user_with_root(true, || true, None)
     }
@@ -160,6 +161,7 @@ impl AddressSpace {
         })
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn self_test_root_preparation() {
         let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
         assert!(Self::try_new_user_with_root(false, || false, None).is_err());
@@ -173,6 +175,7 @@ impl AddressSpace {
         );
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn test_table_preparation() {
         pth_walker::PthWalker::test_table_preparation();
     }
@@ -720,6 +723,7 @@ impl AddressSpace {
         self.release_owned_with(deallocate)
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn test_backing_release() {
         crate::memory::backing_release_tests::run(|space, deallocate| {
             space.release_owned_with(deallocate)

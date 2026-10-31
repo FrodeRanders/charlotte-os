@@ -4,12 +4,15 @@
 //! receipt through local guard exit before disposal and captured-source wake.
 use super::*;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod callback_tests;
 mod callbacks;
 mod preparation;
 mod submission;
+#[cfg(any(test, feature = "kernel_tests"))]
 mod terminal_tests;
 
+#[cfg(feature = "kernel_tests")]
 use callbacks::observe_registered;
 pub use callbacks::{
     CompletionObservation,

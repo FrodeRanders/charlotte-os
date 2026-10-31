@@ -5,6 +5,7 @@
 
 use super::*;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod tests;
 
 #[must_use]

@@ -169,4 +169,5 @@ fn unmap_owned_mmio(handle: AddressSpaceHandle, base: VAddr, frame: PAddr) -> Re
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod tests;

@@ -57,6 +57,7 @@ pub(crate) fn detach(
 }
 impl RetiredMailboxes {
     pub(crate) fn release(mut self) {
+        #[cfg(feature = "kernel_tests")]
         crate::memory::retirement::metadata_tests::boundary(false);
         if let Some(mut namespace) = self.0.namespace.take() {
             let caps = &mut namespace.value_mut().1;
@@ -73,6 +74,7 @@ impl RetiredMailboxes {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod tests {
     use super::*;
     const WORD: u64 = 0x6d61_696c_726f_6f74;

@@ -47,6 +47,7 @@ impl MutexCore {
     }
 
     /// Count entries still linked here. Detached notification batches are excluded.
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn waiter_count(&self) -> usize {
         self.waitlist.registered()
     }

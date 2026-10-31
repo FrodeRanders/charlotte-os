@@ -78,19 +78,24 @@ impl Drop for Charge {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn used_pages() -> u64 {
     POOL.lock().budget.used().pages
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn quarantined_pages() -> u64 {
     QUARANTINED.load(Ordering::Relaxed)
 }
 
 /// Single-mutator boot fixture. It changes available admission, never clears
 /// real charges, changes physical memory or recovers quarantined backing.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) struct Pressure(Amount);
 
+#[cfg(any(test, feature = "kernel_tests"))]
 impl Pressure {
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn new(headroom: u64) -> Self {
         let mut pool = POOL.lock();
         let old = pool.budget.limit();
@@ -101,6 +106,7 @@ impl Pressure {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 impl Drop for Pressure {
     fn drop(&mut self) {
         POOL.lock().budget.set_limit(self.0).unwrap();
@@ -108,6 +114,7 @@ impl Drop for Pressure {
 }
 
 /// Boot probe: Drop must not try to reacquire its original admission pool.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_with_pool_locked(action: impl FnOnce()) {
     let _pool = POOL.lock();
     action();

@@ -53,6 +53,7 @@ impl Drop for Charge {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn node_used() -> (usize, usize) {
     let node = NODE.lock();
     (node.total.used(), node.ordinary.used())

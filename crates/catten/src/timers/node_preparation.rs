@@ -96,8 +96,10 @@ pub(super) fn prepare(
     Ok(preparing.complete())
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 mod tests;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_preparation() {
     tests::run();
 }

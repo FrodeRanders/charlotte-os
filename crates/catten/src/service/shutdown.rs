@@ -30,6 +30,7 @@ use crate::{
 };
 
 const MAX_PHASE_GRACE_MS: u64 = 60_000;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod tests;
 
 static NODE_SHUTDOWN_COORDINATOR: spin::LazyLock<

@@ -12,7 +12,7 @@
 # virtio-net/E1000E + cluster-discovery networking path.
 #
 # Usage:
-#   scripts/run-x86_64.sh [debug|release] [--clean] [--gdb] [--gdb-port PORT] [--kvm]
+#   scripts/run-x86_64.sh [debug|release] [--minimal|--tests] [--clean] [--gdb] [--gdb-port PORT] [--kvm]
 #                         [--instance NAME] [--smp N] [--timeout S]
 #                         [--debug-snapshot|--no-failure-capture]
 #                         [--iommu intel|amd] [--block nvme|ahci|virtio]
@@ -26,7 +26,9 @@
 #                         [--fresh-storage|--reuse-storage|--blank-storage]
 #                         [--data-size-mib N] [--build-only]
 #
-#   debug|release  Build profile (default: debug)
+#   --minimal      Boot validation + operational services; omit guest regression fixtures
+#   --tests        Include the registered native regression suite (development default)
+#   debug|release  Optimization/debug-info profile, independent of --minimal/--tests
 #   --clean        Remove all cached x86_64 target artifacts before building
 #   --gdb          Start QEMU paused with a gdb stub
 #   --gdb-port PORT  GDB stub port (default: 1234)
@@ -71,11 +73,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # shellcheck source=lib/boot-common.sh
 source "${SCRIPT_DIR}/lib/boot-common.sh"
+source "${SCRIPT_DIR}/lib/service-bundle.sh"
 source "${SCRIPT_DIR}/lib/signing-policy.sh"
 catten_require_development_trust
 
 ARCH="x86_64"
 PROFILE="debug"
+BOOT_MODE="test"
 GDB=""
 GDB_PORT="1234"
 DEBUG_SNAPSHOT="0"
@@ -127,6 +131,9 @@ NET_DEVICE="virtio"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        --minimal) BOOT_MODE="minimal"; shift ;;
+        --tests) BOOT_MODE="test"; shift ;;
+        --help|-h) sed -n '/^# Usage:/,/^set -euo pipefail/p' "$0" | sed '$d; s/^# *//'; exit 0 ;;
         debug|release) PROFILE="$1"; shift ;;
         --clean)       CLEAN_BUILD="1"; shift ;;
         --gdb)         GDB="-S"; shift ;;
@@ -159,7 +166,7 @@ while [ "$#" -gt 0 ]; do
         --tcpip-test)  NET_TEST="1"; TCPIP_TEST="1"; shift ;; # implies --net-test
         --management-startup-test)
             [ "$#" -ge 2 ] || { echo "Missing startup expectation" >&2; exit 1; }
-            NET_TEST="1"; MANAGEMENT_STARTUP_TEST="$2"; shift 2 ;;
+            MANAGEMENT_STARTUP_TEST="$2"; shift 2 ;;
         --http-test)   NET_TEST="1"; HTTP_TEST="1"; shift ;; # implies --net-test
         --dhcp-test)   NET_TEST="1"; DHCP_TEST="1"; shift ;; # implies --net-test
         --s3-test)     NET_TEST="1"; DHCP_TEST="1"; S3_TEST="1"; shift ;;
@@ -191,6 +198,25 @@ while [ "$#" -gt 0 ]; do
         *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
 done
+
+# Development keeps the registered suite by default. Minimal boots retain
+# validation/operational composition, and cannot silently enable a test feature.
+if [ "$BOOT_MODE" = "minimal" ]; then
+    if [ "$NET_TEST" = "1" ] || [ "$LIVE_UPGRADE_TEST" = "1" ] \
+        || [ "$SHUTDOWN_TEST" = "1" ] || [ "$SECURITY_TEST" = "1" ] \
+        || [ "${EL0_SMOKE:-0}" = "1" ] || [ "${USE_HVF:-0}" = "1" ]; then
+        echo "error: --minimal is incompatible with guest test options and the HVF fixture" >&2
+        exit 1
+    fi
+    if [ "$REUSE_STORAGE" = "1" ]; then
+        echo "error: --minimal cannot reuse an unchecked installed disk; omit --reuse-storage" >&2
+        exit 1
+    fi
+    INSTANCE="${INSTANCE:-default}-minimal"
+elif [ -n "$MANAGEMENT_STARTUP_TEST" ]; then
+    NET_TEST="1"
+fi
+catten_service_bundle "$ARCH" "$BOOT_MODE" "$ROOT_DIR"
 
 catten_boot_validate_port "--gdb-port" "$GDB_PORT"
 catten_boot_validate_instance "$INSTANCE"
@@ -327,6 +353,10 @@ if [ "$CLEAN_BUILD" = "1" ]; then
 fi
 
 FEATURES="acpi"
+if [ "$BOOT_MODE" = "test" ]; then
+    FEATURES="${FEATURES},kernel_tests"
+fi
+
 if [ "$SECURITY_TEST" = "1" ]; then
     FEATURES="${FEATURES},security_test"
 fi
@@ -433,19 +463,13 @@ if [ "$S3_TEST" = "1" ]; then
 fi
 
 echo ">>> Building and signing the x86_64 bootstrap service bundle..."
-SERVICE_BUNDLE="${ROOT_DIR}/target/embedded-services/x86_64-unknown-none"
-SERVICE_NAMES="ns observe nvme objstore nvme_client objstore_client echo raft client servicemgr ahci virtio_blk net e1000e nclient disco frouter dns agent greet shutdown_probe relmsg rclient tcpip tcpclient httpd time s3 s3_smoke rng fs clusterctl grantctl deployd"
+SERVICE_BUNDLE="$BUNDLE"
 if [ "${CATTEN_SKIP_EMBED_BUILD:-0}" = "1" ]; then
-    for svc in $SERVICE_NAMES; do
-        if [ ! -f "$SERVICE_BUNDLE/$svc.elf" ]; then
-            echo "error: CATTEN_SKIP_EMBED_BUILD=1 but $SERVICE_BUNDLE/$svc.elf is missing" >&2
-            exit 1
-        fi
-    done
     echo ">>> Reusing staged x86_64 service bundle."
 else
-    "${ROOT_DIR}/scripts/build-catten-services-x86_64.sh"
+    "${ROOT_DIR}/scripts/build-catten-services-x86_64.sh" --mode "$BOOT_MODE"
 fi
+catten_validate_service_bundle "$BOOT_MODE" "$ARCH"
 export CATTEN_X86_64_SERVICE_BUNDLE="$SERVICE_BUNDLE"
 if [ "$SECURITY_TEST" = "1" ]; then
     mkdir -p "$ROOT_DIR/target/security-test"
@@ -534,6 +558,7 @@ else
         --no-default-features --features "$FEATURES" $RELEASE_FLAG
 fi
 
+python3 "$ROOT_DIR/scripts/check-boot-profile.py" --kernel "$KERNEL" --mode "$BOOT_MODE"
 catten_boot_report_kernel "$KERNEL"
 
 # --- Build a disposable FAT32 EFI System Partition image with mtools. ---
@@ -801,11 +826,11 @@ if [ -n "$TIMEOUT" ]; then
                 echo ">>> Deployment ready; keeping the guest alive for ${APP_HOLD_SECONDS}s for host probes."
             fi
         fi
-        if [ "$SELFTEST_COMPLETE" = "1" ] || catten_boot_has_selftest_result "$LOG"; then
+        if [ "$SELFTEST_COMPLETE" = "1" ] || catten_boot_has_selected_result "$LOG"; then
             SELFTEST_COMPLETE=1
             if [ "$SELFTEST_COMPLETE_TICK" -lt 0 ]; then
                 SELFTEST_COMPLETE_TICK=$tick
-                echo ">>> Authoritative self-test result observed after $(((tick + 1) / 10))s."
+                echo ">>> Selected boot result observed after $(((tick + 1) / 10))s."
                 if [ "$CLUSTER_DRAIN_TICKS" -gt 0 ]; then
                     echo ">>> Keeping the socket-linked guest alive for a 15s peer drain window."
                 fi
@@ -862,10 +887,10 @@ if [ -n "$TIMEOUT" ]; then
         fi
     fi
     if [ "$SELFTEST_COMPLETE" -ne 1 ]; then
-        echo "error: authoritative self-test result was not produced within ${TIMEOUT}s" >&2
+        echo "error: selected boot result was not produced within ${TIMEOUT}s" >&2
         exit 1
     fi
-    catten_boot_validate_selftest_log "$LOG" "$KERNEL"
+    catten_boot_validate_selected_log "$LOG" "$KERNEL"
 else
     QEMU_OPTS+=(-serial stdio)
     echo ">>> Booting under QEMU (serial on stdio; press Ctrl-A X to quit)..."

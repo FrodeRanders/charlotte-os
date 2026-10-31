@@ -93,6 +93,9 @@ jobs:
             --exclude catten-services --exclude catten-user --exclude cluster-sign \
             --target target_specs/aarch64-unknown-none-catten.json \
             -- -D warnings
+          cargo clippy --locked -p catten \
+            --target target_specs/aarch64-unknown-none-catten.json \
+            --no-default-features --features acpi -- -D warnings
           scripts/build-catten-services-x86_64.sh
           export CATTEN_X86_64_SERVICE_BUNDLE="$GITHUB_WORKSPACE/target/embedded-services/x86_64-unknown-none"
           cargo clippy --locked --workspace \
@@ -100,6 +103,9 @@ jobs:
             --target target_specs/x86_64-unknown-none-catten.json \
             --no-default-features --features acpi \
             -- -D warnings
+          cargo clippy --locked -p catten \
+            --target target_specs/x86_64-unknown-none-catten.json \
+            --no-default-features --features acpi,kernel_tests -- -D warnings
           cargo clippy --locked \
             --manifest-path crates/catten-services/Cargo.toml \
             --target crates/catten-services/aarch64-unknown-none.json \
@@ -210,20 +216,29 @@ jobs:
           SITAS_DIR="$(cd "$GITHUB_WORKSPACE/../.." && pwd)/gautelis/sitas"
           git clone https://github.com/FrodeRanders/sitas.git "$SITAS_DIR"
           git -C "$SITAS_DIR" checkout --detach "$SITAS_REV"
-          if [ "${{ matrix.target }}" = "aarch64-unknown-none-catten" ]; then
-            scripts/build-catten-services.sh --embed
-            scripts/build-catten-user.sh --embed
-            export CATTEN_AARCH64_SERVICE_BUNDLE="$GITHUB_WORKSPACE/target/embedded-services/aarch64-unknown-none"
-          else
-            scripts/build-catten-services-x86_64.sh
-            export CATTEN_X86_64_SERVICE_BUNDLE="$GITHUB_WORKSPACE/target/embedded-services/x86_64-unknown-none"
-          fi
-          cargo build --locked --package catten \
-            --target "target_specs/${{ matrix.target }}.json" \
-            --no-default-features --features acpi
+          source scripts/lib/service-bundle.sh
+          for mode in minimal test; do
+            features=acpi
+            if [ "$mode" = test ]; then features=acpi,kernel_tests; fi
+            if [ "${{ matrix.target }}" = "aarch64-unknown-none-catten" ]; then
+              scripts/build-catten-services.sh --embed --mode "$mode"
+              if [ "$mode" = test ]; then scripts/build-catten-user.sh --embed; fi
+              catten_service_bundle aarch64 "$mode" "$GITHUB_WORKSPACE"
+              export CATTEN_AARCH64_SERVICE_BUNDLE="$BUNDLE"
+            else
+              scripts/build-catten-services-x86_64.sh --mode "$mode"
+              catten_service_bundle x86_64 "$mode" "$GITHUB_WORKSPACE"
+              export CATTEN_X86_64_SERVICE_BUNDLE="$BUNDLE"
+            fi
+            cargo build --locked --package catten \
+              --target "target_specs/${{ matrix.target }}.json" \
+              --no-default-features --features "$features"
+            python3 scripts/check-boot-profile.py \
+              --kernel "target/${{ matrix.target }}/debug/catten" --mode "$mode"
+          done
 
   test:
-    name: Test (${{ matrix.target }})
+    name: Boot (${{ matrix.target }}, ${{ matrix.mode }})
     # Ubuntu's QEMU cannot request a GICv2m MSI frame alongside GICv3, so the
     # boot tests run on the macOS ARM image with current Homebrew QEMU. The
     # x86_64 entry boots under TCG, so it gets a larger timeout.
@@ -234,11 +249,21 @@ jobs:
       matrix:
         include:
           - target: aarch64-unknown-none-catten
+            mode: test
             rust_target: aarch64-unknown-none
-            boot: scripts/run-aarch64.sh debug --smp 4 --security-test --timeout 180
+            boot: scripts/run-aarch64.sh debug --tests --smp 4 --security-test --timeout 180
           - target: x86_64-unknown-none-catten
+            mode: test
             rust_target: x86_64-unknown-none
-            boot: scripts/run-x86_64.sh debug --smp 4 --timeout 480
+            boot: scripts/run-x86_64.sh debug --tests --smp 4 --timeout 480
+          - target: aarch64-unknown-none-catten
+            mode: minimal
+            rust_target: aarch64-unknown-none
+            boot: scripts/run-aarch64.sh release --minimal --smp 4 --timeout 180
+          - target: x86_64-unknown-none-catten
+            mode: minimal
+            rust_target: x86_64-unknown-none
+            boot: scripts/run-x86_64.sh release --minimal --smp 4 --timeout 180
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:

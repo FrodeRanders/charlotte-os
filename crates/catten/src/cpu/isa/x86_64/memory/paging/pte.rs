@@ -147,6 +147,7 @@ impl PageTableEntry {
         self
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn self_test_pat_encoding() {
         for expected in 0..=MAX_PAT_INDEX {
             let mut standard = Self(u64::MAX);

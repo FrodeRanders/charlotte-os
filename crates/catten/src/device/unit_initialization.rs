@@ -1,5 +1,6 @@
 //! One boot initialization claim in the existing typed backend slot.
 //! No lazy initialization, shutdown, recovery registry or hardware retry.
+#[cfg(any(test, feature = "kernel_tests"))]
 mod tests;
 
 use super::{
@@ -108,12 +109,14 @@ struct Claim<'a, T> {
 impl<T: UnitBacking> Claim<'_, T> {
     fn cancel_private(mut self, cancel: impl FnOnce(&mut Tables) -> Result<(), Error>) {
         if let Some(owner) = self.owner.as_mut() {
+            #[cfg(feature = "kernel_tests")]
             tests::probe();
             if cancel(owner.value_mut().tables()).is_err() {
                 // Published, uncertain or physically partial: keep the claim
                 // and complete payload. No destructor or subsequent retry.
                 return;
             }
+            #[cfg(feature = "kernel_tests")]
             tests::probe();
             drop(self.owner.take().unwrap().into_inner());
         }
@@ -124,6 +127,7 @@ impl<T: UnitBacking> Claim<'_, T> {
     }
 
     fn install(mut self) {
+        #[cfg(feature = "kernel_tests")]
         tests::probe();
         assert!(self.owner.as_mut().unwrap().value_mut().tables().is_published());
         let mut slot = self.slot.lock();
@@ -156,6 +160,7 @@ pub(super) fn initialize<T: UnitBacking>(
         slot,
         owner: None,
     };
+    #[cfg(feature = "kernel_tests")]
     tests::probe();
     match prepare() {
         Ok(owner) => {
@@ -179,6 +184,7 @@ pub(super) fn initialize<T: UnitBacking>(
 
 // Serialized boot hooks. They never enable IRQs, fake hardware completion or
 // permit published backing to use private cancellation.
+#[cfg(feature = "kernel_tests")]
 pub(super) use tests::{
     publication_boundary,
     reject_allocation,
@@ -187,6 +193,7 @@ pub(super) use tests::{
     wait_boundary,
 };
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_admission() {
     tests::run();
 }

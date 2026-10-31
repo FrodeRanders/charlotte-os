@@ -154,6 +154,7 @@ impl ExitSource {
         list.register_prepared(preparation.0.entry.as_mut().unwrap())
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn registered(&self) -> usize {
         self.list.lock().as_ref().map_or(0, |list| list.registered())
     }
@@ -176,8 +177,10 @@ impl Drop for ExitSource {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 mod preparation_tests;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_preparation() {
     preparation_tests::run();
 }

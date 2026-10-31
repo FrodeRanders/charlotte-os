@@ -150,6 +150,7 @@ fn register_with_ipc(
     Ok(handle)
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_abandonment() {
     let root = AddressSpace::try_new_user().unwrap();
     let mut owner = PreparingRegistration::capture(root);
@@ -185,8 +186,10 @@ pub(super) fn test_abandonment() {
     );
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 mod ipc_tests;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_ipc_preparation() {
     ipc_tests::run();
 }

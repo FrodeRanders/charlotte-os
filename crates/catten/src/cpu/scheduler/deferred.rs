@@ -104,10 +104,14 @@ pub(crate) fn drain() {
 // One scheduled fixture arms a pre-admitted batch for an exact first dispatch.
 // Enqueue under the dispatch guards, after every earlier delivery boundary:
 // the incoming context itself must deliver it before entering its worker.
+#[cfg(any(test, feature = "kernel_tests"))]
 static FIRST_DISPATCH: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+#[cfg(any(test, feature = "kernel_tests"))]
 static FIRST_BATCH: Mutex<Option<Waiters>> = Mutex::new(None);
+#[cfg(any(test, feature = "kernel_tests"))]
 static FIRST_DELIVERED: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_dispatch(generation: super::threads::ThreadGeneration) {
     if FIRST_DISPATCH.load(Ordering::Acquire) == generation
         && FIRST_DISPATCH
@@ -118,6 +122,7 @@ pub(super) fn test_dispatch(generation: super::threads::ThreadGeneration) {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_first_entry(asid: crate::memory::AddressSpaceId) {
     use alloc::sync::Arc;
 
@@ -217,6 +222,7 @@ pub(crate) fn test_first_entry(asid: crate::memory::AddressSpaceId) {
 /// A queued precursor must run before a wait installs its subscription, even
 /// when restoring the park mask could preempt the producer before yield.
 /// No watchdog saturation, physical cleanup or replacement wake is involved.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_park_delivery(asid: crate::memory::AddressSpaceId) {
     use alloc::sync::{
         Arc,

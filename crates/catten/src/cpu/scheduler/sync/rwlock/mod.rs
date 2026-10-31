@@ -28,6 +28,7 @@ impl RwLockCore {
     }
 
     /// Kernel white-box diagnostics use the same sources as normal acquisition.
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn waiter_source(&self, shared: bool) -> &WaiterSource {
         if shared {
             &self.waitlist_shared

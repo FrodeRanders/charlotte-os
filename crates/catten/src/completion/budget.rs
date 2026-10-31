@@ -30,6 +30,7 @@ static NODE: LazyLock<Mutex<NodeBudget>> = LazyLock::new(|| {
 #[derive(Debug)]
 pub(crate) struct DomainBudget(Mutex<VectorBudget<1>>);
 impl DomainBudget {
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn new(capacity: usize) -> Arc<Self> {
         Self::try_new(capacity).expect("mandatory completion account allocation failed")
     }
@@ -38,6 +39,7 @@ impl DomainBudget {
         Arc::try_new(Self(Mutex::new(VectorBudget::new([capacity.min(MAX_DOMAIN_RECORDS) as u64]))))
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn used(&self) -> usize {
         self.0.lock().used()[0] as usize
     }
@@ -146,13 +148,16 @@ impl Drop for Releases {
         }
     }
 }
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn node_used() -> (usize, usize) {
     let node = NODE.lock();
     (node.total.used()[0] as usize, node.ordinary.used()[0] as usize)
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 mod tests;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_backlog_refunds() {
     tests::run();
 }

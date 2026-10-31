@@ -403,10 +403,11 @@ fn initialize(
         commands.cmd_buf = unit._tables.allocate_frame()?;
         let event_log = unit._tables.allocate_frame()?;
         commands.completion = unit._tables.allocate_frame()?;
-        if unit_initialization::reject_complete() {
+        if test_fault!(unit_initialization::reject_complete()) {
             return Err(Error::MapFailed);
         }
         rollback_private = false; // Hardware control starts; no initialization replay.
+        #[cfg(feature = "kernel_tests")]
         unit_initialization::publication_boundary();
         unit._tables.publish();
         // Cover the complete 16-bit DeviceID space; 511 encodes 2 MiB.
@@ -460,6 +461,7 @@ pub fn initialize_early() -> Result<(), Error> {
     unit_initialization::initialize(&UNIT, prepare_unit, |unit| unit.commands.is_some())
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_initialization() {
     unit_initialization::test_real(&UNIT, prepare_unit, 4, 0);
 }
@@ -503,6 +505,7 @@ pub(crate) fn create_domain_with_reset(
                 None => reset(false, creation)?,
             }
             unit.next_domain = next;
+            #[cfg(feature = "kernel_tests")]
             super::domain_creation::boundary(super::domain_creation::Phase::Allocate);
             let domain = match Domain::new(source_id) {
                 Ok(domain) => domain,
@@ -511,7 +514,7 @@ pub(crate) fn create_domain_with_reset(
                     return Err(error);
                 }
             };
-            if super::test_reject_private_complete() {
+            if test_fault!(super::test_reject_private_complete()) {
                 creation.retain_private(super::private_domain::PrivateDomain::AmdVi(
                     super::detached_domain::DetachedDomain::new(domain),
                 ));
@@ -527,9 +530,12 @@ pub(crate) fn create_domain_with_reset(
             nodes.publish_source(&mut unit.sources, source_id, id);
             unit.domains.get_mut(&id).and_then(Option::as_mut).unwrap().tables.publish();
             creation.record(id);
+            #[cfg(feature = "kernel_tests")]
             super::domain_creation::boundary(super::domain_creation::Phase::Configure);
             unit.write_dte(source_id, root, true);
-            let configured = unit.flush_device_table(source_id).and_then(|()| {
+            let configured = unit.flush_device_table(source_id);
+            #[cfg(feature = "kernel_tests")]
+            let configured = configured.and_then(|()| {
                 if super::test_reject_creation() {
                     Err(Error::HardwareTimeout)
                 } else {
@@ -683,7 +689,7 @@ fn map_inner(
         Err((error, prefix)) => {
             if prefix {
                 before_completion(super::mapping::Phase::Rollback);
-                if super::test_reject_map_rollback()
+                if test_fault!(super::test_reject_map_rollback())
                     || owner.held.commands.value_mut().flush_iotlb().is_err()
                 {
                     owner.held.domain.value_mut().mappings.quarantine(&mut owner.pending);
@@ -747,7 +753,7 @@ fn unmap_owned_at(
         Ok(mapping) => {
             owner.pending.retain_record(mapping);
             before_completion(super::mapping::Phase::Unmap);
-            let completed = if super::test_reject_unmap_completion() {
+            let completed = if test_fault!(super::test_reject_unmap_completion()) {
                 Err(Error::HardwareTimeout)
             } else {
                 owner.held.commands.value_mut().flush_iotlb()
@@ -833,7 +839,7 @@ fn finish_retirement(
     let source_id = owner.domain.value_mut().source_id;
     let completed = (|| {
         owner.commands.value_mut().flush_device_table(source_id)?;
-        if super::test_reject_retirement() {
+        if test_fault!(super::test_reject_retirement()) {
             return Err(Error::HardwareTimeout);
         }
         owner.commands.value_mut().flush_iotlb()
@@ -925,11 +931,13 @@ pub fn pending_fault_events() -> u32 {
 }
 
 /// Boundary probe; does not initialize hardware or spin on contention.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_assert_backend_available() {
     drop(UNIT.try_lock().expect("physical release holds backend registry"));
 }
 
 /// Private RAM register/ring fixture, never installed in an IOMMU.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_command_engine() {
     let (tables, (registers, cmd_buf, completion)) =
         Tables::prepare_unpublished(Scope::Unit, |tables| {
@@ -993,12 +1001,14 @@ pub(super) fn test_command_engine() {
 }
 
 /// Guarded abandonment probe; does not initialize or publish hardware.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_with_backend_locked(action: impl FnOnce()) {
     let _guard = UNIT.lock();
     action();
 }
 
 /// Private typed payload with real tables/metadata, never in the registry.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_private_domain() -> super::private_domain::PrivateDomain {
     let mut domain = Domain::new(0).unwrap_or_else(|(error, mut owner)| {
         owner.value_mut().tables.cancel_private().unwrap();
@@ -1010,6 +1020,7 @@ pub(super) fn test_private_domain() -> super::private_domain::PrivateDomain {
 }
 
 /// Private, never hardware-published walkers; the data frame is borrowed.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_table_admission() {
     let baseline = super::dma_tables::used();
     let data = crate::memory::PreparingUserFrame::allocate_zeroed().unwrap();
@@ -1040,6 +1051,7 @@ pub(super) fn test_table_admission() {
 }
 
 /// Serialized fixture places the next map across a cached/fresh leaf-table boundary.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_reject_sparse_map(id: u64) {
     with_unit(|unit| {
         let domain = unit.domains.get_mut(&id).and_then(Option::as_mut).unwrap();
@@ -1050,6 +1062,7 @@ pub(super) fn test_reject_sparse_map(id: u64) {
     .unwrap();
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_registry_snapshot(sid: u32) -> (u64, Option<u64>, usize, usize) {
     with_registered(|unit| {
         Ok((
@@ -1065,6 +1078,7 @@ pub(super) fn test_registry_snapshot(sid: u32) -> (u64, Option<u64>, usize, usiz
 /// Serialized pre-driver probe: retain the complete actual unit in the
 /// existing creation owner, without creation/reset or descriptor mutation.
 /// Its caller retains the real mapped-domain root through the probe.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_with_claimed_unit(action: impl FnOnce()) {
     let mut preparation = super::DmaCreation::new();
     super::domain_creation::prepare(
@@ -1079,6 +1093,7 @@ pub(super) fn test_with_claimed_unit(action: impl FnOnce()) {
     .unwrap();
     assert!(!preparation.is_armed());
 }
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_registered_unit_waiters() -> usize {
     UNIT.lock().readiness.as_ref().map_or(0, |source| source.registered())
 }

@@ -20,6 +20,7 @@ pub(super) fn capture(frame: &mut TrapFrame) {
 }
 
 // Private boot-fixture adapter; no caller-controlled fault selector or ABI.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_rejection(frame: &mut TrapFrame, stage: usize) {
     assert!((1..=4).contains(&stage));
     capture_inner(frame, stage);
@@ -195,6 +196,7 @@ fn capture_inner(frame: &mut TrapFrame, reject: usize) {
     frame.regs[1] = exact_len as u64;
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_capture(asid: crate::memory::AddressSpaceId) {
     use crate::{
         capability::admission_tests::test_namespace_used,

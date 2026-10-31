@@ -215,4 +215,5 @@ fn run_with_prepare(
     operation.finish(result)
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) mod tests;

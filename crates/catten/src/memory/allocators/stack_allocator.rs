@@ -56,6 +56,7 @@ impl KernelStack {
         self.base
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(in crate::memory) fn reject_release_for_test(&mut self) -> Result<(), Error> {
         self.release_with(|_, _| Err(Error::InvalidStack))
     }

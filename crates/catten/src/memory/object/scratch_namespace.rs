@@ -180,14 +180,17 @@ fn take_extent(
 pub(in crate::memory) struct RetiredNamespace(RetiredEntry<(AddressSpaceId, Namespace), Charge>);
 impl RetiredNamespace {
     pub(in crate::memory) fn release(self) {
+        #[cfg(feature = "kernel_tests")]
         super::super::retirement::metadata_tests::scratch_boundary();
         self.0.release_with(|(_, mut namespace)| namespace.window.release_all());
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(in crate::memory) fn test_extent_count(&self) -> usize {
         self.0.value().1.window.extent_count()
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(in crate::memory) fn test_assert_retained(&self, handle: super::super::AddressSpaceHandle) {
         assert_eq!(self.0.value().1.handle, handle);
         assert!(SCRATCH_WINDOWS.lock().get(&handle.id()).is_none());
@@ -207,4 +210,5 @@ fn detach_from(
     windows.take(&handle.id()).map(RetiredNamespace)
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) mod tests;

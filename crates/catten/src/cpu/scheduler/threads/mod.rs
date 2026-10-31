@@ -31,6 +31,7 @@ use super::lp_schedulers::run_queue::{
     ThreadHandle,
 };
 pub(crate) mod exit_source;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod retirement_tests;
 pub mod waker;
 
@@ -169,6 +170,7 @@ pub(crate) fn has_staged_asid(asid: AddressSpaceId) -> bool {
     DEAD_THREADS.read().iter().flat_map(RetirementList::iter).any(|thread| thread.asid == asid)
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn has_staged_generation(generation: ThreadGeneration) -> bool {
     DEAD_THREADS
         .read()
@@ -180,6 +182,7 @@ pub(crate) fn has_staged_generation(generation: ThreadGeneration) -> bool {
 /// Copied observations from an exact staged thread; not a completion receipt.
 /// Absence can mean a detached in-flight batch and never proves quiescence.
 #[derive(Debug, Clone, Copy)]
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) struct StagedRetirementSnapshot {
     pub(crate) root: Option<crate::memory::AddressSpaceHandle>,
     pub(crate) lp: Option<LpId>,
@@ -187,6 +190,7 @@ pub(crate) struct StagedRetirementSnapshot {
     pub(crate) error: Option<crate::memory::thread_stack::RetirementError>,
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn staged_retirement_snapshot(
     generation: ThreadGeneration,
 ) -> Option<StagedRetirementSnapshot> {
@@ -465,6 +469,7 @@ pub fn record_dispatch(
     SCHEDULER_LP_DIAGNOSTICS[base + 1].store(generation, Ordering::Relaxed);
     SCHEDULER_LP_DIAGNOSTICS[base + 2].store(asid as u64, Ordering::Relaxed);
     SCHEDULER_LP_DIAGNOSTICS[base + 3].fetch_add(1, Ordering::Relaxed);
+    #[cfg(feature = "kernel_tests")]
     super::deferred::test_dispatch(generation);
 }
 
@@ -850,13 +855,12 @@ impl Entries for ThreadTable {
 }
 
 mod growth;
-pub(crate) use growth::{
-    grow_current_user_stack,
-    tests::{
-        arm as arm_stack_growth,
-        phase as stack_growth_test_phase,
-        verify as verify_stack_growth,
-    },
+pub(crate) use growth::grow_current_user_stack;
+#[cfg(feature = "kernel_tests")]
+pub(crate) use growth::tests::{
+    arm as arm_stack_growth,
+    phase as stack_growth_test_phase,
+    verify as verify_stack_growth,
 };
 
 /// Return owned snapshots for threads in one address space.
@@ -864,6 +868,7 @@ pub(crate) use growth::{
 /// The filter is intentional: an eventual userspace export syscall can expose
 /// the caller's own scheduler data without granting ambient visibility into
 /// other protection domains.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn statistics_for_asid(
     asid: AddressSpaceId,
 ) -> Result<Vec<ThreadStatisticsSnapshot>, crate::klib::collections::snapshot::Error> {
@@ -955,6 +960,7 @@ impl Thread {
         self.exit_observers.register(observer, charge)
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn exit_watch_count(&self) -> usize {
         self.exit_observers.registered()
     }
@@ -1002,6 +1008,7 @@ impl Thread {
     fn dispose_retired(mut self) {
         assert!(self.retirement_metadata_completed && self.stacks_retired);
         self.metadata_disposal_started = true;
+        #[cfg(feature = "kernel_tests")]
         retirement_tests::before_metadata_disposal(&self);
         // SAFETY: sole Thread owner; the consuming method cannot use the
         // payload again. Thread::drop never touches a disarmed payload.

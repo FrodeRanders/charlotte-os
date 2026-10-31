@@ -117,6 +117,7 @@ impl<T, const N: usize> Registry<T, N> {
             .any(|slot| matches!(slot, Slot::Preparing { principal: key, .. } if *key == principal))
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn iter(&self) -> impl Iterator<Item = &T> {
         self.slots.iter().filter_map(|slot| match slot {
             Slot::Published {
@@ -161,11 +162,13 @@ impl<T, const N: usize> Registry<T, N> {
     }
 
     /// Trusted serialized fixtures use the same reservation/publication path.
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn insert(&mut self, principal: u64, value: T) {
         let reservation = self.reserve(principal).expect("fixture deployment admission failed");
         self.publish(reservation, value);
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn len(&self) -> usize {
         self.iter().count()
     }

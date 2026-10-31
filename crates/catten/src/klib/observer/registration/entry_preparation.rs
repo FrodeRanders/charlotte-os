@@ -80,8 +80,10 @@ pub(super) fn prepare<C>(
 }
 
 #[path = "entry_preparation/tests.rs"]
+#[cfg(any(test, feature = "kernel_tests"))]
 mod tests;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_preparation() {
     tests::run();
 }

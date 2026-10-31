@@ -28,6 +28,7 @@ static NODE: LazyLock<Mutex<NodeBudget>> = LazyLock::new(|| {
 #[derive(Debug)]
 pub(crate) struct DomainBudget(Mutex<VectorBudget<2>>);
 impl DomainBudget {
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn new() -> Arc<Self> {
         Self::try_new().expect("mandatory CQ account allocation failed")
     }
@@ -36,6 +37,7 @@ impl DomainBudget {
         Arc::try_new(Self(Mutex::new(VectorBudget::new(DOMAIN_LIMIT))))
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn used(&self) -> [u64; 2] {
         self.0.lock().used()
     }
@@ -82,6 +84,7 @@ impl Drop for Charge {
         }
     }
 }
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn node_used() -> ([u64; 2], [u64; 2]) {
     let node = NODE.lock();
     (node.total.used(), node.ordinary.used())

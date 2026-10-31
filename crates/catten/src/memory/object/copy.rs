@@ -156,6 +156,7 @@ fn pin_with(
     result
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) mod tests;
 pub(super) fn release_copy_pin_locked(
     registry: &mut MemoryObjectRegistry,

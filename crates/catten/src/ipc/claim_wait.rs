@@ -326,4 +326,5 @@ pub(super) fn front_interest(
     bind(owner.asid(), owner.cap(), captured, claim, Source::prepare)
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod tests;

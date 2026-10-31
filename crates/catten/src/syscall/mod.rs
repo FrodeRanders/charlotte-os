@@ -22,6 +22,7 @@ mod mailbox_budget;
 mod mailbox_publication;
 mod mailbox_queue;
 pub(crate) mod mailbox_retirement;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod mailbox_tests;
 mod mailbox_words;
 pub(crate) mod statistics;
@@ -37,7 +38,6 @@ use crate::{
         },
     },
     ipc,
-    logln,
     memory::{
         AddressSpaceId,
         VAddr,
@@ -925,6 +925,7 @@ static USER_MAILBOX_CAPS: LazyLock<
 
 /// Serialized boot fixtures only. Production detaches both payload namespaces
 /// into its final root owner rather than releasing them beneath lifecycle.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn close_mailbox_address_space_for_test(asid: AddressSpaceId) {
     let queue = USER_MAILBOX.write().take(&asid);
     if let Some(queue) = queue {
@@ -2497,3 +2498,6 @@ fn prepare_deployment_drain(
     }
     Ok((drain, None))
 }
+
+#[cfg(feature = "kernel_tests")]
+use crate::logln;

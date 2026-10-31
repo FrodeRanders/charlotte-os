@@ -276,9 +276,12 @@ pub(crate) fn observe_registered(
     Ok(observation)
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 mod preparation_tests;
+#[cfg(any(test, feature = "kernel_tests"))]
 mod tests;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_preparation() {
     tests::run();
     preparation_tests::run();

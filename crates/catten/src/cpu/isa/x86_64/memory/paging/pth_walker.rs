@@ -44,6 +44,7 @@ impl<'vas> PthWalker<'vas> {
         Self::with_preparer(address_space, vaddr, |_| true)
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn test_table_preparation() {
         crate::memory::translation::tests::run(|space, vaddr, frame, limit| {
             let mut remaining = limit;

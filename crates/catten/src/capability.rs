@@ -17,10 +17,13 @@ use crate::{
     memory::AddressSpaceId,
 };
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod admission_tests;
 mod budget;
+#[cfg(any(test, feature = "kernel_tests"))]
 mod namespace_tests;
 mod record;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod record_tests;
 use record::PreparingRecord;
 pub(crate) use record::RetiredRecord;
@@ -96,12 +99,13 @@ struct NamespaceStorage {
 }
 
 pub(crate) fn prepare_namespace() -> Result<PreparingNamespace, AllocationError> {
-    if namespace_tests::reject(1) {
+    if test_fault!(namespace_tests::reject(1)) {
         return Err(AllocationError::AllocationFailed);
     }
     let node = PreparedEntry::try_new().map_err(|_| AllocationError::AllocationFailed)?;
+    #[cfg(feature = "kernel_tests")]
     namespace_tests::boundary(false);
-    let value = if namespace_tests::reject(2) {
+    let value = if test_fault!(namespace_tests::reject(2)) {
         Err(AllocationError::AllocationFailed)
     } else {
         AddressSpaceCapabilities::try_new(None)
@@ -112,6 +116,7 @@ pub(crate) fn prepare_namespace() -> Result<PreparingNamespace, AllocationError>
             value: Some(value),
         }))),
         Err(error) => {
+            #[cfg(feature = "kernel_tests")]
             namespace_tests::boundary(true);
             drop(node);
             Err(error)
@@ -142,6 +147,7 @@ impl PreparingNamespace {
     /// Ordinary unused preparation must leave local lifecycle/table/registry
     /// guards first. Drop deliberately cannot assume that context.
     pub(crate) fn cancel_unpublished(self) {
+        #[cfg(feature = "kernel_tests")]
         namespace_tests::boundary(true);
         drop(core::mem::ManuallyDrop::into_inner(self.0));
     }
@@ -170,6 +176,7 @@ pub(crate) enum AllocationError {
 
 /// Fallible shared admission and identity minting. Multi-step callers reserve
 /// a hidden identity first, then publish only when payload state is prepared.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn try_allocate(
     owner: AddressSpaceId,
     kind: ObjectKind,
@@ -211,6 +218,7 @@ pub(crate) struct Reservation {
     active: bool,
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn reserve(
     owner: AddressSpaceId,
     kind: ObjectKind,
@@ -219,6 +227,7 @@ pub(crate) fn reserve(
     reserve_in_lifecycle(owner, kind, &lifecycle)
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn reserve_in_lifecycle(
     owner: AddressSpaceId,
     kind: ObjectKind,
@@ -432,6 +441,7 @@ pub(crate) struct SourceEscrow {
     active: bool,
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn escrow(
     owner: AddressSpaceId,
     cap: ObjectCapability,
@@ -482,6 +492,7 @@ impl SourceEscrow {
         }
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn restore(self) -> Result<ObjectCapability, AllocationError> {
         self.restore_inner(false)
     }
@@ -623,6 +634,7 @@ pub(crate) fn publish_batch(
     Ok(())
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_identity_exhaustion() {
     const OWNER: AddressSpaceId = 0x5e31;
     let cap = try_allocate(OWNER, ObjectKind::Mailbox).unwrap();
@@ -637,6 +649,7 @@ pub(crate) fn test_identity_exhaustion() {
 
 /// Kernel-fixture injection into an otherwise isolated capability namespace.
 /// The fixture must retire this namespace afterwards; identity is never reset.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn exhaust_identity_for_test(owner: AddressSpaceId) {
     CAPABILITIES.lock().get_mut(&owner).unwrap().next_serial = u64::MAX;
 }
@@ -651,6 +664,7 @@ pub fn contains(owner: AddressSpaceId, cap: ObjectCapability, kind: ObjectKind) 
 }
 
 /// Diagnostic counts include staged reservations as well as live authority.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn node_admission_used() -> (usize, usize) {
     budget::node_used()
 }
@@ -672,6 +686,7 @@ pub(crate) fn detach(
 
 /// Trusted payload teardown can also revoke an escrowed source. Its retained
 /// backing pin outlives the entry, and late cancellation cannot revive it.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn remove_for_teardown(
     owner: AddressSpaceId,
     cap: ObjectCapability,
@@ -761,6 +776,7 @@ pub(crate) fn detach_address_space(
 
 impl RetiredNamespace {
     pub(crate) fn release(self) {
+        #[cfg(feature = "kernel_tests")]
         crate::memory::retirement::metadata_tests::boundary(true);
         release_namespace(self.0);
     }
@@ -777,6 +793,7 @@ fn release_namespace(
     while let Some((&cap, _)) = namespace.value().1.objects.first_key_value() {
         RetiredRecord::new(namespace.value_mut().1.objects.take(&cap).unwrap()).release();
     }
+    #[cfg(feature = "kernel_tests")]
     namespace_tests::boundary(true);
     namespace.release();
 }

@@ -15,6 +15,7 @@ use crate::{
     },
 };
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod tests;
 
 /// The complete original thread/context/stack/root/charge remains in the
@@ -58,6 +59,7 @@ impl CurrentGrowth {
     }
 
     fn run(mut self) -> Option<usize> {
+        #[cfg(feature = "kernel_tests")]
         tests::before_growth(self.growth.as_ref().unwrap().handle(), self.identity);
         self.growth.as_mut().unwrap().run();
         self.finish()
@@ -68,6 +70,7 @@ impl CurrentGrowth {
         // allocator, mapper, physical release or callback runs in this scope.
         let mask = LocalInterruptMask::new();
         let growth = self.growth.take().unwrap();
+        #[cfg(feature = "kernel_tests")]
         let handle = growth.handle();
         let (tid, generation) = self.identity;
         let result = {
@@ -84,6 +87,7 @@ impl CurrentGrowth {
         };
         match result {
             Ok(low) => {
+                #[cfg(feature = "kernel_tests")]
                 tests::before_release(handle, self.identity, low);
                 self.execution.take().unwrap().release(&mask);
                 low

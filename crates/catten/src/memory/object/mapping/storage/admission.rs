@@ -44,13 +44,16 @@ fn prepare_with(
 ) -> Result<Storage, MemoryObjectError> {
     allocate(Charge::reserve(platform)?)
 }
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn snapshot() -> ([u64; 2], [u64; 2]) {
     let pool = POOL.lock();
     pool.used()
 }
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn with_locked<T>(work: impl FnOnce() -> T) -> T {
     let _pool = POOL.lock();
     work()
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) mod tests;

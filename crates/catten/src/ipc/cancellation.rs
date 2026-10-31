@@ -14,6 +14,7 @@ use crate::memory::{
     operation::AddressSpaceOperation,
 };
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod tests;
 
 #[derive(Clone, Copy, PartialEq, Eq)]

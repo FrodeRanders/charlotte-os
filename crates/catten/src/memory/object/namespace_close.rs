@@ -280,4 +280,5 @@ pub(crate) fn close_with(
     }))
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod tests;

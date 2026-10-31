@@ -42,6 +42,7 @@ impl DomainBudget {
         })))
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn used(&self) -> [u64; 3] {
         self.0.lock().records.used()
     }
@@ -120,6 +121,7 @@ impl Drop for Charge {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn node_used() -> ([u64; 3], [u64; 3]) {
     let node = NODE.lock();
     (node.total.used(), node.ordinary.used())

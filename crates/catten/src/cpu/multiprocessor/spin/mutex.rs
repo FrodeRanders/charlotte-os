@@ -45,12 +45,14 @@ impl MutexCore {
         }
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn owned_by_current_lp(&self) -> bool {
         let _pin = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
         self.owner_lp.load(Ordering::Acquire) == get_lp_id()
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn owned_by_current_lp<T>(mutex: &Mutex<T>) -> bool {
     // Only read the raw lock's atomic observation; do not change its state or
     // access payload. lock_api keeps the raw reference valid for this borrow.

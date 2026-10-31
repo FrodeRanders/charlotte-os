@@ -4,7 +4,6 @@ use alloc::vec::Vec;
 
 use super::{
     LpId,
-    get_lp_count,
     get_lp_id,
     mailbox_budget,
 };
@@ -54,6 +53,7 @@ pub(super) struct Words {
     _charge: mailbox_budget::QueueCharge,
 }
 impl Words {
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn backing_bytes() -> Result<usize, mailbox_budget::Error> {
         Self::backing_bytes_for(get_lp_count() as usize)
     }
@@ -100,3 +100,6 @@ impl Words {
         self.rings.get(get_lp_id() as usize)?.lock().pop()
     }
 }
+
+#[cfg(feature = "kernel_tests")]
+use crate::cpu::multiprocessor::get_lp_count;

@@ -14,6 +14,7 @@ use crate::memory::{
     operation::AddressSpaceOperation,
 };
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod tests;
 
 /// A published claim is never automatically cleared by Drop. Its roots,

@@ -18,6 +18,17 @@ catten_boot_validate_management_startup() {
         ready|validity|chain-validity|disabled|WrongPolicy|Signature|Authentication) ;;
         *) echo "error: invalid --management-startup-test expectation" >&2; return 1 ;;
     esac
+    case "$MANAGEMENT_STARTUP_TEST" in
+        ready|validity|chain-validity)
+            local input
+            for input in CATTEN_MANAGEMENT_TLS_RESOURCE CATTEN_MANAGEMENT_CA_FILE \
+                CATTEN_MANAGEMENT_READER_CERT_FILE CATTEN_MANAGEMENT_READER_KEY_FILE; do
+                if [ ! -r "${!input:-}" ]; then
+                    echo "error: --management-startup-test $MANAGEMENT_STARTUP_TEST requires readable $input" >&2
+                    return 1
+                fi
+            done ;;
+    esac
     if catten_boot_management_expects_rejection && [ "$FAILURE_CAPTURE" = "1" ]; then
         echo "error: expected boot rejection requires --no-failure-capture" >&2
         return 1
@@ -349,6 +360,27 @@ catten_boot_create_uefi_image() {
     if ! mv -f -- "$temporary_image" "$image"; then
         rm -f -- "$temporary_image"
         return 1
+    fi
+}
+
+catten_boot_has_selected_result() {
+    if [ "${BOOT_MODE:-test}" = "minimal" ]; then
+        grep -Fq 'BOOT COMPLETE:' "$1" || return 1
+        python3 "$CATTEN_BOOT_ROOT_DIR/scripts/validate-minimal-boot.py" "$1"
+    else
+        catten_boot_has_selftest_result "$1"
+    fi
+}
+
+catten_boot_validate_selected_log() {
+    if [ "${BOOT_MODE:-test}" = "minimal" ]; then
+        if ! python3 "$CATTEN_BOOT_ROOT_DIR/scripts/validate-minimal-boot.py" "$1"; then
+            echo "error: minimal boot validation failed or did not finish" >&2
+            return 1
+        fi
+        echo ">>> Minimal boot validation passed; no regression suite requested."
+    else
+        catten_boot_validate_selftest_log "$@"
     fi
 }
 

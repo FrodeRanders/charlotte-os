@@ -305,6 +305,7 @@ pub(super) fn close_with(
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn with_operation<T>(
     asid: AddressSpaceId,
     cap: DeviceCap,
@@ -349,13 +350,17 @@ pub(super) fn unmap_with(
     result
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_admission() {
     tests::run();
 }
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_scheduled_readiness() {
     tests::readiness::scheduled();
 }
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_real_readiness(root: crate::memory::AddressSpaceHandle, cap: DeviceCap) {
     tests::readiness::real(root, cap);
 }
+#[cfg(any(test, feature = "kernel_tests"))]
 mod tests;

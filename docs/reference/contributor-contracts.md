@@ -149,6 +149,15 @@ the corrected RPC polling paths, and the remaining notification gaps.
 
 ## Trust, boot and placement
 
+- Keep mandatory startup validation and operational checks independent of
+  `kernel_tests`. Native fixture modules, adapters, fault injection and synthetic
+  workers require that feature; host logic uses `cfg(test)`. Minimal images must
+  exclude test ELFs from both embedding and the preseeded disk, and cached inputs
+  must match the selected mode. Do not use `release` to imply test-free behavior
+  or synthesize self-test success for a validation-only boot. See
+  `docs/reference/boot-modes.md`. Retire a regression only with an explicit
+  mapping of its useful success and failure checks to retained coverage.
+
 - Deployment syscalls reserve one `PreparingDeployment` in the existing fixed
   registry before domain construction. Preparing/published principals share its
   capacity and duplicate fence. Consume that exact preparation for ordinary

@@ -192,4 +192,5 @@ fn pin_with(
     result
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) mod tests;

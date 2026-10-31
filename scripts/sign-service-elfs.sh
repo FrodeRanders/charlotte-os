@@ -48,6 +48,27 @@ else
     done
 fi
 
+[ "${#ELFS[@]}" -ne 0 ] || exit 0
+
+# Build once per batch using the pinned host toolchain. Each ELF still gets a
+# separate signer process/key owner, without starting Cargo for every artifact.
+# Starting outside the repo avoids its freestanding build-std configuration.
+SIGNER="$(cd /tmp && cargo +"$SIGN_TOOLCHAIN" build --locked --quiet \
+    --manifest-path "$ROOT/tools/cluster-sign/Cargo.toml" --bin cluster-sign \
+    --message-format=json | python3 -c '
+import json, sys
+executable = None
+for line in sys.stdin:
+    row = json.loads(line)
+    if row.get("reason") == "compiler-message":
+        sys.stderr.write(row.get("message", {}).get("rendered") or "")
+    if row.get("reason") == "compiler-artifact" and row.get("target", {}).get("name") == "cluster-sign":
+        executable = row.get("executable") or executable
+if executable is None:
+    raise SystemExit("error: Cargo did not identify the pinned signing executable")
+print(executable)
+')"
+
 for elf in "${ELFS[@]}"; do
     name="$(basename "$elf" .elf)"
     matches="$(awk -v wanted="$name" '$1 == wanted { count++ } END { print count + 0 }' "$POLICY")"
@@ -63,11 +84,7 @@ EOF
         echo "error: blessing policy parser mismatch for $name" >&2
         exit 1
     fi
-    # The tool builds cleanly only when cargo's config discovery starts
-    # outside the repo (the root config pins build-std for the kernel
-    # toolchain); run it from /tmp with an explicit manifest path.
-    (cd /tmp && cargo +"$SIGN_TOOLCHAIN" run --locked --quiet --manifest-path "$ROOT/tools/cluster-sign/Cargo.toml" \
-        -- elf-sign "$elf" "$name" "$KEY_FILE" "$class" "$version" "$rollback" \
+    (cd /tmp && "$SIGNER" elf-sign "$elf" "$name" "$KEY_FILE" "$class" "$version" "$rollback" \
         "$flags" "$provenance" >/dev/null)
     echo ">>> Blessed $(basename "$elf") as $name ($class, release $version, flags $flags)."
 done

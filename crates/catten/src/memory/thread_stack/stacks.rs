@@ -31,12 +31,14 @@ const DETACH_REJECTED: usize = 3;
 const INVALIDATION_REJECTED: usize = 4;
 const PHYSICAL_REJECTED: usize = 5;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn retirement_progress() -> [u64; 6] {
     core::array::from_fn(|index| RETIREMENT_PROGRESS[index].load(Ordering::Relaxed))
 }
 
 const PAGE: usize = crate::cpu::isa::memory::paging::PAGE_SIZE;
 const _: () = assert!(charlotte_launch::INITIAL_USER_STACK_PAGES == 1 && PAGE == 4096);
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) mod tests;
 
 #[derive(Debug)]
@@ -184,6 +186,7 @@ impl Stacks {
 
     // Serialized fixtures own this entire never-scheduled stack directly.
     // Production uses the exact executing-thread owner around these phases.
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(in crate::memory::thread_stack) fn grow_user_stack(
         &mut self,
         address: usize,
@@ -227,6 +230,7 @@ impl KernelFailure {
 }
 
 impl Stacks {
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn reject_release_for_test(&mut self) -> Result<(), RetirementError> {
         self.release_with(retire_user, KernelStack::reject_release_for_test)
     }
@@ -412,15 +416,18 @@ impl Growth {
     }
 
     pub(crate) fn run(&mut self) {
+        #[cfg(feature = "kernel_tests")]
         let handle = self.handle;
         self.run_with(
             || {
+                #[cfg(feature = "kernel_tests")]
                 crate::cpu::scheduler::threads::stack_growth_test_phase(handle, 1);
                 PreparingUserFrame::allocate_with_policy(|free, total| {
                     free > (total / charlotte_lifecycle::STACK_GROWTH_RESERVE_DIVISOR).max(1)
                 })
             },
             |handle, vaddr, frame| {
+                #[cfg(feature = "kernel_tests")]
                 crate::cpu::scheduler::threads::stack_growth_test_phase(handle, 2);
                 let mut table = ADDRESS_SPACE_TABLE.lock();
                 table.generation(handle.id()).ok() == Some(handle.generation())
@@ -435,6 +442,7 @@ impl Growth {
                     })
             },
             |frame| {
+                #[cfg(feature = "kernel_tests")]
                 crate::cpu::scheduler::threads::stack_growth_test_phase(handle, 4);
                 PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame)
             },

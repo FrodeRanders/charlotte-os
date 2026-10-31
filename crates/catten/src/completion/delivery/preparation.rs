@@ -220,6 +220,7 @@ impl Prepared {
 
     /// The existing private detachment fixture stages real heap queues using
     /// this same constructor; physical states cannot escape uninitialized.
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(in crate::completion) fn heap_for_namespace(
         asid: AddressSpaceId,
         entries: &Namespace,
@@ -349,9 +350,12 @@ pub(in crate::completion) fn open_namespace(
     Ok(())
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 mod metadata_tests;
+#[cfg(any(test, feature = "kernel_tests"))]
 mod tests;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(in crate::completion) fn test_preparation() {
     tests::run();
     metadata_tests::run();

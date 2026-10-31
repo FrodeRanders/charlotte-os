@@ -53,6 +53,7 @@ impl DomainBudget {
         .map_err(|_| Error::AllocationFailed)
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn used(&self) -> usize {
         self.0.lock().count.used()
     }
@@ -61,6 +62,7 @@ impl DomainBudget {
         self.0.lock().retired = true;
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn queue_used(&self) -> [u64; 2] {
         self.0.lock().queues.used()
     }
@@ -185,11 +187,13 @@ impl Drop for QueueCharge {
         NODE.lock().release_queue(self.platform, self.amount);
     }
 }
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn queue_node_used() -> ([u64; 2], [u64; 2]) {
     let node = NODE.lock();
     (node.queue_total.used(), node.queue_ordinary.used())
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_queue_admission() {
     // Isolated production counters distinguish byte and set ceilings without
     // allocating megabytes or exhausting the live shared node pool.
@@ -213,6 +217,7 @@ pub(crate) fn test_queue_admission() {
     assert_eq!(node.reserve_queue(true, [1, 0]), Err(Error::ResourceLimit));
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_node_admission() {
     // Exercise isolated counters without allocating thousands of registry
     // entries or changing the shared budget used by other booting services.

@@ -13,17 +13,22 @@
 
 pub(crate) mod budget;
 mod cancellation_disposal;
+#[cfg(any(test, feature = "kernel_tests"))]
 mod cancellation_tests;
 pub(crate) use cancellation_disposal::CancelledTimer;
 mod delivery;
+#[cfg(any(test, feature = "kernel_tests"))]
 mod disposal_tests;
 use delivery::PendingDelivery;
 mod event_preparation;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod event_tests;
 mod node_preparation;
+#[cfg(any(test, feature = "kernel_tests"))]
 mod preparation_tests;
 mod queue;
 pub(crate) use queue::RetiredEvents;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod waiter_tests;
 
 use alloc::{
@@ -644,6 +649,7 @@ impl TimerQueue {
         self.record_state();
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     fn get_next_deadline(&self) -> Option<Timestamp> {
         self.events.front().map(|event| event.deadline)
     }

@@ -2,7 +2,7 @@
 # Build, stage, and sign the x86_64 EL0 service bundle embedded by the kernel.
 #
 # Usage:
-#   scripts/build-catten-services-x86_64.sh [--clean]
+#   scripts/build-catten-services-x86_64.sh [--clean] [--mode minimal|test]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -11,24 +11,21 @@ catten_require_development_trust
 cd "$ROOT"
 
 CLEAN=0
+BUNDLE_MODE="test"
+source "$ROOT/scripts/lib/service-bundle.sh"
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        --mode) [ "$#" -ge 2 ] || exit 1; BUNDLE_MODE="$2"; shift 2 ;;
         --clean) CLEAN=1; shift ;;
-        *) echo "usage: $0 [--clean]" >&2; exit 1 ;;
+        *) echo "usage: $0 [--clean] [--mode minimal|test]" >&2; exit 1 ;;
     esac
 done
 
 MANIFEST="crates/catten-services/Cargo.toml"
 TARGET="crates/catten-services/x86_64-unknown-none.json"
 OUTPUT="crates/catten-services/target/x86_64-unknown-none/release"
-BUNDLE="$ROOT/target/embedded-services/x86_64-unknown-none"
+catten_service_bundle x86_64 "$BUNDLE_MODE" "$ROOT"
 BUNDLE_PARENT="$(dirname "$BUNDLE")"
-SERVICES=(
-    ns observe nvme objstore nvme_client objstore_client echo raft client
-    servicemgr ahci virtio_blk net e1000e nclient disco frouter dns agent
-    greet shutdown_probe relmsg rclient tcpip tcpclient httpd time s3 s3_smoke kafka kafka_smoke deployd
-    rng fs clusterctl grantctl security_probe
-)
 
 if [ "$CLEAN" = "1" ]; then
     echo ">>> Cleaning x86_64 service target artifacts..."
@@ -66,4 +63,5 @@ mv "$STAGING" "$BUNDLE"
 STAGING=""
 trap - EXIT
 
+catten_validate_service_bundle "$BUNDLE_MODE" x86_64
 echo ">>> Staged and signed x86_64 EL0 service bundle at $BUNDLE."

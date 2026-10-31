@@ -33,6 +33,7 @@ pub fn initialize_early() -> Result<(), Error> {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_initialization() {
     match detect() {
         Ok(Backend::Vtd) => super::vt_d::test_initialization(),
@@ -107,6 +108,7 @@ pub(crate) fn unmap_owned(domain_id: u64, iova: u64) -> Result<(), super::mappin
     }
 }
 
+#[cfg(feature = "kernel_tests")]
 pub(super) fn map_at(
     domain_id: u64,
     caller: crate::memory::AddressSpaceId,
@@ -125,6 +127,7 @@ pub(super) fn map_at(
     }
 }
 
+#[cfg(feature = "kernel_tests")]
 pub(super) fn unmap_at(
     domain_id: u64,
     iova: u64,
@@ -150,6 +153,7 @@ pub(crate) fn destroy_created_domain(creation: &mut super::DmaCreation) -> Resul
     }
 }
 
+#[cfg(feature = "kernel_tests")]
 pub(super) fn destroy_domain_at(
     domain_id: u64,
     before_maintenance: impl FnOnce(),
@@ -187,12 +191,14 @@ pub fn pending_fault_events() -> u32 {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_table_admission() {
     match detect().unwrap() {
         Backend::Vtd => super::vt_d::test_table_admission(),
         Backend::AmdVi => super::amd_vi::test_table_admission(),
     }
 }
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_reject_sparse_map(id: u64) {
     match detect().unwrap() {
         Backend::Vtd => super::vt_d::test_reject_sparse_map(id),
@@ -201,23 +207,27 @@ pub(super) fn test_reject_sparse_map(id: u64) {
 }
 
 /// Hold both compiled backend registries without hardware initialization.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_with_backend_locked(action: impl FnOnce()) {
     super::vt_d::test_with_backend_locked(|| super::amd_vi::test_with_backend_locked(action));
 }
 
 /// Check both compiled registries without initializing hardware or spinning.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_assert_backend_available() {
     super::vt_d::test_assert_backend_available();
     super::amd_vi::test_assert_backend_available();
 }
 
 /// Both compiled command engines use private RAM registers, never hardware.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_command_engines() {
     super::vt_d::test_command_engine();
     super::amd_vi::test_command_engine();
 }
 
 /// Private RAM payload selection; no hardware mutation or domain publication.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_private_domain() -> super::private_domain::PrivateDomain {
     match detect().unwrap() {
         Backend::Vtd => super::vt_d::test_private_domain(),
@@ -225,6 +235,7 @@ pub(super) fn test_private_domain() -> super::private_domain::PrivateDomain {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_registry_snapshot(sid: u32) -> (u64, Option<u64>, usize, usize) {
     if crate::environment::acpi::sdt::dmar::discover_vtd().is_some() {
         super::vt_d::test_registry_snapshot(sid)
@@ -233,12 +244,14 @@ pub(super) fn test_registry_snapshot(sid: u32) -> (u64, Option<u64>, usize, usiz
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_with_claimed_unit(action: impl FnOnce()) {
     match detect().unwrap() {
         Backend::Vtd => super::vt_d::test_with_claimed_unit(action),
         Backend::AmdVi => super::amd_vi::test_with_claimed_unit(action),
     }
 }
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_registered_unit_waiters() -> usize {
     match detect().unwrap() {
         Backend::Vtd => super::vt_d::test_registered_unit_waiters(),

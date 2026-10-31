@@ -1,0 +1,490 @@
+{
+  "date": "2026-10-31",
+  "base_revision": "84d1ebc993bb30dd44fd7e28c35deabe20a6312e",
+  "scope": "Always-on bounded memory validation and operational signed bootstrap seeding, optional kernel_tests regression code, isolated minimal/test service bundles and images, distinct authoritative boot results. Development defaults retain regressions independently of debug/release. No syscall grammar, persistent layout or security-finding disposition change.",
+  "source_set": {
+    "paths": 578,
+    "sha256": "2002dcd0f2ce645ce27537df7261aef62749fc39e32e9436086d2fd2d9a40cde",
+    "algorithm": "SHA-256 of UTF-8 compact sorted JSON mapping each existing Git-tracked file under crates/catten plus Cargo.toml, Cargo.lock, rust-toolchain.toml and .cargo to its file SHA-256; generated ELF bundles are identified separately per run."
+  },
+  "source_anchors_sha256": {
+    "crates/catten/Cargo.toml": "4b8e9b910cd5a41755a85c762ba819ba320322ae95df046605807f7c6dd25b38",
+    "crates/catten/src/main.rs": "7b15620f8525fcc1b086e2df56d6c1d9cb53cf53915cfcac2ad4154b08d25892",
+    "crates/catten/src/boot_validation.rs": "8ab41a0ca6ecc32d8d839a89b6ca9c084b4ab9b2b9c4e98f584f833ec6e70e01",
+    "crates/catten/src/service/launch.rs": "8c1d0d47359e9a272079cff7286f50622069b36db1a5ee0f1ea040baaf7370a3",
+    "crates/catten/src/service/store.rs": "873cf8e9a6396c7ef8d2c9eed80f7aad064c1692e03fe5290b59267afae298b9",
+    "scripts/lib/service-bundle.sh": "4309bbb01aae88cd95e4fa7327bced4d3c7c80e9588da41413da37c3370bd3b1",
+    "scripts/check-boot-profile.py": "37a363b45104cea192ea47627894b31044e993b5ded7f13c445e03c60cc03f9d",
+    "scripts/validate-minimal-boot.py": "a5930f70086357a83449341d06b1ccef1b4939ec73b71d83a6cbbaa5df86a2f3",
+    "scripts/sign-service-elfs.sh": "e0802b1d343e3a2675a439fa2dad2dc4a4cddef32c97793d600f1772f6349dbb"
+  },
+  "native_runs": [
+    {
+      "target": "aarch64-smmuv3",
+      "mode": "minimal",
+      "instance": "boot-gating-arm-lean-final-minimal",
+      "base_revision": "84d1ebc993bb30dd44fd7e28c35deabe20a6312e",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "kernel_sha256": "0e5a1ee580411d2574be18ac27bc887ac1d212508ace7d0d82b5272f3ad21741",
+      "kernel_elf_bytes": 2736520,
+      "boot_image_sha256": "beee77af8efb0a78040a55c8c896b7c9c9227285b93c5cf6340e1a6e9fae50b4",
+      "initial_disk_sha256": "56a8d82369234e73150360d82cb5e08995ad121d63809c5dfd3bd0352488694e",
+      "bundle_files": 22,
+      "bundle_map_sha256": "e09680b6ec9ca336866879554df0c069ca88f257409dac06e5daeeb231ece318",
+      "tracked_diff_sha256": "ebd8ed13410961046a59fc2b546c6d369e5fc0e5263461f60635b07181d724d2",
+      "serial_sha256": "20cbce58c783cb540c5c3c9c72bb9265ac2e98fc02349c9b73b4285ba1e6c076",
+      "runner_output_sha256": "099e71edeaf1f3f7d62716132a82f7fa97354aa7f320e5bcf499d447b1f88289",
+      "diagnostic_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "host_check_groups": 1,
+      "diagnostics": [
+        "[+     0.026092] CHARLOTTE_BOOT_MODE=minimal",
+        "[+     0.026712] [boot validation] memory passed: usable=469 MiB, free=101625 frames, heap reserve=64 MiB",
+        "[+     0.595858] [store] bootstrap seed complete: retained=8 written=0",
+        "[+     4.060814] BOOT COMPLETE: validation passed; local storage ready; services submitted"
+      ],
+      "runner_exit": 0,
+      "arguments": [
+        "release",
+        "--minimal",
+        "--fresh-storage",
+        "--timeout",
+        "180",
+        "--smp",
+        "4",
+        "--management-startup-test",
+        "ready",
+        "--instance",
+        "boot-gating-arm-lean-final"
+      ]
+    },
+    {
+      "target": "x86_64-intel-vtd",
+      "mode": "minimal",
+      "instance": "boot-gating-intel-lean-final-minimal",
+      "base_revision": "84d1ebc993bb30dd44fd7e28c35deabe20a6312e",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "kernel_sha256": "97859cd7944a629fcf36048949dba8d13f22afd728e913480c7f7e814e2749a3",
+      "kernel_elf_bytes": 6976784,
+      "boot_image_sha256": "5031ccd32d50c12339d4f8b81a4910bf578f26362a4943c6a01a5cc2590d581c",
+      "initial_disk_sha256": "af16330f65240c046dcb39036e114673655817fc2aacee4d64c479c938b71a49",
+      "bundle_files": 23,
+      "bundle_map_sha256": "848e4815783f79490af36924fae77bdd7092ac22e352c5ea0408058e07c08610",
+      "tracked_diff_sha256": "ebd8ed13410961046a59fc2b546c6d369e5fc0e5263461f60635b07181d724d2",
+      "serial_sha256": "d3c58f59b6e914fead2db172cb4505351d20e3a155e159aad58e737342e16cc7",
+      "runner_output_sha256": "9dc70d1a22e271d7bd72a05b860dc5a12638dcd91ebd9f3515ffe85a97df5a6a",
+      "diagnostic_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "host_check_groups": 1,
+      "diagnostics": [
+        "[+     0.024544] CHARLOTTE_BOOT_MODE=minimal",
+        "[+     0.025400] [boot validation] memory passed: usable=449 MiB, free=96526 frames, heap reserve=64 MiB",
+        "[+     0.723023] [store] bootstrap seed complete: retained=23 written=0",
+        "[+     3.906461] BOOT COMPLETE: validation passed; local storage ready; services submitted"
+      ],
+      "runner_exit": 0,
+      "arguments": [
+        "release",
+        "--minimal",
+        "--fresh-storage",
+        "--timeout",
+        "180",
+        "--smp",
+        "4",
+        "--management-startup-test",
+        "ready",
+        "--instance",
+        "boot-gating-intel-lean-final"
+      ]
+    },
+    {
+      "target": "x86_64-amd-vi-first-boot",
+      "mode": "minimal",
+      "instance": "boot-gating-amd-lean-final-minimal",
+      "base_revision": "84d1ebc993bb30dd44fd7e28c35deabe20a6312e",
+      "cpus": 1,
+      "timeout_seconds": 180,
+      "kernel_sha256": "35b101a61cac955192852289f7f107d3e97bae2978838d7787a3dbd5cf146a85",
+      "kernel_elf_bytes": 6962936,
+      "boot_image_sha256": "027e5c5dadb6a5eb19b6e1294295d1f8b6a615c5464c8558bc935656334c941f",
+      "initial_disk_sha256": "3b6a07d0d404fab4e23b6d34bc6696a6a312dd92821332385e5af7c01c421351",
+      "bundle_files": 23,
+      "bundle_map_sha256": "848e4815783f79490af36924fae77bdd7092ac22e352c5ea0408058e07c08610",
+      "tracked_diff_sha256": "ebd8ed13410961046a59fc2b546c6d369e5fc0e5263461f60635b07181d724d2",
+      "serial_sha256": "6a334ce5f61fe29243fe2bee9ebed60a30794b504aa4874a2bf3dc55f0f8a39b",
+      "runner_output_sha256": "cc4786a3446b59b031db85c2a9acb6ac1cfb3da617dc0f8a980b08ea7906c43e",
+      "diagnostic_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "host_check_groups": 0,
+      "diagnostics": [
+        "[+     0.017432] CHARLOTTE_BOOT_MODE=minimal",
+        "[+     0.018001] [boot validation] memory passed: usable=449 MiB, free=96657 frames, heap reserve=64 MiB",
+        "[+     2.572231] [store] bootstrap seed complete: retained=0 written=23",
+        "[+     5.731011] BOOT COMPLETE: validation passed; local storage ready; services submitted"
+      ],
+      "runner_exit": 0,
+      "arguments": [
+        "release",
+        "--minimal",
+        "--fresh-storage",
+        "--timeout",
+        "180",
+        "--smp",
+        "1",
+        "--iommu",
+        "amd",
+        "--blank-storage",
+        "--data-size-mib",
+        "64",
+        "--instance",
+        "boot-gating-amd-lean-final"
+      ]
+    },
+    {
+      "target": "x86_64-amd-vi-reboot",
+      "mode": "minimal",
+      "instance": "boot-gating-amd-lean-final-minimal",
+      "base_revision": "84d1ebc993bb30dd44fd7e28c35deabe20a6312e",
+      "cpus": 1,
+      "timeout_seconds": 180,
+      "kernel_sha256": "35b101a61cac955192852289f7f107d3e97bae2978838d7787a3dbd5cf146a85",
+      "kernel_elf_bytes": 6962936,
+      "boot_image_sha256": "7fa4ac6e078e735f68e43da25412c94b24bc42624c44f87a20195132bf4a4815",
+      "initial_disk_sha256": "31b246647d3af16e6128f3a23c402b32a923266214e6a29def4aff7ec011a46d",
+      "bundle_files": 23,
+      "bundle_map_sha256": "848e4815783f79490af36924fae77bdd7092ac22e352c5ea0408058e07c08610",
+      "tracked_diff_sha256": "08a6c0ef8cfd50770188d37aebf6ef2bf2779d8df5bf1ceebce1e9d2dc0a3bdf",
+      "serial_sha256": "1f330793562e528439905be1ebc3ebed760955fd0d681bfa3540413b303a2bf0",
+      "runner_output_sha256": "d06d37fa63a01269da4f4ffe548dc7cb58f4d57270bf7599f4ca8ec8993fc0a7",
+      "diagnostic_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "host_check_groups": 0,
+      "diagnostics": [
+        "[+     0.017815] CHARLOTTE_BOOT_MODE=minimal",
+        "[+     0.018408] [boot validation] memory passed: usable=449 MiB, free=96657 frames, heap reserve=64 MiB",
+        "[+     0.714948] [store] bootstrap seed complete: retained=23 written=0",
+        "[+     3.867102] BOOT COMPLETE: validation passed; local storage ready; services submitted"
+      ],
+      "runner_exit": 0,
+      "arguments": [
+        "release",
+        "--minimal",
+        "--timeout",
+        "180",
+        "--smp",
+        "1",
+        "--iommu",
+        "amd",
+        "--blank-storage",
+        "--data-size-mib",
+        "64",
+        "--instance",
+        "boot-gating-amd-lean-final"
+      ]
+    },
+    {
+      "target": "aarch64-smmuv3",
+      "mode": "test",
+      "instance": "boot-gating-tests-arm-seeded",
+      "base_revision": "84d1ebc993bb30dd44fd7e28c35deabe20a6312e",
+      "cpus": 4,
+      "timeout_seconds": 300,
+      "kernel_sha256": "8246f00d4927320ba8e1d97f4b48d57ae9690fd3bc6ef1e94a0f634476c195f1",
+      "kernel_elf_bytes": 8519752,
+      "boot_image_sha256": "5021c30406eb7f10b5cb42562c00fa875d06db0df04e979e3a21e2df5aa533e8",
+      "initial_disk_sha256": "9c4ee4e9e999e56cfda1eab1eeb532a0c4a653b3c296c6d70fd54db5757c9ea3",
+      "bundle_files": 41,
+      "bundle_map_sha256": "69a65dc9795c838d67fe3afdc92eb123ccf4ec8c0f85c74e61739d4833de6895",
+      "tracked_diff_sha256": "e75fd6503e8c96fdba8b341394626f4850712dba13ff5f0a0703a09bc3d02057",
+      "serial_sha256": "b6662dc76c29e54d8fc5251051b8814c70af88ae5e519573dcccdbf6d17fd8b7",
+      "runner_output_sha256": "71628a5a07a7301c261b9f8436cb710f1fd28ac1fd8575e6f1878c8670a568ca",
+      "diagnostic_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "host_check_groups": 21,
+      "diagnostics": [
+        "[+     0.021204] CHARLOTTE_BOOT_MODE=tests",
+        "[+     0.021794] [boot validation] memory passed: usable=458 MiB, free=98997 frames, heap reserve=64 MiB",
+        "[+     7.609848] [store] bootstrap seed complete: retained=8 written=0",
+        "[+    80.785274] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x2023ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "runner_exit": 0,
+      "arguments": [
+        "release",
+        "--tests",
+        "--fresh-storage",
+        "--timeout",
+        "300",
+        "--smp",
+        "4",
+        "--security-test",
+        "--http-test",
+        "--instance",
+        "boot-gating-tests-arm-seeded"
+      ]
+    },
+    {
+      "target": "x86_64-intel-vtd",
+      "mode": "test",
+      "instance": "boot-gating-tests-intel-seeded",
+      "base_revision": "84d1ebc993bb30dd44fd7e28c35deabe20a6312e",
+      "cpus": 4,
+      "timeout_seconds": 300,
+      "kernel_sha256": "f6e5ff74a05166cc808eac413590c52b3fd43af74ac6a6ce0b87b5a26850148b",
+      "kernel_elf_bytes": 12833000,
+      "boot_image_sha256": "1cfbba96ff5ced1aa282f0de2e88bcf8edc62a01bfac1a7e4f0fea369c0d67e9",
+      "initial_disk_sha256": "b0452b03f3f39b7aca7835dcf7350448677809811beb276ac70e67ff3cf5aa85",
+      "bundle_files": 37,
+      "bundle_map_sha256": "b020d0c3db9b86f0abd466eab16504c11c05f864d00b9f71502dd70f79b8cd84",
+      "tracked_diff_sha256": "e75fd6503e8c96fdba8b341394626f4850712dba13ff5f0a0703a09bc3d02057",
+      "serial_sha256": "f311abe6358926e6e07d8bca1b10fd108b6617010e23cd6721129965db78aca2",
+      "runner_output_sha256": "7c69441227e05b2e84bddca65b1f6fc33745a2a8d46f284cb41c9c4e383b5e56",
+      "diagnostic_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "host_check_groups": 21,
+      "diagnostics": [
+        "[+     0.026181] CHARLOTTE_BOOT_MODE=tests",
+        "[+     0.027014] [boot validation] memory passed: usable=438 MiB, free=93729 frames, heap reserve=64 MiB",
+        "[+    18.488668] [store] bootstrap seed complete: retained=33 written=0",
+        "[+    98.095462] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x2023bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "runner_exit": 0,
+      "arguments": [
+        "release",
+        "--tests",
+        "--fresh-storage",
+        "--timeout",
+        "300",
+        "--smp",
+        "4",
+        "--security-test",
+        "--http-test",
+        "--iommu",
+        "intel",
+        "--instance",
+        "boot-gating-tests-intel-seeded"
+      ]
+    }
+  ],
+  "failed_preliminary_runs": [
+    {
+      "target": "aarch64",
+      "mode": "preliminary-minimal",
+      "instance": "boot-gating-arm-minimal",
+      "base_revision": "84d1ebc993bb30dd44fd7e28c35deabe20a6312e",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "kernel_sha256": "c30709f4e1dd2c239d1f8a2315492639b3fc1b7bf1567aea2c74fbee5a088c60",
+      "kernel_elf_bytes": 2731648,
+      "boot_image_sha256": "cc8278e61339adcc388391e7991b8d0090b088c7d54b204ac37165a8f638ad0b",
+      "initial_disk_sha256": "e2bebb03289a64565898507df5cac710e401fd21121cd0e1d92dceec80a2c61e",
+      "bundle_files": 24,
+      "bundle_map_sha256": "5e9515d33f1272a4ad0bfca529516f3ec39a14d7ecf36771f3575cbbc50458be",
+      "tracked_diff_sha256": "f467c24594cc561c574de8532d0ef5c86dae67ce857df9407f6cb97d33314496",
+      "serial_sha256": "df7260f55628fa1a123c7e09c4f281953010bf218f7da1db8c009caaf162a2ef",
+      "runner_output_sha256": "2397b8c17ffd2df3b624d7ed5c47ecd81b7bcb17daf3cc1f9697086690ece149",
+      "diagnostic_result": {
+        "reason": "deadline",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 180.077371708001
+      },
+      "host_check_groups": 0,
+      "diagnostics": [
+        "[+     0.018208] CHARLOTTE_BOOT_MODE=minimal",
+        "[+     0.018830] [boot validation] memory passed: usable=469 MiB, free=101639 frames, heap reserve=64 MiB",
+        "[+     3.760068] BOOT COMPLETE: validation passed; local storage ready; services submitted"
+      ],
+      "runner_exit": 1,
+      "classification": "Host requested TLS-ready startup without any TLS resource. Both listeners explicitly disabled themselves; ordinary boot completed. The host deadline does not demonstrate a guest boot failure."
+    },
+    {
+      "target": "aarch64",
+      "mode": "preliminary-minimal",
+      "instance": "boot-gating-arm-repeat-minimal",
+      "base_revision": "84d1ebc993bb30dd44fd7e28c35deabe20a6312e",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "kernel_sha256": "0979dc499270ce37136f5214569ec2e64d1be3c0ebff1a989348019186b47523",
+      "kernel_elf_bytes": 2748064,
+      "boot_image_sha256": "3b35455533cdf0c64dc5515306f8f58df1403c940717d7b1a54273895f8d0679",
+      "initial_disk_sha256": "e2bebb03289a64565898507df5cac710e401fd21121cd0e1d92dceec80a2c61e",
+      "bundle_files": 24,
+      "bundle_map_sha256": "5e9515d33f1272a4ad0bfca529516f3ec39a14d7ecf36771f3575cbbc50458be",
+      "tracked_diff_sha256": "36ebe841e96fd7fca18e4b8e6404e8f4c743b1006b87b5e736b2995b54139075",
+      "serial_sha256": "84a224b75b352ef29b6330f675354fb4ede9ee949cc6a6ad394b9f5e28e1574a",
+      "runner_output_sha256": "dac6cbfec51e8671ad34c1d334eb17c3597e3f56d862a030aa43c6b5d1b9b3d3",
+      "diagnostic_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "host_check_groups": 0,
+      "diagnostics": [
+        "[+     0.021929] CHARLOTTE_BOOT_MODE=minimal",
+        "[+     0.022541] [boot validation] memory passed: usable=469 MiB, free=101625 frames, heap reserve=64 MiB",
+        "[+     3.893889] BOOT COMPLETE: validation passed; local storage ready; services submitted"
+      ],
+      "runner_exit": 1,
+      "classification": "TLS resource provided, but the host reader certificate/key variables were omitted. The probe raised KeyError before connecting; this is not a TLS or guest failure.",
+      "host_error": "KeyError: 'CATTEN_MANAGEMENT_READER_CERT_FILE'"
+    },
+    {
+      "target": "x86_64-intel",
+      "mode": "preliminary-minimal",
+      "instance": "boot-gating-intel-minimal",
+      "base_revision": "84d1ebc993bb30dd44fd7e28c35deabe20a6312e",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "kernel_sha256": "2746ba6296f824c761f166579c7fe784429b1fd7ce3c274e77bc85d9475ed2e8",
+      "kernel_elf_bytes": 7362984,
+      "boot_image_sha256": "125e7c80340266351a4f63151d7c5f17ec646304d09bd8eb59b800d4ff7a2fb4",
+      "initial_disk_sha256": "13fbb3d3284111e7333ffa62994322da46a64a1a3245c402139513001d9c0b92",
+      "bundle_files": 25,
+      "bundle_map_sha256": "da1117086411fe2ab531eee43027df06217d4b65b9a9fa3bcaa2b24b9abe84f5",
+      "tracked_diff_sha256": "36ebe841e96fd7fca18e4b8e6404e8f4c743b1006b87b5e736b2995b54139075",
+      "serial_sha256": "3fcbeb23c2a38966d3a7f76f94e9b4317e9e777e7e3aa794d8b3e7d042130b9a",
+      "runner_output_sha256": "284620c9d81030f759f81011cbc8b2d7cf2fcd1ff9edece60fd7c51c35d2527e",
+      "diagnostic_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "host_check_groups": 0,
+      "diagnostics": [
+        "[+     0.025872] CHARLOTTE_BOOT_MODE=minimal",
+        "[+     0.026701] [boot validation] memory passed: usable=448 MiB, free=96338 frames, heap reserve=64 MiB",
+        "[+     3.465915] BOOT COMPLETE: validation passed; local storage ready; services submitted"
+      ],
+      "runner_exit": 1,
+      "classification": "Same host reader-input omission as the separate ARM attempt; retain it independently.",
+      "host_error": "KeyError: 'CATTEN_MANAGEMENT_READER_CERT_FILE'"
+    },
+    {
+      "target": "aarch64",
+      "instance": "boot-gating-tests-arm",
+      "runner_exit": 137,
+      "runner_output_sha256": "2d44be0c60c83c547d6a7372eeb5c9e434ce99028ae6917b66563c08d88c3880",
+      "diagnostic": "scripts/sign-service-elfs.sh: line 71: 71367 Killed: 9                  cargo +\"$SIGN_TOOLCHAIN\" run --locked --quiet --manifest-path \"$ROOT/tools/cluster-sign/Cargo.toml\" -- elf-sign \"$elf\" \"$name\" \"$KEY_FILE\" \"$class\" \"$version\" \"$rollback\" \"$flags\" \"$provenance\" > /dev/null",
+      "classification": "Host signing Cargo subprocess received SIGKILL before guest boot. Cause unconfirmed; a separate bundle rebuild succeeded. No complete failed bundle snapshot was retained. This does not explain earlier signing SIGKILL incidents.",
+      "signer_script_sha256": "eda741bca1321a069831e1ca051478bd77bee5067507bd1e44f7a503bed0515f"
+    },
+    {
+      "target": "x86_64",
+      "stage": "minimal-bundle-signing",
+      "runner_exit": 137,
+      "runner_output_sha256": "2342ca28102ca5a7b386fe37e5bbf6175e7c4e96a8df174925bf0ed2f4dc7fc2",
+      "signer_script_sha256": "eda741bca1321a069831e1ca051478bd77bee5067507bd1e44f7a503bed0515f",
+      "diagnostic": "scripts/sign-service-elfs.sh: line 71: 95019 Killed: 9                  cargo +\"$SIGN_TOOLCHAIN\" run --locked --quiet --manifest-path \"$ROOT/tools/cluster-sign/Cargo.toml\" -- elf-sign \"$elf\" \"$name\" \"$KEY_FILE\" \"$class\" \"$version\" \"$rollback\" \"$flags\" \"$provenance\" > /dev/null",
+      "classification": "Cargo run subprocess received SIGKILL during the old per-ELF signing loop. No guest boot; the complete failed staged bundle was not retained. A later rebuild passed. Cause remains unconfirmed; building the pinned signer once per batch reduces startup overhead without attributing this failure."
+    }
+  ],
+  "bundle_digest_algorithm": "SHA-256 of UTF-8 compact sorted JSON bundle_sha256 map from the run manifest.",
+  "seeding_negative_control": {
+    "run": {
+      "target": "x86_64-amd-vi",
+      "mode": "pre-seeding-control",
+      "instance": "boot-gating-amd-blank-minimal",
+      "base_revision": "84d1ebc993bb30dd44fd7e28c35deabe20a6312e",
+      "cpus": 1,
+      "timeout_seconds": 180,
+      "kernel_sha256": "e82c9ca124903273f91246023ba519ae9033bd307f388b4c13f098638f9a4346",
+      "kernel_elf_bytes": 7331080,
+      "boot_image_sha256": "6b788a38b048d4f2c3610f1c58b365289ee7cd4d9213839c61cf74960853e1f5",
+      "initial_disk_sha256": "3b6a07d0d404fab4e23b6d34bc6696a6a312dd92821332385e5af7c01c421351",
+      "bundle_files": 25,
+      "bundle_map_sha256": "da1117086411fe2ab531eee43027df06217d4b65b9a9fa3bcaa2b24b9abe84f5",
+      "tracked_diff_sha256": "ae2187fb726ba34364351aae7750ad473427e67c44623c0b546dbed334a04fcf",
+      "serial_sha256": "5630eada93a7a9dc3ebe473291b198ffbb1c6a3d1f42f7f6445029519a4c38b8",
+      "runner_output_sha256": "f72b8333ab4a0ea586962e4ee7be250c8581b5e2500396158dc9389488e81ed5",
+      "diagnostic_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "host_check_groups": 0,
+      "diagnostics": [
+        "[+     0.017402] CHARLOTTE_BOOT_MODE=minimal",
+        "[+     0.017951] [boot validation] memory passed: usable=448 MiB, free=96477 frames, heap reserve=64 MiB",
+        "[+     3.699981] BOOT COMPLETE: validation passed; local storage ready; services submitted"
+      ],
+      "old_runner_exit": 0,
+      "current_acceptance": false,
+      "classification": "The old minimal runner accepted memory validation and boot-done without installing its signed service artifacts. Only the gated NVMe verifier called the seed routine. Current minimal acceptance rejects this real capture because no bootstrap seed receipt exists; read-only disk inspection also found zero of the expected 23 artifact IDs."
+    },
+    "disk_inspection": {
+      "before": {
+        "image_sha256": "4056be82bab4fb8ab1bfeef1bf0ba25a2faf1b267c255bb261c47a16d473daf1",
+        "object_count": 3,
+        "bootstrap_artifacts_present": 0,
+        "expected_bootstrap_artifacts": 23
+      },
+      "after": {
+        "image_sha256": "31b246647d3af16e6128f3a23c402b32a923266214e6a29def4aff7ec011a46d",
+        "object_count": 26,
+        "bootstrap_artifacts_present": 23,
+        "expected_bootstrap_artifacts": 23
+      }
+    },
+    "inspection_method": "Strict read-only ObjectStore parser from scripts/fs-inspect.py; expected IDs from the production x86 minimal service inventory and scripts/make-nvme-image.py artifact_object_id. Before: 3 system objects, zero bootstrap artifacts. After installation/reboot: 26 total objects, all 23 bootstrap artifact IDs present."
+  },
+  "artifact_mode_controls": [
+    {
+      "kernel_sha256": "8246f00d4927320ba8e1d97f4b48d57ae9690fd3bc6ef1e94a0f634476c195f1",
+      "requested_mode": "minimal",
+      "exit": 1,
+      "diagnostic": "error: kernel does not match requested minimal boot mode; rebuild it"
+    },
+    {
+      "kernel_sha256": "0e5a1ee580411d2574be18ac27bc887ac1d212508ace7d0d82b5272f3ad21741",
+      "requested_mode": "test",
+      "exit": 1,
+      "diagnostic": "error: kernel does not match requested test boot mode; rebuild it"
+    }
+  ],
+  "validation": [
+    "Strict Clippy with acpi and acpi,kernel_tests on both targets (-D warnings)",
+    "Minimal acpi,scheduler_trace strict Clippy on both targets",
+    "All 45 selected minimal ELF signatures and artifact names verified by the pinned cluster-sign tool",
+    "Minimal AArch64 framebuffer/virtio_gpu image --build-only; assembly-section and boot-profile checks passed",
+    "cargo fmt --all -- --check",
+    "6 boot-profile, 3 pinned batch-signing, 9 management runner-gate, 14 boot-diagnostic, 5 complete-result, 4 CI input, 2 boot-image and 7 management-startup observation host tests",
+    "charlotte-lifecycle: 37 logic and 15 charged-allocator host tests passed",
+    "LOC Rust fragment totals reconcile with the original cloc count for every split file",
+    "CI YAML parsed; four native boot jobs cover both architectures and modes",
+    "git diff --check"
+  ],
+  "limits": [
+    "Memory validation samples one private frame and one aligned 8 KiB allocation; it is not an exhaustive RAM test or pressure campaign.",
+    "AArch64 uses a host-preseeded runtime store and its eight embedded bootstrap artifacts. Blank-disk first installation/reboot is qualified on x86 AMD-Vi with one CPU.",
+    "Minimal ARM/Intel management checks verify reader observations and mutation rejection with one explicit development TLS fixture. They do not qualify production provisioning or flood fairness.",
+    "Optional framebuffer mode was built, not guest-executed; tracing was compile-checked. VMware forwards mode selection but was not hardware-qualified in this iteration.",
+    "Production trust remains disabled. SEC-07/18 acceptance gates and unrelated historical failures remain open."
+  ],
+  "full_suite_scope": "The full suites ran after operational seeding moved out of the NVMe verifier. Later annotations exclude standalone raft/servicemgr only from minimal builds; the enabled test-mode image inventories remain 41/37. The final four-way strict compiler matrix covers these annotations.",
+  "preliminary_capture_limit": "Intermediate preliminary working-tree source snapshots were not versioned. Original kernel/diff/serial/output identities and the relevant diagnostics are retained here; passing repeats are separate. The first AMD installation serial was copied before its same-instance reboot overwrote the live log.",
+  "framebuffer_build": {
+    "target": "aarch64",
+    "mode": "minimal",
+    "guest_executed": false,
+    "kernel_sha256": "4e4010246f5be22edd7c15f6474a7ee13aabb8546eabe5a8202c77188d6644ad",
+    "runner_output_sha256": "9cdd6a130fbd9d1fd6935cabb37473fc751b27635d28999bd40faeb279db219d"
+  },
+  "development_tls_resource_sha256": "9a788804e2b6e12761c0438a5e2f9bb64d5b69f22ad263c3d25a03672ea7022c"
+}

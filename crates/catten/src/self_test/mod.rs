@@ -273,9 +273,8 @@ pub fn run_synchronous_self_tests() {
         return;
     }
     results::register_boot_suite();
-    memory::pmem::test_pmem();
     memory::vmem::test_vmem();
-    memory::allocator::test_allocator();
+    crate::memory::allocators::memory::retirement_tests::test_kernel_retirement();
     memory::object::test_memory_objects();
     memory::heap::test_heap_admission();
     crate::memory::retirement::tests::run();
@@ -426,11 +425,4 @@ pub fn run_deferred_self_tests() {
     #[cfg(not(feature = "kafka_test"))]
     logln!("Skipping EL0 Kafka test (enable kafka_test with the Kafka fixture).");
     logln!("Synchronous self-tests passed; deferred scheduler/EL0 verifiers are still pending.");
-}
-
-/// Run both boot-suite phases in sequence. Boot code normally calls the two
-/// phase-specific entry points around scheduler activation.
-pub fn run_self_tests() {
-    run_synchronous_self_tests();
-    run_deferred_self_tests();
 }

@@ -53,12 +53,14 @@ impl Drop for Charge {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn snapshot() -> ([u64; 2], [u64; 2]) {
     let node = NODE.lock();
     node.used()
 }
 
 /// Serialized boot qualification: fallback must not enter this counter lock.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(in crate::memory) fn with_locked(work: impl FnOnce()) {
     let _node = NODE.lock();
     work();

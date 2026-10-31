@@ -133,8 +133,10 @@ pub(super) fn cancellable(
     Ok((preparing.complete(), handle))
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 mod tests;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_preparation() {
     tests::run();
 }

@@ -242,6 +242,13 @@ additional opt-in Docker fixtures for S3 and Kafka and a VMware appliance path.
 This is experimental *research and development*, so we are not making
 any reliability, security, or hardware-compatibility claims.
 
+Use `scripts/run-aarch64.sh release --minimal --timeout 120` (or
+`scripts/run-x86_64.sh`) for an operational boot with mandatory startup validation
+and no native regression fixtures or probe applications. Omit `--minimal`, or
+select `--tests`, for the normal development suite. `--build-only` creates the
+images without starting QEMU. Optimization and test selection are independent;
+see [boot modes](docs/reference/boot-modes.md).
+
 Run target-independent suites with `scripts/run-host-tests.sh`. The split
 between host tests and target/QEMU tests is documented in
 [`docs/guides/testing.md`](docs/guides/testing.md).

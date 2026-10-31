@@ -246,6 +246,7 @@ impl<C> ObserverList<C> {
 
 /// Kernel fixture: inject entry allocation failure after admission. The
 /// production path still allocates empty Box storage; no physical allocator is exhausted.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_entry_allocation_rollback() {
     use crate::{
         completion::watch_budget as budget,
@@ -352,7 +353,9 @@ impl<C> Drop for NotificationBatch<C> {
 mod entry_preparation;
 
 #[path = "registration/list_tests.rs"]
+#[cfg(any(test, feature = "kernel_tests"))]
 mod list_tests;
 
 #[path = "registration/completed_preparation.rs"]
+#[cfg(feature = "kernel_tests")]
 mod completed_preparation;

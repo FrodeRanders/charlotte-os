@@ -11,37 +11,37 @@ SOURCE, TESTS, TOOLING AND CONFIGURATION
 
 Language                 files      blank    comment         code
 -----------------------------------------------------------------
-Rust                       773     14,478     17,079      203,156
-Python                      56        995        454        7,695
-Bourne Shell                24        290        444        3,780
+Rust                       771     14,462     17,078      203,574
+Python                      60      1,042        471        7,975
+Bourne Shell                25        301        458        3,950
 Assembly                    22        398        159        2,590
-TOML                        34        117         81          743
+TOML                        34        118         85          744
 Text                         3          0          0          434
-YAML                         4         47         11          375
+YAML                         4         47         11          400
 JSON                         7          0          0          183
 Linker Script                4         35         55          139
 diff                         4         15         47           80
-Justfile                     1         13          5           66
+Justfile                     1         15          5           57
 -----------------------------------------------------------------
-SUM                        932     16,388     18,335      219,241
+SUM                        935     16,433     18,369      220,126
 
 SOURCE DISTRIBUTION (same source total; shared dependencies counted once)
 
 Component                            files       code  test/validation   other code
 -----------------------------------------------------------------------------------
-Kernel                                 555    111,224           52,932       58,292
-Kernel demonstrations                    1        130                0          130
-Userspace services/drivers              35     26,619                0       26,619
+Kernel                                 554    111,773           54,819       56,954
+Kernel demonstrations                    0          0                0            0
+Userspace services/drivers              35     26,619            1,370       25,249
 Userspace demonstrations                10        648               39          609
 Userspace test applications             15      2,757            2,757            0
-Shared runtimes/protocols/libraries    181     56,854           19,240       37,614
-Host tooling/build/configuration       135     21,009           12,149        8,860
+Shared runtimes/protocols/libraries    181     56,854           19,217       37,637
+Host tooling/build/configuration       140     21,475           12,412        9,063
 -----------------------------------------------------------------------------------
-SUM                                    932    219,241           87,117      132,124
-Identified test/validation code: 87,117 lines (39.7% of source code).
+SUM                                    935    220,126           90,614      129,512
+Identified test/validation code: 90,614 lines (41.2% of source code).
 
-Rust-only test/validation code: 78,126 of 203,156 code lines
-(38.5%).
+Rust-only test/validation code: 81,360 of 203,574 code lines
+(40.0%).
 
 Attribution rules and limits:
 - Kernel includes native self-tests and adjacent subsystem fixtures; kernel
@@ -53,17 +53,22 @@ Attribution rules and limits:
   rclient, s3_smoke, security_probe, shutdown_probe, smoke, tcpclient.
 - Runtime service binaries are separate from the shared catten-services SDK,
   catten-rt/syscall, protocol, connector, crypto and Raft libraries.
+  Standalone raft/servicemgr fixture servers remain in the services category
+  with their code counted as test-related; production DNS owns durable Raft.
 - Dedicated tests/self_test/*_tests/fixtures paths, test/check/verify and
   smoke/probe filenames, CI workflows, selected fixture-generation inputs and
   boot_fixture/hash_contract/audit_receive_lease files count as validation.
-- Inline Rust cfg(test) items, test modules, #[test] items and test_* helpers
+- Inline Rust test-only cfg items (including kernel_tests), test modules,
+  #[test] items and test_* helpers
   are split into fragments; cloc checks test + other == original per file.
 - This is an identifiable-source lower bound, not a build-size estimate.
   Already cfg(test)-gated code is included; scattered fixture constants,
   imports, call sites and mixed boot/test-runner branches may remain in other
   code. No claim is made that all other code belongs in a stripped image.
-  A future test-free image also needs gated boot registrations and bundle
-  selection, with artifact checks proving that probes/fixtures are absent.
+  Test-free images require gated boot registrations and bundle
+  selection; docs/reference/boot-modes.md defines the implemented profiles
+  and artifact checks. Mandatory startup memory validation is operational
+  code; these counts do not classify every runtime invariant as a test.
 - Formal models, model configurations and audit evidence are below, not in
   the source/test percentage. Prose and data also appear as cloc 'code'.
 
@@ -71,9 +76,9 @@ DOCUMENTATION, VERIFICATION MODELS AND RECORDS
 
 Language                 files      blank    comment         code
 -----------------------------------------------------------------
-JSON                       181          0          0      126,533
-Markdown                   446     14,842          0       76,045
-TeX                         29      2,022         60       11,282
+JSON                       182          0          0      127,023
+Markdown                   447     14,875          0       76,204
+TeX                         29      2,025         60       11,299
 TLA+                        44      1,104        559        8,197
 Text                       192        424          0        2,269
 Bourne Shell                 2         21          9          609
@@ -81,7 +86,7 @@ Rust                         2         22         10          367
 diff                         1         11         90          313
 SVG                         14          0          0           14
 -----------------------------------------------------------------
-SUM                        911     18,446        728      225,629
+SUM                        913     18,482        728      226,295
 
 Reproduce: python3 scripts/count-loc.py
 

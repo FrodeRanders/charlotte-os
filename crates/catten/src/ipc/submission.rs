@@ -336,4 +336,5 @@ pub(super) fn vector(
     })
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) mod tests;

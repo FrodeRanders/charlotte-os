@@ -141,8 +141,10 @@ pub(super) fn with_detached_wait<T>(
     result
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 mod tests;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_publication() {
     tests::run();
 }

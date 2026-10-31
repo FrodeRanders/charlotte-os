@@ -62,6 +62,7 @@ fn panic(info: &PanicInfo) -> ! {
     // Preserve verifier attribution when its scheduler locks are available.
     // This runs after the dependency-free diagnostics so an unexpectedly
     // unavailable scheduler cannot hide the original failure.
+    #[cfg(feature = "kernel_tests")]
     if let Some((tid, generation)) = crate::cpu::scheduler::current_thread_identity_nonblocking() {
         crate::self_test::results::fail_verifier_thread(tid as u64, generation);
     }

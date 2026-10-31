@@ -3,6 +3,7 @@
 //! Abandonment retains existing owners; no retry or physical proof is added.
 use super::*;
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod tests;
 
 /// Drop retains complete mapping nodes/peer leases with the backing fence.
@@ -223,6 +224,7 @@ impl RetiredObjectMappings {
     /// Raw boot fixtures retain lifecycle serialization through finish.
     /// Production namespace cleanup prepares exact peer leases in admitted
     /// mapping records before moving them into the same physical receipt.
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn prepare(
         mut registry: lock_api::MutexGuard<
             '_,
@@ -270,12 +272,14 @@ impl RetiredObjectMappings {
         self
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn finish(self, closing_asid: AddressSpaceId) {
         self.finish_with(closing_asid, |asid, base, pages| {
             crate::cpu::isa::memory::tlb::try_inval_range_user(asid, base, pages).is_ok()
         });
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     fn finish_with(
         self,
         closing_asid: AddressSpaceId,
@@ -284,6 +288,7 @@ impl RetiredObjectMappings {
         self.finish_with_scratch(closing_asid, invalidate, release_scratch);
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     fn finish_with_scratch(
         self,
         closing_asid: AddressSpaceId,

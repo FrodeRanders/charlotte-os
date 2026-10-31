@@ -16,11 +16,13 @@ struct Storage {
 pub(super) struct PreparingRecord(ManuallyDrop<Storage>);
 impl PreparingRecord {
     pub(super) fn try_new() -> Result<Self, AllocationError> {
+        #[cfg(feature = "kernel_tests")]
         let entry_irq = crate::cpu::isa::lp::ops::get_int_state();
-        if record_tests::reject() {
+        if test_fault!(record_tests::reject()) {
             return Err(AllocationError::AllocationFailed);
         }
         let node = PreparedEntry::try_new().map_err(|_| AllocationError::AllocationFailed)?;
+        #[cfg(feature = "kernel_tests")]
         record_tests::boundary(false, entry_irq);
         Ok(Self(ManuallyDrop::new(Storage {
             node: Some(node),
@@ -55,15 +57,19 @@ impl PreparingRecord {
     /// Ordinary completion/rejection follows capability unlock. Captured
     /// callers still have their own outer-context obligations.
     pub(super) fn finish(mut self) {
+        #[cfg(feature = "kernel_tests")]
         let entry_irq = crate::cpu::isa::lp::ops::get_int_state();
         if self.0.node.is_some() || self.0.charge.is_some() {
+            #[cfg(feature = "kernel_tests")]
             record_tests::boundary(true, entry_irq);
         }
         drop(self.0.node.take());
         drop(self.0.charge.take());
+        #[cfg(feature = "kernel_tests")]
         record_tests::boundary_after(entry_irq);
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn test_charge(&mut self, account: &Arc<budget::DomainBudget>) {
         self.0.charge = Some(budget::reserve(account, false).unwrap());
     }
@@ -91,12 +97,15 @@ impl RetiredRecord {
     }
 
     pub(crate) fn release(self) {
+        #[cfg(feature = "kernel_tests")]
         let entry_irq = crate::cpu::isa::lp::ops::get_int_state();
+        #[cfg(feature = "kernel_tests")]
         record_tests::boundary(true, entry_irq);
         let mut charge = None;
         self.0.release_with(|entry| charge = Some(entry.1._charge));
         // The authority's original admission survives actual node deallocation.
         drop(charge);
+        #[cfg(feature = "kernel_tests")]
         record_tests::boundary_after(entry_irq);
     }
 }

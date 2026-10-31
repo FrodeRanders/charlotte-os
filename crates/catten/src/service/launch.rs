@@ -363,10 +363,12 @@ impl crate::klib::observer::Observable for SteadyStatePublication {
     }
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_publication_waiter_admission() {
     crate::self_test::waiters::test_status_source(&SteadyStatePublication, &STEADY_STATE_OBSERVERS);
 }
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_publication_waiter_cleanup(sponsor: &crate::klib::observer::WaitSponsor) {
     for _ in 0..64 {
         assert!(!crate::cpu::scheduler::block_until(&SteadyStatePublication, 1, || false));
@@ -1064,6 +1066,19 @@ pub(crate) fn launch_steady_state_with_trust(
     let entropy = entropy.map(PreparedDriver::start);
     let cluster_services = configured_cluster_tcp_services();
     let network = network.map(|prepared| start_network(prepared, &ns, &cluster_services));
+    // First-boot installation is operational initialization, not an NVMe test.
+    // The deferred store lookup waits for the already-started storage service;
+    // no driver grant or subsystem guard is held here. Retain valid installed
+    // artifacts and seed only missing/invalid entries before publishing boot.
+    if storage.is_some() {
+        let seeded =
+            super::store::seed_embedded_services().expect("[store] embedded service seed failed");
+        logln!(
+            "[store] bootstrap seed complete: retained={} written={}",
+            seeded.retained,
+            seeded.written
+        );
+    }
     let (cluster, appliance) = match network {
         Some(_) => (
             Some(launch_node_cluster_with_services(
