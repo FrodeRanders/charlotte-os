@@ -895,6 +895,11 @@ exists only in the unit-test source. Exact revisions and contracts are in
 
 The sole registered Embassy AES-GCM driver retains the previously qualified
 erasing cipher context; the pinned stock driver would retain a plain key array.
+The SHA-256/HMAC-SHA-256 drivers likewise use the shared erasing hash owners
+through opaque Drop/Clone forwarding, including unfinished contexts. Normal and
+test dependency graphs exclude duplicate stock registrations; link-time symbol
+collisions reject their reintroduction. Returned digest/tag arrays, other hash
+families and enclosing key-schedule fields retain separate lifetimes.
 The shared TLS dependency enables erasure of AES expanded round keys on
 ordinary cipher Drop, with build-time checks for its AES-128 owner types.
 GCM authentication-key scratch also erases after construction. The current

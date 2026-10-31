@@ -17,9 +17,13 @@ registry release. Updates require changing the reviewed revision and lockfile,
 then repeating interop, ownership, advisory and target qualification.
 
 TLS enables `rustpki,p256,p384,ed25519`. The RustCrypto backend registers only
-the required SHA-256/384/512, HMAC-SHA-256/384, P-256 ECDH/ECDSA, P-384 ECDSA and
-Ed25519 operations. Charlotte registers the sole RNG and AES-128-GCM drivers.
-Do not enable the stock GCM driver or backend `all` feature. The source pins
+SHA-384/512, HMAC-SHA-384, P-256 ECDH/ECDSA, P-384 ECDSA and Ed25519 operations.
+`charlotte-management-tls` registers the shared SHA-256/HMAC-SHA-256 drivers
+over `charlotte_launch::sha256`'s erasing owners. Domains supply the sole RNG
+and AES-128-GCM drivers. Do not enable the stock SHA-256, HMAC-SHA-256 or GCM
+drivers, including through another workspace consumer's test dependencies;
+duplicate exported driver symbols reject the linked build. Avoid the backend
+`all` feature. The source pins
 select crypto implementations; they do not introduce an Embassy executor.
 
 The sole crypto-bigint version is 0.7.10, with P-256/P-384 0.14.0 and
@@ -131,8 +135,19 @@ cipher vectors and tamper controls run on the host and signed native probe.
 The AES erasure bounds, authentication-state destructor guards and freestanding
 x86 `polyval_force_soft` selection remain enforced.
 
+Selected SHA-256 transcript and HMAC contexts retain the shared erasing owners
+through Embassy's opaque Drop/Clone forwarding. Normalization, pads, unfinished
+states and finalization scratch follow those owners' existing erasure policy;
+the plain ABI digest/tag outputs remain with their TLS callers. Compile-time
+`ZeroizeOnDrop` bounds apply to the drivers' concrete associated context types.
+The [shared-owner checks](../reports/audits/evidence/2026-10-31-embassy-hash-owners.json)
+cover initialized owner fields, selected-suite vectors, registration collisions
+and interoperability. Opaque padding and every compiler copy have no new memory
+measurement. Other hash families retain their separate policies.
+
 Curve secret/signing/shared-secret owners have erasing destructors. TLS traffic
-secrets, IVs, HKDF PRK, compiler copies and forced-termination erasure remain
+secrets, IVs, HKDF PRK, signature-library intermediates, compiler copies and
+forced-termination erasure remain
 separate SEC-15 work. A clean advisory scan and functional interop do not prove
 constant-time execution or complete physical-memory erasure.
 

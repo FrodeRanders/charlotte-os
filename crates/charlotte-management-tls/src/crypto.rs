@@ -79,6 +79,47 @@ use rustls::{
 };
 use zeroize::Zeroizing;
 
+// One link-time SHA-256/HMAC backend serves both TLS adapters, including
+// Embassy's opaque transcript/HKDF contexts. Each opaque destructor forwards
+// to the concrete erasing owner. Do not also register the stock hash drivers.
+struct ErasingSha256;
+impl embassy_crypto::driver::Sha256 for ErasingSha256 {
+    type Context = Sha256;
+
+    fn init() -> Self::Context {
+        Sha256::new()
+    }
+
+    fn update(ctx: &mut Self::Context, bytes: &[u8]) {
+        ctx.update(bytes);
+    }
+
+    fn finalize(ctx: Self::Context, out: &mut [u8; 32]) {
+        let digest = Zeroizing::new(ctx.finalize());
+        out.copy_from_slice(&*digest);
+    }
+}
+embassy_crypto::sha256_impl!(ErasingSha256);
+
+struct ErasingHmacSha256;
+impl embassy_crypto::driver::HmacSha256 for ErasingHmacSha256 {
+    type Context = HmacSha256;
+
+    fn init(key: &[u8]) -> Self::Context {
+        HmacSha256::new(key)
+    }
+
+    fn update(ctx: &mut Self::Context, bytes: &[u8]) {
+        ctx.update(bytes);
+    }
+
+    fn finalize(ctx: Self::Context, out: &mut [u8; 32]) {
+        let tag = ctx.finalize();
+        out.copy_from_slice(&*tag);
+    }
+}
+embassy_crypto::hmac_sha256_impl!(ErasingHmacSha256);
+
 // Match the already-qualified TLS client's destructor selection. ring cannot
 // run on Charlotte's x86 soft-float ABI, so it is a host-test dependency only.
 #[cfg(all(target_os = "none", target_arch = "x86_64", not(polyval_force_soft)))]
@@ -97,6 +138,8 @@ const _: fn() = || {
     erases::<aes::Aes128Dec>();
     erases::<Sha256>();
     erases::<HmacSha256>();
+    erases::<<ErasingSha256 as embassy_crypto::driver::Sha256>::Context>();
+    erases::<<ErasingHmacSha256 as embassy_crypto::driver::HmacSha256>::Context>();
 };
 
 pub(super) fn provider() -> CryptoProvider {

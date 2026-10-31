@@ -6,6 +6,9 @@ extern crate alloc;
 #[path = "../tls_client/gcm_contract.rs"]
 mod gcm_contract;
 
+#[path = "../tls_client/hash_contract.rs"]
+mod hash_contract;
+
 #[path = "../network_random/contract.rs"]
 mod network_random_contract;
 
@@ -757,6 +760,11 @@ fn main(ctx: Context) -> ! {
 
     gcm_contract::check();
     catten_rt::logln!("[security] TLS GCM known-answer, tamper rejection and decrypt passed");
+
+    hash_contract::check();
+    catten_rt::logln!(
+        "[security] selected TLS SHA/HMAC known-answer, clone and tamper controls passed"
+    );
 
     network_random_contract::check();
     catten_rt::logln!("[security] ephemeral-port HMAC known-answer sequence passed");

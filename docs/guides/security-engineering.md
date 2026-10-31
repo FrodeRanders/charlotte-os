@@ -220,6 +220,9 @@ needs enrolled identities and role/session/freshness binding. Credential expiry
 depends on authenticated security time; a nonzero SNTP sample cannot supply it.
 Local zeroizing owners cover named storage when their destructors execute;
 forced termination and compiler or physical copies need separate treatment.
+An opaque destructor can forward to a payload that retains secret state. Review
+the concrete owner and workspace feature selection, including test dependencies.
+Returned bytes still need their caller's lifetime policy.
 
 Similarly, a bounded pool proves admission limits, while essential-service
 progress requires concurrent workload qualification. Combine hostile ordinary

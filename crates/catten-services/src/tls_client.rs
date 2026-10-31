@@ -49,6 +49,9 @@ pub use entropy_client::{
     fill_service_entropy,
     install_domain_entropy,
 };
+#[cfg(test)]
+#[path = "tls_client/hash_contract.rs"]
+mod hash_contract;
 #[cfg(all(test, unix))]
 mod interop;
 mod runtime;

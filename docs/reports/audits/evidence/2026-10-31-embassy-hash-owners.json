@@ -1,0 +1,115 @@
+{
+  "date": "2026-10-31",
+  "base_revision": "e54c115906dfda34fef93b9aaa898c80113e36a6",
+  "scope": "One shared Embassy SHA-256/HMAC-SHA-256 registration uses existing erasing Charlotte hash owners for connector TLS as well as management certificate fingerprints. Stock registrations are removed from normal and management-test dependency graphs. No cryptographic algorithm, wire format, entropy authority, deadline or capability policy change.",
+  "source_sha256": {
+    "crates/catten-services/Cargo.toml": "02e082905b64c053534c233fecb957797c999b00fca86b8df04c965dfc485f27",
+    "crates/catten-services/src/bin/security_probe.rs": "215a160c8fe6b81c3d33c7b492e41cda9b20291cf82f36b5fa42ecb958859aa4",
+    "crates/catten-services/src/tls_client.rs": "53738f4f6b4b6db44b966eb3dec1d80eb21d82a6cb11acd86ca1f65663514ddf",
+    "crates/catten-services/src/tls_client/hash_contract.rs": "fe787307e27ca4e6214fce4bf7767528c770d2a9790d7f0dec53fd8d8344abae",
+    "crates/charlotte-management-tls/Cargo.toml": "526a25b2fd3dc47a996194208f5acdf8a10ea80646043e6c28b372e092c9b404",
+    "crates/charlotte-management-tls/src/crypto.rs": "bceff33f075bf68f420e918b730691e2c97170a2115017ee4784a2253ac7050b",
+    "crates/charlotte-launch/src/sha256.rs": "2e58fd347dd77e93576325bd06f32300fcd752cf927266b80628325607807c30"
+  },
+  "ownership_contract": {
+    "concrete_contexts": [
+      "charlotte_launch::sha256::Sha256",
+      "charlotte_launch::sha256::HmacSha256"
+    ],
+    "selection": "ZeroizeOnDrop bounds qualify actual driver associated context types; duplicate exported symbols reject stock registration.",
+    "forwarding": "Pinned unitrait bb96601b3d293fa27d1ca2891f6ea148e534e433 generates Drop forwarding through drop_in_place of the concrete Context, consuming argument moves through ManuallyDrop, and concrete Clone forwarding. Its macro checks opaque storage size/alignment.",
+    "outputs": "Driver-local digest/tag temporaries retain zeroizing owners; the plain ABI output belongs to its TLS caller.",
+    "baseline_limit": "The previous stock contexts lacked the selected erasure policy. No new retained-memory measurement of those old opaque contexts was performed."
+  },
+  "host_validation": {
+    "service_library_tests": 265,
+    "management_tls_interop_tests": 15,
+    "shared_library_and_sha_hmac_tests": 14,
+    "unified_service_management_lib_graph": "265 service tests plus management lib harness passed together under unified dependency features.",
+    "retained_storage": "Existing optimized shared-owner tests inspect initialized SHA fields and both HMAC states after unfinished original/clone Drop; these qualify named concrete fields, not opaque padding.",
+    "selected_suite": "Actual embedded-tls associated hash/HMAC types match independent SHA-256/HMAC vectors through incremental update, clones and tamper rejection; the same control runs in the signed native probe.",
+    "interop": "OpenSSL and Rustls/ring host controls cover connector/server authentication, mTLS, wire tamper and interruption.",
+    "static": [
+      "Strict Clippy for all service binaries on AArch64 and x86_64 passed",
+      "cargo fmt --all -- --check passed",
+      "git diff --check passed",
+      "Locked crate versions and Cargo.lock unchanged"
+    ]
+  },
+  "expected_registration_rejections": [
+    {
+      "name": "stock-sha-hmac",
+      "command": "cargo test --locked --manifest-path crates/catten-services/Cargo.toml --lib tls_client::hash_contract --features embassy-crypto-rustcrypto/embassy-crypto-sha256,embassy-crypto-rustcrypto/embassy-crypto-hmac-sha256",
+      "exit_status": 101,
+      "diagnostic": "warning: Linking globals named '_embassy_crypto_sha256_Context_clone': symbol multiply defined!",
+      "classification": "Expected rejection of duplicate stock registration, before executing tests."
+    },
+    {
+      "name": "stock-hmac-only",
+      "command": "cargo test --locked --manifest-path crates/catten-services/Cargo.toml --lib tls_client::hash_contract --features embassy-crypto-rustcrypto/embassy-crypto-hmac-sha256",
+      "exit_status": 101,
+      "diagnostic": "warning: Linking globals named '_embassy_crypto_hmac_sha256_Context_clone': symbol multiply defined!",
+      "classification": "Expected rejection of duplicate stock registration, before executing tests."
+    }
+  ],
+  "matrix": {
+    "cpus_per_guest": 4,
+    "fresh_storage": true,
+    "timeout_seconds": 300,
+    "flags": [
+      "--s3-test",
+      "--security-test",
+      "--http-test"
+    ],
+    "order": "ARM then Intel, each with a fresh disposable S3/TLS Docker fixture; shared host ports are never used concurrently."
+  },
+  "bundle_digest_algorithm": "sha256 of UTF-8 JSON bundle_sha256 map, sorted keys and compact separators",
+  "native_runs": [
+    {
+      "target": "aarch64",
+      "instance": "embassy-hash-20261031-arm",
+      "cpus": 4,
+      "timeout_seconds": 300,
+      "kernel_sha256": "8f3bfb4631e360efa53a1d47f5da625cdc4e0c4410593e13ddcc4be397a69ef7",
+      "bundle_map_sha256": "69a65dc9795c838d67fe3afdc92eb123ccf4ec8c0f85c74e61739d4833de6895",
+      "s3_elf_sha256": "c607e95f8d1377625e34ec23c011f17e2e80b6b2d7e3c6a3ed79ed487d419764",
+      "security_probe_elf_sha256": "78ad0420ff44bc019b25afddcb7527ab6ef37ad56584699185913456ba8590f2",
+      "runner_exit": 0,
+      "capture_reason": "complete",
+      "selected_hash_control_observations": 7,
+      "diagnostics": [
+        "[+    81.138036] SELFTEST COMPLETE: passed=22 failed=0 pending=0 passed_bitmap=0x2323ffff failed_bitmap=0x0 pending_bitmap=0x0",
+        "[+     8.619746] [EL0 LOG] lp=0 asid=151 [security] selected TLS SHA/HMAC known-answer, clone and tamper controls passed",
+        "[+    18.253644] [EL0 LOG] lp=0 asid=156 [s3-smoke] S3 TLS PUT/HEAD/GET/DELETE round trip succeeded",
+        "[+    18.255872] [s3-test] SUCCESS: verified 33-byte object round trip"
+      ],
+      "host_check_groups": 21
+    },
+    {
+      "target": "x86_64-intel",
+      "instance": "embassy-hash-20261031-intel",
+      "cpus": 4,
+      "timeout_seconds": 300,
+      "kernel_sha256": "c55057b0318fccfa8724fd3e314d8cb2ddce7772cab477950fa14a9cfa4e929b",
+      "bundle_map_sha256": "b020d0c3db9b86f0abd466eab16504c11c05f864d00b9f71502dd70f79b8cd84",
+      "s3_elf_sha256": "80807295b9e7afc9146174a7c5da7103bdf60b4d7ed083c21e2f64b7910373e4",
+      "security_probe_elf_sha256": "b3f98e9512b13315048c73596f4dcb2b78281fda1c7c2b90a39b64ff95fa1f82",
+      "runner_exit": 0,
+      "capture_reason": "complete",
+      "selected_hash_control_observations": 7,
+      "diagnostics": [
+        "[+    91.303177] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x2323bbff failed_bitmap=0x0 pending_bitmap=0x0",
+        "[+    13.917937] [EL0 LOG] lp=0 asid=158 [security] selected TLS SHA/HMAC known-answer, clone and tamper controls passed",
+        "[+    84.188718] [EL0 LOG] lp=0 asid=162 [s3-smoke] S3 TLS PUT/HEAD/GET/DELETE round trip succeeded",
+        "[+    84.189538] [s3-test] SUCCESS: verified 33-byte object round trip"
+      ],
+      "host_check_groups": 21
+    }
+  ],
+  "limits": [
+    "No new opaque-context padding, target-memory, register/spill or allocator-history erasure measurement. Concrete Drop/Clone forwarding is a pinned source/type contract backed by shared-owner field tests.",
+    "Embedded-tls PRK/traffic-key/IV fields, Rustls outputs, signature-library intermediates and other hash families retain their separate lifetime gaps. Ordinary Drop cannot promise erasure after forced termination or physical teardown.",
+    "Finite S3/TLS and management/security cases do not establish sustained pressure fairness, throughput, physical-platform qualification or custody.",
+    "SEC-15 remains partial; finding counts and historical unresolved incident attributions are unchanged."
+  ]
+}

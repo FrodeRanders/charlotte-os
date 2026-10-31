@@ -221,8 +221,13 @@ The [provider-state checks](../reports/audits/evidence/2026-10-30-management-has
 cover retained initialized SHA/HMAC fields, independent vectors and native TLS
 interoperability. Erasure of these fields, local buffers, IV/nonce and selected
 cipher owners does not qualify Rustls's returned hash/tag, HKDF, traffic-key or
-parser copies, the connector TLS client's Embassy state, compiler spills,
+parser copies, the connector TLS client's remaining key-schedule/other hash state, compiler spills,
 allocator history, forced termination or physical memory. SEC-15 remains partial.
+
+This crate also registers the shared erasing SHA-256/HMAC-SHA-256 Embassy
+drivers used by the [connector client](tls-client.md#authentication-and-erasure).
+Normal and test dependency graphs omit stock registrations; linking a duplicate
+backend rejects. The broader library-output and lifetime limits above remain.
 
 ## Configuration and related dimensions
 
