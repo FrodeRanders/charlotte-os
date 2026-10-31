@@ -1,4 +1,6 @@
 //! Serialized ownership probes; cached acknowledgements avoid fixture pages.
+use core::sync::atomic::Ordering;
+
 use super::*;
 
 pub(crate) fn test_rejected_thread_abort(stale: ServiceDomain) {
@@ -113,6 +115,7 @@ fn test_poll_claim() {
     let slot = crate::cpu::multiprocessor::spin::mutex::Mutex::new(CoordinatorSlot {
         coordinator: Some(NodeShutdownCoordinator::new(0, 0, [], [])),
         polling: false,
+        deadline_ms: None,
     });
     assert_eq!(
         poll_shutdown_slot_with(&slot, |coordinator| {
@@ -300,4 +303,192 @@ fn test_fixed_plan(domain: ServiceDomain) {
         core::mem::size_of::<NodeShutdownCoordinator>(),
         core::mem::size_of::<DeviceShutdownCoordinator>()
     );
+}
+
+#[cfg(feature = "shutdown_test")]
+pub(crate) use worker::test_worker_admission;
+
+#[cfg(feature = "shutdown_test")]
+mod worker {
+    use super::*;
+
+    // Scheduled fixture: use the production transaction against private roster/
+    // coordinator storage. The worker reads its actual published input on entry.
+    static WORKER_SLOT: crate::cpu::multiprocessor::spin::mutex::Mutex<CoordinatorSlot> =
+        crate::cpu::multiprocessor::spin::mutex::Mutex::new(CoordinatorSlot {
+            coordinator: None,
+            polling: false,
+            deadline_ms: None,
+        });
+    static WORKER_OBSERVATION: core::sync::atomic::AtomicUsize =
+        core::sync::atomic::AtomicUsize::new(0);
+
+    extern "C" fn admission_worker() {
+        let slot = WORKER_SLOT.lock();
+        let valid = slot.deadline_ms == Some(123_456)
+            && slot.coordinator.as_ref().is_some_and(|owner| owner.node_deadline_ms == 123_456);
+        WORKER_OBSERVATION.store(
+            if valid {
+                1
+            } else {
+                2
+            },
+            Ordering::Release,
+        );
+    }
+
+    pub(crate) fn test_worker_admission() {
+        use crate::{
+            cpu::{
+                multiprocessor::spin::mutex::Mutex,
+                scheduler::{
+                    prepared::PreparedKernelThread,
+                    system_scheduler::Error,
+                    threads::{
+                        MASTER_THREAD_TABLE,
+                        ThreadState,
+                    },
+                },
+            },
+            memory::{
+                ADDRESS_SPACE_TABLE,
+                allocators::global_allocator::PRIMARY_ALLOCATOR,
+            },
+        };
+        let roster = Mutex::new(Some(SteadyState {
+            storage: None,
+            entropy: None,
+            network: None,
+            cluster: None,
+            appliance: None,
+            deployment: None,
+        }));
+        let irq = crate::cpu::isa::lp::ops::get_int_state();
+        assert_eq!(
+            start_worker_with(&WORKER_SLOT, &roster, 123_456, MAX_PHASE_GRACE_MS + 1, || panic!(
+                "invalid grace allocated a worker"
+            )),
+            Err(BeginNodeShutdownError::InvalidPhaseGrace)
+        );
+        assert_eq!(
+            start_worker_with(&WORKER_SLOT, &roster, 123_456, 10, || {
+                assert!(WORKER_SLOT.try_lock().is_some());
+                assert!(roster.try_lock().is_some());
+                Err(Error::ThreadPreparationFailed)
+            }),
+            Err(BeginNodeShutdownError::WorkerAdmissionFailed)
+        );
+        assert!(roster.lock().is_some());
+        assert!(WORKER_SLOT.lock().coordinator.is_none());
+        assert_eq!(WORKER_SLOT.lock().deadline_ms, None);
+
+        let mut rejected = None;
+        assert_eq!(
+            start_worker_with(&WORKER_SLOT, &roster, 123_456, 10, || {
+                let worker = PreparedKernelThread::try_new(admission_worker)?;
+                let identity = worker.identity();
+                rejected = Some(identity);
+                MASTER_THREAD_TABLE
+                    .write()
+                    .get_mut(identity.0)
+                    .unwrap()
+                    .abort_requested
+                    .store(true, Ordering::Release);
+                Ok(worker)
+            }),
+            Err(BeginNodeShutdownError::WorkerAdmissionFailed)
+        );
+        let (tid, generation) = rejected.unwrap();
+        assert!(
+            !MASTER_THREAD_TABLE
+                .read()
+                .get(tid)
+                .is_ok_and(|thread| thread.generation == generation)
+        );
+        assert!(roster.lock().is_some());
+        assert!(WORKER_SLOT.lock().coordinator.is_none());
+        assert_eq!(WORKER_OBSERVATION.load(Ordering::Acquire), 0);
+
+        let mut absent = None;
+        assert_eq!(
+            start_worker_with(&WORKER_SLOT, &Mutex::new(None), 123_456, 10, || {
+                let worker = PreparedKernelThread::try_new(admission_worker)?;
+                absent = Some(worker.identity());
+                Ok(worker)
+            }),
+            Err(BeginNodeShutdownError::SteadyStateUnavailable)
+        );
+        let (tid, generation) = absent.unwrap();
+        assert!(
+            !MASTER_THREAD_TABLE
+                .read()
+                .get(tid)
+                .is_ok_and(|thread| thread.generation == generation)
+        );
+
+        // A contender wins after the early precheck but before final admission.
+        let mut loser = None;
+        assert_eq!(
+            start_worker_with(&WORKER_SLOT, &roster, 123_456, 10, || {
+                let worker = PreparedKernelThread::try_new(admission_worker)?;
+                loser = Some(worker.identity());
+                WORKER_SLOT.lock().coordinator = Some(NodeShutdownCoordinator::new(0, 0, [], []));
+                Ok(worker)
+            }),
+            Err(BeginNodeShutdownError::AlreadyInProgress)
+        );
+        let (tid, generation) = loser.unwrap();
+        assert!(
+            !MASTER_THREAD_TABLE
+                .read()
+                .get(tid)
+                .is_ok_and(|thread| thread.generation == generation)
+        );
+        assert!(roster.lock().is_some());
+        assert_eq!(WORKER_OBSERVATION.load(Ordering::Acquire), 0);
+        drop(WORKER_SLOT.lock().coordinator.take());
+
+        // Abandonment keeps the existing exact table payload, even beneath roots
+        // and allocator serialization. It is deliberately not reconstructed later.
+        let abandoned = PreparedKernelThread::try_new(admission_worker).unwrap();
+        let (tid, generation) = abandoned.identity();
+        {
+            let _roots = ADDRESS_SPACE_TABLE.lock();
+            let table = MASTER_THREAD_TABLE.read();
+            let _heap = PRIMARY_ALLOCATOR.lock();
+            drop(abandoned);
+            assert_eq!(table.get(tid).unwrap().generation, generation);
+            assert!(matches!(table.get(tid).unwrap().state, ThreadState::NeedsLpAssignment));
+        }
+
+        assert_eq!(
+            start_worker_with(
+                &WORKER_SLOT,
+                &roster,
+                123_456,
+                10,
+                || PreparedKernelThread::try_new(admission_worker)
+            ),
+            Ok(())
+        );
+        assert!(roster.lock().is_none());
+        assert_eq!(WORKER_SLOT.lock().deadline_ms, Some(123_456));
+        assert_eq!(
+            start_worker_with(&WORKER_SLOT, &roster, 123_456, 10, || panic!(
+                "duplicate shutdown allocated a worker"
+            )),
+            Err(BeginNodeShutdownError::AlreadyInProgress)
+        );
+        let deadline = crate::self_test::results::Deadline::after_millis(5_000);
+        while WORKER_OBSERVATION.load(Ordering::Acquire) == 0 {
+            deadline.assert_pending("shutdown admission worker observation");
+            crate::cpu::scheduler::yield_lp();
+        }
+        assert_eq!(WORKER_OBSERVATION.load(Ordering::Acquire), 1);
+        assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
+        crate::logln!(
+            "[shutdown worker] preparation/scheduler rejection, absent roster, competing winner, \
+             inert abandonment and input-before-dispatch passed"
+        );
+    }
 }

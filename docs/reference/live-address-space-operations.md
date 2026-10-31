@@ -202,12 +202,31 @@ does not restore the steady-state roster, resume polling through copied handles
 or authorize cleanup/replay. Explicit polling remains outside the coordinator
 guard and retains the original deadlines and physical completion requirements.
 
-The [qualification record](../reports/audits/evidence/2026-10-31-shutdown-plan-storage.json)
-covers storage and containing-owner behavior. It does not establish shutdown
-under general heap exhaustion: worker thread construction/publication still
-uses the mandatory spawn path, and later teardown has its own admission and
-progress boundaries. The worker's readiness/polling and exceptional caller
-contexts remain separate SEC-06/07/18 work.
+The [plan qualification](../reports/audits/evidence/2026-10-31-shutdown-plan-storage.json)
+covers storage and containing-owner behavior. Worker admission now prepares
+its context, stack pair, retirement node and master-table slot fallibly before
+taking either coordinator/roster guard or transferring the roster. Its
+[`PreparedKernelThread`](user-thread-admission.md#prepared-kernel-workers)
+retains the exact published, never-runnable generation. Final admission holds
+coordinator, roster, system/LP scheduler and thread-table serialization in that
+order, with the caller's IRQ policy preserved. It rechecks roster/competitors,
+then publishes one fresh pinned Ready entry. The inline plan and stable deadline
+are installed before the local mask leaves and first dispatch becomes possible.
+No callback, allocation, IPI or physical cleanup enters that final handoff.
+
+Preparation or scheduler rejection leaves the roster untouched. A losing,
+unstarted preparation is explicitly cancelled after every local guard leaves;
+failed physical cancellation retains its complete owner and original charges.
+Abandonment cannot remove the table entry or reconstruct a retry owner. The
+original shutdown deadline includes preparation time. The syscall's generic
+rejection and the deployment agent's fail-closed policy remain unchanged.
+
+The [worker qualification](../reports/audits/evidence/2026-10-31-shutdown-worker-admission.json)
+covers injected rejection, a competing winner and input-before-dispatch, plus
+signed ARM ingress shutdown. It does not establish successful shutdown during
+general heap exhaustion: later teardown still has its own admission and
+progress boundaries. Worker readiness/polling, sustained pressure and exceptional
+caller contexts remain separate SEC-06/07/18 work.
 
 ## Supervisor runtime-page access
 

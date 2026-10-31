@@ -143,6 +143,12 @@ fresh allocation while publishing shutdown or transferring teardown owners.
 That removes one admission dependency; worker creation and each later cleanup
 operation still require their own rejection and progress policy.
 
+Admit the worker before committing the work it must execute. Making worker
+creation fallible after ownership transfer still leaves accepted work without
+execution capacity. A prepared local worker can stay non-runnable until the
+transaction rechecks its inputs, then pin admission and input publication under
+one retained local IRQ mask. Keep physical cancellation outside that handoff.
+
 Capture failure diagnostics alongside the original operation before entering
 the failing phase. A reporting helper that looks up the registry again can
 deadlock beneath a caller's retained guard. Copied identity/phase fields can

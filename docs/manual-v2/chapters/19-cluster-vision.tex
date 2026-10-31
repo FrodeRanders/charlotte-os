@@ -1153,8 +1153,13 @@ hardware domains. Construction and owner transfer allocate no plan backing.
 Abandoning either coordinator retains every unfinished teardown owner without
 root lookups, thread aborts, logging, or nested field destruction; explicit
 polling remains the only way to advance reclamation. This does not establish
-shutdown under heap exhaustion: worker construction and later cleanup admission
-retain separate allocation and progress requirements.
+shutdown under heap exhaustion. Kernel worker context, stack, retirement node
+and table preparation now reject before roster transfer. Fresh pinned admission
+and inline input publication share a short local IRQ mask; first dispatch cannot
+precede publication. Losing unstarted preparation is cancelled after local
+guards leave; uncertain cleanup retains its complete owner. Later cleanup
+admission, the agent's fail-closed rejection policy and sustained progress still
+require separate qualification.
 
 The remaining NIC, block, and entropy domains transfer exactly once to a
 device-quiescence coordinator. It never converts a deadline into an

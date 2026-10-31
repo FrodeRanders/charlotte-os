@@ -586,6 +586,15 @@ fourth probe represents a hardware adapter: the device coordinator must publish
 its request, observe the distinct `DEVICE_QUIESCED` acknowledgement and thread
 exit, and only then reclaim its domain.
 
+The scheduled verifier also exercises the production worker-admission transaction
+against private coordinator/roster storage: preparation and scheduler rejection,
+absent roster, a winner between precheck and commit, duplicate admission and
+input visibility on first dispatch. Unstarted losers must disappear through
+explicit cancellation while the roster stays intact. One deliberately abandoned
+prepared kernel thread remains retained in the real master table with its
+original stack/metadata charge; the fixture never reconstructs it for cleanup.
+These are bounded ownership controls, not general heap-exhaustion qualification.
+
 Synchronous kernel probes also construct the full eleven-phase/three-device
 production plan and abandon both containing coordinators while the actual
 lifecycle, root, thread-table and heap guards are held. This checks inline

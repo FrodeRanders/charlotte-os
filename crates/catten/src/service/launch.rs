@@ -1124,11 +1124,12 @@ pub fn steady_state() -> SteadyState {
     STEADY_STATE.lock().as_ref().copied().expect("steady-state services were never published")
 }
 
-/// Transfer the launched service set into the node-shutdown coordinator.
-/// Once taken, no observer may treat the former steady-state handles as a
-/// source for new work.
-pub(crate) fn take_steady_state_for_shutdown() -> Option<SteadyState> {
-    STEADY_STATE.lock().take()
+/// Borrow the one published roster for atomic shutdown admission. The shutdown
+/// coordinator takes its guard first; never copy this into another registry.
+/// Once transferred, these handles cannot be used as a source for new work.
+pub(super) fn shutdown_roster()
+-> &'static crate::cpu::multiprocessor::spin::mutex::Mutex<Option<SteadyState>> {
+    &STEADY_STATE
 }
 
 /// Derive the stable cluster node key from the trusted NIC driver's published

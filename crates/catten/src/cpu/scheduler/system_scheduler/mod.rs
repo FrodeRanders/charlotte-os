@@ -406,6 +406,50 @@ impl SystemScheduler {
         Ok(())
     }
 
+    /// Fresh kernel-worker admission is not an idempotent wake. Qualify the
+    /// exact never-dispatched generation, then publish queue/state/pinning in
+    /// one LP/table hold. Every rejection precedes mutation; no fallible work
+    /// follows the queue splice. The caller retains a local IRQ mask until its
+    /// worker input is published. Existing wakes retain their separate policy.
+    pub(super) fn submit_prepared_kernel_thread(
+        &self,
+        tid: ThreadId,
+        generation: ThreadGeneration,
+    ) -> Result<(), Error> {
+        let lp = get_lp_id();
+        let mut scheduler = self.lp_schedulers.get(&lp).ok_or(Error::InvalidThread)?.lock();
+        let mut table = MASTER_THREAD_TABLE.write();
+        let thread = table.get(tid).map_err(|_| Error::InvalidThread)?;
+        if thread.generation != generation
+            || thread.asid != crate::memory::KERNEL_ASID
+            || !matches!(thread.state, ThreadState::NeedsLpAssignment)
+            || thread.dispatch_count != 0
+            || thread.context.is_on_cpu()
+            || thread.abort_ready()
+            || thread.operation_executor_lp.load(Ordering::Acquire) != usize::MAX
+        {
+            return Err(Error::InvalidThread);
+        }
+        scheduler
+            .ready_queue()
+            .push_back(
+                &mut *table,
+                super::lp_schedulers::run_queue::ThreadHandle {
+                    tid,
+                    generation,
+                },
+            )
+            .map_err(|_| Error::InvalidThread)?;
+        let thread = table.get_mut(tid).unwrap();
+        thread.state = ThreadState::Ready(lp);
+        thread.affinity_lp = Some(lp);
+        thread.pinned_lp = Some(lp);
+        thread.migration_safe = false;
+        scheduler.refresh_load();
+        scheduler.set_ctx_switch_pending();
+        Ok(())
+    }
+
     /// Give certified migratable work an initial soft placement. Unlike
     /// `submit_to_lp`, this does not pin the thread; it exists for deliberate
     /// initial placement and for the boot rebalancing regression workload.

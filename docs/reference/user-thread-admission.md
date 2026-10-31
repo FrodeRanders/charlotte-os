@@ -55,3 +55,28 @@ cannot release stacks or pass unstarted cleanup. This removes queue-capacity
 allocation without completing thread-table, general metadata or aggregate
 principal admission. See [inline run queues](scheduler-run-queues.md) and the
 [execution evidence](../reports/audits/2026-10-15-inline-scheduler-run-queues.md).
+
+## Prepared kernel workers
+
+`PreparedKernelThread` prepares a kernel thread's existing context, stack pair,
+retirement node and master-table capacity fallibly before its containing
+transaction commits. Its private TID/generation receipt retains the complete
+table-owned thread in `NeedsLpAssignment`. It grants no userspace authority.
+Dropping the receipt performs no lookup or cleanup and leaves that exact
+payload and its original charges retained.
+
+Consuming start requires a borrowed local IRQ-mask owner. The scheduler checks
+the exact kernel generation, never-dispatched/unstarted state and abort/executor
+fences, then relinks its existing inline queue entry and publishes Ready,
+affinity and hard pin under one LP/table hold. Rejection precedes mutation;
+success has no fallible tail or remote IPI. The caller must publish worker input
+before releasing that same mask. Ordinary idempotent wake admission remains a
+separate policy and cannot replace this fresh-worker transaction.
+
+Consuming cancellation extracts only the same unstarted, unlinked generation.
+Physical stack release and metadata disposal run after local guards leave.
+Rejected extraction returns the table receipt; rejected physical release returns
+the complete detached thread. Both have terminal retaining fallbacks and supply
+no physical retry authority. [Node shutdown](live-address-space-operations.md#node-shutdown-plan-ownership)
+uses this contract to admit execution before transferring its roster. This does
+not bound all kernel heap storage or qualify arbitrary outer IRQ/guard contexts.

@@ -153,6 +153,7 @@ fn lifecycle_request(domain: &ServiceDomain) -> (u32, u32, u64) {
 }
 
 extern "C" fn verify_el0_shutdown() {
+    crate::service::shutdown::tests::test_worker_admission();
     let TestState {
         cooperative,
         stubborn,

@@ -44,6 +44,7 @@ use crate::{
 pub(crate) mod deferred;
 pub(crate) mod exit_watch_tests;
 pub mod lp_schedulers;
+pub(crate) mod prepared;
 pub mod sync;
 pub mod system_scheduler;
 pub mod threads;

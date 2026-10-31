@@ -708,6 +708,14 @@ the corrected RPC polling paths, and the remaining notification gaps.
 
 ## Threads, stacks and scheduler handoff
 
+- Prepare shutdown workers fallibly before coordinator/roster serialization or
+  roster transfer. `PreparedKernelThread` retains the exact unstarted generation.
+  Consume it through fresh current-LP pinned admission under an owned local mask;
+  publish its inputs before that mask leaves. Ordinary wake admission is not a
+  substitute. Recheck competitors and roster before queue mutation, and perform
+  losing preparation cancellation only after local guards leave. Rejected cleanup
+  retains the complete table/detached owner and original charges without retry.
+
 - Kernel `IdTable` publication prepares payload, generation and return-ID
   capacity together before mutation. Use `try_add_element` for runtime roots and
   threads; rejected payloads remain owned and must be destroyed after table and

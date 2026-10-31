@@ -1,0 +1,112 @@
+{
+  "date": "2026-10-31",
+  "base_revision": "bfb29bfc052db1bf45fe34303826481ffc9cea15",
+  "scope": "SEC-07/18 node-shutdown worker admission before roster transfer. Context/stack/retirement-node/master-table preparation is fallible outside coordinator/roster guards. Fresh current-LP pinning and input publication share one retained IRQ mask. Existing signatures, generic syscall rejection, agent fail-closed policy, deadlines and cleanup completion requirements are unchanged.",
+  "source_sha256": {
+    "crates/catten/src/cpu/scheduler/mod.rs": "5d83763e8b0ffe37d6def8c4132be9300e5147ef941bff75e3472cac1bc4c9ef",
+    "crates/catten/src/cpu/scheduler/prepared.rs": "ded101703d35e1f0063ab20c8e333da66cc42c707fcbe9f269887ce500a816e5",
+    "crates/catten/src/cpu/scheduler/system_scheduler/mod.rs": "8dab56abe929e139a48ede159f59ad309059db361e6ee441bcb17df52ae13c2f",
+    "crates/catten/src/service/launch.rs": "0daedf53e90d46bca317926bcee08ad33bbfb92ce924d19c925d197847179218",
+    "crates/catten/src/service/shutdown.rs": "576a5d4d0e81cbdeaff66b13f5ef7500391bddc987f997612aa80b5244c775ad",
+    "crates/catten/src/service/shutdown/tests.rs": "d782ddb7912aed4bdb3f91293f837c1cad6bc6602dff149307d0326741e61cc0",
+    "crates/catten/src/self_test/el0_shutdown.rs": "0e3b08ed175c7f8c2e285b8fe281ab7ac31bcd0ad8c942e6d34b4b047cac113f"
+  },
+  "source_review": "The baseline transfers the steady-state roster, then uses mandatory spawn_thread_on_lp. This can panic on construction/publication failure after shutdown ownership transferred. No real heap-exhaustion panic was induced. The correction uses the existing thread table and admission families, without a new production registry.",
+  "native_controls": [
+    "Invalid phase grace and an existing coordinator reject without running the preparation callback.",
+    "Injected preparation failure runs outside coordinator/roster guards and leaves roster/coordinator/deadline unchanged.",
+    "Actual prepared kernel thread with abort admission fenced rejects before queue mutation; its exact generation is cancelled and roster remains present.",
+    "Absent roster cancels the actual unstarted preparation without dispatch.",
+    "A deterministic winner installed between precheck and commit leaves the loser unstarted/cancelled and preserves the roster.",
+    "Abandoning a prepared receipt beneath actual root/thread-table/heap guards leaves its exact table-owned payload in NeedsLpAssignment.",
+    "Successful first dispatch observes the committed coordinator and stable original deadline; duplicate start prepares no second worker.",
+    "Each fixture preserves its incoming IRQ state. Bounded atomic observation is fixture-only, establishes no quiescence and authorizes no release."
+  ],
+  "retention_limit": "Each isolated fixture deliberately retains one abandoned kernel-thread context, sixteen-page kernel stack and retirement-node charge in the real master table. It never reconstructs that abandoned receipt for cleanup. This is terminal retention, not recovery custody.",
+  "pre_boot_failures": [
+    {
+      "instance": "shutdown-worker-20261031-intel",
+      "runner_exit": 137,
+      "diagnostic": "/Users/froran/Projects/private/charlotte-os/scripts/sign-service-elfs.sh: line 71: 46622 Killed: 9                  cargo +\"$SIGN_TOOLCHAIN\" run --locked --quiet --manifest-path \"$ROOT/tools/cluster-sign/Cargo.toml\" -- elf-sign \"$elf\" \"$name\" \"$KEY_FILE\" \"$class\" \"$version\" \"$rollback\" \"$flags\" \"$provenance\" > /dev/null",
+      "output_sha256": "c2669d18d59fb8efb3aa5d305f6a905cfcb39310df4facbe62abbcddabf5328c",
+      "classification": "Host signing subprocess received SIGKILL before kernel build or guest entry. Cause unconfirmed; no complete failed bundle snapshot retained. The passing Intel repeat is separate and does not explain this failure."
+    }
+  ],
+  "native_runs": [
+    {
+      "target": "aarch64",
+      "profile": "isolated-shutdown",
+      "instance": "shutdown-worker-20261031-arm-final",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "kernel_sha256": "c6262bc126b130fb8790bf17a388b0c63aa50a2fa6d9a0df1efe97e6f026e3a3",
+      "bundle_map_sha256": "69a65dc9795c838d67fe3afdc92eb123ccf4ec8c0f85c74e61739d4833de6895",
+      "runner_exit": 0,
+      "result": {
+        "reason": "guest-exited",
+        "snapshot": "unavailable"
+      },
+      "host_check_groups": 0,
+      "diagnostics": [
+        "[+     1.171936] [shutdown worker] preparation/scheduler rejection, absent roster, competing winner, inert abandonment and input-before-dispatch passed",
+        "[+     1.506554] [shutdown] production object store and 3 device adapter(s) flushed/reset and quiesced",
+        "[+     1.507314] SELFTEST COMPLETE: passed=1 failed=0 pending=0 passed_bitmap=0x8000000 failed_bitmap=0x0 pending_bitmap=0x0",
+        "[+     1.508300] [shutdown] POWER-OFF REQUESTED via PSCI Hvc"
+      ]
+    },
+    {
+      "target": "x86_64-intel",
+      "profile": "isolated-shutdown",
+      "instance": "shutdown-worker-20261031-intel-repeat",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "kernel_sha256": "8bec5d5c57f1c1d8e4429a1974f5101c814c2e8d57c7d1cb5948c460af36bb60",
+      "bundle_map_sha256": "b020d0c3db9b86f0abd466eab16504c11c05f864d00b9f71502dd70f79b8cd84",
+      "runner_exit": 0,
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "host_check_groups": 0,
+      "diagnostics": [
+        "[+     0.677961] [shutdown worker] preparation/scheduler rejection, absent roster, competing winner, inert abandonment and input-before-dispatch passed",
+        "[+     1.039436] [shutdown] production object store and 3 device adapter(s) flushed/reset and quiesced",
+        "[+     1.040216] SELFTEST COMPLETE: passed=1 failed=0 pending=0 passed_bitmap=0x8000000 failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "target": "aarch64",
+      "profile": "signed-management-shutdown",
+      "instance": "shutdown-worker-ingress-20261031-arm",
+      "cpus": 4,
+      "timeout_seconds": 300,
+      "kernel_sha256": "30e9be943eb98a27fb591f95e685e5f3a93953d8ba293f420b37848c49141198",
+      "bundle_map_sha256": "69a65dc9795c838d67fe3afdc92eb123ccf4ec8c0f85c74e61739d4833de6895",
+      "runner_exit": 0,
+      "result": {
+        "reason": "guest-exited",
+        "snapshot": "unavailable"
+      },
+      "host_check_groups": 23,
+      "diagnostics": [
+        "[+    15.763128] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x123ffff failed_bitmap=0x0 pending_bitmap=0x0",
+        "[+   118.056514] [EL0 LOG] lp=0 asid=130 [agent] accepted cluster shutdown sequence=1793438143 generation=1 node_grace_ms=60000 phase_grace_ms=5000",
+        "[+   118.114380] [shutdown] POWER-OFF REQUESTED via PSCI Hvc"
+      ]
+    }
+  ],
+  "bundle_digest_algorithm": "sha256 of UTF-8 JSON bundle_sha256 map, sorted keys and compact separators",
+  "validation": [
+    "Strict kernel Clippy on AArch64/x86_64 with acpi,shutdown_test and -D warnings",
+    "cargo fmt --all -- --check",
+    "git diff --check"
+  ],
+  "limits": [
+    "Preparation OOM is injected at the factory boundary; no general backing-pressure, allocator exhaustion or sustained essential-progress campaign was run.",
+    "No new forced mapping/physical-cancellation failure control; existing unstarted-stack and retained-thread policies still govern.",
+    "The competing-winner fixture controls the race window rather than submitting concurrent EL0 shutdown requests.",
+    "The shared transaction is native-tested with private roster storage on both targets; real signed management/syscall/global-roster shutdown is qualified on ARM only.",
+    "Arbitrary outer masks/locks, complete kernel heap/principal admission, later teardown admission and production worker polling remain open.",
+    "No security finding disposition changes. Historical unrelated guest failures and earlier host SIGKILL remain unattributed."
+  ]
+}

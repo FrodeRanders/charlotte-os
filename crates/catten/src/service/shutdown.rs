@@ -7,11 +7,6 @@
 //! not proof that its device has stopped DMA or completed durable flushes.
 
 mod storage;
-use core::sync::atomic::{
-    AtomicU64,
-    Ordering,
-};
-
 use storage::RetainedArray;
 
 use crate::{
@@ -43,13 +38,15 @@ static NODE_SHUTDOWN_COORDINATOR: spin::LazyLock<
     crate::cpu::multiprocessor::spin::mutex::Mutex::new(CoordinatorSlot {
         coordinator: None,
         polling: false,
+        deadline_ms: None,
     })
 });
-static NODE_SHUTDOWN_DEADLINE_MS: AtomicU64 = AtomicU64::new(0);
 
 struct CoordinatorSlot {
     coordinator: Option<NodeShutdownCoordinator>,
     polling: bool,
+    // Stable even while poll temporarily moves the complete coordinator out.
+    deadline_ms: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -57,6 +54,7 @@ pub enum BeginNodeShutdownError {
     AlreadyInProgress,
     SteadyStateUnavailable,
     InvalidPhaseGrace,
+    WorkerAdmissionFailed,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -566,10 +564,13 @@ pub fn begin_node_shutdown(
     if coordinator.polling || coordinator.coordinator.is_some() {
         return Err(BeginNodeShutdownError::AlreadyInProgress);
     }
-    let state = launch::take_steady_state_for_shutdown()
+    let state = launch::shutdown_roster()
+        .lock()
+        .take()
         .ok_or(BeginNodeShutdownError::SteadyStateUnavailable)?;
     coordinator.coordinator =
         Some(NodeShutdownCoordinator::from_steady_state(state, node_deadline_ms, phase_grace_ms));
+    coordinator.deadline_ms = Some(node_deadline_ms);
     Ok(())
 }
 
@@ -581,18 +582,80 @@ pub fn start_node_shutdown_worker(
     phase_grace_ms: u64,
 ) -> Result<(), BeginNodeShutdownError> {
     let deadline_ms = monotonic_millis().saturating_add(node_grace_ms);
-    begin_node_shutdown(deadline_ms, phase_grace_ms)?;
-    NODE_SHUTDOWN_DEADLINE_MS.store(deadline_ms, Ordering::Release);
-    crate::cpu::scheduler::spawn_thread_on_lp(
-        crate::memory::KERNEL_ASID,
-        node_shutdown_worker,
-        crate::cpu::isa::lp::ops::get_lp_id(),
-    );
-    Ok(())
+    start_worker_with(
+        &NODE_SHUTDOWN_COORDINATOR,
+        launch::shutdown_roster(),
+        deadline_ms,
+        phase_grace_ms,
+        || crate::cpu::scheduler::prepared::PreparedKernelThread::try_new(node_shutdown_worker),
+    )
+}
+
+fn start_worker_with(
+    registry: &crate::cpu::multiprocessor::spin::mutex::Mutex<CoordinatorSlot>,
+    roster: &crate::cpu::multiprocessor::spin::mutex::Mutex<Option<SteadyState>>,
+    deadline_ms: u64,
+    phase_grace_ms: u64,
+    prepare: impl FnOnce() -> Result<
+        crate::cpu::scheduler::prepared::PreparedKernelThread,
+        crate::cpu::scheduler::system_scheduler::Error,
+    >,
+) -> Result<(), BeginNodeShutdownError> {
+    if phase_grace_ms > MAX_PHASE_GRACE_MS {
+        return Err(BeginNodeShutdownError::InvalidPhaseGrace);
+    }
+    {
+        let slot = registry.lock();
+        if slot.polling || slot.coordinator.is_some() {
+            return Err(BeginNodeShutdownError::AlreadyInProgress);
+        }
+    }
+    // Context, stacks, retirement node and thread-table capacity are all
+    // fallible before either shutdown registry/roster guard or roster transfer.
+    let prepared = prepare().map_err(|_| BeginNodeShutdownError::WorkerAdmissionFailed)?;
+    let result = {
+        let mask = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
+        let mut slot = registry.lock();
+        let mut roster = roster.lock();
+        if slot.polling || slot.coordinator.is_some() {
+            Err((BeginNodeShutdownError::AlreadyInProgress, prepared))
+        } else if roster.is_none() {
+            Err((BeginNodeShutdownError::SteadyStateUnavailable, prepared))
+        } else {
+            match prepared.start_on_current_lp(&mask) {
+                Err(prepared) => Err((BeginNodeShutdownError::WorkerAdmissionFailed, prepared)),
+                Ok(()) => {
+                    // The worker is pinned here and cannot dispatch until the
+                    // mask leaves. This fixed plan publication cannot allocate
+                    // or reject after successful fresh-thread admission.
+                    slot.coordinator = Some(NodeShutdownCoordinator::from_steady_state(
+                        roster.take().unwrap(),
+                        deadline_ms,
+                        phase_grace_ms,
+                    ));
+                    slot.deadline_ms = Some(deadline_ms);
+                    Ok(())
+                }
+            }
+        }
+    };
+    result.map_err(|(error, prepared)| {
+        // Includes a racing winner, absent roster and scheduler rejection.
+        // Confirmed cancellation releases backing; uncertainty retains its
+        // complete published/detached owner through the existing fallback.
+        if let Err(retained) = prepared.cancel() {
+            retained.retain();
+        }
+        error
+    })
 }
 
 extern "C" fn node_shutdown_worker() {
-    let deadline_ms = NODE_SHUTDOWN_DEADLINE_MS.load(Ordering::Acquire);
+    let deadline_ms = NODE_SHUTDOWN_COORDINATOR.lock().deadline_ms;
+    let Some(deadline_ms) = deadline_ms else {
+        crate::logln!("[shutdown] worker input was not published");
+        return;
+    };
     loop {
         match poll_node_shutdown() {
             Some(NodeShutdownProgress::Draining {
