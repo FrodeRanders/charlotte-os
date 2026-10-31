@@ -105,7 +105,8 @@ impl RoundRobin {
         // master thread table. It is never submitted to a run queue; it is only
         // ever returned by `next` as the fallback when nothing else is runnable.
         let idle_tid = {
-            let idle = Thread::new(KERNEL_ASID, crate::cpu::isa::lp::ops::lp_idle_loop);
+            let mut idle = Thread::new(KERNEL_ASID, crate::cpu::isa::lp::ops::lp_idle_loop);
+            idle.is_idle = true;
             publish_thread(idle).expect("kernel idle-thread publication failed")
         };
         Self {

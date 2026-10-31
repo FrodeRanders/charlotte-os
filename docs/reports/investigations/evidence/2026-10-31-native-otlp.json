@@ -1,0 +1,275 @@
+{
+  "date": "2026-10-31",
+  "base_commit": "c3443372",
+  "native_suites": [
+    {
+      "capture": "arm-suite",
+      "kernel_sha256": "0c2781fa14c0c43494f151e6cf6292bf86a2412a2646fa2fde31a8f0770c5676",
+      "passed": 20,
+      "failed": 0,
+      "pending": 0,
+      "passed_bitmap": "0x2023ffff",
+      "stage": "before explicit consuming Export::finish refinement"
+    },
+    {
+      "capture": "x86-suite",
+      "kernel_sha256": "f2af7387f633eaf284542b5c467b47752161eee98a1ab4a21544422425529743",
+      "passed": 18,
+      "failed": 0,
+      "pending": 0,
+      "passed_bitmap": "0x2023bbff",
+      "stage": "before explicit consuming Export::finish refinement"
+    },
+    {
+      "capture": "x86-shutdown-final",
+      "kernel_sha256": "5e41c27c970228e044f87f72aa6c599897d6ca16ef4200ae74bc1ed110677006",
+      "passed": 1,
+      "failed": 0,
+      "pending": 0,
+      "passed_bitmap": "0x8000000",
+      "stage": "final"
+    }
+  ],
+  "final_arm": {
+    "kernel_sha256": "52836653038e815617f3b5cc3ceffa4f6ede4b4c87fc2c1dd53a1d6820706b0c",
+    "signed_exporter_sha256": "c0c480558c658204ed6d348431ab9cec0259095fc3d5d52ab407fc2a51552ace",
+    "profile_sha256": "b7ab45c85ef75ce854860b641217ebf420eefcc0f46e8ebe3ba67a447e80f280",
+    "archive_interval_ms": 0,
+    "interval_ms": 2000,
+    "timeout_ms": 1000,
+    "collector": "http://10.0.2.2:14318/v1/metrics",
+    "collector_image": "otel/opentelemetry-collector:0.164.0@sha256:28b6d41ac51bff6b41ba5e8fe503569ffb9d6a1ea90f7a78419e86f34e44f750",
+    "decoded_metrics_example": [
+      {
+        "name": "charlotte.threads",
+        "timestamp": "2026-10-31 17:56:01.80451737 +0000 UTC",
+        "value": "26"
+      },
+      {
+        "name": "charlotte.domains",
+        "timestamp": "2026-10-31 17:56:01.80451737 +0000 UTC",
+        "value": "18"
+      },
+      {
+        "name": "charlotte.memory.frames.free",
+        "timestamp": "2026-10-31 17:56:01.80451737 +0000 UTC",
+        "value": "98641"
+      },
+      {
+        "name": "charlotte.memory.frames.usable",
+        "timestamp": "2026-10-31 17:56:01.80451737 +0000 UTC",
+        "value": "120092"
+      },
+      {
+        "name": "charlotte.memory.frames.owned",
+        "timestamp": "2026-10-31 17:56:01.80451737 +0000 UTC",
+        "value": "1033"
+      },
+      {
+        "name": "charlotte.heap.allocated",
+        "timestamp": "2026-10-31 17:56:01.80451737 +0000 UTC",
+        "value": "354680"
+      },
+      {
+        "name": "charlotte.heap.peak",
+        "timestamp": "2026-10-31 17:56:01.80451737 +0000 UTC",
+        "value": "566978"
+      },
+      {
+        "name": "charlotte.stack.reserved",
+        "timestamp": "2026-10-31 17:56:01.80451737 +0000 UTC",
+        "value": "132"
+      },
+      {
+        "name": "charlotte.stack.used_high_water",
+        "timestamp": "2026-10-31 17:56:01.80451737 +0000 UTC",
+        "value": "12"
+      },
+      {
+        "name": "charlotte.threads.high_water",
+        "timestamp": "2026-10-31 17:56:01.80451737 +0000 UTC",
+        "value": "1"
+      },
+      {
+        "name": "charlotte.cpu.logical_processors",
+        "timestamp": "2026-10-31 17:56:01.80451737 +0000 UTC",
+        "value": "4"
+      },
+      {
+        "name": "charlotte.cpu.utilization",
+        "timestamp": "2026-10-31 17:56:01.80451737 +0000 UTC",
+        "value": "0.010603"
+      }
+    ],
+    "shutdown": {
+      "accepted_stall_request": {
+        "monotonic": 330800.828517166,
+        "mode": "stall",
+        "bytes": 814,
+        "sha256": "11b4798976f9717bc00e644b494c81399b4dcf2a0f75f07e2faf6850dc071ed0"
+      },
+      "shutdown_admission_seconds_after_request": 0.4590302089927718,
+      "diagnostics": [
+        "[+    96.066882] [shutdown] DeploymentIngress: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+        "[+    96.070940] [shutdown] DeploymentControl: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+        "[+    96.073118] [shutdown] DeploymentAgent: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+        "[+    96.078415] [shutdown] HttpIngress: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+        "[+    96.079445] [EL0 LOG] lp=0 asid=18 [otlp] batch dropped=8 failure=Err(Shutdown); sampling remains independent",
+        "[+    96.080346] [shutdown] TelemetryExporter: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+        "[+    96.081865] [shutdown] Time: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+        "[+    96.085588] [shutdown] ClusterCatalog: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+        "[+    96.088116] [shutdown] ReliableMessaging: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+        "[+    96.090462] [shutdown] Discovery: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+        "[+    96.092371] [shutdown] TcpIp: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+        "[+    96.094298] [shutdown] FrameRouter: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+        "[+    96.096445] [shutdown] ObjectStore: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2",
+        "[+    96.106283] [shutdown] POWER-OFF REQUESTED via PSCI Hvc"
+      ]
+    }
+  },
+  "final_faults": {
+    "cases": [
+      {
+        "case": "partial",
+        "next_fresh_request_seconds": 2.102,
+        "fault_sha256": "cb366641a7e73cd141945ef27a77d1664a1200ffe77e20a3f24b0df01e4210fc",
+        "next_sha256": "33740b03cf9691900e4ba7b7957f6d3c565a4f30f006ee642f51dae309f29202"
+      },
+      {
+        "case": "retry",
+        "next_fresh_request_seconds": 5.735,
+        "fault_sha256": "547d37df3f26cd04dc6816508ff36c455de337d18f727473e29cdce3f372eb25",
+        "next_sha256": "ad55301f17b6672943442417052856a490340cff23c2e38a39c1c0d089fbed32"
+      },
+      {
+        "case": "stall",
+        "next_fresh_request_seconds": 5.72,
+        "fault_sha256": "363d670f6c18e7c24f8f05f395939ef5c607afcb61938cc5e061c9fd6dd89588",
+        "next_sha256": "5fec858f6b1fab3b3b6ecc6da79d7f1ae49c2b5be1acf16bd994199f093fee64"
+      },
+      {
+        "case": "oversized",
+        "next_fresh_request_seconds": 4.142,
+        "fault_sha256": "24520d5dbc384709e17d0f4249a877cecdd97138bc4619c8eaef09c8db887100",
+        "next_sha256": "f697a72e01c9dd125d8ff3615e11158bb7d20f8cca05a8e4441f9416762c6811"
+      },
+      {
+        "case": "malformed",
+        "next_fresh_request_seconds": 4.131,
+        "fault_sha256": "d076f767b455e0e7ab631fdc6d53fac247eff3823681c7be02cd5688185164be",
+        "next_sha256": "a976437ed28c5ed3a15c5c80146b0d60f23231ee23b699c20a379a610c204a02"
+      }
+    ],
+    "requests": 293,
+    "all_payload_digests_unique": true,
+    "request_count_scope": "Shared receiver log includes the earlier and final image runs; the five case digest pairs identify the final campaign."
+  },
+  "earlier_fault_campaign": {
+    "cases": [
+      {
+        "case": "partial",
+        "next_fresh_request_seconds": 2.043,
+        "fault_sha256": "c8a43d2e29d662527aac6435563aca30fcfa95068ade0c7a288775bcf4f7e018",
+        "next_sha256": "4067db1a4f6bcf62cfd3f7b57b1fa146524cf301fddea50f5e103f0187fcdf51"
+      },
+      {
+        "case": "retry",
+        "next_fresh_request_seconds": 5.397,
+        "fault_sha256": "bba0296c3160e83b1ee8da4849e2e3eec60141d793a965f34ddf7f6fb334ef9d",
+        "next_sha256": "9c646b043b09910f0c08a5ede7de26b1170be1fb2339f8bf1602c1e6a5ab81f1"
+      },
+      {
+        "case": "stall",
+        "next_fresh_request_seconds": 5.382,
+        "fault_sha256": "9b6ab80b08d928e47df2d87e68bcfa1a810907cba4be464b415b06c284626ec1",
+        "next_sha256": "fdc92fc084a05cc991e667f0b8935d9aa7601a576899daf74be711295eaed7c8"
+      },
+      {
+        "case": "oversized",
+        "next_fresh_request_seconds": 4.085,
+        "fault_sha256": "0baad2b08b8218d1b023d6697590fee6826781569b92c11e227bb83ce254a1e5",
+        "next_sha256": "eae239cc2304764ff19b8f698566b09542e5d3138aeb5e738f2d1f79e4d4dd84"
+      },
+      {
+        "case": "malformed",
+        "next_fresh_request_seconds": 4.836,
+        "fault_sha256": "93ef8e0811b8ad14c00f8372009a0251090a64b336aa373fefaaa6161b2e5a0e",
+        "next_sha256": "e170dc219316a8087a16e24a42fe71f901230143b53e993651b531c5d98712c6"
+      }
+    ],
+    "requests": 36,
+    "all_payload_digests_unique": true,
+    "kernel_sha256": "0569c46f7cd6479680581d8b31eed18a96b88a59c0bdcf793d35a72dddd93eb1"
+  },
+  "live_during_final_faults": {
+    "before": {
+      "history_count": 16,
+      "history_last_ticks": 1333072937,
+      "capacity": {
+        "fresh": true,
+        "boot_nonce": 17707142154718474248,
+        "epoch": 958040812,
+        "free_frames": 98696,
+        "usable_frames": 120092,
+        "cpu_load_permille": 16
+      },
+      "controller": {
+        "local": true,
+        "capacity_reports_accepted": 2,
+        "capacity_commands_proposed": 1,
+        "placement_reassignments": 0,
+        "forced_reassignments": 0
+      },
+      "raft": {
+        "state": "leader",
+        "term": 1,
+        "commit_index": 3,
+        "membership_epoch": 0,
+        "observed_millis": 12695,
+        "leader": "charlotte:42e21edb",
+        "served_by": "charlotte:42e21edb"
+      }
+    },
+    "after": {
+      "history_count": 30,
+      "history_last_ticks": 2211262437,
+      "capacity": {
+        "fresh": true,
+        "boot_nonce": 17707142154718474248,
+        "epoch": 958040812,
+        "free_frames": 98696,
+        "usable_frames": 120092,
+        "cpu_load_permille": 16
+      },
+      "controller": {
+        "local": true,
+        "capacity_reports_accepted": 5,
+        "capacity_commands_proposed": 1,
+        "placement_reassignments": 0,
+        "forced_reassignments": 0
+      },
+      "raft": {
+        "state": "leader",
+        "term": 1,
+        "commit_index": 3,
+        "membership_epoch": 0,
+        "observed_millis": 26112,
+        "leader": "charlotte:42e21edb",
+        "served_by": "charlotte:42e21edb"
+      }
+    }
+  },
+  "host_tests": {
+    "catten-services": 267,
+    "charlotte-launch": 14,
+    "charlotte-s3": 9,
+    "boot-profile": 8,
+    "tooling-contracts": 11
+  },
+  "limitations": [
+    "No injected allocator/mapping admission failures in exporter",
+    "No power-loss/durable delivery claim",
+    "Full suites preceded consuming finish refinement; final fault, live, Collector and shutdown checks used final transport",
+    "First host repeat could not bind OpenSSL sockets in sandbox; outside-sandbox repeat passed all tests"
+  ]
+}

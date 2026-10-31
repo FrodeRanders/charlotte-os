@@ -309,6 +309,7 @@ pub struct SteadyState {
     pub cluster: Option<Cluster>,
     pub appliance: Option<NetworkAppliance>,
     pub deployment: Option<DeploymentPlane>,
+    pub telemetry: Option<ServiceDomain>,
 }
 
 /// Launch a VirtIO RNG adapter when the platform exposes one with protected
@@ -1106,6 +1107,22 @@ pub(crate) fn launch_steady_state_with_trust(
     } else {
         None
     };
+    logln!(concat!("CHARLOTTE_OTLP_PROFILE_SHA256=", env!("CATTEN_OTLP_PROFILE_SHA256"), ";"));
+    let telemetry_profile = include_bytes!(env!("CATTEN_OTLP_PROFILE_FILE"));
+    let telemetry = if network.is_some() && !telemetry_profile.is_empty() {
+        Some(crate::service::supervisor::spawn_with_manifest(
+            crate::service::store::service_elf(b"otlp").expect("[launch] otlp.elf"),
+            &ns,
+            ConnectionRights::CALL,
+            &[ManifestEntry {
+                key: charlotte_launch::otlp::KEY,
+                flags: 0,
+                value: ManifestValue::Bytes(telemetry_profile),
+            }],
+        ))
+    } else {
+        None
+    };
     *STEADY_STATE.lock() = Some(SteadyState {
         storage,
         entropy,
@@ -1113,6 +1130,7 @@ pub(crate) fn launch_steady_state_with_trust(
         cluster,
         appliance,
         deployment,
+        telemetry,
     });
     STEADY_STATE_OBSERVERS.drain().notify();
     logln!("[launch] steady-state service set published.");

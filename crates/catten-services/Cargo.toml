@@ -10,6 +10,12 @@ name = "catten_services"
 path = "src/lib.rs"
 bench = false
 
+[[bin]]
+name = "otlp"
+path = "src/bin/otlp.rs"
+test = false
+bench = false
+
 [[example]]
 name = "reconnecting_client"
 path = "examples/reconnecting_client.rs"

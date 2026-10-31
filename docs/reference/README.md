@@ -82,6 +82,8 @@ should be updated with the implementation when those contracts change.
   owned object-store transport and future format-migration requirements.
 - [Observability](observability.md) — capability-preserving runtime statistics,
   snapshot interfaces, and the node/cluster keyholes.
+- [Native OTLP export](otlp-export.md) — Optional bounded metric push, explicit
+  collector profiles and failure isolation from sampling/placement.
 - [Bounded telemetry snapshots](telemetry-snapshots.md) — Fallible capture scratch,
   exact-root status reads and unchanged snapshot ABI.
 - [smoltcp adapter](smoltcp-adapter.md) — frame routing, adapter behavior, and

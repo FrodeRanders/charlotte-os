@@ -105,6 +105,7 @@ const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
 const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
     bootstrap_elf!(b"ns", "ns"),
     bootstrap_elf!(b"observe", "observe"),
+    bootstrap_elf!(b"otlp", "otlp"),
     bootstrap_elf!(b"grantctl", "grantctl"),
     bootstrap_elf!(b"nvme", "nvme"),
     bootstrap_elf!(b"objstore", "objstore"),

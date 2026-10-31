@@ -413,6 +413,7 @@ extern "C" fn verify_el0_shutdown() {
         (ShutdownPhase::DeploymentControl, launched.deployment.is_some()),
         (ShutdownPhase::DeploymentAgent, launched.deployment.is_some()),
         (ShutdownPhase::HttpIngress, launched.appliance.is_some()),
+        (ShutdownPhase::TelemetryExporter, launched.telemetry.is_some()),
         (ShutdownPhase::Time, launched.appliance.is_some()),
         (ShutdownPhase::ClusterCatalog, launched.cluster.is_some()),
         (ShutdownPhase::ReliableMessaging, launched.cluster.is_some()),

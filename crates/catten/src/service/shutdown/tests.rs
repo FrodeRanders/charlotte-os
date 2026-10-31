@@ -237,6 +237,7 @@ fn test_fixed_plan(domain: ServiceDomain) {
     };
     let irq = crate::cpu::isa::lp::ops::get_int_state();
     let state = SteadyState {
+        telemetry: Some(domain),
         deployment: Some(DeploymentPlane {
             ingress: domain,
             clusterctl: domain,
@@ -297,7 +298,7 @@ fn test_fixed_plan(domain: ServiceDomain) {
     }
     assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
     crate::logln!(
-        "[shutdown storage] full 11-phase/3-device plan, one-time transfer and inert parent \
+        "[shutdown storage] full 12-phase/3-device plan, one-time transfer and inert parent \
          abandonment passed beneath lifecycle/root/thread/heap guards; node_bytes={} \
          device_bytes={}",
         core::mem::size_of::<NodeShutdownCoordinator>(),
@@ -356,6 +357,7 @@ mod worker {
             },
         };
         let roster = Mutex::new(Some(SteadyState {
+            telemetry: None,
             storage: None,
             entropy: None,
             network: None,

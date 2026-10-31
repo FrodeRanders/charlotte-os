@@ -15,6 +15,7 @@ This guide matches the manual's **Configuration** chapter.
 | Dependency advisory policy | `.cargo/audit.toml` and the scanner pin in `.cargo/audit-version`, evaluated by CI/local validation. They do not configure a running node; see [the advisory gate](../reference/dependency-advisories.md). |
 | Kernel resource capacity | One trusted Rust build profile, compiled into the kernel and fixed for the boot. |
 | Diagnostic telemetry archive | `CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS` at kernel build time: default/unset `0` disables disk archiving; `1000..=86400000` enables periodic archiving. The kernel supplies observe's read-only launch manifest. Live sampling/history and placement reporting remain active. |
+| Native telemetry export | Unset `CATTEN_OTLP_ENDPOINT` launches no exporter. An explicit HTTP/IPv4 collector plus interval/timeout selects one complete read-only outbound profile; its hash is checked when reusing a kernel. |
 | Bootstrap service assignments | `CATTEN_CLUSTER_SERVICES` at build time; runners accept repeatable `--cluster-service [NAME=]IPv4:PORT`. The first committed signed ingress policy replaces bootstrap assignments. |
 | Launch/grant trust | One prepared kernel boot-trust policy. Resource capacity settings grant no signing authority or platform classification. Production trust remains disabled pending protected provisioning/custody. |
 | Application limits and capabilities | Signed deployment plus kernel admission, including stack/thread limits, executable variants and protocol-specific launch profiles. Requests do not enlarge node capacity. |
@@ -141,6 +142,20 @@ Placement reads current kernel pressure, not this archive. Its filtered reports
 have boot identities and leader-local freshness leases; durable Raft/catalog
 state and committed resource promises still require persistence. See
 [observability](../reference/observability.md).
+
+Remote export is a separate choice:
+
+```sh
+CATTEN_OTLP_ENDPOINT=http://192.0.2.20:4318/v1/metrics \
+CATTEN_OTLP_INTERVAL_MS=30000 CATTEN_OTLP_TIMEOUT_MS=3000 \
+  scripts/run-aarch64.sh release --minimal
+```
+
+The [native exporter](../reference/otlp-export.md) sends latest-sample OTLP/HTTP
+gauges from memory with bounded buffers, one deadline and no disk spool.
+Collector failures back off without blocking sampling or placement. Initial
+transport support is HTTP/IPv4, without HTTPS/authentication/gRPC; unsupported
+schemes reject. It is independent of local archive policy and boot test mode.
 
 ## Related limits
 

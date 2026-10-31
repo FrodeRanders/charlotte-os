@@ -162,7 +162,7 @@ after every domain in the current phase has exited and been generation-safely
 reclaimed. The production order is:
 
 1. deployment ingress, deployment control, deployment agent;
-2. HTTP ingress and time;
+2. HTTP ingress, the optional telemetry exporter, and time;
 3. cluster catalog/Raft, reliable messaging, and discovery;
 4. TCP/IP and the frame router; and
 5. object store.

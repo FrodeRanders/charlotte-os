@@ -104,6 +104,9 @@ static NEXT_THREAD_GENERATION: AtomicU64 = AtomicU64::new(1);
 static RETIRED_CPU_BUSY_TICKS: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) fn account_retired_cpu_ticks(thread: &Thread) {
+    if thread.is_idle {
+        return;
+    }
     let now = crate::cpu::scheduler::monotonic_ticks();
     let active = thread.last_dispatch_tick.map_or(0, |started| now.saturating_sub(started));
     let ticks = thread.runtime_ticks.snapshot().total.saturating_add(u128::from(active));
@@ -541,6 +544,9 @@ pub struct Thread {
 // custody fields prevent constructing or disposing it outside this module.
 #[derive(Debug)]
 pub struct ThreadPayload {
+    /// Trusted scheduler-created idle contexts retain per-thread diagnostics,
+    /// but WFI residency is not node CPU pressure. Set before publication.
+    pub(in crate::cpu::scheduler) is_idle: bool,
     /// Boxed so the context (and therefore its `saved_sp`/`rsp_cpl0` field) has
     /// a **stable heap address**. `cond_yield_lp` captures a raw pointer to that
     /// field under lock and dereferences it lock-free inside `switch_ctx`; if the
@@ -715,6 +721,7 @@ impl Thread {
         }
         Ok(Thread {
             payload: ManuallyDrop::new(ThreadPayload {
+                is_idle: false,
                 context,
                 asid,
                 address_space,
@@ -921,20 +928,22 @@ pub fn thread_count_for_asid(asid: AddressSpaceId) -> usize {
         .count()
 }
 
-/// Cumulative on-CPU ticks across every thread on this node.
+/// Cumulative on-CPU ticks across non-idle threads on this node.
 ///
 /// Retired contributions are retained so callers can derive interval
 /// utilization by differencing this value and the monotonic counter.
 pub(crate) fn cpu_busy_ticks() -> u128 {
     let now = crate::cpu::scheduler::monotonic_ticks();
-    let live = MASTER_THREAD_TABLE.read().iter().filter_map(|thread| thread.as_ref()).fold(
-        0u128,
-        |sum, thread| {
+    let live = MASTER_THREAD_TABLE
+        .read()
+        .iter()
+        .filter_map(|thread| thread.as_ref())
+        .filter(|thread| !thread.is_idle)
+        .fold(0u128, |sum, thread| {
             let active = thread.last_dispatch_tick.map_or(0, |started| now.saturating_sub(started));
             sum.saturating_add(thread.runtime_ticks.snapshot().total)
                 .saturating_add(u128::from(active))
-        },
-    );
+        });
     u128::from(RETIRED_CPU_BUSY_TICKS.load(Ordering::Relaxed)).saturating_add(live)
 }
 

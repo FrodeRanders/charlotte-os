@@ -185,7 +185,7 @@ or metadata budget follows from these ownership boundaries.
 
 ## Node shutdown plan ownership
 
-The node coordinator stores its complete plan inline: at most eleven ordered
+The node coordinator stores its complete plan inline: at most twelve ordered
 service phases with one domain each, followed by three hardware domains (NIC,
 block and entropy). These are structural bounds from `SteadyState`, not a new
 application quota. Missing boot groups compact without changing dependency
@@ -194,6 +194,10 @@ bookkeeping backing, including construction under the coordinator publication gu
 Each entry keeps its captured service identity and existing `DomainTeardown`.
 Only confirmed reclamation removes it; hardware domains transfer once after
 every high-level phase completes and still require device-quiesced exit.
+
+The optional native OTLP exporter occupies its own phase after HTTP ingress and
+before time/TCP-IP dependencies. It uses the same captured service-domain owner;
+collector readiness or a failed export supplies no retirement proof.
 
 Both containing coordinators retain every unfinished entry on abandonment.
 Their inline arrays suppress nested field destruction without root/thread

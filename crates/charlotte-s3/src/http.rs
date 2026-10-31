@@ -136,11 +136,13 @@ pub struct ResponseHead {
     pub content_length: Option<u64>,
     pub chunked: bool,
     pub connection_close: bool,
+    pub retry_after_seconds: Option<u64>,
     bytes: Zeroizing<Vec<u8>>,
     body_offset: usize,
     etag: Option<Range<usize>>,
     version_id: Option<Range<usize>>,
     request_id: Option<Range<usize>>,
+    content_type: Option<Range<usize>>,
 }
 
 /// Parsed response metadata and the first owned body fragment.
@@ -166,11 +168,13 @@ impl ResponseHead {
             content_length: None,
             chunked: false,
             connection_close: false,
+            retry_after_seconds: None,
             bytes,
             body_offset: end,
             etag: None,
             version_id: None,
             request_id: None,
+            content_type: None,
         };
         let text =
             core::str::from_utf8(&response.bytes[..end - 4]).map_err(|_| Error::InvalidHeader)?;
@@ -204,6 +208,12 @@ impl ResponseHead {
                 response.chunked = true;
             } else if name.eq_ignore_ascii_case("connection") {
                 response.connection_close = value.eq_ignore_ascii_case("close");
+            } else if name.eq_ignore_ascii_case("content-type") {
+                if response.content_type.replace(range).is_some() {
+                    return Err(Error::InvalidHeader);
+                }
+            } else if name.eq_ignore_ascii_case("retry-after") {
+                response.retry_after_seconds = value.parse().ok();
             } else if name.eq_ignore_ascii_case("etag") {
                 let unquoted = value.trim_matches('"');
                 let quotes = value.len() - value.trim_start_matches('"').len();
@@ -225,6 +235,10 @@ impl ResponseHead {
 
     pub fn etag(&self) -> Option<&str> {
         self.metadata(self.etag.as_ref())
+    }
+
+    pub fn content_type(&self) -> Option<&str> {
+        self.metadata(self.content_type.as_ref())
     }
 
     pub fn version_id(&self) -> Option<&str> {
@@ -428,6 +442,24 @@ mod tests {
     use alloc::vec::Vec;
 
     use super::*;
+
+    #[test]
+    fn response_type_and_numeric_retry_after_are_bounded_head_metadata() {
+        let response = concat!(
+            "HTTP/1.1 503 Unavailable\r\n",
+            "Content-Type: application/x-protobuf\r\n",
+            "Retry-After: 5\r\nContent-Length: 0\r\n\r\n"
+        );
+        let head = ResponseHead::parse(Zeroizing::new(response.as_bytes().to_vec())).unwrap();
+        assert_eq!(head.content_type(), Some("application/x-protobuf"));
+        assert_eq!(head.retry_after_seconds, Some(5));
+        let duplicate = concat!(
+            "HTTP/1.1 200 OK\r\n",
+            "Content-Type: application/x-protobuf\r\n",
+            "Content-Type: application/json\r\n\r\n"
+        );
+        assert!(ResponseHead::parse(Zeroizing::new(duplicate.as_bytes().to_vec())).is_err());
+    }
 
     #[test]
     fn parses_s3_response_and_preserves_body_offset() {

@@ -65,6 +65,7 @@ pub enum ShutdownPhase {
     DeploymentControl,
     DeploymentAgent,
     HttpIngress,
+    TelemetryExporter,
     Time,
     ClusterCatalog,
     ReliableMessaging,
@@ -241,6 +242,9 @@ impl NodeShutdownCoordinator {
             state
                 .appliance
                 .map(|group| ShutdownPhaseSpec::one(ShutdownPhase::HttpIngress, group.httpd)),
+            state
+                .telemetry
+                .map(|domain| ShutdownPhaseSpec::one(ShutdownPhase::TelemetryExporter, domain)),
             state.appliance.map(|group| ShutdownPhaseSpec::one(ShutdownPhase::Time, group.time)),
             state
                 .cluster

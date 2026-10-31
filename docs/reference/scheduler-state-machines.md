@@ -135,6 +135,7 @@ rather than freeing resources on an uncertain snapshot.
 | L4 | `cond_yield_lp` with `curr_tid == next_tid` (sole runnable) still calls `clear_ctx_switch_pending()` to re-arm the timer. Without this, `sleep()` freezes. |
 | L5 | The idle loop calls `drain_deferred_wakes()` and interrupt-masked `process_local_events()` before `cond_yield_lp()`, so deferred wakes and due timers are reconciled before `wfi`/`hlt`. |
 | L6 | The hardware comparator represents the sorted timer-queue head. Queue mutation and comparator programming are one local interrupt-masked transaction. |
+| L7 | A scheduler-created idle thread is marked before publication. Its residency remains in per-thread diagnostics but is excluded from both live and retired node busy counters; manifest/name/ASID hints cannot select this classification. |
 
 ### What makes an LP idle vs busy
 

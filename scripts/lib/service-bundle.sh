@@ -7,7 +7,7 @@ catten_service_bundle() {
         minimal|test) ;;
         *) echo "error: bundle mode must be minimal or test" >&2; return 1 ;;
     esac
-    SERVICES=(ns observe grantctl nvme objstore net disco frouter dns agent
+    SERVICES=(ns observe otlp grantctl nvme objstore net disco frouter dns agent
               relmsg tcpip httpd time s3 kafka rng fs clusterctl deployd)
     case "$arch" in
         aarch64) SERVICES+=(uart kafka_step) ;;

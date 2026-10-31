@@ -2,6 +2,7 @@
 """Minimal boot is distinct from regression success, including cached artifacts."""
 
 import importlib.util
+import hashlib
 from pathlib import Path
 import struct
 import subprocess
@@ -83,6 +84,16 @@ class BootProfiles(unittest.TestCase):
                     profile.validate(data, mode, 0 if interval else 10000)
             with self.assertRaisesRegex(ValueError, "telemetry archive policy"):
                 profile.validate(elf(mode), mode, 0)
+
+    def test_cached_kernel_cannot_silently_redirect_telemetry(self):
+        disabled=hashlib.sha256(profile.otlp_profile({})).hexdigest()
+        enabled=hashlib.sha256(profile.otlp_profile({"CATTEN_OTLP_ENDPOINT":"http://10.0.2.2:4318/v1/metrics"})).hexdigest()
+        data=elf("minimal")+f"CHARLOTTE_OTLP_PROFILE_SHA256={enabled};".encode()
+        profile.validate(data,"minimal",otlp_sha256=enabled)
+        with self.assertRaisesRegex(ValueError,"OTLP profile"):
+            profile.validate(data,"minimal",otlp_sha256=disabled)
+        with self.assertRaisesRegex(ValueError,"OTLP profile"):
+            profile.validate(elf("minimal"),"minimal",otlp_sha256=disabled)
 
     def bundle(self, arch, mode, root, validate=False):
         code = ('source "$1/scripts/lib/service-bundle.sh"; '

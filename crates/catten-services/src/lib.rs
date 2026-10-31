@@ -45,6 +45,8 @@ pub mod grant_client;
 /// Owned application-side wrappers for the Kafka service protocol.
 pub mod kafka_client;
 pub mod management_io;
+pub mod otlp;
+pub mod otlp_transport;
 pub mod publication;
 pub mod raft_clock;
 pub mod reactor;

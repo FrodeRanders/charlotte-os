@@ -169,9 +169,10 @@ the measurements:
      lost on reboot, immediately useful in CI and on a dev machine);
   2. a chunked archive on the local object store (implemented: analyzable from
      a captured NVMe image, no new egress policy);
-  3. remote/cluster sinks through the existing S3 client or a dedicated
-     telemetry endpoint (needs an explicit egress decision; observation does
-     not imply ambient authority).
+  3. a [native OTLP/HTTP exporter](../reference/otlp-export.md) with an explicit
+     collector launch profile (implemented for HTTP/IPv4, disabled by default).
+     Observation does not imply an ambient egress destination. One bounded
+     memory batch and failure backoff remain independent of placement.
 - **Offline tooling.** `scripts/telemetry-archive.py` reassembles the chunk
   ring from a captured NVMe image and prints ordered samples (or NDJSON), so a
   developer or operator can inspect trends without booting the node. CI should

@@ -44,6 +44,14 @@ The following inputs have different authorities and lifetimes:
         rebuild/restart; cached kernels must match it. Existing archive objects
         are preserved for offline inspection. This setting does not disable
         Raft/catalog durability or release committed resource promises.
+    \item[Native telemetry export.] Unset \path{CATTEN_OTLP_ENDPOINT} launches
+        no exporter. An explicit HTTP/IPv4 collector, interval and timeout form
+        one complete read-only profile whose hash is checked on kernel reuse.
+        The separate userspace service exports latest-sample OTLP protobuf
+        gauges with bounded memory and deadlines, independently of local
+        archiving, sampling and placement. Initial transport excludes
+        HTTPS, authentication headers and gRPC; unsupported schemes reject.
+        See \repofile|docs/reference/otlp-export.md|.
     \item[Bootstrap assignments.] The kernel build consumes
         \path{CATTEN_CLUSTER_SERVICES}. Boot runners accept repeatable
         \texttt{-{}-cluster-service [NAME=]IPv4:PORT} assignments. The first

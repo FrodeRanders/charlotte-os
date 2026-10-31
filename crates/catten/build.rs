@@ -3,6 +3,7 @@ use std::env;
 fn main() {
     management_resource();
     telemetry_archive();
+    otlp_export();
     // Compile-time policy is trusted Rust build input. Require an absolute path
     // so invocation cwd cannot silently select a different operator profile.
     println!("cargo:rerun-if-env-changed=CATTEN_RESOURCE_POLICY");
@@ -93,6 +94,51 @@ fn telemetry_archive() {
         Err(_) => panic!("CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS must be ASCII decimal"),
     };
     println!("cargo:rustc-env={INPUT}={interval}");
+}
+
+fn otlp_export() {
+    use charlotte_launch::otlp;
+    for name in ["CATTEN_OTLP_ENDPOINT", "CATTEN_OTLP_INTERVAL_MS", "CATTEN_OTLP_TIMEOUT_MS"] {
+        println!("cargo:rerun-if-env-changed={name}");
+    }
+    let endpoint = env::var("CATTEN_OTLP_ENDPOINT");
+    let bytes = match endpoint {
+        Err(env::VarError::NotPresent) => {
+            assert!(
+                env::var_os("CATTEN_OTLP_INTERVAL_MS").is_none()
+                    && env::var_os("CATTEN_OTLP_TIMEOUT_MS").is_none(),
+                "OTLP interval/timeout require CATTEN_OTLP_ENDPOINT"
+            );
+            Vec::new()
+        }
+        Ok(value) => {
+            let number = |key, default| match env::var(key) {
+                Err(env::VarError::NotPresent) => default,
+                Ok(v) => otlp::decimal(&v).expect("OTLP budgets must be ASCII decimal"),
+                Err(_) => panic!("OTLP budgets must be ASCII decimal"),
+            };
+            otlp::Profile::from_endpoint(
+                &value,
+                number("CATTEN_OTLP_INTERVAL_MS", otlp::DEFAULT_INTERVAL_MS),
+                number("CATTEN_OTLP_TIMEOUT_MS", otlp::DEFAULT_TIMEOUT_MS),
+            )
+            .expect(
+                "CATTEN_OTLP_ENDPOINT requires http://IPv4[:port]/path and bounded \
+                 interval/timeout",
+            )
+            .encode()
+            .expect("validated OTLP profile")
+        }
+        Err(_) => panic!("CATTEN_OTLP_ENDPOINT must be ASCII HTTP/IPv4"),
+    };
+    let path = std::path::PathBuf::from(env::var_os("OUT_DIR").unwrap()).join("otlp-profile.bin");
+    std::fs::write(&path, &bytes).expect("stage outbound OTLP profile");
+    let hash = charlotte_launch::sha256::digest(&bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
+    println!("cargo:rustc-env=CATTEN_OTLP_PROFILE_FILE={}", path.display());
+    println!("cargo:rustc-env=CATTEN_OTLP_PROFILE_SHA256={hash}");
 }
 
 /// The public Secure Boot fixture may compile a different exact installed

@@ -1,0 +1,12 @@
+services:
+  collector:
+    image: otel/opentelemetry-collector:0.164.0@sha256:28b6d41ac51bff6b41ba5e8fe503569ffb9d6a1ea90f7a78419e86f34e44f750
+    command: ["--config=/etc/otelcol/charlotte.yaml"]
+    ports:
+      - "127.0.0.1:${CATTEN_OTLP_TEST_PORT:-14318}:4318"
+    volumes:
+      - ./collector.yaml:/etc/otelcol/charlotte.yaml:ro
+    logging:
+      options:
+        max-size: "1m"
+        max-file: "2"

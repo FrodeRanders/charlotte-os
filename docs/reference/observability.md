@@ -89,6 +89,12 @@ the delta since the previous request, and the total lock-spin count. A nonzero
 spin count is direct evidence that two shards contended for the domain's heap
 arena.
 
+Node-wide busy ticks exclude the scheduler's dedicated idle threads. Their
+`WFI`/`HLT` residency remains in per-thread diagnostics but cannot become CPU
+pressure for placement or export. The idle marker is captured before scheduler
+publication; it is not inferred from a name, ASID or caller manifest. Retired
+idle contributions are excluded as well.
+
 The observe service also samples those aggregates once per second into a
 bounded in-memory ring and serves it through `observability::OP_HISTORY`. The
 version-2 `CCHIST` payload carries a header (magic, version, record size, record
@@ -137,6 +143,10 @@ chunk-sized window from its bounded in-memory history; a longer outage appears
 as an explicit sequence/session gap rather than unbounded buffering.
 `scripts/fs-inspect.py` reads the raw chunks from a captured NVMe image, and
 `scripts/telemetry-archive.py` reassembles and prints the samples.
+
+The optional [native OTLP exporter](otlp-export.md) can send current metrics to
+a configured collector without local archiving. It runs separately from observe
+and does not change the cluster's five-second pressure-report path.
 
 Threads do not currently carry human-readable names. The snapshot identifies
 them by thread ID, generation, and owning address-space ID; application and

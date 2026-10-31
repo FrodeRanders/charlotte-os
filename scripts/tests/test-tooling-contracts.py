@@ -3,6 +3,7 @@
 
 import os
 import json
+import importlib.util
 import shutil
 from pathlib import Path
 import subprocess
@@ -18,6 +19,7 @@ class ToolingContracts(unittest.TestCase):
     def setUpClass(cls):
         cls.temp = tempfile.TemporaryDirectory(prefix="charlotte-tooling-")
         directory = Path(cls.temp.name)
+        (directory / "boot-out").mkdir()
         channel = next(line.split('"')[1] for line in (ROOT / "rust-toolchain.toml").read_text().splitlines()
                        if line.startswith("channel ="))
         # The actual build script now uses the shared management grammar. Build
@@ -45,8 +47,11 @@ class ToolingContracts(unittest.TestCase):
                      "CATTEN_MANAGEMENT_TLS_RESOURCE", "CATTEN_RESOURCE_POLICY", "CATTEN_BOOT_TEST_INSTALLED_POLICY",
                      "CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS"):
             env.pop(name, None)
+        for name in ("CATTEN_OTLP_ENDPOINT", "CATTEN_OTLP_INTERVAL_MS", "CATTEN_OTLP_TIMEOUT_MS"):
+            env.pop(name, None)
         env.update(CATTEN_TRUST_MODE="development", CARGO_CFG_TARGET_ARCH="aarch64",
-                   CARGO_MANIFEST_DIR=str(ROOT / "crates/catten"))
+                   CARGO_MANIFEST_DIR=str(ROOT / "crates/catten"),
+                   OUT_DIR=str(Path(self.temp.name) / "boot-out"))
         return env
 
     def runner_rejects(self, args, diagnostic):
@@ -100,6 +105,22 @@ class ToolingContracts(unittest.TestCase):
             result = subprocess.run([str(self.build)], env=env, capture_output=True, text=True, timeout=10)
             self.assertNotEqual(result.returncode, 0, value)
             self.assertIn("CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS", result.stderr)
+
+    def test_outbound_otlp_profile_matches_cached_kernel_inspection(self):
+        spec=importlib.util.spec_from_file_location("boot_profile",ROOT/"scripts/check-boot-profile.py")
+        profile=importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(profile)
+        for endpoint in (None,"http://10.0.2.2:14318/v1/metrics","http://127.0.0.1"):
+            env=self.environment()
+            if endpoint is not None:env["CATTEN_OTLP_ENDPOINT"]=endpoint
+            result=subprocess.run([str(self.build)],env=env,capture_output=True,text=True,timeout=10)
+            self.assertEqual(result.returncode,0,result.stderr)
+            actual=(Path(env["OUT_DIR"])/"otlp-profile.bin").read_bytes()
+            self.assertEqual(actual,profile.otlp_profile(env))
+        for endpoint in ("","https://10.0.2.2:4318/v1/metrics","http://collector:4318/x","http://10.0.2.2/x\r\nInjected: value"):
+            env=self.environment();env["CATTEN_OTLP_ENDPOINT"]=endpoint
+            result=subprocess.run([str(self.build)],env=env,capture_output=True,text=True,timeout=10)
+            self.assertNotEqual(result.returncode,0)
 
     def test_retired_build_variables_reject_without_values(self):
         for name in RETIRED:
