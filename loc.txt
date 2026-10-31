@@ -1,16 +1,51 @@
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- Language              Files        Lines         Code     Comments       Blanks
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- Assembly                  5          541          497            3           41
- JSON                      3           86           86            0            0
- Just                      1           72           62            2            8
- LD Script                 3          179          104           45           30
- Markdown                  3          821            0          650          171
- TOML                      5           85           76            2            7
-─────────────────────────────────────────────────────────────────────────────────
- Rust                    186        12084        10499          386         1199
- |- Markdown              82          456            0          418           38
- (Total)                            12540        10499          804         1237
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- Total                   207        14324        11324         1506         1494
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CharlotteOS maintained repository counts
+Generated: 2026-10-31; cloc 2.10
+
+Scope: Git-tracked working-tree files, including tests and current local edits.
+Excluded: downloaded/build dependencies, ignored/untracked artifacts, bundled
+third-party limine-binary/, Cargo.lock and this report. cloc's default duplicate
+file filtering applies within each section; binaries/unrecognized files are ignored.
+Linker *.x files are classified as Linker Script; TLC *.cfg inputs as Text.
+Documentation, verification models and audit records are reported separately:
+cloc's "code" column includes prose and data, not just executable source.
+
+SOURCE, TESTS, TOOLING AND CONFIGURATION
+Tracked files outside docs/, excluding Markdown and dependency lockfiles.
+
+Language                 files      blank    comment         code
+-----------------------------------------------------------------
+Rust                       773     14,478     17,079      203,159
+Python                      55        966        443        7,438
+Bourne Shell                24        290        444        3,780
+Assembly                    22        398        159        2,590
+TOML                        34        117         81          743
+Text                         3          0          0          434
+YAML                         4         47         11          375
+JSON                         7          0          0          183
+Linker Script                4         35         55          139
+diff                         4         15         47           80
+Justfile                     1         13          5           66
+-----------------------------------------------------------------
+SUM                        931     16,359     18,324      218,987
+
+DOCUMENTATION, VERIFICATION MODELS AND RECORDS
+Tracked docs/ files and Markdown files throughout the maintained repository.
+
+Language                 files      blank    comment         code
+-----------------------------------------------------------------
+JSON                       180          0          0      126,387
+Markdown                   446     14,838          0       76,014
+TeX                         29      2,021         60       11,271
+TLA+                        44      1,104        559        8,197
+Text                       192        424          0        2,269
+Bourne Shell                 2         21          9          609
+Rust                         2         22         10          367
+diff                         1         11         90          313
+SVG                         14          0          0           14
+-----------------------------------------------------------------
+SUM                        910     18,441        728      225,441
+
+Reproduce from the repository root:
+
+cloc --vcs=git --exclude-dir=limine-binary,docs --exclude-ext=lock,md --not-match-f='^loc\.txt$' '--force-lang=Linker Script,x'
+cloc --vcs='git ls-files -- docs "*.md"' --exclude-dir=limine-binary --force-lang=Text,cfg
