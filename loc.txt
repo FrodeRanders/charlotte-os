@@ -1,21 +1,18 @@
 CharlotteOS maintained repository counts
-Generated: 2026-10-31; cloc 2.10
+Generated with cloc 2.10
 
-Scope: Git-tracked working-tree files, including tests and current local edits.
-Excluded: downloaded/build dependencies, ignored/untracked artifacts, bundled
-third-party limine-binary/, Cargo.lock and this report. cloc's default duplicate
-file filtering applies within each section; binaries/unrecognized files are ignored.
-Linker *.x files are classified as Linker Script; TLC *.cfg inputs as Text.
-Documentation, verification models and audit records are reported separately:
-cloc's "code" column includes prose and data, not just executable source.
+Scope: Git-tracked working-tree files, including current local edits.
+Excluded: ignored/untracked files, downloaded/build dependencies, bundled
+limine-binary/, dependency lockfiles and this report. Standard cloc duplicate
+filtering applies within each section; binaries/unrecognized files are ignored.
+Linker *.x files count as Linker Script; TLC *.cfg inputs count as Text.
 
 SOURCE, TESTS, TOOLING AND CONFIGURATION
-Tracked files outside docs/, excluding Markdown and dependency lockfiles.
 
 Language                 files      blank    comment         code
 -----------------------------------------------------------------
-Rust                       773     14,478     17,079      203,159
-Python                      55        966        443        7,438
+Rust                       773     14,478     17,079      203,156
+Python                      56        995        454        7,695
 Bourne Shell                24        290        444        3,780
 Assembly                    22        398        159        2,590
 TOML                        34        117         81          743
@@ -26,16 +23,57 @@ Linker Script                4         35         55          139
 diff                         4         15         47           80
 Justfile                     1         13          5           66
 -----------------------------------------------------------------
-SUM                        931     16,359     18,324      218,987
+SUM                        932     16,388     18,335      219,241
+
+SOURCE DISTRIBUTION (same source total; shared dependencies counted once)
+
+Component                            files       code  test/validation   other code
+-----------------------------------------------------------------------------------
+Kernel                                 555    111,224           52,932       58,292
+Kernel demonstrations                    1        130                0          130
+Userspace services/drivers              35     26,619                0       26,619
+Userspace demonstrations                10        648               39          609
+Userspace test applications             15      2,757            2,757            0
+Shared runtimes/protocols/libraries    181     56,854           19,240       37,614
+Host tooling/build/configuration       135     21,009           12,149        8,860
+-----------------------------------------------------------------------------------
+SUM                                    932    219,241           87,117      132,124
+Identified test/validation code: 87,117 lines (39.7% of source code).
+
+Rust-only test/validation code: 78,126 of 203,156 code lines
+(38.5%).
+
+Attribution rules and limits:
+- Kernel includes native self-tests and adjacent subsystem fixtures; kernel
+  demonstrations are listed separately. 'Other code' approximates kernel
+  proper but still includes unclassified diagnostic/fixture scaffolding.
+- Userspace demonstrations: catten-user, catten-services/examples, echo, greet.
+- Userspace test applications: cclient, client, kafka_fence_smoke, kafka_smoke,
+  kafka_step_input, kafka_step_proc, nclient, nvme_client, objstore_client,
+  rclient, s3_smoke, security_probe, shutdown_probe, smoke, tcpclient.
+- Runtime service binaries are separate from the shared catten-services SDK,
+  catten-rt/syscall, protocol, connector, crypto and Raft libraries.
+- Dedicated tests/self_test/*_tests/fixtures paths, test/check/verify and
+  smoke/probe filenames, CI workflows, selected fixture-generation inputs and
+  boot_fixture/hash_contract/audit_receive_lease files count as validation.
+- Inline Rust cfg(test) items, test modules, #[test] items and test_* helpers
+  are split into fragments; cloc checks test + other == original per file.
+- This is an identifiable-source lower bound, not a build-size estimate.
+  Already cfg(test)-gated code is included; scattered fixture constants,
+  imports, call sites and mixed boot/test-runner branches may remain in other
+  code. No claim is made that all other code belongs in a stripped image.
+  A future test-free image also needs gated boot registrations and bundle
+  selection, with artifact checks proving that probes/fixtures are absent.
+- Formal models, model configurations and audit evidence are below, not in
+  the source/test percentage. Prose and data also appear as cloc 'code'.
 
 DOCUMENTATION, VERIFICATION MODELS AND RECORDS
-Tracked docs/ files and Markdown files throughout the maintained repository.
 
 Language                 files      blank    comment         code
 -----------------------------------------------------------------
-JSON                       180          0          0      126,387
-Markdown                   446     14,838          0       76,014
-TeX                         29      2,021         60       11,271
+JSON                       181          0          0      126,533
+Markdown                   446     14,842          0       76,045
+TeX                         29      2,022         60       11,282
 TLA+                        44      1,104        559        8,197
 Text                       192        424          0        2,269
 Bourne Shell                 2         21          9          609
@@ -43,9 +81,9 @@ Rust                         2         22         10          367
 diff                         1         11         90          313
 SVG                         14          0          0           14
 -----------------------------------------------------------------
-SUM                        910     18,441        728      225,441
+SUM                        911     18,446        728      225,629
 
-Reproduce from the repository root:
+Reproduce: python3 scripts/count-loc.py
 
-cloc --vcs=git --exclude-dir=limine-binary,docs --exclude-ext=lock,md --not-match-f='^loc\.txt$' '--force-lang=Linker Script,x'
-cloc --vcs='git ls-files -- docs "*.md"' --exclude-dir=limine-binary --force-lang=Text,cfg
+Requires Python 3, Git and cloc; no third-party Python packages.
+The classifier and explicit demo/probe lists live in scripts/count-loc.py.
