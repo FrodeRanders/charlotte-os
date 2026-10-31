@@ -29,6 +29,12 @@ leave them disabled. [Management startup observation](management-tls.md#executio
 can also qualify a minimal boot when its resource and reader credentials are
 provided. Positive startup expectations reject missing input files before build.
 
+Raw telemetry disk archiving is disabled by default in both modes. Live
+observability, bounded memory history and fresh placement reports remain active.
+Set `CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS=60000` to opt into diagnostic archiving
+when building; changing it requires rebuild/restart and cached kernels must
+match. See [telemetry policy](../guides/configuration.md#diagnostic-telemetry-persistence).
+
 ## What runs during every boot
 
 Mandatory startup validation lives in `catten::boot_validation`, outside

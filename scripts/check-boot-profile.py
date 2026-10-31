@@ -2,7 +2,9 @@
 """Reject a reused kernel from the wrong boot mode and native fixtures in minimal ELFs."""
 
 import argparse
+import os
 from pathlib import Path
+import re
 import struct
 
 MODES = {"minimal": b"CHARLOTTE_BOOT_MODE=minimal", "test": b"CHARLOTTE_BOOT_MODE=tests"}
@@ -25,9 +27,13 @@ def symbols(data):
             yield bytes(names[start:names.index(b"\0", start)])
 
 
-def validate(data, mode):
+def validate(data, mode, archive_interval_ms=None):
     if MODES[mode] not in data or any(marker in data for key, marker in MODES.items() if key != mode):
         raise ValueError(f"kernel does not match requested {mode} boot mode; rebuild it")
+    if archive_interval_ms is not None:
+        selected = re.findall(rb"CHARLOTTE_TELEMETRY_ARCHIVE_INTERVAL_MS=([0-9]+);", data)
+        if not selected or any(int(value) != archive_interval_ms for value in selected):
+            raise ValueError("kernel telemetry archive policy does not match requested interval; rebuild it")
     names = list(symbols(data))
     if not names:
         raise ValueError("kernel symbol table required for boot-profile inspection")
@@ -47,7 +53,13 @@ def main():
     parser.add_argument("--mode", choices=MODES, required=True)
     args = parser.parse_args()
     try:
-        validate(args.kernel.read_bytes(), args.mode)
+        selected = os.environ.get("CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS", "0")
+        if not selected or any(char < "0" or char > "9" for char in selected):
+            raise ValueError("CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS must be 0 or 1000..=86400000")
+        interval = int(selected)
+        if interval != 0 and not 1000 <= interval <= 86400000:
+            raise ValueError("CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS must be 0 or 1000..=86400000")
+        validate(args.kernel.read_bytes(), args.mode, interval)
     except (ValueError, OSError, struct.error, IndexError) as error:
         parser.exit(1, f"error: {error}\n")
     print(f">>> Kernel boot profile verified: {args.mode}.")

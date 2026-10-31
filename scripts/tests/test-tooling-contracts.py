@@ -42,7 +42,8 @@ class ToolingContracts(unittest.TestCase):
     def environment(self):
         env = os.environ.copy()
         for name in (*RETIRED, "CLUSTER_SIGN_PRIVATE_KEY", "CARGO_FEATURE_BOOT_TRUST_TEST", "CARGO_FEATURE_DEPLOY_NET_TEST",
-                     "CATTEN_MANAGEMENT_TLS_RESOURCE", "CATTEN_RESOURCE_POLICY", "CATTEN_BOOT_TEST_INSTALLED_POLICY"):
+                     "CATTEN_MANAGEMENT_TLS_RESOURCE", "CATTEN_RESOURCE_POLICY", "CATTEN_BOOT_TEST_INSTALLED_POLICY",
+                     "CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS"):
             env.pop(name, None)
         env.update(CATTEN_TRUST_MODE="development", CARGO_CFG_TARGET_ARCH="aarch64",
                    CARGO_MANIFEST_DIR=str(ROOT / "crates/catten"))
@@ -81,6 +82,24 @@ class ToolingContracts(unittest.TestCase):
             result = subprocess.run([str(self.build)], env=env, capture_output=True, text=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn(f"linker/{arch}.ld", result.stdout)
+
+    def test_telemetry_archive_defaults_off_and_accepts_bounded_intervals(self):
+        for value in (None, "0", "1000", "10000", "60000", "86400000"):
+            env = self.environment()
+            if value is not None:
+                env["CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS"] = value
+            result = subprocess.run([str(self.build)], env=env, capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(f"cargo:rustc-env=CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS={value or '0'}", result.stdout)
+            self.assertIn("cargo:rerun-if-env-changed=CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS", result.stdout)
+
+    def test_invalid_telemetry_archive_policy_rejects_at_build(self):
+        for value in ("", "on", "1", "999", "86400001", "-1000", "+1000", " 1000", "1000 ", "18446744073709551616"):
+            env = self.environment()
+            env["CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS"] = value
+            result = subprocess.run([str(self.build)], env=env, capture_output=True, text=True, timeout=10)
+            self.assertNotEqual(result.returncode, 0, value)
+            self.assertIn("CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS", result.stderr)
 
     def test_retired_build_variables_reject_without_values(self):
         for name in RETIRED:

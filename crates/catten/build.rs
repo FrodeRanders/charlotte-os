@@ -2,6 +2,7 @@ use std::env;
 
 fn main() {
     management_resource();
+    telemetry_archive();
     // Compile-time policy is trusted Rust build input. Require an absolute path
     // so invocation cwd cannot silently select a different operator profile.
     println!("cargo:rerun-if-env-changed=CATTEN_RESOURCE_POLICY");
@@ -80,6 +81,18 @@ fn main() {
         }
         _ => panic!("Invalid ISA"),
     }
+}
+
+fn telemetry_archive() {
+    const INPUT: &str = "CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS";
+    println!("cargo:rerun-if-env-changed={INPUT}");
+    let interval = match env::var(INPUT) {
+        Err(env::VarError::NotPresent) => charlotte_launch::telemetry::DEFAULT_ARCHIVE_INTERVAL_MS,
+        Ok(value) => charlotte_launch::telemetry::parse_archive_interval(&value)
+            .expect("CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS must be 0 or 1000..=86400000"),
+        Err(_) => panic!("CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS must be ASCII decimal"),
+    };
+    println!("cargo:rustc-env={INPUT}={interval}");
 }
 
 /// The public Secure Boot fixture may compile a different exact installed

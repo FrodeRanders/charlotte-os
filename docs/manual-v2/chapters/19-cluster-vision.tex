@@ -622,7 +622,8 @@ integer EWMA before committing placement input through Raft. After three
 missed reporting intervals it treats a sample as unknown. A new boot
 incarnation resets the filter rather than blending unrelated processes.
 
-This does not filter the observability archive. Raw one-second samples retain
+This does not filter observability history. Raw one-second samples in memory,
+and in the optional disk archive, retain
 short-lived spikes for diagnosis; the five-second report, EWMA, bucket
 hysteresis, and freshness lease form a distinct control signal. The
 descriptor's stack budget and fixed runtime pages form a memory promise. The
@@ -675,7 +676,7 @@ DNS constructs the underlying, bounded \texttt{CLOBSV2} record from one
 locally applied catalog view. It serves the record only while the same
 bounded-read lease used by DSR is valid; httpd decodes it and returns HTTP 503
 when no fresh record is available. Raw one-second observations remain in the
-node archive. The cluster view instead exposes the slower signals and
+node's memory history and optional diagnostic archive. The cluster view instead exposes the slower signals and
 decisions that drive placement, while retaining a per-node freshness marker
 so a committed resource promise is not confused with a recent capacity
 measurement.

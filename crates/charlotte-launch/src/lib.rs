@@ -3,6 +3,7 @@
 extern crate alloc;
 
 pub mod execution_target;
+pub mod telemetry;
 
 pub const CONFIG_VADDR: usize = 0x0000_0000_0001_0000;
 pub const CONFIG_PAGE_SIZE: u32 = 4096;

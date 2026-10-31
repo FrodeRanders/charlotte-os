@@ -3,7 +3,8 @@
 //! Exposes machine-wide scheduler statistics through endpoint IPC. It also
 //! samples a bounded, in-memory resource history so operators can see trends
 //! rather than only the current instant. History lives in this service's own
-//! heap and is also archived asynchronously to a bounded object-store ring.
+//! heap. Optional diagnostic persistence archives it asynchronously to a
+//! bounded object-store ring; placement does not consume that archive.
 #![no_std]
 #![no_main]
 
@@ -15,6 +16,7 @@ use alloc::collections::VecDeque;
 
 use catten_rt::{
     Context,
+    ManifestValue,
     owned::{
         Connection,
         Endpoint,
@@ -491,6 +493,21 @@ fn reply_history(reply: ReplyToken, frequency_hz: u64, history: &VecDeque<Histor
 }
 
 fn main(ctx: Context) -> ! {
+    let archive_interval_ms =
+        match ctx.manifest_value(charlotte_launch::telemetry::ARCHIVE_INTERVAL_MS_KEY) {
+            None => charlotte_launch::telemetry::DEFAULT_ARCHIVE_INTERVAL_MS,
+            Some(ManifestValue::Unsigned(value))
+                if charlotte_launch::telemetry::valid_archive_interval(value) =>
+            {
+                value
+            }
+            _ => catten_rt::domain_abort(),
+        };
+    if archive_interval_ms == 0 {
+        catten_rt::logln!("[observe] history=memory archive=disabled");
+    } else {
+        catten_rt::logln!("[observe] history=memory archive_interval_ms={}", archive_interval_ms);
+    }
     let ns_connection = ctx.bootstrap_connection().unwrap_or_else(|| unsafe { thread_exit() });
     let system_observer = ctx.system_observer_cap().unwrap_or_else(|| unsafe { thread_exit() });
     let endpoint = Endpoint::create(observability::INTERFACE, observability::VERSION, 16)
@@ -514,7 +531,7 @@ fn main(ctx: Context) -> ! {
     let (mut ticks, frequency_hz) = monotonic_clock();
     let interval_ticks =
         frequency_hz.saturating_mul(observability::HISTORY_SAMPLE_INTERVAL_MS) / 1000;
-    let flush_ticks = frequency_hz.saturating_mul(observability::ARCHIVE_FLUSH_INTERVAL_MS) / 1000;
+    let flush_ticks = frequency_hz.saturating_mul(archive_interval_ms) / 1000;
     let mut next_sample_ticks = ticks.saturating_add(interval_ticks.max(1));
     let mut next_archive_retry_ticks = ticks;
     let mut archive: Option<Archive> = None;
@@ -539,7 +556,7 @@ fn main(ctx: Context) -> ! {
         // Storage may not exist yet (the object store starts after observe) or
         // may be restarting. Look up infrequently and fail soft: a missing
         // archive delays durability, never sampling.
-        if archive.is_none() && ticks >= next_archive_retry_ticks {
+        if archive_interval_ms != 0 && archive.is_none() && ticks >= next_archive_retry_ticks {
             if let Some((_generation, connection)) =
                 try_registered_name_owned(ns_connection, objstore::NAME)
             {

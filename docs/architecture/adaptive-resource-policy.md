@@ -130,10 +130,12 @@ Phase 1 changes no allocation behavior. It adds:
   each record carries free/usable frames, logical processors, the monotonic
   CPU-busy counter, and aggregate live/peak heap bytes. httpd renders the most
   recent samples as the `history` section.
-- **Durable archive**: the same sampler writes to a bounded ring of
+- **Optional durable archive**: disabled by default. Selecting a positive
+  `CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS` at kernel build time makes the same
+  sampler write to a bounded ring of
   object-store chunks (`CCARCH01`, version 2): sixteen 8 KiB chunks under reserved IDs
-  `0xfffc_0000_0000_0001..16`, with the active chunk rewritten every ten
-  seconds and on rotation. Sequence numbers let an offline reader detect
+  `0xfffc_0000_0000_0001..16`, with the active chunk rewritten at the selected
+  interval or when full. Sequence numbers let an offline reader detect
   overwritten history after the ring wraps. The store is resolved lazily
   through the name service (`obj`). Flushes are an asynchronous four-stage
   create/size/write/flush transaction with a two-second deadline; all memory,
@@ -149,7 +151,7 @@ operation; scheduler, loader, and teardown hooks are off the interrupt path.
 
 ### Telemetry export
 
-Snapshots feed the live dashboard; the stored archive lets us examine earlier
+Snapshots feed the live dashboard; an enabled archive lets us examine earlier
 behavior. Both need enough context for developers and operators to interpret
 the measurements:
 

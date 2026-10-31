@@ -1463,9 +1463,6 @@ pub mod observability {
     pub const ARCHIVE_CHUNKS: u64 = 16;
     /// One chunk is two pages, the size the object store writes efficiently.
     pub const ARCHIVE_CHUNK_BYTES: usize = 8192;
-    /// A partially filled chunk is rewritten at this cadence.
-    pub const ARCHIVE_FLUSH_INTERVAL_MS: u64 = 10_000;
-
     pub mod archive_header {
         pub const MAGIC: usize = 0;
         pub const VERSION: usize = 1;

@@ -1101,7 +1101,22 @@ impl PreparingObserver {
     fn start(self) -> Result<ServiceDomain, ObserverLaunchError> {
         bootstrap::write_bootstrap_cap(self.domain.loaded().config_frame, self.connection);
         bootstrap::write_system_observer_cap(self.domain.loaded().config_frame, self.observer);
-        bootstrap::write_manifest(self.domain.loaded().config_frame, &[]);
+        let archive_interval_ms = env!("CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS")
+            .parse::<u64>()
+            .expect("build validated telemetry archive interval");
+        crate::logln!(concat!(
+            "CHARLOTTE_TELEMETRY_ARCHIVE_INTERVAL_MS=",
+            env!("CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS"),
+            ";"
+        ));
+        bootstrap::write_manifest(
+            self.domain.loaded().config_frame,
+            &[bootstrap::ManifestEntry {
+                key: charlotte_launch::telemetry::ARCHIVE_INTERVAL_MS_KEY,
+                flags: 0,
+                value: bootstrap::ManifestValue::Unsigned(archive_interval_ms),
+            }],
+        );
         let limits = adaptive_service_limits(self.domain.loaded().address_space);
         try_start_domain_with_limits(self.domain.finish(), limits, true)
             .map_err(ObserverLaunchError::Thread)

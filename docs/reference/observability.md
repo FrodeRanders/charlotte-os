@@ -99,10 +99,32 @@ processors, cumulative CPU-busy ticks, and aggregate live and peak heap bytes.
 The ring holds roughly four minutes of history and is lost when the service
 restarts.
 
-The same samples are archived durably. The archive is a bounded ring of
+Disk archiving is optional and **disabled by default**, independently of
+debug/release and minimal/test builds. Live snapshots and the 256-sample memory
+history continue in either mode. With archiving disabled, observe never looks
+up the object store or starts an archive transaction.
+
+Set `CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS` when building the kernel: `0` disables
+archiving; `1000..=86400000` enables it with that target partial-chunk flush
+interval. Unset selects `0`; empty, malformed and out-of-range values reject.
+For example:
+
+```sh
+CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS=60000 scripts/run-aarch64.sh release --minimal
+```
+
+The same input works with the x86 runner and direct kernel Cargo builds. Cargo
+tracks setting changes; the kernel passes the selected value through observe's
+read-only `arch-ms` manifest entry. Selection requires rebuild/restart, not a
+live toggle. Boot logs identify the interval, and runners reject a cached kernel
+with a different policy. Disabling persistence preserves existing archive
+objects for offline diagnosis; it neither reads them as current samples nor
+deletes or resets them.
+
+When enabled, the archive is a bounded ring of
 sixteen 8 KiB objects in the local object store, addressed by the reserved IDs
 `0xfffc_0000_0000_0001` through `..16`; the service rewrites the active chunk
-at least every ten seconds and rotates when it fills. Each version-2
+at the selected interval or when it fills, then rotates full chunks. Each version-2
 `CCARCH01` chunk
 carries a header (magic, version, chunk index, session ticks, first sequence,
 record count, counter frequency) followed by the same per-sample fields plus a
@@ -219,14 +241,22 @@ in-flight, decoded frames); `disco::OP_LIST_PEERS` supplies the peer table;
 and `dns` also serves `raft::OP_CLUSTER_STATUS` for commit index, member
 count, and leader identity.
 
-The placement controller does not consume this detailed stream directly.
+The placement controller does not consume the observer's history or archive.
 `dns` obtains a five-second node-pressure sample, rejects replayed epochs, and
 low-pass filters memory and CPU before proposing a coarser Raft value. Its
 status page publishes four cumulative decision counters at offsets 52--64:
 accepted capacity observations, proposed filtered capacity commands, proposed
 placement reassignments, and the subset forced by membership or drain. Keeping
-raw archive samples beside explicit controller counters lets operators inspect
+optional raw archive samples beside explicit controller counters lets operators inspect
 both what happened and why the placement actuator did—or did not—respond.
+
+Raw measurements are diagnostic data; the node need not persist them for
+placement. Accepted filtered capacity values can remain in the committed
+catalog, but eligibility also requires the leader's in-memory freshness lease
+for the matching boot nonce. Restart/election does not restore that lease from
+disk. Committed deployments, replica pins and resource promises remain durable:
+an expired observation does not release those promises or manufacture capacity.
+Raft term, vote, log and snapshot persistence is independent of this setting.
 
 The complementary cluster keyhole is served at `GET /cluster` with its
 versioned JSON at `GET /cluster/metrics`. DNS constructs one bounded

@@ -14,6 +14,7 @@ This guide matches the manual's **Configuration** chapter.
 | Domain TLS entropy | Startup consumes `EntropyConfig` with an owned `rng` connection (or explicit architectural-only source) and a positive request budget. The compiled default is `5000` ms; admission retains that complete configuration through each operation; see [TLS configuration](../reference/tls-client.md). |
 | Dependency advisory policy | `.cargo/audit.toml` and the scanner pin in `.cargo/audit-version`, evaluated by CI/local validation. They do not configure a running node; see [the advisory gate](../reference/dependency-advisories.md). |
 | Kernel resource capacity | One trusted Rust build profile, compiled into the kernel and fixed for the boot. |
+| Diagnostic telemetry archive | `CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS` at kernel build time: default/unset `0` disables disk archiving; `1000..=86400000` enables periodic archiving. The kernel supplies observe's read-only launch manifest. Live sampling/history and placement reporting remain active. |
 | Bootstrap service assignments | `CATTEN_CLUSTER_SERVICES` at build time; runners accept repeatable `--cluster-service [NAME=]IPv4:PORT`. The first committed signed ingress policy replaces bootstrap assignments. |
 | Launch/grant trust | One prepared kernel boot-trust policy. Resource capacity settings grant no signing authority or platform classification. Production trust remains disabled pending protected provisioning/custody. |
 | Application limits and capabilities | Signed deployment plus kernel admission, including stack/thread limits, executable variants and protocol-specific launch profiles. Requests do not enlarge node capacity. |
@@ -115,6 +116,31 @@ protocol dimensions above. Larger queues do not increase outstanding work.
 Rebuild and qualify layout/capacity, CPU cost, short completions, original caller
 deadlines, timeout/late completion and retained teardown together. See the
 [descriptor contract](../reference/entropy.md#descriptor-ownership-and-terminal-failure).
+
+## Diagnostic telemetry persistence
+
+Normal builds keep the observer's raw one-second measurements in its bounded
+memory history without writing them to disk. Enable local diagnostic archiving
+explicitly, for example once per minute:
+
+```sh
+CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS=60000 scripts/run-aarch64.sh release --minimal
+# Rebuild with archiving disabled again.
+CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS=0 scripts/run-aarch64.sh release --minimal
+```
+
+The input works on both architectures and with either boot mode. It must be
+ASCII decimal `0` or `1000..=86400000`; invalid settings reject. The interval
+is a target partial-chunk delay; a full chunk can flush sooner. It does not
+change the one-second sample cadence or ring dimensions. The kernel logs the
+selection and cached-kernel reuse checks it. A running node keeps its launch
+policy; there is no live reconfiguration endpoint. Existing archive objects
+remain available for offline inspection when future writes are disabled.
+
+Placement reads current kernel pressure, not this archive. Its filtered reports
+have boot identities and leader-local freshness leases; durable Raft/catalog
+state and committed resource promises still require persistence. See
+[observability](../reference/observability.md).
 
 ## Related limits
 

@@ -74,6 +74,16 @@ class BootProfiles(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "fixture"):
             profile.validate(elf("minimal") + b"SELFTEST COMPLETE: passed=", "minimal")
 
+    def test_cached_kernel_cannot_silently_change_archive_policy(self):
+        for mode in profile.MODES:
+            for interval in (0, 1000, 10000, 60000, 86400000):
+                data = elf(mode) + f"CHARLOTTE_TELEMETRY_ARCHIVE_INTERVAL_MS={interval};".encode()
+                profile.validate(data, mode, interval)
+                with self.assertRaisesRegex(ValueError, "telemetry archive policy"):
+                    profile.validate(data, mode, 0 if interval else 10000)
+            with self.assertRaisesRegex(ValueError, "telemetry archive policy"):
+                profile.validate(elf(mode), mode, 0)
+
     def bundle(self, arch, mode, root, validate=False):
         code = ('source "$1/scripts/lib/service-bundle.sh"; '
                 'catten_service_bundle "$2" "$3" "$4"; '
