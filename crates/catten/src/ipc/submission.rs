@@ -1,4 +1,4 @@
-//! Copy/vector preparation and every unpublished rollback run outside IPC.
+//! Scalar attachment/vector preparation and ordinary rollback run outside IPC.
 //! Exact roots precede preparation; publication revalidates captured authority.
 use super::*;
 use crate::memory::{
@@ -110,13 +110,18 @@ impl Submission {
     }
 }
 
-pub(super) fn call_copy(
+pub(super) fn call_memory(
     caller: AddressSpaceId,
     connection: CapabilityId,
     opcode: u32,
     arg0: u64,
     memory: MemoryObjectCap,
     delegation: Option<(CapabilityId, ConnectionRights)>,
+    prepare: impl FnOnce(
+        AddressSpaceId,
+        MemoryObjectCap,
+        AddressSpaceId,
+    ) -> Result<object::PreparedTransfer, object::MemoryObjectError>,
 ) -> Result<CapabilityId, IpcError> {
     Submission::prepare(caller, connection, ConnectionRights::CALL)?.run(|submission| {
         PreparedCall::run(caller, connection, |prepared| {
@@ -142,7 +147,7 @@ pub(super) fn call_copy(
                 delegated
             };
             prepared.attach(
-                object::prepare_copy(caller, memory, submission.server)
+                prepare(caller, memory, submission.server)
                     .map_err(|_| IpcError::MemoryTransferFailed)?,
             )?;
             let mut ipc = IPC.write();
@@ -158,29 +163,113 @@ pub(super) fn call_copy(
     })
 }
 
-pub(super) fn send_copy(
+/// One containing owner for source/destination roots, escrow/private backing,
+/// attachment storage and post-publication delivery. Drop retains all fields;
+/// only explicit finish may invoke the active transfer cleanup policy.
+#[must_use]
+struct PreparedSend(core::mem::ManuallyDrop<SendResources>);
+
+struct SendResources {
+    submission: Option<Submission>,
+    transfer: Option<object::PreparedTransfer>,
+    memory: Option<MemoryAttachments>,
+    delivery: Option<Delivery>,
+}
+
+impl PreparedSend {
+    fn new(sender: AddressSpaceId, connection: CapabilityId) -> Result<Self, IpcError> {
+        let submission = Submission::prepare(sender, connection, ConnectionRights::SEND)?;
+        Ok(Self(core::mem::ManuallyDrop::new(SendResources {
+            submission: Some(submission),
+            transfer: None,
+            memory: None,
+            delivery: None,
+        })))
+    }
+
+    fn prepare(
+        &mut self,
+        cap: MemoryObjectCap,
+        prepare: impl FnOnce(
+            AddressSpaceId,
+            MemoryObjectCap,
+            AddressSpaceId,
+        ) -> Result<object::PreparedTransfer, object::MemoryObjectError>,
+        attachments: impl FnOnce(MemoryObjectCap) -> Result<MemoryAttachments, IpcError>,
+    ) -> Result<(), IpcError> {
+        let resources = &mut *self.0;
+        assert!(resources.transfer.is_none() && resources.memory.is_none());
+        let submission = resources.submission.as_ref().unwrap();
+        resources.transfer = Some(
+            prepare(submission.caller, cap, submission.server)
+                .map_err(|_| IpcError::MemoryTransferFailed)?,
+        );
+        resources.memory = Some(attachments(resources.transfer.as_ref().unwrap().target_cap())?);
+        Ok(())
+    }
+
+    fn publish(&mut self, opcode: u32, arg0: u64) -> Result<(), IpcError> {
+        let resources = &mut *self.0;
+        let submission = resources.submission.as_ref().unwrap();
+        let mut ipc = IPC.write();
+        submission.validate(&ipc)?;
+        object::commit_undelivered_transfers(core::slice::from_mut(
+            resources.transfer.as_mut().unwrap(),
+        ))
+        .map_err(|_| IpcError::MemoryTransferFailed)?;
+        resources.delivery = Some(
+            enqueue_message(
+                &mut ipc,
+                submission.endpoint,
+                submission.caller,
+                opcode,
+                arg0,
+                None,
+                resources.memory.take().unwrap(),
+                None,
+            )
+            .expect("reserved memory-send endpoint changed under IPC ownership"),
+        );
+        Ok(())
+    }
+
+    fn finish(mut self) -> Result<(), IpcError> {
+        // All ordinary returns leave IPC before cleanup. Keep both exact roots
+        // through source fence/pin completion, storage disposal and delivery.
+        drop(self.0.transfer.take());
+        drop(self.0.memory.take());
+        if let Some(delivery) = self.0.delivery.take() {
+            delivery.notify();
+        }
+        self.0.submission.take().unwrap().complete()
+    }
+}
+
+impl Drop for PreparedSend {
+    fn drop(&mut self) {
+        // No implicit field destruction, registry access, source rollback,
+        // backing release, notification or root completion on abandonment.
+    }
+}
+
+pub(super) fn send_memory(
     sender: AddressSpaceId,
     connection: CapabilityId,
     opcode: u32,
     arg0: u64,
     memory: MemoryObjectCap,
+    prepare: impl FnOnce(
+        AddressSpaceId,
+        MemoryObjectCap,
+        AddressSpaceId,
+    ) -> Result<object::PreparedTransfer, object::MemoryObjectError>,
 ) -> Result<(), IpcError> {
-    Submission::prepare(sender, connection, ConnectionRights::SEND)?.run(|submission| {
-        let mut transfer = object::prepare_copy(sender, memory, submission.server)
-            .map_err(|_| IpcError::MemoryTransferFailed)?;
-        let memory = MemoryAttachments::single(transfer.target_cap())?;
-        let delivery = {
-            let mut ipc = IPC.write();
-            submission.validate(&ipc)?;
-            object::commit_undelivered_transfers(core::slice::from_mut(&mut transfer))
-                .map_err(|_| IpcError::MemoryTransferFailed)?;
-            enqueue_message(&mut ipc, submission.endpoint, sender, opcode, arg0, None, memory, None)
-                .expect("reserved copy-send endpoint changed under IPC ownership")
-        };
-        drop(transfer);
-        delivery.notify();
-        Ok(())
-    })
+    let mut operation = PreparedSend::new(sender, connection)?;
+    let result = operation
+        .prepare(memory, prepare, MemoryAttachments::single)
+        .and_then(|()| operation.publish(opcode, arg0));
+    operation.finish()?;
+    result
 }
 
 pub(super) fn vector(

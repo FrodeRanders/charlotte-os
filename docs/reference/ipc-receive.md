@@ -58,3 +58,25 @@ A signed variant declaring runtime ABI 1 or 2 cannot be placed or launched on an
 ABI 3 node. Rebuild and re-sign all variants and bundled services. The CDEPLOY6
 layout and current persistent record tags are unchanged; exact target matching
 rejects old executable requirements rather than guessing or rewriting them.
+
+## Scalar attachment submission
+
+Scalar copy/move sends and copy/move/read-loan/write-loan calls capture the
+connection, destination and both exact root generations before preparing memory.
+The shared submission adapter retains those roots outside IPC, prepares the
+transfer and single-send attachment storage, then revalidates namespace identity,
+connection payload/rights and endpoint admission under IPC before joint hidden
+publication and enqueue. Ordinary rejection restores the source or releases
+private copy backing after that guard leaves. Delivery notification runs before
+the retained roots complete. Public syscall/SDK grammar and delivery rules are
+unchanged.
+
+`PreparedCall` retains call attachments; `PreparedSend` retains the single-send
+submission, transfer, metadata and pending delivery in one inert containing
+owner. Abandonment performs no child destruction, source restoration, backing
+release, notification or root completion. It retains original charges and is
+terminal, without replay or reconstructed cleanup authority. This qualifies
+the single-send parent, not every active `PreparedTransfer` destructor or vector,
+reply, supervisor and enclosing IRQ context. See the
+[scalar submission controls](../reports/audits/evidence/2026-10-31-scalar-transfer-submission.json)
+and [cleanup scope](cleanup-recovery-details.md#c18-publication-rollback-and-detached-memory).

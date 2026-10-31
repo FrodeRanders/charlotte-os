@@ -782,31 +782,14 @@ pub fn scalar_send_with_memory_move(
     arg0: u64,
     memory_cap: MemoryObjectCap,
 ) -> Result<(), IpcError> {
-    let mut ipc = IPC.write();
-    let (endpoint_id, rights) = match ipc.cap(sender, connection_cap)? {
-        Capability::Connection {
-            endpoint,
-            rights,
-        } => (endpoint, rights),
-        _ => return Err(IpcError::WrongType),
-    };
-    if !rights.contains(ConnectionRights::SEND) {
-        return Err(IpcError::PermissionDenied);
-    }
-
-    let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
-    let mut transfer = crate::memory::object::prepare_move(sender, memory_cap, server)
-        .map_err(|_| IpcError::MemoryTransferFailed)?;
-    let server_memory_cap = transfer.target_cap();
-    let memory = MemoryAttachments::single(server_memory_cap)?;
-    crate::memory::object::commit_undelivered_transfers(core::slice::from_mut(&mut transfer))
-        .map_err(|_| IpcError::MemoryTransferFailed)?;
-    drop(transfer);
-    let delivery = enqueue_message(&mut ipc, endpoint_id, sender, opcode, arg0, None, memory, None)
-        .expect("reserved memory-send endpoint changed under IPC ownership");
-    drop(ipc);
-    delivery.notify();
-    Ok(())
+    submission::send_memory(
+        sender,
+        connection_cap,
+        opcode,
+        arg0,
+        memory_cap,
+        crate::memory::object::prepare_move,
+    )
 }
 
 pub fn scalar_send_with_memory_copy(
@@ -816,7 +799,14 @@ pub fn scalar_send_with_memory_copy(
     arg0: u64,
     memory_cap: MemoryObjectCap,
 ) -> Result<(), IpcError> {
-    submission::send_copy(sender, connection_cap, opcode, arg0, memory_cap)
+    submission::send_memory(
+        sender,
+        connection_cap,
+        opcode,
+        arg0,
+        memory_cap,
+        crate::memory::object::prepare_copy,
+    )
 }
 
 pub fn scalar_call(
@@ -909,13 +899,14 @@ fn scalar_call_with_connection_impl(
     copied_memory: Option<MemoryObjectCap>,
 ) -> Result<CapabilityId, IpcError> {
     if let Some(memory_cap) = copied_memory {
-        return submission::call_copy(
+        return submission::call_memory(
             caller,
             connection_cap,
             opcode,
             arg0,
             memory_cap,
             Some((delegate_cap, delegate_rights)),
+            crate::memory::object::prepare_copy,
         );
     }
     PreparedCall::run(caller, connection_cap, |prepared| {
@@ -957,27 +948,15 @@ pub fn scalar_call_with_memory_move(
     arg0: u64,
     memory_cap: MemoryObjectCap,
 ) -> Result<CapabilityId, IpcError> {
-    PreparedCall::run(caller, connection_cap, |prepared| {
-        let mut ipc = IPC.write();
-        let (endpoint_id, rights) = match ipc.cap(caller, connection_cap)? {
-            Capability::Connection {
-                endpoint,
-                rights,
-            } => (endpoint, rights),
-            _ => return Err(IpcError::WrongType),
-        };
-        if !rights.contains(ConnectionRights::CALL) {
-            return Err(IpcError::PermissionDenied);
-        }
-
-        let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
-        prepared.stage(&mut ipc, caller)?;
-        prepared.attach(
-            crate::memory::object::prepare_move(caller, memory_cap, server)
-                .map_err(|_| IpcError::MemoryTransferFailed)?,
-        )?;
-        prepared.commit(&mut ipc, endpoint_id, opcode, arg0)
-    })
+    submission::call_memory(
+        caller,
+        connection_cap,
+        opcode,
+        arg0,
+        memory_cap,
+        None,
+        crate::memory::object::prepare_move,
+    )
 }
 
 pub fn scalar_call_with_memory_copy(
@@ -987,7 +966,15 @@ pub fn scalar_call_with_memory_copy(
     arg0: u64,
     memory_cap: MemoryObjectCap,
 ) -> Result<CapabilityId, IpcError> {
-    submission::call_copy(caller, connection_cap, opcode, arg0, memory_cap, None)
+    submission::call_memory(
+        caller,
+        connection_cap,
+        opcode,
+        arg0,
+        memory_cap,
+        None,
+        crate::memory::object::prepare_copy,
+    )
 }
 
 pub fn scalar_call_with_memory_borrow_read(
@@ -1018,27 +1005,15 @@ fn scalar_call_with_memory_borrow(
     memory_cap: MemoryObjectCap,
     writable: bool,
 ) -> Result<CapabilityId, IpcError> {
-    PreparedCall::run(caller, connection_cap, |prepared| {
-        let mut ipc = IPC.write();
-        let (endpoint_id, rights) = match ipc.cap(caller, connection_cap)? {
-            Capability::Connection {
-                endpoint,
-                rights,
-            } => (endpoint, rights),
-            _ => return Err(IpcError::WrongType),
-        };
-        if !rights.contains(ConnectionRights::CALL) {
-            return Err(IpcError::PermissionDenied);
-        }
-
-        let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
-        prepared.stage(&mut ipc, caller)?;
-        prepared.attach(
-            crate::memory::object::prepare_loan(caller, memory_cap, server, writable)
-                .map_err(|_| IpcError::MemoryTransferFailed)?,
-        )?;
-        prepared.commit(&mut ipc, endpoint_id, opcode, arg0)
-    })
+    submission::call_memory(
+        caller,
+        connection_cap,
+        opcode,
+        arg0,
+        memory_cap,
+        None,
+        |caller, cap, server| crate::memory::object::prepare_loan(caller, cap, server, writable),
+    )
 }
 
 pub fn reply(server: AddressSpaceId, reply_cap: CapabilityId, result: i64) -> Result<(), IpcError> {

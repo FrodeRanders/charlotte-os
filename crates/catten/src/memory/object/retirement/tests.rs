@@ -443,6 +443,12 @@ pub(crate) fn assert_backing_release_unlocked() {
     assert!(PHYSICAL_FRAME_ALLOCATOR.try_lock().is_some(), "allocator already held before release");
 }
 
+/// Serialized whole-parent abandonment probe; the callback must be inert.
+pub(crate) fn with_registry_locked(work: impl FnOnce()) {
+    let _registry = MEMORY_OBJECTS.lock();
+    work();
+}
+
 fn test_detached_backing(create: &mut impl FnMut(&str) -> usize) {
     for abandon in [false, true] {
         let asid = create("detached backing original");

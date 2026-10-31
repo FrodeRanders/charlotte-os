@@ -1,0 +1,146 @@
+{
+  "date": "2026-10-31",
+  "base_revision": "3980d29eaf6b3b043c9f8012ac0f443cab134dfd",
+  "scope": "SEC-07/18 scalar IPC attachment submission. Move/copy sends and move/copy/read/write-loan calls retain both exact roots and prepare memory outside IPC; single sends retain a complete inert parent and explicitly finish ordinary outcomes after the local IPC guard. Public ABI and hidden-delivery rules are unchanged.",
+  "source_sha256": {
+    "crates/catten/src/ipc/mod.rs": "4146a6c35e2cd296cb9812ca87bb047b7c426c2aac993da5b338c5308ee36c70",
+    "crates/catten/src/ipc/submission.rs": "08cb6a76e6f51775883b6eb2dd60780b9e2da49ad66c55183a03fa6854de50cf",
+    "crates/catten/src/ipc/submission/tests.rs": "57e7005150414d4a1c2a0063d88927f3980708e1cb2e9bc8b433e710587ba27e",
+    "crates/catten/src/memory/object/retirement/tests.rs": "17efbf8df3a6b345204840bf34a9cd0f514f787e7618e413668e80dfff6c5462"
+  },
+  "source_review": "The baseline scalar move-send path prepares memory, allocates attachment storage and destroys PreparedTransfer under IPC. Move/read-loan/write-loan calls likewise prepare under IPC. Existing copy/vector submission already captures both roots and prepares outside IPC; the correction shares that admission and revalidation contract. This is source-confirmed locking/allocation exposure, not an induced production deadlock or allocator-exhaustion result.",
+  "native_controls": [
+    "Copy/move/read-loan/write-loan calls prepare real 35-page transfers outside IPC/lifecycle/root/memory/frame guards with both exact roots leased; endpoint closure then rejects publication, restores source write access and baseline budget/frame counts, and leaves no destination capability.",
+    "Copy/move sends cover attachment-storage rejection, endpoint closure, target-authority retirement and successful publication. Preparation/storage callbacks run outside local guards; publication runs beneath the actual held kernel heap guard. Rejection restores source and exact original accounting; success delivers the original byte and releases receiver capability.",
+    "An unguarded copied-send abandonment retains 70 pages/two objects instead of releasing the private 35-page copy. A moved-send abandonment runs beneath actual lifecycle/root/IPC/heap/physical/memory/authority guards. Both preserve budget, frames, authority-node usage, IRQ state and both leased roots.",
+    "Existing native IPC tests additionally cover successful calls, loan revocation, hidden delivery, cancellation and returned memory. The added scalar-call discriminator specifically tests endpoint rejection after preparation."
+  ],
+  "retention_limit": "Each suite deliberately abandons one copy send and one move send: four private fixture roots remain leased, 105 original/private-copy pages remain charged, and the complete operation metadata/escrow is retained. No receipt is reconstructed for cleanup or retry. These are serialized boot fixtures, not concurrent pressure qualification.",
+  "failed_controls": [
+    {
+      "target": "aarch64",
+      "instance": "scalar-transfer-active-drop-control",
+      "base_revision": "37752d42d5dd4969343fcd0513bc425e3e8854d8",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "tracked_diff_sha256": "065300d15f07b893df92ea897305a02b53ae2b3de269676e99596445bcfa4931",
+      "kernel_sha256": "ff2750181c15c7a1a93628fef418cf27a6f6fb31392217fe006a2c0dfff08b70",
+      "bundle_map_sha256": "69a65dc9795c838d67fe3afdc92eb123ccf4ec8c0f85c74e61739d4833de6895",
+      "serial_sha256": "304e89397c47e8c319873ad03c0bb393830a548479bb5c2c7f9244052ef87cf1",
+      "result": {
+        "reason": "kernel-panic",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 10.319844124955125
+      },
+      "host_check_groups": 0,
+      "diagnostics": [
+        "panicked at crates/catten/src/ipc/submission/tests.rs:290:83:",
+        "called `Result::unwrap()` on an `Err` value: UnknownCapability"
+      ],
+      "classification": "Fixture defect before the intended unsafe-Drop discriminator: the test queried endpoint status through a capability it had deliberately closed. Corrected assertion reads the captured internal endpoint queue. This run does not demonstrate the intended abandonment regression. Original intermediate test-source snapshot was not retained; kernel/diff/serial identities and exact diagnostic are preserved here."
+    },
+    {
+      "target": "aarch64",
+      "instance": "scalar-transfer-active-drop-control-v3",
+      "base_revision": "3980d29eaf6b3b043c9f8012ac0f443cab134dfd",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "tracked_diff_sha256": "da8073cc3f58b28cba1ecefca26859e25c46126b54984e4a4fc6615942a35280",
+      "kernel_sha256": "4278c42aa0d5a52546914c2f255860128acc9541d7225e07f95885068e28c540",
+      "bundle_map_sha256": "69a65dc9795c838d67fe3afdc92eb123ccf4ec8c0f85c74e61739d4833de6895",
+      "serial_sha256": "f5017c230a8821fd749192c999503fb86e1150fea7e44ce2f736842c120d3297",
+      "result": {
+        "reason": "kernel-panic",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 9.989058250037488
+      },
+      "host_check_groups": 0,
+      "diagnostics": [
+        "panicked at crates/catten/src/ipc/submission/tests.rs:336:9:",
+        "assertion `left == right` failed: send abandonment released its child's backing",
+        "  left: Amount { pages: 35, objects: 1 }",
+        " right: Amount { pages: 70, objects: 2 }"
+      ],
+      "classification": "Deliberately unsafe PreparedSend::drop destroys transfer and attachment storage. The unguarded copied-send assertion detects premature release before reaching the held-guard probe. Final source restores the inert parent; subsequent passing runs are separate.",
+      "unsafe_drop_body": [
+        "drop(self.0.transfer.take());",
+        "drop(self.0.memory.take());"
+      ],
+      "unsafe_source_sha256": {
+        "submission_sha256": "615ed7c44151e77684101238d258c3cc313a09e287df72529dfa56fa8f06f2f1",
+        "tests_sha256": "57e7005150414d4a1c2a0063d88927f3980708e1cb2e9bc8b433e710587ba27e"
+      }
+    }
+  ],
+  "native_runs": [
+    {
+      "target": "aarch64-smmuv3",
+      "instance": "scalar-transfer-20261031-arm",
+      "base_revision": "3980d29eaf6b3b043c9f8012ac0f443cab134dfd",
+      "cpus": 4,
+      "timeout_seconds": 300,
+      "tracked_diff_sha256": "3174b49111a4ed48c32d70bbadddee3f51610e5b648f875b2c70d5d84cd38af0",
+      "kernel_sha256": "3f6fabe510771b653e5c13490ceb171c6bc610963fcc8cb079c065fdacaa1dc6",
+      "bundle_map_sha256": "69a65dc9795c838d67fe3afdc92eb123ccf4ec8c0f85c74e61739d4833de6895",
+      "serial_sha256": "e1dff238a0b386675592437c75408b343d8175fc90098390d704c9c17c1d0fed",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "host_check_groups": 21,
+      "diagnostics": [
+        "[+     3.883408] [IPC scalar submission] copy/move sends and copy/move/read/write calls prepare outside IPC with both roots; attachment/authority/endpoint rejection restores sources; heap-held send publication and inert complete-send abandonment passed",
+        "[+    79.983048] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x2023ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "command": "CATTEN_HTTP_HOST_PORT=22681 CATTEN_DEPLOY_HOST_PORT=22445 ./scripts/run-aarch64.sh release --security-test --http-test --fresh-storage --timeout 300 --smp 4 --instance scalar-transfer-20261031-arm"
+    },
+    {
+      "target": "x86_64-intel-vtd",
+      "instance": "scalar-transfer-20261031-intel",
+      "base_revision": "3980d29eaf6b3b043c9f8012ac0f443cab134dfd",
+      "cpus": 4,
+      "timeout_seconds": 300,
+      "tracked_diff_sha256": "e8721de9ed1005c6a451e6755d7cc1a9b3b83f2be9f6d2b1b0e3f5f749b79bd5",
+      "kernel_sha256": "4da2ec18dd84251fb95dcbcdb07cf68c8c9aef82e99937b4f33a28e2aba62954",
+      "bundle_map_sha256": "b020d0c3db9b86f0abd466eab16504c11c05f864d00b9f71502dd70f79b8cd84",
+      "serial_sha256": "b8a8fc6e8012cc80fa154a54cf10563d99c6a05adbed7d3198a2f746bcbae2cb",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "host_check_groups": 21,
+      "diagnostics": [
+        "[+     4.031922] [IPC scalar submission] copy/move sends and copy/move/read/write calls prepare outside IPC with both roots; attachment/authority/endpoint rejection restores sources; heap-held send publication and inert complete-send abandonment passed",
+        "[+    89.155595] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x2023bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "command": "CATTEN_HTTP_HOST_PORT=23681 CATTEN_DEPLOY_HOST_PORT=23445 ./scripts/run-x86_64.sh release --security-test --http-test --fresh-storage --timeout 300 --smp 4 --iommu intel --instance scalar-transfer-20261031-intel"
+    }
+  ],
+  "bundle_digest_algorithm": "sha256 of UTF-8 JSON bundle_sha256 map, sorted keys and compact separators",
+  "validation": [
+    "Strict kernel Clippy on AArch64/x86_64 with --no-default-features --features acpi and -D warnings",
+    "cargo fmt --all -- --check",
+    "git diff --check"
+  ],
+  "limits": [
+    "PreparedTransfer::drop remains globally active. The complete single-send parent is qualified here; vector, reply, supervisor and other enclosing destructors/IRQ contexts need separate review.",
+    "Attachment failure is injected at its factory boundary and publication is tested under the heap guard; no general heap-pressure, allocator-exhaustion or sustained essential-progress campaign was run.",
+    "No new source mapping-failure or ambiguous cleanup-rejection control was added; existing lower-level mapping/retirement ownership contracts still apply.",
+    "ARM SMMUv3 and Intel VT-d four-CPU security/HTTP suites passed. AMD-Vi and physical hardware were not rerun in this scope.",
+    "No finding disposition changes; SEC-07/18 acceptance gates and earlier unresolved incidents remain open."
+  ]
+}

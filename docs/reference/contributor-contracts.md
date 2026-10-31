@@ -368,7 +368,14 @@ the corrected RPC polling paths, and the remaining notification gaps.
   bookkeeping remain separate contexts. Scalar mailbox teardown is a
   serialized boot-fixture adapter, never a production close path.
   IPC calls use `PreparedCall`/`PreparedConnection` to own metadata and fresh
-  authority alongside their attachments. Compose reservations through
+  authority alongside their attachments. Scalar move/copy sends and
+  copy/move/read/write-loan calls capture both roots and prepare memory outside
+  IPC, then revalidate the captured namespaces, connection and endpoint before
+  publication. Single sends retain submission, transfer, attachment storage and
+  delivery in `PreparedSend`; explicitly finish after IPC unlock and notify
+  before root completion. Abandonment suppresses every child destructor and
+  retains all fields; other active transfer parents remain separately qualified.
+  Compose reservations through
   `commit_undelivered_transfers_with_authority` while retaining every affected
   payload registry; do not publish memory and then attempt fallible IPC admission.
   IPC moves/copies, including asynchronous sends and returned memory, remain

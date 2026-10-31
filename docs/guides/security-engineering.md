@@ -137,6 +137,12 @@ Changing an inner owner's destructor to retain backing does not qualify an activ
 containing destructor. That parent can still enter physical release or destroy
 metadata. Test the relevant parent path with the actual enclosing guards held.
 
+Trace every scalar entry point when sharing a submission adapter. A copied
+attachment can use unlocked preparation while its move or loan sibling still
+allocates and rolls back beneath IPC. Keep root capture, complete transient
+ownership and post-guard disposal consistent across those modes; sharing the
+payload encoder alone does not establish that boundary.
+
 Prepare failure-handling storage before pressure can prevent it. A coordinator
 with a fixed production roster can keep its complete plan inline, avoiding
 fresh allocation while publishing shutdown or transferring teardown owners.
