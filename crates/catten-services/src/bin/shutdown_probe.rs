@@ -9,7 +9,10 @@ use catten_rt::{
     config,
     owned::Endpoint,
 };
-use catten_services::sleep_ms;
+use catten_services::{
+    sleep_ms,
+    sleep_ms_or_shutdown,
+};
 
 const INTERFACE: u64 = 0x5348_5554_444f_574e; // "SHUTDOWN"
 const VERSION: u32 = 1;
@@ -25,11 +28,17 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     config::write::<u32>(STATUS_STARTED, 1);
 
     loop {
-        if !stubborn && let Some(request) = ctx.lifecycle().shutdown_requested() {
-            drop(endpoint);
-            return request;
+        if !stubborn {
+            // Exercise lifecycle notification during a delay much longer than
+            // the fixture's shutdown grace. Ignoring the lifecycle wake must
+            // fail the existing cooperative-shutdown qualification.
+            if let Err(request) = sleep_ms_or_shutdown(ctx, 60_000) {
+                drop(endpoint);
+                return request;
+            }
+        } else {
+            sleep_ms(10);
         }
-        sleep_ms(10);
     }
 }
 

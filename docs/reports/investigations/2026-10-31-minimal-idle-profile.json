@@ -1,0 +1,160 @@
+{
+  "schema": "charlotte.idle-profile.v1",
+  "date": "2026-10-31",
+  "base_revision": "9c84aab6",
+  "platform": {
+    "qemu": "11.1.2",
+    "machine": "virt,gic-version=3,msi=gicv2m,iommu=smmuv3,default-bus-bypass-iommu=off",
+    "cpu": "cortex-a710",
+    "cpus": 4,
+    "memory_mib": 512,
+    "accelerator": "TCG",
+    "mode": "minimal",
+    "profile": "debug (opt-level=3)",
+    "counter_frequency_hz": 62500000
+  },
+  "intervals": {
+    "before": {
+      "kernel_sha256": "a3b3fd248cba0bc4277c53fbe2db7dd4399d6e96a459e121f382918ef6c31d5b",
+      "start_unix_seconds": 1793459885.9034328,
+      "end_unix_seconds": 1793459910.410197,
+      "seconds": 24.50676417350769,
+      "rows": [
+        ["ns", 1, 4, 5, 2137, 2182, 25668872, 27841122],
+        ["grantctl", 2, 5, 6, 1, 1, 42813, 42813],
+        ["observe", 3, 6, 7, 367, 416, 23656374, 26669560],
+        ["nvme", 4, 12, 13, 15011, 17389, 314760836, 364502717],
+        ["objstore", 7, 13, 14, 16902, 19591, 422078810, 487497069],
+        ["rng", 5, 14, 15, 5, 5, 298874, 298874],
+        ["net", 6, 15, 16, 14379, 16699, 314383103, 364549862],
+        ["frouter", 8, 16, 17, 428, 489, 26750812, 31155438],
+        ["disco", 9, 17, 18, 2643, 2956, 65359760, 74893192],
+        ["relmsg", 10, 18, 19, 969, 1132, 22939204, 26867269],
+        ["dns", 11, 19, 20, 8634, 9966, 371395034, 432440284],
+        ["tcpip", 12, 20, 21, 3773, 4293, 88508335, 101806973],
+        ["httpd", 13, 21, 22, 1, 1, 67375, 67375],
+        ["time", 14, 22, 23, 775, 802, 9629749, 10233812],
+        ["clusterctl", 15, 23, 24, 599, 599, 4864308, 4864308],
+        ["agent", 16, 24, 25, 17365, 20178, 437687007, 509214413],
+        ["deployd", 17, 25, 26, 1, 1, 74250, 74250]
+      ],
+      "lp0_timer_anonymous_fired": [69520, 80633],
+      "lp0_timer_keyed_fired": [9734, 11378],
+      "lp0_dispatches": [198189, 214633]
+    },
+    "after": {
+      "kernel_sha256": "4a585250de6987efc2e4e3be186ec61c16c817c8ce0bed3e450b96e89c37309b",
+      "start_unix_seconds": 1793460326.042308,
+      "end_unix_seconds": 1793460356.5761962,
+      "seconds": 30.53388810157776,
+      "rows": [
+        ["ns", 1, 4, 5, 1817, 1864, 16442238, 17522554],
+        ["grantctl", 2, 5, 6, 1, 1, 47500, 47500],
+        ["observe", 3, 6, 7, 78, 140, 6225376, 8648684],
+        ["nvme", 4, 12, 13, 491, 610, 7154305, 9075931],
+        ["objstore", 7, 13, 14, 320, 396, 11405936, 13492438],
+        ["rng", 5, 14, 15, 5, 5, 680251, 680251],
+        ["net", 6, 15, 16, 3440, 5992, 80638797, 116944408],
+        ["frouter", 8, 16, 17, 110, 179, 5415192, 8628817],
+        ["disco", 9, 17, 18, 1062, 1399, 18113070, 24107072],
+        ["relmsg", 10, 18, 19, 226, 386, 5075814, 7573194],
+        ["dns", 11, 19, 20, 2410, 3887, 87692720, 127664396],
+        ["tcpip", 12, 20, 21, 1384, 2014, 24910371, 34414624],
+        ["httpd", 13, 21, 22, 2, 2, 87812, 87812],
+        ["time", 14, 22, 23, 649, 680, 6795943, 7187381],
+        ["clusterctl", 15, 23, 24, 607, 607, 5526483, 5526483],
+        ["agent", 16, 24, 25, 933, 1189, 15701252, 20677196],
+        ["deployd", 17, 25, 26, 1, 1, 78438, 78438]
+      ],
+      "lp0_timer_anonymous_fired": [9641, 16045],
+      "lp0_timer_keyed_fired": [2650, 4891],
+      "lp0_dispatches": [109408, 119344]
+    }
+  },
+  "limits": ["Debugger all-stop snapshots; each guest resumed between reads. Completed on-CPU intervals include syscall work and exclude the uncompleted interval at each stop.", "Before and after are separate VM boots, observed while host load varied; host CPU readings are snapshots, not a controlled throughput benchmark.", "Original VM exited before a second simultaneous-control snapshot; the earlier complete baseline interval is retained here.", "Only steady-state wait policy changed; network receive and idle-LP recovery timers remain. This does not qualify missed-interrupt recovery on physical hardware."],
+  "host_readings_percent_one_host_cpu": {
+    "before": 34.9,
+    "after": 7.7
+  },
+  "source_sha256": {
+    "crates/catten-services/src/lib.rs": "a07b92c978102e12d7d7d177d9e92d65517eb8b4281640315f6e3579e6286b13",
+    "crates/catten-services/src/bin/objstore.rs": "a008a4614c690a1ed2f7d9abd89026eb7965c68dc077126982916eee244f5a93",
+    "crates/catten-services/src/bin/nvme.rs": "7ea2ed3f33b7c2b2a30da8acb866629c1ee4fd80822e305964835d4441dbfada",
+    "crates/catten-services/src/bin/shutdown_probe.rs": "5f895f84460a9f4286a54a444a6064287dcdf5c3d9b7f6dc068971e908208c65"
+  },
+  "sample_columns": ["service", "asid", "tid", "generation", "dispatch_start", "dispatch_end", "runtime_ticks_start", "runtime_ticks_end"],
+  "host_test_execution": {
+    "sandboxed": {
+      "runtime_passed": 54,
+      "services_passed": 262,
+      "services_failed": 3,
+      "reason": "Three OpenSSL interop fixtures could not bind local TCP sockets: PermissionDenied / Operation not permitted at tls_client/interop.rs:186."
+    },
+    "unrestricted_repeat": {
+      "runtime_passed": 54,
+      "services_passed": 265,
+      "failed": 0
+    }
+  },
+  "native_validation": [
+    {
+      "architecture": "aarch64",
+      "suite": "storage-network-security",
+      "profile": "release",
+      "cpus": 4,
+      "kernel_sha256": "f94409ebc2c7361501159712ccad62582917f1d152ff57c359e3fec849dd43f2",
+      "bundle_files": 41,
+      "bundle_map_sha256": "ed37062c2f201c1359537a19f224f957dd0e667b89fc1946492631f1e2e04775",
+      "serial_sha256": "9d2ca8b432d70c6fe36aa649555c2d4f3b280887190dfc5ce8840653f84f7f36",
+      "terminal_verdict": "SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x2023ffff failed_bitmap=0x0 pending_bitmap=0x0",
+      "host_pass_groups": 21,
+      "diagnostics": []
+    },
+    {
+      "architecture": "x86_64",
+      "suite": "storage-network-security",
+      "profile": "release",
+      "cpus": 4,
+      "kernel_sha256": "83346072a6d4842394f5471e98a95c885442b1bcf4de3ec3bdf377aa3a3eff20",
+      "bundle_files": 37,
+      "bundle_map_sha256": "0026caf16d066948ca51f92d21cddfcdf6c37768631bfca22fffcdfc8d7f0972",
+      "serial_sha256": "fa41c876014aea3823a1bc95c2af53cf0207ba94f24b3d75f6ca9906b3c3a2b3",
+      "terminal_verdict": "SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x2023bbff failed_bitmap=0x0 pending_bitmap=0x0",
+      "host_pass_groups": 21,
+      "diagnostics": []
+    },
+    {
+      "architecture": "aarch64",
+      "suite": "shutdown",
+      "profile": "release",
+      "cpus": 4,
+      "kernel_sha256": "4fb1dfd982fdf9409e1859d74b944fc254480fb52e163b7e3b993803765fda33",
+      "bundle_files": 41,
+      "bundle_map_sha256": "ed37062c2f201c1359537a19f224f957dd0e667b89fc1946492631f1e2e04775",
+      "serial_sha256": "be0a3582383a6961299e12eac433320eab96c614bd335cec38ba49e70391edf1",
+      "terminal_verdict": "SELFTEST COMPLETE: passed=1 failed=0 pending=0 passed_bitmap=0x8000000 failed_bitmap=0x0 pending_bitmap=0x0",
+      "host_pass_groups": 0,
+      "diagnostics": [
+        "[+     1.551534] [shutdown] production object store and 3 device adapter(s) flushed/reset and quiesced",
+        "[+     1.551788] [shutdown] SUCCESS: bounded domain retirement and reverse-order service drain verified"
+      ]
+    },
+    {
+      "architecture": "x86_64",
+      "suite": "shutdown",
+      "profile": "release",
+      "cpus": 4,
+      "kernel_sha256": "23a5bd21defb5d26d1d129cd35842077d283357f70306fdb96c7993d95c525a9",
+      "bundle_files": 37,
+      "bundle_map_sha256": "0026caf16d066948ca51f92d21cddfcdf6c37768631bfca22fffcdfc8d7f0972",
+      "serial_sha256": "902dc0537e63d9f23950061718d4ab79867abafd84be2339145ed9be9601fe76",
+      "terminal_verdict": "SELFTEST COMPLETE: passed=1 failed=0 pending=0 passed_bitmap=0x8000000 failed_bitmap=0x0 pending_bitmap=0x0",
+      "host_pass_groups": 0,
+      "diagnostics": [
+        "[+     1.472632] [shutdown] production object store and 3 device adapter(s) flushed/reset and quiesced",
+        "[+     1.472856] [shutdown] SUCCESS: bounded domain retirement and reverse-order service drain verified"
+      ]
+    }
+  ],
+  "source_identity_scope": "Final reviewed Rust sources. The measured minimal image predates a Rustdoc-only edit to the NVMe module header; the native regression builds include that edit."
+}

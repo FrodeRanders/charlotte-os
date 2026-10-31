@@ -23,9 +23,10 @@
 //!
 //! The I/O CQ uses MSI-X vector zero. PCI setup programs the device's MSI-X
 //! table to target a delegated GIC SPI before this domain starts. A bounded
-//! checked 10 ms CQ watchdog remains for hardware where MSI-X setup is
-//! unavailable or its edge is suppressed; this is bounded hardware polling,
-//! not an older syscall-ABI fallback.
+//! checked 10 ms CQ watchdog remains while a command is outstanding for
+//! hardware where MSI-X setup is unavailable or its edge is suppressed. Idle
+//! controllers wait only for requests or lifecycle publication. The watchdog
+//! is bounded hardware polling, not an older syscall-ABI fallback.
 #![no_std]
 #![no_main]
 extern crate alloc;
@@ -923,9 +924,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             }
         }
 
-        // Lifecycle publication also wakes the default CQ. The bounded watchdog
-        // remains for the hardware missed-MSI-X completion path described above.
-        catten_services::reactor::wait(Some(10), 0);
+        // With no submitted command there is no completion edge to miss.
+        // Endpoint arrivals and lifecycle publication wake this same CQ, so an
+        // idle controller needs no watchdog. Retain the bounded missed-MSI-X
+        // fallback while commands (and their DMA/reply owners) are outstanding.
+        let watchdog_ms = (io.outstanding != 0).then_some(10);
+        catten_services::reactor::wait(watchdog_ms, 0);
 
         let (status, consumed) = device_irq_ack(irq_cap);
         if status == 0 && consumed > 0 {

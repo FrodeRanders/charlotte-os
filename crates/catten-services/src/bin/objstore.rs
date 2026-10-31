@@ -1186,6 +1186,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             diag_error(0xb1);
             startup_failed(0xb1)
         });
+    endpoint.bind_completion_queue(0).unwrap_or_else(|_| startup_failed(0xb1));
     let generation = ns_connection
         .call_connection(
             ns::OP_REGISTER,
@@ -1370,7 +1371,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 _ => reply_scalar(message.reply.take(), -1),
             }
         }
-        sleep_ms(10);
+        // Endpoint arrivals and lifecycle publication both wake the default CQ.
+        // The endpoint was bound before publication and its queue was drained
+        // above; a generation arriving before this wait remains observable.
+        catten_services::reactor::wait(None, 0);
     }
 }
 

@@ -20,6 +20,7 @@ execution records. For current knowledge and work, use:
 
 ## Investigations
 
+- [Minimal boot idle activity](investigations/2026-10-31-minimal-idle-profile.md)
 - [Kafka soak scratch-window exhaustion](investigations/2026-09-14-kafka-soak-scratch-window-exhaustion.md)
 - [DMA isolation and hostile-device security](investigations/2026-08-30-dma-security.md)
 - [Frame-allocator interrupt-masking latency](investigations/2026-08-16-frame-allocator-irq-latency.md)

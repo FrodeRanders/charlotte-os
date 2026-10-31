@@ -3509,26 +3509,27 @@ pub fn wait_for_local_ready_or_shutdown(
     .map(|_| ())
 }
 
-/// Sleep for at most `milliseconds`, checking the lifecycle page every 10 ms.
+/// Pause for one monotonic delay, interrupted by a lifecycle request.
 ///
 /// Service event loops should use this for retry and reconciliation delays so
 /// a configured interval does not silently become their minimum shutdown
-/// latency.
+/// latency. Lifecycle publication wakes the default CQ. The caller must be its
+/// sole waiter; unrelated CQ readiness only triggers a lifecycle recheck and
+/// does not restart or finish the delay.
 pub fn sleep_ms_or_shutdown(
     ctx: &catten_rt::Context,
     milliseconds: u64,
 ) -> Result<(), catten_rt::ShutdownRequest> {
-    let mut remaining = milliseconds;
+    let deadline = deadline::Deadline::after(milliseconds);
     loop {
         if let Some(request) = ctx.lifecycle().shutdown_requested() {
             return Err(request);
         }
+        let remaining = deadline.remaining_ms();
         if remaining == 0 {
             return Ok(());
         }
-        let slice = remaining.min(10);
-        sleep_ms(slice);
-        remaining -= slice;
+        reactor::wait(Some(remaining), 0);
     }
 }
 

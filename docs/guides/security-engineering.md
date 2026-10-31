@@ -110,6 +110,13 @@ and endpoints to its CQ, wait for the earliest remaining deadline and recheck
 lifecycle after wakes. Waiting on an unrelated CQ cannot replace reply polling
 unless the producer actually signals it.
 
+When lifecycle publication already wakes that CQ, preserve a single delay
+deadline and recheck lifecycle after notifications. Splitting a long delay into
+short shutdown-polling sleeps creates idle work without improving that wake
+contract. A hardware completion watchdog is needed only while the corresponding
+work is outstanding; receive-side hardware can still have work arrive from
+outside the node while its transmit queue is empty.
+
 Deferred notifications need a delivery boundary on every relevant control path.
 Delivering only in an older thread's yield continuation misses fresh thread entry;
 parking before flushing the producer LP can strand its dependent worker. Incoming

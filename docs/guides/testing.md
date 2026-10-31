@@ -593,8 +593,9 @@ formation, use:
 ```
 
 The isolated verifier registers both probes with the real deployment-domain
-retirement state machine. One drops an owned endpoint and acknowledges a
-propagated `NodeShutdown` request. The other is deliberately unresponsive: its
+retirement state machine. One waits through `sleep_ms_or_shutdown` with a
+60-second delay, then drops an owned endpoint and acknowledges a propagated
+`NodeShutdown` request within its much shorter retirement grace. The other is deliberately unresponsive: its
 signed child grace expires before the enclosing node deadline, so it must be
 forcibly terminated and reclaimed. The test also requires the distinct
 acknowledged/forced node-shutdown counters to advance. The same switch is

@@ -58,6 +58,21 @@ policy, and the caller's pending transaction remains live through domain abort.
 Controller idle waits are event-only: both bound endpoints and kernel lifecycle
 publication signal their default CQ.
 
+Object storage binds its public endpoint before registration, drains requests,
+then waits event-only on that same default CQ. An arrival between draining and
+parking leaves an unconsumed work generation; shutdown publication wakes the
+same wait. `sleep_ms_or_shutdown` similarly uses one monotonic deadline and
+checks lifecycle after default-CQ wakes instead of slicing a delay into short
+polling sleeps. Its caller must be the sole waiter on that queue. Unrelated
+readiness neither finishes the delay nor resets its budget.
+
+The NVMe controller waits event-only when its outstanding-command count is
+zero. It keeps the checked 10 ms watchdog while commands retain DMA and reply
+owners, including the final-flush/drain paths. A network receiver cannot make
+the same inference: incoming packets can arrive while no transmit is pending,
+so its existing missed-edge fallback remains active. Removing that fallback
+requires qualification of receive notification delivery.
+
 Periodic Raft/discovery/retransmission watchdogs and bounded hardware polling
 remain explicit timed policies. Raft, DNS, discovery and reliable-message
 watchdogs retain their original deadline across ordinary readiness; only an
