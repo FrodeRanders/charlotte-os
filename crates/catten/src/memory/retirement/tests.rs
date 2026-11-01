@@ -360,7 +360,7 @@ fn test_quarantine(abandon: bool) {
             let _heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
             // RetiredEntry's ManuallyDrop retains the root and its unused
             // history candidate without an address-space destructor.
-            drop(retired);
+            crate::klib::namespace_node_budget::with_locked(|| drop(retired));
         });
     } else {
         assert_eq!(
@@ -390,6 +390,7 @@ fn test_retry_quiescence() {
     drop(memory::prepare_principal_backing(principal, false).unwrap());
     let history_before = memory::usage::principal_history::admission::snapshot();
     let root_metadata_before = memory::registration::metadata::admission::snapshot();
+    let namespace_before = crate::klib::namespace_node_budget::snapshot();
     let owner = loader::create_user_address_space_handle();
     memory::register_domain_authority(owner, principal, 0).unwrap();
     memory::install_launch_descriptor(owner, b"retired authority descriptor");
@@ -404,6 +405,9 @@ fn test_retry_quiescence() {
     let metadata_bytes = metadata_charged.0[0] - root_metadata_before.0[0];
     assert_eq!(metadata_charged.0[1], root_metadata_before.0[1] + 4);
     let retired = stage(owner);
+    let namespace_retained = crate::klib::namespace_node_budget::snapshot();
+    let namespace_bytes = namespace_retained.0[0] - namespace_before.0[0];
+    assert_eq!(namespace_retained.0[1], namespace_before.0[1] + 1);
     let retired = retired
         .release_retry_with(|_, handle| {
             assert_detached(handle);
@@ -412,6 +416,7 @@ fn test_retry_quiescence() {
         .expect_err("rejected invalidation consumed root");
     assert_eq!(memory::usage::principal_history::admission::snapshot(), history_charged);
     assert_eq!(memory::registration::metadata::admission::snapshot(), metadata_charged);
+    assert_eq!(crate::klib::namespace_node_budget::snapshot(), namespace_retained);
     retired.metadata.as_ref().unwrap().test_assert_retained(owner);
     assert_eq!(retired.metadata.as_ref().unwrap().test_authority(), authority);
     assert_eq!(memory::domain_authority(owner.id()), None);
@@ -422,7 +427,21 @@ fn test_retry_quiescence() {
     assert_ne!(intervening.id(), owner.id());
     let history_with_intervening = memory::usage::principal_history::admission::snapshot();
     let metadata_with_intervening = memory::registration::metadata::admission::snapshot();
+    let namespace_with_intervening = crate::klib::namespace_node_budget::snapshot();
     assert!(retired.release_retry_with(invalidate).is_ok());
+    assert_eq!(
+        crate::klib::namespace_node_budget::snapshot(),
+        (
+            [
+                namespace_with_intervening.0[0] - namespace_bytes,
+                namespace_with_intervening.0[1] - 1
+            ],
+            [
+                namespace_with_intervening.1[0] - namespace_bytes,
+                namespace_with_intervening.1[1] - 1
+            ]
+        )
+    );
     let metadata_released = memory::registration::metadata::admission::snapshot();
     assert_eq!(
         metadata_released.0,

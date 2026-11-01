@@ -31,6 +31,7 @@ use crate::{
             RetiredEntry,
             RetirementList,
         },
+        namespace_node_budget as node_budget,
         observer::{
             Observable,
             Observer,
@@ -382,7 +383,7 @@ struct IpcRegistry {
     endpoints: AdmittedMap<EndpointId, Endpoint, Option<budget::Charge>>,
     reply_tokens: AdmittedMap<ReplyTokenId, ReplyToken, Option<record_budget::Charge>>,
     pending_calls: AdmittedMap<PendingCallId, PendingCall, Option<record_budget::Charge>>,
-    caps: crate::klib::collections::retirement_list::AdmittedMap<AddressSpaceId, AsIpcCaps>,
+    caps: node_budget::Map<AddressSpaceId, AsIpcCaps>,
 }
 
 impl IpcRegistry {

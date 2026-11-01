@@ -48,6 +48,7 @@ fn exercise(p: Policy) {
         p.endpoints.pool,
         p.completion_queues.pool,
         p.root_metadata,
+        p.namespace_nodes,
         p.principal_history,
         p.thread_metadata,
         p.thread_table,
@@ -100,6 +101,12 @@ fn invalid_ordering_zero_and_machine_overflow_reject() {
         p.namespace_accounts = pool;
         assert_eq!(p.validate(), Err("domain/ordinary/total ordering or machine range"));
     }
+    let mut p = DEFAULT;
+    p.namespace_nodes.ordinary[0] = 0;
+    assert!(p.validate().is_err());
+    p.namespace_nodes = DEFAULT.namespace_nodes;
+    p.namespace_nodes.ordinary[1] = p.namespace_nodes.total[1];
+    assert!(p.validate().is_err());
     let mut p = DEFAULT;
     p.capabilities.domain[0] = p.capabilities.pool.ordinary[0] + 1;
     assert!(p.validate().is_err());

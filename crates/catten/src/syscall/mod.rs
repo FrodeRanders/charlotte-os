@@ -19,6 +19,7 @@
 //! the syscall number.
 
 mod mailbox_budget;
+use crate::klib::namespace_node_budget as node_budget;
 mod mailbox_publication;
 mod mailbox_queue;
 pub(crate) mod mailbox_retirement;
@@ -872,9 +873,8 @@ use crate::cpu::multiprocessor::{
     get_lp_count,
     spin::rwlock::RwLock,
 };
-static USER_MAILBOX: LazyLock<
-    RwLock<mailbox_publication::Map<AddressSpaceId, mailbox_queue::Namespace>>,
-> = LazyLock::new(|| RwLock::new(mailbox_publication::Map::new()));
+static USER_MAILBOX: LazyLock<RwLock<node_budget::Map<AddressSpaceId, mailbox_queue::Namespace>>> =
+    LazyLock::new(|| RwLock::new(mailbox_publication::Map::new()));
 
 fn user_mailbox_send(asid: AddressSpaceId, target: LpId, message: u64) -> Result<(), u64> {
     mailbox_queue::send(asid, target, message, capture_mailbox_identity(asid))
@@ -920,9 +920,8 @@ impl AsMailboxCaps {
     }
 }
 
-static USER_MAILBOX_CAPS: LazyLock<
-    RwLock<mailbox_publication::Map<AddressSpaceId, AsMailboxCaps>>,
-> = LazyLock::new(|| RwLock::new(mailbox_publication::Map::new()));
+static USER_MAILBOX_CAPS: LazyLock<RwLock<node_budget::Map<AddressSpaceId, AsMailboxCaps>>> =
+    LazyLock::new(|| RwLock::new(mailbox_publication::Map::new()));
 
 /// Serialized boot fixtures only. Production detaches both payload namespaces
 /// into its final root owner rather than releasing them beneath lifecycle.

@@ -10,9 +10,12 @@ use spin::LazyLock;
 
 use crate::{
     cpu::multiprocessor::spin::mutex::Mutex,
-    klib::collections::retirement_list::{
-        AdmittedMap,
-        PreparedEntry,
+    klib::{
+        collections::retirement_list::{
+            AdmittedMap,
+            PreparedEntry,
+        },
+        namespace_node_budget as node_budget,
     },
     memory::AddressSpaceId,
 };
@@ -22,6 +25,8 @@ pub(crate) mod admission_tests;
 mod budget;
 #[cfg(any(test, feature = "kernel_tests"))]
 mod namespace_account_tests;
+#[cfg(any(test, feature = "kernel_tests"))]
+mod namespace_node_tests;
 #[cfg(any(test, feature = "kernel_tests"))]
 mod namespace_tests;
 mod record;
@@ -88,7 +93,7 @@ impl AddressSpaceCapabilities {
 // leave an interrupt-context caller spinning for a thread that is no longer
 // running. The IRQ-safe mutex masks local interrupts for the complete
 // ownership interval and restores their prior state on unlock.
-static CAPABILITIES: LazyLock<Mutex<AdmittedMap<AddressSpaceId, AddressSpaceCapabilities>>> =
+static CAPABILITIES: LazyLock<Mutex<node_budget::Map<AddressSpaceId, AddressSpaceCapabilities>>> =
     LazyLock::new(|| Mutex::new(AdmittedMap::new()));
 
 /// Prepare the complete namespace and registry node before ASID publication.
@@ -97,7 +102,7 @@ static CAPABILITIES: LazyLock<Mutex<AdmittedMap<AddressSpaceId, AddressSpaceCapa
 #[must_use]
 pub(crate) struct PreparingNamespace(core::mem::ManuallyDrop<NamespaceStorage>);
 struct NamespaceStorage {
-    node: Option<PreparedEntry<(AddressSpaceId, AddressSpaceCapabilities)>>,
+    node: Option<node_budget::Prepared<(AddressSpaceId, AddressSpaceCapabilities)>>,
     value: Option<AddressSpaceCapabilities>,
 }
 
@@ -107,7 +112,8 @@ pub(crate) fn prepare_namespace(
     if test_fault!(namespace_tests::reject(1)) {
         return Err(AllocationError::AllocationFailed);
     }
-    let node = PreparedEntry::try_new().map_err(|_| AllocationError::AllocationFailed)?;
+    let node =
+        node_budget::prepare(backing_platform).map_err(|_| AllocationError::AllocationFailed)?;
     #[cfg(feature = "kernel_tests")]
     namespace_tests::boundary(false);
     let value = if test_fault!(namespace_tests::reject(2)) {
@@ -136,7 +142,7 @@ impl PreparingNamespace {
 
     fn publish_into(
         mut self,
-        tables: &mut AdmittedMap<AddressSpaceId, AddressSpaceCapabilities>,
+        tables: &mut node_budget::Map<AddressSpaceId, AddressSpaceCapabilities>,
         owner: AddressSpaceId,
         identity: Option<crate::memory::AddressSpaceHandle>,
     ) {
@@ -195,7 +201,7 @@ pub(crate) type LifecycleGuard<'a> =
     lock_api::MutexGuard<'a, crate::cpu::multiprocessor::spin::mutex::MutexCore, ()>;
 
 fn namespace<'a>(
-    tables: &'a mut AdmittedMap<AddressSpaceId, AddressSpaceCapabilities>,
+    tables: &'a mut node_budget::Map<AddressSpaceId, AddressSpaceCapabilities>,
     owner: AddressSpaceId,
     identity: Option<crate::memory::AddressSpaceHandle>,
     prepared: &mut Option<PreparingNamespace>,
@@ -758,10 +764,7 @@ pub fn close_address_space(owner: AddressSpaceId) {
 /// Its original charged nodes are released only by explicit post-guard work.
 #[must_use]
 pub(crate) struct RetiredNamespace(
-    crate::klib::collections::retirement_list::RetiredEntry<(
-        AddressSpaceId,
-        AddressSpaceCapabilities,
-    )>,
+    node_budget::Retired<(AddressSpaceId, AddressSpaceCapabilities)>,
 );
 
 /// Final root cleanup holds lifecycle and has already fenced sponsorship.
@@ -788,10 +791,7 @@ impl RetiredNamespace {
 }
 
 fn release_namespace(
-    mut namespace: crate::klib::collections::retirement_list::RetiredEntry<(
-        AddressSpaceId,
-        AddressSpaceCapabilities,
-    )>,
+    mut namespace: node_budget::Retired<(AddressSpaceId, AddressSpaceCapabilities)>,
 ) {
     // Consume existing admitted storage one record at a time, without a
     // namespace snapshot or allocation. Partial abandonment retains the rest.

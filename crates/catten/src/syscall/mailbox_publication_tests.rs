@@ -50,6 +50,7 @@ pub(super) fn metadata_boundary(dispose: bool) {
     }
 }
 pub(in crate::syscall) fn run() {
+    node_budget::test_allocation::<(AddressSpaceId, AsMailboxCaps)>("mailbox-capability");
     assert!(!ACTIVE.swap(true, Ordering::AcqRel));
     IRQ.store(crate::cpu::isa::lp::ops::get_int_state(), Ordering::Release);
     PREPARED.store(0, Ordering::Relaxed);
@@ -196,8 +197,10 @@ fn abandoned() {
         let physical = memory::PHYSICAL_FRAME_ALLOCATOR.lock();
         let heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
         crate::klib::namespace_account_budget::with_locked(|| {
-            drop(preparing);
-            drop(retired);
+            node_budget::with_locked(|| {
+                drop(preparing);
+                drop(retired);
+            });
         });
         drop(heap);
         drop(physical);

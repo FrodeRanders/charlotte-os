@@ -2,12 +2,9 @@
 use core::mem::ManuallyDrop;
 
 use super::*;
-use crate::{
-    klib::collections::retirement_list::PreparedEntry,
-    memory::{
-        AddressSpaceHandle,
-        operation::AddressSpaceOperation,
-    },
+use crate::memory::{
+    AddressSpaceHandle,
+    operation::AddressSpaceOperation,
 };
 type Error = mailbox_budget::Error;
 pub(super) struct Namespace {
@@ -18,9 +15,9 @@ struct Resources {
     asid: AddressSpaceId,
     captured: MailboxIdentity,
     root: Option<AddressSpaceOperation>,
-    node: Option<PreparedEntry<(AddressSpaceId, Namespace)>>,
+    node: Option<node_budget::Prepared<(AddressSpaceId, Namespace)>>,
     queue: Option<Namespace>,
-    namespace_node: Option<PreparedEntry<(AddressSpaceId, AsMailboxCaps)>>,
+    namespace_node: Option<node_budget::Prepared<(AddressSpaceId, AsMailboxCaps)>>,
     namespace: Option<AsMailboxCaps>,
     budget: Option<mailbox_budget::AccountRef>,
     charge: Option<mailbox_budget::QueueCharge>,
@@ -66,7 +63,10 @@ impl Operation {
             platform,
             mailbox_words::Words::backing_bytes_for(n)?,
         )?);
-        self.0.node = Some(PreparedEntry::try_new().map_err(|_| Error::AllocationFailed)?);
+        self.0.node = Some(
+            node_budget::prepare(self.0.captured.backing_platform)
+                .map_err(|_| Error::AllocationFailed)?,
+        );
         if test_fault!(tests::reject_backing()) {
             return Err(Error::AllocationFailed);
         }
@@ -92,8 +92,10 @@ impl Operation {
         }
         // Legacy word callers share the same family account even without
         // endpoint grants. Competing preparations cannot create separate quotas.
-        self.0.namespace_node =
-            Some(PreparedEntry::try_new().map_err(|_| Error::AllocationFailed)?);
+        self.0.namespace_node = Some(
+            node_budget::prepare(self.0.captured.backing_platform)
+                .map_err(|_| Error::AllocationFailed)?,
+        );
         self.0.namespace = Some(AsMailboxCaps::try_new(
             self.0.captured.address_space,
             self.0.captured.backing_platform,

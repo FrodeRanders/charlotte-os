@@ -30,7 +30,8 @@ reserve their actual larger size. Every fully prepared namespace has one fresh
 timer account, so this also bounds complete namespace candidates and published
 namespaces, including empty ones. Independently surviving record/CQ/watch accounts
 have their own [backing admission](completion-account-admission.md). Global nodes
-prepared before account admission remain outside these pools. No worst-case
+prepared before account admission have separate
+[byte/count admission](namespace-node-admission.md). No worst-case
 global lookup latency follows from this count.
 
 ## Classification and lifetime

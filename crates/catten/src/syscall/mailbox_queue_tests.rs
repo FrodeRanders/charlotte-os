@@ -46,6 +46,7 @@ pub(super) fn boundary(dispose: bool) {
     }
 }
 pub(in crate::syscall) fn run() {
+    node_budget::test_allocation::<(AddressSpaceId, Namespace)>("mailbox-words");
     assert!(!ACTIVE.swap(true, Ordering::AcqRel));
     IRQ.store(crate::cpu::isa::lp::ops::get_int_state(), Ordering::Release);
     let root = loader::create_user_address_space_handle();
@@ -194,7 +195,9 @@ fn abandoned() {
         let physical = memory::PHYSICAL_FRAME_ALLOCATOR.lock();
         let heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
         mailbox_retirement::tests::under_registry_guards(|| {
-            crate::klib::namespace_account_budget::with_locked(|| drop(operation));
+            crate::klib::namespace_account_budget::with_locked(|| {
+                node_budget::with_locked(|| drop(operation));
+            });
         });
         drop(heap);
         drop(physical);

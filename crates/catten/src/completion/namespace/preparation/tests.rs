@@ -129,6 +129,7 @@ fn with_queue(asid: usize) -> Preparing {
 
 fn allocation_and_fresh_nodes() {
     let backing = account_budget::snapshot();
+    let nodes = node_budget::snapshot();
     open_address_space_with_cq(CLIENT, 4, 2).unwrap();
     let account = cq_admission(CLIENT).unwrap();
     let records = record_admission(CLIENT).unwrap();
@@ -136,6 +137,7 @@ fn allocation_and_fresh_nodes() {
     let captured = completion_of(CLIENT, cap).unwrap();
     let original = account.used();
     let timer_accounts = crate::timers::account_budget::snapshot();
+    let published_nodes = node_budget::snapshot();
     for rejected_stage in 0..5 {
         let mut visits = 0;
         let failed = Preparing::new_with(CLIENT, 4, |stage| {
@@ -154,6 +156,7 @@ fn allocation_and_fresh_nodes() {
         assert_eq!(visits, rejected_stage + 1);
         assert_eq!(crate::timers::account_budget::snapshot(), timer_accounts);
         assert_eq!(account_budget::snapshot(), (backing.0 + 3, backing.1 + 3));
+        assert_eq!(node_budget::snapshot(), published_nodes);
         assert_eq!(account.used(), original);
         assert_eq!(records.used(), 1);
         assert!(captured.holds_buffer());
@@ -191,16 +194,19 @@ fn allocation_and_fresh_nodes() {
         let _heap = PRIMARY_ALLOCATOR.lock();
         crate::timers::account_budget::with_locked(|| {
             account_budget::with_locked(|| {
-                for next in &mut preparing {
-                    assert!(next.publish().unwrap().is_none());
-                    assert!(next.is_published());
-                }
-                let mut registry = COMPLETIONS.write();
-                for (i, account) in accounts.iter().enumerate() {
-                    retired
-                        .push(RetiredNamespace::from_node(registry.take(&(CLIENT + i)).unwrap()));
-                    assert_eq!(account.used()[0], 1);
-                }
+                node_budget::with_locked(|| {
+                    for next in &mut preparing {
+                        assert!(next.publish().unwrap().is_none());
+                        assert!(next.is_published());
+                    }
+                    let mut registry = COMPLETIONS.write();
+                    for (i, account) in accounts.iter().enumerate() {
+                        retired.push(RetiredNamespace::from_node(
+                            registry.take(&(CLIENT + i)).unwrap(),
+                        ));
+                        assert_eq!(account.used()[0], 1);
+                    }
+                });
             });
         });
     }
@@ -215,6 +221,7 @@ fn allocation_and_fresh_nodes() {
     assert_eq!(cq_budget::node_used(), baseline);
     drop((accounts, account, records));
     assert_eq!(account_budget::snapshot(), backing);
+    assert_eq!(node_budget::snapshot(), nodes);
     assert_eq!(
         crate::timers::account_budget::snapshot(),
         (timer_accounts.0 - 1, timer_accounts.1 - 1)
@@ -370,6 +377,7 @@ fn retired_identity() {
 }
 
 pub(super) fn run() {
+    node_budget::test_allocation::<(AddressSpaceId, Namespace)>("completion");
     let irq = crate::cpu::isa::lp::ops::get_int_state();
     account_budget::test_admission();
     timer_account_pressure();

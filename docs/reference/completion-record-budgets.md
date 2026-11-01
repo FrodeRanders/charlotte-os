@@ -341,8 +341,8 @@ Record/CQ/watch account backing shares its own
 [allocation-lifetime pool](completion-account-admission.md). Both retain original
 classification through final weak/allocator release. Every fully prepared
 namespace, including an empty one, owns four fresh admitted account bundles.
-Global namespace nodes allocated before account admission still lack their own
-aggregate count/byte admission. No worst-case global
+Global namespace nodes allocated before account admission have separate
+[requested-byte/count admission](namespace-node-admission.md). No worst-case global
 scan latency or hostile-pressure guarantee follows from the admitted map.
 General metadata allocation and reclamation remain separate work. Endpoint-close and
 thread-exit registrations now share [owning lists and event-watch admission](close-watch-budgets.md).

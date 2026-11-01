@@ -136,6 +136,7 @@ pub(crate) struct Policy {
     pub completion_queues: Scoped<2>,
     /// Metadata pools: requested bytes, allocations.
     pub root_metadata: Pool<2>,
+    pub namespace_nodes: Pool<2>,
     pub principal_history: Pool<2>,
     pub thread_metadata: Pool<2>,
     pub thread_table: Pool<2>,
@@ -171,6 +172,7 @@ impl Policy {
             || !self.endpoints.valid()
             || !self.completion_queues.valid()
             || !self.root_metadata.valid()
+            || !self.namespace_nodes.valid()
             || !self.principal_history.valid()
             || !self.thread_metadata.valid()
             || !self.thread_table.valid()

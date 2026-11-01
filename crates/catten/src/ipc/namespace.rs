@@ -7,17 +7,14 @@ use core::{
 };
 
 use super::*;
-use crate::{
-    klib::collections::retirement_list::PreparedEntry,
-    memory::{
-        AddressSpaceHandle,
-        KERNEL_ASID,
-        operation::AddressSpaceOperation,
-    },
+use crate::memory::{
+    AddressSpaceHandle,
+    KERNEL_ASID,
+    operation::AddressSpaceOperation,
 };
 
 struct Resources {
-    node: Option<PreparedEntry<(AddressSpaceId, AsIpcCaps)>>,
+    node: Option<node_budget::Prepared<(AddressSpaceId, AsIpcCaps)>>,
     endpoints: Option<budget::AccountRef>,
     records: Option<record_budget::AccountRef>,
 }
@@ -48,7 +45,7 @@ impl PreparingNamespace {
         }));
         let result = (|| {
             before(1)?;
-            owner.0.node = Some(PreparedEntry::try_new()?);
+            owner.0.node = Some(node_budget::prepare(backing_platform)?);
             before(2)?;
             owner.0.endpoints = Some(budget::DomainBudget::try_new(backing_platform)?);
             before(3)?;

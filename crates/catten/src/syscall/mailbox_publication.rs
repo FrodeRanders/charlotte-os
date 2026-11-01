@@ -25,7 +25,7 @@ struct Resources {
     root: Option<AddressSpaceOperation>,
     authority: Option<PreparedReservation>,
     reservation: Option<Reservation>,
-    namespace_node: Option<PreparedEntry<(AddressSpaceId, AsMailboxCaps)>>,
+    namespace_node: Option<node_budget::Prepared<(AddressSpaceId, AsMailboxCaps)>>,
     endpoint_node: Option<PreparedEntry<(MailboxCap, AdmittedMailboxEndpoint)>>,
     namespace: Option<AsMailboxCaps>,
     charge: Option<mailbox_budget::Charge>,
@@ -67,8 +67,9 @@ impl PreparingMailbox {
         if test_fault!(tests::reject(1)) {
             return Err(Error::AllocationFailed);
         }
-        self.0.namespace_node =
-            Some(PreparedEntry::try_new().map_err(|_| Error::AllocationFailed)?);
+        self.0.namespace_node = Some(
+            node_budget::prepare(captured.backing_platform).map_err(|_| Error::AllocationFailed)?,
+        );
         if test_fault!(tests::reject(2)) {
             return Err(Error::AllocationFailed);
         }
@@ -89,7 +90,7 @@ impl PreparingMailbox {
         &mut self,
         target: Option<LpId>,
         lifecycle: &crate::capability::LifecycleGuard<'_>,
-        tables: &mut Map<AddressSpaceId, AsMailboxCaps>,
+        tables: &mut node_budget::Map<AddressSpaceId, AsMailboxCaps>,
     ) -> Result<MailboxCap, Error> {
         let asid = self.0.asid;
         let captured = self.0.captured;

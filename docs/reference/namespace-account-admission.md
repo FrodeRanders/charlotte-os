@@ -14,7 +14,8 @@ Each slot covers one fixed-layout account Arc and its private `ChargedAllocator`
 holder. The four typed account families share this pool. Reservation precedes
 either allocation; unused holder/payload rejection frees backing before the
 original charge returns. This counts fixed bundles, not exact heap bytes,
-allocator overhead, namespace nodes or resource payloads.
+allocator overhead or resource payloads. Global namespace nodes have separate
+[requested-byte/count admission](namespace-node-admission.md).
 
 The defaults allow twice the four-account needs at the root-metadata pool's
 count-only capacity of 3072 ordinary or 4096 total complete roots. Headroom
@@ -84,8 +85,9 @@ no additional deliberate-retention fixture is introduced.
 Account pressure allocates actual capability-account bundles, rather than the
 largest possible mixed footprint or resource payloads. Shared allocation-owner
 host tests cover holder/payload failure, clones, weak lifetime and deallocation
-ordering; native heap exhaustion is not forced. Global namespace nodes prepared
-before account admission, Waker/callback storage, other registry allocations
+ordering; native heap exhaustion is not forced. Global namespace nodes have
+[separate admission](namespace-node-admission.md), including empty preparation.
+Waker/callback storage, other registry allocations
 and aggregate principal/general-heap admission remain open. This supplies no
 sustained hostile-pressure fairness, arbitrary destructor, worst-case lookup/
 IRQ-latency or physical hardware guarantee. SEC-07 remains partial; existing

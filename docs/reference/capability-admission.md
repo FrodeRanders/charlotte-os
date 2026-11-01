@@ -69,8 +69,9 @@ Numeric reuse cannot redirect explicit release into a successor namespace.
 The global completion map now prepares admitted nodes and account allocations
 outside its guard, retaining the complete retired namespace through post-guard
 node/payload disposal. Its accounts have separate timer and completion-account
-backing admission; global namespace-node and aggregate byte/principal admission,
-and other callers' enclosing contexts, remain open. See the
+backing admission. Global namespace nodes also have
+[byte/count admission](namespace-node-admission.md); aggregate principal/general-heap
+admission and other callers' enclosing contexts remain open. See the
 [global metadata evidence](../reports/audits/2026-10-16-completion-namespace-metadata.md).
 The [CQ metadata follow-up](../reports/audits/2026-10-16-cq-metadata.md) covers
 per-queue preparation and complete post-guard retirement.

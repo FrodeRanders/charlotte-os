@@ -38,6 +38,7 @@ pub(super) fn boundary(dispose: bool) {
 }
 
 pub(super) fn run() {
+    node_budget::test_allocation::<(AddressSpaceId, AddressSpaceCapabilities)>("capability");
     use crate::{
         memory,
         service::loader,
@@ -123,7 +124,9 @@ pub(super) fn run() {
         let lifecycle = memory::ADDRESS_SPACE_LIFECYCLE.lock();
         let registry = CAPABILITIES.lock();
         let heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
-        crate::klib::namespace_account_budget::with_locked(|| drop(abandoned));
+        crate::klib::namespace_account_budget::with_locked(|| {
+            node_budget::with_locked(|| drop(abandoned));
+        });
         drop(heap);
         drop(registry);
         drop(lifecycle);

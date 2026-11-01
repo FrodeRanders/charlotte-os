@@ -184,7 +184,9 @@ fn guarded_abandonment() {
         let _registry = COMPLETIONS.write();
         let _heap = PRIMARY_ALLOCATOR.lock();
         crate::timers::account_budget::with_locked(|| {
-            account_budget::with_locked(|| drop(namespace));
+            account_budget::with_locked(|| {
+                node_budget::with_locked(|| drop(namespace));
+            });
         });
         assert_eq!(hits.load(Ordering::SeqCst), 0);
     }

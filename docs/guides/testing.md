@@ -417,6 +417,16 @@ cleanup cycles. A pre-filled timer source forces the normal sleep path into its
 runnable fallback and checks elapsed time; rejection leaves state/constraints
 unchanged. This is not a forced-quota EL0 syscall or timer-queue capacity test.
 
+Global namespace-node controls fill ordinary and total admission with actual
+capability-layout nodes, reject oversized layouts before allocation, and measure
+all five namespace layouts. They verify partial root rollback, completion and
+mailbox rejection, trusted five-node preparation at ordinary exhaustion and
+exact original byte/count recovery after promotion and close at total exhaustion.
+Each layout has 64 injected allocator rejections. Existing publication and
+actual parent-abandonment controls hold the node pool and heap guards; failed
+final-root invalidation retains the original capability node through confirmation.
+See [namespace-node admission](../reference/namespace-node-admission.md).
+
 Capability/IPC/mailbox account fixtures fill a shared backing pool with real
 capability-account allocations. They check 256 heap-held denials across all four
 constructors, exact unpublished-root rollback with zero/one/two slots free,

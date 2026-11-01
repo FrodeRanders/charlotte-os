@@ -22,6 +22,7 @@ fn account(owner: AddressSpaceId) -> budget::AccountRef {
 }
 
 pub(crate) fn test_admission() {
+    namespace_node_tests::run();
     namespace_account_tests::run();
     namespace_tests::run();
     record_tests::run();

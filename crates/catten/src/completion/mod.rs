@@ -26,6 +26,7 @@
 //! [`complete`] is the kernel-side hook a worker's exit-observer would call.
 
 pub(crate) mod account_budget;
+use crate::klib::namespace_node_budget as node_budget;
 pub(crate) mod budget;
 mod capability_metadata;
 use capability_metadata::{

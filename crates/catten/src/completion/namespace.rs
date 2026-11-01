@@ -19,7 +19,7 @@ pub(super) use preparation::{
     Preparing,
     RetiredNamespace,
 };
-pub(super) type Registry = AdmittedMap<AddressSpaceId, Namespace>;
+pub(super) type Registry = node_budget::Map<AddressSpaceId, Namespace>;
 
 /// Complete namespace fallback retains all payloads and original accounts.
 /// Only explicit post-registry finish may dispose sources, nodes and backing.

@@ -106,6 +106,10 @@ pub(super) const POLICY: Policy = Policy {
         total: [4 * 1024 * 1024, 16_384],
         ordinary: [3 * 1024 * 1024, 12_288],
     },
+    namespace_nodes: Pool {
+        total: [8 * 1024 * 1024, 40_960],
+        ordinary: [6 * 1024 * 1024, 30_720],
+    },
     principal_history: Pool {
         total: [1024 * 1024, 4096],
         ordinary: [768 * 1024, 3072],

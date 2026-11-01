@@ -4,13 +4,12 @@ use core::mem::ManuallyDrop;
 use super::*;
 use crate::{
     capability::LifecycleGuard,
-    klib::collections::retirement_list::RetiredEntry,
     memory::AddressSpaceHandle,
 };
 
 struct Storage {
-    namespace: Option<RetiredEntry<(AddressSpaceId, AsMailboxCaps)>>,
-    queue: Option<RetiredEntry<(AddressSpaceId, mailbox_queue::Namespace)>>,
+    namespace: Option<node_budget::Retired<(AddressSpaceId, AsMailboxCaps)>>,
+    queue: Option<node_budget::Retired<(AddressSpaceId, mailbox_queue::Namespace)>>,
 }
 /// Payload and its original charges remain together through final root
 /// invalidation. The root owns the unified authority namespace alongside this.

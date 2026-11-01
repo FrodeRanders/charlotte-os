@@ -215,7 +215,9 @@ pub(super) fn test_abandonment() {
             let allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
             usage::with_principal_history_locked(|| {
                 let _heap = allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
-                crate::klib::namespace_account_budget::with_locked(|| drop(owner));
+                crate::klib::namespace_account_budget::with_locked(|| {
+                    crate::klib::namespace_node_budget::with_locked(|| drop(owner));
+                });
             });
             assert_eq!(allocator.free_frames(), free);
             assert_eq!(table.iter().filter(|entry| entry.is_some()).count(), occupied);

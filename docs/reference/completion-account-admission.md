@@ -28,8 +28,9 @@ The shared allocation owner adds one private holder allocation per account and
 one machine word per account reference. A namespace's three inline account
 owners consequently grow by 24 bytes on the qualified 64-bit targets. Resource
 entry counts remain separate; admitted backing layouts use their actual sizes.
-This does not admit the global namespace-map node allocated before the accounts,
-or the wider kernel heap.
+The global namespace-map node allocated before the accounts has separate
+[byte/count admission](namespace-node-admission.md). Neither pool covers the
+wider kernel heap.
 
 ## Captured classification and actual lifetime
 
@@ -85,8 +86,9 @@ same objects; no additional deliberate leak is introduced.
 The shared allocation owner's host controls cover holder/payload failure,
 allocator clones, weak lifetime and deallocation-before-refund ordering. Native
 heap exhaustion is not forced. Capability, IPC and mailbox accounts have separate
-[backing admission](namespace-account-admission.md). Global namespace nodes,
-Waker/callback storage and aggregate principal/general-heap
+[backing admission](namespace-account-admission.md). Global namespace nodes have
+[separate admission](namespace-node-admission.md). Waker/callback storage and
+aggregate principal/general-heap
 admission remain open. No sustained hostile-pressure fairness, worst-case global
 lookup/IRQ latency, arbitrary destructor safety or physical hardware claim is
 made. SEC-07 remains partial; C18 and G1/G4 in

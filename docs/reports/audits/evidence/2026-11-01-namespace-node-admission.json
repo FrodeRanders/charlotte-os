@@ -1,0 +1,264 @@
+{
+  "schema": "charlotte.namespace-node-admission.v1",
+  "date": "2026-11-01",
+  "base_revision": "fbbb18e82997be10e0dd1a1e490e738bc92c4fc2",
+  "scope": "Independent requested-byte/count admission for the five global capability, IPC, completion, mailbox-capability and mailbox-word namespace map nodes, including empty preparation, detached storage and terminal retention.",
+  "source_sha256": {
+    "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
+    "crates/catten/src/capability.rs": "ed55e2d36d8416a314b7f277f89609249b0ff2c7192a7798fa46010224fcf6f8",
+    "crates/catten/src/capability/admission_tests.rs": "830eca487392d55767d1b5bb1e16ac3b5c348e0dbf0f3c0dffd202daa6ee88c3",
+    "crates/catten/src/capability/namespace_node_tests.rs": "b818bb79526514df9cf3a8bda1dbf155d3e14da6a589bde865b78c2b8435919f",
+    "crates/catten/src/capability/namespace_tests.rs": "5ff6b38fc09ee797785ce99cb0118a335e901e1550e22c557ddb539949f52c25",
+    "crates/catten/src/completion/delivery/preparation/tests.rs": "31ec4155ff56dd7087dd786af3506b9f25e9d72038671a3b2708829e88cde1ca",
+    "crates/catten/src/completion/detached/metadata_tests.rs": "95808dedcff742f8d5017ad68c2ab3d85a19a5520d6bc3c1fa1150404d5894b1",
+    "crates/catten/src/completion/mod.rs": "19e93d309f88ffab89af46d971f925b92a7a895b50240d0c9c9badef123042f6",
+    "crates/catten/src/completion/namespace.rs": "192832edc399b3c3136091e0c108a8e7f61a842002aaddabbe9d546dc923534c",
+    "crates/catten/src/completion/namespace/preparation.rs": "3449adf93158a9b63c9cb5dd17d72d5c37742a16980221beed7ea9c042c75b9e",
+    "crates/catten/src/completion/namespace/preparation/tests.rs": "516c41c2b82d5e70f4fc5504043f8fd68b9734b981da94c981fc6d79aee3329b",
+    "crates/catten/src/ipc/mod.rs": "f999d0a04dec07c3d15a2dfd3e46f426fb3cfc05ad58662ef7751200cce2c36d",
+    "crates/catten/src/ipc/namespace.rs": "926532eefca0c0b0e4d2609e883fe645f0943a40e38fa8260eeb8e299a1da5c0",
+    "crates/catten/src/ipc/namespace/tests.rs": "92dc84ce6cc1d9eefd8f164295c83a6cd4eec56bf0bb48687d8d0413990d1ebc",
+    "crates/catten/src/klib/collections/retirement_list.rs": "ef0447d659221379641fad66a9d93489574062cebb855d01e3247496716a0d65",
+    "crates/catten/src/klib/collections/retirement_list/tests.rs": "063b0983982913ff150fc0ee6af46c5fa2c05418814adfe94fe653129cbbaf69",
+    "crates/catten/src/klib/mod.rs": "f13c852bf77f31e61f76cad695ffdba92fe7a5626402d985390f4275cb914d88",
+    "crates/catten/src/klib/namespace_node_budget.rs": "106edd205acf3c51bea9f822323303ecc89c664d41776ad6b627426fd2427cc8",
+    "crates/catten/src/memory/registration.rs": "b41fe1448fcf38b2736fb94661bbd2740d7b92524b36da6e717bf96cf705df94",
+    "crates/catten/src/memory/retirement/tests.rs": "32e716fa2034d2d406ab25e189866ffe59678e0332c779dbd37df4b912f036c2",
+    "crates/catten/src/resource_policy.rs": "54d3148edc4bfeed0444d1f3d6115e99e0eb892a04fe8f623e17e1fe00a0dbad",
+    "crates/catten/src/resource_policy/defaults.rs": "3fd6d46a6bfe8cfda8fc2c271b9e557699be4be2cd988d5d4a8c5942624c2dab",
+    "crates/catten/src/resource_policy/tests.rs": "1db910a4f8ca96e892fa92fbee17e3b542b68b248327c5a51786b032a311c33d",
+    "crates/catten/src/syscall/mailbox_publication.rs": "2c7f152a3e85d79d0f983a8ec6ae3ee2e411264cba583896a4e30172a1a698cf",
+    "crates/catten/src/syscall/mailbox_publication_tests.rs": "0fc0f5bdb5d14cd38287479671a002a323b158626d0e160099f2e4150a648924",
+    "crates/catten/src/syscall/mailbox_queue.rs": "e2ea41cfa8c7a15fe95ae1e0f2563669d652c968307cbe3f11bbed06d527088d",
+    "crates/catten/src/syscall/mailbox_queue_tests.rs": "43d77ed72443b6918e1e4781c21ac9f5b80105ca4fe86bb85e10acf6d5d02d99",
+    "crates/catten/src/syscall/mailbox_retirement.rs": "3de11fb850c750a6c133d7eba8f50e9037f2ffc1c3bf145caccc7fb848555031",
+    "crates/catten/src/syscall/mod.rs": "5c84f1de3410eb716f9ed9f0db1898842d20a44b2ec3a1378c2c5222143de3ae",
+    "scripts/run-host-tests.sh": "781e2cae16a1316510117f66c3975bf26ebc49baf14e827c511ab9f958a74733"
+  },
+  "policy": {
+    "field": "namespace_nodes",
+    "dimensions": [
+      "requested node-layout bytes including charge",
+      "prepared/published/retained nodes"
+    ],
+    "ordinary": [
+      6291456,
+      30720
+    ],
+    "total": [
+      8388608,
+      40960
+    ],
+    "native_layout_bytes": {
+      "capability": 96,
+      "ipc": 96,
+      "completion": 160,
+      "mailbox-capability": 80,
+      "mailbox-words": 120
+    },
+    "complete_five_node_root_bytes": 552,
+    "count_only_complete_root_capacity": {
+      "ordinary": 3072,
+      "total": 4096
+    },
+    "twice_complete_root_count_capacity_layout_bytes": {
+      "ordinary": 3391488,
+      "total": 4521984
+    },
+    "decision": "Count limits allow twice the five-node needs at complete-root capacity, retaining overlap/replacement/quarantine headroom and a quarter trusted reserve. Current five layouts hit count before byte ceilings even for the largest type; requested-byte admission independently bounds future layout growth. No existing resource ceiling is increased or RAM preallocated.",
+    "cost": "The node carries a requested-byte count and immutable original-class flag. Reuse existing typed admitted maps and retirement owners; do not combine account or nested payload charges with global node lifetime.",
+    "classification": "Same unpublished-root or exact-generation trusted translation-storage capture used by account preparation; metadata reserve grants no resource privileges and later promotion cannot reclassify existing nodes."
+  },
+  "native_campaigns": [
+    {
+      "instance": "namespace-node-fixed-20261101-arm",
+      "arch": "aarch64",
+      "iommu": "SMMUv3",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-01T20:14:19Z",
+      "kernel_sha256": "731dcd9d2221e0493f5666efe00e07158ce527dc0f17c3a7ce6497157d287c45",
+      "bundle_map_sha256": "4a5ee89fd763eed1af5a7613cfc7a2428c1e0b623ac6bf63e6ec7eb5fdc2bd38",
+      "serial_sha256": "bf2cde379785758a9637103f68b851c092665fc8e3d2403dd93dbe77fdaf5626",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "guest_verdict": [
+        19,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     0.980996] [root retirement] preflight rollback, post-guard invalidation, retained backing/charges, leased slot and hardware tag, exact reuse, failed barrier and Drop quarantine passed (two retired roots, one retained live root and one retained closing root)",
+        "[+     1.043044] [namespace node allocation] family=ipc bytes=96; 64 allocator rejections passed",
+        "[+     1.045520] [IPC namespace preparation] missing namespace rejects, 64 heap-held publications/detaches, account disposal and guarded partial/retired retention passed; four standalone nodes and five budget accounts deliberately retained",
+        "[+     1.234266] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; no ASID published",
+        "[+     1.817228] [namespace node allocation] family=completion bytes=160; 64 allocator rejections passed",
+        "[+     1.883130] [completion namespace metadata] five unlocked allocation-stage rejections, 64 heap-held fresh publications/removals, complete source/timer/backlog/authority handback, reentrant disposal, retired-generation rejection and original-account reuse passed",
+        "[+     5.917336] [namespace node pressure] 30533 ordinary + 10214 reserved actual capability-layout nodes; 30720/40960 node ceilings, byte denial, heap-held denial, root rollback, completion/mailbox rejection, trusted five-node reserve, immutable promotion and close/recovery passed",
+        "[+     5.917956] [namespace node layouts] complete five-node root 552 bytes; count-headroom layouts 4521984 total / 3391488 ordinary bytes",
+        "[+     5.959762] [namespace node allocation] family=capability bytes=96; 64 allocator rejections passed",
+        "[+     7.550134] [namespace node allocation] family=mailbox-capability bytes=80; 64 allocator rejections passed",
+        "[+     7.555212] [namespace node allocation] family=mailbox-words bytes=120; 64 allocator rejections passed",
+        "[+    81.025590] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "instance": "namespace-node-fixed-20261101-intel",
+      "arch": "x86_64",
+      "iommu": "Intel VT-d",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-01T20:13:08Z",
+      "kernel_sha256": "6f1c85e7c433fa326923a55510f7d4a7a804c57c7653928abc18070b640def81",
+      "bundle_map_sha256": "1e8d1d5b4aa82acc192c0afdb4b577ee5617a233b0e41452a3eb7aa148b9f8d2",
+      "serial_sha256": "ddcd840cf4c4d59757c563ae941849f3ed9cd939a0847c6587e848cb9a949e38",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "guest_verdict": [
+        17,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     1.625579] [root retirement] preflight rollback, post-guard invalidation, retained backing/charges, leased slot and hardware tag, exact reuse, failed barrier and Drop quarantine passed (two retired roots, one retained live root and one retained closing root)",
+        "[+     1.814885] [namespace node allocation] family=ipc bytes=96; 64 allocator rejections passed",
+        "[+     1.821422] [IPC namespace preparation] missing namespace rejects, 64 heap-held publications/detaches, account disposal and guarded partial/retired retention passed; four standalone nodes and five budget accounts deliberately retained",
+        "[+     2.397305] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; no ASID published",
+        "[+     3.685941] [namespace node allocation] family=completion bytes=160; 64 allocator rejections passed",
+        "[+     3.767990] [completion namespace metadata] five unlocked allocation-stage rejections, 64 heap-held fresh publications/removals, complete source/timer/backlog/authority handback, reentrant disposal, retired-generation rejection and original-account reuse passed",
+        "[+     7.962202] [namespace node pressure] 30517 ordinary + 10214 reserved actual capability-layout nodes; 30720/40960 node ceilings, byte denial, heap-held denial, root rollback, completion/mailbox rejection, trusted five-node reserve, immutable promotion and close/recovery passed",
+        "[+     7.963672] [namespace node layouts] complete five-node root 552 bytes; count-headroom layouts 4521984 total / 3391488 ordinary bytes",
+        "[+     8.016066] [namespace node allocation] family=capability bytes=96; 64 allocator rejections passed",
+        "[+    16.841417] [namespace node allocation] family=mailbox-capability bytes=80; 64 allocator rejections passed",
+        "[+    16.849434] [namespace node allocation] family=mailbox-words bytes=120; 64 allocator rejections passed",
+        "[+    95.386405] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "instance": "namespace-node-fixed-20261101-amd",
+      "arch": "x86_64",
+      "iommu": "AMD-Vi",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-01T20:17:22Z",
+      "kernel_sha256": "81a56de6f082d76cb23bf96fd19d22c93d28f95b007ff3aaba8e0176cfc2620e",
+      "bundle_map_sha256": "1e8d1d5b4aa82acc192c0afdb4b577ee5617a233b0e41452a3eb7aa148b9f8d2",
+      "serial_sha256": "257e2404d26da55c4fd446bf95d10aefcf55d518fce1db33f059a0ffd05617ff",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "guest_verdict": [
+        17,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     0.943680] [root retirement] preflight rollback, post-guard invalidation, retained backing/charges, leased slot and hardware tag, exact reuse, failed barrier and Drop quarantine passed (two retired roots, one retained live root and one retained closing root)",
+        "[+     1.016979] [namespace node allocation] family=ipc bytes=96; 64 allocator rejections passed",
+        "[+     1.019461] [IPC namespace preparation] missing namespace rejects, 64 heap-held publications/detaches, account disposal and guarded partial/retired retention passed; four standalone nodes and five budget accounts deliberately retained",
+        "[+     1.207014] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; no ASID published",
+        "[+     1.674315] [namespace node allocation] family=completion bytes=160; 64 allocator rejections passed",
+        "[+     1.754256] [completion namespace metadata] five unlocked allocation-stage rejections, 64 heap-held fresh publications/removals, complete source/timer/backlog/authority handback, reentrant disposal, retired-generation rejection and original-account reuse passed",
+        "[+     5.661052] [namespace node pressure] 30517 ordinary + 10214 reserved actual capability-layout nodes; 30720/40960 node ceilings, byte denial, heap-held denial, root rollback, completion/mailbox rejection, trusted five-node reserve, immutable promotion and close/recovery passed",
+        "[+     5.662501] [namespace node layouts] complete five-node root 552 bytes; count-headroom layouts 4521984 total / 3391488 ordinary bytes",
+        "[+     5.712213] [namespace node allocation] family=capability bytes=96; 64 allocator rejections passed",
+        "[+    12.794340] [namespace node allocation] family=mailbox-capability bytes=80; 64 allocator rejections passed",
+        "[+    12.801461] [namespace node allocation] family=mailbox-words bytes=120; 64 allocator rejections passed",
+        "[+    88.346775] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    }
+  ],
+  "bundle_identity_encoding": "SHA-256 of UTF-8 JSON bundle_sha256 mapping, sorted keys, comma/colon separators without whitespace.",
+  "preserved_initial_failures": {
+    "base_revision": "fbbb18e82997be10e0dd1a1e490e738bc92c4fc2",
+    "failing_test_source_sha256": "3ea7da718b04637df0ed1e1411755f93842de3ddaeadf05d6564abae1ee176ef",
+    "source_excerpt": "assert_eq!(node_budget::snapshot().0[1], nodes.0[1] + 1);",
+    "failure_disposition": "New fixture assertion counted only its completion namespace. The first capability-backed submission also prepares a distinct global capability namespace through PreparedReservation::try_new. Replace the hard-coded increment with the actual published baseline; preserve both node charges. No production admission change is indicated by this assertion.",
+    "failed_runs": [
+      {
+        "instance": "namespace-node-20261101-intel",
+        "arch": "x86_64",
+        "cpus": 4,
+        "kernel_sha256": "70d42fafe25a3867fb5bdfd0582a570ca147055d58abcf785f90fa422743d2a1",
+        "prepared_utc": "2026-11-01T20:05:26Z",
+        "bundle_map_sha256": "1e8d1d5b4aa82acc192c0afdb4b577ee5617a233b0e41452a3eb7aa148b9f8d2",
+        "diagnostic_outcome": {
+          "reason": "kernel-panic",
+          "errors": [],
+          "qmp": "captured",
+          "lldb": {
+            "exit_code": 0,
+            "reported_errors": false
+          },
+          "cpu_count": 4,
+          "snapshot": "captured",
+          "elapsed_seconds": 4.183247166976798
+        },
+        "capture": "Kernel panic:\npanicked at crates/catten/src/completion/namespace/preparation/tests.rs:158:9:\nassertion `left == right` failed\n  left: 128\n right: 127\nKernel backtrace (raw return addresses; text=0xffffffff80000000..0xffffffff8052f38a, sp=0xffff80001c007a40, fp=0xffff80001c007ae0):\n  #00 0xffffffff800ea4ae\n  #01 0xffffffff8040f9fb\n  #02 0xffffffff8040f974\n  #03 0xffffffff8040faa3\n  #04 0xffffffff800dbe2e\n***\n"
+      },
+      {
+        "instance": "namespace-node-20261101-arm",
+        "arch": "aarch64",
+        "cpus": 4,
+        "kernel_sha256": "6d0dea8a8220b21c758cf49dcdf5e599be5d4d16477f4e25746fdf3b117c05c4",
+        "prepared_utc": "2026-11-01T20:06:41Z",
+        "bundle_map_sha256": "4a5ee89fd763eed1af5a7613cfc7a2428c1e0b623ac6bf63e6ec7eb5fdc2bd38",
+        "diagnostic_outcome": {
+          "reason": "kernel-panic",
+          "errors": [],
+          "qmp": "captured",
+          "lldb": {
+            "exit_code": 0,
+            "reported_errors": false
+          },
+          "cpu_count": 4,
+          "snapshot": "captured",
+          "elapsed_seconds": 8.646525624964852
+        },
+        "capture": "Kernel panic:\npanicked at crates/catten/src/completion/namespace/preparation/tests.rs:158:9:\nassertion `left == right` failed\n  left: 112\n right: 111\nKernel backtrace (raw return addresses; text=0xffffffff80000000..0xffffffff804f34d8, sp=0xffff00005cb83520, fp=0xffff00005cb835a0):\n  #00 0xffffffff80475664\n  #01 0xffffffff803dc854\n  #02 0xffffffff803dc82c\n  #03 0xffffffff803dc8a8\n  #04 0xffffffff8021e710\n  #05 0xffffffff804bddec\n***\n"
+      }
+    ]
+  },
+  "fixture_correction": {
+    "file": "crates/catten/src/completion/namespace/preparation/tests.rs",
+    "old_assertion": "assert_eq!(node_budget::snapshot().0[1], nodes.0[1] + 1);",
+    "replacement": "Capture published_nodes after the first capability-backed submission; assert_eq!(node_budget::snapshot(), published_nodes) after each of five rejection stages.",
+    "cause": "The first submission prepares a separate global capability namespace through PreparedReservation::try_new. Both live namespaces must remain admitted. Initial failures stopped at the new test assertion; no production admission code was changed for the correction."
+  },
+  "host_validation": {
+    "command": "CARGO_NET_OFFLINE=true scripts/run-host-tests.sh",
+    "exit_code": 0,
+    "result": "Full runner passed, including intentional unsafe-control rejection tests.",
+    "log_sha256": "4c745537baa58de33fa9c6c41983f6e1a3520ae982f6a43cdec6f6126e99dc7d",
+    "resource_policy_groups": 3,
+    "retirement_collection_tests": 16,
+    "catten_services_tests": 268,
+    "scope_note": "Host validation completed before the kernel-only baseline assertion correction. Host sources and production admission implementation were unchanged by that correction.",
+    "kernel_tests_clippy": "ARM acpi,kernel_tests, offline/locked, -D warnings: passed after correction",
+    "kernel_tests_clippy_log_sha256": "6ec0aedc13d45d5439f0c19d158d3d3513cec6e34b92dc1eb7d0379d547fa689",
+    "minimal_kernel_clippy": "ARM acpi, offline/locked, -D warnings: passed",
+    "minimal_kernel_clippy_log_sha256": "e02ba2cf9fb4f54073ef4d836b58c3cee8252b8a1d21abd3914a32ca969fc2e5",
+    "workspace_formatting": "cargo fmt --all -- --check: passed"
+  },
+  "controls": [
+    "Actual empty capability-layout nodes fill ordinary and total count ceilings. Oversized synthetic layouts reject on requested bytes with count headroom, before allocator entry. Sixty-four heap-held ordinary denials and trusted total denial precede allocation.",
+    "Capability preparation rejects at ordinary exhaustion; one free slot permits capability storage but rejects IPC preparation. Exact node/account/frame/root counts recover before ASID publication. Completion replacement and new mailbox candidates reject while existing receiver and established word queues remain usable.",
+    "Trusted root plus completion/mailbox/word initialization consumes five reserved nodes at ordinary exhaustion. Existing IPC and mailbox adapters still use ordinary resource admission before a grant. Later promotion changes neither original node bytes nor refund class.",
+    "Root close at total exhaustion returns exactly five original ordinary nodes and 552 requested bytes. Fresh root initialization consumes exactly that recovered allowance, then closes and all pressure storage returns to baseline.",
+    "Each of five actual layouts has 64 injected allocation rejections (320 total) with exact counter recovery. Existing IPC and completion publications/removals run under actual heap/node-pool guards and finish outside them.",
+    "Existing capability, IPC, completion, mailbox and containing root preparation/retirement abandonment controls hold the new node pool. Four standalone retained IPC nodes keep original bytes/count; no new deliberate-retention fixture is added.",
+    "Failed final-root invalidation retains its captured capability namespace node. Confirmation refunds its original bytes/count independently of intervening root creation; terminal quarantine preserves storage.",
+    "Existing allocator-traced retirement-collection host controls qualify payload/node disposal, post-deallocation charge release and retaining fallback."
+  ],
+  "qualification_limits": [
+    "Pressure uses actual empty capability-layout nodes, not the largest mixed footprint or maximum nested resource payloads. Current byte-denial tests deliberately use oversized synthetic layouts; current production count ceilings bind first.",
+    "The pool covers requested node layouts, not allocator overhead, independently surviving accounts/payloads, aggregate principal use or general kernel heap.",
+    "Native heap exhaustion is not forced; five-layout allocation errors use named injection controls. No sustained hostile concurrent EL0 pressure fairness, per-service entitlement, worst-case global lookup/IRQ latency or physical hardware guarantee.",
+    "Individual payload/registry nodes outside the five global maps, Waker/callback and other observer storage, aggregate principal/general-heap admission and the wider cleanup/destructor inventory remain open. SEC-07 remains partial; existing C02/C03/C10/C18 and G1/G4 boundaries remain."
+  ]
+}

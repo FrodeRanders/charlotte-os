@@ -334,6 +334,15 @@ the corrected RPC polling paths, and the remaining notification gaps.
 
 ## Capability and IPC publication
 
+- The five global capability/IPC/completion/mailbox namespace maps use typed
+  `namespace_node_budget` storage. Reserve actual node-layout bytes and one slot
+  before allocation, with the same captured trusted storage class as account
+  preparation. Publication only relinks storage; release/refund follows actual
+  deallocation outside local guards. Promotion, removal, root close and ASID
+  reuse cannot reclassify or refund retained nodes. Keep complete parent fallback
+  inert beneath publication/heap/pool guards. See
+  `docs/reference/namespace-node-admission.md`.
+
 - Capability, IPC endpoint/record and mailbox accounts use typed charged
   `AccountRef` owners with `namespace_accounts` backing admission. Capture class
   from the unpublished translation root before root publication; lazy mailbox

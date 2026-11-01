@@ -8,7 +8,7 @@ pub(in crate::completion) struct Preparing(ManuallyDrop<Resources>);
 
 struct Resources {
     asid: AddressSpaceId,
-    node: Option<PreparedEntry<(AddressSpaceId, Namespace)>>,
+    node: Option<node_budget::Prepared<(AddressSpaceId, Namespace)>>,
     entries: Option<Namespace>,
 }
 
@@ -35,7 +35,7 @@ impl Preparing {
         }));
         let result = (|| {
             before_allocate(0)?;
-            preparing.0.node = Some(PreparedEntry::try_new()?);
+            preparing.0.node = Some(node_budget::prepare(backing_platform)?);
             preparing.0.entries =
                 Some(Namespace::try_new(root, capacity, backing_platform, &mut before_allocate)?);
             Ok::<_, core::alloc::AllocError>(())
@@ -112,11 +112,13 @@ impl Preparing {
 /// One shared node retains the entire namespace. Its fallback never frees
 /// metadata, closes sources or refunds any sibling's original admission.
 #[must_use = "finish the complete retired namespace after registry unlock"]
-pub(in crate::completion) struct RetiredNamespace(RetiredEntry<(AddressSpaceId, Namespace)>);
+pub(in crate::completion) struct RetiredNamespace(
+    node_budget::Retired<(AddressSpaceId, Namespace)>,
+);
 
 impl RetiredNamespace {
     pub(in crate::completion) fn from_node(
-        node: RetiredEntry<(AddressSpaceId, Namespace)>,
+        node: node_budget::Retired<(AddressSpaceId, Namespace)>,
     ) -> Self {
         Self(node)
     }

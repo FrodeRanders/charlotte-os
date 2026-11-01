@@ -10,6 +10,7 @@ pub mod constants;
 pub mod integer;
 pub mod io;
 pub(crate) mod namespace_account_budget;
+pub(crate) mod namespace_node_budget;
 pub mod observer;
 pub mod size;
 pub mod spin;
