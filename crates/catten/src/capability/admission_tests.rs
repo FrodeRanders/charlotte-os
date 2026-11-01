@@ -26,6 +26,7 @@ pub(crate) fn test_admission() {
     namespace_account_tests::run();
     namespace_tests::run();
     record_tests::run();
+    record_backing_tests::run();
     budget::test_node_admission();
     let staged = reserve(OWNER, ObjectKind::Ipc).unwrap();
     let cancelled = staged.identity();

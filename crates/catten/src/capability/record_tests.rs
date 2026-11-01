@@ -90,6 +90,7 @@ const KINDS: [ObjectKind; 6] = [
 pub(super) fn run() {
     begin_real();
     let node = budget::node_used();
+    let backing = record_budget::snapshot();
     let root = loader::create_user_address_space_handle();
     let local = account(root);
     for kind in KINDS {
@@ -98,12 +99,13 @@ pub(super) fn run() {
         assert_eq!(CAPABILITIES.lock().get(&root.id()).unwrap().next_serial, 1);
         assert_eq!(local.used(), 0);
         assert_eq!(budget::node_used(), node);
+        assert_eq!(record_budget::snapshot(), backing);
     }
-    let preparations = KINDS.map(|_| PreparingRecord::try_new().unwrap());
+    let preparations = KINDS.map(|_| PreparingRecord::try_new(false).unwrap());
     let mut retired: [Option<RetiredRecord>; 6] = core::array::from_fn(|_| None);
     for (index, mut preparation) in preparations.into_iter().enumerate() {
         let kind = KINDS[index];
-        {
+        record_budget::with_locked(|| {
             let lifecycle = memory::ADDRESS_SPACE_LIFECYCLE.lock();
             let heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
             let cap =
@@ -119,7 +121,7 @@ pub(super) fn run() {
             assert!(!contains(root.id(), cap, kind));
             drop(heap);
             drop(lifecycle);
-        }
+        });
         preparation.finish();
     }
     assert_eq!(local.used(), 6);
@@ -138,10 +140,19 @@ pub(super) fn run() {
     ));
     assert_eq!(exhausted_account.used(), 0);
     assert_eq!(CAPABILITIES.lock().get(&exhausted.id()).unwrap().next_serial, u64::MAX);
+    assert_eq!(record_budget::snapshot(), backing);
     memory::close_user_address_space_handle(exhausted).unwrap();
     batch();
     cancellations();
     abandonment(node);
+    let bytes = record_budget::Prepared::allocation_bytes() as u64;
+    assert_eq!(
+        record_budget::snapshot(),
+        (
+            [backing.0[0] + bytes * 2, backing.0[1] + 2],
+            [backing.1[0] + bytes * 2, backing.1[1] + 2]
+        )
+    );
     finish_real();
     crate::logln!(
         "[capability record ownership] all six kinds reject storage before serial/charge \
@@ -253,7 +264,7 @@ fn cancellations() {
 fn abandonment(before: (usize, usize)) {
     let root = loader::create_user_address_space_handle();
     let local = account(root);
-    let mut preparation = PreparingRecord::try_new().unwrap();
+    let mut preparation = PreparingRecord::try_new(false).unwrap();
     preparation.test_charge(&local);
     let cap = try_allocate(root.id(), ObjectKind::Memory).unwrap();
     let retired =
@@ -264,8 +275,10 @@ fn abandonment(before: (usize, usize)) {
         let lifecycle = memory::ADDRESS_SPACE_LIFECYCLE.lock();
         let registry = CAPABILITIES.lock();
         let heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
-        drop(preparation);
-        drop(retired);
+        record_budget::with_locked(|| {
+            drop(preparation);
+            drop(retired);
+        });
         drop(heap);
         drop(registry);
         drop(lifecycle);

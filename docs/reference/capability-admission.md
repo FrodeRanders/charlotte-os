@@ -44,6 +44,12 @@ with their outer caller contexts qualified separately below. See the
 
 ## Record ownership and publication
 
+Individual authority nodes have independent [backing admission](authority-node-admission.md)
+before allocation, including unused candidates. The exact namespace supplies
+immutable storage classification separately from resource reserve grants;
+promotion cannot reclassify backing. Original requested-byte/count charges
+survive root close, detachment and ASID reuse until actual node deallocation.
+
 Capability-backed completion submissions now prepare their charged record,
 waiter list, optional watch charge and `PreparedReservation` storage outside
 `COMPLETIONS`. A short registry hold revalidates exact root, original accounts,

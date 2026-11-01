@@ -11,10 +11,7 @@ use spin::LazyLock;
 use crate::{
     cpu::multiprocessor::spin::mutex::Mutex,
     klib::{
-        collections::retirement_list::{
-            AdmittedMap,
-            PreparedEntry,
-        },
+        collections::retirement_list::AdmittedMap,
         namespace_node_budget as node_budget,
     },
     memory::AddressSpaceId,
@@ -30,6 +27,9 @@ mod namespace_node_tests;
 #[cfg(any(test, feature = "kernel_tests"))]
 mod namespace_tests;
 mod record;
+#[cfg(any(test, feature = "kernel_tests"))]
+mod record_backing_tests;
+mod record_budget;
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod record_tests;
 use record::PreparingRecord;
@@ -54,8 +54,9 @@ struct AddressSpaceCapabilities {
     next_serial: u64,
     address_space: Option<crate::memory::AddressSpaceHandle>,
     platform: bool,
+    backing_platform: bool,
     budget: budget::AccountRef,
-    objects: AdmittedMap<ObjectCapability, Entry>,
+    objects: record_budget::Map<ObjectCapability, Entry>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,6 +82,7 @@ impl AddressSpaceCapabilities {
             next_serial: 1,
             address_space,
             platform: false,
+            backing_platform,
             budget: budget::DomainBudget::try_new(backing_platform)?,
             objects: AdmittedMap::new(),
         })
@@ -297,8 +299,16 @@ impl PreparedReservation {
         if owner == crate::memory::KERNEL_ASID {
             identity = None;
         }
-        let record = PreparingRecord::try_new()?;
-        let missing = identity.is_none() && !CAPABILITIES.lock().contains_key(&owner);
+        let (missing, backing_platform) = {
+            let tables = CAPABILITIES.lock();
+            match tables.get(&owner) {
+                Some(table) if table.address_space == identity => (false, table.backing_platform),
+                Some(_) => return Err(AllocationError::Retired),
+                None if identity.is_some() => return Err(AllocationError::Retired),
+                None => (true, owner == crate::memory::KERNEL_ASID),
+            }
+        };
+        let record = PreparingRecord::try_new(backing_platform)?;
         let namespace = if missing {
             match prepare_namespace(owner == crate::memory::KERNEL_ASID) {
                 Ok(namespace) => Some(namespace),

@@ -339,6 +339,9 @@ storage readiness and does not synthesize a self-test verdict. See
         accounts share admitted backing through final weak/allocator release,
         with original classification captured before publication. Global namespace
         nodes have requested-byte/count admission through actual deallocation.
+        Individual authority-record candidates and detached nodes also retain
+        byte/count admission through actual deallocation, independently of
+        capability resource counts and later promotion.
         Waker/callback backing, other payload metadata and aggregate heap
         accounting remain gaps.
         Connection, retained-call and outstanding-reply records have separate

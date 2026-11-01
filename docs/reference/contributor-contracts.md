@@ -334,6 +334,15 @@ the corrected RPC polling paths, and the remaining notification gaps.
 
 ## Capability and IPC publication
 
+- Unified authority records use typed `record_budget` storage with independent
+  `authority_nodes` requested-byte/count admission before allocation. Capture
+  immutable backing class from the exact capability namespace outside local
+  publication guards; later promotion cannot reclassify it, and trusted backing
+  grants no resource privilege. Retain candidates and detached/retired records
+  until actual node deallocation, including root retirement and ASID reuse.
+  Complete preparation/retirement fallback stays inert under unknown guards.
+  See `docs/reference/authority-node-admission.md`.
+
 - The five global capability/IPC/completion/mailbox namespace maps use typed
   `namespace_node_budget` storage. Reserve actual node-layout bytes and one slot
   before allocation, with the same captured trusted storage class as account

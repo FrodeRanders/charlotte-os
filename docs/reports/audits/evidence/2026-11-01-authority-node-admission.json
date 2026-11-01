@@ -1,0 +1,171 @@
+{
+  "schema": "charlotte.authority-node-admission.v1",
+  "date": "2026-11-01",
+  "base_revision": "e943419533a4190cb216477cb1c14dfb40929dc6",
+  "scope": "Independent requested-byte/count admission for unified authority-record backing, including unused candidates, published/escrowed records, detached storage and terminal retention.",
+  "source_sha256": {
+    "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
+    "crates/catten/src/capability.rs": "6f3f6879c97d5793a0ec1abc52b9d5f223de4a14ed39c045de7d01cd854816df",
+    "crates/catten/src/capability/admission_tests.rs": "79128bb7b5be75887e4d49ae1cb1c0601b35c72069cf1c0a109ea0e2e25436ac",
+    "crates/catten/src/capability/budget.rs": "73b091120ea2acb5a78f1d043bc4267a163b9d96051b48a6677366efe545b0c6",
+    "crates/catten/src/capability/record.rs": "1789b370f52124c4e1356d1825cab7f3728979e994b03972f105b4d62c03d473",
+    "crates/catten/src/capability/record_backing_tests.rs": "f99df3c0a8d2a9c14c6c778d6546d3dd2318e41a99475acd0c0ffbffaf6da500",
+    "crates/catten/src/capability/record_budget.rs": "eea27fa087727a6468b31ac7169d32761820cc3362dd32b795affa4ee96b1f33",
+    "crates/catten/src/capability/record_tests.rs": "9bf3410a7c669acca7b9650ae9174357af0f79be55b6c56a9e05be55e64d8e63",
+    "crates/catten/src/klib/collections/retirement_list.rs": "ef0447d659221379641fad66a9d93489574062cebb855d01e3247496716a0d65",
+    "crates/catten/src/klib/collections/retirement_list/tests.rs": "063b0983982913ff150fc0ee6af46c5fa2c05418814adfe94fe653129cbbaf69",
+    "crates/catten/src/memory/registration.rs": "b41fe1448fcf38b2736fb94661bbd2740d7b92524b36da6e717bf96cf705df94",
+    "crates/catten/src/memory/retirement/tests.rs": "32e716fa2034d2d406ab25e189866ffe59678e0332c779dbd37df4b912f036c2",
+    "crates/catten/src/resource_policy.rs": "d36a4acfc2c9a1e3815d47b0c9664c5aa0261f65f54270f161104b9a541c178d",
+    "crates/catten/src/resource_policy/defaults.rs": "e5c062061fea5514b7a93a6c730b9ecb63560ff3a271aab233727dfff9498308",
+    "crates/catten/src/resource_policy/tests.rs": "6dd1a6575f21a63261dc11e0381199dc4e25f73889748f4adea5699d9cd7296c",
+    "scripts/run-host-tests.sh": "781e2cae16a1316510117f66c3975bf26ebc49baf14e827c511ab9f958a74733",
+    "scripts/tests/test-resource-policy.py": "05e518a7f3cc0627cddbb324c3b3f683a09bc67d71d4aa1d2191a23eb8f22032"
+  },
+  "policy": {
+    "field": "authority_nodes",
+    "dimensions": [
+      "requested node-layout bytes including charge",
+      "prepared/published/retained nodes"
+    ],
+    "ordinary": [
+      12582912,
+      98304
+    ],
+    "total": [
+      16777216,
+      131072
+    ],
+    "native_layout_bytes": 64,
+    "bytes_at_count_ceiling": {
+      "ordinary": 6291456,
+      "total": 8388608
+    },
+    "decision": "Twice the unchanged 49152/65536 capability resource ceilings leaves candidate/retirement headroom. Byte ceilings permit layout growth independently of count. No preallocation or existing limit reduction/increase.",
+    "cost": "16 additional bytes per authority node, one independent admission/refund operation, and possible ResourceLimit rejection before allocation. Allocator overhead and aggregate principal budgets remain outside this pool.",
+    "classification": "Immutable trusted backing class captured from the exact capability namespace; root construction supplied it from unpublished translation backing. Promotion changes resource grants only. Permanent kernel is trusted; raw fixtures ordinary."
+  },
+  "native_campaigns": [
+    {
+      "platform": "arm",
+      "instance": "authority-node-20261101-arm",
+      "architecture": "aarch64",
+      "cpus": 4,
+      "fresh_storage": true,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-01T20:28:40Z",
+      "base_revision": "e943419533a4190cb216477cb1c14dfb40929dc6",
+      "kernel_sha256": "338b651adc05f0a290142a1b5a3f53996a501441e9ab99d75585b89aaed9ef1e",
+      "bundle_map_sha256": "4a5ee89fd763eed1af5a7613cfc7a2428c1e0b623ac6bf63e6ec7eb5fdc2bd38",
+      "runner_exit_code": 0,
+      "diagnostic_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "passed": 19,
+      "failed": 0,
+      "pending": 0,
+      "serial_sha256": "808c3d8a61d8cd8646a222b9ea909731e923e8ee7527329d6c1ff7003c286dfd",
+      "receipts": [
+        "[+     8.359059] [namespace node layouts] complete five-node root 552 bytes; count-headroom layouts 4521984 total / 3391488 ordinary bytes",
+        "[+     8.416196] [capability record phases] 20 prepared-node and 18 disposal boundaries outside local capability/heap guards; entry IRQ state preserved",
+        "[+     8.416533] [capability record ownership] all six kinds reject storage before serial/charge mutation; heap-held captured admission/publication/escrow/detach; mixed batch rejection is atomic, move retains its exact retired source charge until explicit completion; cancellation and late tokens preserve exact accounts; guarded preparation/retirement abandonment retains two original ordinary charges after root reuse",
+        "[+     8.538801] [authority node backing] bytes=64 actual candidates ordinary=98161 trusted=32763; ordinary/total ceilings 98304/131072; 64 allocation failures, byte denials, 128 heap-held admission denials, immutable promotion, trusted storage without grants, retained record across root close/ASID reuse, exact recovery passed",
+        "[+    10.333894] [capability record phases] 41 prepared-node and 42 disposal boundaries outside local capability/heap guards; entry IRQ state preserved",
+        "[+    83.728627] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "platform": "intel",
+      "instance": "authority-node-20261101-intel",
+      "architecture": "x86_64",
+      "cpus": 4,
+      "fresh_storage": true,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-01T20:29:46Z",
+      "base_revision": "e943419533a4190cb216477cb1c14dfb40929dc6",
+      "kernel_sha256": "19ae09198e98b2658deaf7f1af30b3b6cce9677d7a13fee6afb7fd3ae822f6ba",
+      "bundle_map_sha256": "1e8d1d5b4aa82acc192c0afdb4b577ee5617a233b0e41452a3eb7aa148b9f8d2",
+      "runner_exit_code": 0,
+      "diagnostic_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "passed": 17,
+      "failed": 0,
+      "pending": 0,
+      "serial_sha256": "281d84d930d22a74e3a65f572ad5bece7fd5fb021e08dae6a3093129faf39c8e",
+      "receipts": [
+        "[+     8.122048] [namespace node layouts] complete five-node root 552 bytes; count-headroom layouts 4521984 total / 3391488 ordinary bytes",
+        "[+     8.276160] [capability record phases] 20 prepared-node and 18 disposal boundaries outside local capability/heap guards; entry IRQ state preserved",
+        "[+     8.277020] [capability record ownership] all six kinds reject storage before serial/charge mutation; heap-held captured admission/publication/escrow/detach; mixed batch rejection is atomic, move retains its exact retired source charge until explicit completion; cancellation and late tokens preserve exact accounts; guarded preparation/retirement abandonment retains two original ordinary charges after root reuse",
+        "[+     8.600980] [authority node backing] bytes=64 actual candidates ordinary=98153 trusted=32763; ordinary/total ceilings 98304/131072; 64 allocation failures, byte denials, 128 heap-held admission denials, immutable promotion, trusted storage without grants, retained record across root close/ASID reuse, exact recovery passed",
+        "[+    18.269580] [capability record phases] 44 prepared-node and 42 disposal boundaries outside local capability/heap guards; entry IRQ state preserved",
+        "[+    93.958446] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "platform": "amd",
+      "instance": "authority-node-20261101-amd",
+      "architecture": "x86_64",
+      "cpus": 4,
+      "fresh_storage": true,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-01T20:33:13Z",
+      "base_revision": "e943419533a4190cb216477cb1c14dfb40929dc6",
+      "kernel_sha256": "57d03163d4fabc24f9d0b73fb85645d7181a4aabf0668f5fd2d9a3fca3bf0126",
+      "bundle_map_sha256": "1e8d1d5b4aa82acc192c0afdb4b577ee5617a233b0e41452a3eb7aa148b9f8d2",
+      "runner_exit_code": 0,
+      "diagnostic_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "passed": 17,
+      "failed": 0,
+      "pending": 0,
+      "serial_sha256": "107d82eab382c320d027516052406fef6379f695bbdc3eba3dfecb942eec6b4b",
+      "receipts": [
+        "[+     6.266475] [namespace node layouts] complete five-node root 552 bytes; count-headroom layouts 4521984 total / 3391488 ordinary bytes",
+        "[+     6.365266] [capability record phases] 20 prepared-node and 18 disposal boundaries outside local capability/heap guards; entry IRQ state preserved",
+        "[+     6.365996] [capability record ownership] all six kinds reject storage before serial/charge mutation; heap-held captured admission/publication/escrow/detach; mixed batch rejection is atomic, move retains its exact retired source charge until explicit completion; cancellation and late tokens preserve exact accounts; guarded preparation/retirement abandonment retains two original ordinary charges after root reuse",
+        "[+     6.549106] [authority node backing] bytes=64 actual candidates ordinary=98153 trusted=32763; ordinary/total ceilings 98304/131072; 64 allocation failures, byte denials, 128 heap-held admission denials, immutable promotion, trusted storage without grants, retained record across root close/ASID reuse, exact recovery passed",
+        "[+    14.054092] [capability record phases] 38 prepared-node and 38 disposal boundaries outside local capability/heap guards; entry IRQ state preserved",
+        "[+    90.235395] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    }
+  ],
+  "bundle_identity_encoding": "SHA-256 of UTF-8 JSON bundle_sha256 mapping, sorted keys, comma/colon separators without whitespace.",
+  "host_validation": {
+    "command": "CARGO_NET_OFFLINE=true scripts/run-host-tests.sh",
+    "exit_code": 0,
+    "result": "Complete host suite passed, including service, policy, actual shared allocator and retirement collection controls and operational tooling self-tests.",
+    "log_sha256": "639a9f6294b1cb896fff7a451d8419b4a494620ba1b4b822e7bc6fec5641b731",
+    "expected_negative_controls": "The host harness requires the legacy TLS old-parser mutation to fail (exit 101; 5 pass/4 fail). Its captured FAILED line is expected evidence. The legacy HMAC destructor-contract rejection is also intentional; the complete harness exits 0.",
+    "resource_policy_groups": 3,
+    "resource_policy_result": "Separate scripts/tests/test-resource-policy.py run passed all 3 groups; default/selected/larger profiles and actual counters include authority_nodes, invalid ordering and zero dimensions.",
+    "shared_allocator_unique_tests": 15,
+    "retirement_collection_unique_tests": 16,
+    "kernel_tests_clippy": "acpi,kernel_tests; offline, locked, AArch64 custom target; -D warnings; exit 0",
+    "kernel_tests_clippy_log_sha256": "a098d0b19f2889e1a1e468196004b33e42a2013730c44b74a0fc4d83f72d5547",
+    "minimal_kernel_clippy": "acpi; offline, locked, AArch64 custom target; -D warnings; exit 0",
+    "minimal_kernel_clippy_log_sha256": "d61959cd8eebee8d8bc3d7cc1a39b27fc5eba999278a8d4603f4fd08dd0f2bee",
+    "workspace_formatting": "cargo fmt --all -- --check; exit 0"
+  },
+  "controls": [
+    "64 injected allocator failures refund exact original node byte/count admission. Separate oversize reservations deny ordinary/total bytes before allocator work; actual layout currently reaches count ceilings first.",
+    "Actual empty 64-byte authority-layout candidate nodes fill ordinary and total count ceilings. Pressure vectors are fixture-owned; they do not carry fake published capability charges.",
+    "64 ordinary and 64 trusted denial calls hold the real global heap lock. Serial and capability admission remain unchanged.",
+    "Promoting an ordinary root cannot reclassify its node backing. Trusted-root backing uses reserve at ordinary exhaustion without granting platform capability resource admission.",
+    "All six authority kinds publish, escrow, roll back and detach under the actual heap and node-pool guards; unused storage is finished after guard exit.",
+    "Existing preparation/detached-record abandonment retains exactly two ordinary authority nodes and original capability charges under lifecycle, capability, heap and new node-pool guards; no extra deliberate retained fixture.",
+    "Real detached record survives source root close and ASID reuse with original account/byte/count charge. At total exhaustion, explicit release returns exactly one ordinary node; a successor record consumes that exact capacity.",
+    "Stale exact-generation preflight rejects while heap and node pool are locked; no allocation or admission against the successor. Identity exhaustion, cancellation and rejection restore unused backing.",
+    "The existing shared retirement collection host controls establish allocation release before node-charge refund; authority resource charge stays outside and after the retired-node release callback."
+  ],
+  "failures": [],
+  "qualification_limits": [
+    "Actual candidate-node pressure is serialized kernel-fixture work, not sustained concurrent hostile EL0 fairness or real native heap exhaustion. Allocator failure is injected.",
+    "Independent backing admission does not grant leases, resource reserve privileges, physical completion, replay or a new recovery owner. Existing containing caller/IRQ/destructor qualification remains open.",
+    "Allocator bookkeeping, aggregate principal/general-heap admission, other payload/registry nodes and waker/callback storage remain outside this change. SEC-07 remains partial."
+  ]
+}

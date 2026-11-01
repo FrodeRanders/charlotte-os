@@ -5,23 +5,22 @@ use core::{
 };
 
 use super::*;
-use crate::klib::collections::retirement_list::RetiredEntry;
 
 struct Storage {
-    node: Option<PreparedEntry<(ObjectCapability, Entry)>>,
+    node: Option<record_budget::Prepared>,
     charge: Option<budget::Charge>,
 }
 /// Contains every provisional allocation/charge across insertion rejection.
 /// Inert fallback must not refund or deallocate beneath unknown outer guards.
 pub(super) struct PreparingRecord(ManuallyDrop<Storage>);
 impl PreparingRecord {
-    pub(super) fn try_new() -> Result<Self, AllocationError> {
+    pub(super) fn try_new(backing_platform: bool) -> Result<Self, AllocationError> {
         #[cfg(feature = "kernel_tests")]
         let entry_irq = crate::cpu::isa::lp::ops::get_int_state();
         if test_fault!(record_tests::reject()) {
             return Err(AllocationError::AllocationFailed);
         }
-        let node = PreparedEntry::try_new().map_err(|_| AllocationError::AllocationFailed)?;
+        let node = record_budget::prepare(backing_platform)?;
         #[cfg(feature = "kernel_tests")]
         record_tests::boundary(false, entry_irq);
         Ok(Self(ManuallyDrop::new(Storage {
@@ -85,14 +84,14 @@ impl Drop for PreparingRecord {
 /// Detached authority retains its original entry, class/account and node.
 /// Only explicit release refunds admission; Drop quarantines the entire node.
 #[must_use]
-pub(crate) struct RetiredRecord(RetiredEntry<(ObjectCapability, Entry)>);
+pub(crate) struct RetiredRecord(record_budget::Retired);
 impl fmt::Debug for RetiredRecord {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RetiredRecord").finish_non_exhaustive()
     }
 }
 impl RetiredRecord {
-    pub(super) fn new(node: RetiredEntry<(ObjectCapability, Entry)>) -> Self {
+    pub(super) fn new(node: record_budget::Retired) -> Self {
         Self(node)
     }
 
