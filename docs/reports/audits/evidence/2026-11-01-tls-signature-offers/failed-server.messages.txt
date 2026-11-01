@@ -1,0 +1,118 @@
+<<< TLS 1.0, RecordHeader [length 0005]
+    16 03 01 00 ac
+<<< TLS 1.3, Handshake [length 00ac], ClientHello
+    01 00 00 a8 03 03 7a 20 b1 77 45 9c 0a d1 3e 41
+    c0 76 0b 65 12 ab de c1 f5 a3 38 1c 69 ae f0 ac
+    1e e7 81 f9 54 33 00 00 02 13 01 01 00 00 7d 00
+    2b 00 03 02 03 04 00 0d 00 08 00 06 04 03 05 03
+    08 07 00 0a 00 04 00 02 00 17 00 2d 00 02 01 01
+    00 33 00 47 00 45 00 17 00 41 04 33 4c 78 3e 12
+    7f a8 cd ab 05 e8 40 bb 66 db 3a 45 d6 43 bd ef
+    16 59 8b 12 ec 24 22 6f a7 29 9f 73 cc 64 6d bc
+    2b 10 77 ff bc 52 bb 9b 66 4e d4 98 bd e8 5a c5
+    61 8e 6e 65 0d ef ba dc 66 9b a0 00 00 00 0d 00
+    0b 00 00 08 74 6c 73 2e 74 65 73 74
+>>> TLS 1.2, RecordHeader [length 0005]
+    16 03 03 00 7b
+>>> TLS 1.3, Handshake [length 007b], ServerHello
+    02 00 00 77 03 03 05 b6 a9 41 05 a0 21 7a 0e 10
+    3f df 90 ab e2 e7 cb 3f 2b cf ff e7 97 54 3a 51
+    6c fc 4c cf 5c df 00 13 01 00 00 4f 00 2b 00 02
+    03 04 00 33 00 45 00 17 00 41 04 f4 c4 2f e1 5d
+    d0 ab 7c 98 ed 75 64 91 80 13 87 e6 e2 b6 d2 12
+    37 40 09 61 d9 04 cf bf fe 50 84 0c ec 4b 15 85
+    65 4c ee 14 48 ae ce 1b 0e a4 6e ff 96 c7 a7 1f
+    27 26 f7 0a 9e 2c 7b 59 04 80 fa
+>>> TLS 1.2, RecordHeader [length 0005]
+    14 03 03 00 01
+>>> TLS 1.3, ChangeCipherSpec [length 0001]
+    01
+>>> TLS 1.2, RecordHeader [length 0005]
+    17 03 03 00 17
+>>> TLS 1.2, InnerContent [length 0001]
+    16
+>>> TLS 1.3, Handshake [length 0006], EncryptedExtensions
+    08 00 00 02 00 00
+>>> TLS 1.2, RecordHeader [length 0005]
+    17 03 03 00 77
+>>> TLS 1.2, InnerContent [length 0001]
+    16
+>>> TLS 1.3, Handshake [length 0066], CertificateRequest
+    0d 00 00 62 00 00 5f 00 0d 00 2c 00 2a 09 05 09
+    06 09 04 04 03 05 03 06 03 08 07 08 08 08 1a 08
+    1b 08 1c 08 09 08 0a 08 0b 08 04 08 05 08 06 04
+    01 05 01 06 01 07 08 00 2f 00 2b 00 29 00 27 30
+    25 31 23 30 21 06 03 55 04 03 0c 1a 43 68 61 72
+    6c 6f 74 74 65 20 70 75 62 6c 69 63 20 74 65 73
+    74 20 72 6f 6f 74
+>>> TLS 1.2, RecordHeader [length 0005]
+    17 03 03 03 0d
+>>> TLS 1.2, InnerContent [length 0001]
+    16
+>>> TLS 1.3, Handshake [length 02fc], Certificate
+    0b 00 02 f8 00 00 02 f4 00 01 67 30 82 01 63 30
+    82 01 09 a0 03 02 01 02 02 01 02 30 0a 06 08 2a
+    86 48 ce 3d 04 03 02 30 25 31 23 30 21 06 03 55
+    04 03 0c 1a 43 68 61 72 6c 6f 74 74 65 20 70 75
+    62 6c 69 63 20 74 65 73 74 20 72 6f 6f 74 30 20
+    17 0d 32 36 31 31 30 31 31 35 34 32 34 34 5a 18
+    0f 32 31 32 36 31 30 30 38 31 35 34 32 34 34 5a
+    30 13 31 11 30 0f 06 03 55 04 03 0c 08 74 6c 73
+    2e 74 65 73 74 30 59 30 13 06 07 2a 86 48 ce 3d
+    02 01 06 08 2a 86 48 ce 3d 03 01 07 03 42 00 04
+    b0 b0 3f 32 c9 fe 09 11 e0 13 53 2b 46 c6 f1 ce
+    1c ba 64 8d a1 c2 9b cb 80 e6 1b 71 66 0c d8 3d
+    0e 50 cb 83 07 0e e8 fb a7 78 6c d2 0f 1a 59 ad
+    15 4d af 7e 1f d6 81 f3 3a 9f 34 36 c3 07 61 a6
+    a3 3a 30 38 30 13 06 03 55 1d 11 04 0c 30 0a 82
+    08 74 6c 73 2e 74 65 73 74 30 0c 06 03 55 1d 13
+    01 01 ff 04 02 30 00 30 13 06 03 55 1d 25 04 0c
+    30 0a 06 08 2b 06 01 05 05 07 03 01 30 0a 06 08
+    2a 86 48 ce 3d 04 03 02 03 48 00 30 45 02 21 00
+    db b9 fa 3d e8 e3 cd 69 c0 26 44 b0 b2 f6 4d 3d
+    e4 03 d3 1e a6 d5 81 24 fa ee 1a 9a c8 54 bd 60
+    02 20 08 36 2d 38 ea f5 84 91 aa ca 6b ef 11 60
+    43 2c b8 55 86 e2 5b 93 5e 11 94 93 dc ad 4b ea
+    20 84 00 00 00 01 83 30 82 01 7f 30 82 01 26 a0
+    03 02 01 02 02 14 38 d1 31 dc e3 ba 4c 40 b9 9e
+    29 04 3a 87 93 d0 81 88 4c b8 30 0a 06 08 2a 86
+    48 ce 3d 04 03 02 30 25 31 23 30 21 06 03 55 04
+    03 0c 1a 43 68 61 72 6c 6f 74 74 65 20 70 75 62
+    6c 69 63 20 74 65 73 74 20 72 6f 6f 74 30 20 17
+    0d 32 36 31 31 30 31 31 35 34 32 34 34 5a 18 0f
+    32 31 32 36 31 30 30 38 31 35 34 32 34 34 5a 30
+    25 31 23 30 21 06 03 55 04 03 0c 1a 43 68 61 72
+    6c 6f 74 74 65 20 70 75 62 6c 69 63 20 74 65 73
+    74 20 72 6f 6f 74 30 59 30 13 06 07 2a 86 48 ce
+    3d 02 01 06 08 2a 86 48 ce 3d 03 01 07 03 42 00
+    04 bc 9a 13 7b 29 5f 5e db 9d f4 ce 33 5e 68 88
+    22 e9 37 92 71 88 66 b4 41 b6 0c ad 75 72 24 e5
+    02 e8 f2 c4 cd c8 4a da 87 44 db 45 7b 99 a2 49
+    14 e9 2a 26 16 44 f2 d2 27 fa f2 b4 66 04 1a d2
+    43 a3 32 30 30 30 1d 06 03 55 1d 0e 04 16 04 14
+    bf 75 9c 6c a0 5c 7b 29 f9 a9 7f 2e b0 65 84 56
+    38 25 f1 3d 30 0f 06 03 55 1d 13 01 01 ff 04 05
+    30 03 01 01 ff 30 0a 06 08 2a 86 48 ce 3d 04 03
+    02 03 47 00 30 44 02 20 53 5d c8 4d 2e 93 57 c2
+    eb 53 05 e8 07 25 88 61 30 37 1d 0f 78 64 96 93
+    c7 5d 65 79 4c e6 b4 87 02 20 44 48 de 3d 32 91
+    91 1d 8f ca 63 ad d3 5f c4 a2 9b a5 dc b1 83 60
+    3d af 8b 42 3d 4c 02 66 aa 90 00 00
+>>> TLS 1.2, RecordHeader [length 0005]
+    17 03 03 00 5f
+>>> TLS 1.2, InnerContent [length 0001]
+    16
+>>> TLS 1.3, Handshake [length 004e], CertificateVerify
+    0f 00 00 4a 04 03 00 46 30 44 02 20 2f b1 81 b7
+    ee 8d 06 8f 62 65 0e f7 3e ac 7e 3b 59 54 de 15
+    94 3b 9b 84 32 5d 0b 3e 75 ee 6d 8e 02 20 3b 82
+    1e b2 b2 f5 ce 14 97 76 c4 0d 2d f7 07 eb 92 e2
+    8f 3e ce a4 2f 27 a7 90 81 e3 4d 04 bc e1
+>>> TLS 1.2, RecordHeader [length 0005]
+    17 03 03 00 35
+>>> TLS 1.2, InnerContent [length 0001]
+    16
+>>> TLS 1.3, Handshake [length 0024], Finished
+    14 00 00 20 00 b5 26 cb 35 bd 87 56 c1 e1 cf 19
+    0d e1 c2 a7 be e9 94 65 08 86 fe 73 4a a7 9f f6
+    c1 19 51 00

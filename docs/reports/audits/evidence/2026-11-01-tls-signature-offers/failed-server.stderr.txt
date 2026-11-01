@@ -1,0 +1,13 @@
+verify depth is 1, must return a certificate
+SSL_accept:before SSL initialization
+SSL_accept:before SSL initialization
+SSL_accept:SSLv3/TLS read client hello
+SSL_accept:SSLv3/TLS write server hello
+SSL_accept:SSLv3/TLS write change cipher spec
+SSL_accept:TLSv1.3 write encrypted extensions
+SSL_accept:SSLv3/TLS write certificate request
+SSL_accept:SSLv3/TLS write certificate
+SSL_accept:TLSv1.3 write server certificate verify
+SSL_accept:SSLv3/TLS write finished
+SSL_accept:TLSv1.3 early data
+SSL_accept:error in error

@@ -47,14 +47,27 @@ struct Fixture {
 
 impl Drop for Fixture {
     fn drop(&mut self) {
+        let mut status = None;
         if let Some(mut child) = self.child.take() {
             let _ = child.kill();
-            let _ = child.wait();
+            status = child.wait().ok();
         }
         if let Some(output) = self.output.take() {
             output.join().unwrap();
         }
-        fs::remove_dir_all(&self.directory).unwrap();
+        if thread::panicking() {
+            std::eprintln!(
+                "TLS fixture retained at {:?}; server status {status:?}",
+                self.directory
+            );
+            for name in ["openssl.version", "server.stderr", "server.messages", "client.io"] {
+                if let Ok(bytes) = fs::read(self.directory.join(name)) {
+                    std::eprintln!("{name}:\n{}", String::from_utf8_lossy(&bytes));
+                }
+            }
+        } else {
+            fs::remove_dir_all(&self.directory).unwrap();
+        }
     }
 }
 
@@ -71,6 +84,9 @@ impl Fixture {
             child: None,
             output: None,
         };
+        let version = Command::new("openssl").args(["version", "-a"]).output().unwrap();
+        assert!(version.status.success());
+        fs::write(fixture.directory.join("openssl.version"), &version.stdout).unwrap();
         for name in ["ca", "server", "client"] {
             fixture.openssl(&[
                 "ecparam",
@@ -182,6 +198,14 @@ impl Fixture {
     }
 
     fn connect(&mut self, client_required: bool) -> HostSocket {
+        self.connect_with_client_algorithms(client_required, None)
+    }
+
+    fn connect_with_client_algorithms(
+        &mut self,
+        client_required: bool,
+        algorithms: Option<&str>,
+    ) -> HostSocket {
         assert!(self.child.is_none());
         let reservation = TcpListener::bind(("127.0.0.1", 0)).unwrap();
         let address = reservation.local_addr().unwrap();
@@ -203,15 +227,22 @@ impl Fixture {
             "-naccept",
             "1",
             "-www",
+            "-state",
+            "-msg",
+            "-msgfile",
+            "server.messages",
         ]);
         if client_required {
             command.args(["-Verify", "1", "-verify_return_error", "-CAfile", "ca.pem"]);
+        }
+        if let Some(algorithms) = algorithms {
+            command.args(["-client_sigalgs", algorithms]);
         }
         let mut child = command
             .current_dir(&self.directory)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
+            .stderr(fs::File::create(self.directory.join("server.stderr")).unwrap())
             .spawn()
             .unwrap();
         let stdout = child.stdout.take().unwrap();
@@ -234,26 +265,49 @@ impl Fixture {
         let socket = TcpStream::connect(address).unwrap();
         socket.set_read_timeout(Some(FIXTURE_TIMEOUT)).unwrap();
         socket.set_write_timeout(Some(FIXTURE_TIMEOUT)).unwrap();
-        HostSocket(socket)
+        HostSocket {
+            socket,
+            incoming: fs::File::create(self.directory.join("server-to-client.tls")).unwrap(),
+            outgoing: fs::File::create(self.directory.join("client-to-server.tls")).unwrap(),
+            operations: fs::File::create(self.directory.join("client.io")).unwrap(),
+        }
     }
 }
 
-struct HostSocket(TcpStream);
+struct HostSocket {
+    socket: TcpStream,
+    incoming: fs::File,
+    outgoing: fs::File,
+    operations: fs::File,
+}
 impl ErrorType for HostSocket {
     type Error = TransportError;
 }
 impl Read for HostSocket {
     fn read(&mut self, bytes: &mut [u8]) -> Result<usize, Self::Error> {
-        std::io::Read::read(&mut self.0, bytes).map_err(|_| TransportError)
+        use std::io::Write as _;
+        let result = std::io::Read::read(&mut self.socket, bytes);
+        std::writeln!(self.operations, "read requested={} result={result:?}", bytes.len()).unwrap();
+        if let Ok(len) = result {
+            self.incoming.write_all(&bytes[..len]).unwrap();
+        }
+        result.map_err(|_| TransportError)
     }
 }
 impl EmbeddedWrite for HostSocket {
     fn write(&mut self, bytes: &[u8]) -> Result<usize, Self::Error> {
-        std::io::Write::write(&mut self.0, bytes).map_err(|_| TransportError)
+        use std::io::Write as _;
+        let result = std::io::Write::write(&mut self.socket, bytes);
+        std::writeln!(self.operations, "write requested={} result={result:?}", bytes.len())
+            .unwrap();
+        if let Ok(len) = result {
+            self.outgoing.write_all(&bytes[..len]).unwrap();
+        }
+        result.map_err(|_| TransportError)
     }
 
     fn flush(&mut self) -> Result<(), Self::Error> {
-        std::io::Write::flush(&mut self.0).map_err(|_| TransportError)
+        std::io::Write::flush(&mut self.socket).map_err(|_| TransportError)
     }
 }
 
@@ -282,7 +336,13 @@ fn roundtrip<Socket: Read + EmbeddedWrite>(
     let mut read = [0; TLS_RECORD_BUFFER_LEN];
     let mut write = [0; TLS_RECORD_BUFFER_LEN];
     let mut connection = TlsConnection::new(socket, &mut read, &mut write);
-    prepared.open(&mut connection).map_err(|error| OpenError::Handshake(tls_error_code(&error)))?;
+    prepared.open(&mut connection).map_err(|error| {
+        std::eprintln!(
+            "TLS open failed: {error:?}; client identity={}",
+            config.client_certificate_der.is_some()
+        );
+        OpenError::Handshake(tls_error_code(&error))
+    })?;
     connection
         .write(b"GET / HTTP/1.0\r\n\r\n")
         .map_err(|error| OpenError::Handshake(tls_error_code(&error)))?;
@@ -373,6 +433,29 @@ fn openssl_server_authentication_and_client_identity_roundtrip() {
             config.client_private_key_der = Some(&key);
         }
         assert_eq!(roundtrip(fixture.connect(client_required), &config), Ok(()));
+        assert_eq!(SynchronizedClock::now(), None);
+    }
+}
+
+#[test]
+fn client_identity_requires_an_offered_signature_scheme() {
+    let _serial = super::tests::host_crypto();
+    for (algorithms, expected) in [
+        ("rsa_pss_rsae_sha256:ecdsa_secp256r1_sha256", Ok(())),
+        ("ed25519", Err(OpenError::Handshake(16))),
+        ("rsa_pss_rsae_sha256", Err(OpenError::Handshake(16))),
+    ] {
+        let mut fixture = Fixture::new();
+        let ca = fixture.bytes("ca.der");
+        let client = fixture.bytes("client.der");
+        let key = Zeroizing::new(fixture.bytes("client-key.der"));
+        let config = OpenConfig {
+            client_certificate_der: Some(&client),
+            client_private_key_der: Some(&key),
+            ..config(&ca)
+        };
+        let socket = fixture.connect_with_client_algorithms(true, Some(algorithms));
+        assert_eq!(roundtrip(socket, &config), expected, "{algorithms}");
         assert_eq!(SynchronizedClock::now(), None);
     }
 }

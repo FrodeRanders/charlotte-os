@@ -8,13 +8,18 @@ Neither logical close nor byte erasure proves physical retirement.
 
 ## Pinned backend
 
-The root lockfile selects Embassy-based embedded-tls at
-`6487c62bb084c33361822022e21836ddfd48388f`, Embassy crypto/backend at
+The workspace uses a [reviewed source copy](../../crates/embedded-tls/UPSTREAM.md)
+of Embassy-based embedded-tls at
+`6487c62bb084c33361822022e21836ddfd48388f`, with the signature-offer corrections
+described below. Embassy crypto/backend remains at
 `822a76ea91f2c0885c6eb0c65fe91181e31133e1`, and transitive unitrait at
 `bb96601b3d293fa27d1ca2891f6ea148e534e433`. Upstream still labels this TLS
 source 0.19.0; the exact source revision distinguishes its API from the former
 registry release. Updates require changing the reviewed revision and lockfile,
-then repeating interop, ownership, advisory and target qualification.
+then repeating interop, ownership, advisory and target qualification. The local
+manifest exposes only qualified configurations and avoids upstream's `all`
+test-driver dependency graph. Original file hashes, license and local source
+differences are recorded with that workspace member.
 
 TLS enables `rustpki,p256,p384,ed25519`. The RustCrypto backend registers only
 SHA-384/512, HMAC-SHA-384, P-256 ECDH/ECDSA, P-384 ECDSA and Ed25519 operations.
@@ -111,6 +116,36 @@ its existing generic application-error mapping. Established streams keep
 independent record/key state.
 
 ## Authentication and erasure
+
+Signature-algorithm offers and selected signatures have different contracts.
+The two signature-offer extension parsers require complete, nonempty, even-width
+vectors and ignore complete unrecognized u16 values as required by
+[TLS 1.3's enumeration rules](https://www.rfc-editor.org/rfc/rfc8446.html#section-3.5).
+They preserve recognized first-preference order and deduplicate entries within
+the existing fixed 25-scheme storage. Unknown offers cannot become a selectable
+scheme; malformed lengths and storage rejection remain errors.
+
+The owning CertificateRequest retains its recognized offer list through client
+authentication. Missing/duplicate signature-algorithm extensions and trailing
+request bytes reject. Both synchronous and asynchronous client paths require the
+actual key's scheme to be offered and valid for TLS 1.3 before sending the
+identity or signing. An unknown or legacy scheme selected in CertificateVerify
+rejects. RSA remains disabled in Charlotte's client: recognizing RSA values in
+an external offer does not activate a provider. The original PKCS#1 v1.5
+code points are certificate-only under
+[sections 4.2.3 and 4.4.3](https://www.rfc-editor.org/rfc/rfc8446.html#section-4.4.3).
+[RFC 9963](https://www.rfc-editor.org/rfc/rfc9963.html) defines distinct, opt-in
+legacy client-signature codes; Charlotte does not implement them. This client
+rejects PKCS#1 v1.5, SHA-1 and SHA-224 in CertificateVerify.
+
+The [wire investigation](../reports/audits/2026-11-01-tls-signature-offers.md)
+captures OpenSSL 4's SM2 offer and the old decode failure. Host fixtures retain
+their peer version, decoded server handshake/state, exact read/write boundaries
+and raw TLS bytes on unexpected failure, before deleting any diagnostic state.
+Success removes the disposable fixture. Standalone parser controls import the
+production modules and prove the old parser fails the captured offer; normal
+host tests require authenticated OpenSSL round trips and rejection of a client
+key whose scheme the server did not offer.
 
 An open requires a nonempty expected hostname and DER trust anchor, nonzero
 synchronized Unix time, valid socket bounds and a complete optional client

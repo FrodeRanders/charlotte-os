@@ -201,6 +201,13 @@ the corrected RPC polling paths, and the remaining notification gaps.
 
 ## Internal protocols and persistent state
 
+- External TLS signature offers may contain complete unknown schemes; ignore
+  those values without weakening length checks or enabling crypto providers.
+  Retain the server's actual client-signature offers through authentication and
+  require the chosen key scheme to be offered and valid for TLS 1.3. Unknown or
+  legacy certificate-only CertificateVerify selections reject. See
+  `docs/reference/tls-client.md` and the source-copy provenance before changing
+  the embedded TLS parser or dependency configurations.
 - Internal APIs and wire formats have no backward-compatibility requirement.
   Remove compatibility-only branches when a coherent replacement is ready;
   do not preserve an unsafe allocation path for older callers.

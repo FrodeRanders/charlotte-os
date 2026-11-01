@@ -237,6 +237,11 @@ Read [entropy](../reference/entropy.md) and the current
 
 ## Reject incomplete protocols and persistent state
 
+External protocols can define extensible offer lists. Ignore an unknown offer
+only where that field's specification permits it; still validate complete
+lengths, storage bounds and the actual selection. A parsed algorithm offer is
+not permission to activate a provider or sign with an unoffered/forbidden scheme.
+
 Use one complete bounded internal grammar. Validate counts, lengths, full
 identities, attachments and tags before mutation. A clamped prefix or missing
 field default can change identity or authority while appearing successful.
@@ -281,6 +286,13 @@ one LP's IRQ mask does not isolate a sponsor shared with other LPs. A passing
 repeat does not explain a failed run. Finite models check their stated
 abstractions; QEMU process loss does not qualify device power-loss durability or
 physical hardware recovery.
+
+Record both endpoint implementations when reproducing a protocol failure.
+The same client binary can encounter a different external tool through a changed
+working directory/PATH. Capture the failing phase, exact I/O boundaries and peer
+handshake before cleanup removes them; a numeric error and an isolated passing
+repeat cannot establish a scheduling cause. Preserve original failed captures
+separately from later controlled reproductions.
 
 Budget fixture composition explicitly. A rollover workload with its own deadline
 and several deliberate timeout controls can each behave correctly while their

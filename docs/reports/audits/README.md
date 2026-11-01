@@ -17,6 +17,8 @@ report is useful for a significant investigation or qualification checkpoint.
 
 ## Reports
 
+- [TLS signature-offer wire investigation](2026-11-01-tls-signature-offers.md) — Captured OpenSSL 4 SM2 offer, controlled peer-version reproduction, strict offer/selection correction, parser regression controls and real guest Kafka/S3 TLS packet evidence.
+
 - [Master thread-table admission and boot-stack qualification](2026-11-01-security-thread-table.md) — Original-principal buffer admission, allocator-free guarded publication and a measured boot-stack capacity increase, with failed captures and the final three-backend matrix retained separately.
 
 - [Native Raft recovery and catalog qualification](2026-10-29-raft-native-validation.md) — Process-restart and interrupted-VM recovery, native catalog replication and explicit durability limits.

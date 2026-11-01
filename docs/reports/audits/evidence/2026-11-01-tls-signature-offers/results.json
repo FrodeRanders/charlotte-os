@@ -1,0 +1,432 @@
+{
+  "schema": "charlotte.tls-signature-offers.v1",
+  "date": "2026-11-01",
+  "base_revision": "43c266bd",
+  "upstream_revision": "6487c62bb084c33361822022e21836ddfd48388f",
+  "changed_source_sha256": {
+    "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
+    "crates/embedded-tls/Cargo.toml": "6d9f2b5d1cceb865f0b671eae599744cff11e1a23a787df0dddb81618aa43222",
+    "crates/catten-services/Cargo.toml": "f150bef9839c33390da7e2b82b0ffbefb1d45eed590a218616543fb5fcfa128e",
+    "crates/catten-services/src/tls_client/interop.rs": "7239305b6a2d593aa2017886ece4659bd926af9c09304310ce808140d521fe2b",
+    "scripts/tests/test-tls-signature-lists.py": "03fc7c355b7cd2e1ca3c87d0505b1d85ab58f9d11ab98afd7fbf505d2e5dd90b",
+    "scripts/tests/tls-signature-lists.rs": "ab21a1869aa9042bf33d144980b4b9b981560ad3588e32a39c9034d80d21a48b",
+    "scripts/run-host-tests.sh": "47ac5097380ea31da432f85c481f63330353df9cae6f19f9e2ae6cc85ce56a2a",
+    "crates/embedded-tls/src/lib.rs": "2e8ddee94afc3e160a8e94785d35862a4195b52e38fb58a78f8400b0a9ed98c9",
+    "crates/embedded-tls/src/connection.rs": "eacf9708aa5f689a74a8866bbe804e20c17844854401cf27ca165aa8fdd88b9b",
+    "crates/embedded-tls/src/handshake/certificate_request.rs": "4bd249df7a18b967900957503cecf4a7692397cc17f07aabed044d66858ec141",
+    "crates/embedded-tls/src/handshake/certificate_verify.rs": "86954a7679a83717f78f330623e7366868d3c907556ab71271bf0157177c262a",
+    "crates/embedded-tls/src/handshake/client_hello.rs": "2191d9a38c8bfb68bb7045a9f3c5d69f885e240541f8da6fbb75964c4a1c2ce1",
+    "crates/embedded-tls/src/extensions/extension_data/signature_algorithms.rs": "1231b974983f72410a7f5f33655e92cccee4132157c5932c5008f05aef83f185",
+    "crates/embedded-tls/src/extensions/extension_data/signature_algorithms_cert.rs": "f89ef428df74a52bb212a2fda82309e225580c5c33b43fa31392f619318cf929"
+  },
+  "unmodified_upstream_source_files": 45,
+  "diagnosis": {
+    "stage": "TLS 1.3 CertificateRequest with client identity configured",
+    "client_error": "TlsError::DecodeError mapped to OpenError::Handshake(32)",
+    "unknown_offer": "0x0708 (SM2/SM3)",
+    "captured_signature_vector_hex": "002a09050906090404030503060308070808081a081b081c0809080a080b0804080508060401050106010708",
+    "client_bytes_written": 177,
+    "server_bytes_consumed": 286,
+    "last_record_content_length": 119,
+    "server_certificate_consumed": false,
+    "peer_exit_status_scope": "Signal 9 was requested by fixture cleanup; it is not evidence of a TLS server crash."
+  },
+  "old_binary_controlled_peers": [
+    {
+      "openssl": "OpenSSL 3.6.5 29 Sep 2026 (Library: OpenSSL 3.6.5 29 Sep 2026)\nbuilt on: Wed Sep 30 06:35:44 2026 UTC\nplatform: darwin64-arm64-cc\noptions:  bn(64,64)\ncompiler: /usr/bin/clang -fPIC -arch arm64 -pipe -Os -isysroot/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk -arch arm64 -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk -DL_ENDIAN -DOPENSSL_PIC -D_REENTRANT -DOPENSSL_BUILDING_OPENSSL -DZLIB -DNDEBUG -I/opt/local/include -isysroot/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk\nOPENSSLDIR: \"/opt/local/libexec/openssl3/etc/openssl\"\nENGINESDIR: \"/opt/local/libexec/openssl3/lib/engines-3\"\nMODULESDIR: \"/opt/local/libexec/openssl3/lib/ossl-modules\"\nSeeding source: os-specific\nCPUINFO: OPENSSL_armcap=0x987d\n",
+      "openssl_binary_sha256": "9e79b766dd42d6f7c396ecd532d4d084b28795de8adb957e8804f4f73986ec7f",
+      "client_binary_sha256": "62835fd4315ef69cec3bada73d1cce27ee91b0bd11ae9d7045576b179d07955e",
+      "result": 0,
+      "log_sha256": "8aefd9267af0cc918be0f0fb31d86a1057b6056de0802321a6366d645343d289"
+    },
+    {
+      "openssl": "OpenSSL 4.0.3 29 Sep 2026 (Library: OpenSSL 4.0.3 29 Sep 2026)\nbuilt on: Tue Sep 29 13:44:55 2026 UTC\nplatform: darwin64-arm64-cc\noptions:  bn(64,64)\ncompiler: clang -fPIC -arch arm64 -O3 -Wall -DL_ENDIAN -DOPENSSL_PIC -D_REENTRANT -DNDEBUG\nOPENSSLDIR: \"/opt/homebrew/etc/openssl@4\"\nMODULESDIR: \"/opt/homebrew/Cellar/openssl@4/4.0.3/lib/ossl-modules\"\nSeeding source: os-specific\nCPUINFO: OPENSSL_armcap=0x987d\n",
+      "openssl_binary_sha256": "bdeb769587e68e47dad86b42c2ea9758c5560ef6376eb69c18b85cf0c66ea36c",
+      "client_binary_sha256": "62835fd4315ef69cec3bada73d1cce27ee91b0bd11ae9d7045576b179d07955e",
+      "result": 101,
+      "log_sha256": "83e0689be9fa7b2ea60b84a61b1af46e5420ae0f311523e881c2b8db7858550f"
+    }
+  ],
+  "fixed_binary_controlled_peers": [
+    {
+      "openssl_version": "OpenSSL 3.6.5 29 Sep 2026 (Library: OpenSSL 3.6.5 29 Sep 2026)",
+      "openssl_binary_sha256": "9e79b766dd42d6f7c396ecd532d4d084b28795de8adb957e8804f4f73986ec7f",
+      "client_binary_sha256": "3ce4c0b1962b4117979b916768cdbcf86bec6e950dab25d0919d3d2560b597c9",
+      "result": 0,
+      "log_sha256": "5f0a7b5a1e6d8eba7f4c8af9b22907920978f10735f8d1c0678a62eefb8c3793",
+      "receipts": [
+        "test tls_client::interop::client_identity_requires_an_offered_signature_scheme ... ok",
+        "test tls_client::interop::openssl_rejects_wrong_host_root_dates_and_client_identity ... ok",
+        "test tls_client::interop::configuration_and_admission_reject_before_handshake ... ok",
+        "test tls_client::interop::openssl_wire_tamper_truncation_and_write_failure_reject ... ok",
+        "test tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip ... ok",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 263 filtered out; finished in 1.60s"
+      ]
+    },
+    {
+      "openssl_version": "OpenSSL 4.0.3 29 Sep 2026 (Library: OpenSSL 4.0.3 29 Sep 2026)",
+      "openssl_binary_sha256": "bdeb769587e68e47dad86b42c2ea9758c5560ef6376eb69c18b85cf0c66ea36c",
+      "client_binary_sha256": "3ce4c0b1962b4117979b916768cdbcf86bec6e950dab25d0919d3d2560b597c9",
+      "result": 0,
+      "log_sha256": "30c6cf6f60e746ffa222f3c7d7dc0db2e584a60a08ebc0bfecb639d1777809c5",
+      "receipts": [
+        "test tls_client::interop::client_identity_requires_an_offered_signature_scheme ... ok",
+        "test tls_client::interop::configuration_and_admission_reject_before_handshake ... ok",
+        "test tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip ... ok",
+        "test tls_client::interop::openssl_wire_tamper_truncation_and_write_failure_reject ... ok",
+        "test tls_client::interop::openssl_rejects_wrong_host_root_dates_and_client_identity ... ok",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 263 filtered out; finished in 1.72s"
+      ]
+    }
+  ],
+  "historical_scope": "The prior three full-suite failures remain in 2026-11-01-memory-account-admission.json. They lacked peer-version/wire captures. This controlled reproduction identifies the same failure class; it does not reconstruct each historical exchange or attribute other incidents.",
+  "parser_controls": {
+    "parser_sha256": "1231b974983f72410a7f5f33655e92cccee4132157c5932c5008f05aef83f185",
+    "controls": [
+      {
+        "control": "production",
+        "exit_status": 0,
+        "receipts": [
+          "test captured_openssl4_offer_ignores_sm2_and_preserves_p256 ... ok",
+          "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+        ]
+      },
+      {
+        "control": "old-parser",
+        "exit_status": 101,
+        "receipts": [
+          "test captured_openssl4_offer_ignores_sm2_and_preserves_p256 ... FAILED",
+          "---- captured_openssl4_offer_ignores_sm2_and_preserves_p256 stdout ----",
+          "thread 'captured_openssl4_offer_ignores_sm2_and_preserves_p256' (4998303) panicked at src/lib.rs:146:63:",
+          "    captured_openssl4_offer_ignores_sm2_and_preserves_p256",
+          "test result: FAILED. 5 passed; 4 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+        ]
+      }
+    ]
+  },
+  "host_suite": {
+    "command": "CARGO_NET_OFFLINE=true scripts/run-host-tests.sh",
+    "exit_status": 0,
+    "services_tests": 268,
+    "tail": [
+      "     Running tests/public_key_input.rs (/Users/froran/Projects/private/charlotte-os/target/debug/deps/public_key_input-2c30d02a9669b8c9)",
+      "",
+      "running 1 test",
+      "test operational_commands_share_bounded_public_key_file_admission ... ok",
+      "",
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+      "",
+      "SHA-256, CLS2 metadata, placement-policy, and signed-deployment self-tests pass"
+    ],
+    "log_sha256": "66e75d12358810ee1eccead3ad2e2c7f279bd614ce25f6b420ac4368aefa0b6e"
+  },
+  "target_clippy": {
+    "arm": "passed, -D warnings, aarch64-unknown-none",
+    "x86": "passed, -D warnings, service x86 target/release/core+alloc",
+    "arm_log_sha256": "e586ed61e13607a1bf394e679d31bc6b84eeca1ec4c17b03e8a48a73b23609a5",
+    "x86_log_sha256": "69649af80b591a0e5b3f3116c54c99d4aa7974651dc76c598697b07344177758"
+  },
+  "advisory_gate": {
+    "database": {
+      "advisory-count": 1395,
+      "last-commit": "2295466c4e9df26647fd67d8fa1c705ac2fc7f81",
+      "last-updated": "2026-10-30T12:12:39+01:00"
+    },
+    "lockfile": {
+      "dependency-count": 205
+    },
+    "settings": {
+      "target_arch": [],
+      "target_os": [],
+      "severity": null,
+      "ignore": [],
+      "informational_warnings": [
+        "unmaintained",
+        "unsound",
+        "notice"
+      ]
+    },
+    "vulnerabilities": {
+      "found": false,
+      "count": 0,
+      "list": []
+    },
+    "warnings": {}
+  },
+  "native_runs": [
+    {
+      "instance": "tls-offers-final-20261101-s3",
+      "arch": "x86_64",
+      "cpus": 4,
+      "timeout_seconds": 300,
+      "kernel_sha256": "b10e9a8425af1507f27204ef6198365edb7313c2f90f94af93c17b33a4a7a662",
+      "prepared_utc": "2026-11-01T16:12:25Z",
+      "bundle_map_sha256": "1e8d1d5b4aa82acc192c0afdb4b577ee5617a233b0e41452a3eb7aa148b9f8d2",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "verdict": [
+        18,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+    27.195056] [dhcp] management address 10.0.2.15; TLS ingress requires provisioned credentials",
+        "[+    29.476650] [EL0 LOG] lp=0 asid=165 [s3-smoke] S3 TLS PUT/HEAD/GET/DELETE round trip succeeded",
+        "[+    29.477480] [s3-test] SUCCESS: verified 33-byte object round trip",
+        "[+    29.477964] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x303bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "instance": "tls-offers-final-20261101-kafka",
+      "arch": "aarch64",
+      "cpus": 4,
+      "timeout_seconds": 300,
+      "kernel_sha256": "0cb24bd313e133304c08c217fda4e3a2eb1c10103158520658429622e468e5a8",
+      "prepared_utc": "2026-11-01T16:13:39Z",
+      "bundle_map_sha256": "4a5ee89fd763eed1af5a7613cfc7a2428c1e0b623ac6bf63e6ec7eb5fdc2bd38",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "verdict": [
+        20,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+    13.222272] [dhcp] management address 10.0.2.15; TLS ingress requires provisioned credentials",
+        "[+    28.164016] [EL0 LOG] lp=0 asid=158 [kafka-smoke] producer attenuation, idempotent produce, multi-topic transaction, read_committed consume, transactional offset commit, and abort filtering succeeded",
+        "[+    31.631050] [kafka-test] SUCCESS: low-level offset 1, generic step commits=4 produced=4 retries=2 dlq=1 timeouts=1 group_generation=3 heartbeats=1 metadata_refreshes=2 coordinator_refreshes=0 retry_attempts=7 terminal_errors=2 output_route_produced=5 lag=1",
+        "[+    31.632382] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x503ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    }
+  ],
+  "preserved_native_failures": [
+    {
+      "instance": "tls-offers-20261101-kafka",
+      "arch": "aarch64",
+      "cpus": 4,
+      "timeout_seconds": 300,
+      "kernel_sha256": "1a5a7f4f14edaecfee8e8cf674bc7c565e90969cb5dd583e1ff4c4da2a47d9f3",
+      "prepared_utc": "2026-11-01T16:07:38Z",
+      "bundle_map_sha256": "6b7ff3c2be96d8e247b08a9ff5a4f4b3650f54908407b39bdf4a6c11fbfd9162",
+      "diagnostic_outcome": {
+        "reason": "kernel-panic",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 49.55395024997415
+      },
+      "verdict": [
+        19,
+        1,
+        0
+      ],
+      "receipts": [
+        "[+     9.060004] [EL0 LOG] lp=0 asid=131 [http] management credentials unavailable; ingress disabled",
+        "[+     9.214854] [EL0 LOG] lp=0 asid=135 [deployd] management credentials unavailable; ingress disabled",
+        "[+    27.690106] [dhcp] waiting: httpd stage=0 error=0xe010",
+        "[+    28.453458] [EL0 LOG] lp=0 asid=161 [kafka-smoke] producer attenuation, idempotent produce, multi-topic transaction, read_committed consume, transactional offset commit, and abort filtering succeeded",
+        "[+    32.607418] [kafka-test] SUCCESS: low-level offset 1, generic step commits=4 produced=4 retries=2 dlq=1 timeouts=1 group_generation=3 heartbeats=2 metadata_refreshes=2 coordinator_refreshes=1 retry_attempts=6 terminal_errors=2 output_route_produced=5 lag=1",
+        "[+    43.011732] SELFTEST COMPLETE: passed=19 failed=1 pending=0 passed_bitmap=0x403ffff failed_bitmap=0x1000000 pending_bitmap=0x0"
+      ],
+      "failure_capture": "Kernel panic:\npanicked at crates/catten/src/self_test/el0_dhcp.rs:240:22:\nself-test deadline expired while waiting for EL0 dhcp httpd listening"
+    },
+    {
+      "instance": "tls-offers-20261101-s3",
+      "arch": "x86_64",
+      "cpus": 4,
+      "timeout_seconds": 300,
+      "kernel_sha256": "2454849af2ef1226358fd24daef9357c4349c407eb93b65b3666038172408d87",
+      "prepared_utc": "2026-11-01T16:06:10Z",
+      "bundle_map_sha256": "7c423627e25abcecc0a7abd001b35691e7765daca262f160723e54a2edff0428",
+      "diagnostic_outcome": {
+        "reason": "kernel-panic",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 52.202751541975886
+      },
+      "receipts": [
+        "[+    16.147547] [EL0 LOG] lp=0 asid=139 [http] management credentials unavailable; ingress disabled",
+        "[+    16.234138] [EL0 LOG] lp=0 asid=143 [deployd] management credentials unavailable; ingress disabled",
+        "[+    23.329099] [EL0 LOG] lp=0 asid=163 [s3-smoke] S3 TLS PUT/HEAD/GET/DELETE round trip succeeded",
+        "[+    23.329668] [s3-test] SUCCESS: verified 33-byte object round trip",
+        "[+    30.398041] [dhcp] waiting: httpd stage=0 error=0xe010",
+        "[+    37.272842] [dhcp] waiting: httpd stage=0 error=0xe010",
+        "[+    43.971685] [dhcp] waiting: httpd stage=0 error=0xe010"
+      ],
+      "failure_capture": "Kernel panic:\npanicked at crates/catten/src/self_test/el0_dhcp.rs:240:22:\nself-test deadline expired while waiting for EL0 dhcp httpd listening"
+    }
+  ],
+  "native_fixture_disposition": "Initial S3 and Kafka TLS application checks succeeded, but DHCP verifier requires httpd stage >= 6 even when credentials are absent and ingress correctly reports 0xe010/disabled. Final repeats supply a normally verified signed disposable management resource (SHA-256 dcdd58b5d8f4efe333f0b2eb52cec3d633e298cf0df4c588249b9ae1fd2d6e88), satisfying that precondition. No kernel/verifier deadline or ingress policy changed. Default credential-free fixture composition remains a separate limitation.",
+  "native_packet_captures": {
+    "s3": {
+      "sha256": "1ab1db8c349dfbd0c1e8aef4cba147d491c651998bef84b23067000d775ac8ae",
+      "bytes": 13577,
+      "packets": 77,
+      "observed_complete_client_hellos": [
+        {
+          "source_port": 50635,
+          "destination_port": 19000,
+          "client_hello_record_bytes": 180,
+          "cipher_suites": [
+            "0x1301"
+          ],
+          "signature_schemes": [
+            "0x0403",
+            "0x0503",
+            "0x0807"
+          ],
+          "supported_versions": [
+            "0x0304"
+          ],
+          "server_name": "rustfs.test"
+        },
+        {
+          "source_port": 51778,
+          "destination_port": 19000,
+          "client_hello_record_bytes": 180,
+          "cipher_suites": [
+            "0x1301"
+          ],
+          "signature_schemes": [
+            "0x0403",
+            "0x0503",
+            "0x0807"
+          ],
+          "supported_versions": [
+            "0x0304"
+          ],
+          "server_name": "rustfs.test"
+        },
+        {
+          "source_port": 57778,
+          "destination_port": 19000,
+          "client_hello_record_bytes": 180,
+          "cipher_suites": [
+            "0x1301"
+          ],
+          "signature_schemes": [
+            "0x0403",
+            "0x0503",
+            "0x0807"
+          ],
+          "supported_versions": [
+            "0x0304"
+          ],
+          "server_name": "rustfs.test"
+        },
+        {
+          "source_port": 50249,
+          "destination_port": 19000,
+          "client_hello_record_bytes": 180,
+          "cipher_suites": [
+            "0x1301"
+          ],
+          "signature_schemes": [
+            "0x0403",
+            "0x0503",
+            "0x0807"
+          ],
+          "supported_versions": [
+            "0x0304"
+          ],
+          "server_name": "rustfs.test"
+        }
+      ]
+    },
+    "kafka": {
+      "sha256": "c88632498e22c63a23995e9583898993f29b44092c24f7434f14e53eac0b206f",
+      "bytes": 83856,
+      "packets": 608,
+      "observed_complete_client_hellos": [
+        {
+          "source_port": 62720,
+          "destination_port": 19092,
+          "client_hello_record_bytes": 181,
+          "cipher_suites": [
+            "0x1301"
+          ],
+          "signature_schemes": [
+            "0x0403",
+            "0x0503",
+            "0x0807"
+          ],
+          "supported_versions": [
+            "0x0304"
+          ],
+          "server_name": "kafka-1.test"
+        },
+        {
+          "source_port": 56578,
+          "destination_port": 19092,
+          "client_hello_record_bytes": 181,
+          "cipher_suites": [
+            "0x1301"
+          ],
+          "signature_schemes": [
+            "0x0403",
+            "0x0503",
+            "0x0807"
+          ],
+          "supported_versions": [
+            "0x0304"
+          ],
+          "server_name": "kafka-1.test"
+        }
+      ]
+    }
+  },
+  "capture_files": {
+    "native-s3.pcap": {
+      "sha256": "1ab1db8c349dfbd0c1e8aef4cba147d491c651998bef84b23067000d775ac8ae",
+      "bytes": 13577
+    },
+    "failed-server.messages.txt": {
+      "sha256": "a7819a7617f964d9faa5826f7a81cc1346f69729b7345a6e2741860bba3552b6",
+      "bytes": 5301
+    },
+    "failed-server-to-client.tls.hex": {
+      "sha256": "30fde1789188f8752158e2d262c3b1ba2244c104e21440391cf16e5b9ebbad48",
+      "bytes": 573
+    },
+    "failed-client-to-server.tls.hex": {
+      "sha256": "c32413205428b42c6acd77843e1b8be6dd81ab599565cdcca9d0f538bb732208",
+      "bytes": 355
+    },
+    "failed-client.io.txt": {
+      "sha256": "731961111c1481f3ca54cabace2cdcd4c8bc0ee263e7fa6dcf9f2557e521d021",
+      "bytes": 285
+    },
+    "native-kafka.pcap": {
+      "sha256": "c88632498e22c63a23995e9583898993f29b44092c24f7434f14e53eac0b206f",
+      "bytes": 83856
+    },
+    "failed-server.stderr.txt": {
+      "sha256": "d3ad6d90d2e21a7bd8bc25a99e9f008a18d7cf9a8bce972669abea83efcbd222",
+      "bytes": 519
+    }
+  },
+  "packet_capture_scope": "QEMU filter-dump, Ethernet captures filtered to S3 port 19000 and Kafka ports 19092-19094. ClientHellos and TCP boundaries are visible; later records are encrypted. No native key exporter or verifier bypass was added. Only complete unfragmented observed ClientHello records are listed; no physical cleanup proof is inferred.",
+  "bundle_identity_encoding": "SHA-256 of UTF-8 JSON bundle_sha256 mapping, sorted keys, separators comma/colon without whitespace.",
+  "qualification_limits": [
+    "QEMU four-CPU ARM SMMUv3 and x86 Intel-IOMMU only; no physical hardware qualification.",
+    "The asynchronous and synchronous paths share the corrected client-certificate selection function; live OpenSSL and OS consumers exercise the synchronous client, while parser/source checks cover shared code.",
+    "No new RSA, SM2, SHA-1 or SHA-224 handshake backend; parsing offers does not grant selection.",
+    "No general intermediate-chain validation, security-time authority, production trust/custody or secret-lifetime closure. SEC-14/15 and production gates remain as documented.",
+    "The pre-existing credential-free DHCP/httpd verifier mismatch is preserved independently of the TLS negotiation fix."
+  ]
+}

@@ -845,13 +845,13 @@ dependencies = [
 [[package]]
 name = "embedded-tls"
 version = "0.19.0"
-source = "git+https://github.com/embassy-rs/embedded-tls?rev=6487c62bb084c33361822022e21836ddfd48388f#6487c62bb084c33361822022e21836ddfd48388f"
 dependencies = [
  "der",
  "embassy-crypto",
  "embedded-io",
  "embedded-io-async",
  "heapless",
+ "log",
  "portable-atomic",
 ]
 
