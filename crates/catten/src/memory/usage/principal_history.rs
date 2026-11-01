@@ -37,12 +37,16 @@ struct History {
     heap_bytes: u64,
     backing: Budget,
     thread_metadata: VectorBudget<2>,
+    thread_table: VectorBudget<2>,
 }
 
 impl Default for History {
     fn default() -> Self {
         Self {
             stack_pages: 0,
+            thread_table: VectorBudget::new(
+                crate::resource_policy::POLICY.memory.principal_thread_table,
+            ),
             heap_bytes: 0,
             thread_metadata: VectorBudget::new(
                 crate::resource_policy::POLICY.memory.principal_thread_metadata,
@@ -267,3 +271,42 @@ impl Drop for ThreadMetadataCharge {
             .expect("principal thread metadata underflow");
     }
 }
+
+/// Separate dimensions for requested heap bytes and master-table backing slots.
+/// This charge belongs to the allocation, independent of root-slot lifetime.
+#[derive(Debug)]
+pub(crate) struct ThreadTableCharge {
+    principal: u64,
+    amount: [u64; 2],
+}
+
+impl ThreadTableCharge {
+    pub(in crate::memory) fn try_new(principal: u64, amount: [u64; 2]) -> Result<Self, ()> {
+        HISTORY
+            .lock()
+            .get_mut(&principal)
+            .ok_or(())?
+            .thread_table
+            .reserve(amount)
+            .map_err(|_| ())?;
+        Ok(Self {
+            principal,
+            amount,
+        })
+    }
+}
+
+impl Drop for ThreadTableCharge {
+    fn drop(&mut self) {
+        HISTORY
+            .lock()
+            .get_mut(&self.principal)
+            .expect("thread table principal missing")
+            .thread_table
+            .release(self.amount)
+            .expect("principal thread table underflow");
+    }
+}
+
+#[cfg(any(test, feature = "kernel_tests"))]
+mod thread_table_tests;

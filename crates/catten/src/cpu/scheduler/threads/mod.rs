@@ -92,7 +92,7 @@ use crate::{
 
 pub static MASTER_THREAD_TABLE: LazyLock<RwLock<ThreadTable>> =
     LazyLock::new(|| RwLock::new(ThreadTable::new()));
-pub type ThreadTable = IdTable<Thread>;
+pub type ThreadTable = IdTable<Thread, crate::memory::budget::thread_table::Charge>;
 pub type ThreadId = usize;
 pub type ThreadGeneration = u64;
 
@@ -1052,4 +1052,17 @@ impl Drop for Thread {
         // waiter/waker state, exit subscriptions, sponsors and retirement node.
         // No callbacks, accounting, allocator/pool/table guard or logger here.
     }
+}
+
+#[cfg(any(test, feature = "kernel_tests"))]
+pub(crate) fn fixture_table() -> ThreadTable {
+    let mut table = ThreadTable::new();
+    let request = table.growth_request().unwrap().unwrap();
+    let root = crate::memory::current_address_space_handle(KERNEL_ASID).unwrap();
+    let charge =
+        crate::memory::budget::reserve_thread_table(root, request.amount().unwrap()).unwrap();
+    let mut growth = request.prepare(charge).unwrap();
+    table.install_empty_growth(&mut growth).unwrap();
+    growth.finish();
+    table
 }

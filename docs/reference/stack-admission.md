@@ -27,7 +27,18 @@ the captured root identity and existing kernel policy, never a caller-supplied
 name, role or flag. The reservation captures its ordinary/platform class for
 refund; later ASID reuse or policy promotion cannot reinterpret it. Inherited
 boot/CPU/interrupt stacks predate runtime thread preparation and remain outside
-this pool. General kernel heap and thread/control-block metadata have separate
+this pool. Limine now requests 32 standard pages (128 KiB) for each boot
+stack. The older four-page request was below Limine's 64 KiB implementation
+minimum; an intermediate eight-page request therefore did not increase actual
+backing. The additional fixed cost over that minimum is 64 KiB per LP:
+256 KiB at four LPs, or 16 MiB at 256 LPs. Captured synchronous boot frames
+already sum to over 72 KiB before their deepest helpers. Raising the boot
+capacity leaves existing validation and inline shutdown-plan fixtures intact.
+Runtime kernel stacks remain sixteen pages; architecture-specific interrupt
+stacks keep their separate sizing. The boot request is not a runtime
+reservation/refund or a physical-release proof.
+See [the qualification and alternatives](../reports/audits/2026-11-01-security-thread-table.md).
+General kernel heap and thread/control-block metadata have separate
 admission needs. The independent pools are not a complete RAM ledger.
 
 ## Ownership and physical completion

@@ -273,7 +273,9 @@ layouts prepaid in the [thread metadata pool](thread-metadata-admission.md).
 Node/ordinary ceilings and the shared signed-principal byte/count allowance
 retain admission through delayed reaping, physical failure and abandonment.
 Explicit disposal destroys the context and deallocates the node before refund.
-Master-table capacity, observer/weak storage and general heap/metadata remain
+[Master-table capacity](thread-table-admission.md) now has separate original-
+principal byte/slot admission and post-guard buffer preparation/disposal.
+Observer/weak storage and general heap/metadata remain
 SEC-07 work. Scheduler
 run-queue backing no longer grows: [inline run queues](scheduler-run-queues.md)
 use each complete thread's admitted payload and qualify exact linkage before

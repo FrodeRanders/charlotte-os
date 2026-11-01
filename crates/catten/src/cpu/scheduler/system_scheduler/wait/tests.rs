@@ -186,7 +186,7 @@ pub(super) fn run() {
     let changed = scheduler.prepare_wait(tid, &source).unwrap();
     let mut original = take_fixture(&scheduler, tid);
     original.state = ThreadState::NeedsLpAssignment;
-    let reused = MASTER_THREAD_TABLE.write().try_add_element(original).unwrap();
+    let reused = MASTER_THREAD_TABLE.write().try_insert_prepared(original, None).unwrap();
     assert_eq!(reused, tid);
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
@@ -200,7 +200,7 @@ pub(super) fn run() {
     let old = {
         let mut table = MASTER_THREAD_TABLE.write();
         let old = table.take_element(tid).unwrap();
-        assert_eq!(table.try_add_element(replacement).unwrap(), tid);
+        assert_eq!(table.try_insert_prepared(replacement, None).unwrap(), tid);
         old
     };
     {

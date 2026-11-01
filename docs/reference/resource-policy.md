@@ -9,16 +9,16 @@ operator procedure, authority, planning and qualification process.
 [Policy](../../crates/catten/src/resource_policy.rs) groups typed, copyable
 immutable settings. Family-local constant aliases forward to those fields;
 existing reservation helpers still enforce admission at their owning boundary.
-Seven metadata families share the checked `AdmissionPool` counter mechanics:
-root metadata, principal history, thread metadata, scratch nodes, snapshot
+Eight metadata families share the checked `AdmissionPool` counter mechanics:
+root metadata, principal history, thread metadata, master-table backing, scratch nodes, snapshot
 buffers, mapping nodes and memory-capability nodes. Each retains its own lock,
 typed charge, captured
 classification and allocation-lifetime release policy. The shared counter
 owns no resource and grants no cleanup authority; both counters change together
 on accepted admission/refund and remain unchanged on rejection.
 No new account, registry, classification source or cleanup owner is introduced.
-Existing numerical defaults are preserved; memory-capability node admission adds
-the separately documented pool below. These are defaults, not fixed
+Existing numerical defaults are preserved; memory-capability node and
+master-table backing admission add the separately documented pools below. These are defaults, not fixed
 application requirements or workload sizing guarantees.
 
 ## Fixed-pool inventory
@@ -45,6 +45,7 @@ unlimited node capacity.
 | `root_metadata` | node-layout bytes; nodes | — | 3 MiB; 9216 nodes | 4 MiB; 12288 nodes |
 | `principal_history` | node-layout bytes; nodes | — | 768 KiB; 3072 nodes | 1 MiB; 4096 nodes |
 | `thread_metadata` | context/node bytes; bundles | principal 1 MiB; 128 bundles | 6 MiB; 3072 bundles | 8 MiB; 4096 bundles |
+| `thread_table` | three-vector bytes; backing slots, including replacement overlap | principal 16 MiB; 16384 slots | 24 MiB; 24576 slots | 32 MiB; 32768 slots |
 | `scratch_nodes` | node-layout bytes; nodes | — | 384 KiB; 6144 nodes | 512 KiB; 8192 nodes |
 | `snapshot_buffers` | vector-buffer bytes; buffers | — | 3 MiB; 6144 buffers | 4 MiB; 8192 buffers |
 | `mapping_nodes` | node-layout bytes; nodes | — | 768 KiB; 6144 nodes | 1 MiB; 8192 nodes |
@@ -88,7 +89,7 @@ bounded lock hold times, fairness or service progress.
 
 Compile-time validation rejects zero/overlapping ordinary reserves, domain limits
 above ordinary, dimensions beyond machine allocation range, invalid RAM ratios,
-inconsistent backing ceilings, principal thread metadata above its shared pool,
+inconsistent backing ceilings, principal thread metadata/table limits above their shared pools,
 maximum objects that cannot fit an ordinary snapshot, local watch/waiter limits
 above their domain budgets, endpoint capacity beyond rounded domain backing,
 and invalid/overflowing heap layout. The kernel separately checks heap backing
@@ -109,6 +110,12 @@ node in that same pool. Account for two temporary slots per preparation without 
 and three per read-loan preparation, plus published/retained nodes; unified authority
 counts and [node admission](memory-capability-node-admission.md) remain
 independent. Increasing capability counts alone does not raise this pool.
+
+Master-table replacement reserves its complete new layout while the old table
+and all competitors remain charged. The triggering principal sponsors the new
+allocation; the previous sponsor is refunded only after its replaced buffers
+deallocate. Slot reuse requires no new capacity admission. See
+[table backing and caller limits](thread-table-admission.md).
 
 The [host harness](../../scripts/tests/test-resource-policy.py) compiles the
 actual policy and counter code for the default, larger and optional selected

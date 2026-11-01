@@ -14,10 +14,12 @@ wakeup, requeue and migration cannot encounter queue-capacity allocation.
 Failure of existing thread/node/context preparation still precedes publication;
 no queue reservation or cleanup ladder is added.
 
-This is fixed metadata per admitted thread, not a complete byte/principal
-budget. Master-table vector preparation still has its existing outer guards;
-general thread-node/heap admission and quantum-timer metadata remain separate
-SEC-07/18 work. [Waiter preparation and cancellation](scheduler-waiter-budgets.md)
+The [master-table pool](thread-table-admission.md) admits requested vector
+bytes and slot capacity by original principal and trusted class, including
+replacement overlap. Buffer preparation and disposal leave local publication
+guards; the guarded ownership copy still scales with the bounded slot ceiling.
+General heap admission, wider caller contexts and quantum-timer metadata remain
+separate SEC-07/18 work. [Waiter preparation and cancellation](scheduler-waiter-budgets.md)
 now leave the scheduler's local LP/table guards; wider source/outer contexts
 remain separate. No domain account is reclassified and
 stack/root/retirement charges retain their original owners.

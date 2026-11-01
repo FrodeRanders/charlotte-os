@@ -75,10 +75,14 @@ pub static MP_REQUEST: MpRequest = MpRequest::new(
 #[unsafe(link_section = ".limine_requests")]
 pub static RSDP_REQUEST: RsdpRequest = RsdpRequest::new();
 
+// Boot validation nests admitted owners and inline shutdown plans. The captured
+// fixed call chain exceeds Limine's 64 KiB minimum. 128 KiB supplies headroom,
+// costing an additional 64 KiB per LP (+256 KiB at four LPs).
+const BOOT_STACK_PAGES: u64 = 32;
 #[used]
 #[unsafe(link_section = ".limine_requests")]
 pub static STACK_SIZE: StackSizeRequest =
-    StackSizeRequest::new(PageSize::Standard.num_bytes() as u64 * 4);
+    StackSizeRequest::new(PageSize::Standard.num_bytes() as u64 * BOOT_STACK_PAGES);
 
 #[used]
 #[unsafe(link_section = ".limine_requests")]

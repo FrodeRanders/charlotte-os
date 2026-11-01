@@ -1,0 +1,435 @@
+{
+  "schema": "charlotte.thread-table-admission.v1",
+  "date": "2026-11-01",
+  "base_revision": "06bdbda449853ee298f4ec5ad10d059a95064c21",
+  "scope": "Requested master-thread-table three-vector bytes/slots, original signed sponsorship and trusted classification, post-local-guard buffer allocation/disposal; no general heap/fairness closure.",
+  "host_controls": {
+    "id_table_tests": 39,
+    "resource_policy_test_groups": 3,
+    "format_check": "passed",
+    "target_clippy": "passed",
+    "minimal_target_check": "passed"
+  },
+  "bundle_identity_encoding": "SHA-256 of UTF-8 JSON bundle_sha256 mapping, sorted keys, separators comma/colon with no whitespace.",
+  "final_configuration": {
+    "boot_stack_request_bytes": 131072,
+    "limine_minimum_bytes": 65536,
+    "extra_bytes_per_lp": 65536,
+    "extra_bytes_at_4_lps": 262144,
+    "runtime_kernel_stack_bytes": 65536,
+    "original_fixtures_preserved": true
+  },
+  "final_native_runs": [
+    {
+      "instance": "thread-table-20261101-arm-128k",
+      "arch": "aarch64",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "kernel_sha256": "d051ac6fc5a2012ce5117234a0aee443f92dfe2e91ab14fb6035ee8383fb4693",
+      "bundle_map_sha256": "fb93f64dcb175342ce938180d4761296fe083cc1f03ec8c0f44c2fec666019d2",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "guest_verdict": [
+        19,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     0.926224] [shutdown storage] full 12-phase/3-device plan, one-time transfer and inert parent abandonment passed beneath lifecycle/root/thread/heap guards; node_bytes=6280 device_bytes=1168",
+        "[+     1.107803] [thread table reserve] counter-only ordinary byte/slot saturation rejects; platform headroom and exact refunds passed",
+        "[+     1.108122] [thread table admission] real backing and guarded publication, shared principal rejection, sticky promotion, independent bytes/slots, retired root and ASID reuse passed",
+        "[+     1.376391] [domain abort] inline fence, rejected prepared/late threads, unlocked generation claim, TID/ASID reuse and root/frame recovery passed",
+        "[+    79.382929] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "instance": "thread-table-20261101-intel-128k",
+      "arch": "x86_64",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "kernel_sha256": "e24fdb5b6afaaf36dd285b9ea13f51174b0cfa0be15c05713519b07080151256",
+      "bundle_map_sha256": "7a03cad901eda680bd897fd35ff4538a8f6c3abe8ddd1158e60052c6c6573ef3",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "guest_verdict": [
+        17,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     0.952702] [shutdown storage] full 12-phase/3-device plan, one-time transfer and inert parent abandonment passed beneath lifecycle/root/thread/heap guards; node_bytes=6280 device_bytes=1168",
+        "[+     1.124217] [thread table reserve] counter-only ordinary byte/slot saturation rejects; platform headroom and exact refunds passed",
+        "[+     1.124855] [thread table admission] real backing and guarded publication, shared principal rejection, sticky promotion, independent bytes/slots, retired root and ASID reuse passed",
+        "[+     1.393438] [domain abort] inline fence, rejected prepared/late threads, unlocked generation claim, TID/ASID reuse and root/frame recovery passed",
+        "[+    86.855203] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "instance": "thread-table-20261101-amd-128k",
+      "arch": "x86_64",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "kernel_sha256": "58938d8dad2a0fb5e2293aee4ecef1542386fd9bb34039ebe9067a750fde7a8c",
+      "bundle_map_sha256": "7a03cad901eda680bd897fd35ff4538a8f6c3abe8ddd1158e60052c6c6573ef3",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "guest_verdict": [
+        17,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     0.961570] [shutdown storage] full 12-phase/3-device plan, one-time transfer and inert parent abandonment passed beneath lifecycle/root/thread/heap guards; node_bytes=6280 device_bytes=1168",
+        "[+     1.119182] [thread table reserve] counter-only ordinary byte/slot saturation rejects; platform headroom and exact refunds passed",
+        "[+     1.119887] [thread table admission] real backing and guarded publication, shared principal rejection, sticky promotion, independent bytes/slots, retired root and ASID reuse passed",
+        "[+     1.389517] [domain abort] inline fence, rejected prepared/late threads, unlocked generation claim, TID/ASID reuse and root/frame recovery passed",
+        "[+    87.791186] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    }
+  ],
+  "failed_arm_runs": [
+    {
+      "instance": "thread-table-20261101-arm-native",
+      "arch": "aarch64",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "kernel_sha256": "0c93cf4f91cb252ef0d5326a00a836315262681133afc8ddc2998b1a2bbc4bab",
+      "bundle_map_sha256": "fb93f64dcb175342ce938180d4761296fe083cc1f03ec8c0f44c2fec666019d2",
+      "diagnostic_outcome": {
+        "reason": "deadline",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 240.01818366599036
+      },
+      "guest_verdict": null,
+      "receipts": [
+        "[+     1.288596] [shutdown storage] full 12-phase/3-device plan, one-time transfer and inert parent abandonment passed beneath lifecycle/root/thread/heap guards; node_bytes=6280 device_bytes=1168",
+        "[+     1.537424] [thread table reserve] counter-only ordinary byte/slot saturation rejects; platform headroom and exact refunds passed",
+        "[+     1.537738] [thread table admission] real backing and guarded publication, shared principal rejection, sticky promotion, independent bytes/slots, retired root and ASID reuse passed"
+      ]
+    },
+    {
+      "instance": "thread-table-20261101-arm-scalar",
+      "arch": "aarch64",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "kernel_sha256": "007fb9efecf812b113722cb66926bd392727cb8e1811295b1bf8cae5946687b0",
+      "bundle_map_sha256": "fb93f64dcb175342ce938180d4761296fe083cc1f03ec8c0f44c2fec666019d2",
+      "diagnostic_outcome": {
+        "reason": "deadline",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 240.04600429197308
+      },
+      "guest_verdict": null,
+      "receipts": [
+        "[+     2.060436] [shutdown storage] full 12-phase/3-device plan, one-time transfer and inert parent abandonment passed beneath lifecycle/root/thread/heap guards; node_bytes=6280 device_bytes=1168",
+        "[+     2.372396] [thread table reserve] counter-only ordinary byte/slot saturation rejects; platform headroom and exact refunds passed",
+        "[+     2.372704] [thread table admission] real backing and guarded publication, shared principal rejection, sticky promotion, independent bytes/slots, retired root and ASID reuse passed"
+      ]
+    },
+    {
+      "instance": "thread-table-20261101-arm-final",
+      "arch": "aarch64",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "kernel_sha256": "14a965c661cdce7f1bce0225029393cb79a6f16b303f43ad81f4c0dc4c7f930b",
+      "bundle_map_sha256": "fb93f64dcb175342ce938180d4761296fe083cc1f03ec8c0f44c2fec666019d2",
+      "diagnostic_outcome": {
+        "reason": "deadline",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 240.0398385419976
+      },
+      "guest_verdict": null,
+      "receipts": [
+        "[+     1.162570] [shutdown storage] full 12-phase/3-device plan, one-time transfer and inert parent abandonment passed beneath lifecycle/root/thread/heap guards; node_bytes=6280 device_bytes=1168",
+        "[+     1.425768] [thread table reserve] counter-only ordinary byte/slot saturation rejects; platform headroom and exact refunds passed",
+        "[+     1.426089] [thread table admission] real backing and guarded publication, shared principal rejection, sticky promotion, independent bytes/slots, retired root and ASID reuse passed"
+      ]
+    },
+    {
+      "instance": "thread-table-20261101-arm-32k",
+      "arch": "aarch64",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "kernel_sha256": "a6b90e230a04db7d5c06b8539a3103f68154e2e7343fa2249eb1fc5f4553db72",
+      "bundle_map_sha256": "fb93f64dcb175342ce938180d4761296fe083cc1f03ec8c0f44c2fec666019d2",
+      "diagnostic_outcome": {
+        "reason": "deadline",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 240.02427279099356
+      },
+      "guest_verdict": null,
+      "receipts": [
+        "[+     1.451460] [shutdown storage] full 12-phase/3-device plan, one-time transfer and inert parent abandonment passed beneath lifecycle/root/thread/heap guards; node_bytes=6280 device_bytes=1168",
+        "[+     1.711909] [thread table reserve] counter-only ordinary byte/slot saturation rejects; platform headroom and exact refunds passed",
+        "[+     1.712234] [thread table admission] real backing and guarded publication, shared principal rejection, sticky promotion, independent bytes/slots, retired root and ASID reuse passed"
+      ]
+    }
+  ],
+  "alternative_fixture_experiment": {
+    "instance": "thread-table-20261101-arm-stack-safe",
+    "arch": "aarch64",
+    "cpus": 4,
+    "timeout_seconds": 240,
+    "kernel_sha256": "ddde92e7dbaa2dc74e3a59f0d253cd2316d7d3d67f38d5559ae5b053be647108",
+    "bundle_map_sha256": "fb93f64dcb175342ce938180d4761296fe083cc1f03ec8c0f44c2fec666019d2",
+    "diagnostic_outcome": {
+      "reason": "complete",
+      "snapshot": "not-requested"
+    },
+    "guest_verdict": [
+      19,
+      0,
+      0
+    ],
+    "receipts": [
+      "[+     0.931968] [shutdown storage] full 12-phase/3-device plan, one-time transfer and inert parent abandonment passed beneath lifecycle/root/thread/heap guards; node_bytes=6280 device_bytes=1168",
+      "[+     1.112678] [thread table reserve] counter-only ordinary byte/slot saturation rejects; platform headroom and exact refunds passed",
+      "[+     1.112994] [thread table admission] real backing and guarded publication, shared principal rejection, sticky promotion, independent bytes/slots, retired root and ASID reuse passed",
+      "[+     1.386910] [domain abort] inline fence, rejected prepared/late threads, unlocked generation claim, TID/ASID reuse and root/frame recovery passed",
+      "[+    79.754076] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+    ]
+  },
+  "earlier_x86_successes": [
+    {
+      "instance": "thread-table-20261101-intel",
+      "arch": "x86_64",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "kernel_sha256": "337184e2465fadccd37aff239372cbf918fed96bc3c51a32723a3df28feed1e2",
+      "bundle_map_sha256": "7a03cad901eda680bd897fd35ff4538a8f6c3abe8ddd1158e60052c6c6573ef3",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "guest_verdict": [
+        17,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     1.352529] [shutdown storage] full 12-phase/3-device plan, one-time transfer and inert parent abandonment passed beneath lifecycle/root/thread/heap guards; node_bytes=6280 device_bytes=1168",
+        "[+     1.741232] [thread table reserve] counter-only ordinary byte/slot saturation rejects; platform headroom and exact refunds passed",
+        "[+     1.742202] [thread table admission] real backing and guarded publication, shared principal rejection, sticky promotion, independent bytes/slots, retired root and ASID reuse passed",
+        "[+     2.442290] [domain abort] inline fence, rejected prepared/late threads, unlocked generation claim, TID/ASID reuse and root/frame recovery passed",
+        "[+   115.465302] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "instance": "thread-table-20261101-amd",
+      "arch": "x86_64",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "kernel_sha256": "6ee7c14c5ddfbf0bcfabc9341d66c07b700166bf7dec09d05dc6f88b4e6a4312",
+      "bundle_map_sha256": "7a03cad901eda680bd897fd35ff4538a8f6c3abe8ddd1158e60052c6c6573ef3",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "guest_verdict": [
+        17,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     0.956941] [shutdown storage] full 12-phase/3-device plan, one-time transfer and inert parent abandonment passed beneath lifecycle/root/thread/heap guards; node_bytes=6280 device_bytes=1168",
+        "[+     1.114088] [thread table reserve] counter-only ordinary byte/slot saturation rejects; platform headroom and exact refunds passed",
+        "[+     1.114825] [thread table admission] real backing and guarded publication, shared principal rejection, sticky promotion, independent bytes/slots, retired root and ASID reuse passed",
+        "[+     1.386622] [domain abort] inline fence, rejected prepared/late threads, unlocked generation claim, TID/ASID reuse and root/frame recovery passed",
+        "[+    87.543127] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "instance": "thread-table-20261101-intel-scalar",
+      "arch": "x86_64",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "kernel_sha256": "aba4a80a4b3f7e14fc6f023d5c01cd7d936cc99fc92682992a9555ea1dcf8f90",
+      "bundle_map_sha256": "7a03cad901eda680bd897fd35ff4538a8f6c3abe8ddd1158e60052c6c6573ef3",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "guest_verdict": [
+        17,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     1.394499] [shutdown storage] full 12-phase/3-device plan, one-time transfer and inert parent abandonment passed beneath lifecycle/root/thread/heap guards; node_bytes=6280 device_bytes=1168",
+        "[+     1.742377] [thread table reserve] counter-only ordinary byte/slot saturation rejects; platform headroom and exact refunds passed",
+        "[+     1.743842] [thread table admission] real backing and guarded publication, shared principal rejection, sticky promotion, independent bytes/slots, retired root and ASID reuse passed",
+        "[+     2.379525] [domain abort] inline fence, rejected prepared/late threads, unlocked generation claim, TID/ASID reuse and root/frame recovery passed",
+        "[+   113.772524] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "instance": "thread-table-20261101-intel-final",
+      "arch": "x86_64",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "kernel_sha256": "a1fff859373ade06e797e6df98d23fd9431490caabd739b91da472061ca834de",
+      "bundle_map_sha256": "7a03cad901eda680bd897fd35ff4538a8f6c3abe8ddd1158e60052c6c6573ef3",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "guest_verdict": [
+        17,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     1.296126] [shutdown storage] full 12-phase/3-device plan, one-time transfer and inert parent abandonment passed beneath lifecycle/root/thread/heap guards; node_bytes=6280 device_bytes=1168",
+        "[+     1.714862] [thread table reserve] counter-only ordinary byte/slot saturation rejects; platform headroom and exact refunds passed",
+        "[+     1.716170] [thread table admission] real backing and guarded publication, shared principal rejection, sticky promotion, independent bytes/slots, retired root and ASID reuse passed",
+        "[+     2.481601] [domain abort] inline fence, rejected prepared/late threads, unlocked generation claim, TID/ASID reuse and root/frame recovery passed",
+        "[+   114.590051] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "instance": "thread-table-20261101-intel-32k",
+      "arch": "x86_64",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "kernel_sha256": "37006854b7400d5366bcddb32da65d74019c092717c1724d1dfef3c6df26b66c",
+      "bundle_map_sha256": "7a03cad901eda680bd897fd35ff4538a8f6c3abe8ddd1158e60052c6c6573ef3",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "guest_verdict": [
+        17,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     1.351988] [shutdown storage] full 12-phase/3-device plan, one-time transfer and inert parent abandonment passed beneath lifecycle/root/thread/heap guards; node_bytes=6280 device_bytes=1168",
+        "[+     1.698206] [thread table reserve] counter-only ordinary byte/slot saturation rejects; platform headroom and exact refunds passed",
+        "[+     1.699292] [thread table admission] real backing and guarded publication, shared principal rejection, sticky promotion, independent bytes/slots, retired root and ASID reuse passed",
+        "[+     2.332169] [domain abort] inline fence, rejected prepared/late threads, unlocked generation claim, TID/ASID reuse and root/frame recovery passed",
+        "[+   114.036204] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    }
+  ],
+  "environment_rejection": {
+    "instance": "thread-table-20261101-arm",
+    "guest_entered": false,
+    "reason": "Sandbox rejected QEMU Unix diagnostic socket bind with Operation not permitted. Separate authorized native runs followed; this is not a guest failure."
+  },
+  "stack_investigation": {
+    "limine_version": "12.9.6",
+    "source_url": "https://github.com/Limine-Bootloader/Limine/blob/v12.9.6/common/protos/limine.c#L1328-L1347",
+    "source_sha256": "e9eda50fd1d560c610245f076c115e33661777f360c1c91d895053036f5c9133",
+    "effective_stack_formula": "max(65536, requested_bytes), rounded to 16-byte alignment",
+    "frame_capture_kernel_sha256": "a6b90e230a04db7d5c06b8539a3103f68154e2e7343fa2249eb1fc5f4553db72",
+    "frame_bytes": {
+      "bsp_main": 8960,
+      "run_synchronous_self_tests": 23216,
+      "thread_admission::run": 17520,
+      "domain_abort::tests::run": 12240,
+      "test_rejected_service_pages": 12096
+    },
+    "fixed_frame_sum_bytes": 74032,
+    "excess_over_64k_bytes": 8496,
+    "exception_registers": {
+      "sp": {
+        "index": 31,
+        "bits": 64,
+        "value": "0xffff00005cb75ed0"
+      },
+      "pc": {
+        "index": 32,
+        "bits": 64,
+        "value": "0xffffffff80000200"
+      },
+      "TTBR0_EL1": {
+        "index": 99,
+        "bits": 64,
+        "value": "0x5cb76000"
+      },
+      "TTBR1_EL1": {
+        "index": 101,
+        "bits": 64,
+        "value": "0x5cb75000"
+      },
+      "TCR_EL1": {
+        "index": 103,
+        "bits": 64,
+        "value": "0x2b5103510"
+      },
+      "ESR_EL1": {
+        "index": 136,
+        "bits": 64,
+        "value": "0x86000004"
+      },
+      "SCTLR_EL1": {
+        "index": 150,
+        "bits": 64,
+        "value": "0x30d0199d"
+      },
+      "SPSR_EL1": {
+        "index": 172,
+        "bits": 64,
+        "value": "0x3c5"
+      },
+      "ELR_EL1": {
+        "index": 175,
+        "bits": 64,
+        "value": "0xffffffff80000200"
+      },
+      "SP_EL0": {
+        "index": 182,
+        "bits": 64,
+        "value": "0xffff00005cb85d00"
+      },
+      "FAR_EL1": {
+        "index": 271,
+        "bits": 64,
+        "value": "0xffffffff80000200"
+      }
+    },
+    "interpretation": "The fixed frame chain alone exceeds actual 64 KiB backing by 8496 bytes. SP through HHDM is in the TTBR1 root page; the captured recurring vector-entry instruction abort is consistent with overwritten active page tables. The initial exception was not retained separately. Original fixtures pass when actual backing is raised to 128 KiB.",
+    "manual_debugger_intervention": "Scalar 16 KiB-request and 32 KiB-request failures also had bounded QMP stop/restore reads before their original 240-second terminal capture. Diagnostic stops establish no physical completion.",
+    "durable_diagnostics": "2026-11-01-thread-table-arm-failures.txt"
+  },
+  "qualification_limits": [
+    "Four-LP QEMU campaigns only; no physical-platform proof.",
+    "Counter-only node saturation is separate from real-buffer controls.",
+    "No sustained EL0 backing-pressure, all-family principal accounting, guarded-copy latency or essential-service fairness claim.",
+    "Existing historical incidents retain their separate attribution limits."
+  ]
+}

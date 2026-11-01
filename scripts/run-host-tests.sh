@@ -25,6 +25,7 @@ python3 "$repo_root/scripts/tests/test-rng-ring-access.py"
 python3 "$repo_root/scripts/tests/test-dependency-advisories.py"
 python3 "$repo_root/scripts/tests/test-tooling-contracts.py"
 python3 "$repo_root/scripts/tests/test-object-store-format.py"
+python3 "$repo_root/scripts/tests/test-resource-policy.py"
 toolchain="$(sed -n 's/^channel = "\([^"]*\)"/\1/p' "$repo_root/rust-toolchain.toml")"
 host_cargo="$(rustup which --toolchain "$toolchain" cargo)"
 host_rustc="$(rustup which --toolchain "$toolchain" rustc)"
@@ -48,7 +49,8 @@ mkdir -p "$repo_root/target/host-self-tests"
     -o "$repo_root/target/host-self-tests/operation-id-tests"
 "$repo_root/target/host-self-tests/operation-id-tests"
 
-# Generic retirement-slot ownership and stale-handle rejection.
+# Retirement-slot ownership, prepared table growth, charge/deallocation
+# ordering, allocator-free publication and stale-handle rejection.
 "$host_rustc" --edition=2024 --test \
     "$repo_root/crates/catten/src/klib/collections/id_table.rs" \
     -o "$repo_root/target/host-self-tests/id-table-tests"

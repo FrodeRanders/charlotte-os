@@ -175,10 +175,10 @@ fn inline_queue_retirement_fence() {
     // This table and queue never publish to a live scheduler. The complete
     // thread owns its stack and inline link across both rejected releases.
     let before = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
-    let mut table = ThreadTable::new();
+    let mut table = crate::cpu::scheduler::threads::fixture_table();
     let thread = Thread::new(KERNEL_ASID, unused_entry);
     let generation = thread.generation;
-    let tid = table.add_element(thread);
+    let tid = table.try_insert_prepared(thread, None).unwrap();
     let key = ThreadHandle {
         tid,
         generation,
@@ -201,7 +201,7 @@ fn inline_queue_retirement_fence() {
         let thread = thread.release_unstarted().expect_err("linked owner must be returned");
         assert_eq!(thread.generation, generation);
         assert!(thread.run_queue_link.is_linked());
-        assert_eq!(table.add_element(thread), tid);
+        assert_eq!(table.try_insert_prepared(thread, None).unwrap(), tid);
         assert_eq!(allocator.free_frames(), free);
         queue.remove(&mut table, key).unwrap();
     }

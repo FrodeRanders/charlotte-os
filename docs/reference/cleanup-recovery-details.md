@@ -37,6 +37,15 @@ also retains reservation-only prefixes; ordinary unused cancellation is explicit
 and consuming. The exact kernel-range owner replaces scalar range reconstruction
 and allocating guard-address bookkeeping.
 
+Master-table growth has its own [byte/slot admission](thread-table-admission.md).
+A complete candidate is prepared before publication guards, exact entries and
+slot metadata move into it without allocator work, and its receipt retains the
+empty old buffers through explicit post-guard deallocation/refund. Abandonment
+retains those buffers and their original charge. Thread exit does not refund
+retained capacity. This metadata operation supplies no physical completion or
+thread-retry authority; the IRQ-masked copy and wider callers still need latency
+and outer-context qualification.
+
 Contracts: [thread retirement](thread-retirement.md), [stack admission](stack-admission.md),
 [thread metadata](thread-metadata-admission.md) and
 [kernel frame retirement](kernel-frame-retirement.md).

@@ -44,7 +44,12 @@ Admit both, commit them together and keep delivery hidden until receive or first
 reply observation. A readiness notification does not publish the attachment.
 
 Budget the actual allocation lifetime, including weak references, unused
-candidates and detached or quarantined storage. Deallocate before refunding its
+candidates and detached or quarantined storage. Growing shared metadata needs
+allowance for both complete old and candidate backing until the old allocation
+is actually freed. Prepare replacements outside publication guards, preserve
+exact slot/generation state during the ownership move, and carry empty old
+buffers out for deallocation. A bounded copy still needs its own IRQ-latency
+qualification; absence of allocator calls alone does not prove progress. Deallocate before refunding its
 charge. Moving an object, retiring its sponsor or reusing an ASID must not make
 live backing free in the accounts. Keep the original trusted/ordinary class.
 
@@ -143,6 +148,17 @@ IRQ mask; never enable interrupts just to make a blocking helper work.
 Changing an inner owner's destructor to retain backing does not qualify an active
 containing destructor. That parent can still enter physical release or destroy
 metadata. Test the relevant parent path with the actual enclosing guards held.
+
+Keep large transient owners in their containing operation across rejection when
+possible; scalar errors can leave ownership with the caller. Review compiled
+frame sizes and the deepest cleanup tail on bounded kernel/boot stacks. A
+complete by-value error can preserve ownership while still exhausting that stack.
+
+When measured demand exceeds a fixed capacity, compare a modest increase with
+structural redesign. Include the effective allocator/bootloader minimum,
+per-instance and node-wide cost, scaling and headroom. Prefer the simpler design
+when that memory cost is acceptable. Admission, ownership and cleanup guarantees
+still need to hold independently of the chosen capacity.
 
 Trace every scalar entry point when sharing a submission adapter. A copied
 attachment can use unlocked preparation while its move or loan sibling still

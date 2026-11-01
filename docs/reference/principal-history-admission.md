@@ -8,7 +8,10 @@ separate contracts.
 
 The shared principal-history table holds sizing history and aggregate resource
 counters for the boot lifetime. Its published records and unpublished root
-candidates now share a bounded allocation pool.
+candidates now share a bounded allocation pool. Context/retirement metadata and
+[master-table backing](thread-table-admission.md) use independent byte/count
+counters in that same existing record; expanding these fields is included in
+its checked node layout, not an additional per-instance allocation.
 
 | Dimension | Whole node | Ordinary preparation |
 | --- | --- | --- |

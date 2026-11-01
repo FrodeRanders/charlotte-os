@@ -12,6 +12,8 @@ use core::{
 pub enum Error {
     IdNotActive,
     AllocationFailed,
+    /// No payload or generation changed; a competing publication used capacity.
+    CapacityChanged,
     WrongRetirement,
     Leased,
     LeaseLimit,
@@ -99,10 +101,12 @@ impl Drop for ClosingSlot {
 }
 
 #[derive(Debug)]
-pub struct IdTable<T> {
+pub struct IdTable<T, C = ()> {
     list: Vec<Option<T>>,
     available_ids: Vec<usize>,
     slots: Vec<SlotState>,
+    // Declared after backing: refund only after all three buffers deallocate.
+    admission: Option<C>,
     identity: usize,
 }
 
@@ -115,76 +119,16 @@ struct SlotState {
     cleanup_sealed: bool,
 }
 
-impl<T> IdTable<T> {
+impl<T, C> IdTable<T, C> {
     pub fn new() -> Self {
         IdTable {
             list: Vec::new(),
             available_ids: Vec::new(),
             slots: Vec::new(),
+            admission: None,
             identity: TABLE_IDENTITIES
                 .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| value.checked_add(1))
                 .expect("table identity exhausted"),
-        }
-    }
-
-    /// Panic wrapper for mandatory kernel initialization and trusted fixtures.
-    /// Runtime roots and threads must use the fallible publication API.
-    pub fn add_element(&mut self, element: T) -> usize {
-        self.try_add_element(element).unwrap_or_else(|_| panic!("ID table slot preparation failed"))
-    }
-
-    /// Prepare payload, generation and return-ID storage before publication.
-    /// Extraction and delayed retirement must never need fresh allocation.
-    pub(crate) fn try_add_element(&mut self, element: T) -> Result<usize, (T, Error)> {
-        self.try_add_element_with(element, |available, additional| {
-            available.try_reserve(additional).map_err(|_| ())
-        })
-    }
-
-    fn try_add_element_with(
-        &mut self,
-        element: T,
-        reserve_return_ids: impl FnOnce(&mut Vec<usize>, usize) -> Result<(), ()>,
-    ) -> Result<usize, (T, Error)> {
-        if let Some(&id) = self.available_ids.last() {
-            if self.slots[id].generation == usize::MAX {
-                return Err((element, Error::AllocationFailed));
-            }
-        } else {
-            let Some(slots) = self.list.len().checked_add(1) else {
-                return Err((element, Error::AllocationFailed));
-            };
-            if self.list.try_reserve(1).is_err()
-                || self.slots.try_reserve(1).is_err()
-                || reserve_return_ids(&mut self.available_ids, slots).is_err()
-            {
-                return Err((element, Error::AllocationFailed));
-            }
-        }
-        if let Some(id) = self.available_ids.pop() {
-            let state = &mut self.slots[id];
-            assert!(
-                !state.retiring && !state.closing && state.leases == 0,
-                "reusing retained slot"
-            );
-            state.generation = state.generation.checked_add(1).expect("ID generation exhausted");
-            self.list[id] = Some(element);
-            Ok(id)
-        } else {
-            let id = self.list.len();
-            self.list.push(Some(element));
-            // Generation zero is reserved for handles that were never
-            // initialized. The first occupant of every slot is generation 1.
-            // All three vectors, including eventual free-ID storage, were
-            // prepared before any payload or generation mutation.
-            self.slots.push(SlotState {
-                generation: 1,
-                retiring: false,
-                leases: 0,
-                closing: false,
-                cleanup_sealed: false,
-            });
-            Ok(id)
         }
     }
 
@@ -459,7 +403,46 @@ impl<T> IdTable<T> {
     }
 }
 
-impl<T> Drop for IdTable<T> {
+impl<T> IdTable<T> {
+    /// Panic wrapper for mandatory kernel initialization and trusted fixtures.
+    /// Runtime roots and threads must use the fallible publication API.
+    pub fn add_element(&mut self, element: T) -> usize {
+        self.try_add_element(element).unwrap_or_else(|_| panic!("ID table slot preparation failed"))
+    }
+
+    /// Prepare payload, generation and return-ID storage before publication.
+    /// Extraction and delayed retirement must never need fresh allocation.
+    pub(crate) fn try_add_element(&mut self, element: T) -> Result<usize, (T, Error)> {
+        self.try_add_element_with(element, |available, additional| {
+            available.try_reserve(additional).map_err(|_| ())
+        })
+    }
+
+    fn try_add_element_with(
+        &mut self,
+        element: T,
+        reserve_return_ids: impl FnOnce(&mut Vec<usize>, usize) -> Result<(), ()>,
+    ) -> Result<usize, (T, Error)> {
+        if let Some(&id) = self.available_ids.last() {
+            if self.slots[id].generation == usize::MAX {
+                return Err((element, Error::AllocationFailed));
+            }
+        } else {
+            let Some(slots) = self.list.len().checked_add(1) else {
+                return Err((element, Error::AllocationFailed));
+            };
+            if self.list.try_reserve(1).is_err()
+                || self.slots.try_reserve(1).is_err()
+                || reserve_return_ids(&mut self.available_ids, slots).is_err()
+            {
+                return Err((element, Error::AllocationFailed));
+            }
+        }
+        self.try_insert_prepared(element, None)
+    }
+}
+
+impl<T, C> Drop for IdTable<T, C> {
     fn drop(&mut self) {
         for (entry, state) in self.list.iter_mut().zip(&self.slots) {
             if state.leases != 0 || state.closing {
@@ -472,17 +455,22 @@ impl<T> Drop for IdTable<T> {
     }
 }
 
-impl<T> Default for IdTable<T> {
+impl<T, C> Default for IdTable<T, C> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-unsafe impl<T> Send for IdTable<T> where T: Send {}
-unsafe impl<T> Sync for IdTable<T> where T: Sync {}
+unsafe impl<T: Send, C: Send> Send for IdTable<T, C> {}
+unsafe impl<T: Sync, C: Sync> Sync for IdTable<T, C> {}
 
 #[cfg(test)]
 #[path = "id_table/tests.rs"]
 mod tests;
 #[cfg(test)]
 extern crate alloc;
+
+#[path = "id_table/preparation.rs"]
+mod preparation;
+#[cfg_attr(test, allow(unused_imports))]
+pub(crate) use preparation::PreparedGrowth;

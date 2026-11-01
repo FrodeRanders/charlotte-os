@@ -2,6 +2,7 @@
 """Compile and exercise the actual kernel policy and its trusted file selector."""
 import json
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import tempfile
@@ -20,9 +21,19 @@ class ResourcePolicy(unittest.TestCase):
         cls.directory = Path(cls.temporary.name)
         cls.harness = cls.directory / "harness.rs"
         cls.harness.write_text(f'#[path = {json.dumps(str(POLICY), ensure_ascii=False)}]\nmod resource_policy;\n')
-        cls.selector_binary = cls.directory / "select-policy"
-        subprocess.run(["rustc", "--edition", "2024", str(ROOT / "crates/catten/build.rs"),
-                        "-o", str(cls.selector_binary)], cwd=ROOT, check=True, capture_output=True, text=True)
+        # The real build script uses charlotte-launch. Match the tooling probe's
+        # host Cargo harness so new build-script dependencies remain available.
+        manifest = cls.directory / "Cargo.toml"
+        manifest.write_text('[package]\nname="resource-policy-selector"\nversion="0.0.0"\nedition="2024"\n'
+                            '[workspace]\n[dependencies]\ncharlotte-launch={path=' + json.dumps(str(ROOT / "crates/charlotte-launch")) + '}\n'
+                            '[[bin]]\nname="resource-policy-selector"\npath=' + json.dumps(str(ROOT / "crates/catten/build.rs")) + '\n')
+        shutil.copyfile(ROOT / "Cargo.lock", cls.directory / "Cargo.lock")
+        channel = next(line.split('"')[1] for line in (ROOT / "rust-toolchain.toml").read_text().splitlines()
+                       if line.startswith("channel ="))
+        subprocess.run(["cargo", "+" + channel, "build", "--offline", "--manifest-path", str(manifest)],
+                       cwd=cls.directory, check=True, capture_output=True, text=True)
+        cls.selector_binary = cls.directory / "target/debug/resource-policy-selector"
+        (cls.directory / "boot-out").mkdir()
 
     @classmethod
     def tearDownClass(cls):
@@ -59,6 +70,8 @@ class ResourcePolicy(unittest.TestCase):
             "ratio-zero": "p.memory.object_ram.denominator = 0;",
             "ratio-overcommitted": "p.memory.ordinary_share.numerator = 4;",
             "snapshot": "p.snapshot_buffers.ordinary[0] = 1;",
+            "thread-table-reserve": "p.thread_table.ordinary = p.thread_table.total;",
+            "thread-table-principal": "p.memory.principal_thread_table[1] = u64::MAX;",
             "principal": "p.memory.principal_thread_metadata[0] = u64::MAX;",
             "queue": "p.local.endpoint_capacity = usize::MAX;",
             "heap-alignment": "p.kernel_heap.initial_bytes = 1;",
@@ -81,7 +94,7 @@ class ResourcePolicy(unittest.TestCase):
     def selector(self, path=None):
         env = {k: v for k, v in os.environ.items()
                if not k.startswith("CARGO_FEATURE_") and k != "CATTEN_RESOURCE_POLICY"}
-        env.update(CARGO_MANIFEST_DIR=str(ROOT / "crates/catten"), CARGO_CFG_TARGET_ARCH="x86_64")
+        env.update(OUT_DIR=str(self.directory / "boot-out"), CARGO_MANIFEST_DIR=str(ROOT / "crates/catten"), CARGO_CFG_TARGET_ARCH="x86_64")
         if path is not None:
             env["CATTEN_RESOURCE_POLICY"] = str(path)
         return subprocess.run([str(type(self).selector_binary)], cwd=ROOT, env=env, capture_output=True, text=True)

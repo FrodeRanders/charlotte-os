@@ -733,9 +733,18 @@ the corrected RPC polling paths, and the remaining notification gaps.
   retains the complete table/detached owner and original charges without retry.
 
 - Kernel `IdTable` publication prepares payload, generation and return-ID
-  capacity together before mutation. Use `try_add_element` for runtime roots and
-  threads; rejected payloads remain owned and must be destroyed after table and
-  lifecycle/scheduler guards leave. `take_element`, close preflights and final
+  capacity together before mutation. Runtime threads use the admitted
+  `IdTable<Thread, thread_table::Charge>` and `try_insert_from`: capture a
+  growth request under the table, admit/allocate all replacement buffers after
+  unlock, revalidate the exact root/abort/limit under publication guards, and
+  dispose unused/replaced backing only after those guards leave. Count old and
+  candidate bytes/slots together through deallocation; retain the captured
+  principal/classification on abandonment and across root reuse. Only typed
+  unstarted `CapacityChanged` permits at most eight publication attempts; quota,
+  allocation, root and thread-limit rejection are terminal for this submission.
+  Root tables retain `try_add_element`; their growth context/admission is a
+  separate scope. Rejected payloads remain owned and must be destroyed after
+  table and lifecycle/scheduler guards leave. `take_element`, close preflights and final
   slot completion must not allocate or repair missing capacity during teardown.
   Missing capacity rejects before extraction/fencing or retains the existing
   closing owner. The panic wrapper is confined to mandatory kernel initialization

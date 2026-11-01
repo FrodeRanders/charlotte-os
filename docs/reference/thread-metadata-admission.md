@@ -79,7 +79,9 @@ This pool covers two requested layouts per thread. It excludes the master
 thread table's retained vector capacity, exit-observer lists and weak references,
 waiter/timer/control-block allocations, root/principal-history storage, other
 kernel metadata, allocator bookkeeping/rounding and the physical heap arena.
-No claim is made that thread-table capacity is refunded at thread exit.
+[Master-table capacity](thread-table-admission.md) has a separate admitted
+byte/slot pool and is retained after thread exit; it is not refunded with this
+context/node bundle.
 Principal-history nodes have their own
 [bounded pool](principal-history-admission.md).
 

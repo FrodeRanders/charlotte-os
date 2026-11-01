@@ -39,13 +39,13 @@ fn release(table: &mut ThreadTable, (tid, generation): (ThreadId, ThreadGenerati
 
 pub(super) fn run() {
     let irq = crate::cpu::isa::lp::ops::get_int_state();
-    let mut table = ThreadTable::new();
+    let mut table = crate::cpu::scheduler::threads::fixture_table();
     let identities = core::array::from_fn::<_, 2, _>(|_| {
         let mut thread = Thread::new(KERNEL_ASID, unused_entry);
         thread.migration_safe = true;
         thread.state = ThreadState::Ready(0);
         let generation = thread.generation;
-        (table.add_element(thread), generation)
+        (table.try_insert_prepared(thread, None).unwrap(), generation)
     });
     let [first, second] = identities;
     let mut source = queue(0);
@@ -201,7 +201,7 @@ pub(super) fn run() {
     replacement.state = ThreadState::Ready(0);
     assert_ne!(replacement.generation, first.1);
     let replacement_generation = replacement.generation;
-    assert_eq!(table.add_element(replacement), first.0);
+    assert_eq!(table.try_insert_prepared(replacement, None).unwrap(), first.0);
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
         let mut source = source.lock();

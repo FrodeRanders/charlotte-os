@@ -1,6 +1,6 @@
 # Security remediation status and completion criteria
 
-Current status consolidated 2026-10-30. This page records implemented scope,
+Current status updated 2026-11-01. This page records implemented scope,
 remaining acceptance gates and unresolved incidents. Finding dispositions are
 unchanged by documentation consolidation. Source and executable tests define
 current behavior; qualification records cover only their executed scope.
@@ -86,16 +86,16 @@ Still required:
 | --- | --- |
 | Domain/node admission for capabilities, IPC, endpoints, CQs/completions, timers, watches/waiters and observer lists | Full application-triggerable allocation inventory, aggregate metadata/general-heap admission and exceptional caller contexts |
 | Prepared admitted nodes for root, authority, IPC, device and memory publication/retirement; byte/count pools for selected metadata and scratch/snapshot storage | Allocator overhead, remaining nested/control-block storage and all-family principal accounting |
-| Shared verified-principal limits for object/heap/image/private-table backing, full user-thread stack capacity and context/retirement metadata | Other families and general kernel heap; independent principals can still reach ordinary node limits |
+| Shared verified-principal limits for object/heap/image/private-table backing, full user-thread stack capacity, context/retirement metadata and retained/candidate [master-table backing](thread-table-admission.md), with four-LP ARM/Intel/AMD qualification | Other families and general kernel heap; independent principals can still reach ordinary node limits |
 | Original-charge retention through moves, weak references, quarantine, root retirement and generation reuse | Concurrent pressure/restart qualification and sustained essential-service progress |
 | Central typed compile-time resource policy and reserved platform shares | Capacity sizing and fairness across complete multi-pool operations |
 | One fixed 64-slot deployment registry reserves pending and published principals before launch; publication allocates no record backing | Native concurrent EL0 launch pressure, real connector-profile OOM and general heap/principal admission remain separate. See [deployment record admission](scoped-deployment-launch.md#deployment-record-admission). |
-| [Inline node/device shutdown plans](live-address-space-operations.md#node-shutdown-plan-ownership) retain eleven service phases and three hardware owners without plan allocation or active abandonment cleanup; fallible worker preparation and fresh pinned admission precede roster transfer | Later cleanup admission, readiness and progress under real backing pressure remain open. Worker rejection retains the roster but still follows the existing syscall/agent fail-closed policy. |
+| [Inline node/device shutdown plans](live-address-space-operations.md#node-shutdown-plan-ownership) retain twelve service phases and three hardware owners without plan allocation or active abandonment cleanup; fallible worker preparation and fresh pinned admission precede roster transfer | Later cleanup admission, readiness and progress under real backing pressure remain open. Worker rejection retains the roster but still follows the existing syscall/agent fail-closed policy. |
 
 Contracts: [resource policy](resource-policy.md),
 [principal backing](principal-backing-admission.md),
 [principal history](principal-history-admission.md),
-[thread metadata](thread-metadata-admission.md),
+[thread metadata](thread-metadata-admission.md), [master-table backing](thread-table-admission.md),
 [translation](translation-admission.md), [stacks](stack-admission.md),
 [memory-capability nodes](memory-capability-node-admission.md) and
 [snapshot buffers](snapshot-buffer-admission.md).
@@ -105,8 +105,8 @@ SEC-07 remains partial until all five deliverables are accepted:
 | Deliverable | Completion evidence |
 | --- | --- |
 | R7-1: allocation inventory | Enumerate application-triggerable kernel allocation sites and identify their byte/count limits, sponsor, lifetime owner, rejection behavior and reserve classification. Include thread nodes, scheduler queues/migration storage, registry entries, namespace/sponsor metadata, callback captures and allocator bookkeeping. Explicitly justify bounded boot-only exclusions. |
-| R7-2: remaining scheduler/registry storage | Prepare storage fallibly before publication. Every application-triggerable allocation rejects without a kernel allocation panic or partially published authority. Admission follows the actual allocation through detached work and weak references. Thread contexts and retirement nodes now have shared requested-byte/count admission by signed principal and node; table capacity, observer/weak storage and other registry families still need admission. |
-| R7-3: heap and aggregate sponsor budgets | Shared signed-principal object/heap/image/private-table, full user-thread-stack and context/retirement-node admission is implemented; complete other families and bound general kernel heap bytes and aggregate logical-principal consumption across domain creation/restart and outstanding work. Nested allocations and retained quarantine consume the original limits; ASID reuse, transfer, promotion and logical retirement cannot refund live backing or gain platform classification. |
+| R7-2: remaining scheduler/registry storage | Prepare storage fallibly before publication. Every application-triggerable allocation rejects without a kernel allocation panic or partially published authority. Admission follows the actual allocation through detached work and weak references. Thread contexts/retirement nodes and master-table retained/candidate capacity now have shared requested-byte/count admission by signed principal and node; table buffer preparation/disposal leaves local publication guards. Observer/weak storage, root-table capacity and other registry families still need admission. |
+| R7-3: heap and aggregate sponsor budgets | Shared signed-principal object/heap/image/private-table, full user-thread-stack, context/retirement-node and master-table backing admission is implemented; complete other families and bound general kernel heap bytes and aggregate logical-principal consumption across domain creation/restart and outstanding work. Nested allocations and retained quarantine consume the original limits; ASID reuse, transfer, promotion and logical retirement cannot refund live backing or gain platform classification. |
 | R7-4: essential-service progress | Reserve usable allocation/admission capacity for trusted platform work. Demonstrate management, timer/scheduler and teardown progress during sustained ordinary pressure; separate pools alone are insufficient evidence of fairness. Rejected work must be bounded rather than busy-looping. |
 | R7-5: pressure matrix | Run concurrent EL0 clients on all supported QEMU targets against ordinary and aggregate ceilings, allocation rejection, cancellation, weak retention, domain restart and generation reuse. Verify exact charges after confirmed cleanup and retained charges after uncertain cleanup. Record progress/latency against fixture deadlines chosen before the run. Include real backing pressure as well as counter-only saturation. |
 

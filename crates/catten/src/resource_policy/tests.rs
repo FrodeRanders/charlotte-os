@@ -46,6 +46,7 @@ fn exercise(p: Policy) {
         p.root_metadata,
         p.principal_history,
         p.thread_metadata,
+        p.thread_table,
         p.scratch_nodes,
         p.snapshot_buffers,
         p.mapping_nodes,
@@ -186,4 +187,13 @@ fn heap_reserve_clamps_before_rounding_at_extreme_ram() {
         .growth_reserve_bytes(u64::MAX),
         DEFAULT.kernel_heap.growth_max_bytes
     );
+}
+
+#[test]
+fn principal_thread_table_capacity_rejects_overcommit() {
+    for i in 0..2 {
+        let mut p = DEFAULT;
+        p.memory.principal_thread_table[i] = p.thread_table.ordinary[i] + 1;
+        assert_eq!(p.validate(), Err("principal thread table"));
+    }
 }

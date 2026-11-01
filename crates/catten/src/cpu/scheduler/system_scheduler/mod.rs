@@ -148,51 +148,8 @@ pub(crate) fn thread_admission_open(handle: crate::memory::AddressSpaceHandle) -
         && table.get(handle.id()).is_ok_and(|space| !space.thread_admission_closed)
 }
 
-/// Publish a newly constructed thread unless its address-space lifetime is
-/// already aborting.
-///
-/// Publication and installing the root's abort fence use the same gate. A
-/// thread is either published before the fence or rejected afterward.
-#[allow(clippy::result_large_err)] // Carry the complete rejected owner out without allocation.
-pub fn publish_thread(thread: Thread) -> Result<ThreadId, Error> {
-    // Carry rejected payload ownership out of every serialization scope.
-    let publication = (|| {
-        let asid = thread.asid;
-        let _lifecycle = (asid != crate::memory::KERNEL_ASID)
-            .then(|| crate::memory::ADDRESS_SPACE_LIFECYCLE.lock());
-        let _publication_gate = THREAD_PUBLICATION_GATE.lock();
-        let maximum = if asid != crate::memory::KERNEL_ASID {
-            let Some(handle) = thread.address_space else {
-                return Err((thread, Error::ThreadTerminated));
-            };
-            if handle.id() != asid || !thread_admission_open(handle) {
-                return Err((thread, Error::ThreadTerminated));
-            }
-            Some(crate::memory::domain_limits(asid).max_threads)
-        } else {
-            None
-        };
-        let mut table = MASTER_THREAD_TABLE.write();
-        if maximum.is_some_and(|maximum| {
-            table
-                .iter()
-                .filter(|entry| entry.as_ref().is_some_and(|thread| thread.asid == asid))
-                .count()
-                >= maximum
-        }) {
-            return Err((thread, Error::DomainThreadLimitExceeded));
-        }
-        table
-            .try_add_element(thread)
-            .map_err(|(thread, _)| (thread, Error::ThreadPreparationFailed))
-    })();
-    publication.map_err(|(thread, error)| {
-        // Physical rejection retains backing/admission; never invoke it again
-        // through Drop. Outer callers' IRQ state is preserved by the adapters.
-        let _ = thread.release_unstarted();
-        error
-    })
-}
+mod publication;
+pub use publication::publish_thread;
 
 /// Exact-generation process liveness for the trusted remote-resource adapter.
 /// Abort fencing and publication use this same gate before the thread table.

@@ -79,6 +79,8 @@ pub(crate) struct Memory {
     pub ordinary_share: Ratio,
     /// Principal thread-context bytes, bundle count.
     pub principal_thread_metadata: [u64; 2],
+    /// Retained and candidate master-table bytes and slots per principal.
+    pub principal_thread_table: [u64; 2],
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct KernelHeap {
@@ -127,6 +129,7 @@ pub(crate) struct Policy {
     pub root_metadata: Pool<2>,
     pub principal_history: Pool<2>,
     pub thread_metadata: Pool<2>,
+    pub thread_table: Pool<2>,
     pub scratch_nodes: Pool<2>,
     pub snapshot_buffers: Pool<2>,
     pub mapping_nodes: Pool<2>,
@@ -156,6 +159,7 @@ impl Policy {
             || !self.root_metadata.valid()
             || !self.principal_history.valid()
             || !self.thread_metadata.valid()
+            || !self.thread_table.valid()
             || !self.scratch_nodes.valid()
             || !self.snapshot_buffers.valid()
             || !self.mapping_nodes.valid()
@@ -204,6 +208,11 @@ impl Policy {
                 || m.principal_thread_metadata[i] > self.thread_metadata.ordinary[i]
             {
                 return Err("principal thread metadata");
+            }
+            if m.principal_thread_table[i] == 0
+                || m.principal_thread_table[i] > self.thread_table.ordinary[i]
+            {
+                return Err("principal thread table");
             }
             i += 1;
         }

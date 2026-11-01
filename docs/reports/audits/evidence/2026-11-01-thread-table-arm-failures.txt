@@ -1,0 +1,313 @@
+Formatting: trailing horizontal whitespace removed from diagnostic excerpts.
+
+Initial by-value publication; request 16 KiB
+instance: thread-table-20261101-arm-native
+kernel_sha256: 0c93cf4f91cb252ef0d5326a00a836315262681133afc8ddc2998b1a2bbc4bab
+tracked_diff_sha256 (untracked files excluded): 1c64d086e47960d60911ec009a40ba61fb37df75ec8d6385a01b502cd2c74e06
+outcome: {"cpu_count": 4, "elapsed_seconds": 240.01818366599036, "errors": [], "lldb": {"exit_code": 0, "reported_errors": false}, "qmp": "captured", "reason": "deadline", "snapshot": "captured"}
+(lldb) thread backtrace all
+warning: This version of LLDB has no plugin for the language "rust". Inspection of frame variables will be limited.
+* thread #1, stop reason = signal SIGTRAP
+   * frame #0: 0xffffffff80000200 kernel.elf`ivt + 512
+     frame #1: 0xffffffff8024a970 kernel.elf`<catten::memory::thread_stack::stacks::Stacks>::release(self=<unavailable>) at stacks.rs:245:14 [inlined]
+     frame #2: 0xffffffff8024a968 kernel.elf`<catten::cpu::isa::aarch64::lp::thread_context::ThreadContext>::release_stacks(self=<unavailable>) at mod.rs:129:22 [inlined]
+     frame #3: 0xffffffff8024a968 kernel.elf`<catten::cpu::scheduler::threads::Thread>::retire_stacks(self=<unavailable>) at mod.rs:1008:22
+     frame #4: 0xffffffff8024aa70 kernel.elf`<catten::cpu::scheduler::threads::Thread>::release_unstarted(self=Thread @ 0xffff00005e878b40) at mod.rs:1037:21
+     frame #5: 0xffffffff80021058 kernel.elf`<catten::cpu::scheduler::system_scheduler::publication::Preparation>::finish(self=Preparation @ 0x0000000950c83900) at publication.rs:45:28
+     frame #6: 0xffffffff80020fd8 kernel.elf`catten::cpu::scheduler::system_scheduler::publication::publish_thread(thread=<unavailable>) at publication.rs:74:33
+     frame #7: 0xffffffff802d06b4 kernel.elf`catten::cpu::scheduler::system_scheduler::domain_abort::tests::run at tests.rs:432:22
+     frame #8: 0xffffffff801b0d88 kernel.elf`catten::cpu::scheduler::system_scheduler::test_domain_abort at mod.rs:48:5 [inlined]
+     frame #9: 0xffffffff801b0d84 kernel.elf`catten::self_test::thread_admission::run at thread_admission.rs:66:5
+     frame #10: 0xffffffff800592bc kernel.elf`catten::self_test::run_synchronous_self_tests at mod.rs:293:5
+     frame #11: 0xffffffff8036a3d4 kernel.elf`bsp_main at main.rs:273:5
+       x29 = 0xffff00005e878220
+       x30 = 0xffffffff803dcedc  kernel.elf`<catten::memory::thread_stack::stacks::Stacks>::release_with::<catten::memory::thread_stack::stacks::retire_user, catten::memory::allocators::stack_allocator::deallocate_stack> + 160 at stacks.rs:262:19
+        sp = 0xffff00005e8781f0
+        pc = 0xffffffff80000200 kernel.elf`ivt + 512  kernel.elf`ivt + 512
+      cpsr = 0x000003c5
+Last serial lines:
+[+     1.938636] [stack backing admission] maximum user/kernel reservation, growth/collision/retry, explicit success refund, rejection before allocation, transient-invalidation re-confirmation and platform progress passed; six failed/abandoned owners retain original roots/slots/reservations (20 data frames retained)
+[+     1.967760] [reaper readiness] guarded staging, coalesced exact-LP wake, late registration recheck, full-source rejection and original frame recovery passed
+[+     1.969128] [inline run queue retirement] linked stack/unstarted release rejected under heap, master/retirement/physical guards; complete exact owner returned, explicit unlink and final frame recovery passed
+[+     1.970564] [published stack retirement] failed pair/node retained through two scans; no physical retry
+[+     1.974088] [thread metadata retention] kernel/user payload Drop under table/retirement/root/allocator guards: no exit, waiter cancellation, usage refund or frame return; exact user root remains busy
+[+     1.974540] [thread retirement] node/context-storage rejection, masked entry, same-LP/current-stack retention, unlocked callbacks and physical stack recovery passed
+
+Scalar publication, original fixtures; request 16 KiB
+instance: thread-table-20261101-arm-scalar
+kernel_sha256: 007fb9efecf812b113722cb66926bd392727cb8e1811295b1bf8cae5946687b0
+tracked_diff_sha256 (untracked files excluded): b6a01dd0964621d26ef887d163ac08f4be395a2da4d00835c395eb6f795ce8dc
+outcome: {"cpu_count": 4, "elapsed_seconds": 240.04600429197308, "errors": [], "lldb": {"exit_code": 0, "reported_errors": false}, "qmp": "captured", "reason": "deadline", "snapshot": "captured"}
+(lldb) thread backtrace all
+warning: This version of LLDB has no plugin for the language "rust". Inspection of frame variables will be limited.
+* thread #1, stop reason = signal SIGTRAP
+   * frame #0: 0xffffffff80000200 kernel.elf`ivt + 512
+     frame #1: 0xffffffff802d2454 kernel.elf`catten::cpu::scheduler::system_scheduler::domain_abort::tests::run at tests.rs:533:5
+     frame #2: 0xffffffff801b0a1c kernel.elf`catten::cpu::scheduler::system_scheduler::test_domain_abort at mod.rs:48:5 [inlined]
+     frame #3: 0xffffffff801b0a18 kernel.elf`catten::self_test::thread_admission::run at thread_admission.rs:66:5
+     frame #4: 0xffffffff80058eb0 kernel.elf`catten::self_test::run_synchronous_self_tests at mod.rs:293:5
+     frame #5: 0xffffffff8036a214 kernel.elf`bsp_main at main.rs:273:5
+       x29 = 0xffff00005cb78db0
+       x30 = 0xffffffff80315ffc  kernel.elf`catten::service::shutdown::tests::test_rejected_service_pages + 336 [inlined] <catten::service::shutdown::DeviceShutdownDomain>::new + 172 at shutdown.rs
+        sp = 0xffff00005cb75ed0
+        pc = 0xffffffff80000200 kernel.elf`ivt + 512  kernel.elf`ivt + 512
+      cpsr = 0x000003c5
+Last serial lines:
+[+     2.709824] [reaper readiness] guarded staging, coalesced exact-LP wake, late registration recheck, full-source rejection and original frame recovery passed
+[+     2.713310] [inline run queue retirement] linked stack/unstarted release rejected under heap, master/retirement/physical guards; complete exact owner returned, explicit unlink and final frame recovery passed
+[+     2.716194] [published stack retirement] failed pair/node retained through two scans; no physical retry
+[+     2.721150] [thread metadata retention] kernel/user payload Drop under table/retirement/root/allocator guards: no exit, waiter cancellation, usage refund or frame return; exact user root remains busy
+[+     2.721640] [thread retirement] node/context-storage rejection, masked entry, same-LP/current-stack retention, unlocked callbacks and physical stack recovery passed
+[+     2.750158] [shutdown] exact domain thread abort rejected: ThreadTerminated
+
+Scalar publication, separated domain-abort phases; request 16 KiB
+instance: thread-table-20261101-arm-final
+kernel_sha256: 14a965c661cdce7f1bce0225029393cb79a6f16b303f43ad81f4c0dc4c7f930b
+tracked_diff_sha256 (untracked files excluded): 2f9943d61d6658cec5a9c1e1ba25cf08f4d9743b05975df8d0fdb5147a4b3bf7
+outcome: {"cpu_count": 4, "elapsed_seconds": 240.0398385419976, "errors": [], "lldb": {"exit_code": 0, "reported_errors": false}, "qmp": "captured", "reason": "deadline", "snapshot": "captured"}
+(lldb) thread backtrace all
+warning: This version of LLDB has no plugin for the language "rust". Inspection of frame variables will be limited.
+* thread #1, stop reason = signal SIGTRAP
+   * frame #0: 0xffffffff80000200 kernel.elf`ivt + 512
+     frame #1: 0xffffffff8036d648 kernel.elf`<core::fmt::Formatter>::write_str(self=<unavailable>, data=<unavailable>) at mod.rs:2100:18 [inlined]
+     frame #2: 0xffffffff8036d630 kernel.elf`core::fmt::builders::debug_tuple_new(fmt=<unavailable>, name=<unavailable>) at builders.rs:324:22 [inlined]
+     frame #3: 0xffffffff8036d62c kernel.elf`<core::fmt::Formatter>::debug_tuple_field1_finish(self=<unavailable>, name=<unavailable>, value1=<unavailable>) at mod.rs:2617:27 [inlined]
+     frame #4: 0xffffffff8036d62c kernel.elf`<catten::service::bootstrap::ServicePageError as core::fmt::Debug>::fmt(self=<unavailable>, f=<unavailable>) at bootstrap.rs:39:10
+     frame #5: 0xffffffff803e1748 kernel.elf`<core::fmt::rt::Argument>::fmt(self=<unavailable>, f=0xffff00005cb75f48) at rt.rs:152:76
+     frame #6: 0xffffffff803e1734 kernel.elf`core::fmt::write(output=&mut dyn core::fmt::Write @ 0x00000007bfa7c010, fmt=Arguments @ 0x00000007bfa7c020) at mod.rs:1687:22
+     frame #7: 0xffffffff80464178 kernel.elf`<&mut catten::log::serial::Pl011 as core::fmt::Write::write_fmt::SpecWriteFmt>::spec_write_fmt(self=<unavailable>, args=Arguments @ 0x00000007bfa7c5b0) at mod.rs:238:21 [inlined]
+     frame #8: 0xffffffff80464158 kernel.elf`<catten::log::serial::Pl011 as core::fmt::Write>::write_fmt(self=<unavailable>, args=Arguments @ 0x00000007bfa7c5c0) at mod.rs:243:14 [inlined]
+     frame #9: 0xffffffff80464158 kernel.elf`catten::log::_write_args(args=Arguments @ 0x00000007bfa7c5c0, newline=true) at mod.rs:232:24
+     frame #10: 0xffffffff8036d310 kernel.elf`<catten::service::shutdown::NodeShutdownCoordinator>::poll(self=0xffff00005cb76378) at mod.rs:267:9
+     frame #11: 0xffffffff80316144 kernel.elf`catten::service::shutdown::tests::test_rejected_service_pages(domain=<unavailable>) at tests.rs:149:18
+     frame #12: 0xffffffff802d380c kernel.elf`<catten::cpu::scheduler::system_scheduler::domain_abort::tests::RetiredFixture>::reject_stale_pages(self=<unavailable>) at tests.rs:552:9
+     frame #13: 0xffffffff801b0e5c kernel.elf`catten::cpu::scheduler::system_scheduler::domain_abort::tests::run at tests.rs:608:13
+     frame #14: 0xffffffff801b0a1c kernel.elf`catten::cpu::scheduler::system_scheduler::test_domain_abort at mod.rs:48:5 [inlined]
+     frame #15: 0xffffffff801b0a1c kernel.elf`catten::self_test::thread_admission::run at thread_admission.rs:66:5
+     frame #16: 0xffffffff80058eb0 kernel.elf`catten::self_test::run_synchronous_self_tests at mod.rs:293:5
+     frame #17: 0xffffffff8036a0dc kernel.elf`bsp_main at main.rs:273:5
+       x29 = 0xffff00005cb75ec0
+       x30 = 0xffffffff8036d648  kernel.elf`<catten::service::bootstrap::ServicePageError as core::fmt::Debug>::fmt + 68 [inlined] <core::result::Result<(), core::fmt::Error>>::and_then::<(), <core::fmt::builders::DebugTuple>::field::{closure#0}> at result.rs:1490:9
+        sp = 0xffff00005cb75ec0
+        pc = 0xffffffff80000200 kernel.elf`ivt + 512  kernel.elf`ivt + 512
+      cpsr = 0x000003c5
+Last serial lines:
+[+     1.734143] [inline run queue retirement] linked stack/unstarted release rejected under heap, master/retirement/physical guards; complete exact owner returned, explicit unlink and final frame recovery passed
+[+     1.737332] [published stack retirement] failed pair/node retained through two scans; no physical retry
+[+     1.740431] [thread metadata retention] kernel/user payload Drop under table/retirement/root/allocator guards: no exit, waiter cancellation, usage refund or frame return; exact user root remains busy
+[+     1.740899] [thread retirement] node/context-storage rejection, masked entry, same-LP/current-stack retention, unlocked callbacks and physical stack recovery passed
+[+     1.760287] [shutdown] exact domain thread abort rejected: ThreadTerminated
+[+     1.760980] [shutdown] drain pages rejected:
+
+Scalar publication, original fixtures; request 32 KiB
+instance: thread-table-20261101-arm-32k
+kernel_sha256: a6b90e230a04db7d5c06b8539a3103f68154e2e7343fa2249eb1fc5f4553db72
+tracked_diff_sha256 (untracked files excluded): 436f4b2a296f04a5069430e527f160c6693693ad02e10ae36d825b8c019752ef
+outcome: {"cpu_count": 4, "elapsed_seconds": 240.02427279099356, "errors": [], "lldb": {"exit_code": 0, "reported_errors": false}, "qmp": "captured", "reason": "deadline", "snapshot": "captured"}
+(lldb) thread backtrace all
+warning: This version of LLDB has no plugin for the language "rust". Inspection of frame variables will be limited.
+* thread #1, stop reason = signal SIGTRAP
+   * frame #0: 0xffffffff80000200 kernel.elf`ivt + 512
+     frame #1: 0xffffffff802d2454 kernel.elf`catten::cpu::scheduler::system_scheduler::domain_abort::tests::run at tests.rs:533:5
+     frame #2: 0xffffffff801b0a1c kernel.elf`catten::cpu::scheduler::system_scheduler::test_domain_abort at mod.rs:48:5 [inlined]
+     frame #3: 0xffffffff801b0a18 kernel.elf`catten::self_test::thread_admission::run at thread_admission.rs:66:5
+     frame #4: 0xffffffff80058eb0 kernel.elf`catten::self_test::run_synchronous_self_tests at mod.rs:293:5
+     frame #5: 0xffffffff8036a214 kernel.elf`bsp_main at main.rs:273:5
+       x29 = 0xffff00005cb78db0
+       x30 = 0xffffffff80315ffc  kernel.elf`catten::service::shutdown::tests::test_rejected_service_pages + 336 [inlined] <catten::service::shutdown::DeviceShutdownDomain>::new + 172 at shutdown.rs
+        sp = 0xffff00005cb75ed0
+        pc = 0xffffffff80000200 kernel.elf`ivt + 512  kernel.elf`ivt + 512
+      cpsr = 0x000003c5
+Last serial lines:
+[+     2.015213] [reaper readiness] guarded staging, coalesced exact-LP wake, late registration recheck, full-source rejection and original frame recovery passed
+[+     2.017657] [inline run queue retirement] linked stack/unstarted release rejected under heap, master/retirement/physical guards; complete exact owner returned, explicit unlink and final frame recovery passed
+[+     2.020320] [published stack retirement] failed pair/node retained through two scans; no physical retry
+[+     2.023267] [thread metadata retention] kernel/user payload Drop under table/retirement/root/allocator guards: no exit, waiter cancellation, usage refund or frame return; exact user root remains busy
+[+     2.023731] [thread retirement] node/context-storage rejection, masked entry, same-LP/current-stack retention, unlocked callbacks and physical stack recovery passed
+[+     2.042406] [shutdown] exact domain thread abort rejected: ThreadTerminated
+
+32 KiB-request run: supplemental read-only GDB register capture (QMP stop/restore; no physical-completion authority)
+{
+  "supported": "PacketSize=20020;qXfer:features:read+;vContSupported+;multiprocess+",
+  "target_xml": "<?xml version=\"1.0\"?><!DOCTYPE target SYSTEM \"gdb-target.dtd\"><target><architecture>aarch64</architecture><xi:include href=\"aarch64-core.xml\"/><xi:include href=\"sve-registers.xml\"/><xi:include href=\"aarch64-pauth.xml\"/><xi:include href=\"tls-registers.xml\"/><xi:include href=\"system-registers.xml\"/></target>",
+  "system": {
+    "sp": {
+      "index": 31,
+      "bits": 64,
+      "value": "0xffff00005cb75ed0"
+    },
+    "pc": {
+      "index": 32,
+      "bits": 64,
+      "value": "0xffffffff80000200"
+    },
+    "TTBR0_EL1": {
+      "index": 99,
+      "bits": 64,
+      "value": "0x5cb76000"
+    },
+    "TTBR1_EL1": {
+      "index": 101,
+      "bits": 64,
+      "value": "0x5cb75000"
+    },
+    "TCR_EL1": {
+      "index": 103,
+      "bits": 64,
+      "value": "0x2b5103510"
+    },
+    "ESR_EL1": {
+      "index": 136,
+      "bits": 64,
+      "value": "0x86000004"
+    },
+    "SCTLR_EL1": {
+      "index": 150,
+      "bits": 64,
+      "value": "0x30d0199d"
+    },
+    "SPSR_EL1": {
+      "index": 172,
+      "bits": 64,
+      "value": "0x3c5"
+    },
+    "ELR_EL1": {
+      "index": 175,
+      "bits": 64,
+      "value": "0xffffffff80000200"
+    },
+    "SP_EL0": {
+      "index": 182,
+      "bits": 64,
+      "value": "0xffff00005cb85d00"
+    },
+    "FAR_EL1": {
+      "index": 271,
+      "bits": 64,
+      "value": "0xffffffff80000200"
+    }
+  }
+}
+
+Compiled AArch64 prologues: 32 KiB-request kernel a6b90e230a04db7d5c06b8539a3103f68154e2e7343fa2249eb1fc5f4553db72
+(lldb) target create "target/boot-diagnostics/aarch64-il4efblz/kernel.elf"
+Current executable set to '/Users/froran/Projects/private/charlotte-os/target/boot-diagnostics/aarch64-il4efblz/kernel.elf' (aarch64).
+(lldb) settings set interpreter.stop-command-source-on-error false
+(lldb) disassemble -n bsp_main -c 20
+kernel.elf`bsp_main:
+kernel.elf[0xffffffff80365310] <+0>:  stp    x29, x30, [sp, #-0x60]!
+kernel.elf[0xffffffff80365314] <+4>:  stp    x28, x27, [sp, #0x10]
+kernel.elf[0xffffffff80365318] <+8>:  stp    x26, x25, [sp, #0x20]
+kernel.elf[0xffffffff8036531c] <+12>: stp    x24, x23, [sp, #0x30]
+kernel.elf[0xffffffff80365320] <+16>: stp    x22, x21, [sp, #0x40]
+kernel.elf[0xffffffff80365324] <+20>: stp    x20, x19, [sp, #0x50]
+kernel.elf[0xffffffff80365328] <+24>: mov    x29, sp
+kernel.elf[0xffffffff8036532c] <+28>: sub    sp, sp, #0x1, lsl #12     ; =0x1000
+kernel.elf[0xffffffff80365330] <+32>: str    xzr, [sp]
+kernel.elf[0xffffffff80365334] <+36>: sub    sp, sp, #0x1, lsl #12     ; =0x1000
+kernel.elf[0xffffffff80365338] <+40>: str    xzr, [sp]
+kernel.elf[0xffffffff8036533c] <+44>: sub    sp, sp, #0x2a0
+kernel.elf[0xffffffff80365340] <+48>: adrp   x19, 971
+kernel.elf[0xffffffff80365344] <+52>: add    x19, x19, #0x2f4          ; catten::log::TIMESTAMP_READY (.0)
+kernel.elf[0xffffffff80365348] <+56>: mrs    x8, CNTFRQ_EL0
+kernel.elf[0xffffffff8036534c] <+60>: sub    x9, x19, #0xec
+kernel.elf[0xffffffff80365350] <+64>: isb
+kernel.elf[0xffffffff80365354] <+68>: mrs    x10, CNTVCT_EL0
+kernel.elf[0xffffffff80365358] <+72>: str    x8, [x9, #0x4a0]
+kernel.elf[0xffffffff8036535c] <+76>: mov    w8, #0x1                  ; =1
+(lldb) disassemble -n catten::self_test::run_synchronous_self_tests -c 20
+kernel.elf`catten::self_test::run_synchronous_self_tests:
+kernel.elf[0xffffffff8004ef14] <+0>:  stp    x29, x30, [sp, #-0x60]!
+kernel.elf[0xffffffff8004ef18] <+4>:  stp    x28, x27, [sp, #0x10]
+kernel.elf[0xffffffff8004ef1c] <+8>:  stp    x26, x25, [sp, #0x20]
+kernel.elf[0xffffffff8004ef20] <+12>: stp    x24, x23, [sp, #0x30]
+kernel.elf[0xffffffff8004ef24] <+16>: stp    x22, x21, [sp, #0x40]
+kernel.elf[0xffffffff8004ef28] <+20>: stp    x20, x19, [sp, #0x50]
+kernel.elf[0xffffffff8004ef2c] <+24>: mov    x29, sp
+kernel.elf[0xffffffff8004ef30] <+28>: sub    x9, sp, #0x5, lsl #12     ; =0x5000
+kernel.elf[0xffffffff8004ef34] <+32>: sub    sp, sp, #0x1, lsl #12     ; =0x1000
+kernel.elf[0xffffffff8004ef38] <+36>: cmp    sp, x9
+kernel.elf[0xffffffff8004ef3c] <+40>: str    xzr, [sp]
+kernel.elf[0xffffffff8004ef40] <+44>: b.ne   0xffffffff8004ef34        ; <+32> at mod.rs
+kernel.elf[0xffffffff8004ef44] <+48>: sub    sp, sp, #0xa50
+kernel.elf[0xffffffff8004ef48] <+52>: str    xzr, [sp]
+kernel.elf[0xffffffff8004ef4c] <+56>: adrp   x19, 1752
+kernel.elf[0xffffffff8004ef50] <+60>: add    x19, x19, #0x110          ; catten::cpu::multiprocessor::interrupt_tracking::int_save_restore::INT_STATE + 72
+kernel.elf[0xffffffff8004ef54] <+64>: ldarb  w8, [x19]
+kernel.elf[0xffffffff8004ef58] <+68>: cmp    w8, #0x2
+kernel.elf[0xffffffff8004ef5c] <+72>: b.ne   0xffffffff800514d4        ; <+9664> [inlined] <spin::once::Once<catten::cpu::multiprocessor::interrupt_tracking::int_save_restore::IntState>>::try_call_once::<<spin::once::Once<catten::cpu::multiprocessor::interrupt_tracking::int_save_restore::IntState>>::call_once<<spin::lazylock::LazyLock<catten::cpu::multiprocessor::interrupt_tracking::int_save_restore::IntState>>::force::{closure#0}>::{closure#0}, core::convert::Infallible> at once.rs:229:18
+kernel.elf[0xffffffff8004ef60] <+76>: bl     0xffffffff80262b60        ; <catten::cpu::multiprocessor::interrupt_tracking::int_save_restore::IntState>::save_int at int_save_restore.rs:68
+(lldb) disassemble -n catten::self_test::thread_admission::run -c 24
+kernel.elf`catten::self_test::thread_admission::run:
+kernel.elf[0xffffffff801b03f0] <+0>:  stp    x29, x30, [sp, #-0x60]!
+kernel.elf[0xffffffff801b03f4] <+4>:  stp    x28, x27, [sp, #0x10]
+kernel.elf[0xffffffff801b03f8] <+8>:  stp    x26, x25, [sp, #0x20]
+kernel.elf[0xffffffff801b03fc] <+12>: stp    x24, x23, [sp, #0x30]
+kernel.elf[0xffffffff801b0400] <+16>: stp    x22, x21, [sp, #0x40]
+kernel.elf[0xffffffff801b0404] <+20>: stp    x20, x19, [sp, #0x50]
+kernel.elf[0xffffffff801b0408] <+24>: mov    x29, sp
+kernel.elf[0xffffffff801b040c] <+28>: sub    sp, sp, #0x1, lsl #12     ; =0x1000
+kernel.elf[0xffffffff801b0410] <+32>: str    xzr, [sp]
+kernel.elf[0xffffffff801b0414] <+36>: sub    sp, sp, #0x1, lsl #12     ; =0x1000
+kernel.elf[0xffffffff801b0418] <+40>: str    xzr, [sp]
+kernel.elf[0xffffffff801b041c] <+44>: sub    sp, sp, #0x1, lsl #12     ; =0x1000
+kernel.elf[0xffffffff801b0420] <+48>: str    xzr, [sp]
+kernel.elf[0xffffffff801b0424] <+52>: sub    sp, sp, #0x1, lsl #12     ; =0x1000
+kernel.elf[0xffffffff801b0428] <+56>: str    xzr, [sp]
+kernel.elf[0xffffffff801b042c] <+60>: sub    sp, sp, #0x410
+kernel.elf[0xffffffff801b0430] <+64>: movi   v0.2d, #0000000000000000
+kernel.elf[0xffffffff801b0434] <+68>: adrp   x8, 816
+kernel.elf[0xffffffff801b0438] <+72>: adrp   x9, 816
+kernel.elf[0xffffffff801b043c] <+76>: ldr    q1, [x8, #0xb90]
+kernel.elf[0xffffffff801b0440] <+80>: ldr    q2, [x9, #0x830]
+kernel.elf[0xffffffff801b0444] <+84>: add    x19, sp, #0x3, lsl #12    ; =0x3000
+kernel.elf[0xffffffff801b0448] <+88>: adrp   x1, 1110
+kernel.elf[0xffffffff801b044c] <+92>: add    x1, x1, #0x6b8
+(lldb) disassemble -n catten::cpu::scheduler::system_scheduler::domain_abort::tests::run -c 22
+kernel.elf`catten::cpu::scheduler::system_scheduler::domain_abort::tests::run:
+kernel.elf[0xffffffff802cfb78] <+0>:  stp    x29, x30, [sp, #-0x60]!
+kernel.elf[0xffffffff802cfb7c] <+4>:  stp    x28, x27, [sp, #0x10]
+kernel.elf[0xffffffff802cfb80] <+8>:  stp    x26, x25, [sp, #0x20]
+kernel.elf[0xffffffff802cfb84] <+12>: stp    x24, x23, [sp, #0x30]
+kernel.elf[0xffffffff802cfb88] <+16>: stp    x22, x21, [sp, #0x40]
+kernel.elf[0xffffffff802cfb8c] <+20>: stp    x20, x19, [sp, #0x50]
+kernel.elf[0xffffffff802cfb90] <+24>: mov    x29, sp
+kernel.elf[0xffffffff802cfb94] <+28>: sub    sp, sp, #0x1, lsl #12     ; =0x1000
+kernel.elf[0xffffffff802cfb98] <+32>: str    xzr, [sp]
+kernel.elf[0xffffffff802cfb9c] <+36>: sub    sp, sp, #0x1, lsl #12     ; =0x1000
+kernel.elf[0xffffffff802cfba0] <+40>: str    xzr, [sp]
+kernel.elf[0xffffffff802cfba4] <+44>: sub    sp, sp, #0xf70
+kernel.elf[0xffffffff802cfba8] <+48>: str    xzr, [sp]
+kernel.elf[0xffffffff802cfbac] <+52>: bl     0xffffffff802cf244        ; catten::cpu::scheduler::system_scheduler::domain_abort::tests::domain at tests.rs:370
+kernel.elf[0xffffffff802cfbb0] <+56>: stp    x0, x1, [sp, #0xc0]
+kernel.elf[0xffffffff802cfbb4] <+60>: mrs    x8, DAIF
+kernel.elf[0xffffffff802cfbb8] <+64>: tst    x8, #0x80
+kernel.elf[0xffffffff802cfbbc] <+68>: mov    x19, x0
+kernel.elf[0xffffffff802cfbc0] <+72>: mov    x20, x1
+kernel.elf[0xffffffff802cfbc4] <+76>: mov    w9, #0x1                  ; =1
+kernel.elf[0xffffffff802cfbc8] <+80>: cset   w8, eq
+kernel.elf[0xffffffff802cfbcc] <+84>: adrp   x24, 1111
+(lldb) disassemble -n catten::service::shutdown::tests::test_rejected_service_pages -c 22
+kernel.elf`catten::service::shutdown::tests::test_rejected_service_pages:
+kernel.elf[0xffffffff80315eac] <+0>:  stp    x29, x30, [sp, #-0x60]!
+kernel.elf[0xffffffff80315eb0] <+4>:  stp    x28, x27, [sp, #0x10]
+kernel.elf[0xffffffff80315eb4] <+8>:  stp    x26, x25, [sp, #0x20]
+kernel.elf[0xffffffff80315eb8] <+12>: stp    x24, x23, [sp, #0x30]
+kernel.elf[0xffffffff80315ebc] <+16>: stp    x22, x21, [sp, #0x40]
+kernel.elf[0xffffffff80315ec0] <+20>: stp    x20, x19, [sp, #0x50]
+kernel.elf[0xffffffff80315ec4] <+24>: mov    x29, sp
+kernel.elf[0xffffffff80315ec8] <+28>: sub    sp, sp, #0x1, lsl #12     ; =0x1000
+kernel.elf[0xffffffff80315ecc] <+32>: str    xzr, [sp]
+kernel.elf[0xffffffff80315ed0] <+36>: sub    sp, sp, #0x1, lsl #12     ; =0x1000
+kernel.elf[0xffffffff80315ed4] <+40>: str    xzr, [sp]
+kernel.elf[0xffffffff80315ed8] <+44>: sub    sp, sp, #0xee0
+kernel.elf[0xffffffff80315edc] <+48>: add    x8, sp, #0x1, lsl #12     ; =0x1000
+kernel.elf[0xffffffff80315ee0] <+52>: mov    x19, x0
+kernel.elf[0xffffffff80315ee4] <+56>: add    x22, sp, #0x1, lsl #12    ; =0x1000
+kernel.elf[0xffffffff80315ee8] <+60>: add    x8, x8, #0xd04
+kernel.elf[0xffffffff80315eec] <+64>: mov    x1, x19
+kernel.elf[0xffffffff80315ef0] <+68>: mov    w2, #0x38                 ; =56
+kernel.elf[0xffffffff80315ef4] <+72>: add    x0, x8, #0x4
+kernel.elf[0xffffffff80315ef8] <+76>: str    xzr, [sp]
+kernel.elf[0xffffffff80315efc] <+80>: sub    x23, x29, #0x70
+kernel.elf[0xffffffff80315f00] <+84>: add    x22, x22, #0xb10
