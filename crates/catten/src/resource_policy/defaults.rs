@@ -118,6 +118,10 @@ pub(super) const POLICY: Policy = Policy {
         total: [2 * 1024 * 1024, 16_384],
         ordinary: [1536 * 1024, 12_288],
     },
+    deferred_nodes: Pool {
+        total: [1024 * 1024, 16_384],
+        ordinary: [768 * 1024, 12_288],
+    },
     principal_history: Pool {
         total: [1024 * 1024, 4096],
         ordinary: [768 * 1024, 3072],

@@ -991,6 +991,15 @@ the corrected RPC polling paths, and the remaining notification gaps.
 
 ## Observers, completions and timers
 
+- IPC claim, memory-close and DMA-readiness sources use
+  `deferred::PreparedDisposal` with independent `deferred_nodes` byte/count
+  admission before list construction. Retain the existing captured source/owner
+  classification through preparation and producer-LP queued storage. Publication
+  under producer guards cannot allocate or refund; only post-guard disposal
+  refunds after actual node deallocation. List references keep their own
+  independent backing charge. Complete-source fallback stays inert. See
+  `docs/reference/deferred-source-admission.md`.
+
 - Kernel scheduler `Observable` sources must implement fallible owned waiter
   registration; there is no weak-only default. Do not invoke callbacks inline
   while the scheduler holds its thread table. Use `ObserverList`/`WaiterSource`

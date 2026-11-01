@@ -11,6 +11,11 @@ its charged owner or list backing. These slots cover empty list/control-block
 storage retained by sources, registration tokens and weak references. Scheduler
 waiter and event-watch entry charges account for a different lifetime.
 
+IPC claim, memory-close and DMA-readiness sources also retain separately admitted
+[disposal nodes](deferred-source-admission.md) from before list construction
+through producer-LP queued delivery and actual node deallocation. Freeing that
+node cannot refund a list still retained by an interest, token or weak reference.
+
 | Limit | Kernel policy |
 | --- | ---: |
 | Retained list allocations per node | 8192 |

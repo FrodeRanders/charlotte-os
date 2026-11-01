@@ -10,7 +10,6 @@ use crate::{
         deferred,
         threads::MigrationConstraint,
     },
-    klib::collections::retirement_list::PreparedEntry,
     memory::{
         AddressSpaceHandle,
         KERNEL_ASID,
@@ -21,7 +20,7 @@ use crate::{
 #[derive(Debug)]
 struct SourcePayload {
     list: WaiterList,
-    disposal: PreparedEntry<WaiterList>,
+    disposal: deferred::PreparedDisposal,
 }
 
 /// Retain both admitted allocations on fallback, including beneath IPC.
@@ -30,7 +29,8 @@ pub(super) struct Source(ManuallyDrop<SourcePayload>);
 
 impl Source {
     fn prepare(platform: bool) -> Result<Self, IpcError> {
-        let disposal = PreparedEntry::try_new().map_err(|_| IpcError::ResourceLimit)?;
+        let disposal =
+            deferred::admission::prepare(platform).map_err(|_| IpcError::ResourceLimit)?;
         let list = ObserverList::try_new(waiter_budget::SOURCE_LIMIT, platform)
             .map_err(|_| IpcError::ResourceLimit)?;
         Ok(Self(ManuallyDrop::new(SourcePayload {

@@ -236,6 +236,7 @@ pub(super) fn run() {
     value._sources.insert(0x1234, 1);
     let slot = Mutex::new(UnitSlot::new(UnitState::Installed(value)));
     let lists = crate::klib::observer::list_budget::node_used();
+    let deferred_before = crate::cpu::scheduler::deferred::admission::snapshot();
     let source = super::readiness::Source::prepare(false).unwrap();
     let interest = source.interest();
     let retained = source.interest();
@@ -247,8 +248,8 @@ pub(super) fn run() {
             *owner.grant.interest = Some(interest);
             let _slot = slot.lock();
             let _devices = DEVICES.lock();
-            drop(owner);
-            drop(grant);
+            crate::cpu::scheduler::deferred::admission::with_locked(|| drop(owner));
+            crate::cpu::scheduler::deferred::admission::with_locked(|| drop(grant));
         });
     });
     assert_eq!(DROPS.load(Ordering::Relaxed), drops);
@@ -256,6 +257,14 @@ pub(super) fn run() {
     assert!(matches!(slot.lock().state, UnitState::Claimed));
     assert!(!retained.completed(), "abandonment must not fabricate availability");
     assert_eq!(crate::klib::observer::list_budget::node_used(), (lists.0 + 1, lists.1 + 1));
+    let bytes = crate::cpu::scheduler::deferred::PreparedDisposal::allocation_bytes() as u64;
+    assert_eq!(
+        crate::cpu::scheduler::deferred::admission::snapshot(),
+        (
+            [deferred_before.0[0] + bytes, deferred_before.0[1] + 1],
+            [deferred_before.1[0] + bytes, deferred_before.1[1] + 1]
+        )
+    );
     assert_eq!(
         memory::close_user_address_space_handle(root),
         Err(memory::AddressSpaceCloseError::OperationsInFlight)

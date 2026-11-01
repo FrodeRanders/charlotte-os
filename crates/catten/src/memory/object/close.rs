@@ -8,19 +8,16 @@ use core::mem::ManuallyDrop;
 use super::*;
 use crate::{
     cpu::scheduler::deferred,
-    klib::{
-        collections::retirement_list::PreparedEntry,
-        observer::{
-            Observable,
-            Observer,
-            WaitRegistration,
-            WaitSponsor,
-            registration::{
-                ObserverList,
-                RegistrationError,
-            },
-            waiter_budget,
+    klib::observer::{
+        Observable,
+        Observer,
+        WaitRegistration,
+        WaitSponsor,
+        registration::{
+            ObserverList,
+            RegistrationError,
         },
+        waiter_budget,
     },
 };
 
@@ -29,7 +26,7 @@ type List = deferred::WaiterList;
 #[derive(Debug)]
 struct SourcePayload {
     list: List,
-    disposal: PreparedEntry<List>,
+    disposal: deferred::PreparedDisposal,
 }
 
 /// Complete source allocation plus its admitted disposal storage. Unexpected
@@ -39,7 +36,8 @@ pub(super) struct Source(ManuallyDrop<SourcePayload>);
 
 impl Source {
     fn prepare(platform: bool) -> Result<Self, MemoryObjectError> {
-        let disposal = PreparedEntry::try_new().map_err(|_| MemoryObjectError::ResourceLimit)?;
+        let disposal =
+            deferred::admission::prepare(platform).map_err(|_| MemoryObjectError::ResourceLimit)?;
         let list = ObserverList::try_new(waiter_budget::SOURCE_LIMIT, platform)
             .map_err(|_| MemoryObjectError::ResourceLimit)?;
         Ok(Self(ManuallyDrop::new(SourcePayload {

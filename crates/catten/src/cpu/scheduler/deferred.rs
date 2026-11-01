@@ -9,10 +9,13 @@ use core::sync::atomic::{
     Ordering,
 };
 
+pub(crate) mod admission;
+
 use crate::{
     cpu::multiprocessor::spin::mutex::Mutex,
     klib::{
         collections::retirement_list::{
+            PreparedEntry,
             RetiredEntry,
             RetirementList,
         },
@@ -27,6 +30,8 @@ use crate::{
 };
 
 pub(crate) type WaiterList = ListRef<waiter_budget::Charge>;
+pub(crate) type PreparedDisposal = PreparedEntry<WaiterList, admission::Charge>;
+type RetiredDisposal = RetiredEntry<WaiterList, admission::Charge>;
 type Waiters = NotificationBatch<waiter_budget::Charge>;
 
 struct Pending {
@@ -34,7 +39,7 @@ struct Pending {
     // A close-interest source admits this storage before registry publication.
     // Retain its original allocation/charge until post-guard disposal, even
     // if no scheduler subscription was successfully installed.
-    sources: RetirementList<WaiterList>,
+    sources: RetirementList<WaiterList, admission::Charge>,
 }
 
 impl Pending {
@@ -63,7 +68,7 @@ impl Queue {
 static QUEUES: [Queue; super::system_scheduler::MAX_TRACKED_LPS] =
     [const { Queue::new() }; super::system_scheduler::MAX_TRACKED_LPS];
 
-pub(crate) fn publish(waiters: Waiters, source: Option<RetiredEntry<WaiterList>>) {
+pub(crate) fn publish(waiters: Waiters, source: Option<RetiredDisposal>) {
     if waiters.is_empty() && source.is_none() {
         return;
     }

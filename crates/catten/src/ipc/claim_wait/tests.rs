@@ -123,6 +123,11 @@ impl Fixture {
 }
 
 pub(crate) fn serialized() {
+    deferred::admission::test_source("ipc-claim", Source::prepare, Source::cancel, |source| {
+        let _ipc = IPC.write();
+        let _heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
+        deferred::admission::with_locked(|| source.finish());
+    });
     deferred::drain();
     let baseline = crate::klib::observer::list_budget::node_used();
     for failure in 0..3 {

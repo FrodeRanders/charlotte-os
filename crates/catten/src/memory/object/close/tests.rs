@@ -35,9 +35,19 @@ fn finish_roots(roots: [AddressSpaceHandle; 2]) {
 }
 
 pub(crate) fn serialized(hold_ipc: fn(&mut dyn FnMut()), ipc_available: fn() -> bool) {
+    deferred::admission::test_source("memory-close", Source::prepare, Source::cancel, |source| {
+        let mut source = Some(source);
+        hold_ipc(&mut || {
+            let _objects = MEMORY_OBJECTS.lock();
+            let _heap = crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
+            deferred::admission::with_locked(|| source.take().unwrap().finish());
+        });
+        assert!(source.is_none());
+    });
     deferred::drain();
     for published in [false, true] {
         let baseline = crate::klib::observer::list_budget::node_used();
+        let nodes_before = deferred::admission::snapshot();
         let [owner, target] = roots();
         let cap = allocate(owner.id(), 1).unwrap();
         write_bytes(owner.id(), cap, &[0xa5; 32]).unwrap();
@@ -81,6 +91,7 @@ pub(crate) fn serialized(hold_ipc: fn(&mut dyn FnMut()), ipc_available: fn() -> 
             assert_eq!(sponsor.used(), 1, "detached notification retains its original charge");
             late = Some(Interest(interest.0.clone()));
             deferred::drain();
+            assert_eq!(deferred::admission::snapshot(), nodes_before);
             assert_eq!(hits.load(Ordering::Relaxed), 1);
             assert_eq!(sponsor.used(), 0);
             waits += 1;

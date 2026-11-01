@@ -57,6 +57,19 @@ fn grant(root: memory::AddressSpaceHandle) -> PreparedDmaDomain {
 
 pub(super) fn serialized() {
     use crate::cpu::scheduler::deferred;
+    let source_slot = slot();
+    deferred::admission::test_source(
+        "dma-readiness",
+        super::super::readiness::Source::prepare,
+        super::super::readiness::Source::cancel,
+        |source| {
+            let _lifecycle = memory::ADDRESS_SPACE_LIFECYCLE.lock();
+            let _devices = DEVICES.lock();
+            let _unit = source_slot.lock();
+            let _heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
+            deferred::admission::with_locked(|| source.finish());
+        },
+    );
     deferred::drain();
     let baseline = crate::klib::observer::list_budget::node_used();
     for case in 0..6 {

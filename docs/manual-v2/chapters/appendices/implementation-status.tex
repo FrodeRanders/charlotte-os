@@ -345,6 +345,9 @@ storage readiness and does not synthesize a self-test verdict. See
         Mailbox endpoint nodes separately admit candidate/retained backing and
         keep both backing and mailbox resource charges until node deallocation,
         including final-root invalidation rejection and guarded abandonment.
+        IPC/memory-close/DMA-readiness disposal nodes retain separate byte/count
+        admission from preparation through producer-LP queued delivery and
+        actual deallocation, independently of retained observer-list backing.
         Waker/callback backing, other payload metadata and aggregate heap
         accounting remain gaps.
         Connection, retained-call and outstanding-reply records have separate

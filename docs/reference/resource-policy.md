@@ -9,9 +9,10 @@ operator procedure, authority, planning and qualification process.
 [Policy](../../crates/catten/src/resource_policy.rs) groups typed, copyable
 immutable settings. Family-local constant aliases forward to those fields;
 existing reservation helpers still enforce admission at their owning boundary.
-Sixteen metadata families share the checked `AdmissionPool` counter mechanics:
+Seventeen metadata families share the checked `AdmissionPool` counter mechanics:
 root metadata, global namespace nodes, authority nodes, mailbox endpoint nodes,
-principal history, thread metadata, thread-table backing, ASID-table backing,
+deferred source-disposal nodes, principal history, thread metadata,
+thread-table backing, ASID-table backing,
 waiter, timer, completion and capability/IPC/mailbox namespace accounts,
 scratch nodes, snapshot buffers, mapping nodes and memory-capability nodes.
 Each retains its own lock, typed charge, captured
@@ -21,7 +22,7 @@ on accepted admission/refund and remain unchanged on rejection.
 These counters supply no independent cleanup authority or classification source.
 Existing numerical defaults are preserved; memory-capability node and
 thread-table, ASID-table, waiter-account, timer-account, completion-account and
-namespace-account, global namespace-node, authority-node and mailbox-node
+namespace-account, global namespace-node, authority-node, mailbox-node and deferred-node
 admission add the separately documented pools below. These are defaults, not
 fixed application requirements or workload sizing guarantees.
 
@@ -54,6 +55,7 @@ unlimited node capacity.
 | `namespace_nodes` | global node-layout bytes; nodes | — | 6 MiB; 30720 nodes | 8 MiB; 40960 nodes |
 | `authority_nodes` | authority node-layout bytes; nodes | — | 12 MiB; 98304 nodes | 16 MiB; 131072 nodes |
 | `mailbox_nodes` | endpoint node-layout bytes; nodes | — | 1536 KiB; 12288 nodes | 2 MiB; 16384 nodes |
+| `deferred_nodes` | source-disposal node-layout bytes; nodes | — | 768 KiB; 12288 nodes | 1 MiB; 16384 nodes |
 | `principal_history` | node-layout bytes; nodes | — | 768 KiB; 3072 nodes | 1 MiB; 4096 nodes |
 | `thread_metadata` | context/node bytes; bundles | principal 1 MiB; 128 bundles | 6 MiB; 3072 bundles | 8 MiB; 4096 bundles |
 | `thread_table` | three-vector bytes; backing slots, including replacement overlap | principal 16 MiB; 16384 slots | 24 MiB; 24576 slots | 32 MiB; 32768 slots |

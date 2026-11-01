@@ -17,25 +17,22 @@ use crate::{
         multiprocessor::spin::mutex::Mutex,
         scheduler::deferred,
     },
-    klib::{
-        collections::retirement_list::PreparedEntry,
-        observer::{
-            Observable,
-            Observer,
-            WaitRegistration,
-            WaitSponsor,
-            registration::{
-                ObserverList,
-                RegistrationError,
-            },
-            waiter_budget,
+    klib::observer::{
+        Observable,
+        Observer,
+        WaitRegistration,
+        WaitSponsor,
+        registration::{
+            ObserverList,
+            RegistrationError,
         },
+        waiter_budget,
     },
 };
 
 struct Payload {
     list: deferred::WaiterList,
-    disposal: PreparedEntry<deferred::WaiterList>,
+    disposal: deferred::PreparedDisposal,
 }
 
 /// Source and admitted disposal backing retain together on abandonment.
@@ -43,7 +40,8 @@ pub(in crate::device) struct Source(ManuallyDrop<Payload>);
 
 impl Source {
     pub(in crate::device) fn prepare(platform: bool) -> Result<Self, Error> {
-        let disposal = PreparedEntry::try_new().map_err(|_| Error::WaitRegistrationFailed)?;
+        let disposal =
+            deferred::admission::prepare(platform).map_err(|_| Error::WaitRegistrationFailed)?;
         let list = ObserverList::try_new(waiter_budget::SOURCE_LIMIT, platform)
             .map_err(|_| Error::WaitRegistrationFailed)?;
         Ok(Self(ManuallyDrop::new(Payload {
