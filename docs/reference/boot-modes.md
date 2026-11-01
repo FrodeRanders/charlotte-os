@@ -35,6 +35,36 @@ Set `CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS=60000` to opt into diagnostic archivin
 when building; changing it requires rebuild/restart and cached kernels must
 match. See [telemetry policy](../guides/configuration.md#diagnostic-telemetry-persistence).
 
+## Network verifier boundaries
+
+`--dhcp-test` observes the operational TCP/IP service's status reply and requires
+both its expected status magic and a nonzero interface address. Serving stage 6
+alone does not prove a lease. The registered DHCP verdict concerns that address;
+it does not require management credentials or establish listener readiness.
+S3 and Kafka fixtures can therefore select DHCP verification with management
+ingress intentionally disabled.
+
+DHCP, listener readiness and management admission use separate observers:
+
+| Assertion | Retained observer |
+| --- | --- |
+| DHCP lease acquired | `el0_dhcp` / `--dhcp-test`, actual `OP_STATUS` address and magic |
+| Provisioned HTTP service reaches listening stage | `el0_http` / `--http-test`, then authenticated host requests and response checks |
+| Provisioned management endpoints authenticate and enforce reader permissions | `--management-startup-test ready`, real synchronized time, verified observations and mutation denial |
+| Missing management credentials disable both ingress services | `--management-startup-test disabled`, explicit service-disabled events and ordered single trust/service publication |
+| Invalid signed management resource rejects before publication | `--management-startup-test WrongPolicy`, `Signature` or `Authentication` |
+
+The disabled probe also attempts plaintext and TLS requests. It records a
+transport timeout as uncertain; the disabled assertion comes from the explicit
+service events, never from silence. A DHCP pass cannot substitute for any of
+these management checks. The existing DHCP startup/lease-observation deadlines
+and polling remain unchanged; there is no kernel-visible address-change
+subscription in the current socket protocol. This does not qualify the raw
+fixture's accepted status-call wait as an end-to-end deadline.
+
+The [credential-free campaign evidence](../reports/audits/evidence/2026-11-01-dhcp-verifier.json)
+records the affected S3/Kafka repeats and their separate management observations.
+
 ## What runs during every boot
 
 Mandatory startup validation lives in `catten::boot_validation`, outside

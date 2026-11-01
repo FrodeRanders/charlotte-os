@@ -157,6 +157,12 @@ the corrected RPC polling paths, and the remaining notification gaps.
   or synthesize self-test success for a validation-only boot. See
   `docs/reference/boot-modes.md`. Retire a regression only with an explicit
   mapping of its useful success and failure checks to retained coverage.
+- Network verifier verdicts must describe their actual observation. DHCP
+  requires the status magic and nonzero interface address, independently of
+  optional management credentials. Retain listener/authentication, explicit
+  disabled-ingress and resource-rejection assertions in the dedicated HTTP and
+  management-startup probes; a lease or transport timeout supplies none of them.
+  See the coverage map in `docs/reference/boot-modes.md`.
 
 - Deployment syscalls reserve one `PreparingDeployment` in the existing fixed
   registry before domain construction. Preparing/published principals share its

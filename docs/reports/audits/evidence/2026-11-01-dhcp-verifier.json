@@ -1,0 +1,180 @@
+{
+  "schema": "charlotte.dhcp-verifier-scope.v1",
+  "date": "2026-11-01",
+  "base_revision": "ec2b9e418d56613960a1b48466e97227e194d407",
+  "change": "Registered DHCP verification retains TCP/IP serving-stage, expected status magic and actual nonzero address checks. Remove its unrelated optional-management HTTP-listen wait; keep ingress assertions in their existing HTTP/startup observers.",
+  "changed_source_sha256": {
+    "crates/catten/src/self_test/el0_dhcp.rs": "3633c9ac84d2854c77ac1efbea4ec3a032b1088ff1a7d1e704f9ad8b6fdd751f"
+  },
+  "retained_observer_sha256": {
+    "crates/catten/src/self_test/el0_http.rs": "0e190899b898c825493f52201efe8da45a4cde52ccc4b54252922331df117709",
+    "scripts/tests/test-management-startup.py": "b508eb2115b9c6ef4af00af254489653208d51ee9aee44fd2eea12382f34462b",
+    "scripts/tests/test-management-startup-observations.py": "26e72507b84e5870a92b4cf7c124eb2b6aa745d29861bb5dae5f052a51ba71b9",
+    "scripts/run-aarch64.sh": "58eede46ad82247673a9791e9cb247d5c32806b88bda86389e1e237d3ec100b8",
+    "scripts/run-x86_64.sh": "68f5c782f96233721e2ca04f07c2181df7a43396add422ad49f421dbde900aaa"
+  },
+  "native_runs": [
+    {
+      "instance": "dhcp-scope-20261101-kafka",
+      "arch": "aarch64",
+      "cpus": 4,
+      "timeout_seconds": 300,
+      "kernel_sha256": "4efd5dd1f894e69db2cf94ff8b5ba8c48e8b2da43e574f8088cbf2e1f383e1be",
+      "prepared_utc": "2026-11-01T16:40:39Z",
+      "management_resource_input": "explicitly unset with env -u CATTEN_MANAGEMENT_TLS_RESOURCE",
+      "runner_exit_status": 0,
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "bundle_map_sha256": "4a5ee89fd763eed1af5a7613cfc7a2428c1e0b623ac6bf63e6ec7eb5fdc2bd38",
+      "verdict": [
+        20,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     8.101528] [EL0 LOG] lp=0 asid=131 [http] management credentials unavailable; ingress disabled",
+        "[+     8.254508] [EL0 LOG] lp=0 asid=135 [deployd] management credentials unavailable; ingress disabled",
+        "[+     8.908766] [dhcp] using node name service (asid=1)",
+        "[+     8.909147] [dhcp] verifier deferred (waits for a DHCP lease)",
+        "[+     8.918295] [dhcp] tcpip spawned (asid=130)",
+        "[+    11.937513] [dhcp] tcpip reached the serving stage; polling for a lease.",
+        "[+    11.963210] [dhcp] SUCCESS: DHCP assigned 10.0.2.15",
+        "[+    27.041228] [EL0 LOG] lp=0 asid=158 [kafka-smoke] producer attenuation, idempotent produce, multi-topic transaction, read_committed consume, transactional offset commit, and abort filtering succeeded",
+        "[+    29.633239] [kafka-test] SUCCESS: low-level offset 1, generic step commits=4 produced=4 retries=2 dlq=1 timeouts=1 group_generation=3 heartbeats=2 metadata_refreshes=2 coordinator_refreshes=1 retry_attempts=6 terminal_errors=2 output_route_produced=5 lag=1",
+        "[+    29.634112] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x503ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "instance": "dhcp-scope-20261101-s3",
+      "arch": "x86_64",
+      "cpus": 4,
+      "timeout_seconds": 300,
+      "kernel_sha256": "3c12b9305dbd5cc934e03bb99a3f36f0aad1c33eed8e3019de8fa9cb812a856f",
+      "prepared_utc": "2026-11-01T16:39:24Z",
+      "management_resource_input": "explicitly unset with env -u CATTEN_MANAGEMENT_TLS_RESOURCE",
+      "runner_exit_status": 0,
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "bundle_map_sha256": "1e8d1d5b4aa82acc192c0afdb4b577ee5617a233b0e41452a3eb7aa148b9f8d2",
+      "verdict": [
+        18,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+    20.838874] [EL0 LOG] lp=0 asid=139 [http] management credentials unavailable; ingress disabled",
+        "[+    20.975546] [EL0 LOG] lp=0 asid=143 [deployd] management credentials unavailable; ingress disabled",
+        "[+    21.469457] [dhcp] using node name service (asid=1)",
+        "[+    21.470321] [dhcp] verifier deferred (waits for a DHCP lease)",
+        "[+    21.484688] [dhcp] tcpip spawned (asid=138)",
+        "[+    24.539984] [dhcp] tcpip reached the serving stage; polling for a lease.",
+        "[+    24.583127] [dhcp] SUCCESS: DHCP assigned 10.0.2.15",
+        "[+    26.878314] [EL0 LOG] lp=0 asid=161 [s3-smoke] S3 TLS PUT/HEAD/GET/DELETE round trip succeeded",
+        "[+    26.880295] [s3-test] SUCCESS: verified 33-byte object round trip",
+        "[+    26.880884] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x303bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "host_probe_receipts": [
+        "OBSERVED: disabled port=18142 tls=False: timeout; transport closure unqualified",
+        "OBSERVED: disabled port=18142 tls=True: EOF/reset/refusal",
+        "OBSERVED: disabled port=17542 tls=False: EOF/reset/refusal",
+        "OBSERVED: disabled port=17542 tls=True: EOF/reset/refusal",
+        "PASS: native startup disabled: both service-disabled entries and single ordered policy publication verified"
+      ]
+    }
+  ],
+  "preserved_pre_fix_failures": [
+    {
+      "instance": "tls-offers-20261101-kafka",
+      "arch": "aarch64",
+      "cpus": 4,
+      "timeout_seconds": 300,
+      "kernel_sha256": "1a5a7f4f14edaecfee8e8cf674bc7c565e90969cb5dd583e1ff4c4da2a47d9f3",
+      "prepared_utc": "2026-11-01T16:07:38Z",
+      "bundle_map_sha256": "6b7ff3c2be96d8e247b08a9ff5a4f4b3650f54908407b39bdf4a6c11fbfd9162",
+      "diagnostic_outcome": {
+        "reason": "kernel-panic",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 49.55395024997415
+      },
+      "verdict": [
+        19,
+        1,
+        0
+      ],
+      "receipts": [
+        "[+     9.060004] [EL0 LOG] lp=0 asid=131 [http] management credentials unavailable; ingress disabled",
+        "[+     9.214854] [EL0 LOG] lp=0 asid=135 [deployd] management credentials unavailable; ingress disabled",
+        "[+    27.690106] [dhcp] waiting: httpd stage=0 error=0xe010",
+        "[+    28.453458] [EL0 LOG] lp=0 asid=161 [kafka-smoke] producer attenuation, idempotent produce, multi-topic transaction, read_committed consume, transactional offset commit, and abort filtering succeeded",
+        "[+    32.607418] [kafka-test] SUCCESS: low-level offset 1, generic step commits=4 produced=4 retries=2 dlq=1 timeouts=1 group_generation=3 heartbeats=2 metadata_refreshes=2 coordinator_refreshes=1 retry_attempts=6 terminal_errors=2 output_route_produced=5 lag=1",
+        "[+    43.011732] SELFTEST COMPLETE: passed=19 failed=1 pending=0 passed_bitmap=0x403ffff failed_bitmap=0x1000000 pending_bitmap=0x0"
+      ],
+      "failure_capture": "Kernel panic:\npanicked at crates/catten/src/self_test/el0_dhcp.rs:240:22:\nself-test deadline expired while waiting for EL0 dhcp httpd listening"
+    },
+    {
+      "instance": "tls-offers-20261101-s3",
+      "arch": "x86_64",
+      "cpus": 4,
+      "timeout_seconds": 300,
+      "kernel_sha256": "2454849af2ef1226358fd24daef9357c4349c407eb93b65b3666038172408d87",
+      "prepared_utc": "2026-11-01T16:06:10Z",
+      "bundle_map_sha256": "7c423627e25abcecc0a7abd001b35691e7765daca262f160723e54a2edff0428",
+      "diagnostic_outcome": {
+        "reason": "kernel-panic",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 52.202751541975886
+      },
+      "receipts": [
+        "[+    16.147547] [EL0 LOG] lp=0 asid=139 [http] management credentials unavailable; ingress disabled",
+        "[+    16.234138] [EL0 LOG] lp=0 asid=143 [deployd] management credentials unavailable; ingress disabled",
+        "[+    23.329099] [EL0 LOG] lp=0 asid=163 [s3-smoke] S3 TLS PUT/HEAD/GET/DELETE round trip succeeded",
+        "[+    23.329668] [s3-test] SUCCESS: verified 33-byte object round trip",
+        "[+    30.398041] [dhcp] waiting: httpd stage=0 error=0xe010",
+        "[+    37.272842] [dhcp] waiting: httpd stage=0 error=0xe010",
+        "[+    43.971685] [dhcp] waiting: httpd stage=0 error=0xe010"
+      ],
+      "failure_capture": "Kernel panic:\npanicked at crates/catten/src/self_test/el0_dhcp.rs:240:22:\nself-test deadline expired while waiting for EL0 dhcp httpd listening"
+    }
+  ],
+  "failure_disposition": "Both earlier runs passed their TLS application checks, then DHCP waited for httpd stage 6 despite intentionally absent management credentials (stage 0/error 0xe010). Those runs remain failed historical records. Current credential-free repeats retain the DHCP lease and separate management-state assertions without provisioning a management resource.",
+  "coverage_mapping": {
+    "dhcp_lease": "el0_dhcp / --dhcp-test: actual OP_STATUS magic and nonzero address, not serving stage alone",
+    "provisioned_listener": "el0_http / --http-test: stage 6 and authenticated host request/response assertions, source unchanged",
+    "provisioned_management": "--management-startup-test ready: real synchronized time, verified reader operations and mutation denial, source unchanged",
+    "credential_free_management": "--management-startup-test disabled: both service-disabled entries, exactly one ordered trust/service publication, rejection of unexpected data or completed TLS; observed TCP timeout remains unqualified",
+    "invalid_resource": "WrongPolicy/Signature/Authentication startup probes: exact rejection before trust/service publication, source unchanged"
+  },
+  "validation": {
+    "startup_observation_tests": 7,
+    "boot_result_tests": 5,
+    "target_clippy": "passed, ARM acpi/kernel_tests/dhcp_test, offline/locked, -D warnings",
+    "formatting": "passed",
+    "whitespace": "passed"
+  },
+  "bundle_identity_encoding": "SHA-256 of UTF-8 JSON bundle_sha256 mapping, sorted keys, separators comma/colon without whitespace.",
+  "qualification_limits": [
+    "DHCP success establishes a lease observation, not management readiness, authentication, transport closure or physical cleanup.",
+    "Startup and lease-observation deadlines and status polling are unchanged; current socket ABI has no kernel-visible address-change subscription. The raw fixture accepted status-call wait is not newly bounded by this change.",
+    "No production launch, credential policy, service listener, admission budget or protocol/ABI change.",
+    "Four-CPU ARM SMMUv3 and Intel-IOMMU QEMU only; no physical hardware qualification.",
+    "Provisioned HTTP/authentication assertions remain in their original probes; this change does not substitute credential-free runs for that positive qualification."
+  ]
+}

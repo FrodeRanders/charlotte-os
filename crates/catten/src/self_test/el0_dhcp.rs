@@ -1,20 +1,26 @@
-//! Self-test: single-node network appliance (DHCP lease + HTTP keyhole).
+//! Self-test: single-node DHCP lease acquisition.
 //!
 //! Service *spawning* is delegated to
 //! [`crate::service::launch::launch_network_appliance`], which starts the
 //! DHCP-configured `tcpip` and the `httpd` keyhole as an ordinary launch
 //! operation. This verifier only observes the result: it polls `tcpip`'s
 //! `socket::OP_STATUS` snapshot until the reported IPv4 address is non-zero
-//! and waits for `httpd` to reach its listening stage — reachable from the
-//! host on QEMU SLIRP or VMware NAT. Unlike the cross-node `tcpip_net_test`,
-//! this runs in a single guest and only exercises the lease + listen path.
+//! on QEMU SLIRP or VMware NAT. Unlike the cross-node `tcpip_net_test`,
+//! this runs in a single guest and exercises lease acquisition.
+//!
+//! Management ingress is optional and requires separate credentials. Its
+//! listening stage is observed by `el0_http`/`--http-test`; ready, disabled and
+//! rejected startup are checked by `--management-startup-test`. A DHCP lease
+//! establishes none of those management outcomes.
 //!
 //! Reaching the tcpip serving stage is *not* sufficient: the service enters
 //! its serving loop before the DHCP exchange completes, so the verifier must
 //! observe the interface address itself rather than the stage word.
 //!
-//! Requires the net driver and the frouter, both spawned by the net self-test
-//! under `virtio_net_test` (which `dhcp_test` implies).
+//! Requires the operational net driver and frame router. `dhcp_test` also
+//! selects their network verifier. The socket ABI has no kernel-visible
+//! address-change subscription; this fixture retains its existing status
+//! polling and startup/lease-observation deadlines.
 mod inner {
     use alloc::vec::Vec;
 
@@ -119,7 +125,7 @@ mod inner {
     }
 
     pub fn test_el0_dhcp() {
-        logln!("Testing EL0 single-node network (DHCP lease + HTTP keyhole)...");
+        logln!("Testing EL0 single-node DHCP lease acquisition...");
 
         let name_service = supervisor::node_name_service();
         let ns_asid = name_service.domain.asid;
@@ -206,42 +212,6 @@ mod inner {
         ];
         logln!(
             "[dhcp] SUCCESS: DHCP assigned {}.{}.{}.{}",
-            octets[0],
-            octets[1],
-            octets[2],
-            octets[3]
-        );
-
-        // The httpd keyhole was spawned alongside tcpip and starts listening
-        // as soon as the tcpip service is reachable, so the host can reach the
-        // appliance over the freshly acquired address.
-        let httpd = appliance.httpd;
-        logln!("[dhcp] httpd spawned (asid={})", httpd.asid);
-        let httpd_cfg: *const u8 = {
-            let base: *mut u8 = httpd.status_frame.into();
-            base
-        };
-        let deadline = crate::self_test::results::Deadline::after_millis(30_000);
-        let mut spins: u64 = 0;
-        while unsafe {
-            crate::self_test::status_u32(httpd_cfg, charlotte_launch::httpd_status::STAGE)
-        } < 6
-        {
-            spins += 1;
-            if spins.is_multiple_of(200_000) {
-                let stage = unsafe {
-                    crate::self_test::status_u32(httpd_cfg, charlotte_launch::httpd_status::STAGE)
-                };
-                let error = unsafe {
-                    crate::self_test::status_u32(httpd_cfg, charlotte_launch::httpd_status::ERROR)
-                };
-                logln!("[dhcp] waiting: httpd stage={} error={:#x}", stage, error);
-            }
-            deadline.assert_pending("EL0 dhcp httpd listening");
-            yield_lp();
-        }
-        logln!(
-            "[dhcp] management address {}.{}.{}.{}; TLS ingress requires provisioned credentials",
             octets[0],
             octets[1],
             octets[2],

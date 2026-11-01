@@ -93,6 +93,13 @@ register additional target verifiers; `--no-network` is the explicit runtime
 opt-out. Tests should never be the mechanism that enables a production
 capability.
 
+`--dhcp-test` requires an actual nonzero address with the expected TCP/IP status
+magic. It makes no assertion about optional management listeners and needs no
+management TLS resource. Use `--http-test` or `--management-startup-test ready`
+for provisioned ingress, and `--management-startup-test disabled` for explicit
+credential-free ingress rejection. The [verifier coverage map](../reference/boot-modes.md#network-verifier-boundaries)
+keeps these assertions distinct; a DHCP pass is not management readiness.
+
 ### Scoped-launch security verifier
 
 ```sh
