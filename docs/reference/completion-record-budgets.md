@@ -336,9 +336,12 @@ captures and other weak-only Arc/control-block allocations are not covered here.
 Admitted detached nodes retain their original record count through actual
 release, including backlog and post-delivery refund batches; this is not a
 separate aggregate byte admission for metadata.
-Global namespace/account allocation is fallible but has no independent aggregate
-count/byte admission here, including empty namespaces; no bounded global scan
-latency or hostile-pressure guarantee follows from the admitted map.
+Timer-account backing has separate [fixed-bundle admission](timer-account-admission.md)
+through final weak/allocator release. Every fully prepared namespace, including
+an empty one, owns one fresh admitted timer account. Global nodes allocated
+before that admission and independently surviving record/CQ/watch accounts are
+fallible but lack their own aggregate count/byte admission. No worst-case global
+scan latency or hostile-pressure guarantee follows from the admitted map.
 General metadata allocation and reclamation remain separate work. Endpoint-close and
 thread-exit registrations now share [owning lists and event-watch admission](close-watch-budgets.md).
 Completion/CQ/IPC scheduler

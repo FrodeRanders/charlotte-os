@@ -27,7 +27,7 @@ impl Preparing {
     ) -> Result<Self, CqOpenError> {
         // Capture once before any allocation. None is confined to permanent
         // kernel/serialized raw fixtures, never a replacement user generation.
-        let root = crate::memory::current_address_space_handle(asid);
+        let (root, backing_platform) = crate::memory::capture_address_space_storage(asid);
         let mut preparing = Self(ManuallyDrop::new(Resources {
             asid,
             node: None,
@@ -36,7 +36,8 @@ impl Preparing {
         let result = (|| {
             before_allocate(0)?;
             preparing.0.node = Some(PreparedEntry::try_new()?);
-            preparing.0.entries = Some(Namespace::try_new(root, capacity, &mut before_allocate)?);
+            preparing.0.entries =
+                Some(Namespace::try_new(root, capacity, backing_platform, &mut before_allocate)?);
             Ok::<_, core::alloc::AllocError>(())
         })();
         if result.is_err() {

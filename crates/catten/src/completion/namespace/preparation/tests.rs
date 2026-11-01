@@ -17,6 +17,109 @@ use crate::{
 
 const CLIENT: usize = 0x5f00;
 
+fn timer_account_pressure() {
+    use crate::{
+        memory::{
+            self,
+            AddressSpace,
+            AddressSpaceRegistrationError,
+            PHYSICAL_FRAME_ALLOCATOR,
+        },
+        timers::{
+            account_budget,
+            budget::DomainBudget,
+        },
+    };
+
+    let before = account_budget::snapshot();
+    let root = memory::register_user_address_space(AddressSpace::try_new_user().unwrap()).unwrap();
+    open_address_space_with_cq(root.id(), 4, 2).unwrap();
+    let original = COMPLETIONS.read()[&root.id()].timer_budget.clone();
+    let mut ordinary = Vec::with_capacity(account_budget::NODE_LIMIT as usize);
+    while let Ok(account) = DomainBudget::try_new(1, false) {
+        ordinary.push(account);
+        assert!(ordinary.len() <= account_budget::NODE_LIMIT as usize);
+    }
+    assert_eq!(account_budget::snapshot().1, account_budget::ORDINARY_LIMIT);
+    {
+        let _heap = PRIMARY_ALLOCATOR.lock();
+        for _ in 0..64 {
+            assert!(DomainBudget::try_new(1, false).is_err());
+        }
+    }
+    assert!(matches!(
+        open_address_space_with_cq(root.id(), 4, 2),
+        Err(CqOpenError::AllocationFailed)
+    ));
+    assert!(Arc::ptr_eq(&COMPLETIONS.read()[&root.id()].timer_budget, &original));
+    drop(original);
+    let full_ordinary = account_budget::snapshot();
+    let frames = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    let roots = memory::ADDRESS_SPACE_TABLE.lock().iter().filter(|root| root.is_some()).count();
+    assert!(matches!(
+        memory::register_user_address_space(AddressSpace::try_new_user().unwrap()),
+        Err(AddressSpaceRegistrationError::MemorySponsorAllocationFailed)
+    ));
+    assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), frames);
+    assert_eq!(
+        memory::ADDRESS_SPACE_TABLE.lock().iter().filter(|root| root.is_some()).count(),
+        roots
+    );
+    assert_eq!(account_budget::snapshot(), full_ordinary);
+    memory::budget::mark_platform(root);
+    assert_eq!(account_budget::snapshot(), full_ordinary);
+
+    let trusted =
+        memory::register_user_address_space(AddressSpace::try_new_platform_user().unwrap())
+            .unwrap();
+    open_address_space_with_cq(trusted.id(), 4, 2).unwrap();
+    assert_eq!(account_budget::snapshot(), (full_ordinary.0 + 2, full_ordinary.1));
+    // Trusted root backing alone does not grant either kind of timer event
+    // platform privilege. Exercise the actual completion submission adapter.
+    let events = crate::timers::budget::node_used();
+    let scheduler_event = memory::budget::timer_sponsor(trusted.id()).reserve().unwrap();
+    submit_timer(trusted.id(), u64::MAX).unwrap();
+    assert_eq!(crate::timers::budget::node_used(), (events.0 + 2, events.1 + 2));
+    drop(scheduler_event);
+    memory::close_user_address_space_handle(trusted).unwrap();
+    assert_eq!(crate::timers::budget::node_used(), events);
+    assert_eq!(account_budget::snapshot(), full_ordinary);
+
+    let mut reserved = Vec::with_capacity(account_budget::NODE_LIMIT as usize);
+    while let Ok(account) = DomainBudget::try_new(1, true) {
+        reserved.push(account);
+        assert!(reserved.len() <= account_budget::NODE_LIMIT as usize);
+    }
+    let full = account_budget::snapshot();
+    assert_eq!(full.0, account_budget::NODE_LIMIT);
+    {
+        let _heap = PRIMARY_ALLOCATOR.lock();
+        assert!(DomainBudget::try_new(1, true).is_err());
+    }
+    let retained = Preparing::new(crate::memory::KERNEL_ASID, 4);
+    assert!(matches!(retained, Err(CqOpenError::AllocationFailed)));
+    // Both original accounts were ordinary even though the root was promoted.
+    memory::close_user_address_space_handle(root).unwrap();
+    assert_eq!(account_budget::snapshot(), (full.0 - 2, full.1 - 2));
+    let recovered =
+        memory::register_user_address_space(AddressSpace::try_new_user().unwrap()).unwrap();
+    open_address_space_with_cq(recovered.id(), 4, 2).unwrap();
+    memory::close_user_address_space_handle(recovered).unwrap();
+    let counts = (ordinary.len(), reserved.len());
+    drop(reserved);
+    drop(ordinary);
+    assert_eq!(account_budget::snapshot(), before);
+    crate::logln!(
+        "[timer account pressure] {} ordinary + {} reserved actual accounts; {}/{} ceilings, \
+         heap-held denial, trusted root/namespace backing without event privilege, failed root \
+         rollback, immutable promotion and close/recovery at total exhaustion passed",
+        counts.0,
+        counts.1,
+        account_budget::ORDINARY_LIMIT,
+        account_budget::NODE_LIMIT
+    );
+}
+
 fn with_queue(asid: usize) -> Preparing {
     let mut preparing = Preparing::new(asid, 4).unwrap();
     let queue = delivery::Prepared::heap_for_namespace(asid, preparing.entries(), 2);
@@ -31,6 +134,7 @@ fn allocation_and_fresh_nodes() {
     let cap = submit(CLIENT, OpCode::Read, Some(alloc::vec![3])).unwrap();
     let captured = completion_of(CLIENT, cap).unwrap();
     let original = account.used();
+    let timer_accounts = crate::timers::account_budget::snapshot();
     for rejected_stage in 0..5 {
         let mut visits = 0;
         let failed = Preparing::new_with(CLIENT, 4, |stage| {
@@ -47,6 +151,7 @@ fn allocation_and_fresh_nodes() {
         });
         assert!(matches!(failed, Err(CqOpenError::AllocationFailed)));
         assert_eq!(visits, rejected_stage + 1);
+        assert_eq!(crate::timers::account_budget::snapshot(), timer_accounts);
         assert_eq!(account.used(), original);
         assert_eq!(records.used(), 1);
         assert!(captured.holds_buffer());
@@ -82,15 +187,17 @@ fn allocation_and_fresh_nodes() {
     }
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
-        for next in &mut preparing {
-            assert!(next.publish().unwrap().is_none());
-            assert!(next.is_published());
-        }
-        let mut registry = COMPLETIONS.write();
-        for (i, account) in accounts.iter().enumerate() {
-            retired.push(RetiredNamespace::from_node(registry.take(&(CLIENT + i)).unwrap()));
-            assert_eq!(account.used()[0], 1);
-        }
+        crate::timers::account_budget::with_locked(|| {
+            for next in &mut preparing {
+                assert!(next.publish().unwrap().is_none());
+                assert!(next.is_published());
+            }
+            let mut registry = COMPLETIONS.write();
+            for (i, account) in accounts.iter().enumerate() {
+                retired.push(RetiredNamespace::from_node(registry.take(&(CLIENT + i)).unwrap()));
+                assert_eq!(account.used()[0], 1);
+            }
+        });
     }
     for next in preparing {
         next.finish();
@@ -101,6 +208,10 @@ fn allocation_and_fresh_nodes() {
     }
     assert!(accounts.iter().all(|account| account.used() == [0, 0]));
     assert_eq!(cq_budget::node_used(), baseline);
+    assert_eq!(
+        crate::timers::account_budget::snapshot(),
+        (timer_accounts.0 - 1, timer_accounts.1 - 1)
+    );
 }
 
 struct Reenter(Arc<AtomicUsize>);
@@ -119,11 +230,13 @@ impl Drop for Reenter {
 }
 
 fn complete_replacement() {
+    let backing = crate::timers::account_budget::snapshot();
     open_address_space_with_cq(CLIENT, 4, 2).unwrap();
     let records = record_admission(CLIENT).unwrap();
     let queues = cq_admission(CLIENT).unwrap();
     let watches = watch_admission(CLIENT).unwrap();
     let timers = COMPLETIONS.read()[&CLIENT].timer_budget.clone();
+    let timer_weak = Arc::downgrade(&timers);
     let cap = submit(CLIENT, OpCode::Read, Some(alloc::vec![7])).unwrap();
     let timer = submit_timer(CLIENT, u64::MAX).unwrap();
     let captured = completion_of(CLIENT, cap).unwrap();
@@ -208,6 +321,11 @@ fn complete_replacement() {
     crate::capability::close_address_space(CLIENT);
     assert_eq!(next_records.used(), 0);
     assert_eq!(next_queues.used(), [0, 0]);
+    drop(timers);
+    assert!(timer_weak.upgrade().is_none());
+    assert_eq!(crate::timers::account_budget::snapshot(), (backing.0 + 1, backing.1 + 1));
+    drop(timer_weak);
+    assert_eq!(crate::timers::account_budget::snapshot(), backing);
 }
 
 fn retired_identity() {
@@ -237,6 +355,7 @@ fn retired_identity() {
 
 pub(super) fn run() {
     let irq = crate::cpu::isa::lp::ops::get_int_state();
+    timer_account_pressure();
     allocation_and_fresh_nodes();
     complete_replacement();
     retired_identity();

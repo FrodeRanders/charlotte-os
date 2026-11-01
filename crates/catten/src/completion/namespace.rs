@@ -40,7 +40,7 @@ pub(super) struct NamespaceState {
     pub(super) cqs: AdmittedMap<CqId, CqState>,
     /// Separate lifetime budget: a cancelled timer on another LP stays charged
     /// even after its completion slot has been reclaimed.
-    pub(super) timer_budget: Arc<crate::timers::budget::DomainBudget>,
+    pub(super) timer_budget: crate::timers::budget::AccountRef,
     pub(super) record_budget: Arc<budget::DomainBudget>,
     pub(super) cq_budget: Arc<cq_budget::DomainBudget>,
     pub(super) watch_budget: Arc<watch_budget::DomainBudget>,
@@ -64,20 +64,23 @@ impl Namespace {
     // Mandatory private boot fixture; runtime publication uses fallible Preparing.
     #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn for_fixture(asid: AddressSpaceId, capacity: usize) -> Self {
-        Self::try_new(crate::memory::current_address_space_handle(asid), capacity, &mut |_| Ok(()))
+        let (root, backing_platform) = crate::memory::capture_address_space_storage(asid);
+        Self::try_new(root, capacity, backing_platform, &mut |_| Ok(()))
             .expect("mandatory completion namespace allocation failed")
     }
 
     fn try_new(
         root: Option<crate::memory::AddressSpaceHandle>,
         capacity: usize,
+        backing_platform: bool,
         before_allocate: &mut impl FnMut(u8) -> Result<(), core::alloc::AllocError>,
     ) -> Result<Self, core::alloc::AllocError> {
         let capacity = capacity.min(budget::MAX_DOMAIN_RECORDS);
         // No payload/source/authority is published. Partial account construction
         // releases only unused Arcs outside local registry/lifecycle guards.
         before_allocate(1)?;
-        let timer_budget = crate::timers::budget::DomainBudget::try_new(capacity)?;
+        let timer_budget =
+            crate::timers::budget::DomainBudget::try_new(capacity, backing_platform)?;
         before_allocate(2)?;
         let record_budget = budget::DomainBudget::try_new(capacity)?;
         before_allocate(3)?;

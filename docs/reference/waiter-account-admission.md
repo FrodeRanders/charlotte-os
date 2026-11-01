@@ -25,9 +25,9 @@ Sharing the entry pool would couple long-lived roots to active waits; a separate
 fixed-bundle count keeps those lifetimes independent with one leaf counter.
 
 Reusing the existing allocation owner costs one private holder allocation per
-account and one extra machine word per account reference. Native root-account
-nodes consequently grow from 128 to 136 bytes; their existing byte admission
-covers that layout, and the 4/3 MiB ceilings still accommodate the count-only
+account and one extra machine word per account reference. Existing byte admission
+covers the enclosing [root-account layout](root-metadata-admission.md), including
+its separate timer owner; the 4/3 MiB ceilings still accommodate the count-only
 complete-root capacity. No existing limit is raised. This avoids introducing
 another custom reference-counting or weak-lifetime mechanism.
 
@@ -74,7 +74,8 @@ Account-specific native pressure rejects at admission; holder/payload allocation
 errors are exercised by those shared host controls, rather than forced native
 heap exhaustion.
 
-Timer/completion sponsor accounts, Waker/callback control blocks, other registry
+Timer accounts have their own [backing admission](timer-account-admission.md).
+Completion/CQ/watch sponsor accounts, Waker/callback control blocks, other registry
 metadata and aggregate principal/general-heap admission remain open. These
 bounded fixtures do not establish sustained hostile-pressure fairness, physical
 hardware behavior or a complete allocation/destructor inventory. SEC-07 remains

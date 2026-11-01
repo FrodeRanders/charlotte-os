@@ -15,7 +15,7 @@ struct Target {
     asid: AddressSpaceId,
     root: Option<crate::memory::AddressSpaceHandle>,
     records: Arc<budget::DomainBudget>,
-    timers: Arc<crate::timers::budget::DomainBudget>,
+    timers: crate::timers::budget::AccountRef,
     watches: Arc<watch_budget::DomainBudget>,
     capacity: usize,
     platform: bool,

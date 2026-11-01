@@ -417,6 +417,16 @@ cleanup cycles. A pre-filled timer source forces the normal sleep path into its
 runnable fallback and checks elapsed time; rejection leaves state/constraints
 unchanged. This is not a forced-quota EL0 syscall or timer-queue capacity test.
 
+Timer-account fixtures separately fill both backing ceilings with real account
+allocations. They check heap-held denial, trusted root/namespace publication,
+failed registration rollback, original classification after promotion and close
+at total exhaustion. A real event/node/cancellation owner survives root close
+and exact ASID reuse; its account backing remains charged through final weak
+release. Namespace replacement and existing guarded partial/retired owners check
+the same backing contract. Shared allocator host tests inject holder/payload
+errors; these are not forced native heap exhaustion. See
+[timer-account admission](../reference/timer-account-admission.md).
+
 Scheduler timer-event fixtures separately allocate 1,024 sorted nodes, test
 reuse and iterative removal, and keep the quantum inline while anonymous
 admission is full. Shared node/ordinary saturation is counter-only. They cover

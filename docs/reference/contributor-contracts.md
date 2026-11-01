@@ -966,6 +966,13 @@ the corrected RPC polling paths, and the remaining notification gaps.
   cannot reclassify the original allocation. Keep containing partial preparation
   inert beneath unknown guards; explicit cancellation leaves local publication
   guards before disposal. See `docs/reference/waiter-account-admission.md`.
+- Scheduler and completion timer accounts use independent `timer_accounts`
+  backing admission through final weak/allocator release. Capture trusted storage
+  class from the unpublished root for scheduler accounts, or together with the
+  exact current generation before completion namespace preparation. Keep backing
+  class separate from explicit event reserve grants; promotion cannot reclassify
+  an existing allocation. Root/namespace fallback retains original charges under
+  publication/heap/pool guards. See `docs/reference/timer-account-admission.md`.
 - Observer lists use `ListRef` and `ObserverList::try_new` with independent
   allocation admission. Capture classification from source admission or the
   first waiter/watch sponsor; never infer it from caller-controlled roles or

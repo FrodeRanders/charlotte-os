@@ -11,6 +11,7 @@
 //! before `wfi` to reconcile the software queue with the hardware comparator
 //! and prevent missed deadlines after timer transitions.
 
+pub(crate) mod account_budget;
 pub(crate) mod budget;
 mod cancellation_disposal;
 #[cfg(any(test, feature = "kernel_tests"))]

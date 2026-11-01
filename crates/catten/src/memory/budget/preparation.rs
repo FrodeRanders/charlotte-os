@@ -65,7 +65,8 @@ impl PreparingAccount {
             owner.0.waiters =
                 Some(WaitSponsor::try_new_with_backing_class(platform, storage_platform)?);
             before(3)?;
-            owner.0.timers = Some(SchedulerSponsor::try_new(platform)?);
+            owner.0.timers =
+                Some(SchedulerSponsor::try_new_with_backing_class(platform, storage_platform)?);
             before(4)?;
             Ok(())
         })();

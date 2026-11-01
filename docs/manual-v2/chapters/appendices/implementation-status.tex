@@ -331,8 +331,10 @@ storage readiness and does not synthesize a self-test verdict. See
         cancellation on competing wake or reaping.
         Generation-owned waiter-account bundles have separate count admission;
         their original backing charge survives root retirement and ASID reuse
-        through final weak/allocator release. Timer/completion sponsor and
-        Waker/callback backing remain separate gaps.
+        through final weak/allocator release. Scheduler/completion timer-account
+        bundles have their own backing admission with the same final-release
+        rule, independent of event reserve grants. Completion/CQ/watch account
+        and Waker/callback backing remain separate gaps.
         Connection, retained-call and outstanding-reply records have separate
         domain/node count admission. Grantors sponsor direct connections;
         callers sponsor call/reply pairs and solicited returned connections.

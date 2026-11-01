@@ -1,0 +1,183 @@
+{
+  "schema": "charlotte.timer-account-admission.v1",
+  "date": "2026-11-01",
+  "base_revision": "1a05fe6943d656a5f0008f14dd06ec009d3ca9f1",
+  "scope": "Independent backing admission for both generation-owned scheduler and completion timer-account bundles through final strong/weak/allocator release; event admission and reserve grants remain separate.",
+  "source_sha256": {
+    "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
+    "crates/catten/src/completion/delivery/preparation/tests.rs": "f983b84e678509234ca07f648a0943d9509dd4aa4550feaab20bc8822e22ea4d",
+    "crates/catten/src/completion/detached.rs": "e7a284641a95f5caf256f26bfe08c746500464db7abd137e09cb052be44f1f7d",
+    "crates/catten/src/completion/detached/metadata_tests.rs": "b89ee0f0ba4a98dc8d635c1768a58bfc0a518ac233df2944d166498e1e023acd",
+    "crates/catten/src/completion/namespace.rs": "38c4cfab83d184614f008b3b93814ef8219595a8a1c717c8eb3e1a96f1c27e3a",
+    "crates/catten/src/completion/namespace/preparation.rs": "71251f123d6a70452b92a0d814cce83e1f7ca9fdbc88a46750ea738836b12d97",
+    "crates/catten/src/completion/namespace/preparation/tests.rs": "dc37dfaf55e9468e3fb73a6a72ec0532f9ff79a05f705899217dcd04abad7e77",
+    "crates/catten/src/completion/record/submission.rs": "f046cd8ecf06e27443d31cb78fea748bbda23b007c75ec8d052745e4ca95d157",
+    "crates/catten/src/klib/charged_allocator.rs": "8cd21da64b7d3bd693ef2794a77521e990029ca0b0313c8608a4d806e76056cb",
+    "crates/catten/src/klib/charged_allocator/tests.rs": "8f48be4d7c6b7e0bb15e0d4ca4b20dd944eb8bc0678f7e0e20046ac7b12a70d2",
+    "crates/catten/src/memory/budget/preparation.rs": "c70b5450d186a18931355da5ec4682c2880aa0b829f3c8c02bae0d8077883ef7",
+    "crates/catten/src/memory/budget/preparation/tests.rs": "460e217a30d28ce16adcaa703f8636d297233fdb436b40e7db07f56171ec0306",
+    "crates/catten/src/memory/mod.rs": "4054028a1d143a0bae80247a7f38797ca543109a7c1dafa6540a38c13247da36",
+    "crates/catten/src/resource_policy.rs": "35bc4abece4e8563650d90db2c0d86fc22d388baab1924774b7b22a2d7daf416",
+    "crates/catten/src/resource_policy/defaults.rs": "0dcb3e3b0a2b89daed7d68bb94aa66fa8a4d8db75081773fdd92b7b4327f6691",
+    "crates/catten/src/resource_policy/tests.rs": "186726837276dfe4b3b4d39b1b4e53f9c5211af5326cf5a44b06bd545715d2ad",
+    "crates/catten/src/timers/account_budget.rs": "6a1626b867027e7516eab1859a47947f9d7f96c850b8b8e3d92d3500473453a1",
+    "crates/catten/src/timers/budget.rs": "8ca291a7e3aec3362d841099867bb223587fb43edb938c8288e07a58d71d9694",
+    "crates/catten/src/timers/budget/account_tests.rs": "67f98d25283e58f4e2992638b0e888f221555bab7002cbe50d619b3e00bfcf59",
+    "crates/catten/src/timers/event_tests.rs": "dac80575e3e8a21d0585bd6ea4150a0b2c65888260b26d4435a3b99daf4d4e3e",
+    "crates/catten/src/timers/mod.rs": "5e766e78592ad98ea9e8f2144d90835b949dc1346abd549c5ae55360d35c692a"
+  },
+  "policy": {
+    "field": "timer_accounts",
+    "dimension": "fixed account Arc plus private allocation-holder bundle",
+    "ordinary": 12288,
+    "total": 16384,
+    "accounts_per_complete_root": 2,
+    "count_only_complete_root_capacity": {
+      "ordinary": 3072,
+      "total": 4096
+    },
+    "decision": "Twice the two-account needs at complete-root capacity leaves headroom for retained generations, namespace replacement and concurrent preparation, with one quarter reserved for trusted storage. A separate pool avoids coupling idle-root lifetimes to active event admission. No existing ceiling is raised or RAM preallocated.",
+    "cost": "One private holder allocation per account and one extra machine word per account reference; enclosing admitted layouts reserve actual increased sizes.",
+    "root_registry_layout_bytes": {
+      "policy_nodes": 392,
+      "memory_account": 144,
+      "complete_root": 536
+    },
+    "root_registry_bytes_at_count_ceiling": {
+      "ordinary": 1646592,
+      "total": 2195456
+    },
+    "unchanged_root_metadata_byte_ceilings": {
+      "ordinary": 3145728,
+      "total": 4194304
+    },
+    "namespace_scope": "Every fully prepared namespace owns one fresh admitted timer account, including empty namespaces. Global nodes allocated before timer-account admission and independently surviving record/CQ/watch accounts still need independent admission."
+  },
+  "native_campaigns": [
+    {
+      "instance": "timer-account-20261101-arm",
+      "arch": "aarch64",
+      "iommu": "SMMUv3",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-01T18:39:59Z",
+      "kernel_sha256": "13e907f71719b1c31d9ef117e2332b7dcc36c4b8cf1d3f20ba9166aa42ccbb09",
+      "bundle_map_sha256": "4a5ee89fd763eed1af5a7613cfc7a2428c1e0b623ac6bf63e6ec7eb5fdc2bd38",
+      "serial_sha256": "fce709a0a92ecc047d0e2576a8c16d09f1b590f09f3e30a6318e2da999deb88b",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "guest_verdict": [
+        19,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     1.087516] [root metadata layouts] three policy nodes 392 bytes; memory account 144 bytes; complete root 536 bytes",
+        "[+     1.208012] [thread metadata admission] bytes=672 per bundle; shared-root pressure, 256 pre-allocation denials, independent byte/count limits, promotion, retired sponsor/ASID reuse, late release and healthy progress passed",
+        "[+     1.225024] [memory sponsor preparation] 64 allocator rejections, four rejection phases, 64 heap/pool-held publications and four guarded abandonments passed; retains three charged 144-byte nodes, two waiter sponsors and one timer sponsor, no root or object/event/entry charge",
+        "[+     1.316956] [timer account lifetime] actual event/node/cancellation retention across root close and exact ASID reuse; final-weak backing refund and successor independence passed",
+        "[+     1.800146] [CQ namespace retention] heap/registry-held unpublished namespace abandonment retained global node, all original accounts, complete payload and original CQ charge",
+        "[+     1.827294] [timer account pressure] 12230 ordinary + 4082 reserved actual accounts; 12288/16384 ceilings, heap-held denial, trusted root/namespace backing without event privilege, failed root rollback, immutable promotion and close/recovery at total exhaustion passed",
+        "[+     1.835108] [completion namespace metadata] five unlocked allocation-stage rejections, 64 heap-held fresh publications/removals, complete source/timer/backlog/authority handback, reentrant disposal, retired-generation rejection and original-account reuse passed",
+        "[+     1.851296] [detached metadata retention] guarded namespace/preparation/terminal abandonment retained original nodes/charges, timers, CQ backing, watch and buffer; successors unaffected",
+        "[+    80.648006] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "instance": "timer-account-20261101-intel",
+      "arch": "x86_64",
+      "iommu": "Intel VT-d",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-01T18:38:46Z",
+      "kernel_sha256": "99b91b236914911d6ebd3af6ec387b762f3d7bebc80fa462cf002b7272dd3821",
+      "bundle_map_sha256": "1e8d1d5b4aa82acc192c0afdb4b577ee5617a233b0e41452a3eb7aa148b9f8d2",
+      "serial_sha256": "36e7e89da9348f38f03043807343afd38314503c2e1355038d7a591b8a44d44e",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "guest_verdict": [
+        17,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     1.068919] [root metadata layouts] three policy nodes 392 bytes; memory account 144 bytes; complete root 536 bytes",
+        "[+     1.177132] [thread metadata admission] bytes=1200 per bundle; shared-root pressure, 256 pre-allocation denials, independent byte/count limits, promotion, retired sponsor/ASID reuse, late release and healthy progress passed",
+        "[+     1.201340] [memory sponsor preparation] 64 allocator rejections, four rejection phases, 64 heap/pool-held publications and four guarded abandonments passed; retains three charged 144-byte nodes, two waiter sponsors and one timer sponsor, no root or object/event/entry charge",
+        "[+     1.294123] [timer account lifetime] actual event/node/cancellation retention across root close and exact ASID reuse; final-weak backing refund and successor independence passed",
+        "[+     1.939510] [CQ namespace retention] heap/registry-held unpublished namespace abandonment retained global node, all original accounts, complete payload and original CQ charge",
+        "[+     1.988098] [timer account pressure] 12222 ordinary + 4082 reserved actual accounts; 12288/16384 ceilings, heap-held denial, trusted root/namespace backing without event privilege, failed root rollback, immutable promotion and close/recovery at total exhaustion passed",
+        "[+     2.012331] [completion namespace metadata] five unlocked allocation-stage rejections, 64 heap-held fresh publications/removals, complete source/timer/backlog/authority handback, reentrant disposal, retired-generation rejection and original-account reuse passed",
+        "[+     2.069857] [detached metadata retention] guarded namespace/preparation/terminal abandonment retained original nodes/charges, timers, CQ backing, watch and buffer; successors unaffected",
+        "[+    97.260203] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "instance": "timer-account-20261101-amd",
+      "arch": "x86_64",
+      "iommu": "AMD-Vi",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-01T18:50:37Z",
+      "kernel_sha256": "d1a72f88dccfa8f6d96f29293dd0d1d11eb70fff7e0c8ac5316bf597a687459f",
+      "bundle_map_sha256": "1e8d1d5b4aa82acc192c0afdb4b577ee5617a233b0e41452a3eb7aa148b9f8d2",
+      "serial_sha256": "7c97c3c67e19ce6cdbc89641ac2c7caf53ee3240f4e234a2ed6e60c381d1927d",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "guest_verdict": [
+        17,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     1.143708] [root metadata layouts] three policy nodes 392 bytes; memory account 144 bytes; complete root 536 bytes",
+        "[+     1.308937] [thread metadata admission] bytes=1200 per bundle; shared-root pressure, 256 pre-allocation denials, independent byte/count limits, promotion, retired sponsor/ASID reuse, late release and healthy progress passed",
+        "[+     1.351778] [memory sponsor preparation] 64 allocator rejections, four rejection phases, 64 heap/pool-held publications and four guarded abandonments passed; retains three charged 144-byte nodes, two waiter sponsors and one timer sponsor, no root or object/event/entry charge",
+        "[+     1.454563] [timer account lifetime] actual event/node/cancellation retention across root close and exact ASID reuse; final-weak backing refund and successor independence passed",
+        "[+     1.944308] [CQ namespace retention] heap/registry-held unpublished namespace abandonment retained global node, all original accounts, complete payload and original CQ charge",
+        "[+     1.977754] [timer account pressure] 12222 ordinary + 4082 reserved actual accounts; 12288/16384 ceilings, heap-held denial, trusted root/namespace backing without event privilege, failed root rollback, immutable promotion and close/recovery at total exhaustion passed",
+        "[+     1.986707] [completion namespace metadata] five unlocked allocation-stage rejections, 64 heap-held fresh publications/removals, complete source/timer/backlog/authority handback, reentrant disposal, retired-generation rejection and original-account reuse passed",
+        "[+     2.004765] [detached metadata retention] guarded namespace/preparation/terminal abandonment retained original nodes/charges, timers, CQ backing, watch and buffer; successors unaffected",
+        "[+    87.827815] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    }
+  ],
+  "bundle_identity_encoding": "SHA-256 of UTF-8 JSON bundle_sha256 mapping, sorted keys, comma/colon separators without whitespace.",
+  "host_validation": {
+    "resource_policy_command": "python3 scripts/tests/test-resource-policy.py",
+    "resource_policy_groups": 3,
+    "resource_policy_result": "passed",
+    "resource_policy_log_sha256": "74510627905019e9c2968151c94db743dfb49248d1ff289c897e8989f787c878",
+    "shared_allocator_command": "Pinned nightly-2026-07-27 rustc --edition=2024 --test wrapper imports production klib/charged_allocator.rs with allocator_api, invoked outside root target configuration; execute resulting binary.",
+    "shared_allocator_tests": 15,
+    "shared_allocator_result": "passed",
+    "shared_allocator_log_sha256": "1052c4ec65a74dd1c93105daf42ad9ffbe4a883a959915ca7d50876ff7d7c0e3",
+    "kernel_tests_clippy": "ARM acpi,kernel_tests, offline/locked, -D warnings: passed",
+    "kernel_tests_clippy_log_sha256": "5638ab02b577506099851e4113227ebb9ac73d025e2c8338bb11b0fe10a8a384",
+    "minimal_kernel_clippy": "ARM acpi, offline/locked, -D warnings: passed",
+    "minimal_kernel_clippy_log_sha256": "d281c51460a02e46fe2865ee800a0438e3fedcf81586b1ca829a3d3f19d0d1a2",
+    "workspace_formatting": "cargo fmt --all -- --check: passed"
+  },
+  "controls": [
+    "Actual fixed-layout timer-account Arcs fill ordinary and total ceilings; 64 heap-held ordinary denials and total trusted denial prove reservation precedes either allocation. Account pressure does not allocate a maximum event footprint.",
+    "Ordinary namespace replacement at exhaustion rejects AllocationFailed and preserves the original account. Failed root registration returns MemorySponsorAllocationFailed with exact frame/root/account recovery before ASID publication.",
+    "Trusted root and completion namespace construction at ordinary exhaustion consume only trusted backing. A scheduler event reservation and actual completion timer submission still consume ordinary event admission until an explicit platform grant.",
+    "Late promotion does not reclassify either original root/namespace account. Closing that root at total exhaustion refunds both ordinary slots, and fresh root plus namespace publication/close recovers exactly.",
+    "Actual prepared event/node/cancellation backing retains its scheduler account across root close and exact ASID reuse. Node disposal retains event admission with the cancellation handle; handle release ends event admission, while a weak account still retains backing until final weak release. The successor remains unaffected.",
+    "Completion namespace replacement/close separately retains its timer-account backing after final strong release until weak release. Five preparation-stage errors restore unused account admission; 64 fresh heap/account-pool-held publications/removals enter neither allocator nor account pool.",
+    "Existing actual root-account partial parent fallback retains one timer account under lifecycle/root/ledger/heap/root-metadata/waiter-account/timer-account pool guards. Existing unpublished CQ namespace and detached retired namespace fallback controls retain one original account each under heap/registry/account-pool guards; no additional deliberate-retention fixture was added.",
+    "Shared allocation-owner host controls inject holder/payload failure, check phase abandonment, single-allocation allowance, clone/final-weak concurrency and deallocation before refund."
+  ],
+  "qualification_limits": [
+    "Fixed-bundle counts do not account for exact heap bytes, allocator overhead or aggregate principal/general-heap consumption.",
+    "Native pressure allocates actual accounts. Native scheduler lifetime control owns a real prepared, never-enqueued event and cancellation state. Shared host controls inject allocation failures; native heap exhaustion is not forced.",
+    "Completion/CQ/watch account backing, Waker/callback/other observer storage and remaining registry metadata still need admission. SEC-07 remains partial.",
+    "No sustained hostile concurrent EL0 backing-pressure fairness, per-service progress entitlement, worst-case lookup/IRQ latency or physical hardware qualification. Existing C03/C16/C18 and G1/G4 outer-context/destructor limits remain; no new cleanup or retry authority."
+  ]
+}

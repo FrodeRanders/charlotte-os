@@ -34,6 +34,7 @@ fn exercise(p: Policy) {
         p.watches.pool,
         p.waiters.pool,
         p.waiter_accounts,
+        p.timer_accounts,
         p.observer_lists,
         p.mailbox_records.pool,
         p.memory.objects.pool,
@@ -86,6 +87,9 @@ fn invalid_ordering_zero_and_machine_overflow_reject() {
         assert_eq!(p.validate(), Err("domain/ordinary/total ordering or machine range"));
         p = DEFAULT;
         p.waiter_accounts = pool;
+        assert_eq!(p.validate(), Err("domain/ordinary/total ordering or machine range"));
+        p = DEFAULT;
+        p.timer_accounts = pool;
         assert_eq!(p.validate(), Err("domain/ordinary/total ordering or machine range"));
     }
     let mut p = DEFAULT;

@@ -134,6 +134,7 @@ fn namespace_drain() {
 // never real user roots or a live sponsor substitution. Their bounded retained
 // allocations/charges remain until guest shutdown; this is not retry custody.
 fn guarded_abandonment() {
+    let backing = crate::timers::account_budget::snapshot();
     use core::sync::atomic::{
         AtomicUsize,
         Ordering,
@@ -181,10 +182,11 @@ fn guarded_abandonment() {
     {
         let _registry = COMPLETIONS.write();
         let _heap = PRIMARY_ALLOCATOR.lock();
-        drop(namespace);
+        crate::timers::account_budget::with_locked(|| drop(namespace));
         assert_eq!(hits.load(Ordering::SeqCst), 0);
     }
     assert_eq!(records.used(), 3);
+    assert_eq!(crate::timers::account_budget::snapshot(), (backing.0 + 1, backing.1 + 1));
     assert_eq!(
         crate::capability::node_admission_used(),
         (original_authority.0 + 1, original_authority.1 + 1)

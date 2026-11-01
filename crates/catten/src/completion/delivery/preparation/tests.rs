@@ -210,6 +210,7 @@ fn namespace_publication() {
 fn guarded_namespace_abandonment() {
     // Private unpublished raw namespace: bounded deliberate retention, with no
     // live root or replacement sponsor and no physical backing authority.
+    let backing = crate::timers::account_budget::snapshot();
     let prepared = PreparedNamespace::new(CLIENT + 20, 8, 8, None).unwrap();
     let account = prepared.0.queue.0.target.account.clone();
     let timers = Arc::downgrade(&prepared.0.namespace.entries().timer_budget);
@@ -220,12 +221,13 @@ fn guarded_namespace_abandonment() {
     {
         let _registry = COMPLETIONS.write();
         let _heap = PRIMARY_ALLOCATOR.lock();
-        drop(prepared);
+        crate::timers::account_budget::with_locked(|| drop(prepared));
     }
     assert_eq!(account.used(), before);
     assert!(timers.upgrade().is_some());
     assert!(records.upgrade().is_some());
     assert!(watches.upgrade().is_some());
+    assert_eq!(crate::timers::account_budget::snapshot(), (backing.0 + 1, backing.1 + 1));
     crate::logln!(
         "[CQ namespace retention] heap/registry-held unpublished namespace abandonment retained \
          global node, all original accounts, complete payload and original CQ charge"

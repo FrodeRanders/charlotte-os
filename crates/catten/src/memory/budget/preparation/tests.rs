@@ -9,6 +9,7 @@ use crate::memory::{
 pub(super) fn run() {
     let baseline = admission::snapshot();
     let accounts = crate::klib::observer::account_budget::snapshot();
+    let timers = crate::timers::account_budget::snapshot();
     // Byte admission rejects even with count headroom, before allocator entry.
     assert!(
         admission::prepare_with::<
@@ -50,6 +51,7 @@ pub(super) fn run() {
         assert_eq!(visits, reject);
         assert_eq!(admission::snapshot(), baseline);
         assert_eq!(crate::klib::observer::account_budget::snapshot(), accounts);
+        assert_eq!(crate::timers::account_budget::snapshot(), timers);
     }
     let mut ledger = Ledger::new();
     for generation in 0..64 {
@@ -58,12 +60,15 @@ pub(super) fn run() {
             let _heap = PRIMARY_ALLOCATOR.lock();
             admission::with_locked(|| {
                 crate::klib::observer::account_budget::with_locked(|| {
-                    prepared.publish_into(&mut ledger, (1, generation));
+                    crate::timers::account_budget::with_locked(|| {
+                        prepared.publish_into(&mut ledger, (1, generation));
+                    });
                 });
             });
         }
         assert_eq!(admission::snapshot().0[1], baseline.0[1] + 1);
         assert_eq!(admission::snapshot().1[1], baseline.1[1] + 1);
+        assert_eq!(crate::timers::account_budget::snapshot(), (timers.0 + 1, timers.1 + 1));
         assert_eq!(
             crate::klib::observer::account_budget::snapshot(),
             (accounts.0 + 1, accounts.1 + 1)
@@ -75,6 +80,7 @@ pub(super) fn run() {
         retired.release();
         assert_eq!(admission::snapshot(), baseline);
         assert_eq!(crate::klib::observer::account_budget::snapshot(), accounts);
+        assert_eq!(crate::timers::account_budget::snapshot(), timers);
     }
     assert!(ledger.domains.iter().next().is_none());
     // Captured-only, node-only, node+waiter and complete preparation fallback.
@@ -103,7 +109,9 @@ pub(super) fn run() {
         let _ledger = LEDGER.lock();
         let _heap = PRIMARY_ALLOCATOR.lock();
         admission::with_locked(|| {
-            crate::klib::observer::account_budget::with_locked(|| drop(owner));
+            crate::klib::observer::account_budget::with_locked(|| {
+                crate::timers::account_budget::with_locked(|| drop(owner));
+            });
         });
     }
     let retained = admission::snapshot();
@@ -112,6 +120,7 @@ pub(super) fn run() {
     assert_eq!(retained.0, [baseline.0[0] + 3 * bytes, baseline.0[1] + 3]);
     assert_eq!(retained.1, [baseline.1[0] + 3 * bytes, baseline.1[1] + 3]);
     assert_eq!(crate::klib::observer::account_budget::snapshot(), (accounts.0 + 2, accounts.1 + 2));
+    assert_eq!(crate::timers::account_budget::snapshot(), (timers.0 + 1, timers.1 + 1));
     crate::logln!(
         "[memory sponsor preparation] 64 allocator rejections, four rejection phases, 64 \
          heap/pool-held publications and four guarded abandonments passed; retains three charged \

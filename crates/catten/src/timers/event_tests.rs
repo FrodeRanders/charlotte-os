@@ -45,6 +45,7 @@ use crate::{
 };
 
 pub(crate) fn test_admission() {
+    budget::test_account_lifetime();
     super::cancellation_tests::run();
     let baseline = budget::node_used();
     let sponsor = SchedulerSponsor::new(false);

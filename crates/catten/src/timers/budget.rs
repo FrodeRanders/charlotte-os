@@ -9,7 +9,12 @@ use alloc::sync::Arc;
 use charlotte_lifecycle::resources::CountBudget;
 use spin::LazyLock;
 
-use crate::cpu::multiprocessor::spin::mutex::Mutex;
+use crate::{
+    cpu::multiprocessor::spin::mutex::Mutex,
+    klib::charged_allocator::ChargedAllocator,
+};
+
+pub(crate) type AccountRef = Arc<DomainBudget, ChargedAllocator<super::account_budget::Charge>>;
 
 pub(crate) const MAX_DOMAIN_TIMERS: usize =
     crate::resource_policy::POLICY.timers.domain[0] as usize;
@@ -44,14 +49,18 @@ pub(crate) struct DomainBudget(Mutex<Account>);
 
 impl DomainBudget {
     #[cfg(any(test, feature = "kernel_tests"))]
-    pub(crate) fn new(completion_capacity: usize) -> Arc<Self> {
-        Self::try_new(completion_capacity).expect("mandatory timer account allocation failed")
+    pub(crate) fn new(completion_capacity: usize) -> AccountRef {
+        Self::try_new(completion_capacity, false)
+            .expect("mandatory timer account allocation failed")
     }
 
     pub(crate) fn try_new(
         completion_capacity: usize,
-    ) -> Result<Arc<Self>, core::alloc::AllocError> {
-        Arc::try_new(Self(Mutex::new(Account {
+        backing_platform: bool,
+    ) -> Result<AccountRef, core::alloc::AllocError> {
+        let charge = super::account_budget::reserve(backing_platform)?;
+        let allocator = ChargedAllocator::try_new(charge)?;
+        allocator.try_arc(Self(Mutex::new(Account {
             count: CountBudget::new(completion_capacity.min(MAX_DOMAIN_TIMERS)),
             platform: false,
             retired: false,
@@ -67,7 +76,7 @@ impl DomainBudget {
 /// Captured from the generation-owned memory ledger before Thread publication.
 /// Scheduling paths reserve under counter locks without taking the address-space table.
 #[derive(Debug, Clone)]
-pub(crate) struct SchedulerSponsor(Arc<DomainBudget>);
+pub(crate) struct SchedulerSponsor(AccountRef);
 
 impl SchedulerSponsor {
     /// Mandatory trusted fixture construction; runtime root preparation is fallible.
@@ -76,8 +85,18 @@ impl SchedulerSponsor {
         Self::try_new(platform).expect("mandatory scheduler timer sponsor allocation failed")
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn try_new(platform: bool) -> Result<Self, core::alloc::AllocError> {
-        let domain = DomainBudget::try_new(MAX_DOMAIN_TIMERS)?;
+        Self::try_new_with_backing_class(platform, platform)
+    }
+
+    /// Trusted backing classification is captured before root publication;
+    /// future event admission retains its separate explicit platform grant.
+    pub(crate) fn try_new_with_backing_class(
+        platform: bool,
+        backing_platform: bool,
+    ) -> Result<Self, core::alloc::AllocError> {
+        let domain = DomainBudget::try_new(MAX_DOMAIN_TIMERS, backing_platform)?;
         domain.0.lock().platform = platform;
         Ok(Self(domain))
     }
@@ -103,15 +122,15 @@ impl SchedulerSponsor {
 #[derive(Debug)]
 #[must_use]
 pub(crate) struct Charge {
-    domain: Arc<DomainBudget>,
+    domain: AccountRef,
     platform: bool,
 }
 
-pub(crate) fn reserve(domain: &Arc<DomainBudget>, platform: bool) -> Result<Charge, ()> {
+pub(crate) fn reserve(domain: &AccountRef, platform: bool) -> Result<Charge, ()> {
     reserve_inner(domain, Some(platform))
 }
 
-fn reserve_inner(domain: &Arc<DomainBudget>, platform: Option<bool>) -> Result<Charge, ()> {
+fn reserve_inner(domain: &AccountRef, platform: Option<bool>) -> Result<Charge, ()> {
     let mut local = domain.0.lock();
     if local.retired {
         return Err(());
@@ -150,4 +169,12 @@ impl Drop for Charge {
 pub(crate) fn node_used() -> (usize, usize) {
     let node = NODE.lock();
     (node.total.used(), node.ordinary.used())
+}
+
+#[cfg(any(test, feature = "kernel_tests"))]
+mod account_tests;
+
+#[cfg(any(test, feature = "kernel_tests"))]
+pub(crate) fn test_account_lifetime() {
+    account_tests::run();
 }

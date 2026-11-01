@@ -35,6 +35,13 @@ future charges only; an existing ordinary charge remains ordinary until release.
 Outstanding events retain their original account after teardown and ASID reuse.
 Dropping an old event cannot credit a replacement generation.
 
+Both kinds of account have independent
+[backing admission](timer-account-admission.md), shared across 12288 ordinary
+and 16384 total fixed allocation bundles. Their original backing class and
+charge survive final strong release through actual weak/allocator deallocation.
+Trusted backing does not grant event reserve privilege. A retired root or
+replaced namespace cannot refund an independently surviving account allocation.
+
 One reservation follows an event while prepared, queued, selected and notifying callbacks,
 and any cancellation backing retained after event destruction. Event and node
 owners share the charged allocator's private holder; no extra event counts are

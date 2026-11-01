@@ -526,8 +526,26 @@ pub fn current_address_space_handle(asid: AddressSpaceId) -> Option<AddressSpace
 }
 
 /// Whether `handle` still denotes the active occupant of its ASID slot.
+///
+/// See `capture_address_space_storage` for generation-qualified backing admission.
 pub fn address_space_handle_is_current(handle: AddressSpaceHandle) -> bool {
     ADDRESS_SPACE_TABLE.lock().generation(handle.id).ok() == Some(handle.generation)
+}
+
+/// Capture one generation and its trusted backing class under the same hold.
+/// This is metadata admission state, not a lease or platform resource grant.
+/// Absent raw fixture IDs stay ordinary; the permanent kernel is trusted.
+pub(crate) fn capture_address_space_storage(
+    asid: AddressSpaceId,
+) -> (Option<AddressSpaceHandle>, bool) {
+    let table = ADDRESS_SPACE_TABLE.lock();
+    let root = table.generation(asid).ok().map(|generation| AddressSpaceHandle {
+        id: asid,
+        generation,
+    });
+    let platform =
+        asid == KERNEL_ASID || table.get(asid).is_ok_and(|root| root.table_account.is_platform());
+    (root, platform)
 }
 
 /// Close one exact address-space lifetime, rejecting a handle left behind by
