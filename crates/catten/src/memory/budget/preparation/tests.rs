@@ -7,10 +7,32 @@ use crate::memory::{
 };
 
 pub(super) fn run() {
+    let baseline = admission::snapshot();
+    // Byte admission rejects even with count headroom, before allocator entry.
+    assert!(
+        admission::prepare_with::<
+            [u8; crate::resource_policy::POLICY.root_metadata.ordinary[0] as usize],
+        >(false, |_| panic!("oversized ordinary node reached allocator"))
+        .is_err()
+    );
+    assert!(
+        admission::prepare_with::<
+            [u8; crate::resource_policy::POLICY.root_metadata.total[0] as usize],
+        >(true, |_| panic!("oversized trusted node reached allocator"))
+        .is_err()
+    );
+    assert_eq!(admission::snapshot(), baseline);
+    for _ in 0..64 {
+        assert!(
+            admission::prepare_with::<(Identity, DomainAccount)>(false, |_| Err(AllocError))
+                .is_err()
+        );
+        assert_eq!(admission::snapshot(), baseline);
+    }
     for reject in 1..=4 {
         let mut visits = 0;
         assert!(
-            PreparingAccount::prepare(false, |stage| {
+            PreparingAccount::prepare(false, false, |stage| {
                 visits += 1;
                 assert!(LEDGER.try_lock().is_some());
                 assert!(ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());
@@ -25,24 +47,29 @@ pub(super) fn run() {
             .is_err()
         );
         assert_eq!(visits, reject);
+        assert_eq!(admission::snapshot(), baseline);
     }
     let mut ledger = Ledger::new();
     for generation in 0..64 {
-        let prepared = PreparingAccount::try_new().unwrap();
+        let prepared = PreparingAccount::try_new(false).unwrap();
         {
             let _heap = PRIMARY_ALLOCATOR.lock();
-            prepared.publish_into(&mut ledger, (1, generation));
+            admission::with_locked(|| prepared.publish_into(&mut ledger, (1, generation)));
         }
+        assert_eq!(admission::snapshot().0[1], baseline.0[1] + 1);
+        assert_eq!(admission::snapshot().1[1], baseline.1[1] + 1);
         let retired = ledger.domains.take(&(1, generation)).unwrap();
         assert!(!retired.value().1.platform);
         assert_eq!(retired.value().1.waiters.used(), 0);
         assert_eq!(retired.value().1.timers.used(), 0);
         retired.release();
+        assert_eq!(admission::snapshot(), baseline);
     }
     assert!(ledger.domains.iter().next().is_none());
     // Captured-only, node-only, node+waiter and complete preparation fallback.
     // This deliberately retains three empty nodes, two waiter sponsors and
     // one timer sponsor, without a root or any entry/event/memory charge.
+    // All three node charges must survive the inert fallback.
     for stage in 0..4 {
         let mut owner = PreparingAccount(ManuallyDrop::new(Resources {
             limit: LEDGER.lock().default_limit(),
@@ -52,7 +79,7 @@ pub(super) fn run() {
             timers: None,
         }));
         if stage >= 1 {
-            owner.0.node = Some(PreparedEntry::try_new().unwrap());
+            owner.0.node = Some(admission::prepare(false).unwrap());
         }
         if stage >= 2 {
             owner.0.waiters = Some(WaitSponsor::try_new(false).unwrap());
@@ -64,11 +91,18 @@ pub(super) fn run() {
         let _table = ADDRESS_SPACE_TABLE.lock();
         let _ledger = LEDGER.lock();
         let _heap = PRIMARY_ALLOCATOR.lock();
-        drop(owner);
+        admission::with_locked(|| drop(owner));
     }
+    let retained = admission::snapshot();
+    let bytes =
+        PreparedEntry::<(Identity, DomainAccount), admission::Charge>::allocation_bytes() as u64;
+    assert_eq!(retained.0, [baseline.0[0] + 3 * bytes, baseline.0[1] + 3]);
+    assert_eq!(retained.1, [baseline.1[0] + 3 * bytes, baseline.1[1] + 3]);
     crate::logln!(
-        "[memory sponsor preparation] four rejection phases, 64 heap-held publications and four \
-         guarded abandonments passed; retains three nodes, two waiter sponsors and one timer \
-         sponsor, no root or resource charge"
+        "[memory sponsor preparation] 64 allocator rejections, four rejection phases, 64 \
+         heap/pool-held publications and four guarded abandonments passed; retains three charged \
+         {}-byte nodes, two waiter sponsors and one timer sponsor, no root or object/event/entry \
+         charge",
+        bytes
     );
 }

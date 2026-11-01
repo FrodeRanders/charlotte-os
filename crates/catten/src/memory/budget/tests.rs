@@ -5,6 +5,13 @@ pub(crate) fn ledger_available() -> bool {
     LEDGER.try_lock().is_some()
 }
 
+pub(in crate::memory) fn account_node_bytes() -> u64 {
+    crate::klib::collections::retirement_list::PreparedEntry::<
+        (Identity, DomainAccount),
+        admission::Charge,
+    >::allocation_bytes() as u64
+}
+
 pub(crate) fn with_ledger_locked(action: impl FnOnce()) {
     let _ledger = LEDGER.lock();
     action();
@@ -31,6 +38,8 @@ pub(crate) fn run() {
 
 fn generation_lifetime() {
     let baseline = node_snapshot();
+    let metadata_baseline = admission::snapshot();
+    let node_bytes = account_node_bytes();
     let old =
         memory::register_user_address_space(memory::AddressSpace::try_new_user().unwrap()).unwrap();
     // Production lookup and counter reservation with the actual heap held:
@@ -62,6 +71,15 @@ fn generation_lifetime() {
     assert_eq!(timers.used(), 1);
     memory::close_user_address_space_handle(old).unwrap();
     assert!(LEDGER.lock().domains.contains_key(&(old.id(), old.generation())));
+    // The three policy nodes were freed, but the closed memory account still
+    // owns its original node admission independently of ASID-table capacity.
+    assert_eq!(
+        admission::snapshot(),
+        (
+            [metadata_baseline.0[0] + node_bytes, metadata_baseline.0[1] + 1],
+            [metadata_baseline.1[0] + node_bytes, metadata_baseline.1[1] + 1],
+        )
+    );
     assert!(waiters.list_platform().is_err());
     assert!(timers.reserve().is_err());
     let new =
@@ -75,7 +93,15 @@ fn generation_lifetime() {
     assert!(matches!(reserve_captured(old, Amount::default()), Err(Error::StaleDomain)));
     // The old node survives logical retirement/reuse, then detaches only on
     // its last memory charge. Old timer/waiter allocations still have owners.
+    let with_successor = admission::snapshot();
     drop(charge);
+    assert_eq!(
+        admission::snapshot(),
+        (
+            [with_successor.0[0] - node_bytes, with_successor.0[1] - 1],
+            [with_successor.1[0] - node_bytes, with_successor.1[1] - 1],
+        )
+    );
     assert!(!LEDGER.lock().domains.contains_key(&(old.id(), old.generation())));
     assert_eq!(waiters.used(), 1);
     assert_eq!(timers.used(), 1);
@@ -100,8 +126,9 @@ fn generation_lifetime() {
     let after = node_snapshot();
     assert_eq!(after.0.used(), baseline.0.used());
     assert_eq!(after.1.used(), baseline.1.used());
+    assert_eq!(admission::snapshot(), metadata_baseline);
     crate::logln!(
         "[memory sponsor metadata] heap-held first lookup/reservation, exact generation reuse, \
-         retired memory charge and independent waiter/timer lifetimes passed"
+         retired memory/node admission and independent waiter/timer lifetimes passed"
     );
 }

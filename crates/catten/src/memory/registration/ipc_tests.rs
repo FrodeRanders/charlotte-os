@@ -20,7 +20,7 @@ pub(super) fn run() {
                         assert!(budget::tests::ledger_available());
                         drop(root);
                     },
-                    budget::PreparingAccount::try_new,
+                    || budget::PreparingAccount::try_new(false),
                     || metadata::PreparingMetadata::try_new(false),
                     || crate::ipc::namespace::PreparingNamespace::test_reject_at(reject),
                     |_| panic!("rejected IPC preparation reached publication"),
@@ -38,7 +38,7 @@ pub(super) fn run() {
             AddressSpace::try_new_user().unwrap(),
             IdTable::try_insert_from,
             drop,
-            budget::PreparingAccount::try_new,
+            || budget::PreparingAccount::try_new(false),
             || metadata::PreparingMetadata::try_new(false),
             crate::ipc::namespace::PreparingNamespace::try_new,
             |operation| {

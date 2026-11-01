@@ -27,22 +27,25 @@ pub(crate) struct PreparingAccount(ManuallyDrop<Resources>);
 struct Resources {
     limit: Amount,
     platform: bool,
-    node: Option<PreparedEntry<(Identity, DomainAccount)>>,
+    node: Option<PreparedEntry<(Identity, DomainAccount), admission::Charge>>,
     waiters: Option<WaitSponsor>,
     timers: Option<SchedulerSponsor>,
 }
 
 impl PreparingAccount {
-    pub(crate) fn try_new() -> Result<Self, AllocError> {
-        Self::prepare(false, |_| Ok(()))
+    /// Storage classification comes from the unpublished translation account.
+    /// Payload sponsorship still follows the existing explicit platform grant.
+    pub(crate) fn try_new(platform: bool) -> Result<Self, AllocError> {
+        Self::prepare(false, platform, |_| Ok(()))
     }
 
     pub(super) fn try_new_kernel() -> Result<Self, AllocError> {
-        Self::prepare(true, |_| Ok(()))
+        Self::prepare(true, true, |_| Ok(()))
     }
 
     fn prepare(
         platform: bool,
+        storage_platform: bool,
         mut before: impl FnMut(u8) -> Result<(), AllocError>,
     ) -> Result<Self, AllocError> {
         // Capturing a policy limit does not publish a generation or retain a
@@ -57,7 +60,7 @@ impl PreparingAccount {
         }));
         let result = (|| {
             before(1)?;
-            owner.0.node = Some(PreparedEntry::try_new()?);
+            owner.0.node = Some(admission::prepare(storage_platform)?);
             before(2)?;
             owner.0.waiters = Some(WaitSponsor::try_new(platform)?);
             before(3)?;

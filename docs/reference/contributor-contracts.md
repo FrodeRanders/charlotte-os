@@ -509,6 +509,14 @@ the corrected RPC polling paths, and the remaining notification gaps.
 
 ## Mapping retirement and domain cleanup
 
+- Root memory-account nodes share the root-metadata byte/count pool with policy,
+  usage and authority nodes. Capture storage classification from the unpublished
+  translation account before allocation. Publication relinks prepared storage;
+  retirement/reuse/promotion cannot refund or reclassify a surviving node.
+  Retain the exact generation's closed ledger node until its final memory-object
+  charge ends, then detach under the ledger and release outside it. Deallocate
+  before refunding node admission. Waiter/timer sponsor backing remains separate.
+  See `docs/reference/root-metadata-admission.md`.
 - Kernel-range rollback/teardown uses `RetiredKernelRange`, supplied outside
   arena/page-table guards. Detach first, release guards, then explicitly release
   backing after invalidation. Its Drop quarantines; it must never rendezvous or

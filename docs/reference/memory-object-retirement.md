@@ -127,12 +127,14 @@ Principal-history candidates and published records now carry their own bounded
 [byte/count admission](principal-history-admission.md). The existing root
 metadata owner retains a losing candidate through failed invalidation and
 post-guard disposal; the published record keeps its original charge for the boot
-lifetime. Policy/usage/authority node layouts now have their own
-[root metadata pool](root-metadata-admission.md): 4 MiB/12,288 nodes total,
-3 MiB/9,216 for ordinary preparation. Typed charges follow partial preparation,
-publication and detached-root retirement until actual node deallocation.
-One/two remaining slots reject complete root publication and return unused
-partial nodes. Other namespace/account/control-block metadata remains separate.
+lifetime. Policy/usage/authority and generation-owned memory-account nodes share
+the [root metadata pool](root-metadata-admission.md): 4 MiB/16,384 nodes total,
+3 MiB/12,288 for ordinary preparation. Typed charges follow partial preparation,
+publication and detached-root retirement until actual node deallocation. A
+closed account remains charged in the exact-generation ledger until its last
+memory-object charge ends, including after root close and ASID reuse. One/two/
+three remaining slots reject complete root publication and return unused partial
+nodes. Other namespace/sponsor/control-block backing remains separate.
 
 ## Owning the gap
 

@@ -1,4 +1,4 @@
-//! Root policy/usage/authority node admission follows actual allocation lifetime,
+//! Root policy/usage/authority/memory-account admission follows allocation lifetime,
 //! including partial preparation, detached metadata and terminal retention.
 use core::alloc::AllocError;
 
@@ -40,11 +40,13 @@ impl Drop for Charge {
     }
 }
 
-pub(super) fn prepare<T>(platform: bool) -> Result<PreparedEntry<T, Charge>, AllocError> {
+pub(in crate::memory) fn prepare<T>(
+    platform: bool,
+) -> Result<PreparedEntry<T, Charge>, AllocError> {
     prepare_with(platform, PreparedEntry::try_new_charged)
 }
 
-pub(super) fn prepare_with<T>(
+pub(in crate::memory) fn prepare_with<T>(
     platform: bool,
     allocate: impl FnOnce(Charge) -> Result<PreparedEntry<T, Charge>, AllocError>,
 ) -> Result<PreparedEntry<T, Charge>, AllocError> {
@@ -59,7 +61,7 @@ pub(in crate::memory) fn snapshot() -> ([u64; 2], [u64; 2]) {
 }
 
 #[cfg(any(test, feature = "kernel_tests"))]
-pub(super) fn with_locked(work: impl FnOnce()) {
+pub(in crate::memory) fn with_locked(work: impl FnOnce()) {
     let _pool = POOL.lock();
     work();
 }

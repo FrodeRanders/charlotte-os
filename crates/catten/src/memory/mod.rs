@@ -339,7 +339,7 @@ fn register_user_address_space_with(
         address_space,
         publish,
         reject,
-        budget::PreparingAccount::try_new,
+        || budget::PreparingAccount::try_new(platform),
         || registration::metadata::PreparingMetadata::try_new(platform),
     )
 }

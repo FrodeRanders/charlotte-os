@@ -6,6 +6,7 @@
 //! Retired sponsors remain in the ledger until their last charge is released.
 //! No syscall permits a domain to enlarge its budget or claim platform reserve.
 
+use super::registration::metadata::admission;
 use crate::klib::collections::retirement_list::AdmittedMap;
 
 mod preparation;
@@ -44,7 +45,7 @@ struct DomainAccount {
 struct Ledger {
     total: Budget,
     ordinary: Budget,
-    domains: AdmittedMap<Identity, DomainAccount>,
+    domains: AdmittedMap<Identity, DomainAccount, admission::Charge>,
 }
 
 impl Ledger {

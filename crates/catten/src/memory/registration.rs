@@ -194,7 +194,7 @@ pub(super) fn test_abandonment() {
     let mut owner = PreparingRegistration::capture(root);
     owner
         .prepare(
-            budget::PreparingAccount::try_new,
+            || budget::PreparingAccount::try_new(false),
             || metadata::PreparingMetadata::try_new(false),
             crate::ipc::namespace::PreparingNamespace::try_new,
         )

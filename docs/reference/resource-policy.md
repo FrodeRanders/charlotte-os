@@ -41,7 +41,7 @@ unlimited node capacity.
 | `ipc_records` | connections, pending calls, replies | 512 each | 6144 each | 8192 each |
 | `endpoints` | endpoints; queue slots | 64 endpoints; 8192 slots | 768 endpoints; 24576 slots | 1024 endpoints; 32768 slots |
 | `completion_queues` | queues; backing bytes | 32 queues; 256 KiB | 1536 queues; 3 MiB | 2048 queues; 4 MiB |
-| `root_metadata` | node-layout bytes; nodes | — | 3 MiB; 9216 nodes | 4 MiB; 12288 nodes |
+| `root_metadata` | node-layout bytes; nodes | — | 3 MiB; 12288 nodes | 4 MiB; 16384 nodes |
 | `principal_history` | node-layout bytes; nodes | — | 768 KiB; 3072 nodes | 1 MiB; 4096 nodes |
 | `thread_metadata` | context/node bytes; bundles | principal 1 MiB; 128 bundles | 6 MiB; 3072 bundles | 8 MiB; 4096 bundles |
 | `thread_table` | three-vector bytes; backing slots, including replacement overlap | principal 16 MiB; 16384 slots | 24 MiB; 24576 slots | 32 MiB; 32768 slots |

@@ -102,7 +102,7 @@ fn rejection() {
                         assert!(budget::tests::ledger_available());
                         drop(root);
                     },
-                    budget::PreparingAccount::try_new,
+                    || budget::PreparingAccount::try_new(false),
                     || PreparingMetadata::prepare(false, |stage| {
                         visits += 1;
                         assert!(ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());

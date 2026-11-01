@@ -9,6 +9,13 @@ legacy queue backing and unified authority namespace with their original charges
 Final metadata release leaves lifecycle/subsystem guards and follows confirmed
 root invalidation, before root backing and slot completion.
 
+The generation's [memory-account node](root-metadata-admission.md) has independent
+root-metadata admission. It remains in the ledger after root destruction while
+memory-object charges survive, even if the ASID is reused. Final charge release
+detaches the old node under the ledger, then destroys its allocation and refunds
+its original byte/count charge outside that guard. Logical retirement alone
+cannot refund it; waiter/timer sponsor allocations have separate lifetimes.
+
 Per-principal stack/heap history now has fallibly prepared storage before root
 publication. Final sampling only updates that existing boot-lifetime record.
 A duplicate principal leaves an unused candidate in the root's signed-authority

@@ -160,6 +160,10 @@ per-instance and node-wide cost, scaling and headroom. Prefer the simpler design
 when that memory cost is acceptable. Admission, ownership and cleanup guarantees
 still need to hold independently of the chosen capacity.
 
+Structural changes are appropriate when their purpose and tradeoffs are clear.
+Give substantial restructuring a deliberate scope and validation boundary;
+do not introduce it prematurely as an incidental part of an unrelated fix.
+
 Trace every scalar entry point when sharing a submission adapter. A copied
 attachment can use unlocked preparation while its move or loan sibling still
 allocates and rolls back beneath IPC. Keep root capture, complete transient

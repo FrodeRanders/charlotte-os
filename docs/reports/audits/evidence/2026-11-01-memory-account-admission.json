@@ -1,0 +1,311 @@
+{
+  "schema": "charlotte.memory-account-admission.v1",
+  "date": "2026-11-01",
+  "base_revision": "aaa3ebd98fe8147cd5330d52d101639bdeec4ac2",
+  "scope": "Generation-owned memory-account registry node, sharing existing root-metadata admission through partial preparation, root close and final outstanding object-charge release.",
+  "source_sha256": {
+    "crates/catten/src/memory/budget.rs": "62024ef834b5c423c4e69c81d28c1ad67e5831f5cc2940ae9fb17d236138a262",
+    "crates/catten/src/memory/budget/preparation.rs": "550f41ee9f17f91e9167c3afa4d6a48d33a82a58ec47c7ad2568923c44660faa",
+    "crates/catten/src/memory/budget/preparation/tests.rs": "cd9242feb3cc719396160ffbbf2f966dd86e25ea8bc9972adb738bbc1ddcc47a",
+    "crates/catten/src/memory/budget/tests.rs": "d2760a4de9e12fd72aad0831ea5b2ffa319fd6c7bf5e9bb6a3f86243b003e6a6",
+    "crates/catten/src/memory/mod.rs": "187c4b6d549bafc182b40eb8b5b1faf8cbb1594f2069aa0cf9b1fe268a83474a",
+    "crates/catten/src/memory/registration.rs": "38a339821377b0625f26f5940c99db6042d63afa9db4711bb829666896d84e15",
+    "crates/catten/src/memory/registration/ipc_tests.rs": "4d2110c0401cba3452ff1dd7d806bdfe22203d1ec61596cc631ce5d510d1bba0",
+    "crates/catten/src/memory/registration/metadata/admission.rs": "a5b3b26b9026c592790a5a7e60462c272d9f45a6ac79ee06003285c1314e1105",
+    "crates/catten/src/memory/registration/metadata/tests.rs": "281f124e7cc54ef996d5ebe46e260910c39e5ca8006185b748f2fb03089c4e0f",
+    "crates/catten/src/memory/registration/metadata/tests/admission_tests.rs": "898a32f32e0ec742d82abb6f330e01ac033ec4cc57ce2b0fadb6123ece59e422",
+    "crates/catten/src/memory/retirement/tests.rs": "81a12803eff324fa4244f5589dd42cd32fcc040f02e336e9381dc43d8e854257",
+    "crates/catten/src/resource_policy/defaults.rs": "65c52328b968bfc2aa806de324950d3941a7105b10edd027656333103d86d912",
+    "crates/catten/src/klib/collections/retirement_list.rs": "ef0447d659221379641fad66a9d93489574062cebb855d01e3247496716a0d65"
+  },
+  "policy": {
+    "dimensions": [
+      "requested node-layout bytes",
+      "nodes"
+    ],
+    "old_total": [
+      4194304,
+      12288
+    ],
+    "old_ordinary": [
+      3145728,
+      9216
+    ],
+    "total": [
+      4194304,
+      16384
+    ],
+    "ordinary": [
+      3145728,
+      12288
+    ],
+    "native_layout_bytes": {
+      "three_policy_nodes": 392,
+      "memory_account": 128,
+      "complete_root": 520
+    },
+    "count_only_complete_roots": {
+      "total": 4096,
+      "ordinary": 3072
+    },
+    "capacity_decision": "Raise count ceilings by one third to account for a fourth independently retiring node. Keep byte ceilings after measuring complete-root layouts; no new pool or combined allocation."
+  },
+  "native_runs": [
+    {
+      "instance": "account-node-count-20261101-arm",
+      "arch": "aarch64",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "kernel_sha256": "98eef1dd4655b93b0beeb88b84822d175e4648f9e5d18cce5cd901c29cfa1562",
+      "prepared_utc": "2026-11-01T15:29:59Z",
+      "bundle_map_sha256": "fb93f64dcb175342ce938180d4761296fe083cc1f03ec8c0f44c2fec666019d2",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "receipts": [
+        "[+     1.986596] [root retirement] preflight rollback, post-guard invalidation, retained backing/charges, leased slot and hardware tag, exact reuse, failed barrier and Drop quarantine passed (two retired roots, one retained live root and one retained closing root)",
+        "[+     2.219498] [root metadata pressure] 12194 ordinary + 4087 reserved actual nodes; 12288/16384 ceilings, one/two/three-node partial rollback, trusted root publication and close at total exhaustion passed",
+        "[+     2.220022] [root metadata layouts] three policy nodes 392 bytes; memory account 128 bytes; complete root 520 bytes",
+        "[+     2.220292] [root metadata admission] 192 allocator rejections, partial-quota rollback, ordinary/total real-node exhaustion, trusted reserve, immutable classification and exact-root close/recovery passed",
+        "[+     2.522524] [memory sponsor registration] 64 preparation rejections precede root publication and release original roots outside local guards",
+        "[+     2.526790] [memory sponsor preparation] 64 allocator rejections, four rejection phases, 64 heap/pool-held publications and four guarded abandonments passed; retains three charged 128-byte nodes, two waiter sponsors and one timer sponsor, no root or object/event/entry charge",
+        "[+     2.530648] [memory sponsor metadata] heap-held first lookup/reservation, exact generation reuse, retired memory/node admission and independent waiter/timer lifetimes passed",
+        "[+     2.532608] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; no ASID published",
+        "[+    83.277266] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "guest_verdict": [
+        19,
+        0,
+        0
+      ]
+    },
+    {
+      "instance": "account-node-count-20261101-intel",
+      "arch": "x86_64",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "kernel_sha256": "89b42358a12986d3076d31f207392abd725e309770c4e16a9c81f05a0068ca72",
+      "prepared_utc": "2026-11-01T15:31:04Z",
+      "bundle_map_sha256": "7a03cad901eda680bd897fd35ff4538a8f6c3abe8ddd1158e60052c6c6573ef3",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "receipts": [
+        "[+     0.971306] [root retirement] preflight rollback, post-guard invalidation, retained backing/charges, leased slot and hardware tag, exact reuse, failed barrier and Drop quarantine passed (two retired roots, one retained live root and one retained closing root)",
+        "[+     1.111203] [root metadata pressure] 12162 ordinary + 4087 reserved actual nodes; 12288/16384 ceilings, one/two/three-node partial rollback, trusted root publication and close at total exhaustion passed",
+        "[+     1.112267] [root metadata layouts] three policy nodes 392 bytes; memory account 128 bytes; complete root 520 bytes",
+        "[+     1.112872] [root metadata admission] 192 allocator rejections, partial-quota rollback, ordinary/total real-node exhaustion, trusted reserve, immutable classification and exact-root close/recovery passed",
+        "[+     1.215800] [memory sponsor registration] 64 preparation rejections precede root publication and release original roots outside local guards",
+        "[+     1.221089] [memory sponsor preparation] 64 allocator rejections, four rejection phases, 64 heap/pool-held publications and four guarded abandonments passed; retains three charged 128-byte nodes, two waiter sponsors and one timer sponsor, no root or object/event/entry charge",
+        "[+     1.225989] [memory sponsor metadata] heap-held first lookup/reservation, exact generation reuse, retired memory/node admission and independent waiter/timer lifetimes passed",
+        "[+     1.228006] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; no ASID published",
+        "[+    89.523219] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "guest_verdict": [
+        17,
+        0,
+        0
+      ]
+    },
+    {
+      "instance": "account-node-count-20261101-amd",
+      "arch": "x86_64",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "kernel_sha256": "a24bf78563b162abee3780139436362eb2abc84a5958614589d9c6f00e63874b",
+      "prepared_utc": "2026-11-01T15:33:59Z",
+      "bundle_map_sha256": "7a03cad901eda680bd897fd35ff4538a8f6c3abe8ddd1158e60052c6c6573ef3",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "receipts": [
+        "[+     0.939266] [root retirement] preflight rollback, post-guard invalidation, retained backing/charges, leased slot and hardware tag, exact reuse, failed barrier and Drop quarantine passed (two retired roots, one retained live root and one retained closing root)",
+        "[+     1.067687] [root metadata pressure] 12162 ordinary + 4087 reserved actual nodes; 12288/16384 ceilings, one/two/three-node partial rollback, trusted root publication and close at total exhaustion passed",
+        "[+     1.068780] [root metadata layouts] three policy nodes 392 bytes; memory account 128 bytes; complete root 520 bytes",
+        "[+     1.069390] [root metadata admission] 192 allocator rejections, partial-quota rollback, ordinary/total real-node exhaustion, trusted reserve, immutable classification and exact-root close/recovery passed",
+        "[+     1.164732] [memory sponsor registration] 64 preparation rejections precede root publication and release original roots outside local guards",
+        "[+     1.169849] [memory sponsor preparation] 64 allocator rejections, four rejection phases, 64 heap/pool-held publications and four guarded abandonments passed; retains three charged 128-byte nodes, two waiter sponsors and one timer sponsor, no root or object/event/entry charge",
+        "[+     1.174201] [memory sponsor metadata] heap-held first lookup/reservation, exact generation reuse, retired memory/node admission and independent waiter/timer lifetimes passed",
+        "[+     1.175836] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; no ASID published",
+        "[+    88.985289] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "guest_verdict": [
+        17,
+        0,
+        0
+      ]
+    }
+  ],
+  "preserved_native_failures": [
+    {
+      "instance": "account-node-20261101-arm",
+      "arch": "aarch64",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "kernel_sha256": "5af366d7fb9808998b5f96849b4f896d8bcd7649e75a486d88bf0240470c115b",
+      "prepared_utc": "2026-11-01T15:23:47Z",
+      "bundle_map_sha256": "fb93f64dcb175342ce938180d4761296fe083cc1f03ec8c0f44c2fec666019d2",
+      "diagnostic_outcome": {
+        "reason": "kernel-panic",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 10.619735457992647
+      },
+      "receipts": [],
+      "failure_capture": "Kernel panic:\npanicked at crates/catten/src/memory/retirement/tests.rs:405:5:\nassertion `left == right` failed\n  left: 79\n right: 78"
+    },
+    {
+      "instance": "account-node-20261101-intel",
+      "arch": "x86_64",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "kernel_sha256": "918a56baed38635a1d86f7aff4466701bde13e998805b6af20b594837fade645",
+      "prepared_utc": "2026-11-01T15:24:53Z",
+      "bundle_map_sha256": "7a03cad901eda680bd897fd35ff4538a8f6c3abe8ddd1158e60052c6c6573ef3",
+      "diagnostic_outcome": {
+        "reason": "kernel-panic",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 3.862811666971538
+      },
+      "receipts": [],
+      "failure_capture": "Kernel panic:\npanicked at crates/catten/src/memory/retirement/tests.rs:405:5:\nassertion `left == right` failed\n  left: 111\n right: 110"
+    }
+  ],
+  "native_failure_disposition": "Both initial runs stop at retirement/tests.rs:405: the existing fixture expected three root-metadata nodes. Actual count is exactly one larger after admitting the memory-account node. Corrected assertions require all four original charges retained across failed invalidation and refunded only after confirmation. These failures are separate from passing repeats.",
+  "preserved_capacity_trials": [
+    {
+      "instance": "account-node-final-20261101-arm",
+      "arch": "aarch64",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "kernel_sha256": "3e0bd8ead3f40386450f63609aee35069a7f1ed1a2407bc05aaa5ee8db839679",
+      "prepared_utc": "2026-11-01T15:26:14Z",
+      "bundle_map_sha256": "fb93f64dcb175342ce938180d4761296fe083cc1f03ec8c0f44c2fec666019d2",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "receipts": [
+        "[+     1.043400] [root retirement] preflight rollback, post-guard invalidation, retained backing/charges, leased slot and hardware tag, exact reuse, failed barrier and Drop quarantine passed (two retired roots, one retained live root and one retained closing root)",
+        "[+     1.162397] [root metadata pressure] 12194 ordinary + 4087 reserved actual nodes; 12288/16384 ceilings, one/two/three-node partial rollback, trusted root publication and close at total exhaustion passed",
+        "[+     1.162901] [root metadata layouts] three policy nodes 392 bytes; memory account 128 bytes; complete root 520 bytes",
+        "[+     1.163179] [root metadata admission] 192 allocator rejections, partial-quota rollback, ordinary/total real-node exhaustion, trusted reserve, immutable classification and exact-root close/recovery passed",
+        "[+     1.338517] [memory sponsor registration] 64 preparation rejections precede root publication and release original roots outside local guards",
+        "[+     1.343269] [memory sponsor preparation] 64 allocator rejections, four rejection phases, 64 heap/pool-held publications and four guarded abandonments passed; retains three charged 128-byte nodes, two waiter sponsors and one timer sponsor, no root or object/event/entry charge",
+        "[+     1.347362] [memory sponsor metadata] heap-held first lookup/reservation, exact generation reuse, retired memory/node admission and independent waiter/timer lifetimes passed",
+        "[+     1.349895] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; no ASID published",
+        "[+    84.323606] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "guest_verdict": [
+        19,
+        0,
+        0
+      ]
+    },
+    {
+      "instance": "account-node-final-20261101-intel",
+      "arch": "x86_64",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "kernel_sha256": "2bb6e564ae01f40068ab0ed021fa99b17d6786a4bffb86988c728a1415b93bff",
+      "prepared_utc": "2026-11-01T15:27:28Z",
+      "bundle_map_sha256": "7a03cad901eda680bd897fd35ff4538a8f6c3abe8ddd1158e60052c6c6573ef3",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "receipts": [
+        "[+     0.957234] [root retirement] preflight rollback, post-guard invalidation, retained backing/charges, leased slot and hardware tag, exact reuse, failed barrier and Drop quarantine passed (two retired roots, one retained live root and one retained closing root)",
+        "[+     1.098365] [root metadata pressure] 12162 ordinary + 4087 reserved actual nodes; 12288/16384 ceilings, one/two/three-node partial rollback, trusted root publication and close at total exhaustion passed",
+        "[+     1.099468] [root metadata layouts] three policy nodes 392 bytes; memory account 128 bytes; complete root 520 bytes",
+        "[+     1.100118] [root metadata admission] 192 allocator rejections, partial-quota rollback, ordinary/total real-node exhaustion, trusted reserve, immutable classification and exact-root close/recovery passed",
+        "[+     1.203448] [memory sponsor registration] 64 preparation rejections precede root publication and release original roots outside local guards",
+        "[+     1.209206] [memory sponsor preparation] 64 allocator rejections, four rejection phases, 64 heap/pool-held publications and four guarded abandonments passed; retains three charged 128-byte nodes, two waiter sponsors and one timer sponsor, no root or object/event/entry charge",
+        "[+     1.213582] [memory sponsor metadata] heap-held first lookup/reservation, exact generation reuse, retired memory/node admission and independent waiter/timer lifetimes passed",
+        "[+     1.215254] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; no ASID published",
+        "[+    92.125289] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "guest_verdict": [
+        17,
+        0,
+        0
+      ]
+    }
+  ],
+  "capacity_trial_scope": "Trials used 6/4.5 MiB byte ceilings with the same 16384/12288 node counts. Layout measurements justified retaining the original 4/3 MiB bytes. Final count-policy campaigns above qualify the selected policy.",
+  "bundle_identity_encoding": "SHA-256 of UTF-8 JSON bundle_sha256 mapping, sorted keys, separators comma/colon without whitespace.",
+  "host_validation": {
+    "resource_policy_groups": 3,
+    "resource_policy_result": "passed",
+    "retirement_list_host_tests": 16,
+    "id_table_host_tests": 39,
+    "target_clippy": "passed",
+    "minimal_target_compilation": "passed",
+    "workspace_formatting": "passed",
+    "full_suite_initial_result": "failed: 266 catten-services tests passed, one TLS interop failure; suite stopped before later packages",
+    "full_suite_repeat_result": "failed again with the same TLS Handshake(32) assertion; 266 passed/1 failed",
+    "full_suite_repeat_capture": "---- tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip stdout ----\n\nthread 'tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip' (4873271) panicked at crates/catten-services/src/tls_client/interop.rs:375:9:\nassertion `left == right` failed\n  left: Err(Handshake(32))\n right: Ok(())\n\n\nfailures:\n    tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip\n\ntest result: FAILED. 266 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.40s",
+    "full_suite_repeat_log_sha256": "30fbcae2698a67bad4ad55573ded19458322a0e1bddfbb46a699f96d4b5ba656",
+    "serial_suite_command": "RUST_TEST_THREADS=1 CARGO_NET_OFFLINE=true scripts/run-host-tests.sh",
+    "serial_suite_log_sha256": "bd9732b770adce4058a8d9429729cf75963dce695568a02d0a4494b4ad59a86b",
+    "serial_suite_result": "failed with the same TLS Handshake(32) assertion; 266 passed/1 failed",
+    "serial_suite_capture": "---- tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip stdout ----\n\nthread 'tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip' (4889682) panicked at crates/catten-services/src/tls_client/interop.rs:375:9:\nassertion `left == right` failed\n  left: Err(Handshake(32))\n right: Ok(())\n\n\nfailures:\n    tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip\n\ntest result: FAILED. 266 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.69s",
+    "serial_suite_tail": [
+      "",
+      "",
+      "failures:",
+      "    tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip",
+      "",
+      "test result: FAILED. 266 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.69s",
+      "",
+      "error: test failed, to rerun pass `--lib`"
+    ],
+    "serial_services_receipts": [
+      "test result: ok. 267 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.52s"
+    ]
+  },
+  "preserved_host_failure": {
+    "command": "scripts/run-host-tests.sh (network-enabled rerun after sandbox DNS failure)",
+    "log_sha256": "a01e741d34203962cf9e80f9e589bc138a60874881bfcfe3da2b5f6e24b379e9",
+    "test_source_sha256": "b5c879c852d76be5534120e2d80a45bcaf0ff19c0fcc5948249e49f1e702bc33",
+    "lockfile_sha256": "1c320daef7b13df180c65c7c318a76746cec9f6226890c194a883e4ac4e2f1aa",
+    "capture": "---- tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip stdout ----\n\nthread 'tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip' (4846128) panicked at crates/catten-services/src/tls_client/interop.rs:375:9:\nassertion `left == right` failed\n  left: Err(Handshake(32))\n right: Ok(())\n\n\nfailures:\n    tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip\n\ntest result: FAILED. 266 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.03s",
+    "isolated_repeat_command": "cargo +nightly-2026-07-27 test --locked --manifest-path crates/catten-services/Cargo.toml --lib tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip -- --exact --nocapture (invoked outside root target configuration)",
+    "isolated_repeat_receipts": [
+      "test tls_client::interop::openssl_server_authentication_and_client_identity_roundtrip ... ok",
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 266 filtered out; finished in 0.23s"
+    ],
+    "disposition": "Unresolved host TLS failure reproduced in two default-parallel suites and one serial full suite. The same pinned-toolchain service binary passes an isolated test and a standalone serial 267-test run. This does not establish a scheduling cause or explain the full-suite failures. Original capture lacks the OpenSSL server exit/stderr and exact transport/handshake phase. No attribution to kernel metadata admission."
+  },
+  "control_scope": [
+    "Real admitted node storage to ordinary and total count ceilings, denial before allocator entry, trusted reserve and immutable original class across later platform promotion.",
+    "Byte denial with count headroom before allocator entry; 64 injected allocator rejections for the account layout and four partial-preparation rejection phases with exact admission recovery.",
+    "64 scalar memory-ledger publications with real heap and metadata-pool guards held; inert abandonment under lifecycle/root/ledger/heap/pool guards retains exactly three standalone 128-byte nodes, two waiter sponsors and one timer sponsor.",
+    "One/two/three free slots reject registration without partial ASID publication; all unused nodes and unpublished roots are released.",
+    "Exact ASID reuse with a counter-only retained memory-object reservation: closed ledger node remains charged, final old charge refunds exactly 128 bytes/one node without touching the successor; waiter/timer sponsors survive independently.",
+    "Final-root invalidation rejection retains four actual registry nodes and their byte/count charges; confirmed release refunds the same original reservation.",
+    "Full signed EL0 security campaign remains enabled on four-LP ARM SMMUv3, Intel VT-d and AMD-Vi QEMU."
+  ],
+  "qualification_limits": [
+    "Remaining waiter/timer sponsor Arcs, Waker/callback control blocks, namespace metadata, allocator overhead and all-family aggregate principal/heap admission remain open.",
+    "Native pressure allocates actual metadata nodes; injected allocation errors and counter-only object reservations are identified separately from physical backing pressure.",
+    "No essential-service fairness, worst-case linear-ledger lookup/IRQ hold time, sustained concurrent EL0 backing-pressure or physical-hardware qualification.",
+    "No new cleanup proof, physical retry authority or recovery custody; existing outer-context qualification limits remain."
+  ]
+}

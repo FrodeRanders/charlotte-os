@@ -402,7 +402,7 @@ fn test_retry_quiescence() {
     assert_eq!(history_charged.0[1], history_before.0[1] + 1);
     let metadata_charged = memory::registration::metadata::admission::snapshot();
     let metadata_bytes = metadata_charged.0[0] - root_metadata_before.0[0];
-    assert_eq!(metadata_charged.0[1], root_metadata_before.0[1] + 3);
+    assert_eq!(metadata_charged.0[1], root_metadata_before.0[1] + 4);
     let retired = stage(owner);
     let retired = retired
         .release_retry_with(|_, handle| {
@@ -426,11 +426,11 @@ fn test_retry_quiescence() {
     let metadata_released = memory::registration::metadata::admission::snapshot();
     assert_eq!(
         metadata_released.0,
-        [metadata_with_intervening.0[0] - metadata_bytes, metadata_with_intervening.0[1] - 3]
+        [metadata_with_intervening.0[0] - metadata_bytes, metadata_with_intervening.0[1] - 4]
     );
     assert_eq!(
         metadata_released.1,
-        [metadata_with_intervening.1[0] - metadata_bytes, metadata_with_intervening.1[1] - 3]
+        [metadata_with_intervening.1[0] - metadata_bytes, metadata_with_intervening.1[1] - 4]
     );
     let history_released = memory::usage::principal_history::admission::snapshot();
     assert_eq!(

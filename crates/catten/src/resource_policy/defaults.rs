@@ -87,8 +87,8 @@ pub(super) const POLICY: Policy = Policy {
         },
     },
     root_metadata: Pool {
-        total: [4 * 1024 * 1024, 12_288],
-        ordinary: [3 * 1024 * 1024, 9216],
+        total: [4 * 1024 * 1024, 16_384],
+        ordinary: [3 * 1024 * 1024, 12_288],
     },
     principal_history: Pool {
         total: [1024 * 1024, 4096],
