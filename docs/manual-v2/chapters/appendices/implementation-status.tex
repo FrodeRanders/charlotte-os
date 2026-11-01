@@ -342,6 +342,9 @@ storage readiness and does not synthesize a self-test verdict. See
         Individual authority-record candidates and detached nodes also retain
         byte/count admission through actual deallocation, independently of
         capability resource counts and later promotion.
+        Mailbox endpoint nodes separately admit candidate/retained backing and
+        keep both backing and mailbox resource charges until node deallocation,
+        including final-root invalidation rejection and guarded abandonment.
         Waker/callback backing, other payload metadata and aggregate heap
         accounting remain gaps.
         Connection, retained-call and outstanding-reply records have separate

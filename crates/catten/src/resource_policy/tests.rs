@@ -50,6 +50,7 @@ fn exercise(p: Policy) {
         p.root_metadata,
         p.namespace_nodes,
         p.authority_nodes,
+        p.mailbox_nodes,
         p.principal_history,
         p.thread_metadata,
         p.thread_table,
@@ -116,6 +117,12 @@ fn invalid_ordering_zero_and_machine_overflow_reject() {
     assert!(p.validate().is_err());
     p.authority_nodes = DEFAULT.authority_nodes;
     p.authority_nodes.ordinary[1] = p.authority_nodes.total[1];
+    assert!(p.validate().is_err());
+    p.authority_nodes = DEFAULT.authority_nodes;
+    p.mailbox_nodes.ordinary[0] = 0;
+    assert!(p.validate().is_err());
+    p.mailbox_nodes = DEFAULT.mailbox_nodes;
+    p.mailbox_nodes.ordinary[1] = p.mailbox_nodes.total[1];
     assert!(p.validate().is_err());
 }
 #[test]

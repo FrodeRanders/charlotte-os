@@ -334,6 +334,15 @@ the corrected RPC polling paths, and the remaining notification gaps.
 
 ## Capability and IPC publication
 
+- Mailbox endpoint candidates use typed `mailbox_node_budget` storage and
+  independent `mailbox_nodes` byte/count admission before other preparation
+  allocations. Retain captured backing classification unchanged through the
+  operation, separately from resource grants. Publication/detachment only relinks storage; the typed retired
+  endpoint frees its node before refunding backing or mailbox resource charges.
+  Final-root invalidation rejection and complete-owner abandonment retain the
+  original nodes/charges. Receiver reuse requires no fresh storage. See
+  `docs/reference/mailbox-node-admission.md`.
+
 - Unified authority records use typed `record_budget` storage with independent
   `authority_nodes` requested-byte/count admission before allocation. Capture
   immutable backing class from the exact capability namespace outside local

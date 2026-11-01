@@ -2,7 +2,6 @@
 use core::mem::ManuallyDrop;
 
 use super::*;
-pub(super) use crate::klib::collections::retirement_list::AdmittedMap as Map;
 use crate::{
     capability::{
         ObjectKind,
@@ -10,14 +9,10 @@ use crate::{
         Reservation,
         RetiredRecord,
     },
-    klib::collections::retirement_list::{
-        PreparedEntry,
-        RetiredEntry,
-    },
     memory::operation::AddressSpaceOperation,
 };
 type Error = mailbox_budget::Error;
-type Payload = RetiredEntry<(MailboxCap, AdmittedMailboxEndpoint)>;
+type Payload = mailbox_node_budget::Retired;
 
 struct Resources {
     asid: AddressSpaceId,
@@ -26,7 +21,7 @@ struct Resources {
     authority: Option<PreparedReservation>,
     reservation: Option<Reservation>,
     namespace_node: Option<node_budget::Prepared<(AddressSpaceId, AsMailboxCaps)>>,
-    endpoint_node: Option<PreparedEntry<(MailboxCap, AdmittedMailboxEndpoint)>>,
+    endpoint_node: Option<mailbox_node_budget::Prepared>,
     namespace: Option<AsMailboxCaps>,
     charge: Option<mailbox_budget::Charge>,
 }
@@ -67,13 +62,13 @@ impl PreparingMailbox {
         if test_fault!(tests::reject(1)) {
             return Err(Error::AllocationFailed);
         }
-        self.0.namespace_node = Some(
-            node_budget::prepare(captured.backing_platform).map_err(|_| Error::AllocationFailed)?,
-        );
+        self.0.endpoint_node = Some(mailbox_node_budget::prepare(captured.backing_platform)?);
         if test_fault!(tests::reject(2)) {
             return Err(Error::AllocationFailed);
         }
-        self.0.endpoint_node = Some(PreparedEntry::try_new().map_err(|_| Error::AllocationFailed)?);
+        self.0.namespace_node = Some(
+            node_budget::prepare(captured.backing_platform).map_err(|_| Error::AllocationFailed)?,
+        );
         if test_fault!(tests::reject(3)) {
             return Err(Error::AllocationFailed);
         }
@@ -155,8 +150,8 @@ impl PreparingMailbox {
             authority.finish();
         }
         drop(self.0.reservation.take());
-        drop(self.0.charge.take());
         drop(self.0.endpoint_node.take());
+        drop(self.0.charge.take());
         drop(self.0.namespace_node.take());
         drop(self.0.namespace.take());
         if let Some(root) = self.0.root.take() {
@@ -257,7 +252,7 @@ impl RetiredMailbox {
                 && caps.address_space == captured.address_space
                 && let Some(payload) = caps.endpoints.take(&cap)
             {
-                owner.0.payload = Some(payload);
+                owner.0.payload = Some(mailbox_node_budget::Retired::new(payload));
                 owner.0.authority = Some(
                     crate::capability::detach(asid, cap, ObjectKind::Mailbox)
                         .expect("mailbox payload capability was absent from unified table"),
@@ -304,3 +299,7 @@ fn admission_error(error: crate::capability::AllocationError) -> Error {
 #[path = "mailbox_publication_tests.rs"]
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(super) mod tests;
+
+#[path = "mailbox_node_tests.rs"]
+#[cfg(any(test, feature = "kernel_tests"))]
+mod node_tests;

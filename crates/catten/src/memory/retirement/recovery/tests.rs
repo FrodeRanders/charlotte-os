@@ -43,15 +43,23 @@ pub(crate) fn run() {
 }
 
 fn test_namespace_metadata() {
-    use crate::syscall::mailbox_retirement::{
-        self,
-        tests as mailbox,
+    use crate::syscall::{
+        mailbox_node_budget,
+        mailbox_retirement::{
+            self,
+            tests as mailbox,
+        },
     };
     let before = backing_budget::test_used_pages(Kind::Heap);
+    let nodes_before = mailbox_node_budget::snapshot();
     let scratch_before = memory::object::scratch_admission_snapshot();
     let handle = loader::create_user_address_space_handle();
     assert!(memory::commit_user_heap_page_handle(handle, charlotte_launch::HEAP_VADDR));
     let family_used = mailbox::populate(handle);
+    let nodes_retained = mailbox_node_budget::snapshot();
+    let node_bytes = nodes_retained.0[0] - nodes_before.0[0];
+    assert_eq!(nodes_retained.0[1], nodes_before.0[1] + 2);
+    assert_eq!(nodes_retained.1, [nodes_before.1[0] + node_bytes, nodes_before.1[1] + 2]);
     let queue_used = mailbox::captured_queue_used(handle);
     assert_eq!(queue_used(), mailbox::queue_amount());
     let authority_used = crate::capability::record_tests::captured_account_used(handle);
@@ -82,12 +90,14 @@ fn test_namespace_metadata() {
                 assert_eq!(queue_used(), mailbox::queue_amount());
                 assert_eq!(authority_used(), 3);
                 assert_eq!(memory::object::scratch_admission_snapshot(), scratch_retained);
+                assert_eq!(mailbox_node_budget::snapshot(), nodes_retained);
                 false
             },
             &mut |_| panic!("rejected final barrier started physical release"),
         )
         .unwrap();
     assert_eq!(result.state, State::AwaitingRetry);
+    assert_eq!(mailbox_node_budget::snapshot(), nodes_retained);
     assert_eq!(family_used(), 2);
     assert_eq!(queue_used(), mailbox::queue_amount());
     assert_eq!(authority_used(), 3);
@@ -109,11 +119,13 @@ fn test_namespace_metadata() {
             assert_eq!(family_used(), 0);
             assert_eq!(queue_used(), [0, 0]);
             assert_eq!(authority_used(), 0);
+            assert_eq!(mailbox_node_budget::snapshot(), nodes_before);
             assert_eq!(memory::object::scratch_admission_snapshot(), scratch_before);
             release(frame)
         })
         .unwrap();
     assert_eq!(result.state, State::Recovered);
+    assert_eq!(mailbox_node_budget::snapshot(), nodes_before);
     assert_eq!(backing_budget::test_used_pages(Kind::Heap), before);
     let successor = loader::create_user_address_space_handle();
     assert_eq!(successor.id(), handle.id());
@@ -121,6 +133,7 @@ fn test_namespace_metadata() {
     memory::object::reserve_scratch(successor.id(), 2).unwrap();
     assert_eq!(memory::object::scratch_admission_snapshot(), scratch_retained);
     let successor_family = mailbox::populate(successor);
+    assert_eq!(mailbox_node_budget::snapshot(), nodes_retained);
     let successor_queue = mailbox::captured_queue_used(successor);
     let successor_authority = crate::capability::record_tests::captured_account_used(successor);
     {
@@ -130,6 +143,7 @@ fn test_namespace_metadata() {
         assert!(memory::object::detach_scratch(handle).is_none());
     }
     assert_eq!(registry.claim(ticket).err(), Some(RetryError::Terminal));
+    assert_eq!(mailbox_node_budget::snapshot(), nodes_retained);
     assert_eq!(successor_family(), 2);
     assert_eq!(successor_queue(), mailbox::queue_amount());
     assert_eq!(successor_authority(), 3);
@@ -138,6 +152,7 @@ fn test_namespace_metadata() {
     assert_eq!(queue_used(), [0, 0]);
     assert_eq!(authority_used(), 0);
     memory::close_user_address_space_handle(successor).unwrap();
+    assert_eq!(mailbox_node_budget::snapshot(), nodes_before);
     assert_eq!(successor_family(), 0);
     assert_eq!(successor_queue(), [0, 0]);
     assert_eq!(successor_authority(), 0);
@@ -169,10 +184,13 @@ fn test_namespace_metadata() {
         let _physical = PHYSICAL_FRAME_ALLOCATOR.lock();
         let _heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
         memory::object::test_with_scratch_locked(|| {
-            mailbox::under_registry_guards(|| drop(attempt));
+            mailbox::under_registry_guards(|| {
+                mailbox_node_budget::with_locked(|| drop(attempt));
+            });
         });
     }
     assert_eq!(status(&registry, ticket).state, State::Abandoned);
+    assert_eq!(mailbox_node_budget::snapshot(), nodes_retained);
     assert_eq!(registry.claim(ticket).err(), Some(RetryError::Terminal));
     assert_eq!(family_used(), 2);
     assert_eq!(queue_used(), mailbox::queue_amount());
@@ -185,6 +203,14 @@ fn test_namespace_metadata() {
     let other = loader::create_user_address_space_handle();
     assert_ne!(other.id(), handle.id());
     memory::close_user_address_space_handle(other).unwrap();
+    assert_eq!(mailbox_node_budget::snapshot(), nodes_retained);
+    crate::logln!(
+        "[mailbox node retirement] two nodes {} bytes retained across rejected invalidation; \
+         confirmed retry refunds before root backing, exact ASID reuse and stale extraction \
+         preserve replacement, existing guarded complete-root abandonment retains original \
+         byte/count charges",
+        node_bytes
+    );
     crate::logln!(
         "[root metadata ownership] rejected barrier retains mailbox words and original charges; \
          confirmed custody retry releases metadata post-guard before root backing; stale \

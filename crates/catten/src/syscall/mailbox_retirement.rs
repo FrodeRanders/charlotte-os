@@ -63,7 +63,7 @@ impl RetiredMailboxes {
             while let Some(cap) = caps.endpoints.first_key_value().map(|(cap, _)| *cap) {
                 // Authority remains charged in the root's detached namespace
                 // until this complete payload batch has been released.
-                caps.endpoints.take(&cap).unwrap().release();
+                mailbox_node_budget::Retired::new(caps.endpoints.take(&cap).unwrap()).release();
             }
             namespace.release();
         }

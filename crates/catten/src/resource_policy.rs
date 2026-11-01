@@ -138,6 +138,7 @@ pub(crate) struct Policy {
     pub root_metadata: Pool<2>,
     pub namespace_nodes: Pool<2>,
     pub authority_nodes: Pool<2>,
+    pub mailbox_nodes: Pool<2>,
     pub principal_history: Pool<2>,
     pub thread_metadata: Pool<2>,
     pub thread_table: Pool<2>,
@@ -175,6 +176,7 @@ impl Policy {
             || !self.root_metadata.valid()
             || !self.namespace_nodes.valid()
             || !self.authority_nodes.valid()
+            || !self.mailbox_nodes.valid()
             || !self.principal_history.valid()
             || !self.thread_metadata.valid()
             || !self.thread_table.valid()

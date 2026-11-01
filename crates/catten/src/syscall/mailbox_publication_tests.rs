@@ -50,15 +50,18 @@ pub(super) fn metadata_boundary(dispose: bool) {
     }
 }
 pub(in crate::syscall) fn run() {
+    super::node_tests::run();
     node_budget::test_allocation::<(AddressSpaceId, AsMailboxCaps)>("mailbox-capability");
     assert!(!ACTIVE.swap(true, Ordering::AcqRel));
     IRQ.store(crate::cpu::isa::lp::ops::get_int_state(), Ordering::Release);
     PREPARED.store(0, Ordering::Relaxed);
     DISPOSED.store(0, Ordering::Relaxed);
+    let nodes_before = mailbox_node_budget::snapshot();
     let root = loader::create_user_address_space_handle();
     let captured = capture_mailbox_identity(root.id());
     let first = open(root.id(), None, captured).unwrap();
     let budget = USER_MAILBOX_CAPS.read().get(&root.id()).unwrap().budget.clone();
+    let backing = mailbox_node_budget::snapshot();
     for stage in 1..=4 {
         if stage == 4 {
             crate::capability::record_tests::reject_next();
@@ -70,6 +73,7 @@ pub(in crate::syscall) fn run() {
         assert_eq!(budget.used(), 1);
         assert_eq!(crate::capability::admission_tests::test_namespace_used(root.id()), 1);
         assert_eq!(crate::capability::node_admission_used(), nodes);
+        assert_eq!(mailbox_node_budget::snapshot(), backing);
         // Existing receiver succeeds without consuming the next rejection.
         REJECT.store(1, Ordering::Release);
         assert_eq!(open(root.id(), None, captured), Ok(first));
@@ -84,6 +88,7 @@ pub(in crate::syscall) fn run() {
     heap_held(root, captured);
     staged_close(root, captured);
     assert_eq!(budget.used(), 0);
+    assert_eq!(mailbox_node_budget::snapshot(), nodes_before);
     abandoned();
     ACTIVE.store(false, Ordering::Release);
     crate::logln!(
@@ -120,7 +125,11 @@ fn heap_held(root: memory::AddressSpaceHandle, captured: MailboxIdentity) {
         let lifecycle = memory::ADDRESS_SPACE_LIFECYCLE.lock();
         let mut registry = USER_MAILBOX_CAPS.write();
         let heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
-        let cap = prepared.publish(Some(0), &lifecycle, &mut registry).unwrap();
+        let mut cap = None;
+        mailbox_node_budget::with_locked(|| {
+            cap = Some(prepared.publish(Some(0), &lifecycle, &mut registry).unwrap());
+        });
+        let cap = cap.unwrap();
         assert!(crate::capability::contains(root.id(), cap, ObjectKind::Mailbox));
         drop(heap);
         drop(registry);
@@ -137,8 +146,15 @@ fn heap_held(root: memory::AddressSpaceHandle, captured: MailboxIdentity) {
         let lifecycle = memory::ADDRESS_SPACE_LIFECYCLE.lock();
         let mut registry = USER_MAILBOX_CAPS.write();
         let heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
-        retired.0.payload = registry.get_mut(&root.id()).unwrap().endpoints.take(&cap);
-        retired.0.authority = crate::capability::detach(root.id(), cap, ObjectKind::Mailbox);
+        mailbox_node_budget::with_locked(|| {
+            retired.0.payload = registry
+                .get_mut(&root.id())
+                .unwrap()
+                .endpoints
+                .take(&cap)
+                .map(mailbox_node_budget::Retired::new);
+            retired.0.authority = crate::capability::detach(root.id(), cap, ObjectKind::Mailbox);
+        });
         assert!(retired.0.payload.is_some() && retired.0.authority.is_some());
         assert!(!crate::capability::contains(root.id(), cap, ObjectKind::Mailbox));
         drop(heap);
@@ -168,6 +184,7 @@ fn staged_close(root: memory::AddressSpaceHandle, captured: MailboxIdentity) {
     }
 }
 fn abandoned() {
+    let backing = mailbox_node_budget::snapshot();
     let preparing_root = loader::create_user_address_space_handle();
     let captured = capture_mailbox_identity(preparing_root.id());
     let cap = open(preparing_root.id(), Some(0), captured).unwrap();
@@ -198,8 +215,10 @@ fn abandoned() {
         let heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
         crate::klib::namespace_account_budget::with_locked(|| {
             node_budget::with_locked(|| {
-                drop(preparing);
-                drop(retired);
+                mailbox_node_budget::with_locked(|| {
+                    drop(preparing);
+                    drop(retired);
+                });
             });
         });
         drop(heap);
@@ -212,6 +231,14 @@ fn abandoned() {
     }
     assert_eq!(local.used(), 1);
     assert_eq!(retired_local.used(), 1);
+    let bytes = mailbox_node_budget::Prepared::allocation_bytes() as u64;
+    assert_eq!(
+        mailbox_node_budget::snapshot(),
+        (
+            [backing.0[0] + 2 * bytes, backing.0[1] + 2],
+            [backing.1[0] + 2 * bytes, backing.1[1] + 2]
+        )
+    );
     assert_eq!(crate::capability::admission_tests::test_namespace_used(preparing_root.id()), 1);
     assert_eq!(crate::capability::admission_tests::test_namespace_used(retired_root.id()), 1);
     for root in [preparing_root, retired_root] {

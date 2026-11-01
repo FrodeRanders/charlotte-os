@@ -19,6 +19,7 @@
 //! the syscall number.
 
 mod mailbox_budget;
+pub(crate) mod mailbox_node_budget;
 use crate::klib::namespace_node_budget as node_budget;
 mod mailbox_publication;
 mod mailbox_queue;
@@ -874,7 +875,7 @@ use crate::cpu::multiprocessor::{
     spin::rwlock::RwLock,
 };
 static USER_MAILBOX: LazyLock<RwLock<node_budget::Map<AddressSpaceId, mailbox_queue::Namespace>>> =
-    LazyLock::new(|| RwLock::new(mailbox_publication::Map::new()));
+    LazyLock::new(|| RwLock::new(node_budget::Map::new()));
 
 fn user_mailbox_send(asid: AddressSpaceId, target: LpId, message: u64) -> Result<(), u64> {
     mailbox_queue::send(asid, target, message, capture_mailbox_identity(asid))
@@ -898,7 +899,7 @@ enum MailboxEndpoint {
 
 struct AsMailboxCaps {
     address_space: Option<crate::memory::AddressSpaceHandle>,
-    endpoints: mailbox_publication::Map<MailboxCap, AdmittedMailboxEndpoint>,
+    endpoints: mailbox_node_budget::Map,
     budget: mailbox_budget::AccountRef,
 }
 
@@ -914,14 +915,14 @@ impl AsMailboxCaps {
     ) -> Result<Self, mailbox_budget::Error> {
         Ok(Self {
             address_space,
-            endpoints: mailbox_publication::Map::new(),
+            endpoints: mailbox_node_budget::Map::new(),
             budget: mailbox_budget::DomainBudget::try_new(backing_platform)?,
         })
     }
 }
 
 static USER_MAILBOX_CAPS: LazyLock<RwLock<node_budget::Map<AddressSpaceId, AsMailboxCaps>>> =
-    LazyLock::new(|| RwLock::new(mailbox_publication::Map::new()));
+    LazyLock::new(|| RwLock::new(node_budget::Map::new()));
 
 /// Serialized boot fixtures only. Production detaches both payload namespaces
 /// into its final root owner rather than releasing them beneath lifecycle.
@@ -936,7 +937,7 @@ pub(crate) fn close_mailbox_address_space_for_test(asid: AddressSpaceId) {
         let caps = &mut namespace.value_mut().1;
         caps.budget.retire();
         while let Some(cap) = caps.endpoints.first_key_value().map(|(cap, _)| *cap) {
-            let payload = caps.endpoints.take(&cap).unwrap();
+            let payload = mailbox_node_budget::Retired::new(caps.endpoints.take(&cap).unwrap());
             let authority =
                 crate::capability::detach(asid, cap, crate::capability::ObjectKind::Mailbox)
                     .expect("mailbox payload capability was absent from unified table");

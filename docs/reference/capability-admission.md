@@ -49,6 +49,9 @@ before allocation, including unused candidates. The exact namespace supplies
 immutable storage classification separately from resource reserve grants;
 promotion cannot reclassify backing. Original requested-byte/count charges
 survive root close, detachment and ASID reuse until actual node deallocation.
+Mailbox endpoint payload nodes have separate [byte/count admission](mailbox-node-admission.md),
+including empty candidates and nodes retained in the final-root receipt. Their
+original backing and mailbox resource charges both outlive node deallocation.
 
 Capability-backed completion submissions now prepare their charged record,
 waiter list, optional watch charge and `PreparedReservation` storage outside
