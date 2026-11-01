@@ -20,16 +20,18 @@ A complete root needs four nodes. Their requested sizes include their payload,
 link and typed charge; each type reserves its actual layout before allocating.
 The count limit is shared across types. These fixed kernel limits have no
 userspace setter. Allocator overhead, root/namespace control blocks,
-waiter/timer sponsors and other metadata remain separate. Retained/candidate
-[ASID-table vectors](root-table-admission.md) have a separate byte/slot pool and
+waiter-account bundles, timer sponsors and other metadata remain separate.
+Waiter accounts have independent [allocation admission](waiter-account-admission.md).
+Retained/candidate [ASID-table vectors](root-table-admission.md) have a separate byte/slot pool and
 pre-publication signed sponsor; they are not refunded with these four nodes.
 
 Including the existing memory-account node in this pool increases the count
 ceiling from 12288/9216 to 16384/12288, preserving the previous count-only capacity of 4096 total or 3072
 ordinary complete roots before other retained/prepared nodes. Native layouts
-are 392 bytes for the three policy nodes and 128 bytes for the account, totaling
-520 bytes per complete root. Those count ceilings consume 2,129,920 total or
-1,597,440 ordinary layout bytes, within the unchanged 4/3 MiB byte ceilings.
+are 392 bytes for the three policy nodes and 136 bytes for the account, totaling
+528 bytes per complete root. The admitted waiter-account allocator enlarges its
+inline owner by eight bytes. Those count ceilings consume 2,162,688 total or
+1,622,016 ordinary layout bytes, within the unchanged 4/3 MiB byte ceilings.
 The larger count ceiling preserves complete-root capacity while allowing more
 simultaneous small nodes; the byte ceiling still bounds mixed/retained storage.
 It does not preallocate RAM. A separate pool or combined allocation would
@@ -64,8 +66,9 @@ marks it closed; only the final memory charge permits detachment. `forget` and
 the final charge's destructor leave the ledger before releasing that node. Its
 payload and allocation are destroyed before its original admission is refunded.
 ASID reuse, platform promotion and independently surviving waiter/timer sponsors
-cannot refund or reclassify it. Those sponsor Arcs still require separate backing
-admission; this node's layout covers only their inline owner fields.
+cannot refund or reclassify it. Waiter-account backing has separate admission;
+timer sponsor backing remains open. This node's layout covers only their inline
+owner fields.
 
 The authority payload may also contain a losing
 [principal-history candidate](principal-history-admission.md). That separate
@@ -95,7 +98,7 @@ abandonment with heap/pool guards held, one/two/three-slot rollback, and exact
 node retention/refund across failed invalidation, root close and ASID reuse.
 
 This bounds these requested node layouts. It does not complete aggregate
-principal accounting, a physical RAM ledger or namespace/sponsor/observer heap
-admission. One essential service has no guaranteed share of the common reserve.
+principal accounting, a physical RAM ledger or remaining namespace, timer-sponsor
+and observer heap admission. One essential service has no guaranteed share of the common reserve.
 Concurrent hostile preparation, long-held roots, lookup/IRQ hold times and sustained
 management/timer/teardown fairness remain separate SEC-07/18 qualification.

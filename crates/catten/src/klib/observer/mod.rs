@@ -1,5 +1,6 @@
 //! Observer pattern implementation for event notification
 
+pub(crate) mod account_budget;
 pub(crate) mod list_budget;
 mod prepared_wait;
 pub(crate) mod registration;
@@ -27,7 +28,7 @@ pub trait Observable {
 }
 
 #[derive(Debug, Clone)]
-pub struct WaitSponsor(Arc<waiter_budget::DomainBudget>);
+pub struct WaitSponsor(waiter_budget::AccountRef);
 impl WaitSponsor {
     /// Mandatory trusted fixture construction; runtime root preparation is fallible.
     #[cfg(any(test, feature = "kernel_tests"))]
@@ -35,8 +36,19 @@ impl WaitSponsor {
         Self::try_new(platform).expect("mandatory waiter sponsor allocation failed")
     }
 
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn try_new(platform: bool) -> Result<Self, core::alloc::AllocError> {
         waiter_budget::DomainBudget::try_new(platform).map(Self)
+    }
+
+    /// Backing classification comes from the unpublished root; future waiter
+    /// admission still follows the existing explicit platform grant.
+    pub(crate) fn try_new_with_backing_class(
+        platform: bool,
+        backing_platform: bool,
+    ) -> Result<Self, core::alloc::AllocError> {
+        waiter_budget::DomainBudget::try_new_with_backing_class(platform, backing_platform)
+            .map(Self)
     }
 
     pub(crate) fn retire(&self) {

@@ -329,6 +329,10 @@ storage readiness and does not synthesize a self-test verdict. See
         and endpoint-readiness/pending-call scheduler waiters have bounded
         generation-sponsored entries, admission before parking and owning
         cancellation on competing wake or reaping.
+        Generation-owned waiter-account bundles have separate count admission;
+        their original backing charge survives root retirement and ASID reuse
+        through final weak/allocator release. Timer/completion sponsor and
+        Waker/callback backing remain separate gaps.
         Connection, retained-call and outstanding-reply records have separate
         domain/node count admission. Grantors sponsor direct connections;
         callers sponsor call/reply pairs and solicited returned connections.

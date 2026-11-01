@@ -1,0 +1,163 @@
+{
+  "schema": "charlotte.waiter-account-admission.v1",
+  "date": "2026-11-01",
+  "base_revision": "020775b72836ade37f6323b84cd9ae0d8654b99e",
+  "scope": "Independent fixed-bundle backing admission for generation-owned scheduler waiter accounts, preserving original trusted classification through actual strong/weak/allocator lifetime.",
+  "source_sha256": {
+    "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
+    "crates/catten/src/klib/charged_allocator.rs": "8cd21da64b7d3bd693ef2794a77521e990029ca0b0313c8608a4d806e76056cb",
+    "crates/catten/src/klib/charged_allocator/tests.rs": "8f48be4d7c6b7e0bb15e0d4ca4b20dd944eb8bc0678f7e0e20046ac7b12a70d2",
+    "crates/catten/src/klib/observer/account_budget.rs": "08d7fc527a3c571f40289ce17783bf161f437ec0f4e847b399c45adae40f50c3",
+    "crates/catten/src/klib/observer/account_budget/tests.rs": "d87499dd3090bd949dec4f66c739627fbbd21307d0d5047b4bddfac85cc10954",
+    "crates/catten/src/klib/observer/mod.rs": "ffb484eefd5ae11a80ce89e0b1e3350e8ee6b10cf612cc5e4ec2fa6a1ff3ff06",
+    "crates/catten/src/klib/observer/waiter_budget.rs": "80bfa113e11bf06d9c50ca6c44f3ff60b494b258a0cee4828b0c6e3dc104c701",
+    "crates/catten/src/memory/budget/preparation.rs": "bbb5bdbdd0149384a6310ed8f0436abf0cfa45e0e940f10934aeb4803c33dc04",
+    "crates/catten/src/memory/budget/preparation/tests.rs": "fe5348c78953bf9fc8cc588bfd39a89ab16de1d9ce8ac4864d1026d30acf1687",
+    "crates/catten/src/resource_policy.rs": "4eb1c41e7c36fcbd8fbfba1310231e31b73efb5c05cbff84973c655e210c8b6e",
+    "crates/catten/src/resource_policy/defaults.rs": "c68997559f1585e21347eb76d87fb14eefac18ce3c7b0eb93e8cd08fe6b66cfa",
+    "crates/catten/src/resource_policy/tests.rs": "80ac504861b0ca375a0a44527ff1a4c9b00ec31f75d7ef4cee498abacb1aa394",
+    "crates/catten/src/self_test/waiters.rs": "ecdba0914b286ae6efdd04102729b361afc57f639328a015217be694498518dc",
+    "scripts/run-host-tests.sh": "781e2cae16a1316510117f66c3975bf26ebc49baf14e827c511ab9f958a74733"
+  },
+  "policy": {
+    "field": "waiter_accounts",
+    "dimension": "fixed account Arc plus private allocation-holder bundle",
+    "ordinary": 6144,
+    "total": 8192,
+    "count_only_complete_root_capacity": {
+      "ordinary": 3072,
+      "total": 4096
+    },
+    "decision": "Two account slots per count-only complete-root capacity leave headroom for retired/weak-only accounts and concurrent preparation. A separate pool avoids coupling root lifetime to active waiter entries. One quarter remains trusted reserve; no existing ceiling is increased.",
+    "cost": "Reusing ChargedAllocator adds one private holder allocation per account and one machine word per account reference. Existing requested-byte admission covers larger enclosing layouts.",
+    "root_registry_layout_bytes": {
+      "policy_nodes": 392,
+      "memory_account": 136,
+      "complete_root": 528
+    },
+    "root_registry_bytes_at_count_ceiling": {
+      "ordinary": 1622016,
+      "total": 2162688
+    },
+    "unchanged_root_metadata_byte_ceilings": {
+      "ordinary": 3145728,
+      "total": 4194304
+    }
+  },
+  "native_campaigns": [
+    {
+      "instance": "waiter-account-20261101-arm",
+      "arch": "aarch64",
+      "iommu": "SMMUv3",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-01T17:46:15Z",
+      "kernel_sha256": "cef2bd4d3a12e136c2679fb28c56ce4bcaf8567fae9acf1395073219f0a180b6",
+      "bundle_map_sha256": "4a5ee89fd763eed1af5a7613cfc7a2428c1e0b623ac6bf63e6ec7eb5fdc2bd38",
+      "serial_sha256": "29c6c46b36373c4a9c245c32fde5830a49752face186681359fcfba542637eae",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "guest_verdict": [
+        19,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     1.269662] [root metadata layouts] three policy nodes 392 bytes; memory account 136 bytes; complete root 528 bytes",
+        "[+     1.429446] [thread metadata admission] bytes=672 per bundle; shared-root pressure, 256 pre-allocation denials, independent byte/count limits, promotion, retired sponsor/ASID reuse, late release and healthy progress passed",
+        "[+     1.438521] [thread table admission] real backing and guarded publication, shared principal rejection, sticky promotion, independent bytes/slots, retired root and ASID reuse passed",
+        "[+     1.453847] [memory sponsor preparation] 64 allocator rejections, four rejection phases, 64 heap/pool-held publications and four guarded abandonments passed; retains three charged 136-byte nodes, two waiter sponsors and one timer sponsor, no root or object/event/entry charge",
+        "[+     1.530180] [waiter account pressure] 6112 ordinary + 2045 reserved actual accounts; 6144/8192 ceilings and exact recovery passed",
+        "[+     1.532679] [waiter account admission] real-account ordinary/total exhaustion, pre-allocation denial, trusted root reserve, immutable classification, root rollback and final-weak release across exact ASID reuse passed",
+        "[+    83.148349] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "instance": "waiter-account-20261101-intel",
+      "arch": "x86_64",
+      "iommu": "Intel VT-d",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-01T17:44:59Z",
+      "kernel_sha256": "5126fa1f460fa2736ef2d4b587dca5d66a6aa1776e4419ed2e0ac10862a288d8",
+      "bundle_map_sha256": "1e8d1d5b4aa82acc192c0afdb4b577ee5617a233b0e41452a3eb7aa148b9f8d2",
+      "serial_sha256": "83ac5992ade49c7e63f8e8e2648f8192aece28ecefcb366edc30afcaba1e1c84",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "guest_verdict": [
+        17,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     1.512666] [root metadata layouts] three policy nodes 392 bytes; memory account 136 bytes; complete root 528 bytes",
+        "[+     1.912552] [thread metadata admission] bytes=1200 per bundle; shared-root pressure, 256 pre-allocation denials, independent byte/count limits, promotion, retired sponsor/ASID reuse, late release and healthy progress passed",
+        "[+     1.993022] [thread table admission] real backing and guarded publication, shared principal rejection, sticky promotion, independent bytes/slots, retired root and ASID reuse passed",
+        "[+     2.079466] [memory sponsor preparation] 64 allocator rejections, four rejection phases, 64 heap/pool-held publications and four guarded abandonments passed; retains three charged 136-byte nodes, two waiter sponsors and one timer sponsor, no root or object/event/entry charge",
+        "[+     2.444557] [waiter account pressure] 6104 ordinary + 2045 reserved actual accounts; 6144/8192 ceilings and exact recovery passed",
+        "[+     2.460645] [waiter account admission] real-account ordinary/total exhaustion, pre-allocation denial, trusted root reserve, immutable classification, root rollback and final-weak release across exact ASID reuse passed",
+        "[+    98.172007] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "instance": "waiter-account-20261101-amd",
+      "arch": "x86_64",
+      "iommu": "AMD-Vi",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-01T18:05:28Z",
+      "kernel_sha256": "ee419276497b4c2442c6ab3908b27ba38fab334d6f39161e089aec7483523bde",
+      "bundle_map_sha256": "1e8d1d5b4aa82acc192c0afdb4b577ee5617a233b0e41452a3eb7aa148b9f8d2",
+      "serial_sha256": "1c5ac09994ecf12ced1460ef9fb5defdceae86cd8a56ebf28a017af2e45746ec",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "guest_verdict": [
+        17,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     1.058026] [root metadata layouts] three policy nodes 392 bytes; memory account 136 bytes; complete root 528 bytes",
+        "[+     1.131170] [thread metadata admission] bytes=1200 per bundle; shared-root pressure, 256 pre-allocation denials, independent byte/count limits, promotion, retired sponsor/ASID reuse, late release and healthy progress passed",
+        "[+     1.135962] [thread table admission] real backing and guarded publication, shared principal rejection, sticky promotion, independent bytes/slots, retired root and ASID reuse passed",
+        "[+     1.151910] [memory sponsor preparation] 64 allocator rejections, four rejection phases, 64 heap/pool-held publications and four guarded abandonments passed; retains three charged 136-byte nodes, two waiter sponsors and one timer sponsor, no root or object/event/entry charge",
+        "[+     1.214799] [waiter account pressure] 6104 ordinary + 2045 reserved actual accounts; 6144/8192 ceilings and exact recovery passed",
+        "[+     1.216424] [waiter account admission] real-account ordinary/total exhaustion, pre-allocation denial, trusted root reserve, immutable classification, root rollback and final-weak release across exact ASID reuse passed",
+        "[+    87.731922] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    }
+  ],
+  "bundle_identity_encoding": "SHA-256 of UTF-8 JSON bundle_sha256 mapping, sorted keys, comma/colon separators without whitespace.",
+  "host_validation": {
+    "command": "CARGO_NET_OFFLINE=true scripts/run-host-tests.sh",
+    "exit_code": 0,
+    "log_sha256": "a203781892c5dc98a2b6b609d4570571ab9e663e02a798a0ac92a3849f219617",
+    "shared_charged_allocator_tests": 15,
+    "resource_policy_groups": 3,
+    "catten_services_tests": 268,
+    "result": "Full runner passed, including intentional unsafe-control rejection tests.",
+    "kernel_tests_clippy": "ARM acpi,kernel_tests, offline/locked, -D warnings: passed",
+    "minimal_kernel_clippy": "ARM acpi, offline/locked, -D warnings: passed",
+    "workspace_formatting": "cargo fmt --all -- --check: passed"
+  },
+  "controls": [
+    "Real ordinary and trusted account allocations fill independent ceilings. Heap-held denial proves admission precedes both allocations; trusted root publication at ordinary exhaustion preserves ordinary future-entry classification until an explicit platform grant.",
+    "Failed ordinary root registration at ordinary/total exhaustion returns MemorySponsorAllocationFailed without ASID publication and restores physical frame/account counts. Closing a previously promoted root at total exhaustion returns its original ordinary slot and permits fresh registration.",
+    "Actual root close and exact ASID reuse with a retained counter-only waiter-entry charge and account weak reference. Old account rejects fresh entries; final strong release leaves backing charged until weak release, without touching the successor.",
+    "Existing four partial preparation failure phases restore account admission. Sixty-four scalar publications run beneath real heap/root-metadata/account-pool guards; ordinary post-guard disposal refunds original charges.",
+    "Actual partial PreparingAccount abandonment beneath lifecycle/root/ledger/heap/root-metadata/account-pool guards retains two account bundles and three admitted registry nodes, with no root/entry/event publication.",
+    "Shared ChargedAllocator host controls exercise holder/payload allocation errors, phase abandonment, allocator cloning, final weak release, concurrent last-reference destruction and deallocation-before-refund ordering."
+  ],
+  "qualification_limits": [
+    "Fixed-bundle counts do not account for exact heap bytes, allocator overhead or aggregate principal/general-heap consumption.",
+    "Native account pressure allocates actual accounts; retained waiter-entry charge is counter-only. Account allocation-error behavior uses shared allocator host controls rather than forced native heap exhaustion.",
+    "Timer/completion sponsor backing, Waker/callback/other observer storage and remaining registry metadata still need admission. SEC-07 remains partial.",
+    "No sustained concurrent hostile EL0 backing-pressure fairness, per-service progress entitlement or physical hardware qualification. Existing C03/C16 and G1/G4 outer-context/destructor limits remain; no new cleanup/retry authority."
+  ]
+}

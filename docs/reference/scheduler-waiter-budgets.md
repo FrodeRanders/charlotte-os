@@ -58,6 +58,12 @@ retain their original account even after numeric ASID reuse. Platform promotion
 affects future waiter reservations only: an existing ordinary charge remains
 ordinary until released.
 
+The account's fixed shared allocation bundle has independent
+[backing admission](waiter-account-admission.md): 6144 ordinary and 8192 total
+lifetimes. Its original classification and charge survive root retirement,
+ASID reuse and final strong release until all weak/allocator backing is freed.
+Trusted backing admission alone grants no platform waiter-entry privilege.
+
 The thread's Waker owns its registration token. A successful Blocked-to-Ready
 transition explicitly cancels it, including when a watchdog wins and another
 strong Waker reference survives. Aborted Blocked threads cancel when their

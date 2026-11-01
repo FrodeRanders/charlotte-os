@@ -383,6 +383,14 @@ Host owner tests check retry and Drop after timed admission failure. Comprehensi
 allocator-failure and arbitrary callback-capture accounting remain outside this coverage.
 See [scheduler waiter budgets](../reference/scheduler-waiter-budgets.md).
 
+Synchronous [waiter-account controls](../reference/waiter-account-admission.md)
+allocate to both backing ceilings, reject before allocator entry under the heap
+guard, exercise trusted root publication and failed registration rollback, and
+retain original charges through promotion, root close, exact ASID reuse and final
+weak release. Partial preparation controls check exact rollback and inert parent
+abandonment under publication, heap and account-pool guards. The host runner
+executes the shared `ChargedAllocator` tests as a standalone production module.
+
 IPC waiter tests also leave the scoped mask unchanged. They cover source
 ceilings, 512 cancel/rearm cycles, reentrant notification after message/reply/
 source closure, reply-token cancellation, revocation of a live loan and retired

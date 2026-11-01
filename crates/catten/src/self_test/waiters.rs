@@ -104,6 +104,7 @@ pub(crate) fn with_isolated_sponsor(test: impl FnOnce(&WaitSponsor)) {
 }
 
 pub fn test_waiter_admission() {
+    crate::klib::observer::account_budget::test_admission();
     let baseline = waiter_budget::node_used();
     assert_eq!(baseline, (0, 0));
     let sponsor = WaitSponsor::new(false);

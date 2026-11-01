@@ -8,6 +8,7 @@ use crate::memory::{
 
 pub(super) fn run() {
     let baseline = admission::snapshot();
+    let accounts = crate::klib::observer::account_budget::snapshot();
     // Byte admission rejects even with count headroom, before allocator entry.
     assert!(
         admission::prepare_with::<
@@ -48,22 +49,32 @@ pub(super) fn run() {
         );
         assert_eq!(visits, reject);
         assert_eq!(admission::snapshot(), baseline);
+        assert_eq!(crate::klib::observer::account_budget::snapshot(), accounts);
     }
     let mut ledger = Ledger::new();
     for generation in 0..64 {
         let prepared = PreparingAccount::try_new(false).unwrap();
         {
             let _heap = PRIMARY_ALLOCATOR.lock();
-            admission::with_locked(|| prepared.publish_into(&mut ledger, (1, generation)));
+            admission::with_locked(|| {
+                crate::klib::observer::account_budget::with_locked(|| {
+                    prepared.publish_into(&mut ledger, (1, generation));
+                });
+            });
         }
         assert_eq!(admission::snapshot().0[1], baseline.0[1] + 1);
         assert_eq!(admission::snapshot().1[1], baseline.1[1] + 1);
+        assert_eq!(
+            crate::klib::observer::account_budget::snapshot(),
+            (accounts.0 + 1, accounts.1 + 1)
+        );
         let retired = ledger.domains.take(&(1, generation)).unwrap();
         assert!(!retired.value().1.platform);
         assert_eq!(retired.value().1.waiters.used(), 0);
         assert_eq!(retired.value().1.timers.used(), 0);
         retired.release();
         assert_eq!(admission::snapshot(), baseline);
+        assert_eq!(crate::klib::observer::account_budget::snapshot(), accounts);
     }
     assert!(ledger.domains.iter().next().is_none());
     // Captured-only, node-only, node+waiter and complete preparation fallback.
@@ -91,13 +102,16 @@ pub(super) fn run() {
         let _table = ADDRESS_SPACE_TABLE.lock();
         let _ledger = LEDGER.lock();
         let _heap = PRIMARY_ALLOCATOR.lock();
-        admission::with_locked(|| drop(owner));
+        admission::with_locked(|| {
+            crate::klib::observer::account_budget::with_locked(|| drop(owner));
+        });
     }
     let retained = admission::snapshot();
     let bytes =
         PreparedEntry::<(Identity, DomainAccount), admission::Charge>::allocation_bytes() as u64;
     assert_eq!(retained.0, [baseline.0[0] + 3 * bytes, baseline.0[1] + 3]);
     assert_eq!(retained.1, [baseline.1[0] + 3 * bytes, baseline.1[1] + 3]);
+    assert_eq!(crate::klib::observer::account_budget::snapshot(), (accounts.0 + 2, accounts.1 + 2));
     crate::logln!(
         "[memory sponsor preparation] 64 allocator rejections, four rejection phases, 64 \
          heap/pool-held publications and four guarded abandonments passed; retains three charged \

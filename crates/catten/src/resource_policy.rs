@@ -116,6 +116,8 @@ pub(crate) struct Policy {
     pub timers: Scoped<1>,
     pub watches: Scoped<1>,
     pub waiters: Scoped<1>,
+    /// Fixed waiter-account allocation bundles, including weak-only backing.
+    pub waiter_accounts: Pool<1>,
     pub observer_lists: Pool<1>,
     pub mailbox_records: Scoped<1>,
     /// Queue sets, requested ring bytes.
@@ -152,6 +154,7 @@ impl Policy {
             || !self.timers.valid()
             || !self.watches.valid()
             || !self.waiters.valid()
+            || !self.waiter_accounts.valid()
             || !self.observer_lists.valid()
             || !self.mailbox_records.valid()
             || !self.mailbox_queues.valid()

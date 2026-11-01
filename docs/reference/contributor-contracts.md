@@ -959,6 +959,13 @@ the corrected RPC polling paths, and the remaining notification gaps.
   registration; there is no weak-only default. Do not invoke callbacks inline
   while the scheduler holds its thread table. Use `ObserverList`/`WaiterSource`
   and invoke detached notifications after subsystem guards are released.
+- Generation-owned waiter accounts use independent `waiter_accounts` admission
+  through `ChargedAllocator`. Capture backing classification from the unpublished
+  root; retain it through retirement, ASID reuse and final weak/allocator release.
+  Trusted backing does not grant platform entry admission, and later promotion
+  cannot reclassify the original allocation. Keep containing partial preparation
+  inert beneath unknown guards; explicit cancellation leaves local publication
+  guards before disposal. See `docs/reference/waiter-account-admission.md`.
 - Observer lists use `ListRef` and `ObserverList::try_new` with independent
   allocation admission. Capture classification from source admission or the
   first waiter/watch sponsor; never infer it from caller-controlled roles or

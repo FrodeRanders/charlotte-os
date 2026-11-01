@@ -47,6 +47,10 @@ pub(super) const POLICY: Policy = Policy {
             ordinary: [6144],
         },
     },
+    waiter_accounts: Pool {
+        total: [8192],
+        ordinary: [6144],
+    },
     observer_lists: Pool {
         total: [8192],
         ordinary: [6144],

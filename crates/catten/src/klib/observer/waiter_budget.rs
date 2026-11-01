@@ -6,7 +6,12 @@ use alloc::sync::Arc;
 use charlotte_lifecycle::resources::CountBudget;
 use spin::LazyLock;
 
-use crate::cpu::multiprocessor::spin::mutex::Mutex;
+use crate::{
+    cpu::multiprocessor::spin::mutex::Mutex,
+    klib::charged_allocator::ChargedAllocator,
+};
+
+pub(crate) type AccountRef = Arc<DomainBudget, ChargedAllocator<super::account_budget::Charge>>;
 
 pub(crate) const DOMAIN_LIMIT: usize = crate::resource_policy::POLICY.waiters.domain[0] as usize;
 pub(crate) const NODE_LIMIT: usize = crate::resource_policy::POLICY.waiters.pool.total[0] as usize;
@@ -23,8 +28,18 @@ struct Account {
 #[derive(Debug)]
 pub(crate) struct DomainBudget(Mutex<Account>);
 impl DomainBudget {
-    pub(crate) fn try_new(platform: bool) -> Result<Arc<Self>, core::alloc::AllocError> {
-        Arc::try_new(Self(Mutex::new(Account {
+    #[cfg(any(test, feature = "kernel_tests"))]
+    pub(crate) fn try_new(platform: bool) -> Result<AccountRef, core::alloc::AllocError> {
+        Self::try_new_with_backing_class(platform, platform)
+    }
+
+    pub(super) fn try_new_with_backing_class(
+        platform: bool,
+        backing_platform: bool,
+    ) -> Result<AccountRef, core::alloc::AllocError> {
+        let charge = super::account_budget::reserve(backing_platform)?;
+        let allocator = ChargedAllocator::try_new(charge)?;
+        allocator.try_arc(Self(Mutex::new(Account {
             count: CountBudget::new(DOMAIN_LIMIT),
             platform,
             retired: false,
@@ -64,11 +79,11 @@ static NODE: LazyLock<Mutex<NodeBudget>> = LazyLock::new(|| {
 });
 #[derive(Debug)]
 pub(crate) struct Charge {
-    domain: Arc<DomainBudget>,
+    domain: AccountRef,
     platform: bool,
 }
 pub(crate) fn reserve(
-    domain: &Arc<DomainBudget>,
+    domain: &AccountRef,
 ) -> Result<Charge, super::registration::RegistrationError> {
     use super::registration::RegistrationError;
     let mut local = domain.0.lock();
