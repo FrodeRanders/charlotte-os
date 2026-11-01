@@ -56,7 +56,7 @@ impl Root {
 
 struct Resources {
     root: Root,
-    budget: Option<Arc<budget::DomainBudget>>,
+    budget: Option<budget::AccountRef>,
     platform: bool,
     metadata_charge: Option<budget::Charge>,
     queue_charge: Option<budget::Charge>,
@@ -241,7 +241,7 @@ pub(super) fn create(
 struct GrowthResources {
     root: Root,
     endpoint: Option<EndpointId>,
-    budget: Option<Arc<budget::DomainBudget>>,
+    budget: Option<budget::AccountRef>,
     platform: bool,
     charge: Option<budget::Charge>,
     queue: Option<budget::AdmittedQueue<QueuedMessage>>,

@@ -417,6 +417,16 @@ cleanup cycles. A pre-filled timer source forces the normal sleep path into its
 runnable fallback and checks elapsed time; rejection leaves state/constraints
 unchanged. This is not a forced-quota EL0 syscall or timer-queue capacity test.
 
+Capability/IPC/mailbox account fixtures fill a shared backing pool with real
+capability-account allocations. They check 256 heap-held denials across all four
+constructors, exact unpublished-root rollback with zero/one/two slots free,
+trusted metadata without resource reserve grants, existing mailbox receiver/word
+reuse and close/recovery at total exhaustion. Existing real-root token,
+delegated-connection/closed-endpoint and mailbox controls check final account
+weak release after exact ASID reuse. Existing root, namespace and mailbox
+abandonment probes hold the backing pool too; no extra deliberate leak is added.
+See [namespace-account admission](../reference/namespace-account-admission.md).
+
 Timer-account fixtures separately fill both backing ceilings with real account
 allocations. They check heap-held denial, trusted root/namespace publication,
 failed registration rollback, original classification after promotion and close

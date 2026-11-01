@@ -195,8 +195,10 @@ fn abandoned() {
         let kernel = memory::KERNEL_AS.lock();
         let physical = memory::PHYSICAL_FRAME_ALLOCATOR.lock();
         let heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
-        drop(preparing);
-        drop(retired);
+        crate::klib::namespace_account_budget::with_locked(|| {
+            drop(preparing);
+            drop(retired);
+        });
         drop(heap);
         drop(physical);
         drop(kernel);

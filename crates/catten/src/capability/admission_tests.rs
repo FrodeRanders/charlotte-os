@@ -17,11 +17,12 @@ pub(crate) fn test_with_registry_locked(action: impl FnOnce()) {
     action();
 }
 
-fn account(owner: AddressSpaceId) -> Arc<budget::DomainBudget> {
+fn account(owner: AddressSpaceId) -> budget::AccountRef {
     CAPABILITIES.lock().get(&owner).unwrap().budget.clone()
 }
 
 pub(crate) fn test_admission() {
+    namespace_account_tests::run();
     namespace_tests::run();
     record_tests::run();
     budget::test_node_admission();
@@ -147,6 +148,7 @@ fn test_real_retirement() {
     let staged = reserve(old.id(), ObjectKind::Device).unwrap();
     let staged_id = staged.identity();
     let local = account(old.id());
+    let weak = Arc::downgrade(&local);
     assert_eq!(CAPABILITIES.lock().get(&old.id()).unwrap().address_space, Some(old));
     memory::close_user_address_space_handle(old).unwrap();
     assert_eq!(local.used(), 0);
@@ -160,11 +162,21 @@ fn test_real_retirement() {
     let replacement = reserve(new.id(), ObjectKind::Device).unwrap();
     assert_eq!(replacement.identity(), staged_id);
     assert_eq!(staged.publish(), Err(AllocationError::Retired));
+    let backing = crate::klib::namespace_account_budget::snapshot();
+    drop(local);
+    assert!(weak.upgrade().is_none());
+    assert_eq!(crate::klib::namespace_account_budget::snapshot(), backing);
+    drop(weak);
+    assert_eq!(crate::klib::namespace_account_budget::snapshot(), (backing.0 - 1, backing.1 - 1));
     let cap = replacement.publish().unwrap();
     assert!(contains(new.id(), cap, ObjectKind::Device));
     memory::budget::retire(new);
     assert!(matches!(reserve(new.id(), ObjectKind::Device), Err(AllocationError::Retired)));
     memory::close_user_address_space_handle(new).unwrap();
+    crate::logln!(
+        "[capability account lifetime] stale token, actual root close/ASID reuse and final-weak \
+         original backing refund passed"
+    );
 }
 
 /// Kernel-only records let mailbox fixtures fill the aggregate account

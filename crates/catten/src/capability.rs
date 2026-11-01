@@ -21,6 +21,8 @@ use crate::{
 pub(crate) mod admission_tests;
 mod budget;
 #[cfg(any(test, feature = "kernel_tests"))]
+mod namespace_account_tests;
+#[cfg(any(test, feature = "kernel_tests"))]
 mod namespace_tests;
 mod record;
 #[cfg(any(test, feature = "kernel_tests"))]
@@ -47,7 +49,7 @@ struct AddressSpaceCapabilities {
     next_serial: u64,
     address_space: Option<crate::memory::AddressSpaceHandle>,
     platform: bool,
-    budget: Arc<budget::DomainBudget>,
+    budget: budget::AccountRef,
     objects: AdmittedMap<ObjectCapability, Entry>,
 }
 
@@ -68,12 +70,13 @@ struct Entry {
 impl AddressSpaceCapabilities {
     fn try_new(
         address_space: Option<crate::memory::AddressSpaceHandle>,
+        backing_platform: bool,
     ) -> Result<Self, AllocationError> {
         Ok(Self {
             next_serial: 1,
             address_space,
             platform: false,
-            budget: budget::DomainBudget::try_new()?,
+            budget: budget::DomainBudget::try_new(backing_platform)?,
             objects: AdmittedMap::new(),
         })
     }
@@ -98,7 +101,9 @@ struct NamespaceStorage {
     value: Option<AddressSpaceCapabilities>,
 }
 
-pub(crate) fn prepare_namespace() -> Result<PreparingNamespace, AllocationError> {
+pub(crate) fn prepare_namespace(
+    backing_platform: bool,
+) -> Result<PreparingNamespace, AllocationError> {
     if test_fault!(namespace_tests::reject(1)) {
         return Err(AllocationError::AllocationFailed);
     }
@@ -108,7 +113,7 @@ pub(crate) fn prepare_namespace() -> Result<PreparingNamespace, AllocationError>
     let value = if test_fault!(namespace_tests::reject(2)) {
         Err(AllocationError::AllocationFailed)
     } else {
-        AddressSpaceCapabilities::try_new(None)
+        AddressSpaceCapabilities::try_new(None, backing_platform)
     };
     match value {
         Ok(value) => Ok(PreparingNamespace(core::mem::ManuallyDrop::new(NamespaceStorage {
@@ -214,7 +219,7 @@ pub(crate) struct Reservation {
     owner: AddressSpaceId,
     cap: ObjectCapability,
     kind: ObjectKind,
-    namespace: Arc<budget::DomainBudget>,
+    namespace: budget::AccountRef,
     active: bool,
 }
 
@@ -289,7 +294,7 @@ impl PreparedReservation {
         let record = PreparingRecord::try_new()?;
         let missing = identity.is_none() && !CAPABILITIES.lock().contains_key(&owner);
         let namespace = if missing {
-            match prepare_namespace() {
+            match prepare_namespace(owner == crate::memory::KERNEL_ASID) {
                 Ok(namespace) => Some(namespace),
                 Err(error) => {
                     record.finish();
@@ -403,7 +408,7 @@ impl Reservation {
 fn discard_captured(
     owner: AddressSpaceId,
     cap: ObjectCapability,
-    namespace: &Arc<budget::DomainBudget>,
+    namespace: &budget::AccountRef,
     state: EntryState,
 ) -> Option<RetiredRecord> {
     let mut tables = CAPABILITIES.lock();
@@ -437,7 +442,7 @@ pub(crate) struct SourceEscrow {
     owner: AddressSpaceId,
     cap: ObjectCapability,
     kind: ObjectKind,
-    namespace: Arc<budget::DomainBudget>,
+    namespace: budget::AccountRef,
     active: bool,
 }
 

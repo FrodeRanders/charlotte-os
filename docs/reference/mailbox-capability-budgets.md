@@ -20,6 +20,14 @@ application-facing quota setter or deployment override yet.
 Node counters are statically initialized behind the IRQ-safe mutex, without a
 first-use `LazyLock` dependency in the syscall path.
 
+The shared mailbox account has separate
+[namespace-account backing admission](namespace-account-admission.md). Lazy
+capture records trusted storage class with the exact root generation before
+allocation; word and endpoint adapters retain it through candidate loss,
+retirement and final weak/allocator release. This grants no mailbox/word reserve
+privilege. Existing receivers and established word queues need no fresh account;
+new target preparation can reject if it cannot admit a namespace candidate.
+
 ## Open, reuse and close
 
 Both sender and receiver entries occupy one record. An open reserves admission

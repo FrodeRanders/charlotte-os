@@ -68,8 +68,9 @@ The complete retired node's fallback retains every field and original charge.
 Numeric reuse cannot redirect explicit release into a successor namespace.
 The global completion map now prepares admitted nodes and account allocations
 outside its guard, retaining the complete retired namespace through post-guard
-node/payload disposal. Its aggregate namespace/account admission and other
-callers' enclosing contexts remain open; see the
+node/payload disposal. Its accounts have separate timer and completion-account
+backing admission; global namespace-node and aggregate byte/principal admission,
+and other callers' enclosing contexts, remain open. See the
 [global metadata evidence](../reports/audits/2026-10-16-completion-namespace-metadata.md).
 The [CQ metadata follow-up](../reports/audits/2026-10-16-cq-metadata.md) covers
 per-queue preparation and complete post-guard retirement.
@@ -217,15 +218,22 @@ a successful revocation may leave a subset revoked; it
 does not publish fresh returned authority. This is not atomic TLB-shootdown or
 loan-revocation rollback.
 
-User domain creation stages both a fallibly allocated namespace node and budget
-control block before lifecycle/table guards and ASID publication. The retaining
+User domain creation stages a fallibly allocated namespace node and admitted
+account bundle before lifecycle/table guards and ASID publication. The retaining
 `PreparingNamespace` publishes the real generation by relinking existing storage;
 ordinary unused preparation cancels explicitly after guards leave. Drop retains
-both allocations without entering a registry/allocator. Teardown retires admission
+all backing without entering a registry/allocator. Teardown retires admission
 before payload drain, then detaches the complete owning namespace node under
 `CAPABILITIES`. Remaining entries and their exact account are destroyed after that
 guard leaves. Original charges survive detachment until explicit destruction;
 late tokens still cannot alter a replacement account.
+
+Capability account backing shares the
+[namespace-account pool](namespace-account-admission.md) with IPC and mailbox
+accounts. Its original trusted storage classification is captured before root
+publication; later grants do not reclassify that allocation. Weak-only account
+backing stays charged until final allocator release. Trusted metadata backing
+alone grants no platform capability-record privilege.
 
 The permanent kernel and raw fixture namespaces also prepare missing namespace
 storage outside `CAPABILITIES`, then recheck under it. A competing publisher's

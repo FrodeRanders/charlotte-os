@@ -10,7 +10,7 @@ use crate::memory::{
 fn create_root() -> AddressSpaceHandle {
     crate::service::loader::create_user_address_space_handle()
 }
-fn domain(root: AddressSpaceHandle) -> Arc<budget::DomainBudget> {
+fn domain(root: AddressSpaceHandle) -> budget::AccountRef {
     IPC.read().caps[&root.id()].endpoint_budget.clone()
 }
 fn available(root: AddressSpaceHandle) {

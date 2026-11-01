@@ -334,6 +334,15 @@ the corrected RPC polling paths, and the remaining notification gaps.
 
 ## Capability and IPC publication
 
+- Capability, IPC endpoint/record and mailbox accounts use typed charged
+  `AccountRef` owners with `namespace_accounts` backing admission. Capture class
+  from the unpublished translation root before root publication; lazy mailbox
+  preparation captures generation and trusted storage class together before
+  allocation. Keep backing class separate from explicit resource grants and
+  retain it through delegation, retirement, ASID reuse and final weak/allocator
+  release. Complete parent fallback remains inert under publication/heap/pool
+  guards. See `docs/reference/namespace-account-admission.md`.
+
 - New kernel capability publication uses `capability::Reservation`: reserve
   before payload/ownership mutation and publish under the subsystem's
   serialization. Retain the captured namespace identity, not just its ASID.
@@ -346,7 +355,7 @@ the corrected RPC polling paths, and the remaining notification gaps.
   `PreparingNamespace` owns its node and original budget account before user
   ASID publication. User registration prepares outside lifecycle/table guards
   and cancels ordinary unused storage explicitly after they leave. Drop retains
-  both allocations.
+  the complete node and account backing.
   Namespace teardown detaches its complete node before releasing entries/account
   outside `CAPABILITIES`. Individual authority records use the same admitted
   nodes: `PreparingRecord` owns fallible storage and provisional charge before

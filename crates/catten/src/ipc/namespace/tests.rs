@@ -16,12 +16,15 @@ pub(super) fn run() {
     let operation = AddressSpaceOperation::acquire(root).unwrap();
     let mut local = IpcRegistry::new();
     for _ in 0..64 {
+        let backing = crate::klib::namespace_account_budget::snapshot();
         let prepared = PreparingNamespace::try_new().unwrap();
         let endpoints = Arc::downgrade(prepared.0.endpoints.as_ref().unwrap());
         let records = Arc::downgrade(prepared.0.records.as_ref().unwrap());
         let retired = {
             let _heap = PRIMARY_ALLOCATOR.lock();
-            prepared.publish_into(&mut local, root.id(), Some(operation.handle()));
+            crate::klib::namespace_account_budget::with_locked(|| {
+                prepared.publish_into(&mut local, root.id(), Some(operation.handle()));
+            });
             assert_eq!(local.caps[&root.id()].address_space, Some(root));
             let retired = local.caps.take(&root.id()).unwrap();
             assert_eq!(endpoints.strong_count(), 1);
@@ -33,10 +36,17 @@ pub(super) fn run() {
         retired.release();
         assert_eq!(endpoints.strong_count(), 0);
         assert_eq!(records.strong_count(), 0);
+        assert_eq!(
+            crate::klib::namespace_account_budget::snapshot(),
+            (backing.0 + 2, backing.1 + 2)
+        );
+        drop((endpoints, records));
+        assert_eq!(crate::klib::namespace_account_budget::snapshot(), backing);
     }
     operation.release().unwrap();
     crate::memory::close_user_address_space_handle(root).unwrap();
 
+    let retained = crate::klib::namespace_account_budget::snapshot();
     for phase in 1..=3 {
         let mut partial = PreparingNamespace(ManuallyDrop::new(Resources {
             node: Some(PreparedEntry::try_new().unwrap()),
@@ -44,16 +54,16 @@ pub(super) fn run() {
             records: None,
         }));
         if phase >= 2 {
-            partial.0.endpoints = Some(budget::DomainBudget::try_new().unwrap());
+            partial.0.endpoints = Some(budget::DomainBudget::try_new(false).unwrap());
         }
         if phase == 3 {
-            partial.0.records = Some(record_budget::DomainBudget::try_new().unwrap());
+            partial.0.records = Some(record_budget::DomainBudget::try_new(false).unwrap());
         }
         let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
         let _table = ADDRESS_SPACE_TABLE.lock();
         let _ipc = IPC.write();
         let _heap = PRIMARY_ALLOCATOR.lock();
-        drop(partial);
+        crate::klib::namespace_account_budget::with_locked(|| drop(partial));
     }
 
     // A detached complete node must retain both accounts in an unknown Drop
@@ -66,10 +76,11 @@ pub(super) fn run() {
     {
         let _ipc = IPC.write();
         let _heap = PRIMARY_ALLOCATOR.lock();
-        drop(retired);
+        crate::klib::namespace_account_budget::with_locked(|| drop(retired));
     }
     assert_eq!(endpoints.strong_count(), 1);
     assert_eq!(records.strong_count(), 1);
+    assert_eq!(crate::klib::namespace_account_budget::snapshot(), (retained.0 + 5, retained.1 + 5));
     crate::logln!(
         "[IPC namespace preparation] missing namespace rejects, 64 heap-held \
          publications/detaches, account disposal and guarded partial/retired retention passed; \

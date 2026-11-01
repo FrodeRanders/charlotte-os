@@ -76,7 +76,8 @@ impl PreparingMailbox {
         if test_fault!(tests::reject(3)) {
             return Err(Error::AllocationFailed);
         }
-        self.0.namespace = Some(AsMailboxCaps::try_new(captured.address_space)?);
+        self.0.namespace =
+            Some(AsMailboxCaps::try_new(captured.address_space, captured.backing_platform)?);
         self.0.authority = Some(
             PreparedReservation::try_new(asid, ObjectKind::Mailbox, captured.address_space)
                 .map_err(admission_error)?,

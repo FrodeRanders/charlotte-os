@@ -38,8 +38,35 @@ fn close(asid: AddressSpaceId, cap: u64) {
     assert_eq!(dispatch(asid, call_no::MAILBOX_CLOSE, cap).regs[0], 0);
 }
 
-fn account(asid: AddressSpaceId) -> alloc::sync::Arc<mailbox_budget::DomainBudget> {
+fn account(asid: AddressSpaceId) -> mailbox_budget::AccountRef {
     USER_MAILBOX_CAPS.read().get(&asid).unwrap().budget.clone()
+}
+
+pub(crate) fn assert_account_backing_denied(platform: bool) {
+    assert!(mailbox_budget::DomainBudget::try_new(platform).is_err());
+}
+
+pub(crate) fn prepare_account_backing_fixture(root: crate::memory::AddressSpaceHandle) {
+    let nodes = mailbox_budget::node_used();
+    let queues = mailbox_budget::queue_node_used();
+    open_mailbox_endpoint(root.id(), None, capture_mailbox_identity(root.id())).unwrap();
+    assert_eq!(mailbox_budget::node_used(), (nodes.0 + 1, nodes.1 + 1));
+    assert_eq!(user_mailbox_send(root.id(), get_lp_id(), 0xfeed), Ok(()));
+    assert_eq!(user_mailbox_receive(root.id()), Some(0xfeed));
+    assert_eq!(mailbox_budget::queue_node_used().0[0], queues.0[0] + 1);
+    assert_eq!(mailbox_budget::queue_node_used().1[0], queues.1[0] + 1);
+}
+
+pub(crate) fn assert_account_pressure_preserves_existing(root: crate::memory::AddressSpaceHandle) {
+    let captured = capture_mailbox_identity(root.id());
+    assert!(open_mailbox_endpoint(root.id(), None, captured).is_ok());
+    assert_eq!(
+        open_mailbox_endpoint(root.id(), Some(get_lp_id()), captured),
+        Err(Error::AllocationFailed)
+    );
+    assert_eq!(account(root.id()).used(), 1);
+    assert_eq!(user_mailbox_send(root.id(), get_lp_id(), 0xcafe), Ok(()));
+    assert_eq!(user_mailbox_receive(root.id()), Some(0xcafe));
 }
 
 pub(crate) fn test_admission() {
@@ -144,6 +171,7 @@ fn test_generation_fence() {
     let cap = open_mailbox_endpoint(old.id(), Some(0), captured).unwrap();
     assert_ne!(cap, 0);
     let old_budget = account(old.id());
+    let old_weak = alloc::sync::Arc::downgrade(&old_budget);
     memory::budget::retire(old);
     assert_eq!(open_mailbox_endpoint(old.id(), Some(0), captured), Err(Error::Retired));
     assert_eq!(old_budget.used(), 1);
@@ -160,7 +188,17 @@ fn test_generation_fence() {
     let new_budget = account(new.id());
     assert_eq!(open_mailbox_endpoint(old.id(), Some(0), captured), Err(Error::Retired));
     assert_eq!(new_budget.used(), 1);
+    let backing = crate::klib::namespace_account_budget::snapshot();
+    drop(old_budget);
+    assert!(old_weak.upgrade().is_none());
+    assert_eq!(crate::klib::namespace_account_budget::snapshot(), backing);
+    drop(old_weak);
+    assert_eq!(crate::klib::namespace_account_budget::snapshot(), (backing.0 - 1, backing.1 - 1));
     assert!(crate::capability::contains(new.id(), new_cap, crate::capability::ObjectKind::Mailbox));
     memory::close_user_address_space_handle(new).unwrap();
     assert_eq!(new_budget.used(), 0);
+    crate::logln!(
+        "[mailbox account lifetime] retired identity rejected across real root close/ASID reuse; \
+         final-weak original backing refund preserved successor"
+    );
 }

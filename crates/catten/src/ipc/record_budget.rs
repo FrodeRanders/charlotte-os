@@ -1,12 +1,12 @@
 //! Record sponsorship survives delegation and namespace retirement. Dimensions
 //! are connection capabilities, retained calls, and outstanding reply tokens.
 
-use alloc::sync::Arc;
-
 use charlotte_lifecycle::resources::VectorBudget;
 use spin::LazyLock;
 
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
+
+pub(crate) type AccountRef = crate::klib::namespace_account_budget::AccountRef<DomainBudget>;
 
 pub(crate) const DOMAIN_LIMIT: [u64; 3] = crate::resource_policy::POLICY.ipc_records.domain;
 pub(crate) const NODE_LIMIT: [u64; 3] = crate::resource_policy::POLICY.ipc_records.pool.total;
@@ -35,11 +35,13 @@ struct DomainState {
 pub(crate) struct DomainBudget(Mutex<DomainState>);
 
 impl DomainBudget {
-    pub(crate) fn try_new() -> Result<Arc<Self>, core::alloc::AllocError> {
-        Arc::try_new(Self(Mutex::new(DomainState {
-            records: VectorBudget::new(DOMAIN_LIMIT),
-            retired: false,
-        })))
+    pub(crate) fn try_new(backing_platform: bool) -> Result<AccountRef, core::alloc::AllocError> {
+        crate::klib::namespace_account_budget::allocator(backing_platform)?.try_arc(Self(
+            Mutex::new(DomainState {
+                records: VectorBudget::new(DOMAIN_LIMIT),
+                retired: false,
+            }),
+        ))
     }
 
     #[cfg(any(test, feature = "kernel_tests"))]
@@ -59,7 +61,7 @@ impl DomainBudget {
 #[derive(Debug)]
 #[must_use]
 pub(crate) struct Charge {
-    domain: Arc<DomainBudget>,
+    domain: AccountRef,
     platform: bool,
     amount: [u64; 3],
 }
@@ -82,11 +84,7 @@ impl Charge {
     }
 }
 
-pub(crate) fn reserve(
-    domain: &Arc<DomainBudget>,
-    platform: bool,
-    amount: [u64; 3],
-) -> Result<Charge, ()> {
+pub(crate) fn reserve(domain: &AccountRef, platform: bool, amount: [u64; 3]) -> Result<Charge, ()> {
     let mut local = domain.0.lock();
     if local.retired {
         return Err(());

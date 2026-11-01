@@ -10,6 +10,7 @@ pub(super) fn run() {
             let roots = ADDRESS_SPACE_TABLE.lock().iter().filter(|r| r.is_some()).count();
             let metadata = metadata::admission::snapshot();
             let capabilities = crate::capability::node_admission_used();
+            let accounts = crate::klib::namespace_account_budget::snapshot();
             assert_eq!(
                 register_with_ipc(
                     AddressSpace::try_new_user().unwrap(),
@@ -31,6 +32,7 @@ pub(super) fn run() {
             assert_eq!(ADDRESS_SPACE_TABLE.lock().iter().filter(|r| r.is_some()).count(), roots);
             assert_eq!(metadata::admission::snapshot(), metadata);
             assert_eq!(crate::capability::node_admission_used(), capabilities);
+            assert_eq!(crate::klib::namespace_account_budget::snapshot(), accounts);
         }
     }
     for _ in 0..64 {

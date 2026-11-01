@@ -99,8 +99,9 @@ abandonment with heap/pool guards held, one/two/three-slot rollback, and exact
 node retention/refund across failed invalidation, root close and ASID reuse.
 
 This bounds these requested node layouts. It does not complete aggregate
-principal accounting, a physical RAM ledger or remaining namespace, other account
-and observer heap admission. Completion/CQ/watch accounts have their own
+principal accounting, a physical RAM ledger or remaining namespace-node
+and observer heap admission. Capability/IPC/mailbox accounts have their own
+[backing admission](namespace-account-admission.md). Completion/CQ/watch accounts have their own
 [backing pool](completion-account-admission.md). One essential service has no
 guaranteed share of the common reserve.
 Concurrent hostile preparation, long-held roots, lookup/IRQ hold times and sustained

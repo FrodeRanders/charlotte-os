@@ -255,8 +255,8 @@ struct AdmittedCapability {
 struct AsIpcCaps {
     caps: AdmittedMap<CapabilityId, AdmittedCapability, Option<record_budget::Charge>>,
     address_space: Option<crate::memory::AddressSpaceHandle>,
-    endpoint_budget: Arc<budget::DomainBudget>,
-    record_budget: Arc<record_budget::DomainBudget>,
+    endpoint_budget: budget::AccountRef,
+    record_budget: record_budget::AccountRef,
 }
 
 #[derive(Debug)]
@@ -311,7 +311,7 @@ struct Endpoint {
     /// both kernel completions and endpoint work (§7, Phase 7).
     notify_cq: Option<crate::completion::CqId>,
     /// Original namespace and classification also sponsor later queue growth.
-    budget: Arc<budget::DomainBudget>,
+    budget: budget::AccountRef,
     platform: bool,
 }
 
@@ -579,7 +579,7 @@ fn cap_admission_error(error: crate::capability::AllocationError) -> IpcError {
 
 /// Kernel diagnostics retain the original namespace even after ASID reuse.
 #[cfg(any(test, feature = "kernel_tests"))]
-pub(crate) fn endpoint_admission(owner: AddressSpaceId) -> Option<Arc<budget::DomainBudget>> {
+pub(crate) fn endpoint_admission(owner: AddressSpaceId) -> Option<budget::AccountRef> {
     IPC.read().caps.get(&owner).map(|caps| caps.endpoint_budget.clone())
 }
 

@@ -1,11 +1,11 @@
 //! Shared capability-record admission. Every kind reserves before mutation;
 //! there is no unbounded allocation or retirement bypass.
 
-use alloc::sync::Arc;
-
 use charlotte_lifecycle::resources::CountBudget;
 
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
+
+pub(crate) type AccountRef = crate::klib::namespace_account_budget::AccountRef<DomainBudget>;
 
 pub(crate) const DOMAIN_LIMIT: usize =
     crate::resource_policy::POLICY.capabilities.domain[0] as usize;
@@ -24,12 +24,15 @@ struct Account {
 pub(crate) struct DomainBudget(Mutex<Account>);
 
 impl DomainBudget {
-    pub(crate) fn try_new() -> Result<Arc<Self>, super::AllocationError> {
-        Arc::try_new(Self(Mutex::new(Account {
-            used: CountBudget::new(DOMAIN_LIMIT),
-            retired: false,
-        })))
-        .map_err(|_| super::AllocationError::AllocationFailed)
+    pub(crate) fn try_new(backing_platform: bool) -> Result<AccountRef, super::AllocationError> {
+        let allocator = crate::klib::namespace_account_budget::allocator(backing_platform)
+            .map_err(|_| super::AllocationError::AllocationFailed)?;
+        allocator
+            .try_arc(Self(Mutex::new(Account {
+                used: CountBudget::new(DOMAIN_LIMIT),
+                retired: false,
+            })))
+            .map_err(|_| super::AllocationError::AllocationFailed)
     }
 
     pub(crate) fn accepting(&self) -> bool {
@@ -81,12 +84,12 @@ static NODE: Mutex<NodeBudget> = Mutex::new(NodeBudget::new());
 #[derive(Debug)]
 #[must_use]
 pub(crate) struct Charge {
-    domain: Arc<DomainBudget>,
+    domain: AccountRef,
     platform: bool,
 }
 
 pub(crate) fn reserve(
-    domain: &Arc<DomainBudget>,
+    domain: &AccountRef,
     platform: bool,
 ) -> Result<Charge, super::AllocationError> {
     let mut local = domain.0.lock();

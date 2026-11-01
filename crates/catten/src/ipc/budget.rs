@@ -1,10 +1,7 @@
 //! Endpoint records and preallocated message slots retain their original
 //! namespace's sponsorship until their storage is actually released.
 
-use alloc::{
-    collections::VecDeque,
-    sync::Arc,
-};
+use alloc::collections::VecDeque;
 use core::ops::{
     Deref,
     DerefMut,
@@ -14,6 +11,8 @@ use charlotte_lifecycle::resources::VectorBudget;
 use spin::LazyLock;
 
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
+
+pub(crate) type AccountRef = crate::klib::namespace_account_budget::AccountRef<DomainBudget>;
 
 // Count endpoint records and queue backing slots; payload bytes are outside this budget.
 pub(crate) const DOMAIN_LIMIT: [u64; 2] = crate::resource_policy::POLICY.endpoints.domain;
@@ -36,8 +35,9 @@ static NODE: LazyLock<Mutex<NodeBudget>> = LazyLock::new(|| {
 pub(crate) struct DomainBudget(Mutex<VectorBudget<2>>);
 
 impl DomainBudget {
-    pub(crate) fn try_new() -> Result<Arc<Self>, core::alloc::AllocError> {
-        Arc::try_new(Self(Mutex::new(VectorBudget::new(DOMAIN_LIMIT))))
+    pub(crate) fn try_new(backing_platform: bool) -> Result<AccountRef, core::alloc::AllocError> {
+        crate::klib::namespace_account_budget::allocator(backing_platform)?
+            .try_arc(Self(Mutex::new(VectorBudget::new(DOMAIN_LIMIT))))
     }
 
     #[cfg(any(test, feature = "kernel_tests"))]
@@ -49,13 +49,13 @@ impl DomainBudget {
 #[derive(Debug)]
 #[must_use]
 pub(crate) struct Charge {
-    domain: Arc<DomainBudget>,
+    domain: AccountRef,
     platform: bool,
     amount: [u64; 2],
 }
 
 impl Charge {
-    pub(crate) fn domain(&self) -> &Arc<DomainBudget> {
+    pub(crate) fn domain(&self) -> &AccountRef {
         &self.domain
     }
 
@@ -75,11 +75,7 @@ impl Charge {
     }
 }
 
-pub(crate) fn reserve(
-    domain: &Arc<DomainBudget>,
-    platform: bool,
-    amount: [u64; 2],
-) -> Result<Charge, ()> {
+pub(crate) fn reserve(domain: &AccountRef, platform: bool, amount: [u64; 2]) -> Result<Charge, ()> {
     let mut local = domain.0.lock();
     local.reserve(amount).map_err(|_| ())?;
     let mut node = NODE.lock();

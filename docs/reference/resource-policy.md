@@ -9,17 +9,18 @@ operator procedure, authority, planning and qualification process.
 [Policy](../../crates/catten/src/resource_policy.rs) groups typed, copyable
 immutable settings. Family-local constant aliases forward to those fields;
 existing reservation helpers still enforce admission at their owning boundary.
-Twelve metadata families share the checked `AdmissionPool` counter mechanics:
+Thirteen metadata families share the checked `AdmissionPool` counter mechanics:
 root metadata, principal history, thread metadata, thread-table backing, ASID-table
-backing, waiter, timer and completion accounts, scratch nodes, snapshot buffers,
-mapping nodes and memory-capability nodes. Each retains its own lock, typed charge, captured
+backing, waiter, timer, completion and capability/IPC/mailbox namespace accounts,
+scratch nodes, snapshot buffers, mapping nodes and memory-capability nodes.
+Each retains its own lock, typed charge, captured
 classification and allocation-lifetime release policy. The shared counter
 owns no resource and grants no cleanup authority; both counters change together
 on accepted admission/refund and remain unchanged on rejection.
 No new account, registry, classification source or cleanup owner is introduced.
 Existing numerical defaults are preserved; memory-capability node and
-thread-table, ASID-table, waiter-account, timer-account and completion-account
-backing admission add the separately documented pools below. These are defaults,
+thread-table, ASID-table, waiter-account, timer-account, completion-account and
+namespace-account backing admission add the separately documented pools below. These are defaults,
 not fixed application requirements or workload sizing guarantees.
 
 ## Fixed-pool inventory
@@ -40,6 +41,7 @@ unlimited node capacity.
 | `waiter_accounts` | fixed allocation bundles | — | 6144 | 8192 |
 | `timer_accounts` | scheduler/completion fixed allocation bundles | — | 12288 | 16384 |
 | `completion_accounts` | record/CQ/watch fixed allocation bundles | — | 18432 | 24576 |
+| `namespace_accounts` | capability/IPC endpoint/IPC record/mailbox fixed allocation bundles | — | 24576 | 32768 |
 | `observer_lists` | allocation lifetimes | — | 6144 | 8192 |
 | `mailbox_records` | records | 512 | 6144 | 8192 |
 | `mailbox_queues` | sets; ring bytes | 2 sets; 1 MiB | 768 sets; 6 MiB | 1024 sets; 8 MiB |

@@ -18,8 +18,8 @@ use crate::{
 
 struct Resources {
     node: Option<PreparedEntry<(AddressSpaceId, AsIpcCaps)>>,
-    endpoints: Option<Arc<budget::DomainBudget>>,
-    records: Option<Arc<record_budget::DomainBudget>>,
+    endpoints: Option<budget::AccountRef>,
+    records: Option<record_budget::AccountRef>,
 }
 
 /// Partial preparation and its parent root transaction retain every field on
@@ -28,11 +28,19 @@ struct Resources {
 pub(crate) struct PreparingNamespace(ManuallyDrop<Resources>);
 
 impl PreparingNamespace {
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn try_new() -> Result<Self, AllocError> {
-        Self::prepare(|_| Ok(()))
+        Self::try_new_with_backing_class(false)
     }
 
-    fn prepare(mut before: impl FnMut(u8) -> Result<(), AllocError>) -> Result<Self, AllocError> {
+    pub(crate) fn try_new_with_backing_class(backing_platform: bool) -> Result<Self, AllocError> {
+        Self::prepare(backing_platform, |_| Ok(()))
+    }
+
+    fn prepare(
+        backing_platform: bool,
+        mut before: impl FnMut(u8) -> Result<(), AllocError>,
+    ) -> Result<Self, AllocError> {
         let mut owner = Self(ManuallyDrop::new(Resources {
             node: None,
             endpoints: None,
@@ -42,9 +50,9 @@ impl PreparingNamespace {
             before(1)?;
             owner.0.node = Some(PreparedEntry::try_new()?);
             before(2)?;
-            owner.0.endpoints = Some(budget::DomainBudget::try_new()?);
+            owner.0.endpoints = Some(budget::DomainBudget::try_new(backing_platform)?);
             before(3)?;
-            owner.0.records = Some(record_budget::DomainBudget::try_new()?);
+            owner.0.records = Some(record_budget::DomainBudget::try_new(backing_platform)?);
             before(4)
         })();
         if let Err(error) = result {
@@ -95,7 +103,7 @@ impl PreparingNamespace {
 
     #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn test_reject_at(reject: u8) -> Result<Self, AllocError> {
-        Self::prepare(|stage| {
+        Self::prepare(false, |stage| {
             assert!(IPC.try_write().is_some());
             assert!(crate::memory::ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());
             assert!(crate::memory::ADDRESS_SPACE_TABLE.try_lock().is_some());
@@ -148,4 +156,26 @@ mod tests;
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_preparation() {
     tests::run();
+}
+
+#[cfg(any(test, feature = "kernel_tests"))]
+pub(crate) fn assert_account_backing_denied(platform: bool) {
+    assert!(budget::DomainBudget::try_new(platform).is_err());
+    assert!(record_budget::DomainBudget::try_new(platform).is_err());
+}
+
+#[cfg(any(test, feature = "kernel_tests"))]
+pub(crate) fn assert_ordinary_backing_fixture(root: AddressSpaceHandle) {
+    let endpoints = budget::node_used();
+    let records = record_budget::node_used();
+    let endpoint = endpoint_create(root.id(), 1, 1, 4).unwrap();
+    let connection = connection_mint(root.id(), endpoint, ConnectionRights::SEND).unwrap();
+    assert_eq!(budget::node_used().0[0], endpoints.0[0] + 1);
+    assert_eq!(budget::node_used().1[0], endpoints.1[0] + 1);
+    assert_eq!(record_budget::node_used().0[0], records.0[0] + 1);
+    assert_eq!(record_budget::node_used().1[0], records.1[0] + 1);
+    close_cap(root.id(), connection).unwrap();
+    close_cap(root.id(), endpoint).unwrap();
+    assert_eq!(budget::node_used(), endpoints);
+    assert_eq!(record_budget::node_used(), records);
 }

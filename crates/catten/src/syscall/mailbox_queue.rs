@@ -22,7 +22,7 @@ struct Resources {
     queue: Option<Namespace>,
     namespace_node: Option<PreparedEntry<(AddressSpaceId, AsMailboxCaps)>>,
     namespace: Option<AsMailboxCaps>,
-    budget: Option<alloc::sync::Arc<mailbox_budget::DomainBudget>>,
+    budget: Option<mailbox_budget::AccountRef>,
     charge: Option<mailbox_budget::QueueCharge>,
 }
 /// Abandonment retains even unused storage and its exact root. It is not retry
@@ -94,7 +94,10 @@ impl Operation {
         // endpoint grants. Competing preparations cannot create separate quotas.
         self.0.namespace_node =
             Some(PreparedEntry::try_new().map_err(|_| Error::AllocationFailed)?);
-        self.0.namespace = Some(AsMailboxCaps::try_new(self.0.captured.address_space)?);
+        self.0.namespace = Some(AsMailboxCaps::try_new(
+            self.0.captured.address_space,
+            self.0.captured.backing_platform,
+        )?);
         let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
         mailbox_publication::validate(self.0.asid, self.0.captured)?;
         let mut registry = USER_MAILBOX_CAPS.write();

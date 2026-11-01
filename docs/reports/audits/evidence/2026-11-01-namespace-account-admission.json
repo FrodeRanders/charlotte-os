@@ -1,0 +1,196 @@
+{
+  "schema": "charlotte.namespace-account-admission.v1",
+  "date": "2026-11-01",
+  "base_revision": "657fb84b7c07de36465823bf7d78598707f93882",
+  "scope": "Shared fixed-bundle backing admission for unified capability, IPC endpoint, IPC record and mailbox accounts. Root and lazy mailbox preparation capture trusted storage classification before allocation; resource grants remain separate.",
+  "source_sha256": {
+    "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
+    "crates/catten/src/capability.rs": "26abf039ee7880d34191ba162163b8468bbf3f503ed905ecc153fdc4c3f1d302",
+    "crates/catten/src/capability/admission_tests.rs": "48924f975c4deb266a1619c7d7f0192a4356c6fd04079225e1eb2e24dd003b26",
+    "crates/catten/src/capability/budget.rs": "73b091120ea2acb5a78f1d043bc4267a163b9d96051b48a6677366efe545b0c6",
+    "crates/catten/src/capability/namespace_account_tests.rs": "0158f02f2985a2b2cf841a6949a3d405fb223fca4fa9009725304b5500e77435",
+    "crates/catten/src/capability/namespace_tests.rs": "86f6d757b3e9594a61cb3c20670f3a992e837fec0dd0ff4c7faf8bc8f26c0fd6",
+    "crates/catten/src/capability/record.rs": "1435c5c17e9ef5bc0f98e05652343ec7ef0323740b549409c5633bcadc7da0d4",
+    "crates/catten/src/capability/record_tests.rs": "9336cc7fa51291cff32a1bd666ee99d8198e2ca8f7bd63d7659d6a8ba297eb39",
+    "crates/catten/src/ipc/budget.rs": "ea997e45c0d8f7341f3bd0131dbe15e11d266611240e5032a1d956aac30c38b8",
+    "crates/catten/src/ipc/endpoint_storage.rs": "0933f22e29b4e26370b8e1f43000dbc913e238157720c14c6994c8a7d7111a2e",
+    "crates/catten/src/ipc/endpoint_storage/tests.rs": "87cc8efd419503cf3cc91f79417e9263a9c230e3a74090cd7f04de3352e73463",
+    "crates/catten/src/ipc/mod.rs": "86533f48ed3e8fdb92010a1a1be9ec36c0200f2274304a24417c7fe57eddb082",
+    "crates/catten/src/ipc/namespace.rs": "89408c5e11c78cf46db662128d252dbb8a51c9280a6505b3db894916b9815858",
+    "crates/catten/src/ipc/namespace/tests.rs": "9ee943412512c0bf7975e01f438271cddf11ff1180d64f5f3c42f6fdd6d382f0",
+    "crates/catten/src/ipc/record_budget.rs": "7e9257e2392dadc26b0dd04579d06f1e9cb58a3c1cff5afd4776b3a6b7a7d142",
+    "crates/catten/src/ipc/record_tests.rs": "09765a13d6e757d597b27267351f66c4fee93b62fa79c6a27051bf37c9089d51",
+    "crates/catten/src/klib/charged_allocator.rs": "8cd21da64b7d3bd693ef2794a77521e990029ca0b0313c8608a4d806e76056cb",
+    "crates/catten/src/klib/charged_allocator/tests.rs": "8f48be4d7c6b7e0bb15e0d4ca4b20dd944eb8bc0678f7e0e20046ac7b12a70d2",
+    "crates/catten/src/klib/mod.rs": "af885dfdf37e3e3ffa5c03916bea2be5fb4f4f48c56e269521803ca6998bf729",
+    "crates/catten/src/klib/namespace_account_budget.rs": "56f077dda8cba4aa15d961afdc1ca502b39239c7c8a4a3c4f337b4f554530429",
+    "crates/catten/src/memory/budget.rs": "a067cbfa4c68a5bdeeb8f9b73b47fb0b819cee4c96142f724b351bad2d0c39d8",
+    "crates/catten/src/memory/mod.rs": "4054028a1d143a0bae80247a7f38797ca543109a7c1dafa6540a38c13247da36",
+    "crates/catten/src/memory/registration.rs": "1e0da949302b5228766f94bf92cc7250575ea188adb0e5bda7d17c401aa3f583",
+    "crates/catten/src/memory/registration/ipc_tests.rs": "ffa7d65a5621ad9ddff59e27adee2e1193b0b524e32b9c27b3a003e6f3a7f4fd",
+    "crates/catten/src/resource_policy.rs": "4437124baa10ecf61ebb5d37c16c5b94617b85a8473537c345961eedfb509371",
+    "crates/catten/src/resource_policy/defaults.rs": "2cecb851192b244409cb59842a24f0337d550edcf00aa57ff38fe4e4c2becfd8",
+    "crates/catten/src/resource_policy/tests.rs": "b0e2cf2003a1ecff5eecb0ddc14477a90c77bb1984ef492e9840e2bc7fa0240e",
+    "crates/catten/src/self_test/ipc.rs": "28553a838e7082fc664398118887c8b54cdb27a4c61b5170708d6fa285f5de7d",
+    "crates/catten/src/syscall/mailbox_budget.rs": "0d6eed7d8cfd5af8214727e5743c27c1a7e2e80f9313a83e7665ad7524fd17d4",
+    "crates/catten/src/syscall/mailbox_publication.rs": "e93e13aba884b683e7304709c66e1c333309b6fefb4a3498bd008edec241e15f",
+    "crates/catten/src/syscall/mailbox_publication_tests.rs": "7ecb2d6c6c350dbf5f06ab5a36345b8eb78e400da9a6a9f6f996a4e1b53704e0",
+    "crates/catten/src/syscall/mailbox_queue.rs": "c2a11ea8d4dcdd84187dacd5eba1f53dc2341eb38df9364742fc18707fa968e0",
+    "crates/catten/src/syscall/mailbox_queue_tests.rs": "c5ad6d5881820def985a51280fd8eab4b8cac0a0d2650d93697a673e6b8dd585",
+    "crates/catten/src/syscall/mailbox_tests.rs": "622bc2d7bc67a9a9b2ed090b42b0325d370f25f8c37da904e9273227b57aada4",
+    "crates/catten/src/syscall/mod.rs": "73a0b8365bfc57d6c0b683f943b6658857fad76e5155b89ce9542bb174bba477",
+    "scripts/run-host-tests.sh": "781e2cae16a1316510117f66c3975bf26ebc49baf14e827c511ab9f958a74733"
+  },
+  "policy": {
+    "field": "namespace_accounts",
+    "dimension": "one fixed-layout account Arc plus private allocator-holder bundle",
+    "component_types": [
+      "unified capability account",
+      "IPC endpoint/queue account",
+      "IPC connection/call/reply account",
+      "mailbox record/word queue account"
+    ],
+    "ordinary": 24576,
+    "total": 32768,
+    "mandatory_accounts_per_root": 3,
+    "additional_lazy_mailbox_account": 1,
+    "count_only_complete_root_capacity": {
+      "ordinary": 3072,
+      "total": 4096
+    },
+    "decision": "Twice the four-account needs at complete-root capacity leaves headroom for independently retained generations, concurrent preparation and losing lazy-mailbox candidates. One quarter remains trusted reserve. Any type may consume headroom, so this supplies no per-type or per-service progress entitlement. No existing ceiling is increased or RAM preallocated.",
+    "cost": "One private holder allocation per account and one extra machine word per account reference. Existing root and namespace ownership structures are preserved.",
+    "classification": "Capability and IPC backing capture from the owned unpublished translation root; mailbox identity captures generation and trusted storage class together before lazy account allocation. Kernel bootstrap is trusted; raw fixture namespaces remain ordinary. Later promotion cannot reclassify an existing backing charge.",
+    "candidate_scope": "New mailbox target preparation can reject when an extra namespace candidate cannot be admitted even if an existing namespace would win. Existing receiver reuse and established word queues require no fresh account."
+  },
+  "native_campaigns": [
+    {
+      "instance": "namespace-account-20261101-arm",
+      "arch": "aarch64",
+      "iommu": "SMMUv3",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-01T19:44:42Z",
+      "kernel_sha256": "18cabb948c8a69ee8a9ed3d83ff29bcf85ecefecc4f559e691240dc45d9d2538",
+      "bundle_map_sha256": "4a5ee89fd763eed1af5a7613cfc7a2428c1e0b623ac6bf63e6ec7eb5fdc2bd38",
+      "serial_sha256": "0a32dfc23138be587bd5c9e9b1c5dc25cd38670d4eb231681076da09a16582db",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "guest_verdict": [
+        19,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     1.181784] [IPC namespace preparation] missing namespace rejects, 64 heap-held publications/detaches, account disposal and guarded partial/retired retention passed; four standalone nodes and five budget accounts deliberately retained",
+        "[+     1.214984] [IPC root publication] 256 phase rejections release the complete unpublished root; 64 publication leases prevent early close and missing/retired namespaces never recreate",
+        "[+     1.417830] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; no ASID published",
+        "[+     2.832482] [IPC account lifetime] delegated connection retained real closed endpoint/record accounts across root close and exact ASID reuse; final-weak refunds preserved successor",
+        "[+     6.273014] [namespace account pressure] 24322 ordinary + 8156 reserved actual accounts; 24576/32768 ceilings, 256 heap-held four-constructor denials, zero/one/two-slot root rollback, trusted backing without authority/IPC/mailbox privilege, existing receiver/word progress and immutable promotion/close/recovery passed",
+        "[+     6.619486] [capability account lifetime] stale token, actual root close/ASID reuse and final-weak original backing refund passed",
+        "[+     7.562988] [mailbox account lifetime] retired identity rejected across real root close/ASID reuse; final-weak original backing refund preserved successor",
+        "[+     7.707758] [mailbox authority ownership] four storage rejection phases before charge/serial mutation; receiver reuse; heap-held publication/detach; staged-close rejection; guarded complete-owner abandonment retains two roots and two original mailbox/authority charges",
+        "[+    81.055034] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "instance": "namespace-account-20261101-intel",
+      "arch": "x86_64",
+      "iommu": "Intel VT-d",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-01T19:43:29Z",
+      "kernel_sha256": "875b53c85ccc9f5306c25864e9644615ba461fd1b59dbced5effd5fc5b754123",
+      "bundle_map_sha256": "1e8d1d5b4aa82acc192c0afdb4b577ee5617a233b0e41452a3eb7aa148b9f8d2",
+      "serial_sha256": "ced0703d97c53cc62b8749b2f796d420874c5a9b7e85140654d04426971806f8",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "guest_verdict": [
+        17,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     1.030741] [IPC namespace preparation] missing namespace rejects, 64 heap-held publications/detaches, account disposal and guarded partial/retired retention passed; four standalone nodes and five budget accounts deliberately retained",
+        "[+     1.053967] [IPC root publication] 256 phase rejections release the complete unpublished root; 64 publication leases prevent early close and missing/retired namespaces never recreate",
+        "[+     1.175937] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; no ASID published",
+        "[+     4.010457] [IPC account lifetime] delegated connection retained real closed endpoint/record accounts across root close and exact ASID reuse; final-weak refunds preserved successor",
+        "[+     9.068065] [namespace account pressure] 24298 ordinary + 8156 reserved actual accounts; 24576/32768 ceilings, 256 heap-held four-constructor denials, zero/one/two-slot root rollback, trusted backing without authority/IPC/mailbox privilege, existing receiver/word progress and immutable promotion/close/recovery passed",
+        "[+     9.411406] [capability account lifetime] stale token, actual root close/ASID reuse and final-weak original backing refund passed",
+        "[+    18.166686] [mailbox account lifetime] retired identity rejected across real root close/ASID reuse; final-weak original backing refund preserved successor",
+        "[+    18.324167] [mailbox authority ownership] four storage rejection phases before charge/serial mutation; receiver reuse; heap-held publication/detach; staged-close rejection; guarded complete-owner abandonment retains two roots and two original mailbox/authority charges",
+        "[+    97.105887] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "instance": "namespace-account-20261101-amd",
+      "arch": "x86_64",
+      "iommu": "AMD-Vi",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-01T19:49:34Z",
+      "kernel_sha256": "bb27420e9af195f19606e807af371ed34b48aa36ef91fd853aff9cbdcc4df9d6",
+      "bundle_map_sha256": "1e8d1d5b4aa82acc192c0afdb4b577ee5617a233b0e41452a3eb7aa148b9f8d2",
+      "serial_sha256": "9b80a5e3b8e6fecdf25e7f014928fa086d2b930583381a41b6bb083a5bf0d2e7",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "guest_verdict": [
+        17,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     1.020683] [IPC namespace preparation] missing namespace rejects, 64 heap-held publications/detaches, account disposal and guarded partial/retired retention passed; four standalone nodes and five budget accounts deliberately retained",
+        "[+     1.042049] [IPC root publication] 256 phase rejections release the complete unpublished root; 64 publication leases prevent early close and missing/retired namespaces never recreate",
+        "[+     1.158746] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; no ASID published",
+        "[+     2.305860] [IPC account lifetime] delegated connection retained real closed endpoint/record accounts across root close and exact ASID reuse; final-weak refunds preserved successor",
+        "[+     5.658778] [namespace account pressure] 24298 ordinary + 8156 reserved actual accounts; 24576/32768 ceilings, 256 heap-held four-constructor denials, zero/one/two-slot root rollback, trusted backing without authority/IPC/mailbox privilege, existing receiver/word progress and immutable promotion/close/recovery passed",
+        "[+     5.993830] [capability account lifetime] stale token, actual root close/ASID reuse and final-weak original backing refund passed",
+        "[+    12.739339] [mailbox account lifetime] retired identity rejected across real root close/ASID reuse; final-weak original backing refund preserved successor",
+        "[+    12.896865] [mailbox authority ownership] four storage rejection phases before charge/serial mutation; receiver reuse; heap-held publication/detach; staged-close rejection; guarded complete-owner abandonment retains two roots and two original mailbox/authority charges",
+        "[+    88.006765] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    }
+  ],
+  "bundle_identity_encoding": "SHA-256 of UTF-8 JSON bundle_sha256 mapping, sorted keys, comma/colon separators without whitespace.",
+  "host_validation": {
+    "command": "CARGO_NET_OFFLINE=true scripts/run-host-tests.sh",
+    "exit_code": 0,
+    "result": "Full runner passed, including intentional unsafe-control rejection tests.",
+    "log_sha256": "10d65e3483c5cbd1dc7dab06b44a270f9017ddfbeb9222d9fa6a6238bf463b7d",
+    "resource_policy_groups": 3,
+    "shared_charged_allocator_tests": 15,
+    "catten_services_tests": 268,
+    "separate_resource_policy_command": "python3 scripts/tests/test-resource-policy.py",
+    "separate_resource_policy_result": "passed",
+    "separate_resource_policy_log_sha256": "d0a389e21b43ddfef937fa1027de79f2c171e72cec362440beb4a0f2d2669107",
+    "kernel_tests_clippy": "ARM acpi,kernel_tests, offline/locked, -D warnings: passed",
+    "kernel_tests_clippy_log_sha256": "010d560dc5c5b3a5f9b7b6199ec0d09045d151f4c0752355efe6cfc994f5fefb",
+    "minimal_kernel_clippy": "ARM acpi, offline/locked, -D warnings: passed",
+    "minimal_kernel_clippy_log_sha256": "ef9104cc208b4806b29eb70673433407533e2cda6b61acfab108cfba988c4196",
+    "workspace_formatting": "cargo fmt --all -- --check: passed"
+  },
+  "controls": [
+    "Actual capability-account bundles fill ordinary and total shared ceilings. Sixty-four heap-held rejection rounds cover all four typed constructors (256 denials), plus four trusted denials at total exhaustion, before either backing allocation.",
+    "Zero available ordinary slots reject capability preparation; one or two slots reject partial IPC preparation. All restore exact account/frame/root counts before ASID publication. Existing 256 injected IPC preparation-phase errors also restore account admission.",
+    "Trusted root and lazy mailbox preparation use reserved backing at ordinary exhaustion while actual capability, endpoint, connection, mailbox and word queue adapters still consume ordinary resource admission before any explicit platform grant.",
+    "A full pool rejects a new mailbox candidate while returning the existing receiver and delivering words through the established queue. Later promotion does not reclassify original backing; root close at total exhaustion returns four ordinary slots and permits exact fresh root/mailbox recovery.",
+    "Existing real-root capability token and mailbox identity controls reject old generations after actual root close and exact ASID reuse. Final strong release leaves account backing charged through a retained weak reference, whose final release refunds one original ordinary slot without touching the successor.",
+    "An actual delegated connection keeps both its original IPC record sponsor and closed endpoint/queue storage alive after source root close and exact ASID reuse. Remote capability close releases real storage; final weak release then returns each original account backing slot, leaving successor counters unchanged.",
+    "Sixty-four IPC namespace publications/detaches execute under heap/account-pool guards. Their two weak-only account bundles remain charged until final weak release. Existing partial/retired IPC fallback retains five accounts and the actual containing root fallback retains three, with the pool guard held.",
+    "Existing capability, mailbox endpoint and word-queue preparation/retirement abandonment controls also hold the account pool beneath their actual enclosing guards. They retain the same objects and charges; no new deliberate-retention fixture is added.",
+    "Shared allocation-owner host controls inject holder/payload failure and qualify allocation allowance, phase abandonment, allocator clones, final weak concurrency and deallocation-before-refund ordering."
+  ],
+  "qualification_limits": [
+    "Fixed-bundle counts do not account for exact heap bytes, allocator overhead, namespace nodes, payload storage or aggregate principal/general-heap consumption.",
+    "Pressure allocates actual capability-account bundles, not the largest possible mixed account footprint or a maximum resource payload set. Native heap exhaustion is not forced; shared host controls inject allocation errors.",
+    "Trusted headroom and serialized existing receiver/word reuse do not establish sustained hostile concurrent EL0 pressure fairness, per-service progress entitlement, worst-case lookup/IRQ latency or physical hardware behavior.",
+    "Global namespace nodes prepared before account admission, Waker/callback storage and other registry allocations still need admission. SEC-07 remains partial. Existing C02/C03/C10/C18 and G1/G4 outer-context/destructor limits remain; no new cleanup, physical completion or retry authority."
+  ]
+}

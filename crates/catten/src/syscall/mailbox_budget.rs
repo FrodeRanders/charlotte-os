@@ -1,14 +1,14 @@
 //! Independent mailbox record and word-ring backing admission. Namespace/account
 //! metadata and the complete capability table remain outside these ceilings.
 
-use alloc::sync::Arc;
-
 use charlotte_lifecycle::resources::{
     CountBudget,
     VectorBudget,
 };
 
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
+
+pub(crate) type AccountRef = crate::klib::namespace_account_budget::AccountRef<DomainBudget>;
 
 pub(crate) const DOMAIN_LIMIT: usize =
     crate::resource_policy::POLICY.mailbox_records.domain[0] as usize;
@@ -44,13 +44,16 @@ struct DomainState {
 pub(crate) struct DomainBudget(Mutex<DomainState>);
 
 impl DomainBudget {
-    pub(crate) fn try_new() -> Result<Arc<Self>, Error> {
-        Arc::try_new(Self(Mutex::new(DomainState {
-            count: CountBudget::new(DOMAIN_LIMIT),
-            queues: VectorBudget::new(QUEUE_DOMAIN_LIMIT),
-            retired: false,
-        })))
-        .map_err(|_| Error::AllocationFailed)
+    pub(crate) fn try_new(backing_platform: bool) -> Result<AccountRef, Error> {
+        let allocator = crate::klib::namespace_account_budget::allocator(backing_platform)
+            .map_err(|_| Error::AllocationFailed)?;
+        allocator
+            .try_arc(Self(Mutex::new(DomainState {
+                count: CountBudget::new(DOMAIN_LIMIT),
+                queues: VectorBudget::new(QUEUE_DOMAIN_LIMIT),
+                retired: false,
+            })))
+            .map_err(|_| Error::AllocationFailed)
     }
 
     #[cfg(any(test, feature = "kernel_tests"))]
@@ -122,14 +125,20 @@ impl NodeBudget {
 // otherwise preemptible syscall. Reservations themselves use the IRQ-safe lock.
 static NODE: Mutex<NodeBudget> = Mutex::new(NodeBudget::new());
 
+#[cfg(any(test, feature = "kernel_tests"))]
+pub(crate) fn node_used() -> (usize, usize) {
+    let node = NODE.lock();
+    (node.total.used(), node.ordinary.used())
+}
+
 #[must_use]
 #[derive(Debug)]
 pub(crate) struct Charge {
-    domain: Arc<DomainBudget>,
+    domain: AccountRef,
     platform: bool,
 }
 
-pub(crate) fn reserve(domain: &Arc<DomainBudget>, platform: bool) -> Result<Charge, Error> {
+pub(crate) fn reserve(domain: &AccountRef, platform: bool) -> Result<Charge, Error> {
     let mut local = domain.0.lock();
     if local.retired {
         return Err(Error::Retired);
@@ -155,12 +164,12 @@ impl Drop for Charge {
 
 #[must_use]
 pub(crate) struct QueueCharge {
-    domain: Arc<DomainBudget>,
+    domain: AccountRef,
     platform: bool,
     amount: [u64; 2],
 }
 pub(crate) fn reserve_queue(
-    domain: &Arc<DomainBudget>,
+    domain: &AccountRef,
     platform: bool,
     bytes: usize,
 ) -> Result<QueueCharge, Error> {

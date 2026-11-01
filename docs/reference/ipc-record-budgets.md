@@ -158,6 +158,13 @@ snapshot. Generation-qualified memory retirement is checked too. Existing
 record charges retain the original reference-counted account after its namespace
 is removed; a late remote close cannot credit a replacement using the same ASID.
 
+IPC endpoint and record accounts have separate
+[namespace-account backing admission](namespace-account-admission.md), shared
+with capability and mailbox accounts through final weak/allocator release.
+Root preparation captures trusted storage class before publication, independently
+of future endpoint/record reserve grants. Delegated connections and their closed
+endpoints retain original backing after root close and exact ASID reuse.
+
 Counter locking is IPC registry → domain → node. Preparation captures and leases
 the exact caller before count admission, releases IPC before pending-node
 allocation, and rechecks that identity before authority admission. Identity checks may take the

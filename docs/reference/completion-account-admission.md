@@ -84,8 +84,9 @@ same objects; no additional deliberate leak is introduced.
 
 The shared allocation owner's host controls cover holder/payload failure,
 allocator clones, weak lifetime and deallocation-before-refund ordering. Native
-heap exhaustion is not forced. Capability, IPC and mailbox accounts, global
-namespace nodes, Waker/callback storage and aggregate principal/general-heap
+heap exhaustion is not forced. Capability, IPC and mailbox accounts have separate
+[backing admission](namespace-account-admission.md). Global namespace nodes,
+Waker/callback storage and aggregate principal/general-heap
 admission remain open. No sustained hostile-pressure fairness, worst-case global
 lookup/IRQ latency, arbitrary destructor safety or physical hardware claim is
 made. SEC-07 remains partial; C18 and G1/G4 in

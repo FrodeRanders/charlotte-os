@@ -122,6 +122,8 @@ pub(crate) struct Policy {
     pub timer_accounts: Pool<1>,
     /// Completion record, CQ and watch account bundles, including weak backing.
     pub completion_accounts: Pool<1>,
+    /// Capability, IPC endpoint/record and mailbox account bundles.
+    pub namespace_accounts: Pool<1>,
     pub observer_lists: Pool<1>,
     pub mailbox_records: Scoped<1>,
     /// Queue sets, requested ring bytes.
@@ -161,6 +163,7 @@ impl Policy {
             || !self.waiter_accounts.valid()
             || !self.timer_accounts.valid()
             || !self.completion_accounts.valid()
+            || !self.namespace_accounts.valid()
             || !self.observer_lists.valid()
             || !self.mailbox_records.valid()
             || !self.mailbox_queues.valid()

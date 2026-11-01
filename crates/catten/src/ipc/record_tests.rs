@@ -8,7 +8,7 @@ use super::*;
 
 mod shared_admission;
 
-fn account(asid: AddressSpaceId) -> Arc<record_budget::DomainBudget> {
+fn account(asid: AddressSpaceId) -> record_budget::AccountRef {
     IPC.read().caps[&asid].record_budget.clone()
 }
 
@@ -267,6 +267,9 @@ fn test_retirement() {
     let connection =
         connection_delegate(old.id(), endpoint, recipient, ConnectionRights::SEND).unwrap();
     let old_account = account(old.id());
+    let old_endpoint = endpoint_admission(old.id()).unwrap();
+    let record_weak = Arc::downgrade(&old_account);
+    let endpoint_weak = Arc::downgrade(&old_endpoint);
     crate::memory::budget::retire(old);
     assert_eq!(
         connection_mint(old.id(), endpoint, ConnectionRights::SEND),
@@ -274,6 +277,7 @@ fn test_retirement() {
     );
     crate::memory::close_user_address_space_handle(old).unwrap();
     assert_eq!(old_account.used(), [1, 0, 0]);
+    assert_eq!(old_endpoint.used()[0], 1);
     assert!(record_budget::reserve(&old_account, false, [1, 0, 0]).is_err());
     let replacement = crate::service::loader::create_user_address_space_handle();
     assert_eq!(replacement.id(), old.id());
@@ -284,10 +288,24 @@ fn test_retirement() {
     let fresh = account(replacement.id());
     close_cap(recipient, connection).unwrap();
     assert_eq!(old_account.used(), [0, 0, 0]);
+    assert_eq!(old_endpoint.used(), [0, 0]);
+    let backing = crate::klib::namespace_account_budget::snapshot();
+    drop((old_account, old_endpoint));
+    assert!(record_weak.upgrade().is_none());
+    assert!(endpoint_weak.upgrade().is_none());
+    assert_eq!(crate::klib::namespace_account_budget::snapshot(), backing);
+    drop(record_weak);
+    assert_eq!(crate::klib::namespace_account_budget::snapshot(), (backing.0 - 1, backing.1 - 1));
+    drop(endpoint_weak);
+    assert_eq!(crate::klib::namespace_account_budget::snapshot(), (backing.0 - 2, backing.1 - 2));
     assert_eq!(fresh.used(), [1, 0, 0]);
     close_cap(replacement.id(), fresh_connection).unwrap();
     crate::memory::close_user_address_space_handle(replacement).unwrap();
     close_address_space_fixture(recipient).unwrap();
+    crate::logln!(
+        "[IPC account lifetime] delegated connection retained real closed endpoint/record \
+         accounts across root close and exact ASID reuse; final-weak refunds preserved successor"
+    );
 }
 
 fn test_node_limits() {
@@ -301,7 +319,7 @@ fn test_node_limits() {
             amount[dimension] = remaining.min(record_budget::DOMAIN_LIMIT[dimension]);
             charges.push(
                 record_budget::reserve(
-                    &record_budget::DomainBudget::try_new().unwrap(),
+                    &record_budget::DomainBudget::try_new(false).unwrap(),
                     false,
                     amount,
                 )
@@ -309,7 +327,7 @@ fn test_node_limits() {
             );
             remaining -= amount[dimension];
         }
-        let rejected = record_budget::DomainBudget::try_new().unwrap();
+        let rejected = record_budget::DomainBudget::try_new(false).unwrap();
         let mut one = [0, 0, 0];
         one[dimension] = 1;
         let full = record_budget::node_used();
@@ -323,7 +341,7 @@ fn test_node_limits() {
             amount[dimension] = remaining.min(record_budget::DOMAIN_LIMIT[dimension]);
             charges.push(
                 record_budget::reserve(
-                    &record_budget::DomainBudget::try_new().unwrap(),
+                    &record_budget::DomainBudget::try_new(false).unwrap(),
                     true,
                     amount,
                 )

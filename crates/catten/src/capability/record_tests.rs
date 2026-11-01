@@ -70,7 +70,7 @@ pub(crate) fn finish_real() {
         DISPOSED.load(Ordering::Acquire)
     );
 }
-fn account(root: memory::AddressSpaceHandle) -> Arc<budget::DomainBudget> {
+fn account(root: memory::AddressSpaceHandle) -> budget::AccountRef {
     CAPABILITIES.lock().get(&root.id()).unwrap().budget.clone()
 }
 /// Snapshot the exact test account before namespace detachment/reuse. The

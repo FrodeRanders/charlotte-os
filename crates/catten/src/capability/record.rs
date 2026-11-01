@@ -70,7 +70,7 @@ impl PreparingRecord {
     }
 
     #[cfg(any(test, feature = "kernel_tests"))]
-    pub(super) fn test_charge(&mut self, account: &Arc<budget::DomainBudget>) {
+    pub(super) fn test_charge(&mut self, account: &budget::AccountRef) {
         self.0.charge = Some(budget::reserve(account, false).unwrap());
     }
 }

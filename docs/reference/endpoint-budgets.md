@@ -10,6 +10,11 @@ Endpoint creation reserves two independently checked resources: one endpoint
 record and its preallocated queue backing slots. Charges remain with the
 creating IPC namespace, including after delegation or domain retirement.
 
+The endpoint account itself has separate
+[namespace-account backing admission](namespace-account-admission.md), retained
+through closed endpoints, delegation and final weak/allocator release. Its
+captured trusted storage class is independent of endpoint/queue reserve grants.
+
 | Limit | Current kernel policy |
 | --- | --- |
 | Endpoint records per domain generation | 64 |

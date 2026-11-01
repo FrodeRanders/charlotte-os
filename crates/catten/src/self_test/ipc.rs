@@ -862,13 +862,13 @@ pub fn test_endpoint_admission() {
         while remaining != 0 {
             let mut amount = [0, 0];
             amount[dimension] = remaining.min(budget::DOMAIN_LIMIT[dimension]);
-            let domain = DomainBudget::try_new().unwrap();
+            let domain = DomainBudget::try_new(false).unwrap();
             charges.push(budget::reserve(&domain, false, amount).unwrap());
             remaining -= amount[dimension];
         }
         let mut amount = [0, 0];
         amount[dimension] = 1;
-        let blocked = DomainBudget::try_new().unwrap();
+        let blocked = DomainBudget::try_new(false).unwrap();
         let full = budget::node_used();
         assert!(budget::reserve(&blocked, false, amount).is_err());
         assert_eq!(blocked.used(), [0, 0]);
@@ -880,7 +880,9 @@ pub fn test_endpoint_admission() {
         while remaining != 0 {
             let mut amount = [0, 0];
             amount[dimension] = remaining.min(budget::DOMAIN_LIMIT[dimension]);
-            charges.push(budget::reserve(&DomainBudget::try_new().unwrap(), true, amount).unwrap());
+            charges.push(
+                budget::reserve(&DomainBudget::try_new(false).unwrap(), true, amount).unwrap(),
+            );
             remaining -= amount[dimension];
         }
         assert!(budget::reserve(&blocked, true, amount).is_err());

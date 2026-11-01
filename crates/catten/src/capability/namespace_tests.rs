@@ -65,7 +65,7 @@ pub(super) fn run() {
         assert_eq!(budget::node_used(), used);
         assert_eq!(memory::PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
     }
-    prepare_namespace().unwrap().cancel_unpublished();
+    prepare_namespace(false).unwrap().cancel_unpublished();
     REGISTRATION.store(false, Ordering::Relaxed);
 
     let root = loader::create_user_address_space_handle();
@@ -83,7 +83,7 @@ pub(super) fn run() {
         drop(heap);
         detached
     };
-    let prepared = prepare_namespace().unwrap();
+    let prepared = prepare_namespace(false).unwrap();
     {
         let lifecycle = memory::ADDRESS_SPACE_LIFECYCLE.lock();
         let heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
@@ -108,22 +108,22 @@ pub(super) fn run() {
     // Preflight lost to another namespace publisher: the helper must leave
     // redundant storage with its preparation owner for post-guard disposal.
     let mut private = AdmittedMap::new();
-    let winner = prepare_namespace().unwrap();
+    let winner = prepare_namespace(false).unwrap();
     winner.publish_into(&mut private, 0x5e49, None);
-    let mut unused = Some(prepare_namespace().unwrap());
+    let mut unused = Some(prepare_namespace(false).unwrap());
     let first = namespace(&mut private, 0x5e49, None, &mut unused).unwrap();
     assert_eq!(first.next_serial, 1);
     assert!(unused.is_some());
     unused.take().unwrap().cancel_unpublished();
     release_namespace(private.take(&0x5e49).unwrap());
 
-    let abandoned = prepare_namespace().unwrap();
+    let abandoned = prepare_namespace(false).unwrap();
     let retained = abandoned.0.value.as_ref().unwrap().budget.clone();
     {
         let lifecycle = memory::ADDRESS_SPACE_LIFECYCLE.lock();
         let registry = CAPABILITIES.lock();
         let heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
-        drop(abandoned);
+        crate::klib::namespace_account_budget::with_locked(|| drop(abandoned));
         drop(heap);
         drop(registry);
         drop(lifecycle);

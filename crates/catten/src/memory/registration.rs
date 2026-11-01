@@ -42,8 +42,10 @@ impl PreparingRegistration {
         ipc: impl FnOnce() -> Result<crate::ipc::namespace::PreparingNamespace, core::alloc::AllocError>,
     ) -> Result<(), AddressSpaceRegistrationError> {
         self.0.namespace = Some(
-            crate::capability::prepare_namespace()
-                .map_err(|_| AddressSpaceRegistrationError::CapabilityNamespaceAllocationFailed)?,
+            crate::capability::prepare_namespace(
+                self.0.root.as_ref().unwrap().table_account.is_platform(),
+            )
+            .map_err(|_| AddressSpaceRegistrationError::CapabilityNamespaceAllocationFailed)?,
         );
         self.0.account = Some(
             account().map_err(|_| AddressSpaceRegistrationError::MemorySponsorAllocationFailed)?,
@@ -103,13 +105,14 @@ pub(super) fn register(
     account: impl FnOnce() -> Result<budget::PreparingAccount, core::alloc::AllocError>,
     metadata: impl FnOnce() -> Result<metadata::PreparingMetadata, core::alloc::AllocError>,
 ) -> Result<AddressSpaceHandle, AddressSpaceRegistrationError> {
+    let backing_platform = root.table_account.is_platform();
     register_with_ipc(
         root,
         publish,
         reject,
         account,
         metadata,
-        crate::ipc::namespace::PreparingNamespace::try_new,
+        || crate::ipc::namespace::PreparingNamespace::try_new_with_backing_class(backing_platform),
         |_| {},
     )
 }
@@ -190,6 +193,7 @@ fn register_with_ipc(
 
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_abandonment() {
+    let accounts = crate::klib::namespace_account_budget::snapshot();
     let root = AddressSpace::try_new_user().unwrap();
     let mut owner = PreparingRegistration::capture(root);
     owner
@@ -211,12 +215,13 @@ pub(super) fn test_abandonment() {
             let allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
             usage::with_principal_history_locked(|| {
                 let _heap = allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
-                drop(owner);
+                crate::klib::namespace_account_budget::with_locked(|| drop(owner));
             });
             assert_eq!(allocator.free_frames(), free);
             assert_eq!(table.iter().filter(|entry| entry.is_some()).count(), occupied);
         });
     }
+    assert_eq!(crate::klib::namespace_account_budget::snapshot(), (accounts.0 + 3, accounts.1 + 3));
     crate::logln!(
         "[memory sponsor registration retention] guarded abandonment retains one unpublished \
          root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; \
