@@ -252,7 +252,7 @@ struct Target {
     asid: AddressSpaceId,
     cq: CqId,
     root: Option<crate::memory::AddressSpaceHandle>,
-    records: Arc<budget::DomainBudget>,
+    records: budget::AccountRef,
     timers: crate::timers::budget::AccountRef,
     capacity: usize,
     platform: bool,

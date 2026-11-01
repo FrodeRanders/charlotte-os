@@ -9,18 +9,18 @@ operator procedure, authority, planning and qualification process.
 [Policy](../../crates/catten/src/resource_policy.rs) groups typed, copyable
 immutable settings. Family-local constant aliases forward to those fields;
 existing reservation helpers still enforce admission at their owning boundary.
-Eleven metadata families share the checked `AdmissionPool` counter mechanics:
+Twelve metadata families share the checked `AdmissionPool` counter mechanics:
 root metadata, principal history, thread metadata, thread-table backing, ASID-table
-backing, waiter and timer accounts, scratch nodes, snapshot buffers, mapping
-nodes and memory-capability nodes. Each retains its own lock, typed charge, captured
+backing, waiter, timer and completion accounts, scratch nodes, snapshot buffers,
+mapping nodes and memory-capability nodes. Each retains its own lock, typed charge, captured
 classification and allocation-lifetime release policy. The shared counter
 owns no resource and grants no cleanup authority; both counters change together
 on accepted admission/refund and remain unchanged on rejection.
 No new account, registry, classification source or cleanup owner is introduced.
 Existing numerical defaults are preserved; memory-capability node and
-thread-table, ASID-table, waiter-account and timer-account backing admission add
-the separately documented pools below. These are defaults, not fixed application requirements
-or workload sizing guarantees.
+thread-table, ASID-table, waiter-account, timer-account and completion-account
+backing admission add the separately documented pools below. These are defaults,
+not fixed application requirements or workload sizing guarantees.
 
 ## Fixed-pool inventory
 
@@ -39,6 +39,7 @@ unlimited node capacity.
 | `waiters` | scheduler entries | 1024 | 6144 | 8192 |
 | `waiter_accounts` | fixed allocation bundles | — | 6144 | 8192 |
 | `timer_accounts` | scheduler/completion fixed allocation bundles | — | 12288 | 16384 |
+| `completion_accounts` | record/CQ/watch fixed allocation bundles | — | 18432 | 24576 |
 | `observer_lists` | allocation lifetimes | — | 6144 | 8192 |
 | `mailbox_records` | records | 512 | 6144 | 8192 |
 | `mailbox_queues` | sets; ring bytes | 2 sets; 1 MiB | 768 sets; 6 MiB | 1024 sets; 8 MiB |

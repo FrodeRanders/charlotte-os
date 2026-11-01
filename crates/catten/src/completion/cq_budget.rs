@@ -1,12 +1,12 @@
 //! CQ registration count and kernel-owned ring/backlog backing bytes.
 //! Mappings retain ownership of the physical ring frames independently of the CQ registry.
 
-use alloc::sync::Arc;
-
 use charlotte_lifecycle::resources::VectorBudget;
 use spin::LazyLock;
 
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
+
+pub(crate) type AccountRef = super::account_budget::AccountRef<DomainBudget>;
 
 // Dimensions: registered CQs and allocated kernel backing bytes.
 pub(crate) const DOMAIN_LIMIT: [u64; 2] = crate::resource_policy::POLICY.completion_queues.domain;
@@ -29,12 +29,13 @@ static NODE: LazyLock<Mutex<NodeBudget>> = LazyLock::new(|| {
 pub(crate) struct DomainBudget(Mutex<VectorBudget<2>>);
 impl DomainBudget {
     #[cfg(any(test, feature = "kernel_tests"))]
-    pub(crate) fn new() -> Arc<Self> {
-        Self::try_new().expect("mandatory CQ account allocation failed")
+    pub(crate) fn new() -> AccountRef {
+        Self::try_new(false).expect("mandatory CQ account allocation failed")
     }
 
-    pub(crate) fn try_new() -> Result<Arc<Self>, core::alloc::AllocError> {
-        Arc::try_new(Self(Mutex::new(VectorBudget::new(DOMAIN_LIMIT))))
+    pub(crate) fn try_new(backing_platform: bool) -> Result<AccountRef, core::alloc::AllocError> {
+        let allocator = super::account_budget::allocator(backing_platform)?;
+        allocator.try_arc(Self(Mutex::new(VectorBudget::new(DOMAIN_LIMIT))))
     }
 
     #[cfg(any(test, feature = "kernel_tests"))]
@@ -46,15 +47,11 @@ impl DomainBudget {
 #[derive(Debug)]
 #[must_use]
 pub(crate) struct Charge {
-    domain: Arc<DomainBudget>,
+    domain: AccountRef,
     platform: bool,
     amount: [u64; 2],
 }
-pub(crate) fn reserve(
-    domain: &Arc<DomainBudget>,
-    platform: bool,
-    amount: [u64; 2],
-) -> Result<Charge, ()> {
+pub(crate) fn reserve(domain: &AccountRef, platform: bool, amount: [u64; 2]) -> Result<Charge, ()> {
     let mut local = domain.0.lock();
     local.reserve(amount).map_err(|_| ())?;
     let mut node = NODE.lock();

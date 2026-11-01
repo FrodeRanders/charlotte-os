@@ -41,9 +41,9 @@ pub(super) struct NamespaceState {
     /// Separate lifetime budget: a cancelled timer on another LP stays charged
     /// even after its completion slot has been reclaimed.
     pub(super) timer_budget: crate::timers::budget::AccountRef,
-    pub(super) record_budget: Arc<budget::DomainBudget>,
-    pub(super) cq_budget: Arc<cq_budget::DomainBudget>,
-    pub(super) watch_budget: Arc<watch_budget::DomainBudget>,
+    pub(super) record_budget: budget::AccountRef,
+    pub(super) cq_budget: cq_budget::AccountRef,
+    pub(super) watch_budget: watch_budget::AccountRef,
     pub(super) address_space: Option<crate::memory::AddressSpaceHandle>,
 }
 
@@ -82,11 +82,11 @@ impl Namespace {
         let timer_budget =
             crate::timers::budget::DomainBudget::try_new(capacity, backing_platform)?;
         before_allocate(2)?;
-        let record_budget = budget::DomainBudget::try_new(capacity)?;
+        let record_budget = budget::DomainBudget::try_new(capacity, backing_platform)?;
         before_allocate(3)?;
-        let cq_budget = cq_budget::DomainBudget::try_new()?;
+        let cq_budget = cq_budget::DomainBudget::try_new(backing_platform)?;
         before_allocate(4)?;
-        let watch_budget = watch_budget::DomainBudget::try_new(capacity)?;
+        let watch_budget = watch_budget::DomainBudget::try_new(capacity, backing_platform)?;
         Ok(Self(ManuallyDrop::new(NamespaceState {
             table: AdmittedMap::new(),
             capacity,

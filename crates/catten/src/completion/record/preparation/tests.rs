@@ -20,7 +20,7 @@ fn context() {
     assert!(COMPLETIONS.try_write().is_some());
 }
 
-fn owner(account: &Arc<budget::DomainBudget>, id: OperationId) -> Preparing {
+fn owner(account: &budget::AccountRef, id: OperationId) -> Preparing {
     Preparing::new(id, Some(alloc::vec![0x42; 16]), budget::reserve(account, false).unwrap())
 }
 

@@ -39,6 +39,12 @@ means one heavily watched endpoint or thread can reject registration while node
 capacity remains available; no per-caller fairness guarantee at either source
 is claimed.
 
+The namespace's watch-account backing has separate
+[allocation-lifetime admission](completion-account-admission.md), shared with
+record/CQ accounts. Root retirement, namespace replacement and retained weak
+references cannot refund surviving account storage or change its original class.
+Trusted backing alone grants no watch-entry reserve privilege.
+
 ## Owning registration and notification
 
 Endpoint and thread lifecycle watches use a fallible one-shot `ObserverList`, separate

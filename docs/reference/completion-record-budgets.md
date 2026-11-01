@@ -259,7 +259,7 @@ them; an independent waiter token can still cancel its own subscription. See the
 [CQ metadata follow-up](../reports/audits/2026-10-16-cq-metadata.md).
 
 The global namespace map now also uses shared admitted nodes, prepared with
-four fallible account allocations before registry access. Whole namespace
+four fallibly prepared account bundles before registry access. Whole namespace
 close/replacement retains the global node and complete payload through unlock;
 explicit finish frees the global node before sources, payload nodes and original
 accounts. Abandonment retains every field; ordinary rejection explicitly
@@ -336,11 +336,13 @@ captures and other weak-only Arc/control-block allocations are not covered here.
 Admitted detached nodes retain their original record count through actual
 release, including backlog and post-delivery refund batches; this is not a
 separate aggregate byte admission for metadata.
-Timer-account backing has separate [fixed-bundle admission](timer-account-admission.md)
-through final weak/allocator release. Every fully prepared namespace, including
-an empty one, owns one fresh admitted timer account. Global nodes allocated
-before that admission and independently surviving record/CQ/watch accounts are
-fallible but lack their own aggregate count/byte admission. No worst-case global
+Timer-account backing has separate [fixed-bundle admission](timer-account-admission.md).
+Record/CQ/watch account backing shares its own
+[allocation-lifetime pool](completion-account-admission.md). Both retain original
+classification through final weak/allocator release. Every fully prepared
+namespace, including an empty one, owns four fresh admitted account bundles.
+Global namespace nodes allocated before account admission still lack their own
+aggregate count/byte admission. No worst-case global
 scan latency or hostile-pressure guarantee follows from the admitted map.
 General metadata allocation and reclamation remain separate work. Endpoint-close and
 thread-exit registrations now share [owning lists and event-watch admission](close-watch-budgets.md).

@@ -21,9 +21,11 @@ fn mixed_classes() {
         let domain = account.0.lock();
         let node = NODE.lock();
         let _heap = PRIMARY_ALLOCATOR.lock();
-        for source in &mut charges {
-            releases.push(source.take().unwrap());
-        }
+        crate::completion::account_budget::with_locked(|| {
+            for source in &mut charges {
+                releases.push(source.take().unwrap());
+            }
+        });
         assert_eq!(domain.used()[0] as usize, 64);
         assert_eq!(node.total.used()[0] as usize, baseline.0 + 64);
         assert_eq!(node.ordinary.used()[0] as usize, baseline.1 + 32);

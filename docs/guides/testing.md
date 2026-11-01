@@ -427,6 +427,16 @@ the same backing contract. Shared allocator host tests inject holder/payload
 errors; these are not forced native heap exhaustion. See
 [timer-account admission](../reference/timer-account-admission.md).
 
+Completion/CQ/watch account fixtures fill a shared backing pool with real mixed
+account allocations. They test 192 heap-held constructor denials, namespace
+rollback with zero/one/two slots available, trusted storage without resource
+reserve grants and exact recovery after closing a promoted root at total
+exhaustion. A real completion allocation, typed retired heap CQ and independent
+owned watch entry retain original accounts across root close and exact ASID
+reuse; each final account weak release returns one original backing slot.
+Existing guarded namespace and refund-batch controls hold the new pool too.
+See [completion-account admission](../reference/completion-account-admission.md).
+
 Scheduler timer-event fixtures separately allocate 1,024 sorted nodes, test
 reuse and iterative removal, and keep the quantum inline while anonymous
 admission is full. Shared node/ordinary saturation is counter-only. They cover

@@ -25,6 +25,7 @@
 //! The submission-side capability table and buffer-ownership contract are real;
 //! [`complete`] is the kernel-side hook a worker's exit-observer would call.
 
+pub(crate) mod account_budget;
 pub(crate) mod budget;
 mod capability_metadata;
 use capability_metadata::{
@@ -617,17 +618,17 @@ pub(crate) fn waiter_count(asid: AddressSpaceId, cap: CompletionCap) -> usize {
 }
 
 #[cfg(any(test, feature = "kernel_tests"))]
-pub(crate) fn record_admission(asid: AddressSpaceId) -> Option<Arc<budget::DomainBudget>> {
+pub(crate) fn record_admission(asid: AddressSpaceId) -> Option<budget::AccountRef> {
     COMPLETIONS.read().get(&asid).map(|entries| entries.record_budget.clone())
 }
 
 #[cfg(any(test, feature = "kernel_tests"))]
-pub(crate) fn cq_admission(asid: AddressSpaceId) -> Option<Arc<cq_budget::DomainBudget>> {
+pub(crate) fn cq_admission(asid: AddressSpaceId) -> Option<cq_budget::AccountRef> {
     COMPLETIONS.read().get(&asid).map(|entries| entries.cq_budget.clone())
 }
 
 #[cfg(any(test, feature = "kernel_tests"))]
-pub(crate) fn watch_admission(asid: AddressSpaceId) -> Option<Arc<watch_budget::DomainBudget>> {
+pub(crate) fn watch_admission(asid: AddressSpaceId) -> Option<watch_budget::AccountRef> {
     COMPLETIONS.read().get(&asid).map(|entries| entries.watch_budget.clone())
 }
 

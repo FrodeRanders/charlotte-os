@@ -39,7 +39,7 @@ struct Captured {
     cap: CompletionCap,
     completion: CompletionRef,
     root: Option<crate::memory::AddressSpaceHandle>,
-    account: Arc<watch_budget::DomainBudget>,
+    account: watch_budget::AccountRef,
     platform: bool,
     terminal: bool,
     list: Option<CallbackList>,

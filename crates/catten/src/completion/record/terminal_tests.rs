@@ -34,7 +34,7 @@ impl Drop for DisposalProbe {
 }
 
 fn observation(
-    account: &Arc<watch_budget::DomainBudget>,
+    account: &watch_budget::AccountRef,
     action: impl FnOnce() + Send + 'static,
 ) -> (EventObservation, crate::klib::observer::registration::ListRef<watch_budget::Charge>) {
     let observer: Arc<dyn Observer> = Arc::new(DisposalProbe(Mutex::new(Some(Box::new(action)))));

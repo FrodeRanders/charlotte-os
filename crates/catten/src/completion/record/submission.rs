@@ -14,9 +14,9 @@ use crate::capability::{
 struct Target {
     asid: AddressSpaceId,
     root: Option<crate::memory::AddressSpaceHandle>,
-    records: Arc<budget::DomainBudget>,
+    records: budget::AccountRef,
     timers: crate::timers::budget::AccountRef,
-    watches: Arc<watch_budget::DomainBudget>,
+    watches: watch_budget::AccountRef,
     capacity: usize,
     platform: bool,
 }

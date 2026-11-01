@@ -17,7 +17,7 @@ type RingStorage = (Vec<u64>, *mut cq::CompletionQueueRing);
 struct Target {
     asid: AddressSpaceId,
     root: Option<crate::memory::AddressSpaceHandle>,
-    account: Arc<cq_budget::DomainBudget>,
+    account: cq_budget::AccountRef,
     capacity: usize,
     platform: bool,
 }

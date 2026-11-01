@@ -973,6 +973,14 @@ the corrected RPC polling paths, and the remaining notification gaps.
   class separate from explicit event reserve grants; promotion cannot reclassify
   an existing allocation. Root/namespace fallback retains original charges under
   publication/heap/pool guards. See `docs/reference/timer-account-admission.md`.
+- Completion record, CQ and watch accounts use typed charged `AccountRef` owners
+  and shared `completion_accounts` backing admission. Capture their class with
+  the namespace's exact root before preparation; do not turn trusted backing
+  into a record/CQ/watch reserve grant. Keep the original charge through retained
+  work and final weak/allocator release. Partial namespace rejection releases
+  unused accounts outside publication guards; complete namespace fallback stays
+  inert. Do not restore bare account Arcs. See
+  `docs/reference/completion-account-admission.md`.
 - Observer lists use `ListRef` and `ObserverList::try_new` with independent
   allocation admission. Capture classification from source admission or the
   first waiter/watch sponsor; never infer it from caller-controlled roles or

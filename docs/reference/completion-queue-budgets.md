@@ -54,6 +54,11 @@ released before admission is returned. Each namespace has a reference-counted
 budget owner tied to its captured generation, so old releases cannot credit a
 new namespace using the same ASID.
 
+The account's own Arc/holder bundle has separate
+[backing admission](completion-account-admission.md), shared with record/watch
+accounts through final weak/allocator release. Trusted account backing alone
+grants no platform queue or ring-byte privilege.
+
 ## Fallible preparation and replacement
 
 Kernel CQ creation returns `CqOpenError`: unknown or retiring namespace,

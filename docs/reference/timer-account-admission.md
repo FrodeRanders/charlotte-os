@@ -28,9 +28,10 @@ Reusing the allocation owner costs one private holder allocation per account
 and one extra machine word in each account reference. Enclosing admitted layouts
 reserve their actual larger size. Every fully prepared namespace has one fresh
 timer account, so this also bounds complete namespace candidates and published
-namespaces, including empty ones. Global nodes prepared before timer-account
-admission and independently surviving record/CQ/watch accounts still need their
-own admission. No worst-case global lookup latency follows from this count.
+namespaces, including empty ones. Independently surviving record/CQ/watch accounts
+have their own [backing admission](completion-account-admission.md). Global nodes
+prepared before account admission remain outside these pools. No worst-case
+global lookup latency follows from this count.
 
 ## Classification and lifetime
 
@@ -84,7 +85,7 @@ retain their new backing charges without introducing another deliberate leak.
 Holder/payload allocation errors are exercised by the shared allocation owner's
 15 host tests, rather than forced native heap exhaustion. These fixtures do not
 establish aggregate principal/general-heap accounting, sustained hostile-pressure
-fairness, arbitrary destructor safety or physical hardware behavior. Completion,
-CQ and watch accounts, Waker/callback storage and other registry metadata remain
+fairness, arbitrary destructor safety or physical hardware behavior. Capability,
+IPC and mailbox accounts, Waker/callback storage and other registry metadata remain
 open. SEC-07 remains partial; existing C03/C16/C18 and G1/G4 boundaries in
 [cleanup/recovery](cleanup-recovery.md) continue to apply.

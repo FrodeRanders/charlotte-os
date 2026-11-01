@@ -128,6 +128,7 @@ fn with_queue(asid: usize) -> Preparing {
 }
 
 fn allocation_and_fresh_nodes() {
+    let backing = account_budget::snapshot();
     open_address_space_with_cq(CLIENT, 4, 2).unwrap();
     let account = cq_admission(CLIENT).unwrap();
     let records = record_admission(CLIENT).unwrap();
@@ -152,6 +153,7 @@ fn allocation_and_fresh_nodes() {
         assert!(matches!(failed, Err(CqOpenError::AllocationFailed)));
         assert_eq!(visits, rejected_stage + 1);
         assert_eq!(crate::timers::account_budget::snapshot(), timer_accounts);
+        assert_eq!(account_budget::snapshot(), (backing.0 + 3, backing.1 + 3));
         assert_eq!(account.used(), original);
         assert_eq!(records.used(), 1);
         assert!(captured.holds_buffer());
@@ -188,15 +190,18 @@ fn allocation_and_fresh_nodes() {
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
         crate::timers::account_budget::with_locked(|| {
-            for next in &mut preparing {
-                assert!(next.publish().unwrap().is_none());
-                assert!(next.is_published());
-            }
-            let mut registry = COMPLETIONS.write();
-            for (i, account) in accounts.iter().enumerate() {
-                retired.push(RetiredNamespace::from_node(registry.take(&(CLIENT + i)).unwrap()));
-                assert_eq!(account.used()[0], 1);
-            }
+            account_budget::with_locked(|| {
+                for next in &mut preparing {
+                    assert!(next.publish().unwrap().is_none());
+                    assert!(next.is_published());
+                }
+                let mut registry = COMPLETIONS.write();
+                for (i, account) in accounts.iter().enumerate() {
+                    retired
+                        .push(RetiredNamespace::from_node(registry.take(&(CLIENT + i)).unwrap()));
+                    assert_eq!(account.used()[0], 1);
+                }
+            });
         });
     }
     for next in preparing {
@@ -208,6 +213,8 @@ fn allocation_and_fresh_nodes() {
     }
     assert!(accounts.iter().all(|account| account.used() == [0, 0]));
     assert_eq!(cq_budget::node_used(), baseline);
+    drop((accounts, account, records));
+    assert_eq!(account_budget::snapshot(), backing);
     assert_eq!(
         crate::timers::account_budget::snapshot(),
         (timer_accounts.0 - 1, timer_accounts.1 - 1)
@@ -231,6 +238,7 @@ impl Drop for Reenter {
 
 fn complete_replacement() {
     let backing = crate::timers::account_budget::snapshot();
+    let account_backing = account_budget::snapshot();
     open_address_space_with_cq(CLIENT, 4, 2).unwrap();
     let records = record_admission(CLIENT).unwrap();
     let queues = cq_admission(CLIENT).unwrap();
@@ -326,9 +334,12 @@ fn complete_replacement() {
     assert_eq!(crate::timers::account_budget::snapshot(), (backing.0 + 1, backing.1 + 1));
     drop(timer_weak);
     assert_eq!(crate::timers::account_budget::snapshot(), backing);
+    drop((records, queues, watches, next_records, next_queues));
+    assert_eq!(account_budget::snapshot(), account_backing);
 }
 
 fn retired_identity() {
+    let backing = account_budget::snapshot();
     let root = crate::service::loader::create_user_address_space_handle();
     let mut preparing = Preparing::new(root.id(), 4).unwrap();
     let old_account = Arc::downgrade(&preparing.entries().cq_budget);
@@ -348,13 +359,19 @@ fn retired_identity() {
     }
     preparing.finish();
     assert!(old_account.upgrade().is_none());
+    assert_eq!(account_budget::snapshot(), (backing.0 + 4, backing.1 + 4));
     assert_eq!(current.used(), before);
     crate::memory::close_user_address_space_handle(successor).unwrap();
     assert_eq!(current.used(), [0, 0]);
+    drop(old_account);
+    assert_eq!(account_budget::snapshot(), (backing.0 + 1, backing.1 + 1));
+    drop(current);
+    assert_eq!(account_budget::snapshot(), backing);
 }
 
 pub(super) fn run() {
     let irq = crate::cpu::isa::lp::ops::get_int_state();
+    account_budget::test_admission();
     timer_account_pressure();
     allocation_and_fresh_nodes();
     complete_replacement();

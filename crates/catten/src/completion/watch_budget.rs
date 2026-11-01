@@ -1,12 +1,12 @@
 //! Endpoint/thread lifecycle and kernel completion-callback entries retain admission until unlinked
 //! or detached notification storage is actually released.
 
-use alloc::sync::Arc;
-
 use charlotte_lifecycle::resources::CountBudget;
 use spin::LazyLock;
 
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
+
+pub(crate) type AccountRef = super::account_budget::AccountRef<DomainBudget>;
 
 pub(crate) const MAX_DOMAIN_WATCHES: usize =
     crate::resource_policy::POLICY.watches.domain[0] as usize;
@@ -36,12 +36,16 @@ static NODE: LazyLock<Mutex<NodeBudget>> = LazyLock::new(|| {
 pub(crate) struct DomainBudget(Mutex<CountBudget>);
 impl DomainBudget {
     #[cfg(any(test, feature = "kernel_tests"))]
-    pub(crate) fn new(capacity: usize) -> Arc<Self> {
-        Self::try_new(capacity).expect("mandatory watch account allocation failed")
+    pub(crate) fn new(capacity: usize) -> AccountRef {
+        Self::try_new(capacity, false).expect("mandatory watch account allocation failed")
     }
 
-    pub(crate) fn try_new(capacity: usize) -> Result<Arc<Self>, core::alloc::AllocError> {
-        Arc::try_new(Self(Mutex::new(CountBudget::new(capacity.min(MAX_DOMAIN_WATCHES)))))
+    pub(crate) fn try_new(
+        capacity: usize,
+        backing_platform: bool,
+    ) -> Result<AccountRef, core::alloc::AllocError> {
+        let allocator = super::account_budget::allocator(backing_platform)?;
+        allocator.try_arc(Self(Mutex::new(CountBudget::new(capacity.min(MAX_DOMAIN_WATCHES)))))
     }
 
     #[cfg(any(test, feature = "kernel_tests"))]
@@ -53,7 +57,7 @@ impl DomainBudget {
 #[derive(Debug)]
 #[must_use]
 pub(crate) struct Charge {
-    domain: Arc<DomainBudget>,
+    domain: AccountRef,
     platform: bool,
 }
 
@@ -63,7 +67,7 @@ impl Charge {
     }
 }
 
-pub(crate) fn reserve(domain: &Arc<DomainBudget>, platform: bool) -> Result<Charge, ()> {
+pub(crate) fn reserve(domain: &AccountRef, platform: bool) -> Result<Charge, ()> {
     let mut local = domain.0.lock();
     local.reserve().map_err(|_| ())?;
     let mut node = NODE.lock();

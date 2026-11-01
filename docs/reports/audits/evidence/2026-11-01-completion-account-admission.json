@@ -1,0 +1,174 @@
+{
+  "schema": "charlotte.completion-account-admission.v1",
+  "date": "2026-11-01",
+  "base_revision": "7b4322e6b96c87b6025df7939ca8054c3868243e",
+  "scope": "Independent allocation-lifetime admission for completion record, CQ and watch account backing. Three typed account families share one fixed-bundle pool; resource budgets and platform grants remain separate.",
+  "source_sha256": {
+    "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
+    "crates/catten/src/completion/account_budget.rs": "c6110037fd3c7f0556b2f4359f00e4e99c50cf9dac2366b38dc020c1c2589675",
+    "crates/catten/src/completion/account_budget/tests.rs": "abb98f7647da1c952afe6f2b051425f24ee072ed9ee9130d6b517c5a4ad6ef8c",
+    "crates/catten/src/completion/budget.rs": "b5f9f5c3447537c2e7e277cc110609a8ec38dfb1caef86f9afa5119b133e2813",
+    "crates/catten/src/completion/budget/tests.rs": "5d7aaafcc0ecabc102e825475a4950318831cdd179113f66a188290913c54950",
+    "crates/catten/src/completion/cq_budget.rs": "ae7e1145fbe506f2a917d485bc6ef70e14a652fd0ea99b1b363609e6d52716b5",
+    "crates/catten/src/completion/delivery/preparation.rs": "b2ca6ad616c3ad612fcd3d887a9b74d9500701c09e0c6ff2349ff93519b0b926",
+    "crates/catten/src/completion/delivery/preparation/tests.rs": "7eb96ac4ce904c3c5d889c56fa8d57b6f9f025a7013277f590629dc569c3b09a",
+    "crates/catten/src/completion/detached.rs": "fcc6b784804f9477fbe57f7d8438a4c2bd95099ca8c0f627fd3776c11033ac37",
+    "crates/catten/src/completion/detached/metadata_tests.rs": "cb311e0d7db71941f707b7a44f4ce8d6323093b514360e51c6d706409bb96396",
+    "crates/catten/src/completion/mod.rs": "eae7fdb206b87f1b7b6a8130bd4ac3c08f2950bfe4951c6ec57cf69133a06a6f",
+    "crates/catten/src/completion/namespace.rs": "97ecc3ef784b775bbf1ca09d4b3eeb6cd1fa58c3643790d4258370f5ce320f43",
+    "crates/catten/src/completion/namespace/preparation/tests.rs": "4b39be7046dad7b775d510a853539c3c42755e999f3b8d161054436378cbea6a",
+    "crates/catten/src/completion/record/callbacks.rs": "5e3ac25799b6821621663264b030add91d719770560938636a067df63639b864",
+    "crates/catten/src/completion/record/preparation/tests.rs": "16475a80f006a9df8571cb70bf3b71a6b496d5ebe1852650c4dbb01ca86b62ff",
+    "crates/catten/src/completion/record/submission.rs": "2272b41362e22347b0435170b8800847a68e0f7ac7efb4b061e777e28780dc29",
+    "crates/catten/src/completion/record/terminal_tests.rs": "16da994d425fa837ee92164577570df22f28df6c6b8544f7c0fd6a9163a88f7a",
+    "crates/catten/src/completion/watch_budget.rs": "207d3c819d2084af4ebba7c43d42d9326eba60a0f0ceb0d1da3c5c39def86372",
+    "crates/catten/src/klib/charged_allocator.rs": "8cd21da64b7d3bd693ef2794a77521e990029ca0b0313c8608a4d806e76056cb",
+    "crates/catten/src/klib/charged_allocator/tests.rs": "8f48be4d7c6b7e0bb15e0d4ca4b20dd944eb8bc0678f7e0e20046ac7b12a70d2",
+    "crates/catten/src/memory/mod.rs": "4054028a1d143a0bae80247a7f38797ca543109a7c1dafa6540a38c13247da36",
+    "crates/catten/src/resource_policy.rs": "55f72c8d36cd4da2d82361b5dad1f66bec6c0bb8874eb2b55b279a0c5e52a9e6",
+    "crates/catten/src/resource_policy/defaults.rs": "764a701c7ec4c4c4197d777974b6053c6806a0849fb8e681897525dabb458fcb",
+    "crates/catten/src/resource_policy/tests.rs": "c0e9198c1e6f908527d777d00421beedd5d530d7ee16ace753e3afab953468b2",
+    "scripts/run-host-tests.sh": "781e2cae16a1316510117f66c3975bf26ebc49baf14e827c511ab9f958a74733"
+  },
+  "policy": {
+    "field": "completion_accounts",
+    "dimension": "one fixed-layout account Arc plus private allocator-holder bundle",
+    "component_types": [
+      "completion record account",
+      "CQ count/backing account",
+      "event watch account"
+    ],
+    "ordinary": 18432,
+    "total": 24576,
+    "accounts_per_complete_namespace": 3,
+    "count_only_complete_root_capacity": {
+      "ordinary": 3072,
+      "total": 4096
+    },
+    "decision": "Twice the three-account needs at complete-root capacity leaves headroom for retained generations, namespace replacement and concurrent preparation. One quarter remains trusted reserve. Shared headroom can be consumed by any component type, so this is not per-type or per-service progress isolation. No existing ceiling is raised or RAM preallocated.",
+    "cost": "One private holder allocation per account and one extra machine word per account reference. The three namespace owner fields grow by 24 bytes on these 64-bit targets; admitted backing layouts still use actual sizes.",
+    "classification": "Existing exact-generation translation-storage capture before allocation; independent resource adapters retain their original grant validation. Original backing classification is immutable through promotion and final release.",
+    "namespace_scope": "Every fully prepared namespace, including an empty one, owns all three admitted accounts plus its separately admitted timer account. The global node allocated before account admission still needs independent admission."
+  },
+  "native_campaigns": [
+    {
+      "instance": "completion-account-20261101-arm",
+      "arch": "aarch64",
+      "iommu": "SMMUv3",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-01T19:13:05Z",
+      "kernel_sha256": "4ed7304c8848a2140bcf9dfd133f8aa293e8cf54cf521d9234ec6dfd77826a44",
+      "bundle_map_sha256": "4a5ee89fd763eed1af5a7613cfc7a2428c1e0b623ac6bf63e6ec7eb5fdc2bd38",
+      "serial_sha256": "9cf82228f4f53bd34255bbef86d34e24bc4a5797e5b974265b1e6ccb1c6b1d3a",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "guest_verdict": [
+        19,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     2.662904] [CQ namespace retention] heap/registry-held unpublished namespace abandonment retained global node, all original accounts, complete payload and original CQ charge",
+        "[+     2.704636] [completion account pressure] 18409 ordinary + 6138 reserved actual mixed accounts; 18432/24576 ceilings, 192 heap-held denials, zero/one/two-slot namespace rollback, trusted backing without record/CQ/watch privilege, immutable promotion and close/recovery passed",
+        "[+     2.707328] [completion account lifetime] real completion/weak backing, retired heap CQ and owned watch entry retained original accounts across root close and exact ASID reuse; three final-weak refunds left successor unchanged",
+        "[+     2.740780] [completion namespace metadata] five unlocked allocation-stage rejections, 64 heap-held fresh publications/removals, complete source/timer/backlog/authority handback, reentrant disposal, retired-generation rejection and original-account reuse passed",
+        "[+     2.759150] [detached metadata retention] guarded namespace/preparation/terminal abandonment retained original nodes/charges, timers, CQ backing, watch and buffer; successors unaffected",
+        "[+    82.384350] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "instance": "completion-account-20261101-intel",
+      "arch": "x86_64",
+      "iommu": "Intel VT-d",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-01T19:14:10Z",
+      "kernel_sha256": "9c384b0bd8ce2e4e2666bff90be0b7ece950f7123220ce0759ad2c37d22f8d37",
+      "bundle_map_sha256": "1e8d1d5b4aa82acc192c0afdb4b577ee5617a233b0e41452a3eb7aa148b9f8d2",
+      "serial_sha256": "fa9bd6e36b5fb7f2193fd65f7f0e5fcad97284abe97e52fd8b1061dad6df80ae",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "guest_verdict": [
+        17,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     1.837236] [CQ namespace retention] heap/registry-held unpublished namespace abandonment retained global node, all original accounts, complete payload and original CQ charge",
+        "[+     1.887275] [completion account pressure] 18409 ordinary + 6138 reserved actual mixed accounts; 18432/24576 ceilings, 192 heap-held denials, zero/one/two-slot namespace rollback, trusted backing without record/CQ/watch privilege, immutable promotion and close/recovery passed",
+        "[+     1.891402] [completion account lifetime] real completion/weak backing, retired heap CQ and owned watch entry retained original accounts across root close and exact ASID reuse; three final-weak refunds left successor unchanged",
+        "[+     1.927320] [completion namespace metadata] five unlocked allocation-stage rejections, 64 heap-held fresh publications/removals, complete source/timer/backlog/authority handback, reentrant disposal, retired-generation rejection and original-account reuse passed",
+        "[+     1.948315] [detached metadata retention] guarded namespace/preparation/terminal abandonment retained original nodes/charges, timers, CQ backing, watch and buffer; successors unaffected",
+        "[+    90.298831] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "instance": "completion-account-20261101-amd",
+      "arch": "x86_64",
+      "iommu": "AMD-Vi",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-01T19:17:43Z",
+      "kernel_sha256": "571607d2a9b64ee832d9ffe1a570a64a9f9e464c2a101daf27d908e73f63ca2d",
+      "bundle_map_sha256": "1e8d1d5b4aa82acc192c0afdb4b577ee5617a233b0e41452a3eb7aa148b9f8d2",
+      "serial_sha256": "ff395c509189b0d19f01cafabb4e888467e230d6c83074b51175b301539e7ae8",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "guest_verdict": [
+        17,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     1.618430] [CQ namespace retention] heap/registry-held unpublished namespace abandonment retained global node, all original accounts, complete payload and original CQ charge",
+        "[+     1.666013] [completion account pressure] 18409 ordinary + 6138 reserved actual mixed accounts; 18432/24576 ceilings, 192 heap-held denials, zero/one/two-slot namespace rollback, trusted backing without record/CQ/watch privilege, immutable promotion and close/recovery passed",
+        "[+     1.669203] [completion account lifetime] real completion/weak backing, retired heap CQ and owned watch entry retained original accounts across root close and exact ASID reuse; three final-weak refunds left successor unchanged",
+        "[+     1.702240] [completion namespace metadata] five unlocked allocation-stage rejections, 64 heap-held fresh publications/removals, complete source/timer/backlog/authority handback, reentrant disposal, retired-generation rejection and original-account reuse passed",
+        "[+     1.719517] [detached metadata retention] guarded namespace/preparation/terminal abandonment retained original nodes/charges, timers, CQ backing, watch and buffer; successors unaffected",
+        "[+    87.856333] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    }
+  ],
+  "bundle_identity_encoding": "SHA-256 of UTF-8 JSON bundle_sha256 mapping, sorted keys, comma/colon separators without whitespace.",
+  "host_validation": {
+    "command": "CARGO_NET_OFFLINE=true scripts/run-host-tests.sh",
+    "exit_code": 0,
+    "result": "Full runner passed, including intentional unsafe-control rejection tests.",
+    "log_sha256": "6e17f59d0a0ccae755df743766932967284e8c431096061dc62ac25038bb88eb",
+    "resource_policy_groups": 3,
+    "shared_charged_allocator_tests": 15,
+    "catten_services_tests": 268,
+    "separate_resource_policy_command": "python3 scripts/tests/test-resource-policy.py",
+    "separate_resource_policy_result": "passed",
+    "separate_resource_policy_log_sha256": "0fcfb77a30bb61f1718ce2eb3c339e144427ffd5a148b364eeab3cf2f78b6606",
+    "kernel_tests_clippy": "ARM acpi,kernel_tests, offline/locked, -D warnings: passed",
+    "kernel_tests_clippy_log_sha256": "82c2577927dd867af130c7e9e1146d2803679721d4546076bbefc5a6c0795b9e",
+    "minimal_kernel_clippy": "ARM acpi, offline/locked, -D warnings: passed",
+    "minimal_kernel_clippy_log_sha256": "f7e157099748e7fc96f489e105ed5e89f2f52531d2d5fc9714fb4dead374a156",
+    "workspace_formatting": "cargo fmt --all -- --check: passed"
+  },
+  "controls": [
+    "Real mixed typed account allocations fill ordinary and total ceilings. 192 heap-held ordinary denials and three heap-held trusted denials establish admission before either backing allocation.",
+    "Zero, one or two available slots reject three-account namespace replacement without changing original account identities, pending buffer/capability or independent timer-account admission. Existing five-stage rejection also restores unused backing exactly.",
+    "Trusted translation roots prepare their three account bundles at ordinary exhaustion. Actual CQ, completion submission and observation adapters still consume ordinary queue, record and watch resource admission before any platform grant.",
+    "Later promotion does not reclassify the original three ordinary accounts. Closing that root at total exhaustion returns exactly three ordinary slots, allowing fresh root/namespace creation and complete close recovery.",
+    "A real completion allocation, typed detached heap CQ and independent owned watch-list entry retain original accounts after namespace disposal, actual root close and exact ASID reuse. Completion weak backing outlives its payload; CQ and watch resource disposal end their own admission. Each account then remains charged through final weak release, refunding one original slot and leaving successor accounts unchanged.",
+    "Sixty-four fresh namespace publications/removals execute beneath real heap/timer-account/completion-account pool guards. Actual unpublished CQ namespace and retired detached namespace abandonment retain their original three bundles under registry/heap/pool guards, using existing negative fixtures.",
+    "Stale-generation namespace rejection retains a weak-only old CQ account until its final weak release. Mixed-class completion refund merging holds original domain/node/heap/account-pool guards and does not allocate or refund there.",
+    "Shared allocation-owner host controls inject holder/payload failure and qualify allocation allowance, phase abandonment, allocator clones, final weak concurrency and deallocation-before-refund ordering."
+  ],
+  "qualification_limits": [
+    "Fixed-bundle counts do not account for exact heap bytes, allocator overhead or aggregate principal/general-heap consumption. Shared headroom supplies no per-kind entitlement.",
+    "Native pressure allocates actual accounts. The retained CQ control owns private heap ring/backlog backing with no physical mapping or consumer; the independent watch control owns a real registration node rather than a live target thread. No physical CQ retirement or new root-release authority is inferred.",
+    "Holder/payload allocation errors are injected by shared host controls; native heap exhaustion is not forced.",
+    "Capability, IPC and mailbox account backing, global namespace nodes, Waker/callback/other observer storage and remaining registry metadata still need admission. SEC-07 remains partial.",
+    "No sustained hostile concurrent EL0 backing-pressure fairness, per-service progress entitlement, worst-case lookup/IRQ latency or physical hardware qualification. Existing C18 and G1/G4 outer-context/destructor limits remain."
+  ]
+}

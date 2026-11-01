@@ -7,6 +7,8 @@ use spin::LazyLock;
 
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
 
+pub(crate) type AccountRef = super::account_budget::AccountRef<DomainBudget>;
+
 pub(crate) const MAX_DOMAIN_RECORDS: usize =
     crate::resource_policy::POLICY.completions.domain[0] as usize;
 pub(crate) const MAX_NODE_RECORDS: usize =
@@ -31,12 +33,17 @@ static NODE: LazyLock<Mutex<NodeBudget>> = LazyLock::new(|| {
 pub(crate) struct DomainBudget(Mutex<VectorBudget<1>>);
 impl DomainBudget {
     #[cfg(any(test, feature = "kernel_tests"))]
-    pub(crate) fn new(capacity: usize) -> Arc<Self> {
-        Self::try_new(capacity).expect("mandatory completion account allocation failed")
+    pub(crate) fn new(capacity: usize) -> AccountRef {
+        Self::try_new(capacity, false).expect("mandatory completion account allocation failed")
     }
 
-    pub(crate) fn try_new(capacity: usize) -> Result<Arc<Self>, core::alloc::AllocError> {
-        Arc::try_new(Self(Mutex::new(VectorBudget::new([capacity.min(MAX_DOMAIN_RECORDS) as u64]))))
+    pub(crate) fn try_new(
+        capacity: usize,
+        backing_platform: bool,
+    ) -> Result<AccountRef, core::alloc::AllocError> {
+        let allocator = super::account_budget::allocator(backing_platform)?;
+        allocator
+            .try_arc(Self(Mutex::new(VectorBudget::new([capacity.min(MAX_DOMAIN_RECORDS) as u64]))))
     }
 
     #[cfg(any(test, feature = "kernel_tests"))]
@@ -48,7 +55,7 @@ impl DomainBudget {
 #[derive(Debug)]
 #[must_use]
 pub(crate) struct Charge {
-    domain: Arc<DomainBudget>,
+    domain: AccountRef,
     platform: bool,
     count: u64,
 }
@@ -59,7 +66,7 @@ impl Charge {
     }
 }
 
-pub(crate) fn reserve(domain: &Arc<DomainBudget>, platform: bool) -> Result<Charge, ()> {
+pub(crate) fn reserve(domain: &AccountRef, platform: bool) -> Result<Charge, ()> {
     let mut local = domain.0.lock();
     local.reserve([1]).map_err(|_| ())?;
     let mut node = NODE.lock();
