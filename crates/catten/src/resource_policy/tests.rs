@@ -47,6 +47,7 @@ fn exercise(p: Policy) {
         p.principal_history,
         p.thread_metadata,
         p.thread_table,
+        p.root_table,
         p.scratch_nodes,
         p.snapshot_buffers,
         p.mapping_nodes,
@@ -195,5 +196,14 @@ fn principal_thread_table_capacity_rejects_overcommit() {
         let mut p = DEFAULT;
         p.memory.principal_thread_table[i] = p.thread_table.ordinary[i] + 1;
         assert_eq!(p.validate(), Err("principal thread table"));
+    }
+}
+
+#[test]
+fn principal_root_table_capacity_rejects_overcommit() {
+    for i in 0..2 {
+        let mut p = DEFAULT;
+        p.memory.principal_root_table[i] = p.root_table.ordinary[i] + 1;
+        assert_eq!(p.validate(), Err("principal root table"));
     }
 }

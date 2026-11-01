@@ -3,8 +3,9 @@
 The runtime master table uses `IdTable<Thread, thread_table::Charge>`. Its
 allocating `try_add_element` API is available only to uncharged generic tables;
 runtime thread publication must use `try_insert_from` and complete admitted
-replacement backing. Address-space tables retain their separate existing growth
-path; this change does not qualify their allocation or outer context.
+replacement backing. [ASID-table backing](root-table-admission.md) uses the same
+prepared-growth machinery with separate sponsorship and capacity admission;
+wider caller contexts remain separate qualification.
 
 ## Capacity and sponsorship
 
@@ -101,7 +102,7 @@ matrix separately.
 
 The ownership move copies up to the admitted table ceiling while IRQ-masking
 serialization is held. Its cost is bounded by capacity, not proven to meet a
-latency target. Wider caller masks, root-table/observer/other metadata admission,
+latency target. Wider caller masks, observer/other metadata admission,
 sustained concurrent EL0 pressure and essential management/timer/teardown latency
 remain SEC-07 R7-1–5 and SEC-18 G1/G4/G7 work. No general heap, physical recovery
 or production-platform qualification follows from this table pool.

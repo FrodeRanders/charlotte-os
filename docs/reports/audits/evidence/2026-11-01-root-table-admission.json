@@ -1,0 +1,127 @@
+{
+  "schema": "charlotte.root-table-admission.v1",
+  "date": "2026-11-01",
+  "base_revision": "1c953cfc",
+  "scope": "ASID-table retained/candidate three-vector backing, original signed-principal/trusted-class admission and complete root registration ownership across unstarted conflicts.",
+  "policy": {
+    "node": [
+      16777216,
+      16384
+    ],
+    "ordinary": [
+      12582912,
+      12288
+    ],
+    "principal": [
+      8388608,
+      8192
+    ],
+    "dimensions": [
+      "requested bytes",
+      "backing slots including overlap"
+    ]
+  },
+  "native_runs": [
+    {
+      "instance": "root-table-20261101-arm",
+      "arch": "aarch64",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "kernel_sha256": "e7a9cbdf52da4ac61e28ef3b66d5e6868a427fc7bc631419de6bde9a5cb0ea38",
+      "bundle_map_sha256": "fb93f64dcb175342ce938180d4761296fe083cc1f03ec8c0f44c2fec666019d2",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "guest_verdict": [
+        19,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     1.847276] [IPC root publication] 256 phase rejections release the complete unpublished root; 64 publication leases prevent early close and missing/retired namespaces never recreate",
+        "[+     2.157698] [root table retention] four-slot candidate and original signed charge retained under lifecycle/root/history/heap/pool guards after original root disposal; no cleanup/retry authority",
+        "[+     2.158569] [root table reserve] counter-only ordinary bytes/slots exhausted; platform headroom and exact original refunds passed",
+        "[+     2.158887] [root table admission] real signed backing, 64 pre-allocation denials, guarded scalar publication, exact lease, sticky promotion, independent bytes/slots and late refund after ASID reuse passed",
+        "[+     2.164201] [root table conflict] unstarted rejection preserves root/namespaces through one retry; eight-attempt exhaustion releases original ownership after guards with exact frame/backing recovery",
+        "[+    82.811236] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "instance": "root-table-20261101-intel",
+      "arch": "x86_64",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "kernel_sha256": "ef16988bedd3986860b6d37fd9cda1bcf85fef57219209d4282ccabebd60d6d5",
+      "bundle_map_sha256": "7a03cad901eda680bd897fd35ff4538a8f6c3abe8ddd1158e60052c6c6573ef3",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "guest_verdict": [
+        17,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     1.067362] [IPC root publication] 256 phase rejections release the complete unpublished root; 64 publication leases prevent early close and missing/retired namespaces never recreate",
+        "[+     1.186807] [root table retention] four-slot candidate and original signed charge retained under lifecycle/root/history/heap/pool guards after original root disposal; no cleanup/retry authority",
+        "[+     1.188101] [root table reserve] counter-only ordinary bytes/slots exhausted; platform headroom and exact original refunds passed",
+        "[+     1.188885] [root table admission] real signed backing, 64 pre-allocation denials, guarded scalar publication, exact lease, sticky promotion, independent bytes/slots and late refund after ASID reuse passed",
+        "[+     1.196480] [root table conflict] unstarted rejection preserves root/namespaces through one retry; eight-attempt exhaustion releases original ownership after guards with exact frame/backing recovery",
+        "[+    90.068748] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "instance": "root-table-20261101-amd",
+      "arch": "x86_64",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "kernel_sha256": "7aa97529650dbd609e40b45b34b8c26362a3f5a43bc382b730f1435b4110e535",
+      "bundle_map_sha256": "7a03cad901eda680bd897fd35ff4538a8f6c3abe8ddd1158e60052c6c6573ef3",
+      "diagnostic_outcome": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "guest_verdict": [
+        17,
+        0,
+        0
+      ],
+      "receipts": [
+        "[+     1.049230] [IPC root publication] 256 phase rejections release the complete unpublished root; 64 publication leases prevent early close and missing/retired namespaces never recreate",
+        "[+     1.161256] [root table retention] four-slot candidate and original signed charge retained under lifecycle/root/history/heap/pool guards after original root disposal; no cleanup/retry authority",
+        "[+     1.162639] [root table reserve] counter-only ordinary bytes/slots exhausted; platform headroom and exact original refunds passed",
+        "[+     1.163293] [root table admission] real signed backing, 64 pre-allocation denials, guarded scalar publication, exact lease, sticky promotion, independent bytes/slots and late refund after ASID reuse passed",
+        "[+     1.169872] [root table conflict] unstarted rejection preserves root/namespaces through one retry; eight-attempt exhaustion releases original ownership after guards with exact frame/backing recovery",
+        "[+    89.126311] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    }
+  ],
+  "bundle_identity_encoding": "SHA-256 of UTF-8 JSON bundle_sha256 mapping, sorted keys, separators comma/colon without whitespace.",
+  "host_validation": {
+    "id_table_tests": 39,
+    "resource_policy_groups": 3,
+    "target_clippy": "passed",
+    "minimal_target_compilation": "passed",
+    "workspace_formatting": "passed",
+    "whitespace_check": "passed"
+  },
+  "native_control_scope": [
+    "Actual root layouts and backing allocations with principal-bound unpublished translation owners.",
+    "64 aggregate-principal pre-allocation denials; independent byte/slot limits and sticky original classification across platform promotion.",
+    "Scalar publication under actual lifecycle/root/history/heap guards and exact software-slot lease preservation.",
+    "Original signed charge remains through origin-root disposal and exact ASID reuse; late refund leaves successor unchanged.",
+    "One deliberately abandoned four-slot buffer set retains its original charge under lifecycle/root/history/heap/pool guards; no recovery/adoption authority.",
+    "Separate counter-only ordinary-node saturation, trusted headroom and exact node refunds.",
+    "Actual registration transaction: injected unstarted conflict then success and eight-attempt exhaustion, complete namespace/account and exact frame/backing recovery after post-guard cancellation.",
+    "Existing IPC namespace preparation rejection/publication-lease controls and the full signed EL0 security campaign remain enabled."
+  ],
+  "qualification_limits": [
+    "Four-LP QEMU only; no physical-platform qualification.",
+    "Counter-only pool exhaustion is distinct from real-buffer controls and sustained EL0 backing pressure.",
+    "No proof of essential-service fairness, guarded-copy IRQ latency or all-family aggregate heap/principal accounting.",
+    "Wider enclosing loader/constructor masks and physical cancellation contexts retain their existing SEC-18 limits.",
+    "No new physical completion, recovery custody or retry permission for accepted/uncertain work."
+  ]
+}

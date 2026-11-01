@@ -473,4 +473,7 @@ extern crate alloc;
 #[path = "id_table/preparation.rs"]
 mod preparation;
 #[cfg_attr(test, allow(unused_imports))]
-pub(crate) use preparation::PreparedGrowth;
+pub(crate) use preparation::{
+    GrowthRequest,
+    PreparedGrowth,
+};

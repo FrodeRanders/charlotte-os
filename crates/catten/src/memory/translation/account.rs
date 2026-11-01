@@ -175,6 +175,12 @@ impl Account {
         self.pages
     }
 
+    /// Captured from the unpublished root's immutable signed backing owner;
+    /// no reusable ASID, manifest or authority-registry lookup is involved.
+    pub(in crate::memory) fn principal(&self) -> Option<u64> {
+        self.principal.as_ref().map(BackingCharge::principal)
+    }
+
     pub(in crate::memory) fn is_platform(&self) -> bool {
         self.platform
     }

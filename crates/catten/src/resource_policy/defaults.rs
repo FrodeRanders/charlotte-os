@@ -102,6 +102,10 @@ pub(super) const POLICY: Policy = Policy {
         total: [32 * 1024 * 1024, 32_768],
         ordinary: [24 * 1024 * 1024, 24_576],
     },
+    root_table: Pool {
+        total: [16 * 1024 * 1024, 16_384],
+        ordinary: [12 * 1024 * 1024, 12_288],
+    },
     scratch_nodes: Pool {
         total: [512 * 1024, 8192],
         ordinary: [384 * 1024, 6144],
@@ -173,6 +177,7 @@ pub(super) const POLICY: Policy = Policy {
         },
         principal_thread_metadata: [1024 * 1024, 128],
         principal_thread_table: [16 * 1024 * 1024, 16_384],
+        principal_root_table: [8 * 1024 * 1024, 8192],
     },
     kernel_heap: KernelHeap {
         initial_bytes: 8 * 1024 * 1024,

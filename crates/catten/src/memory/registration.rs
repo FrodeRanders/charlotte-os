@@ -7,6 +7,7 @@ use super::{
 };
 
 pub(super) mod metadata;
+pub(super) mod table_backing;
 
 struct Resources {
     root: Option<AddressSpace>,
@@ -15,6 +16,7 @@ struct Resources {
     metadata: Option<metadata::PreparingMetadata>,
     ipc: Option<crate::ipc::namespace::PreparingNamespace>,
     publication: Option<AddressSpaceOperation>,
+    growth: Option<table_backing::Growth>,
 }
 
 #[must_use]
@@ -29,6 +31,7 @@ impl PreparingRegistration {
             metadata: None,
             ipc: None,
             publication: None,
+            growth: None,
         }))
     }
 
@@ -51,10 +54,23 @@ impl PreparingRegistration {
         );
         self.0.ipc =
             Some(ipc().map_err(|_| AddressSpaceRegistrationError::IpcNamespaceAllocationFailed)?);
+        self.prepare_growth()
+    }
+
+    fn prepare_growth(&mut self) -> Result<(), AddressSpaceRegistrationError> {
+        self.0.growth = table_backing::prepare(self.0.root.as_ref().unwrap())
+            .map_err(|_| AddressSpaceRegistrationError::TableAllocationFailed)?;
         Ok(())
     }
 
+    fn finish_growth(&mut self) {
+        if let Some(growth) = self.0.growth.take() {
+            growth.finish();
+        }
+    }
+
     fn finish(mut self, reject: impl FnOnce(AddressSpace)) {
+        self.finish_growth();
         if let Some(ipc) = self.0.ipc.take() {
             ipc.cancel_unpublished();
         }
@@ -78,11 +94,11 @@ impl PreparingRegistration {
 
 pub(super) fn register(
     root: AddressSpace,
-    publish: impl FnOnce(
-        &mut IdTable<AddressSpace>,
-        AddressSpace,
-    )
-        -> Result<usize, (AddressSpace, crate::klib::collections::id_table::Error)>,
+    publish: impl FnMut(
+        &mut AddressSpaceTable,
+        &mut Option<AddressSpace>,
+        Option<&mut table_backing::Growth>,
+    ) -> Result<usize, crate::klib::collections::id_table::Error>,
     reject: impl FnOnce(AddressSpace),
     account: impl FnOnce() -> Result<budget::PreparingAccount, core::alloc::AllocError>,
     metadata: impl FnOnce() -> Result<metadata::PreparingMetadata, core::alloc::AllocError>,
@@ -100,11 +116,11 @@ pub(super) fn register(
 
 fn register_with_ipc(
     root: AddressSpace,
-    publish: impl FnOnce(
-        &mut IdTable<AddressSpace>,
-        AddressSpace,
-    )
-        -> Result<usize, (AddressSpace, crate::klib::collections::id_table::Error)>,
+    mut publish: impl FnMut(
+        &mut AddressSpaceTable,
+        &mut Option<AddressSpace>,
+        Option<&mut table_backing::Growth>,
+    ) -> Result<usize, crate::klib::collections::id_table::Error>,
     reject: impl FnOnce(AddressSpace),
     account: impl FnOnce() -> Result<budget::PreparingAccount, core::alloc::AllocError>,
     metadata: impl FnOnce() -> Result<metadata::PreparingMetadata, core::alloc::AllocError>,
@@ -116,34 +132,56 @@ fn register_with_ipc(
         owner.finish(reject);
         return Err(error);
     }
-    let lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
-    if let Err(error) = prepare_user_address_space(owner.0.root.as_mut().unwrap()) {
-        drop(lifecycle);
-        owner.finish(reject);
-        return Err(error);
-    }
-    let mut table = ADDRESS_SPACE_TABLE.lock();
-    let id = match publish(&mut table, owner.0.root.take().unwrap()) {
-        Ok(id) => id,
-        Err((root, _)) => {
-            owner.0.root = Some(root);
-            drop(table);
-            drop(lifecycle);
-            owner.finish(reject);
-            return Err(AddressSpaceRegistrationError::TableAllocationFailed);
+    let mut published = None;
+    // Only unchanged, unstarted capacity conflicts permit re-preparation.
+    // Quota/allocation/hardware rejection stops with the complete owner retained.
+    for attempt in 0..8 {
+        let result = (|| {
+            let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+            prepare_user_address_space(owner.0.root.as_mut().unwrap())
+                .map_err(|error| (error, false))?;
+            let mut table = ADDRESS_SPACE_TABLE.lock();
+            let resources = &mut *owner.0;
+            let id = publish(&mut table, &mut resources.root, resources.growth.as_mut()).map_err(
+                |error| {
+                    (
+                        AddressSpaceRegistrationError::TableAllocationFailed,
+                        error == crate::klib::collections::id_table::Error::CapacityChanged,
+                    )
+                },
+            )?;
+            debug_assert_ne!(id, KERNEL_ASID);
+            assert!(resources.root.is_none(), "root insertion did not consume its owner");
+            let handle = AddressSpaceHandle {
+                id,
+                generation: table.generation(id).expect("new address space missing generation"),
+            };
+            resources.account.take().unwrap().publish(handle);
+            resources.namespace.take().unwrap().publish(handle);
+            resources.metadata.take().unwrap().publish(handle);
+            resources.publication =
+                Some(AddressSpaceOperation::retain_publication(handle, &mut table));
+            Ok(handle)
+        })();
+        match result {
+            Ok(handle) => {
+                published = Some(handle);
+                break;
+            }
+            Err((error, retry)) => {
+                owner.finish_growth();
+                if !retry || attempt == 7 {
+                    owner.finish(reject);
+                    return Err(error);
+                }
+                if let Err(error) = owner.prepare_growth() {
+                    owner.finish(reject);
+                    return Err(error);
+                }
+            }
         }
-    };
-    debug_assert_ne!(id, KERNEL_ASID);
-    let handle = AddressSpaceHandle {
-        id,
-        generation: table.generation(id).expect("new address space missing generation"),
-    };
-    owner.0.account.take().unwrap().publish(handle);
-    owner.0.namespace.take().unwrap().publish(handle);
-    owner.0.metadata.take().unwrap().publish(handle);
-    owner.0.publication = Some(AddressSpaceOperation::retain_publication(handle, &mut table));
-    drop(table);
-    drop(lifecycle);
+    }
+    let handle = published.expect("root publication attempts did not terminate");
     before_publication(owner.0.publication.as_ref().unwrap());
     owner.0.ipc.take().unwrap().publish(owner.0.publication.as_ref().unwrap());
     owner.finish(reject);

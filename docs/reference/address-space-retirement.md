@@ -154,11 +154,15 @@ table or generation cannot make a slot reusable. The former destructive
 `remove_element` helper is removed; scheduler extraction still uses `take_element`
 where a different owner takes over immediately.
 
-New-slot publication fallibly prepares all three metadata vectors: payload,
-generation and enough free-ID capacity for every slot. Reusing an available
-slot does not allocate. Failed publication returns the unconsumed payload before
-any slot/generation mutation. Runtime thread and address-space registration use
-this fallible path; rejected owners are destroyed after serialization leaves.
+New-slot publication admits and prepares all three metadata vectors outside
+publication guards: payload, generation and enough free-ID capacity for every
+slot. [ASID-table backing](root-table-admission.md) and
+[thread-table backing](thread-table-admission.md) retain complete old/candidate
+sets through post-guard deallocation and original-charge refund. Reusing an
+available slot does not allocate. Scalar rejection leaves the unconsumed payload
+in its containing owner before slot/generation mutation; registration retains
+its root and complete namespace/account preparations across bounded unstarted
+capacity conflicts. Rejected owners are disposed after serialization leaves.
 Address-space slot preparation failure returns `TableAllocationFailed` and
 releases its unpublished root and hardware tag outside lifecycle/table guards.
 

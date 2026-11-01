@@ -19,7 +19,9 @@ A complete root needs three nodes. Their requested sizes include their payload,
 link and typed charge; each type reserves its actual layout before allocating.
 The count limit is shared across types. These fixed kernel limits have no
 userspace setter. Allocator overhead, root/namespace/account control blocks,
-waiter/timer sponsors and other metadata remain separate.
+waiter/timer sponsors and other metadata remain separate. Retained/candidate
+[ASID-table vectors](root-table-admission.md) have a separate byte/slot pool and
+pre-publication signed sponsor; they are not refunded with these three nodes.
 
 ## Publication and lifetime
 

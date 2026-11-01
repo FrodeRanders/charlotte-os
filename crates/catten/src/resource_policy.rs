@@ -81,6 +81,7 @@ pub(crate) struct Memory {
     pub principal_thread_metadata: [u64; 2],
     /// Retained and candidate master-table bytes and slots per principal.
     pub principal_thread_table: [u64; 2],
+    pub principal_root_table: [u64; 2],
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct KernelHeap {
@@ -130,6 +131,7 @@ pub(crate) struct Policy {
     pub principal_history: Pool<2>,
     pub thread_metadata: Pool<2>,
     pub thread_table: Pool<2>,
+    pub root_table: Pool<2>,
     pub scratch_nodes: Pool<2>,
     pub snapshot_buffers: Pool<2>,
     pub mapping_nodes: Pool<2>,
@@ -160,6 +162,7 @@ impl Policy {
             || !self.principal_history.valid()
             || !self.thread_metadata.valid()
             || !self.thread_table.valid()
+            || !self.root_table.valid()
             || !self.scratch_nodes.valid()
             || !self.snapshot_buffers.valid()
             || !self.mapping_nodes.valid()
@@ -213,6 +216,11 @@ impl Policy {
                 || m.principal_thread_table[i] > self.thread_table.ordinary[i]
             {
                 return Err("principal thread table");
+            }
+            if m.principal_root_table[i] == 0
+                || m.principal_root_table[i] > self.root_table.ordinary[i]
+            {
+                return Err("principal root table");
             }
             i += 1;
         }

@@ -90,7 +90,7 @@ fn rejection() {
             assert_eq!(
                 super::super::register(
                     root,
-                    |_, _| panic!("metadata rejection published root"),
+                    |_, _, _| panic!("metadata rejection published root"),
                     |root| {
                         assert!(ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());
                         assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());

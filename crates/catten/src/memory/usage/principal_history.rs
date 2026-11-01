@@ -38,12 +38,16 @@ struct History {
     backing: Budget,
     thread_metadata: VectorBudget<2>,
     thread_table: VectorBudget<2>,
+    root_table: VectorBudget<2>,
 }
 
 impl Default for History {
     fn default() -> Self {
         Self {
             stack_pages: 0,
+            root_table: VectorBudget::new(
+                crate::resource_policy::POLICY.memory.principal_root_table,
+            ),
             thread_table: VectorBudget::new(
                 crate::resource_policy::POLICY.memory.principal_thread_table,
             ),
@@ -310,3 +314,36 @@ impl Drop for ThreadTableCharge {
 
 #[cfg(any(test, feature = "kernel_tests"))]
 mod thread_table_tests;
+
+/// Separate dimensions for requested heap bytes and ASID-table backing slots.
+/// This charge belongs to the allocation, independent of root-slot lifetime.
+#[derive(Debug)]
+pub(crate) struct RootTableCharge {
+    principal: u64,
+    amount: [u64; 2],
+}
+
+impl RootTableCharge {
+    pub(in crate::memory) fn try_new(principal: u64, amount: [u64; 2]) -> Result<Self, ()> {
+        HISTORY.lock().get_mut(&principal).ok_or(())?.root_table.reserve(amount).map_err(|_| ())?;
+        Ok(Self {
+            principal,
+            amount,
+        })
+    }
+}
+
+impl Drop for RootTableCharge {
+    fn drop(&mut self) {
+        HISTORY
+            .lock()
+            .get_mut(&self.principal)
+            .expect("root table principal missing")
+            .root_table
+            .release(self.amount)
+            .expect("principal root table underflow");
+    }
+}
+
+#[cfg(any(test, feature = "kernel_tests"))]
+mod root_table_tests;

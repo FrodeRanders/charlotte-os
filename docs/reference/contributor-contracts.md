@@ -742,9 +742,15 @@ the corrected RPC polling paths, and the remaining notification gaps.
   principal/classification on abandonment and across root reuse. Only typed
   unstarted `CapacityChanged` permits at most eight publication attempts; quota,
   allocation, root and thread-limit rejection are terminal for this submission.
-  Root tables retain `try_add_element`; their growth context/admission is a
-  separate scope. Rejected payloads remain owned and must be destroyed after
-  table and lifecycle/scheduler guards leave. `take_element`, close preflights and final
+  ASID tables likewise use admitted `IdTable<AddressSpace, Charge>` backing.
+  Capture principal/classification from the unpublished root's translation
+  owner, never a later ASID or manifest lookup. Keep root, hardware tag, all
+  namespaces/accounts, candidate and publication lease inside registration
+  through success, bounded unstarted conflict or explicit post-guard rejection.
+  Kernel slot-zero bootstrap admits its trusted backing before global visibility.
+  Root close and ASID reuse do not refund retained table capacity. See
+  `docs/reference/root-table-admission.md`. Rejected payloads remain owned and
+  must be destroyed after table and lifecycle/scheduler guards leave. `take_element`, close preflights and final
   slot completion must not allocate or repair missing capacity during teardown.
   Missing capacity rejects before extraction/fencing or retains the existing
   closing owner. The panic wrapper is confined to mandatory kernel initialization

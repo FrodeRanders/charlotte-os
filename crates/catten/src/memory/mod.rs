@@ -264,14 +264,9 @@ pub static KERNEL_AS: LazyLock<Mutex<AddressSpace>> =
 /// non-zero ids. This is essential: `Thread::new` treats `asid == KERNEL_ASID`
 /// as a kernel thread (runs at EL1/ring 0), so a user AS must never be given
 /// id 0.
-type AddressSpaceTable = IdTable<AddressSpace>;
-pub static ADDRESS_SPACE_TABLE: LazyLock<Mutex<AddressSpaceTable>> = LazyLock::new(|| {
-    let mut table = AddressSpaceTable::new();
-    // Reserve id 0 for the kernel address space.
-    let kernel_id = table.add_element(AddressSpace::get_current());
-    debug_assert_eq!(kernel_id, KERNEL_ASID, "kernel AS must occupy id 0");
-    Mutex::new(table)
-});
+type AddressSpaceTable = IdTable<AddressSpace, registration::table_backing::Charge>;
+pub static ADDRESS_SPACE_TABLE: LazyLock<Mutex<AddressSpaceTable>> =
+    LazyLock::new(|| Mutex::new(registration::table_backing::kernel_table()));
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AddressSpaceCloseError {
@@ -327,16 +322,16 @@ fn prepare_user_address_space(
 pub fn register_user_address_space(
     address_space: AddressSpace,
 ) -> Result<AddressSpaceHandle, AddressSpaceRegistrationError> {
-    register_user_address_space_with(address_space, IdTable::try_add_element, drop)
+    register_user_address_space_with(address_space, IdTable::try_insert_from, drop)
 }
 
 fn register_user_address_space_with(
     address_space: AddressSpace,
-    publish: impl FnOnce(
-        &mut IdTable<AddressSpace>,
-        AddressSpace,
-    )
-        -> Result<usize, (AddressSpace, crate::klib::collections::id_table::Error)>,
+    publish: impl FnMut(
+        &mut AddressSpaceTable,
+        &mut Option<AddressSpace>,
+        Option<&mut registration::table_backing::Growth>,
+    ) -> Result<usize, crate::klib::collections::id_table::Error>,
     reject: impl FnOnce(AddressSpace),
 ) -> Result<AddressSpaceHandle, AddressSpaceRegistrationError> {
     let platform = address_space.table_account.is_platform();

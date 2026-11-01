@@ -70,6 +70,8 @@ class ResourcePolicy(unittest.TestCase):
             "ratio-zero": "p.memory.object_ram.denominator = 0;",
             "ratio-overcommitted": "p.memory.ordinary_share.numerator = 4;",
             "snapshot": "p.snapshot_buffers.ordinary[0] = 1;",
+            "root-table-reserve": "p.root_table.ordinary = p.root_table.total;",
+            "root-table-principal": "p.memory.principal_root_table[1] = u64::MAX;",
             "thread-table-reserve": "p.thread_table.ordinary = p.thread_table.total;",
             "thread-table-principal": "p.memory.principal_thread_table[1] = u64::MAX;",
             "principal": "p.memory.principal_thread_metadata[0] = u64::MAX;",

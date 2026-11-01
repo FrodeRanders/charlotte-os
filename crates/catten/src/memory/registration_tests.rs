@@ -16,6 +16,7 @@ pub(crate) fn test_publication_rejection() {
     super::registration::test_ipc_preparation();
     super::registration::metadata::test_preparation();
     sponsor_rejection();
+    capacity_conflict();
     super::budget::tests::run();
     super::registration::test_abandonment();
     let existing =
@@ -37,7 +38,7 @@ pub(crate) fn test_publication_rejection() {
         assert_eq!(
             super::register_user_address_space_with(
                 space,
-                |_, space| Err((space, Error::AllocationFailed)),
+                |_, _, _| Err(Error::AllocationFailed),
                 |space| {
                     assert!(ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());
                     assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());
@@ -88,7 +89,7 @@ fn sponsor_rejection() {
         assert_eq!(
             super::registration::register(
                 space,
-                |_, _| panic!("sponsor rejection published a root"),
+                |_, _, _| panic!("sponsor rejection published a root"),
                 |root| {
                     assert!(ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());
                     assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());
@@ -109,5 +110,52 @@ fn sponsor_rejection() {
     crate::logln!(
         "[memory sponsor registration] 64 preparation rejections precede root publication and \
          release original roots outside local guards"
+    );
+}
+
+fn capacity_conflict() {
+    let before = crate::memory::registration::table_backing::snapshot();
+    let mut attempts = 0;
+    let root = super::register_user_address_space_with(
+        AddressSpace::try_new_user().unwrap(),
+        |table, owner, growth| {
+            attempts += 1;
+            if attempts == 1 {
+                Err(Error::CapacityChanged)
+            } else {
+                table.try_insert_from(owner, growth)
+            }
+        },
+        drop,
+    )
+    .unwrap();
+    assert_eq!(attempts, 2);
+    super::close_user_address_space_handle(root).unwrap();
+    let roots = ADDRESS_SPACE_TABLE.lock().iter().filter(|root| root.is_some()).count();
+    let frames = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    let mut attempts = 0;
+    assert_eq!(
+        super::register_user_address_space_with(
+            AddressSpace::try_new_user().unwrap(),
+            |_, _, _| {
+                attempts += 1;
+                Err(Error::CapacityChanged)
+            },
+            |root| {
+                assert!(ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());
+                assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());
+                drop(root);
+            },
+        ),
+        Err(AddressSpaceRegistrationError::TableAllocationFailed)
+    );
+    assert_eq!(attempts, 8);
+    assert_eq!(ADDRESS_SPACE_TABLE.lock().iter().filter(|root| root.is_some()).count(), roots);
+    assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), frames);
+    assert_eq!(crate::memory::registration::table_backing::snapshot(), before);
+    crate::logln!(
+        "[root table conflict] unstarted rejection preserves root/namespaces through one retry; \
+         eight-attempt exhaustion releases original ownership after guards with exact \
+         frame/backing recovery"
     );
 }

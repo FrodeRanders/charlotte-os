@@ -13,7 +13,7 @@ pub(super) fn run() {
             assert_eq!(
                 register_with_ipc(
                     AddressSpace::try_new_user().unwrap(),
-                    |_, _| panic!("rejected IPC preparation published a root"),
+                    |_, _, _| panic!("rejected IPC preparation published a root"),
                     |root| {
                         assert!(ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());
                         assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());
@@ -36,7 +36,7 @@ pub(super) fn run() {
     for _ in 0..64 {
         let root = register_with_ipc(
             AddressSpace::try_new_user().unwrap(),
-            IdTable::try_add_element,
+            IdTable::try_insert_from,
             drop,
             budget::PreparingAccount::try_new,
             || metadata::PreparingMetadata::try_new(false),
