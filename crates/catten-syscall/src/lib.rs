@@ -192,7 +192,7 @@ pub struct DomainIdentityInfo {
 
 pub const THREAD_STATISTICS_MAGIC: u64 = 0x3154_4154_534f_4343; // "CCOSTAT1"
 pub mod metadata_pools;
-pub const THREAD_STATISTICS_VERSION: u64 = 9;
+pub const THREAD_STATISTICS_VERSION: u64 = 10;
 
 pub mod thread_statistics_header {
     pub const MAGIC: usize = 0;

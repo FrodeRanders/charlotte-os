@@ -37,7 +37,7 @@ there is no controller shutdown/reclamation API.
 
 The same `Tables` owner retains a charged ledger of physical extents. Ledger
 buffer bytes share `iommu_nodes` with registry, mapping and walker metadata;
-buffers consume **zero node slots**. The existing 22-pool inventory and version-9
+buffers consume **zero node slots**. The current metadata inventory and
 statistics report those bytes without a new record or authority. Physical table
 page admission remains separate, including the domain subpool for every domain.
 

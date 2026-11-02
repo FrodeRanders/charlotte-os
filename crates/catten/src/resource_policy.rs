@@ -129,6 +129,8 @@ pub(crate) struct Policy {
     pub observer_backing: Pool<2>,
     /// Completion, detached-operation and CQ registry-node layouts and counts.
     pub completion_nodes: Pool<2>,
+    /// Pending-call and reply-token node layouts, including unused candidates.
+    pub ipc_nodes: Pool<2>,
     /// Device namespace and capability node layouts/counts, including candidates.
     pub device_nodes: Pool<2>,
     /// IOMMU domain, persistent requester and context registry-node bytes/counts.
@@ -179,6 +181,7 @@ impl Policy {
             || !self.observer_lists.valid()
             || !self.observer_backing.valid()
             || !self.completion_nodes.valid()
+            || !self.ipc_nodes.valid()
             || !self.device_nodes.valid()
             || !self.iommu_nodes.valid()
             || !self.mailbox_records.valid()

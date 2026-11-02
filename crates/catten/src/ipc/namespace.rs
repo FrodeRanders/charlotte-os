@@ -14,7 +14,7 @@ use crate::memory::{
 };
 
 struct Resources {
-    node: Option<node_budget::Prepared<(AddressSpaceId, AsIpcCaps)>>,
+    node: Option<namespace_nodes::Prepared<(AddressSpaceId, AsIpcCaps)>>,
     endpoints: Option<budget::AccountRef>,
     records: Option<record_budget::AccountRef>,
 }
@@ -45,7 +45,7 @@ impl PreparingNamespace {
         }));
         let result = (|| {
             before(1)?;
-            owner.0.node = Some(node_budget::prepare(backing_platform)?);
+            owner.0.node = Some(namespace_nodes::prepare(backing_platform)?);
             before(2)?;
             owner.0.endpoints = Some(budget::DomainBudget::try_new(backing_platform)?);
             before(3)?;

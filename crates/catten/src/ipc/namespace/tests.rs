@@ -7,7 +7,7 @@ use crate::memory::{
 };
 
 pub(super) fn run() {
-    node_budget::test_allocation::<(AddressSpaceId, AsIpcCaps)>("ipc");
+    namespace_nodes::test_allocation::<(AddressSpaceId, AsIpcCaps)>("ipc");
     let missing = fixture_id(0x0e_b120);
     assert!(IPC.read().caps.get(&missing).is_none());
     assert_eq!(endpoint_create(missing, 1, 1, 1), Err(IpcError::PermissionDenied));
@@ -17,7 +17,7 @@ pub(super) fn run() {
     let operation = AddressSpaceOperation::acquire(root).unwrap();
     let mut local = IpcRegistry::new();
     for _ in 0..64 {
-        let nodes = node_budget::snapshot();
+        let nodes = namespace_nodes::snapshot();
         let backing = crate::klib::namespace_account_budget::snapshot();
         let prepared = PreparingNamespace::try_new().unwrap();
         let endpoints = Arc::downgrade(prepared.0.endpoints.as_ref().unwrap());
@@ -25,7 +25,7 @@ pub(super) fn run() {
         let retired = {
             let _heap = PRIMARY_ALLOCATOR.lock();
             crate::klib::namespace_account_budget::with_locked(|| {
-                node_budget::with_locked(|| {
+                namespace_nodes::with_locked(|| {
                     prepared.publish_into(&mut local, root.id(), Some(operation.handle()));
                 });
             });
@@ -38,7 +38,7 @@ pub(super) fn run() {
         // An empty node may be disposed outside IPC; independently retained
         // charge references are exercised by the real delegation/reuse tests.
         retired.release();
-        assert_eq!(node_budget::snapshot(), nodes);
+        assert_eq!(namespace_nodes::snapshot(), nodes);
         assert_eq!(endpoints.strong_count(), 0);
         assert_eq!(records.strong_count(), 0);
         assert_eq!(
@@ -52,10 +52,10 @@ pub(super) fn run() {
     crate::memory::close_user_address_space_handle(root).unwrap();
 
     let retained = crate::klib::namespace_account_budget::snapshot();
-    let retained_nodes = node_budget::snapshot();
+    let retained_nodes = namespace_nodes::snapshot();
     for phase in 1..=3 {
         let mut partial = PreparingNamespace(ManuallyDrop::new(Resources {
-            node: Some(node_budget::prepare(false).unwrap()),
+            node: Some(namespace_nodes::prepare(false).unwrap()),
             endpoints: None,
             records: None,
         }));
@@ -70,7 +70,7 @@ pub(super) fn run() {
         let _ipc = IPC.write();
         let _heap = PRIMARY_ALLOCATOR.lock();
         crate::klib::namespace_account_budget::with_locked(|| {
-            node_budget::with_locked(|| drop(partial));
+            namespace_nodes::with_locked(|| drop(partial));
         });
     }
 
@@ -85,15 +85,15 @@ pub(super) fn run() {
         let _ipc = IPC.write();
         let _heap = PRIMARY_ALLOCATOR.lock();
         crate::klib::namespace_account_budget::with_locked(|| {
-            node_budget::with_locked(|| drop(retired));
+            namespace_nodes::with_locked(|| drop(retired));
         });
     }
     assert_eq!(endpoints.strong_count(), 1);
     assert_eq!(records.strong_count(), 1);
     assert_eq!(crate::klib::namespace_account_budget::snapshot(), (retained.0 + 5, retained.1 + 5));
-    let bytes = node_budget::Prepared::<(AddressSpaceId, AsIpcCaps)>::allocation_bytes() as u64;
+    let bytes = namespace_nodes::Prepared::<(AddressSpaceId, AsIpcCaps)>::allocation_bytes() as u64;
     assert_eq!(
-        node_budget::snapshot(),
+        namespace_nodes::snapshot(),
         (
             [retained_nodes.0[0] + 4 * bytes, retained_nodes.0[1] + 4],
             [retained_nodes.1[0] + 4 * bytes, retained_nodes.1[1] + 4]

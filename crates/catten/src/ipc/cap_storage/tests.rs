@@ -59,8 +59,8 @@ fn preparation() {
         PreparedCall::prepare_checked_with(
             handle.id(),
             None,
-            || PendingStorage::try_new_charged(None).map_err(|_| IpcError::ResourceLimit),
-            || ReplyStorage::try_new_charged(None).map_err(|_| IpcError::ResourceLimit),
+            node_budget::prepare,
+            node_budget::prepare,
             |stage| {
                 assert_eq!(
                     memory::close_user_address_space_handle(handle),

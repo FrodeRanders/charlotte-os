@@ -51,7 +51,7 @@ fn observer_and_self_sections() {
     assert_eq!(samples.len(), COUNT);
     assert_eq!(samples[0].used, None);
     assert_eq!(samples[1].used, Some(([20; 2], [10; 2])));
-    assert_eq!(samples.last().unwrap().id, Id::ObserverLists);
+    assert_eq!(samples.last().unwrap().id, Id::IpcNodes);
 }
 #[test]
 fn reject_wrong_versions_lengths_and_counts() {
@@ -64,6 +64,7 @@ fn reject_wrong_versions_lengths_and_counts() {
     assert!(from_statistics(&padded).is_none());
     for (index, value) in [
         (h::VERSION, 8),
+        (h::VERSION, 9),
         (h::RECORD_BYTES, 0),
         (h::DOMAIN_RECORD_BYTES, 0),
         (h::METADATA_RECORD_BYTES, 0),
@@ -90,7 +91,7 @@ fn reject_record_identity_state_limits_and_usage() {
         (HEADER + WORDS + 7, 101),
         (HEADER + WORDS + 9, 76),
         (HEADER + WORDS + 9, 21),
-        (HEADER + (COUNT - 1) * WORDS + 4, 1),
+        (HEADER + (COUNT - 2) * WORDS + 4, 1), // one-dimensional ObserverLists
     ] {
         let mut damaged = bytes.clone();
         replace(&mut damaged, index, value);

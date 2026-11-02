@@ -44,14 +44,26 @@ impl<T> PreparedEntry<T> {
     }
 }
 
-impl<T, C> PreparedEntry<T, Option<C>> {
+/// Bind a later resource reservation without replacing allocation admission.
+pub(crate) trait BindCharge<C> {
+    fn bind(&mut self, charge: C);
+}
+impl<C> BindCharge<C> for Option<C> {
+    fn bind(&mut self, charge: C) {
+        assert!(self.is_none(), "prepared node admission rebound");
+        *self = Some(charge);
+    }
+}
+impl<T, C> PreparedEntry<T, C> {
     /// Bind admission to already-prepared storage before payload publication.
     /// The original charge then follows node deallocation, including rejection.
-    pub(crate) fn bind_charge(&mut self, charge: C) {
+    pub(crate) fn bind_charge<R>(&mut self, charge: R)
+    where
+        C: BindCharge<R>,
+    {
         // SAFETY: every prepared node initializes its charge before exposure.
         let slot = unsafe { self.0.as_mut().unwrap().charge.assume_init_mut() };
-        assert!(slot.is_none(), "prepared node admission rebound");
-        *slot = Some(charge);
+        slot.bind(charge);
     }
 }
 

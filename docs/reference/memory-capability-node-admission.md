@@ -130,8 +130,8 @@ refund is permitted.
 At the default maximum of 16384 pages, one catalog requests 128 KiB. Its inline
 owner adds 24 bytes per object (192 KiB at the 8192-object count ceiling), included
 in the 248-byte object-node layout. No extra holder allocation is needed. Shared
-3/4 MiB metadata defaults, count defaults and the 22-pool/version-9 snapshot stay
-unchanged. Frame catalogs now compete with node layouts for same-class bytes;
+3/4 MiB metadata and count defaults stay unchanged. The current metadata
+inventory also includes the independent IPC node pool. Frame catalogs now compete with node layouts for same-class bytes;
 real buffer pressure and the native campaigns need no limit increase. Larger
 object maxima or measured mixed workloads may warrant co-scaling the central
 metadata and snapshot limits. These independent ceilings do not guarantee RAM

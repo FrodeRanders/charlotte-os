@@ -28,7 +28,7 @@ use crate::{
             RetiredEntry,
             RetirementList,
         },
-        namespace_node_budget as node_budget,
+        namespace_node_budget as namespace_nodes,
         observer::{
             Observable,
             Observer,
@@ -55,6 +55,7 @@ mod close;
 pub(crate) use close::close_address_space_fixture;
 pub use close::close_cap;
 mod message;
+mod node_budget;
 use message::{
     Delivery,
     enqueue_message,
@@ -380,9 +381,9 @@ struct IpcRegistry {
     next_reply: ReplyTokenId,
     next_call: PendingCallId,
     endpoints: AdmittedMap<EndpointId, Endpoint, Option<budget::Charge>>,
-    reply_tokens: AdmittedMap<ReplyTokenId, ReplyToken, Option<record_budget::Charge>>,
-    pending_calls: AdmittedMap<PendingCallId, PendingCall, Option<record_budget::Charge>>,
-    caps: node_budget::Map<AddressSpaceId, AsIpcCaps>,
+    reply_tokens: node_budget::Map<ReplyTokenId, ReplyToken>,
+    pending_calls: node_budget::Map<PendingCallId, PendingCall>,
+    caps: namespace_nodes::Map<AddressSpaceId, AsIpcCaps>,
 }
 
 impl IpcRegistry {

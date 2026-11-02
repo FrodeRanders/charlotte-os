@@ -103,7 +103,8 @@ or physical retry authority.
 
 This extends one related metadata pool instead of adding another reserve or
 statistics grammar. Numerical limits stay 18/24 MiB and 196608/262144 nodes;
-all 22 existing inventory rows and the version-9 payload remain current. Empty
+existing inventory identities remain stable; the current payload also includes
+the independent IPC node pool. Empty
 real-layout pressure measures the independent byte and count ceilings. The
 104-byte mapping layout can occupy about 181000 ordinary and 242000 total nodes
 before byte denial when other usage is small, exceeding the 65536 unified

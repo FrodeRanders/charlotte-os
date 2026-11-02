@@ -84,15 +84,16 @@ by absolute path. Unset selects the default; empty, relative, missing and
 directory paths reject. The file is trusted Rust source and belongs in the
 reviewed build inputs, not in an application manifest or upload request.
 
-The 22 admitted metadata pools share family-typed charge mechanics and an
+The 23 admitted metadata pools share family-typed charge mechanics and an
 independent static counter lock per pool. Resource owners retain sponsorship,
-completion and disposal policy. Version-9 thread statistics append a read-only
+completion and disposal policy. Version-10 thread statistics append a read-only
 inventory for validated system observers; ordinary snapshots contain no pool
 records. HTTP status JSON exposes each pool's units, ordinary/total limits and
 usage in \texttt{threads.metadata\_pools}. Busy samples have absent usage.
 Samples are independent, byte values describe requested layouts, and overlapping
 or count-only pools cannot be summed into physical RAM consumption. This
-consolidation changes no numerical limits or cleanup authority. See
+consolidation changes no existing numerical limits or cleanup authority. The
+independent IPC node pool has its own requested-byte/count limits. See
 \repofile|docs/reference/metadata-admission.md| for the wire contract.
 
 DMA mapping/quarantine records and SMMU walker-cache nodes share the existing

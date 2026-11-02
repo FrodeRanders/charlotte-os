@@ -29,8 +29,8 @@ fn prepare(
     PreparedCall::prepare_checked_with(
         root.id(),
         None,
-        || PendingStorage::try_new_charged(None).map_err(|_| IpcError::ResourceLimit),
-        || ReplyStorage::try_new_charged(None).map_err(|_| IpcError::ResourceLimit),
+        node_budget::prepare,
+        node_budget::prepare,
         before,
     )
 }

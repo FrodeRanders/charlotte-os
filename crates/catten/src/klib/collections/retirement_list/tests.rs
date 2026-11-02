@@ -487,3 +487,43 @@ fn prepared_storage_can_bind_original_admission_before_publication() {
         DISPOSAL_NODE.with(|target| target.set(0));
     }
 }
+
+#[test]
+fn independent_backing_and_later_resource_follow_the_same_node_free() {
+    struct Combined {
+        _backing: AdmissionProbe,
+        resource: Option<AdmissionProbe>,
+    }
+    impl BindCharge<AdmissionProbe> for Combined {
+        fn bind(&mut self, resource: AdmissionProbe) {
+            assert!(self.resource.is_none());
+            self.resource = Some(resource);
+        }
+    }
+    for published in [false, true] {
+        let backing = probe(0, 1);
+        let backing_releases = backing.releases.clone();
+        let resource = probe(0, 1);
+        let resource_releases = resource.releases.clone();
+        let mut node = PreparedEntry::<usize, _>::try_new_charged(Combined {
+            _backing: backing,
+            resource: None,
+        })
+        .unwrap();
+        track_node(&node);
+        without_allocation(|| node.bind_charge(resource));
+        assert_eq!(backing_releases.load(Ordering::Relaxed), 0);
+        assert_eq!(resource_releases.load(Ordering::Relaxed), 0);
+        without_allocation(|| {
+            if published {
+                node.publish(7).release();
+            } else {
+                drop(node);
+            }
+        });
+        assert_eq!(backing_releases.load(Ordering::Relaxed), 1);
+        assert_eq!(resource_releases.load(Ordering::Relaxed), 1);
+        assert_eq!(DISPOSAL_NODE_FREES.with(Cell::get), 1);
+        DISPOSAL_NODE.with(|target| target.set(0));
+    }
+}

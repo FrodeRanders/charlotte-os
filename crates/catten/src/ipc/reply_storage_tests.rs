@@ -43,22 +43,18 @@ fn second_allocation_rejection() {
     let authority = crate::capability::admission_tests::test_namespace_used(root.id());
     for _ in 0..64 {
         assert!(
-            PreparedCall::prepare(
-                root.id(),
-                || { PendingStorage::try_new_charged(None).map_err(|_| IpcError::ResourceLimit) },
-                || {
-                    assert!(IPC.try_write().is_some());
-                    assert!(ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());
-                    assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());
-                    assert_eq!(
-                        memory::close_user_address_space_handle(root),
-                        Err(memory::AddressSpaceCloseError::OperationsInFlight)
-                    );
-                    assert_eq!(record_budget::node_used().0[1], baseline.0[1] + 1);
-                    assert_eq!(record_budget::node_used().0[2], baseline.0[2] + 1);
-                    Err(IpcError::ResourceLimit)
-                }
-            )
+            PreparedCall::prepare(root.id(), node_budget::prepare, |_| {
+                assert!(IPC.try_write().is_some());
+                assert!(ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());
+                assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());
+                assert_eq!(
+                    memory::close_user_address_space_handle(root),
+                    Err(memory::AddressSpaceCloseError::OperationsInFlight)
+                );
+                assert_eq!(record_budget::node_used().0[1], baseline.0[1] + 1);
+                assert_eq!(record_budget::node_used().0[2], baseline.0[2] + 1);
+                Err(IpcError::ResourceLimit)
+            })
             .is_err()
         );
         assert_eq!(record_budget::node_used(), baseline);
@@ -112,6 +108,7 @@ fn paired_batch() {
 }
 
 fn original_classification() {
+    let metadata = node_budget::snapshot();
     let root = crate::service::loader::create_user_address_space_handle();
     let baseline = record_budget::node_used();
     let endpoint = endpoint_create(root.id(), 1, 1, 4).unwrap();
@@ -119,7 +116,10 @@ fn original_classification() {
     let mut owner = PreparedCall::try_new(root.id()).unwrap();
     assert!(!owner.platform);
     let charged = record_budget::node_used();
+    let charged_metadata = node_budget::snapshot();
+    assert_eq!(charged_metadata.1[1], metadata.1[1] + 2);
     memory::budget::mark_platform(root);
+    assert_eq!(node_budget::snapshot(), charged_metadata);
     assert_eq!(record_budget::node_used(), charged);
     let (call, delivery) = {
         let mut ipc = IPC.write();
@@ -149,10 +149,12 @@ fn original_classification() {
     close_cap(root.id(), connection).unwrap();
     close_cap(root.id(), endpoint).unwrap();
     assert_eq!(record_budget::node_used(), baseline);
+    assert_eq!(node_budget::snapshot(), metadata);
     memory::close_user_address_space_handle(root).unwrap();
 }
 
 fn abandoned_node() {
+    let metadata = node_budget::snapshot();
     let root = crate::service::loader::create_user_address_space_handle();
     let baseline = record_budget::node_used();
     let account = IPC.read().caps[&root.id()].record_budget.clone();
@@ -164,7 +166,7 @@ fn abandoned_node() {
     {
         let _ipc = IPC.write();
         let _heap = PRIMARY_ALLOCATOR.lock();
-        drop(retired);
+        node_budget::with_locked(|| drop(retired));
     }
     owner.finish();
     let sponsor = WaitSponsor::new(false);
@@ -181,7 +183,7 @@ fn abandoned_node() {
     {
         let _ipc = IPC.write();
         let _heap = PRIMARY_ALLOCATOR.lock();
-        drop(completed);
+        node_budget::with_locked(|| drop(completed));
     }
     owner.finish();
     assert_eq!(sponsor.used(), 1);
@@ -191,6 +193,7 @@ fn abandoned_node() {
     let fresh = crate::service::loader::create_user_address_space_handle();
     assert_eq!(fresh.id(), root.id());
     assert_ne!(fresh, root);
+    memory::budget::mark_platform(fresh);
     let fresh_account = IPC.read().caps[&fresh.id()].record_budget.clone();
     PreparedCall::try_new(fresh.id()).unwrap().finish();
     assert_eq!(fresh_account.used(), [0, 0, 0]);
@@ -199,4 +202,12 @@ fn abandoned_node() {
     let after = record_budget::node_used();
     assert_eq!(after.0[2], baseline.0[2] + 2);
     assert_eq!(after.1[2], baseline.1[2] + 2);
+    let retained_bytes = (2 * ReplyStorage::allocation_bytes()) as u64;
+    assert_eq!(
+        node_budget::snapshot(),
+        (
+            [metadata.0[0] + retained_bytes, metadata.0[1] + 2],
+            [metadata.1[0] + retained_bytes, metadata.1[1] + 2]
+        )
+    );
 }

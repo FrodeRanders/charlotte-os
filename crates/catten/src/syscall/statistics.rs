@@ -269,8 +269,9 @@ pub(crate) fn test_capture(asid: crate::memory::AddressSpaceId) {
         crate::klib::admission::test_observation();
     }
     crate::logln!(
-        "[metadata admission] 22 independent pools; heap-held nonblocking observation, busy state \
-         and owner sizes passed"
+        "[metadata admission] {} independent pools; heap-held nonblocking observation, busy state \
+         and owner sizes passed",
+        catten_syscall::metadata_pools::COUNT
     );
     memory::usage::test_snapshot_heap();
     crate::logln!(

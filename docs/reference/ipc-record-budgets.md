@@ -88,12 +88,16 @@ keeps the pending node in place. Completed/observed calls remain charged until
 close; an observer wake alone cannot release them.
 
 The pending and reply-token maps use shared admitted storage with linear
-lookup/insertion.
+lookup/insertion and independent [node-byte/count admission](ipc-node-admission.md).
+Backing admission precedes each allocation, using the original call-record class.
+Each node keeps that charge alongside its later-bound logical record reservation
+until actual node deallocation. Unused candidates count too; observing a result
+or retiring/reusing a root cannot refund live metadata.
 Its count is bounded, but worst-case hold time is not qualified by the serialized
 controls. [Per-capability payload nodes](ipc-capability-storage.md) now prepare
 fallibly before publication. Call/endpoint authority and payload factories now
 leave IPC, as does the call's pending waiter-list factory. Other capability
-callers, memory capability/loan maps, byte/principal ceilings and wider
+callers, remaining payload layouts, nested bytes/principal ceilings and wider
 caller/destructor contexts remain separate work. This is not fully fallible IPC
 publication. See the [pending storage audit](../reports/audits/2026-10-24-security-ipc-pending-storage.md).
 
@@ -198,10 +202,11 @@ resource-limited replies cancelling only their token, not their grant source.
 These count budgets do not bound attachment bytes, all capability kinds,
 observer/list control blocks, weak-only retention, loader/page tables, or the
 entire kernel heap. Per-capability insertion only relinks prepared storage;
-guarded factories in other capability callers, memory capability/loan maps and
-namespace-account byte/principal admission remain separate boundaries. There is no per-principal aggregate across several domains,
-signed override, allocator-failure injection, exhaustive race proof or hostile
-pressure-soak claim. SEC-07 remains partial; the audit's deployment restrictions
+guarded factories in other capability callers, other IPC payload layouts and
+namespace-account byte/principal admission remain separate boundaries. Node
+allocator rejection has injected coverage; general heap OOM is not forced.
+There is no per-principal IPC aggregate across domains, signed override,
+exhaustive race proof or hostile pressure-soak claim. SEC-07 remains partial; the audit's deployment restrictions
 still apply.
 
 Closed endpoint records retained by queued or unobserved returned connections

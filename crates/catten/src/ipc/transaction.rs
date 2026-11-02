@@ -81,21 +81,15 @@ impl PreparedConnection {
     }
 }
 
-pub(super) type PendingStorage =
-    PreparedEntry<(PendingCallId, PendingCall), Option<record_budget::Charge>>;
-pub(super) type ReplyStorage =
-    PreparedEntry<(ReplyTokenId, ReplyToken), Option<record_budget::Charge>>;
-pub(super) type RetiredReply =
-    RetiredEntry<(ReplyTokenId, ReplyToken), Option<record_budget::Charge>>;
-pub(super) type RetiredCall =
-    RetiredEntry<(PendingCallId, PendingCall), Option<record_budget::Charge>>;
+pub(super) type PendingStorage = node_budget::Storage<(PendingCallId, PendingCall)>;
+pub(super) type ReplyStorage = node_budget::Storage<(ReplyTokenId, ReplyToken)>;
+pub(super) type RetiredReply = node_budget::Retired<(ReplyTokenId, ReplyToken)>;
+pub(super) type RetiredCall = node_budget::Retired<(PendingCallId, PendingCall)>;
 
 /// The close operation reuses detached nodes as its bounded retirement list.
 /// Fallback retains the complete chain; disposal is explicit after IPC unlock.
 #[must_use]
-pub(super) struct RetiredReplies(
-    RetirementList<(ReplyTokenId, ReplyToken), Option<record_budget::Charge>>,
-);
+pub(super) struct RetiredReplies(node_budget::List<(ReplyTokenId, ReplyToken)>);
 
 impl RetiredReplies {
     pub(super) fn new() -> Self {
@@ -301,18 +295,14 @@ impl PreparedCall {
 
     #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn try_new(caller: AddressSpaceId) -> Result<Self, IpcError> {
-        Self::prepare(
-            caller,
-            || PendingStorage::try_new_charged(None).map_err(|_| IpcError::ResourceLimit),
-            || ReplyStorage::try_new_charged(None).map_err(|_| IpcError::ResourceLimit),
-        )
+        Self::prepare(caller, node_budget::prepare, node_budget::prepare)
     }
 
     #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn prepare(
         caller: AddressSpaceId,
-        allocate: impl FnOnce() -> Result<PendingStorage, IpcError>,
-        allocate_reply: impl FnOnce() -> Result<ReplyStorage, IpcError>,
+        allocate: impl FnOnce(bool) -> Result<PendingStorage, IpcError>,
+        allocate_reply: impl FnOnce(bool) -> Result<ReplyStorage, IpcError>,
     ) -> Result<Self, IpcError> {
         Self::prepare_checked(caller, None, allocate, allocate_reply)
     }
@@ -320,8 +310,8 @@ impl PreparedCall {
     pub(super) fn prepare_checked(
         caller: AddressSpaceId,
         connection: Option<CapabilityId>,
-        allocate: impl FnOnce() -> Result<PendingStorage, IpcError>,
-        allocate_reply: impl FnOnce() -> Result<ReplyStorage, IpcError>,
+        allocate: impl FnOnce(bool) -> Result<PendingStorage, IpcError>,
+        allocate_reply: impl FnOnce(bool) -> Result<ReplyStorage, IpcError>,
     ) -> Result<Self, IpcError> {
         Self::prepare_checked_with(caller, connection, allocate, allocate_reply, |_| Ok(()))
     }
@@ -329,8 +319,8 @@ impl PreparedCall {
     pub(super) fn prepare_checked_with(
         caller: AddressSpaceId,
         connection: Option<CapabilityId>,
-        allocate: impl FnOnce() -> Result<PendingStorage, IpcError>,
-        allocate_reply: impl FnOnce() -> Result<ReplyStorage, IpcError>,
+        allocate: impl FnOnce(bool) -> Result<PendingStorage, IpcError>,
+        allocate_reply: impl FnOnce(bool) -> Result<ReplyStorage, IpcError>,
         mut before: impl FnMut(u8) -> Result<(), IpcError>,
     ) -> Result<Self, IpcError> {
         let identity = {
@@ -392,10 +382,10 @@ impl PreparedCall {
                 owner.reply_charge = Some(charge.split([0, 0, 1]));
                 owner.call_charge = Some(charge);
             }
-            owner.storage = Some(allocate()?);
+            owner.storage = Some(allocate(owner.platform)?);
             let resources = &mut *owner.0;
             resources.storage.as_mut().unwrap().bind_charge(resources.call_charge.take().unwrap());
-            owner.reply_storage = Some(allocate_reply()?);
+            owner.reply_storage = Some(allocate_reply(owner.platform)?);
             let resources = &mut *owner.0;
             resources
                 .reply_storage
@@ -434,8 +424,8 @@ impl PreparedCall {
         let mut owner = Self::prepare_checked(
             caller,
             Some(connection),
-            || PendingStorage::try_new_charged(None).map_err(|_| IpcError::ResourceLimit),
-            || ReplyStorage::try_new_charged(None).map_err(|_| IpcError::ResourceLimit),
+            node_budget::prepare,
+            node_budget::prepare,
         )?;
         let result = work(&mut owner);
         owner.finish();

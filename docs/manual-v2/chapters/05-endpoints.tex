@@ -100,6 +100,17 @@ completion retains its detached notification batch with the node until explicit
 finish; fallback retains both. Claim sources use the original token
 classification through promotion and ASID reuse. See \repofile|docs/reference/ipc-record-budgets.md|.
 
+Pending-call and reply-token nodes also reserve their requested heap layouts
+before allocation from the independent \texttt{ipc\_nodes} pool. The same node
+keeps that backing charge beside its later-bound logical record reservation,
+using the original call-record classification through detachment and actual
+deallocation. Default ordinary/total admission is 6/8 MiB and 18432/24576 nodes;
+existing resource limits are unchanged. A second-node denial cancels the whole
+prefix before authority or attachment publication. Complete call and scalar
+reply/list abandonment remains inert beneath the pool guard. Nested buffers,
+connection/endpoint payload backing and broader heap/principal admission remain
+separate; see \repofile|docs/reference/ipc-node-admission.md|.
+
 Connection-bearing calls and replies admit their
 connection before copying memory, consuming the token or revoking a loan.
 Kernel rejection leaves the inputs intact. The consuming Rust

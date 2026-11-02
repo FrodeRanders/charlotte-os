@@ -1,6 +1,6 @@
 # Bounded kernel telemetry snapshots
 
-`THREAD_STATISTICS` uses the current version-9 payload and existing `(0, 0)`
+`THREAD_STATISTICS` uses the current version-10 payload and existing `(0, 0)`
 unavailable result. Ordinary callers see their own domain; a validated
 `SystemObserver` capability widens the thread and domain sections and adds the
 [metadata pool inventory](metadata-admission.md#read-only-runtime-inventory).

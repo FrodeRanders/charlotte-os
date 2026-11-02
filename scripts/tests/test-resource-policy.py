@@ -71,6 +71,8 @@ class ResourcePolicy(unittest.TestCase):
             "ratio-overcommitted": "p.memory.ordinary_share.numerator = 4;",
             "snapshot": "p.snapshot_buffers.ordinary[0] = 1;",
             "object-frame-vector": "p.memory_capability_nodes.ordinary[0] = 1;",
+            "ipc-node-reserve": "p.ipc_nodes.ordinary = p.ipc_nodes.total;",
+            "ipc-node-range": "p.ipc_nodes.total[0] = u64::MAX;",
             "root-table-reserve": "p.root_table.ordinary = p.root_table.total;",
             "root-table-principal": "p.memory.principal_root_table[1] = u64::MAX;",
             "thread-table-reserve": "p.thread_table.ordinary = p.thread_table.total;",

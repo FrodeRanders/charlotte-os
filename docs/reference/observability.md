@@ -26,8 +26,8 @@ owned-memory response. These read-only diagnostics grant no retry, reset or
 fence-clearing authority. HTTP/cluster history formats do not gain these fields.
 See [final-root recovery](root-recovery.md) for state and retention rules.
 
-Version 9 extends the header to 22 words and appends a read-only
-[22-pool metadata inventory](metadata-admission.md#read-only-runtime-inventory)
+The current version-10 payload has a 22-word header and a read-only
+[23-pool metadata inventory](metadata-admission.md#read-only-runtime-inventory)
 for validated observers. Self snapshots contain no pool records. Each independent
 sample reports ordinary/total usage and limits, units and explicit busy status;
 HTTP status exposes these in `threads.metadata_pools` with absent busy usage.
@@ -69,7 +69,7 @@ address space. Each snapshot contains:
   (committed is what demand growth has mapped; touched is a high-water mark
   sampled at context switches).
 
-The current version-9 snapshot header carries the machine-wide `free_frames` and
+The current version-10 snapshot header carries the machine-wide `free_frames` and
 `usable_frames` from the frame allocator, the online `logical_processors`
 count, and `cpu_busy_ticks`, a monotonic sum of completed slices, currently
 active slices, and retired threads' on-CPU ticks. Delta `cpu_busy_ticks` over

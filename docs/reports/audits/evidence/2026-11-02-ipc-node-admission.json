@@ -1,0 +1,335 @@
+{
+  "schema": "charlotte.ipc-node-admission.v1",
+  "date": "2026-11-02",
+  "base_revision": "452899f9088d02b53132a85b1e8f1050c68d7f35",
+  "scope": "Independent requested-byte/count backing admission for pending-call and reply-token node layouts. The complete existing node owns this reservation alongside its later-bound logical record charge through preparation, publication, claims, detached cleanup and actual deallocation. Connection/capability and endpoint payload layouts and nested buffers remain separate.",
+  "source_sha256": {
+    "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
+    "crates/catten-services/src/bin/httpd.rs": "14fefbb305ba7cfbda07edec3b602c96f1d933aad48d4e06c377bf4c89e97b1f",
+    "crates/catten-services/src/bin/observe.rs": "8fb9cae61866a4ed642e9625ca72332d421f43b373a6fbdbfaac0b7923c6f547",
+    "crates/catten-syscall/src/lib.rs": "231d3e2ca37f03c987335f874e432cafcfac8b2969dd78ee7c37da82db4c0d2a",
+    "crates/catten-syscall/src/metadata_pools.rs": "11d14166d9d9c66a800dfb0bb2401c8af6875d0c31dc4d4295b72a2633d1b5b9",
+    "crates/catten-syscall/src/metadata_pools/tests.rs": "3099f7bbcd50916d34a1106660c6acda1b417ffedf6a1ca2b712b83eaf298531",
+    "crates/catten/src/ipc/call_storage_tests.rs": "3f4a9b4689a6b89a41532ac86190c9d97af04c7c9c51be8c39ca6e300ed9b989",
+    "crates/catten/src/ipc/cap_storage/tests.rs": "915007efc9decb5761a6ba7b4b0435f9b4afa7f9134e40bdd53df64cad2c6373",
+    "crates/catten/src/ipc/mod.rs": "7337389cd0744a90d5e208e532ee40a1ffa2affb8876f6b92d1dab2ea84c797e",
+    "crates/catten/src/ipc/namespace.rs": "1c16533a67a8f62fe4acab60562dd6165f18ff0a12fdf29cfe1c746ab801dc0c",
+    "crates/catten/src/ipc/namespace/tests.rs": "df44e6ac0fb2f6998ff6ab9912b4009f00d8d4e7e01108311738247fc7cacb1f",
+    "crates/catten/src/ipc/node_budget.rs": "52d2b053f2d7019eab2782a4a294afba2ec409b53679a48e4cb1696e9ae711c8",
+    "crates/catten/src/ipc/node_budget/tests.rs": "ad748ddc3996f582e61c7edbe6b51d8dd4dccf68fbdaac9496ca7db78ea958c8",
+    "crates/catten/src/ipc/preparation_tests.rs": "808311029839a18d7309a401c14477fc4d5e3d00471121550232134cb4616410",
+    "crates/catten/src/ipc/record_budget.rs": "7e9257e2392dadc26b0dd04579d06f1e9cb58a3c1cff5afd4776b3a6b7a7d142",
+    "crates/catten/src/ipc/record_tests.rs": "caaa0bad800976dc1562b263d569a131313ec1681e1267c6947b0cc469321aa9",
+    "crates/catten/src/ipc/reply_storage_tests.rs": "65da216dc7c8ebf65aaa2fadd3ef2071f0f694d9781231f598073afd97e0c3dd",
+    "crates/catten/src/ipc/transaction.rs": "808cf89d0e57444c4f35c997a0f0255400b55dcedccced1ab2d6260cbf6f5642",
+    "crates/catten/src/klib/admission.rs": "b10d5402c22e29ddc3087881c4031cd8d2ee60bd6646e52b53c62239c4bf2138",
+    "crates/catten/src/klib/collections/retirement_list.rs": "8a87488146d00e0956e0314ae3996aadf3f168c7842068cce271c926fe450063",
+    "crates/catten/src/klib/collections/retirement_list/tests.rs": "37dff75b0bc0da18987a2d36a2d9bb3c4e089118b8c72810e87dfa1c27793723",
+    "crates/catten/src/resource_policy.rs": "878f696cdcb69ff9bed8a82e586dc3777e1fdd82f5a08bfe60ef432d23a746a2",
+    "crates/catten/src/resource_policy/defaults.rs": "23fae6ccb6a27a38143c58a3cba2b2f49e51ce84008045d00538de2ee3a27ca8",
+    "crates/catten/src/resource_policy/larger.rs": "1b1931ff708012be415b6f6f28429ab77fc919c79613025aefedc764d23a885c",
+    "crates/catten/src/syscall/statistics.rs": "dc0196d855934c5041fb9a8ee678ef43d7564e2a1ec8ed2f04d03988af8d9eb6",
+    "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
+    "scripts/tests/test-http-keyhole-liveness.py": "f85aec80ea182915fcc078fd69e179e5ddaaf1cb9cf2d830d9966f91fe2251ac",
+    "scripts/tests/test-resource-policy.py": "bbf9a04403503baafdbfc59bc400f2d137d971b01b26f38927ddcc7fac9c70d8"
+  },
+  "artifact_note": "Runtime Rust sources were frozen before native campaigns. Subsequent current-documentation edits can change tracked-diff hashes; per-file source and archived artifact hashes identify exercised code. Both architectures test/minimal service bundles were rebuilt and signed for the current SDK; the separate AArch64 Sitas fixture was rebuilt and signed, and every runner regenerated signed security fixtures.",
+  "policy": {
+    "field": "ipc_nodes",
+    "ordinary": [
+      6291456,
+      18432
+    ],
+    "total": [
+      8388608,
+      24576
+    ],
+    "pending_node_bytes": 200,
+    "reply_node_bytes": 176,
+    "extra_inline_backing_charge_bytes_per_node": 16,
+    "planning": "6144 ordinary pending/reply pairs request 2310144 layout bytes; 8192 total pairs request 3080192. Added inline charges contribute 196608/262144 bytes respectively. These figures exclude nested storage, allocator bookkeeping and independent pool usage. No extra holder allocation is introduced.",
+    "decision": "Use an independent pool with 6/8 MiB and 18432/24576 node defaults, allowing layout/candidate headroom and a quarter reserve for trusted admission. Existing logical and backing limits remain unchanged. No RAM is preallocated; simultaneous independent ceilings or sustained essential-service fairness are not guaranteed. Measured workloads may justify adjusting central byte/count limits together.",
+    "capture": "PreparedCall retains the exact caller root before logical count admission. reserve_records captures trusted class from the accepted generation under IPC; both unlocked node factories receive that same original boolean. Promotion, root retirement or ASID reuse cannot reclassify a retained node.",
+    "custody": "Typed node Charge owns NodeCharge<IpcNodes> plus Option<record_budget::Charge>. The common BindCharge contract binds logical admission without replacing backing. Preparation admits actual layout before allocation; publication and retirement reuse this same node. Payload and actual node deallocation precede both refunds. Complete call and scalar reply/list abandonment retain every field under IPC/heap/pool guards.",
+    "errors": "Quota/allocator rejection returns IpcError::ResourceLimit. Reply-node rejection cancels the complete pending prefix, original counts and exact root before authority/attachment publication. No physical completion or replay permission is added."
+  },
+  "wire": {
+    "pool_count": 23,
+    "appended_pool": "ipc_nodes",
+    "statistics_version": 10,
+    "header_words": 22,
+    "metadata_record_words": 11,
+    "compatibility": "Prior catalog identities and record widths remain unchanged. SDK rejects versions 8/9, malformed catalogs and inexact lengths. observe/HTTP/fixtures use the same catalog. Syscall registers and signed runtime ABI are unchanged."
+  },
+  "native_campaigns": [
+    {
+      "arch": "aarch64",
+      "instance": "ipc-nodes-20261102-arm",
+      "cpus": 4,
+      "revision": "452899f9088d02b53132a85b1e8f1050c68d7f35",
+      "kernel_sha256": "d2ee6f5ce3ee45b45369a3ecdb1eb3aa8d4f7939f3384d3c4c098beafaa33ebf",
+      "boot_image_sha256": "547864040bb95cc8643cc02248450e6d25f6d695469dd4cdcfa7250ec3265eb8",
+      "initial_disk_sha256": "51debddd5d0ee275def107ff60d5c41ea60d1319ee96a9c43070e8dbd623335d",
+      "tracked_diff_sha256": "a1eadf14b19aeabc7eb6888c7341338543227fd0fa0a5fe44cbee495fabc55cd",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T17:37:24Z",
+      "platform": "arm",
+      "configuration": "security-test; four CPUs; fresh storage; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "5caccb00a08a665c3698c3909dae2dfadc6a73f3433cb314a4d7c80660a617be",
+      "serial_sha256": "2798c2a657a4b91fa28f0a09edce641e40d424acb621cfd3a8472d9b87236ff6",
+      "service_sha256": {
+        "httpd.elf": "90bf24821ee404ed6b7d54b4150f6a077205f73ec3289f2196895890e214a309",
+        "observe.elf": "3550903f199e08b313d438c41febe87959dd312f5de67735152418760caa663c",
+        "security_probe.elf": "11a9f88261e2a8064100e7494d83c418d351a0422bac08e9807128ab964e43f3",
+        "sitas-user.elf": "6f0e7f2113b898f98e16708342db288745e9dcfe2bbbb016027e8db01100391b"
+      },
+      "summary": {
+        "passed": 19,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+     2.485790] [IPC node pressure] 200 bytes; 18427 ordinary + 6144 trusted real empty nodes; heap-held quota rejection, separate trusted reserve, independent counter-only byte exhaustion and exact recovery",
+        "[+     2.508893] [IPC node pressure] 176 bytes; 18427 ordinary + 6144 trusted real empty nodes; heap-held quota rejection, separate trusted reserve, independent counter-only byte exhaustion and exact recovery",
+        "[+     2.510875] [IPC node rollback] 64 admitted pending-prefix / rejected reply-node preparations; original resource counts and backing bytes/slots recovered before authority or attachment publication",
+        "[+     2.511330] [IPC node admission] 256 allocator rejections; actual pending/reply layouts 200/176 bytes; complete node keeps backing and logical record reservations through real disposal",
+        "[+     2.516138] [IPC pending storage] 64 invalid-handle and 64 preparation rejections, 64 heap-held publications/detaches, original charge through node disposal and IRQ preservation passed; three abandoned call owners retain storage, three call/reply reservations, five roots and copied backing",
+        "[+     2.523904] [IPC reply storage] 64 second-allocation rejections, 64 heap-held paired publications/detaches and one 64-node retirement batch passed; token charge survives pending-node disposal, original class survives promotion; two abandoned scalar token nodes/counts and one notification entry retained across exact root reuse",
+        "[+     8.501180] [metadata admission] 23 independent pools; heap-held nonblocking observation, busy state and owner sizes passed",
+        "[+    81.595121] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "arch": "x86_64",
+      "instance": "ipc-nodes-20261102-intel",
+      "cpus": 4,
+      "revision": "452899f9088d02b53132a85b1e8f1050c68d7f35",
+      "kernel_sha256": "37cee36921087375e8b923d28592bc7e39c32d055fe6b8de8dbccbb8f4752f5d",
+      "boot_image_sha256": "3e40d74c2e4aaf5176a0bb9e8e8f445111ed9170e56d7bce54b7323e1d68bc83",
+      "initial_disk_sha256": "861e744e92833aef5b75ec19edbda05c20fe2b3efb98c1bf68d08d7ad6b362d1",
+      "tracked_diff_sha256": "b7ff52e9a583c6e6091e8100cf351f079e26a2de080755d82d6bf3b37a2b35a0",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T17:35:43Z",
+      "platform": "intel",
+      "configuration": "security-test; four CPUs; fresh storage; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "2ce57f90d34692a3b6363326356d71d5e0d1931af2db253f790ce7e701fa50e7",
+      "serial_sha256": "4165db442b4bb504b4760065e730cd840fa4bd5ca09e0cad20074cd8be87cb07",
+      "service_sha256": {
+        "httpd.elf": "f9dae9cd1fe44c0c4e92429c968a845af03455710d78c1945bd768229e20e5f0",
+        "observe.elf": "875e7de7a7759e46e7e5bf563a08531c25bb3c987f8907b9ddb1742612f525f6",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c"
+      },
+      "summary": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+     3.156252] [IPC node pressure] 200 bytes; 18427 ordinary + 6144 trusted real empty nodes; heap-held quota rejection, separate trusted reserve, independent counter-only byte exhaustion and exact recovery",
+        "[+     3.197347] [IPC node pressure] 176 bytes; 18427 ordinary + 6144 trusted real empty nodes; heap-held quota rejection, separate trusted reserve, independent counter-only byte exhaustion and exact recovery",
+        "[+     3.200370] [IPC node rollback] 64 admitted pending-prefix / rejected reply-node preparations; original resource counts and backing bytes/slots recovered before authority or attachment publication",
+        "[+     3.201243] [IPC node admission] 256 allocator rejections; actual pending/reply layouts 200/176 bytes; complete node keeps backing and logical record reservations through real disposal",
+        "[+     3.208426] [IPC pending storage] 64 invalid-handle and 64 preparation rejections, 64 heap-held publications/detaches, original charge through node disposal and IRQ preservation passed; three abandoned call owners retain storage, three call/reply reservations, five roots and copied backing",
+        "[+     3.218137] [IPC reply storage] 64 second-allocation rejections, 64 heap-held paired publications/detaches and one 64-node retirement batch passed; token charge survives pending-node disposal, original class survives promotion; two abandoned scalar token nodes/counts and one notification entry retained across exact root reuse",
+        "[+    16.223757] [metadata admission] 23 independent pools; heap-held nonblocking observation, busy state and owner sizes passed",
+        "[+    97.450145] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "arch": "x86_64",
+      "instance": "ipc-nodes-20261102-amd",
+      "cpus": 4,
+      "revision": "452899f9088d02b53132a85b1e8f1050c68d7f35",
+      "kernel_sha256": "fbcf697d1ea997e124ec885efe1aa70310f830041311fb7f5123c7806edcd849",
+      "boot_image_sha256": "d6764a89e74e474e0fa12c9c483fa015c169a3001f629bffc3d355569a726f7a",
+      "initial_disk_sha256": "861e744e92833aef5b75ec19edbda05c20fe2b3efb98c1bf68d08d7ad6b362d1",
+      "tracked_diff_sha256": "07707064b7c34d995834412471776885416918def36878f1c4551c368a03552c",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T17:38:54Z",
+      "platform": "amd",
+      "configuration": "security-test; four CPUs; fresh storage; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "fec2638748569e6cfe5676b0f8b56e5571d4a20fa834955dca1dbc1162333979",
+      "serial_sha256": "2ac0bb64129dcad7d666817c03fc794d16963e58c239cc75de38a66286125ce4",
+      "service_sha256": {
+        "httpd.elf": "f9dae9cd1fe44c0c4e92429c968a845af03455710d78c1945bd768229e20e5f0",
+        "observe.elf": "875e7de7a7759e46e7e5bf563a08531c25bb3c987f8907b9ddb1742612f525f6",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c"
+      },
+      "summary": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+     2.804832] [IPC node pressure] 200 bytes; 18427 ordinary + 6144 trusted real empty nodes; heap-held quota rejection, separate trusted reserve, independent counter-only byte exhaustion and exact recovery",
+        "[+     2.841139] [IPC node pressure] 176 bytes; 18427 ordinary + 6144 trusted real empty nodes; heap-held quota rejection, separate trusted reserve, independent counter-only byte exhaustion and exact recovery",
+        "[+     2.844319] [IPC node rollback] 64 admitted pending-prefix / rejected reply-node preparations; original resource counts and backing bytes/slots recovered before authority or attachment publication",
+        "[+     2.845429] [IPC node admission] 256 allocator rejections; actual pending/reply layouts 200/176 bytes; complete node keeps backing and logical record reservations through real disposal",
+        "[+     2.852228] [IPC pending storage] 64 invalid-handle and 64 preparation rejections, 64 heap-held publications/detaches, original charge through node disposal and IRQ preservation passed; three abandoned call owners retain storage, three call/reply reservations, five roots and copied backing",
+        "[+     2.862562] [IPC reply storage] 64 second-allocation rejections, 64 heap-held paired publications/detaches and one 64-node retirement batch passed; token charge survives pending-node disposal, original class survives promotion; two abandoned scalar token nodes/counts and one notification entry retained across exact root reuse",
+        "[+    15.299205] [metadata admission] 23 independent pools; heap-held nonblocking observation, busy state and owner sizes passed",
+        "[+    90.722601] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "arch": "aarch64",
+      "instance": "ipc-nodes-20261102-http",
+      "cpus": 4,
+      "revision": "452899f9088d02b53132a85b1e8f1050c68d7f35",
+      "kernel_sha256": "cfcf3ca60e5f2224385e9aa51d22675b19dd0c2cf2945e3ebf2e91533d4479ae",
+      "boot_image_sha256": "1082d0ca4538c690e7866435b84a5e4e32b6b65ec602bfafc88ddc8952eae85d",
+      "initial_disk_sha256": "51debddd5d0ee275def107ff60d5c41ea60d1319ee96a9c43070e8dbd623335d",
+      "tracked_diff_sha256": "b7700e82a1e108de172869abf6a399d42a208ab8cc7831bbdf45b2162ab9375e",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T18:01:38Z",
+      "platform": "http",
+      "configuration": "security-test; four CPUs; fresh storage; authenticated HTTP and deployment/TLS probes",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "fa082cce94797265c95724d782ba4eedab36e4d14ad22c016411fcda5f7af448",
+      "serial_sha256": "a46069901a684bcb67a326a9d135814f837229dfaf792ffb1ac9cbeb0b375ae5",
+      "service_sha256": {
+        "httpd.elf": "90bf24821ee404ed6b7d54b4150f6a077205f73ec3289f2196895890e214a309",
+        "observe.elf": "3550903f199e08b313d438c41febe87959dd312f5de67735152418760caa663c",
+        "security_probe.elf": "11a9f88261e2a8064100e7494d83c418d351a0422bac08e9807128ab964e43f3",
+        "sitas-user.elf": "6f0e7f2113b898f98e16708342db288745e9dcfe2bbbb016027e8db01100391b"
+      },
+      "summary": {
+        "passed": 20,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+     2.587162] [IPC node pressure] 200 bytes; 18427 ordinary + 6144 trusted real empty nodes; heap-held quota rejection, separate trusted reserve, independent counter-only byte exhaustion and exact recovery",
+        "[+     2.612356] [IPC node pressure] 176 bytes; 18427 ordinary + 6144 trusted real empty nodes; heap-held quota rejection, separate trusted reserve, independent counter-only byte exhaustion and exact recovery",
+        "[+     2.614472] [IPC node rollback] 64 admitted pending-prefix / rejected reply-node preparations; original resource counts and backing bytes/slots recovered before authority or attachment publication",
+        "[+     2.614932] [IPC node admission] 256 allocator rejections; actual pending/reply layouts 200/176 bytes; complete node keeps backing and logical record reservations through real disposal",
+        "[+     2.619870] [IPC pending storage] 64 invalid-handle and 64 preparation rejections, 64 heap-held publications/detaches, original charge through node disposal and IRQ preservation passed; three abandoned call owners retain storage, three call/reply reservations, five roots and copied backing",
+        "[+     2.627858] [IPC reply storage] 64 second-allocation rejections, 64 heap-held paired publications/detaches and one 64-node retirement batch passed; token charge survives pending-node disposal, original class survives promotion; two abandoned scalar token nodes/counts and one notification entry retained across exact root reuse",
+        "[+     8.812808] [metadata admission] 23 independent pools; heap-held nonblocking observation, busy state and owner sizes passed",
+        "[+    82.324042] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x2023ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "http_metadata_inventory": {
+        "count": 23,
+        "names": [
+          "root_metadata",
+          "namespace_nodes",
+          "authority_nodes",
+          "mailbox_nodes",
+          "deferred_nodes",
+          "observer_backing",
+          "completion_nodes",
+          "device_nodes",
+          "iommu_nodes",
+          "principal_history",
+          "thread_metadata",
+          "thread_table",
+          "root_table",
+          "waiter_accounts",
+          "timer_accounts",
+          "completion_accounts",
+          "namespace_accounts",
+          "scratch_nodes",
+          "snapshot_buffers",
+          "mapping_nodes",
+          "memory_capability_nodes",
+          "observer_lists",
+          "ipc_nodes"
+        ],
+        "ipc_nodes": {
+          "name": "ipc_nodes",
+          "state": "sampled",
+          "dimensions": [
+            {
+              "unit": "bytes",
+              "total_limit": 8388608,
+              "ordinary_limit": 6291456,
+              "total_used": 12352,
+              "ordinary_used": 7992
+            },
+            {
+              "unit": "nodes",
+              "total_limit": 24576,
+              "ordinary_limit": 18432,
+              "total_used": 65,
+              "ordinary_used": 42
+            }
+          ]
+        }
+      },
+      "host_probe_diagnostics": [
+        "PASS: initial metrics request with complete metadata admission inventory",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.444s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.443s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.461s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 29.81s; ingress recovered",
+        "PASS: port 18625: verified TLS 1.3 reader and administrator observations",
+        "PASS: healthy status requests beside idle TLS peers and incomplete authenticated headers",
+        "PASS: port 18625: missing/unregistered certificate, wrong name/root and plaintext rejected; reader recovered",
+        "PASS: port 17625: verified TLS 1.3 reader and administrator observations",
+        "PASS: port 17625: missing/unregistered certificate, wrong name/root and plaintext rejected; reader recovered",
+        "PASS: reader mutation rejected before incomplete signed body/controller dispatch",
+        "PASS: cluster-sign verified reader observation; wrong server name rejected before HTTP submission"
+      ]
+    }
+  ],
+  "preserved_preflight_rejection": {
+    "phase": "Before kernel build/QEMU boot",
+    "exit_code": 1,
+    "log_sha256": "0956d2e006b244b8a041f6bf3275abb7327fc06289fe5495e9ea863fc4ff8452",
+    "diagnostics": [
+      ">>> Limine 12.9.6: checked-in files verified",
+      ">>> Reusing staged AArch64 EL0 bundle.",
+      "error: test bundle requires sitas-user.elf; run scripts/build-catten-user.sh --embed"
+    ],
+    "disposition": "Rebuilding the ARM service bundle replaces its staging directory, removing the separate Sitas fixture. Rebuilt and signed it with scripts/build-catten-user.sh --embed, then repeated with unchanged runtime source. This was a staging preflight rejection, not an observed kernel/runtime failure."
+  },
+  "validation": {
+    "host_suite": "Full scripts/run-host-tests.sh passed, including actual collection/SDK/policy modules and expected rejected legacy crypto mutation controls. The 17-test retirement-list harness includes new actual System allocator tracing of independent backing and later-bound resource refunds after node free, both unused and published.",
+    "sdk_policy": "Current 23-pool parser tests reject old payload versions 8/9, malformed identity/dimension/state/count/usage and inexact lengths. Default/larger profiles execute actual policy tests; invalid IPC node reserve and machine-range profiles fail compilation.",
+    "strict_kernel_checks": [
+      "AArch64 acpi,kernel_tests",
+      "x86_64 acpi,kernel_tests",
+      "AArch64 acpi minimal",
+      "x86_64 acpi minimal"
+    ],
+    "native_builds": "All runners built current kernels and enforced executable/read-only assembly section checks.",
+    "native_controls": [
+      "256 allocator rejection adapters cover ordinary/trusted admission of both real layouts and exact refunds.",
+      "Real empty pending/reply candidates reach ordinary/total admission ceilings; heap-held quota denials precede allocator entry and trusted preparation progresses at ordinary exhaustion. Independent byte saturation is counter-only.",
+      "64 pending-prefix/reply-quota rejections restore backing bytes/slots, original logical record counts and authority baseline before publication.",
+      "Existing paired publication/detachment and retirement batches, scalar reply/cancellation, promotion and exact-root reuse exercise the new complete charge. Guarded complete call and scalar reply/list abandonment retains backing; original ordinary charges survive trusted successor reuse."
+    ],
+    "formatting": "cargo fmt --all -- --check and git diff --check passed."
+  },
+  "remaining_limits": [
+    "Connection/capability and endpoint payload-node layouts, nested attachments/control storage and remaining allocations still require backing admission.",
+    "No all-family aggregate logical-principal/general kernel heap budget or simultaneous RAM-fit guarantee.",
+    "Real-node and injected byte-pressure controls are serialized; no sustained hostile concurrent EL0 fairness or exhaustive outer caller/IRQ/destructor/latency claim.",
+    "Allocator/second-node rejection use adapters; native general heap OOM is not forced.",
+    "Existing deliberate-retention call/reply fixtures now retain these backing charges too. No new native physical page/root/authority leak fixture is introduced. Admission supplies no completion or replay authority."
+  ]
+}

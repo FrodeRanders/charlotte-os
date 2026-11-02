@@ -4,7 +4,7 @@
 [`klib::admission`](../../crates/catten/src/klib/admission.rs) supplies four
 family-typed owners: byte/count node charges, fixed-bundle charges, multidimensional
 reservations, and observer actual-layout charges. A single
-[catalog](../../crates/catten-syscall/src/metadata_pools.rs) names all 22 pools,
+[catalog](../../crates/catten-syscall/src/metadata_pools.rs) names all 23 pools,
 their dimensions and units. Every pool keeps its own static counter lock; there
 is no allocated registry, common hot lock or centralized resource owner.
 
@@ -19,11 +19,12 @@ principal charge; each counter guard leaves before the next field drops.
 Observer allocation rollback refunds layout bytes while retaining its holder
 bundle until the holder is actually freed. Simple node, fixed-bundle,
 two-dimensional reservation and actual-layout charge sizes remain respectively
-16, 1, 24 and 16 bytes on supported 64-bit targets. No numerical limits change.
+16, 1, 24 and 16 bytes on supported 64-bit targets. Existing numerical limits
+remain unchanged; the independent IPC node pool has its own byte/count policy.
 
 ## Read-only runtime inventory
 
-`THREAD_STATISTICS` payload **version 9** has a 22-word little-endian header.
+`THREAD_STATISTICS` payload **version 10** has a 22-word little-endian header.
 Thread and domain records retain their layouts. Header words 20 and 21 hold the
 metadata record size in bytes (88) and count. After both existing sections,
 validated `SystemObserver` snapshots include the complete catalog, in catalog
@@ -62,6 +63,11 @@ is JSON `null`. Authorization remains the existing observation/status policy;
 there is no mutable budget or teardown endpoint. History and cluster formats
 retain their own existing fields.
 
+The appended `ipc_nodes` row admits pending-call and reply-token layouts;
+logical IPC resource counts retain their separate owners. Earlier catalog IDs
+and record widths stay unchanged; version 9 rejects rather than silently omitting
+the new pool. Both architecture service bundles must be rebuilt and signed.
+
 Byte counts are requested allocation layouts, not physical RAM or allocator
 bookkeeping. IOMMU metadata bytes include allocated ledger capacity and full
 replacement overlap; those buffers contribute zero to its node count. Object
@@ -86,7 +92,7 @@ telemetry fixtures validate self-only, authorized and forged observer requests,
 exact output sizing and heap-held nonblocking inventory capture. Owner-size
 checks run natively too. Host mutexes do not qualify IRQ behavior.
 
-The [2026-11-02 evidence](../reports/audits/evidence/2026-11-02-metadata-admission.json)
+The initial [shared-counter evidence](../reports/audits/evidence/2026-11-02-metadata-admission.json)
 records source/kernel/service identities and relevant diagnostics. Fresh four-CPU
 240-second security campaigns passed ARM 19/19, Intel VT-d 17/17 and AMD-Vi
 18/18, with zero failures or pending tests. AMD also passed authenticated HTTP
@@ -94,3 +100,7 @@ inventory and management TLS probes. The full host suite, strict kernel checks a
 builds passed; both architectures' test/minimal service bundles were
 rebuilt and signed. The earlier ARM preflight rejection is recorded separately.
 These runs do not close broader allocation, concurrency or latency gaps.
+
+Current [IPC node qualification](ipc-node-admission.md) covers the appended
+23rd pool and version-10 payload, including previous-version rejection and
+rebuilt/signed test and minimal service bundles.

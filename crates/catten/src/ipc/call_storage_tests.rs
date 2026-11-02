@@ -17,8 +17,8 @@ pub(super) fn run() {
             PreparedCall::prepare_checked(
                 caller.id(),
                 Some(0),
-                || { panic!("invalid call handle reached pending-node allocation") },
-                || panic!("invalid call handle reached reply-node allocation")
+                |_| { panic!("invalid call handle reached pending-node allocation") },
+                |_| panic!("invalid call handle reached reply-node allocation")
             ),
             Err(IpcError::UnknownCapability)
         ));
@@ -29,13 +29,13 @@ pub(super) fn run() {
         assert!(
             PreparedCall::prepare(
                 caller.id(),
-                || {
+                |_| {
                     assert!(IPC.try_write().is_some());
                     assert!(ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());
                     assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());
                     Err(IpcError::ResourceLimit)
                 },
-                || panic!("rejected pending storage reached reply preparation")
+                |_| panic!("rejected pending storage reached reply preparation")
             )
             .is_err()
         );
@@ -72,7 +72,7 @@ pub(super) fn run() {
     {
         let _ipc = IPC.write();
         let _heap = PRIMARY_ALLOCATOR.lock();
-        drop(empty);
+        node_budget::with_locked(|| drop(empty));
     }
     for copied in [false, true] {
         let caller = crate::service::loader::create_user_address_space_handle();
@@ -91,7 +91,7 @@ pub(super) fn run() {
             let _table = ADDRESS_SPACE_TABLE.lock();
             let _ipc = IPC.write();
             let _heap = PRIMARY_ALLOCATOR.lock();
-            drop(call);
+            node_budget::with_locked(|| drop(call));
         }
         assert_eq!(record_budget::node_used(), records);
         assert_eq!(memory::budget::used(caller), backing);

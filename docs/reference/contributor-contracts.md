@@ -334,6 +334,16 @@ the corrected RPC polling paths, and the remaining notification gaps.
 
 ## Capability and IPC publication
 
+- IPC pending-call and reply-token candidates use independent `ipc_nodes`
+  requested-byte/count admission before allocation. Pass the original call-record
+  class captured under IPC to both factories; later promotion and ASID reuse
+  cannot reclassify node backing. Keep backing and later-bound logical record
+  charges in the same node through publication, claims, detached lists and
+  actual deallocation. A second-node rejection cancels the complete prefix before
+  authority/attachment publication. Complete call and scalar reply/list fallback
+  remains inert under the metadata-pool guard too. See
+  `docs/reference/ipc-node-admission.md`.
+
 - Device namespace and MMIO/IRQ/DMA payload nodes use typed `DeviceMap` storage
   and independent `device_nodes` requested-byte/count admission. Capture trusted
   backing class with the exact root generation, then acquire that root lease
