@@ -223,8 +223,8 @@ struct MemoryObject {
     retired_caps: cap_storage::RetiredCapabilities,
 }
 
-type ObjectStorage = PreparedEntry<(MemoryObjectId, MemoryObject)>;
-type RetiredObject = RetiredEntry<(MemoryObjectId, MemoryObject)>;
+type ObjectStorage = PreparedEntry<(MemoryObjectId, MemoryObject), cap_storage::admission::Charge>;
+type RetiredObject = RetiredEntry<(MemoryObjectId, MemoryObject), cap_storage::admission::Charge>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct MemoryMappingState {
@@ -372,7 +372,7 @@ struct AddressSpaceCaps {
 #[derive(Debug)]
 struct MemoryObjectRegistry {
     next_object: MemoryObjectId,
-    objects: AdmittedMap<MemoryObjectId, MemoryObject>,
+    objects: AdmittedMap<MemoryObjectId, MemoryObject, cap_storage::admission::Charge>,
     caps: cap_storage::Namespaces,
 }
 

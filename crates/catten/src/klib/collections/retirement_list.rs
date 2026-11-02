@@ -30,6 +30,8 @@ impl<T, C> fmt::Debug for PreparedEntry<T, C> {
     }
 }
 
+// Uncharged convenience construction is restricted to collection fixtures.
+#[cfg(test)]
 impl<T> PreparedEntry<T> {
     pub(crate) fn try_new() -> Result<Self, AllocError> {
         Self::try_new_with(Box::try_new)

@@ -220,15 +220,13 @@ impl ChargedFrames {
         owner: crate::memory::AddressSpaceHandle,
         pages: usize,
     ) -> Result<Self, MemoryObjectError> {
-        Self::allocate_with(owner, pages, || {
-            ObjectStorage::try_new().map_err(|_| MemoryObjectError::ResourceLimit)
-        })
+        Self::allocate_with(owner, pages, prepare_storage)
     }
 
     fn allocate_with(
         owner: crate::memory::AddressSpaceHandle,
         pages: usize,
-        allocate_storage: impl FnOnce() -> Result<ObjectStorage, MemoryObjectError>,
+        allocate_storage: impl FnOnce(bool) -> Result<ObjectStorage, MemoryObjectError>,
     ) -> Result<Self, MemoryObjectError> {
         Self::allocate_observed(owner, pages, allocate_storage, |_| Ok(()))
     }
@@ -236,11 +234,14 @@ impl ChargedFrames {
     fn allocate_observed(
         owner: crate::memory::AddressSpaceHandle,
         pages: usize,
-        allocate_storage: impl FnOnce() -> Result<ObjectStorage, MemoryObjectError>,
+        allocate_storage: impl FnOnce(bool) -> Result<ObjectStorage, MemoryObjectError>,
         mut after_frame: impl FnMut(usize) -> Result<(), MemoryObjectError>,
     ) -> Result<Self, MemoryObjectError> {
+        // Capture trusted metadata class against the exact generation before
+        // any object/frame allocation. No later ASID lookup can reclassify it.
+        let platform = crate::memory::budget::platform_identity(owner.id()) == Some(owner);
         let (staged, ()) = Self::prepare(owner, pages)?.try_prepare(|staged| {
-            staged.0.storage = Some(allocate_storage()?);
+            staged.0.storage = Some(allocate_storage(platform)?);
             staged
                 .0
                 .frames
@@ -288,4 +289,9 @@ impl ChargedFrames {
             failed: false,
         })))
     }
+}
+
+/// The same admitted factory backs private candidates and published objects.
+pub(super) fn prepare_storage(platform: bool) -> Result<ObjectStorage, MemoryObjectError> {
+    cap_storage::admission::prepare(platform).map_err(|_| MemoryObjectError::ResourceLimit)
 }

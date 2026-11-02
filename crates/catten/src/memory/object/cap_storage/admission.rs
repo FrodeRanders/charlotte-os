@@ -18,7 +18,9 @@ pub(super) const ORDINARY_LIMIT: [u64; 2] =
 
 pub(in crate::memory::object) type Charge = admission::NodeCharge<MemoryCapabilityNodes>;
 
-pub(super) fn prepare<T>(platform: bool) -> Result<PreparedEntry<T, Charge>, AllocError> {
+pub(in crate::memory::object) fn prepare<T>(
+    platform: bool,
+) -> Result<PreparedEntry<T, Charge>, AllocError> {
     prepare_with(platform, PreparedEntry::try_new_charged)
 }
 
@@ -34,12 +36,12 @@ pub(super) fn prepare_with<T>(
 }
 
 #[cfg(any(test, feature = "kernel_tests"))]
-pub(super) fn snapshot() -> ([u64; 2], [u64; 2]) {
+pub(in crate::memory::object) fn snapshot() -> ([u64; 2], [u64; 2]) {
     admission::used::<MemoryCapabilityNodes, 2>()
 }
 
 #[cfg(any(test, feature = "kernel_tests"))]
-pub(super) fn with_locked(work: impl FnOnce()) {
+pub(in crate::memory::object) fn with_locked<T>(work: impl FnOnce() -> T) -> T {
     admission::with_locked::<MemoryCapabilityNodes, 2, _>(work)
 }
 

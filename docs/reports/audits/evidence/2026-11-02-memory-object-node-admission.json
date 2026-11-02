@@ -1,0 +1,185 @@
+{
+  "schema": "charlotte.memory-object-node-admission.v1",
+  "date": "2026-11-02",
+  "base_revision": "6fd9575759df9b7f73cab3ef2e8deffd933cbd55",
+  "scope": "Memory-object registry records use the existing memory_capability_nodes byte/count admission, alongside capability/namespace/read-borrower metadata. Original backing-sponsor class follows private, published and detached nodes through physical completion and actual node deallocation. Numerical limits, the 22-pool inventory, statistics/register ABI and physical completion rules are unchanged.",
+  "source_sha256": {
+    "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
+    "crates/catten-syscall/src/metadata_pools.rs": "8d806c82affc0a5bac177537b54a250a69fe7542caa28989164e58916b72101c",
+    "crates/catten/src/klib/admission.rs": "b10d5402c22e29ddc3087881c4031cd8d2ee60bd6646e52b53c62239c4bf2138",
+    "crates/catten/src/klib/collections/retirement_list.rs": "4caae41303e212f4b619073a1d9e2a321a1c4e722c7ec951a074301485d0a83e",
+    "crates/catten/src/memory/budget.rs": "a067cbfa4c68a5bdeeb8f9b73b47fb0b819cee4c96142f724b351bad2d0c39d8",
+    "crates/catten/src/memory/object.rs": "9804fb8dd0be1e2492f7807bc837c964a9916d05c011506f9dfeba7dea4f3673",
+    "crates/catten/src/memory/object/backing.rs": "f4f128bb17665d57107bf9283be36b4160b5747cb3c5a1ea3818da9ffe3a81ba",
+    "crates/catten/src/memory/object/backing/storage_tests.rs": "4090bdb243c520d550cdfba411c5ef18035c5d878e93f55fbad0277df1b68f29",
+    "crates/catten/src/memory/object/cap_storage/admission.rs": "b14efff42eae6d4fecc61d168082b06251e840a95078451fcd96f07d914976f2",
+    "crates/catten/src/memory/object/cap_storage/admission/tests.rs": "2414761f4c43da25415c6212752b50f2f0ad5e16bd5edb8a1a9d73db78626feb",
+    "crates/catten/src/memory/object/transfer.rs": "1983824fb4325839ca38fce87c0daa55bd720a53a0d278cbdb1b794f6367815b",
+    "crates/catten/src/resource_policy.rs": "8caa3b6d05f5470eff7c0269b59d259523184c77d5704667a2f1dfce97a29bba",
+    "crates/catten/src/resource_policy/defaults.rs": "949cf96cfeeaab96d42898a63859830466082ad98b80f12a8e8e99f4deb54156",
+    "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243"
+  },
+  "artifact_note": "Runtime Rust sources were frozen before all campaigns. Later documentation edits alter tracked-diff identities; source and archived artifact hashes identify the code exercised. Service source and ABI are unchanged; staged bundles were reused and runners regenerated signed security fixtures.",
+  "policy": {
+    "field": "memory_capability_nodes",
+    "ordinary": [
+      3145728,
+      24576
+    ],
+    "total": [
+      4194304,
+      32768
+    ],
+    "object_node_bytes": 224,
+    "extra_inline_charge_bytes": 16,
+    "charge_overhead_at_object_count_ceiling_bytes": 131072,
+    "capture": "ChargedFrames captures platform_identity(owner.id()) == Some(exact_handle) before the generation-qualified page/object reservation and storage/frame allocation. Copy retains its existing source backing sponsorship separately from destination capability metadata. No later owner field, promotion or ASID lookup chooses a node refund.",
+    "publication": "ObjectStorage, object registry and RetiredObject use the same charged node type. Direct allocation/copy require three candidate nodes (capability, namespace, object); the third rejects before frame-vector/physical allocation and publication. Source pins and hidden authority cancel through the existing complete owners. Moves relink existing object ownership without reclassifying its charge.",
+    "release": "Physical success precedes payload/node disposal. The collection deallocates the actual node before metadata refund, then the original physical sponsorship charge releases. Prefix/physical failure or abandonment retains the complete private/published owner, original metadata charge and physical reservation, including consumed frame identities and exact old generation.",
+    "decision": "Keep defaults: actual empty 224-byte object-layout controls admit about 14000 ordinary candidates before byte exhaustion, with count headroom, above the 6144 ordinary object planning ceiling. This is a single-layout observation, not a promise that all mixed or independent ceilings can be occupied together. Shared storage competes within the same class; measured workloads may justify raising central limits. No holder allocation or new pool is introduced.",
+    "constructor_boundary": "The uncharged PreparedEntry convenience factory now compiles only under cfg(test). Current production sites use explicit charged construction; this does not establish all-kernel allocation admission."
+  },
+  "native_campaigns": [
+    {
+      "arch": "aarch64",
+      "instance": "object-nodes-20261102-arm",
+      "cpus": 4,
+      "revision": "6fd9575759df9b7f73cab3ef2e8deffd933cbd55",
+      "kernel_sha256": "b98d32d8c8713fd28477e64922c10741dfc65f2c01cc9989f0b97dc5f0cf1fd1",
+      "boot_image_sha256": "91d3fd2fb327eda62121a6468aaeaa4d5e41c70183f4c4b68f8b3304ab0a793f",
+      "initial_disk_sha256": "891d405cf7c355e83bf9ca3c9f62ca34dde0281e5dd6411bab91ec50fb13f48f",
+      "tracked_diff_sha256": "a9c8cdb85fcc9d7c1bf48ec4896db5fde0028f248e781c3ba149932c533301a2",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T16:40:58Z",
+      "platform": "arm",
+      "configuration": "security-test; four CPUs; fresh storage; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "93d68104beffa8ac754d784413edf1df1a3b618ca70e945a15c1e9e26cf99657",
+      "serial_sha256": "e64a8b88fc17fcfeb398e7c0f0e35591e4551c4300053744fd208aa006fc7abb",
+      "service_sha256": {
+        "observe.elf": "426ca8279bb1510cc8dbd319a12f34bff37a18786690f53b71c1d1e68684ef26",
+        "security_probe.elf": "11a9f88261e2a8064100e7494d83c418d351a0422bac08e9807128ab964e43f3"
+      },
+      "summary": {
+        "passed": 19,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+     4.379006] [memory object node class] original generation captured before allocation; promotion and root reuse preserve ordinary node charge; late private backing release refunds the original owner",
+        "[+     4.403858] [backing abandonment] inert reservation-only, private and published owners; all local memory/table/heap/frame/budget/authority guards held for data-owner Drop; two real data pages, three original page/object reservations, complete nodes/authority retained past root retirement and ASID reuse; 128 physical-prefix rejections, 64 post-guard failures and 64 real copy cancellations/publication releases passed",
+        "[+     4.406092] [memory object storage] 128 charged preparation and 64 copied-prefix rejections, 64 heap-held object relinks/detaches, post-physical node/charge disposal, non-reused IDs and terminal release rejection passed; one data page, complete object node and original charge deliberately retained",
+        "[+     4.556694] [memory capability node pressure] 24525 ordinary + 8188 reserve unused payload nodes; capability+object/namespace layouts 288/64 bytes, ordinary/total byte ceilings 3145728/4194304, node ceilings 24576/32768; exact baseline after real cleanup and root reuse passed",
+        "[+     4.574314] [memory object node pressure] bytes=224 ordinary=14018 trusted=4681; real empty object layouts exhaust independent byte limits below count ceilings; heap-held pre-allocation denials, trusted reserve and exact recovery passed",
+        "[+     4.575660] [memory capability node admission] 256 charged allocator rejections; captured classification, actual ordinary/total exhaustion, trusted reserve, two-/three-node partial rejection, public allocate/move/copy/loan denial without source mutation, published/detached charge lifetime and cleanup at exhaustion passed; no quota reset",
+        "[+    85.975760] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "arch": "x86_64",
+      "instance": "object-nodes-20261102-intel",
+      "cpus": 4,
+      "revision": "6fd9575759df9b7f73cab3ef2e8deffd933cbd55",
+      "kernel_sha256": "f7a07cd2fa5412272138b7ab135245642abfdec8e7363030d05961f09c55a98e",
+      "boot_image_sha256": "3511a9e731079ff0d2eada12d6f2efd0c145137c5faa4dc9615309b12f272f5e",
+      "initial_disk_sha256": "dff68957bc4d1a7f18c96ea8c95dca1beee17699d4db0b8c4549aff3e4d32252",
+      "tracked_diff_sha256": "9e731ca8631b53a76bae9e020a6072ed62c1709f8442a66229f29d269f7bcf23",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T16:42:10Z",
+      "platform": "intel",
+      "configuration": "security-test; four CPUs; fresh storage; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "c26d21c84b9f0fb158171ef3dca424b9bbb5a09caa52f3e512579e213e13c3d3",
+      "serial_sha256": "deb0645b4ba6d09efb72ee496b657be7c03f9504d0ed12c18923b7e48b18107a",
+      "service_sha256": {
+        "observe.elf": "e1f481137ee8aed15d2eaaf0092713b1f3f863ed2027932608aacd67056a4a38",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c"
+      },
+      "summary": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+     3.051736] [memory object node class] original generation captured before allocation; promotion and root reuse preserve ordinary node charge; late private backing release refunds the original owner",
+        "[+     3.074036] [backing abandonment] inert reservation-only, private and published owners; all local memory/table/heap/frame/budget/authority guards held for data-owner Drop; two real data pages, three original page/object reservations, complete nodes/authority retained past root retirement and ASID reuse; 128 physical-prefix rejections, 64 post-guard failures and 64 real copy cancellations/publication releases passed",
+        "[+     3.076166] [memory object storage] 128 charged preparation and 64 copied-prefix rejections, 64 heap-held object relinks/detaches, post-physical node/charge disposal, non-reused IDs and terminal release rejection passed; one data page, complete object node and original charge deliberately retained",
+        "[+     3.182491] [memory capability node pressure] 24501 ordinary + 8188 reserve unused payload nodes; capability+object/namespace layouts 288/64 bytes, ordinary/total byte ceilings 3145728/4194304, node ceilings 24576/32768; exact baseline after real cleanup and root reuse passed",
+        "[+     3.201345] [memory object node pressure] bytes=224 ordinary=14005 trusted=4681; real empty object layouts exhaust independent byte limits below count ceilings; heap-held pre-allocation denials, trusted reserve and exact recovery passed",
+        "[+     3.202709] [memory capability node admission] 256 charged allocator rejections; captured classification, actual ordinary/total exhaustion, trusted reserve, two-/three-node partial rejection, public allocate/move/copy/loan denial without source mutation, published/detached charge lifetime and cleanup at exhaustion passed; no quota reset",
+        "[+    94.648746] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "arch": "x86_64",
+      "instance": "object-nodes-20261102-amd",
+      "cpus": 4,
+      "revision": "6fd9575759df9b7f73cab3ef2e8deffd933cbd55",
+      "kernel_sha256": "cd88fc61cedb712821aa42383b9b7fe5f26c7762989e1ffaf4494caaf86beaff",
+      "boot_image_sha256": "e7b9fcd5f0de5c846feac997995a91fb0f90c94c9ac824419fbc5eb3cd9583d7",
+      "initial_disk_sha256": "dff68957bc4d1a7f18c96ea8c95dca1beee17699d4db0b8c4549aff3e4d32252",
+      "tracked_diff_sha256": "d96c0ccce5bb0153dedc3c787cfe5e92904a2789f0eb9f617221dd763f34eb17",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T16:45:38Z",
+      "platform": "amd",
+      "configuration": "security-test; four CPUs; fresh storage; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "15208628af3a15dc98612aba7ffc9ea3db7e2c5601ee345abb9b323e9d88143a",
+      "serial_sha256": "dc63deb2521255ccd889bafdac0f6f61117a32cd4a8e08bc4f7e6de6247ae468",
+      "service_sha256": {
+        "observe.elf": "e1f481137ee8aed15d2eaaf0092713b1f3f863ed2027932608aacd67056a4a38",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c"
+      },
+      "summary": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+     2.083725] [memory object node class] original generation captured before allocation; promotion and root reuse preserve ordinary node charge; late private backing release refunds the original owner",
+        "[+     2.099128] [backing abandonment] inert reservation-only, private and published owners; all local memory/table/heap/frame/budget/authority guards held for data-owner Drop; two real data pages, three original page/object reservations, complete nodes/authority retained past root retirement and ASID reuse; 128 physical-prefix rejections, 64 post-guard failures and 64 real copy cancellations/publication releases passed",
+        "[+     2.101199] [memory object storage] 128 charged preparation and 64 copied-prefix rejections, 64 heap-held object relinks/detaches, post-physical node/charge disposal, non-reused IDs and terminal release rejection passed; one data page, complete object node and original charge deliberately retained",
+        "[+     2.194527] [memory capability node pressure] 24501 ordinary + 8188 reserve unused payload nodes; capability+object/namespace layouts 288/64 bytes, ordinary/total byte ceilings 3145728/4194304, node ceilings 24576/32768; exact baseline after real cleanup and root reuse passed",
+        "[+     2.212311] [memory object node pressure] bytes=224 ordinary=14005 trusted=4681; real empty object layouts exhaust independent byte limits below count ceilings; heap-held pre-allocation denials, trusted reserve and exact recovery passed",
+        "[+     2.213547] [memory capability node admission] 256 charged allocator rejections; captured classification, actual ordinary/total exhaustion, trusted reserve, two-/three-node partial rejection, public allocate/move/copy/loan denial without source mutation, published/detached charge lifetime and cleanup at exhaustion passed; no quota reset",
+        "[+    90.184718] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    }
+  ],
+  "validation": {
+    "host_suite": "Complete scripts/run-host-tests.sh passed, including shared retirement/admission tests and expected rejected legacy crypto mutation controls.",
+    "strict_kernel_checks": [
+      "AArch64 acpi,kernel_tests",
+      "x86_64 acpi,kernel_tests",
+      "AArch64 acpi minimal",
+      "x86_64 acpi minimal"
+    ],
+    "native_builds": "Runners built current kernels and enforced executable/read-only assembly section checks.",
+    "formatting": "cargo fmt --all -- --check and git diff --check passed.",
+    "native_controls": [
+      "256 injected charged-node allocator rejections across object/capability/namespace/borrower layouts",
+      "Real empty object nodes reach ordinary and total byte ceilings below count limits; heap-held quota denial precedes allocator entry",
+      "Two available slots reject public allocation/copy at the object candidate, without persistent source, authority, buffer, physical reservation or frame change",
+      "Promotion after class capture, namespace retirement and trusted successor reuse preserve the original ordinary node reservation through late private release",
+      "Existing heap-held object relink/detach and private/published/failed-physical owner abandonment also hold the metadata-pool guard",
+      "Publication, ordinary partial-frame cancellation, real copies and confirmed cleanup recover original counters; terminal physical rejection retains full node and charge"
+    ]
+  },
+  "remaining_limits": [
+    "Object frame-vector capacity is not admitted by this patch.",
+    "Aggregate metadata principals, allocator bookkeeping and general heap admission remain open.",
+    "Serialized real-node pressure and kernel adapter controls do not establish sustained hostile concurrent EL0 fairness or wider caller/IRQ/latency qualification.",
+    "Node allocator and physical-release failures use injected adapters; native general heap OOM is not forced.",
+    "Existing deliberate backing-retention fixtures now retain their object-node admission too; no new physical page/root/authority-retention fixture was added.",
+    "Metadata quota or retained bytes grant no physical completion or retry authority."
+  ]
+}

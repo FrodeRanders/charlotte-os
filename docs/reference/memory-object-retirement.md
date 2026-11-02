@@ -767,11 +767,13 @@ Authority publication now iterates borrowed views of existing reservation/escrow
 owners under one capability hold, validating the entire set before mutation.
 No temporary publication vector remains. Source escrow and original charge
 retirement still use the same owners; the iterator grants no physical completion
-or retry authority. Memory payload maps still allocate after authority publication
-under `MEMORY_OBJECTS`; this remains separate admission/context work. See
+or retry authority. Memory payload publication relinks already-prepared metadata;
+remaining nested allocation and enclosing context work is separate. See
 [borrowed publication](ipc-publication-batches.md).
 
-The global object registry now relinks prepared nodes. Allocation/copy backing
+The global object registry relinks prepared nodes with
+[memory-metadata byte/count admission](memory-capability-node-admission.md#object-records-and-backing-sponsorship).
+Their original backing-sponsor class survives moves, promotion and root reuse. Allocation/copy backing
 owns unused storage before publication; retirement detaches the whole node into
 its existing backing receipt. Physical success precedes payload/node disposal
 and original charge refund outside the local memory registry. Started/failed

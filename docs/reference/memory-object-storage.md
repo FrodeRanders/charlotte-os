@@ -3,7 +3,9 @@
 The global memory-object registry uses prepared admitted nodes. Direct memory
 allocation and copy preparation retain one unused object node with their private
 backing, after the original page/object budget reservation and before frame
-allocation. Node allocation is fallible; rejection disposes the unused prefix
+allocation. Object nodes retain independent requested-byte/count admission in the shared
+[memory metadata pool](memory-capability-node-admission.md#object-records-and-backing-sponsorship).
+Node allocation is fallible; rejection disposes the unused prefix
 through the existing owner without publishing authority.
 
 Direct allocation claims its object identity before authority publication. A
@@ -347,8 +349,10 @@ collection tests qualify node deallocation before charge release. The physical
 rejection adapter deliberately leaves one data page allocated; it is never
 re-adopted or released later.
 
-These nodes use existing page/object admission. They add no comprehensive
-metadata-byte or principal heap ceiling. Object lookup, sorted insertion and
+Object records use the shared configurable memory-metadata byte/count pool,
+separately from existing page/object admission. Original backing-sponsor class
+survives publication, moves, root retirement and actual node deallocation.
+Frame-vector capacity and general principal/heap admission remain separate. Object lookup, sorted insertion and
 cursor scans are now linear; existing count limits do not prove worst-case
 hold time, pressure fairness or management progress. Other memory payload maps,
 factory/destructor contexts, physical-failure causes and historical failures

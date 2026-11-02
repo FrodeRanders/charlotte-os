@@ -23,6 +23,7 @@ fn available() {
 }
 
 pub(super) fn run() {
+    object_classification();
     rejections();
     partial_frames();
     rejected_local_guards();
@@ -47,19 +48,14 @@ fn partial_frames() {
     let frames = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     for reject in [1, 2] {
         for _ in 0..64 {
-            let result = ChargedFrames::allocate_observed(
-                handle,
-                3,
-                || ObjectStorage::try_new().map_err(|_| MemoryObjectError::ResourceLimit),
-                |count| {
-                    assert!(PHYSICAL_FRAME_ALLOCATOR.try_lock().is_none());
-                    if count == reject {
-                        Err(MemoryObjectError::FrameAllocFailed)
-                    } else {
-                        Ok(())
-                    }
-                },
-            );
+            let result = ChargedFrames::allocate_observed(handle, 3, prepare_storage, |count| {
+                assert!(PHYSICAL_FRAME_ALLOCATOR.try_lock().is_none());
+                if count == reject {
+                    Err(MemoryObjectError::FrameAllocFailed)
+                } else {
+                    Ok(())
+                }
+            });
             assert!(matches!(result, Err(MemoryObjectError::FrameAllocFailed)));
             available();
             assert_eq!(memory::budget::used(handle), memory::budget::Amount::default());
@@ -149,6 +145,7 @@ fn abandonment() {
     let mut retired = try_retire_cap(handle.id(), cap).unwrap();
     let published = retired.backing.take().unwrap();
     drop(retired);
+    let retained_metadata = cap_storage::admission::snapshot();
     let retained = memory::budget::Amount {
         pages: 3,
         objects: 3,
@@ -162,12 +159,15 @@ fn abandonment() {
         let _physical = PHYSICAL_FRAME_ALLOCATOR.lock();
         memory::budget::tests::with_ledger_locked(|| {
             crate::capability::admission_tests::test_with_registry_locked(|| {
-                drop(private);
-                drop(published);
+                cap_storage::admission::with_locked(|| {
+                    drop(private);
+                    drop(published);
+                });
             });
         });
     }
     assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
+    assert_eq!(cap_storage::admission::snapshot(), retained_metadata);
     assert_eq!(memory::budget::used(handle), retained);
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), frames);
     assert_eq!(crate::capability::node_admission_used().0, baseline_authority.0 + 1);
@@ -197,7 +197,7 @@ fn rejections() {
     let frames = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     for _ in 0..128 {
         assert!(matches!(
-            ChargedFrames::allocate_with(handle, 1, || {
+            ChargedFrames::allocate_with(handle, 1, |_| {
                 available();
                 assert_eq!(memory::budget::used(handle), amount());
                 Err(MemoryObjectError::ResourceLimit)
@@ -213,7 +213,7 @@ fn rejections() {
     for _ in 0..64 {
         assert!(matches!(
             prepare_copy_with(handle.id(), cap, target.id(), |owner, pages| {
-                ChargedFrames::allocate_with(owner, pages, || {
+                ChargedFrames::allocate_with(owner, pages, |_| {
                     available();
                     assert_eq!(
                         memory::budget::used(handle),
@@ -264,8 +264,10 @@ fn relinking() {
         let node = {
             let _registry = MEMORY_OBJECTS.lock();
             let _heap = PRIMARY_ALLOCATOR.lock();
-            local.objects.insert(storage, id, object);
-            local.objects.take(&id).unwrap()
+            cap_storage::admission::with_locked(|| {
+                local.objects.insert(storage, id, object);
+                local.objects.take(&id).unwrap()
+            })
         };
         assert_eq!(memory::budget::used(handle), amount());
         let backing = ChargedFrames::retired(node);
@@ -293,14 +295,16 @@ fn failed_physical_release() {
     }));
     assert_eq!(attempts, 1);
     assert!(backing.0.failed && backing.0.retired.is_some());
+    let metadata = cap_storage::admission::snapshot();
     assert_eq!(memory::budget::used(handle), amount());
     assert!(backing.free_with(|_| panic!("terminal physical attempt was replayed")));
     {
         let _registry = MEMORY_OBJECTS.lock();
         let _heap = PRIMARY_ALLOCATOR.lock();
-        drop(backing);
+        cap_storage::admission::with_locked(|| drop(backing));
     }
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), frames);
+    assert_eq!(cap_storage::admission::snapshot(), metadata);
     assert_eq!(memory::budget::used(handle), amount());
     memory::close_user_address_space_handle(handle).unwrap();
     let fresh = root();
@@ -309,4 +313,37 @@ fn failed_physical_release() {
     assert_eq!(memory::budget::used(fresh), memory::budget::Amount::default());
     assert_eq!(memory::budget::used(handle), amount());
     memory::close_user_address_space_handle(fresh).unwrap();
+}
+
+fn object_classification() {
+    let handle = root();
+    let before = cap_storage::admission::snapshot();
+    let bytes = ObjectStorage::allocation_bytes() as u64;
+    let backing = ChargedFrames::allocate_with(handle, 1, |platform| {
+        assert!(!platform);
+        memory::budget::mark_platform(handle);
+        prepare_storage(platform)
+    })
+    .unwrap();
+    assert_eq!(
+        cap_storage::admission::snapshot(),
+        ([before.0[0] + bytes, before.0[1] + 1], [before.1[0] + bytes, before.1[1] + 1])
+    );
+    // The private owner outlives its original namespace. Reuse cannot redirect
+    // either its original metadata class or exact physical sponsorship.
+    memory::close_user_address_space_handle(handle).unwrap();
+    let fresh = root();
+    assert_eq!(fresh.id(), handle.id());
+    assert_ne!(fresh, handle);
+    let retained = cap_storage::admission::snapshot();
+    memory::budget::mark_platform(fresh);
+    backing.release().unwrap();
+    assert_eq!(cap_storage::admission::snapshot(), before);
+    assert_eq!(retained.1[1], before.1[1] + 1);
+    memory::close_user_address_space_handle(fresh).unwrap();
+    crate::logln!(
+        "[memory object node class] original generation captured before allocation; promotion and \
+         root reuse preserve ordinary node charge; late private backing release refunds the \
+         original owner"
+    );
 }

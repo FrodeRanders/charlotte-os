@@ -71,7 +71,7 @@ unlimited node capacity.
 | `scratch_nodes` | node-layout bytes; nodes | — | 384 KiB; 6144 nodes | 512 KiB; 8192 nodes |
 | `snapshot_buffers` | vector-buffer bytes; buffers | — | 3 MiB; 6144 buffers | 4 MiB; 8192 buffers |
 | `mapping_nodes` | node-layout bytes; nodes | — | 768 KiB; 6144 nodes | 1 MiB; 8192 nodes |
-| `memory_capability_nodes` | payload/namespace/read-borrower node-layout bytes; nodes | — | 3 MiB; 24576 nodes | 4 MiB; 32768 nodes |
+| `memory_capability_nodes` | object/capability/namespace/read-borrower node-layout bytes; nodes | — | 3 MiB; 24576 nodes | 4 MiB; 32768 nodes |
 | `memory.objects` | backing objects | 1024 | 6144 | 8192 |
 
 IOMMU ledger buffers consume only the `iommu_nodes` byte dimension; the node

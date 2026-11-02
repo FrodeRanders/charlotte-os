@@ -569,6 +569,19 @@ the corrected RPC polling paths, and the remaining notification gaps.
 
 ## Mapping retirement and domain cleanup
 
+- Memory-object records share `memory_capability_nodes` byte/count admission with
+  capability, namespace and borrower metadata. `ChargedFrames` captures class
+  against the exact backing-sponsor generation before any object/frame allocation;
+  copies keep source backing sponsorship separately from destination capability
+  classification. Retain the charged candidate through private preparation and
+  the same full node through publication, moves, detachment and physical failure.
+  Confirm physical completion before payload/node disposal, deallocate before
+  metadata refund, then release original physical sponsorship. Two-slot allocation
+  or copy prefixes must reject the third object node without source mutation,
+  leaked authority or physical allocation. Complete backing fallback remains
+  inert under the metadata-pool guard. Frame-vector admission is separate. See
+  `docs/reference/memory-capability-node-admission.md`.
+
 - Root memory-account nodes share the root-metadata byte/count pool with policy,
   usage and authority nodes. Capture storage classification from the unpublished
   translation account before allocation. Publication relinks prepared storage;

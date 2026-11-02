@@ -19,16 +19,18 @@ fn increment(before: ([u64; 2], [u64; 2]), bytes: usize, count: u64) -> ([u64; 2
 }
 
 pub(in crate::memory::object::cap_storage) fn run() {
+    allocator_rejection::<(MemoryObjectId, MemoryObject)>();
     allocator_rejection::<(MemoryObjectCap, Record)>();
     allocator_rejection::<(AddressSpaceId, AddressSpaceCaps)>();
     allocator_rejection::<(AddressSpaceId, Borrower)>();
     captured_classification();
     detached_lifetime();
     actual_pressure();
+    object_byte_pressure();
     crate::logln!(
-        "[memory capability node admission] 192 charged allocator rejections; captured \
-         classification, actual ordinary/total exhaustion, trusted reserve, two-node partial \
-         rejection, public allocate/move/copy/loan denial without source mutation, \
+        "[memory capability node admission] 256 charged allocator rejections; captured \
+         classification, actual ordinary/total exhaustion, trusted reserve, two-/three-node \
+         partial rejection, public allocate/move/copy/loan denial without source mutation, \
          published/detached charge lifetime and cleanup at exhaustion passed; no quota reset"
     );
 }
@@ -182,6 +184,25 @@ fn actual_pressure() {
     assert_eq!(allocate(handle.id(), 1), Err(MemoryObjectError::ResourceLimit));
     assert_eq!(snapshot(), one_slot);
     ordinary.push(prepare(false).unwrap());
+    drop(ordinary.pop().unwrap());
+    drop(ordinary.pop().unwrap());
+    let two_slots = snapshot();
+    let authority = crate::capability::node_admission_used();
+    let used = memory::budget::used(handle);
+    let buffers = snapshot_storage::admitted();
+    let frames = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    assert_eq!(allocate(handle.id(), 1), Err(MemoryObjectError::ResourceLimit));
+    assert!(matches!(
+        prepare_copy(handle.id(), cap, target.id()),
+        Err(MemoryObjectError::ResourceLimit)
+    ));
+    assert_eq!(snapshot(), two_slots);
+    assert_eq!(crate::capability::node_admission_used(), authority);
+    assert_eq!(memory::budget::used(handle), used);
+    assert_eq!(snapshot_storage::admitted(), buffers);
+    assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), frames);
+    ordinary.push(prepare(false).unwrap());
+    ordinary.push(prepare(false).unwrap());
     let ordinary_full = snapshot();
     let extra = allocate(trusted.id(), 1).unwrap();
     assert_eq!(snapshot().1, ordinary_full.1);
@@ -202,12 +223,12 @@ fn actual_pressure() {
     // A real published node is reclaimed at total exhaustion, with its original
     // ordinary charge despite promotion. Namespace storage stays until root close.
     close_cap(handle.id(), cap).unwrap();
-    let bytes = Storage::allocation_bytes() as u64;
+    let bytes = (Storage::allocation_bytes() + ObjectStorage::allocation_bytes()) as u64;
     assert_eq!(
         snapshot(),
         (
-            [total_full.0[0] - bytes, total_full.0[1] - 1],
-            [total_full.1[0] - bytes, total_full.1[1] - 1]
+            [total_full.0[0] - bytes, total_full.0[1] - 2],
+            [total_full.1[0] - bytes, total_full.1[1] - 2]
         )
     );
     memory::close_user_address_space_handle(handle).unwrap();
@@ -215,8 +236,8 @@ fn actual_pressure() {
     assert_eq!(
         snapshot(),
         (
-            [total_full.0[0] - bytes - namespace_bytes, total_full.0[1] - 2],
-            [total_full.1[0] - bytes - namespace_bytes, total_full.1[1] - 2]
+            [total_full.0[0] - bytes - namespace_bytes, total_full.0[1] - 3],
+            [total_full.1[0] - bytes - namespace_bytes, total_full.1[1] - 3]
         )
     );
     let fresh = root();
@@ -235,8 +256,8 @@ fn actual_pressure() {
     assert_eq!(snapshot(), before);
     crate::logln!(
         "[memory capability node pressure] {} ordinary + {} reserve unused payload nodes; \
-         payload/namespace layouts {}/{} bytes, ordinary/total byte ceilings {}/{}, node ceilings \
-         {}/{}; exact baseline after real cleanup and root reuse passed",
+         capability+object/namespace layouts {}/{} bytes, ordinary/total byte ceilings {}/{}, \
+         node ceilings {}/{}; exact baseline after real cleanup and root reuse passed",
         counts.0,
         counts.1,
         bytes,
@@ -344,5 +365,52 @@ pub(in crate::memory::object) fn borrower_pressure() {
         Storage::allocation_bytes(),
         NamespaceStorage::allocation_bytes(),
         BorrowerStorage::allocation_bytes()
+    );
+}
+
+/// Empty object-layout candidates exercise the byte dimension independently of
+/// the smaller capability/namespace layouts' count-bound controls above.
+fn object_byte_pressure() {
+    let before = snapshot();
+    let bytes = ObjectStorage::allocation_bytes() as u64;
+    let mut ordinary = Vec::with_capacity((ORDINARY_LIMIT[0] / bytes + 1) as usize);
+    while let Ok(node) = prepare::<(MemoryObjectId, MemoryObject)>(false) {
+        ordinary.push(node);
+    }
+    let full = snapshot();
+    assert!(full.1[1] < ORDINARY_LIMIT[1]);
+    assert!(ORDINARY_LIMIT[0] - full.1[0] < bytes);
+    {
+        let _heap = crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
+        for _ in 0..64 {
+            assert!(super::super::super::backing::prepare_storage(false).is_err());
+        }
+    }
+    let trusted = prepare::<(MemoryObjectId, MemoryObject)>(true).unwrap();
+    assert_eq!(snapshot().1, full.1);
+    drop(trusted);
+    let mut trusted =
+        Vec::with_capacity(((TOTAL_LIMIT[0] - ORDINARY_LIMIT[0]) / bytes + 1) as usize);
+    while let Ok(node) = prepare::<(MemoryObjectId, MemoryObject)>(true) {
+        trusted.push(node);
+    }
+    assert!(snapshot().0[1] < TOTAL_LIMIT[1]);
+    assert!(TOTAL_LIMIT[0] - snapshot().0[0] < bytes);
+    {
+        let _heap = crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
+        for _ in 0..64 {
+            assert!(super::super::super::backing::prepare_storage(true).is_err());
+        }
+    }
+    let counts = (ordinary.len(), trusted.len());
+    drop((ordinary, trusted));
+    assert_eq!(snapshot(), before);
+    crate::logln!(
+        "[memory object node pressure] bytes={} ordinary={} trusted={}; real empty object layouts \
+         exhaust independent byte limits below count ceilings; heap-held pre-allocation denials, \
+         trusted reserve and exact recovery passed",
+        bytes,
+        counts.0,
+        counts.1
     );
 }
