@@ -36,7 +36,7 @@ fn allocation_and_replacement() {
                 let _registry = COMPLETIONS.write();
                 Err(cq::CqRingError::AllocationFailed)
             },
-            PreparedEntry::try_new,
+            entry_budget::prepare,
         );
         assert!(matches!(
             result,
@@ -61,7 +61,7 @@ fn allocation_and_replacement() {
             }
             cq::CompletionQueueRing::new_page(entries)
         },
-        PreparedEntry::try_new,
+        entry_budget::prepare,
     )
     .unwrap();
     let mut second = Prepared::new(Target::capture(CLIENT).unwrap(), 8, None).unwrap();

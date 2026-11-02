@@ -12,11 +12,13 @@ fn prepare_and_retire() {
     open_address_space_with_cq(CLIENT, 64, 64).unwrap();
     let account = record_admission(CLIENT).unwrap();
     let baseline = budget::node_used();
+    let nodes_before = entry_budget::snapshot();
+    let node_bytes = PreparedEntry::<(OperationId, DetachedOp)>::allocation_bytes() as u64;
     let failed = Preparing::plain_with(
         Target::capture(CLIENT, DEFAULT_CQ).unwrap(),
         0,
         &OPERATION_IDS,
-        || {
+        |_| {
             let registry = COMPLETIONS.write();
             assert_eq!(registry[&CLIENT].live, 0);
             assert_eq!(account.used(), 1);
@@ -36,11 +38,11 @@ fn prepare_and_retire() {
                     Target::capture(CLIENT, DEFAULT_CQ).unwrap(),
                     cookie,
                     &OPERATION_IDS,
-                    || {
+                    |platform| {
                         {
                             let _registry = COMPLETIONS.write();
                         }
-                        PreparedEntry::try_new()
+                        entry_budget::prepare(platform)
                     },
                 )
                 .unwrap()
@@ -57,6 +59,14 @@ fn prepare_and_retire() {
         );
     }
     assert_eq!(account.used(), 64);
+    let nodes_live = entry_budget::snapshot();
+    assert_eq!(
+        nodes_live,
+        (
+            [nodes_before.0[0] + 64 * node_bytes, nodes_before.0[1] + 64],
+            [nodes_before.1[0] + 64 * node_bytes, nodes_before.1[1] + 64]
+        )
+    );
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
         for preparing in &mut preparations {
@@ -71,6 +81,7 @@ fn prepare_and_retire() {
         preparing.enqueue();
         preparing.finish();
     }
+    assert_eq!(entry_budget::snapshot(), nodes_live);
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
         for operation in &operations {
@@ -85,6 +96,13 @@ fn prepare_and_retire() {
     for owner in retired {
         owner.finish();
     }
+    assert_eq!(
+        entry_budget::snapshot(),
+        (
+            [nodes_before.0[0] + node_bytes, nodes_before.0[1] + 1],
+            [nodes_before.1[0] + node_bytes, nodes_before.1[1] + 1]
+        )
+    );
     assert_eq!(account.used(), 1);
     assert_eq!(timer_events_used(CLIENT), 0);
     let ring = unsafe { cq_ring_of(CLIENT, DEFAULT_CQ).unwrap() };
@@ -94,6 +112,7 @@ fn prepare_and_retire() {
     // The final backlog node and its charge leave in the same refund batch.
     assert_eq!(cq_pending(CLIENT, DEFAULT_CQ), 1);
     assert_eq!(account.used(), 0);
+    assert_eq!(entry_budget::snapshot(), nodes_before);
     assert_eq!(unsafe { (&mut *ring).read().unwrap() }.cookie, 63);
     assert_eq!(budget::node_used(), baseline);
     for operation in operations {
@@ -191,7 +210,7 @@ fn guarded_abandonment() {
         let _heap = PRIMARY_ALLOCATOR.lock();
         crate::timers::account_budget::with_locked(|| {
             account_budget::with_locked(|| {
-                node_budget::with_locked(|| drop(namespace));
+                node_budget::with_locked(|| entry_budget::with_locked(|| drop(namespace)));
             });
         });
         assert_eq!(hits.load(Ordering::SeqCst), 0);
@@ -239,7 +258,7 @@ fn guarded_abandonment() {
     {
         let _registry = COMPLETIONS.write();
         let _heap = PRIMARY_ALLOCATOR.lock();
-        drop((timer, plain));
+        entry_budget::with_locked(|| drop((timer, plain)));
     }
     assert_eq!(records.used(), 2);
     assert_eq!(timers.used(), 1);
@@ -270,7 +289,7 @@ fn guarded_abandonment() {
         {
             let _registry = COMPLETIONS.write();
             let _heap = PRIMARY_ALLOCATOR.lock();
-            drop(retired);
+            entry_budget::with_locked(|| drop(retired));
         }
         assert_eq!(records.used(), 1);
         assert_eq!(timers.used(), 1);

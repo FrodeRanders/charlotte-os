@@ -62,6 +62,7 @@ See [observer ownership](../reference/observer-ownership.md).
 
 Read [capability admission](../reference/capability-admission.md),
 [IPC record budgets](../reference/ipc-record-budgets.md),
+[completion node backing](../reference/completion-node-admission.md),
 [principal backing](../reference/principal-backing-admission.md) and
 [resource policy](../reference/resource-policy.md).
 

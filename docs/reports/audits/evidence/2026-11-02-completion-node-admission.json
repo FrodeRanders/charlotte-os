@@ -1,0 +1,226 @@
+{
+  "schema": "charlotte.completion-node-admission.v1",
+  "date": "2026-11-02",
+  "base_revision": "6921f13b0aa1ceb6b39ebf0053d8209dfa148f2f",
+  "scope": "Independent requested-byte/count backing admission for capability-backed completion, detached-operation and CQ registry nodes, including unused candidates, CQ backlog and complete retired owners.",
+  "source_sha256": {
+    "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
+    "crates/catten/src/completion/budget.rs": "afce64fa62ca1752a89d98b74886339f5fe911fb1ec60ffdd3d5f6f40aa3f13f",
+    "crates/catten/src/completion/delivery/preparation.rs": "fc36b560c6b98013c43a0556ba14a034c583c105a1faf1d96584a642b41b4c14",
+    "crates/catten/src/completion/delivery/preparation/metadata_tests.rs": "888c77f5807eb40bdf26921f0ff2302542157bd5229994526260c10bcc0cfede",
+    "crates/catten/src/completion/delivery/preparation/tests.rs": "92ec03163e0db9ebd81aeaf753336062970635ed06ba6ac38a8fa80abdd86450",
+    "crates/catten/src/completion/detached.rs": "ba86cfab1a004973b86080e953bb8b427df35ba12faa0e3f57b048d555614a13",
+    "crates/catten/src/completion/detached/metadata_tests.rs": "8fbaf9264f863be58696e4c5143d62f6d4593730b64f142111f215df0e9e51ac",
+    "crates/catten/src/completion/entry_budget.rs": "c4a410eee8d9915cd4464b5422020600592ddf0464dfa2f2e82958a3f3821ce1",
+    "crates/catten/src/completion/entry_budget/tests.rs": "4ba0259b7b0e1f0c5376fc0e121976acd7656788094e1e8b34e210bf4e863033",
+    "crates/catten/src/completion/mod.rs": "4d6da496bb4f14c8e94054b1b3c385ba0ec4030d68d788a88073c13562ce148a",
+    "crates/catten/src/completion/record/submission.rs": "0b0358378ce9a1866592f3dfeb9e9dc5e2a0182931655e10c42dc7101dc38d2c",
+    "crates/catten/src/completion/record/submission/initial_tests.rs": "afd8e8105d89af1f34a04ee8037569401da7518c044af9f17a659fd6a3a276e8",
+    "crates/catten/src/completion/record/submission/metadata_tests.rs": "e1439db69f9c0525c88b6b29c3a95ccb7a6d5a265600445f18f7d9f2b44351b8",
+    "crates/catten/src/completion/record/submission/tests.rs": "5912f627230cfb03cfb9076cdf52591c4c6c0af20a270c1115b2d67a365a6718",
+    "crates/catten/src/klib/collections/retirement_list.rs": "ef0447d659221379641fad66a9d93489574062cebb855d01e3247496716a0d65",
+    "crates/catten/src/resource_policy.rs": "c0841787a98c7a827f5805d013e01637e26f2fe1c3a18b23b38bd84ffe8cf563",
+    "crates/catten/src/resource_policy/defaults.rs": "9dab05a1554679db29eb05cce70be18fb0c6d873f94e07225a8e5c99bbb8def4",
+    "crates/catten/src/resource_policy/tests.rs": "1d4eba2ff6f09337c0393513372370bd7c5eea86b1cd29a2a1ed2d664c87001d",
+    "crates/charlotte-lifecycle/src/resources.rs": "9ec29fce823650806ede3dc1a9539543dd5ccc784bbadee05d8478844a247270",
+    "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
+    "scripts/tests/test-resource-policy.py": "05e518a7f3cc0627cddbb324c3b3f683a09bc67d71d4aa1d2191a23eb8f22032"
+  },
+  "artifact_note": "Runtime sources were frozen before all campaigns. Their manifest tracked-diff identity equals the final runtime patch. Documentation/evidence edits followed manifest preparation. New source identities are included explicitly.",
+  "policy": {
+    "field": "completion_nodes",
+    "dimensions": [
+      "actual requested retirement-node layout bytes including charge and inline payload storage",
+      "prepared/published/retained nodes"
+    ],
+    "ordinary": [
+      6291456,
+      15360
+    ],
+    "total": [
+      8388608,
+      20480
+    ],
+    "native_layout_bytes": {
+      "capability": 64,
+      "detached": 120,
+      "queue": 184
+    },
+    "charge_bytes": 16,
+    "largest_layout_bytes_at_count_ceiling": {
+      "ordinary": 2826240,
+      "total": 3768320
+    },
+    "decision": "Count ceilings equal twice existing completion plus CQ ceilings: 2*(6144+1536) ordinary and 2*(8192+2048) total. Capability and detached records share their existing 8192 resource pool. Candidate/replacement/retirement headroom preserves existing resource limits; independent byte ceilings permit layout growth. No RAM preallocation.",
+    "cost": "16 extra bytes per node (320 KiB at total count ceiling), an independent short admission/refund operation and a possible existing-shaped rejection. No additional allocator-owner allocation or runtime registry.",
+    "classification": "Each existing target captures exact namespace/account identity and trusted resource class before preparation. Its node factory receives that captured class. Kernel work is trusted; raw fixtures ordinary. Later promotion, replacement, root retirement and ASID reuse cannot reclassify the allocation. No new root lease or resource grant; no allocator ASID lookup.",
+    "rejection": "Node quota rejection precedes its own heap allocation. Capability/detached submission retain WouldBlock, CQ preparation retains AllocationFailed. Earlier independent payload/account/list allocations still use existing complete post-guard rollback; old CQ/source stays unchanged.",
+    "release": "Shared typed Prepared/Retired/Map/List storage carries original admission until node deallocation. Detached backlog/refund batches and retired queues retain their nodes. Complete owner abandonment remains inert and retains charges.",
+    "exclusions": "Allocator bookkeeping, separate completion Arcs/buffers, rings/backlogs, observer lists and other nested allocations keep existing owners/admission. This is not aggregate principal/general-heap accounting."
+  },
+  "native_campaigns": [
+    {
+      "platform": "arm",
+      "instance": "completion-nodes-20261102-arm",
+      "architecture": "aarch64",
+      "cpus": 4,
+      "fresh_storage": true,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T10:11:09Z",
+      "base_revision": "6921f13b0aa1ceb6b39ebf0053d8209dfa148f2f",
+      "tracked_runtime_diff_sha256": "1a15bd6eddf9f513b1f1cfc44bd99f93a59025b823be93904e0ab88deb60b3d9",
+      "kernel_sha256": "c24c2be38e6274d5c6e4745fdd8e9d0d25b558f49c85faa7c753b9966bc08a2a",
+      "boot_image_sha256": "0b4242946c76a58d730b8a73c93359421899845c84473e5d0285348d09e37368",
+      "initial_disk_sha256": "2072c54ccda7f4def2811e85d91b5e145ac3d0389855b73c07cdca67df9f0b85",
+      "bundle_map_sha256": "4a5ee89fd763eed1af5a7613cfc7a2428c1e0b623ac6bf63e6ec7eb5fdc2bd38",
+      "runner_exit_code": 0,
+      "diagnostic_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "passed": 19,
+      "failed": 0,
+      "pending": 0,
+      "native_layout_bytes": {
+        "capability": 64,
+        "detached": 120,
+        "queue": 184
+      },
+      "serial_sha256": "2d40e2f0384d4d4c10e0e47fb7a4b70ab2a07bf0d72aae1dd92f4625011a1beb",
+      "receipts": [
+        "[+     4.128356] [scheduler wait publication] guard-free registration, early/late wake, exact wait/slot identity, registered-before-Blocked Ready control, heap-held publication/detachment and post-guard cancellation passed",
+        "[+     4.370308] [completion node pressure] actual mixed candidates ordinary=15353 trusted=5109 at 15360/20480; 384 heap-held three-layout denials; all three production adapters reject/recover, trusted reserve progresses, promoted original refund and weak-record independence passed",
+        "[+     4.372434] [completion node admission] layouts capability=64 detached=120 queue=184; 192 injected allocation rejections, independent byte denial, root close/exact ASID reuse, retained original nodes and exact post-deallocation refund passed",
+        "[+     4.392396] [capability metadata retention] guarded prepared/retired abandonment retained payload, hidden/detached authority, original charges, timer, watch and buffer; numeric successor unchanged",
+        "[+     4.392904] [capability metadata] unlocked allocation/rejection, 64 heap-held publications and paired payload/authority removals, 128 full-ring aborts, weak-only original charges and namespace identity passed",
+        "[+     4.404950] [completion initial admission] identity/record/watch/factory rejection, retained pre-record buffer and original charge, 64 borrowed factory publication/result transfers and explicit payload-first rollback passed",
+        "[+     4.485832] [CQ metadata retention] guarded prepared/retired fallback retained two original queue charges and one backlog record; successor and independent waiter cancellation preserved",
+        "[+     4.486348] [CQ metadata] unlocked node rejection, 32 heap-held fresh publications/removals, admission before allocation, complete backlog/source handback and original-account reuse passed",
+        "[+     4.590020] [detached metadata retention] guarded namespace/preparation/terminal abandonment retained original nodes/charges, timers, CQ backing, watch and buffer; successors unaffected",
+        "[+     4.590560] [detached metadata] unlocked allocation/rejection, 64 heap-held fresh publications/removals, charged backlog nodes, exact duplicate rejection and complete namespace close/replacement passed",
+        "[+    17.262938] [completion timed wait] kernel/dispatcher source and watchdog rejection preserve pending ownership; unrelated wakes repark before actual completion with the original deadline",
+        "[+    87.710580] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "platform": "intel",
+      "instance": "completion-nodes-20261102-intel",
+      "architecture": "x86_64",
+      "cpus": 4,
+      "fresh_storage": true,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T10:12:17Z",
+      "base_revision": "6921f13b0aa1ceb6b39ebf0053d8209dfa148f2f",
+      "tracked_runtime_diff_sha256": "1a15bd6eddf9f513b1f1cfc44bd99f93a59025b823be93904e0ab88deb60b3d9",
+      "kernel_sha256": "c53b64a3e56747c1afa51cb86503e95e5ad66e8ff89c902a7a41f33503547902",
+      "boot_image_sha256": "4b41f31ebc2fb9399e12bd436925dc7b24276bd371be4fef3c0d6bc9da683cd9",
+      "initial_disk_sha256": "bae2e64e0fb6f9c80fbec2647799a5faa9f591d7385dc7e337cd17673532ccc4",
+      "bundle_map_sha256": "1e8d1d5b4aa82acc192c0afdb4b577ee5617a233b0e41452a3eb7aa148b9f8d2",
+      "runner_exit_code": 0,
+      "diagnostic_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "passed": 17,
+      "failed": 0,
+      "pending": 0,
+      "native_layout_bytes": {
+        "capability": 64,
+        "detached": 120,
+        "queue": 184
+      },
+      "serial_sha256": "bb4af934bb40c6a49bcd32d78a3a09d2988f456ff9a55b8aba04f0b7aac132fb",
+      "receipts": [
+        "[+     2.075287] [scheduler wait publication] guard-free registration, early/late wake, exact wait/slot identity, registered-before-Blocked Ready control, heap-held publication/detachment and post-guard cancellation passed",
+        "[+     2.213054] [completion node pressure] actual mixed candidates ordinary=15353 trusted=5109 at 15360/20480; 384 heap-held three-layout denials; all three production adapters reject/recover, trusted reserve progresses, promoted original refund and weak-record independence passed",
+        "[+     2.215980] [completion node admission] layouts capability=64 detached=120 queue=184; 192 injected allocation rejections, independent byte denial, root close/exact ASID reuse, retained original nodes and exact post-deallocation refund passed",
+        "[+     2.240555] [capability metadata retention] guarded prepared/retired abandonment retained payload, hidden/detached authority, original charges, timer, watch and buffer; numeric successor unchanged",
+        "[+     2.241596] [capability metadata] unlocked allocation/rejection, 64 heap-held publications and paired payload/authority removals, 128 full-ring aborts, weak-only original charges and namespace identity passed",
+        "[+     2.251180] [completion initial admission] identity/record/watch/factory rejection, retained pre-record buffer and original charge, 64 borrowed factory publication/result transfers and explicit payload-first rollback passed",
+        "[+     2.340830] [CQ metadata retention] guarded prepared/retired fallback retained two original queue charges and one backlog record; successor and independent waiter cancellation preserved",
+        "[+     2.341978] [CQ metadata] unlocked node rejection, 32 heap-held fresh publications/removals, admission before allocation, complete backlog/source handback and original-account reuse passed",
+        "[+     2.592313] [detached metadata retention] guarded namespace/preparation/terminal abandonment retained original nodes/charges, timers, CQ backing, watch and buffer; successors unaffected",
+        "[+     2.593355] [detached metadata] unlocked allocation/rejection, 64 heap-held fresh publications/removals, charged backlog nodes, exact duplicate rejection and complete namespace close/replacement passed",
+        "[+    18.355450] [completion timed wait] kernel/dispatcher source and watchdog rejection preserve pending ownership; unrelated wakes repark before actual completion with the original deadline",
+        "[+    91.726017] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "platform": "amd",
+      "instance": "completion-nodes-20261102-amd",
+      "architecture": "x86_64",
+      "cpus": 4,
+      "fresh_storage": true,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T10:24:07Z",
+      "base_revision": "6921f13b0aa1ceb6b39ebf0053d8209dfa148f2f",
+      "tracked_runtime_diff_sha256": "1a15bd6eddf9f513b1f1cfc44bd99f93a59025b823be93904e0ab88deb60b3d9",
+      "kernel_sha256": "61d7667e3f8ded473269555ab364872184c92d9ce4b4e34117e2d928f2a96d51",
+      "boot_image_sha256": "8835f995622ee6e7107fb229a849fdc9aaccc3247de2df1778abf18118523ac8",
+      "initial_disk_sha256": "bae2e64e0fb6f9c80fbec2647799a5faa9f591d7385dc7e337cd17673532ccc4",
+      "bundle_map_sha256": "1e8d1d5b4aa82acc192c0afdb4b577ee5617a233b0e41452a3eb7aa148b9f8d2",
+      "runner_exit_code": 0,
+      "diagnostic_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "passed": 17,
+      "failed": 0,
+      "pending": 0,
+      "native_layout_bytes": {
+        "capability": 64,
+        "detached": 120,
+        "queue": 184
+      },
+      "serial_sha256": "dda4f983a27df7c9cc3abedbd39804832dedbb0b4386881e161d29129ac7b3c5",
+      "receipts": [
+        "[+     1.944060] [scheduler wait publication] guard-free registration, early/late wake, exact wait/slot identity, registered-before-Blocked Ready control, heap-held publication/detachment and post-guard cancellation passed",
+        "[+     2.063996] [completion node pressure] actual mixed candidates ordinary=15353 trusted=5109 at 15360/20480; 384 heap-held three-layout denials; all three production adapters reject/recover, trusted reserve progresses, promoted original refund and weak-record independence passed",
+        "[+     2.066772] [completion node admission] layouts capability=64 detached=120 queue=184; 192 injected allocation rejections, independent byte denial, root close/exact ASID reuse, retained original nodes and exact post-deallocation refund passed",
+        "[+     2.086917] [capability metadata retention] guarded prepared/retired abandonment retained payload, hidden/detached authority, original charges, timer, watch and buffer; numeric successor unchanged",
+        "[+     2.088101] [capability metadata] unlocked allocation/rejection, 64 heap-held publications and paired payload/authority removals, 128 full-ring aborts, weak-only original charges and namespace identity passed",
+        "[+     2.096411] [completion initial admission] identity/record/watch/factory rejection, retained pre-record buffer and original charge, 64 borrowed factory publication/result transfers and explicit payload-first rollback passed",
+        "[+     2.180153] [CQ metadata retention] guarded prepared/retired fallback retained two original queue charges and one backlog record; successor and independent waiter cancellation preserved",
+        "[+     2.181197] [CQ metadata] unlocked node rejection, 32 heap-held fresh publications/removals, admission before allocation, complete backlog/source handback and original-account reuse passed",
+        "[+     2.392542] [detached metadata retention] guarded namespace/preparation/terminal abandonment retained original nodes/charges, timers, CQ backing, watch and buffer; successors unaffected",
+        "[+     2.393476] [detached metadata] unlocked allocation/rejection, 64 heap-held fresh publications/removals, charged backlog nodes, exact duplicate rejection and complete namespace close/replacement passed",
+        "[+    16.991098] [completion timed wait] kernel/dispatcher source and watchdog rejection preserve pending ownership; unrelated wakes repark before actual completion with the original deadline",
+        "[+    89.958895] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    }
+  ],
+  "native_failures": [],
+  "bundle_identity_encoding": "SHA-256 of UTF-8 JSON bundle_sha256 mapping with sorted keys and comma/colon separators without whitespace.",
+  "host_validation": {
+    "shared_collection": "rustc --edition=2024 --test crates/catten/src/klib/collections/retirement_list.rs; run resulting binary; 16 passed, zero failed; exit zero",
+    "shared_collection_log_sha256": "6227e2a1b454629c8b2e60c0517a4eafc7e8862615ee41a2ae6e076c91321b8c",
+    "policy": "python3 scripts/tests/test-resource-policy.py; three groups passed; exit zero",
+    "policy_log_sha256": "ab61785800ac1870500362b9950fa1902e82f3df50c9a6f6099e1a83f45b52ef",
+    "kernel_tests_clippy": "CATTEN_AARCH64_SERVICE_BUNDLE set to test bundle; cargo clippy -p catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi,kernel_tests --offline --locked -- -D warnings; exit zero",
+    "kernel_tests_clippy_log_sha256": "0b081fd5896fffb394925dce56ea3ca158fbd4c379e0775cde427f425342d02e",
+    "minimal_clippy": "Same target/strict offline locked command with minimal service bundle and acpi only; exit zero",
+    "minimal_clippy_log_sha256": "c8d78826bba210b290791e59800fb90cfc458bf32eb3358cc4aff50be590a74a",
+    "formatting": "cargo fmt --all -- --check; exit zero",
+    "full_host_suite": "Not repeated for this kernel-only change. Actual changed policy and existing shared retirement collection run directly; all new node and containing-owner controls run in all three guests."
+  },
+  "charge_layout_measurement": {
+    "method": "Host rustc compiles actual entry_budget, retirement collection, resource-policy and resource-counter modules with a std Mutex adapter; core::mem::size_of::<entry_budget::Charge>().",
+    "inline_result": "completion_node_charge_bytes=16",
+    "harness_sha256": "db9b09845aaee3339c3501d248251e5358a62937f40aa698040632b639461690"
+  },
+  "controls": [
+    "Actual mixed empty capability/detached/CQ node candidates fill ordinary 15360 and total 20480 ceilings. The 15353 ordinary plus 5109 trusted additional candidates reflect existing retained/native owners, not a lowered limit.",
+    "With the actual heap lock held, 64 ordinary and 64 trusted rounds each reject all three concrete node constructors before allocation: 384 direct denials. Actual production submit, detached submit and CQ replacement each reject 64 times at ordinary pressure, and again for ordinary/trusted roots at total pressure: 576 adapter denials with exact pool, resource-account, authority and CQ-source preservation.",
+    "At ordinary exhaustion trusted real capability/detached submissions and CQ replacement still succeed and recover. At total exhaustion promotion of the original ordinary root does not redirect its real capability-node refund; one returned slot admits exactly one trusted replacement. Weak-only completion backing remains independently record-charged.",
+    "Each concrete family injects 64 node-allocator rejections (192 total), recovering original bytes/count. Oversized inline layout types independently deny ordinary/total bytes before entering their allocation callback, without constructing those payloads.",
+    "A real detached capability-node owner and retired heap CQ survive exact root close and numeric ASID reuse. Their later explicit disposal refunds only original nodes and leaves the successor pending operation untouched. Retained completion Arc/buffer lifetime remains independent.",
+    "Existing 64-detached-operation control checks all prepared/published nodes charged, one backlog node retained after direct deliveries, then exact baseline after ring publication and post-registry refund-batch deallocation.",
+    "Existing complete capability, detached preparation/terminal/namespace and CQ abandonment controls hold the new node pool guard together with their existing heap/registry/account guards. No extra deliberate-retention owner is introduced. Existing heap-held publication/detachment, timer/cancellation and scheduler regressions pass unchanged in the same native suite.",
+    "Shared collection host controls establish node deallocation before charge refund, rejected-allocation rollback and inert detached-node fallback. Published node release remains explicit and outside local guards."
+  ],
+  "qualification_limits": [
+    "Serialized kernel-fixture pressure, not sustained concurrent hostile EL0 fairness or forced native general heap OOM. Byte rejection is an oversized-layout admission control, not real byte-ceiling allocation pressure. Node allocation failure is injected.",
+    "No physical ring mapping/drain proof, hardware completion, new lease, replay/retry owner, cleanup registry or owner family. Arbitrary containing caller/IRQ/destructor contexts and latency remain under existing G1/G4 requirements.",
+    "Other registry/control storage, allocator bookkeeping and aggregate signed-principal/general-heap accounting remain open. SEC-07 remains partial; essential-service flood progress and concurrent restart/pressure qualification remain separate gates."
+  ]
+}

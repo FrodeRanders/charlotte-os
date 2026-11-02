@@ -328,14 +328,16 @@ impl Preparing {
         user_data: u64,
         ids: &operation_ids::OperationIds,
     ) -> Result<Self, SubmitError> {
-        Self::plain_with(target, user_data, ids, PreparedEntry::try_new)
+        Self::plain_with(target, user_data, ids, entry_budget::prepare)
     }
 
     fn plain_with(
         target: Target,
         user_data: u64,
         ids: &operation_ids::OperationIds,
-        allocate: impl FnOnce() -> Result<
+        allocate: impl FnOnce(
+            bool,
+        ) -> Result<
             PreparedEntry<(OperationId, DetachedOp)>,
             core::alloc::AllocError,
         >,
@@ -360,7 +362,8 @@ impl Preparing {
                 timer_cancel: None,
                 record_charge: Some(charge),
             });
-            resources.entry = Some(allocate().map_err(|_| SubmitError::WouldBlock)?);
+            resources.entry =
+                Some(allocate(resources.target.platform).map_err(|_| SubmitError::WouldBlock)?);
             Ok(())
         })();
         if let Err(error) = result {

@@ -28,6 +28,12 @@
 pub(crate) mod account_budget;
 use crate::klib::namespace_node_budget as node_budget;
 pub(crate) mod budget;
+mod entry_budget;
+use entry_budget::{
+    Map as AdmittedMap,
+    Prepared as PreparedEntry,
+    Retired as RetiredEntry,
+};
 mod capability_metadata;
 use capability_metadata::{
     CapabilityRecord,
@@ -142,11 +148,6 @@ use crate::{
     },
     klib::{
         charged_allocator::ChargedAllocator,
-        collections::retirement_list::{
-            AdmittedMap,
-            PreparedEntry,
-            RetiredEntry,
-        },
         observer::{
             Observable,
             Observer,

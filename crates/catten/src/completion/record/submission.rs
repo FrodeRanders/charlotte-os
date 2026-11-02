@@ -98,7 +98,7 @@ impl Preparing {
             ids,
             Self::record,
             |asid, root| PreparedReservation::try_new(asid, ObjectKind::Completion, root),
-            PreparedEntry::try_new,
+            entry_budget::prepare,
         )
     }
 
@@ -115,7 +115,9 @@ impl Preparing {
             PreparedReservation,
             crate::capability::AllocationError,
         >,
-        allocate_node: impl FnOnce() -> Result<
+        allocate_node: impl FnOnce(
+            bool,
+        ) -> Result<
             PreparedEntry<(CompletionCap, CapabilityRecord)>,
             core::alloc::AllocError,
         >,
@@ -129,7 +131,9 @@ impl Preparing {
             let resources = &mut *preparing.0;
             assert!(resources.completion.is_some(), "record factory returned no record");
             assert!(resources.buffer.is_none() && resources.record_charge.is_none());
-            resources.entry = Some(allocate_node().map_err(|_| SubmitError::WouldBlock)?);
+            resources.entry = Some(
+                allocate_node(resources.target.platform).map_err(|_| SubmitError::WouldBlock)?,
+            );
             resources.authority = Some(
                 allocate_authority(resources.target.asid, resources.target.root)
                     .map_err(|_| SubmitError::WouldBlock)?,
@@ -368,6 +372,8 @@ mod tests;
 
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_preparation() {
+    #[cfg(feature = "kernel_tests")]
+    entry_budget::test_admission();
     tests::run();
     metadata_tests::run();
     initial_tests::run();

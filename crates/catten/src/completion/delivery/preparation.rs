@@ -91,7 +91,7 @@ impl Prepared {
             frame,
             |platform| ObserverList::try_new(waiter_budget::SOURCE_LIMIT, platform),
             cq::CompletionQueueRing::new_page,
-            PreparedEntry::try_new,
+            entry_budget::prepare,
         )
     }
 
@@ -101,7 +101,10 @@ impl Prepared {
         frame: Option<crate::memory::physical::PAddr>,
         allocate_list: impl FnOnce(bool) -> Result<Waiters, RegistrationError>,
         allocate_ring: impl FnOnce(u32) -> Result<RingStorage, cq::CqRingError>,
-        allocate_node: impl FnOnce() -> Result<PreparedEntry<(CqId, CqState)>, core::alloc::AllocError>,
+        allocate_node: impl FnOnce(
+            bool,
+        )
+            -> Result<PreparedEntry<(CqId, CqState)>, core::alloc::AllocError>,
     ) -> Result<Self, CqOpenError> {
         if cq_entries < 2 {
             return Err(CqOpenError::Ring(cq::CqRingError::CapacityTooSmall));
@@ -143,7 +146,10 @@ impl Prepared {
                 )
                 .map_err(|_| CqOpenError::ResourceLimit)?,
             );
-            resources.node = Some(allocate_node().map_err(|_| CqOpenError::AllocationFailed)?);
+            resources.node = Some(
+                allocate_node(resources.target.platform)
+                    .map_err(|_| CqOpenError::AllocationFailed)?,
+            );
             resources.state = Some(CqState {
                 ring: core::ptr::null_mut(),
                 ring_head: 0,

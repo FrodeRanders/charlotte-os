@@ -21,7 +21,7 @@ fn allocation_and_publication() {
         &OPERATION_IDS,
         Preparing::record,
         |_, _| panic!("metadata rejection reached authority preparation"),
-        || {
+        |_| {
             let registry = COMPLETIONS.write();
             assert!(registry[&CLIENT].table.first_key_value().is_none());
             assert_eq!((records.used(), watches.used()), (1, 1));
@@ -44,11 +44,11 @@ fn allocation_and_publication() {
             &OPERATION_IDS,
             Preparing::record,
             |asid, root| PreparedReservation::try_new(asid, ObjectKind::Completion, root),
-            || {
+            |platform| {
                 {
                     let _registry = COMPLETIONS.write();
                 }
-                PreparedEntry::try_new()
+                entry_budget::prepare(platform)
             },
         )
         .unwrap();
@@ -206,7 +206,7 @@ fn guarded_abandonment() {
     {
         let _registry = COMPLETIONS.write();
         let _heap = PRIMARY_ALLOCATOR.lock();
-        drop(preparing);
+        entry_budget::with_locked(|| drop(preparing));
     }
     assert_eq!((records.used(), watches.used(), timers.used()), (1, 1, 1));
     assert_eq!(crate::capability::node_admission_used(), authority);
@@ -232,7 +232,7 @@ fn guarded_abandonment() {
     {
         let _registry = COMPLETIONS.write();
         let _heap = PRIMARY_ALLOCATOR.lock();
-        drop(retired);
+        entry_budget::with_locked(|| drop(retired));
     }
     assert_eq!(records.used(), 1);
     assert!(weak.upgrade().unwrap().holds_buffer());

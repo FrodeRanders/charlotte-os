@@ -991,6 +991,15 @@ the corrected RPC polling paths, and the remaining notification gaps.
 
 ## Observers, completions and timers
 
+- Completion, detached-operation and CQ registry entries use typed
+  `entry_budget` nodes with independent `completion_nodes` byte/count admission.
+  Pass the existing exact target's captured classification to node preparation;
+  retain it through publication, backlog delivery, root retirement and slot reuse.
+  Deallocate before refunding original backing, independently of record/CQ and
+  strong/weak account admission. Complete fallback remains inert under the pool
+  guard as well as existing publication/heap guards. See
+  `docs/reference/completion-node-admission.md`.
+
 - Notification targets use `ObserverRef`/`ObserverWeak`; `notify(&self)` borrows
   the payload while dispatch retains its strong handle. Do not restore global
   observer Arcs/Weaks or expose the handles' allocator/raw storage. Capture class

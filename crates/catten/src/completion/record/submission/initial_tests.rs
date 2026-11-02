@@ -57,7 +57,7 @@ fn ordinary_rejection() {
                 Err(SubmitError::WouldBlock)
             },
             |_, _| panic!("early rejection reached authority allocation"),
-            || panic!("early rejection reached metadata allocation"),
+            |_| panic!("early rejection reached metadata allocation"),
         );
         assert!(matches!(result, Err(SubmitError::WouldBlock)));
         assert_eq!((records.used(), watches.used()), before);
@@ -139,7 +139,7 @@ fn borrowed_success() {
                 Ok(())
             },
             |asid, root| PreparedReservation::try_new(asid, ObjectKind::Completion, root),
-            PreparedEntry::try_new,
+            entry_budget::prepare,
         )
         .unwrap();
         let operation = preparing.0.operation.unwrap();

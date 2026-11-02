@@ -11,6 +11,11 @@ timers, thread-exit and endpoint-close watches, and capability-free operations.
 The existing submission-slot limit and this record budget measure different
 lifetimes.
 
+Capability and detached registry nodes also have independent
+[backing admission](completion-node-admission.md). Prepared candidates and
+detached/backlogged/retired nodes keep their original bytes/count until actual
+node deallocation, separately from the completion Arc's strong/weak lifetime.
+
 [`completion/record.rs`](../../crates/catten/src/completion/record.rs) owns the
 capability-backed record's private buffer, lifecycle state and producer/callback
 subscriptions. Allocation, capability submission and callback preparation are

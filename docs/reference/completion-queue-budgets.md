@@ -59,6 +59,11 @@ The account's own Arc/holder bundle has separate
 accounts through final weak/allocator release. Trusted account backing alone
 grants no platform queue or ring-byte privilege.
 
+Each CQ registry node has separate [backing admission](completion-node-admission.md),
+shared with capability-backed and detached completion nodes. Candidates, queued
+detached results and retired queues retain original node bytes/count until actual
+deallocation. Ring/backlog bytes and account backing remain independent.
+
 ## Fallible preparation and replacement
 
 Kernel CQ creation returns `CqOpenError`: unknown or retiring namespace,

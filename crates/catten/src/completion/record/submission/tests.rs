@@ -37,7 +37,7 @@ fn unlocked() {
                 }
                 PreparedReservation::try_new(asid, ObjectKind::Completion, root)
             },
-            PreparedEntry::try_new,
+            entry_budget::prepare,
         );
         if mode < 2 {
             assert!(matches!(prepared, Err(SubmitError::WouldBlock)));
@@ -124,7 +124,7 @@ fn reject_before_reservation() {
                 }
                 Ok(authority)
             },
-            PreparedEntry::try_new,
+            entry_budget::prepare,
         );
         assert!(matches!(result, Err(SubmitError::UnknownAddressSpace)));
         assert_eq!((records.used(), watches.used()), (0, 0));

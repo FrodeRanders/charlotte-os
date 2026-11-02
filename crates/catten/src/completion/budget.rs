@@ -111,19 +111,13 @@ impl Drop for Charge {
 #[must_use = "retain flushed charges until the enclosing registry guard leaves"]
 pub(super) struct Releases {
     charges: [Option<Charge>; 2],
-    nodes: crate::klib::collections::retirement_list::RetirementList<(
-        super::OperationId,
-        super::DetachedOp,
-    )>,
+    nodes: super::entry_budget::List<(super::OperationId, super::DetachedOp)>,
 }
 
 impl Releases {
     pub(super) fn push_node(
         &mut self,
-        node: crate::klib::collections::retirement_list::RetiredEntry<(
-            super::OperationId,
-            super::DetachedOp,
-        )>,
+        node: super::entry_budget::Retired<(super::OperationId, super::DetachedOp)>,
     ) {
         self.nodes.push(node);
     }

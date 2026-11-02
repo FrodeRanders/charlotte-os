@@ -23,7 +23,7 @@ fn fresh_nodes() {
         None,
         |_| panic!("node rejection reached list allocation"),
         |_| panic!("node rejection reached ring allocation"),
-        || {
+        |_| {
             let registry = COMPLETIONS.write();
             assert!(registry[&CLIENT].cqs.first_key_value().is_none());
             assert_eq!(account.used()[0], 1);
@@ -43,11 +43,11 @@ fn fresh_nodes() {
                 None,
                 |platform| ObserverList::try_new(waiter_budget::SOURCE_LIMIT, platform),
                 cq::CompletionQueueRing::new_page,
-                || {
+                |platform| {
                     {
                         let _registry = COMPLETIONS.write();
                     }
-                    PreparedEntry::try_new()
+                    entry_budget::prepare(platform)
                 },
             )
             .unwrap(),
@@ -60,7 +60,7 @@ fn fresh_nodes() {
         None,
         |_| panic!("full admission reached source allocation"),
         |_| panic!("full admission reached ring allocation"),
-        || panic!("full admission reached metadata allocation"),
+        |_| panic!("full admission reached metadata allocation"),
     );
     assert!(matches!(rejected, Err(CqOpenError::ResourceLimit)));
     {
@@ -154,7 +154,7 @@ fn guarded_abandonment() {
     {
         let _registry = COMPLETIONS.write();
         let _heap = PRIMARY_ALLOCATOR.lock();
-        drop(preparing);
+        entry_budget::with_locked(|| drop(preparing));
     }
     assert_eq!(account.used(), retained);
     open_address_space_with_cq(CLIENT, 4, 2).unwrap();
@@ -180,7 +180,7 @@ fn guarded_abandonment() {
     {
         let _registry = COMPLETIONS.write();
         let _heap = PRIMARY_ALLOCATOR.lock();
-        drop(retired);
+        entry_budget::with_locked(|| drop(retired));
     }
     assert_eq!(account.used(), retained);
     assert_eq!(records.used(), 1);
