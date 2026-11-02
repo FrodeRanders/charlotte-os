@@ -22,6 +22,11 @@
 //! Exited threads are staged per-LP in [`DEAD_THREADS`] and reaped after
 //! the context switch away from them.
 
+use crate::klib::observer::{
+    ObserverRef,
+    ObserverWeak,
+};
+
 mod execution;
 pub(crate) use execution::ThreadExecution;
 
@@ -37,10 +42,6 @@ pub mod waker;
 
 use alloc::{
     boxed::Box,
-    sync::{
-        Arc,
-        Weak,
-    },
     vec::Vec,
 };
 use core::{
@@ -75,10 +76,7 @@ use crate::{
                 RetirementList,
             },
         },
-        observer::{
-            Observer,
-            waiter_source::WaiterSource,
-        },
+        observer::waiter_source::WaiterSource,
         statistics::{
             RunningStatistics,
             StatisticsSnapshot,
@@ -504,7 +502,7 @@ pub enum ThreadState {
     Running(LpId),
     Ready(LpId),
     NeedsLpAssignment,
-    Blocked(Arc<Waker>),
+    Blocked(ObserverRef<Waker>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -962,7 +960,7 @@ impl Thread {
 
     pub(crate) fn try_observe_exit(
         &self,
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
         charge: crate::completion::watch_budget::Charge,
     ) -> Result<exit_source::ExitRegistration, crate::klib::observer::registration::RegistrationError>
     {

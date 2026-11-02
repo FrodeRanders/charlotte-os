@@ -11,6 +11,7 @@ use super::*;
 use crate::{
     klib::observer::{
         CallOnNotify,
+        ObserverRef,
         WaitSponsor,
         registration::ObserverList,
     },
@@ -22,7 +23,7 @@ const CLIENT: usize = 0x5e32;
 struct DisposalProbe(Mutex<Option<Box<dyn FnOnce() + Send>>>);
 
 impl Observer for DisposalProbe {
-    fn notify(self: Arc<Self>) {
+    fn notify(&self) {
         panic!("subscription disposal fabricated producer completion");
     }
 }
@@ -37,10 +38,11 @@ fn observation(
     account: &watch_budget::AccountRef,
     action: impl FnOnce() + Send + 'static,
 ) -> (EventObservation, crate::klib::observer::registration::ListRef<watch_budget::Charge>) {
-    let observer: Arc<dyn Observer> = Arc::new(DisposalProbe(Mutex::new(Some(Box::new(action)))));
+    let observer: ObserverRef =
+        crate::klib::observer::test_observer(DisposalProbe(Mutex::new(Some(Box::new(action)))));
     let source = ObserverList::try_new(1, false).unwrap();
     let registration = source
-        .register(Arc::downgrade(&observer), watch_budget::reserve(account, false).unwrap())
+        .register(ObserverRef::downgrade(&observer), watch_budget::reserve(account, false).unwrap())
         .unwrap();
     (
         EventObservation {
@@ -120,7 +122,7 @@ fn public_terminal(cancel_pending: bool, replace_queue: bool) {
     let successor_token = Arc::new(Mutex::new(None));
     let successor_sponsor = WaitSponsor::new(false);
     let counter = successor_calls.clone();
-    let successor_observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let successor_observer: ObserverRef = CallOnNotify::for_test(move || {
         counter.fetch_add(1, Ordering::SeqCst);
     });
     let mut sources = Vec::new();
@@ -158,7 +160,9 @@ fn public_terminal(cancel_pending: bool, replace_queue: bool) {
                 open_cq(CLIENT, DEFAULT_CQ, 8).unwrap();
                 let successor = capture_cq_interest(CLIENT, DEFAULT_CQ).unwrap();
                 *token.lock() = Some(
-                    sponsor.register(successor.waiter_source(), Arc::downgrade(&observer)).unwrap(),
+                    sponsor
+                        .register(successor.waiter_source(), ObserverRef::downgrade(&observer))
+                        .unwrap(),
                 );
             }
         });
@@ -172,7 +176,7 @@ fn public_terminal(cancel_pending: bool, replace_queue: bool) {
     let counter = calls.clone();
     let disposals = hits.clone();
     let weak = Arc::downgrade(&captured);
-    let notification: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let notification: ObserverRef = CallOnNotify::for_test(move || {
         let _registry = COMPLETIONS.write();
         let completion = weak.upgrade().unwrap();
         let _inner = completion.inner.lock();
@@ -189,8 +193,9 @@ fn public_terminal(cancel_pending: bool, replace_queue: bool) {
     let callback = observe(CLIENT, cap, notification.clone()).unwrap();
     let cq_sponsor = WaitSponsor::new(false);
     let original = capture_cq_interest(CLIENT, DEFAULT_CQ).unwrap();
-    let cq_token =
-        cq_sponsor.register(original.waiter_source(), Arc::downgrade(&notification)).unwrap();
+    let cq_token = cq_sponsor
+        .register(original.waiter_source(), ObserverRef::downgrade(&notification))
+        .unwrap();
     if cancel_pending {
         assert_eq!(captured.cancel(), CancelState::CancelRequested);
     }

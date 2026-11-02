@@ -16,6 +16,7 @@ use crate::{
             endpoint_is_readable_or_closed,
         },
     },
+    klib::observer::ObserverRef,
     memory::{
         self,
         ADDRESS_SPACE_LIFECYCLE,
@@ -326,13 +327,13 @@ fn queued_endpoint_close() {
     scalar_send(fixture.server.id(), connection, 99, 0).unwrap();
     let hits = Arc::new(core::sync::atomic::AtomicUsize::new(0));
     let counter = hits.clone();
-    let observer: Arc<dyn Observer> = crate::klib::observer::CallOnNotify::new(move || {
+    let observer: ObserverRef = crate::klib::observer::CallOnNotify::for_test(move || {
         unlocked();
         counter.fetch_add(1, Ordering::Relaxed);
     });
     let sponsor = WaitSponsor::new(false);
     let registration = EndpointObservable::new(endpoint_id)
-        .try_register_waiter(Arc::downgrade(&observer), &sponsor)
+        .try_register_waiter(ObserverRef::downgrade(&observer), &sponsor)
         .unwrap();
     assert!(registration.is_owned(), "claimed front incorrectly reported readable");
     let mut waits = 0;
@@ -509,12 +510,12 @@ fn serialized_bulk_failure() {
         let used = memory::budget::used(fixture.caller);
         let hits = Arc::new(core::sync::atomic::AtomicUsize::new(0));
         let counter = hits.clone();
-        let observer: Arc<dyn Observer> = crate::klib::observer::CallOnNotify::new(move || {
+        let observer: ObserverRef = crate::klib::observer::CallOnNotify::for_test(move || {
             counter.fetch_add(1, Ordering::Relaxed);
         });
         let sponsor = WaitSponsor::new(false);
         let registration = PendingCallObservable::new(identity.call)
-            .try_register_waiter(Arc::downgrade(&observer), &sponsor)
+            .try_register_waiter(ObserverRef::downgrade(&observer), &sponsor)
             .unwrap();
         let (asid, cap) = if close_endpoint {
             (fixture.server.id(), fixture.endpoint)
@@ -656,13 +657,13 @@ fn owned_endpoint_success() {
     );
     let hits = Arc::new(core::sync::atomic::AtomicUsize::new(0));
     let counter = hits.clone();
-    let observer: Arc<dyn Observer> = crate::klib::observer::CallOnNotify::new(move || {
+    let observer: ObserverRef = crate::klib::observer::CallOnNotify::for_test(move || {
         unlocked();
         counter.fetch_add(1, Ordering::Relaxed);
     });
     let sponsor = WaitSponsor::new(false);
     let registration = EndpointObservable::new(endpoint)
-        .try_register_waiter(Arc::downgrade(&observer), &sponsor)
+        .try_register_waiter(ObserverRef::downgrade(&observer), &sponsor)
         .unwrap();
     assert!(registration.is_owned());
     let mut waits = 0;
@@ -808,13 +809,13 @@ fn owned_endpoint_rollback() {
     let owner = PreparedEndpointClose::prepare(fixture.server.id(), fixture.endpoint).unwrap();
     let hits = Arc::new(core::sync::atomic::AtomicUsize::new(0));
     let counter = hits.clone();
-    let observer: Arc<dyn Observer> = crate::klib::observer::CallOnNotify::new(move || {
+    let observer: ObserverRef = crate::klib::observer::CallOnNotify::for_test(move || {
         unlocked();
         counter.fetch_add(1, Ordering::Relaxed);
     });
     let sponsor = WaitSponsor::new(false);
     let registration = EndpointObservable::new(endpoint)
-        .try_register_waiter(Arc::downgrade(&observer), &sponsor)
+        .try_register_waiter(ObserverRef::downgrade(&observer), &sponsor)
         .unwrap();
     let caller = ClosingAddressSpace::begin(fixture.caller).unwrap();
     assert_eq!(

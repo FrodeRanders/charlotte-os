@@ -4,11 +4,14 @@
 use core::mem::ManuallyDrop;
 
 use super::*;
-use crate::capability::{
-    ObjectKind,
-    PreparedReservation,
-    Publication,
-    Reservation,
+use crate::{
+    capability::{
+        ObjectKind,
+        PreparedReservation,
+        Publication,
+        Reservation,
+    },
+    klib::observer::ObserverRef,
 };
 
 struct Target {
@@ -216,8 +219,11 @@ impl Preparing {
         allocate_event: impl FnOnce(TimerEvent) -> Result<crate::timers::PreparedEvent, ()>,
         allocate_observer: impl FnOnce(
             CompletionTimerObserver,
-        )
-            -> Result<Arc<CompletionTimerObserver>, core::alloc::AllocError>,
+            bool,
+        ) -> Result<
+            ObserverRef<CompletionTimerObserver>,
+            core::alloc::AllocError,
+        >,
     ) -> Result<(), SubmitError> {
         let resources = &mut *self.0;
         assert!(!resources.published && resources.event.is_none() && resources.cancel.is_none());
@@ -229,19 +235,22 @@ impl Preparing {
         resources.cancel = Some(TimerCancellation::new(cancel));
         resources.event = Some(allocate_event(event).map_err(|_| SubmitError::WouldBlock)?);
         let completion = resources.completion.as_ref().unwrap();
-        let observer = allocate_observer(CompletionTimerObserver::new(
-            resources.target.asid,
-            resources.reservation.as_ref().unwrap().identity(),
-            OpResult::Ok(0),
-            Arc::downgrade(completion),
-        ))
+        let observer = allocate_observer(
+            CompletionTimerObserver::new(
+                resources.target.asid,
+                resources.reservation.as_ref().unwrap().identity(),
+                OpResult::Ok(0),
+                Arc::downgrade(completion),
+            ),
+            resources.target.platform,
+        )
         .map_err(|_| SubmitError::WouldBlock)?;
         resources
             .event
             .as_ref()
             .unwrap()
             .event()
-            .register_observer(Arc::downgrade(&observer) as Weak<dyn Observer>);
+            .register_observer(ObserverRef::downgrade(&observer).erase());
         completion.set_timer_observer(observer, resources.cancel.take().unwrap());
         Ok(())
     }
@@ -335,7 +344,8 @@ pub(in crate::completion) fn submit_timer(
     ids: &operation_ids::OperationIds,
     allocate: impl FnOnce(
         CompletionTimerObserver,
-    ) -> Result<Arc<CompletionTimerObserver>, core::alloc::AllocError>,
+        bool,
+    ) -> Result<ObserverRef<CompletionTimerObserver>, core::alloc::AllocError>,
 ) -> Result<CompletionCap, SubmitError> {
     let deadline = crate::timers::deadline_after(ExtDuration::from_millis(timeout_ms as u128));
     let mut preparing = Preparing::new(Target::capture(asid)?, None, false, ids)?;

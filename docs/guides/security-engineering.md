@@ -53,6 +53,13 @@ qualification; absence of allocator calls alone does not prove progress. Dealloc
 charge. Moving an object, retiring its sponsor or reusing an ASID must not make
 live backing free in the accounts. Keep the original trusted/ordinary class.
 
+Notification boundaries use `ObserverRef`/`ObserverWeak`, with dispatch retaining
+a strong owner while borrowing `notify(&self)`. Keep observer admission through
+final weak release; a field-owned charge would end at payload destruction while
+its Arc backing could still exist. Admit actual allocation layout, including
+control/alignment storage, and keep nested captures under their own owners.
+See [observer ownership](../reference/observer-ownership.md).
+
 Read [capability admission](../reference/capability-admission.md),
 [IPC record budgets](../reference/ipc-record-budgets.md),
 [principal backing](../reference/principal-backing-admission.md) and

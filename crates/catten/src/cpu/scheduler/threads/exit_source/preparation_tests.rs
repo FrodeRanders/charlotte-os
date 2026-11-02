@@ -1,9 +1,6 @@
 //! Serialized containing-owner controls; no scheduler-admitted target is leaked.
 
-use alloc::{
-    sync::Arc,
-    vec::Vec,
-};
+use alloc::vec::Vec;
 
 use super::*;
 use crate::{
@@ -14,6 +11,7 @@ use crate::{
     },
     klib::observer::{
         CallOnNotify,
+        ObserverRef,
         list_budget,
     },
     memory::allocators::global_allocator::PRIMARY_ALLOCATOR,
@@ -32,7 +30,7 @@ fn candidate(platform: bool) -> Result<ExitList, RegistrationError> {
 fn rejection_and_unused() {
     let account = watch_budget::DomainBudget::new(1);
     let source = ExitSource::new();
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("unused exit watch notified"));
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("unused exit watch notified"));
     // Captured without source, captured existing source, allocated candidate
     // with borrowed entry rejection, and complete unused entry.
     for phase in 0..4 {
@@ -44,7 +42,7 @@ fn rejection_and_unused() {
         };
         let mut owner = PreparingExitWatch::capture(
             existing,
-            Arc::downgrade(&observer),
+            ObserverRef::downgrade(&observer),
             watch_budget::reserve(&account, false).unwrap(),
         );
         if phase == 0 {
@@ -57,7 +55,7 @@ fn rejection_and_unused() {
                         let _source = source.list.lock();
                         assert_eq!(account.used(), 1);
                         // The allocator receives classification only.
-                        assert_eq!(Arc::weak_count(&observer), 1);
+                        assert_eq!(ObserverRef::weak_count(&observer), 1);
                         Err(RegistrationError::AllocationFailed)
                     },
                     |_| panic!("rejected list reached entry preparation"),
@@ -95,7 +93,7 @@ fn rejection_and_unused() {
                 )
             );
             assert_eq!(
-                Arc::weak_count(&observer),
+                ObserverRef::weak_count(&observer),
                 usize::from(
                     step < if entry {
                         2
@@ -113,13 +111,13 @@ fn rejection_and_unused() {
         });
         assert_eq!(step, 4);
         assert_eq!(account.used(), 0);
-        assert_eq!(Arc::weak_count(&observer), 0);
+        assert_eq!(ObserverRef::weak_count(&observer), 0);
         assert_eq!(list_budget::node_used(), lists);
         assert_eq!(source.registered(), 0);
     }
     // With no strong callback reference, explicit finish releases the final
     // weak allocation outside the actual heap/table/source guards too.
-    let weak = Arc::downgrade(&observer);
+    let weak = ObserverRef::downgrade(&observer);
     drop(observer);
     let owner =
         PreparingExitWatch::new(None, weak, watch_budget::reserve(&account, false).unwrap())
@@ -131,7 +129,7 @@ fn rejection_and_unused() {
 fn publication() {
     let account = watch_budget::DomainBudget::new(64);
     let source = ExitSource::new();
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("cancelled exit watch notified"));
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("cancelled exit watch notified"));
     let lists = list_budget::node_used();
     let mut preparations = Vec::with_capacity(64);
     let mut tokens = Vec::with_capacity(64);
@@ -139,7 +137,7 @@ fn publication() {
         preparations.push(
             PreparingExitWatch::new(
                 None,
-                Arc::downgrade(&observer),
+                ObserverRef::downgrade(&observer),
                 watch_budget::reserve(&account, false).unwrap(),
             )
             .unwrap(),
@@ -162,7 +160,7 @@ fn publication() {
     assert_eq!(list_budget::node_used(), (lists.0 + 1, lists.1 + 1));
     drop(tokens);
     assert_eq!(account.used(), 0);
-    assert_eq!(Arc::weak_count(&observer), 0);
+    assert_eq!(ObserverRef::weak_count(&observer), 0);
     assert_eq!(source.registered(), 0);
     drop(source);
     assert_eq!(list_budget::node_used(), lists);
@@ -175,15 +173,15 @@ fn guarded_abandonment() {
     let original = candidate(false).unwrap();
     *source.list.lock() = Some(original.clone());
     for phase in 0..4 {
-        let observer: Arc<dyn Observer> =
-            CallOnNotify::new(|| panic!("abandoned exit watch notified"));
+        let observer: ObserverRef =
+            CallOnNotify::for_test(|| panic!("abandoned exit watch notified"));
         let mut owner = PreparingExitWatch::capture(
             if phase == 1 {
                 source.source()
             } else {
                 None
             },
-            Arc::downgrade(&observer),
+            ObserverRef::downgrade(&observer),
             watch_budget::reserve(&account, false).unwrap(),
         );
         if phase == 2 {

@@ -1,10 +1,13 @@
 //! Reply nodes use the same count/owner lifetime as their pending-call peers.
 use super::*;
-use crate::memory::{
-    self,
-    ADDRESS_SPACE_LIFECYCLE,
-    ADDRESS_SPACE_TABLE,
-    allocators::global_allocator::PRIMARY_ALLOCATOR,
+use crate::{
+    klib::observer::ObserverRef,
+    memory::{
+        self,
+        ADDRESS_SPACE_LIFECYCLE,
+        ADDRESS_SPACE_TABLE,
+        allocators::global_allocator::PRIMARY_ALLOCATOR,
+    },
 };
 
 fn token(server: AddressSpaceId, call: PendingCallId, platform: bool) -> ReplyToken {
@@ -166,10 +169,10 @@ fn abandoned_node() {
     owner.finish();
     let sponsor = WaitSponsor::new(false);
     let source = crate::klib::observer::waiter_source::WaiterSource::new();
-    let observer: Arc<dyn Observer> = crate::klib::observer::CallOnNotify::new(|| {
+    let observer: ObserverRef = crate::klib::observer::CallOnNotify::for_test(|| {
         panic!("abandoned reply completion invoked its callback")
     });
-    let registered = source.register(Arc::downgrade(&observer), &sponsor).unwrap();
+    let registered = source.register(ObserverRef::downgrade(&observer), &sponsor).unwrap();
     let mut owner = PreparedCall::try_new(root.id()).unwrap();
     let node =
         owner.reply_storage.take().unwrap().publish((2, token(root.id(), 2, owner.platform)));

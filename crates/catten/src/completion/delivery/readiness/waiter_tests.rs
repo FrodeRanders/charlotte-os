@@ -8,6 +8,7 @@ use super::*;
 use crate::{
     klib::observer::{
         CallOnNotify,
+        ObserverRef,
         WaitSponsor,
         registration::RegistrationError,
         waiter_budget,
@@ -19,12 +20,13 @@ pub(super) fn run() {
     const CLIENT: usize = 0x5e21;
     let irq = crate::cpu::isa::lp::ops::get_int_state();
     let sponsor = WaitSponsor::new(false);
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| {
+    let observer: ObserverRef = CallOnNotify::for_test(|| {
         let _registry = COMPLETIONS.write();
     });
     open_address_space_with_cq(CLIENT, 8, 8).unwrap();
     let source = capture_cq_interest(CLIENT, 0).unwrap();
-    let mut prepared = sponsor.prepare(&source.identity, Arc::downgrade(&observer)).unwrap();
+    let mut prepared =
+        sponsor.prepare(&source.identity, ObserverRef::downgrade(&observer)).unwrap();
     let token;
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
@@ -38,9 +40,10 @@ pub(super) fn run() {
 
     let mut tokens = Vec::new();
     for _ in 0..waiter_budget::SOURCE_LIMIT {
-        tokens.push(source.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap());
+        tokens
+            .push(source.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap());
     }
-    let mut full = sponsor.prepare(&source.identity, Arc::downgrade(&observer)).unwrap();
+    let mut full = sponsor.prepare(&source.identity, ObserverRef::downgrade(&observer)).unwrap();
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
         assert_eq!(source.publish_waiter(&mut full).unwrap_err(), RegistrationError::ResourceLimit);
@@ -53,7 +56,7 @@ pub(super) fn run() {
 
     // A producer wins after preparation, before publication. Recheck under
     // the registry returns ready without linking or disposing unused storage.
-    let mut ready = sponsor.prepare(&source.identity, Arc::downgrade(&observer)).unwrap();
+    let mut ready = sponsor.prepare(&source.identity, ObserverRef::downgrade(&observer)).unwrap();
     source.wake();
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
@@ -64,7 +67,7 @@ pub(super) fn run() {
     ready.finish();
     assert_eq!(sponsor.used(), 0);
 
-    let mut stale = sponsor.prepare(&source.identity, Arc::downgrade(&observer)).unwrap();
+    let mut stale = sponsor.prepare(&source.identity, ObserverRef::downgrade(&observer)).unwrap();
     close_address_space(CLIENT);
     open_address_space_with_cq(CLIENT, 8, 8).unwrap();
     {

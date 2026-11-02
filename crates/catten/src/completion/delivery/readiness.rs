@@ -2,6 +2,9 @@
 //! wake delivery. Queue state stays behind the existing completion registry;
 //! source identity retains no ring backing or physical completion authority.
 use super::*;
+#[cfg(any(test, feature = "kernel_tests"))]
+use crate::klib::observer::ObserverRef;
+use crate::klib::observer::ObserverWeak;
 
 #[cfg(any(test, feature = "kernel_tests"))]
 mod waiter_tests;
@@ -190,7 +193,7 @@ impl CqInterest {
 impl Observable for CqInterest {
     fn try_register_waiter(
         &self,
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
         sponsor: &crate::klib::observer::WaitSponsor,
     ) -> Result<
         crate::klib::observer::WaitRegistration,
@@ -282,7 +285,7 @@ pub(crate) fn test_prepared_wake_identity() {
     let sponsor = WaitSponsor::new(false);
     let old_calls = Arc::new(AtomicUsize::new(0));
     let old_counter = old_calls.clone();
-    let old: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let old: ObserverRef = CallOnNotify::for_test(move || {
         old_counter.fetch_add(1, Ordering::SeqCst);
         assert_eq!(cq_work_generation(CLIENT, 0), 0);
         assert_eq!(
@@ -293,7 +296,7 @@ pub(crate) fn test_prepared_wake_identity() {
     open_address_space_with_cq(CLIENT, 8, 8).unwrap();
     let old_registration = capture_cq_interest(CLIENT, 0)
         .unwrap()
-        .try_register_waiter(Arc::downgrade(&old), &sponsor)
+        .try_register_waiter(ObserverRef::downgrade(&old), &sponsor)
         .unwrap();
     let stale_interest = capture_cq_interest(CLIENT, 0).unwrap();
     let batch = prepare_wake(CLIENT, 0).unwrap();
@@ -303,12 +306,12 @@ pub(crate) fn test_prepared_wake_identity() {
     open_address_space_with_cq(CLIENT, 8, 8).unwrap();
     let new_calls = Arc::new(AtomicUsize::new(0));
     let new_counter = new_calls.clone();
-    let new: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let new: ObserverRef = CallOnNotify::for_test(move || {
         new_counter.fetch_add(1, Ordering::SeqCst);
     });
     let new_registration = capture_cq_interest(CLIENT, 0)
         .unwrap()
-        .try_register_waiter(Arc::downgrade(&new), &sponsor)
+        .try_register_waiter(ObserverRef::downgrade(&new), &sponsor)
         .unwrap();
     stale_interest.wake();
     assert_eq!(cq_work_generation(CLIENT, 0), 0);
@@ -345,7 +348,7 @@ pub(crate) fn test_irq_wake_reentrancy(asid: AddressSpaceId, intid: u32) {
     let baseline = cq_work_generation(asid, 0);
     let calls = Arc::new(AtomicUsize::new(0));
     let counter = calls.clone();
-    let callback: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let callback: ObserverRef = CallOnNotify::for_test(move || {
         assert!(cq_work_generation(asid, 0) > baseline);
         assert_eq!(
             crate::device::grant_interrupt(0, intid),
@@ -357,7 +360,8 @@ pub(crate) fn test_irq_wake_reentrancy(asid: AddressSpaceId, intid: u32) {
     // last_seen cursor; this pseudo domain has no scheduled reactor. Capture
     // under the registry, then allocate outside it like ordinary waiters.
     let source = capture_cq_interest(asid, 0).unwrap();
-    let registration = sponsor.register(&source.identity, Arc::downgrade(&callback)).unwrap();
+    let registration =
+        sponsor.register(&source.identity, ObserverRef::downgrade(&callback)).unwrap();
     assert!(crate::device::deliver_interrupt(intid));
     let deadline = crate::self_test::results::Deadline::after_millis(5_000);
     while calls.load(Ordering::SeqCst) == 0 {

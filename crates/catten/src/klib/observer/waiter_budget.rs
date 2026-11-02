@@ -28,6 +28,10 @@ struct Account {
 #[derive(Debug)]
 pub(crate) struct DomainBudget(Mutex<Account>);
 impl DomainBudget {
+    pub(super) fn observer_platform(&self) -> bool {
+        self.0.lock().platform
+    }
+
     #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn try_new(platform: bool) -> Result<AccountRef, core::alloc::AllocError> {
         Self::try_new_with_backing_class(platform, platform)

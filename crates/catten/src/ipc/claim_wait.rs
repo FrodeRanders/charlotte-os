@@ -10,6 +10,7 @@ use crate::{
         deferred,
         threads::MigrationConstraint,
     },
+    klib::observer::ObserverWeak,
     memory::{
         AddressSpaceHandle,
         KERNEL_ASID,
@@ -77,7 +78,7 @@ impl Interest {
 impl Observable for Interest {
     fn try_register_waiter(
         &self,
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
         sponsor: &WaitSponsor,
     ) -> Result<WaitRegistration, RegistrationError> {
         if self.completed() {

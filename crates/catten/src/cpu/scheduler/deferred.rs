@@ -9,6 +9,12 @@ use core::sync::atomic::{
     Ordering,
 };
 
+#[cfg(any(test, feature = "kernel_tests"))]
+use crate::klib::observer::{
+    ObserverRef,
+    ObserverWeak,
+};
+
 pub(crate) mod admission;
 
 use crate::{
@@ -129,8 +135,6 @@ pub(super) fn test_dispatch(generation: super::threads::ThreadGeneration) {
 
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_first_entry(asid: crate::memory::AddressSpaceId) {
-    use alloc::sync::Arc;
-
     use crate::{
         completion,
         cpu::{
@@ -148,7 +152,6 @@ pub(crate) fn test_first_entry(asid: crate::memory::AddressSpaceId) {
         },
         klib::observer::{
             CallOnNotify,
-            Observer,
             WaitSponsor,
             waiter_source::WaiterSource,
         },
@@ -171,14 +174,14 @@ pub(crate) fn test_first_entry(asid: crate::memory::AddressSpaceId) {
             completion::observe_thread_exit_with_generation(asid, tid, Some(generation)).unwrap();
         let source = WaiterSource::new();
         let sponsor = WaitSponsor::new(false);
-        let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+        let observer: ObserverRef = CallOnNotify::for_test(move || {
             assert!(!ops::get_int_state(), "dispatch delivery restored IRQs prematurely");
             // Reentry requires dispatch guards to have left; a table lookup
             // here is diagnostic, never authority to release the stack/root.
             assert_eq!(MASTER_THREAD_TABLE.write().get(tid).unwrap().generation, generation);
             FIRST_DELIVERED.fetch_add(1, Ordering::Release);
         });
-        let token = source.register(Arc::downgrade(&observer), &sponsor).unwrap();
+        let token = source.register(ObserverRef::downgrade(&observer), &sponsor).unwrap();
         FIRST_DELIVERED.store(0, Ordering::Release);
         assert!(FIRST_BATCH.lock().replace(source.drain()).is_none());
         assert_eq!(FIRST_DISPATCH.swap(generation, Ordering::AcqRel), 0);
@@ -229,10 +232,7 @@ pub(crate) fn test_first_entry(asid: crate::memory::AddressSpaceId) {
 /// No watchdog saturation, physical cleanup or replacement wake is involved.
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_park_delivery(asid: crate::memory::AddressSpaceId) {
-    use alloc::sync::{
-        Arc,
-        Weak,
-    };
+    use alloc::sync::Arc;
     use core::sync::atomic::AtomicUsize;
 
     use crate::{
@@ -261,7 +261,6 @@ pub(crate) fn test_park_delivery(asid: crate::memory::AddressSpaceId) {
         klib::observer::{
             CallOnNotify,
             Observable,
-            Observer,
             WaitRegistration,
             WaitSponsor,
             registration::RegistrationError,
@@ -274,7 +273,7 @@ pub(crate) fn test_park_delivery(asid: crate::memory::AddressSpaceId) {
     impl Observable for CheckedReject {
         fn try_register_waiter(
             &self,
-            _: Weak<dyn Observer>,
+            _: ObserverWeak,
             _: &WaitSponsor,
         ) -> Result<WaitRegistration, RegistrationError> {
             assert_eq!(self.0.load(Ordering::Acquire), 1, "park stranded producer delivery");
@@ -296,7 +295,7 @@ pub(crate) fn test_park_delivery(asid: crate::memory::AddressSpaceId) {
                 let sponsor = WaitSponsor::new(false);
                 let hits = Arc::new(AtomicUsize::new(0));
                 let count = hits.clone();
-                let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+                let observer: ObserverRef = CallOnNotify::for_test(move || {
                     assert!(!get_int_state(), "park delivery lost the publication mask");
                     // A timer switch may drain this producer-LP batch on an
                     // incoming context while the publisher is Ready. It must
@@ -314,7 +313,7 @@ pub(crate) fn test_park_delivery(asid: crate::memory::AddressSpaceId) {
                     drop(table);
                     count.fetch_add(1, Ordering::Release);
                 });
-                let token = source.register(Arc::downgrade(&observer), &sponsor).unwrap();
+                let token = source.register(ObserverRef::downgrade(&observer), &sponsor).unwrap();
                 let peer = preempted.then(|| {
                     let thread = Thread::new(KERNEL_ASID, preemption_peer);
                     let generation = thread.generation;

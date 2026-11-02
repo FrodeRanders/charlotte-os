@@ -2,7 +2,10 @@
 //! before AP schedulers start. Raw fixture names provide no physical proof.
 
 use super::*;
-use crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR;
+use crate::{
+    klib::observer::ObserverRef,
+    memory::allocators::global_allocator::PRIMARY_ALLOCATOR,
+};
 
 const CLIENT: usize = 0x5e3a;
 
@@ -50,7 +53,9 @@ fn allocation_and_publication() {
         )
         .unwrap();
         if i % 2 != 0 {
-            preparing.timer(u64::MAX, crate::timers::PreparedEvent::new, Arc::try_new).unwrap();
+            preparing
+                .timer(u64::MAX, crate::timers::PreparedEvent::new, ObserverRef::try_new)
+                .unwrap();
         }
         let completion = preparing.0.completion.as_ref().unwrap().clone();
         weak.push(Arc::downgrade(&completion));
@@ -193,7 +198,7 @@ fn guarded_abandonment() {
         &OPERATION_IDS,
     )
     .unwrap();
-    preparing.timer(u64::MAX, crate::timers::PreparedEvent::new, Arc::try_new).unwrap();
+    preparing.timer(u64::MAX, crate::timers::PreparedEvent::new, ObserverRef::try_new).unwrap();
     let weak = Arc::downgrade(preparing.0.completion.as_ref().unwrap());
     let cap = preparing.0.reservation.as_ref().unwrap().identity();
     let authority = crate::capability::node_admission_used();

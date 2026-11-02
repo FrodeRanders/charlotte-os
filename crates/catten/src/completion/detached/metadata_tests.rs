@@ -1,7 +1,10 @@
 //! Serialized native controls for admitted detached metadata and disposal.
 
 use super::*;
-use crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR;
+use crate::{
+    klib::observer::ObserverRef,
+    memory::allocators::global_allocator::PRIMARY_ALLOCATOR,
+};
 
 const CLIENT: usize = 0x5e39;
 
@@ -47,7 +50,7 @@ fn prepare_and_retire() {
                     u64::MAX,
                     cookie,
                     &OPERATION_IDS,
-                    Arc::try_new,
+                    ObserverRef::try_new,
                 )
                 .unwrap()
             },
@@ -142,7 +145,7 @@ fn guarded_abandonment() {
     };
     struct Probe(Arc<AtomicUsize>);
     impl Observer for Probe {
-        fn notify(self: Arc<Self>) {
+        fn notify(&self) {
             panic!("abandonment fabricated readiness");
         }
     }
@@ -160,10 +163,13 @@ fn guarded_abandonment() {
     let captured = completion_of(CLIENT, cap).unwrap();
     let weak = Arc::downgrade(&captured);
     let hits = Arc::new(AtomicUsize::new(0));
-    let observer: Arc<dyn Observer> = Arc::new(Probe(hits.clone()));
+    let observer: ObserverRef = crate::klib::observer::test_observer(Probe(hits.clone()));
     let source = crate::klib::observer::registration::ObserverList::try_new(1, false).unwrap();
     let registration = source
-        .register(Arc::downgrade(&observer), watch_budget::reserve(&watches, false).unwrap())
+        .register(
+            ObserverRef::downgrade(&observer),
+            watch_budget::reserve(&watches, false).unwrap(),
+        )
         .unwrap();
     assert!(!captured.set_event_observation(observer, registration).finish());
     drop(captured);
@@ -222,13 +228,13 @@ fn guarded_abandonment() {
         u64::MAX,
         1,
         &OPERATION_IDS,
-        Arc::try_new,
+        ObserverRef::try_new,
     )
     .unwrap();
     let plain =
         Preparing::plain(Target::capture(CLIENT, DEFAULT_CQ).unwrap(), 2, &OPERATION_IDS).unwrap();
     let observer =
-        Arc::downgrade(timer.0.record.as_ref().unwrap()._timer_observer.as_ref().unwrap());
+        ObserverRef::downgrade(timer.0.record.as_ref().unwrap()._timer_observer.as_ref().unwrap());
     close_address_space(CLIENT);
     {
         let _registry = COMPLETIONS.write();
@@ -244,7 +250,7 @@ fn guarded_abandonment() {
         let records = record_admission(CLIENT).unwrap();
         let timers = COMPLETIONS.read()[&CLIENT].timer_budget.clone();
         let operation = submit_detached_timer(CLIENT, DEFAULT_CQ, u64::MAX, 1).unwrap();
-        let observer = Arc::downgrade(
+        let observer = ObserverRef::downgrade(
             COMPLETIONS.read()[&CLIENT].detached[&operation]._timer_observer.as_ref().unwrap(),
         );
         if flush {

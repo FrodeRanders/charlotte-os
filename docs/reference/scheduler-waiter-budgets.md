@@ -128,8 +128,9 @@ before invoking callbacks. Removal is bounded by the source's 64-entry ceiling;
 destruction is iterative rather than recursively consuming kernel stack.
 
 Completion/list/Waker allocations use fallible allocation in the migrated
-path. Counts bound the fixed-size entry storage, not allocator overhead, every
-weak-only Arc/control block or all associated registry metadata. Observer-list
+path. Wakers and callbacks use admitted [observer handles](observer-ownership.md)
+through final weak release. Entry counts bound their own fixed-size storage,
+independently of observer backing, allocator overhead and other registry metadata. Observer-list
 backing has separate [allocation admission](observer-list-admission.md), retained
 through empty tokens and final weak release.
 

@@ -15,9 +15,10 @@
 /// an idle LP wakes to check for admitted work (ms). The scheduler-IPI
 /// SGI is otherwise the fast wake path and this timer is the fallback
 /// so an idle LP cannot sleep past an admission whose SGI was not delivered.
+use crate::klib::observer::ObserverRef;
+
 const IDLE_WAKE_MILLIS: u64 = 50;
 
-use alloc::sync::Arc;
 use core::sync::atomic::Ordering;
 
 use super::run_queue::{
@@ -50,10 +51,7 @@ use crate::{
             },
         },
     },
-    klib::{
-        observer::Observer,
-        time::duration::ExtDuration,
-    },
+    klib::time::duration::ExtDuration,
     logln,
     memory::KERNEL_ASID,
     timers::{
@@ -85,7 +83,7 @@ pub struct RoundRobin {
     lp_id: LpId,
     quantum: ExtDuration,
     is_idle: bool,
-    timer_event_observer: Arc<super::TimerEventObserver>,
+    timer_event_observer: ObserverRef<super::TimerEventObserver>,
     run_queue: RunQueue,
     current_handle: Option<ThreadHandle>,
     /// This LP's dedicated idle thread, run only when there is no other
@@ -115,7 +113,8 @@ impl RoundRobin {
             // No thread has been dispatched and no quantum is armed yet.
             // Initial remote submission must therefore send a wakeup IPI.
             is_idle: true,
-            timer_event_observer: Arc::new(super::TimerEventObserver::new()),
+            timer_event_observer: ObserverRef::try_new(super::TimerEventObserver::new(), true)
+                .expect("mandatory per-LP observer allocation failed"),
             run_queue: RunQueue::new(),
             current_handle: None,
             idle_tid,
@@ -124,9 +123,7 @@ impl RoundRobin {
 
     fn set_next_timer_event(&self) {
         let timer_event = TimerEvent::keyed(self.quantum, TimerEventKey::SchedulerQuantum);
-        timer_event.register_observer(
-            Arc::downgrade(&self.timer_event_observer) as alloc::sync::Weak<dyn Observer>
-        );
+        timer_event.register_observer(ObserverRef::downgrade(&self.timer_event_observer).erase());
         let retired = TIMER_QUEUES.try_get_mut().unwrap().ensure_event(timer_event);
         retired.finish();
     }
@@ -187,9 +184,7 @@ impl LpScheduler for RoundRobin {
                 ExtDuration::from_millis(IDLE_WAKE_MILLIS as u128),
                 TimerEventKey::SchedulerQuantum,
             );
-            wake.register_observer(
-                Arc::downgrade(&self.timer_event_observer) as alloc::sync::Weak<dyn Observer>
-            );
+            wake.register_observer(ObserverRef::downgrade(&self.timer_event_observer).erase());
             let retired = TIMER_QUEUES.try_get_mut().unwrap().ensure_event(wake);
             retired.finish();
         }
@@ -313,7 +308,7 @@ impl LpScheduler for RoundRobin {
         tid: ThreadId,
         expected_generation: Option<ThreadGeneration>,
         expected_waker: Option<&Waker>,
-        detached_wait: &mut Option<Arc<Waker>>,
+        detached_wait: &mut Option<ObserverRef<Waker>>,
     ) -> Result<(), Error> {
         assert!(detached_wait.is_none(), "wake disposal already occupied");
         let mut tt_guard = MASTER_THREAD_TABLE.write();

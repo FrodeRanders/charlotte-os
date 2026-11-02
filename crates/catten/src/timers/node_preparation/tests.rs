@@ -14,7 +14,7 @@ use crate::{
     klib::observer::{
         CallOnNotify,
         Observable,
-        Observer,
+        ObserverRef,
         WaitSponsor,
     },
     memory::allocators::global_allocator::PRIMARY_ALLOCATOR,
@@ -32,15 +32,15 @@ fn context() {
 fn controlled_phases() {
     let sponsor = budget::SchedulerSponsor::new(false);
     let waits = WaitSponsor::new(false);
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("private timer node notified"));
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("private timer node notified"));
     let mut preparing = Vec::with_capacity(64);
     let mut completed = Vec::with_capacity(64);
     let mut handles = Vec::with_capacity(64);
     let mut tokens = Vec::with_capacity(64);
     for deadline in 0..64 {
         let (event, handle) = TimerEvent::charged_at(deadline, sponsor.reserve().unwrap()).unwrap();
-        event.register_observer(Arc::downgrade(&observer));
-        tokens.push(event.try_register_waiter(Arc::downgrade(&observer), &waits).unwrap());
+        event.register_observer(ObserverRef::downgrade(&observer));
+        tokens.push(event.try_register_waiter(ObserverRef::downgrade(&observer), &waits).unwrap());
         let mut owner = PreparingNode::new(event);
         owner.allocate(|| Box::try_new_uninit().map_err(|_| ())).unwrap();
         preparing.push(owner);
@@ -58,13 +58,13 @@ fn controlled_phases() {
         }
         assert_eq!(sponsor.used(), 64);
         assert_eq!(waits.used(), 64);
-        assert_eq!(Arc::weak_count(&observer), 128);
+        assert_eq!(ObserverRef::weak_count(&observer), 128);
     }
     for node in completed {
         node.cancel_unpublished_with(|_| context());
     }
     assert_eq!(waits.used(), 0);
-    assert_eq!(Arc::weak_count(&observer), 0);
+    assert_eq!(ObserverRef::weak_count(&observer), 0);
     for handle in handles {
         handle.release();
     }
@@ -76,8 +76,8 @@ fn controlled_phases() {
 
     // Rejection returns with the same event/source still in the preparation.
     let (event, handle) = TimerEvent::charged_at(123, sponsor.reserve().unwrap()).unwrap();
-    event.register_observer(Arc::downgrade(&observer));
-    let token = event.try_register_waiter(Arc::downgrade(&observer), &waits).unwrap();
+    event.register_observer(ObserverRef::downgrade(&observer));
+    let token = event.try_register_waiter(ObserverRef::downgrade(&observer), &waits).unwrap();
     let mut owner = PreparingNode::new(event);
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
@@ -87,7 +87,7 @@ fn controlled_phases() {
         assert!(owner.0.storage.is_none());
         assert_eq!(sponsor.used(), 1);
         assert_eq!(waits.used(), 1);
-        assert_eq!(Arc::weak_count(&observer), 2);
+        assert_eq!(ObserverRef::weak_count(&observer), 2);
     }
     owner.cancel_with(context);
     handle.release();
@@ -98,8 +98,8 @@ fn controlled_phases() {
     // The ordinary constructor disposes only after the allocator callback's
     // own guards have left. It never hands the callback an owning event.
     let (event, handle) = TimerEvent::charged_at(456, sponsor.reserve().unwrap()).unwrap();
-    event.register_observer(Arc::downgrade(&observer));
-    let token = event.try_register_waiter(Arc::downgrade(&observer), &waits).unwrap();
+    event.register_observer(ObserverRef::downgrade(&observer));
+    let token = event.try_register_waiter(ObserverRef::downgrade(&observer), &waits).unwrap();
     assert!(
         PreparedEvent::new_with(event, || {
             let _heap = PRIMARY_ALLOCATOR.lock();
@@ -130,12 +130,12 @@ fn controlled_phases() {
 fn guarded_abandonment() {
     let sponsor = budget::SchedulerSponsor::new(false);
     let waits = WaitSponsor::new(false);
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("abandoned node phase notified"));
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("abandoned node phase notified"));
     let mut tokens = Vec::with_capacity(2);
     for allocated in [false, true] {
         let (event, handle) = TimerEvent::charged_at(0, sponsor.reserve().unwrap()).unwrap();
-        event.register_observer(Arc::downgrade(&observer));
-        tokens.push(event.try_register_waiter(Arc::downgrade(&observer), &waits).unwrap());
+        event.register_observer(ObserverRef::downgrade(&observer));
+        tokens.push(event.try_register_waiter(ObserverRef::downgrade(&observer), &waits).unwrap());
         let identity = Arc::downgrade(&handle.state);
         handle.release();
         let mut owner = PreparingNode::new(event);
@@ -171,7 +171,7 @@ fn guarded_abandonment() {
     drop(tokens);
     assert_eq!(waits.used(), 0);
     assert_eq!(sponsor.used(), 2);
-    assert_eq!(Arc::weak_count(&observer), 2);
+    assert_eq!(ObserverRef::weak_count(&observer), 2);
     crate::logln!(
         "[timer node preparation retention] guarded pre-allocation and empty-backing abandonment \
          retained two original event charges, callback/source fields and one uninitialized Box; \

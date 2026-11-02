@@ -7,7 +7,7 @@ Structural/protocol bounds and original-charge/physical-completion rules remain
 separate contracts.
 
 Kernel code subscribes using `completion::observe`, which takes a strong
-`Arc<dyn Observer>` and returns a `CompletionObservation` owner. Retain the owner
+[`ObserverRef`](observer-ownership.md) and returns a `CompletionObservation` owner. Retain the owner
 until notification or cancellation. Dropping it removes only the subscription:
 the operation remains live, its producer continues, and transferred buffers
 remain owned until terminal completion. No syscall exposes Rust callback

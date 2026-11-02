@@ -4,7 +4,10 @@
 use core::alloc::AllocError;
 
 use super::*;
-use crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR;
+use crate::{
+    klib::observer::ObserverRef,
+    memory::allocators::global_allocator::PRIMARY_ALLOCATOR,
+};
 
 const CLIENT: usize = 0x5e35;
 
@@ -27,7 +30,7 @@ fn unlocked_preparation() {
                     crate::timers::PreparedEvent::new(event)
                 }
             },
-            |observer| {
+            |observer, platform| {
                 {
                     let registry = COMPLETIONS.write();
                     assert!(registry[&CLIENT].detached.first_key_value().is_none());
@@ -35,7 +38,7 @@ fn unlocked_preparation() {
                 if mode == 1 {
                     Err(AllocError)
                 } else {
-                    Arc::try_new(observer)
+                    ObserverRef::try_new(observer, platform)
                 }
             },
         );
@@ -54,15 +57,20 @@ fn unlocked_preparation() {
         assert_eq!(cq_pending(CLIENT, DEFAULT_CQ), 0);
     }
     // The actual public adapter uses the same unlocked observer constructor.
-    let operation =
-        submit_detached_timer_with_observer(CLIENT, DEFAULT_CQ, u64::MAX, 2, |observer| {
+    let operation = submit_detached_timer_with_observer(
+        CLIENT,
+        DEFAULT_CQ,
+        u64::MAX,
+        2,
+        |observer, platform| {
             {
                 let registry = COMPLETIONS.write();
                 assert!(registry[&CLIENT].detached.first_key_value().is_none());
             }
-            Arc::try_new(observer)
-        })
-        .unwrap();
+            ObserverRef::try_new(observer, platform)
+        },
+    )
+    .unwrap();
     assert_eq!(cancel_detached(CLIENT, operation), Ok(CancelState::CancelRequested));
     assert_eq!(records.used(), 0);
     assert_eq!(timer_events_used(CLIENT), 0);
@@ -87,7 +95,7 @@ fn prepared_admission() {
         u64::MAX,
         4,
         &OPERATION_IDS,
-        Arc::try_new,
+        ObserverRef::try_new,
     )
     .unwrap();
     let plain =
@@ -121,7 +129,7 @@ fn rejected_publication() {
             u64::MAX,
             7,
             &OPERATION_IDS,
-            Arc::try_new,
+            ObserverRef::try_new,
         )
         .unwrap();
         let mut plain =
@@ -182,7 +190,7 @@ fn close_before_enqueue() {
         0,
         9,
         &OPERATION_IDS,
-        Arc::try_new,
+        ObserverRef::try_new,
     )
     .unwrap();
     let operation = preparing.publish().unwrap();

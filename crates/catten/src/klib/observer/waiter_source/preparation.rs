@@ -3,7 +3,10 @@
 use core::mem::ManuallyDrop;
 
 use super::*;
-use crate::klib::observer::PreparedWaitRegistration;
+use crate::klib::observer::{
+    ObserverWeak,
+    PreparedWaitRegistration,
+};
 
 type List = ListRef<waiter_budget::Charge>;
 
@@ -12,14 +15,14 @@ pub(super) struct Preparing(ManuallyDrop<Resources>);
 
 struct Resources {
     sponsor: Option<WaitSponsor>,
-    observer: Option<Weak<dyn Observer>>,
+    observer: Option<ObserverWeak>,
     candidate: Option<List>,
     selected: Option<List>,
     entry: Option<PreparedWaitRegistration>,
 }
 
 impl Preparing {
-    pub(super) fn capture(sponsor: &WaitSponsor, observer: Weak<dyn Observer>) -> Self {
+    pub(super) fn capture(sponsor: &WaitSponsor, observer: ObserverWeak) -> Self {
         Self(ManuallyDrop::new(Resources {
             sponsor: Some(sponsor.clone()),
             observer: Some(observer),

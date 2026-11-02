@@ -69,5 +69,6 @@ identity exhaustion and allocation rejection restore unused backing.
 This does not force native heap exhaustion, qualify sustained concurrent EL0
 fairness, bound allocator overhead or aggregate principal consumption, or change
 containing caller/IRQ/implicit-destructor requirements. Other payload/registry
-nodes, waker/callback storage and general heap admission remain open. SEC-07
+nodes and general heap admission remain open. Wakers/callbacks have admitted
+[observer handles](observer-ownership.md). SEC-07
 remains partial; existing cleanup owner families and G1/G4 apply.

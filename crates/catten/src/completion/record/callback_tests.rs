@@ -17,7 +17,7 @@ use super::{
 };
 use crate::klib::observer::{
     CallOnNotify,
-    Observer,
+    ObserverRef,
 };
 
 const CLIENT: usize = 0x5e00;
@@ -54,7 +54,7 @@ pub(crate) fn test_admission() {
     let cap = super::submit(CLIENT, OpCode::Read, Some(alloc::vec![1, 2, 3])).unwrap();
     let calls = Arc::new(AtomicUsize::new(0));
     let counter = calls.clone();
-    let callback: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let callback: ObserverRef = CallOnNotify::for_test(move || {
         counter.fetch_add(1, Ordering::SeqCst);
     });
     let mut observations = Vec::new();
@@ -98,7 +98,7 @@ pub(crate) fn test_admission() {
     // Notification frees entries before reentrant callbacks; terminal/observed
     // late registrations notify immediately and cannot miss a drained source.
     let counter = calls.clone();
-    let reentrant: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let reentrant: ObserverRef = CallOnNotify::for_test(move || {
         assert_eq!(callback_count(CLIENT, cap), 0);
         let other = super::submit(CLIENT, OpCode::Nop, None).unwrap();
         super::complete(CLIENT, other, OpResult::Ok(1)).unwrap();
@@ -234,7 +234,7 @@ pub(crate) fn test_scheduled_cleanup() {
     for expected in 1..=32 {
         let cap = super::submit_worker(client, immediate_worker, OpResult::Ok(0)).unwrap();
         let counter = calls.clone();
-        let callback: Arc<dyn Observer> = CallOnNotify::new(move || {
+        let callback: ObserverRef = CallOnNotify::for_test(move || {
             counter.fetch_add(1, Ordering::SeqCst);
         });
         let owner = super::observe(client, cap, callback).unwrap();

@@ -11,6 +11,10 @@ its charged owner or list backing. These slots cover empty list/control-block
 storage retained by sources, registration tokens and weak references. Scheduler
 waiter and event-watch entry charges account for a different lifetime.
 
+Targets use admitted [`ObserverRef`/`ObserverWeak`](observer-ownership.md) handles.
+Their allocation charge survives payload destruction through final weak release;
+list/entry admission and observer backing remain independent.
+
 IPC claim, memory-close and DMA-readiness sources also retain separately admitted
 [disposal nodes](deferred-source-admission.md) from before list construction
 through producer-LP queued delivery and actual node deallocation. Freeing that
@@ -189,7 +193,8 @@ retry and restores the exact baseline after normal subsystem/root cleanup.
 These fixtures do not allocate the maximum list footprint, force physical OOM,
 prove exhaustive cross-LP races or establish whole-node containment. Existing
 watch, waiter, timer, IPC, generation-reuse and scoped EL0 tests remain enabled.
-Per-domain/principal list attribution, arbitrary callback captures, registry
-nodes, sponsor backing and other weak-only allocations remain separate work.
+Per-domain/principal aggregates, nested callback captures and other registry/
+weak-control storage remain separate work. Generation-owned sponsor accounts
+have independent backing admission under their own contracts.
 SEC-07 remains partial. Evidence:
 [observer-list audit](../reports/audits/2026-10-07-security-observer-lists.md).

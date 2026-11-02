@@ -37,7 +37,7 @@ use crate::{
     klib::{
         observer::{
             CallOnNotify,
-            Observer,
+            ObserverRef,
             waiter_source::WaiterSource,
         },
         time::duration::ExtDuration,
@@ -297,12 +297,12 @@ pub(crate) fn test_scheduled_cleanup() {
     // charge, then owner-side reconciliation removes the flagged node.
     let hits = Arc::new(AtomicUsize::new(0));
     let count = hits.clone();
-    let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let observer: ObserverRef = CallOnNotify::for_test(move || {
         count.fetch_add(1, Ordering::Relaxed);
     });
     let (prepared, handle) =
         super::prepare_watchdog(ExtDuration::from_millis(60_000), &sponsor).unwrap();
-    prepared.event().register_observer(Arc::downgrade(&observer));
+    prepared.event().register_observer(ObserverRef::downgrade(&observer));
     prepared.enqueue();
     {
         let _mask = LocalInterruptMask::new();

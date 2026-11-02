@@ -1,16 +1,20 @@
 //! Observer pattern implementation for event notification
 
 pub(crate) mod account_budget;
+pub(crate) mod backing;
+mod owned;
+#[cfg(any(test, feature = "kernel_tests"))]
+pub(crate) use owned::test_observer;
+pub use owned::{
+    Observer,
+    ObserverRef,
+    ObserverWeak,
+};
 pub(crate) mod list_budget;
 mod prepared_wait;
 pub(crate) mod registration;
 pub(crate) mod waiter_budget;
 pub(crate) mod waiter_source;
-
-use alloc::sync::{
-    Arc,
-    Weak,
-};
 
 pub(crate) use prepared_wait::PreparedWaitRegistration;
 
@@ -22,7 +26,7 @@ pub trait Observable {
     /// weak-only fallback that can orphan parked threads or retain stale wakes.
     fn try_register_waiter(
         &self,
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
         sponsor: &WaitSponsor,
     ) -> Result<WaitRegistration, registration::RegistrationError>;
 }
@@ -30,6 +34,10 @@ pub trait Observable {
 #[derive(Debug, Clone)]
 pub struct WaitSponsor(waiter_budget::AccountRef);
 impl WaitSponsor {
+    pub(crate) fn observer_platform(&self) -> bool {
+        self.0.observer_platform()
+    }
+
     /// Mandatory trusted fixture construction; runtime root preparation is fallible.
     #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn new(platform: bool) -> Self {
@@ -71,7 +79,7 @@ impl WaitSponsor {
     pub(crate) fn register(
         &self,
         list: &registration::ListRef<waiter_budget::Charge>,
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
     ) -> Result<WaitRegistration, registration::RegistrationError> {
         let mut prepared = self.prepare(list, observer)?;
         let result = prepared.publish();
@@ -84,7 +92,7 @@ impl WaitSponsor {
     pub(crate) fn prepare(
         &self,
         list: &registration::ListRef<waiter_budget::Charge>,
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
     ) -> Result<PreparedWaitRegistration, registration::RegistrationError> {
         PreparedWaitRegistration::new(self, list, observer)
     }
@@ -116,13 +124,6 @@ impl WaitRegistration {
     }
 }
 
-/// An `Observer` is an object that can be notified of events by an `Observable`.
-/// Observers must be `Sync` because they may be notified from multiple threads concurrently.
-pub trait Observer: Send + Sync {
-    /// Called by an Observable when it wants to notify this Observer of an event.
-    fn notify(self: Arc<Self>);
-}
-
 /// A generic `Observer` that calls a function object when it is notified.
 /// This can be used to create observers that execute arbitrary code when notified without needing
 /// to create a new struct for each one.
@@ -136,16 +137,31 @@ pub struct CallOnNotify<F: Fn() + Send + Sync> {
 }
 
 impl<F: Fn() + Send + Sync> CallOnNotify<F> {
-    pub fn new(callback: F) -> Arc<Self> {
-        Arc::new(CallOnNotify {
-            callback,
-        })
+    pub fn try_new(callback: F, platform: bool) -> Result<ObserverRef, core::alloc::AllocError>
+    where
+        F: 'static,
+    {
+        ObserverRef::try_new(
+            Self {
+                callback,
+            },
+            platform,
+        )
+        .map(ObserverRef::erase)
+    }
+
+    #[cfg(any(test, feature = "kernel_tests"))]
+    pub fn for_test(callback: F) -> ObserverRef
+    where
+        F: 'static,
+    {
+        Self::try_new(callback, false).expect("mandatory fixture observer allocation failed")
     }
 }
 
 impl<F: Fn() + Send + Sync> Observer for CallOnNotify<F> {
     #[inline(always)]
-    fn notify(self: Arc<Self>) {
+    fn notify(&self) {
         (self.callback)();
     }
 }

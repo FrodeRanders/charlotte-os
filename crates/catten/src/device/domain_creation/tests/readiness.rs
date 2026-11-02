@@ -18,7 +18,7 @@ use crate::{
     klib::observer::{
         CallOnNotify,
         Observable,
-        Observer,
+        ObserverRef,
         WaitSponsor,
         registration::RegistrationError,
         waiter_budget,
@@ -89,7 +89,7 @@ pub(super) fn serialized() {
         };
         let hits = Arc::new(AtomicUsize::new(0));
         let count = hits.clone();
-        let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+        let observer: ObserverRef = CallOnNotify::for_test(move || {
             assert!(DEVICES.try_lock().is_some());
             assert!(memory::ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());
             assert!(MASTER_THREAD_TABLE.try_write().is_some());
@@ -114,20 +114,22 @@ pub(super) fn serialized() {
                     for _ in 0..waiter_budget::SOURCE_LIMIT {
                         tokens.push(
                             interest
-                                .try_register_waiter(Arc::downgrade(&observer), &sponsor)
+                                .try_register_waiter(ObserverRef::downgrade(&observer), &sponsor)
                                 .unwrap(),
                         );
                     }
                     assert_eq!(
                         interest
-                            .try_register_waiter(Arc::downgrade(&observer), &sponsor)
+                            .try_register_waiter(ObserverRef::downgrade(&observer), &sponsor)
                             .unwrap_err(),
                         RegistrationError::ResourceLimit
                     );
                     return Err(Error::WaitRegistrationFailed);
                 }
                 tokens.push(
-                    interest.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap(),
+                    interest
+                        .try_register_waiter(ObserverRef::downgrade(&observer), &sponsor)
+                        .unwrap(),
                 );
                 {
                     let mut state = slot.lock();
@@ -146,7 +148,7 @@ pub(super) fn serialized() {
                     assert_eq!(hits.load(Ordering::Relaxed), waits - 1);
                     assert!(
                         interest
-                            .try_register_waiter(Arc::downgrade(&observer), &sponsor)
+                            .try_register_waiter(ObserverRef::downgrade(&observer), &sponsor)
                             .unwrap()
                             .is_ready()
                     );
@@ -225,7 +227,7 @@ fn cancel_serial(creation: &mut DmaCreation) -> Result<(), Error> {
     use crate::cpu::scheduler::deferred;
     assert_eq!(creation.id, Some(DOMAIN));
     let root = ROOT.lock().unwrap();
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| {
+    let observer: ObserverRef = CallOnNotify::for_test(|| {
         super::available(|| SLOT.try_lock().is_some(), "cancellation fixture slot");
         super::available(|| DEVICES.try_lock().is_some(), "cancellation device registry");
         super::available(
@@ -253,8 +255,9 @@ fn cancel_serial(creation: &mut DmaCreation) -> Result<(), Error> {
                 Err(memory::AddressSpaceCloseError::OperationsInFlight)
             );
             assert_eq!(crate::capability::admission_tests::test_namespace_used(root.id()), 1);
-            token =
-                Some(interest.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap());
+            token = Some(
+                interest.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap(),
+            );
             let mut state = SLOT.lock();
             state.installed().unwrap().engine = true;
             state.installed().unwrap().cells = false;

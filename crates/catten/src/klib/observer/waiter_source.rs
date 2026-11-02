@@ -3,13 +3,10 @@
 //! uncontended locks allocate nothing. Tokens enter only the independent list
 //! lock on cancellation.
 
-use alloc::sync::Weak;
-
 use preparation::Preparing;
 
 use super::{
     Observable,
-    Observer,
     WaitRegistration,
     WaitSponsor,
     registration::{
@@ -20,7 +17,10 @@ use super::{
     },
     waiter_budget,
 };
-use crate::cpu::multiprocessor::spin::mutex::Mutex;
+use crate::{
+    cpu::multiprocessor::spin::mutex::Mutex,
+    klib::observer::ObserverWeak,
+};
 
 #[derive(Debug)]
 pub(crate) struct WaiterSource {
@@ -36,7 +36,7 @@ impl WaiterSource {
 
     pub(crate) fn register(
         &self,
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
         sponsor: &WaitSponsor,
     ) -> Result<WaitRegistration, RegistrationError> {
         self.register_with(observer, sponsor, |platform| {
@@ -46,7 +46,7 @@ impl WaiterSource {
 
     fn register_with(
         &self,
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
         sponsor: &WaitSponsor,
         allocate: impl FnOnce(bool) -> Result<ListRef<waiter_budget::Charge>, RegistrationError>,
     ) -> Result<WaitRegistration, RegistrationError> {
@@ -95,7 +95,7 @@ impl Default for WaiterSource {
 impl Observable for WaiterSource {
     fn try_register_waiter(
         &self,
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
         sponsor: &WaitSponsor,
     ) -> Result<WaitRegistration, RegistrationError> {
         self.register(observer, sponsor)

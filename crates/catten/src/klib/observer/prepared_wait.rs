@@ -9,6 +9,7 @@ use registration::{
 };
 
 use super::*;
+use crate::klib::observer::ObserverWeak;
 
 type Source = ListRef<waiter_budget::Charge>;
 
@@ -20,13 +21,13 @@ pub(crate) struct PreparedWaitRegistration(ManuallyDrop<Resources>);
 struct Resources {
     source: Option<Source>,
     sponsor: Option<WaitSponsor>,
-    observer: Option<Weak<dyn Observer>>,
+    observer: Option<ObserverWeak>,
     charge: Option<waiter_budget::Charge>,
     entry: Option<PreparedRegistration<waiter_budget::Charge>>,
 }
 
 impl PreparedWaitRegistration {
-    fn capture(sponsor: &WaitSponsor, source: &Source, observer: Weak<dyn Observer>) -> Self {
+    fn capture(sponsor: &WaitSponsor, source: &Source, observer: ObserverWeak) -> Self {
         Self(ManuallyDrop::new(Resources {
             source: Some(source.clone()),
             sponsor: Some(sponsor.clone()),
@@ -39,7 +40,7 @@ impl PreparedWaitRegistration {
     pub(super) fn new(
         sponsor: &WaitSponsor,
         source: &Source,
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
     ) -> Result<Self, RegistrationError> {
         Self::new_with(sponsor, source, observer, Self::entry)
     }
@@ -47,7 +48,7 @@ impl PreparedWaitRegistration {
     fn new_with(
         sponsor: &WaitSponsor,
         source: &Source,
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
         prepare_entry: impl FnOnce(&mut Self) -> Result<(), RegistrationError>,
     ) -> Result<Self, RegistrationError> {
         let mut prepared = Self::capture(sponsor, source, observer);

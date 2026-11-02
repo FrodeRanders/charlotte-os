@@ -67,6 +67,10 @@ pub(super) const POLICY: Policy = Policy {
         total: [8192],
         ordinary: [6144],
     },
+    observer_backing: Pool {
+        total: [16 * 1024 * 1024, 65_536],
+        ordinary: [12 * 1024 * 1024, 49_152],
+    },
     mailbox_records: Scoped {
         domain: [512],
         pool: Pool {

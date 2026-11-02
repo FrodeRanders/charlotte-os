@@ -9,7 +9,6 @@
 //! and this installed waker's identity, rejecting slot reuse and hints from
 //! an earlier park. Early notifications are retained before publication.
 
-use alloc::sync::Arc;
 use core::sync::atomic::{
     AtomicBool,
     AtomicU64,
@@ -75,7 +74,7 @@ impl Waker {
 }
 
 impl crate::klib::observer::Observer for Waker {
-    fn notify(self: Arc<Self>) {
+    fn notify(&self) {
         // Registration precedes Blocked publication. Remember an early hint,
         // even when the thread does not yet contain this particular waker.
         // Publication checks this flag under the same table serialization as
@@ -87,7 +86,7 @@ impl crate::klib::observer::Observer for Waker {
         // A notification may race thread exit and table-slot reuse. Treat a
         // generation mismatch as a stale wake, never as authority to wake the
         // new occupant of the same numeric id.
-        if SYSTEM_SCHEDULER.read().submit_woken_wait(self.0, self.1, &self).is_ok() {
+        if SYSTEM_SCHEDULER.read().submit_woken_wait(self.0, self.1, self).is_ok() {
             WAKER_DIAGNOSTICS[1].fetch_add(1, Ordering::Relaxed);
         } else {
             WAKER_DIAGNOSTICS[2].fetch_add(1, Ordering::Relaxed);

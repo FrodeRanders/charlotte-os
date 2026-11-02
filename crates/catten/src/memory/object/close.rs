@@ -2,7 +2,6 @@
 //! DMA/copy and mapping pins still reject; this is not a cleanup-completion
 //! subscription or authority to retry uncertain physical work.
 
-use alloc::sync::Weak;
 use core::mem::ManuallyDrop;
 
 use super::*;
@@ -10,7 +9,7 @@ use crate::{
     cpu::scheduler::deferred,
     klib::observer::{
         Observable,
-        Observer,
+        ObserverWeak,
         WaitRegistration,
         WaitSponsor,
         registration::{
@@ -73,7 +72,7 @@ impl Interest {
 impl Observable for Interest {
     fn try_register_waiter(
         &self,
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
         sponsor: &WaitSponsor,
     ) -> Result<WaitRegistration, RegistrationError> {
         if self.completed() {

@@ -10,6 +10,7 @@ use super::*;
 use crate::{
     klib::observer::{
         CallOnNotify,
+        ObserverRef,
         WaitSponsor,
     },
     memory::allocators::global_allocator::PRIMARY_ALLOCATOR,
@@ -17,9 +18,10 @@ use crate::{
 
 const CLIENT: usize = 0x5e31;
 
-fn prepare(asid: usize, cap: CompletionCap, observer: &Arc<dyn Observer>) -> Preparing {
+fn prepare(asid: usize, cap: CompletionCap, observer: &ObserverRef) -> Preparing {
     let captured = completion_of(asid, cap).unwrap();
-    Preparing::new(Captured::new(asid, cap, &captured).unwrap(), Arc::downgrade(observer)).unwrap()
+    Preparing::new(Captured::new(asid, cap, &captured).unwrap(), ObserverRef::downgrade(observer))
+        .unwrap()
 }
 
 fn publication() {
@@ -30,7 +32,7 @@ fn publication() {
     let calls = Arc::new(AtomicUsize::new(0));
     let counter = calls.clone();
     let weak = Arc::downgrade(&captured);
-    let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let observer: ObserverRef = CallOnNotify::for_test(move || {
         let _registry = COMPLETIONS.write();
         if let Some(completion) = weak.upgrade() {
             let _inner = completion.inner.lock();
@@ -41,7 +43,7 @@ fn publication() {
     // can reenter both guards. Charge rollback happens after this closure.
     let rejected = Preparing::new_with(
         Captured::new(CLIENT, cap, &captured).unwrap(),
-        Arc::downgrade(&observer),
+        ObserverRef::downgrade(&observer),
         |_| {
             let _registry = COMPLETIONS.write();
             let _inner = captured.inner.lock();
@@ -54,7 +56,7 @@ fn publication() {
     assert!(captured.inner.lock().callbacks.is_none());
     let mut first = Preparing::new_with(
         Captured::new(CLIENT, cap, &captured).unwrap(),
-        Arc::downgrade(&observer),
+        ObserverRef::downgrade(&observer),
         |platform| {
             {
                 let _registry = COMPLETIONS.write();
@@ -163,7 +165,7 @@ struct DisposalProbe {
 }
 
 impl Observer for DisposalProbe {
-    fn notify(self: Arc<Self>) {
+    fn notify(&self) {
         panic!("namespace discard fabricated a completion");
     }
 }
@@ -187,14 +189,17 @@ fn namespace_disposal() {
         let account = watch_admission(CLIENT).unwrap();
         let records = record_admission(CLIENT).unwrap();
         let hits = Arc::new(AtomicUsize::new(0));
-        let observer: Arc<dyn Observer> = Arc::new(DisposalProbe {
+        let observer: ObserverRef = crate::klib::observer::test_observer(DisposalProbe {
             completion: Arc::downgrade(&captured),
             hits: hits.clone(),
             expect_namespace: mode != 0,
         });
         let source = ObserverList::try_new(1, false).unwrap();
         let registration = source
-            .register(Arc::downgrade(&observer), watch_budget::reserve(&account, false).unwrap())
+            .register(
+                ObserverRef::downgrade(&observer),
+                watch_budget::reserve(&account, false).unwrap(),
+            )
             .unwrap();
         assert!(!captured.set_event_observation(observer, registration).finish());
         match mode {
@@ -223,10 +228,10 @@ fn cq_detachment() {
     let second = delivery::Prepared::heap_for_namespace(CLIENT, &entries, 8);
     entries.cqs.insert(first.0, 0, first.1);
     let sponsor = WaitSponsor::new(false);
-    let observer: Arc<dyn Observer> =
-        CallOnNotify::new(|| panic!("replaced CQ fabricated readiness"));
+    let observer: ObserverRef =
+        CallOnNotify::for_test(|| panic!("replaced CQ fabricated readiness"));
     let list = entries.cqs[&0].waiter_source().clone();
-    let token = sponsor.register(&list, Arc::downgrade(&observer)).unwrap();
+    let token = sponsor.register(&list, ObserverRef::downgrade(&observer)).unwrap();
     let previous;
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
@@ -246,7 +251,8 @@ fn cq_detachment() {
     // A normal public CQ replacement cancels an old source too.
     open_address_space_with_cq(CLIENT, 4, 8).unwrap();
     let interest = capture_cq_interest(CLIENT, 0).unwrap();
-    let token = sponsor.register(interest.waiter_source(), Arc::downgrade(&observer)).unwrap();
+    let token =
+        sponsor.register(interest.waiter_source(), ObserverRef::downgrade(&observer)).unwrap();
     open_cq(CLIENT, 0, 8).unwrap();
     assert_eq!(sponsor.used(), 0);
     assert_eq!(cq_waiter_count(CLIENT, 0), 0);

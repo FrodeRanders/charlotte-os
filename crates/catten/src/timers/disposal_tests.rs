@@ -6,7 +6,10 @@ use alloc::vec::Vec;
 use super::*;
 use crate::{
     cpu::multiprocessor::interrupt_tracking::LocalInterruptMask,
-    klib::observer::CallOnNotify,
+    klib::observer::{
+        CallOnNotify,
+        ObserverRef,
+    },
     memory::allocators::global_allocator::PRIMARY_ALLOCATOR,
 };
 
@@ -28,14 +31,16 @@ fn check_disposal(_: &TimerEvent) {
 fn exact_removals() {
     let sponsor = budget::SchedulerSponsor::new(false);
     let waits = WaitSponsor::new(false);
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("cancelled timer notified"));
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("cancelled timer notified"));
     let mut handles = Vec::with_capacity(64);
     let mut tokens = Vec::with_capacity(64);
     let mut retired = Vec::with_capacity(64);
     for _ in 0..64 {
         let (next, handle) = prepared(&sponsor, Timestamp::MAX);
-        next.event().register_observer(Arc::downgrade(&observer));
-        tokens.push(next.event().try_register_waiter(Arc::downgrade(&observer), &waits).unwrap());
+        next.event().register_observer(ObserverRef::downgrade(&observer));
+        tokens.push(
+            next.event().try_register_waiter(ObserverRef::downgrade(&observer), &waits).unwrap(),
+        );
         next.enqueue();
         handles.push(handle);
     }
@@ -75,12 +80,13 @@ fn exact_removals() {
 fn purge_and_rejected_enqueue() {
     let sponsor = budget::SchedulerSponsor::new(false);
     let waits = WaitSponsor::new(false);
-    let observer: Arc<dyn Observer> =
-        CallOnNotify::new(|| panic!("purged/rejected timer notified"));
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("purged/rejected timer notified"));
     let (first, a) = prepared(&sponsor, Timestamp::MAX);
     let (second, b) = prepared(&sponsor, Timestamp::MAX);
-    let a_token = first.event().try_register_waiter(Arc::downgrade(&observer), &waits).unwrap();
-    let b_token = second.event().try_register_waiter(Arc::downgrade(&observer), &waits).unwrap();
+    let a_token =
+        first.event().try_register_waiter(ObserverRef::downgrade(&observer), &waits).unwrap();
+    let b_token =
+        second.event().try_register_waiter(ObserverRef::downgrade(&observer), &waits).unwrap();
     first.enqueue();
     let (a_cancelled, b_cancelled);
     {
@@ -112,19 +118,19 @@ fn expiry_and_keyed_events() {
     let sponsor = budget::SchedulerSponsor::new(false);
     let hits = Arc::new(core::sync::atomic::AtomicUsize::new(0));
     let count = hits.clone();
-    let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let observer: ObserverRef = CallOnNotify::for_test(move || {
         count.fetch_add(1, Ordering::Relaxed);
     });
     let mut private = TimerQueue::default();
     let (due, a) = prepared(&sponsor, 0);
     let (future, b) = prepared(&sponsor, Timestamp::MAX);
-    due.event().register_observer(Arc::downgrade(&observer));
+    due.event().register_observer(ObserverRef::downgrade(&observer));
     private.add_prepared(due.into_node()).finish();
     private.add_prepared(future.into_node()).finish();
     let mut quantum =
         TimerEvent::keyed(ExtDuration::from_millis(1), TimerEventKey::SchedulerQuantum);
     quantum.deadline = 0;
-    quantum.register_observer(Arc::downgrade(&observer));
+    quantum.register_observer(ObserverRef::downgrade(&observer));
     private.ensure_event(quantum).finish();
     let duplicate = TimerEvent::keyed(ExtDuration::from_millis(1), TimerEventKey::SchedulerQuantum);
     let rejected;
@@ -177,10 +183,11 @@ fn expiry_and_keyed_events() {
 fn guarded_abandonment() {
     let sponsor = budget::SchedulerSponsor::new(false);
     let waits = WaitSponsor::new(false);
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("abandoned timer notified"));
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("abandoned timer notified"));
     let (next, handle) = prepared(&sponsor, Timestamp::MAX);
     let weak = Arc::downgrade(&handle.state);
-    let token = next.event().try_register_waiter(Arc::downgrade(&observer), &waits).unwrap();
+    let token =
+        next.event().try_register_waiter(ObserverRef::downgrade(&observer), &waits).unwrap();
     next.enqueue();
     let retired;
     {

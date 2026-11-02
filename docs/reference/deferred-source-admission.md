@@ -74,6 +74,6 @@ Pressure is serialized kernel-fixture work, not sustained hostile concurrent
 EL0 load. Native heap exhaustion is not forced; allocator failures are injected.
 Source/list/token destructors beneath arbitrary outer guards, worst-case IRQ
 latency, aggregate principal/general-heap budgets and essential-service fairness
-remain separate qualification work. Waker/callback representation and other
-payload/registry storage still need admission. SEC-07 remains partial; existing
+remain separate qualification work. Wakers/callbacks have admitted [observer handles](observer-ownership.md). Other
+payload/registry storage still needs admission. SEC-07 remains partial; existing
 cleanup G1/G4 boundaries apply.

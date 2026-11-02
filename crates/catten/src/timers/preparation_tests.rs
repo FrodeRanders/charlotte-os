@@ -6,7 +6,10 @@ use alloc::vec::Vec;
 use super::*;
 use crate::{
     cpu::multiprocessor::interrupt_tracking::LocalInterruptMask,
-    klib::observer::CallOnNotify,
+    klib::observer::{
+        CallOnNotify,
+        ObserverRef,
+    },
     memory::allocators::global_allocator::PRIMARY_ALLOCATOR,
 };
 
@@ -18,15 +21,17 @@ fn disposal_context(_: &TimerEvent) {
 fn unused_nodes() {
     let sponsor = budget::SchedulerSponsor::new(false);
     let waits = WaitSponsor::new(false);
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("unused preparation notified"));
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("unused preparation notified"));
     let irq = crate::cpu::isa::lp::ops::get_int_state();
     let mut nodes = Vec::with_capacity(64);
     let mut handles = Vec::with_capacity(64);
     let mut tokens = Vec::with_capacity(64);
     for _ in 0..64 {
         let (node, handle) = prepare_watchdog(ExtDuration::from_millis(60_000), &sponsor).unwrap();
-        node.event().register_observer(Arc::downgrade(&observer));
-        tokens.push(node.event().try_register_waiter(Arc::downgrade(&observer), &waits).unwrap());
+        node.event().register_observer(ObserverRef::downgrade(&observer));
+        tokens.push(
+            node.event().try_register_waiter(ObserverRef::downgrade(&observer), &waits).unwrap(),
+        );
         nodes.push(node);
         handles.push(handle);
     }
@@ -41,7 +46,7 @@ fn unused_nodes() {
     }
     assert_eq!(waits.used(), 0);
     assert_eq!(sponsor.used(), 63);
-    assert_eq!(Arc::weak_count(&observer), 0);
+    assert_eq!(ObserverRef::weak_count(&observer), 0);
     drop(tokens);
     for handle in handles {
         handle.release();
@@ -72,11 +77,11 @@ fn unused_nodes() {
 fn guarded_abandonment() {
     let sponsor = budget::SchedulerSponsor::new(false);
     let waits = WaitSponsor::new(false);
-    let observer: Arc<dyn Observer> =
-        CallOnNotify::new(|| panic!("abandoned preparation notified"));
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("abandoned preparation notified"));
     let (node, handle) = prepare_watchdog(ExtDuration::from_millis(60_000), &sponsor).unwrap();
-    node.event().register_observer(Arc::downgrade(&observer));
-    let token = node.event().try_register_waiter(Arc::downgrade(&observer), &waits).unwrap();
+    node.event().register_observer(ObserverRef::downgrade(&observer));
+    let token =
+        node.event().try_register_waiter(ObserverRef::downgrade(&observer), &waits).unwrap();
     let identity = Arc::downgrade(&handle.state);
     handle.release();
     let mask = LocalInterruptMask::new();
@@ -87,12 +92,12 @@ fn guarded_abandonment() {
         assert_eq!(sponsor.used(), 1);
         assert_eq!(waits.used(), 1);
         assert_eq!(identity.strong_count(), 1);
-        assert_eq!(Arc::weak_count(&observer), 2);
+        assert_eq!(ObserverRef::weak_count(&observer), 2);
     }
     drop(mask);
     drop(token);
     assert_eq!(waits.used(), 0);
-    assert_eq!(Arc::weak_count(&observer), 1);
+    assert_eq!(ObserverRef::weak_count(&observer), 1);
     assert_eq!(identity.strong_count(), 1);
     drop(identity);
     assert_eq!(sponsor.used(), 1);

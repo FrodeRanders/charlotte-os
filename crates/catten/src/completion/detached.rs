@@ -7,6 +7,7 @@
 use core::mem::ManuallyDrop;
 
 use super::*;
+use crate::klib::observer::ObserverRef;
 
 /// A capability-free operation (architecture doc §8.4): tracked only by its
 /// [`OperationId`], delivered exclusively through the CQ ring, and reclaimed
@@ -21,7 +22,7 @@ pub(super) struct DetachedOp {
     /// record, so the terminal states of [`OpStateKind`] have no analogue here.
     cancel_pending: bool,
     /// Keeps a timer observer alive until it fires and removes this operation.
-    _timer_observer: Option<Arc<DetachedTimerObserver>>,
+    _timer_observer: Option<ObserverRef<DetachedTimerObserver>>,
     timer_cancel: Option<TimerCancellation>,
     // Remains here through direct-ring delivery and post-registry disposal;
     // only a retained backlog entry consumes it before the record leaves.
@@ -34,7 +35,7 @@ pub(super) struct DetachedTimerObserver {
 }
 
 impl Observer for DetachedTimerObserver {
-    fn notify(self: Arc<Self>) {
+    fn notify(&self) {
         let _ = complete_detached(self.asid, self.operation, OpResult::Ok(0));
     }
 }
@@ -65,7 +66,7 @@ pub fn submit_detached_timer(
     timeout_ms: u64,
     user_data: u64,
 ) -> Result<OperationId, SubmitError> {
-    submit_detached_timer_with_observer(asid, cq, timeout_ms, user_data, Arc::try_new)
+    submit_detached_timer_with_observer(asid, cq, timeout_ms, user_data, ObserverRef::try_new)
 }
 
 pub(super) fn submit_detached_timer_with_observer(
@@ -75,7 +76,8 @@ pub(super) fn submit_detached_timer_with_observer(
     user_data: u64,
     allocate: impl FnOnce(
         DetachedTimerObserver,
-    ) -> Result<Arc<DetachedTimerObserver>, core::alloc::AllocError>,
+        bool,
+    ) -> Result<ObserverRef<DetachedTimerObserver>, core::alloc::AllocError>,
 ) -> Result<OperationId, SubmitError> {
     submit_timer_with_ids(asid, cq, timeout_ms, user_data, &OPERATION_IDS, allocate)
 }
@@ -107,7 +109,7 @@ struct DetachedRetirement {
     asid: AddressSpaceId,
     record: Option<RetiredEntry<(OperationId, DetachedOp)>>,
     cq: CqId,
-    observer: Option<Arc<DetachedTimerObserver>>,
+    observer: Option<ObserverRef<DetachedTimerObserver>>,
     cancel: Option<TimerCancellation>,
     releases: budget::Releases,
     source: Option<
@@ -375,7 +377,9 @@ impl Preparing {
         ids: &operation_ids::OperationIds,
         allocate: impl FnOnce(
             DetachedTimerObserver,
-        ) -> Result<Arc<DetachedTimerObserver>, core::alloc::AllocError>,
+            bool,
+        )
+            -> Result<ObserverRef<DetachedTimerObserver>, core::alloc::AllocError>,
     ) -> Result<Self, SubmitError> {
         Self::timer_with(
             target,
@@ -395,7 +399,9 @@ impl Preparing {
         allocate_event: impl FnOnce(TimerEvent) -> Result<crate::timers::PreparedEvent, ()>,
         allocate: impl FnOnce(
             DetachedTimerObserver,
-        ) -> Result<Arc<DetachedTimerObserver>, core::alloc::AllocError>,
+            bool,
+        )
+            -> Result<ObserverRef<DetachedTimerObserver>, core::alloc::AllocError>,
     ) -> Result<Self, SubmitError> {
         let mut preparing = Self::plain(target, user_data, ids)?;
         let result = (|| {
@@ -410,10 +416,13 @@ impl Preparing {
             preparing.0.record.as_mut().unwrap().timer_cancel =
                 Some(TimerCancellation::new(cancel));
             preparing.0.event = Some(allocate_event(event).map_err(|_| SubmitError::WouldBlock)?);
-            let observer = allocate(DetachedTimerObserver {
-                asid: preparing.0.target.asid,
-                operation: preparing.0.operation,
-            })
+            let observer = allocate(
+                DetachedTimerObserver {
+                    asid: preparing.0.target.asid,
+                    operation: preparing.0.operation,
+                },
+                preparing.0.target.platform,
+            )
             .map_err(|_| SubmitError::WouldBlock)?;
             preparing
                 .0
@@ -421,7 +430,7 @@ impl Preparing {
                 .as_ref()
                 .unwrap()
                 .event()
-                .register_observer(Arc::downgrade(&observer) as Weak<dyn Observer>);
+                .register_observer(ObserverRef::downgrade(&observer).erase());
             preparing.0.record.as_mut().unwrap()._timer_observer = Some(observer);
             Ok(())
         })();
@@ -493,7 +502,8 @@ pub(super) fn submit_timer_with_ids(
     ids: &operation_ids::OperationIds,
     allocate: impl FnOnce(
         DetachedTimerObserver,
-    ) -> Result<Arc<DetachedTimerObserver>, core::alloc::AllocError>,
+        bool,
+    ) -> Result<ObserverRef<DetachedTimerObserver>, core::alloc::AllocError>,
 ) -> Result<OperationId, SubmitError> {
     let mut preparing =
         Preparing::timer(Target::capture(asid, cq)?, timeout_ms, user_data, ids, allocate)?;

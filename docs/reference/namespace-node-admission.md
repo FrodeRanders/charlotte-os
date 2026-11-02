@@ -91,8 +91,9 @@ tests check deallocation before refund and retaining fallback.
 Pressure allocates actual empty capability-layout nodes, not the largest mixed
 footprint or maximum nested payload set. Native heap exhaustion is not forced;
 allocator errors use the named injection controls. Individual payload/registry
-nodes outside these five global maps, Waker/callback storage, aggregate principal
-and general-heap admission remain open. There is no sustained hostile-pressure
+nodes outside these five global maps and aggregate principal/general-heap
+admission remain open. Wakers/callbacks have admitted
+[observer handles](observer-ownership.md). There is no sustained hostile-pressure
 fairness, worst-case lookup/IRQ-latency, arbitrary destructor or physical hardware
 claim. SEC-07 remains partial; existing C02/C03/C10/C18 and G1/G4 boundaries in
 [cleanup/recovery](cleanup-recovery.md) continue to apply.

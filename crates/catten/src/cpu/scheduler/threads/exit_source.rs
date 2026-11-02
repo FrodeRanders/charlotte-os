@@ -1,13 +1,12 @@
 //! Owned, bounded thread-exit subscriptions, independent of the thread table.
 
-use alloc::sync::Weak;
 use core::mem::ManuallyDrop;
 
 use crate::{
     completion::watch_budget,
     cpu::multiprocessor::spin::mutex::Mutex,
     klib::observer::{
-        Observer,
+        ObserverWeak,
         registration::{
             ListRef,
             ObserverList,
@@ -28,7 +27,7 @@ pub(crate) struct PreparingExitWatch(ManuallyDrop<Resources>);
 
 struct Resources {
     list: Option<ExitList>,
-    observer: Option<Weak<dyn Observer>>,
+    observer: Option<ObserverWeak>,
     charge: Option<watch_budget::Charge>,
     entry: Option<PreparedRegistration<watch_budget::Charge>>,
 }
@@ -36,7 +35,7 @@ struct Resources {
 impl PreparingExitWatch {
     pub(crate) fn capture(
         existing: Option<ExitList>,
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
         charge: watch_budget::Charge,
     ) -> Self {
         Self(ManuallyDrop::new(Resources {
@@ -49,7 +48,7 @@ impl PreparingExitWatch {
 
     pub(crate) fn new(
         existing: Option<ExitList>,
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
         charge: watch_budget::Charge,
     ) -> Result<Self, RegistrationError> {
         let mut preparation = Self::capture(existing, observer, charge);
@@ -127,7 +126,7 @@ impl ExitSource {
 
     pub(crate) fn register(
         &self,
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
         charge: watch_budget::Charge,
     ) -> Result<ExitRegistration, RegistrationError> {
         let mut preparation = PreparingExitWatch::new(self.source(), observer, charge)?;

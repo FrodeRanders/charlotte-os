@@ -18,7 +18,7 @@ use crate::{
         observer::{
             CallOnNotify,
             Observable,
-            Observer,
+            ObserverRef,
             WaitSponsor,
         },
         time::duration::ExtDuration,
@@ -41,14 +41,16 @@ fn context() {
 fn complete_handbacks() {
     let sponsor = budget::SchedulerSponsor::new(false);
     let waits = WaitSponsor::new(false);
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("cancelled event notified"));
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("cancelled event notified"));
     let mut handles = Vec::with_capacity(64);
     let mut tokens = Vec::with_capacity(64);
     let mut receipts = Vec::with_capacity(64);
     for _ in 0..64 {
         let (node, handle) = prepare_watchdog(ExtDuration::from_millis(60_000), &sponsor).unwrap();
-        node.event().register_observer(Arc::downgrade(&observer));
-        tokens.push(node.event().try_register_waiter(Arc::downgrade(&observer), &waits).unwrap());
+        node.event().register_observer(ObserverRef::downgrade(&observer));
+        tokens.push(
+            node.event().try_register_waiter(ObserverRef::downgrade(&observer), &waits).unwrap(),
+        );
         node.enqueue();
         handles.push(handle);
     }
@@ -72,7 +74,7 @@ fn complete_handbacks() {
     assert_eq!(waits.used(), 0);
     assert_eq!(sponsor.used(), 1);
     assert!(weak.upgrade().is_none());
-    assert_eq!(Arc::weak_count(&observer), 0);
+    assert_eq!(ObserverRef::weak_count(&observer), 0);
     drop((weak, tokens));
     assert_eq!(sponsor.used(), 0);
     drop(mask);
@@ -116,12 +118,12 @@ fn guarded_abandonment() {
     let waits = WaitSponsor::new(false);
     let hits = Arc::new(AtomicUsize::new(0));
     let count = hits.clone();
-    let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let observer: ObserverRef = CallOnNotify::for_test(move || {
         count.fetch_add(1, Ordering::Relaxed);
     });
     let (mut node, handle) = prepare_watchdog(ExtDuration::from_millis(60_000), &sponsor).unwrap();
     node.event_mut().deadline = 0;
-    node.event().register_observer(Arc::downgrade(&observer));
+    node.event().register_observer(ObserverRef::downgrade(&observer));
     let identity = Arc::downgrade(&handle.state);
     let mask = LocalInterruptMask::new();
     node.enqueue();
@@ -139,8 +141,9 @@ fn guarded_abandonment() {
     drop(identity);
 
     let (node, handle) = prepare_watchdog(ExtDuration::from_millis(60_000), &sponsor).unwrap();
-    node.event().register_observer(Arc::downgrade(&observer));
-    let token = node.event().try_register_waiter(Arc::downgrade(&observer), &waits).unwrap();
+    node.event().register_observer(ObserverRef::downgrade(&observer));
+    let token =
+        node.event().try_register_waiter(ObserverRef::downgrade(&observer), &waits).unwrap();
     node.enqueue();
     let cancelled = cancel_event(handle);
     assert!(cancelled.removed());

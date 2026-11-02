@@ -11,6 +11,10 @@
 //! before `wfi` to reconcile the software queue with the hardware comparator
 //! and prevent missed deadlines after timer transitions.
 
+#[cfg(any(test, feature = "kernel_tests"))]
+use crate::klib::observer::Observer;
+use crate::klib::observer::ObserverWeak;
+
 pub(crate) mod account_budget;
 pub(crate) mod budget;
 mod cancellation_disposal;
@@ -34,10 +38,7 @@ pub(crate) mod waiter_tests;
 
 use alloc::{
     boxed::Box,
-    sync::{
-        Arc,
-        Weak,
-    },
+    sync::Arc,
 };
 use core::{
     mem::{
@@ -76,7 +77,6 @@ use crate::{
         charged_allocator::ChargedAllocator,
         observer::{
             Observable,
-            Observer,
             WaitRegistration,
             WaitSponsor,
             registration::RegistrationError,
@@ -312,7 +312,7 @@ pub struct TimerEvent {
     cancellation: Option<CancellationRef>,
     // Internal timer producers each install exactly one callback. Embed that
     // slot instead of allocating an unbounded weak-observer queue.
-    callback: Mutex<Option<Weak<dyn Observer>>>,
+    callback: Mutex<Option<ObserverWeak>>,
     waiters: WaiterSource,
     // Shared with the node's outside owner and every cancellation reference.
     _charge: Option<EventAdmission>,
@@ -325,6 +325,10 @@ struct TimerEventCancellation {
 }
 
 impl TimerEvent {
+    pub(crate) fn observer_platform(&self) -> bool {
+        self._charge.as_ref().expect("observer needs charged event").charge().platform()
+    }
+
     pub(crate) fn prepare_sleep(
         self,
         sponsor: &budget::SchedulerSponsor,
@@ -425,7 +429,7 @@ pub(crate) fn deadline_after(duration: ExtDuration) -> Timestamp {
 impl TimerEvent {
     /// One trusted internal callback, separate from scheduler waiter admission.
     #[inline]
-    pub(crate) fn register_observer(&self, observer: Weak<dyn Observer>) {
+    pub(crate) fn register_observer(&self, observer: ObserverWeak) {
         let mut slot = self.callback.lock();
         assert!(slot.is_none(), "timer event already has its internal callback");
         *slot = Some(observer);
@@ -435,7 +439,7 @@ impl TimerEvent {
 impl Observable for TimerEvent {
     fn try_register_waiter(
         &self,
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
         sponsor: &WaitSponsor,
     ) -> Result<WaitRegistration, RegistrationError> {
         self.waiters.register(observer, sponsor)

@@ -1,6 +1,7 @@
 //! Serialized kernel fixtures for list allocation admission.
 
 use super::*;
+use crate::klib::observer::ObserverRef;
 
 /// Serialized boot fixture: exact counters and counter-only pool saturation.
 pub(super) fn test_list_backing_admission() {
@@ -22,12 +23,15 @@ pub(super) fn test_list_backing_admission() {
     };
     let baseline = list_budget::node_used();
     let account = watch_budget::DomainBudget::new(1);
-    let callback: Arc<dyn Observer> = CallOnNotify::new(|| panic!("discarded list notified"));
+    let callback: ObserverRef = CallOnNotify::for_test(|| panic!("discarded list notified"));
     let list = ObserverList::try_new(1, false).unwrap();
     let weak = Arc::downgrade(&list.0);
     let aliases: Vec<_> = (0..128).map(|_| weak.clone()).collect();
     let token = list
-        .register(Arc::downgrade(&callback), watch_budget::reserve(&account, false).unwrap())
+        .register(
+            ObserverRef::downgrade(&callback),
+            watch_budget::reserve(&account, false).unwrap(),
+        )
         .unwrap();
     let batch = list.close();
     drop(batch);
@@ -55,15 +59,15 @@ pub(super) fn test_list_backing_admission() {
     // an existing source, and a retired waiter cannot initialize another list.
     let sponsor = WaitSponsor::new(false);
     let first = WaiterSource::new();
-    drop(first.register(Arc::downgrade(&callback), &sponsor).unwrap());
+    drop(first.register(ObserverRef::downgrade(&callback), &sponsor).unwrap());
     sponsor.mark_platform();
     let second = WaiterSource::new();
-    drop(second.register(Arc::downgrade(&callback), &sponsor).unwrap());
+    drop(second.register(ObserverRef::downgrade(&callback), &sponsor).unwrap());
     assert_eq!(list_budget::node_used(), (baseline.0 + 2, baseline.1 + 1));
     sponsor.retire();
     let retired = WaiterSource::new();
     assert_eq!(
-        retired.register(Arc::downgrade(&callback), &sponsor).unwrap_err(),
+        retired.register(ObserverRef::downgrade(&callback), &sponsor).unwrap_err(),
         RegistrationError::Closed
     );
     assert_eq!(list_budget::node_used(), (baseline.0 + 2, baseline.1 + 1));
@@ -96,7 +100,7 @@ pub(super) fn test_list_backing_admission() {
         RegistrationError::ResourceLimit
     );
     assert_eq!(
-        blocked_source.register(Arc::downgrade(&callback), &ordinary).unwrap_err(),
+        blocked_source.register(ObserverRef::downgrade(&callback), &ordinary).unwrap_err(),
         RegistrationError::ResourceLimit
     );
     assert_eq!(ordinary.used(), 0);
@@ -125,7 +129,7 @@ pub(super) fn test_list_backing_admission() {
     let before_platform = list_budget::node_used();
     let platform = WaitSponsor::new(true);
     let progress = WaiterSource::new();
-    drop(progress.register(Arc::downgrade(&callback), &platform).unwrap());
+    drop(progress.register(ObserverRef::downgrade(&callback), &platform).unwrap());
     assert_eq!(list_budget::node_used(), (before_platform.0 + 1, before_platform.1));
     drop(progress);
     assert_eq!(list_budget::node_used(), before_platform);
@@ -139,7 +143,7 @@ pub(super) fn test_list_backing_admission() {
     );
     drop(charges);
     // Recovery follows actual release: the failed lazy source can initialize.
-    drop(blocked_source.register(Arc::downgrade(&callback), &ordinary).unwrap());
+    drop(blocked_source.register(ObserverRef::downgrade(&callback), &ordinary).unwrap());
     drop(blocked_source);
     let recovered = completion::submit(asid, OpCode::Nop, None).unwrap();
     completion::abort_submission(asid, recovered).unwrap();

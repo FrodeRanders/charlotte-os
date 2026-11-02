@@ -3,23 +3,22 @@
 
 use alloc::{
     boxed::Box,
-    sync::{
-        Arc,
-        Weak,
-    },
+    sync::Arc,
 };
 use core::mem::{
     ManuallyDrop,
     MaybeUninit,
 };
 
-use super::{
-    Observer,
-    list_budget,
-};
+use super::list_budget;
+#[cfg(any(test, feature = "kernel_tests"))]
+use crate::klib::observer::ObserverRef;
 use crate::{
     cpu::multiprocessor::spin::mutex::Mutex,
-    klib::charged_allocator::ChargedAllocator,
+    klib::{
+        charged_allocator::ChargedAllocator,
+        observer::ObserverWeak,
+    },
 };
 
 #[derive(Debug)]
@@ -56,7 +55,7 @@ struct Entry<C> {
 #[derive(Debug)]
 struct EntryNode<C> {
     id: u64,
-    observer: Weak<dyn Observer>,
+    observer: ObserverWeak,
     next: Option<Entry<C>>,
 }
 
@@ -68,17 +67,14 @@ struct EntryNode<C> {
 pub(crate) struct PreparedRegistration<C>(ManuallyDrop<Option<Entry<C>>>);
 
 impl<C> PreparedRegistration<C> {
-    pub(crate) fn try_new(
-        observer: Weak<dyn Observer>,
-        charge: C,
-    ) -> Result<Self, RegistrationError> {
+    pub(crate) fn try_new(observer: ObserverWeak, charge: C) -> Result<Self, RegistrationError> {
         Self::try_new_with(observer, charge, || {
             Box::try_new_uninit().map_err(|_| RegistrationError::AllocationFailed)
         })
     }
 
     fn try_new_with(
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
         charge: C,
         allocate: impl FnOnce() -> Result<Box<MaybeUninit<EntryNode<C>>>, RegistrationError>,
     ) -> Result<Self, RegistrationError> {
@@ -152,7 +148,7 @@ impl<C> ObserverList<C> {
 impl<C> ListRef<C> {
     pub(crate) fn register(
         &self,
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
         charge: C,
     ) -> Result<Registration<C>, RegistrationError> {
         self.register_with(observer, charge, || {
@@ -162,7 +158,7 @@ impl<C> ListRef<C> {
 
     fn register_with(
         &self,
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
         charge: C,
         allocate: impl FnOnce() -> Result<Box<MaybeUninit<EntryNode<C>>>, RegistrationError>,
     ) -> Result<Registration<C>, RegistrationError> {
@@ -254,10 +250,10 @@ pub(crate) fn test_entry_allocation_rollback() {
     };
     let account = budget::DomainBudget::new(1);
     let list = ObserverList::try_new(1, false).unwrap();
-    let callback: Arc<dyn Observer> = CallOnNotify::new(|| panic!("failed entry notified"));
+    let callback: ObserverRef = CallOnNotify::for_test(|| panic!("failed entry notified"));
     assert_eq!(
         list.register_with(
-            Arc::downgrade(&callback),
+            ObserverRef::downgrade(&callback),
             budget::reserve(&account, false).unwrap(),
             || Err(RegistrationError::AllocationFailed),
         )
@@ -266,15 +262,15 @@ pub(crate) fn test_entry_allocation_rollback() {
     );
     assert_eq!(list.registered(), 0);
     assert_eq!(account.used(), 0);
-    assert_eq!(Arc::weak_count(&callback), 0);
+    assert_eq!(ObserverRef::weak_count(&callback), 0);
     let token = list
-        .register(Arc::downgrade(&callback), budget::reserve(&account, false).unwrap())
+        .register(ObserverRef::downgrade(&callback), budget::reserve(&account, false).unwrap())
         .unwrap();
     assert_eq!(account.used(), 1);
-    assert_eq!(Arc::weak_count(&callback), 1);
+    assert_eq!(ObserverRef::weak_count(&callback), 1);
     drop(token);
     assert_eq!(account.used(), 0);
-    assert_eq!(Arc::weak_count(&callback), 0);
+    assert_eq!(ObserverRef::weak_count(&callback), 0);
     list_tests::test_list_backing_admission();
     entry_preparation::test_preparation();
     super::prepared_wait::test_preparation();

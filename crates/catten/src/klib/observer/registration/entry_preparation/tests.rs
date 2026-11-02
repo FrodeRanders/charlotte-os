@@ -9,7 +9,10 @@ use crate::{
         isa::lp::ops::get_int_state,
         multiprocessor::interrupt_tracking::LocalInterruptMask,
     },
-    klib::observer::CallOnNotify,
+    klib::observer::{
+        CallOnNotify,
+        ObserverRef,
+    },
     memory::allocators::global_allocator::PRIMARY_ALLOCATOR,
 };
 
@@ -25,14 +28,13 @@ fn allocate<C>() -> Result<Box<MaybeUninit<EntryNode<C>>>, RegistrationError> {
 fn completed_entries() {
     let account = budget::DomainBudget::new(64);
     let list = ObserverList::<budget::Charge>::try_new(64, false).unwrap();
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("private entry notified"));
-    let identity = Arc::as_ptr(&observer) as *const ();
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("private entry notified"));
     let mut preparing = Vec::with_capacity(64);
     let mut completed = Vec::with_capacity(64);
     let mut tokens = Vec::with_capacity(32);
     for _ in 0..64 {
         let mut owner = PreparingEntry::new(
-            Arc::downgrade(&observer),
+            ObserverRef::downgrade(&observer),
             budget::reserve(&account, false).unwrap(),
         );
         owner.allocate(allocate).unwrap();
@@ -45,13 +47,13 @@ fn completed_entries() {
         for owner in preparing.drain(..) {
             let entry = owner.complete();
             let node = &entry.0.as_ref().unwrap().node;
-            assert_eq!(node.observer.as_ptr() as *const (), identity);
+            assert!(ObserverRef::ptr_eq(&node.observer.upgrade().unwrap(), &observer));
             assert_eq!(node.id, 0);
             assert!(node.next.is_none());
             completed.push(entry);
         }
         assert_eq!(account.used(), 64);
-        assert_eq!(Arc::weak_count(&observer), 64);
+        assert_eq!(ObserverRef::weak_count(&observer), 64);
     }
     // Completed unused preparation requires consuming post-guard finish too.
     context(&list);
@@ -59,7 +61,7 @@ fn completed_entries() {
         entry.finish();
     }
     assert_eq!(account.used(), 32);
-    assert_eq!(Arc::weak_count(&observer), 32);
+    assert_eq!(ObserverRef::weak_count(&observer), 32);
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
         for entry in &mut completed {
@@ -75,17 +77,17 @@ fn completed_entries() {
     drop(tokens);
     assert_eq!(list.registered(), 0);
     assert_eq!(account.used(), 0);
-    assert_eq!(Arc::weak_count(&observer), 0);
+    assert_eq!(ObserverRef::weak_count(&observer), 0);
     drop(mask);
 }
 
 fn rejected_and_unused() {
     let account = budget::DomainBudget::new(1);
     let list = ObserverList::<budget::Charge>::try_new(1, false).unwrap();
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("rejected entry notified"));
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("rejected entry notified"));
     for allocated in [false, true] {
         let mut owner = PreparingEntry::new(
-            Arc::downgrade(&observer),
+            ObserverRef::downgrade(&observer),
             budget::reserve(&account, false).unwrap(),
         );
         if allocated {
@@ -98,14 +100,14 @@ fn rejected_and_unused() {
                 Err(RegistrationError::AllocationFailed)
             );
             assert_eq!(account.used(), 1);
-            assert_eq!(Arc::weak_count(&observer), 1);
+            assert_eq!(ObserverRef::weak_count(&observer), 1);
             assert!(owner.0.observer.is_some() && owner.0.charge.is_some());
         }
         let mut checks = 0;
         owner.cancel_with(|| {
             context(&list);
             assert_eq!(account.used(), 1);
-            assert_eq!(Arc::weak_count(&observer), usize::from(checks < 2));
+            assert_eq!(ObserverRef::weak_count(&observer), usize::from(checks < 2));
             checks += 1;
         });
         assert_eq!(checks, 3);
@@ -113,7 +115,7 @@ fn rejected_and_unused() {
     }
     // The ordinary constructor releases the final weak backing only after
     // this rejecting allocator callback and its actual guards have returned.
-    let final_weak = Arc::downgrade(&observer);
+    let final_weak = ObserverRef::downgrade(&observer);
     drop(observer);
     let result = prepare(final_weak, budget::reserve(&account, false).unwrap(), || {
         let _heap = PRIMARY_ALLOCATOR.lock();
@@ -130,9 +132,9 @@ fn guarded_abandonment() {
     let account = budget::DomainBudget::new(2);
     let list = ObserverList::<budget::Charge>::try_new(1, false).unwrap();
     for allocated in [false, true] {
-        let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("abandoned entry notified"));
+        let observer: ObserverRef = CallOnNotify::for_test(|| panic!("abandoned entry notified"));
         let mut owner = PreparingEntry::new(
-            Arc::downgrade(&observer),
+            ObserverRef::downgrade(&observer),
             budget::reserve(&account, false).unwrap(),
         );
         if allocated {

@@ -15,7 +15,7 @@ use crate::{
     klib::observer::{
         CallOnNotify,
         Observable,
-        Observer,
+        ObserverRef,
         WaitSponsor,
     },
     memory::allocators::global_allocator::PRIMARY_ALLOCATOR,
@@ -30,14 +30,14 @@ fn context() {
 fn completed_events() {
     let sponsor = budget::SchedulerSponsor::new(false);
     let waits = WaitSponsor::new(false);
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("unpublished event notified"));
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("unpublished event notified"));
     let mut owners = Vec::with_capacity(64);
     let mut events = Vec::with_capacity(64);
     let mut tokens = Vec::with_capacity(64);
     for deadline in 0..64 {
         let event = TimerEvent::from(deadline);
-        event.register_observer(Arc::downgrade(&observer));
-        tokens.push(event.try_register_waiter(Arc::downgrade(&observer), &waits).unwrap());
+        event.register_observer(ObserverRef::downgrade(&observer));
+        tokens.push(event.try_register_waiter(ObserverRef::downgrade(&observer), &waits).unwrap());
         let mut owner = PreparingEvent::new(event);
         owner.reserve(&sponsor).unwrap();
         owner.admit().unwrap();
@@ -64,7 +64,7 @@ fn completed_events() {
     context();
     drop(events);
     assert_eq!(waits.used(), 0);
-    assert_eq!(Arc::weak_count(&observer), 0);
+    assert_eq!(ObserverRef::weak_count(&observer), 0);
     assert!(weak.upgrade().is_none());
     assert_eq!(sponsor.used(), 1);
     sponsor.retire();
@@ -80,15 +80,14 @@ fn completed_events() {
 fn rejected_preparation() {
     let sponsor = budget::SchedulerSponsor::new(false);
     let waits = WaitSponsor::new(false);
-    let observer: Arc<dyn Observer> =
-        CallOnNotify::new(|| panic!("rejected construction notified"));
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("rejected construction notified"));
     let mut full = Vec::with_capacity(budget::MAX_DOMAIN_TIMERS);
     for _ in 0..budget::MAX_DOMAIN_TIMERS {
         full.push(sponsor.reserve().unwrap());
     }
     let event = TimerEvent::from(123);
-    event.register_observer(Arc::downgrade(&observer));
-    let token = event.try_register_waiter(Arc::downgrade(&observer), &waits).unwrap();
+    event.register_observer(ObserverRef::downgrade(&observer));
+    let token = event.try_register_waiter(ObserverRef::downgrade(&observer), &waits).unwrap();
     let mut owner = PreparingEvent::new(event);
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
@@ -102,7 +101,7 @@ fn rejected_preparation() {
     drop(token);
     // The public sleep adapter takes the same explicit failure cleanup path.
     let event = TimerEvent::from(456);
-    let token = event.try_register_waiter(Arc::downgrade(&observer), &waits).unwrap();
+    let token = event.try_register_waiter(ObserverRef::downgrade(&observer), &waits).unwrap();
     assert!(event.prepare_sleep(&sponsor).is_err());
     assert_eq!(waits.used(), 0);
     assert_eq!(sponsor.used(), budget::MAX_DOMAIN_TIMERS);
@@ -110,8 +109,8 @@ fn rejected_preparation() {
     assert_eq!(sponsor.used(), 0);
 
     let event = TimerEvent::from(789);
-    event.register_observer(Arc::downgrade(&observer));
-    let token = event.try_register_waiter(Arc::downgrade(&observer), &waits).unwrap();
+    event.register_observer(ObserverRef::downgrade(&observer));
+    let token = event.try_register_waiter(ObserverRef::downgrade(&observer), &waits).unwrap();
     let mut owner = PreparingEvent::new(event);
     owner.reserve(&sponsor).unwrap();
     owner.admit().unwrap();
@@ -134,13 +133,13 @@ fn rejected_preparation() {
 fn guarded_abandonment() {
     let sponsor = budget::SchedulerSponsor::new(false);
     let waits = WaitSponsor::new(false);
-    let observer: Arc<dyn Observer> =
-        CallOnNotify::new(|| panic!("abandoned event construction notified"));
+    let observer: ObserverRef =
+        CallOnNotify::for_test(|| panic!("abandoned event construction notified"));
     let mut tokens = Vec::with_capacity(4);
     for phase in 0..4 {
         let event = TimerEvent::from(0);
-        event.register_observer(Arc::downgrade(&observer));
-        tokens.push(event.try_register_waiter(Arc::downgrade(&observer), &waits).unwrap());
+        event.register_observer(ObserverRef::downgrade(&observer));
+        tokens.push(event.try_register_waiter(ObserverRef::downgrade(&observer), &waits).unwrap());
         let mut owner = PreparingEvent::new(event);
         if phase >= 1 {
             owner.reserve(&sponsor).unwrap();
@@ -164,7 +163,7 @@ fn guarded_abandonment() {
     drop(tokens);
     assert_eq!(sponsor.used(), 3);
     assert_eq!(waits.used(), 0);
-    assert_eq!(Arc::weak_count(&observer), 4);
+    assert_eq!(ObserverRef::weak_count(&observer), 4);
     crate::logln!(
         "[timer event construction retention] guarded source-only, reservation, holder and \
          cancellation phases retained three original event charges and four source/callback \

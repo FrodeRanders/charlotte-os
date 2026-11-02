@@ -4,7 +4,7 @@
 use super::*;
 use crate::klib::observer::{
     Observable,
-    Observer,
+    ObserverRef,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -31,7 +31,7 @@ struct PreparedWait {
     generation: ThreadGeneration,
     state: Snapshot,
     ready: bool,
-    waker: Arc<waker::Waker>,
+    waker: ObserverRef<waker::Waker>,
 }
 
 impl SystemScheduler {
@@ -66,13 +66,11 @@ impl SystemScheduler {
             }
             (thread.generation, Snapshot::of(&thread.state), thread.wait_sponsor.clone())
         };
-        let waker = Arc::try_new(waker::Waker::new(tid, generation))
-            .map_err(|_| Error::WaitRegistrationFailed)?;
+        let waker =
+            ObserverRef::try_new(waker::Waker::new(tid, generation), sponsor.observer_platform())
+                .map_err(|_| Error::WaitRegistrationFailed)?;
         let registration = event
-            .try_register_waiter(
-                Arc::downgrade(&waker) as alloc::sync::Weak<dyn Observer>,
-                &sponsor,
-            )
+            .try_register_waiter(ObserverRef::downgrade(&waker).erase(), &sponsor)
             .map_err(|_| Error::WaitRegistrationFailed)?;
         let ready = registration.is_ready();
         waker.set_registration(registration);
@@ -131,7 +129,7 @@ impl SystemScheduler {
 /// The closure contains every LP/table guard. Carry the removed wait owner
 /// out even on a later admission error; cancellation may free heap metadata.
 pub(super) fn with_detached_wait<T>(
-    publish: impl FnOnce(&mut Option<Arc<waker::Waker>>) -> Result<T, Error>,
+    publish: impl FnOnce(&mut Option<ObserverRef<waker::Waker>>) -> Result<T, Error>,
 ) -> Result<T, Error> {
     let mut detached = None;
     let result = publish(&mut detached);

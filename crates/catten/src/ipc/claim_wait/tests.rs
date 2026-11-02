@@ -14,7 +14,10 @@ use crate::{
         ThreadState,
         ThreadStateKind,
     },
-    klib::observer::CallOnNotify,
+    klib::observer::{
+        CallOnNotify,
+        ObserverRef,
+    },
     memory::{
         self,
         AddressSpaceCloseError,
@@ -33,7 +36,7 @@ pub(in crate::ipc) fn observe(asid: AddressSpaceId, cap: CapabilityId, finish: i
     deferred::drain();
     let hits = Arc::new(AtomicUsize::new(0));
     let count = hits.clone();
-    let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let observer: ObserverRef = CallOnNotify::for_test(move || {
         unlocked();
         count.fetch_add(1, Ordering::Relaxed);
     });
@@ -46,7 +49,9 @@ pub(in crate::ipc) fn observe(asid: AddressSpaceId, cap: CapabilityId, finish: i
             cap,
             |interest| {
                 token = Some(
-                    interest.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap(),
+                    interest
+                        .try_register_waiter(ObserverRef::downgrade(&observer), &sponsor)
+                        .unwrap(),
                 );
                 finish();
                 assert!(interest.completed());
@@ -57,7 +62,7 @@ pub(in crate::ipc) fn observe(asid: AddressSpaceId, cap: CapabilityId, finish: i
                 );
                 assert!(
                     interest
-                        .try_register_waiter(Arc::downgrade(&observer), &sponsor)
+                        .try_register_waiter(ObserverRef::downgrade(&observer), &sponsor)
                         .unwrap()
                         .is_ready()
                 );
@@ -136,7 +141,7 @@ pub(crate) fn serialized() {
             cancellation::PreparedCancellation::prepare(fixture.server.id(), fixture.reply)
                 .unwrap(),
         );
-        let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("canceled waiter notified"));
+        let observer: ObserverRef = CallOnNotify::for_test(|| panic!("canceled waiter notified"));
         let sponsor = WaitSponsor::new(false);
         let mut owner = Wait::new();
         let result = owner.wait_with(
@@ -150,11 +155,13 @@ pub(crate) fn serialized() {
                 let mut tokens = Vec::new();
                 for _ in 0..waiter_budget::SOURCE_LIMIT {
                     tokens.push(
-                        interest.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap(),
+                        interest
+                            .try_register_waiter(ObserverRef::downgrade(&observer), &sponsor)
+                            .unwrap(),
                     );
                 }
                 assert!(matches!(
-                    interest.try_register_waiter(Arc::downgrade(&observer), &sponsor),
+                    interest.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor),
                     Err(RegistrationError::ResourceLimit)
                 ));
                 drop(tokens);
@@ -167,7 +174,7 @@ pub(crate) fn serialized() {
                     assert!(interest.completed());
                     assert!(
                         interest
-                            .try_register_waiter(Arc::downgrade(&observer), &sponsor)
+                            .try_register_waiter(ObserverRef::downgrade(&observer), &sponsor)
                             .unwrap()
                             .is_ready()
                     );

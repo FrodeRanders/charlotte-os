@@ -1,12 +1,11 @@
 //! Serialized admitted-list preparation, competing first publication and
 //! post-guard losing-storage disposal through the production adapters.
 
-use alloc::sync::Arc;
-
 use super::*;
 use crate::{
     klib::observer::{
         CallOnNotify,
+        ObserverRef,
         list_budget,
     },
     memory::allocators::global_allocator::PRIMARY_ALLOCATOR,
@@ -17,15 +16,15 @@ pub(super) fn run() {
     let baseline = list_budget::node_used();
     let source = WaiterSource::new();
     let sponsor = WaitSponsor::new(false);
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("unused source notified"));
-    let rejected = source.register_with(Arc::downgrade(&observer), &sponsor, |_| {
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("unused source notified"));
+    let rejected = source.register_with(ObserverRef::downgrade(&observer), &sponsor, |_| {
         assert!(source.list.lock().is_none(), "allocation retains initialization guard");
         Err(RegistrationError::AllocationFailed)
     });
     assert_eq!(rejected.unwrap_err(), RegistrationError::AllocationFailed);
     assert!(source.list.lock().is_none());
     assert_eq!(list_budget::node_used(), baseline);
-    let mut ordinary = Preparing::capture(&sponsor, Arc::downgrade(&observer));
+    let mut ordinary = Preparing::capture(&sponsor, ObserverRef::downgrade(&observer));
     ordinary
         .prepare_list(&source, |platform| {
             assert!(source.list.lock().is_none());
@@ -33,7 +32,7 @@ pub(super) fn run() {
         })
         .unwrap();
     sponsor.mark_platform();
-    let mut platform = Preparing::capture(&sponsor, Arc::downgrade(&observer));
+    let mut platform = Preparing::capture(&sponsor, ObserverRef::downgrade(&observer));
     platform
         .prepare_list(&source, |classification| {
             assert!(source.list.lock().is_none());
@@ -56,18 +55,18 @@ pub(super) fn run() {
     ordinary.release_candidate();
     platform.release_candidate();
     assert_eq!(list_budget::node_used(), (baseline.0 + 1, baseline.1));
-    let token = source.register(Arc::downgrade(&observer), &sponsor).unwrap();
+    let token = source.register(ObserverRef::downgrade(&observer), &sponsor).unwrap();
     assert_eq!(sponsor.used(), 1);
     drop(token);
     assert_eq!(sponsor.used(), 0);
     sponsor.retire();
     assert_eq!(
-        source.register(Arc::downgrade(&observer), &sponsor).unwrap_err(),
+        source.register(ObserverRef::downgrade(&observer), &sponsor).unwrap_err(),
         RegistrationError::Closed
     );
     let empty = WaiterSource::new();
     assert_eq!(
-        empty.register(Arc::downgrade(&observer), &sponsor).unwrap_err(),
+        empty.register(ObserverRef::downgrade(&observer), &sponsor).unwrap_err(),
         RegistrationError::Closed
     );
     assert!(empty.list.lock().is_none());

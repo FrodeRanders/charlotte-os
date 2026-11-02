@@ -1,12 +1,16 @@
 //! Captured-operation callback preparation outside registry/inner guards.
 
 use super::*;
-use crate::klib::observer::registration::{
-    ListRef,
-    ObserverList,
-    PreparedRegistration,
-    Registration,
-    RegistrationError,
+use crate::klib::observer::{
+    ObserverRef,
+    ObserverWeak,
+    registration::{
+        ListRef,
+        ObserverList,
+        PreparedRegistration,
+        Registration,
+        RegistrationError,
+    },
 };
 
 type CallbackList = ListRef<watch_budget::Charge>;
@@ -23,7 +27,7 @@ pub enum ObserveError {
 #[must_use = "retain the callback owner until notification or cancellation"]
 pub struct CompletionObservation {
     _registration: Option<Registration<watch_budget::Charge>>,
-    _observer: Arc<dyn Observer>,
+    _observer: ObserverRef,
 }
 
 impl core::fmt::Debug for CompletionObservation {
@@ -83,14 +87,14 @@ struct Preparing(ManuallyDrop<Resources>);
 
 struct Resources {
     target: Option<Captured>,
-    observer: Option<Weak<dyn Observer>>,
+    observer: Option<ObserverWeak>,
     charge: Option<watch_budget::Charge>,
     candidate: Option<CallbackList>,
     entry: Option<PreparedRegistration<watch_budget::Charge>>,
 }
 
 impl Preparing {
-    fn capture(target: Captured, observer: Weak<dyn Observer>) -> Self {
+    fn capture(target: Captured, observer: ObserverWeak) -> Self {
         Self(ManuallyDrop::new(Resources {
             target: Some(target),
             observer: Some(observer),
@@ -142,7 +146,7 @@ impl Preparing {
         Ok(())
     }
 
-    fn new(target: Captured, observer: Weak<dyn Observer>) -> Result<Self, ObserveError> {
+    fn new(target: Captured, observer: ObserverWeak) -> Result<Self, ObserveError> {
         Self::new_with(
             target,
             observer,
@@ -153,7 +157,7 @@ impl Preparing {
 
     fn new_with(
         target: Captured,
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
         allocate_list: impl FnOnce(bool) -> Result<CallbackList, RegistrationError>,
         prepare_entry: impl FnOnce(&mut Self) -> Result<(), ObserveError>,
     ) -> Result<Self, ObserveError> {
@@ -242,7 +246,7 @@ impl Preparing {
 pub fn observe(
     asid: AddressSpaceId,
     cap: CompletionCap,
-    observer: Arc<dyn Observer>,
+    observer: ObserverRef,
 ) -> Result<CompletionObservation, ObserveError> {
     let completion = {
         let registry = COMPLETIONS.read();
@@ -258,10 +262,10 @@ pub(crate) fn observe_registered(
     asid: AddressSpaceId,
     cap: CompletionCap,
     captured: &CompletionRef,
-    observer: Arc<dyn Observer>,
+    observer: ObserverRef,
 ) -> Result<CompletionObservation, ObserveError> {
     let target = Captured::new(asid, cap, captured)?;
-    let mut prepared = Preparing::new(target, Arc::downgrade(&observer))?;
+    let mut prepared = Preparing::new(target, ObserverRef::downgrade(&observer))?;
     let registration = prepared.publish();
     prepared.finish();
     let registration = registration?;

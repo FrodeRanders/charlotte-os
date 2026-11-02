@@ -20,7 +20,6 @@
 use alloc::{
     boxed::Box,
     collections::btree_map::BTreeMap,
-    sync::Arc,
 };
 use core::sync::atomic::{
     AtomicU64,

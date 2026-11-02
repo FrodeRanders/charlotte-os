@@ -1,5 +1,6 @@
 //! Serialized boot controls for reservation counters; these do not allocate physical backing.
-use alloc::sync::Arc;
+
+use crate::klib::observer::ObserverRef;
 
 pub(crate) fn ledger_available() -> bool {
     LEDGER.try_lock().is_some()
@@ -22,7 +23,6 @@ use crate::{
     klib::observer::{
         CallOnNotify,
         Observable,
-        Observer,
         waiter_source::WaiterSource,
     },
     memory::{
@@ -62,10 +62,10 @@ fn generation_lifetime() {
     assert_eq!(waiters.used(), 0);
     assert_eq!(timers.used(), 0);
     assert!(!waiters.list_platform().unwrap());
-    let observer: Arc<dyn Observer> =
-        CallOnNotify::new(|| panic!("account fixture fabricated readiness"));
+    let observer: ObserverRef =
+        CallOnNotify::for_test(|| panic!("account fixture fabricated readiness"));
     let source = WaiterSource::new();
-    let token = source.try_register_waiter(Arc::downgrade(&observer), &waiters).unwrap();
+    let token = source.try_register_waiter(ObserverRef::downgrade(&observer), &waiters).unwrap();
     let event = timers.reserve().unwrap();
     assert_eq!(waiters.used(), 1);
     assert_eq!(timers.used(), 1);

@@ -11,6 +11,7 @@ use crate::{
     },
     klib::observer::{
         CallOnNotify,
+        ObserverRef,
         WaitSponsor,
         waiter_budget,
     },
@@ -24,19 +25,19 @@ fn context<C>(list: &ListRef<C>) {
 
 fn ordinary<C: core::fmt::Debug>(mut reserve: impl FnMut() -> C, used: impl Fn() -> usize) {
     let list = ObserverList::try_new(32, false).unwrap();
-    let observer: Arc<dyn Observer> =
-        CallOnNotify::new(|| panic!("unused prepared entry notified"));
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("unused prepared entry notified"));
     let mut preparations = Vec::with_capacity(64);
     let mut tokens = Vec::with_capacity(32);
     for _ in 0..64 {
-        preparations
-            .push(PreparedRegistration::try_new(Arc::downgrade(&observer), reserve()).unwrap());
+        preparations.push(
+            PreparedRegistration::try_new(ObserverRef::downgrade(&observer), reserve()).unwrap(),
+        );
     }
     for (index, entry) in preparations.drain(32..).enumerate() {
         entry.finish_with(|| {
             context(&list);
             assert_eq!(used(), 64 - index);
-            assert_eq!(Arc::weak_count(&observer), 64 - index);
+            assert_eq!(ObserverRef::weak_count(&observer), 64 - index);
         });
     }
     assert_eq!(used(), 32);
@@ -54,7 +55,8 @@ fn ordinary<C: core::fmt::Debug>(mut reserve: impl FnMut() -> C, used: impl Fn()
         });
     }
     assert_eq!(list.registered(), 32);
-    let mut full = PreparedRegistration::try_new(Arc::downgrade(&observer), reserve()).unwrap();
+    let mut full =
+        PreparedRegistration::try_new(ObserverRef::downgrade(&observer), reserve()).unwrap();
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
         assert_eq!(
@@ -67,7 +69,7 @@ fn ordinary<C: core::fmt::Debug>(mut reserve: impl FnMut() -> C, used: impl Fn()
     assert_eq!(used(), 32);
     // The direct adapter must explicitly finish its rejected completed entry.
     assert_eq!(
-        list.register(Arc::downgrade(&observer), reserve()).unwrap_err(),
+        list.register(ObserverRef::downgrade(&observer), reserve()).unwrap_err(),
         RegistrationError::ResourceLimit
     );
     assert_eq!(used(), 32);
@@ -76,8 +78,9 @@ fn ordinary<C: core::fmt::Debug>(mut reserve: impl FnMut() -> C, used: impl Fn()
     assert_eq!(used(), 32);
     drop(batch);
     assert_eq!(used(), 0);
-    assert_eq!(Arc::weak_count(&observer), 0);
-    let mut closed = PreparedRegistration::try_new(Arc::downgrade(&observer), reserve()).unwrap();
+    assert_eq!(ObserverRef::weak_count(&observer), 0);
+    let mut closed =
+        PreparedRegistration::try_new(ObserverRef::downgrade(&observer), reserve()).unwrap();
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
         assert_eq!(list.register_prepared(&mut closed).unwrap_err(), RegistrationError::Closed);
@@ -86,7 +89,7 @@ fn ordinary<C: core::fmt::Debug>(mut reserve: impl FnMut() -> C, used: impl Fn()
     closed.finish_with(|| context(&list));
     assert_eq!(used(), 0);
     assert_eq!(
-        list.register(Arc::downgrade(&observer), reserve()).unwrap_err(),
+        list.register(ObserverRef::downgrade(&observer), reserve()).unwrap_err(),
         RegistrationError::Closed
     );
     assert_eq!(used(), 0);
@@ -94,7 +97,8 @@ fn ordinary<C: core::fmt::Debug>(mut reserve: impl FnMut() -> C, used: impl Fn()
     assert_eq!(list.registered(), 0);
     // This completed unused owner now holds the callback allocation's last
     // weak reference, independently of the already closed source.
-    let final_entry = PreparedRegistration::try_new(Arc::downgrade(&observer), reserve()).unwrap();
+    let final_entry =
+        PreparedRegistration::try_new(ObserverRef::downgrade(&observer), reserve()).unwrap();
     drop(observer);
     final_entry.finish_with(|| context(&list));
     assert_eq!(used(), 0);
@@ -102,9 +106,9 @@ fn ordinary<C: core::fmt::Debug>(mut reserve: impl FnMut() -> C, used: impl Fn()
 
 #[allow(clippy::drop_non_drop)]
 fn abandon<C>(charge: C, list: &ListRef<C>) {
-    let observer: Arc<dyn Observer> =
-        CallOnNotify::new(|| panic!("abandoned prepared entry notified"));
-    let entry = PreparedRegistration::try_new(Arc::downgrade(&observer), charge).unwrap();
+    let observer: ObserverRef =
+        CallOnNotify::for_test(|| panic!("abandoned prepared entry notified"));
+    let entry = PreparedRegistration::try_new(ObserverRef::downgrade(&observer), charge).unwrap();
     assert_eq!(entry.0.as_ref().unwrap().node.id, 0);
     assert!(entry.0.as_ref().unwrap().node.next.is_none());
     drop(observer);

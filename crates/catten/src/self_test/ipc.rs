@@ -24,6 +24,11 @@
 //! Expected outcome: all assertions pass; the tests log their success and the
 //! boot suite reports them as part of the synchronous phase.
 
+use crate::klib::observer::{
+    ObserverRef,
+    ObserverWeak,
+};
+
 mod vector;
 
 use crate::{
@@ -920,10 +925,7 @@ pub fn test_endpoint_admission() {
 
 pub fn test_close_watch_admission() {
     use alloc::{
-        sync::{
-            Arc,
-            Weak,
-        },
+        sync::Arc,
         vec::Vec,
     };
     use core::sync::atomic::{
@@ -940,7 +942,6 @@ pub fn test_close_watch_admission() {
         },
         klib::observer::{
             CallOnNotify,
-            Observer,
             registration::{
                 ObserverList,
                 RegistrationError,
@@ -1022,13 +1023,14 @@ pub fn test_close_watch_admission() {
     let cap = staged.cap();
     let captured = staged.completion().clone();
     let weak_completion = Arc::downgrade(&captured);
-    let late_observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let late_observer: ObserverRef = CallOnNotify::for_test(move || {
         if let Some(completion) = weak_completion.upgrade() {
             completion::complete_registered(client, cap, completion, OpResult::Ok(99)).unwrap();
         }
     });
     let list = ObserverList::try_new(1, false).unwrap();
-    let token = list.register(Arc::downgrade(&late_observer), staged.take_charge()).unwrap();
+    let token =
+        list.register(ObserverRef::downgrade(&late_observer), staged.take_charge()).unwrap();
     assert!(!captured.set_event_observation(late_observer.clone(), token).finish());
     assert_eq!(staged.commit(), cap);
     let account = completion::watch_admission(client).unwrap();
@@ -1062,20 +1064,20 @@ pub fn test_close_watch_admission() {
     let holder = Arc::new(crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
     let callback_holder = holder.clone();
     let callback_hits = hits.clone();
-    let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let observer: ObserverRef = CallOnNotify::for_test(move || {
         // Reentrant cancellation proves callbacks are outside the list lock.
         drop(callback_holder.lock().take());
         callback_hits.fetch_add(1, Ordering::Relaxed);
     });
     *holder.lock() = Some(
-        list.register(Arc::downgrade(&observer), budget::reserve(&account, false).unwrap())
+        list.register(ObserverRef::downgrade(&observer), budget::reserve(&account, false).unwrap())
             .unwrap(),
     );
     let batch = list.close();
     assert_eq!(list.registered(), 0);
     assert_eq!(account.used(), 1);
     assert!(matches!(
-        list.register(Weak::<CallOnNotify<fn()>>::new(), budget::reserve(&account, false).unwrap()),
+        list.register(ObserverWeak::new(), budget::reserve(&account, false).unwrap()),
         Err(RegistrationError::Closed)
     ));
     assert_eq!(account.used(), 1);
@@ -1084,7 +1086,7 @@ pub fn test_close_watch_admission() {
     assert_eq!(account.used(), 0);
     let list = ObserverList::try_new(1, false).unwrap();
     let token = list
-        .register(Arc::downgrade(&observer), budget::reserve(&account, false).unwrap())
+        .register(ObserverRef::downgrade(&observer), budget::reserve(&account, false).unwrap())
         .unwrap();
     let batch = list.close();
     drop(token);

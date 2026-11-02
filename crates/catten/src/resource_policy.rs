@@ -125,6 +125,8 @@ pub(crate) struct Policy {
     /// Capability, IPC endpoint/record and mailbox account bundles.
     pub namespace_accounts: Pool<1>,
     pub observer_lists: Pool<1>,
+    /// Observer Arc backing bytes and allocation bundles, including weak backing.
+    pub observer_backing: Pool<2>,
     pub mailbox_records: Scoped<1>,
     /// Queue sets, requested ring bytes.
     pub mailbox_queues: Scoped<2>,
@@ -169,6 +171,7 @@ impl Policy {
             || !self.completion_accounts.valid()
             || !self.namespace_accounts.valid()
             || !self.observer_lists.valid()
+            || !self.observer_backing.valid()
             || !self.mailbox_records.valid()
             || !self.mailbox_queues.valid()
             || !self.ipc_records.valid()

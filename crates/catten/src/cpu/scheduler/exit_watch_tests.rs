@@ -15,6 +15,7 @@ use crate::{
     completion::watch_budget,
     klib::observer::{
         CallOnNotify,
+        ObserverRef,
         list_budget,
         registration::{
             ObserverList,
@@ -69,7 +70,7 @@ pub(crate) fn run() {
     let account = watch_budget::DomainBudget::new(4);
     let hits = Arc::new(AtomicUsize::new(0));
     let count = hits.clone();
-    let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let observer: ObserverRef = CallOnNotify::for_test(move || {
         count.fetch_add(1, Ordering::Relaxed);
     });
     let irq = crate::cpu::isa::lp::ops::get_int_state();
@@ -80,7 +81,7 @@ pub(crate) fn run() {
             target.tid,
             Some(target.generation),
             None,
-            Arc::downgrade(&observer),
+            ObserverRef::downgrade(&observer),
             watch_budget::reserve(&account, false).unwrap(),
             |preparation| {
                 reenter_table(irq);
@@ -90,7 +91,7 @@ pub(crate) fn run() {
                 let _heap = PRIMARY_ALLOCATOR.lock();
                 let _table = MASTER_THREAD_TABLE.write();
                 assert_eq!(account.used(), 1);
-                assert_eq!(Arc::weak_count(&observer), 1);
+                assert_eq!(ObserverRef::weak_count(&observer), 1);
                 Err(RegistrationError::AllocationFailed)
             },
         );
@@ -111,7 +112,7 @@ pub(crate) fn run() {
             tid,
             qualified.then_some(generation),
             None,
-            Arc::downgrade(&observer),
+            ObserverRef::downgrade(&observer),
             watch_budget::reserve(&account, false).unwrap(),
             |preparation| {
                 reenter_table(irq);
@@ -138,7 +139,7 @@ pub(crate) fn run() {
         target.tid,
         Some(target.generation),
         None,
-        Arc::downgrade(&observer),
+        ObserverRef::downgrade(&observer),
         watch_budget::reserve(&account, false).unwrap(),
         |preparation| {
             reenter_table(irq);
@@ -147,7 +148,7 @@ pub(crate) fn run() {
                 super::observe_thread_exit_with_generation(
                     target.tid,
                     target.generation,
-                    Arc::downgrade(&observer),
+                    ObserverRef::downgrade(&observer),
                     watch_budget::reserve(&account, false).unwrap(),
                 )
                 .unwrap(),
@@ -170,7 +171,7 @@ pub(crate) fn run() {
         target.tid,
         Some(target.generation),
         Some(root),
-        Arc::downgrade(&observer),
+        ObserverRef::downgrade(&observer),
         watch_budget::reserve(&account, false).unwrap(),
         |_| panic!("unauthorized exit watch reached preparation"),
     );
@@ -189,7 +190,7 @@ pub(crate) fn run() {
         }
         let mut preparation = PreparingExitWatch::new(
             Some(list),
-            Arc::downgrade(&observer),
+            ObserverRef::downgrade(&observer),
             watch_budget::reserve(&account, false).unwrap(),
         )
         .unwrap();
@@ -210,7 +211,7 @@ pub(crate) fn run() {
         drop(target);
     }
     assert_eq!(hits.load(Ordering::Relaxed), 0);
-    assert_eq!(Arc::weak_count(&observer), 0);
+    assert_eq!(ObserverRef::weak_count(&observer), 0);
     assert_eq!(account.used(), 0);
     assert_eq!(list_budget::node_used(), lists);
     assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
@@ -226,7 +227,7 @@ pub(crate) fn run() {
 pub(crate) fn scheduled() {
     use crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask;
     let account = watch_budget::DomainBudget::new(1);
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("cancelled watch notified"));
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("cancelled watch notified"));
     let target = Target::new();
     let original_irq = crate::cpu::isa::lp::ops::get_int_state();
     assert!(original_irq, "scheduled exit-watch fixture requires normal IRQ-enabled entry");
@@ -237,7 +238,7 @@ pub(crate) fn scheduled() {
             target.tid,
             Some(target.generation),
             None,
-            Arc::downgrade(&observer),
+            ObserverRef::downgrade(&observer),
             watch_budget::reserve(&account, false).unwrap(),
             |preparation| {
                 reenter_table(irq);

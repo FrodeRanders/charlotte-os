@@ -1,12 +1,13 @@
 //! Serialized never-dispatched owners exercise the real capture/publication,
 //! source callback, queue and cancellation paths. No fabricated exit proof.
 
-use alloc::sync::Weak;
-
 use super::*;
 use crate::{
     cpu::multiprocessor::interrupt_tracking::LocalInterruptMask,
     klib::observer::{
+        Observer,
+        ObserverRef,
+        ObserverWeak,
         WaitRegistration,
         WaitSponsor,
         registration::RegistrationError,
@@ -28,7 +29,7 @@ struct Source<'a> {
 impl Observable for Source<'_> {
     fn try_register_waiter(
         &self,
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
         sponsor: &WaitSponsor,
     ) -> Result<WaitRegistration, RegistrationError> {
         {
@@ -81,7 +82,6 @@ fn release(mut thread: Thread) {
 
 pub(super) fn run() {
     let irq = crate::cpu::isa::lp::ops::get_int_state();
-    let _setup = LocalInterruptMask::new();
     let scheduler = SYSTEM_SCHEDULER.read();
     let sponsor = WaitSponsor::new(true);
     let source = Source {
@@ -93,6 +93,20 @@ pub(super) fn run() {
     let tid = publish_thread(fixture(&sponsor)).unwrap();
     let constraint = MigrationConstraint::GeneralWait;
     let generation = MASTER_THREAD_TABLE.read().get(tid).unwrap().generation;
+    crate::klib::observer::backing::test_admission(|| {
+        let _heap = PRIMARY_ALLOCATOR.lock();
+        for _ in 0..64 {
+            assert!(matches!(
+                scheduler.prepare_wait(tid, &source),
+                Err(Error::WaitRegistrationFailed)
+            ));
+        }
+        let table = MASTER_THREAD_TABLE.read();
+        assert_eq!(table.get(tid).unwrap().generation, generation);
+        assert!(matches!(table.get(tid).unwrap().state, ThreadState::NeedsLpAssignment));
+        assert_eq!(sponsor.used(), 0);
+    });
+    let _setup = LocalInterruptMask::new();
 
     // Rejection and immediate readiness do not change the original owner.
     for (reject, ready) in [(true, false), (false, true)] {
@@ -159,7 +173,9 @@ pub(super) fn run() {
     {
         let table = MASTER_THREAD_TABLE.read();
         let thread = table.get(tid).unwrap();
-        assert!(matches!(&thread.state, ThreadState::Blocked(w) if Arc::ptr_eq(w, &second.waker)));
+        assert!(
+            matches!(&thread.state, ThreadState::Blocked(w) if ObserverRef::ptr_eq(w, &second.waker))
+        );
         assert!(!thread.run_queue_link.is_linked());
     }
     assert_eq!(source.source.registered(), 1);

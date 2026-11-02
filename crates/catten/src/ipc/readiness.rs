@@ -2,6 +2,10 @@
 //! resolution and publication share the existing IPC registry; waits retain
 //! their original scheduler/admission and borrowed-resource contracts.
 use super::*;
+use crate::klib::observer::{
+    ObserverRef,
+    ObserverWeak,
+};
 
 mod waiter_source;
 #[cfg(any(test, feature = "kernel_tests"))]
@@ -130,7 +134,7 @@ struct EndpointCloseCompletionObserver {
 }
 
 impl Observer for EndpointCloseCompletionObserver {
-    fn notify(self: Arc<Self>) {
+    fn notify(&self) {
         if let Some(completion) = self.completion.upgrade() {
             let _ = crate::completion::complete_registered(
                 self.asid,
@@ -163,11 +167,15 @@ pub fn watch_connection_closed(
         crate::completion::EventSubmission::new(asid).map_err(|_| IpcError::QueueFull)?;
     let cap = submission.cap();
     let completion = submission.completion().clone();
-    let observer: Arc<dyn Observer> = Arc::try_new(EndpointCloseCompletionObserver {
-        asid,
-        cap,
-        completion: Arc::downgrade(&completion),
-    })
+    let observer: ObserverRef = ObserverRef::try_new(
+        EndpointCloseCompletionObserver {
+            asid,
+            cap,
+            completion: Arc::downgrade(&completion),
+        },
+        submission.observer_platform(),
+    )
+    .map(ObserverRef::erase)
     .map_err(|_| IpcError::ResourceLimit)?;
 
     let registration = {
@@ -185,7 +193,7 @@ pub fn watch_connection_closed(
             Some(
                 endpoint
                     .close_observers
-                    .register(Arc::downgrade(&observer), submission.take_charge())
+                    .register(ObserverRef::downgrade(&observer), submission.take_charge())
                     .map_err(|_| IpcError::ResourceLimit)?,
             )
         }
@@ -211,7 +219,7 @@ pub fn watch_connection_closed(
 impl Observable for EndpointObservable {
     fn try_register_waiter(
         &self,
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
         sponsor: &WaitSponsor,
     ) -> Result<WaitRegistration, RegistrationError> {
         waiter_source::Source::Endpoint(self.endpoint).register(observer, sponsor)
@@ -307,14 +315,14 @@ pub fn wait_reply_timeout(
 /// The record owns cancellation; no separate scalar registry is needed.
 #[derive(Debug)]
 pub(super) struct ReplyCqInterest {
-    _observer: Arc<ReplyCqObserver>,
+    _observer: ObserverRef<ReplyCqObserver>,
     _registration: WaitRegistration,
 }
 
 #[derive(Debug)]
 struct ReplyCqObserver(crate::completion::CqInterest);
 impl Observer for ReplyCqObserver {
-    fn notify(self: Arc<Self>) {
+    fn notify(&self) {
         self.0.wake();
     }
 }
@@ -346,18 +354,19 @@ pub(super) fn bind_reply_cq_with(
     sponsor: &WaitSponsor,
 ) -> Result<(), IpcError> {
     let call_id = pending_call_id(caller, call_cap)?;
-    let source = {
+    let (source, platform) = {
         let ipc = IPC.read();
         let call = ipc.pending_calls.get(&call_id).ok_or(IpcError::UnknownCapability)?;
         if call.cq_interest.is_some() {
             return Err(IpcError::ReplyAlreadyUsed);
         }
-        call.observers.clone()
+        (call.observers.clone(), call.platform)
     };
     let queue =
         crate::completion::capture_cq_interest(caller, cq).ok_or(IpcError::UnknownCapability)?;
-    let observer = Arc::try_new(ReplyCqObserver(queue)).map_err(|_| IpcError::ResourceLimit)?;
-    let weak = Arc::downgrade(&observer) as Weak<dyn Observer>;
+    let observer = ObserverRef::try_new(ReplyCqObserver(queue), platform)
+        .map_err(|_| IpcError::ResourceLimit)?;
+    let weak = observer.downgrade().erase();
     // Admit storage outside IPC. List close serializes against registration;
     // a reply winning that race is handled by the ready check below.
     let registration = match sponsor.register(&source, weak) {
@@ -418,7 +427,7 @@ pub(super) struct PendingCallObservable {
 impl Observable for PendingCallObservable {
     fn try_register_waiter(
         &self,
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
         sponsor: &WaitSponsor,
     ) -> Result<WaitRegistration, RegistrationError> {
         waiter_source::Source::Reply(self.call).register(observer, sponsor)

@@ -1,7 +1,10 @@
 //! Exact source capture and allocation-free waiter publication under IPC.
 
 use super::*;
-use crate::klib::observer::PreparedWaitRegistration;
+use crate::klib::observer::{
+    ObserverWeak,
+    PreparedWaitRegistration,
+};
 
 pub(super) enum Source {
     Endpoint(EndpointId),
@@ -30,7 +33,7 @@ impl Source {
 
     pub(super) fn register(
         &self,
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
         sponsor: &WaitSponsor,
     ) -> Result<WaitRegistration, RegistrationError> {
         let (source, ready) = self.capture()?;

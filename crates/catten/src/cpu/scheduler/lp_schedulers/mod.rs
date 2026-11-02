@@ -11,12 +11,11 @@
 //! flight").  At most one quantum event is in flight per LP; the CAS on
 //! `armed` prevents duplication on repeated `yield_lp` calls.
 
+use crate::klib::observer::ObserverRef;
+
 pub mod round_robin;
 pub(crate) mod run_queue;
-use alloc::{
-    fmt::Debug,
-    sync::Arc,
-};
+use alloc::fmt::Debug;
 use core::sync::atomic::{
     AtomicBool,
     Ordering,
@@ -54,7 +53,7 @@ pub trait LpScheduler: Debug + Send {
         tid: ThreadId,
         expected_generation: Option<ThreadGeneration>,
         expected_waker: Option<&Waker>,
-        detached_wait: &mut Option<Arc<Waker>>,
+        detached_wait: &mut Option<ObserverRef<Waker>>,
     ) -> Result<(), Error>;
     fn remove_thread(
         &mut self,
@@ -154,7 +153,7 @@ impl TimerEventObserver {
 }
 
 impl Observer for TimerEventObserver {
-    fn notify(self: Arc<Self>) {
+    fn notify(&self) {
         self.pending.store(true, Ordering::Release);
     }
 }

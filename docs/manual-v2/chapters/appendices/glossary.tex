@@ -74,8 +74,9 @@
         object or queue.'' May be coalesced. Is not itself a result.
 
     \item[Observable / Observer] The event-notification pattern. An
-        \texttt{Observable} holds \texttt{Weak<dyn Observer>} references;
-        when it fires, it calls \texttt{Observer::notify()}.
+        \texttt{Observable} registers admitted \texttt{ObserverWeak} handles;
+        dispatch retains a strong \texttt{ObserverRef} while borrowing
+        \texttt{Observer::notify(\&self)}.
 
     \item[PerLp<T>] A boxed slice of per-LP cells with lock wrapping.
         Interrupt-safe (masks interrupts on acquire). Use for data accessed

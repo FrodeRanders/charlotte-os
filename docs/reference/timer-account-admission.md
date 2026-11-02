@@ -84,10 +84,10 @@ Existing partial root preparation and actual namespace abandonment controls
 retain their new backing charges without introducing another deliberate leak.
 
 Holder/payload allocation errors are exercised by the shared allocation owner's
-15 host tests, rather than forced native heap exhaustion. These fixtures do not
+18 host tests, rather than forced native heap exhaustion. These fixtures do not
 establish aggregate principal/general-heap accounting, sustained hostile-pressure
 fairness, arbitrary destructor safety or physical hardware behavior. Capability,
 IPC and mailbox accounts have separate [backing admission](namespace-account-admission.md).
-Waker/callback storage and other registry metadata remain
-open. SEC-07 remains partial; existing C03/C16/C18 and G1/G4 boundaries in
+Wakers/callbacks have admitted [observer handles](observer-ownership.md). Other
+registry metadata remains open. SEC-07 remains partial; existing C03/C16/C18 and G1/G4 boundaries in
 [cleanup/recovery](cleanup-recovery.md) continue to apply.

@@ -8,6 +8,7 @@ use crate::{
         multiprocessor::spin::mutex::Mutex,
         scheduler::threads::MigrationConstraint,
     },
+    klib::observer::ObserverRef,
     memory::allocators::global_allocator::PRIMARY_ALLOCATOR,
 };
 
@@ -18,7 +19,7 @@ fn queue(lp_id: LpId) -> RoundRobin {
         lp_id,
         quantum: ExtDuration::from_millis(10),
         is_idle: true,
-        timer_event_observer: Arc::new(super::super::TimerEventObserver::new()),
+        timer_event_observer: ObserverRef::new_for_test(super::super::TimerEventObserver::new()),
         run_queue: RunQueue::new(),
         current_handle: None,
         idle_tid: usize::MAX,

@@ -7,7 +7,10 @@ use core::sync::atomic::{
 };
 
 use super::*;
-use crate::klib::observer::CallOnNotify;
+use crate::klib::observer::{
+    CallOnNotify,
+    ObserverRef,
+};
 
 const SERVER: usize = crate::ipc::namespace::fixture_id(0x000e_a117);
 const CLIENT: usize = crate::ipc::namespace::fixture_id(0x000e_a118);
@@ -57,10 +60,11 @@ pub(crate) fn test_reply_cq_interest() {
     let source = PendingCallObservable {
         call: id,
     };
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| {});
+    let observer: ObserverRef = CallOnNotify::for_test(|| {});
     let mut tokens = Vec::new();
     for _ in 0..waiter_budget::SOURCE_LIMIT {
-        tokens.push(source.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap());
+        tokens
+            .push(source.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap());
     }
     let before = crate::completion::cq_work_generation(CLIENT, 0);
     assert_eq!(bind_reply_cq_with(CLIENT, call, 0, &sponsor), Err(IpcError::ResourceLimit));
@@ -89,7 +93,7 @@ pub(crate) fn test_source_admission() {
     let sponsor = WaitSponsor::new(false);
     let hits = Arc::new(AtomicUsize::new(0));
     let count = hits.clone();
-    let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let observer: ObserverRef = CallOnNotify::for_test(move || {
         // Every source callback must run after the IPC registry is released.
         let _ipc = IPC.read();
         count.fetch_add(1, Ordering::Relaxed);
@@ -100,11 +104,12 @@ pub(crate) fn test_source_admission() {
     };
     let mut tokens = Vec::new();
     for _ in 0..waiter_budget::SOURCE_LIMIT {
-        tokens.push(source.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap());
+        tokens
+            .push(source.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap());
     }
     assert_eq!(sponsor.used(), waiter_budget::SOURCE_LIMIT);
     assert!(matches!(
-        source.try_register_waiter(Arc::downgrade(&observer), &sponsor),
+        source.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor),
         Err(RegistrationError::ResourceLimit)
     ));
     assert_eq!(sponsor.used(), waiter_budget::SOURCE_LIMIT);
@@ -115,17 +120,20 @@ pub(crate) fn test_source_admission() {
     );
     drop(tokens);
     for _ in 0..512 {
-        let token = source.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap();
+        let token =
+            source.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap();
         assert!(token.is_owned());
         drop(token);
         assert_eq!(IPC.read().endpoints[&id].readiness_observers.registered(), 0);
     }
 
-    let token = source.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap();
+    let token = source.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap();
     scalar_send(CLIENT, connection, 1, 2).unwrap();
     assert_eq!(hits.load(Ordering::Relaxed), 1);
     assert_eq!(sponsor.used(), 0);
-    assert!(source.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap().is_ready());
+    assert!(
+        source.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap().is_ready()
+    );
     drop(token);
     receive(SERVER, endpoint).unwrap();
     assert_eq!(sponsor.used(), 0);
@@ -138,26 +146,32 @@ pub(crate) fn test_source_admission() {
     let reply_cap = receive(SERVER, endpoint).unwrap().reply.unwrap();
     let mut tokens = Vec::new();
     for _ in 0..waiter_budget::SOURCE_LIMIT {
-        tokens.push(call_source.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap());
+        tokens.push(
+            call_source.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap(),
+        );
     }
     assert!(matches!(
-        call_source.try_register_waiter(Arc::downgrade(&observer), &sponsor),
+        call_source.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor),
         Err(RegistrationError::ResourceLimit)
     ));
     assert_eq!(sponsor.used(), waiter_budget::SOURCE_LIMIT);
     drop(tokens);
-    let token = call_source.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap();
+    let token =
+        call_source.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap();
     reply(SERVER, reply_cap, 42).unwrap();
     assert_eq!(hits.load(Ordering::Relaxed), 2);
     assert_eq!(sponsor.used(), 0);
     assert!(
-        call_source.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap().is_ready()
+        call_source
+            .try_register_waiter(ObserverRef::downgrade(&observer), &sponsor)
+            .unwrap()
+            .is_ready()
     );
     assert_eq!(poll_reply(CLIENT, call_cap).unwrap().unwrap().result, 42);
     drop(token);
     close_cap(CLIENT, call_cap).unwrap();
     assert!(matches!(
-        call_source.try_register_waiter(Arc::downgrade(&observer), &sponsor),
+        call_source.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor),
         Err(RegistrationError::Closed)
     ));
 
@@ -166,7 +180,7 @@ pub(crate) fn test_source_admission() {
     let source = PendingCallObservable {
         call: pending_call_id(CLIENT, call_cap).unwrap(),
     };
-    let token = source.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap();
+    let token = source.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap();
     let reply_cap = receive(SERVER, endpoint).unwrap().reply.unwrap();
     close_cap(SERVER, reply_cap).unwrap();
     assert_eq!(poll_reply(CLIENT, call_cap).unwrap().unwrap().result, REPLY_CANCELLED);
@@ -182,29 +196,33 @@ pub(crate) fn test_source_admission() {
     let call_source = PendingCallObservable {
         call: pending_call_id(CLIENT, call_cap).unwrap(),
     };
-    let call_token = call_source.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap();
+    let call_token =
+        call_source.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap();
     let second_source = PendingCallObservable {
         call: pending_call_id(CLIENT, second_call_cap).unwrap(),
     };
     let second_token =
-        second_source.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap();
+        second_source.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap();
     // The queued request is already readable. Direct registration here tests
     // combining closure batches rather than the observable's ready fast path.
     let list = IPC.read().endpoints[&id].readiness_observers.clone();
-    let receiver_token = sponsor.register(&list, Arc::downgrade(&observer)).unwrap();
+    let receiver_token = sponsor.register(&list, ObserverRef::downgrade(&observer)).unwrap();
     close_cap(SERVER, endpoint).unwrap();
     assert_eq!(hits.load(Ordering::Relaxed), 6);
     assert_eq!(sponsor.used(), 0);
     assert_eq!(poll_reply(CLIENT, call_cap).unwrap().unwrap().result, REPLY_ENDPOINT_CLOSED);
     assert_eq!(poll_reply(CLIENT, second_call_cap).unwrap().unwrap().result, REPLY_ENDPOINT_CLOSED);
     assert!(
-        call_source.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap().is_ready()
+        call_source
+            .try_register_waiter(ObserverRef::downgrade(&observer), &sponsor)
+            .unwrap()
+            .is_ready()
     );
     assert!(
         EndpointObservable {
             endpoint: id
         }
-        .try_register_waiter(Arc::downgrade(&observer), &sponsor)
+        .try_register_waiter(ObserverRef::downgrade(&observer), &sponsor)
         .unwrap()
         .is_ready()
     );
@@ -216,7 +234,7 @@ pub(crate) fn test_source_admission() {
         EndpointObservable {
             endpoint: id
         }
-        .try_register_waiter(Arc::downgrade(&observer), &sponsor),
+        .try_register_waiter(ObserverRef::downgrade(&observer), &sponsor),
         Err(RegistrationError::Closed)
     ));
 
@@ -234,12 +252,13 @@ pub(crate) fn test_source_admission() {
     };
     let request = receive(server.id(), endpoint).unwrap();
     let loan = request.memory.unwrap();
-    let token = call_source.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap();
+    let token =
+        call_source.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap();
     close_cap(owner.id(), call_cap).unwrap();
     assert!(crate::memory::object::info(server.id(), loan).is_err());
     assert!(crate::memory::object::info(owner.id(), memory).is_ok());
     assert!(matches!(
-        call_source.try_register_waiter(Arc::downgrade(&observer), &sponsor),
+        call_source.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor),
         Err(RegistrationError::Closed)
     ));
     drop(token);
@@ -255,17 +274,17 @@ pub(crate) fn test_source_admission() {
     let source = EndpointObservable {
         endpoint: id,
     };
-    let token = source.try_register_waiter(Arc::downgrade(&observer), &old).unwrap();
+    let token = source.try_register_waiter(ObserverRef::downgrade(&observer), &old).unwrap();
     crate::memory::budget::retire(old_handle);
     assert!(matches!(
-        source.try_register_waiter(Arc::downgrade(&observer), &old),
+        source.try_register_waiter(ObserverRef::downgrade(&observer), &old),
         Err(RegistrationError::Closed)
     ));
     crate::memory::close_user_address_space_handle(old_handle).unwrap();
     let replacement = crate::service::loader::create_user_address_space_handle();
     assert_eq!(old_handle.id(), replacement.id());
     let new = crate::memory::budget::waiter_sponsor(replacement.id());
-    let fresh = source.try_register_waiter(Arc::downgrade(&observer), &new).unwrap();
+    let fresh = source.try_register_waiter(ObserverRef::downgrade(&observer), &new).unwrap();
     drop(token);
     assert_eq!(old.used(), 0);
     assert_eq!(new.used(), 1);
@@ -323,14 +342,16 @@ pub(crate) fn test_scheduled_cleanup() {
         assert_eq!(IPC.read().endpoints[&id].readiness_observers.registered(), 0);
     }
     let sponsor = WaitSponsor::new(false);
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| {});
+    let observer: ObserverRef = CallOnNotify::for_test(|| {});
     let tid = get_thread_id().unwrap();
     for (index, source) in
         [&source as &dyn Observable, &call_source as &dyn Observable].into_iter().enumerate()
     {
         let mut tokens = Vec::new();
         for _ in 0..waiter_budget::SOURCE_LIMIT {
-            tokens.push(source.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap());
+            tokens.push(
+                source.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap(),
+            );
         }
         let constraints = MASTER_THREAD_TABLE.read().get(tid).unwrap().migration_constraints;
         assert!(matches!(
@@ -359,7 +380,7 @@ pub(crate) fn test_scheduled_cleanup() {
     let mut receiver_tokens = Vec::new();
     for _ in 0..waiter_budget::SOURCE_LIMIT {
         receiver_tokens
-            .push(source.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap());
+            .push(source.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap());
     }
     RECOVERY_CAP.store(connection, Ordering::Release);
     RECOVERY_RETRY_BASE
@@ -397,7 +418,8 @@ pub(crate) fn test_scheduled_cleanup() {
     };
     let mut call_tokens = Vec::new();
     for _ in 0..waiter_budget::SOURCE_LIMIT {
-        call_tokens.push(source.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap());
+        call_tokens
+            .push(source.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap());
     }
     RECOVERY_CAP.store(request.reply.unwrap(), Ordering::Release);
     RECOVERY_LOAN.store(request.memory.unwrap(), Ordering::Release);

@@ -991,6 +991,16 @@ the corrected RPC polling paths, and the remaining notification gaps.
 
 ## Observers, completions and timers
 
+- Notification targets use `ObserverRef`/`ObserverWeak`; `notify(&self)` borrows
+  the payload while dispatch retains its strong handle. Do not restore global
+  observer Arcs/Weaks or expose the handles' allocator/raw storage. Capture class
+  from the exact waiter sponsor, admitted timer/watch charge, namespace target or
+  original pending-call record before fallible construction. `observer_backing`
+  admits bundles before holder allocation and actual Arc-layout bytes before
+  payload allocation; final weak/private-holder release precedes refund. Keep
+  producer guards out of callback and ordinary failure disposal. See
+  `docs/reference/observer-ownership.md` for the allocation inventory and costs.
+
 - IPC claim, memory-close and DMA-readiness sources use
   `deferred::PreparedDisposal` with independent `deferred_nodes` byte/count
   admission before list construction. Retain the existing captured source/owner

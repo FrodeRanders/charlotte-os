@@ -43,7 +43,7 @@ use crate::{
     klib::observer::{
         CallOnNotify,
         Observable,
-        Observer,
+        ObserverRef,
         WaitSponsor,
         registration::RegistrationError,
         waiter_budget,
@@ -60,29 +60,33 @@ pub(crate) fn test_admission() {
     let hits = Arc::new(AtomicUsize::new(0));
     let count = hits.clone();
     let target = mutex.clone();
-    let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let observer: ObserverRef = CallOnNotify::for_test(move || {
         // Both list and lazy-initialization guards must be released first.
         assert_eq!(target.waiter_count(), 0);
         assert!(target.try_lock());
         unsafe { target.unlock() };
         count.fetch_add(1, Ordering::Relaxed);
     });
-    assert!(mutex.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap().is_ready());
+    assert!(
+        mutex.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap().is_ready()
+    );
     assert_eq!(sponsor.used(), 0);
     mutex.lock();
     let mut registrations = Vec::new();
     for _ in 0..waiter_budget::SOURCE_LIMIT {
-        registrations.push(mutex.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap());
+        registrations
+            .push(mutex.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap());
     }
     assert_eq!(sponsor.used(), 64);
     assert!(matches!(
-        mutex.try_register_waiter(Arc::downgrade(&observer), &sponsor),
+        mutex.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor),
         Err(RegistrationError::ResourceLimit)
     ));
     assert_eq!(sponsor.used(), 64);
     drop(registrations.pop());
     assert_eq!(mutex.waiter_count(), 63);
-    registrations.push(mutex.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap());
+    registrations
+        .push(mutex.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap());
     unsafe { mutex.unlock() };
     assert_eq!(hits.load(Ordering::Relaxed), 64);
     assert_eq!(sponsor.used(), 0);
@@ -90,7 +94,7 @@ pub(crate) fn test_admission() {
     // Re-arm/cancel repeatedly; the source must not accumulate dead weak refs.
     mutex.lock();
     for _ in 0..512 {
-        drop(mutex.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap());
+        drop(mutex.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap());
         assert_eq!(mutex.waiter_count(), 0);
     }
     unsafe { mutex.unlock() };
@@ -98,7 +102,7 @@ pub(crate) fn test_admission() {
     let rw = Arc::new(rwlock::RwLockCore::new());
     let count = hits.clone();
     let target = rw.clone();
-    let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let observer: ObserverRef = CallOnNotify::for_test(move || {
         assert_eq!(target.waiter_source(true).registered(), 0);
         assert_eq!(target.waiter_source(false).registered(), 0);
         assert!(target.try_lock_shared());
@@ -110,11 +114,12 @@ pub(crate) fn test_admission() {
     for shared in [true, false] {
         let source = rw.waiter_source(shared);
         for _ in 0..waiter_budget::SOURCE_LIMIT {
-            registrations
-                .push(source.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap());
+            registrations.push(
+                source.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap(),
+            );
         }
         assert!(matches!(
-            source.try_register_waiter(Arc::downgrade(&observer), &sponsor),
+            source.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor),
             Err(RegistrationError::ResourceLimit)
         ));
     }
@@ -126,12 +131,16 @@ pub(crate) fn test_admission() {
 
     // An expired exclusive candidate must not suppress reader notification.
     rw.lock_exclusive();
-    let expired: Arc<dyn Observer> = CallOnNotify::new(|| panic!("expired observer fired"));
-    let stale =
-        rw.waiter_source(false).try_register_waiter(Arc::downgrade(&expired), &sponsor).unwrap();
+    let expired: ObserverRef = CallOnNotify::for_test(|| panic!("expired observer fired"));
+    let stale = rw
+        .waiter_source(false)
+        .try_register_waiter(ObserverRef::downgrade(&expired), &sponsor)
+        .unwrap();
     drop(expired);
-    let reader =
-        rw.waiter_source(true).try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap();
+    let reader = rw
+        .waiter_source(true)
+        .try_register_waiter(ObserverRef::downgrade(&observer), &sponsor)
+        .unwrap();
     unsafe { rw.unlock_exclusive() };
     assert_eq!(hits.load(Ordering::Relaxed), 193);
     assert_eq!(sponsor.used(), 0);
@@ -141,8 +150,10 @@ pub(crate) fn test_admission() {
     // drain the exclusive candidate list and cause pointless re-parking.
     rw.lock_shared();
     rw.lock_shared();
-    let writer =
-        rw.waiter_source(false).try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap();
+    let writer = rw
+        .waiter_source(false)
+        .try_register_waiter(ObserverRef::downgrade(&observer), &sponsor)
+        .unwrap();
     unsafe { rw.unlock_shared() };
     assert_eq!(rw.waiter_source(false).registered(), 1);
     assert_eq!(hits.load(Ordering::Relaxed), 193);
@@ -153,12 +164,12 @@ pub(crate) fn test_admission() {
     let source = WaiterSource::new();
     let mut old = Vec::new();
     for _ in 0..64 {
-        old.push(source.register(Arc::downgrade(&observer), &sponsor).unwrap());
+        old.push(source.register(ObserverRef::downgrade(&observer), &sponsor).unwrap());
     }
     let batch = source.drain();
     let mut new = Vec::new();
     for _ in 0..64 {
-        new.push(source.register(Arc::downgrade(&observer), &sponsor).unwrap());
+        new.push(source.register(ObserverRef::downgrade(&observer), &sponsor).unwrap());
     }
     assert_eq!(sponsor.used(), 128);
     drop(old); // Detached storage still holds its charges.
@@ -171,7 +182,7 @@ pub(crate) fn test_admission() {
     let source = WaiterSource::new();
     sponsor.retire();
     assert!(matches!(
-        source.register(Arc::downgrade(&observer), &sponsor),
+        source.register(ObserverRef::downgrade(&observer), &sponsor),
         Err(RegistrationError::Closed)
     ));
     assert_eq!(source.registered(), 0);
@@ -246,10 +257,10 @@ pub(crate) fn test_scheduled_cleanup() {
         assert_eq!(source.registered(), 0);
     }
     let sponsor = WaitSponsor::new(false);
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| {});
+    let observer: ObserverRef = CallOnNotify::for_test(|| {});
     let mut full = Vec::new();
     for _ in 0..64 {
-        full.push(source.register(Arc::downgrade(&observer), &sponsor).unwrap());
+        full.push(source.register(ObserverRef::downgrade(&observer), &sponsor).unwrap());
     }
     assert!(matches!(
         SYSTEM_SCHEDULER.read().block_thread(tid, &source),
@@ -273,7 +284,7 @@ pub(crate) fn test_scheduled_cleanup() {
     let raw = unsafe { MUTEX.raw() };
     let mut full = Vec::new();
     for _ in 0..64 {
-        full.push(raw.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap());
+        full.push(raw.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap());
     }
     let retries = LOCK_WAIT_ADMISSION_RETRIES[0].load(Ordering::Relaxed);
     spawn_thread_on_lp(KERNEL_ASID, mutex_worker, lp);
@@ -293,7 +304,9 @@ pub(crate) fn test_scheduled_cleanup() {
     for shared in [true, false] {
         for _ in 0..64 {
             full.push(
-                raw.waiter_source(shared).register(Arc::downgrade(&observer), &sponsor).unwrap(),
+                raw.waiter_source(shared)
+                    .register(ObserverRef::downgrade(&observer), &sponsor)
+                    .unwrap(),
             );
         }
     }

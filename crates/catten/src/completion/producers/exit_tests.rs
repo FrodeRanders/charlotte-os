@@ -32,7 +32,7 @@ use crate::{
     },
     klib::observer::{
         CallOnNotify,
-        Observer,
+        ObserverRef,
         registration::RegistrationError,
     },
     memory::KERNEL_ASID,
@@ -78,8 +78,8 @@ impl Drop for Target {
     }
 }
 
-fn observer(submission: &EventSubmission) -> Arc<dyn Observer> {
-    Arc::new(CompletionExitObserver {
+fn observer(submission: &EventSubmission) -> ObserverRef {
+    crate::klib::observer::test_observer(CompletionExitObserver {
         asid: submission.asid,
         cap: submission.cap(),
         result: OpResult::Ok(0),
@@ -121,7 +121,7 @@ pub(crate) fn test_admission() {
     // Capture/reenter scheduler and completion registries from an exit callback.
     let called = Arc::new(AtomicUsize::new(0));
     let calls = called.clone();
-    let reentrant: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let reentrant: ObserverRef = CallOnNotify::for_test(move || {
         assert!(MASTER_THREAD_TABLE.read().get(tid).is_err());
         let cap = super::submit(CLIENT, super::OpCode::Nop, None).unwrap();
         super::complete(CLIENT, cap, OpResult::Ok(7)).unwrap();
@@ -130,7 +130,7 @@ pub(crate) fn test_admission() {
     });
     let token = scheduler::observe_thread_exit(
         tid,
-        Arc::downgrade(&reentrant),
+        ObserverRef::downgrade(&reentrant),
         budget::reserve(&account, false).unwrap(),
     )
     .unwrap();
@@ -179,7 +179,8 @@ pub(crate) fn test_admission() {
         let mut source = ExitSource::new();
         let mut staged = EventSubmission::new(CLIENT).unwrap();
         let callback = observer(&staged);
-        let token = source.register(Arc::downgrade(&callback), staged.take_charge()).unwrap();
+        let token =
+            source.register(ObserverRef::downgrade(&callback), staged.take_charge()).unwrap();
         super::cancel(CLIENT, staged.cap()).unwrap();
         let cancelled = staged.install_observation(callback, token, worker).unwrap();
         if cancelled {
@@ -207,7 +208,7 @@ pub(crate) fn test_admission() {
     let retained = staged.completion().clone();
     let old_account = super::watch_admission(handle.id()).unwrap();
     let callback = observer(&staged);
-    let token = source.register(Arc::downgrade(&callback), staged.take_charge()).unwrap();
+    let token = source.register(ObserverRef::downgrade(&callback), staged.take_charge()).unwrap();
     crate::memory::close_user_address_space_handle(handle).unwrap();
     let replacement = crate::service::loader::create_user_address_space_handle();
     assert_eq!(replacement.id(), handle.id());
@@ -231,12 +232,12 @@ pub(crate) fn test_admission() {
     // callbacks, whereas explicit exit closes/notifies once.
     let account = budget::DomainBudget::new(2);
     let source = ExitSource::new();
-    let callback: Arc<dyn Observer> = CallOnNotify::new(|| panic!("discard notified"));
+    let callback: ObserverRef = CallOnNotify::for_test(|| panic!("discard notified"));
     let runs = WORKER_RUNS.load(Ordering::SeqCst);
     assert_eq!(
         scheduler::spawn_worker_after_observe(
             empty_worker,
-            Arc::downgrade(&callback),
+            ObserverRef::downgrade(&callback),
             budget::reserve(&account, false).unwrap(),
             |_| Err(SubmitError::UnknownAddressSpace),
         ),
@@ -245,7 +246,7 @@ pub(crate) fn test_admission() {
     assert_eq!(WORKER_RUNS.load(Ordering::SeqCst), runs);
     assert_eq!(account.used(), 0);
     let token = source
-        .register(Arc::downgrade(&callback), budget::reserve(&account, false).unwrap())
+        .register(ObserverRef::downgrade(&callback), budget::reserve(&account, false).unwrap())
         .unwrap();
     drop(source);
     assert_eq!(account.used(), 0);
@@ -254,7 +255,7 @@ pub(crate) fn test_admission() {
     let list = crate::klib::observer::registration::ObserverList::try_new(1, false).unwrap();
     drop(list.close());
     assert_eq!(
-        list.register(Arc::downgrade(&callback), budget::reserve(&account, false).unwrap())
+        list.register(ObserverRef::downgrade(&callback), budget::reserve(&account, false).unwrap())
             .unwrap_err(),
         RegistrationError::Closed
     );

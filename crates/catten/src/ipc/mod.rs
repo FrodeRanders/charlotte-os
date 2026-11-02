@@ -6,10 +6,7 @@
 //! and the LP-indexed mailbox smoke ABI are separate interfaces.
 
 use alloc::{
-    sync::{
-        Arc,
-        Weak,
-    },
+    sync::Arc,
     vec::Vec,
 };
 use core::{
@@ -336,6 +333,7 @@ struct ReplyToken {
 #[derive(Debug)]
 struct PendingCall {
     caller: AddressSpaceId,
+    platform: bool,
     result: Option<ReplyValue>,
     observers: WaiterList,
     cq_interest: Option<ReplyCqInterest>,
@@ -351,6 +349,7 @@ impl PendingCall {
     fn try_new(caller: AddressSpaceId, platform: bool) -> Result<Self, IpcError> {
         Ok(Self {
             caller,
+            platform,
             result: None,
             observers: ObserverList::try_new(waiter_budget::SOURCE_LIMIT, platform)
                 .map_err(|_| IpcError::ResourceLimit)?,

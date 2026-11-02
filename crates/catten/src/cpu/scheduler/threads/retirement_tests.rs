@@ -13,7 +13,10 @@ use super::*;
 use crate::{
     completion,
     cpu::scheduler::deferred::drain as drain_reaper_wakes,
-    klib::observer::CallOnNotify,
+    klib::observer::{
+        CallOnNotify,
+        ObserverRef,
+    },
     memory::{
         AddressSpaceInterface,
         PHYSICAL_FRAME_ALLOCATOR,
@@ -63,7 +66,7 @@ pub(crate) fn run() {
         let thread = Thread::new(KERNEL_ASID, unused_entry);
         let cap = completion::submit(asid, completion::OpCode::Nop, None).unwrap();
         let calls = calls.clone();
-        let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+        let observer: ObserverRef = CallOnNotify::for_test(move || {
             assert!(DEAD_THREADS.try_write().is_some());
             assert!(MASTER_THREAD_TABLE.try_write().is_some());
             assert!(retirement_in_flight());
@@ -72,7 +75,7 @@ pub(crate) fn run() {
         });
         let token = thread
             .try_observe_exit(
-                Arc::downgrade(&observer),
+                ObserverRef::downgrade(&observer),
                 completion::watch_budget::reserve(
                     &completion::watch_admission(asid).unwrap(),
                     true,
@@ -224,7 +227,7 @@ fn readiness(lp: LpId, other_lp: LpId) {
     let sponsor = WaitSponsor::new(true);
     let calls = Arc::new(AtomicUsize::new(0));
     let count = calls.clone();
-    let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let observer: ObserverRef = CallOnNotify::for_test(move || {
         assert!(MASTER_THREAD_TABLE.try_write().is_some());
         assert!(DEAD_THREADS.try_write().is_some());
         assert!(crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER.try_write().is_some());
@@ -232,8 +235,8 @@ fn readiness(lp: LpId, other_lp: LpId) {
     });
     let source = &REAPER_WORK[lp as usize].waiters;
     let other = &REAPER_WORK[other_lp as usize].waiters;
-    let token = source.register(Arc::downgrade(&observer), &sponsor).unwrap();
-    let unrelated = other.register(Arc::downgrade(&observer), &sponsor).unwrap();
+    let token = source.register(ObserverRef::downgrade(&observer), &sponsor).unwrap();
+    let unrelated = other.register(ObserverRef::downgrade(&observer), &sponsor).unwrap();
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let first = Thread::new(KERNEL_ASID, unused_entry);
     let second = Thread::new(KERNEL_ASID, unused_entry);
@@ -253,7 +256,7 @@ fn readiness(lp: LpId, other_lp: LpId) {
     assert_eq!(sponsor.used(), 0);
     // Publication and its wake can precede registration: the durable exact
     // head remains ready for the scheduler's post-registration recheck.
-    let late = source.register(Arc::downgrade(&observer), &sponsor).unwrap();
+    let late = source.register(ObserverRef::downgrade(&observer), &sponsor).unwrap();
     assert!(reaper_work_ready(lp, current_stack_pointer()));
     drop(late);
     assert_eq!(source.registered(), 0);
@@ -265,10 +268,10 @@ fn readiness(lp: LpId, other_lp: LpId) {
     // refunds its attempted registration, with no timer/watchdog or cleanup.
     let mut full = Vec::new();
     for _ in 0..crate::klib::observer::waiter_budget::SOURCE_LIMIT {
-        full.push(source.register(Arc::downgrade(&observer), &sponsor).unwrap());
+        full.push(source.register(ObserverRef::downgrade(&observer), &sponsor).unwrap());
     }
     assert_eq!(
-        source.register(Arc::downgrade(&observer), &sponsor).unwrap_err(),
+        source.register(ObserverRef::downgrade(&observer), &sponsor).unwrap_err(),
         RegistrationError::ResourceLimit
     );
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
@@ -377,20 +380,20 @@ fn abandoned_payloads() {
         let mut thread = Thread::new(owner, unused_entry);
         let source = WaiterSource::new();
         let sponsor = WaitSponsor::new(false);
-        let waker = Arc::new(Waker::new(usize::MAX, thread.generation));
+        let waker = ObserverRef::new_for_test(Waker::new(usize::MAX, thread.generation));
         let registration =
-            source.register(Arc::downgrade(&waker) as Weak<dyn Observer>, &sponsor).unwrap();
+            source.register(ObserverRef::downgrade(&waker).erase(), &sponsor).unwrap();
         waker.set_registration(registration);
         thread.state = ThreadState::Blocked(waker);
         let hits = Arc::new(AtomicUsize::new(0));
         let count = hits.clone();
-        let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+        let observer: ObserverRef = CallOnNotify::for_test(move || {
             count.fetch_add(1, Ordering::Relaxed);
             panic!("abandoned thread fabricated an exit callback");
         });
         let token = thread
             .try_observe_exit(
-                Arc::downgrade(&observer),
+                ObserverRef::downgrade(&observer),
                 completion::watch_budget::reserve(&watches, true).unwrap(),
             )
             .unwrap();

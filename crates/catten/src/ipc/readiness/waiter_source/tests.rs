@@ -3,7 +3,10 @@
 
 use super::*;
 use crate::{
-    klib::observer::CallOnNotify,
+    klib::observer::{
+        CallOnNotify,
+        ObserverRef,
+    },
     memory::allocators::global_allocator::PRIMARY_ALLOCATOR,
 };
 
@@ -15,7 +18,7 @@ pub(super) fn run() {
     crate::ipc::namespace::prepare_fixture(CLIENT);
     let irq = crate::cpu::isa::lp::ops::get_int_state();
     let sponsor = WaitSponsor::new(false);
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| {
+    let observer: ObserverRef = CallOnNotify::for_test(|| {
         let _ipc = IPC.write();
     });
     let endpoint = endpoint_create(SERVER, 1, 1, 4).unwrap();
@@ -24,7 +27,7 @@ pub(super) fn run() {
     let source = Source::Endpoint(id);
     let (identity, ready) = source.capture().unwrap();
     assert!(!ready);
-    let mut prepared = sponsor.prepare(&identity, Arc::downgrade(&observer)).unwrap();
+    let mut prepared = sponsor.prepare(&identity, ObserverRef::downgrade(&observer)).unwrap();
     let token;
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
@@ -38,9 +41,9 @@ pub(super) fn run() {
 
     let mut full_tokens = Vec::new();
     for _ in 0..waiter_budget::SOURCE_LIMIT {
-        full_tokens.push(source.register(Arc::downgrade(&observer), &sponsor).unwrap());
+        full_tokens.push(source.register(ObserverRef::downgrade(&observer), &sponsor).unwrap());
     }
-    let mut full = sponsor.prepare(&identity, Arc::downgrade(&observer)).unwrap();
+    let mut full = sponsor.prepare(&identity, ObserverRef::downgrade(&observer)).unwrap();
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
         assert_eq!(source.publish(&mut full).unwrap_err(), RegistrationError::ResourceLimit);
@@ -50,7 +53,7 @@ pub(super) fn run() {
     assert_eq!(sponsor.used(), waiter_budget::SOURCE_LIMIT);
     drop(full_tokens);
 
-    let mut readable = sponsor.prepare(&identity, Arc::downgrade(&observer)).unwrap();
+    let mut readable = sponsor.prepare(&identity, ObserverRef::downgrade(&observer)).unwrap();
     scalar_send(CLIENT, connection, 3, 4).unwrap();
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
@@ -66,7 +69,7 @@ pub(super) fn run() {
     let reply = Source::Reply(call_id);
     let (reply_identity, ready) = reply.capture().unwrap();
     assert!(!ready);
-    let mut prepared = sponsor.prepare(&reply_identity, Arc::downgrade(&observer)).unwrap();
+    let mut prepared = sponsor.prepare(&reply_identity, ObserverRef::downgrade(&observer)).unwrap();
     let token;
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
@@ -81,7 +84,7 @@ pub(super) fn run() {
 
     // Reply result wins before entry publication. The complete unused entry
     // remains owned/charged until the caller leaves IPC and disposes it.
-    let mut replied = sponsor.prepare(&reply_identity, Arc::downgrade(&observer)).unwrap();
+    let mut replied = sponsor.prepare(&reply_identity, ObserverRef::downgrade(&observer)).unwrap();
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
         assert!(reply.publish(&mut replied).unwrap().is_ready());
@@ -94,7 +97,7 @@ pub(super) fn run() {
 
     // A preparation for a different original list cannot attach to a live
     // endpoint even when that endpoint is readable. Identity precedes ready.
-    let mut foreign = sponsor.prepare(&reply_identity, Arc::downgrade(&observer)).unwrap();
+    let mut foreign = sponsor.prepare(&reply_identity, ObserverRef::downgrade(&observer)).unwrap();
     scalar_send(CLIENT, connection, 7, 8).unwrap();
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
@@ -104,7 +107,7 @@ pub(super) fn run() {
     foreign.finish();
     receive(SERVER, endpoint).unwrap();
 
-    let mut gone = sponsor.prepare(&identity, Arc::downgrade(&observer)).unwrap();
+    let mut gone = sponsor.prepare(&identity, ObserverRef::downgrade(&observer)).unwrap();
     close_cap(SERVER, endpoint).unwrap();
     close_cap(CLIENT, connection).unwrap();
     {

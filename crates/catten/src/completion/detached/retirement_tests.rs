@@ -11,6 +11,7 @@ use super::*;
 use crate::{
     klib::observer::{
         CallOnNotify,
+        ObserverRef,
         WaitSponsor,
     },
     memory::allocators::global_allocator::PRIMARY_ALLOCATOR,
@@ -29,7 +30,9 @@ fn heap_held_splice() {
         let operation = submit_detached_timer(CLIENT, DEFAULT_CQ, u64::MAX, 12).unwrap();
         let observer = {
             let registry = COMPLETIONS.read();
-            Arc::downgrade(registry[&CLIENT].detached[&operation]._timer_observer.as_ref().unwrap())
+            ObserverRef::downgrade(
+                registry[&CLIENT].detached[&operation]._timer_observer.as_ref().unwrap(),
+            )
         };
         if mode == 2 {
             let queue = COMPLETIONS.write().get_mut(&CLIENT).unwrap().cqs.take(&DEFAULT_CQ);
@@ -107,13 +110,15 @@ fn public_producers() {
         .unwrap();
         let producer = {
             let registry = COMPLETIONS.read();
-            Arc::downgrade(registry[&CLIENT].detached[&operation]._timer_observer.as_ref().unwrap())
+            ObserverRef::downgrade(
+                registry[&CLIENT].detached[&operation]._timer_observer.as_ref().unwrap(),
+            )
         };
         let observed = producer.clone();
         let account = records.clone();
         let hits = Arc::new(AtomicUsize::new(0));
         let counter = hits.clone();
-        let callback: Arc<dyn Observer> = CallOnNotify::new(move || {
+        let callback: ObserverRef = CallOnNotify::for_test(move || {
             let mut registry = COMPLETIONS.write();
             let entries = registry.get_mut(&CLIENT).unwrap();
             assert!(!entries.detached.contains_key(&operation));
@@ -139,7 +144,8 @@ fn public_producers() {
         });
         let sponsor = WaitSponsor::new(false);
         let source = capture_cq_interest(CLIENT, DEFAULT_CQ).unwrap();
-        let token = sponsor.register(source.waiter_source(), Arc::downgrade(&callback)).unwrap();
+        let token =
+            sponsor.register(source.waiter_source(), ObserverRef::downgrade(&callback)).unwrap();
         match mode {
             0 => complete_detached(CLIENT, operation, OpResult::Ok(0)).unwrap(),
             1 => assert_eq!(cancel_detached(CLIENT, operation), Ok(CancelState::CancelRequested)),
@@ -168,11 +174,12 @@ fn source_replacement() {
     let sponsor = WaitSponsor::new(false);
     let calls = Arc::new(AtomicUsize::new(0));
     let counter = calls.clone();
-    let callback: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let callback: ObserverRef = CallOnNotify::for_test(move || {
         counter.fetch_add(1, Ordering::SeqCst);
     });
     let original = capture_cq_interest(CLIENT, DEFAULT_CQ).unwrap();
-    let old_token = sponsor.register(original.waiter_source(), Arc::downgrade(&callback)).unwrap();
+    let old_token =
+        sponsor.register(original.waiter_source(), ObserverRef::downgrade(&callback)).unwrap();
     // Force replacement precisely between real serialized publication and
     // producer disposal/notification, rather than relying on a timing race.
     let retired = retire_detached(CLIENT, operation, OpResult::Ok(0)).unwrap();
@@ -181,7 +188,8 @@ fn source_replacement() {
     open_cq(CLIENT, DEFAULT_CQ, 4).unwrap();
     assert_eq!(sponsor.used(), 0);
     let successor = capture_cq_interest(CLIENT, DEFAULT_CQ).unwrap();
-    let new_token = sponsor.register(successor.waiter_source(), Arc::downgrade(&callback)).unwrap();
+    let new_token =
+        sponsor.register(successor.waiter_source(), ObserverRef::downgrade(&callback)).unwrap();
     retired.finish();
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     assert_eq!(sponsor.used(), 1);

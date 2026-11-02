@@ -8,7 +8,7 @@ use crate::{
     },
     klib::observer::{
         CallOnNotify,
-        Observer,
+        ObserverRef,
         WaitSponsor,
         list_budget,
     },
@@ -110,14 +110,15 @@ fn success_and_rejection() {
     drop(occupied);
     waiters(&mut preparing);
     let sponsor = WaitSponsor::new(false);
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("failed record notified"));
-    let token =
-        sponsor.register(preparing.0.waiters.as_ref().unwrap(), Arc::downgrade(&observer)).unwrap();
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("failed record notified"));
+    let token = sponsor
+        .register(preparing.0.waiters.as_ref().unwrap(), ObserverRef::downgrade(&observer))
+        .unwrap();
     assert_eq!(sponsor.used(), 1);
     assert!(matches!(preparing.complete(), Err(SubmitError::WouldBlock)));
     assert_eq!(account.used(), 0);
     assert_eq!(sponsor.used(), 0, "failed record did not close its source entries");
-    assert_eq!(Arc::weak_count(&observer), 0);
+    assert_eq!(ObserverRef::weak_count(&observer), 0);
     drop(token);
 }
 

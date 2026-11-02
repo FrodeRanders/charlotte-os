@@ -10,7 +10,6 @@
 //! (timer, endpoint message, device interrupt) returns the thread
 //! to its affinity LP rather than the globally least-loaded one.
 
-use alloc::sync::Weak;
 use core::sync::atomic::{
     AtomicU64,
     Ordering,
@@ -33,6 +32,8 @@ use crate::{
         observer::{
             Observable,
             Observer,
+            ObserverRef,
+            ObserverWeak,
         },
         time::duration::ExtDuration,
     },
@@ -490,7 +491,7 @@ pub(crate) fn try_block_until_with_constraint(
         generation: threads::ThreadGeneration,
     }
     impl Observer for BlockTimeoutWake {
-        fn notify(self: alloc::sync::Arc<Self>) {
+        fn notify(&self) {
             let _ = SYSTEM_SCHEDULER.read().submit_woken_thread(self.tid, self.generation);
         }
     }
@@ -531,19 +532,20 @@ pub(crate) fn try_block_until_with_constraint(
                 .then_some(true)
                 .ok_or(system_scheduler::Error::WaitRegistrationFailed);
         };
-        let Ok(timeout_obs) = alloc::sync::Arc::try_new(BlockTimeoutWake {
-            tid,
-            generation: expected_generation,
-        }) else {
+        let Ok(timeout_obs) = ObserverRef::try_new(
+            BlockTimeoutWake {
+                tid,
+                generation: expected_generation,
+            },
+            timer_event.event().observer_platform(),
+        ) else {
             timer_event.cancel_unpublished();
             timeout_handle.release();
             return condition()
                 .then_some(true)
                 .ok_or(system_scheduler::Error::WaitRegistrationFailed);
         };
-        timer_event
-            .event()
-            .register_observer(alloc::sync::Arc::downgrade(&timeout_obs) as Weak<dyn Observer>);
+        timer_event.event().register_observer(ObserverRef::downgrade(&timeout_obs).erase());
         // Recompute after allocator/scheduler delay, retaining the original
         // deadline. Unused preparation is disposed before taking this mask.
         let remaining = deadline.saturating_sub(monotonic_millis());
@@ -642,7 +644,7 @@ pub(crate) fn try_park_until(
 /// WaitRegistrationFailed is admission/allocation failure, never proof of exit.
 pub(crate) fn observe_thread_exit(
     thread_id: ThreadId,
-    observer: Weak<dyn Observer>,
+    observer: ObserverWeak,
     charge: crate::completion::watch_budget::Charge,
 ) -> Result<threads::exit_source::ExitRegistration, system_scheduler::Error> {
     observe_thread_exit_matching(thread_id, None, None, observer, charge)
@@ -662,7 +664,7 @@ pub(crate) fn observe_thread_exit(
 pub(crate) fn observe_thread_exit_with_generation(
     thread_id: ThreadId,
     expected_generation: ThreadGeneration,
-    observer: Weak<dyn Observer>,
+    observer: ObserverWeak,
     charge: crate::completion::watch_budget::Charge,
 ) -> Result<threads::exit_source::ExitRegistration, system_scheduler::Error> {
     observe_thread_exit_matching(thread_id, Some(expected_generation), None, observer, charge)
@@ -672,7 +674,7 @@ pub(crate) fn observe_thread_exit_in_domain(
     caller: crate::memory::AddressSpaceHandle,
     thread_id: ThreadId,
     expected_generation: Option<ThreadGeneration>,
-    observer: Weak<dyn Observer>,
+    observer: ObserverWeak,
     charge: crate::completion::watch_budget::Charge,
 ) -> Result<threads::exit_source::ExitRegistration, system_scheduler::Error> {
     observe_thread_exit_matching(thread_id, expected_generation, Some(caller), observer, charge)
@@ -682,7 +684,7 @@ fn observe_thread_exit_matching(
     thread_id: ThreadId,
     expected_generation: Option<ThreadGeneration>,
     caller: Option<crate::memory::AddressSpaceHandle>,
-    observer: Weak<dyn Observer>,
+    observer: ObserverWeak,
     charge: crate::completion::watch_budget::Charge,
 ) -> Result<threads::exit_source::ExitRegistration, system_scheduler::Error> {
     observe_thread_exit_matching_with(
@@ -720,7 +722,7 @@ fn observe_thread_exit_matching_with(
     thread_id: ThreadId,
     expected_generation: Option<ThreadGeneration>,
     caller: Option<crate::memory::AddressSpaceHandle>,
-    observer: Weak<dyn Observer>,
+    observer: ObserverWeak,
     charge: crate::completion::watch_budget::Charge,
     prepare: impl FnOnce(
         &mut threads::exit_source::PreparingExitWatch,
@@ -765,7 +767,7 @@ fn observe_thread_exit_matching_with(
 /// allocator contract; callback/list/entry admission is fallible beforehand.
 pub(crate) fn spawn_worker_after_observe(
     entry_point: extern "C" fn(),
-    observer: Weak<dyn Observer>,
+    observer: ObserverWeak,
     charge: crate::completion::watch_budget::Charge,
     install: impl FnOnce(
         threads::exit_source::ExitRegistration,

@@ -25,7 +25,7 @@ use crate::{
     },
     klib::observer::{
         CallOnNotify,
-        Observer,
+        ObserverRef,
     },
     memory::{
         self,
@@ -411,7 +411,7 @@ pub(crate) fn run() {
     let foreign_tid = publish_thread(Thread::new(foreign.id(), unused_entry)).unwrap();
     let callbacks = Arc::new(AtomicUsize::new(0));
     let notified = callbacks.clone();
-    let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let observer: ObserverRef = CallOnNotify::for_test(move || {
         assert!(THREAD_PUBLICATION_GATE.try_lock().is_some());
         assert!(MASTER_THREAD_TABLE.try_write().is_some());
         assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());
@@ -421,7 +421,7 @@ pub(crate) fn run() {
     let account = crate::completion::watch_budget::DomainBudget::new(1);
     let subscription = prepared
         .try_observe_exit(
-            Arc::downgrade(&observer),
+            ObserverRef::downgrade(&observer),
             crate::completion::watch_budget::reserve(&account, true).unwrap(),
         )
         .unwrap();

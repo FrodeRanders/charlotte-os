@@ -8,6 +8,7 @@ use crate::{
     },
     klib::observer::{
         CallOnNotify,
+        ObserverRef,
         list_budget,
     },
     memory::allocators::global_allocator::PRIMARY_ALLOCATOR,
@@ -21,12 +22,11 @@ fn context(completion: &CompletionRef) {
     assert!(completion.inner.try_lock().is_some());
 }
 
-fn capture(
-    completion: &CompletionRef,
-    cap: CompletionCap,
-    observer: &Arc<dyn Observer>,
-) -> Preparing {
-    Preparing::capture(Captured::new(CLIENT, cap, completion).unwrap(), Arc::downgrade(observer))
+fn capture(completion: &CompletionRef, cap: CompletionCap, observer: &ObserverRef) -> Preparing {
+    Preparing::capture(
+        Captured::new(CLIENT, cap, completion).unwrap(),
+        ObserverRef::downgrade(observer),
+    )
 }
 
 fn candidate(preparing: &mut Preparing) {
@@ -43,8 +43,7 @@ fn ordinary_rejection() {
         let cap = submit(CLIENT, OpCode::Read, Some(alloc::vec![1; 16])).unwrap();
         let completion = completion_of(CLIENT, cap).unwrap();
         let account = watch_admission(CLIENT).unwrap();
-        let observer: Arc<dyn Observer> =
-            CallOnNotify::new(|| panic!("rejected callback notified"));
+        let observer: ObserverRef = CallOnNotify::for_test(|| panic!("rejected callback notified"));
         let mut pressure = Vec::new();
         if mode == 0 {
             while let Ok(charge) = watch_budget::reserve(&account, false) {
@@ -54,7 +53,7 @@ fn ordinary_rejection() {
         let before = account.used();
         let result = Preparing::new_with(
             Captured::new(CLIENT, cap, &completion).unwrap(),
-            Arc::downgrade(&observer),
+            ObserverRef::downgrade(&observer),
             |platform| {
                 assert_ne!(mode, 0, "quota rejection reached list allocation");
                 if mode == 1 {
@@ -62,7 +61,7 @@ fn ordinary_rejection() {
                     let _registry = COMPLETIONS.write();
                     let _inner = completion.inner.lock();
                     assert_eq!(account.used(), 1);
-                    assert_eq!(Arc::weak_count(&observer), 1);
+                    assert_eq!(ObserverRef::weak_count(&observer), 1);
                     Err(RegistrationError::AllocationFailed)
                 } else {
                     context(&completion);
@@ -82,7 +81,7 @@ fn ordinary_rejection() {
         );
         assert!(matches!(result, Err(ObserveError::ResourceLimit)));
         assert_eq!(account.used(), before);
-        assert_eq!(Arc::weak_count(&observer), 0);
+        assert_eq!(ObserverRef::weak_count(&observer), 0);
         assert!(completion.inner.lock().callbacks.is_none());
         assert!(completion.holds_buffer());
         assert_eq!(completion.state_kind(), OpStateKind::InFlight);
@@ -100,7 +99,7 @@ fn explicit_unused_and_retained_rejection() {
     let cap = submit(CLIENT, OpCode::Read, Some(alloc::vec![2; 16])).unwrap();
     let completion = completion_of(CLIENT, cap).unwrap();
     let account = watch_admission(CLIENT).unwrap();
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("unused callback notified"));
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("unused callback notified"));
     for phase in 0..4 {
         let mut preparing = capture(&completion, cap, &observer);
         if phase >= 1 {
@@ -135,7 +134,7 @@ fn explicit_unused_and_retained_rejection() {
                     };
             assert_eq!(account.used(), usize::from(still_charged));
             let weak_retained = step == 0 || (phase == 3 && step < 3);
-            assert_eq!(Arc::weak_count(&observer), usize::from(weak_retained));
+            assert_eq!(ObserverRef::weak_count(&observer), usize::from(weak_retained));
             step += 1;
         });
         assert_eq!(step, 5);
@@ -153,14 +152,14 @@ fn borrowed_publication() {
     let cap = submit(CLIENT, OpCode::Read, Some(alloc::vec![3; 16])).unwrap();
     let completion = completion_of(CLIENT, cap).unwrap();
     let account = watch_admission(CLIENT).unwrap();
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("cancelled callback notified"));
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("cancelled callback notified"));
     let mut preparations = Vec::with_capacity(64);
     let mut registrations = Vec::with_capacity(64);
     for _ in 0..64 {
         preparations.push(
             Preparing::new_with(
                 Captured::new(CLIENT, cap, &completion).unwrap(),
-                Arc::downgrade(&observer),
+                ObserverRef::downgrade(&observer),
                 |platform| {
                     context(&completion);
                     ObserverList::try_new(watch_budget::MAX_COMPLETION_CALLBACKS, platform)
@@ -190,7 +189,7 @@ fn borrowed_publication() {
     assert_eq!(completion.inner.lock().callbacks.as_ref().unwrap().registered(), 64);
     drop(registrations);
     assert_eq!(account.used(), 0);
-    assert_eq!(Arc::weak_count(&observer), 0);
+    assert_eq!(ObserverRef::weak_count(&observer), 0);
     assert!(completion.holds_buffer());
     assert_eq!(completion.state_kind(), OpStateKind::InFlight);
     // Registration cancellation leaves this unpublished operation in flight.
@@ -209,8 +208,8 @@ fn guarded_abandonment() {
     let records = record_admission(CLIENT).unwrap();
     let watches = watch_admission(CLIENT).unwrap();
     for phase in 0..4 {
-        let observer: Arc<dyn Observer> =
-            CallOnNotify::new(|| panic!("abandoned callback notified"));
+        let observer: ObserverRef =
+            CallOnNotify::for_test(|| panic!("abandoned callback notified"));
         let mut preparing = capture(&completion, cap, &observer);
         if phase >= 1 {
             preparing.admit().unwrap();

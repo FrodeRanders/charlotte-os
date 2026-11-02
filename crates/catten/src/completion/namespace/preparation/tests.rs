@@ -10,6 +10,7 @@ use super::*;
 use crate::{
     klib::observer::{
         CallOnNotify,
+        ObserverRef,
         WaitSponsor,
     },
     memory::allocators::global_allocator::PRIMARY_ALLOCATOR,
@@ -231,7 +232,7 @@ fn allocation_and_fresh_nodes() {
 struct Reenter(Arc<AtomicUsize>);
 
 impl Observer for Reenter {
-    fn notify(self: Arc<Self>) {
+    fn notify(&self) {
         panic!("namespace disposal fabricated completion");
     }
 }
@@ -257,10 +258,13 @@ fn complete_replacement() {
     let captured = completion_of(CLIENT, cap).unwrap();
     let weak = Arc::downgrade(&captured);
     let hits = Arc::new(AtomicUsize::new(0));
-    let observer: Arc<dyn Observer> = Arc::new(Reenter(hits.clone()));
+    let observer: ObserverRef = crate::klib::observer::test_observer(Reenter(hits.clone()));
     let source = crate::klib::observer::registration::ObserverList::try_new(1, false).unwrap();
     let token = source
-        .register(Arc::downgrade(&observer), watch_budget::reserve(&watches, false).unwrap())
+        .register(
+            ObserverRef::downgrade(&observer),
+            watch_budget::reserve(&watches, false).unwrap(),
+        )
         .unwrap();
     assert!(!captured.set_event_observation(observer, token).finish());
     for cookie in 0..2 {
@@ -268,11 +272,11 @@ fn complete_replacement() {
         complete_detached(CLIENT, operation, OpResult::Ok(1)).unwrap();
     }
     let sponsor = WaitSponsor::new(false);
-    let observer: Arc<dyn Observer> =
-        CallOnNotify::new(|| panic!("namespace disposal fabricated CQ readiness"));
+    let observer: ObserverRef =
+        CallOnNotify::for_test(|| panic!("namespace disposal fabricated CQ readiness"));
     let old_source = capture_cq_interest(CLIENT, DEFAULT_CQ).unwrap();
     let old_token =
-        sponsor.register(old_source.waiter_source(), Arc::downgrade(&observer)).unwrap();
+        sponsor.register(old_source.waiter_source(), ObserverRef::downgrade(&observer)).unwrap();
     let ring = unsafe { cq_ring_of(CLIENT, DEFAULT_CQ).unwrap() };
     let mut next = with_queue(CLIENT);
     let retired;
@@ -307,7 +311,7 @@ fn complete_replacement() {
     let next_queues = cq_admission(CLIENT).unwrap();
     let next_source = capture_cq_interest(CLIENT, DEFAULT_CQ).unwrap();
     let next_token =
-        sponsor.register(next_source.waiter_source(), Arc::downgrade(&observer)).unwrap();
+        sponsor.register(next_source.waiter_source(), ObserverRef::downgrade(&observer)).unwrap();
     retired.finish();
     assert_eq!(hits.load(Ordering::SeqCst), 1);
     assert_eq!(source.registered(), 0);

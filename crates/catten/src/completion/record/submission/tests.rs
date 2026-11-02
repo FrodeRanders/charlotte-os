@@ -2,7 +2,10 @@
 //! retain payload, hidden reservation and every unused preparation field.
 
 use super::*;
-use crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR;
+use crate::{
+    klib::observer::ObserverRef,
+    memory::allocators::global_allocator::PRIMARY_ALLOCATOR,
+};
 
 const CLIENT: usize = 0x5e37;
 
@@ -64,7 +67,7 @@ fn unlocked() {
                     crate::timers::PreparedEvent::new(event)
                 }
             },
-            |observer| {
+            |observer, platform| {
                 assert!(COMPLETIONS.write()[&CLIENT].table.first_key_value().is_none());
                 assert!(!crate::capability::contains(
                     CLIENT,
@@ -74,7 +77,7 @@ fn unlocked() {
                 if mode == 1 {
                     Err(core::alloc::AllocError)
                 } else {
-                    Arc::try_new(observer)
+                    ObserverRef::try_new(observer, platform)
                 }
             },
         );
@@ -156,7 +159,7 @@ fn reject_after_reservation() {
         .unwrap();
         let mut timer =
             Preparing::new(Target::capture(asid).unwrap(), None, false, &OPERATION_IDS).unwrap();
-        timer.timer(0, crate::timers::PreparedEvent::new, Arc::try_new).unwrap();
+        timer.timer(0, crate::timers::PreparedEvent::new, ObserverRef::try_new).unwrap();
         let mut successor = None;
         match mode {
             0 => open_address_space_with_cq(asid, 4, 8).unwrap(),
@@ -218,7 +221,7 @@ fn accepted_timer_close_and_deadline() {
     let timers = COMPLETIONS.read()[&CLIENT].timer_budget.clone();
     let mut preparing =
         Preparing::new(Target::capture(CLIENT).unwrap(), None, false, &OPERATION_IDS).unwrap();
-    preparing.timer(0, crate::timers::PreparedEvent::new, Arc::try_new).unwrap();
+    preparing.timer(0, crate::timers::PreparedEvent::new, ObserverRef::try_new).unwrap();
     let cap = preparing.publish().unwrap();
     assert!(crate::capability::contains(CLIENT, cap, ObjectKind::Completion));
     close_address_space(CLIENT);
@@ -232,7 +235,7 @@ fn accepted_timer_close_and_deadline() {
 
     let mut preparing =
         Preparing::new(Target::capture(CLIENT).unwrap(), None, false, &OPERATION_IDS).unwrap();
-    preparing.timer(0, crate::timers::PreparedEvent::new, Arc::try_new).unwrap();
+    preparing.timer(0, crate::timers::PreparedEvent::new, ObserverRef::try_new).unwrap();
     let cap = preparing.publish().unwrap();
     assert_eq!(preparing.0.event.as_ref().unwrap().event().get_deadline(), 0);
     preparing.enqueue();
@@ -266,7 +269,7 @@ fn backlog_refund_on_publication_rejection() {
         let mut preparing =
             Preparing::new(Target::capture(CLIENT).unwrap(), None, false, &OPERATION_IDS).unwrap();
         if timer {
-            preparing.timer(0, crate::timers::PreparedEvent::new, Arc::try_new).unwrap();
+            preparing.timer(0, crate::timers::PreparedEvent::new, ObserverRef::try_new).unwrap();
         }
         for cookie in 1..=2 {
             let op = submit_detached(CLIENT, DEFAULT_CQ, OpCode::Nop, cookie).unwrap();

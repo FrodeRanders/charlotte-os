@@ -18,6 +18,7 @@ use spin::LazyLock;
 
 use crate::{
     ipc::ConnectionRights,
+    klib::observer::ObserverWeak,
     logln,
     service::{
         bootstrap::{
@@ -354,7 +355,7 @@ struct SteadyStatePublication;
 impl crate::klib::observer::Observable for SteadyStatePublication {
     fn try_register_waiter(
         &self,
-        observer: alloc::sync::Weak<dyn crate::klib::observer::Observer>,
+        observer: ObserverWeak,
         sponsor: &crate::klib::observer::WaitSponsor,
     ) -> Result<
         crate::klib::observer::WaitRegistration,

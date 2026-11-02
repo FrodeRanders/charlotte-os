@@ -3,19 +3,20 @@
 use core::mem::ManuallyDrop;
 
 use super::*;
+use crate::klib::observer::ObserverWeak;
 
 /// All partial fields remain inert on abandonment, including empty Box backing.
 #[must_use]
 struct PreparingEntry<C>(ManuallyDrop<Resources<C>>);
 
 struct Resources<C> {
-    observer: Option<Weak<dyn Observer>>,
+    observer: Option<ObserverWeak>,
     charge: Option<C>,
     storage: Option<Box<MaybeUninit<EntryNode<C>>>>,
 }
 
 impl<C> PreparingEntry<C> {
-    fn new(observer: Weak<dyn Observer>, charge: C) -> Self {
+    fn new(observer: ObserverWeak, charge: C) -> Self {
         Self(ManuallyDrop::new(Resources {
             observer: Some(observer),
             charge: Some(charge),
@@ -65,7 +66,7 @@ impl<C> PreparingEntry<C> {
 }
 
 pub(super) fn prepare<C>(
-    observer: Weak<dyn Observer>,
+    observer: ObserverWeak,
     charge: C,
     allocate: impl FnOnce() -> Result<Box<MaybeUninit<EntryNode<C>>>, RegistrationError>,
 ) -> Result<PreparedRegistration<C>, RegistrationError> {

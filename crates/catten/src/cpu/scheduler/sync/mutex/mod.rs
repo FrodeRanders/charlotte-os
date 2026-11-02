@@ -1,4 +1,3 @@
-use alloc::sync::Weak;
 use core::sync::atomic::{
     AtomicBool,
     Ordering,
@@ -16,7 +15,7 @@ use crate::{
     },
     klib::observer::{
         Observable,
-        Observer,
+        ObserverWeak,
         WaitRegistration,
         WaitSponsor,
         registration::RegistrationError,
@@ -56,7 +55,7 @@ impl MutexCore {
 impl Observable for MutexCore {
     fn try_register_waiter(
         &self,
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
         sponsor: &WaitSponsor,
     ) -> Result<WaitRegistration, RegistrationError> {
         if !self.raw_lock.load(Ordering::Acquire) {

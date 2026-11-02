@@ -1,9 +1,6 @@
 //! Serialized lazy-source owner controls; no scheduler-admitted target leaks.
 
-use alloc::{
-    sync::Arc,
-    vec::Vec,
-};
+use alloc::vec::Vec;
 
 use super::*;
 use crate::{
@@ -13,6 +10,7 @@ use crate::{
     },
     klib::observer::{
         CallOnNotify,
+        ObserverRef,
         list_budget,
     },
     memory::allocators::global_allocator::PRIMARY_ALLOCATOR,
@@ -31,14 +29,14 @@ fn stage(
     phase: usize,
     source: &WaiterSource,
     sponsor: &WaitSponsor,
-    observer: &Arc<dyn Observer>,
+    observer: &ObserverRef,
 ) -> (Preparing, Option<WaitRegistration>) {
-    let mut owner = Preparing::capture(sponsor, Arc::downgrade(observer));
+    let mut owner = Preparing::capture(sponsor, ObserverRef::downgrade(observer));
     if phase >= 1 {
         owner.prepare_list(source, allocate).unwrap();
     }
     if phase == 2 {
-        let mut competitor = Preparing::capture(sponsor, Arc::downgrade(observer));
+        let mut competitor = Preparing::capture(sponsor, ObserverRef::downgrade(observer));
         competitor.prepare_list(source, allocate).unwrap();
         competitor.select(source);
         competitor.release_candidate();
@@ -66,7 +64,7 @@ fn stage(
 
 fn unused() {
     let sponsor = WaitSponsor::new(false);
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("unused lazy waiter notified"));
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("unused lazy waiter notified"));
     for phase in 0..6 {
         let source = WaiterSource::new();
         let (owner, token) = stage(phase, &source, &sponsor, &observer);
@@ -76,13 +74,13 @@ fn unused() {
             let charged = phase == 5 || (phase == 4 && step < 2);
             let weak = phase == 5 || step == 0 || (phase == 4 && step < 2);
             assert_eq!(sponsor.used(), usize::from(charged));
-            assert_eq!(Arc::weak_count(&observer), usize::from(weak));
+            assert_eq!(ObserverRef::weak_count(&observer), usize::from(weak));
             step += 1;
         });
         assert_eq!(step, 5);
         drop(token);
         assert_eq!(sponsor.used(), 0);
-        assert_eq!(Arc::weak_count(&observer), 0);
+        assert_eq!(ObserverRef::weak_count(&observer), 0);
         assert_eq!(source.registered(), 0);
     }
 }
@@ -90,20 +88,20 @@ fn unused() {
 fn ordinary_rejection() {
     let sponsor = WaitSponsor::new(false);
     let source = WaiterSource::new();
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("rejected lazy waiter notified"));
-    let result = source.register_with(Arc::downgrade(&observer), &sponsor, |platform| {
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("rejected lazy waiter notified"));
+    let result = source.register_with(ObserverRef::downgrade(&observer), &sponsor, |platform| {
         let _heap = PRIMARY_ALLOCATOR.lock();
         let slot = source.list.lock();
         assert!(slot.is_none() && !platform);
         assert_eq!(sponsor.used(), 0);
-        assert_eq!(Arc::weak_count(&observer), 1);
+        assert_eq!(ObserverRef::weak_count(&observer), 1);
         Err(RegistrationError::AllocationFailed)
     });
     assert_eq!(result.unwrap_err(), RegistrationError::AllocationFailed);
-    assert_eq!(Arc::weak_count(&observer), 0);
+    assert_eq!(ObserverRef::weak_count(&observer), 0);
     assert!(source.list.lock().is_none());
     // Existing source reuse must not invoke the fresh-list allocator.
-    let mut initial = Preparing::capture(&sponsor, Arc::downgrade(&observer));
+    let mut initial = Preparing::capture(&sponsor, ObserverRef::downgrade(&observer));
     initial.prepare_list(&source, allocate).unwrap();
     initial.select(&source);
     initial.release_candidate();
@@ -114,7 +112,7 @@ fn ordinary_rejection() {
     }
     assert_eq!(
         source
-            .register_with(Arc::downgrade(&observer), &sponsor, |_| panic!(
+            .register_with(ObserverRef::downgrade(&observer), &sponsor, |_| panic!(
                 "existing source allocated"
             ))
             .unwrap_err(),
@@ -122,40 +120,39 @@ fn ordinary_rejection() {
     );
     assert_eq!(sponsor.used(), waiter_budget::DOMAIN_LIMIT);
     assert_eq!(source.registered(), 0);
-    assert_eq!(Arc::weak_count(&observer), 0);
+    assert_eq!(ObserverRef::weak_count(&observer), 0);
     drop(pressure);
     let list = source.list.lock().as_ref().unwrap().clone();
     drop(list.close());
     assert_eq!(
-        source.register(Arc::downgrade(&observer), &sponsor).unwrap_err(),
+        source.register(ObserverRef::downgrade(&observer), &sponsor).unwrap_err(),
         RegistrationError::Closed
     );
     assert_eq!(sponsor.used(), 0);
-    assert_eq!(Arc::weak_count(&observer), 0);
+    assert_eq!(ObserverRef::weak_count(&observer), 0);
     sponsor.retire();
     let empty = WaiterSource::new();
     assert_eq!(
         empty
-            .register_with(Arc::downgrade(&observer), &sponsor, |_| panic!(
+            .register_with(ObserverRef::downgrade(&observer), &sponsor, |_| panic!(
                 "retired sponsor allocated"
             ))
             .unwrap_err(),
         RegistrationError::Closed
     );
     assert!(empty.list.lock().is_none());
-    assert_eq!(Arc::weak_count(&observer), 0);
+    assert_eq!(ObserverRef::weak_count(&observer), 0);
 }
 
 fn competition() {
     let sponsor = WaitSponsor::new(false);
     let source = WaiterSource::new();
-    let observer: Arc<dyn Observer> =
-        CallOnNotify::new(|| panic!("cancelled lazy waiter notified"));
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("cancelled lazy waiter notified"));
     let lists = list_budget::node_used();
     let mut owners = Vec::with_capacity(64);
     let mut tokens = Vec::with_capacity(64);
     for _ in 0..64 {
-        let mut owner = Preparing::capture(&sponsor, Arc::downgrade(&observer));
+        let mut owner = Preparing::capture(&sponsor, ObserverRef::downgrade(&observer));
         owner.prepare_list(&source, allocate).unwrap();
         owners.push(owner);
     }
@@ -169,7 +166,7 @@ fn competition() {
         owner.release_candidate_with(|| {
             context(&source);
             assert_eq!(sponsor.used(), 0);
-            assert_eq!(Arc::weak_count(&observer), 64);
+            assert_eq!(ObserverRef::weak_count(&observer), 64);
         });
     }
     assert_eq!(list_budget::node_used(), (lists.0 + 1, lists.1 + 1));
@@ -191,13 +188,13 @@ fn competition() {
     }
     assert_eq!(source.registered(), 64);
     assert_eq!(
-        source.register(Arc::downgrade(&observer), &sponsor).unwrap_err(),
+        source.register(ObserverRef::downgrade(&observer), &sponsor).unwrap_err(),
         RegistrationError::ResourceLimit
     );
     assert_eq!(sponsor.used(), 64);
     drop(tokens);
     assert_eq!(sponsor.used(), 0);
-    assert_eq!(Arc::weak_count(&observer), 0);
+    assert_eq!(ObserverRef::weak_count(&observer), 0);
     assert_eq!(source.registered(), 0);
 }
 
@@ -206,8 +203,8 @@ fn guarded_abandonment() {
     let sponsor = WaitSponsor::new(false);
     for phase in 0..6 {
         let source = WaiterSource::new();
-        let observer: Arc<dyn Observer> =
-            CallOnNotify::new(|| panic!("abandoned lazy waiter notified"));
+        let observer: ObserverRef =
+            CallOnNotify::for_test(|| panic!("abandoned lazy waiter notified"));
         let (owner, token) = stage(phase, &source, &sponsor, &observer);
         drop(observer);
         let mask = LocalInterruptMask::new();

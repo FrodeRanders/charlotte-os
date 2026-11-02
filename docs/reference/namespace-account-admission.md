@@ -87,8 +87,8 @@ largest possible mixed footprint or resource payloads. Shared allocation-owner
 host tests cover holder/payload failure, clones, weak lifetime and deallocation
 ordering; native heap exhaustion is not forced. Global namespace nodes have
 [separate admission](namespace-node-admission.md), including empty preparation.
-Waker/callback storage, other registry allocations
-and aggregate principal/general-heap admission remain open. This supplies no
+Wakers/callbacks have admitted [observer handles](observer-ownership.md). Other
+registry allocations and aggregate principal/general-heap admission remain open. This supplies no
 sustained hostile-pressure fairness, arbitrary destructor, worst-case lookup/
 IRQ-latency or physical hardware guarantee. SEC-07 remains partial; existing
 C02/C03/C10/C18 and G1/G4 boundaries in [cleanup/recovery](cleanup-recovery.md)

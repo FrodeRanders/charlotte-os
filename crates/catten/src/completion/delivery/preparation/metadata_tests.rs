@@ -5,6 +5,7 @@ use super::*;
 use crate::{
     klib::observer::{
         CallOnNotify,
+        ObserverRef,
         WaitSponsor,
     },
     memory::allocators::global_allocator::PRIMARY_ALLOCATOR,
@@ -103,10 +104,11 @@ fn retired_backlog() {
         complete_detached(CLIENT, op, OpResult::Ok(1)).unwrap();
     }
     let sponsor = WaitSponsor::new(false);
-    let observer: Arc<dyn Observer> =
-        CallOnNotify::new(|| panic!("queue disposal fabricated readiness"));
+    let observer: ObserverRef =
+        CallOnNotify::for_test(|| panic!("queue disposal fabricated readiness"));
     let source = capture_cq_interest(CLIENT, DEFAULT_CQ).unwrap();
-    let token = sponsor.register(source.waiter_source(), Arc::downgrade(&observer)).unwrap();
+    let token =
+        sponsor.register(source.waiter_source(), ObserverRef::downgrade(&observer)).unwrap();
     let mut preparing = Prepared::new(Target::capture(CLIENT).unwrap(), 2, None).unwrap();
     let retired;
     {
@@ -124,7 +126,8 @@ fn retired_backlog() {
     open_address_space_with_cq(CLIENT, 4, 2).unwrap();
     let successor = cq_admission(CLIENT).unwrap();
     let next = capture_cq_interest(CLIENT, DEFAULT_CQ).unwrap();
-    let next_token = sponsor.register(next.waiter_source(), Arc::downgrade(&observer)).unwrap();
+    let next_token =
+        sponsor.register(next.waiter_source(), ObserverRef::downgrade(&observer)).unwrap();
     assert_eq!(account.used()[0], 1);
     assert_eq!(sponsor.used(), 2);
     retired.finish();
@@ -162,10 +165,11 @@ fn guarded_abandonment() {
         complete_detached(CLIENT, op, OpResult::Ok(1)).unwrap();
     }
     let sponsor = WaitSponsor::new(false);
-    let observer: Arc<dyn Observer> =
-        CallOnNotify::new(|| panic!("retained queue fabricated readiness"));
+    let observer: ObserverRef =
+        CallOnNotify::for_test(|| panic!("retained queue fabricated readiness"));
     let source = capture_cq_interest(CLIENT, DEFAULT_CQ).unwrap();
-    let token = sponsor.register(source.waiter_source(), Arc::downgrade(&observer)).unwrap();
+    let token =
+        sponsor.register(source.waiter_source(), ObserverRef::downgrade(&observer)).unwrap();
     let mut preparing = Prepared::new(Target::capture(CLIENT).unwrap(), 2, None).unwrap();
     let retired = preparing.publish(DEFAULT_CQ).unwrap().unwrap();
     preparing.finish();

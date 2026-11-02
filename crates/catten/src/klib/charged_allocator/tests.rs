@@ -6,6 +6,105 @@ use std::{
 
 use super::*;
 
+struct LayoutState {
+    bytes: AtomicUsize,
+    align: AtomicUsize,
+    limit: usize,
+    rollbacks: AtomicUsize,
+    refunds: AtomicUsize,
+}
+struct LayoutCharge(Arc<LayoutState>);
+impl Drop for LayoutCharge {
+    fn drop(&mut self) {
+        self.0.bytes.store(0, Ordering::Release);
+        self.0.refunds.fetch_add(1, Ordering::Relaxed);
+    }
+}
+struct Measured;
+impl PayloadAdmission<LayoutCharge> for Measured {
+    fn reserve(charge: &LayoutCharge, layout: Layout) -> Result<(), AllocError> {
+        if layout.size() > charge.0.limit {
+            return Err(AllocError);
+        }
+        assert_eq!(charge.0.bytes.swap(layout.size(), Ordering::AcqRel), 0);
+        charge.0.align.store(layout.align(), Ordering::Release);
+        Ok(())
+    }
+
+    fn rollback(charge: &LayoutCharge, layout: Layout) {
+        assert_eq!(charge.0.bytes.swap(0, Ordering::AcqRel), layout.size());
+        charge.0.rollbacks.fetch_add(1, Ordering::Relaxed);
+    }
+}
+fn measured(limit: usize) -> (Arc<LayoutState>, ChargedAllocator<LayoutCharge, Measured>) {
+    let state = Arc::new(LayoutState {
+        bytes: AtomicUsize::new(0),
+        align: AtomicUsize::new(0),
+        limit,
+        rollbacks: AtomicUsize::new(0),
+        refunds: AtomicUsize::new(0),
+    });
+    let allocator = ChargedAllocator::try_new_with_policy(LayoutCharge(state.clone())).unwrap();
+    (state, allocator)
+}
+#[test]
+fn actual_arc_layout_includes_alignment_and_survives_final_weak() {
+    #[repr(align(256))]
+    struct Aligned([u8; 257]);
+    let (state, allocator) = measured(4096);
+    let value = allocator.try_arc(Aligned([7; 257])).unwrap();
+    let bytes = state.bytes.load(Ordering::Acquire);
+    assert!(bytes > core::mem::size_of::<Aligned>());
+    assert_eq!(state.align.load(Ordering::Acquire), 256);
+    assert_eq!(value.0[256], 7);
+    let weak = Arc::downgrade(&value);
+    drop(value);
+    assert!(weak.upgrade().is_none());
+    assert_eq!(state.bytes.load(Ordering::Acquire), bytes);
+    assert_eq!(state.refunds.load(Ordering::Acquire), 0);
+    drop(weak);
+    assert_eq!(state.bytes.load(Ordering::Acquire), 0);
+    assert_eq!(state.refunds.load(Ordering::Acquire), 1);
+}
+#[test]
+fn layout_denial_reaches_no_allocator_and_retains_private_owner() {
+    let (state, allocator) = measured(0);
+    without_heap(|| {
+        assert!(
+            allocator
+                .allocate_payload(Layout::new::<u64>(), |_| panic!("denial reached allocator"))
+                .is_err()
+        )
+    });
+    assert_eq!(state.bytes.load(Ordering::Acquire), 0);
+    assert_eq!(state.refunds.load(Ordering::Acquire), 0);
+    drop(allocator);
+    assert_eq!(state.refunds.load(Ordering::Acquire), 1);
+}
+#[test]
+fn allocation_failure_rolls_back_layout_before_retry_and_free_keeps_owner_charge() {
+    let (state, allocator) = measured(4096);
+    let layout = Layout::from_size_align(512, 64).unwrap();
+    assert!(allocator.allocate_payload(layout, |_| Err(AllocError)).is_err());
+    assert_eq!(state.bytes.load(Ordering::Acquire), 0);
+    assert_eq!(state.rollbacks.load(Ordering::Acquire), 1);
+    let backing = allocator.allocate(layout).unwrap();
+    assert_eq!(state.bytes.load(Ordering::Acquire), 512);
+    let other = allocator.clone();
+    without_heap(|| {
+        assert!(other.allocate_payload(layout, |_| panic!("clone multiplied allowance")).is_err())
+    });
+    unsafe {
+        allocator.deallocate(backing.cast(), layout);
+    }
+    assert_eq!(state.bytes.load(Ordering::Acquire), 512);
+    drop(allocator);
+    assert_eq!(state.refunds.load(Ordering::Acquire), 0);
+    drop(other);
+    assert_eq!(state.bytes.load(Ordering::Acquire), 0);
+    assert_eq!(state.refunds.load(Ordering::Acquire), 1);
+}
+
 std::thread_local! {
     static TRACE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static HEAP_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
@@ -243,7 +342,7 @@ fn abandoned_holder_phases_retain_original_charge() {
     for allocated in [false, true] {
         let used = Arc::new(AtomicUsize::new(0));
         let guard = std::sync::Mutex::new(());
-        let mut preparing = PreparingAllocation::new(Charge::new(&used));
+        let mut preparing = PreparingAllocation::<_>::new(Charge::new(&used));
         if allocated {
             preparing.allocate(Arc::try_new_uninit).unwrap();
         }
@@ -258,7 +357,7 @@ fn abandoned_holder_phases_retain_original_charge() {
 fn empty_holder_initialization_preserves_original_charge_and_allowance() {
     let used = Arc::new(AtomicUsize::new(0));
     let guard = std::sync::Mutex::new(());
-    let mut preparing = PreparingAllocation::new(Charge::new(&used));
+    let mut preparing = PreparingAllocation::<_>::new(Charge::new(&used));
     preparing.allocate(Arc::try_new_uninit).unwrap();
     let allocator = {
         let _guard = guard.lock().unwrap();
@@ -277,7 +376,7 @@ fn empty_holder_initialization_preserves_original_charge_and_allowance() {
 #[test]
 fn unused_empty_holder_storage_cancels_explicitly() {
     let used = Arc::new(AtomicUsize::new(0));
-    let mut preparing = PreparingAllocation::new(Charge::new(&used));
+    let mut preparing = PreparingAllocation::<_>::new(Charge::new(&used));
     preparing.allocate(Arc::try_new_uninit).unwrap();
     let mut checks = 0;
     preparing.cancel_with(|| {

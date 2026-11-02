@@ -9,11 +9,11 @@ operator procedure, authority, planning and qualification process.
 [Policy](../../crates/catten/src/resource_policy.rs) groups typed, copyable
 immutable settings. Family-local constant aliases forward to those fields;
 existing reservation helpers still enforce admission at their owning boundary.
-Seventeen metadata families share the checked `AdmissionPool` counter mechanics:
+Eighteen metadata families share the checked `AdmissionPool` counter mechanics:
 root metadata, global namespace nodes, authority nodes, mailbox endpoint nodes,
-deferred source-disposal nodes, principal history, thread metadata,
-thread-table backing, ASID-table backing,
-waiter, timer, completion and capability/IPC/mailbox namespace accounts,
+deferred source-disposal nodes, observer backing, principal history, thread
+metadata, thread-table backing, ASID-table backing, waiter, timer, completion
+and capability/IPC/mailbox namespace accounts,
 scratch nodes, snapshot buffers, mapping nodes and memory-capability nodes.
 Each retains its own lock, typed charge, captured
 classification and allocation-lifetime release policy. The shared counter
@@ -22,9 +22,10 @@ on accepted admission/refund and remain unchanged on rejection.
 These counters supply no independent cleanup authority or classification source.
 Existing numerical defaults are preserved; memory-capability node and
 thread-table, ASID-table, waiter-account, timer-account, completion-account and
-namespace-account, global namespace-node, authority-node, mailbox-node and deferred-node
-admission add the separately documented pools below. These are defaults, not
-fixed application requirements or workload sizing guarantees.
+namespace-account, global namespace-node, authority-node, mailbox-node,
+deferred-node and observer-backing admission add the separately documented pools
+below. These are defaults, not fixed application requirements or workload sizing
+guarantees.
 
 ## Fixed-pool inventory
 
@@ -46,6 +47,7 @@ unlimited node capacity.
 | `completion_accounts` | record/CQ/watch fixed allocation bundles | — | 18432 | 24576 |
 | `namespace_accounts` | capability/IPC endpoint/IPC record/mailbox fixed allocation bundles | — | 24576 | 32768 |
 | `observer_lists` | allocation lifetimes | — | 6144 | 8192 |
+| `observer_backing` | observer Arc-layout bytes; fixed-holder/payload bundles | — | 12 MiB; 49152 bundles | 16 MiB; 65536 bundles |
 | `mailbox_records` | records | 512 | 6144 | 8192 |
 | `mailbox_queues` | sets; ring bytes | 2 sets; 1 MiB | 768 sets; 6 MiB | 1024 sets; 8 MiB |
 | `ipc_records` | connections, pending calls, replies | 512 each | 6144 each | 8192 each |

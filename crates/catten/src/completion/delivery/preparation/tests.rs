@@ -5,6 +5,7 @@ use crate::{
     cpu::isa::interface::memory::address::PhysicalAddress,
     klib::observer::{
         CallOnNotify,
+        ObserverRef,
         WaitSponsor,
     },
     memory::allocators::global_allocator::PRIMARY_ALLOCATOR,
@@ -65,10 +66,10 @@ fn allocation_and_replacement() {
     .unwrap();
     let mut second = Prepared::new(Target::capture(CLIENT).unwrap(), 8, None).unwrap();
     let sponsor = WaitSponsor::new(false);
-    let observer: Arc<dyn Observer> =
-        CallOnNotify::new(|| panic!("replacement fabricated readiness"));
+    let observer: ObserverRef =
+        CallOnNotify::for_test(|| panic!("replacement fabricated readiness"));
     let old = capture_cq_interest(CLIENT, DEFAULT_CQ).unwrap();
-    let token = sponsor.register(old.waiter_source(), Arc::downgrade(&observer)).unwrap();
+    let token = sponsor.register(old.waiter_source(), ObserverRef::downgrade(&observer)).unwrap();
     let retired1;
     let retired2;
     {

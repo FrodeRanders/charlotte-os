@@ -3,6 +3,7 @@
 //! checks; accepted worker/exit/timer events keep their existing completion
 //! contract. Active fallback and outer guard/IRQ qualification are unchanged.
 use super::*;
+use crate::klib::observer::ObserverRef;
 
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod exit_tests;
@@ -23,7 +24,7 @@ struct CompletionExitObserver {
 }
 
 impl Observer for CompletionExitObserver {
-    fn notify(self: Arc<Self>) {
+    fn notify(&self) {
         if let Some(completion) = self.completion.upgrade() {
             let _ = complete_registered(self.asid, self.cap, completion, self.result.clone());
         }
@@ -64,7 +65,7 @@ impl CompletionTimerObserver {
 }
 
 impl Observer for CompletionTimerObserver {
-    fn notify(self: Arc<Self>) {
+    fn notify(&self) {
         if let Some(completion) = self.completion.upgrade() {
             let _ = complete_registered(self.asid, self.cap, completion, self.result.clone());
         }
@@ -101,6 +102,10 @@ pub(crate) struct EventSubmission {
 }
 
 impl EventSubmission {
+    pub(crate) fn observer_platform(&self) -> bool {
+        self.charge.as_ref().expect("observer needs original event charge").platform()
+    }
+
     pub(crate) fn new(asid: AddressSpaceId) -> Result<Self, SubmitError> {
         let (cap, completion, charge) = submit_captured(asid, None, true, &OPERATION_IDS)?;
         Ok(Self {
@@ -126,7 +131,7 @@ impl EventSubmission {
 
     pub(crate) fn install_watch_observation(
         &self,
-        observer: Arc<dyn Observer>,
+        observer: ObserverRef,
         registration: crate::klib::observer::registration::Registration<watch_budget::Charge>,
     ) -> Result<bool, SubmitError> {
         self.install_observation(observer, registration, false)
@@ -134,7 +139,7 @@ impl EventSubmission {
 
     fn install_worker_observation(
         &self,
-        observer: Arc<dyn Observer>,
+        observer: ObserverRef,
         registration: crate::klib::observer::registration::Registration<watch_budget::Charge>,
     ) -> Result<(), SubmitError> {
         self.install_observation(observer, registration, true).map(|_| ())
@@ -144,7 +149,7 @@ impl EventSubmission {
     /// when a kernel waiter retains the unpublished old completion object.
     pub(super) fn install_observation(
         &self,
-        observer: Arc<dyn Observer>,
+        observer: ObserverRef,
         registration: crate::klib::observer::registration::Registration<watch_budget::Charge>,
         worker: bool,
     ) -> Result<bool, SubmitError> {
@@ -216,7 +221,7 @@ pub(crate) fn abort_submission(asid: AddressSpaceId, cap: CompletionCap) -> Resu
 /// when the deadline expires, so a user-space service waiting on `cq_wait_checked` is
 /// released exactly at the deadline.
 pub fn submit_timer(asid: AddressSpaceId, timeout_ms: u64) -> Result<CompletionCap, SubmitError> {
-    submit_timer_with_observer(asid, timeout_ms, &OPERATION_IDS, Arc::try_new)
+    submit_timer_with_observer(asid, timeout_ms, &OPERATION_IDS, ObserverRef::try_new)
 }
 
 pub(super) fn submit_timer_with_observer(
@@ -225,7 +230,8 @@ pub(super) fn submit_timer_with_observer(
     ids: &operation_ids::OperationIds,
     allocate: impl FnOnce(
         CompletionTimerObserver,
-    ) -> Result<Arc<CompletionTimerObserver>, core::alloc::AllocError>,
+        bool,
+    ) -> Result<ObserverRef<CompletionTimerObserver>, core::alloc::AllocError>,
 ) -> Result<CompletionCap, SubmitError> {
     record::submit_timer_with_ids(asid, timeout_ms, ids, allocate)
 }
@@ -246,16 +252,20 @@ pub fn submit_worker(
 ) -> Result<CompletionCap, SubmitError> {
     let mut submission = EventSubmission::new(asid)?;
     let completion = submission.completion().clone();
-    let observer: Arc<dyn Observer> = Arc::try_new(CompletionExitObserver {
-        asid,
-        cap: submission.cap(),
-        result,
-        completion: Arc::downgrade(&completion),
-    })
+    let observer: ObserverRef = ObserverRef::try_new(
+        CompletionExitObserver {
+            asid,
+            cap: submission.cap(),
+            result,
+            completion: Arc::downgrade(&completion),
+        },
+        submission.observer_platform(),
+    )
+    .map(ObserverRef::erase)
     .map_err(|_| SubmitError::WouldBlock)?;
     crate::cpu::scheduler::spawn_worker_after_observe(
         worker_entry,
-        Arc::downgrade(&observer),
+        ObserverRef::downgrade(&observer),
         submission.take_charge(),
         |registration| submission.install_worker_observation(observer, registration),
     )?;
@@ -303,19 +313,23 @@ fn observe_thread_exit_scoped(
     let mut submission = EventSubmission::new(asid)?;
     let cap = submission.cap();
     let completion = submission.completion().clone();
-    let observer: Arc<dyn Observer> = Arc::try_new(CompletionExitObserver {
-        asid,
-        cap,
-        result: OpResult::Ok(0),
-        completion: Arc::downgrade(&completion),
-    })
+    let observer: ObserverRef = ObserverRef::try_new(
+        CompletionExitObserver {
+            asid,
+            cap,
+            result: OpResult::Ok(0),
+            completion: Arc::downgrade(&completion),
+        },
+        submission.observer_platform(),
+    )
+    .map(ObserverRef::erase)
     .map_err(|_| SubmitError::WouldBlock)?;
     let registration = if let Some(caller) = caller {
         crate::cpu::scheduler::observe_thread_exit_in_domain(
             caller,
             tid,
             expected_generation,
-            Arc::downgrade(&observer),
+            ObserverRef::downgrade(&observer),
             submission.take_charge(),
         )
     } else {
@@ -323,12 +337,12 @@ fn observe_thread_exit_scoped(
             Some(generation) => crate::cpu::scheduler::observe_thread_exit_with_generation(
                 tid,
                 generation,
-                Arc::downgrade(&observer),
+                ObserverRef::downgrade(&observer),
                 submission.take_charge(),
             ),
             None => crate::cpu::scheduler::observe_thread_exit(
                 tid,
-                Arc::downgrade(&observer),
+                ObserverRef::downgrade(&observer),
                 submission.take_charge(),
             ),
         }

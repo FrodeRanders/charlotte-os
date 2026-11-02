@@ -90,6 +90,39 @@ mod charged_allocator;
 EOF
 "$repo_root/target/host-self-tests/charged-allocator-tests"
 
+# Compile the actual observer handles, layout admission and policy. This host
+# mutex adapter supplies serialization; native campaigns qualify IRQ/guard use.
+CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
+"$host_rustc" --edition=2024 --test --crate-name observer_owner_tests - \
+    -o "$repo_root/target/host-self-tests/observer-owner-tests" <<EOF
+#![feature(allocator_api)]
+#![allow(dead_code)]
+extern crate alloc;
+extern crate self as charlotte_lifecycle;
+#[path = "$repo_root/crates/charlotte-lifecycle/src/resources.rs"]
+pub mod resources;
+#[path = "$repo_root/crates/catten/src/resource_policy.rs"]
+mod resource_policy;
+mod cpu { pub mod multiprocessor { pub mod spin { pub mod mutex {
+    pub struct Mutex<T>(std::sync::Mutex<T>);
+    impl<T> Mutex<T> {
+        pub const fn new(value: T) -> Self { Self(std::sync::Mutex::new(value)) }
+        pub fn lock(&self) -> std::sync::MutexGuard<'_, T> { self.0.lock().unwrap() }
+    }
+}}}}
+mod klib {
+    #[path = "$repo_root/crates/catten/src/klib/charged_allocator.rs"]
+    pub mod charged_allocator;
+}
+mod observer {
+    #[path = "$repo_root/crates/catten/src/klib/observer/backing.rs"]
+    pub mod backing;
+    #[path = "$repo_root/crates/catten/src/klib/observer/owned.rs"]
+    pub mod owned;
+}
+EOF
+"$repo_root/target/host-self-tests/observer-owner-tests" observer::owned::tests --test-threads=1
+
 # Diagnostic capture uses the production compile-time resource policy too.
 # Compile both modules together rather than treating snapshot.rs as a crate root.
 CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \

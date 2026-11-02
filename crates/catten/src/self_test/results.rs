@@ -23,7 +23,6 @@
 //! by the panic handler) so a crashing verifier atomically fails its own bit
 //! instead of hanging the boot.
 
-use alloc::sync::Weak;
 use core::sync::atomic::{
     AtomicBool,
     AtomicU64,
@@ -38,7 +37,7 @@ use crate::{
     },
     klib::observer::{
         Observable,
-        Observer,
+        ObserverWeak,
         WaitRegistration,
         WaitSponsor,
         registration::RegistrationError,
@@ -200,7 +199,7 @@ struct ResultsObservable;
 impl Observable for ResultsObservable {
     fn try_register_waiter(
         &self,
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
         sponsor: &WaitSponsor,
     ) -> Result<WaitRegistration, RegistrationError> {
         RESULTS_OBSERVERS.register(observer, sponsor)

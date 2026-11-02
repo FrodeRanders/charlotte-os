@@ -15,7 +15,7 @@ use crate::{
     },
     klib::observer::{
         CallOnNotify,
-        Observer,
+        ObserverRef,
         registration::ObserverList,
     },
     memory::{
@@ -115,8 +115,8 @@ fn pressure() {
     let record_before = budget::node_used();
     let watch_before = watch_budget::node_used();
     let pending = completion::submit(trusted.id(), OpCode::Read, None).unwrap();
-    let observer: Arc<dyn Observer> =
-        CallOnNotify::new(|| panic!("account pressure fabricated completion"));
+    let observer: ObserverRef =
+        CallOnNotify::for_test(|| panic!("account pressure fabricated completion"));
     let observation = completion::observe(trusted.id(), pending, observer).unwrap();
     assert_eq!(budget::node_used(), (record_before.0 + 1, record_before.1 + 1));
     assert_eq!(watch_budget::node_used(), (watch_before.0 + 1, watch_before.1 + 1));
@@ -181,10 +181,13 @@ fn retained_generation() {
     let captured = completion::completion_of(root.id(), cap).unwrap();
     let completion_weak = Arc::downgrade(&captured);
     let source = ObserverList::try_new(1, false).unwrap();
-    let observer: Arc<dyn Observer> =
-        CallOnNotify::new(|| panic!("retirement fabricated watch notification"));
+    let observer: ObserverRef =
+        CallOnNotify::for_test(|| panic!("retirement fabricated watch notification"));
     let token = source
-        .register(Arc::downgrade(&observer), watch_budget::reserve(&watches, false).unwrap())
+        .register(
+            ObserverRef::downgrade(&observer),
+            watch_budget::reserve(&watches, false).unwrap(),
+        )
         .unwrap();
     // This private heap queue has no consumer or physical mapping. Detach its
     // complete typed owners under the existing registry, before real root close.

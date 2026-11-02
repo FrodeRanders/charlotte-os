@@ -343,8 +343,10 @@ These counts bound retained event/node/cancellation backing quantities, not
 the entire kernel heap or allocator overhead. Queue diagnostics count actual
 membership, while event admission can remain occupied by cancellation backing
 after removal. Independent waiter-list backing has separate
-[allocation admission](observer-list-admission.md). Sponsor allocations,
-general callback metadata and other weak-only storage remain incomplete.
+[allocation admission](observer-list-admission.md). Scheduler/completion timer
+accounts have separate [backing admission](timer-account-admission.md), and
+notification targets use admitted [observer handles](observer-ownership.md). Other weak/control storage
+and aggregate heap/principal accounting remain incomplete.
 Evidence: [timer backing audit](../reports/audits/2026-10-07-security-timer-backing.md).
 Observer failure correction:
 [timer observer allocation audit](../reports/audits/2026-10-07-security-timer-observer-allocation.md).

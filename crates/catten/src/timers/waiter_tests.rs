@@ -30,7 +30,7 @@ use crate::{
         observer::{
             CallOnNotify,
             Observable,
-            Observer,
+            ObserverRef,
             WaitSponsor,
             registration::RegistrationError,
             waiter_budget,
@@ -46,24 +46,25 @@ pub(crate) fn test_admission() {
     let hits = Arc::new(AtomicUsize::new(0));
     let target = event.clone();
     let count = hits.clone();
-    let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let observer: ObserverRef = CallOnNotify::for_test(move || {
         assert_eq!(target.waiters.registered(), 0);
         assert!(target.callback.lock().is_none());
         count.fetch_add(1, Ordering::Relaxed);
     });
-    event.register_observer(Arc::downgrade(&observer));
+    event.register_observer(ObserverRef::downgrade(&observer));
     let mut tokens = Vec::new();
     for _ in 0..64 {
-        tokens.push(event.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap());
+        tokens
+            .push(event.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap());
     }
     assert!(matches!(
-        event.try_register_waiter(Arc::downgrade(&observer), &sponsor),
+        event.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor),
         Err(RegistrationError::ResourceLimit)
     ));
     assert_eq!(sponsor.used(), 64);
     drop(tokens.pop());
     assert_eq!(sponsor.used(), 63);
-    tokens.push(event.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap());
+    tokens.push(event.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap());
     event.signal();
     assert_eq!(hits.load(Ordering::Relaxed), 65);
     assert_eq!(sponsor.used(), 0);
@@ -71,13 +72,13 @@ pub(crate) fn test_admission() {
     assert_eq!(hits.load(Ordering::Relaxed), 65);
     drop(tokens);
     for _ in 0..512 {
-        drop(event.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap());
+        drop(event.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap());
         assert_eq!(event.waiters.registered(), 0);
     }
-    let expired: Arc<dyn Observer> = CallOnNotify::new(|| panic!("expired timer callback fired"));
-    event.register_observer(Arc::downgrade(&expired));
+    let expired: ObserverRef = CallOnNotify::for_test(|| panic!("expired timer callback fired"));
+    event.register_observer(ObserverRef::downgrade(&expired));
     drop(expired);
-    let token = event.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap();
+    let token = event.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap();
     event.signal();
     assert_eq!(hits.load(Ordering::Relaxed), 66);
     drop(token);
@@ -86,8 +87,8 @@ pub(crate) fn test_admission() {
     let (cancelled, handle) =
         TimerEvent::charged(ExtDuration::from_millis(60_000), event_sponsor.reserve().unwrap())
             .unwrap();
-    cancelled.register_observer(Arc::downgrade(&observer));
-    let token = cancelled.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap();
+    cancelled.register_observer(ObserverRef::downgrade(&observer));
+    let token = cancelled.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap();
     handle.state.cancelled.store(true, Ordering::Release);
     cancelled.signal();
     assert_eq!(hits.load(Ordering::Relaxed), 66);
@@ -100,13 +101,13 @@ pub(crate) fn test_admission() {
     assert_eq!(event_sponsor.used(), 0);
 
     let discarded = TimerEvent::from(ExtDuration::from_millis(60_000));
-    let token = discarded.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap();
+    let token = discarded.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap();
     drop(discarded);
     assert_eq!(sponsor.used(), 0);
     drop(token);
     sponsor.retire();
     assert!(matches!(
-        event.try_register_waiter(Arc::downgrade(&observer), &sponsor),
+        event.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor),
         Err(RegistrationError::Closed)
     ));
     drop((observer, event));
@@ -131,10 +132,11 @@ pub(crate) fn test_scheduled_cleanup() {
     let tid = get_thread_id().unwrap();
     let constraints = MASTER_THREAD_TABLE.read().get(tid).unwrap().migration_constraints;
     let sponsor = WaitSponsor::new(false);
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| {});
+    let observer: ObserverRef = CallOnNotify::for_test(|| {});
     let mut tokens = Vec::new();
     for _ in 0..64 {
-        tokens.push(event.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap());
+        tokens
+            .push(event.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap());
     }
     assert!(matches!(
         SYSTEM_SCHEDULER.read().block_thread(tid, &event),

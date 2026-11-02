@@ -90,6 +90,6 @@ production admission and numerical limits did not change for that correction.
 
 Pressure is serialized kernel-fixture work; native heap exhaustion is not forced
 and allocator failures are injected. Sustained hostile EL0 fairness, allocator
-overhead, aggregate principal/general-heap budgets, other payload/registry nodes
-and waker/callback backing remain open. SEC-07 remains partial; existing G1/G4
+overhead, aggregate principal/general-heap budgets and other payload/registry nodes
+remain open. Wakers/callbacks have admitted [observer handles](observer-ownership.md). SEC-07 remains partial; existing G1/G4
 caller, destructor and progress qualification still applies.

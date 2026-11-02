@@ -28,6 +28,10 @@ use crate::{
         self,
         ConnectionRights,
     },
+    klib::observer::{
+        ObserverRef,
+        ObserverWeak,
+    },
     logln,
     memory::KERNEL_ASID,
 };
@@ -56,7 +60,6 @@ extern "C" fn admission_worker() {
 
 fn test_scheduler_waiter_admission() {
     crate::cpu::scheduler::deferred::test_park_delivery(CQW_ASID);
-    use alloc::sync::Weak;
 
     use crate::{
         cpu::{
@@ -78,7 +81,6 @@ fn test_scheduler_waiter_admission() {
         },
         klib::observer::{
             Observable,
-            Observer,
             WaitRegistration,
             WaitSponsor,
             registration::{
@@ -92,7 +94,7 @@ fn test_scheduler_waiter_admission() {
     impl Observable for Reject {
         fn try_register_waiter(
             &self,
-            _: Weak<dyn Observer>,
+            _: ObserverWeak,
             _: &WaitSponsor,
         ) -> Result<WaitRegistration, RegistrationError> {
             Err(RegistrationError::ResourceLimit)
@@ -102,7 +104,7 @@ fn test_scheduler_waiter_admission() {
     impl Observable for Source {
         fn try_register_waiter(
             &self,
-            observer: Weak<dyn Observer>,
+            observer: ObserverWeak,
             sponsor: &WaitSponsor,
         ) -> Result<WaitRegistration, RegistrationError> {
             sponsor.register(&self.0, observer)
@@ -203,11 +205,11 @@ fn test_scheduler_waiter_admission() {
     // Admission rejection must leave its result, buffer and Running state alone.
     let completion_source = completion::completion_of(CQW_ASID, cap).unwrap();
     let sponsor = WaitSponsor::new(false);
-    let observer: alloc::sync::Arc<dyn Observer> = crate::klib::observer::CallOnNotify::new(|| {});
+    let observer: ObserverRef = crate::klib::observer::CallOnNotify::for_test(|| {});
     let tokens: alloc::vec::Vec<_> = (0..waiter_budget::SOURCE_LIMIT)
         .map(|_| {
             completion_source
-                .try_register_waiter(alloc::sync::Arc::downgrade(&observer), &sponsor)
+                .try_register_waiter(ObserverRef::downgrade(&observer), &sponsor)
                 .unwrap()
         })
         .collect();
@@ -281,10 +283,10 @@ fn test_scheduler_waiter_admission() {
     drop(completion_source);
     let cq_source = completion::capture_cq_interest(CQW_ASID, 2).unwrap();
     let sponsor = WaitSponsor::new(false);
-    let observer: alloc::sync::Arc<dyn Observer> = crate::klib::observer::CallOnNotify::new(|| {});
+    let observer: ObserverRef = crate::klib::observer::CallOnNotify::for_test(|| {});
     let tokens: alloc::vec::Vec<_> = (0..waiter_budget::SOURCE_LIMIT)
         .map(|_| {
-            cq_source.try_register_waiter(alloc::sync::Arc::downgrade(&observer), &sponsor).unwrap()
+            cq_source.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap()
         })
         .collect();
     for timeout in [None, Some(10_000)] {

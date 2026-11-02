@@ -12,6 +12,7 @@ use core::{
         Allocator,
         Layout,
     },
+    marker::PhantomData,
     mem::{
         ManuallyDrop,
         MaybeUninit,
@@ -24,39 +25,59 @@ use core::{
 };
 
 #[derive(Debug)]
-struct Allocation<C> {
+struct Allocation<C, P = PreAdmitted> {
     charge: C,
     started: AtomicBool,
+    policy: PhantomData<fn() -> P>,
 }
 
+/// Optional admission of the allocator's actual payload layout, before Global
+/// allocation. Rejection changes no charge; rollback undoes an accepted layout
+/// only when Global failed and therefore created no backing. Successful backing
+/// keeps admission with C through final weak/allocator release.
+pub(crate) trait PayloadAdmission<C>: Send + Sync {
+    fn reserve(_charge: &C, _layout: Layout) -> Result<(), AllocError> {
+        Ok(())
+    }
+    fn rollback(_charge: &C, _layout: Layout) {}
+}
+
+/// Existing families already admit their payload before constructing this
+/// allocator. The zero-sized default preserves their representation and policy.
 #[derive(Debug)]
-pub(crate) struct ChargedAllocator<C> {
-    charge: Option<Arc<Allocation<C>>>,
+pub(crate) struct PreAdmitted;
+impl<C> PayloadAdmission<C> for PreAdmitted {}
+
+#[derive(Debug)]
+pub(crate) struct ChargedAllocator<C, P = PreAdmitted> {
+    charge: Option<Arc<Allocation<C, P>>>,
 }
 
 /// Keep the original charge outside empty holder storage until initialization.
 /// Abandonment retains both fields without refund, allocation or locks.
 #[must_use]
-struct PreparingAllocation<C>(ManuallyDrop<AllocationResources<C>>);
+struct PreparingAllocation<C, P = PreAdmitted>(ManuallyDrop<AllocationResources<C, P>>);
 
-struct AllocationResources<C> {
+struct AllocationResources<C, P = PreAdmitted> {
     charge: Option<C>,
-    storage: Option<Arc<MaybeUninit<Allocation<C>>>>,
+    storage: Option<Arc<MaybeUninit<Allocation<C, P>>>>,
 }
 
 /// Retain the complete payload and original admission across empty allocation.
 /// Abandonment performs no field destruction, allocator work or refund.
 #[must_use]
-struct PreparingArc<T, C>(ManuallyDrop<ArcResources<T, C>>);
+struct PreparingArc<T, C, P: PayloadAdmission<C> = PreAdmitted>(
+    ManuallyDrop<ArcResources<T, C, P>>,
+);
 
-struct ArcResources<T, C> {
+struct ArcResources<T, C, P: PayloadAdmission<C> = PreAdmitted> {
     value: Option<T>,
-    storage: Option<Arc<MaybeUninit<T>, ChargedAllocator<C>>>,
-    allocator: ChargedAllocator<C>,
+    storage: Option<Arc<MaybeUninit<T>, ChargedAllocator<C, P>>>,
+    allocator: ChargedAllocator<C, P>,
 }
 
-impl<T, C> PreparingArc<T, C> {
-    fn new(value: T, allocator: ChargedAllocator<C>) -> Self {
+impl<T, C, P: PayloadAdmission<C>> PreparingArc<T, C, P> {
+    fn new(value: T, allocator: ChargedAllocator<C, P>) -> Self {
         Self(ManuallyDrop::new(ArcResources {
             value: Some(value),
             storage: None,
@@ -67,15 +88,16 @@ impl<T, C> PreparingArc<T, C> {
     fn allocate(
         &mut self,
         allocate: impl FnOnce(
-            ChargedAllocator<C>,
-        ) -> Result<Arc<MaybeUninit<T>, ChargedAllocator<C>>, AllocError>,
+            ChargedAllocator<C, P>,
+        )
+            -> Result<Arc<MaybeUninit<T>, ChargedAllocator<C, P>>, AllocError>,
     ) -> Result<(), AllocError> {
         assert!(self.0.storage.is_none(), "payload storage already allocated");
         self.0.storage = Some(allocate(self.0.allocator.clone())?);
         Ok(())
     }
 
-    fn complete(mut self) -> Arc<T, ChargedAllocator<C>> {
+    fn complete(mut self) -> Arc<T, ChargedAllocator<C, P>> {
         let resources = &mut *self.0;
         let slot = Arc::get_mut(resources.storage.as_mut().expect("payload needs storage"))
             .expect("private payload storage was aliased");
@@ -110,7 +132,7 @@ impl<T, C> PreparingArc<T, C> {
     }
 }
 
-impl<C> PreparingAllocation<C> {
+impl<C, P> PreparingAllocation<C, P> {
     fn new(charge: C) -> Self {
         Self(ManuallyDrop::new(AllocationResources {
             charge: Some(charge),
@@ -120,20 +142,21 @@ impl<C> PreparingAllocation<C> {
 
     fn allocate(
         &mut self,
-        allocate: impl FnOnce() -> Result<Arc<MaybeUninit<Allocation<C>>>, AllocError>,
+        allocate: impl FnOnce() -> Result<Arc<MaybeUninit<Allocation<C, P>>>, AllocError>,
     ) -> Result<(), AllocError> {
         assert!(self.0.storage.is_none(), "charge holder storage already allocated");
         self.0.storage = Some(allocate()?);
         Ok(())
     }
 
-    fn complete(mut self) -> ChargedAllocator<C> {
+    fn complete(mut self) -> ChargedAllocator<C, P> {
         let resources = &mut *self.0;
         let slot = Arc::get_mut(resources.storage.as_mut().expect("charge holder needs storage"))
             .expect("private charge holder storage was aliased");
         slot.write(Allocation {
             charge: resources.charge.take().unwrap(),
             started: AtomicBool::new(false),
+            policy: PhantomData,
         });
         let storage = resources.storage.take().unwrap();
         // SAFETY: This unique, unexposed Arc has just been initialized exactly
@@ -200,6 +223,45 @@ impl<C> ChargedAllocator<C> {
         }
         Ok(preparing.complete())
     }
+}
+
+impl<C, P: PayloadAdmission<C>> ChargedAllocator<C, P> {
+    /// Borrow original admission without exposing its private Arc/Weak holder.
+    pub(crate) fn charge(&self) -> &C {
+        &self.charge.as_ref().unwrap().charge
+    }
+
+    pub(crate) fn try_new_with_policy(charge: C) -> Result<Self, AllocError> {
+        let mut preparing = PreparingAllocation::<C, P>::new(charge);
+        if let Err(error) = preparing.allocate(Arc::<Allocation<C, P>>::try_new_uninit) {
+            preparing.cancel();
+            return Err(error);
+        }
+        Ok(preparing.complete())
+    }
+
+    fn allocate_payload(
+        &self,
+        layout: Layout,
+        allocate: impl FnOnce(Layout) -> Result<NonNull<[u8]>, AllocError>,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+        let allocation = self.charge.as_ref().unwrap();
+        if allocation.started.swap(true, Ordering::AcqRel) {
+            return Err(AllocError);
+        }
+        if let Err(error) = P::reserve(&allocation.charge, layout) {
+            allocation.started.store(false, Ordering::Release);
+            return Err(error);
+        }
+        match allocate(layout) {
+            Ok(backing) => Ok(backing),
+            Err(error) => {
+                P::rollback(&allocation.charge, layout);
+                allocation.started.store(false, Ordering::Release);
+                Err(error)
+            }
+        }
+    }
 
     pub(crate) fn try_arc<T>(self, value: T) -> Result<Arc<T, Self>, AllocError> {
         self.try_arc_with(value, Arc::<T, Self>::try_new_uninit_in)
@@ -219,7 +281,7 @@ impl<C> ChargedAllocator<C> {
     }
 }
 
-impl<C> Clone for ChargedAllocator<C> {
+impl<C, P> Clone for ChargedAllocator<C, P> {
     fn clone(&self) -> Self {
         Self {
             charge: self.charge.clone(),
@@ -227,7 +289,7 @@ impl<C> Clone for ChargedAllocator<C> {
     }
 }
 
-impl<C> Drop for ChargedAllocator<C> {
+impl<C, P> Drop for ChargedAllocator<C, P> {
     fn drop(&mut self) {
         // No Weak or bare Arc to the charge holder escapes this adapter. Every
         // clone uses into_inner, including concurrent final allocator drops.
@@ -241,21 +303,11 @@ impl<C> Drop for ChargedAllocator<C> {
 // SAFETY: Every allocation/deallocation uses Global with the caller's unchanged
 // pointer/layout. Clones share the same Global allocation domain; none refund
 // admission during allocation/deallocation or expose the private charge holder.
-unsafe impl<C> Allocator for ChargedAllocator<C> {
+unsafe impl<C, P: PayloadAdmission<C>> Allocator for ChargedAllocator<C, P> {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-        let allocation = self.charge.as_ref().unwrap();
         // All clones share permission for a single allocation. Freeing that
         // allocation does not let a clone reuse its old charge.
-        if allocation.started.swap(true, Ordering::AcqRel) {
-            return Err(AllocError);
-        }
-        match Global.allocate(layout) {
-            Ok(backing) => Ok(backing),
-            Err(error) => {
-                allocation.started.store(false, Ordering::Release);
-                Err(error)
-            }
-        }
+        self.allocate_payload(layout, |layout| Global.allocate(layout))
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {

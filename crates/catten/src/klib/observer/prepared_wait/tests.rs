@@ -9,6 +9,7 @@ use crate::{
         multiprocessor::interrupt_tracking::LocalInterruptMask,
         scheduler::threads::MASTER_THREAD_TABLE,
     },
+    klib::observer::ObserverRef,
     memory::allocators::global_allocator::PRIMARY_ALLOCATOR,
 };
 
@@ -23,7 +24,7 @@ fn context() {
 
 fn ordinary_rejection() {
     let source = source();
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("rejected waiter notified"));
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("rejected waiter notified"));
     for mode in 0..3 {
         let sponsor = WaitSponsor::new(false);
         let mut pressure = Vec::new();
@@ -38,7 +39,7 @@ fn ordinary_rejection() {
         let result = PreparedWaitRegistration::new_with(
             &sponsor,
             &source,
-            Arc::downgrade(&observer),
+            ObserverRef::downgrade(&observer),
             |owner| {
                 assert_eq!(mode, 2, "admission rejection reached entry factory");
                 let _heap = PRIMARY_ALLOCATOR.lock();
@@ -47,7 +48,7 @@ fn ordinary_rejection() {
                 assert!(owner.0.observer.is_some() && owner.0.charge.is_some());
                 assert!(owner.0.entry.is_none());
                 assert_eq!(sponsor.used(), 1);
-                assert_eq!(Arc::weak_count(&observer), 1);
+                assert_eq!(ObserverRef::weak_count(&observer), 1);
                 Err(RegistrationError::AllocationFailed)
             },
         );
@@ -58,7 +59,7 @@ fn ordinary_rejection() {
         };
         assert!(matches!(result, Err(error) if error == expected));
         assert_eq!(sponsor.used(), before);
-        assert_eq!(Arc::weak_count(&observer), 0);
+        assert_eq!(ObserverRef::weak_count(&observer), 0);
         assert_eq!(source.registered(), 0);
         drop(pressure);
         assert_eq!(sponsor.used(), 0);
@@ -68,10 +69,10 @@ fn ordinary_rejection() {
 fn unused_phases() {
     let sponsor = WaitSponsor::new(false);
     let source = source();
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("unused waiter notified"));
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("unused waiter notified"));
     for phase in 0..3 {
         let mut owner =
-            PreparedWaitRegistration::capture(&sponsor, &source, Arc::downgrade(&observer));
+            PreparedWaitRegistration::capture(&sponsor, &source, ObserverRef::downgrade(&observer));
         assert!(owner.matches(&source));
         if phase >= 1 {
             owner.admit().unwrap();
@@ -91,12 +92,12 @@ fn unused_phases() {
                     };
             let weak = step == 0 || (phase == 2 && step < 2);
             assert_eq!(sponsor.used(), usize::from(charged));
-            assert_eq!(Arc::weak_count(&observer), usize::from(weak));
+            assert_eq!(ObserverRef::weak_count(&observer), usize::from(weak));
             step += 1;
         });
         assert_eq!(step, 5);
         assert_eq!(sponsor.used(), 0);
-        assert_eq!(Arc::weak_count(&observer), 0);
+        assert_eq!(ObserverRef::weak_count(&observer), 0);
     }
 }
 
@@ -105,9 +106,9 @@ fn final_source_disposal() {
     let sponsor = WaitSponsor::new(false);
     let source = source();
     let account = sponsor.0.clone();
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("final weak waiter notified"));
-    let owner =
-        PreparedWaitRegistration::new(&sponsor, &source, Arc::downgrade(&observer)).unwrap();
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("final weak waiter notified"));
+    let owner = PreparedWaitRegistration::new(&sponsor, &source, ObserverRef::downgrade(&observer))
+        .unwrap();
     drop((source, sponsor, observer));
     let mut step = 0;
     owner.finish_with(|| {
@@ -126,11 +127,11 @@ fn publication() {
     let before = waiter_budget::node_used();
     let sponsor = WaitSponsor::new(false);
     let source = source();
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("cancelled waiter notified"));
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("cancelled waiter notified"));
     let mut preparations = Vec::with_capacity(64);
     let mut tokens = Vec::with_capacity(64);
     for _ in 0..64 {
-        preparations.push(sponsor.prepare(&source, Arc::downgrade(&observer)).unwrap());
+        preparations.push(sponsor.prepare(&source, ObserverRef::downgrade(&observer)).unwrap());
     }
     sponsor.mark_platform();
     {
@@ -151,7 +152,7 @@ fn publication() {
     drop(tokens);
     assert_eq!(source.registered(), 0);
     assert_eq!(sponsor.used(), 0);
-    assert_eq!(Arc::weak_count(&observer), 0);
+    assert_eq!(ObserverRef::weak_count(&observer), 0);
     assert_eq!(waiter_budget::node_used(), before);
 }
 
@@ -160,9 +161,9 @@ fn guarded_abandonment() {
     let sponsor = WaitSponsor::new(false);
     let source = source();
     for phase in 0..3 {
-        let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("abandoned waiter notified"));
+        let observer: ObserverRef = CallOnNotify::for_test(|| panic!("abandoned waiter notified"));
         let mut owner =
-            PreparedWaitRegistration::capture(&sponsor, &source, Arc::downgrade(&observer));
+            PreparedWaitRegistration::capture(&sponsor, &source, ObserverRef::downgrade(&observer));
         assert!(owner.matches(&source));
         if phase >= 1 {
             owner.admit().unwrap();

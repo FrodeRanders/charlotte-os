@@ -10,7 +10,10 @@ use core::sync::atomic::{
 use super::*;
 use crate::{
     cpu::multiprocessor::interrupt_tracking::LocalInterruptMask,
-    klib::observer::CallOnNotify,
+    klib::observer::{
+        CallOnNotify,
+        ObserverRef,
+    },
 };
 
 fn prepare(
@@ -85,18 +88,18 @@ fn stale_fired_preserves_notification() {
     let sponsor = budget::SchedulerSponsor::new(false);
     let hits = Arc::new(AtomicUsize::new(0));
     let count = hits.clone();
-    let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let observer: ObserverRef = CallOnNotify::for_test(move || {
         count.fetch_add(1, Ordering::Relaxed);
     });
     let (old, stale) = prepare(&sponsor, 0);
-    old.event().register_observer(Arc::downgrade(&observer));
+    old.event().register_observer(ObserverRef::downgrade(&observer));
     old.enqueue();
     process_local_events();
     assert_eq!(hits.load(Ordering::Relaxed), 1);
     assert_eq!(sponsor.used(), 1, "fired node leaves retained cancellation backing");
 
     let (fresh, handle) = prepare(&sponsor, 0);
-    fresh.event().register_observer(Arc::downgrade(&observer));
+    fresh.event().register_observer(ObserverRef::downgrade(&observer));
     {
         // Storage already exists. Mask only publication/stale cancellation so
         // this expired successor cannot fire before the exact-removal check.

@@ -17,7 +17,10 @@ use crate::{
             ThreadState,
         },
     },
-    klib::observer::CallOnNotify,
+    klib::observer::{
+        CallOnNotify,
+        ObserverRef,
+    },
     memory::{
         AddressSpaceHandle,
         budget,
@@ -55,7 +58,7 @@ pub(crate) fn serialized(hold_ipc: fn(&mut dyn FnMut()), ipc_available: fn() -> 
         let destination = transfer.as_ref().unwrap().target_cap();
         let hits = Arc::new(AtomicUsize::new(0));
         let count = hits.clone();
-        let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+        let observer: ObserverRef = CallOnNotify::for_test(move || {
             assert!(ipc_available());
             assert!(MEMORY_OBJECTS.try_lock().is_some());
             assert!(ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());
@@ -71,8 +74,9 @@ pub(crate) fn serialized(hold_ipc: fn(&mut dyn FnMut()), ipc_available: fn() -> 
                 crate::memory::close_user_address_space_handle(owner),
                 Err(crate::memory::AddressSpaceCloseError::OperationsInFlight)
             );
-            token =
-                Some(interest.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap());
+            token = Some(
+                interest.try_register_waiter(ObserverRef::downgrade(&observer), &sponsor).unwrap(),
+            );
             if published {
                 commit_transfers(core::slice::from_mut(transfer.as_mut().unwrap())).unwrap();
             }
@@ -84,7 +88,7 @@ pub(crate) fn serialized(hold_ipc: fn(&mut dyn FnMut()), ipc_available: fn() -> 
             // A completed source is immediate readiness, with no new entry.
             assert!(
                 interest
-                    .try_register_waiter(Arc::downgrade(&observer), &sponsor)
+                    .try_register_waiter(ObserverRef::downgrade(&observer), &sponsor)
                     .unwrap()
                     .is_ready()
             );
@@ -129,7 +133,7 @@ fn rejection_and_race() {
         let cap = allocate(owner.id(), 1).unwrap();
         let mut transfer = Some(prepare_move(owner.id(), cap, target.id()).unwrap());
         let sponsor = WaitSponsor::new(false);
-        let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("cancelled waiter notified"));
+        let observer: ObserverRef = CallOnNotify::for_test(|| panic!("cancelled waiter notified"));
         let mut tokens = Vec::new();
         let result = run_with_prepare(
             owner.id(),
@@ -141,11 +145,15 @@ fn rejection_and_race() {
                 );
                 for _ in 0..waiter_budget::SOURCE_LIMIT {
                     tokens.push(
-                        interest.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap(),
+                        interest
+                            .try_register_waiter(ObserverRef::downgrade(&observer), &sponsor)
+                            .unwrap(),
                     );
                 }
                 assert_eq!(
-                    interest.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap_err(),
+                    interest
+                        .try_register_waiter(ObserverRef::downgrade(&observer), &sponsor)
+                        .unwrap_err(),
                     RegistrationError::ResourceLimit
                 );
                 Err(MemoryObjectError::ResourceLimit)

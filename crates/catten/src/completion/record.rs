@@ -3,6 +3,10 @@
 //! this owner. Registry/CQ publication still retains the complete terminal
 //! receipt through local guard exit before disposal and captured-source wake.
 use super::*;
+use crate::klib::observer::{
+    ObserverRef,
+    ObserverWeak,
+};
 
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod callback_tests;
@@ -66,7 +70,7 @@ struct CompletionInner {
     /// an external join, cancelling it must not revoke the terminal event.
     worker_observation: Option<EventObservation>,
     /// Keeps the timer observer (if any) alive until the completion is reclaimed.
-    timer_observer: Option<Arc<CompletionTimerObserver>>,
+    timer_observer: Option<ObserverRef<CompletionTimerObserver>>,
     timer_cancel: Option<TimerCancellation>,
     /// Keeps a subsystem-defined event observer alive. IPC uses this for
     /// connection endpoint-close watches without coupling completion storage
@@ -78,7 +82,7 @@ struct CompletionInner {
 }
 
 struct EventObservation {
-    _observer: Arc<dyn Observer>,
+    _observer: ObserverRef,
     _registration: crate::klib::observer::registration::Registration<watch_budget::Charge>,
 }
 
@@ -123,7 +127,7 @@ impl Completion {
     /// containing submission retains installation/disposal ordering outside it.
     pub(super) fn install_worker_observation(
         &self,
-        observer: Arc<dyn Observer>,
+        observer: ObserverRef,
         registration: crate::klib::observer::registration::Registration<watch_budget::Charge>,
     ) -> ObservationInstallation {
         self.set_worker_observation(EventObservation {
@@ -158,7 +162,7 @@ impl Completion {
 
     pub(super) fn set_timer_observer(
         &self,
-        observer: Arc<CompletionTimerObserver>,
+        observer: ObserverRef<CompletionTimerObserver>,
         cancel: TimerCancellation,
     ) {
         let mut inner = self.inner.lock();
@@ -170,7 +174,7 @@ impl Completion {
     /// A terminal completion must not retain a late registration.
     pub(crate) fn set_event_observation(
         &self,
-        observer: Arc<dyn Observer>,
+        observer: ObserverRef,
         registration: crate::klib::observer::registration::Registration<watch_budget::Charge>,
     ) -> ObservationInstallation {
         let mut unused = Some(EventObservation {
@@ -299,7 +303,7 @@ impl Completion {
 impl Observable for Completion {
     fn try_register_waiter(
         &self,
-        observer: Weak<dyn Observer>,
+        observer: ObserverWeak,
         sponsor: &crate::klib::observer::WaitSponsor,
     ) -> Result<
         crate::klib::observer::WaitRegistration,

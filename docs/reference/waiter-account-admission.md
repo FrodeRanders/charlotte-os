@@ -77,8 +77,8 @@ heap exhaustion.
 Timer accounts have their own [backing admission](timer-account-admission.md).
 Completion/CQ/watch accounts have separate [backing admission](completion-account-admission.md).
 Capability/IPC/mailbox accounts have separate [backing admission](namespace-account-admission.md).
-Waker/callback control blocks, other registry
-metadata and aggregate principal/general-heap admission remain open. These
+Wakers/callbacks have admitted [observer handles](observer-ownership.md). Other
+registry metadata and aggregate principal/general-heap admission remain open. These
 bounded fixtures do not establish sustained hostile-pressure fairness, physical
 hardware behavior or a complete allocation/destructor inventory. SEC-07 remains
 partial; existing C03/C16 and G1/G4 boundaries in

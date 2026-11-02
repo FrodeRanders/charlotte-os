@@ -348,8 +348,10 @@ storage readiness and does not synthesize a self-test verdict. See
         IPC/memory-close/DMA-readiness disposal nodes retain separate byte/count
         admission from preparation through producer-LP queued delivery and
         actual deallocation, independently of retained observer-list backing.
-        Waker/callback backing, other payload metadata and aggregate heap
-        accounting remain gaps.
+        Wakers and callbacks use opaque admitted strong/weak handles and borrowed
+        notification. Actual observer Arc-layout bytes and fixed holder bundles
+        remain charged through final weak/private-holder release. Other payload
+        metadata and aggregate heap/principal accounting remain gaps.
         Connection, retained-call and outstanding-reply records have separate
         domain/node count admission. Grantors sponsor direct connections;
         callers sponsor call/reply pairs and solicited returned connections.

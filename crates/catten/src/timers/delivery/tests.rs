@@ -7,7 +7,10 @@ use core::sync::atomic::AtomicUsize;
 use super::*;
 use crate::{
     cpu::multiprocessor::interrupt_tracking::LocalInterruptMask,
-    klib::observer::CallOnNotify,
+    klib::observer::{
+        CallOnNotify,
+        ObserverRef,
+    },
     memory::allocators::global_allocator::PRIMARY_ALLOCATOR,
 };
 
@@ -33,11 +36,11 @@ fn ordered_reentrant_prefix() {
     let order = Arc::new(Mutex::new(Vec::with_capacity(68)));
     let (fresh, fresh_handle) = prepared(&sponsor, 0);
     let fresh_order = order.clone();
-    let fresh_observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let fresh_observer: ObserverRef = CallOnNotify::for_test(move || {
         check_context(owner_lp);
         fresh_order.lock().push(10002);
     });
-    fresh.event().register_observer(Arc::downgrade(&fresh_observer));
+    fresh.event().register_observer(ObserverRef::downgrade(&fresh_observer));
     let fresh = Arc::new(Mutex::new(Some(fresh)));
     let selected_cancel = Arc::new(Mutex::new(None::<TimerEventCancelHandle>));
     let queued_cancel = Arc::new(Mutex::new(None::<TimerEventCancelHandle>));
@@ -48,19 +51,19 @@ fn ordered_reentrant_prefix() {
     let mut observers = Vec::with_capacity(64);
     let mut tokens = Vec::with_capacity(2);
     let waiter_order = order.clone();
-    let waiter: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let waiter: ObserverRef = CallOnNotify::for_test(move || {
         check_context(owner_lp);
         waiter_order.lock().push(10001);
     });
-    let suppressed: Arc<dyn Observer> =
-        CallOnNotify::new(|| panic!("selected cancelled waiter notified"));
+    let suppressed: ObserverRef =
+        CallOnNotify::for_test(|| panic!("selected cancelled waiter notified"));
     for i in (1..=64).rev() {
         let (event, handle) = prepared(&sponsor, i);
         let log = order.clone();
         let fresh = fresh.clone();
         let selected_target = selected_cancel.clone();
         let queued_cancel = queued_cancel.clone();
-        let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+        let observer: ObserverRef = CallOnNotify::for_test(move || {
             check_context(owner_lp);
             assert!(TIMER_QUEUES.try_get_mut().unwrap().delivering);
             log.lock().push(i);
@@ -82,14 +85,18 @@ fn ordered_reentrant_prefix() {
                 );
             }
         });
-        event.event().register_observer(Arc::downgrade(&observer));
+        event.event().register_observer(ObserverRef::downgrade(&observer));
         if i == 1 {
-            tokens
-                .push(event.event().try_register_waiter(Arc::downgrade(&waiter), &waits).unwrap());
+            tokens.push(
+                event.event().try_register_waiter(ObserverRef::downgrade(&waiter), &waits).unwrap(),
+            );
         }
         if i == 48 {
             tokens.push(
-                event.event().try_register_waiter(Arc::downgrade(&suppressed), &waits).unwrap(),
+                event
+                    .event()
+                    .try_register_waiter(ObserverRef::downgrade(&suppressed), &waits)
+                    .unwrap(),
             );
             *selected_cancel.lock() = Some(handle);
         } else {
@@ -143,14 +150,14 @@ fn ordered_reentrant_prefix() {
 }
 
 struct DropProbe {
-    holder: Arc<Mutex<Option<Arc<dyn Observer>>>>,
+    holder: Arc<Mutex<Option<ObserverRef>>>,
     notified: Arc<AtomicUsize>,
     dropped: Arc<AtomicUsize>,
     owner_lp: crate::cpu::isa::lp::LpId,
 }
 
 impl Observer for DropProbe {
-    fn notify(self: Arc<Self>) {
+    fn notify(&self) {
         check_context(self.owner_lp);
         self.notified.fetch_add(1, Ordering::Relaxed);
         drop(self.holder.lock().take());
@@ -176,7 +183,7 @@ fn observer_destruction() {
         let mut token = None;
         for waiter in [false, true] {
             let holder = Arc::new(Mutex::new(None));
-            let observer: Arc<dyn Observer> = Arc::new(DropProbe {
+            let observer: ObserverRef = crate::klib::observer::test_observer(DropProbe {
                 holder: holder.clone(),
                 notified: notified.clone(),
                 dropped: dropped.clone(),
@@ -184,10 +191,13 @@ fn observer_destruction() {
             });
             if waiter {
                 token = Some(
-                    event.event().try_register_waiter(Arc::downgrade(&observer), &waits).unwrap(),
+                    event
+                        .event()
+                        .try_register_waiter(ObserverRef::downgrade(&observer), &waits)
+                        .unwrap(),
                 );
             } else {
-                event.event().register_observer(Arc::downgrade(&observer));
+                event.event().register_observer(ObserverRef::downgrade(&observer));
             }
             *holder.lock() = Some(observer);
             holders.push(holder);
@@ -223,24 +233,24 @@ fn quantum_tie_order() {
     for (deadline, id) in [(1, 10), (1, 11), (2, 12)] {
         let (event, handle) = prepared(&sponsor, deadline);
         let log = order.clone();
-        let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+        let observer: ObserverRef = CallOnNotify::for_test(move || {
             check_context(owner_lp);
             log.lock().push(id);
         });
-        event.event().register_observer(Arc::downgrade(&observer));
+        event.event().register_observer(ObserverRef::downgrade(&observer));
         private.add_prepared(event.into_node()).finish();
         handles.push(handle);
         observers.push(observer);
     }
     let log = order.clone();
-    let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+    let observer: ObserverRef = CallOnNotify::for_test(move || {
         check_context(owner_lp);
         log.lock().push(99);
     });
     let mut quantum =
         TimerEvent::keyed(ExtDuration::from_millis(1), TimerEventKey::SchedulerQuantum);
     quantum.deadline = 1;
-    quantum.register_observer(Arc::downgrade(&observer));
+    quantum.register_observer(ObserverRef::downgrade(&observer));
     observers.push(observer);
     private.ensure_event(quantum).finish();
     let pending;
@@ -267,11 +277,13 @@ fn quantum_tie_order() {
 fn guarded_abandonment() {
     let sponsor = budget::SchedulerSponsor::new(false);
     let waits = WaitSponsor::new(false);
-    let observer: Arc<dyn Observer> = CallOnNotify::new(|| panic!("abandoned delivery notified"));
+    let observer: ObserverRef = CallOnNotify::for_test(|| panic!("abandoned delivery notified"));
     let (due, a) = prepared(&sponsor, 0);
     let (cancelled, b) = prepared(&sponsor, Timestamp::MAX);
-    let a_token = due.event().try_register_waiter(Arc::downgrade(&observer), &waits).unwrap();
-    let b_token = cancelled.event().try_register_waiter(Arc::downgrade(&observer), &waits).unwrap();
+    let a_token =
+        due.event().try_register_waiter(ObserverRef::downgrade(&observer), &waits).unwrap();
+    let b_token =
+        cancelled.event().try_register_waiter(ObserverRef::downgrade(&observer), &waits).unwrap();
     let mask = LocalInterruptMask::new();
     let mut private = TimerQueue::default();
     private.add_prepared(due.into_node()).finish();

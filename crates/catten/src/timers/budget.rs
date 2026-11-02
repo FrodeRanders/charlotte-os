@@ -126,6 +126,12 @@ pub(crate) struct Charge {
     platform: bool,
 }
 
+impl Charge {
+    pub(crate) fn platform(&self) -> bool {
+        self.platform
+    }
+}
+
 pub(crate) fn reserve(domain: &AccountRef, platform: bool) -> Result<Charge, ()> {
     reserve_inner(domain, Some(platform))
 }
