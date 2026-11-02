@@ -82,9 +82,8 @@ pub(super) fn run() {
         if copied {
             let source = object::allocate(caller.id(), 1).unwrap();
             call.attach(object::prepare_copy(caller.id(), source, server.id()).unwrap()).unwrap();
-            let platform = call.platform;
-            let caps = core::mem::take(&mut call.memory);
-            call.queued_memory = Some(MemoryAttachments::try_new(platform, caps).unwrap());
+            let caps = take_buffer(&mut call.memory);
+            call.queued_memory = Some(MemoryAttachments::try_new(caps).unwrap());
         }
         let records = record_budget::node_used();
         let backing = memory::budget::used(caller);

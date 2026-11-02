@@ -6,13 +6,19 @@ use crate::{
     memory,
 };
 
+fn caps(platform: bool, n: usize) -> Result<Buffer<MemoryObjectCap>, IpcError> {
+    let mut result = buffer(platform);
+    result.try_reserve_exact(n).map_err(|_| IpcError::ResourceLimit)?;
+    result.resize(n, 0);
+    Ok(result)
+}
 fn buffers(platform: bool) -> Vec<MemoryAttachments> {
     let max_bytes = (CAP_VECTOR_MAX * core::mem::size_of::<RetiredMemory>()) as u64;
     let mut owners = Vec::with_capacity(
         (crate::resource_policy::POLICY.ipc_nodes.total[0] / max_bytes) as usize + CAP_VECTOR_MAX,
     );
     for n in [CAP_VECTOR_MAX, 1] {
-        while let Ok(owner) = MemoryAttachments::try_new(platform, alloc::vec![0;n]) {
+        while let Ok(owner) = caps(platform, n).and_then(MemoryAttachments::try_new) {
             owners.push(owner);
         }
     }
@@ -23,7 +29,7 @@ pub(in crate::ipc) fn run() {
     let irq = crate::cpu::isa::lp::ops::get_int_state();
     for _ in 0..64 {
         assert!(
-            MemoryAttachments::try_new_with(false, alloc::vec![0;3], |retired, n| {
+            MemoryAttachments::try_new_with(caps(false, 3).unwrap(), |retired, n| {
                 retired.try_reserve_exact(n).unwrap();
                 Err(IpcError::ResourceLimit)
             })
@@ -34,22 +40,10 @@ pub(in crate::ipc) fn run() {
     let ordinary = buffers(false);
     let full = node_budget::snapshot();
     assert_eq!(full.1[1], before.1[1]);
-    assert!(
-        MemoryAttachments::try_new_with(false, alloc::vec![0], |_, _| panic!(
-            "quota reached allocator"
-        ))
-        .is_err()
-    );
-    let trusted = MemoryAttachments::try_new(true, alloc::vec![0]).unwrap();
+    let trusted = MemoryAttachments::single(true, 0).unwrap();
     assert_eq!(node_budget::snapshot().1, full.1);
     trusted.finish();
     let trusted = buffers(true);
-    assert!(
-        MemoryAttachments::try_new_with(true, alloc::vec![0], |_, _| panic!(
-            "total quota reached allocator"
-        ))
-        .is_err()
-    );
     let counts = (ordinary.len(), trusted.len());
     for owner in ordinary.into_iter().chain(trusted) {
         owner.finish();
@@ -85,6 +79,9 @@ fn public_paths() {
             .unwrap();
         let destination = call.memory[0];
         let staged = node_budget::snapshot();
+        let transfer_bytes = (call.transfers.capacity()
+            * core::mem::size_of::<memory::object::PreparedTransfer>())
+            as u64;
         memory::budget::mark_platform(caller);
         let eid = match IPC.read().cap(caller.id(), connection).unwrap() {
             Capability::Connection {
@@ -111,14 +108,21 @@ fn public_paths() {
             delivery.notify();
             let queued = node_budget::snapshot();
             let bytes = core::mem::size_of::<RetiredMemory>() as u64;
-            assert_eq!(queued.1, [staged.1[0] + bytes, staged.1[1]]);
+            assert_eq!(queued.1, [staged.1[0] - transfer_bytes + bytes, staged.1[1]]);
             if outcome == 2 {
                 let message = receive(server.id(), endpoint).unwrap();
                 let received = node_budget::snapshot();
                 let payload =
                     node_budget::Storage::<(CapabilityId, AdmittedCapability)>::allocation_bytes()
                         as u64;
-                assert_eq!(received.1, [queued.1[0] - bytes + payload, queued.1[1] + 1]);
+                assert_eq!(
+                    received.1,
+                    [
+                        queued.1[0] - bytes - core::mem::size_of::<MemoryObjectCap>() as u64
+                            + payload,
+                        queued.1[1] + 1
+                    ]
+                );
                 reply(server.id(), message.reply.unwrap(), 7).unwrap();
                 close_cap(caller.id(), cap).unwrap();
                 memory::object::close_cap(server.id(), destination).unwrap();

@@ -77,10 +77,16 @@ unchanged.
 
 `PreparedCall` retains call attachments; `PreparedSend` retains the single-send
 submission, transfer, metadata and pending delivery in one inert containing
-owner. Abandonment performs no child destruction, source restoration, backing
+owner. `PreparedVectorSend` likewise retains roots, every partially prepared
+transfer, admitted cap/transfer buffers, retirement catalog and pending delivery.
+The parser fills the containing owner directly across fallible preparation.
+Staging and token-loan vectors retain original byte admission through actual
+disposal; see [vector capacity](ipc-node-admission.md#staging-and-loan-vectors).
+Abandonment performs no child destruction, source restoration, backing
 release, notification or root completion. It retains original charges and is
 terminal, without replay or reconstructed cleanup authority. This qualifies
-the single-send parent, not every active `PreparedTransfer` destructor or vector,
-reply, supervisor and enclosing IRQ context. See the
+the single-send and vector-send parents. Other active `PreparedTransfer`
+destructors, reply/supervisor parents and enclosing IRQ contexts still need
+qualification. See the
 [scalar submission controls](../reports/audits/evidence/2026-10-31-scalar-transfer-submission.json)
 and [cleanup scope](cleanup-recovery-details.md#c18-publication-rollback-and-detached-memory).

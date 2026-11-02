@@ -374,7 +374,7 @@ fn test_joint_retirement() {
                 )
                 .unwrap();
             }
-            let staged_memory = call.memory.clone();
+            let staged_memory = call.memory.to_vec();
             assert_eq!(ipc.cap(f.client.id(), staged_call), Err(IpcError::UnknownCapability));
             assert_eq!(ipc.cap(f.server.id(), staged_connection), Err(IpcError::UnknownCapability));
             for &cap in &staged_memory {

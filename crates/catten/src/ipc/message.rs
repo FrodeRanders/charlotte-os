@@ -190,14 +190,15 @@ pub(super) fn test_received_storage_abandonment() {
         authority: PreparingCapability::new(),
         retired: RetiredMetadata::new(),
         // Storage-only fixture: no physical backing or capability is adopted.
-        delivered: Some(MemoryAttachments::try_new(false, alloc::vec![0]).unwrap()),
+        delivered: Some(MemoryAttachments::single(false, 0).unwrap()),
     };
     {
         let _ipc = IPC.write();
         let _heap = crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
         node_budget::with_locked(|| drop(owner));
     }
-    let bytes = core::mem::size_of::<crate::memory::object::RetiredMemory>() as u64;
+    let bytes = (core::mem::size_of::<crate::memory::object::RetiredMemory>()
+        + core::mem::size_of::<MemoryObjectCap>()) as u64;
     assert_eq!(
         node_budget::snapshot(),
         ([before.0[0] + bytes, before.0[1]], [before.1[0] + bytes, before.1[1]])

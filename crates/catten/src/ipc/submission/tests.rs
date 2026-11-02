@@ -84,19 +84,13 @@ fn retained_failure() {
                 let result = {
                     let mut ipc = IPC.write();
                     submission.validate(&ipc).unwrap();
-                    prepared.commit_with_memory(
-                        &mut ipc,
-                        submission.endpoint,
-                        1,
-                        0,
-                        |platform, caps| {
-                            if publication {
-                                MemoryAttachments::try_new(platform, caps)
-                            } else {
-                                Err(IpcError::ResourceLimit)
-                            }
-                        },
-                    )
+                    prepared.commit_with_memory(&mut ipc, submission.endpoint, 1, 0, |caps| {
+                        if publication {
+                            MemoryAttachments::try_new(caps)
+                        } else {
+                            Err(IpcError::ResourceLimit)
+                        }
+                    })
                 };
                 let error = result.err().expect("fault publication succeeded");
                 assert_eq!(
@@ -310,19 +304,45 @@ fn scalar_send_abandonment() {
         ADDRESS_SPACE_TABLE,
         allocators::global_allocator::PRIMARY_ALLOCATOR,
     };
-    for guarded in [false, true] {
+    // Keep the actual parent inline for guard-held Drop; boxing adds unrelated cleanup.
+    #[allow(dead_code, clippy::large_enum_variant)]
+    enum Owner {
+        Single(PreparedSend),
+        Vector(PreparedVectorSend),
+    }
+    for phase in 0..3 {
+        let guarded = phase != 0;
         let fixture = Fixture::new();
-        let source = object::allocate(fixture.caller.id(), 35).unwrap();
+        let source = object::allocate(
+            fixture.caller.id(),
+            if phase == 2 {
+                1
+            } else {
+                35
+            },
+        )
+        .unwrap();
         let mut send = PreparedSend::new(fixture.caller.id(), fixture.connection).unwrap();
         // The unguarded copy first discriminates active child destruction by
         // its refunded pages, before an unsafe control can hit the guard probe.
-        let mode = usize::from(guarded);
+        let mode = usize::from(phase == 1);
         send.prepare(
             source,
             |caller, cap, server| prepare_mode(caller, cap, server, mode),
             MemoryAttachments::single,
         )
         .unwrap();
+        let owner = if phase == 2 {
+            let mut vector = PreparedVectorSend::new(send.0.submission.take().unwrap());
+            vector.0.transfers.try_reserve_exact(1).unwrap();
+            vector.0.transfers.push(send.0.transfer.take().unwrap());
+            vector.0.memory = send.0.memory.take();
+            drop(send);
+            memory::budget::mark_platform(fixture.caller);
+            Owner::Vector(vector)
+        } else {
+            Owner::Single(send)
+        };
         let amount = memory::budget::used(fixture.caller);
         let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
         let authority = crate::capability::node_admission_used();
@@ -336,11 +356,11 @@ fn scalar_send_abandonment() {
             let _physical = PHYSICAL_FRAME_ALLOCATOR.lock();
             object::retirement_tests::with_registry_locked(|| {
                 crate::capability::admission_tests::test_with_registry_locked(|| {
-                    node_budget::with_locked(|| drop(send));
+                    node_budget::with_locked(|| drop(owner));
                 });
             });
         } else {
-            drop(send);
+            drop(owner);
         }
         assert_eq!(
             memory::budget::used(fixture.caller),
@@ -357,6 +377,8 @@ fn scalar_send_abandonment() {
     crate::logln!(
         "[IPC scalar submission] copy/move sends and copy/move/read/write calls prepare outside \
          IPC with both roots; attachment/authority/endpoint rejection restores sources; heap-held \
-         send publication and inert complete-send abandonment passed"
+         send publication and inert complete scalar/vector-send abandonment passed; vector \
+         fixture retains two data pages and its complete original root/transfer/catalog owner \
+         after promotion"
     );
 }

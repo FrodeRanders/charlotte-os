@@ -356,6 +356,17 @@ the corrected RPC polling paths, and the remaining notification gaps.
   the remaining complete owners and charge. Empty length supplies no physical
   completion or replay authority. See `docs/reference/ipc-node-admission.md`.
 
+- IPC parsed-descriptor, cap-ID, transfer-staging and reply-token loan vectors
+  use `ByteAllocator<IpcNodes>` for requested bytes and zero node slots. Capture
+  class from the original call reservation or exact sender before allocation;
+  move the cap vector's allocator into attachment storage without reclassification.
+  Growth must admit the full candidate while old capacity remains charged;
+  pop/clear cannot refund capacity. Deallocate before refund. Keep every prepared
+  transfer in the complete call/vector-send parent across partial failure;
+  explicit disposal leaves IPC and completes exact roots last. This allocator
+  supplies no element-cleanup, physical-completion or replay proof. See
+  `docs/reference/ipc-node-admission.md#staging-and-loan-vectors`.
+
 - Device namespace and MMIO/IRQ/DMA payload nodes use typed `DeviceMap` storage
   and independent `device_nodes` requested-byte/count admission. Capture trusted
   backing class with the exact root generation, then acquire that root lease

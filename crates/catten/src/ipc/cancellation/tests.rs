@@ -112,7 +112,7 @@ impl Fixture {
                 unreachable!()
             };
             (
-                ipc.reply_tokens[&identity.token].borrows.clone(),
+                ipc.reply_tokens[&identity.token].borrows.to_vec(),
                 ipc.endpoints[&id]
                     .queue
                     .iter()

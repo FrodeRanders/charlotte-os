@@ -50,6 +50,8 @@ use crate::{
 };
 
 mod attachments;
+#[cfg(feature = "kernel_tests")]
+mod buffer_tests;
 mod close;
 #[cfg(feature = "kernel_tests")]
 pub(crate) use close::close_address_space_fixture;
@@ -127,6 +129,14 @@ use readiness::{
 
 type WaiterList = ListRef<waiter_budget::Charge>;
 type WaitNotifications = NotificationBatch<waiter_budget::Charge>;
+type Buffer<T> = Vec<T, crate::klib::admission::ByteAllocator<crate::klib::admission::IpcNodes>>;
+fn buffer<T>(platform: bool) -> Buffer<T> {
+    Vec::new_in(crate::klib::admission::ByteAllocator::new(platform))
+}
+fn take_buffer<T>(value: &mut Buffer<T>) -> Buffer<T> {
+    let empty = Vec::new_in(value.allocator().clone());
+    core::mem::replace(value, empty)
+}
 
 pub type CapabilityId = u64;
 type EndpointId = u64;
@@ -328,7 +338,7 @@ struct ReplyToken {
     cleanup_failed: bool,
     /// Borrowed minting authority protected by the in-flight reply claim.
     connection_source: Option<CapabilityId>,
-    borrows: Vec<MemoryBorrow>,
+    borrows: Buffer<MemoryBorrow>,
 }
 
 #[derive(Debug)]
@@ -1226,8 +1236,11 @@ fn read_vector_page(
     cap_vector_page: MemoryObjectCap,
     target: AddressSpaceId,
     is_call: bool,
-    out: &mut Vec<MemoryObjectCap>,
-) -> Result<Vec<crate::memory::object::PreparedTransfer>, IpcError> {
+    platform: bool,
+    out: &mut Buffer<MemoryObjectCap>,
+    transfers: &mut Buffer<crate::memory::object::PreparedTransfer>,
+) -> Result<(), IpcError> {
+    assert!(out.is_empty() && transfers.is_empty());
     let vector_bytes = crate::memory::object::snapshot_bytes(
         sender,
         cap_vector_page,
@@ -1245,7 +1258,7 @@ fn read_vector_page(
         return Err(IpcError::MemoryTransferFailed);
     }
     let entries_ptr = unsafe { vector_bytes.as_ptr().add(2) } as *const CapVectorEntry;
-    let mut entries = Vec::new();
+    let mut entries = buffer(platform);
     entries.try_reserve_exact(count).map_err(|_| IpcError::ResourceLimit)?;
     for i in 0..count {
         let entry = unsafe { core::ptr::read_unaligned(entries_ptr.add(i)) };
@@ -1258,7 +1271,6 @@ fn read_vector_page(
         entries.push(entry);
     }
 
-    let mut transfers = Vec::new();
     transfers.try_reserve_exact(count).map_err(|_| IpcError::ResourceLimit)?;
     out.try_reserve_exact(count).map_err(|_| IpcError::ResourceLimit)?;
     for entry in entries {
@@ -1274,5 +1286,5 @@ fn read_vector_page(
         out.push(transfer.target_cap());
         transfers.push(transfer);
     }
-    Ok(transfers)
+    Ok(())
 }

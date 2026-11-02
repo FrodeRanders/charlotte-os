@@ -1,0 +1,263 @@
+{
+  "schema": "charlotte.ipc-vector-capacity.v1",
+  "date": "2026-11-02",
+  "base_revision": "4bc87817d48592c47c1d8160c86bc1de6c15b6b1",
+  "scope": "Requested-byte admission for parsed descriptor entries, capability-ID buffers, PreparedTransfer staging and ReplyToken loan-origin vectors. Shared ByteAllocator mechanics retain captured classification and full allocation lifetime; complete local owners retain roots, authority and cleanup obligations. Descriptor byte snapshots and reply/cancellation revocation-work vectors remain separate work.",
+  "source_sha256": {
+    "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
+    "crates/catten-syscall/src/lib.rs": "231d3e2ca37f03c987335f874e432cafcfac8b2969dd78ee7c37da82db4c0d2a",
+    "crates/catten-syscall/src/metadata_pools.rs": "11d14166d9d9c66a800dfb0bb2401c8af6875d0c31dc4d4295b72a2633d1b5b9",
+    "crates/catten/src/ipc/attachments.rs": "f0f3628feeb62156dada3107ae5bca892f157431e7e12f68f2683ca8d0b4a6ec",
+    "crates/catten/src/ipc/attachments/host_tests.rs": "627f9b073f90071767fac4c934ed223af178b7a7a234a90b82e03c23629c5d74",
+    "crates/catten/src/ipc/attachments/tests.rs": "bf65cfc6287b52c2637bdfbefe2fc2f494cd9eeb991e6f1b125ce6fc79450d93",
+    "crates/catten/src/ipc/budget.rs": "ea997e45c0d8f7341f3bd0131dbe15e11d266611240e5032a1d956aac30c38b8",
+    "crates/catten/src/ipc/buffer_tests.rs": "b143837c2035d31a6c145a086afff8bbca457dc7b6fb36bff60c1a9bfaee30a2",
+    "crates/catten/src/ipc/call_storage_tests.rs": "4341eb1d25ad51d77f090aabf1134f57ace0e46b27f5ca2e542931cff65d27f5",
+    "crates/catten/src/ipc/cancellation.rs": "56a988b8697aba68d7d2daddaf841e14617e89899a38d58de3616ac26d9a23fe",
+    "crates/catten/src/ipc/cancellation/tests.rs": "7d657e68b5dce69ea3ba719bdc7142683e061148a8617cfd3b6c670f0fa91833",
+    "crates/catten/src/ipc/delivery_tests/backing.rs": "d6d802db7fe47641436eecabb5a32eb079115afc5341ec898e8d00b2ea4d1620",
+    "crates/catten/src/ipc/message.rs": "a3e5e32b252915ef6aa06aaa3f6e3a242760b7c4835ae60a73ada6370ebc92f8",
+    "crates/catten/src/ipc/mod.rs": "2623154b2be577b547eebf1d873a33fcb1771c08ae55b46f98a55930b8819c39",
+    "crates/catten/src/ipc/node_budget.rs": "e538c74137e8b719011ebd4634464973583cf3443bbb87f47c6cdcd9e22b2716",
+    "crates/catten/src/ipc/record_tests.rs": "653d05dc34a14d15320623ccd16e2fbb25d2ea5d4f2c8229ad3ca5c787f05031",
+    "crates/catten/src/ipc/record_tests/shared_admission.rs": "76c89bb695d663c0adc712bc8b4e6776ad919453ab9bb15d84d6bbb74e7922a4",
+    "crates/catten/src/ipc/reply.rs": "ca17c7bd4fb8ba7a170cdc85a5391d5e6f81715e7213b738c22536243ecd275c",
+    "crates/catten/src/ipc/reply/tests.rs": "cd119041ad3c88fff2cad18f5b6ef36b7177ae3a3040764264d2b30cabb3dd03",
+    "crates/catten/src/ipc/reply_storage_tests.rs": "ffb94f5efcdbea985ad7634261696f53c9f365484d5723d8c350f4ac230aab16",
+    "crates/catten/src/ipc/submission.rs": "e4f97d92b3ddd5c5daf284a8082c7273cb69e2a29b88161fffeacd06bfdd2ae1",
+    "crates/catten/src/ipc/submission/tests.rs": "77087ed5f23653c6e162f15da772790ac01b1a04dc2cb7c94e3d330ec0df951c",
+    "crates/catten/src/ipc/transaction.rs": "a0bebf490b258cac7406a76a6db158ef8c7eac3db3334d2d784725de4171a79c",
+    "crates/catten/src/klib/admission.rs": "943997ba7a90d3c6ac59aae593c5e425daf9789fec6ed846227837d4fd86d9f8",
+    "crates/catten/src/klib/admission/byte_allocator.rs": "30042575956fb29aa9677f34f205bcd7c346a0ba2b0474132235de31a6a88dea",
+    "crates/catten/src/klib/admission/byte_allocator_tests.rs": "998388b232eebdbae9c59a34c9a5c3c633a39eb339b1bf34527dff4b038c75ec",
+    "crates/catten/src/klib/collections/retirement_list.rs": "8a87488146d00e0956e0314ae3996aadf3f168c7842068cce271c926fe450063",
+    "crates/catten/src/resource_policy.rs": "653f130fb43d7f2667fd32ff2b8a069ac2649a8d134739c3e368379a6221cc63",
+    "crates/catten/src/resource_policy/defaults.rs": "0b39025646e162f02e9cfa4270db5f0c1d4e9baa08894005b929d5945d26e629",
+    "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
+    "scripts/run-host-tests.sh": "d3e773931451d377a76dfff79e150fb02d08c198cd9b3fb733f3da953c23ba2d"
+  },
+  "artifact_note": "Functional kernel implementation was frozen before the native campaigns. A documented test-only lint exemption changed during initial ARM/Intel builds; either equivalent source variant may be present there. Both identities are recorded below, with no executable statements changed. AMD uses the final variant. Subsequent documentation and standalone host-fixture formatting do not change runtime behavior. Source and archived artifact hashes identify exercised code; tracked-diff hashes are per-run captures. Existing signed service bundles were reused; each runner regenerated signed security fixtures.",
+  "source_variant": {
+    "file": "crates/catten/src/ipc/submission/tests.rs",
+    "before_sha256": "4e445d192a3d0135f20a23aa782ae57c52859e9c8a43a6bd3fc1c073e0e2291a",
+    "after_sha256": "77087ed5f23653c6e162f15da772790ac01b1a04dc2cb7c94e3d330ec0df951c",
+    "change": "Test-only Owner enum retains its existing dead-code exemption and gains a documented clippy::large_enum_variant exemption; actual parent owners remain inline for guard-held Drop qualification. No executable statements changed.",
+    "note": "ARM/Intel native builds may include either equivalent lint-only variant. Both source identities are retained; source/ELF identities do not imply a new behavioral implementation."
+  },
+  "policy": {
+    "field": "ipc_nodes",
+    "ordinary": [
+      12582912,
+      73728
+    ],
+    "total": [
+      16777216,
+      98304
+    ],
+    "vector_charge": "[requested allocation layout bytes, 0], before Global allocation; actual Global deallocation precedes refund; allocator clones/moves preserve captured class and reserve nothing",
+    "growth": "Default Allocator growth reserves the full new candidate while old capacity remains charged. Quota rejection preserves the original pointer, capacity and contents. Pop/clear retain all allocated capacity. Returned blocks report exactly the requested layout size.",
+    "entry_bytes": {
+      "parsed_descriptor": 16,
+      "capability_id": 8,
+      "prepared_transfer": 328,
+      "loan_origin": 32,
+      "retired_memory": 136
+    },
+    "maximum_entries": 255,
+    "maximum_requested_bytes": {
+      "parsed_descriptor": 4080,
+      "capability_id": 2040,
+      "prepared_transfer": 83640,
+      "loan_origin": 8160,
+      "retirement_catalog": 34680
+    },
+    "allocator_bytes": 1,
+    "native_node_layout_bytes": {
+      "capability": 120,
+      "endpoint": 272,
+      "pending_call": 200,
+      "reply_token": 184
+    },
+    "node_only_plan": {
+      "ordinary_nodes": 62208,
+      "total_nodes": 82944,
+      "ordinary_bytes": 8466432,
+      "total_bytes": 11288576,
+      "excludes": "nested vector/catalog capacity, allocator bookkeeping and other heap allocations"
+    },
+    "inline_vector_allocator_growth_bytes_per_queued_message_slot": 8,
+    "inline_vector_allocator_growth_at_ordinary_total_slot_ceilings_bytes": [
+      196608,
+      262144
+    ],
+    "combined_inline_retirement_and_cap_allocator_bytes_per_slot": 32,
+    "combined_inline_overhead_at_ordinary_total_slot_ceilings_bytes": [
+      786432,
+      1048576
+    ],
+    "decision": "Keep numerical defaults. Maximum staging buffers fit the current pool and serialized real-capacity/public lifecycle controls pass. Reuse the existing pool and no holder allocation; vectors compete with nodes/catalogs for same-class bytes, with zero node-slot charge. Full old/candidate growth admission can require transient headroom and a copy; known protocol counts reserve once. Larger limits permit more retained heap consumption; actual mixed-workload measurements may justify modest central adjustments. Independent ceilings do not promise simultaneous RAM fit or essential-service fairness.",
+    "abi": "23 pools, statistics version 10 and runtime/syscall/SDK wire formats unchanged; no service source or bundle rebuild required"
+  },
+  "ownership": {
+    "class": "Calls initialize empty allocators from the original logical record reservation before allocating. Sends use trusted state captured against the exact sender generation before root leasing/revalidation. Receiver identity, promotion and ASID reuse cannot redirect classification/refunds. Moving the cap vector into MemoryAttachments retains its allocator; retirement admission borrows that original class.",
+    "parent": "read_vector_page fills the containing PreparedCall or PreparedVectorSend buffers directly. Partial transfer preparation remains in that complete parent, with exact roots, source escrow, destination authority and pins. Vector-send finish drops transfers and unused metadata after IPC unlock, notifies delivery, closes the descriptor on success and completes roots last. ManuallyDrop fallback retains all fields.",
+    "token": "Loan origins move into ReplyToken with their allocator unchanged. Revocation can pop every origin without refunding capacity; actual token/payload disposal frees the allocation and then refunds original bytes.",
+    "qualification": "Allocator mechanics neither release active elements nor prove physical completion/replay authority. Local complete-operation owners retain that responsibility. The actual guarded vector-send parent is qualified; other active transfer parents and enclosing caller/IRQ contexts remain separate work."
+  },
+  "native_campaigns": [
+    {
+      "arch": "aarch64",
+      "instance": "vectors-20261102-arm",
+      "cpus": 4,
+      "revision": "4bc87817d48592c47c1d8160c86bc1de6c15b6b1",
+      "kernel_sha256": "ba69949cf546092472591e14102ea1a9797e5e206dace153a4b9be93408d85fd",
+      "boot_image_sha256": "145096b9bf2155f0e24a5a8e82dfb1234510840a5c9b117a815937d3bae91b0e",
+      "initial_disk_sha256": "51debddd5d0ee275def107ff60d5c41ea60d1319ee96a9c43070e8dbd623335d",
+      "tracked_diff_sha256": "94b9558e80926116c74b45180969367d862c03657bfd3397eb2f875a01707b01",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T19:48:22Z",
+      "platform": "arm",
+      "configuration": "security-test; four CPUs; fresh storage; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "5b8cfb803d45e8798e97eb717f5ad0e1d5012baed348ef4101a81ea7ac275060",
+      "serial_sha256": "edbfeed56ac9fc8df4abdac89f396313b40945c066ae014f8656707852850699",
+      "service_sha256": {
+        "observe.elf": "3550903f199e08b313d438c41febe87959dd312f5de67735152418760caa663c",
+        "security_probe.elf": "11a9f88261e2a8064100e7494d83c418d351a0422bac08e9807128ab964e43f3",
+        "sitas-user.elf": "6f0e7f2113b898f98e16708342db288745e9dcfe2bbbb016027e8db01100391b"
+      },
+      "summary": {
+        "passed": 19,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+     3.268437] [IPC vector capacity] real ordinary/total byte pressure, heap-held growth denial, full old/candidate rejection, original pointer/prefix and popped capacity retained; exact recovery; cap=8 transfer=328 loan=32 allocator=1 bytes",
+        "[+     3.270998] [IPC loan capacity] real mapped read loan, caller promotion, receive/reply revocation and call close recover exact backing; token keeps original loan-vector allocation until actual disposal",
+        "[+     3.273103] [IPC vector rollback] transfer capacity admitted before cap-ID quota rejection; complete copied transfer retained until post-guard finish; original counts, authority, buffer bytes, source and physical frames recovered",
+        "[+     3.276543] [IPC attachment capacity] ordinary=495 trusted=164 real empty buffers; byte-only ordinary/total exhaustion, 64 allocated-prefix rejections and exact recovery; retired=136 max=34680 bytes; node slots unchanged",
+        "[+     3.280065] [IPC attachment ownership] real copy call quota rollback, queued cancellation and receive/reply/close recover backing, counts and physical frames; promotion retains original ordinary buffer class; delivered storage disposed after IPC unlock",
+        "[+     3.280841] [IPC receive storage] complete delivered receive owner abandonment retains one empty retirement catalog and original byte charge under IPC/heap/pool guards; no physical backing or authority adopted",
+        "[+     3.669117] [IPC node admission] 512 allocator rejections; actual pending/reply/capability/endpoint layouts 200/184/120/272 bytes; complete node keeps backing and logical record reservations through real disposal",
+        "[+     3.677362] [IPC pending storage] 64 invalid-handle and 64 preparation rejections, 64 heap-held publications/detaches, original charge through node disposal and IRQ preservation passed; three abandoned call owners retain storage, three call/reply reservations, five roots and copied backing",
+        "[+     6.119757] [IPC scalar submission] copy/move sends and copy/move/read/write calls prepare outside IPC with both roots; attachment/authority/endpoint rejection restores sources; heap-held send publication and inert complete scalar/vector-send abandonment passed; vector fixture retains two data pages and its complete original root/transfer/catalog owner after promotion",
+        "[+     6.121369] [IPC staged rollback] partial vector, storage/publication rejection, closed destination, unlocked copy release and exact root retention passed",
+        "[+    87.513481] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "arch": "x86_64",
+      "instance": "vectors-20261102-intel",
+      "cpus": 4,
+      "revision": "4bc87817d48592c47c1d8160c86bc1de6c15b6b1",
+      "kernel_sha256": "3b35518741d0b887a26e731d793d70b397e594a907bd8276eca17142269e7693",
+      "boot_image_sha256": "7e3194c0e5ad18ae15f5d656d6cdff62cc2154dd88c3670cd78dd96b05a91a13",
+      "initial_disk_sha256": "861e744e92833aef5b75ec19edbda05c20fe2b3efb98c1bf68d08d7ad6b362d1",
+      "tracked_diff_sha256": "94b9558e80926116c74b45180969367d862c03657bfd3397eb2f875a01707b01",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T19:49:43Z",
+      "platform": "intel",
+      "configuration": "security-test; four CPUs; fresh storage; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "0fd6e43781c5c81a6ed11f11ac45a81816043ccfa4268f42d1c9ccc269863a66",
+      "serial_sha256": "abc0d77595b29e77e0b42b30d0367a16ff1f7396e1d2aadc53242fab71aee966",
+      "service_sha256": {
+        "observe.elf": "875e7de7a7759e46e7e5bf563a08531c25bb3c987f8907b9ddb1742612f525f6",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c"
+      },
+      "summary": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+     3.875435] [IPC vector capacity] real ordinary/total byte pressure, heap-held growth denial, full old/candidate rejection, original pointer/prefix and popped capacity retained; exact recovery; cap=8 transfer=328 loan=32 allocator=1 bytes",
+        "[+     3.880158] [IPC loan capacity] real mapped read loan, caller promotion, receive/reply revocation and call close recover exact backing; token keeps original loan-vector allocation until actual disposal",
+        "[+     3.882623] [IPC vector rollback] transfer capacity admitted before cap-ID quota rejection; complete copied transfer retained until post-guard finish; original counts, authority, buffer bytes, source and physical frames recovered",
+        "[+     3.890559] [IPC attachment capacity] ordinary=495 trusted=164 real empty buffers; byte-only ordinary/total exhaustion, 64 allocated-prefix rejections and exact recovery; retired=136 max=34680 bytes; node slots unchanged",
+        "[+     3.896343] [IPC attachment ownership] real copy call quota rollback, queued cancellation and receive/reply/close recover backing, counts and physical frames; promotion retains original ordinary buffer class; delivered storage disposed after IPC unlock",
+        "[+     3.897926] [IPC receive storage] complete delivered receive owner abandonment retains one empty retirement catalog and original byte charge under IPC/heap/pool guards; no physical backing or authority adopted",
+        "[+     5.095327] [IPC node admission] 512 allocator rejections; actual pending/reply/capability/endpoint layouts 200/184/120/272 bytes; complete node keeps backing and logical record reservations through real disposal",
+        "[+     5.102932] [IPC pending storage] 64 invalid-handle and 64 preparation rejections, 64 heap-held publications/detaches, original charge through node disposal and IRQ preservation passed; three abandoned call owners retain storage, three call/reply reservations, five roots and copied backing",
+        "[+     8.086410] [IPC scalar submission] copy/move sends and copy/move/read/write calls prepare outside IPC with both roots; attachment/authority/endpoint rejection restores sources; heap-held send publication and inert complete scalar/vector-send abandonment passed; vector fixture retains two data pages and its complete original root/transfer/catalog owner after promotion",
+        "[+     8.088178] [IPC staged rollback] partial vector, storage/publication rejection, closed destination, unlocked copy release and exact root retention passed",
+        "[+    95.769768] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "arch": "x86_64",
+      "instance": "vectors-20261102-amd",
+      "cpus": 4,
+      "revision": "4bc87817d48592c47c1d8160c86bc1de6c15b6b1",
+      "kernel_sha256": "e70281a67457cb5c79ead19b1448d58f0312e6ee8c97fe07823a3515fb7d700b",
+      "boot_image_sha256": "b101c8f1655510b6c527746aa79ea3521c8edad14a2e527df6642d60c5dfd893",
+      "initial_disk_sha256": "861e744e92833aef5b75ec19edbda05c20fe2b3efb98c1bf68d08d7ad6b362d1",
+      "tracked_diff_sha256": "94b9558e80926116c74b45180969367d862c03657bfd3397eb2f875a01707b01",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T19:55:30Z",
+      "platform": "amd",
+      "configuration": "security-test; four CPUs; fresh storage; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "19486cd5cc7607f2d1ca18e8a49175d411a1ed4c5bbcba4b6cfe1a52f9dfa6dc",
+      "serial_sha256": "c40e694ba7014cbf8cf3cfa1947b2887aeab962ef7ecd71439c21b2ee0b153c1",
+      "service_sha256": {
+        "observe.elf": "875e7de7a7759e46e7e5bf563a08531c25bb3c987f8907b9ddb1742612f525f6",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c"
+      },
+      "summary": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+     3.063916] [IPC vector capacity] real ordinary/total byte pressure, heap-held growth denial, full old/candidate rejection, original pointer/prefix and popped capacity retained; exact recovery; cap=8 transfer=328 loan=32 allocator=1 bytes",
+        "[+     3.067393] [IPC loan capacity] real mapped read loan, caller promotion, receive/reply revocation and call close recover exact backing; token keeps original loan-vector allocation until actual disposal",
+        "[+     3.069628] [IPC vector rollback] transfer capacity admitted before cap-ID quota rejection; complete copied transfer retained until post-guard finish; original counts, authority, buffer bytes, source and physical frames recovered",
+        "[+     3.075508] [IPC attachment capacity] ordinary=495 trusted=164 real empty buffers; byte-only ordinary/total exhaustion, 64 allocated-prefix rejections and exact recovery; retired=136 max=34680 bytes; node slots unchanged",
+        "[+     3.079658] [IPC attachment ownership] real copy call quota rollback, queued cancellation and receive/reply/close recover backing, counts and physical frames; promotion retains original ordinary buffer class; delivered storage disposed after IPC unlock",
+        "[+     3.081105] [IPC receive storage] complete delivered receive owner abandonment retains one empty retirement catalog and original byte charge under IPC/heap/pool guards; no physical backing or authority adopted",
+        "[+     3.785418] [IPC node admission] 512 allocator rejections; actual pending/reply/capability/endpoint layouts 200/184/120/272 bytes; complete node keeps backing and logical record reservations through real disposal",
+        "[+     3.792461] [IPC pending storage] 64 invalid-handle and 64 preparation rejections, 64 heap-held publications/detaches, original charge through node disposal and IRQ preservation passed; three abandoned call owners retain storage, three call/reply reservations, five roots and copied backing",
+        "[+     5.936947] [IPC scalar submission] copy/move sends and copy/move/read/write calls prepare outside IPC with both roots; attachment/authority/endpoint rejection restores sources; heap-held send publication and inert complete scalar/vector-send abandonment passed; vector fixture retains two data pages and its complete original root/transfer/catalog owner after promotion",
+        "[+     5.938801] [IPC staged rollback] partial vector, storage/publication rejection, closed destination, unlocked copy release and exact root retention passed",
+        "[+    92.653925] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    }
+  ],
+  "validation": {
+    "host_suite": "Complete scripts/run-host-tests.sh passed. New standalone production ByteAllocator harness passes 47 tests (five allocation controls plus 42 shared policy/admission/SDK controls). Updated production attachment harness passes 48 tests. Expected rejected legacy crypto mutation controls remain in the suite.",
+    "host_trace": "Pointer-specific System allocator tracing records a real 16-byte old plus 24-byte candidate overlap of 40 charged bytes, old buffer actually freed before its refund, and final 24-byte free before refund. Controls prove full-candidate quota denial rather than net-growth-only admission, backend-error rollback for both classes, pop/clear/move/Vec-clone original-class retention and zero-size/allocator-clone zero admission.",
+    "strict_kernel_checks": [
+      "AArch64 acpi,kernel_tests clippy -D warnings",
+      "x86_64 acpi,kernel_tests clippy -D warnings",
+      "AArch64 acpi minimal clippy -D warnings",
+      "x86_64 acpi minimal clippy -D warnings"
+    ],
+    "native_builds": "All runners built current kernels and enforced executable/read-only assembly section checks.",
+    "native_controls": [
+      "Actual u64 buffers fill ordinary and total byte admission with unchanged node slots. Growth rejects while the primary heap allocator is held, preserves trusted headroom and recovers exact counters after deallocation.",
+      "An actual MemoryBorrow buffer rejects a 64-byte growth candidate when only net 32-byte growth would fit, with the heap held; original pointer/data remain and pop retains full allocated capacity.",
+      "A real mapped read loan retains original caller class across promotion, receive, reply revocation and call close, with source lending-state and exact IPC backing recovery.",
+      "A copied transfer is prepared and its 328-byte staging buffer admitted before cap-ID allocation rejects at quota. The complete attaching owner survives until post-guard finish; source, roots, authority, buffer charges and physical frames recover exactly.",
+      "Existing constructor/public call/receive/cancellation and partial-vector rollback controls use admitted buffers. Real node layouts and all four payload factories retain prior rejection/actual-disposal controls.",
+      "The actual complete vector-send parent is abandoned under lifecycle/table/IPC/heap/physical/memory-registry/capability-registry/pool guards after caller promotion. Its one source page plus one copied page, original roots/leases/authority and staging/catalog bytes remain. Existing scalar/call/received-owner fixtures retain the new buffer charges too."
+    ],
+    "formatting": "cargo fmt --all -- --check (including the standalone host fixture explicitly) and git diff --check passed."
+  },
+  "remaining_limits": [
+    "Descriptor byte snapshots and PreparedReply.loans / PreparedCancellation.loans revocation-work vectors still use Global storage; other control storage, remaining allocation families, allocator bookkeeping and general heap/aggregate principal admission remain open.",
+    "Serialized controls do not establish sustained hostile concurrent EL0 fairness, all outer caller/IRQ/implicit-destructor contexts or bounded-copy latency. SEC-07/18 remain partial.",
+    "Host backend failure uses an injected allocation adapter, not native general heap OOM. Interrupted physical-retirement callbacks use a host physical adapter, not native physical-completion proof.",
+    "Terminal native fixture retention is intentional. The new vector fixture retains two data pages and complete source/root/authority owners; a storage-only delivered-receive fixture now retains 144 admitted bytes (136 retirement plus 8 cap-ID) with no adopted physical backing/authority. Host attachment terminal controls retain 80 requested bytes (40 retirement plus 40 cap-ID) until process exit, with two remaining mock owners on callback interruption.",
+    "Retained capacity, empty length, readiness or metadata admission supplies no physical completion, cancellation permission or replay authority."
+  ]
+}

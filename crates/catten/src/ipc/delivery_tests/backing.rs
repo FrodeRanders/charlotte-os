@@ -58,9 +58,9 @@ fn submission_failure() {
         object::prepare_copy(fixture.caller.id(), sources[1], fixture.server.id()).unwrap(),
     )
     .unwrap();
-    let destinations = call.memory.clone();
+    let destinations = call.memory.to_vec();
     assert!(matches!(
-        call.commit_with_memory(&mut ipc, endpoint, 1, 0, |_, _| Err(IpcError::ResourceLimit)),
+        call.commit_with_memory(&mut ipc, endpoint, 1, 0, |_| Err(IpcError::ResourceLimit)),
         Err(IpcError::ResourceLimit)
     ));
     drop(ipc);

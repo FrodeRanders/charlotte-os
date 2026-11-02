@@ -20,7 +20,7 @@ fn token(server: AddressSpaceId, call: PendingCallId, platform: bool) -> ReplyTo
         claim_epoch: 0,
         cleanup_failed: false,
         connection_source: None,
-        borrows: Vec::new(),
+        borrows: buffer(platform),
     }
 }
 

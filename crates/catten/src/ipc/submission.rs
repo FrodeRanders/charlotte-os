@@ -281,6 +281,85 @@ pub(super) fn send_memory(
     result
 }
 
+/// Vector staging owns every partial transfer, metadata buffer and exact root.
+/// Explicit finish leaves IPC before child cleanup; fallback retains all fields.
+#[must_use]
+struct PreparedVectorSend(core::mem::ManuallyDrop<VectorSendResources>);
+struct VectorSendResources {
+    submission: Option<Submission>,
+    transfers: Buffer<object::PreparedTransfer>,
+    caps: Buffer<MemoryObjectCap>,
+    memory: Option<MemoryAttachments>,
+    delivery: Option<Delivery>,
+}
+impl PreparedVectorSend {
+    fn new(submission: Submission) -> Self {
+        let platform = submission.platform;
+        Self(core::mem::ManuallyDrop::new(VectorSendResources {
+            submission: Some(submission),
+            transfers: buffer(platform),
+            caps: buffer(platform),
+            memory: None,
+            delivery: None,
+        }))
+    }
+
+    fn prepare(&mut self, descriptor: MemoryObjectCap) -> Result<(), IpcError> {
+        let resources = &mut *self.0;
+        let submission = resources.submission.as_ref().unwrap();
+        read_vector_page(
+            submission.caller,
+            descriptor,
+            submission.server,
+            false,
+            submission.platform,
+            &mut resources.caps,
+            &mut resources.transfers,
+        )?;
+        resources.memory = Some(MemoryAttachments::try_new(take_buffer(&mut resources.caps))?);
+        Ok(())
+    }
+
+    fn publish(&mut self, opcode: u32, arg0: u64) -> Result<(), IpcError> {
+        let resources = &mut *self.0;
+        let submission = resources.submission.as_ref().unwrap();
+        let mut ipc = IPC.write();
+        submission.validate(&ipc)?;
+        object::commit_undelivered_transfers(&mut resources.transfers)
+            .map_err(|_| IpcError::MemoryTransferFailed)?;
+        resources.delivery = Some(
+            enqueue_message(
+                &mut ipc,
+                submission.endpoint,
+                submission.caller,
+                opcode,
+                arg0,
+                None,
+                resources.memory.take().unwrap(),
+                None,
+            )
+            .expect("reserved vector-send endpoint changed under IPC ownership"),
+        );
+        Ok(())
+    }
+
+    fn finish(mut self, descriptor: Option<MemoryObjectCap>) -> Result<(), IpcError> {
+        drop(take_buffer(&mut self.0.transfers));
+        drop(take_buffer(&mut self.0.caps));
+        if let Some(memory) = self.0.memory.take() {
+            memory.finish();
+        }
+        if let Some(delivery) = self.0.delivery.take() {
+            delivery.notify();
+        }
+        let submission = self.0.submission.take().unwrap();
+        if let Some(descriptor) = descriptor {
+            let _ = object::close_cap(submission.caller, descriptor);
+        }
+        submission.complete()
+    }
+}
+
 pub(super) fn vector(
     caller: AddressSpaceId,
     connection: CapabilityId,
@@ -289,7 +368,7 @@ pub(super) fn vector(
     descriptor: MemoryObjectCap,
     call: bool,
 ) -> Result<Option<CapabilityId>, IpcError> {
-    Submission::prepare(
+    let submission = Submission::prepare(
         caller,
         connection,
         if call {
@@ -297,56 +376,39 @@ pub(super) fn vector(
         } else {
             ConnectionRights::SEND
         },
-    )?
-    .run(|submission| {
-        let result = if call {
-            Some(PreparedCall::run(caller, connection, |prepared| {
+    )?;
+    if call {
+        submission.run(|submission| {
+            let cap = PreparedCall::run(caller, connection, |prepared| {
                 {
                     let mut ipc = IPC.write();
                     submission.validate(&ipc)?;
                     prepared.stage(&mut ipc, caller)?;
                 }
-                let mut caps = Vec::new();
-                let transfers =
-                    read_vector_page(caller, descriptor, submission.server, true, &mut caps)?;
-                prepared.attach_vector(transfers, caps)?;
+                let resources = &mut **prepared;
+                read_vector_page(
+                    caller,
+                    descriptor,
+                    submission.server,
+                    true,
+                    resources.platform,
+                    &mut resources.memory,
+                    &mut resources.transfers,
+                )?;
+                prepared.attach_vector()?;
                 let mut ipc = IPC.write();
                 submission.validate(&ipc)?;
                 prepared.commit(&mut ipc, submission.endpoint, opcode, arg0)
-            })?)
-        } else {
-            let mut caps = Vec::new();
-            let mut transfers =
-                read_vector_page(caller, descriptor, submission.server, false, &mut caps)?;
-            let mut memory = Some(MemoryAttachments::try_new(submission.platform, caps)?);
-            let delivery = (|| {
-                let mut ipc = IPC.write();
-                submission.validate(&ipc)?;
-                object::commit_undelivered_transfers(&mut transfers)
-                    .map_err(|_| IpcError::MemoryTransferFailed)?;
-                Ok(enqueue_message(
-                    &mut ipc,
-                    submission.endpoint,
-                    caller,
-                    opcode,
-                    arg0,
-                    None,
-                    memory.take().unwrap(),
-                    None,
-                )
-                .expect("reserved vector-send endpoint changed under IPC ownership"))
-            })();
-            drop(transfers);
-            if let Some(memory) = memory {
-                memory.finish();
-            }
-            let delivery = delivery?;
-            delivery.notify();
-            None
-        };
-        let _ = object::close_cap(caller, descriptor);
-        Ok(result)
-    })
+            })?;
+            let _ = object::close_cap(caller, descriptor);
+            Ok(Some(cap))
+        })
+    } else {
+        let mut operation = PreparedVectorSend::new(submission);
+        let result = operation.prepare(descriptor).and_then(|()| operation.publish(opcode, arg0));
+        operation.finish(result.is_ok().then_some(descriptor))?;
+        result.map(|()| None)
+    }
 }
 
 #[cfg(any(test, feature = "kernel_tests"))]

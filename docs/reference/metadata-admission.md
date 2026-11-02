@@ -22,6 +22,15 @@ two-dimensional reservation and actual-layout charge sizes remain respectively
 16, 1, 24 and 16 bytes on supported 64-bit targets. Existing logical resource limits
 remain unchanged; the expanded IPC payload pool has its own byte/count policy.
 
+`ByteAllocator<F>` adds allocation-lifetime byte admission to standard vectors
+without another owner or registry. Its immutable captured class follows allocator
+clones and moves; cloning reserves nothing. Allocation reserves requested bytes
+and zero node slots before `Global`, and actual deallocation precedes refund.
+Default growth admits the full candidate while retaining the old allocation's
+charge. Pop/clear never release capacity admission. The containing operation
+still decides when element cleanup and buffer disposal are safe; the allocator
+supplies no physical-completion or recovery proof.
+
 ## Read-only runtime inventory
 
 `THREAD_STATISTICS` payload **version 10** has a 22-word little-endian header.
@@ -64,8 +73,9 @@ there is no mutable budget or teardown endpoint. History and cluster formats
 retain their own existing fields.
 
 The `ipc_nodes` row admits capability, endpoint, pending-call and reply-token layouts;
-attachment retirement catalogs contribute bytes and zero node slots to that
-same pool, retaining original requester class through actual buffer release.
+parsed descriptors, cap-ID/staged-transfer/token-loan vectors and attachment
+retirement catalogs contribute bytes and zero node slots to that same pool,
+retaining original requester class through actual buffer release.
 Logical IPC resource counts retain their separate owners. Earlier catalog IDs
 and record widths stay unchanged; version 9 rejects rather than silently omitting
 the new pool. Catalog/version changes require both architecture service bundles

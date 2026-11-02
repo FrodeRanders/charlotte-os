@@ -17,6 +17,7 @@ pub(crate) fn test_admission() {
     crate::memory::object::test_publication_batch();
     super::publication_tests::run();
     super::preparation_tests::run();
+    super::buffer_tests::run();
     super::attachments::test_admission();
     super::node_budget::test_admission();
     super::call_storage_tests::run();

@@ -211,6 +211,41 @@ mod memory { pub mod object {
 EOF
 "$repo_root/target/host-self-tests/frame-vector-tests" --test-threads=1
 
+# Production byte allocator: complete growth overlap, real deallocation and original class.
+CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
+"$host_rustc" --edition=2024 --test --crate-name byte_allocator_tests - \
+    -o "$repo_root/target/host-self-tests/byte-allocator-tests" <<EOF
+#![feature(allocator_api)]
+#![allow(dead_code, unused_attributes)]
+extern crate alloc;
+extern crate self as charlotte_lifecycle;
+extern crate self as catten_syscall;
+#[path = "$repo_root/crates/catten-syscall/src/lib.rs"]
+mod syscall_format;
+pub use syscall_format::*;
+#[path = "$repo_root/crates/charlotte-lifecycle/src/resources.rs"]
+pub mod resources;
+#[path = "$repo_root/crates/catten/src/resource_policy.rs"]
+mod resource_policy;
+#[macro_export] macro_rules! logln { (\$message:literal) => {}; }
+mod cpu { pub mod multiprocessor { pub mod spin { pub mod mutex {
+    pub struct Mutex<T>(std::sync::Mutex<T>);
+    impl<T> Mutex<T> {
+        pub const fn new(value:T)->Self { Self(std::sync::Mutex::new(value)) }
+        pub fn lock(&self)->std::sync::MutexGuard<'_,T> { self.0.lock().unwrap() }
+        pub fn try_lock(&self)->Option<std::sync::MutexGuard<'_,T>> { self.0.try_lock().ok() }
+    }
+}}}}
+mod klib {
+    #[path = "$repo_root/crates/catten/src/klib/admission.rs"] pub mod admission;
+}
+#[path = "$repo_root/crates/catten/src/klib/admission/byte_allocator_tests.rs"]
+mod byte_allocator_tests;
+
+EOF
+"$repo_root/target/host-self-tests/byte-allocator-tests" --test-threads=1
+
+
 # Production queued attachment retirement capacity: real deallocation/refund order.
 CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
 "$host_rustc" --edition=2024 --test --crate-name attachment_storage_tests - \
@@ -251,6 +286,8 @@ mod memory { pub mod object {
 }}
 mod ipc {
     use alloc::vec::Vec;
+    type Buffer<T> = Vec<T,crate::klib::admission::ByteAllocator<crate::klib::admission::IpcNodes>>;
+    fn buffer<T>(platform:bool)->Buffer<T> { Vec::new_in(crate::klib::admission::ByteAllocator::new(platform)) }
     type AddressSpaceId=usize;
     type MemoryObjectCap=u64;
     const CAP_VECTOR_MAX:usize=crate::CAP_VECTOR_MAX;

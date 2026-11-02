@@ -120,8 +120,13 @@ Call rejection and successful receive keep this storage in their complete owner
 until explicit disposal after IPC unlock. FIFO child handoff preserves full
 capacity and charge through every callback; interruption retains remaining
 owners. Buffer deallocation precedes refund. The inline reservation adds 24 bytes
-per queued-message payload slot; no numerical defaults change. Capability-ID,
-transfer and loan vectors and general heap/principal admission remain open.
+per queued-message payload slot. Parsed-descriptor, capability-ID,
+transfer-staging and reply-token loan vectors share byte-only admission through
+an allocator carrying the original class. Growth admits the full candidate while
+old capacity remains charged; pop/clear retain capacity until deallocation.
+The capability-vector allocator adds another 8 inline bytes per message slot.
+No numerical defaults change. Descriptor byte snapshots, reply/cancellation
+revocation-work vectors and general heap/principal admission remain open.
 
 Connection-bearing calls and replies admit their
 connection before copying memory, consuming the token or revoking a loan.

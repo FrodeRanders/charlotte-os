@@ -15,6 +15,9 @@ use core::{
 use charlotte_lifecycle::resources::AdmissionPool;
 
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
+#[path = "admission/byte_allocator.rs"]
+mod byte_allocator;
+pub(crate) use byte_allocator::ByteAllocator;
 
 /// State is private: observation does not expose mutation or cleanup authority.
 pub(crate) struct Spec<const N: usize> {

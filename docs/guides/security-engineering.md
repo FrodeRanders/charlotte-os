@@ -32,6 +32,14 @@ the [transfer owner](../../crates/catten/src/memory/object/transfer.rs).
 
 ## Admit storage before publication
 
+Use a shared allocation adapter when several vector families need the same byte
+accounting. `klib::admission::ByteAllocator` reserves the full growth candidate
+before allocation while the old buffer remains charged, then refunds only after
+deallocation. Allocator clones retain captured class without reserving again;
+the vector owns its allocation. Keep sponsorship selection and safe element
+cleanup with the complete subsystem operation. Shared accounting cannot qualify
+an active parent's destructor under an unknown guard.
+
 Count limits do not make an infallible map insertion safe under heap exhaustion.
 Prepare fallible payload storage, authority and retirement metadata before
 changing public state. Under serialization, revalidate the captured identity and

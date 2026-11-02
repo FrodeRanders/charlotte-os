@@ -256,10 +256,10 @@ pub(super) struct CallResources {
     reply_charge: Option<record_budget::Charge>,
     pub(super) connection: Option<PreparedConnection>,
     attaching: Option<crate::memory::object::PreparedTransfer>,
-    pub(super) transfers: Vec<crate::memory::object::PreparedTransfer>,
-    pub(super) memory: Vec<MemoryObjectCap>,
+    pub(super) transfers: Buffer<crate::memory::object::PreparedTransfer>,
+    pub(super) memory: Buffer<MemoryObjectCap>,
     pub(super) queued_memory: Option<MemoryAttachments>,
-    pub(super) borrows: Vec<MemoryBorrow>,
+    pub(super) borrows: Buffer<MemoryBorrow>,
     attempted: bool,
 }
 
@@ -355,10 +355,10 @@ impl PreparedCall {
             reply_charge: None,
             connection: None,
             attaching: None,
-            transfers: Vec::new(),
-            memory: Vec::new(),
+            transfers: buffer(false),
+            memory: buffer(false),
             queued_memory: None,
-            borrows: Vec::new(),
+            borrows: buffer(false),
             attempted: false,
         }));
         let prepared = (|| {
@@ -384,6 +384,9 @@ impl PreparedCall {
                 owner.reply_charge = Some(charge.split([0, 0, 1]));
                 owner.call_charge = Some(charge);
             }
+            owner.transfers = buffer(owner.platform);
+            owner.memory = buffer(owner.platform);
+            owner.borrows = buffer(owner.platform);
             owner.storage = Some(allocate(owner.platform)?);
             let resources = &mut *owner.0;
             resources.storage.as_mut().unwrap().bind_charge(resources.call_charge.take().unwrap());
@@ -443,13 +446,13 @@ impl PreparedCall {
         if let Some(authority) = self.0.authority.take() {
             authority.finish();
         }
-        drop(core::mem::take(&mut self.0.transfers));
+        drop(take_buffer(&mut self.0.transfers));
         drop(self.0.attaching.take());
-        drop(core::mem::take(&mut self.0.memory));
+        drop(take_buffer(&mut self.0.memory));
         if let Some(memory) = self.0.queued_memory.take() {
             memory.finish();
         }
-        drop(core::mem::take(&mut self.0.borrows));
+        drop(take_buffer(&mut self.0.borrows));
         drop(self.0.pending.take());
         drop(self.0.reply_storage.take());
         drop(self.0.reply_charge.take());
@@ -484,14 +487,8 @@ impl PreparedCall {
         Ok(())
     }
 
-    pub(super) fn attach_vector(
-        &mut self,
-        transfers: Vec<crate::memory::object::PreparedTransfer>,
-        memory: Vec<MemoryObjectCap>,
-    ) -> Result<(), IpcError> {
+    pub(super) fn attach_vector(&mut self) -> Result<(), IpcError> {
         let resources = &mut *self.0;
-        resources.transfers = transfers;
-        resources.memory = memory;
         resources
             .borrows
             .try_reserve_exact(resources.transfers.len())
@@ -525,15 +522,14 @@ impl PreparedCall {
         endpoint: EndpointId,
         opcode: u32,
         arg0: u64,
-        prepare_memory: impl FnOnce(bool, Vec<MemoryObjectCap>) -> Result<MemoryAttachments, IpcError>,
+        prepare_memory: impl FnOnce(Buffer<MemoryObjectCap>) -> Result<MemoryAttachments, IpcError>,
     ) -> Result<(CapabilityId, Delivery), IpcError> {
         assert!(!self.0.attempted, "call publication attempted twice");
         self.0.attempted = true;
         let resources = &mut *self.0;
         let server = (|| {
             let server = reserve_endpoint_queue(ipc, endpoint)?;
-            resources.queued_memory =
-                Some(prepare_memory(resources.platform, core::mem::take(&mut resources.memory))?);
+            resources.queued_memory = Some(prepare_memory(take_buffer(&mut resources.memory))?);
             if let Some(connection) = &mut resources.connection {
                 crate::memory::object::commit_undelivered_transfers_with_authority(
                     &mut resources.transfers,
@@ -584,7 +580,7 @@ impl PreparedCall {
                 claim_epoch: 0,
                 cleanup_failed: false,
                 connection_source: None,
-                borrows: core::mem::take(&mut resources.borrows),
+                borrows: take_buffer(&mut resources.borrows),
             },
         );
         let delivery = enqueue_message(

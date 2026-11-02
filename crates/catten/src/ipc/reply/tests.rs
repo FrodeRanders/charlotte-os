@@ -51,7 +51,7 @@ impl Fixture {
         let borrows = {
             let ipc = IPC.read();
             let (token, _, _) = validate(&ipc, server.id(), reply).unwrap();
-            ipc.reply_tokens[&token].borrows.clone()
+            ipc.reply_tokens[&token].borrows.to_vec()
         };
         for borrow in &borrows {
             object::map_any(server.id(), borrow.borrower_cap, false).unwrap();

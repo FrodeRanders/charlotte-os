@@ -18,12 +18,21 @@ use crate::{
 };
 
 type Charge = Reservation<IpcNodes, 2>;
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct Storage {
-    caps: Vec<MemoryObjectCap>,
+    caps: Buffer<MemoryObjectCap>,
     retired: Vec<RetiredMemory>,
     // Ordinary constructor rejection frees capacity before refund.
     charge: Option<Charge>,
+}
+impl Default for Storage {
+    fn default() -> Self {
+        Self {
+            caps: buffer(false),
+            retired: Vec::new(),
+            charge: None,
+        }
+    }
 }
 /// Complete queued/retired attachment metadata. Abandonment retains all fields.
 #[must_use]
@@ -39,21 +48,21 @@ impl core::ops::Deref for MemoryAttachments {
 }
 
 impl MemoryAttachments {
-    pub(super) fn try_new(platform: bool, caps: Vec<MemoryObjectCap>) -> Result<Self, IpcError> {
-        Self::try_new_with(platform, caps, |retired, count| {
+    pub(super) fn try_new(caps: Buffer<MemoryObjectCap>) -> Result<Self, IpcError> {
+        Self::try_new_with(caps, |retired, count| {
             retired.try_reserve_exact(count).map_err(|_| IpcError::ResourceLimit)
         })
     }
 
     fn try_new_with(
-        platform: bool,
-        caps: Vec<MemoryObjectCap>,
+        caps: Buffer<MemoryObjectCap>,
         allocate: impl FnOnce(&mut Vec<RetiredMemory>, usize) -> Result<(), IpcError>,
     ) -> Result<Self, IpcError> {
         if caps.len() > CAP_VECTOR_MAX {
             return Err(IpcError::ResourceLimit);
         }
         let count = caps.len();
+        let platform = caps.allocator().platform();
         let bytes = u64::try_from(
             Layout::array::<RetiredMemory>(count).map_err(|_| IpcError::ResourceLimit)?.size(),
         )
@@ -77,10 +86,10 @@ impl MemoryAttachments {
     }
 
     pub(super) fn single(platform: bool, cap: MemoryObjectCap) -> Result<Self, IpcError> {
-        let mut caps = Vec::new();
+        let mut caps = buffer(platform);
         caps.try_reserve_exact(1).map_err(|_| IpcError::ResourceLimit)?;
         caps.push(cap);
-        Self::try_new(platform, caps)
+        Self::try_new(caps)
     }
 
     /// IPC owns these exact undelivered caps; confirmed loans may already be
@@ -98,7 +107,7 @@ impl MemoryAttachments {
 
     pub(super) fn release_with(self, mut release: impl FnMut(RetiredMemory)) {
         struct Releasing {
-            caps: Vec<MemoryObjectCap>,
+            caps: Buffer<MemoryObjectCap>,
             retired: alloc::vec::IntoIter<RetiredMemory>,
             charge: Option<Charge>,
         }

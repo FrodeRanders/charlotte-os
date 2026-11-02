@@ -38,8 +38,17 @@ fn used() -> ([u64; 2], [u64; 2]) {
 fn bytes(n: usize) -> u64 {
     (n * core::mem::size_of::<RetiredMemory>()) as u64
 }
-fn caps(n: usize) -> Vec<MemoryObjectCap> {
-    (0..n as u64).collect()
+fn caps_in(n: usize, platform: bool) -> Buffer<MemoryObjectCap> {
+    let mut result = buffer(platform);
+    result.try_reserve_exact(n).unwrap();
+    result.extend(0..n as u64);
+    result
+}
+fn caps(n: usize) -> Buffer<MemoryObjectCap> {
+    caps_in(n, false)
+}
+fn held(n: usize) -> u64 {
+    bytes(n) + (n * core::mem::size_of::<MemoryObjectCap>()) as u64
 }
 fn watch(retired: &[RetiredMemory]) {
     FREES.store(0, Ordering::Release);
@@ -53,8 +62,8 @@ fn freed(expected: u64) {
 #[test]
 fn delivered_storage_frees_before_original_byte_refund() {
     let before = used();
-    let owner = MemoryAttachments::try_new(false, caps(3)).unwrap();
-    assert_eq!(used().0, [before.0[0] + bytes(3), before.0[1]]);
+    let owner = MemoryAttachments::try_new(caps(3)).unwrap();
+    assert_eq!(used().0, [before.0[0] + held(3), before.0[1]]);
     watch(&owner.0.retired);
     owner.finish();
     freed(before.0[0] + bytes(3));
@@ -64,7 +73,7 @@ fn delivered_storage_frees_before_original_byte_refund() {
 fn allocated_constructor_rejection_frees_before_refund() {
     let before = used();
     assert!(
-        MemoryAttachments::try_new_with(false, caps(3), |retired, n| {
+        MemoryAttachments::try_new_with(caps(3), |retired, n| {
             retired.try_reserve_exact(n).unwrap();
             watch(retired);
             Err(IpcError::ResourceLimit)
@@ -78,30 +87,29 @@ fn allocated_constructor_rejection_frees_before_refund() {
 fn empty_bounds_exact_capacity_and_quota_precede_allocator() {
     let before = used();
     let empty =
-        MemoryAttachments::try_new_with(false, Vec::new(), |_, _| panic!("empty allocation"))
-            .unwrap();
+        MemoryAttachments::try_new_with(buffer(false), |_, _| panic!("empty allocation")).unwrap();
     empty.finish();
     assert!(
-        MemoryAttachments::try_new_with(false, caps(CAP_VECTOR_MAX + 1), |_, _| panic!(
+        MemoryAttachments::try_new_with(caps(CAP_VECTOR_MAX + 1), |_, _| panic!(
             "bounds reached allocator"
         ))
         .is_err()
     );
     assert!(
-        MemoryAttachments::try_new_with(false, caps(3), |retired, _| {
+        MemoryAttachments::try_new_with(caps(3), |retired, _| {
             retired.try_reserve_exact(2).unwrap();
             Ok(())
         })
         .is_err()
     );
     let limit = crate::resource_policy::POLICY.ipc_nodes.ordinary[0];
-    let pressure = Charge::reserve(false, [limit - before.1[0], 0]).unwrap();
+    let input = caps(1);
+    let pressure = Charge::reserve(false, [limit - used().1[0], 0]).unwrap();
     assert!(
-        MemoryAttachments::try_new_with(false, caps(1), |_, _| panic!("quota reached allocator"))
-            .is_err()
+        MemoryAttachments::try_new_with(input, |_, _| panic!("quota reached allocator")).is_err()
     );
-    let trusted = MemoryAttachments::try_new(true, caps(1)).unwrap();
-    assert_eq!(used().1[0], limit);
+    let trusted = MemoryAttachments::try_new(caps_in(1, true)).unwrap();
+    assert_eq!(used().1[0], limit - core::mem::size_of::<MemoryObjectCap>() as u64);
     trusted.finish();
     drop(pressure);
     assert_eq!(used(), before);
@@ -109,7 +117,7 @@ fn empty_bounds_exact_capacity_and_quota_precede_allocator() {
 #[test]
 fn fifo_callbacks_keep_full_capacity_and_charge_until_iterator_free() {
     let before = used();
-    let mut owner = MemoryAttachments::try_new(false, caps(3)).unwrap();
+    let mut owner = MemoryAttachments::try_new(caps(3)).unwrap();
     for id in 0..3 {
         owner.0.retired.push(RetiredMemory(id));
     }
@@ -118,7 +126,7 @@ fn fifo_callbacks_keep_full_capacity_and_charge_until_iterator_free() {
     owner.release_with(|retired| {
         assert_eq!(retired.0, expected);
         expected += 1;
-        assert_eq!(used().0[0], before.0[0] + bytes(3));
+        assert_eq!(used().0[0], before.0[0] + held(3));
         assert_eq!(FREES.load(Ordering::Acquire), 0);
         drop(retired);
     });
@@ -130,7 +138,7 @@ fn fifo_callbacks_keep_full_capacity_and_charge_until_iterator_free() {
 fn abandonment_is_inert_before_and_under_pool_lock() {
     let before = used();
     for guarded in [false, true] {
-        let owner = MemoryAttachments::try_new(false, caps(1)).unwrap();
+        let owner = MemoryAttachments::try_new(caps(1)).unwrap();
         watch(&owner.0.retired);
         if guarded {
             admission::with_locked::<IpcNodes, 2, _>(|| drop(owner));
@@ -142,14 +150,14 @@ fn abandonment_is_inert_before_and_under_pool_lock() {
     }
     assert_eq!(
         used(),
-        ([before.0[0] + bytes(2), before.0[1]], [before.1[0] + bytes(2), before.1[1]])
+        ([before.0[0] + held(2), before.0[1]], [before.1[0] + held(2), before.1[1]])
     );
 }
 #[test]
 fn interrupted_callback_retains_remaining_owners_and_full_capacity() {
     let before = used();
     let drops = crate::memory::object::DROPS.load(Ordering::Acquire);
-    let mut owner = MemoryAttachments::try_new(false, caps(3)).unwrap();
+    let mut owner = MemoryAttachments::try_new(caps(3)).unwrap();
     for id in 0..3 {
         owner.0.retired.push(RetiredMemory(id));
     }
@@ -167,6 +175,6 @@ fn interrupted_callback_retains_remaining_owners_and_full_capacity() {
     assert_eq!(crate::memory::object::DROPS.load(Ordering::Acquire), drops + 1);
     assert_eq!(
         used(),
-        ([before.0[0] + bytes(3), before.0[1]], [before.1[0] + bytes(3), before.1[1]])
+        ([before.0[0] + held(3), before.0[1]], [before.1[0] + held(3), before.1[1]])
     );
 }
