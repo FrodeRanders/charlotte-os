@@ -73,6 +73,9 @@ fn allocation<T>(name: &str) {
     );
 }
 fn deny(platform: bool) {
+    assert!(prepare::<(u64, device::mapping_storage::Record)>(platform).is_err());
+    #[cfg(target_arch = "aarch64")]
+    assert!(prepare::<(u64, crate::memory::physical::PAddr)>(platform).is_err());
     assert!(prepare::<(Source, u64)>(platform).is_err());
     #[cfg(target_arch = "x86_64")]
     {
@@ -157,11 +160,11 @@ fn count_pressure() {
     );
 }
 
-fn byte_pressure<D>() {
+fn byte_pressure<T>() {
     let before = snapshot();
-    let bytes = Prepared::<(u64, Option<D>)>::allocation_bytes() as u64;
+    let bytes = Prepared::<T>::allocation_bytes() as u64;
     let mut ordinary = alloc::vec::Vec::with_capacity((ORDINARY[0] / bytes + 1) as usize);
-    while let Ok(node) = prepare::<(u64, Option<D>)>(false) {
+    while let Ok(node) = prepare::<T>(false) {
         ordinary.push(node);
     }
     let ordinary_full = snapshot();
@@ -170,15 +173,15 @@ fn byte_pressure<D>() {
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
         for _ in 0..64 {
-            assert!(prepare::<(u64, Option<D>)>(false).is_err());
+            assert!(prepare::<T>(false).is_err());
         }
     }
-    let reserve = prepare::<(u64, Option<D>)>(true).unwrap();
+    let reserve = prepare::<T>(true).unwrap();
     drop(reserve);
     assert_eq!(snapshot(), ordinary_full);
     let mut trusted =
         alloc::vec::Vec::with_capacity(((LIMIT[0] - ORDINARY[0]) / bytes + 1) as usize);
-    while let Ok(node) = prepare::<(u64, Option<D>)>(true) {
+    while let Ok(node) = prepare::<T>(true) {
         trusted.push(node);
     }
     let full = snapshot();
@@ -187,16 +190,17 @@ fn byte_pressure<D>() {
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
         for _ in 0..64 {
-            assert!(prepare::<(u64, Option<D>)>(true).is_err());
+            assert!(prepare::<T>(true).is_err());
         }
     }
     let counts = (ordinary.len(), trusted.len());
     drop((ordinary, trusted));
     assert_eq!(snapshot(), before);
     crate::logln!(
-        "[backend node byte pressure] actual domain-layout empty candidates ordinary={} \
-         trusted={} at bytes={}; ordinary/total byte exhaustion below count ceilings, 128 \
-         heap-held byte denials and exact recovery passed",
+        "[backend node byte pressure] actual layout={} empty candidates ordinary={} trusted={} at \
+         bytes={}; ordinary/total byte exhaustion below count ceilings, 128 heap-held byte \
+         denials and exact recovery passed",
+        core::any::type_name::<T>(),
         counts.0,
         counts.1,
         bytes
@@ -217,6 +221,9 @@ pub(in crate::device) fn with_ordinary_pressure(work: impl FnOnce()) {
 pub(in crate::device) fn run() {
     let irq = crate::cpu::isa::lp::ops::get_int_state();
     allocation::<(Source, u64)>("requester");
+    allocation::<(u64, device::mapping_storage::Record)>("dma-mapping");
+    #[cfg(target_arch = "aarch64")]
+    allocation::<(u64, crate::memory::physical::PAddr)>("smmu-walker");
     #[cfg(target_arch = "x86_64")]
     {
         allocation::<(u64, Option<device::vt_d::Domain>)>("vtd-domain");
@@ -227,13 +234,14 @@ pub(in crate::device) fn run() {
     allocation::<(u64, Option<device::smmu::Domain>)>("smmu-domain");
     count_pressure();
     #[cfg(target_arch = "aarch64")]
-    byte_pressure::<device::smmu::Domain>();
+    byte_pressure::<(u64, Option<device::smmu::Domain>)>();
     #[cfg(target_arch = "x86_64")]
     if crate::environment::acpi::sdt::dmar::discover_vtd().is_some() {
-        byte_pressure::<device::vt_d::Domain>();
+        byte_pressure::<(u64, Option<device::vt_d::Domain>)>();
     } else {
-        byte_pressure::<device::amd_vi::Domain>();
+        byte_pressure::<(u64, Option<device::amd_vi::Domain>)>();
     }
+    byte_pressure::<(u64, device::mapping_storage::Record)>();
     assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
     crate::logln!(
         "[backend node admission] requested-layout bytes/count, original captured backing class, \

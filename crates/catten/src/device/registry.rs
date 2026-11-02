@@ -10,7 +10,6 @@ use super::{
     node_budget::Prepared as PreparedEntry,
     *,
 };
-pub(super) use crate::klib::collections::retirement_list::AdmittedMap as Map;
 
 struct Storage {
     namespace: Option<PreparedEntry<(AddressSpaceId, AsDeviceCaps)>>,

@@ -725,6 +725,7 @@ pub(crate) fn run() {
          stayed Pending, publication rejected before activation, confirmed post-guard rollback \
          refunded authority and original closing owner completed"
     );
+    metadata_admission(requester);
     reset::tests::finish_real();
     backend_registry::tests::finish_real();
     mapping_storage::tests::finish_real();
@@ -733,5 +734,54 @@ pub(crate) fn run() {
     crate::logln!(
         "[device recovery] rejected drain retained/fenced DMA; real retry, old-MMIO exclusion and \
          QEMU NVMe reset/reassignment passed"
+    );
+}
+
+/// Real domain class capture survives root promotion; metadata rejection occurs
+/// before table/data publication, with no pin or original charge lost.
+fn metadata_admission(requester: u32) {
+    use crate::klib::admission::{
+        IommuNodes,
+        Reservation,
+    };
+    let root = crate::service::loader::create_user_address_space_handle();
+    let memory = object::allocate(root.id(), 1).unwrap();
+    let ordinary = grant_dma_domain(root.id(), requester, None).unwrap();
+    crate::memory::budget::mark_platform(root);
+    let before = backend_registry::budget::snapshot();
+    let tables = dma_tables::used();
+    backend_registry::budget::with_ordinary_pressure(|| {
+        let full = backend_registry::budget::snapshot();
+        for _ in 0..32 {
+            assert_eq!(dma_map(root.id(), ordinary, memory, 3), Err(DeviceError::DmaInvalid));
+            assert_eq!(dma_tables::used(), tables);
+            assert_eq!(backend_registry::budget::snapshot(), full);
+        }
+    });
+    assert_eq!(backend_registry::budget::snapshot(), before);
+    object::try_close_cap(root.id(), memory).unwrap(); // Rejected maps returned every pin.
+    close_cap(root.id(), ordinary).unwrap();
+    let before = backend_registry::budget::snapshot();
+    // A fresh grant captures the now-trusted root, while the old domain stayed
+    // ordinary. Persistent requester/context nodes retain their old charge.
+    let trusted = grant_dma_domain(root.id(), requester, None).unwrap();
+    let memory = object::allocate(root.id(), 1).unwrap();
+    let used = backend_registry::budget::snapshot();
+    let ceiling = crate::resource_policy::POLICY.iommu_nodes.ordinary[1];
+    let pressure = Reservation::<IommuNodes, 2>::reserve(false, [0, ceiling - used.1[1]]).unwrap();
+    let full = backend_registry::budget::snapshot();
+    let address = dma_map(root.id(), trusted, memory, 3).unwrap();
+    assert_eq!(backend_registry::budget::snapshot().1, full.1);
+    dma_unmap(root.id(), trusted, address).unwrap();
+    assert_eq!(backend_registry::budget::snapshot().1, full.1);
+    drop(pressure);
+    close_cap(root.id(), trusted).unwrap();
+    object::try_close_cap(root.id(), memory).unwrap();
+    assert_eq!(backend_registry::budget::snapshot(), before);
+    crate::memory::close_user_address_space_handle(root).unwrap();
+    crate::logln!(
+        "[DMA metadata admission] 32 real ordinary map denials after root promotion; unchanged \
+         tables/charges and returned pins; fresh trusted grant maps/unmaps under ordinary \
+         pressure; original backing fully refunded"
     );
 }

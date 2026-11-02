@@ -123,6 +123,7 @@ impl Domain {
         source_id: u16,
         agaw: u8,
         msi_address: Option<u64>,
+        backing_platform: bool,
     ) -> Result<Self, (Error, super::detached_domain::DetachedDomain<Self>)> {
         let mut domain = Self {
             retiring: false,
@@ -132,7 +133,7 @@ impl Domain {
             root: PAddr::from(0u64),
             tables: Tables::new(Scope::Domain),
             next_iova: IOVA_START,
-            mappings: super::mapping_storage::Records::new(),
+            mappings: super::mapping_storage::Records::new(backing_platform),
         };
         let prepared = (|| {
             domain.root = domain.tables.allocate_frame()?;
@@ -628,13 +629,14 @@ pub(crate) fn create_domain_with_reset(
             unit.next_domain = next;
             #[cfg(feature = "kernel_tests")]
             super::domain_creation::boundary(super::domain_creation::Phase::Allocate);
-            let domain = match Domain::new(source_id, unit.agaw, msi_address) {
-                Ok(domain) => domain,
-                Err((error, domain)) => {
-                    creation.retain_private(super::private_domain::PrivateDomain::Vtd(domain));
-                    return Err(error);
-                }
-            };
+            let domain =
+                match Domain::new(source_id, unit.agaw, msi_address, creation.backing_platform) {
+                    Ok(domain) => domain,
+                    Err((error, domain)) => {
+                        creation.retain_private(super::private_domain::PrivateDomain::Vtd(domain));
+                        return Err(error);
+                    }
+                };
             if test_fault!(super::test_reject_private_complete()) {
                 creation.retain_private(super::private_domain::PrivateDomain::Vtd(
                     super::detached_domain::DetachedDomain::new(domain),
@@ -1143,11 +1145,12 @@ pub(super) fn test_with_backend_locked(action: impl FnOnce()) {
 /// Private typed payload with real tables/metadata, never in the registry.
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_private_domain() -> super::private_domain::PrivateDomain {
-    let domain = Domain::new(0, 48, Some(0xfee0_0000)).unwrap_or_else(|(error, mut owner)| {
-        owner.value_mut().tables.cancel_private().unwrap();
-        owner.into_inner().dispose_metadata();
-        panic!("private retention fixture failed: {:?}", error)
-    });
+    let domain =
+        Domain::new(0, 48, Some(0xfee0_0000), false).unwrap_or_else(|(error, mut owner)| {
+            owner.value_mut().tables.cancel_private().unwrap();
+            owner.into_inner().dispose_metadata();
+            panic!("private retention fixture failed: {:?}", error)
+        });
 
     super::private_domain::PrivateDomain::Vtd(super::detached_domain::DetachedDomain::new(domain))
 }
@@ -1157,7 +1160,7 @@ pub(super) fn test_private_domain() -> super::private_domain::PrivateDomain {
 pub(super) fn test_table_admission() {
     let baseline = super::dma_tables::used();
     let data = crate::memory::PreparingUserFrame::allocate_zeroed().unwrap();
-    let mut domain = Domain::new(0, 48, None).unwrap_or_else(|(error, mut domain)| {
+    let mut domain = Domain::new(0, 48, None, false).unwrap_or_else(|(error, mut domain)| {
         domain.value_mut().tables.cancel_private().unwrap();
         domain.into_inner().dispose_metadata();
         panic!("private walker preparation rejected: {:?}", error)

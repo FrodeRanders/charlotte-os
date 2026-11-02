@@ -314,7 +314,7 @@ pub(super) fn run() {
     #[cfg(target_arch = "aarch64")]
     let walker = {
         // Metadata fixture borrows this retained table; no hardware walk occurs.
-        let mut walker = super::super::mapping_storage::WalkerCache::new();
+        let mut walker = super::super::mapping_storage::WalkerCache::new(false);
         walker.prepare().unwrap();
         walker.publish(1, frame);
         walker.prepare().unwrap(); // Partial-walk storage retains with the domain.
@@ -333,12 +333,16 @@ pub(super) fn run() {
         ),
         PendingPin::new(Some(pin)),
     );
-    owner.pending.prepare().unwrap();
+    owner.pending.prepare(false).unwrap();
+    let metadata = super::super::backend_registry::budget::snapshot();
     crate::device::dma_tables::test_drop_under_guards(|| {
         let _devices = DEVICES.lock();
-        drop(owner);
-        drop(operation);
+        super::super::backend_registry::budget::with_locked(|| {
+            drop(owner);
+            drop(operation);
+        });
     });
+    assert_eq!(super::super::backend_registry::budget::snapshot(), metadata);
     assert_eq!(crate::device::dma_tables::used(), (baseline.0 + 1, baseline.1 + 1));
     assert_eq!(
         crate::memory::close_user_address_space_handle(root),

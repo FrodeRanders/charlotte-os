@@ -1,16 +1,17 @@
 //! Admitted mapping nodes follow pins through publication, detach and quarantine.
 //! Typed backends still own the hardware completion proof.
 use super::{
+    backend_registry::budget::{
+        self,
+        Map,
+        Prepared as PreparedEntry,
+        Retired as RetiredEntry,
+    },
     detached_domain::DetachedDomain,
     dma::Error,
-    registry::Map,
 };
 use crate::{
-    klib::collections::retirement_list::{
-        PreparedEntry,
-        RetiredEntry,
-        RetirementList,
-    },
+    klib::collections::retirement_list::RetirementList,
     memory::object::{
         self,
         DmaPin,
@@ -48,10 +49,10 @@ impl PendingPin {
         self.0.value_mut().pin.as_ref().expect("missing DMA pin")
     }
 
-    pub(super) fn prepare(&mut self) -> Result<(), Error> {
+    pub(super) fn prepare(&mut self, platform: bool) -> Result<(), Error> {
         let pending = self.0.value_mut();
         assert!(pending.pin.is_some() && pending.preparing.is_none() && pending.retired.is_none());
-        pending.preparing = Some(prepare(1)?);
+        pending.preparing = Some(prepare(1, platform)?);
         Ok(())
     }
 
@@ -94,11 +95,14 @@ impl PendingPin {
 
 pub(super) struct Records {
     live: Map<u64, Record>,
-    quarantined: RetirementList<(u64, Record)>,
+    quarantined: RetirementList<(u64, Record), budget::Charge>,
+    // Immutable class from the original domain grant; no map-time ASID lookup.
+    platform: bool,
 }
 impl Records {
-    pub(super) fn new() -> Self {
+    pub(super) fn new(platform: bool) -> Self {
         Self {
+            platform,
             live: Map::new(),
             quarantined: RetirementList::new(),
         }
@@ -111,7 +115,7 @@ impl Records {
         {
             return Err(Error::AlreadyMapped);
         }
-        pending.prepare()
+        pending.prepare(self.platform)
     }
 
     pub(super) fn publish(&mut self, pending: &mut PendingPin, iova: u64, pages: usize) {
@@ -151,27 +155,32 @@ fn release_record(mut record: RetiredMapping) {
     tests::boundary(true);
     record.release();
 }
-fn prepare<T>(_stage: usize) -> Result<PreparedEntry<T>, Error> {
-    #[cfg(feature = "kernel_tests")]
-    tests::boundary(false);
-    if test_fault!(tests::reject(_stage)) {
-        return Err(Error::Memory);
-    }
-    PreparedEntry::try_new().map_err(|_| Error::Memory)
+fn prepare<T>(_stage: usize, platform: bool) -> Result<PreparedEntry<T>, Error> {
+    budget::prepare_with(platform, |charge| {
+        #[cfg(feature = "kernel_tests")]
+        tests::boundary(false);
+        if test_fault!(tests::reject(_stage)) {
+            return Err(core::alloc::AllocError);
+        }
+        PreparedEntry::try_new_charged(charge)
+    })
+    .map_err(|_| Error::Memory)
 }
 
 /// Cached SMMU leaf-table addresses own their metadata for the domain lifetime.
 /// Partial walks retain unused admitted storage for a later cache miss.
 #[cfg(target_arch = "aarch64")]
 pub(super) struct WalkerCache {
+    platform: bool,
     tables: Map<u64, crate::memory::physical::PAddr>,
     preparing:
         core::mem::ManuallyDrop<Option<PreparedEntry<(u64, crate::memory::physical::PAddr)>>>,
 }
 #[cfg(target_arch = "aarch64")]
 impl WalkerCache {
-    pub(super) fn new() -> Self {
+    pub(super) fn new(platform: bool) -> Self {
         Self {
+            platform,
             tables: Map::new(),
             preparing: core::mem::ManuallyDrop::new(None),
         }
@@ -183,7 +192,7 @@ impl WalkerCache {
 
     pub(super) fn prepare(&mut self) -> Result<(), Error> {
         if self.preparing.is_none() {
-            *self.preparing = Some(prepare(2)?);
+            *self.preparing = Some(prepare(2, self.platform)?);
         }
         Ok(())
     }

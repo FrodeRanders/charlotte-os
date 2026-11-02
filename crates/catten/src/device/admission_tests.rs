@@ -195,7 +195,7 @@ pub(super) fn drop_grant_under_guards(prepared: PreparedDmaDomain) {
             let physical = crate::memory::PHYSICAL_FRAME_ALLOCATOR.lock();
             let _heap = crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
             let free = physical.free_frames();
-            node_budget::with_locked(|| drop(prepared));
+            node_budget::with_locked(|| backend_registry::budget::with_locked(|| drop(prepared)));
             assert_eq!(physical.free_frames(), free);
             assert_eq!(DESTROYS.load(Ordering::Relaxed), before);
         });

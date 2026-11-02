@@ -341,7 +341,8 @@ the corrected RPC polling paths, and the remaining notification gaps.
   original charges through unused candidates, publication, detached cleanup and
   actual node deallocation. Complete grant/close/namespace fallback remains inert
   under the node-pool guard too. IOMMU backend nodes have separate
-  `iommu_nodes` admission; mapping/walker and ledger backing remain separate.
+  `iommu_nodes` admission, including domain-owned mapping/walker metadata;
+  table-ledger backing remains separate.
   See `docs/reference/device-node-admission.md`.
 
 - Mailbox endpoint candidates use typed `mailbox_node_budget` storage and
@@ -1002,7 +1003,13 @@ the corrected RPC polling paths, and the remaining notification gaps.
   cache misses prepare metadata before branch allocation/linking; partial walks
   retain unused storage in that same domain for later cache admission. Dispose
   cached/unused nodes only after confirmed private cancellation or domain-table
-  release, never by field Drop. Metadata does not prove hardware completion or
+  release, never by field Drop. Mapping records, quarantine and SMMU cache nodes
+  share `iommu_nodes` byte/count admission. Capture the original grant backing
+  class in the domain records/cache before publication; promotion or map-time
+  identity lookup must not reclassify it. Admit before allocator entry and retain
+  original charges until post-completion unpin and actual node deallocation.
+  Quota rejection keeps the existing `Memory` error and performs no allocation.
+  Metadata does not prove hardware completion or
   authorize physical retry. Table ledgers, general heap/principal admission and
   wider contexts remain separate.
   Intel cannot overwrite

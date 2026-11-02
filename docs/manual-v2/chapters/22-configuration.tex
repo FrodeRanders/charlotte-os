@@ -95,6 +95,16 @@ or count-only pools cannot be summed into physical RAM consumption. This
 consolidation changes no numerical limits or cleanup authority. See
 \repofile|docs/reference/metadata-admission.md| for the wire contract.
 
+DMA mapping/quarantine records and SMMU walker-cache nodes share the existing
+\texttt{iommu\_nodes} byte/count limits with domain/requester/context metadata.
+They retain the original domain-grant class through actual deallocation;
+promoting the root cannot reclassify later metadata in that domain. No numerical
+limit or statistics grammar changes. The shared ceiling bounds retained storage
+but also makes these layouts compete for its capacity. Raise the reviewed
+central limits if workload planning requires more headroom. Table-ledger and
+general principal/heap admission remain separate work. See
+\repofile|docs/reference/iommu-node-admission.md|.
+
 A profile defines \texttt{POLICY: Policy} in the policy module's scope. It can
 start from \texttt{DEFAULT} and override related fields. The checked-in
 \repofile|crates/catten/src/resource_policy/larger.rs| demonstrates co-scaling

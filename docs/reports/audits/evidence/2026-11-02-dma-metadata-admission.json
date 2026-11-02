@@ -1,0 +1,229 @@
+{
+  "schema": "charlotte.dma-metadata-admission.v1",
+  "date": "2026-11-02",
+  "base_revision": "e7078cc12de302c62d7f5cee65fe5f2b1ccb743c",
+  "scope": "DMA mapping/quarantine and SMMU walker-cache nodes share the existing IommuNodes byte/count pool and retain the immutable original domain-grant class. Hardware completion, physical table budgets, numerical limits, the 22-pool catalog and version-9 snapshot remain unchanged.",
+  "source_sha256": {
+    "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
+    "crates/catten-syscall/src/metadata_pools.rs": "8d806c82affc0a5bac177537b54a250a69fe7542caa28989164e58916b72101c",
+    "crates/catten/src/device/admission_tests.rs": "91eb74d551511cf7b822215546d4ba47d906e783878fe04ffaf0cdc7152fa5f2",
+    "crates/catten/src/device/amd_vi.rs": "88bdc2c9297cde4fc163109b335065399d444d5585ebe2a32bf40dabf7e32d59",
+    "crates/catten/src/device/backend_registry/budget.rs": "8eb644fcb79bf601d186c6b2808c6d21520bb0cfb0649f96021e927afcc67644",
+    "crates/catten/src/device/backend_registry/budget/tests.rs": "8b40f6838a4383d168ae3f6037423fe673ec04f6dd34153e14d398f76955c87c",
+    "crates/catten/src/device/detached_domain.rs": "d739ec349b10db5599113fda3c5b59f50146b4fcbc99d428a2f703a68e6cd3f7",
+    "crates/catten/src/device/dma_tables.rs": "54f8ea261833fb893c220ac0599ce99a0921ea84c380f6a1e62bb64a2d8b7bc2",
+    "crates/catten/src/device/mapping/tests.rs": "5313ccd8f311035fdbe4bfe6dc82b7f50299e6b47d77438a6e42f4a8c9f7d162",
+    "crates/catten/src/device/mapping_storage.rs": "85401e39f5bc2d68f5352522291a1232497e163cd05bd4ae9b41ee3809ed9556",
+    "crates/catten/src/device/mapping_storage/tests.rs": "11d2d72da46f00f3e858f9d3b95913981916e63e154bcec71ea29c3bc96cf0b4",
+    "crates/catten/src/device/recovery_tests.rs": "37b388b27db52258c55f00e26eb3a1f36e666b9d698225a93ecf14b7015dcbc2",
+    "crates/catten/src/device/registry.rs": "b8ae7f02f03023f0a3e8f12572160e6d510b13e8f1110942fa4fcd82192a817a",
+    "crates/catten/src/device/smmu.rs": "7b8f322df7bf2ae43b8bbcb697eef48e4476ec613f5adf2d2cad582b260f6746",
+    "crates/catten/src/device/vt_d.rs": "8dfcfc9f90a840808b037c99b176b5ae6073fc0f7cf974441319d82351a6bdd2",
+    "crates/catten/src/klib/admission.rs": "b10d5402c22e29ddc3087881c4031cd8d2ee60bd6646e52b53c62239c4bf2138",
+    "crates/catten/src/klib/collections/retirement_list.rs": "ef0447d659221379641fad66a9d93489574062cebb855d01e3247496716a0d65",
+    "crates/catten/src/resource_policy.rs": "8caa3b6d05f5470eff7c0269b59d259523184c77d5704667a2f1dfce97a29bba",
+    "crates/catten/src/resource_policy/defaults.rs": "949cf96cfeeaab96d42898a63859830466082ad98b80f12a8e8e99f4deb54156",
+    "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243"
+  },
+  "artifact_note": "Runtime Rust sources were frozen before the three campaigns. Documentation edits followed and can change tracked-diff identities; source and archived artifact hashes identify the exercised code. Signed userspace bundles were reused from the preceding consolidation; no userspace source or ABI changed.",
+  "planning": {
+    "pool": "iommu_nodes",
+    "ordinary": [
+      18874368,
+      196608
+    ],
+    "total": [
+      25165824,
+      262144
+    ],
+    "units": [
+      "requested node-layout bytes",
+      "nodes"
+    ],
+    "layouts_bytes": {
+      "dma-mapping": 104,
+      "smmu-walker": 48,
+      "requester/context": 48,
+      "vtd-domain": 136,
+      "amd-domain": 128,
+      "smmu-domain": 168
+    },
+    "cost": "16-byte inline charge for each newly covered mapping/cache node; 8 bytes of captured class/padding in Records and a further 8 in the SMMU cache, included in actual charged domain layouts. No additional allocation holder or pool.",
+    "decision": "Keep numerical limits: actual empty mapping-layout byte pressure reaches 181484 ordinary and 60495 additional trusted candidates, below count ceilings and above the 65536 unified-capability planning ceiling. These are single-layout controls, not a claim that mixed or independent ceilings can be occupied together. Sharing bounds retained metadata but makes it compete with other same-class IOMMU metadata; a measured workload can justify raising central limits.",
+    "completion": "Quota or allocation failure returns Memory before leaf/branch publication. The existing complete pending/maintenance/domain owners retain pin, metadata and original charge through quarantine, partial sparse walks and uncertainty. Explicit confirmed cleanup unpins before metadata deallocation; deallocation precedes refund."
+  },
+  "native_campaigns": [
+    {
+      "arch": "aarch64",
+      "instance": "dma-metadata-20261102-arm",
+      "cpus": 4,
+      "revision": "e7078cc12de302c62d7f5cee65fe5f2b1ccb743c",
+      "kernel_sha256": "806e2df36fdc4606d1089c9abc72f5088b40461bd2458a126eb16a7091365fcc",
+      "boot_image_sha256": "5eb164092497d9ceec57698b71c15a72b3583e80cdb51cec1c74063bdb28eb79",
+      "initial_disk_sha256": "891d405cf7c355e83bf9ca3c9f62ca34dde0281e5dd6411bab91ec50fb13f48f",
+      "tracked_diff_sha256": "49450da271ae941d4b9c89856a9c4b45556b00286d6dd73af21c699236d3ba9a",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T15:05:40Z",
+      "platform": "arm",
+      "configuration": "security-test; four CPUs; fresh storage; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "77e5f52f2c78a2951f99eea2cc0658d877453e48074506f818c8a8048674e9fc",
+      "serial_sha256": "d094fd14c6bff6bb33a4fc40151495401f532dec86cdac4c960781b24bd0b6f4",
+      "service_sha256": {
+        "nvme.elf": "4400a62a4f2496a137e23d389d3fb0097000991311b5e7243447eb33a729e360",
+        "observe.elf": "426ca8279bb1510cc8dbd319a12f34bff37a18786690f53b71c1d1e68684ef26",
+        "security_probe.elf": "11a9f88261e2a8064100e7494d83c418d351a0422bac08e9807128ab964e43f3"
+      },
+      "summary": {
+        "passed": 19,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+     9.062352] [backend node layout] requester=48 bytes; 64 allocator rejections passed",
+        "[+     9.063212] [backend node layout] dma-mapping=104 bytes; 64 allocator rejections passed",
+        "[+     9.064042] [backend node layout] smmu-walker=48 bytes; 64 allocator rejections passed",
+        "[+     9.064868] [backend node layout] smmu-domain=168 bytes; 64 allocator rejections passed",
+        "[+     9.329322] [backend node count pressure] actual requester-layout candidates ordinary=196608 trusted=65536 at 196608/262144; heap-held all-layout denials, captured grant class, trusted reserve and one/two/three-node rollback/recovery passed",
+        "[+     9.470714] [backend node byte pressure] actual layout=(u64, core::option::Option<catten::device::smmu::Domain>) empty candidates ordinary=112347 trusted=37449 at bytes=168; ordinary/total byte exhaustion below count ceilings, 128 heap-held byte denials and exact recovery passed",
+        "[+     9.694994] [backend node byte pressure] actual layout=(u64, catten::device::mapping_storage::Record) empty candidates ordinary=181484 trusted=60495 at bytes=104; ordinary/total byte exhaustion below count ceilings, 128 heap-held byte denials and exact recovery passed",
+        "[+     9.696052] [backend node admission] requested-layout bytes/count, original captured backing class, empty real-layout pressure and complete preparation rollback passed; charge=16 bytes",
+        "[+     9.703892] [DMA metadata phases] 8 preparation and 6 disposal entries outside local guards; entry IRQ state preserved",
+        "[+     9.704610] [DMA metadata ownership] rejected admission releases pin; heap-held publish/detach/quarantine keeps exact node; duplicate and early close reject; confirmed private completion releases original storage; shared byte/count admission, heap-held denial and trusted headroom passed",
+        "[+    10.910430] [DMA mapping maintenance] real map/unmap/prefix completion outside backend/lifecycle/device/table guards; exact-root/capability busy close, unit-wide mutation/reset exclusion and rejected-unmap pin retention until real retirement passed",
+        "[+    10.910952] [IOMMU recovery] detached physical-release boundary keeps pins/source claim, guards available and competing operations fenced; hardware table charges retained until drain, node pressure refunded capability, rejected sparse-prefix cleanup retained pin until real retirement",
+        "[+    10.918356] [DMA metadata admission] 32 real ordinary map denials after root promotion; unchanged tables/charges and returned pins; fresh trusted grant maps/unmaps under ordinary pressure; original backing fully refunded",
+        "[+    10.920070] [DMA metadata phases] 20 preparation and 18 disposal entries outside local guards; entry IRQ state preserved",
+        "[+    84.333912] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "arch": "x86_64",
+      "instance": "dma-metadata-20261102-intel",
+      "cpus": 4,
+      "revision": "e7078cc12de302c62d7f5cee65fe5f2b1ccb743c",
+      "kernel_sha256": "6fe6151496c85226e7cee64f9096ac4ebbd77176134bac579c05999b33e07488",
+      "boot_image_sha256": "38182af368293f5b9c5cd930829cf110af4f9c65b04f1b048404aca43e019c75",
+      "initial_disk_sha256": "dff68957bc4d1a7f18c96ea8c95dca1beee17699d4db0b8c4549aff3e4d32252",
+      "tracked_diff_sha256": "5751da6040c426e40ee5205bc9906f0e98a1ca1525e47cf01e8809687b0d8769",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T15:06:48Z",
+      "platform": "intel",
+      "configuration": "security-test; four CPUs; fresh storage; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "870608361a4fa17ffe7c8948a3034faf83cb9f88b70d157ab6a186394517f5be",
+      "serial_sha256": "86a5edda857ecb75595883394f87cf80e8c6d9cbcbddf80d36f88dea17fd42ac",
+      "service_sha256": {
+        "nvme.elf": "3905ba29c4acbc07cec559e9af09e9ad9eadfdf7fe05d0311eeb7c9444a867ba",
+        "observe.elf": "e1f481137ee8aed15d2eaaf0092713b1f3f863ed2027932608aacd67056a4a38",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c",
+        "virtio_blk.elf": "f73eef9a720299a7764ad46b8c6875955259d1ca6903a3d95bc64ec23930d304"
+      },
+      "summary": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+    14.564841] [backend node layout] requester=48 bytes; 64 allocator rejections passed",
+        "[+    14.565675] [backend node layout] dma-mapping=104 bytes; 64 allocator rejections passed",
+        "[+    14.566344] [backend node layout] vtd-domain=136 bytes; 64 allocator rejections passed",
+        "[+    14.567059] [backend node layout] amd-domain=128 bytes; 64 allocator rejections passed",
+        "[+    14.567829] [backend node layout] vtd-context=48 bytes; 64 allocator rejections passed",
+        "[+    15.153714] [backend node count pressure] actual requester-layout candidates ordinary=196608 trusted=65536 at 196608/262144; heap-held all-layout denials, captured grant class, trusted reserve and one/two/three-node rollback/recovery passed",
+        "[+    15.699069] [backend node byte pressure] actual layout=(u64, core::option::Option<catten::device::vt_d::Domain>) empty candidates ordinary=138782 trusted=46260 at bytes=136; ordinary/total byte exhaustion below count ceilings, 128 heap-held byte denials and exact recovery passed",
+        "[+    16.207520] [backend node byte pressure] actual layout=(u64, catten::device::mapping_storage::Record) empty candidates ordinary=181484 trusted=60495 at bytes=104; ordinary/total byte exhaustion below count ceilings, 128 heap-held byte denials and exact recovery passed",
+        "[+    16.208989] [backend node admission] requested-layout bytes/count, original captured backing class, empty real-layout pressure and complete preparation rollback passed; charge=16 bytes",
+        "[+    16.218329] [DMA metadata phases] 4 preparation and 3 disposal entries outside local guards; entry IRQ state preserved",
+        "[+    16.219853] [DMA metadata ownership] rejected admission releases pin; heap-held publish/detach/quarantine keeps exact node; duplicate and early close reject; confirmed private completion releases original storage; shared byte/count admission, heap-held denial and trusted headroom passed",
+        "[+    17.462338] [DMA mapping maintenance] real map/unmap/prefix completion outside backend/lifecycle/device/table guards; exact-root/capability busy close, unit-wide mutation/reset exclusion and rejected-unmap pin retention until real retirement passed",
+        "[+    17.466140] [IOMMU recovery] detached physical-release boundary keeps pins/source claim, guards available and competing operations fenced; hardware table charges retained until drain, node pressure refunded capability, rejected sparse-prefix cleanup retained pin until real retirement",
+        "[+    17.476085] [DMA metadata admission] 32 real ordinary map denials after root promotion; unchanged tables/charges and returned pins; fresh trusted grant maps/unmaps under ordinary pressure; original backing fully refunded",
+        "[+    17.477600] [DMA metadata phases] 9 preparation and 8 disposal entries outside local guards; entry IRQ state preserved",
+        "[+    92.475181] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "arch": "x86_64",
+      "instance": "dma-metadata-20261102-amd",
+      "cpus": 4,
+      "revision": "e7078cc12de302c62d7f5cee65fe5f2b1ccb743c",
+      "kernel_sha256": "c85f9ab0d7581e249ba694bbb87d208b2afb1e93c0927ed2ccff505c1b620a21",
+      "boot_image_sha256": "c41ceb6749dedfd01f9577a1102f36367630609b36a0a88061da4977da630058",
+      "initial_disk_sha256": "dff68957bc4d1a7f18c96ea8c95dca1beee17699d4db0b8c4549aff3e4d32252",
+      "tracked_diff_sha256": "780788eea1c39b47bf2f03e3be702c54ca7d9abe8c705e68ffad371d448f8407",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T15:10:01Z",
+      "platform": "amd",
+      "configuration": "security-test; four CPUs; fresh storage; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "656c493853998a439ed66bdc2bd113ea6c17143131860b5f6d03f4286ab2412d",
+      "serial_sha256": "c4f6ce055c60ed71c38d0c93edcbc11868f92ee3aeb412fb855fc60f87becd92",
+      "service_sha256": {
+        "nvme.elf": "3905ba29c4acbc07cec559e9af09e9ad9eadfdf7fe05d0311eeb7c9444a867ba",
+        "observe.elf": "e1f481137ee8aed15d2eaaf0092713b1f3f863ed2027932608aacd67056a4a38",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c",
+        "virtio_blk.elf": "f73eef9a720299a7764ad46b8c6875955259d1ca6903a3d95bc64ec23930d304"
+      },
+      "summary": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+    13.770664] [backend node layout] requester=48 bytes; 64 allocator rejections passed",
+        "[+    13.771432] [backend node layout] dma-mapping=104 bytes; 64 allocator rejections passed",
+        "[+    13.772204] [backend node layout] vtd-domain=136 bytes; 64 allocator rejections passed",
+        "[+    13.772895] [backend node layout] amd-domain=128 bytes; 64 allocator rejections passed",
+        "[+    13.773705] [backend node layout] vtd-context=48 bytes; 64 allocator rejections passed",
+        "[+    14.348177] [backend node count pressure] actual requester-layout candidates ordinary=196608 trusted=65536 at 196608/262144; heap-held all-layout denials, captured grant class, trusted reserve and one/two/three-node rollback/recovery passed",
+        "[+    14.749061] [backend node byte pressure] actual layout=(u64, core::option::Option<catten::device::amd_vi::Domain>) empty candidates ordinary=147456 trusted=49152 at bytes=128; ordinary/total byte exhaustion below count ceilings, 128 heap-held byte denials and exact recovery passed",
+        "[+    15.199953] [backend node byte pressure] actual layout=(u64, catten::device::mapping_storage::Record) empty candidates ordinary=181484 trusted=60495 at bytes=104; ordinary/total byte exhaustion below count ceilings, 128 heap-held byte denials and exact recovery passed",
+        "[+    15.201514] [backend node admission] requested-layout bytes/count, original captured backing class, empty real-layout pressure and complete preparation rollback passed; charge=16 bytes",
+        "[+    15.210974] [DMA metadata phases] 4 preparation and 3 disposal entries outside local guards; entry IRQ state preserved",
+        "[+    15.212784] [DMA metadata ownership] rejected admission releases pin; heap-held publish/detach/quarantine keeps exact node; duplicate and early close reject; confirmed private completion releases original storage; shared byte/count admission, heap-held denial and trusted headroom passed",
+        "[+    16.422001] [DMA mapping maintenance] real map/unmap/prefix completion outside backend/lifecycle/device/table guards; exact-root/capability busy close, unit-wide mutation/reset exclusion and rejected-unmap pin retention until real retirement passed",
+        "[+    16.422607] [IOMMU recovery] detached physical-release boundary keeps pins/source claim, guards available and competing operations fenced; hardware table charges retained until drain, node pressure refunded capability, rejected sparse-prefix cleanup retained pin until real retirement",
+        "[+    16.435695] [DMA metadata admission] 32 real ordinary map denials after root promotion; unchanged tables/charges and returned pins; fresh trusted grant maps/unmaps under ordinary pressure; original backing fully refunded",
+        "[+    16.438000] [DMA metadata phases] 9 preparation and 8 disposal entries outside local guards; entry IRQ state preserved",
+        "[+    91.606965] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    }
+  ],
+  "validation": {
+    "focused_host_admission": {
+      "passed": 64,
+      "failed": 0,
+      "scope": "Production shared admission owners, policy, SDK and observer handles compiled through the existing host harness."
+    },
+    "shared_retirement": {
+      "passed": 16,
+      "failed": 0,
+      "scope": "Existing host tests for unchanged production retirement storage; includes deallocation-before-refund and inert abandonment."
+    },
+    "strict_kernel_checks": [
+      "AArch64 acpi,kernel_tests",
+      "x86_64 acpi,kernel_tests",
+      "AArch64 acpi minimal",
+      "x86_64 acpi minimal"
+    ],
+    "native_test_builds": "All native runners built kernels with current source and required assembly-section checks.",
+    "formatting": "cargo fmt --all -- --check and git diff --check passed"
+  },
+  "remaining_limits": [
+    "Table-ledger vector capacity has no separate metadata admission yet.",
+    "General heap and aggregate principal accounting remain open.",
+    "Serialized empty-node pressure and real NVMe adapter controls do not prove sustained hostile concurrent EL0 fairness or latency.",
+    "Allocator rejection is injected; native general heap OOM is not forced.",
+    "No new hardware timeout or outstanding device I/O is injected. Existing failure, quarantine and guarded abandonment owners supply the relevant complete-operation retention controls."
+  ]
+}

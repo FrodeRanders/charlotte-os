@@ -244,7 +244,10 @@ and complete outer contexts still need qualification.
 ### Mapping records and walker cache
 
 All three backends share `mapping_storage::Records` and the existing
-`PendingPin`/`MappingMaintenance` owners. A fallible admitted node joins its exact
+`PendingPin`/`MappingMaintenance` owners. Mapping, quarantine and SMMU cache
+nodes retain [IOMMU metadata byte/count admission](iommu-node-admission.md)
+through actual allocation lifetime, using the original domain-grant class.
+Root promotion cannot reclassify later nodes in that same domain. A fallible admitted node joins its exact
 pin before data leaves. Successful publication only relinks that node; unmap
 detaches the original record and carries its pin/pages/storage through typed
 hardware completion. Failed unmap relinks the same node into an admitted
