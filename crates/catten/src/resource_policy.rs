@@ -237,6 +237,11 @@ impl Policy {
         {
             return Err("object snapshot capacity");
         }
+        if m.object_pages
+            > self.memory_capability_nodes.ordinary[0] / core::mem::size_of::<usize>() as u64
+        {
+            return Err("object frame-vector capacity");
+        }
         let mut i = 0;
         while i < 2 {
             if m.principal_thread_metadata[i] == 0

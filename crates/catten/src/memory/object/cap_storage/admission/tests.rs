@@ -223,7 +223,9 @@ fn actual_pressure() {
     // A real published node is reclaimed at total exhaustion, with its original
     // ordinary charge despite promotion. Namespace storage stays until root close.
     close_cap(handle.id(), cap).unwrap();
-    let bytes = (Storage::allocation_bytes() + ObjectStorage::allocation_bytes()) as u64;
+    let bytes = (Storage::allocation_bytes()
+        + ObjectStorage::allocation_bytes()
+        + core::mem::size_of::<PAddr>()) as u64;
     assert_eq!(
         snapshot(),
         (
@@ -256,8 +258,9 @@ fn actual_pressure() {
     assert_eq!(snapshot(), before);
     crate::logln!(
         "[memory capability node pressure] {} ordinary + {} reserve unused payload nodes; \
-         capability+object/namespace layouts {}/{} bytes, ordinary/total byte ceilings {}/{}, \
-         node ceilings {}/{}; exact baseline after real cleanup and root reuse passed",
+         capability+object+frame-buffer/namespace release bytes {}/{} bytes, ordinary/total byte \
+         ceilings {}/{}, node ceilings {}/{}; exact baseline after real cleanup and root reuse \
+         passed",
         counts.0,
         counts.1,
         bytes,

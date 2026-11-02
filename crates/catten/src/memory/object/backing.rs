@@ -2,18 +2,22 @@
 //! one-shot physical release and post-completion metadata/account disposal.
 //! Abandonment retains every field; ordinary cleanup consumes the same owner.
 use super::*;
+mod frame_vector;
+pub(super) use frame_vector::FrameVector;
 
 #[cfg(any(test, feature = "kernel_tests"))]
 mod storage_tests;
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_storage() {
+    #[cfg(feature = "kernel_tests")]
+    frame_vector::test_admission();
     storage_tests::run();
 }
 
 /// Private backing keeps its unused object node. Published retirement carries
 /// the complete detached object node, including its original backing charge.
 struct FrameResources {
-    frames: Vec<PAddr>,
+    frames: FrameVector,
     charge: Option<crate::memory::budget::Charge>,
     storage: Option<ObjectStorage>,
     retired: Option<RetiredObject>,
@@ -59,7 +63,7 @@ impl ChargedFrames {
 
     pub(super) fn retired(node: RetiredObject) -> Self {
         Self(core::mem::ManuallyDrop::new(FrameResources {
-            frames: Vec::new(),
+            frames: FrameVector::default(),
             charge: None,
             storage: None,
             retired: Some(node),
@@ -71,7 +75,7 @@ impl ChargedFrames {
         self.0.retired.as_ref().map_or(self.0.frames.len(), |node| node.value().1.frames.len())
     }
 
-    fn frames_mut(&mut self) -> &mut Vec<PAddr> {
+    fn frames_mut(&mut self) -> &mut FrameVector {
         let fields = &mut *self.0;
         match fields.retired.as_mut() {
             Some(node) => &mut node.value_mut().1.frames,
@@ -135,12 +139,13 @@ impl ChargedFrames {
                     }
                 }
                 object.retired_caps.release();
+                object.frames.finish();
                 charge = Some(object.charge);
             });
             // Physical completion, payload and actual node free precede refund.
             drop(charge);
         }
-        drop(core::mem::take(&mut self.0.frames));
+        core::mem::take(&mut self.0.frames).finish();
         drop(self.0.charge.take());
         self.0.failed = false;
         false
@@ -156,7 +161,7 @@ impl ChargedFrames {
 
     pub(super) fn into_parts(
         mut self,
-    ) -> (ObjectStorage, Vec<PAddr>, crate::memory::budget::Charge) {
+    ) -> (ObjectStorage, FrameVector, crate::memory::budget::Charge) {
         assert!(self.0.retired.is_none() && !self.0.failed);
         let storage = self.0.storage.take().expect("staged object storage missing");
         let frames = core::mem::take(&mut self.0.frames);
@@ -235,6 +240,22 @@ impl ChargedFrames {
         owner: crate::memory::AddressSpaceHandle,
         pages: usize,
         allocate_storage: impl FnOnce(bool) -> Result<ObjectStorage, MemoryObjectError>,
+        after_frame: impl FnMut(usize) -> Result<(), MemoryObjectError>,
+    ) -> Result<Self, MemoryObjectError> {
+        Self::allocate_resources_with(
+            owner,
+            pages,
+            allocate_storage,
+            FrameVector::try_new,
+            after_frame,
+        )
+    }
+
+    fn allocate_resources_with(
+        owner: crate::memory::AddressSpaceHandle,
+        pages: usize,
+        allocate_storage: impl FnOnce(bool) -> Result<ObjectStorage, MemoryObjectError>,
+        allocate_vector: impl FnOnce(bool, usize) -> Result<FrameVector, MemoryObjectError>,
         mut after_frame: impl FnMut(usize) -> Result<(), MemoryObjectError>,
     ) -> Result<Self, MemoryObjectError> {
         // Capture trusted metadata class against the exact generation before
@@ -242,11 +263,7 @@ impl ChargedFrames {
         let platform = crate::memory::budget::platform_identity(owner.id()) == Some(owner);
         let (staged, ()) = Self::prepare(owner, pages)?.try_prepare(|staged| {
             staged.0.storage = Some(allocate_storage(platform)?);
-            staged
-                .0
-                .frames
-                .try_reserve_exact(pages)
-                .map_err(|_| MemoryObjectError::FrameAllocFailed)?;
+            staged.0.frames = allocate_vector(platform, pages)?;
             let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
             if !crate::resource_policy::frames_available(
                 allocator.free_frames() as u64,
@@ -282,7 +299,7 @@ impl ChargedFrames {
             crate::memory::budget::Error::Limit => MemoryObjectError::ResourceLimit,
         })?;
         Ok(Self(core::mem::ManuallyDrop::new(FrameResources {
-            frames: Vec::new(),
+            frames: FrameVector::default(),
             charge: Some(charge),
             storage: None,
             retired: None,

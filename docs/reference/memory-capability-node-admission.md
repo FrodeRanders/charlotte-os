@@ -79,24 +79,63 @@ and original metadata admission through the existing `ChargedFrames` receipt.
 Physical completion precedes payload and node disposal; actual node deallocation
 precedes its metadata refund. The physical sponsorship charge is released after
 node disposal. Partial physical failure or abandonment keeps the whole node and
-both original charges without cleanup or replay. Existing guarded private and
-published-owner fixtures also hold the metadata pool lock.
+original physical and metadata charges without cleanup or replay. Existing guarded
+private and published-owner fixtures also hold the metadata pool lock.
 
 The four layouts share the existing 3/4 MiB byte and 24576/32768 node defaults.
-The object layout is 224 bytes on supported 64-bit targets, including the
+The object layout is 248 bytes on supported 64-bit targets, including the
 16-byte charge (128 KiB extra at the 8192-object physical count ceiling). Native
-empty-layout controls admit about 14000 ordinary object candidates before byte
+empty-layout controls admit about 12600 ordinary object candidates before byte
 exhaustion, above the 6144 ordinary object planning ceiling; this does not promise
 that mixed or independent ceilings can be occupied together. Empty object-layout
 candidates exercise independent byte exhaustion, and actual
 allocation/copy tests exercise the new third-node rejection. Shared capacity now
 also bounds object records and makes them compete with capability metadata.
 These controls do not require raising numerical defaults; mixed workload planning
-may justify a reviewed increase. Frame-vector capacity, allocator bookkeeping,
-aggregate principal metadata and general heap admission remain separate.
+may justify a reviewed increase. Frame catalogs share the byte dimension as
+described below; allocator bookkeeping, aggregate principal metadata and general
+heap admission remain separate.
 The uncharged collection convenience factory is now test-only; production sites
 use explicit charged construction. This does not establish that every kernel
 allocation is admitted.
+
+## Object frame-vector capacity
+
+Private and published objects use `backing::FrameVector` for their physical-address
+catalog. It owns the exact-capacity vector and a byte-only reservation from
+`memory_capability_nodes`. Buffers contribute zero to the node count: their
+containing object node and original page/object reservation already bound their
+quantity. This is separate from mapping/copy/DMA snapshot-buffer admission and
+from the data pages themselves.
+
+The backing owner passes the same captured generation-qualified class to object
+storage and vector preparation. Copies retain source backing sponsorship, and
+moves transfer the same vector/charge without reclassification. Admission covers
+`pages * size_of(PAddr)` before allocation, checks exact capacity, and precedes
+physical allocator entry. A vector allocation error returns `FrameAllocFailed`;
+quota/size denial returns `ResourceLimit`. The existing complete preparation
+cancels its object node, authority prefix and original page/object reservation
+without publication. The operator profile rejects a maximum object catalog that
+cannot fit in the ordinary metadata byte budget.
+
+Only bounded push/pop and borrowed slice access are exposed; callers cannot grow
+or reserve the vector after physical identities enter it. Its retaining fallback
+keeps capacity and original admission, including while empty or after all release
+identities have been popped. Empty length is not physical completion. Confirmed
+backing release consumes the same catalog, frees its vector and only then refunds
+its original byte charge. Partial physical failure retains the whole catalog,
+object node, physical charge and terminal fence; no replay or early metadata
+refund is permitted.
+
+At the default maximum of 16384 pages, one catalog requests 128 KiB. Its inline
+owner adds 24 bytes per object (192 KiB at the 8192-object count ceiling), included
+in the 248-byte object-node layout. No extra holder allocation is needed. Shared
+3/4 MiB metadata defaults, count defaults and the 22-pool/version-9 snapshot stay
+unchanged. Frame catalogs now compete with node layouts for same-class bytes;
+real buffer pressure and the native campaigns need no limit increase. Larger
+object maxima or measured mixed workloads may warrant co-scaling the central
+metadata and snapshot limits. These independent ceilings do not guarantee RAM
+fit or sustained service fairness.
 
 ## Qualification and remaining scope
 
@@ -122,8 +161,7 @@ qualify arbitrary outer destructor/IRQ contexts.
 
 This advances R7-2/R7-3 and C05/C18. It bounds these requested node layouts,
 including their inline owning fields; nested authority/account allocations,
-frame-vector capacity, allocator overhead and general heap/principal admission
-remain separate. It
+allocator overhead and general heap/principal admission remain separate. It
 supplies no universal RAM-fit or essential-service fairness guarantee. Sustained
 concurrent EL0 pressure and broader outer guard/IRQ/ destructor contexts remain
 SEC-07/18 acceptance work.
@@ -140,3 +178,14 @@ authority, buffers, physical budgets and frames. A private backing owner capture
 ordinary class before promotion, survives root retirement and trusted successor
 reuse, then refunds its original charge on confirmed release. Existing complete
 backing fixtures retain nodes under physical failure and guarded abandonment.
+
+The [frame-vector evidence](../reports/audits/evidence/2026-11-02-object-frame-vector-admission.json)
+identifies production source and native artifacts. Host buffer-free tracing
+checks deallocation before refund, popped identities with retained capacity,
+constructor rejection, exact-size/bound rejection, trusted headroom and inert
+abandonment under the metadata-pool guard. Native controls exhaust ordinary and
+total byte admission using real empty buffers without changing node counts, and
+inject 64 allocated-vector rejections after object-node preparation but before
+physical allocation. Existing partial-frame, copy cancellation, publication,
+root-reuse and guarded backing fixtures exercise the same new catalog owner.
+Failed physical release retains empty but still allocated/charged capacity.

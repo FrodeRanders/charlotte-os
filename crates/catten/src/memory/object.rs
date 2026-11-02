@@ -72,8 +72,11 @@ pub use mapping::{
     unmap,
 };
 mod snapshot_storage;
-use backing::ChargedFrames;
 pub(crate) use backing::RetiredMemory;
+use backing::{
+    ChargedFrames,
+    FrameVector,
+};
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_object_storage() {
     snapshot_storage::tests::run();
@@ -205,7 +208,7 @@ pub struct MemoryObjectInfo {
 #[derive(Debug)]
 struct MemoryObject {
     owner: AddressSpaceId,
-    frames: Vec<PAddr>,
+    frames: FrameVector,
     charge: super::budget::Charge,
     mappings: mapping::storage::Mappings,
     lend_state: LendState,

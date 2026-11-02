@@ -319,12 +319,15 @@ the complete charge/node owner and supplies no replay permission.
 
 Object removal detaches the complete node into the existing `ChargedFrames`
 backing owner, carried by `RetiredMemory` or the existing last-pin cleanup path.
-The node retains the object, frame vector, original backing charge and remaining
-metadata. It leaves `MEMORY_OBJECTS` before physical release or node disposal.
+The node retains the object, admitted frame-vector capacity and its original
+byte charge, physical backing charge and remaining metadata. It leaves
+`MEMORY_OBJECTS` before physical release or node disposal.
 No teardown snapshot, recovery registry or separately movable metadata ticket
 is added.
 
-Physical release keeps the existing sixteen-frame batches. Attempted identities
+The catalog exposes borrowed slices and bounded push/pop, with no unchecked
+mutable vector or growth API. Physical release keeps the existing sixteen-frame
+batches. Attempted identities
 are consumed before each allocator call and never retried. The owner records
 its started/failed fence before the first attempt. Its fields use `ManuallyDrop`;
 interruption or rejected release cannot run implicit charge refunds or metadata
@@ -352,7 +355,9 @@ re-adopted or released later.
 Object records use the shared configurable memory-metadata byte/count pool,
 separately from existing page/object admission. Original backing-sponsor class
 survives publication, moves, root retirement and actual node deallocation.
-Frame-vector capacity and general principal/heap admission remain separate. Object lookup, sorted insertion and
+Frame-vector capacity shares the metadata byte budget through its own retaining
+owner; general principal/heap admission remains separate. Object lookup, sorted
+insertion and
 cursor scans are now linear; existing count limits do not prove worst-case
 hold time, pressure fairness or management progress. Other memory payload maps,
 factory/destructor contexts, physical-failure causes and historical failures

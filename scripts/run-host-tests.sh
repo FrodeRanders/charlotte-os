@@ -169,6 +169,48 @@ mod tables {
 EOF
 "$repo_root/target/host-self-tests/iommu-ledger-tests" --test-threads=1
 
+# Production object catalogs: original class, retained capacity and real free ordering.
+CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
+"$host_rustc" --edition=2024 --test --crate-name frame_vector_tests - \
+    -o "$repo_root/target/host-self-tests/frame-vector-tests" <<EOF
+#![feature(allocator_api)]
+#![allow(dead_code, unused_attributes)]
+extern crate alloc;
+extern crate self as charlotte_lifecycle;
+extern crate self as catten_syscall;
+#[path = "$repo_root/crates/catten-syscall/src/lib.rs"]
+mod syscall_format;
+pub use syscall_format::*;
+#[path = "$repo_root/crates/charlotte-lifecycle/src/resources.rs"]
+pub mod resources;
+#[path = "$repo_root/crates/catten/src/resource_policy.rs"]
+mod resource_policy;
+mod cpu { pub mod multiprocessor { pub mod spin { pub mod mutex {
+    pub struct Mutex<T>(std::sync::Mutex<T>);
+    impl<T> Mutex<T> {
+        pub const fn new(value: T) -> Self { Self(std::sync::Mutex::new(value)) }
+        pub fn lock(&self) -> std::sync::MutexGuard<'_, T> { self.0.lock().unwrap() }
+        pub fn try_lock(&self) -> Option<std::sync::MutexGuard<'_, T>> { self.0.try_lock().ok() }
+    }
+}}}}
+mod klib {
+    #[path = "$repo_root/crates/catten/src/klib/admission.rs"]
+    pub mod admission;
+}
+mod memory { pub mod object {
+    type PAddr=usize;
+    const MAX_MEMORY_OBJECT_PAGES: usize=crate::resource_policy::POLICY.memory.object_pages as usize;
+    #[derive(Debug, PartialEq, Eq)] enum MemoryObjectError { ResourceLimit, FrameAllocFailed }
+    pub mod backing {
+        use super::*;
+        #[path = "$repo_root/crates/catten/src/memory/object/backing/frame_vector.rs"]
+        pub mod frame_vector;
+    }
+}}
+
+EOF
+"$repo_root/target/host-self-tests/frame-vector-tests" --test-threads=1
+
 # Diagnostic capture uses the production compile-time resource policy too.
 # Compile both modules together rather than treating snapshot.rs as a crate root.
 CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \

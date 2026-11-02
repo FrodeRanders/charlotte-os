@@ -111,8 +111,20 @@ current owner. Moves, promotion and root reuse cannot reclassify them. Object-no
 quota rejection cancels the complete prefix before frame allocation/publication. Original admission follows published,
 detached and abandoned storage until actual node deallocation, before independent
 authority disposal. Promotion, logical retirement and ASID reuse supply no refund.
-Allocator overhead, nested allocations and aggregate principals remain separate;
+Allocator overhead, other nested allocations and aggregate principals remain separate;
 see \repofile|docs/reference/memory-capability-node-admission.md|.
+
+Object frame catalogs also use that pool's byte dimension, contributing zero node
+slots. The same captured backing class admits exact pointer-vector capacity
+before allocation and physical frame creation. The retaining catalog owner
+moves with the object and exposes only borrowed slices and bounded push/pop.
+Popping every identity never proves physical release or refunds allocated
+capacity. Confirmed cleanup frees the vector before refund; failure retains it
+with the physical charge and complete object node. A maximum catalog is 128 KiB
+at the default 16384-page object bound; the 24-byte inline owner is included in
+the 248-byte object-node layout. Numerical defaults remain unchanged, and profile
+validation requires a maximum catalog to fit ordinary metadata and snapshot byte
+ceilings. General heap/principal admission and sustained fairness remain open.
 
 Mapping preparation now owns its partial node and shared snapshot in inert
 fields before either factory. Ordinary constructor rejection and every

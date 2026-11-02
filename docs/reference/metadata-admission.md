@@ -64,7 +64,10 @@ retain their own existing fields.
 
 Byte counts are requested allocation layouts, not physical RAM or allocator
 bookkeeping. IOMMU metadata bytes include allocated ledger capacity and full
-replacement overlap; those buffers contribute zero to its node count. Bundle-only pools do not report bytes. Pools may describe nested
+replacement overlap; those buffers contribute zero to its node count. Object
+frame catalogs similarly contribute bytes and zero nodes to
+`memory_capability_nodes`, retaining original backing class through actual free.
+Bundle-only pools do not report bytes. Pools may describe nested
 allocations and must not be summed into a machine memory total. Limits reserve
 headroom in admission, not preallocated memory. This inventory supports sizing;
 it does not close R7's remaining allocation, sponsor, physical heap or concurrent

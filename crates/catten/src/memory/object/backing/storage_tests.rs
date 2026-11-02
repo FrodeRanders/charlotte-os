@@ -23,6 +23,7 @@ fn available() {
 }
 
 pub(super) fn run() {
+    vector_rejections();
     object_classification();
     rejections();
     partial_frames();
@@ -286,6 +287,7 @@ fn failed_physical_release() {
     let mut backing = retired.backing.take().unwrap();
     drop(retired);
     let frames = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    let original_metadata = cap_storage::admission::snapshot();
     let mut attempts = 0;
     assert!(backing.free_with(|batch| {
         available();
@@ -295,6 +297,9 @@ fn failed_physical_release() {
     }));
     assert_eq!(attempts, 1);
     assert!(backing.0.failed && backing.0.retired.is_some());
+    assert!(backing.0.retired.as_ref().unwrap().value().1.frames.is_empty());
+    assert_eq!(backing.0.retired.as_ref().unwrap().value().1.frames.capacity(), 1);
+    assert_eq!(cap_storage::admission::snapshot(), original_metadata);
     let metadata = cap_storage::admission::snapshot();
     assert_eq!(memory::budget::used(handle), amount());
     assert!(backing.free_with(|_| panic!("terminal physical attempt was replayed")));
@@ -318,7 +323,7 @@ fn failed_physical_release() {
 fn object_classification() {
     let handle = root();
     let before = cap_storage::admission::snapshot();
-    let bytes = ObjectStorage::allocation_bytes() as u64;
+    let bytes = (ObjectStorage::allocation_bytes() + core::mem::size_of::<PAddr>()) as u64;
     let backing = ChargedFrames::allocate_with(handle, 1, |platform| {
         assert!(!platform);
         memory::budget::mark_platform(handle);
@@ -345,5 +350,42 @@ fn object_classification() {
         "[memory object node class] original generation captured before allocation; promotion and \
          root reuse preserve ordinary node charge; late private backing release refunds the \
          original owner"
+    );
+}
+
+fn vector_rejections() {
+    let handle = root();
+    let metadata = cap_storage::admission::snapshot();
+    let physical = memory::budget::used(handle);
+    let frames = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    for _ in 0..64 {
+        let result = ChargedFrames::allocate_resources_with(
+            handle,
+            3,
+            prepare_storage,
+            |platform, pages| {
+                FrameVector::try_new_with(platform, pages, |vector, capacity| {
+                    vector.try_reserve_exact(capacity).unwrap();
+                    available();
+                    let used = cap_storage::admission::snapshot();
+                    let bytes = (ObjectStorage::allocation_bytes()
+                        + capacity * core::mem::size_of::<PAddr>())
+                        as u64;
+                    assert_eq!(used.0, [metadata.0[0] + bytes, metadata.0[1] + 1]);
+                    Err(MemoryObjectError::FrameAllocFailed)
+                })
+            },
+            |_| panic!("rejected frame catalog reached physical allocation"),
+        );
+        assert!(matches!(result, Err(MemoryObjectError::FrameAllocFailed)));
+        assert_eq!(cap_storage::admission::snapshot(), metadata);
+        assert_eq!(memory::budget::used(handle), physical);
+        assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), frames);
+    }
+    memory::close_user_address_space_handle(handle).unwrap();
+    crate::logln!(
+        "[object frame-vector preparation] 64 allocated-vector rejections after charged object \
+         preparation; no physical allocation, exact metadata/page/object refunds and original \
+         error preserved"
     );
 }

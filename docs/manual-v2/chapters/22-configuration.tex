@@ -195,7 +195,8 @@ between total and ordinary admission, not a guaranteed share for one service.
 Examples of settings that require joint review include:
 \begin{itemize}
     \item Memory-object size, aggregate domain/principal backing and snapshot
-        bytes. One maximum-sized object must fit an ordinary frame snapshot.
+        bytes. One maximum-sized object catalog must fit both ordinary metadata
+        and frame-snapshot byte limits.
         Increasing object size can also increase mapping work and pin lifetime.
     \item Mapping nodes, scratch extents and snapshots. Concurrent preparations,
         live objects and uncertain cleanup all consume admission. Raising the

@@ -579,7 +579,13 @@ the corrected RPC polling paths, and the remaining notification gaps.
   metadata refund, then release original physical sponsorship. Two-slot allocation
   or copy prefixes must reject the third object node without source mutation,
   leaked authority or physical allocation. Complete backing fallback remains
-  inert under the metadata-pool guard. Frame-vector admission is separate. See
+  inert under the metadata-pool guard. Object frame catalogs use byte-only
+  reservations from the same pool, with the same captured backing class and
+  exact capacity prepared before physical allocation. Keep vector and charge in
+  the same retaining `FrameVector` owner; expose only borrowed slices and bounded
+  push/pop, never unchecked growth. Popped identities/empty length cannot refund
+  live capacity or prove physical completion. Free the vector before refund on
+  confirmed cleanup; failed release retains it with both original budgets. See
   `docs/reference/memory-capability-node-admission.md`.
 
 - Root memory-account nodes share the root-metadata byte/count pool with policy,

@@ -1,0 +1,196 @@
+{
+  "schema": "charlotte.object-frame-vector-admission.v1",
+  "date": "2026-11-02",
+  "base_revision": "386242f6b71d15b8a1fe4219d5321dcfe56adc3c",
+  "scope": "Physical-address catalog capacity for private and published memory objects uses byte-only admission from memory_capability_nodes. The complete catalog retains its original backing-source class and allocation through moves, consumed release identities and uncertain physical cleanup. Numeric limits, node counts, physical completion rules and the statistics/SDK ABI are unchanged.",
+  "source_sha256": {
+    "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
+    "crates/catten-syscall/src/metadata_pools.rs": "8d806c82affc0a5bac177537b54a250a69fe7542caa28989164e58916b72101c",
+    "crates/catten/src/klib/admission.rs": "b10d5402c22e29ddc3087881c4031cd8d2ee60bd6646e52b53c62239c4bf2138",
+    "crates/catten/src/memory/budget.rs": "a067cbfa4c68a5bdeeb8f9b73b47fb0b819cee4c96142f724b351bad2d0c39d8",
+    "crates/catten/src/memory/object.rs": "679ebe9e6572accf9ef5919b2c0efba810fe7d9f2053c25fa9ede2992d6d1c31",
+    "crates/catten/src/memory/object/backing.rs": "45ce4b13b32031c02093b4ec9a15a8bf294c53a170a46ec15daee69f7cfafbe6",
+    "crates/catten/src/memory/object/backing/frame_vector.rs": "2dc4b15d56ef8cabfccdf10516b7410d99048f13bef120943bb57b73310f9f8c",
+    "crates/catten/src/memory/object/backing/frame_vector/host_tests.rs": "6d71cb38731c583dcf46473c1696d9424f93910ada789a579e4edb8a31466646",
+    "crates/catten/src/memory/object/backing/frame_vector/tests.rs": "1f3a4f0ad1ccc335a17b26bee97b4b945fc094753d33003cf46ca5701c8abcd2",
+    "crates/catten/src/memory/object/backing/storage_tests.rs": "bede2d4e8881047ba37c2510ca3525dda6139670917fe4bb72888386ca787e3d",
+    "crates/catten/src/memory/object/cap_storage/admission/tests.rs": "6b9596bee08e407f08fc74b6fc1cbf0e160f6aa8fd907a79de585a58faedb9f1",
+    "crates/catten/src/memory/object/transfer.rs": "1983824fb4325839ca38fce87c0daa55bd720a53a0d278cbdb1b794f6367815b",
+    "crates/catten/src/resource_policy.rs": "c19d52cf9bd6cd5bb1a9a077cfdbe03eebc873b9d8af18c87be2073d30880f9d",
+    "crates/catten/src/resource_policy/defaults.rs": "949cf96cfeeaab96d42898a63859830466082ad98b80f12a8e8e99f4deb54156",
+    "crates/catten/src/resource_policy/larger.rs": "1b1931ff708012be415b6f6f28429ab77fc919c79613025aefedc764d23a885c",
+    "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
+    "scripts/run-host-tests.sh": "4f94f4472365fc759c8450ac8539ff8c6da2291ed8868e2d3d499494cebb2696",
+    "scripts/tests/test-resource-policy.py": "93215b76eb8412f04150b739e92ad202b28ef9577c81508f2ab2434143f5303c"
+  },
+  "artifact_note": "Runtime Rust sources were frozen before all campaigns. Later documentation edits alter tracked-diff identities; source and archived artifact hashes identify the code exercised. Service sources and SDK/ABI are unchanged; staged signed bundles were reused and runners regenerated signed security fixtures.",
+  "policy": {
+    "field": "memory_capability_nodes",
+    "ordinary": [
+      3145728,
+      24576
+    ],
+    "total": [
+      4194304,
+      32768
+    ],
+    "vector_charge": "[pages * size_of(PAddr), 0]; exact capacity is reserved before allocation and checked afterwards",
+    "default_maximum_pages": 16384,
+    "maximum_catalog_bytes": 131072,
+    "object_node_bytes": 248,
+    "extra_inline_charge_bytes_per_object": 24,
+    "extra_inline_charge_at_8192_object_ceiling_bytes": 196608,
+    "pool_inventory": "22 existing pools; statistics payload version 9; no new pool or unit",
+    "capture": "ChargedFrames captures platform_identity(owner.id()) == Some(exact_handle) before page/object reservation and preparation. ObjectStorage and FrameVector receive this same captured class. Copy preserves the existing source backing sponsorship separately from destination capability metadata; move transfers the same vector and charge. Later promotion or ASID reuse cannot reclassify refunds.",
+    "preparation": "Admit object storage, then full exact catalog capacity, before physical allocator entry. The constructor owns vector and charge before allocation; allocated constructor rejection frees its buffer before refund. The complete backing preparation then cancels its object node and original page/object reservation. Quota or size denial returns ResourceLimit; allocation failure returns FrameAllocFailed. No unchecked growth API is exposed.",
+    "retention": "FrameVector uses inert ManuallyDrop storage within complete backing custody. Popping physical identities preserves allocated capacity and its full original charge. Empty length does not establish physical completion. Failure/abandonment retains vector, object node, both budgets and terminal fence without physical replay.",
+    "release": "Confirmed physical completion permits consuming finish; the actual buffer is freed before its metadata reservation drops. Published object cleanup also frees its object node before returning the original physical charge. Unused empty preparation is explicitly disposed only through the existing cancellation path.",
+    "decision": "Keep numeric defaults. A maximum catalog requests 128 KiB; the additional 24-byte inline owner needs no holder allocation and is included in the measured 248-byte object-node layout. Catalogs compete with existing metadata for same-class bytes, but these real-pressure and native controls pass without increased limits. Larger object maxima or measured mixed-workload pressure can justify co-scaling central metadata/snapshot budgets. Independent ceilings do not promise simultaneous RAM fit or fairness.",
+    "profile_validation": "Compile-time validation requires one maximum object catalog to fit the ordinary memory_capability_nodes byte ceiling, alongside the existing snapshot-buffer bound. Default and larger profiles execute actual policy tests; an incompatible catalog profile fails compilation."
+  },
+  "native_campaigns": [
+    {
+      "arch": "aarch64",
+      "instance": "frame-vector-20261102-arm",
+      "cpus": 4,
+      "revision": "386242f6b71d15b8a1fe4219d5321dcfe56adc3c",
+      "kernel_sha256": "4983dd229e0527909fbd45ff53dc5024eb5ccadf3c478d19f8e06a485eebcbe9",
+      "boot_image_sha256": "4676236574b019a8f823711a788da94067dad22f63cbbb45a7ccb3022629840d",
+      "initial_disk_sha256": "891d405cf7c355e83bf9ca3c9f62ca34dde0281e5dd6411bab91ec50fb13f48f",
+      "tracked_diff_sha256": "a7b1346a801fdca58d0408462aecb63d2dc68f1c43469433572e3d456647acd3",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T17:15:03Z",
+      "platform": "arm",
+      "configuration": "security-test; four CPUs; fresh storage; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "07c9667903548b30652a318e01d9b128eac0d4373ef5a32e3f6e00c1842b1c11",
+      "serial_sha256": "5fb32900b2c501cec36033ed37c4b680eb272d01696909d45ca39626d80179c7",
+      "service_sha256": {
+        "observe.elf": "426ca8279bb1510cc8dbd319a12f34bff37a18786690f53b71c1d1e68684ef26",
+        "security_probe.elf": "11a9f88261e2a8064100e7494d83c418d351a0422bac08e9807128ab964e43f3"
+      },
+      "summary": {
+        "passed": 19,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+     4.216402] [object frame-vector admission] real empty buffers ordinary=15754 trusted=16383; byte-only ordinary/total exhaustion, heap-held pre-allocator denial, 64 allocated-prefix rejections, captured trusted reserve, node counts unchanged and exact recovery passed; max=131072 bytes",
+        "[+     4.218278] [object frame-vector preparation] 64 allocated-vector rejections after charged object preparation; no physical allocation, exact metadata/page/object refunds and original error preserved",
+        "[+     4.219556] [memory object node class] original generation captured before allocation; promotion and root reuse preserve ordinary node charge; late private backing release refunds the original owner",
+        "[+     4.232820] [backing abandonment] inert reservation-only, private and published owners; all local memory/table/heap/frame/budget/authority guards held for data-owner Drop; two real data pages, three original page/object reservations, complete nodes/authority retained past root retirement and ASID reuse; 128 physical-prefix rejections, 64 post-guard failures and 64 real copy cancellations/publication releases passed",
+        "[+     4.233700] [memory object storage] 128 charged preparation and 64 copied-prefix rejections, 64 heap-held object relinks/detaches, post-physical node/charge disposal, non-reused IDs and terminal release rejection passed; one data page, complete object node and original charge deliberately retained",
+        "[+     4.340210] [memory capability node pressure] 24525 ordinary + 8188 reserve unused payload nodes; capability+object+frame-buffer/namespace release bytes 320/64 bytes, ordinary/total byte ceilings 3145728/4194304, node ceilings 24576/32768; exact baseline after real cleanup and root reuse passed",
+        "[+     4.357386] [memory object node pressure] bytes=248 ordinary=12659 trusted=4228; real empty object layouts exhaust independent byte limits below count ceilings; heap-held pre-allocation denials, trusted reserve and exact recovery passed",
+        "[+    85.889094] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "arch": "x86_64",
+      "instance": "frame-vector-20261102-intel",
+      "cpus": 4,
+      "revision": "386242f6b71d15b8a1fe4219d5321dcfe56adc3c",
+      "kernel_sha256": "ef82d787962fe4c6d3002c593e683d418df24e01a5da63a028c9eb36747b3e16",
+      "boot_image_sha256": "edd7e19f195633879c3f8d75ac28301edca9b890e3b7bea9cdaa31e9e5865926",
+      "initial_disk_sha256": "dff68957bc4d1a7f18c96ea8c95dca1beee17699d4db0b8c4549aff3e4d32252",
+      "tracked_diff_sha256": "a7b1346a801fdca58d0408462aecb63d2dc68f1c43469433572e3d456647acd3",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T17:16:16Z",
+      "platform": "intel",
+      "configuration": "security-test; four CPUs; fresh storage; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "5a7dccb927eac9257a6d5036f3a373770942132abea61230a22f8b0a313847db",
+      "serial_sha256": "c618c5d1e21b8cd98d5e13f14ec2c04efe1aa173ce5f8cc7fd74141023ee64a9",
+      "service_sha256": {
+        "observe.elf": "e1f481137ee8aed15d2eaaf0092713b1f3f863ed2027932608aacd67056a4a38",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c"
+      },
+      "summary": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+     2.387253] [object frame-vector admission] real empty buffers ordinary=15370 trusted=16383; byte-only ordinary/total exhaustion, heap-held pre-allocator denial, 64 allocated-prefix rejections, captured trusted reserve, node counts unchanged and exact recovery passed; max=131072 bytes",
+        "[+     2.389760] [object frame-vector preparation] 64 allocated-vector rejections after charged object preparation; no physical allocation, exact metadata/page/object refunds and original error preserved",
+        "[+     2.391893] [memory object node class] original generation captured before allocation; promotion and root reuse preserve ordinary node charge; late private backing release refunds the original owner",
+        "[+     2.408742] [backing abandonment] inert reservation-only, private and published owners; all local memory/table/heap/frame/budget/authority guards held for data-owner Drop; two real data pages, three original page/object reservations, complete nodes/authority retained past root retirement and ASID reuse; 128 physical-prefix rejections, 64 post-guard failures and 64 real copy cancellations/publication releases passed",
+        "[+     2.410856] [memory object storage] 128 charged preparation and 64 copied-prefix rejections, 64 heap-held object relinks/detaches, post-physical node/charge disposal, non-reused IDs and terminal release rejection passed; one data page, complete object node and original charge deliberately retained",
+        "[+     2.515935] [memory capability node pressure] 24501 ordinary + 8188 reserve unused payload nodes; capability+object+frame-buffer/namespace release bytes 320/64 bytes, ordinary/total byte ceilings 3145728/4194304, node ceilings 24576/32768; exact baseline after real cleanup and root reuse passed",
+        "[+     2.534593] [memory object node pressure] bytes=248 ordinary=12647 trusted=4228; real empty object layouts exhaust independent byte limits below count ceilings; heap-held pre-allocation denials, trusted reserve and exact recovery passed",
+        "[+    92.624277] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "arch": "x86_64",
+      "instance": "frame-vector-20261102-amd",
+      "cpus": 4,
+      "revision": "386242f6b71d15b8a1fe4219d5321dcfe56adc3c",
+      "kernel_sha256": "9cfb2562edd150153a171fe049c947787277f182da875ed5fc5da04df3d03862",
+      "boot_image_sha256": "8c67c8a444d2d82b22aa1b32334e8fe53f29e403f59685fc4bb06f46524dd1a7",
+      "initial_disk_sha256": "dff68957bc4d1a7f18c96ea8c95dca1beee17699d4db0b8c4549aff3e4d32252",
+      "tracked_diff_sha256": "08027b98d14e575cbe17f9a3892b1b1db5f53dcc6cd933b508cff7f6119adea7",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T17:21:15Z",
+      "platform": "amd",
+      "configuration": "security-test; four CPUs; fresh storage; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "2dcdfd74d1b0a4a1ad309f05ac99d764620ea26c22bb4f30029c4b49ef9ef8b3",
+      "serial_sha256": "22aef03a26fb3bf83cf654bbdb7a1df65dff7a1f1128e05b237dc10246c57c29",
+      "service_sha256": {
+        "observe.elf": "e1f481137ee8aed15d2eaaf0092713b1f3f863ed2027932608aacd67056a4a38",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c"
+      },
+      "summary": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+     2.144343] [object frame-vector admission] real empty buffers ordinary=15370 trusted=16383; byte-only ordinary/total exhaustion, heap-held pre-allocator denial, 64 allocated-prefix rejections, captured trusted reserve, node counts unchanged and exact recovery passed; max=131072 bytes",
+        "[+     2.146696] [object frame-vector preparation] 64 allocated-vector rejections after charged object preparation; no physical allocation, exact metadata/page/object refunds and original error preserved",
+        "[+     2.148645] [memory object node class] original generation captured before allocation; promotion and root reuse preserve ordinary node charge; late private backing release refunds the original owner",
+        "[+     2.162833] [backing abandonment] inert reservation-only, private and published owners; all local memory/table/heap/frame/budget/authority guards held for data-owner Drop; two real data pages, three original page/object reservations, complete nodes/authority retained past root retirement and ASID reuse; 128 physical-prefix rejections, 64 post-guard failures and 64 real copy cancellations/publication releases passed",
+        "[+     2.164750] [memory object storage] 128 charged preparation and 64 copied-prefix rejections, 64 heap-held object relinks/detaches, post-physical node/charge disposal, non-reused IDs and terminal release rejection passed; one data page, complete object node and original charge deliberately retained",
+        "[+     2.255174] [memory capability node pressure] 24501 ordinary + 8188 reserve unused payload nodes; capability+object+frame-buffer/namespace release bytes 320/64 bytes, ordinary/total byte ceilings 3145728/4194304, node ceilings 24576/32768; exact baseline after real cleanup and root reuse passed",
+        "[+     2.271596] [memory object node pressure] bytes=248 ordinary=12647 trusted=4228; real empty object layouts exhaust independent byte limits below count ceilings; heap-held pre-allocation denials, trusted reserve and exact recovery passed",
+        "[+    90.116126] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    }
+  ],
+  "validation": {
+    "host_suite": "Complete scripts/run-host-tests.sh passed, including the production frame-vector harness (47 tests: five buffer-owner controls plus actual shared admission/policy/SDK tests), the incompatible catalog-profile compile rejection and expected rejected legacy crypto mutation controls.",
+    "host_free_trace": "A pointer-specific System allocator tracer observes actual Vec deallocation with the full original production reservation still charged. Popped identities preserve capacity, constructor rejection frees before refund, quota rejection precedes allocation and trusted reserve remains distinct. Unguarded and metadata-guarded abandonment performs no deallocation/refund.",
+    "strict_kernel_checks": [
+      "AArch64 acpi,kernel_tests",
+      "x86_64 acpi,kernel_tests",
+      "AArch64 acpi minimal",
+      "x86_64 acpi minimal"
+    ],
+    "native_builds": "Current kernels built with executable/read-only assembly-section checks in every runner.",
+    "native_controls": [
+      "Real empty frame vectors reach ordinary and total byte ceilings with unchanged node counts; heap-held quota denials prove rejection before allocator entry and trusted progress remains available at ordinary exhaustion.",
+      "64 allocated-vector constructor rejections restore metadata exactly. Another 64 rejections after charged object preparation verify unchanged physical free frames, page/object reservations and original error before physical allocation.",
+      "Source-class capture survives promotion during storage preparation, root retirement and trusted successor reuse; late private cleanup returns the original catalog/node charge.",
+      "Existing partial physical preparation, public copy cancellation, publication, confirmed cleanup and guarded private/published backing abandonment exercise the same complete catalog owner.",
+      "The existing terminal physical-release rejection consumes all recorded identities but retains nonzero catalog capacity and unchanged metadata charge. Retry is not authorized."
+    ],
+    "formatting": "cargo fmt --all -- --check and git diff --check passed."
+  },
+  "remaining_limits": [
+    "Other weak/control storage, remaining payload/registry allocations, allocator bookkeeping and general kernel heap/aggregate logical-principal admission remain open.",
+    "Serialized real-buffer pressure and kernel adapters do not establish sustained hostile concurrent EL0 fairness or all caller/IRQ/latency qualification.",
+    "Allocation/physical failure controls use injected adapters; native general heap OOM is not forced.",
+    "Existing deliberate native backing-retention fixtures now retain catalog capacity admission too. No new native physical page/root/authority-retention fixture was introduced. The host-only inert-drop control deliberately retains two empty one-entry buffers (16 requested bytes) until process exit.",
+    "Metadata charges and empty catalogs supply no physical completion or replay authority."
+  ]
+}

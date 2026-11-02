@@ -71,13 +71,18 @@ unlimited node capacity.
 | `scratch_nodes` | node-layout bytes; nodes | — | 384 KiB; 6144 nodes | 512 KiB; 8192 nodes |
 | `snapshot_buffers` | vector-buffer bytes; buffers | — | 3 MiB; 6144 buffers | 4 MiB; 8192 buffers |
 | `mapping_nodes` | node-layout bytes; nodes | — | 768 KiB; 6144 nodes | 1 MiB; 8192 nodes |
-| `memory_capability_nodes` | object/capability/namespace/read-borrower node-layout bytes; nodes | — | 3 MiB; 24576 nodes | 4 MiB; 32768 nodes |
+| `memory_capability_nodes` | object/capability/namespace/read-borrower layouts and object frame-vector bytes; nodes | — | 3 MiB; 24576 nodes | 4 MiB; 32768 nodes |
 | `memory.objects` | backing objects | 1024 | 6144 | 8192 |
 
 IOMMU ledger buffers consume only the `iommu_nodes` byte dimension; the node
 count still describes actual registry/mapping/cache nodes. Captured grant/boot
 class persists through old/candidate capacity overlap and actual buffer release.
 Physical table pages retain their separate RAM-ratio and domain/unit limits.
+
+Object frame catalogs likewise consume only `memory_capability_nodes` bytes,
+not node slots, alongside their already-admitted object record. Maximum object
+size must fit both ordinary metadata catalog bytes and snapshot-buffer bytes;
+profile validation rejects an incompatible maximum before kernel build.
 
 Per-source defaults are 64 scheduler waiters, 128 endpoint/thread watches and
 128 completion callbacks. Maximum endpoint capacity is 4096 entries; diagnostic
