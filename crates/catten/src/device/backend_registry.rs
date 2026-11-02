@@ -2,17 +2,15 @@
 //! Preparation stays in the complete grant; installed nodes stay in its unit.
 use core::mem::ManuallyDrop;
 
-use super::{
-    dma::Error,
-    registry::Map,
+pub(super) mod budget;
+pub(super) use budget::Map;
+use budget::{
+    Prepared as PreparedEntry,
+    Retired as RetiredEntry,
 };
-use crate::{
-    klib::collections::retirement_list::{
-        PreparedEntry,
-        RetiredEntry,
-    },
-    memory::physical::PAddr,
-};
+
+use super::dma::Error;
+use crate::memory::physical::PAddr;
 
 struct Storage<D, S> {
     domain: Option<PreparedEntry<(u64, Option<D>)>>,
@@ -20,27 +18,29 @@ struct Storage<D, S> {
     context: Option<PreparedEntry<(u16, PAddr)>>,
     source_needed: bool,
     context_needed: bool,
+    platform: bool,
 }
 pub(super) struct Nodes<D, S>(ManuallyDrop<Storage<D, S>>);
 impl<D, S: Ord + Copy> Nodes<D, S> {
-    pub(super) fn new(source_needed: bool, context_needed: bool) -> Self {
+    pub(super) fn new(source_needed: bool, context_needed: bool, platform: bool) -> Self {
         Self(ManuallyDrop::new(Storage {
             domain: None,
             source: None,
             context: None,
             source_needed,
             context_needed,
+            platform,
         }))
     }
 
     pub(super) fn allocate(&mut self) -> Result<(), Error> {
         assert!(self.0.domain.is_none() && self.0.source.is_none() && self.0.context.is_none());
-        self.0.domain = Some(prepare(1)?);
+        self.0.domain = Some(prepare(1, self.0.platform)?);
         if self.0.source_needed {
-            self.0.source = Some(prepare(2)?);
+            self.0.source = Some(prepare(2, self.0.platform)?);
         }
         if self.0.context_needed {
-            self.0.context = Some(prepare(3)?);
+            self.0.context = Some(prepare(3, self.0.platform)?);
         }
         Ok(())
     }
@@ -80,13 +80,13 @@ impl<D, S> Drop for Nodes<D, S> {
     }
 }
 
-fn prepare<T>(_stage: usize) -> Result<PreparedEntry<T>, Error> {
+fn prepare<T>(_stage: usize, platform: bool) -> Result<PreparedEntry<T>, Error> {
     #[cfg(feature = "kernel_tests")]
     tests::boundary(false);
     if test_fault!(tests::reject(_stage)) {
         return Err(Error::MapFailed);
     }
-    PreparedEntry::try_new().map_err(|_| Error::MapFailed)
+    budget::prepare(platform).map_err(|_| Error::MapFailed)
 }
 
 /// Typed preparation travels with DmaCreation through private/registered errors,

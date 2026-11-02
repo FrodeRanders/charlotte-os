@@ -5,12 +5,12 @@ use core::sync::atomic::{
     Ordering,
 };
 
-use super::*;
+use super::{
+    Map,
+    *,
+};
 use crate::{
-    device::{
-        registry::Map,
-        *,
-    },
+    device::*,
     memory,
 };
 
@@ -82,6 +82,9 @@ impl Drop for Probe {
 
 #[allow(clippy::drop_non_drop)] // Exercise complete-grant ManuallyDrop abandonment.
 pub(in crate::device) fn run() {
+    #[cfg(feature = "kernel_tests")]
+    budget::test_admission();
+    let backing_before = budget::snapshot();
     begin_real();
     let stages = if cfg!(target_arch = "x86_64") {
         3
@@ -89,7 +92,7 @@ pub(in crate::device) fn run() {
         2
     };
     for stage in 1..=stages {
-        let mut nodes = Nodes::<Probe, u16>::new(true, cfg!(target_arch = "x86_64"));
+        let mut nodes = Nodes::<Probe, u16>::new(true, cfg!(target_arch = "x86_64"), false);
         reject_next(stage);
         assert_eq!(nodes.allocate(), Err(Error::MapFailed));
         assert_eq!(REJECT.load(Ordering::Acquire), 0);
@@ -99,14 +102,16 @@ pub(in crate::device) fn run() {
     let mut sources = Map::new();
     #[cfg(target_arch = "x86_64")]
     let mut contexts = Map::new();
-    let mut first = Nodes::<Probe, u16>::new(true, cfg!(target_arch = "x86_64"));
+    let mut first = Nodes::<Probe, u16>::new(true, cfg!(target_arch = "x86_64"), false);
     first.allocate().unwrap();
     {
         let heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
-        first.publish_domain(&mut domains, 1, Probe);
-        first.publish_source(&mut sources, 3, 1);
-        #[cfg(target_arch = "x86_64")]
-        first.publish_context(&mut contexts, 0, PAddr::from(4096u64)); // Metadata ABI fixture, no backing.
+        budget::with_locked(|| {
+            first.publish_domain(&mut domains, 1, Probe);
+            first.publish_source(&mut sources, 3, 1);
+            #[cfg(target_arch = "x86_64")]
+            first.publish_context(&mut contexts, 0, PAddr::from(4096u64)); // Metadata ABI fixture, no backing.
+        });
         let moved = domains.get_mut(&1).unwrap().take().unwrap();
         assert!(!domains.values().all(Option::is_some));
         *domains.get_mut(&1).unwrap() = Some(moved);
@@ -115,7 +120,7 @@ pub(in crate::device) fn run() {
     first.finish();
     let retired = {
         let heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
-        let retired = domains.take(&1).unwrap();
+        let retired = budget::with_locked(|| domains.take(&1).unwrap());
         *sources.get_mut(&3).unwrap() = 0;
         drop(heap);
         retired
@@ -124,8 +129,14 @@ pub(in crate::device) fn run() {
     release(retired);
     assert_eq!(DROPS.load(Ordering::Acquire), 1);
     let fence = sources.get(&3).unwrap() as *const u64;
-    let mut reuse = Nodes::<Probe, u16>::new(false, false);
+    let retained = budget::snapshot();
+    let mut reuse = Nodes::<Probe, u16>::new(false, false, true);
     reuse.allocate().unwrap();
+    assert_eq!(
+        budget::snapshot().1,
+        retained.1,
+        "trusted reuse reclassified the original fence/context"
+    );
     {
         let heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
         reuse.publish_domain(&mut domains, 2, Probe);
@@ -139,6 +150,7 @@ pub(in crate::device) fn run() {
     #[cfg(target_arch = "x86_64")]
     release(contexts.take(&0).unwrap());
     assert_eq!(DROPS.load(Ordering::Acquire), 2);
+    assert_eq!(budget::snapshot(), backing_before);
     finish_real();
 
     // Complete grant fallback owns partially admitted backend metadata even
@@ -155,15 +167,19 @@ pub(in crate::device) fn run() {
     {
         grant.resources.creation.metadata = Some(
             if crate::environment::acpi::sdt::dmar::discover_vtd().is_some() {
-                Preparing::Vtd(Nodes::new(true, true))
+                Preparing::Vtd(Nodes::new(true, true, grant.resources.creation.backing_platform))
             } else {
-                Preparing::AmdVi(Nodes::new(true, false))
+                Preparing::AmdVi(Nodes::new(true, false, grant.resources.creation.backing_platform))
             },
         );
     }
     #[cfg(target_arch = "aarch64")]
     {
-        grant.resources.creation.metadata = Some(Preparing::Smmu(Nodes::new(true, false)));
+        grant.resources.creation.metadata = Some(Preparing::Smmu(Nodes::new(
+            true,
+            false,
+            grant.resources.creation.backing_platform,
+        )));
     }
     grant.resources.creation.metadata.as_mut().unwrap().allocate().unwrap();
     assert!(grant.resources.creation.is_armed());
@@ -174,11 +190,13 @@ pub(in crate::device) fn run() {
         Err(Error::OperationInFlight)
     );
     let before = dma_tables::used();
+    let retained_nodes = budget::snapshot();
     dma_tables::test_drop_under_guards(|| {
         let _devices = DEVICES.lock();
-        node_budget::with_locked(|| drop(grant));
+        node_budget::with_locked(|| budget::with_locked(|| drop(grant)));
     });
     assert_eq!(dma_tables::used(), before);
+    assert_eq!(budget::snapshot(), retained_nodes);
     assert_eq!(crate::capability::admission_tests::test_namespace_used(root.id()), 1);
     assert_eq!(
         memory::close_user_address_space_handle(root),

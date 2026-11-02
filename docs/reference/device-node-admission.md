@@ -96,8 +96,9 @@ collection's host tests cover deallocation-before-refund and retaining fallback.
 The campaigns are serialized kernel-fixture pressure, not sustained hostile
 concurrent EL0 fairness. Oversized layout types test byte denial without allocating
 those payloads; native general heap OOM is not forced, and allocation errors are
-injected. IOMMU backend domain/requester/context nodes, per-domain mapping/walker
-metadata and table ledgers still need independent backing admission. Physical
+injected. IOMMU backend domain/requester/context nodes have separate
+[backing admission](iommu-node-admission.md); per-domain mapping/walker metadata
+and table ledgers still need independent backing admission. Physical
 reset/completion, arbitrary wider destructor/IRQ contexts, aggregate principal
 accounting and latency remain separate qualification. SEC-07 remains partial;
 existing C12/C13/C14 and G1/G4 cleanup boundaries remain applicable.

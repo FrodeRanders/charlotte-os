@@ -169,8 +169,8 @@ struct Smmu {
     strtab: PAddr,
     _tables: Tables,
     next_domain: u64,
-    domains: super::registry::Map<u64, Option<Domain>>,
-    streams: super::registry::Map<u32, u64>,
+    domains: super::backend_registry::Map<u64, Option<Domain>>,
+    streams: super::backend_registry::Map<u32, u64>,
 }
 
 impl UnitBacking for Smmu {
@@ -515,8 +515,8 @@ fn initialize(
         strtab: PAddr::from(0u64),
         _tables: Tables::new(Scope::Unit),
         next_domain: 1,
-        domains: super::registry::Map::new(),
-        streams: super::registry::Map::new(),
+        domains: super::backend_registry::Map::new(),
+        streams: super::backend_registry::Map::new(),
     });
     let smmu = owner.value_mut();
     let mut rollback_private = true;
@@ -664,7 +664,11 @@ pub(crate) fn create_domain_with_reset(
             let asid = u16::try_from(id).map_err(|_| Error::MapFailed)?;
             let next = id.checked_add(1).ok_or(Error::MapFailed)?;
             creation.metadata = Some(super::backend_registry::Preparing::Smmu(
-                super::backend_registry::Nodes::new(!smmu.streams.contains_key(&sid), false),
+                super::backend_registry::Nodes::new(
+                    !smmu.streams.contains_key(&sid),
+                    false,
+                    creation.backing_platform,
+                ),
             ));
             creation.metadata.as_mut().unwrap().allocate()?;
             match smmu.streams.get(&sid) {
@@ -1251,7 +1255,7 @@ pub(super) fn test_registry_snapshot(sid: u32) -> (u64, Option<u64>, usize, usiz
 /// Its caller retains the real mapped-domain root through the probe.
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_with_claimed_unit(action: impl FnOnce()) {
-    let mut preparation = super::DmaCreation::new();
+    let mut preparation = super::DmaCreation::new(false);
     super::domain_creation::prepare(
         &SMMU,
         &mut preparation,

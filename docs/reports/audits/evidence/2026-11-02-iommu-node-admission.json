@@ -1,0 +1,236 @@
+{
+  "schema": "charlotte.iommu-node-admission.v1",
+  "date": "2026-11-02",
+  "base_revision": "1cef1177ce8d4b8a9551563bad4d9f7a0c989509",
+  "scope": "Independent requested-byte/count backing admission for IOMMU domain cells, persistent requester/stream fences and VT-d context metadata, through existing complete grant, unit and detached owners.",
+  "source_sha256": {
+    "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
+    "crates/catten/src/device/amd_vi.rs": "d1e99d7bff485801a1c65a1df6828b9d763d2b5db95c1bf409537d10c222a8b7",
+    "crates/catten/src/device/backend_registry.rs": "affbb2209769726579b1443ff8b73b16b53ec4aa956f87cbfcfae55499edc2d2",
+    "crates/catten/src/device/backend_registry/budget.rs": "9beef2a026f430c88d72ace60c226ff35c3a40f71ef8e13b7b38d950a765b12e",
+    "crates/catten/src/device/backend_registry/budget/tests.rs": "efddd55e6b05490ca1ed55023599b271dd13d066a080f9a773818306f19855a4",
+    "crates/catten/src/device/backend_registry/tests.rs": "5b3283e849242dc6dc52db5faa6edaf0515e4933279ba5e6f286cbe2df805458",
+    "crates/catten/src/device/dma_tables.rs": "54f8ea261833fb893c220ac0599ce99a0921ea84c380f6a1e62bb64a2d8b7bc2",
+    "crates/catten/src/device/domain_creation/tests.rs": "c4385a8c5a301e1741a5aae7b469979f9bf969a5817baf06cdf6a38bbf0ca773",
+    "crates/catten/src/device/mod.rs": "6fc791e01882459581ef5491a201b18d822e6ed4fdecf3169dc9069dfeb96498",
+    "crates/catten/src/device/publication.rs": "f22b7ad2958cd3b97373ccde5b4bc61741c037bcbab56225edcec0eeddec7da4",
+    "crates/catten/src/device/recovery_tests.rs": "395531e273b93834d5e2c834b49b57661a3831c4669f446bde0000ebafe24c04",
+    "crates/catten/src/device/smmu.rs": "e7e9e3fc3a4297a1922b1b077d8f4905a443ff5f6e5f8d8df14fb6a5b281fe38",
+    "crates/catten/src/device/vt_d.rs": "e9720ab455748209ae90c53f3004ff680d06c309fc5a7f9d44b4f6dd0f585792",
+    "crates/catten/src/klib/collections/retirement_list.rs": "ef0447d659221379641fad66a9d93489574062cebb855d01e3247496716a0d65",
+    "crates/catten/src/resource_policy.rs": "8caa3b6d05f5470eff7c0269b59d259523184c77d5704667a2f1dfce97a29bba",
+    "crates/catten/src/resource_policy/defaults.rs": "949cf96cfeeaab96d42898a63859830466082ad98b80f12a8e8e99f4deb54156",
+    "crates/catten/src/resource_policy/tests.rs": "69a3fc381ce69b89bca6014aceaf008168a2587d334593b9b69042d23455d316",
+    "crates/charlotte-lifecycle/src/resources.rs": "9ec29fce823650806ede3dc1a9539543dd5ccc784bbadee05d8478844a247270",
+    "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
+    "scripts/tests/test-resource-policy.py": "05e518a7f3cc0627cddbb324c3b3f683a09bc67d71d4aa1d2191a23eb8f22032"
+  },
+  "artifact_note": "Runtime sources were frozen before all campaigns. Every manifest tracked-diff identity equals the final runtime patch; documentation/evidence edits followed manifest preparation. New source identities are included explicitly.",
+  "policy": {
+    "field": "iommu_nodes",
+    "dimensions": [
+      "actual requested retirement-node layout bytes including charge and inline payload storage",
+      "prepared/published/retained nodes"
+    ],
+    "ordinary": [
+      18874368,
+      196608
+    ],
+    "total": [
+      25165824,
+      262144
+    ],
+    "charge_bytes": 16,
+    "charge_overhead_at_total_count_ceiling_bytes": 4194304,
+    "decision": "Total count is four times the existing 65536 unified-capability planning ceiling, with a quarter trusted reserve. Domain cells, persistent fences, context metadata and candidates share the headroom. Actual requester-only count pressure requests 9/12 MiB ordinary/total; the independent 18/24 MiB byte ceilings also permit layout growth. Existing resource and hardware-ID limits are unchanged; no RAM is preallocated.",
+    "cost": "16 extra bytes per node, a captured backing-class flag in existing preparation owners, short admission/refund operations and the existing MapFailed rejection. No extra holder allocation, runtime registry or cleanup family.",
+    "classification": "GrantAdmission retains its generation-captured backing class; PreparedDmaDomain transfers it into DmaCreation before backend entry, separately from resource/waiter grants. Every Nodes candidate captures that original value. No later ASID/role/requester lookup chooses reserve; raw fixtures explicitly select ordinary.",
+    "publication": "All required candidates precede reset, next-ID mutation, domain backing and descriptor publication. Partial rejection stays with the existing complete grant for post-guard explicit cancellation. Publication only relinks prepared nodes.",
+    "release": "Domain cells stay charged through extracted payloads, hardware maintenance, table release and data unpins. Post-backend detachment/deallocation precedes refund. Zero requester fences and VT-d context metadata remain unit-owned and charged; later trusted reuse cannot reclassify their original ordinary admission. Units currently have no teardown refund path.",
+    "exclusions": "Mapping/walker metadata, table-ledger vectors, nested allocations, allocator bookkeeping, aggregate principal/general-heap usage and common live administration remain separate."
+  },
+  "native_campaigns": [
+    {
+      "platform": "arm",
+      "instance": "iommu-nodes-20261102-arm",
+      "architecture": "aarch64",
+      "cpus": 4,
+      "fresh_storage": true,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T11:21:03Z",
+      "base_revision": "1cef1177ce8d4b8a9551563bad4d9f7a0c989509",
+      "tracked_runtime_diff_sha256": "4096bd4313b2cd013db3cdf9884233d1b40d8abe88925a5219f8b68cb65c4ddc",
+      "kernel_sha256": "00c536c439f171207f6a581e667d5917caca09787fa3be5a48d98db518c3c79a",
+      "boot_image_sha256": "7c7c11b973e9c0660862160cd8f69fc8abf44bb6d7d6ee7efb707bf6fe46cf9a",
+      "initial_disk_sha256": "2072c54ccda7f4def2811e85d91b5e145ac3d0389855b73c07cdca67df9f0b85",
+      "bundle_map_sha256": "4a5ee89fd763eed1af5a7613cfc7a2428c1e0b623ac6bf63e6ec7eb5fdc2bd38",
+      "runner_exit_code": 0,
+      "diagnostic_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "passed": 19,
+      "failed": 0,
+      "pending": 0,
+      "native_layout_bytes": {
+        "requester": 48,
+        "smmu-domain": 152
+      },
+      "byte_pressure": {
+        "ordinary_candidates": 124173,
+        "trusted_candidates": 41391,
+        "active_domain_layout_bytes": 152
+      },
+      "serial_sha256": "dde7e68588e07d902491818ad3f75db4691cce438c80246c2ccbb739d85a41f5",
+      "receipts": [
+        "[+     9.494432] [backend node layout] requester=48 bytes; 64 allocator rejections passed",
+        "[+     9.494866] [backend node layout] smmu-domain=152 bytes; 64 allocator rejections passed",
+        "[+     9.763044] [backend node count pressure] actual requester-layout candidates ordinary=196608 trusted=65536 at 196608/262144; heap-held all-layout denials, captured grant class, trusted reserve and one/two/three-node rollback/recovery passed",
+        "[+     9.931608] [backend node byte pressure] actual domain-layout empty candidates ordinary=124173 trusted=41391 at bytes=152; ordinary/total byte exhaustion below count ceilings, 128 heap-held byte denials and exact recovery passed",
+        "[+     9.932360] [backend node admission] requested-layout bytes/count, original captured backing class, empty real-layout pressure and complete preparation rollback passed; charge=16 bytes",
+        "[+     9.936052] [backend registry ownership] node rejection, heap-held publication/claimed-cell restoration/detach and exact zero-fence reuse passed; guarded complete-grant abandonment retains one root/reservation and unused backend nodes without new IOMMU table/data charge",
+        "[+    10.003328] [DMA creation ownership] exact unit/engine state restored on success/error; detached-domain and absent-engine claims reject before work; complete-unit/grant Drop under all guards retains one unit and one domain table, two data frames, metadata, exact root and original authority reservation",
+        "[+    10.199228] [DMA creation ownership] backend error preserves registered obligation through unlocked rollback; confirmed refund and failed exact root/reservation retention passed (one additional retained root/reservation)",
+        "[+    11.110306] [backend node real rejection] 32 quota denials before NVMe reset/ID/table publication; requester, registry, authority and table charges unchanged",
+        "[+    11.111290] [backend registry rejection] every required node rejected before reset/domain IDs/backing; original requester/registry snapshot, table charges and authority preserved",
+        "[+    11.124300] [DMA metadata rejection] mapping/walker admission rejected before new table/data leaves; exact pin cleanup and unchanged table charges; same domain remains usable",
+        "[+    11.160982] [device recovery] rejected drain retained/fenced DMA; real retry, old-MMIO exclusion and QEMU NVMe reset/reassignment passed",
+        "[+    84.893852] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "platform": "intel",
+      "instance": "iommu-nodes-20261102-intel",
+      "architecture": "x86_64",
+      "cpus": 4,
+      "fresh_storage": true,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T11:22:11Z",
+      "base_revision": "1cef1177ce8d4b8a9551563bad4d9f7a0c989509",
+      "tracked_runtime_diff_sha256": "4096bd4313b2cd013db3cdf9884233d1b40d8abe88925a5219f8b68cb65c4ddc",
+      "kernel_sha256": "78160cc1f7fe9cda81380703f1eced10328a555fd0a41f5360167ae0e018dc75",
+      "boot_image_sha256": "a906c7184fb497001d0189761d80422250623ba6597e509d7c85ba04c7f351d8",
+      "initial_disk_sha256": "bae2e64e0fb6f9c80fbec2647799a5faa9f591d7385dc7e337cd17673532ccc4",
+      "bundle_map_sha256": "1e8d1d5b4aa82acc192c0afdb4b577ee5617a233b0e41452a3eb7aa148b9f8d2",
+      "runner_exit_code": 0,
+      "diagnostic_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "passed": 17,
+      "failed": 0,
+      "pending": 0,
+      "native_layout_bytes": {
+        "requester": 48,
+        "vtd-domain": 128,
+        "amd-domain": 120,
+        "vtd-context": 48
+      },
+      "byte_pressure": {
+        "ordinary_candidates": 147456,
+        "trusted_candidates": 49152,
+        "active_domain_layout_bytes": 128
+      },
+      "serial_sha256": "40f6a73bf2d400a74c78953d3f7493651eba7ccb15169521bf6d6d522205d8ee",
+      "receipts": [
+        "[+    13.430984] [backend node layout] requester=48 bytes; 64 allocator rejections passed",
+        "[+    13.431701] [backend node layout] vtd-domain=128 bytes; 64 allocator rejections passed",
+        "[+    13.432369] [backend node layout] amd-domain=120 bytes; 64 allocator rejections passed",
+        "[+    13.433006] [backend node layout] vtd-context=48 bytes; 64 allocator rejections passed",
+        "[+    13.640078] [backend node count pressure] actual requester-layout candidates ordinary=196608 trusted=65536 at 196608/262144; heap-held all-layout denials, captured grant class, trusted reserve and one/two/three-node rollback/recovery passed",
+        "[+    13.797038] [backend node byte pressure] actual domain-layout empty candidates ordinary=147456 trusted=49152 at bytes=128; ordinary/total byte exhaustion below count ceilings, 128 heap-held byte denials and exact recovery passed",
+        "[+    13.798278] [backend node admission] requested-layout bytes/count, original captured backing class, empty real-layout pressure and complete preparation rollback passed; charge=16 bytes",
+        "[+    13.803257] [backend registry ownership] node rejection, heap-held publication/claimed-cell restoration/detach and exact zero-fence reuse passed; guarded complete-grant abandonment retains one root/reservation and unused backend nodes without new IOMMU table/data charge",
+        "[+    13.872794] [DMA creation ownership] exact unit/engine state restored on success/error; detached-domain and absent-engine claims reject before work; complete-unit/grant Drop under all guards retains one unit and one domain table, two data frames, metadata, exact root and original authority reservation",
+        "[+    14.062405] [DMA creation ownership] backend error preserves registered obligation through unlocked rollback; confirmed refund and failed exact root/reservation retention passed (one additional retained root/reservation)",
+        "[+    14.889037] [backend node real rejection] 32 quota denials before NVMe reset/ID/table publication; requester, registry, authority and table charges unchanged",
+        "[+    14.895138] [backend registry rejection] every required node rejected before reset/domain IDs/backing; original requester/registry snapshot, table charges and authority preserved",
+        "[+    14.907748] [DMA metadata rejection] mapping/walker admission rejected before new table/data leaves; exact pin cleanup and unchanged table charges; same domain remains usable",
+        "[+    14.970850] [device recovery] rejected drain retained/fenced DMA; real retry, old-MMIO exclusion and QEMU NVMe reset/reassignment passed",
+        "[+    90.930219] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "platform": "amd",
+      "instance": "iommu-nodes-20261102-amd",
+      "architecture": "x86_64",
+      "cpus": 4,
+      "fresh_storage": true,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T11:26:18Z",
+      "base_revision": "1cef1177ce8d4b8a9551563bad4d9f7a0c989509",
+      "tracked_runtime_diff_sha256": "4096bd4313b2cd013db3cdf9884233d1b40d8abe88925a5219f8b68cb65c4ddc",
+      "kernel_sha256": "c2e5b98d4fae3f5097b2f0db1939d463c815ff31bfc7aba17d875ceadaf18eaf",
+      "boot_image_sha256": "e5dfab315f6bc73ad73ed4cfb1e15bcda8b477a404127ab4f5f22324aabdb1b9",
+      "initial_disk_sha256": "bae2e64e0fb6f9c80fbec2647799a5faa9f591d7385dc7e337cd17673532ccc4",
+      "bundle_map_sha256": "1e8d1d5b4aa82acc192c0afdb4b577ee5617a233b0e41452a3eb7aa148b9f8d2",
+      "runner_exit_code": 0,
+      "diagnostic_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "passed": 17,
+      "failed": 0,
+      "pending": 0,
+      "native_layout_bytes": {
+        "requester": 48,
+        "vtd-domain": 128,
+        "amd-domain": 120,
+        "vtd-context": 48
+      },
+      "byte_pressure": {
+        "ordinary_candidates": 157286,
+        "trusted_candidates": 52429,
+        "active_domain_layout_bytes": 120
+      },
+      "serial_sha256": "7a8d1d5f0511887d95c210db3d7a43f5ef07b7a7b549b5ea5f2831c49c9e1040",
+      "receipts": [
+        "[+    12.581428] [backend node layout] requester=48 bytes; 64 allocator rejections passed",
+        "[+    12.582096] [backend node layout] vtd-domain=128 bytes; 64 allocator rejections passed",
+        "[+    12.582762] [backend node layout] amd-domain=120 bytes; 64 allocator rejections passed",
+        "[+    12.583375] [backend node layout] vtd-context=48 bytes; 64 allocator rejections passed",
+        "[+    12.824601] [backend node count pressure] actual requester-layout candidates ordinary=196608 trusted=65536 at 196608/262144; heap-held all-layout denials, captured grant class, trusted reserve and one/two/three-node rollback/recovery passed",
+        "[+    13.017375] [backend node byte pressure] actual domain-layout empty candidates ordinary=157286 trusted=52429 at bytes=120; ordinary/total byte exhaustion below count ceilings, 128 heap-held byte denials and exact recovery passed",
+        "[+    13.018601] [backend node admission] requested-layout bytes/count, original captured backing class, empty real-layout pressure and complete preparation rollback passed; charge=16 bytes",
+        "[+    13.023486] [backend registry ownership] node rejection, heap-held publication/claimed-cell restoration/detach and exact zero-fence reuse passed; guarded complete-grant abandonment retains one root/reservation and unused backend nodes without new IOMMU table/data charge",
+        "[+    13.091462] [DMA creation ownership] exact unit/engine state restored on success/error; detached-domain and absent-engine claims reject before work; complete-unit/grant Drop under all guards retains one unit and one domain table, two data frames, metadata, exact root and original authority reservation",
+        "[+    13.272870] [DMA creation ownership] backend error preserves registered obligation through unlocked rollback; confirmed refund and failed exact root/reservation retention passed (one additional retained root/reservation)",
+        "[+    14.107431] [backend node real rejection] 32 quota denials before NVMe reset/ID/table publication; requester, registry, authority and table charges unchanged",
+        "[+    14.108452] [backend registry rejection] every required node rejected before reset/domain IDs/backing; original requester/registry snapshot, table charges and authority preserved",
+        "[+    14.123174] [DMA metadata rejection] mapping/walker admission rejected before new table/data leaves; exact pin cleanup and unchanged table charges; same domain remains usable",
+        "[+    14.176038] [device recovery] rejected drain retained/fenced DMA; real retry, old-MMIO exclusion and QEMU NVMe reset/reassignment passed",
+        "[+    89.347458] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    }
+  ],
+  "native_failures": [],
+  "bundle_identity_encoding": "SHA-256 of UTF-8 JSON bundle_sha256 mapping with sorted keys and comma/colon separators without whitespace.",
+  "host_validation": {
+    "shared_collection": "rustc --edition=2024 --test crates/catten/src/klib/collections/retirement_list.rs; run resulting binary; 16 passed, zero failed; exit zero",
+    "shared_collection_log_sha256": "8654132bbc2688b806121877eff9bf083220590ef97022fafe97cac0ad58473a",
+    "policy": "python3 scripts/tests/test-resource-policy.py; three groups passed; exit zero",
+    "policy_log_sha256": "30641f4a8206f86c7b3b3bfc53f775d952dee0eebf475c67ce816629733497e7",
+    "kernel_tests_clippy": "CATTEN_AARCH64_SERVICE_BUNDLE set to test bundle; cargo clippy -p catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi,kernel_tests --offline --locked -- -D warnings; exit zero",
+    "kernel_tests_clippy_log_sha256": "72e809d9125c3fbd593c8a4073e554298a6d23e45239062a63dcd7959c1af384",
+    "minimal_clippy": "Same target/strict offline locked command with minimal bundle and acpi only; exit zero",
+    "minimal_clippy_log_sha256": "b47e687cfba23d390053ad916d6b724b4bab615c6e7beb350ef517644b280832",
+    "formatting": "cargo fmt --all -- --check; exit zero",
+    "full_host_suite": "Not repeated for this kernel-only change. Changed policy and shared retirement collection run directly; all new family and complete-backend-owner controls run in the three native guests."
+  },
+  "controls": [
+    "Real empty requester-layout nodes fill ordinary 196608 and total 262144 count ceilings. Sixty-four heap-held denial rounds per class exercise every applicable layout: two layouts on ARM and four on x86 (256/512 direct constructor denials respectively).",
+    "Complete grant preparation uses real ordinary/trusted roots and their actual captured backing class. Ordinary rejects at ordinary exhaustion, trusted progresses, both reject at total exhaustion. Returning one/two/three slots checks partial metadata rollback and exact recovery without any physical domain payload.",
+    "Real empty active-backend domain-layout nodes fill actual ordinary/total byte ceilings with count headroom. A trusted allocation progresses at ordinary byte exhaustion; 64 ordinary and 64 trusted heap-held byte denials and exact backing recovery pass. These allocate full production-layout storage, without creating hardware tables or domain payloads.",
+    "Each applicable layout injects 64 node-allocator rejections with exact recovery: 128 on ARM and 256 on x86. Requested native sizes are recorded inline per campaign.",
+    "Existing metadata publication and domain-cell detachment controls add the actual budget guard under their existing heap hold. A trusted replacement reuses the original ordinary zero fence at the same value address; original fence/context classification and charges survive until explicit fixture release.",
+    "The existing complete-grant abandonment owner retains the same original root, authority, device nodes and backend candidates under its prior guards plus both backing-pool guards. No additional deliberate-retention owner is introduced; complete fallback remains inert.",
+    "The real NVMe grant fixture independently saturates ordinary count admission using a test counter reservation, then requires 32 MapFailed rejections before reset/next-ID/table publication. Exact requester/registry snapshots, table charges, authority usage and disabled PCI configuration remain unchanged. This adapter control is counter-only; actual backing pressure is covered by separate controls above.",
+    "Existing per-stage node rejection, private/registered rollback, reset/reassignment, map/unmap and acknowledged domain destruction execute in the same suite. Shared retirement host controls establish deallocation-before-refund and inert detached-node fallback."
+  ],
+  "qualification_limits": [
+    "Serialized kernel fixtures, not sustained hostile concurrent EL0 fairness or forced native general heap OOM. Allocation errors are injected. Real backing pressure uses empty production-layout nodes; no physical domain/table obligation is fabricated.",
+    "The real NVMe quota control uses counter saturation and retains existing reset contracts; no new hardware timeout or outstanding device I/O is injected. Published unit fences/context nodes have no current unit-teardown refund path.",
+    "No new resource grant, physical completion proof, lease kind, replay/retry owner, cleanup registry or owner family. Existing C14/C15 and wider caller/IRQ/latency G1/G4 boundaries remain.",
+    "Per-domain mapping/walker and table-ledger backing, other registry/control storage, allocator bookkeeping, aggregate signed-principal/general-heap accounting and common live usage reporting remain open. SEC-07 remains partial."
+  ]
+}

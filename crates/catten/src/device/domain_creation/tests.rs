@@ -71,7 +71,7 @@ pub(super) fn boundary(phase: Phase) {
     );
     assert_eq!(crate::capability::admission_tests::test_namespace_used(root.id()), authority);
     assert_eq!(
-        dma::create_domain_with_reset(u32::MAX, None, &mut DmaCreation::new(), |_, _| panic!(
+        dma::create_domain_with_reset(u32::MAX, None, &mut DmaCreation::new(false), |_, _| panic!(
             "creation claim reached reset"
         )),
         Err(Error::OperationInFlight)
@@ -153,13 +153,13 @@ fn payload() -> Payload {
 pub(super) fn run() {
     readiness::serialized();
     let slot = Mutex::new(UnitSlot::new(UnitState::Installed(payload())));
-    let mut grant = DmaCreation::new();
+    let mut grant = DmaCreation::new(false);
     for fails in [false, true] {
         assert_eq!(
             prepare(&slot, &mut grant, ready, |unit, _| {
                 assert!(matches!(slot.lock().state, UnitState::Claimed));
                 assert_eq!(slot.lock().installed().err(), Some(Error::OperationInFlight));
-                assert!(Preparing::begin(&slot, &mut DmaCreation::new(), ready).is_err());
+                assert!(Preparing::begin(&slot, &mut DmaCreation::new(false), ready).is_err());
                 unit.commands.as_mut().unwrap().push(0xbeef);
                 if fails {
                     Err(Error::HardwareTimeout)

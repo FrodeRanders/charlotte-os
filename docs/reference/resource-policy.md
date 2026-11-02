@@ -9,11 +9,11 @@ operator procedure, authority, planning and qualification process.
 [Policy](../../crates/catten/src/resource_policy.rs) groups typed, copyable
 immutable settings. Family-local constant aliases forward to those fields;
 existing reservation helpers still enforce admission at their owning boundary.
-Twenty metadata families share the checked `AdmissionPool` counter mechanics:
+Twenty-one metadata families share the checked `AdmissionPool` counter mechanics:
 root metadata, global namespace nodes, authority nodes, mailbox endpoint nodes,
 deferred source-disposal nodes, observer backing, completion registry nodes,
-device namespace/payload nodes, principal history, thread metadata,
-thread-table backing, ASID-table backing, waiter, timer, completion and
+device namespace/payload nodes, IOMMU backend nodes, principal history, thread
+metadata, thread-table backing, ASID-table backing, waiter, timer, completion and
 capability/IPC/mailbox namespace accounts,
 scratch nodes, snapshot buffers, mapping nodes and memory-capability nodes.
 Each retains its own lock, typed charge, captured
@@ -24,9 +24,9 @@ These counters supply no independent cleanup authority or classification source.
 Existing numerical defaults are preserved; memory-capability node and
 thread-table, ASID-table, waiter-account, timer-account, completion-account and
 namespace-account, global namespace-node, authority-node, mailbox-node,
-deferred-node, observer-backing, completion-node and device-node admission add
-the separately documented pools below. These are defaults, not fixed application
-requirements or workload sizing guarantees.
+deferred-node, observer-backing, completion-node, device-node and IOMMU-node
+admission add the separately documented pools below. These are defaults, not
+fixed application requirements or workload sizing guarantees.
 
 ## Fixed-pool inventory
 
@@ -61,6 +61,7 @@ unlimited node capacity.
 | `deferred_nodes` | source-disposal node-layout bytes; nodes | — | 768 KiB; 12288 nodes | 1 MiB; 16384 nodes |
 | `completion_nodes` | completion/detached/CQ node-layout bytes; nodes | — | 6 MiB; 15360 nodes | 8 MiB; 20480 nodes |
 | `device_nodes` | device namespace/payload node-layout bytes; nodes | — | 12 MiB; 104448 nodes | 16 MiB; 139264 nodes |
+| `iommu_nodes` | domain/requester/context node-layout bytes; nodes | — | 18 MiB; 196608 nodes | 24 MiB; 262144 nodes |
 | `principal_history` | node-layout bytes; nodes | — | 768 KiB; 3072 nodes | 1 MiB; 4096 nodes |
 | `thread_metadata` | context/node bytes; bundles | principal 1 MiB; 128 bundles | 6 MiB; 3072 bundles | 8 MiB; 4096 bundles |
 | `thread_table` | three-vector bytes; backing slots, including replacement overlap | principal 16 MiB; 16384 slots | 24 MiB; 24576 slots | 32 MiB; 32768 slots |

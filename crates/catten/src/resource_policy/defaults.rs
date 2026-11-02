@@ -79,6 +79,10 @@ pub(super) const POLICY: Policy = Policy {
         total: [16 * 1024 * 1024, 139_264],
         ordinary: [12 * 1024 * 1024, 104_448],
     },
+    iommu_nodes: Pool {
+        total: [24 * 1024 * 1024, 262_144],
+        ordinary: [18 * 1024 * 1024, 196_608],
+    },
     mailbox_records: Scoped {
         domain: [512],
         pool: Pool {

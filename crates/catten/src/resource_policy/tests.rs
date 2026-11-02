@@ -55,6 +55,7 @@ fn exercise(p: Policy) {
         p.observer_backing,
         p.completion_nodes,
         p.device_nodes,
+        p.iommu_nodes,
         p.principal_history,
         p.thread_metadata,
         p.thread_table,
@@ -151,6 +152,12 @@ fn invalid_ordering_zero_and_machine_overflow_reject() {
     assert!(p.validate().is_err());
     p.device_nodes = DEFAULT.device_nodes;
     p.device_nodes.ordinary[1] = p.device_nodes.total[1];
+    assert!(p.validate().is_err());
+    p.device_nodes = DEFAULT.device_nodes;
+    p.iommu_nodes.ordinary[0] = 0;
+    assert!(p.validate().is_err());
+    p.iommu_nodes = DEFAULT.iommu_nodes;
+    p.iommu_nodes.ordinary[1] = p.iommu_nodes.total[1];
     assert!(p.validate().is_err());
 }
 #[test]

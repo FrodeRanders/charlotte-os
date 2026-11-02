@@ -340,8 +340,9 @@ the corrected RPC polling paths, and the remaining notification gaps.
   before allocation. Keep backing reserve separate from resource grants; retain
   original charges through unused candidates, publication, detached cleanup and
   actual node deallocation. Complete grant/close/namespace fallback remains inert
-  under the node-pool guard too. IOMMU backend/mapping/walker and ledger backing
-  remain separate. See `docs/reference/device-node-admission.md`.
+  under the node-pool guard too. IOMMU backend nodes have separate
+  `iommu_nodes` admission; mapping/walker and ledger backing remain separate.
+  See `docs/reference/device-node-admission.md`.
 
 - Mailbox endpoint candidates use typed `mailbox_node_budget` storage and
   independent `mailbox_nodes` byte/count admission before other preparation
@@ -912,6 +913,17 @@ the corrected RPC polling paths, and the remaining notification gaps.
   the scheduled worker. See `docs/reference/thread-retirement.md`.
 
 ## Devices and IOMMU backing
+
+- Backend domain/requester/context nodes use typed `backend_registry::Map`
+  storage and independent `iommu_nodes` byte/count admission. Transfer the exact
+  grant's original backing class into `DmaCreation` before backend entry,
+  separately from waiter/resource grants. Admit all required candidates before
+  reset, ID mutation or hardware backing; retain partial preparation in the
+  complete grant. Domain-cell refund follows confirmed physical cleanup and node
+  deallocation. Zero requester fences and context metadata keep their original
+  unit-owned charge through later domain reuse; never reclassify or refund them
+  on domain close. Keep complete fallback inert under the pool guard. See
+  `docs/reference/iommu-node-admission.md`.
 
 - IOMMU backing uses `device::dma_tables::Tables` for domain roots/intermediates,
   SMMU descriptors and shared unit tables/queues/completion cells. Reserve actual

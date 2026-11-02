@@ -126,7 +126,7 @@ fn mapping_unlocked(
         Err(dma::Error::OperationInFlight)
     );
     assert_eq!(
-        dma::create_domain_with_reset(u32::MAX, None, &mut DmaCreation::new(), |_, _| panic!(
+        dma::create_domain_with_reset(u32::MAX, None, &mut DmaCreation::new(false), |_, _| panic!(
             "mapping engine reached reset"
         )),
         Err(dma::Error::OperationInFlight)
@@ -216,6 +216,28 @@ pub(crate) fn run() {
     let sid = dma::stream_id(requester).unwrap();
     let before = dma::test_registry_snapshot(sid);
     assert_eq!(before.1, None, "registry fixture requester already registered");
+    #[cfg(feature = "kernel_tests")]
+    backend_registry::budget::with_ordinary_pressure(|| {
+        let charges = dma_tables::used();
+        let authority = crate::capability::admission_tests::test_namespace_used(owner.id());
+        for _ in 0..32 {
+            assert_eq!(
+                grant_dma_domain(owner.id(), requester, None),
+                Err(backend_failure(dma::Error::MapFailed))
+            );
+            assert_eq!(dma::test_registry_snapshot(sid), before);
+            assert_eq!(dma_tables::used(), charges);
+            assert_eq!(
+                crate::capability::admission_tests::test_namespace_used(owner.id()),
+                authority
+            );
+            reset::test_assert_disabled_config_available(&crate::DEVICE_TOPOLOGY.pcie);
+        }
+    });
+    crate::logln!(
+        "[backend node real rejection] 32 quota denials before NVMe reset/ID/table publication; \
+         requester, registry, authority and table charges unchanged"
+    );
     #[cfg(target_arch = "x86_64")]
     let stages = if crate::environment::acpi::sdt::dmar::discover_vtd().is_some() && before.3 == 0 {
         3
@@ -379,7 +401,7 @@ pub(crate) fn run() {
                             dma::create_domain_with_reset(
                                 sid,
                                 None,
-                                &mut DmaCreation::new(),
+                                &mut DmaCreation::new(false),
                                 |_, _| panic!("claimed engine reached reset")
                             ),
                             Err(dma::Error::OperationInFlight)
@@ -434,7 +456,7 @@ pub(crate) fn run() {
                         dma::create_domain_with_reset(
                             requester,
                             None,
-                            &mut DmaCreation::new(),
+                            &mut DmaCreation::new(false),
                             |_, _| panic!("claimed requester reached reset")
                         ),
                         Err(dma::Error::OperationInFlight)

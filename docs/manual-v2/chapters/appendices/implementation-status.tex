@@ -358,6 +358,9 @@ storage readiness and does not synthesize a self-test verdict. See
         Device namespace and MMIO/IRQ/DMA payload nodes likewise retain separate
         backing admission through unused preparation and confirmed retirement,
         with generation-captured storage class distinct from resource privileges.
+        IOMMU domain/requester/context registry nodes have separate backing
+        admission; unit-owned fences and contexts retain original charges beyond
+        domain destruction. Mapping/walker and ledger backing remain gaps.
         Connection, retained-call and outstanding-reply records have separate
         domain/node count admission. Grantors sponsor direct connections;
         callers sponsor call/reply pairs and solicited returned connections.

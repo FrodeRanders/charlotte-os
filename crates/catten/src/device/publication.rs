@@ -8,12 +8,17 @@ pub(super) struct GrantAdmission {
 }
 pub(super) struct Resources {
     owner: AddressSpaceId,
+    backing_platform: bool,
     pub(super) address_space: Option<AddressSpaceOperation>,
     pub(super) reservation: Option<crate::capability::Reservation>,
     storage: Option<registry::PreparedStorage>,
     authority: Option<crate::capability::PreparedReservation>,
 }
 impl GrantAdmission {
+    pub(super) fn backing_platform(&self) -> bool {
+        self.resources.backing_platform
+    }
+
     pub(super) fn platform(&self) -> bool {
         self.resources.owner == crate::memory::KERNEL_ASID
             || self.resources.address_space.as_ref().is_some_and(|root| {
@@ -33,6 +38,7 @@ impl GrantAdmission {
         let mut admission = Self {
             resources: ManuallyDrop::new(Resources {
                 owner,
+                backing_platform,
                 address_space,
                 reservation: None,
                 storage: None,

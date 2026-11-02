@@ -272,10 +272,10 @@ struct Unit {
     max_domains: u64,
     root_table: PAddr,
     tables: Tables,
-    context_tables: super::registry::Map<u16, PAddr>,
+    context_tables: super::backend_registry::Map<u16, PAddr>,
     next_domain: u64,
-    domains: super::registry::Map<u64, Option<Domain>>,
-    sources: super::registry::Map<u16, u64>,
+    domains: super::backend_registry::Map<u64, Option<Domain>>,
+    sources: super::backend_registry::Map<u16, u64>,
 }
 
 impl Unit {
@@ -475,10 +475,10 @@ fn initialize(
         max_domains,
         root_table: PAddr::from(0u64),
         tables: Tables::new(Scope::Unit),
-        context_tables: super::registry::Map::new(),
+        context_tables: super::backend_registry::Map::new(),
         next_domain: 1,
-        domains: super::registry::Map::new(),
-        sources: super::registry::Map::new(),
+        domains: super::backend_registry::Map::new(),
+        sources: super::backend_registry::Map::new(),
     });
     let unit = owner.value_mut();
     let mut rollback_private = true;
@@ -617,6 +617,7 @@ pub(crate) fn create_domain_with_reset(
                 Some(super::backend_registry::Preparing::Vtd(super::backend_registry::Nodes::new(
                     !unit.sources.contains_key(&source_id),
                     !unit.context_tables.contains_key(&(source_id >> 8)),
+                    creation.backing_platform,
                 )));
             creation.metadata.as_mut().unwrap().allocate()?;
             match unit.sources.get(&source_id) {
@@ -1212,7 +1213,7 @@ pub(super) fn test_registry_snapshot(sid: u32) -> (u64, Option<u64>, usize, usiz
 /// Its caller retains the real mapped-domain root through the probe.
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_with_claimed_unit(action: impl FnOnce()) {
-    let mut preparation = super::DmaCreation::new();
+    let mut preparation = super::DmaCreation::new(false);
     super::domain_creation::prepare(
         &UNIT,
         &mut preparation,

@@ -443,6 +443,8 @@ impl DmaDestruction {
 /// No implicit cleanup, copying or address-based re-adoption is available.
 #[must_use]
 pub(crate) struct DmaCreation {
+    // Exact grant's captured storage class, separate from waiter/resource grants.
+    backing_platform: bool,
     // Capture from the containing exact-root admission before backend access.
     // This captures waiter metadata; the complete grant owns any hardware/rollback obligation.
     wait_platform: Option<bool>,
@@ -459,8 +461,9 @@ pub(crate) struct DmaCreation {
 }
 
 impl DmaCreation {
-    fn new() -> Self {
+    fn new(backing_platform: bool) -> Self {
         Self {
+            backing_platform,
             wait_platform: None,
             interest: core::mem::ManuallyDrop::new(None),
             failure: None,
@@ -527,10 +530,12 @@ impl PreparedDmaDomain {
         owner: AddressSpaceId,
         destroy: DmaDestruction,
     ) -> Result<Self, DeviceError> {
+        let admission = GrantAdmission::new(owner)?;
+        let creation = DmaCreation::new(admission.backing_platform());
         Ok(Self {
             resources: core::mem::ManuallyDrop::new(DmaGrantResources {
-                admission: GrantAdmission::new(owner)?,
-                creation: DmaCreation::new(),
+                admission,
+                creation,
                 destroy,
             }),
             rollback_started: false,

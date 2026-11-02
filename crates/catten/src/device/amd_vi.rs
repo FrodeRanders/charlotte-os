@@ -267,8 +267,8 @@ struct Unit {
     devtab: PAddr,
     _tables: Tables,
     next_domain: u64,
-    domains: super::registry::Map<u64, Option<Domain>>,
-    sources: super::registry::Map<u16, u64>,
+    domains: super::backend_registry::Map<u64, Option<Domain>>,
+    sources: super::backend_registry::Map<u16, u64>,
 }
 
 impl Unit {
@@ -392,8 +392,8 @@ fn initialize(
         devtab: PAddr::from(0u64),
         _tables: Tables::new(Scope::Unit),
         next_domain: 1,
-        domains: super::registry::Map::new(),
-        sources: super::registry::Map::new(),
+        domains: super::backend_registry::Map::new(),
+        sources: super::backend_registry::Map::new(),
     });
     let unit = owner.value_mut();
     let mut rollback_private = true;
@@ -496,7 +496,11 @@ pub(crate) fn create_domain_with_reset(
             let id = unit.next_domain;
             let next = id.checked_add(1).ok_or(Error::MapFailed)?;
             creation.metadata = Some(super::backend_registry::Preparing::AmdVi(
-                super::backend_registry::Nodes::new(!unit.sources.contains_key(&source_id), false),
+                super::backend_registry::Nodes::new(
+                    !unit.sources.contains_key(&source_id),
+                    false,
+                    creation.backing_platform,
+                ),
             ));
             creation.metadata.as_mut().unwrap().allocate()?;
             match unit.sources.get(&source_id) {
@@ -1080,7 +1084,7 @@ pub(super) fn test_registry_snapshot(sid: u32) -> (u64, Option<u64>, usize, usiz
 /// Its caller retains the real mapped-domain root through the probe.
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_with_claimed_unit(action: impl FnOnce()) {
-    let mut preparation = super::DmaCreation::new();
+    let mut preparation = super::DmaCreation::new(false);
     super::domain_creation::prepare(
         &UNIT,
         &mut preparation,

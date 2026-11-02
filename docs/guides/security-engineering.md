@@ -60,6 +60,14 @@ its Arc backing could still exist. Admit actual allocation layout, including
 control/alignment storage, and keep nested captures under their own owners.
 See [observer ownership](../reference/observer-ownership.md).
 
+Keep resource-specific custody, captured sponsorship and completion proofs in
+their typed owners. Share checked counters, layout admission, allocation custody
+and deallocation-before-refund mechanics. A common administration view should
+identify each pool's units and lifetime, distinguish logical resource counts from
+backing bytes, and expose original ordinary/trusted usage without granting cleanup
+authority. Consolidate recurring policy wrappers as a discrete change; preserve
+the local capture, transfer and release contracts while sharing their mechanics.
+
 Read [capability admission](../reference/capability-admission.md),
 [IPC record budgets](../reference/ipc-record-budgets.md),
 [completion node backing](../reference/completion-node-admission.md),
