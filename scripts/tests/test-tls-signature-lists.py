@@ -82,7 +82,13 @@ def run():
             (directory / "src/lib.rs").write_text(
                 preamble.replace("@TLS@", str(TLS)).replace("@ALGORITHMS@", str(algorithms))
                 + TESTS.read_text())
-            command = [cargo, "test", "--lib", "--offline", "--manifest-path", str(directory / "Cargo.toml"),
+            if not control:
+                # Resolve/fetch the isolated graph before either offline control.
+                # A fresh runner has no registry cache; setup failure is not
+                # parser rejection. Cargo needs the source target to exist first.
+                subprocess.run([cargo, "fetch", "--manifest-path", str(directory / "Cargo.toml")],
+                               cwd=directory, env=env, check=True)
+            command = [cargo, "test", "--lib", "--locked", "--offline", "--manifest-path", str(directory / "Cargo.toml"),
                        "--target-dir", str(ROOT / "target/tls-signature-list-controls")]
             result = subprocess.run(command, cwd=directory, env=env, capture_output=True, text=True)
             output = result.stdout + result.stderr
