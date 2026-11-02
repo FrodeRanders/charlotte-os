@@ -25,6 +25,7 @@ fn available(root: AddressSpaceHandle) {
 }
 
 pub(super) fn run() {
+    backing_classification();
     preparation();
     publication();
     growth();
@@ -36,6 +37,55 @@ pub(super) fn run() {
          replacement, concurrent resize/close, hidden connection final-reference cleanup and \
          guarded retention passed; two roots/leases, three endpoint records and twenty slots \
          deliberately retained"
+    );
+}
+
+fn backing_classification() {
+    use crate::klib::admission::{
+        IpcNodes,
+        Reservation,
+    };
+    let root = create_root();
+    let account = domain(root);
+    let before = node_budget::snapshot();
+    let endpoints = budget::node_used();
+    let pressure = Reservation::<IpcNodes, 2>::reserve(
+        false,
+        [crate::resource_policy::POLICY.ipc_nodes.ordinary[0] - before.1[0], 0],
+    )
+    .unwrap();
+    for _ in 0..64 {
+        assert!(matches!(
+            PreparingEndpoint::prepare(root.id(), 1, |_| Ok(())),
+            Err(IpcError::ResourceLimit)
+        ));
+        assert_eq!(account.used(), [0, 0]);
+        assert_eq!(budget::node_used(), endpoints);
+    }
+    drop(pressure);
+    let owner = PreparingEndpoint::prepare(root.id(), 1, |stage| {
+        if stage == 1 {
+            memory::budget::mark_platform(root);
+        }
+        if stage == 2 {
+            let bytes = Storage::allocation_bytes() as u64;
+            assert_eq!(
+                node_budget::snapshot(),
+                ([before.0[0] + bytes, before.0[1] + 1], [before.1[0] + bytes, before.1[1] + 1])
+            );
+        }
+        Ok(())
+    })
+    .unwrap();
+    assert!(!owner.0.platform);
+    owner.finish();
+    assert_eq!(node_budget::snapshot(), before);
+    assert_eq!(budget::node_used(), endpoints);
+    memory::close_user_address_space_handle(root).unwrap();
+    crate::logln!(
+        "[IPC endpoint backing] 64 backing-quota rejections refund original endpoint/queue \
+         reservations; promotion between admission and node allocation preserves original \
+         ordinary class and exact cleanup"
     );
 }
 
@@ -243,7 +293,7 @@ fn abandonment() {
     {
         let _ipc = IPC.write();
         let _heap = PRIMARY_ALLOCATOR.lock();
-        drop(prepared);
+        node_budget::with_locked(|| drop(prepared));
     }
     assert_eq!(account.used(), [1, 4]);
     assert_eq!(
@@ -267,7 +317,7 @@ fn abandonment() {
     {
         let _ipc = IPC.write();
         let _heap = PRIMARY_ALLOCATOR.lock();
-        drop(growth);
+        node_budget::with_locked(|| drop(growth));
     }
     assert_eq!(account.used(), [1, 12]);
     assert_eq!(
@@ -287,7 +337,7 @@ fn abandonment() {
     {
         let _ipc = IPC.write();
         let _heap = PRIMARY_ALLOCATOR.lock();
-        drop(retired);
+        node_budget::with_locked(|| drop(retired));
     }
     prepared.finish();
     memory::close_user_address_space_handle(root).unwrap();

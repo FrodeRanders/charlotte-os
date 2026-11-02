@@ -282,6 +282,7 @@ struct ReservationStorage {
     owner: AddressSpaceId,
     kind: ObjectKind,
     identity: Option<crate::memory::AddressSpaceHandle>,
+    backing_platform: bool,
     namespace: Option<PreparingNamespace>,
     record: PreparingRecord,
 }
@@ -324,9 +325,16 @@ impl PreparedReservation {
             owner,
             kind,
             identity,
+            backing_platform,
             namespace,
             record,
         })))
+    }
+
+    /// Allocation class captured from the exact authority namespace before
+    /// preparation. Borrowing it grants no logical resource privilege.
+    pub(crate) fn backing_platform(&self) -> bool {
+        self.0.backing_platform
     }
 
     fn reserve(&mut self) -> Result<Reservation, AllocationError> {

@@ -76,8 +76,8 @@ pub(super) const POLICY: Policy = Policy {
         ordinary: [6 * 1024 * 1024, 15_360],
     },
     ipc_nodes: Pool {
-        total: [8 * 1024 * 1024, 24_576],
-        ordinary: [6 * 1024 * 1024, 18_432],
+        total: [16 * 1024 * 1024, 98_304],
+        ordinary: [12 * 1024 * 1024, 73_728],
     },
     device_nodes: Pool {
         total: [16 * 1024 * 1024, 139_264],

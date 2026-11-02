@@ -4,7 +4,7 @@ use core::mem::ManuallyDrop;
 
 use super::*;
 
-type Storage = PreparedEntry<(CapabilityId, AdmittedCapability), Option<record_budget::Charge>>;
+type Storage = node_budget::Storage<(CapabilityId, AdmittedCapability)>;
 
 struct Resources {
     captured: Option<(AddressSpaceId, Option<crate::memory::AddressSpaceHandle>)>,
@@ -91,7 +91,8 @@ impl PreparingCapability {
     /// owns its reservation through the unlocked interval and final revalidation.
     pub(super) fn prepare_payload(&mut self) -> Result<(), IpcError> {
         assert!(self.0.authority.is_some() && self.0.storage.is_none());
-        self.0.storage = Some(Storage::try_new_charged(None).map_err(|_| IpcError::ResourceLimit)?);
+        let platform = self.0.preparation.as_ref().unwrap().backing_platform();
+        self.0.storage = Some(node_budget::prepare(platform)?);
         Ok(())
     }
 
@@ -154,8 +155,8 @@ impl PreparingCapability {
 /// No new registry or teardown allocation is needed; fallback retains both lists.
 #[must_use]
 pub(super) struct RetiredMetadata {
-    endpoints: RetirementList<(EndpointId, Endpoint), Option<budget::Charge>>,
-    capabilities: RetirementList<(CapabilityId, AdmittedCapability), Option<record_budget::Charge>>,
+    endpoints: node_budget::List<(EndpointId, Endpoint), budget::Charge>,
+    capabilities: node_budget::List<(CapabilityId, AdmittedCapability)>,
 }
 
 impl RetiredMetadata {
@@ -170,10 +171,7 @@ impl RetiredMetadata {
         self.endpoints.push(node);
     }
 
-    fn push_capability(
-        &mut self,
-        node: RetiredEntry<(CapabilityId, AdmittedCapability), Option<record_budget::Charge>>,
-    ) {
+    fn push_capability(&mut self, node: node_budget::Retired<(CapabilityId, AdmittedCapability)>) {
         self.capabilities.push(node);
     }
 

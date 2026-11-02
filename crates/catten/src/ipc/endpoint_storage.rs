@@ -8,8 +8,8 @@ use crate::memory::{
     operation::AddressSpaceOperation,
 };
 
-type Storage = PreparedEntry<(EndpointId, Endpoint), Option<budget::Charge>>;
-pub(super) type RetiredEndpoint = RetiredEntry<(EndpointId, Endpoint), Option<budget::Charge>>;
+type Storage = node_budget::Storage<(EndpointId, Endpoint), budget::Charge>;
+pub(super) type RetiredEndpoint = node_budget::Retired<(EndpointId, Endpoint), budget::Charge>;
 
 struct Root {
     owner: AddressSpaceId,
@@ -104,8 +104,7 @@ impl PreparingEndpoint {
                 prepared.0.metadata_charge = Some(charge);
             }
             before(1)?;
-            prepared.0.storage =
-                Some(Storage::try_new_charged(None).map_err(|_| IpcError::ResourceLimit)?);
+            prepared.0.storage = Some(node_budget::prepare_endpoint(prepared.0.platform)?);
             let resources = &mut *prepared.0;
             resources
                 .storage

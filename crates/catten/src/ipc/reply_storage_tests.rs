@@ -113,11 +113,12 @@ fn original_classification() {
     let baseline = record_budget::node_used();
     let endpoint = endpoint_create(root.id(), 1, 1, 4).unwrap();
     let connection = connection_mint(root.id(), endpoint, ConnectionRights::CALL).unwrap();
+    let before_call_metadata = node_budget::snapshot();
     let mut owner = PreparedCall::try_new(root.id()).unwrap();
     assert!(!owner.platform);
     let charged = record_budget::node_used();
     let charged_metadata = node_budget::snapshot();
-    assert_eq!(charged_metadata.1[1], metadata.1[1] + 2);
+    assert_eq!(charged_metadata.1[1], before_call_metadata.1[1] + 3);
     memory::budget::mark_platform(root);
     assert_eq!(node_budget::snapshot(), charged_metadata);
     assert_eq!(record_budget::node_used(), charged);

@@ -8,13 +8,13 @@ use crate::{
     },
 };
 
-fn rejected<T>() {
+fn rejected<T, R>() {
     let before = snapshot();
-    let bytes = Storage::<T>::allocation_bytes() as u64;
+    let bytes = Storage::<T, R>::allocation_bytes() as u64;
     for platform in [false, true] {
         for _ in 0..64 {
             assert!(
-                prepare_with::<T>(platform, |_| {
+                prepare_with::<T, R>(platform, |_| {
                     assert!(IPC.try_write().is_some());
                     assert_eq!(snapshot().0, [before.0[0] + bytes, before.0[1] + 1]);
                     if platform {
@@ -31,33 +31,34 @@ fn rejected<T>() {
     }
 }
 
-fn real_pressure<T>() {
+fn real_pressure<T, R>() {
+    let prepare = |platform| prepare_with::<T, R>(platform, Storage::try_new_charged);
     let policy = crate::resource_policy::POLICY.ipc_nodes;
     let before = snapshot();
-    let bytes = Storage::<T>::allocation_bytes() as u64;
+    let bytes = Storage::<T, R>::allocation_bytes() as u64;
     let mut ordinary = Vec::with_capacity(policy.ordinary[1] as usize);
-    while let Ok(node) = prepare::<T>(false) {
+    while let Ok(node) = prepare(false) {
         ordinary.push(node);
     }
     let full = snapshot();
     assert!(full.1[1] == policy.ordinary[1] || policy.ordinary[0] - full.1[0] < bytes);
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
-        assert!(prepare::<T>(false).is_err());
+        assert!(prepare(false).is_err());
     }
-    let trusted = prepare::<T>(true).unwrap();
+    let trusted = prepare(true).unwrap();
     assert_eq!(snapshot().1, full.1);
     drop(trusted);
     let mut trusted = Vec::with_capacity(policy.total[1] as usize);
-    while let Ok(node) = prepare::<T>(true) {
+    while let Ok(node) = prepare(true) {
         trusted.push(node);
     }
     let total = snapshot();
     assert!(total.0[1] == policy.total[1] || policy.total[0] - total.0[0] < bytes);
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
-        assert!(prepare::<T>(true).is_err());
-        assert!(prepare::<T>(false).is_err());
+        assert!(prepare(true).is_err());
+        assert!(prepare(false).is_err());
     }
     let counts = (ordinary.len(), trusted.len());
     drop((ordinary, trusted));
@@ -67,15 +68,15 @@ fn real_pressure<T>() {
         Reservation::<IpcNodes, 2>::reserve(false, [policy.ordinary[0] - before.1[0], 0]).unwrap();
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
-        assert!(prepare::<T>(false).is_err());
+        assert!(prepare(false).is_err());
     }
-    let node = prepare::<T>(true).unwrap();
+    let node = prepare(true).unwrap();
     drop((node, pressure));
     let pressure =
         Reservation::<IpcNodes, 2>::reserve(true, [policy.total[0] - before.0[0], 0]).unwrap();
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
-        assert!(prepare::<T>(true).is_err());
+        assert!(prepare(true).is_err());
     }
     drop(pressure);
     assert_eq!(snapshot(), before);
@@ -125,16 +126,23 @@ fn second_node_rejection() {
 
 pub(in crate::ipc) fn run() {
     let irq = crate::cpu::isa::lp::ops::get_int_state();
-    rejected::<(PendingCallId, PendingCall)>();
-    rejected::<(ReplyTokenId, ReplyToken)>();
-    real_pressure::<(PendingCallId, PendingCall)>();
-    real_pressure::<(ReplyTokenId, ReplyToken)>();
+    rejected::<(PendingCallId, PendingCall), record_budget::Charge>();
+    rejected::<(ReplyTokenId, ReplyToken), record_budget::Charge>();
+    real_pressure::<(PendingCallId, PendingCall), record_budget::Charge>();
+    real_pressure::<(ReplyTokenId, ReplyToken), record_budget::Charge>();
+    rejected::<(CapabilityId, AdmittedCapability), record_budget::Charge>();
+    rejected::<(EndpointId, Endpoint), budget::Charge>();
+    real_pressure::<(CapabilityId, AdmittedCapability), record_budget::Charge>();
+    real_pressure::<(EndpointId, Endpoint), budget::Charge>();
     second_node_rejection();
     assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
     crate::logln!(
-        "[IPC node admission] 256 allocator rejections; actual pending/reply layouts {}/{} bytes; \
-         complete node keeps backing and logical record reservations through real disposal",
+        "[IPC node admission] 512 allocator rejections; actual pending/reply/capability/endpoint \
+         layouts {}/{}/{}/{} bytes; complete node keeps backing and logical record reservations \
+         through real disposal",
         PendingStorage::allocation_bytes(),
-        ReplyStorage::allocation_bytes()
+        ReplyStorage::allocation_bytes(),
+        Storage::<(CapabilityId, AdmittedCapability)>::allocation_bytes(),
+        Storage::<(EndpointId, Endpoint), budget::Charge>::allocation_bytes()
     );
 }

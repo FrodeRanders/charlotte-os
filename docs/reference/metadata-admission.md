@@ -19,8 +19,8 @@ principal charge; each counter guard leaves before the next field drops.
 Observer allocation rollback refunds layout bytes while retaining its holder
 bundle until the holder is actually freed. Simple node, fixed-bundle,
 two-dimensional reservation and actual-layout charge sizes remain respectively
-16, 1, 24 and 16 bytes on supported 64-bit targets. Existing numerical limits
-remain unchanged; the independent IPC node pool has its own byte/count policy.
+16, 1, 24 and 16 bytes on supported 64-bit targets. Existing logical resource limits
+remain unchanged; the expanded IPC payload pool has its own byte/count policy.
 
 ## Read-only runtime inventory
 
@@ -63,10 +63,12 @@ is JSON `null`. Authorization remains the existing observation/status policy;
 there is no mutable budget or teardown endpoint. History and cluster formats
 retain their own existing fields.
 
-The appended `ipc_nodes` row admits pending-call and reply-token layouts;
+The `ipc_nodes` row admits capability, endpoint, pending-call and reply-token layouts;
 logical IPC resource counts retain their separate owners. Earlier catalog IDs
 and record widths stay unchanged; version 9 rejects rather than silently omitting
-the new pool. Both architecture service bundles must be rebuilt and signed.
+the new pool. Catalog/version changes require both architecture service bundles
+to be rebuilt and signed; expanding an existing pool's layout coverage changes
+no SDK or wire format.
 
 Byte counts are requested allocation layouts, not physical RAM or allocator
 bookkeeping. IOMMU metadata bytes include allocated ledger capacity and full

@@ -17,13 +17,14 @@ device namespace/payload nodes, IOMMU backend/mapping/cache nodes, principal his
 metadata, thread-table backing, ASID-table backing, waiter, timer, completion and
 capability/IPC/mailbox namespace accounts,
 scratch nodes, snapshot buffers, mapping nodes, memory-capability nodes and
-observer-list allocations and IPC pending/reply nodes.
+observer-list allocations and IPC payload nodes.
 Each retains its own lock, typed charge, captured
 classification and allocation-lifetime release policy. The shared counter
 owns no resource and grants no cleanup authority; both counters change together
 on accepted admission/refund and remain unchanged on rejection.
 These counters supply no independent cleanup authority or classification source.
-Existing numerical defaults are preserved; memory-capability node and
+Existing logical resource defaults are preserved; the expanded IPC payload pool
+is sized in [IPC node backing](ipc-node-admission.md). Memory-capability node and
 thread-table, ASID-table, waiter-account, timer-account, completion-account and
 namespace-account, global namespace-node, authority-node, mailbox-node,
 deferred-node, observer-backing, completion-node, IPC-node, device-node and IOMMU-node
@@ -62,7 +63,7 @@ unlimited node capacity.
 | `mailbox_nodes` | endpoint node-layout bytes; nodes | — | 1536 KiB; 12288 nodes | 2 MiB; 16384 nodes |
 | `deferred_nodes` | source-disposal node-layout bytes; nodes | — | 768 KiB; 12288 nodes | 1 MiB; 16384 nodes |
 | `completion_nodes` | completion/detached/CQ node-layout bytes; nodes | — | 6 MiB; 15360 nodes | 8 MiB; 20480 nodes |
-| `ipc_nodes` | pending-call/reply-token node-layout bytes; nodes | — | 6 MiB; 18432 nodes | 8 MiB; 24576 nodes |
+| `ipc_nodes` | IPC capability/endpoint/pending/reply node-layout bytes; nodes | — | 12 MiB; 73728 nodes | 16 MiB; 98304 nodes |
 | `device_nodes` | device namespace/payload node-layout bytes; nodes | — | 12 MiB; 104448 nodes | 16 MiB; 139264 nodes |
 | `iommu_nodes` | IOMMU metadata-layout bytes (nodes and ledger buffers); nodes | — | 18 MiB; 196608 nodes | 24 MiB; 262144 nodes |
 | `principal_history` | node-layout bytes; nodes | — | 768 KiB; 3072 nodes | 1 MiB; 4096 nodes |

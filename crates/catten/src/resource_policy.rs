@@ -129,7 +129,7 @@ pub(crate) struct Policy {
     pub observer_backing: Pool<2>,
     /// Completion, detached-operation and CQ registry-node layouts and counts.
     pub completion_nodes: Pool<2>,
-    /// Pending-call and reply-token node layouts, including unused candidates.
+    /// IPC capability/endpoint/pending/reply layouts, including unused candidates.
     pub ipc_nodes: Pool<2>,
     /// Device namespace and capability node layouts/counts, including candidates.
     pub device_nodes: Pool<2>,

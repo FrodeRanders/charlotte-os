@@ -252,7 +252,7 @@ struct AdmittedCapability {
 
 #[derive(Debug)]
 struct AsIpcCaps {
-    caps: AdmittedMap<CapabilityId, AdmittedCapability, Option<record_budget::Charge>>,
+    caps: node_budget::Map<CapabilityId, AdmittedCapability>,
     address_space: Option<crate::memory::AddressSpaceHandle>,
     endpoint_budget: budget::AccountRef,
     record_budget: record_budget::AccountRef,
@@ -380,7 +380,7 @@ struct IpcRegistry {
     next_endpoint: EndpointId,
     next_reply: ReplyTokenId,
     next_call: PendingCallId,
-    endpoints: AdmittedMap<EndpointId, Endpoint, Option<budget::Charge>>,
+    endpoints: node_budget::Map<EndpointId, Endpoint, budget::Charge>,
     reply_tokens: node_budget::Map<ReplyTokenId, ReplyToken>,
     pending_calls: node_budget::Map<PendingCallId, PendingCall>,
     caps: namespace_nodes::Map<AddressSpaceId, AsIpcCaps>,

@@ -202,7 +202,7 @@ resource-limited replies cancelling only their token, not their grant source.
 These count budgets do not bound attachment bytes, all capability kinds,
 observer/list control blocks, weak-only retention, loader/page tables, or the
 entire kernel heap. Per-capability insertion only relinks prepared storage;
-guarded factories in other capability callers, other IPC payload layouts and
+guarded factories in other capability callers, nested IPC storage and
 namespace-account byte/principal admission remain separate boundaries. Node
 allocator rejection has injected coverage; general heap OOM is not forced.
 There is no per-principal IPC aggregate across domains, signed override,

@@ -1,93 +1,110 @@
-# IPC pending-call and reply-token backing
+# IPC payload-node backing
 
-Pending-call and reply-token records use the shared admitted node collection
-with independent `ipc_nodes` requested-byte/count admission. This covers unused
-candidates, published records and detached cleanup storage. It is separate from
-the logical connection/call/reply dimensions in [record budgets](ipc-record-budgets.md),
-unified authority backing, namespace accounts, queues and attachment buffers.
+IPC capability, endpoint, pending-call and reply-token payload nodes use the
+shared admitted collection with `ipc_nodes` requested-byte/count admission.
+This covers unused candidates, published nodes and detached cleanup storage.
+It is separate from logical endpoint/connection/call/reply counts, unified
+authority backing, namespace accounts, queues and attachment buffers.
 
-`ipc::node_budget::Charge` keeps the backing reservation and later-bound logical
-record reservation in the same allocation. The common collection's `BindCharge`
-contract binds that later reservation without replacing allocation admission.
-The requested layout includes both fields, payload and linkage. No extra holder
-allocation or cleanup registry is added. Both charges return after the actual
-node has been deallocated, using the existing post-IPC disposal path.
+`ipc::node_budget::Charge<R>` keeps backing admission and an optional later-bound
+logical resource reservation in the same allocation. The common collection's
+`BindCharge` contract binds the latter without replacing backing admission.
+Capability, pending and reply nodes use record charges; endpoint nodes use their
+endpoint charge. Non-connection capability payloads still own backing admission
+without an additional logical record charge. Requested layouts include payload,
+linkage and both charge fields. No holder allocation or cleanup registry is added.
+Actual node deallocation precedes both refunds through existing post-IPC disposal.
 
-## Preparation, publication and retirement
+## Captured classification
 
-`PreparedCall` captures and retains the exact caller root before reserving its
-logical pending/reply counts under IPC. The original reservation's trusted class
-is passed unchanged to both node factories after IPC unlock. Each factory admits
-the complete node layout before its allocator runs. Quota or allocator denial
-returns `IpcError::ResourceLimit` and the existing complete preparation explicitly
-cancels every prefix, with the root released last. A reply-node rejection leaves
-no pending node, logical count or backing charge behind and precedes authority
-and attachment publication. Invalid handles and rights still reject first.
+| Node | Backing classification | Independent logical sponsorship |
+| --- | --- | --- |
+| Capability payload | `PreparedReservation` captures the exact recipient authority namespace's immutable storage class before preparation; IPC borrows it without another lookup | Connections retain their original grantor/requester record charge; other kinds use shared authority admission |
+| Endpoint payload | Original endpoint reservation's class, captured against the accepted exact root before allocation | Original endpoint owner and its account |
+| Pending call / reply token | Original call-record reservation's class, captured against the accepted exact caller root | Requesting caller and its original record account |
 
-Publication only relinks prepared nodes. Result observation, token claims, loans,
-retirement and ASID reuse preserve each node's original backing and logical
-sponsorship. Scalar reply completion, cancellation and close continue to carry
-the complete detached node or list; no side ticket reconstructs its ownership.
-Uncertain loan cleanup retains the live fenced record. Explicit confirmed
-disposal frees payload and node before refund. This admission supplies no
-physical proof, cancellation permission or replay authority.
+Trusted backing grants no logical resource privilege. An ordinary grantor may
+create a trusted kernel-recipient payload while retaining an ordinary connection
+charge. Promoting a root cannot reclassify a namespace's captured storage class,
+an endpoint reservation or an already prepared node. Retirement and ASID reuse
+cannot redirect their eventual refunds.
 
-Complete call preparation and scalar reply/list fallback remain inert under
-IPC, heap and metadata-pool guards. Existing deliberate-retention fixtures now
-retain their backing charges too. Wider active containing destructors, caller
-IRQ masks and bounded-copy latency still need their own qualification.
+## Preparation and retirement
+
+Every factory admits its actual layout before allocation. `PreparedCall` retains
+its exact root, both logical reservations and the pending/reply prefix across
+unlocked preparation. Capability authority/count preparation precedes its private
+payload factory; the same captured storage class accompanies both. Endpoint
+preparation retains its original endpoint/queue reservations before allocating
+its node. Quota or allocator denial returns `IpcError::ResourceLimit`. Ordinary
+rejection explicitly cancels the complete prefix after local guards, root last.
+A failed capability factory leaves authority with its containing preparation
+until finish; no attachment or payload is published early.
+
+Publication and detachment only relink complete nodes. Scalar reply, cancellation,
+endpoint/namespace close and hidden/unobserved connection cleanup retain these
+same nodes in existing owning operations and retirement lists. Failed loan cleanup
+retains its fenced record. Closed endpoints referenced by queued or returned
+connections keep backing and endpoint admission until their actual disposal.
+No metadata ticket reconstructs ownership or supplies physical completion/replay
+permission. Complete call, capability, endpoint/growth and detached-list fallback
+remains inert under IPC, heap and metadata-pool guards. Wider active containing
+destructors, caller IRQ masks and copy latency require separate qualification.
 
 ## Capacity and administration
 
-Default ordinary/total limits are 6/8 MiB and 18432/24576 nodes. Logical resource
-defaults remain 6144/8192 pending calls and reply tokens separately. Supported
-64-bit targets measure 200-byte pending and 176-byte reply layouts, including
-the added 16-byte backing charge. At the ordinary logical ceiling, 6144 pairs
-request about 2.2 MiB; 8192 total pairs request about 2.94 MiB. These are layout
-planning figures, excluding nested storage, allocator overhead and other pools.
+The expanded pool uses ordinary/total limits of **12/16 MiB** and
+**73728/98304 nodes**. The earlier pending/reply-only defaults were 6/8 MiB and
+18432/24576 nodes. Logical resource ceilings remain unchanged. The increase
+accommodates capability and endpoint payloads alongside calls, avoiding an early
+shared backing ceiling merely because the covered family grew.
 
-The independent pool keeps malformed or abandoned candidates bounded without
-spending another resource family's reserve. Its limits allow layout/candidate
-headroom and retain a quarter for trusted admission; they do not preallocate RAM
-or guarantee that independent resource ceilings fit simultaneously. The new
-charge adds 192 KiB at 12288 ordinary records, or 256 KiB at 16384 total records.
-No existing limit is lowered or raised. Measured workloads may justify changing
-the central pool limits together; broad heap and principal admission remain open.
+A conservative count plan permits every ordinary/total unified capability slot
+(49152/65536) to hold an IPC payload, plus all pending and reply nodes
+(6144/8192 each) and endpoints (768/1024): **62208/82944 nodes**. This leaves
+candidate/layout headroom while preserving a quarter of each pool for trusted
+admission. Native capability/endpoint/pending/reply layouts are 120/272/200/176
+bytes. This upper-bound mix requests 8417280/11223040 bytes (about 8.03/10.70 MiB),
+within the 12/16 MiB budgets before other nested allocations and allocator
+overhead. Added backing fields cost 16 bytes per capability/endpoint node
+(780/1040 KiB at those capability/endpoint ceilings), without a holder allocation.
+Independent ceilings do not promise simultaneous RAM fit or progress.
 
-The metadata catalog appends `ipc_nodes` as its 23rd row. Earlier identities,
-record widths and the 22-word header stay unchanged. Statistics payload version
-10 rejects versions 8/9; kernel, SDK, observe, HTTP and fixtures use the same
-catalog. Both architectures' test/minimal services are rebuilt and signed.
-Runtime register ABI and signed runtime ABI remain unchanged.
+Sharing the existing pool avoids another reserve and administration category,
+but these layouts now compete for same-class bytes and slots. Raising limits
+permits larger retained heap consumption; lowering them can restrict otherwise
+valid logical resources. Review actual mixed workloads and adjust central byte
+and count limits together. General heap/principal admission remains open.
+
+The 23-pool catalog, statistics version 10, header/record widths, SDK and signed
+runtime ABI remain unchanged. Services consume current limits from snapshots;
+no service source or bundle rebuild is needed for this kernel-only extension.
 
 ## Qualification and remaining scope
 
-The [evidence](../reports/audits/evidence/2026-11-02-ipc-node-admission.json)
-records production source identities, native artifacts, preflight rejection and
-relevant diagnostics. Host allocation tracing checks that both backing and
-later-bound resource admission return after actual node deallocation, for unused
-and published nodes. SDK tests reject the previous payload and malformed catalog;
-policy tests reject invalid IPC node profiles.
+The [payload evidence](../reports/audits/evidence/2026-11-02-ipc-payload-node-admission.json)
+identifies source/artifacts and diagnostics. Earlier [pending/reply evidence](../reports/audits/evidence/2026-11-02-ipc-node-admission.json)
+retains its original limits and version-10 HTTP qualification separately.
+The full host suite includes actual deallocation tracing for backing plus a
+later-bound logical resource charge. Native controls inject 512 allocator
+rejections across all four layouts, exhaust real empty-node admission, and prove
+heap-held pre-allocator quota rejection with exact recovery. Independent byte
+saturation also uses an explicit counter adapter; it is not general heap OOM.
 
-The full host suite and strict checks with/without kernel tests passed on both
-architectures. Fresh four-CPU security campaigns passed ARM 19/19, Intel VT-d
-17/17 and AMD-Vi 17/17. An additional ARM authenticated HTTP/TLS campaign passed
-20/20 and validated all 23 inventory rows through the running observe/HTTP path.
-All campaigns completed with zero failures or pending tests. The initial ARM
-staging preflight rejection is preserved separately from its passing repeat.
+Public capability controls cover 64 quota denials after authority reservation,
+namespace classification through promotion, and an ordinary grantor using trusted
+recipient backing without trusted logical admission. Endpoint controls cover
+64 quota rejections after endpoint/queue admission and promotion between reserve
+and node allocation. Existing heap-held publication/detachment, root reuse,
+hidden connection cleanup, scalar/vector receive, cancellation, returned authority
+and guarded complete-owner abandonment exercise the same admitted nodes.
 
-Serialized native controls inject 256 allocator rejections across both real
-layouts, exhaust ordinary/total admission with real empty nodes and prove quota
-rejection before allocation with the heap guard held. Independent byte exhaustion
-uses an explicit counter adapter; it is not real maximum-byte heap pressure.
-Another 64 controls admit the pending prefix and reject the reply candidate,
-checking exact logical counts, backing bytes/slots and unchanged authority.
-Existing paired publication/detachment, batches, scalar reply, cancellation,
-promotion and root-reuse controls exercise the same owners. Guarded complete
-call and reply/list abandonment retain the new charges.
+The full host suite and strict test/minimal kernel checks passed on both
+architectures. Fresh four-CPU security campaigns completed ARM 19/19, Intel VT-d
+17/17 and AMD-Vi 17/17, with zero failures or pending tests. Current signed
+services were reused because SDK and wire formats are unchanged.
 
-Connection/capability and endpoint payload-node layouts, nested attachment
-storage, other weak/control storage, general heap and aggregate principal
-admission remain separate work. These serialized controls do not establish
+Nested attachment/control storage, other remaining allocations, general heap
+and aggregate principal admission remain open. Serialized controls do not prove
 sustained hostile concurrent EL0 fairness or all caller/IRQ/destructor contexts.
 SEC-07/18 remain partial.

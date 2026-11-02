@@ -95,6 +95,12 @@ its charge.
 Containing preparation/retirement fallback retains storage and charge together;
 it does not enter budget locks, the allocator or notification callbacks.
 
+Endpoint payload nodes also retain [IPC backing admission](ipc-node-admission.md),
+using the original endpoint reservation class. Quota rejection before allocation
+cancels the full endpoint/queue prefix. Closed records and detached cleanup keep
+that backing until node deallocation; complete endpoint/growth/list abandonment
+is inert under the backing-pool guard too. This is separate from queue bytes.
+
 ## Errors and verification scope
 
 The kernel returns `IpcError::ResourceLimit` for exhausted endpoint/queue

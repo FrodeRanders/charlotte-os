@@ -21,8 +21,11 @@ Their factories and all wider IRQ/guard contexts remain separate qualification.
 The memory/authority publication helper now uses a [borrowed batch](ipc-publication-batches.md)
 with no temporary vector. Target memory-capability and read-loan maps still allocate under their
 registry hold; scalar prepared call commit needs no memory registry or heap. The existing shared capability and connection count limits
-are unchanged; private payload bytes and allocator overhead have no separate
-comprehensive byte/principal admission.
+are unchanged; private payload layouts now have [IPC backing admission](ipc-node-admission.md).
+The exact recipient authority namespace supplies captured storage classification,
+separate from the grantor/requester connection charge. Candidate and detached
+nodes retain both charges through actual deallocation; allocator overhead, nested
+storage and comprehensive principal/heap admission remain open.
 
 ## Call and endpoint preparation
 
