@@ -258,6 +258,7 @@ pub(super) struct CallResources {
     attaching: Option<crate::memory::object::PreparedTransfer>,
     pub(super) transfers: Vec<crate::memory::object::PreparedTransfer>,
     pub(super) memory: Vec<MemoryObjectCap>,
+    pub(super) queued_memory: Option<MemoryAttachments>,
     pub(super) borrows: Vec<MemoryBorrow>,
     attempted: bool,
 }
@@ -356,6 +357,7 @@ impl PreparedCall {
             attaching: None,
             transfers: Vec::new(),
             memory: Vec::new(),
+            queued_memory: None,
             borrows: Vec::new(),
             attempted: false,
         }));
@@ -444,6 +446,9 @@ impl PreparedCall {
         drop(core::mem::take(&mut self.0.transfers));
         drop(self.0.attaching.take());
         drop(core::mem::take(&mut self.0.memory));
+        if let Some(memory) = self.0.queued_memory.take() {
+            memory.finish();
+        }
         drop(core::mem::take(&mut self.0.borrows));
         drop(self.0.pending.take());
         drop(self.0.reply_storage.take());
@@ -520,14 +525,15 @@ impl PreparedCall {
         endpoint: EndpointId,
         opcode: u32,
         arg0: u64,
-        prepare_memory: impl FnOnce(Vec<MemoryObjectCap>) -> Result<MemoryAttachments, IpcError>,
+        prepare_memory: impl FnOnce(bool, Vec<MemoryObjectCap>) -> Result<MemoryAttachments, IpcError>,
     ) -> Result<(CapabilityId, Delivery), IpcError> {
         assert!(!self.0.attempted, "call publication attempted twice");
         self.0.attempted = true;
         let resources = &mut *self.0;
-        let (server, memory) = (|| {
+        let server = (|| {
             let server = reserve_endpoint_queue(ipc, endpoint)?;
-            let memory = prepare_memory(core::mem::take(&mut resources.memory))?;
+            resources.queued_memory =
+                Some(prepare_memory(resources.platform, core::mem::take(&mut resources.memory))?);
             if let Some(connection) = &mut resources.connection {
                 crate::memory::object::commit_undelivered_transfers_with_authority(
                     &mut resources.transfers,
@@ -543,7 +549,7 @@ impl PreparedCall {
                 )
             }
             .map_err(|_| IpcError::MemoryTransferFailed)?;
-            Ok((server, memory))
+            Ok(server)
         })()?;
         let call_cap = resources.authority.as_ref().unwrap().identity();
         // Pins must end before the newly published objects become writable.
@@ -581,9 +587,17 @@ impl PreparedCall {
                 borrows: core::mem::take(&mut resources.borrows),
             },
         );
-        let delivery =
-            enqueue_message(ipc, endpoint, caller, opcode, arg0, Some(token), memory, attached)
-                .expect("prepared call retains endpoint queue ownership");
+        let delivery = enqueue_message(
+            ipc,
+            endpoint,
+            caller,
+            opcode,
+            arg0,
+            Some(token),
+            resources.queued_memory.take().unwrap(),
+            attached,
+        )
+        .expect("prepared call retains endpoint queue ownership");
         Ok((call_cap, delivery))
     }
 }

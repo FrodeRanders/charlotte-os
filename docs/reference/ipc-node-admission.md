@@ -4,7 +4,8 @@ IPC capability, endpoint, pending-call and reply-token payload nodes use the
 shared admitted collection with `ipc_nodes` requested-byte/count admission.
 This covers unused candidates, published nodes and detached cleanup storage.
 It is separate from logical endpoint/connection/call/reply counts, unified
-authority backing, namespace accounts, queues and attachment buffers.
+authority backing, namespace accounts and queues. Attachment retirement catalogs
+share the byte dimension through their complete owner described below.
 
 `ipc::node_budget::Charge<R>` keeps backing admission and an optional later-bound
 logical resource reservation in the same allocation. The common collection's
@@ -51,6 +52,33 @@ permission. Complete call, capability, endpoint/growth and detached-list fallbac
 remains inert under IPC, heap and metadata-pool guards. Wider active containing
 destructors, caller IRQ masks and copy latency require separate qualification.
 
+## Attachment retirement capacity
+
+`MemoryAttachments` reserves `caps.len() * size_of(RetiredMemory)` before
+allocating its exact-capacity retirement catalog. It contributes bytes and
+**zero node slots** to `ipc_nodes`. Calls retain their original call-record
+class; sends capture trusted state against the exact sender generation before
+root leasing and revalidation. Receiver identity, promotion and ASID reuse never
+reclassify that charge. Capability-ID, transfer and loan vectors remain separate
+allocation work; this reservation covers the retirement catalog only.
+
+One inert owner retains the caps, full allocated retirement capacity and original
+charge. Retirement can append at most the admitted cap count without growth.
+Unused preparation explicitly finishes after local guards. Call publication
+failure leaves the catalog in `PreparedCall` until post-IPC finish. Successful
+receive carries delivered storage in `ReceiveResources` across guard exit before
+freeing it; result-page rejection leaves queued storage untouched. Ordinary
+vector-send rejection also disposes its catalog after IPC unlock.
+
+Retired release moves the complete catalog into an inert FIFO iterator owner.
+The full capacity and charge remain until every callback returns and the actual
+iterator buffer is freed. Interrupted callback dispatch retains all remaining
+owners and the allocation/charge. A child consumes its own typed retirement
+owner, including terminal retention on physical failure; this metadata handoff
+supplies no physical proof or replay permission. Explicit disposal frees the
+buffer before refund. Empty length or successful delivery alone cannot invoke
+implicit cleanup under an unknown outer guard.
+
 ## Capacity and administration
 
 The expanded pool uses ordinary/total limits of **12/16 MiB** and
@@ -65,10 +93,20 @@ A conservative count plan permits every ordinary/total unified capability slot
 candidate/layout headroom while preserving a quarter of each pool for trusted
 admission. Native capability/endpoint/pending/reply layouts are 120/272/200/176
 bytes. This upper-bound mix requests 8417280/11223040 bytes (about 8.03/10.70 MiB),
-within the 12/16 MiB budgets before other nested allocations and allocator
-overhead. Added backing fields cost 16 bytes per capability/endpoint node
+within the 12/16 MiB budgets before retirement catalogs, other nested
+allocations and allocator overhead. Added backing fields cost 16 bytes per
+capability/endpoint node
 (780/1040 KiB at those capability/endpoint ceilings), without a holder allocation.
 Independent ceilings do not promise simultaneous RAM fit or progress.
+
+Retirement entries measure 136 bytes on supported 64-bit targets. A maximum
+255-entry catalog requests 34680 bytes (about 33.9 KiB). Its inline reservation
+adds 24 bytes to each queued-message payload slot: at the existing ordinary/total
+queue backing-slot ceilings this represents 576/768 KiB before allocator overhead.
+These slot fields retain the existing endpoint queue accounting. Catalogs now
+compete with node layouts for the same byte budget. Native real-capacity and
+public-path controls require no numerical limit increase; measured mixed workloads
+may justify adjusting central limits. The node-only plan above excludes catalogs.
 
 Sharing the existing pool avoids another reserve and administration category,
 but these layouts now compete for same-class bytes and slots. Raising limits
@@ -99,12 +137,24 @@ and node allocation. Existing heap-held publication/detachment, root reuse,
 hidden connection cleanup, scalar/vector receive, cancellation, returned authority
 and guarded complete-owner abandonment exercise the same admitted nodes.
 
-The full host suite and strict test/minimal kernel checks passed on both
-architectures. Fresh four-CPU security campaigns completed ARM 19/19, Intel VT-d
-17/17 and AMD-Vi 17/17, with zero failures or pending tests. Current signed
-services were reused because SDK and wire formats are unchanged.
+The [retirement-capacity evidence](../reports/audits/evidence/2026-11-02-ipc-attachment-capacity.json)
+records actual deallocation-before-refund tracing, FIFO/interrupted callback
+retention, constructor/size/quota rejection and native real-buffer pressure.
+Public copy-call controls cover quota rollback, queued cancellation and
+receive/reply/close with exact physical-frame and admission recovery; promotion
+preserves the original buffer class. Complete copied-call and single-send
+abandonment retain catalog capacity under the pool guard. A storage-only
+delivered-receive fixture retains one empty catalog under IPC/heap/pool guards;
+it adopts no physical backing or authority. Host physical retirement is an
+adapter, not a native physical-completion proof.
 
-Nested attachment/control storage, other remaining allocations, general heap
+Current retirement-capacity qualification passed the full host suite (including
+the 48-test attachment harness), strict test/minimal checks on both architectures,
+and fresh four-CPU security campaigns: ARM 19/19, Intel VT-d 17/17 and AMD-Vi
+17/17, with zero failures or pending tests. Numerical limits and wire formats
+remain unchanged.
+
+Capability-ID/transfer/loan vectors and other control storage, remaining allocations, general heap
 and aggregate principal admission remain open. Serialized controls do not prove
 sustained hostile concurrent EL0 fairness or all caller/IRQ/destructor contexts.
 SEC-07/18 remain partial.

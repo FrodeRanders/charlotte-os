@@ -141,6 +141,7 @@ pub fn receive(
 struct ReceiveResources {
     authority: PreparingCapability,
     retired: RetiredMetadata,
+    delivered: Option<MemoryAttachments>,
 }
 impl ReceiveResources {
     fn receive(
@@ -151,6 +152,7 @@ impl ReceiveResources {
         let mut owner = Self {
             authority: PreparingCapability::new(),
             retired: RetiredMetadata::new(),
+            delivered: None,
         };
         let result = (|| {
             let mut ipc = IPC.write();
@@ -166,16 +168,45 @@ impl ReceiveResources {
             if let Some(page) = result_page {
                 prepared.write_result(page)?;
             }
-            Ok(prepared.commit())
+            Ok(prepared.commit(&mut owner.delivered))
         })();
         owner.finish();
         result
     }
 
     fn finish(mut self) {
+        if let Some(delivered) = self.delivered.take() {
+            delivered.finish();
+        }
         self.retired.release();
         self.authority.finish();
     }
+}
+
+#[cfg(feature = "kernel_tests")]
+pub(super) fn test_received_storage_abandonment() {
+    let before = node_budget::snapshot();
+    let owner = ReceiveResources {
+        authority: PreparingCapability::new(),
+        retired: RetiredMetadata::new(),
+        // Storage-only fixture: no physical backing or capability is adopted.
+        delivered: Some(MemoryAttachments::try_new(false, alloc::vec![0]).unwrap()),
+    };
+    {
+        let _ipc = IPC.write();
+        let _heap = crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
+        node_budget::with_locked(|| drop(owner));
+    }
+    let bytes = core::mem::size_of::<crate::memory::object::RetiredMemory>() as u64;
+    assert_eq!(
+        node_budget::snapshot(),
+        ([before.0[0] + bytes, before.0[1]], [before.1[0] + bytes, before.1[1]])
+    );
+    crate::logln!(
+        "[IPC receive storage] complete delivered receive owner abandonment retains one empty \
+         retirement catalog and original byte charge under IPC/heap/pool guards; no physical \
+         backing or authority adopted"
+    );
 }
 
 /// Own speculative reply authority until dequeue commits. IPC stays exclusively
@@ -252,7 +283,7 @@ impl<'a> PreparedReceive<'a> {
             .map_err(|_| IpcError::MemoryTransferFailed)
     }
 
-    fn commit(mut self) -> ScalarMessage {
+    fn commit(mut self, delivered: &mut Option<MemoryAttachments>) -> ScalarMessage {
         let (message, interface, version) = {
             let endpoint = self.ipc.endpoints.get_mut(&self.endpoint).unwrap();
             (
@@ -265,7 +296,7 @@ impl<'a> PreparedReceive<'a> {
             self.ipc.deliver_connection(self.receiver, cap);
         }
         crate::memory::object::deliver_memory(self.receiver, &message.memory);
-        ScalarMessage {
+        let result = ScalarMessage {
             sender: message.sender,
             sender_generation: message.sender_generation,
             sender_principal: message.sender_principal,
@@ -279,7 +310,10 @@ impl<'a> PreparedReceive<'a> {
             // writes the complete memory-capability vector into its result page.
             memory: message.memory.first().copied(),
             connection: message.connection,
-        }
+        };
+        assert!(delivered.is_none(), "receive storage already retained");
+        *delivered = Some(message.memory);
+        result
     }
 }
 

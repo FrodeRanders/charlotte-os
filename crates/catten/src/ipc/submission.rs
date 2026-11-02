@@ -15,6 +15,7 @@ struct Submission {
     payload: Capability,
     endpoint: EndpointId,
     server: AddressSpaceId,
+    platform: bool,
     namespaces: [(AddressSpaceId, Option<AddressSpaceHandle>); 2],
     roots: [Option<AddressSpaceOperation>; 2],
 }
@@ -25,6 +26,7 @@ impl Submission {
         connection: CapabilityId,
         needed: ConnectionRights,
     ) -> Result<Self, IpcError> {
+        let trusted = crate::memory::budget::platform_identity(caller);
         let (payload, endpoint, server, namespaces) = {
             let ipc = IPC.read();
             let payload = ipc.cap(caller, connection)?;
@@ -50,6 +52,8 @@ impl Submission {
             payload,
             endpoint,
             server,
+            platform: caller == KERNEL_ASID
+                || trusted.is_some_and(|root| namespaces[0].1 == Some(root)),
             namespaces,
             roots: [None, None],
         };
@@ -195,7 +199,7 @@ impl PreparedSend {
             MemoryObjectCap,
             AddressSpaceId,
         ) -> Result<object::PreparedTransfer, object::MemoryObjectError>,
-        attachments: impl FnOnce(MemoryObjectCap) -> Result<MemoryAttachments, IpcError>,
+        attachments: impl FnOnce(bool, MemoryObjectCap) -> Result<MemoryAttachments, IpcError>,
     ) -> Result<(), IpcError> {
         let resources = &mut *self.0;
         assert!(resources.transfer.is_none() && resources.memory.is_none());
@@ -204,7 +208,10 @@ impl PreparedSend {
             prepare(submission.caller, cap, submission.server)
                 .map_err(|_| IpcError::MemoryTransferFailed)?,
         );
-        resources.memory = Some(attachments(resources.transfer.as_ref().unwrap().target_cap())?);
+        resources.memory = Some(attachments(
+            submission.platform,
+            resources.transfer.as_ref().unwrap().target_cap(),
+        )?);
         Ok(())
     }
 
@@ -237,7 +244,9 @@ impl PreparedSend {
         // All ordinary returns leave IPC before cleanup. Keep both exact roots
         // through source fence/pin completion, storage disposal and delivery.
         drop(self.0.transfer.take());
-        drop(self.0.memory.take());
+        if let Some(memory) = self.0.memory.take() {
+            memory.finish();
+        }
         if let Some(delivery) = self.0.delivery.take() {
             delivery.notify();
         }
@@ -309,25 +318,29 @@ pub(super) fn vector(
             let mut caps = Vec::new();
             let mut transfers =
                 read_vector_page(caller, descriptor, submission.server, false, &mut caps)?;
-            let memory = MemoryAttachments::try_new(caps)?;
-            let delivery = {
+            let mut memory = Some(MemoryAttachments::try_new(submission.platform, caps)?);
+            let delivery = (|| {
                 let mut ipc = IPC.write();
                 submission.validate(&ipc)?;
                 object::commit_undelivered_transfers(&mut transfers)
                     .map_err(|_| IpcError::MemoryTransferFailed)?;
-                enqueue_message(
+                Ok(enqueue_message(
                     &mut ipc,
                     submission.endpoint,
                     caller,
                     opcode,
                     arg0,
                     None,
-                    memory,
+                    memory.take().unwrap(),
                     None,
                 )
-                .expect("reserved vector-send endpoint changed under IPC ownership")
-            };
+                .expect("reserved vector-send endpoint changed under IPC ownership"))
+            })();
             drop(transfers);
+            if let Some(memory) = memory {
+                memory.finish();
+            }
+            let delivery = delivery?;
             delivery.notify();
             None
         };

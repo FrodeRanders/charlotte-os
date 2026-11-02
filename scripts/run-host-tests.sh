@@ -211,6 +211,55 @@ mod memory { pub mod object {
 EOF
 "$repo_root/target/host-self-tests/frame-vector-tests" --test-threads=1
 
+# Production queued attachment retirement capacity: real deallocation/refund order.
+CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
+"$host_rustc" --edition=2024 --test --crate-name attachment_storage_tests - \
+    -o "$repo_root/target/host-self-tests/attachment-storage-tests" <<EOF
+#![feature(allocator_api)]
+#![allow(dead_code, unused_attributes)]
+extern crate alloc;
+extern crate self as charlotte_lifecycle;
+extern crate self as catten_syscall;
+#[path = "$repo_root/crates/catten-syscall/src/lib.rs"]
+mod syscall_format;
+pub use syscall_format::*;
+#[path = "$repo_root/crates/charlotte-lifecycle/src/resources.rs"]
+pub mod resources;
+#[path = "$repo_root/crates/catten/src/resource_policy.rs"]
+mod resource_policy;
+#[macro_export] macro_rules! logln { (\$message:literal) => {}; }
+mod cpu { pub mod multiprocessor { pub mod spin { pub mod mutex {
+    pub struct Mutex<T>(std::sync::Mutex<T>);
+    impl<T> Mutex<T> {
+        pub const fn new(value:T)->Self { Self(std::sync::Mutex::new(value)) }
+        pub fn lock(&self)->std::sync::MutexGuard<'_,T> { self.0.lock().unwrap() }
+        pub fn try_lock(&self)->Option<std::sync::MutexGuard<'_,T>> { self.0.try_lock().ok() }
+    }
+}}}}
+mod klib {
+    #[path = "$repo_root/crates/catten/src/klib/admission.rs"] pub mod admission;
+}
+mod memory { pub mod object {
+    pub static DROPS: core::sync::atomic::AtomicUsize=core::sync::atomic::AtomicUsize::new(0);
+    #[derive(Debug)] pub struct RetiredMemory(pub u64);
+    impl Drop for RetiredMemory {
+        fn drop(&mut self) { DROPS.fetch_add(1,core::sync::atomic::Ordering::AcqRel); }
+    }
+    impl RetiredMemory { pub fn release(self)->Result<(),()> { Ok(()) } }
+    #[derive(Debug)] pub enum MemoryObjectError { UnknownCapability, Other }
+    pub fn try_retire_cap(_:usize,_:u64)->Result<RetiredMemory,MemoryObjectError> { Err(MemoryObjectError::UnknownCapability) }
+}}
+mod ipc {
+    use alloc::vec::Vec;
+    type AddressSpaceId=usize;
+    type MemoryObjectCap=u64;
+    const CAP_VECTOR_MAX:usize=crate::CAP_VECTOR_MAX;
+    #[derive(Debug,PartialEq,Eq)] enum IpcError { ResourceLimit }
+    #[path = "$repo_root/crates/catten/src/ipc/attachments.rs"] pub mod attachments;
+}
+EOF
+"$repo_root/target/host-self-tests/attachment-storage-tests" --test-threads=1
+
 # Diagnostic capture uses the production compile-time resource policy too.
 # Compile both modules together rather than treating snapshot.rs as a crate root.
 CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \

@@ -84,13 +84,19 @@ fn retained_failure() {
                 let result = {
                     let mut ipc = IPC.write();
                     submission.validate(&ipc).unwrap();
-                    prepared.commit_with_memory(&mut ipc, submission.endpoint, 1, 0, |caps| {
-                        if publication {
-                            MemoryAttachments::try_new(caps)
-                        } else {
-                            Err(IpcError::ResourceLimit)
-                        }
-                    })
+                    prepared.commit_with_memory(
+                        &mut ipc,
+                        submission.endpoint,
+                        1,
+                        0,
+                        |platform, caps| {
+                            if publication {
+                                MemoryAttachments::try_new(platform, caps)
+                            } else {
+                                Err(IpcError::ResourceLimit)
+                            }
+                        },
+                    )
                 };
                 let error = result.err().expect("fault publication succeeded");
                 assert_eq!(
@@ -235,12 +241,12 @@ fn scalar_send_outcomes() {
                     unlocked(&fixture);
                     prepare_mode(caller, cap, server, mode)
                 },
-                |cap| {
+                |platform, cap| {
                     unlocked(&fixture);
                     if fault == 0 {
                         Err(IpcError::ResourceLimit)
                     } else {
-                        MemoryAttachments::single(cap)
+                        MemoryAttachments::single(platform, cap)
                     }
                 },
             );
@@ -320,6 +326,7 @@ fn scalar_send_abandonment() {
         let amount = memory::budget::used(fixture.caller);
         let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
         let authority = crate::capability::node_admission_used();
+        let metadata = node_budget::snapshot();
         let irq = crate::cpu::isa::lp::ops::get_int_state();
         if guarded {
             let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
@@ -328,7 +335,9 @@ fn scalar_send_abandonment() {
             let _heap = PRIMARY_ALLOCATOR.lock();
             let _physical = PHYSICAL_FRAME_ALLOCATOR.lock();
             object::retirement_tests::with_registry_locked(|| {
-                crate::capability::admission_tests::test_with_registry_locked(|| drop(send));
+                crate::capability::admission_tests::test_with_registry_locked(|| {
+                    node_budget::with_locked(|| drop(send));
+                });
             });
         } else {
             drop(send);
@@ -340,6 +349,7 @@ fn scalar_send_abandonment() {
         );
         assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
         assert_eq!(crate::capability::node_admission_used(), authority);
+        assert_eq!(node_budget::snapshot(), metadata);
         assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
         unlocked(&fixture); // Both original root leases remain retained.
         // Never reconstruct this abandoned operation or close its roots by ID.

@@ -60,7 +60,7 @@ fn submission_failure() {
     .unwrap();
     let destinations = call.memory.clone();
     assert!(matches!(
-        call.commit_with_memory(&mut ipc, endpoint, 1, 0, |_| Err(IpcError::ResourceLimit)),
+        call.commit_with_memory(&mut ipc, endpoint, 1, 0, |_, _| Err(IpcError::ResourceLimit)),
         Err(IpcError::ResourceLimit)
     ));
     drop(ipc);

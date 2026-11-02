@@ -24,8 +24,10 @@ registry hold; scalar prepared call commit needs no memory registry or heap. The
 are unchanged; private payload layouts now have [IPC backing admission](ipc-node-admission.md).
 The exact recipient authority namespace supplies captured storage classification,
 separate from the grantor/requester connection charge. Candidate and detached
-nodes retain both charges through actual deallocation; allocator overhead, nested
-storage and comprehensive principal/heap admission remain open.
+nodes retain both charges through actual deallocation. [Attachment retirement
+capacity](ipc-node-admission.md#attachment-retirement-capacity) shares byte
+admission and explicit post-IPC disposal. Capability-ID/transfer/loan vectors,
+allocator overhead and comprehensive principal/heap admission remain open.
 
 ## Call and endpoint preparation
 

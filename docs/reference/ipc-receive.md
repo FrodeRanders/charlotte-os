@@ -51,7 +51,11 @@ queued message and hidden attachments intact. Commit publishes those attachments
 under the same exclusive IPC borrow. Producers pass a complete `Delivery`
 receipt out of their existing guard/cleanup boundary and consume it through
 `notify()`, preserving CQ wake before receiver notification. The root receive
-entry points, register envelope and cleanup order remain unchanged. See the
+entry points and register envelope remain unchanged. Delivered attachment
+retirement storage now stays in the complete receive owner until post-IPC
+disposal; no catalog allocation is needed during cancellation. Its original
+requester byte charge survives through actual buffer deallocation. See
+[attachment capacity](ipc-node-admission.md#attachment-retirement-capacity). See the
 [refactoring evidence](../reports/audits/2026-10-25-refactoring-ipc-message.md).
 
 A signed variant declaring runtime ABI 1 or 2 cannot be placed or launched on an

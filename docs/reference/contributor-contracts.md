@@ -346,6 +346,16 @@ the corrected RPC polling paths, and the remaining notification gaps.
   last. Complete call/capability/endpoint/growth and detached-list fallback is
   inert under the backing-pool guard too. See `docs/reference/ipc-node-admission.md`.
 
+- IPC attachment retirement catalogs reserve exact capacity from `ipc_nodes`
+  bytes with zero node slots before allocation. Preserve the original requester
+  class from the call reservation or exact sender capture through queueing and
+  receiver/root changes. Keep caps, remaining retired owners, full capacity and
+  charge in one inert owner. Call rejection and successful receive carry storage
+  out of IPC before explicit disposal. FIFO child handoff retains full capacity
+  until every callback returns and the actual buffer is freed; interruption keeps
+  the remaining complete owners and charge. Empty length supplies no physical
+  completion or replay authority. See `docs/reference/ipc-node-admission.md`.
+
 - Device namespace and MMIO/IRQ/DMA payload nodes use typed `DeviceMap` storage
   and independent `device_nodes` requested-byte/count admission. Capture trusted
   backing class with the exact root generation, then acquire that root lease

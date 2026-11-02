@@ -64,7 +64,9 @@ there is no mutable budget or teardown endpoint. History and cluster formats
 retain their own existing fields.
 
 The `ipc_nodes` row admits capability, endpoint, pending-call and reply-token layouts;
-logical IPC resource counts retain their separate owners. Earlier catalog IDs
+attachment retirement catalogs contribute bytes and zero node slots to that
+same pool, retaining original requester class through actual buffer release.
+Logical IPC resource counts retain their separate owners. Earlier catalog IDs
 and record widths stay unchanged; version 9 rejects rather than silently omitting
 the new pool. Catalog/version changes require both architecture service bundles
 to be rebuilt and signed; expanding an existing pool's layout coverage changes

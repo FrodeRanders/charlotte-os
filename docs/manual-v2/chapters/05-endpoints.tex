@@ -113,6 +113,16 @@ operations and detached lists retain both charges under unknown guards; nested
 buffers and broader heap/principal admission remain separate. See
 \repofile|docs/reference/ipc-node-admission.md|.
 
+Attachment retirement catalogs also reserve exact capacity from that pool's
+byte dimension, with zero node slots and the original requester class. A
+136-byte retirement entry gives a maximum 255-entry catalog of 34680 bytes.
+Call rejection and successful receive keep this storage in their complete owner
+until explicit disposal after IPC unlock. FIFO child handoff preserves full
+capacity and charge through every callback; interruption retains remaining
+owners. Buffer deallocation precedes refund. The inline reservation adds 24 bytes
+per queued-message payload slot; no numerical defaults change. Capability-ID,
+transfer and loan vectors and general heap/principal admission remain open.
+
 Connection-bearing calls and replies admit their
 connection before copying memory, consuming the token or revoking a loan.
 Kernel rejection leaves the inputs intact. The consuming Rust
