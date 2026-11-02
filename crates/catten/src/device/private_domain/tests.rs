@@ -46,11 +46,13 @@ fn retained(root: memory::AddressSpaceHandle) {
 #[allow(clippy::result_large_err)] // Fixture returns complete inline failure owners.
 pub(super) fn run() {
     // Known-private completion never calls the registered-domain destroy adapter.
+    let metadata = crate::device::backend_registry::budget::snapshot();
     let baseline = dma_tables::used();
     let (root, grant) = prepare();
     assert!(grant.resources.creation.private.is_some());
     assert!(grant.cancel_unpublished().is_ok());
     assert_eq!(dma_tables::used(), baseline);
+    assert_eq!(crate::device::backend_registry::budget::snapshot(), metadata);
     assert_eq!(crate::capability::admission_tests::test_namespace_used(root.id()), 0);
     memory::close_user_address_space_handle(root).unwrap();
 
@@ -73,6 +75,7 @@ pub(super) fn run() {
 
     let (failed_root, grant) = prepare();
     let before_failed_release = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    let before_failed_metadata = crate::device::backend_registry::budget::snapshot();
     let mut calls = 0;
     let grant = grant
         .cancel_unpublished_with(|creation| {
@@ -109,6 +112,7 @@ pub(super) fn run() {
     grant.resources.creation.private = Some(domain);
     crate::device::admission_tests::drop_grant_under_guards(grant);
     retained(failed_root);
+    assert_eq!(crate::device::backend_registry::budget::snapshot(), before_failed_metadata);
     assert_eq!(dma_tables::used().1, baseline.1 + 2 * pages);
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), before_failed_release + 1);
     crate::logln!(

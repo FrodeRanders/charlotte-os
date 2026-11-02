@@ -22,9 +22,9 @@ their original domains disappear.
 
 Each inline charge adds 16 bytes on supported 64-bit targets: 4 MiB at the total
 count ceiling. The byte dimension admits the actual requested retirement-node
-layout, including charge and inline payload storage. Nested table ledgers,
-allocator bookkeeping and aggregate principal/general heap accounting remain
-separate. Admission adds a short pool operation at
+layout, including charge and inline payload storage. [Table-ledger capacity](iommu-table-admission.md#ledger-buffer-admission) shares
+this pool's byte dimension with zero node count. Allocator bookkeeping and
+aggregate principal/general heap accounting remain separate. Admission adds a short pool operation at
 allocation/release and the existing registry `MapFailed` or mapping/cache
 `Memory` rejection.
 
@@ -66,9 +66,10 @@ claim and completion policy. The pool itself changes only counters and holds no
 guard across allocation, callbacks or another subsystem.
 
 Native node layouts are 48 bytes for requester/context/walker nodes, 104 for a
-DMA mapping, 136 for a VT-d domain, 128 for an AMD-Vi domain and 168 for a SMMUv3
+DMA mapping, 160 for a VT-d domain, 152 for an AMD-Vi domain and 192 for a SMMUv3
 domain. Mapping/cache charges add 16 bytes per node; retained classification adds
-8 bytes to each domain record owner and another 8 to SMMU cache ownership. Requester-only
+8 bytes to each domain record owner and another 8 to SMMU cache ownership. Ledger
+admission adds 24 bytes to each `Tables` owner, included in these domain layouts. Requester-only
 count ceilings request 9/12 MiB ordinary/total; domain-layout controls can reach
 the independent 18/24 MiB byte ceilings with count headroom.
 
@@ -147,9 +148,9 @@ private rollback, map/unmap and confirmed retirement tests remain required.
 These are serialized kernel fixtures, not sustained hostile concurrent EL0
 fairness or general heap OOM qualification. Node allocation errors are injected;
 byte/count pressure allocates actual backing for empty production-layout nodes.
-No new hardware timeout or outstanding device I/O is injected. Table-ledger
-backing, aggregate principal accounting and wider caller/IRQ/latency qualification
-remain open. The shared read-only inventory reports this pool; it grants no
+No new hardware timeout or outstanding device I/O is injected. Aggregate principal accounting and wider caller/IRQ/latency qualification remain
+open. Table-ledger buffers share this pool's bytes while retaining their own
+complete physical owner. The shared read-only inventory reports this pool; it grants no
 cleanup authority.
 SEC-07 remains partial; C14/C15 and G1/G4 cleanup boundaries continue to apply.
 

@@ -125,7 +125,7 @@ impl Domain {
             retiring: false,
             source_id,
             root: PAddr::from(0u64),
-            tables: Tables::new(Scope::Domain),
+            tables: Tables::new(Scope::Domain, backing_platform),
             next_iova: IOVA_START,
             mappings: super::mapping_storage::Records::new(backing_platform),
         };
@@ -393,7 +393,7 @@ fn initialize(
             completion_epoch: 0,
         }),
         devtab: PAddr::from(0u64),
-        _tables: Tables::new(Scope::Unit),
+        _tables: Tables::new(Scope::Unit, true),
         next_domain: 1,
         domains: super::backend_registry::Map::new(),
         sources: super::backend_registry::Map::new(),

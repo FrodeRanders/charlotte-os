@@ -130,7 +130,7 @@ impl UnitBacking for Payload {
 }
 fn payload(pages: usize) -> DetachedDomain<Payload> {
     let mut owner = DetachedDomain::new(Payload {
-        tables: Tables::new(super::super::dma_tables::Scope::Unit),
+        tables: Tables::new(super::super::dma_tables::Scope::Unit, true),
         _metadata: alloc::vec![Metadata],
     });
     for _ in 0..pages {

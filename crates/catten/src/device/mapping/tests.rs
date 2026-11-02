@@ -307,7 +307,7 @@ pub(super) fn run() {
     let operation = DmaOperation::begin(root.id(), cap).unwrap();
     let pin = object::pin_for_dma(root.id(), memory, true, true, false).unwrap();
     let baseline = crate::device::dma_tables::used();
-    let mut tables = Tables::new(Scope::Domain);
+    let mut tables = Tables::new(Scope::Domain, false);
     let frame = tables.allocate_frame().unwrap();
     #[cfg(target_arch = "x86_64")]
     let _ = frame;

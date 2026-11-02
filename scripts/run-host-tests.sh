@@ -130,6 +130,45 @@ mod observer {
 EOF
 "$repo_root/target/host-self-tests/observer-owner-tests" --test-threads=1
 
+# Production ledger growth and retaining ownership, with real buffer-free tracing.
+CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
+"$host_rustc" --edition=2024 --test --crate-name iommu_ledger_tests - \
+    -o "$repo_root/target/host-self-tests/iommu-ledger-tests" <<EOF
+#![feature(allocator_api)]
+#![allow(dead_code, unused_attributes)]
+extern crate alloc;
+extern crate self as charlotte_lifecycle;
+extern crate self as catten_syscall;
+#[path = "$repo_root/crates/catten-syscall/src/lib.rs"]
+mod syscall_format;
+pub use syscall_format::*;
+#[path = "$repo_root/crates/charlotte-lifecycle/src/resources.rs"]
+pub mod resources;
+#[path = "$repo_root/crates/catten/src/resource_policy.rs"]
+mod resource_policy;
+mod cpu { pub mod multiprocessor { pub mod spin { pub mod mutex {
+    pub struct Mutex<T>(std::sync::Mutex<T>);
+    impl<T> Mutex<T> {
+        pub const fn new(value: T) -> Self { Self(std::sync::Mutex::new(value)) }
+        pub fn lock(&self) -> std::sync::MutexGuard<'_, T> { self.0.lock().unwrap() }
+        pub fn try_lock(&self) -> Option<std::sync::MutexGuard<'_, T>> { self.0.try_lock().ok() }
+    }
+}}}}
+mod klib {
+    #[path = "$repo_root/crates/catten/src/klib/admission.rs"]
+    pub mod admission;
+}
+#[path = "$repo_root/crates/catten/src/device/dma_common.rs"]
+mod dma_common;
+mod tables {
+    use crate::dma_common::Error;
+    struct Region { base: usize, pages: usize }
+    #[path = "$repo_root/crates/catten/src/device/dma_tables/ledger.rs"]
+    mod ledger;
+}
+EOF
+"$repo_root/target/host-self-tests/iommu-ledger-tests" --test-threads=1
+
 # Diagnostic capture uses the production compile-time resource policy too.
 # Compile both modules together rather than treating snapshot.rs as a crate root.
 CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \

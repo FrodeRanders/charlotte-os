@@ -101,8 +101,13 @@ They retain the original domain-grant class through actual deallocation;
 promoting the root cannot reclassify later metadata in that domain. No numerical
 limit or statistics grammar changes. The shared ceiling bounds retained storage
 but also makes these layouts compete for its capacity. Raise the reviewed
-central limits if workload planning requires more headroom. Table-ledger and
-general principal/heap admission remain separate work. See
+central limits if workload planning requires more headroom. Table-ledger buffers
+share the byte dimension with zero node count and retain full old/replacement
+capacity through actual free. Domain-grant or trusted boot class is captured
+before allocation; uncertain physical cleanup retains both page and metadata
+budgets. Default maximum ledger capacity is 16 KiB per domain and 32 KiB per unit,
+with 24/48 KiB during the final doubling. General principal/heap admission remains
+separate work. See
 \repofile|docs/reference/iommu-node-admission.md|.
 
 A profile defines \texttt{POLICY: Policy} in the policy module's scope. It can

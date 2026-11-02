@@ -131,7 +131,7 @@ impl Domain {
             agaw,
             levels: ((agaw - 12) / 9) as usize,
             root: PAddr::from(0u64),
-            tables: Tables::new(Scope::Domain),
+            tables: Tables::new(Scope::Domain, backing_platform),
             next_iova: IOVA_START,
             mappings: super::mapping_storage::Records::new(backing_platform),
         };
@@ -475,7 +475,7 @@ fn initialize(
         agaw,
         max_domains,
         root_table: PAddr::from(0u64),
-        tables: Tables::new(Scope::Unit),
+        tables: Tables::new(Scope::Unit, true),
         context_tables: super::backend_registry::Map::new(),
         next_domain: 1,
         domains: super::backend_registry::Map::new(),

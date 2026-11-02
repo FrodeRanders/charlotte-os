@@ -1,0 +1,218 @@
+{
+  "schema": "charlotte.iommu-ledger-admission.v1",
+  "date": "2026-11-02",
+  "base_revision": "849a48e841cd192dc3fa09acb30891ad13c21514",
+  "scope": "Admit IOMMU physical-extent ledger buffer capacity to the existing metadata byte pool. Capture original domain-grant/boot class; retain full old/candidate overlap, addresses and original charges through replacement and physical uncertainty; deallocate before refund. Numerical limits, node-count units, statistics grammar, register ABI and physical completion rules are unchanged.",
+  "source_sha256": {
+    "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
+    "crates/catten-syscall/src/metadata_pools.rs": "8d806c82affc0a5bac177537b54a250a69fe7542caa28989164e58916b72101c",
+    "crates/catten/src/device/amd_vi.rs": "6247332ad9732ff3f9bc07749469b7d2633193ecfaf9ad398506d677562b80d0",
+    "crates/catten/src/device/backend_registry/budget.rs": "8eb644fcb79bf601d186c6b2808c6d21520bb0cfb0649f96021e927afcc67644",
+    "crates/catten/src/device/dma_tables.rs": "7f482cbdd01a7cd153d5941a3ccb5c95427f0d61f321d9e510be9f552f0b7498",
+    "crates/catten/src/device/dma_tables/ledger.rs": "c050390125fce5e252ab7f2d3647cf081fff2acf59d69613a15daf57d0a05ddb",
+    "crates/catten/src/device/dma_tables/ledger/host_tests.rs": "25a64236846ab35d3630ba823ffaf048c69fb6a20d7af8769bd385994aa3ce62",
+    "crates/catten/src/device/dma_tables/ledger/tests.rs": "875c266880c52b78978e97e6ab9f95bef5f9e60eb590db0d0247de262c75a496",
+    "crates/catten/src/device/dma_tables/tests.rs": "db868780abd1810bf87293300b61932c52e190373057aca796eaa1441563b889",
+    "crates/catten/src/device/dma_tables/tests/detached_tests.rs": "13fb6b5cbfaf71f8bb0820a248d462faa619ebe1c7e380d9e1d4c2989ab8a1bc",
+    "crates/catten/src/device/dma_tables/tests/preparation_tests.rs": "78768a7622f7357b1b938cfaec2d74f23d5e9d516b4b2bbf3ceb03479d20fd79",
+    "crates/catten/src/device/domain_creation/tests.rs": "14028807a12504e0f7eaad33aec0e6eaf479ad4b3897caf47d925dc7c380cb87",
+    "crates/catten/src/device/mapping/tests.rs": "c809ae754d7d0bbd76712edce474e96ab88fea96e43c900b8bb6781117c7695d",
+    "crates/catten/src/device/private_domain/tests.rs": "6a7d2467f37b9d7572717bfac6b42d0f44edf521a3364fe8ebe3fc649b891b05",
+    "crates/catten/src/device/smmu.rs": "505832941dab9d5b82fc2531318b63624d6b840acbec00670336c7c525582c0e",
+    "crates/catten/src/device/unit_initialization/tests.rs": "7c6b3d97bd58ba06fef1e84485e2aa8cd494fdc1ce68cc226f7b381e39087f20",
+    "crates/catten/src/device/vt_d.rs": "638dc539d65d7b8d91c9fd9752a7087f6f7ff2142cd5963f26bd2d0d726fcd7a",
+    "crates/catten/src/klib/admission.rs": "b10d5402c22e29ddc3087881c4031cd8d2ee60bd6646e52b53c62239c4bf2138",
+    "crates/catten/src/resource_policy.rs": "8caa3b6d05f5470eff7c0269b59d259523184c77d5704667a2f1dfce97a29bba",
+    "crates/catten/src/resource_policy/defaults.rs": "949cf96cfeeaab96d42898a63859830466082ad98b80f12a8e8e99f4deb54156",
+    "crates/charlotte-lifecycle/src/resources.rs": "9ec29fce823650806ede3dc1a9539543dd5ccc784bbadee05d8478844a247270",
+    "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
+    "scripts/run-host-tests.sh": "ef409c4f03a28230dee56a17dd71680000e2f9edb6dbeeed6be3bd32f868ae0b"
+  },
+  "artifact_note": "Runtime Rust sources were frozen before all three campaigns; later living-documentation edits alter tracked-diff identities. Source and archived artifact hashes identify exercised inputs. Service sources/ABI are unchanged; staged bundles were reused and runners regenerated per-run signed security fixtures.",
+  "policy": {
+    "field": "iommu_nodes",
+    "ordinary": [
+      18874368,
+      196608
+    ],
+    "total": [
+      25165824,
+      262144
+    ],
+    "ledger_dimension": "[requested capacity * size_of(Region), 0]; buffer growth consumes bytes and zero node slots.",
+    "region_bytes": 16,
+    "max_retained_capacity_bytes": {
+      "domain": 16384,
+      "unit": 32768
+    },
+    "max_final_doubling_overlap_bytes": {
+      "domain": 24576,
+      "unit": 49152
+    },
+    "inline_tables_growth_bytes": 24,
+    "classification": "Domain Tables captures DmaCreation.backing_platform before backing allocation; boot Unit constructors select trusted metadata class. Growth never resolves an ASID, role, requester or later promotion. Each original charge carries its own class through actual buffer free. Physical page Scope::Domain remains charged to the physical domain subpool, even for trusted metadata.",
+    "growth": "Checked geometric capacity clamped to the owner page ceiling. Admit full candidate while old buffer remains fully charged. Allocate/validate exact capacity before moving records; move without allocation, then free empty old storage before refund. Ordinary candidate rejection leaves old addresses/capacity/charge intact.",
+    "failure": "Quota rejects before physical allocator entry and explicitly cancels provisional page admission. Existing unused capacity progresses without another metadata reservation. Physical allocation rejection may retain paid-for unused ledger capacity in the same owner. Partial release, uncertainty or abandonment retains the complete ledger and both original budgets, never allowing physical replay or early metadata refund.",
+    "decision": "Keep existing numerical limits. Default owner maxima are 16/32 KiB retained and 24/48 KiB during final doubling. Sharing bounds metadata bytes but increases competition within the same original class; measured mixed workloads can justify raising reviewed central limits. No new pool, statistics section, holder allocation or arbitrary lower capacity is introduced."
+  },
+  "native_campaigns": [
+    {
+      "arch": "aarch64",
+      "instance": "iommu-ledger-20261102-arm",
+      "cpus": 4,
+      "revision": "849a48e841cd192dc3fa09acb30891ad13c21514",
+      "kernel_sha256": "0d21203b72eab3a040b0d4a76b7c7920e256c1e02ace4e7d9efc31c3a1a04c17",
+      "boot_image_sha256": "7988d92fe2efa1a9f019548beb9dfc068d2d7dde7a020254df9a032edd2d0089",
+      "initial_disk_sha256": "891d405cf7c355e83bf9ca3c9f62ca34dde0281e5dd6411bab91ec50fb13f48f",
+      "tracked_diff_sha256": "c7ac9a9ad6370028231fbc145eb4c53550e4c4eb1466431b78573ff7aac5fd83",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T15:57:37Z",
+      "platform": "arm",
+      "configuration": "security-test; fresh storage; four CPUs; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "f0428620418266b3d5d0f4a35d3d4b8af70c71e7225ad16387896b464074cbf8",
+      "serial_sha256": "4c7f7544a09f055808c1a4df89e294668b86f2e0e30c6c24f73303a59b91dbbb",
+      "service_sha256": {
+        "nvme.elf": "4400a62a4f2496a137e23d389d3fb0097000991311b5e7243447eb33a729e360",
+        "observe.elf": "426ca8279bb1510cc8dbd319a12f34bff37a18786690f53b71c1d1e68684ef26",
+        "security_probe.elf": "11a9f88261e2a8064100e7494d83c418d351a0422bac08e9807128ab964e43f3"
+      },
+      "summary": {
+        "passed": 19,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+    10.259972] [IOMMU ledger admission] real buffers ordinary=1152 trusted=638; byte-only limits, full replacement overlap, allocator rejection, exact address transfer, bounded capacity, heap-held quota denials and deallocation-before-refund passed",
+        "[+    10.261884] [IOMMU ledger physical admission] fresh/growth quota denial precedes physical allocation; existing capacity and captured trusted class progress; page reservations, buffers and charges recover exactly",
+        "[+    10.319073] [IOMMU preparation abandonment] explicit metadata/allocation/prefix rollback and Drop under backend/lifecycle/table/heap/physical/pool guards passed; 14 original charges (7 domain), 10 frames and table ledgers retained",
+        "[+    10.478572] [backend node layout] requester=48 bytes; 64 allocator rejections passed",
+        "[+    10.478943] [backend node layout] dma-mapping=104 bytes; 64 allocator rejections passed",
+        "[+    10.479348] [backend node layout] smmu-walker=48 bytes; 64 allocator rejections passed",
+        "[+    10.479718] [backend node layout] smmu-domain=192 bytes; 64 allocator rejections passed",
+        "[+    11.349480] [DMA private retention] complete grant Drop under guards, armed rejection and partial release with no retry passed; 10 original domain charges, 9 frames, both exact roots and authority reservations retained",
+        "[+    12.266453] [DMA metadata admission] 32 real ordinary map denials after root promotion; unchanged tables/charges and returned pins; fresh trusted grant maps/unmaps under ordinary pressure; original backing fully refunded",
+        "[+    86.342392] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "arch": "x86_64",
+      "instance": "iommu-ledger-20261102-intel",
+      "cpus": 4,
+      "revision": "849a48e841cd192dc3fa09acb30891ad13c21514",
+      "kernel_sha256": "520d8275ed825ad7fb73d98ccc42cf9a9030fdd4207b0f7da928c783e46bf367",
+      "boot_image_sha256": "a8324928408bd41edbb20aee88ac960ca96b404fdf6c27a3b3608de1511ac5a9",
+      "initial_disk_sha256": "dff68957bc4d1a7f18c96ea8c95dca1beee17699d4db0b8c4549aff3e4d32252",
+      "tracked_diff_sha256": "c7ac9a9ad6370028231fbc145eb4c53550e4c4eb1466431b78573ff7aac5fd83",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T15:58:50Z",
+      "platform": "intel",
+      "configuration": "security-test; fresh storage; four CPUs; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "08ce800bc6c4c02c0a5034623ee3b839dfd595b199c64cca993a52af56c57e50",
+      "serial_sha256": "d742aa2c7dca76350519219039685e3684664efcaf1f635b5f3441c23fca5f74",
+      "service_sha256": {
+        "nvme.elf": "3905ba29c4acbc07cec559e9af09e9ad9eadfdf7fe05d0311eeb7c9444a867ba",
+        "observe.elf": "e1f481137ee8aed15d2eaaf0092713b1f3f863ed2027932608aacd67056a4a38",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c"
+      },
+      "summary": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+     7.289715] [IOMMU ledger admission] real buffers ordinary=1152 trusted=638; byte-only limits, full replacement overlap, allocator rejection, exact address transfer, bounded capacity, heap-held quota denials and deallocation-before-refund passed",
+        "[+     7.292505] [IOMMU ledger physical admission] fresh/growth quota denial precedes physical allocation; existing capacity and captured trusted class progress; page reservations, buffers and charges recover exactly",
+        "[+     7.304714] [IOMMU preparation abandonment] explicit metadata/allocation/prefix rollback and Drop under backend/lifecycle/table/heap/physical/pool guards passed; 14 original charges (7 domain), 10 frames and table ledgers retained",
+        "[+    16.106091] [backend node layout] requester=48 bytes; 64 allocator rejections passed",
+        "[+    16.106763] [backend node layout] dma-mapping=104 bytes; 64 allocator rejections passed",
+        "[+    16.107434] [backend node layout] vtd-domain=160 bytes; 64 allocator rejections passed",
+        "[+    16.108083] [backend node layout] amd-domain=152 bytes; 64 allocator rejections passed",
+        "[+    16.108813] [backend node layout] vtd-context=48 bytes; 64 allocator rejections passed",
+        "[+    16.902940] [DMA private retention] complete grant Drop under guards, armed rejection and partial release with no retry passed; 8 original domain charges, 7 frames, both exact roots and authority reservations retained",
+        "[+    17.824827] [DMA metadata admission] 32 real ordinary map denials after root promotion; unchanged tables/charges and returned pins; fresh trusted grant maps/unmaps under ordinary pressure; original backing fully refunded",
+        "[+    93.414892] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "arch": "x86_64",
+      "instance": "iommu-ledger-20261102-amd",
+      "cpus": 4,
+      "revision": "849a48e841cd192dc3fa09acb30891ad13c21514",
+      "kernel_sha256": "842408323b55253073d149cf09bc0626dfd2772da664892a68b6ea2effba3658",
+      "boot_image_sha256": "6aa53f0a4ce3ff65c81e9484df2d027630f47764002f6d5f6cef4ffc48220232",
+      "initial_disk_sha256": "dff68957bc4d1a7f18c96ea8c95dca1beee17699d4db0b8c4549aff3e4d32252",
+      "tracked_diff_sha256": "d088a27c85ee0cc8d67c63cc43944cdc897f78c3d2cde29da52d4374e50bbe01",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T16:17:34Z",
+      "platform": "amd",
+      "configuration": "security-test; fresh storage; four CPUs; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "91e53726f456e60aa9a606967247d40ec02fea1aa5451200843a5ca621f3dbf3",
+      "serial_sha256": "a01fde23ea6e445b2a2b40ce17fc051f6d395d72dfd602317d0115564e47d476",
+      "service_sha256": {
+        "nvme.elf": "3905ba29c4acbc07cec559e9af09e9ad9eadfdf7fe05d0311eeb7c9444a867ba",
+        "observe.elf": "e1f481137ee8aed15d2eaaf0092713b1f3f863ed2027932608aacd67056a4a38",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c"
+      },
+      "summary": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+     6.889163] [IOMMU ledger admission] real buffers ordinary=1152 trusted=638; byte-only limits, full replacement overlap, allocator rejection, exact address transfer, bounded capacity, heap-held quota denials and deallocation-before-refund passed",
+        "[+     6.891634] [IOMMU ledger physical admission] fresh/growth quota denial precedes physical allocation; existing capacity and captured trusted class progress; page reservations, buffers and charges recover exactly",
+        "[+     6.902360] [IOMMU preparation abandonment] explicit metadata/allocation/prefix rollback and Drop under backend/lifecycle/table/heap/physical/pool guards passed; 14 original charges (7 domain), 10 frames and table ledgers retained",
+        "[+    12.646566] [backend node layout] requester=48 bytes; 64 allocator rejections passed",
+        "[+    12.647340] [backend node layout] dma-mapping=104 bytes; 64 allocator rejections passed",
+        "[+    12.648086] [backend node layout] vtd-domain=160 bytes; 64 allocator rejections passed",
+        "[+    12.648871] [backend node layout] amd-domain=152 bytes; 64 allocator rejections passed",
+        "[+    12.649682] [backend node layout] vtd-context=48 bytes; 64 allocator rejections passed",
+        "[+    13.463557] [DMA private retention] complete grant Drop under guards, armed rejection and partial release with no retry passed; 4 original domain charges, 3 frames, both exact roots and authority reservations retained",
+        "[+    14.373516] [DMA metadata admission] 32 real ordinary map denials after root promotion; unchanged tables/charges and returned pins; fresh trusted grant maps/unmaps under ordinary pressure; original backing fully refunded",
+        "[+    89.920902] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    }
+  ],
+  "validation": {
+    "full_host_suite": "Complete scripts/run-host-tests.sh passed, including the new ledger harness and expected rejected legacy crypto mutation controls.",
+    "ledger_host_harness": {
+      "passed": 47,
+      "failed": 0,
+      "production_ledger_tests": [
+        "growth_holds_full_overlap_until_old_buffer_is_freed",
+        "allocated_candidate_rejection_frees_before_refund_and_preserves_old_records",
+        "exact_capacity_and_owner_bound_reject_without_publication",
+        "existing_capacity_progresses_under_byte_pressure_without_new_allocation",
+        "abandonment_under_pool_lock_keeps_buffer_and_original_charge"
+      ],
+      "adapter": "Actual ledger module and common admission code; two usize fields model the native 16-byte Region. Std mutex/System allocator substitutes are host-only. Pointer-specific actual buffer deallocation is traced before production charge disposal. Native fixtures use actual Region/PAddr, locks, IRQ state and physical allocation."
+    },
+    "strict_kernel_checks": [
+      "AArch64 acpi,kernel_tests",
+      "x86_64 acpi,kernel_tests",
+      "AArch64 acpi minimal",
+      "x86_64 acpi minimal"
+    ],
+    "native_builds": "Runners built the current kernels and enforced required executable/read-only assembly sections.",
+    "formatting": "cargo fmt --all -- --check and git diff --check passed"
+  },
+  "remaining_limits": [
+    "General heap bookkeeping and aggregate principal accounting remain open.",
+    "Serialized real-buffer byte pressure and physical adapter controls do not establish sustained hostile concurrent EL0 fairness, latency or every enclosing destructor context.",
+    "Physical allocator/partial-release rejection and ledger allocator rejection use explicit injected controls; native general heap OOM is not forced.",
+    "Existing terminal table/region/private-grant fixtures now retain their metadata charges too; table/data-frame retention counts are unchanged.",
+    "A buffer charge grants no table completion, hardware drain, retry or teardown authority."
+  ]
+}

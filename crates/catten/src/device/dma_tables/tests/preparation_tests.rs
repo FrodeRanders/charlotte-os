@@ -44,7 +44,7 @@ fn ordinary_rejection() {
     for scope in [Scope::Domain, Scope::Unit] {
         let baseline = used();
         let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
-        let mut tables = Tables::new(scope);
+        let mut tables = Tables::new(scope, scope == Scope::Unit);
         assert_eq!(
             tables.allocate_prepared_with(
                 1,
@@ -99,28 +99,36 @@ fn ordinary_rejection() {
 
 fn table_abandonment(scope: Scope) {
     for published in [false, true] {
-        let mut tables = Tables::new(scope);
+        let mut tables = Tables::new(scope, scope == Scope::Unit);
         tables.allocate_frame().unwrap();
         assert!(!tables.regions.is_empty() && tables.regions.capacity() != 0);
         if published {
             tables.publish();
         }
         if published {
-            drop_under_guards(|| assert_eq!(tables.cancel_unpublished(), Err(Error::MapFailed)));
+            drop_under_guards(|| {
+                super::super::super::backend_registry::budget::with_locked(|| {
+                    assert_eq!(tables.cancel_unpublished(), Err(Error::MapFailed))
+                })
+            });
         } else {
-            drop_under_guards(|| drop(tables));
+            drop_under_guards(|| {
+                super::super::super::backend_registry::budget::with_locked(|| drop(tables))
+            });
         }
     }
 }
 
 fn region_abandonment(scope: Scope) {
     for kind in 0..4 {
-        let mut tables = Tables::new(scope);
+        let mut tables = Tables::new(scope, scope == Scope::Unit);
         let pages = if kind == 3 {
             2
         } else {
             1
         };
+        tables.regions.prepare(tables.backing_platform, tables.limit).unwrap();
+        let metadata = super::super::super::backend_registry::budget::snapshot();
         let mut region = PreparingRegion::reserve(&mut tables, pages).unwrap();
         if kind != 0 {
             region.frame =
@@ -146,7 +154,10 @@ fn region_abandonment(scope: Scope) {
             );
             assert_eq!(calls, 2);
         }
-        drop_under_guards(|| drop(region));
+        drop_under_guards(|| {
+            super::super::super::backend_registry::budget::with_locked(|| drop(region))
+        });
+        assert_eq!(super::super::super::backend_registry::budget::snapshot(), metadata);
         assert!(tables.uncertain);
         assert_eq!(tables.pages(), pages as u64);
         assert_eq!(
@@ -158,6 +169,8 @@ fn region_abandonment(scope: Scope) {
             Err(Error::MapFailed)
         );
         assert_eq!(tables.release_with(|_| panic!("frozen parent retried")), Err(Error::MapFailed));
-        drop_under_guards(|| drop(tables));
+        drop_under_guards(|| {
+            super::super::super::backend_registry::budget::with_locked(|| drop(tables))
+        });
     }
 }

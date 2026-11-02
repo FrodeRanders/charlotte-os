@@ -1,11 +1,11 @@
 //! Hardware-table admission follows its owning unit/domain, never a reused ID.
 //! Published backing is released only by an explicit quiescent backend boundary.
-use alloc::vec::Vec;
-
+mod ledger;
 use charlotte_lifecycle::resources::{
     Amount,
     Budget,
 };
+use ledger::Ledger;
 
 use super::dma::Error;
 use crate::memory::{
@@ -91,12 +91,14 @@ pub(super) struct Tables {
     scope: Scope,
     pages: u64,
     limit: u64,
-    regions: Vec<Region>,
+    regions: Ledger,
+    // Exact domain-grant class; unit callers capture trusted boot scope.
+    backing_platform: bool,
     uncertain: bool,
     state: State,
 }
 impl Tables {
-    pub(super) fn new(scope: Scope) -> Self {
+    pub(super) fn new(scope: Scope, backing_platform: bool) -> Self {
         Self {
             scope,
             pages: 0,
@@ -105,7 +107,8 @@ impl Tables {
             } else {
                 UNIT_PAGES
             },
-            regions: Vec::new(),
+            regions: Ledger::new(),
+            backing_platform,
             uncertain: false,
             state: State::Unpublished,
         }
@@ -118,7 +121,7 @@ impl Tables {
         scope: Scope,
         prepare: impl FnOnce(&mut Self) -> Result<T, Error>,
     ) -> Result<(Self, T), Error> {
-        let mut tables = Self::new(scope);
+        let mut tables = Self::new(scope, scope == Scope::Unit);
         match prepare(&mut tables) {
             Ok(payload) => Ok((tables, payload)),
             Err(error) => {
@@ -190,10 +193,12 @@ impl Tables {
         alignment: usize,
         allocate: impl FnOnce(usize, usize) -> Result<PAddr, crate::memory::physical::Error>,
     ) -> Result<PAddr, Error> {
+        let platform = self.backing_platform;
+        let limit = self.limit;
         self.allocate_prepared_with(
             pages,
             alignment,
-            |regions| regions.try_reserve(1).map_err(|_| Error::MapFailed),
+            |regions| regions.prepare(platform, limit),
             allocate,
         )
     }
@@ -202,7 +207,7 @@ impl Tables {
         &mut self,
         pages: usize,
         alignment: usize,
-        prepare_ledger: impl FnOnce(&mut Vec<Region>) -> Result<(), Error>,
+        prepare_ledger: impl FnOnce(&mut Ledger) -> Result<(), Error>,
         allocate: impl FnOnce(usize, usize) -> Result<PAddr, crate::memory::physical::Error>,
     ) -> Result<PAddr, Error> {
         if !alignment.is_power_of_two() || alignment < PAGE {
@@ -270,7 +275,7 @@ impl Tables {
         if self.uncertain {
             return Err(Error::MapFailed);
         }
-        for region in &self.regions {
+        for region in self.regions.iter() {
             for index in 0..region.pages {
                 if release(region.base + index * PAGE).is_err() {
                     crate::logln!(
@@ -285,7 +290,7 @@ impl Tables {
         self.state = State::Released;
         // Ordinary explicit completion releases metadata too. Fallback must
         // retain this ledger instead of implicitly entering the heap allocator.
-        drop(core::mem::take(&mut self.regions));
+        core::mem::replace(&mut self.regions, Ledger::new()).release();
         Ok(())
     }
 
@@ -310,10 +315,8 @@ impl Tables {
 }
 impl Drop for Tables {
     fn drop(&mut self) {
-        // Preserve ledger allocation as well as backing/admission. Vec field
-        // destruction would otherwise enter the heap allocator under unknown
-        // outer guards. Explicit successful release already empties this field.
-        core::mem::forget(core::mem::take(&mut self.regions));
+        // Ledger field fallback retains buffer and original metadata admission;
+        // physical and metadata cleanup require explicit confirmed completion.
     }
 }
 

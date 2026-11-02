@@ -63,7 +63,7 @@ unlimited node capacity.
 | `deferred_nodes` | source-disposal node-layout bytes; nodes | — | 768 KiB; 12288 nodes | 1 MiB; 16384 nodes |
 | `completion_nodes` | completion/detached/CQ node-layout bytes; nodes | — | 6 MiB; 15360 nodes | 8 MiB; 20480 nodes |
 | `device_nodes` | device namespace/payload node-layout bytes; nodes | — | 12 MiB; 104448 nodes | 16 MiB; 139264 nodes |
-| `iommu_nodes` | domain/requester/context/mapping/cache node-layout bytes; nodes | — | 18 MiB; 196608 nodes | 24 MiB; 262144 nodes |
+| `iommu_nodes` | IOMMU metadata-layout bytes (nodes and ledger buffers); nodes | — | 18 MiB; 196608 nodes | 24 MiB; 262144 nodes |
 | `principal_history` | node-layout bytes; nodes | — | 768 KiB; 3072 nodes | 1 MiB; 4096 nodes |
 | `thread_metadata` | context/node bytes; bundles | principal 1 MiB; 128 bundles | 6 MiB; 3072 bundles | 8 MiB; 4096 bundles |
 | `thread_table` | three-vector bytes; backing slots, including replacement overlap | principal 16 MiB; 16384 slots | 24 MiB; 24576 slots | 32 MiB; 32768 slots |
@@ -73,6 +73,11 @@ unlimited node capacity.
 | `mapping_nodes` | node-layout bytes; nodes | — | 768 KiB; 6144 nodes | 1 MiB; 8192 nodes |
 | `memory_capability_nodes` | payload/namespace/read-borrower node-layout bytes; nodes | — | 3 MiB; 24576 nodes | 4 MiB; 32768 nodes |
 | `memory.objects` | backing objects | 1024 | 6144 | 8192 |
+
+IOMMU ledger buffers consume only the `iommu_nodes` byte dimension; the node
+count still describes actual registry/mapping/cache nodes. Captured grant/boot
+class persists through old/candidate capacity overlap and actual buffer release.
+Physical table pages retain their separate RAM-ratio and domain/unit limits.
 
 Per-source defaults are 64 scheduler waiters, 128 endpoint/thread watches and
 128 completion callbacks. Maximum endpoint capacity is 4096 entries; diagnostic

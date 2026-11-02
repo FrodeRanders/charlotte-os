@@ -1,6 +1,7 @@
 //! Complete payload retention after extraction; these private table owners
 //! never enter hardware. Real maintenance/competing-operation evidence is in
 //! the QEMU NVMe recovery fixture.
+use alloc::vec::Vec;
 use core::sync::atomic::{
     AtomicUsize,
     Ordering,
@@ -26,7 +27,7 @@ struct Payload {
     metadata: Vec<Metadata>,
 }
 fn payload(pages: usize) -> Payload {
-    let mut tables = Tables::new(Scope::Domain);
+    let mut tables = Tables::new(Scope::Domain, false);
     tables.allocate(pages, PAGE).unwrap();
     tables.publish(); // Private fixture; no hardware publication or fake drain.
     let metadata = alloc::vec![Metadata {

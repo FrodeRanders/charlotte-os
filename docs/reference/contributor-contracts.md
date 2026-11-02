@@ -342,7 +342,7 @@ the corrected RPC polling paths, and the remaining notification gaps.
   actual node deallocation. Complete grant/close/namespace fallback remains inert
   under the node-pool guard too. IOMMU backend nodes have separate
   `iommu_nodes` admission, including domain-owned mapping/walker metadata;
-  table-ledger backing remains separate.
+  table-ledger capacity shares its byte dimension with zero node count.
   See `docs/reference/device-node-admission.md`.
 
 - Mailbox endpoint candidates use typed `mailbox_node_budget` storage and
@@ -1010,8 +1010,13 @@ the corrected RPC polling paths, and the remaining notification gaps.
   original charges until post-completion unpin and actual node deallocation.
   Quota rejection keeps the existing `Memory` error and performs no allocation.
   Metadata does not prove hardware completion or
-  authorize physical retry. Table ledgers, general heap/principal admission and
-  wider contexts remain separate.
+  authorize physical retry. Table-ledger buffers use byte-only `iommu_nodes`
+  reservations, captured from the domain grant or trusted boot unit before
+  allocation. Admit full candidate capacity while retaining the old buffer and
+  original charge, move addresses without allocation, then deallocate before
+  refund. Ledger fallback retains buffer and charge through physical uncertainty;
+  only complete physical release permits final metadata disposal. General
+  heap/principal admission and wider contexts remain separate.
   Intel cannot overwrite
   a busy invalidation register; AMD and SMMU retain their existing exact completion
   and unconsumed queue contracts.

@@ -33,6 +33,54 @@ stream table and command/event queues. Firmware/boot-inherited structures are
 outside the pool. Published shared structures remain charged for unit lifetime;
 there is no controller shutdown/reclamation API.
 
+## Ledger buffer admission
+
+The same `Tables` owner retains a charged ledger of physical extents. Ledger
+buffer bytes share `iommu_nodes` with registry, mapping and walker metadata;
+buffers consume **zero node slots**. The existing 22-pool inventory and version-9
+statistics report those bytes without a new record or authority. Physical table
+page admission remains separate, including the domain subpool for every domain.
+
+`Tables` captures metadata class before allocation: domain constructors pass the
+original `DmaCreation.backing_platform`, while boot unit constructors select
+trusted scope. No later root promotion, ASID, requester or manifest lookup can
+reclassify a ledger or its replacements. The private fixture helper explicitly
+chooses the class from its synthetic domain/unit scope.
+
+A buffer starts empty. When full, the ledger computes a checked geometric
+replacement capacity, clamped to the owner's page ceiling, and reserves the
+**entire candidate layout** before allocation. The old buffer remains fully
+charged. The same exact-capacity check used for kernel table growth rejects
+unexpected allocator capacity before address transfer. Only after all storage
+succeeds does an allocation-free move transfer extent records exactly once. The
+empty old buffer is then freed before its original charge is refunded. A
+candidate-allocation error leaves original addresses, buffer and charge intact;
+ordinary cleanup frees any candidate before refunding it.
+
+Physical reservation precedes ledger preparation, but quota rejection cancels
+that provisional page charge before returning `MapFailed`, without entering the
+physical allocator. Already-admitted unused capacity remains usable under
+metadata pressure; no replacement or quota check is needed for a free slot.
+A subsequent physical allocation failure can leave unused ledger capacity in its
+original owner. That capacity stays charged until explicit table completion.
+
+The ledger's fallback retains its buffer **and** admission, including zero-page
+capacity, private/installed owners and partially released or uncertain tables.
+The complete provisional-region borrow still fences its parent on abandonment.
+Successful private cancellation or confirmed domain teardown releases physical
+backing first, then frees ledger storage before refunding its original metadata
+charge. A rejected/partial physical release retains the complete ledger and both
+original budgets; it never authorizes replay or a metadata refund.
+
+At current page ceilings, a region is 16 bytes and retained capacity is at most
+16 KiB per domain or 32 KiB per unit. The final doubling temporarily admits old
+and replacement buffers together: 24/48 KiB respectively. The inline charge adds
+24 bytes to `Tables`; class uses existing scalar padding. No holder allocation
+is introduced. Capacity competes with other same-class IOMMU metadata in the
+existing 18/24 MiB byte budget. These bounded costs and pressure controls do not
+require raising defaults. Reviewed workload planning may justify larger central
+limits; general heap/principal accounting and sustained fairness remain open.
+
 ## Publication and rollback
 
 A provisional region holds an exclusive account borrow, the reserved count and
@@ -62,8 +110,8 @@ context, DTE, STE or base-register write. Publication also rejects uncertain
 preparation. Every table/region fallback retains backing and its original charge,
 including unpublished and reservation-only abandonment. Region fallback marks
 its exclusively borrowed parent uncertain; later allocation/refund rejects. Table
-fallback retains the ledger allocation as well, avoiding implicit `Vec` heap
-deallocation. Neither fallback enters an allocator, pool, guard, callback or
+fallback retains the ledger allocation and original metadata charge, avoiding
+implicit heap deallocation or budget refund. Neither fallback enters an allocator, pool, guard, callback or
 logger. Ordinary successful release disposes that ledger explicitly. Failed creation retains its registered retiring owner and
 requester fence unless hardware detachment, maintenance/drain and complete
 physical release all succeed. SMMUv3 creation rollback also completes TLBI/SYNC
@@ -437,3 +485,18 @@ Original pin/interest disposal precedes root completion on unstarted rejection.
 Abandonment and started uncertainty retain their original charges and fences;
 unit readiness supplies no hardware or physical completion proof. Unmap/close,
 masked SVC progress and broader guard/metadata contexts remain separate.
+
+The [ledger admission evidence](../reports/audits/evidence/2026-11-02-iommu-ledger-admission.json)
+identifies the current source and native artifacts. Fresh four-CPU, 240-second
+security campaigns passed ARM 19/19, Intel VT-d 17/17 and AMD-Vi 17/17, with
+zero failures or pending tests. The full host suite (including all 47 tests in
+the new ledger harness) and strict test/minimal kernel checks passed. A host allocator tracer
+checks actual candidate/replacement/terminal buffer frees before refund, exact
+address transfer, capacity rejection, paid-for capacity under pressure and inert
+abandonment beneath the metadata pool lock. Native empty-buffer pressure checks
+ordinary and total byte ceilings without consuming node slots. Physical adapter
+controls check fresh/growth denial before allocation, provisional-page rollback,
+trusted progress and exact recovery. Existing uncertain-region, private-grant and
+partially released table fixtures retain their original buffers/charges under
+the metadata-pool guard without adding new table/data-frame retention. These controls do not
+establish hostile concurrent EL0 fairness, aggregate heap limits or wider latency.

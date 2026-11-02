@@ -63,7 +63,8 @@ there is no mutable budget or teardown endpoint. History and cluster formats
 retain their own existing fields.
 
 Byte counts are requested allocation layouts, not physical RAM or allocator
-capacity. Bundle-only pools do not report bytes. Pools may describe nested
+bookkeeping. IOMMU metadata bytes include allocated ledger capacity and full
+replacement overlap; those buffers contribute zero to its node count. Bundle-only pools do not report bytes. Pools may describe nested
 allocations and must not be summed into a machine memory total. Limits reserve
 headroom in admission, not preallocated memory. This inventory supports sizing;
 it does not close R7's remaining allocation, sponsor, physical heap or concurrent

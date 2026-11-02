@@ -144,7 +144,7 @@ fn payload() -> Payload {
     Payload {
         commands: Some(alloc::vec![0x1234]),
         domains: alloc::collections::BTreeMap::new(),
-        _tables: Tables::new(Scope::Unit),
+        _tables: Tables::new(Scope::Unit, true),
         _sources: alloc::collections::BTreeMap::new(),
     }
 }
@@ -222,7 +222,7 @@ pub(super) fn run() {
     let mut value = payload();
     value._tables.allocate_frame().unwrap();
     value._tables.publish(); // Synthetic state, no hardware base.
-    let mut tables = Tables::new(Scope::Domain);
+    let mut tables = Tables::new(Scope::Domain, false);
     tables.allocate_frame().unwrap();
     tables.publish();
     value.domains.insert(
