@@ -26,7 +26,7 @@ pub(crate) fn test_rejection(frame: &mut TrapFrame, stage: usize) {
     capture_inner(frame, stage);
 }
 
-fn encoded_len(threads: usize, domains: usize) -> Result<usize, Error> {
+fn encoded_len(threads: usize, domains: usize, pools: usize) -> Result<usize, Error> {
     use catten_syscall::{
         THREAD_STATISTICS_DOMAIN_RECORD_U64S,
         THREAD_STATISTICS_HEADER_U64S,
@@ -38,6 +38,11 @@ fn encoded_len(threads: usize, domains: usize) -> Result<usize, Error> {
             domains
                 .checked_mul(THREAD_STATISTICS_DOMAIN_RECORD_U64S)
                 .and_then(|domain_words| words.checked_add(domain_words))
+        })
+        .and_then(|words| {
+            pools
+                .checked_mul(catten_syscall::metadata_pools::WORDS)
+                .and_then(|pool_words| words.checked_add(pool_words))
         })
         .and_then(|words| words.checked_add(THREAD_STATISTICS_HEADER_U64S))
         .and_then(|words| words.checked_mul(core::mem::size_of::<u64>()))
@@ -71,6 +76,11 @@ fn capture_inner(frame: &mut TrapFrame, reject: usize) {
         return;
     }
     let scope = (!observer).then_some(asid);
+    let pool_count = if observer {
+        catten_syscall::metadata_pools::COUNT
+    } else {
+        0
+    };
     let prepared = (|| {
         let mut budget = Budget::new(MAX_WORKING_BYTES);
         if reject == 1 {
@@ -81,7 +91,7 @@ fn capture_inner(frame: &mut TrapFrame, reject: usize) {
             return Err(Error::Allocation);
         }
         let domains = crate::memory::usage::try_domain_usage(scope, &mut budget)?;
-        let exact_len = encoded_len(snapshots.len(), domains.len())?;
+        let exact_len = encoded_len(snapshots.len(), domains.len(), pool_count)?;
         if reject == 3 {
             return Err(Error::Allocation);
         }
@@ -119,6 +129,9 @@ fn capture_inner(frame: &mut TrapFrame, reject: usize) {
     header_words[header::DOMAIN_RECORD_BYTES] =
         (THREAD_STATISTICS_DOMAIN_RECORD_U64S * core::mem::size_of::<u64>()) as u64;
     header_words[header::DOMAIN_RECORD_COUNT] = domains.len() as u64;
+    header_words[header::METADATA_RECORD_BYTES] =
+        (catten_syscall::metadata_pools::WORDS * 8) as u64;
+    header_words[header::METADATA_RECORD_COUNT] = pool_count as u64;
     let recovery = crate::memory::retirement::recovery::status_words(observer);
     header_words[header::ROOT_RECOVERY_AWAITING..=header::ROOT_RECOVERY_CAPACITY]
         .copy_from_slice(&recovery);
@@ -178,6 +191,13 @@ fn capture_inner(frame: &mut TrapFrame, reject: usize) {
             push_u64(&mut bytes, value);
         }
     }
+    if observer {
+        crate::klib::admission::visit(|sample| {
+            for word in sample.words() {
+                push_u64(&mut bytes, word);
+            }
+        });
+    }
     debug_assert_eq!(bytes.len(), exact_len);
     // ABI publication: no output capability exists during fallible scratch
     // preparation or heap observation. The syscall transfers it once on success.
@@ -224,8 +244,9 @@ pub(crate) fn test_capture(asid: crate::memory::AddressSpaceId) {
             assert_eq!(memory::PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), frames);
         }
     }
-    assert_eq!(encoded_len(usize::MAX, 1), Err(Error::Capacity));
-    assert_eq!(encoded_len(1, usize::MAX), Err(Error::Capacity));
+    assert_eq!(encoded_len(usize::MAX, 1, 0), Err(Error::Capacity));
+    assert_eq!(encoded_len(1, usize::MAX, 0), Err(Error::Capacity));
+    assert_eq!(encoded_len(1, 1, usize::MAX), Err(Error::Capacity));
     let mut budget = Budget::new(MAX_WORKING_BYTES);
     let threads = crate::cpu::scheduler::threads::try_statistics(None, &mut budget).unwrap();
     let domains = memory::usage::try_domain_usage(None, &mut budget).unwrap();
@@ -243,6 +264,14 @@ pub(crate) fn test_capture(asid: crate::memory::AddressSpaceId) {
     }
     assert_eq!(thread_output.into_vec(), threads);
     assert_eq!(domain_output.into_vec(), domains);
+    {
+        let _heap = PRIMARY_ALLOCATOR.lock();
+        crate::klib::admission::test_observation();
+    }
+    crate::logln!(
+        "[metadata admission] 22 independent pools; heap-held nonblocking observation, busy state \
+         and owner sizes passed"
+    );
     memory::usage::test_snapshot_heap();
     crate::logln!(
         "[telemetry snapshot] 256 preparation/publication rejections, heap-held captures, checked \

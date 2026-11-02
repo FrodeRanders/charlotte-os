@@ -2,16 +2,17 @@
 //! Candidates and detached storage keep their original byte/count charge.
 use core::alloc::AllocError;
 
-use charlotte_lifecycle::resources::AdmissionPool;
-
 use super::{
     AdmittedMailboxEndpoint,
     MailboxCap,
     mailbox_budget::Error,
 };
-use crate::{
-    cpu::multiprocessor::spin::mutex::Mutex,
-    klib::collections::retirement_list::{
+use crate::klib::{
+    admission::{
+        self,
+        MailboxNodes,
+    },
+    collections::retirement_list::{
         AdmittedMap,
         PreparedEntry,
         RetiredEntry,
@@ -20,27 +21,15 @@ use crate::{
 pub(super) type Map = AdmittedMap<MailboxCap, AdmittedMailboxEndpoint, Charge>;
 pub(super) type Prepared = PreparedEntry<(MailboxCap, AdmittedMailboxEndpoint), Charge>;
 type Node = RetiredEntry<(MailboxCap, AdmittedMailboxEndpoint), Charge>;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) const LIMIT: [u64; 2] = crate::resource_policy::POLICY.mailbox_nodes.total;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(super) const ORDINARY: [u64; 2] = crate::resource_policy::POLICY.mailbox_nodes.ordinary;
-static POOL: Mutex<AdmissionPool<2>> = Mutex::new(AdmissionPool::new(LIMIT, ORDINARY));
 
-#[derive(Debug)]
-#[must_use]
-pub(super) struct Charge {
-    bytes: u64,
-    platform: bool,
-}
-impl Drop for Charge {
-    fn drop(&mut self) {
-        POOL.lock().release(self.platform, [self.bytes, 1]).expect("mailbox node budget underflow");
-    }
-}
+pub(super) type Charge = admission::NodeCharge<MailboxNodes>;
+
 fn reserve(bytes: u64, platform: bool) -> Result<Charge, Error> {
-    POOL.lock().reserve(platform, [bytes, 1]).map_err(|_| Error::ResourceLimit)?;
-    Ok(Charge {
-        bytes,
-        platform,
-    })
+    Charge::reserve(platform, bytes).map_err(|_| Error::ResourceLimit)
 }
 pub(super) fn prepare(platform: bool) -> Result<Prepared, Error> {
     prepare_with(platform, Prepared::try_new_charged)
@@ -71,12 +60,11 @@ impl Retired {
 }
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn snapshot() -> ([u64; 2], [u64; 2]) {
-    POOL.lock().used()
+    admission::used::<MailboxNodes, 2>()
 }
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn with_locked(work: impl FnOnce()) {
-    let _pool = POOL.lock();
-    work();
+    admission::with_locked::<MailboxNodes, 2, _>(work)
 }
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_rejection() {

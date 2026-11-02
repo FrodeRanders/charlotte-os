@@ -2,31 +2,28 @@
 //! trusted translation account. Retained and candidate sets share the limits.
 use core::alloc::AllocError;
 
-use charlotte_lifecycle::resources::AdmissionPool;
-
 use crate::{
-    klib::collections::id_table::{
-        GrowthRequest,
-        PreparedGrowth,
+    klib::{
+        admission::{
+            self,
+            RootTable,
+        },
+        collections::id_table::{
+            GrowthRequest,
+            PreparedGrowth,
+        },
     },
     memory::{
         AddressSpace,
         AddressSpaceInterface,
         AddressSpaceTable,
-        Mutex,
         usage::principal_history::RootTableCharge,
     },
 };
 
-static NODE: Mutex<AdmissionPool<2>> = Mutex::new(AdmissionPool::new(
-    crate::resource_policy::POLICY.root_table.total,
-    crate::resource_policy::POLICY.root_table.ordinary,
-));
-
 #[derive(Debug)]
 pub struct Charge {
-    amount: [u64; 2],
-    platform: bool,
+    _node: admission::Reservation<RootTable, 2>,
     _principal: Option<RootTableCharge>,
 }
 
@@ -40,18 +37,11 @@ impl Charge {
             .map(|id| RootTableCharge::try_new(id, amount))
             .transpose()
             .map_err(|_| AllocError)?;
-        NODE.lock().reserve(platform, amount).map_err(|_| AllocError)?;
+        let node = admission::Reservation::reserve(platform, amount).map_err(|_| AllocError)?;
         Ok(Self {
-            amount,
-            platform,
+            _node: node,
             _principal: principal,
         })
-    }
-}
-
-impl Drop for Charge {
-    fn drop(&mut self) {
-        NODE.lock().release(self.platform, self.amount).expect("root table node underflow");
     }
 }
 
@@ -92,13 +82,12 @@ pub(in crate::memory) fn kernel_table() -> AddressSpaceTable {
 
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(in crate::memory) fn snapshot() -> ([u64; 2], [u64; 2]) {
-    NODE.lock().used()
+    admission::used::<RootTable, 2>()
 }
 
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(in crate::memory) fn with_locked(work: impl FnOnce()) {
-    let _node = NODE.lock();
-    work();
+    admission::with_locked::<RootTable, 2, _>(work)
 }
 
 #[cfg(any(test, feature = "kernel_tests"))]

@@ -1,6 +1,9 @@
 //! Serialized real observer backing pressure. No root or waiter is fabricated
 //! from a numeric identity; the scheduler supplies its prepared fixture owner.
-use core::alloc::Allocator as _;
+use core::{
+    alloc::Allocator as _,
+    sync::atomic::Ordering,
+};
 
 use super::*;
 use crate::{

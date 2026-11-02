@@ -1,0 +1,641 @@
+{
+  "schema": "charlotte.metadata-admission.v1",
+  "date": "2026-11-02",
+  "base_revision": "a92a2446542ce9ddbad69438bb77521322b9ae3c",
+  "scope": "Discrete consolidation of 22 independent metadata pools into family-typed charge mechanics and a read-only observer inventory; no numerical limit, register ABI or physical completion contract changes.",
+  "source_sha256": {
+    "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
+    "crates/catten-services/src/bin/httpd.rs": "14fefbb305ba7cfbda07edec3b602c96f1d933aad48d4e06c377bf4c89e97b1f",
+    "crates/catten-services/src/bin/observe.rs": "8fb9cae61866a4ed642e9625ca72332d421f43b373a6fbdbfaac0b7923c6f547",
+    "crates/catten-syscall/src/lib.rs": "08596862b4707022812c6cb416770e52ce876bf0f0be0fa376487c945c32d700",
+    "crates/catten-syscall/src/metadata_pools.rs": "8d806c82affc0a5bac177537b54a250a69fe7542caa28989164e58916b72101c",
+    "crates/catten-syscall/src/metadata_pools/tests.rs": "e49f1c4617c3191e46b1c05b06171e7507f27038ace7ffbeae2eb4a945d0d6f2",
+    "crates/catten/src/capability/record_budget.rs": "6eda25956da5f8949d8ca67f3e4c12e3e8d35582db8156a6a906dc3ab7103d29",
+    "crates/catten/src/completion/account_budget.rs": "0eee7f60a561b794084a5a37995ca7c8863a9ff7ee9713507fb9ac9fccae79b8",
+    "crates/catten/src/completion/entry_budget.rs": "fc3659a19b1b9f520fd9890120f77b19bc06b77f2e8c6eb636d9c24247957162",
+    "crates/catten/src/cpu/scheduler/deferred/admission.rs": "b832b50353c6b62971705c74c2d71c2c0d11ff8b290176d64b49ef5b9f18da6a",
+    "crates/catten/src/device/backend_registry/budget.rs": "45cfefb4f2c28ed74d37ae58069fd0e848a3ab53243ef2f48feb567c1ff73819",
+    "crates/catten/src/device/backend_registry/budget/tests.rs": "83f6b463c166dde2a4158165b42128be0371d08f66ca848744da3d17819bcdd2",
+    "crates/catten/src/device/node_budget.rs": "9a5bfeb5800bff3d9f3c6e1da975906fbde90cb4269cdcf40733967a7df812d7",
+    "crates/catten/src/klib/admission.rs": "b10d5402c22e29ddc3087881c4031cd8d2ee60bd6646e52b53c62239c4bf2138",
+    "crates/catten/src/klib/admission/tests.rs": "e07bae88fd1df6ae86fb301eefe52acca9c84841295d1e498d014c1041c664ea",
+    "crates/catten/src/klib/charged_allocator.rs": "b179e412ea26105ff9197dc1c2613741282910492845a8167cb19fa896d5d3e8",
+    "crates/catten/src/klib/collections/retirement_list.rs": "ef0447d659221379641fad66a9d93489574062cebb855d01e3247496716a0d65",
+    "crates/catten/src/klib/mod.rs": "f9d22d6cffa9be747e7b39018a53803054fd91b0bcf96e985eb6ec839afa728a",
+    "crates/catten/src/klib/namespace_account_budget.rs": "3769318f89823682d8c6c204700c0302d48092ce90d0a60d3681de871b8f3cec",
+    "crates/catten/src/klib/namespace_node_budget.rs": "3220a023e2e56a95903d2a398bb26c25ff5c08d7119cb831ed9faea1a12257bb",
+    "crates/catten/src/klib/observer/account_budget.rs": "2ccd36270367dbb856d8d45a80f6dd9edfe72bebac61a74eb0596ae097454675",
+    "crates/catten/src/klib/observer/backing.rs": "e9abdb65265c6f7ccc927fbae46765a8ef2e47e698db7daa1172d33cbedd5653",
+    "crates/catten/src/klib/observer/backing/tests.rs": "b61c839aab135082d0b9449a582fad76c2063a50d20e388df8d0e8961ef71876",
+    "crates/catten/src/klib/observer/list_budget.rs": "88c0eef06c357652978d7c99987a37c44b5430f4e54ec58c94c47a70d79db8f6",
+    "crates/catten/src/memory/budget/thread_metadata.rs": "7aba6f46626238ac80743c880683f1f2fa5f59426ad33214338db58b1299f5b7",
+    "crates/catten/src/memory/budget/thread_table.rs": "eab8391ef6b0dca8db92c17c5d7aef0d19bcd2e9f5ff4b62b4672ac3c0660244",
+    "crates/catten/src/memory/object/cap_storage/admission.rs": "72af78b97aba1de6e22491f0aa671b302806bcf9f8fa0fb3e0bb523bc2f6b98a",
+    "crates/catten/src/memory/object/mapping/storage/admission.rs": "88deb310498ed23985613afe2c08cc94b400d80f1e63f72410855853a47f0999",
+    "crates/catten/src/memory/object/scratch_namespace/admission.rs": "ccb4c0845e2b8d4aee52516a6d6cbb779177b94689bd9abae4fb9949b6c8823c",
+    "crates/catten/src/memory/object/snapshot_storage/admission.rs": "ff13ee3ed7e54250a6568d52176d353159ff313204120e32ed69c6ca035edee9",
+    "crates/catten/src/memory/registration/metadata/admission.rs": "d575b5b0cd1598e160df176f2eaeb460aa5d2d029e77751c727b9cec3ef5b7c0",
+    "crates/catten/src/memory/registration/table_backing.rs": "17c63c5f2a25adcb1f852509b03b3e294b9d6fb5fc972d36045f48a24abd7d11",
+    "crates/catten/src/memory/usage/principal_history/admission.rs": "0327ee88cbf4f7b51ea34cbac5fcf9415f3dfbb57a26457685a23e68fca25297",
+    "crates/catten/src/resource_policy.rs": "8caa3b6d05f5470eff7c0269b59d259523184c77d5704667a2f1dfce97a29bba",
+    "crates/catten/src/resource_policy/defaults.rs": "949cf96cfeeaab96d42898a63859830466082ad98b80f12a8e8e99f4deb54156",
+    "crates/catten/src/self_test/syscall.rs": "c3a562e81906388cb66c4a0913dc86af5f5ed7ad9d933c64432252438b623b1e",
+    "crates/catten/src/syscall/mailbox_node_budget.rs": "1346e7183aab671f19aed8050fa0d3e02ad249043fe325f7f86f115d0b4e1fb3",
+    "crates/catten/src/syscall/statistics.rs": "514085962d07de34572833fb538c16576286d4b3bf05f9af02e899d98af3485a",
+    "crates/catten/src/timers/account_budget.rs": "d59e73251afd5d6940923503bc4d8f22362de1c4170e29ef5838db919bb4e81e",
+    "crates/charlotte-lifecycle/src/resources.rs": "9ec29fce823650806ede3dc1a9539543dd5ccc784bbadee05d8478844a247270",
+    "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
+    "scripts/run-host-tests.sh": "c0b59cdb5b9f66a834d3d9fae91df45085a1e3555d61a77e3c345889ea125ef2",
+    "scripts/tests/test-http-keyhole-liveness.py": "f85aec80ea182915fcc078fd69e179e5ddaaf1cb9cf2d830d9966f91fe2251ac"
+  },
+  "artifact_note": "Production Rust sources were unchanged during the three campaigns. HTTP probe and living documentation edits alter tracked-diff identities; source hashes and captured kernel/service identities disambiguate the builds. Metadata pool samples are independent observations, not an atomic resource inventory.",
+  "native_campaigns": [
+    {
+      "arch": "aarch64",
+      "instance": "admission-20261102-arm",
+      "cpus": 4,
+      "revision": "a92a2446542ce9ddbad69438bb77521322b9ae3c",
+      "kernel_sha256": "a33cdc94cd804e2910aff5cb200292804460b2287290ef8b256e093f49a63f65",
+      "boot_image_sha256": "9ddebba18dcac2b686438f724ed1e4c578430909100f9276d77458e080b77a42",
+      "initial_disk_sha256": "891d405cf7c355e83bf9ca3c9f62ca34dde0281e5dd6411bab91ec50fb13f48f",
+      "tracked_diff_sha256": "3dac8dfbcc91da7df639290b54a6e4545fd21ee9f0218500936124aa4766ddd5",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T14:39:54Z",
+      "platform": "arm",
+      "configuration": "security-test; fresh storage; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "175d7bff6fe01d95a42a59dfbf3561873c8496c5aa06f79d71597cfc84bf7a3c",
+      "serial_sha256": "0ea836627fc2376614b63eeded47d5c27485258023223fa4f4d24c326667309a",
+      "service_sha256": {
+        "httpd.elf": "7cdf707d7cab919ef0c6c6daf86e2a2491649dc1233002d4174a34357124988a",
+        "ns.elf": "2d720f3ba4ef4ef7582d157f068e660cd78851af304d478d47581d5cfcf4f694",
+        "observe.elf": "426ca8279bb1510cc8dbd319a12f34bff37a18786690f53b71c1d1e68684ef26",
+        "security_probe.elf": "11a9f88261e2a8064100e7494d83c418d351a0422bac08e9807128ab964e43f3"
+      },
+      "summary": {
+        "passed": 19,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+     8.896292] [metadata admission] 22 independent pools; heap-held nonblocking observation, busy state and owner sizes passed",
+        "[+     8.911082] [telemetry snapshot] 256 preparation/publication rejections, heap-held captures, checked sizing and generation-qualified heap reads passed",
+        "[+    85.518662] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "arch": "x86_64",
+      "instance": "admission-20261102-intel",
+      "cpus": 4,
+      "revision": "a92a2446542ce9ddbad69438bb77521322b9ae3c",
+      "kernel_sha256": "488557364fccbad41da3250bb381beeec64cf6428b515a830130692b53d5a699",
+      "boot_image_sha256": "6206c8d2d70f5e08363cc061be403da1de6502ec32ba682829775b941b45e70f",
+      "initial_disk_sha256": "dff68957bc4d1a7f18c96ea8c95dca1beee17699d4db0b8c4549aff3e4d32252",
+      "tracked_diff_sha256": "004acc31afd4b68d98fa388af8ff98cc1b1c451768ee65fd1f59176ef706f468",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T13:22:41Z",
+      "platform": "intel",
+      "configuration": "security-test; fresh storage; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "3429783a3f80d23288945e32e3e2b2719e7b7510c0ef8d13419dc09915345fc1",
+      "serial_sha256": "6aa8899824cc2ffa9c1b47d5f14748e92e83af8b193d018010e4a669defe7a17",
+      "service_sha256": {
+        "httpd.elf": "3dfe58a360ef24ae6560e025e65bfabba48a29a7e6bd28079e454fcab9027ca2",
+        "ns.elf": "8500f58b27836d7764d8b0415fbaf88e8ca175d1a7ebf9bed98c145b390d019f",
+        "observe.elf": "e1f481137ee8aed15d2eaaf0092713b1f3f863ed2027932608aacd67056a4a38",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c"
+      },
+      "summary": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+    14.559223] [metadata admission] 22 independent pools; heap-held nonblocking observation, busy state and owner sizes passed",
+        "[+    14.567964] [telemetry snapshot] 256 preparation/publication rejections, heap-held captures, checked sizing and generation-qualified heap reads passed",
+        "[+    89.943700] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "arch": "x86_64",
+      "instance": "admission-20261102-amd",
+      "cpus": 4,
+      "revision": "a92a2446542ce9ddbad69438bb77521322b9ae3c",
+      "kernel_sha256": "d46c862dced50f787d8f646261c6e715bc23bacca9da5e8c8b75570d96036816",
+      "boot_image_sha256": "49a2fb2b0135178bb26d1248db63d54ad777c618c7b11f0a5b4f3532a2b1b967",
+      "initial_disk_sha256": "dff68957bc4d1a7f18c96ea8c95dca1beee17699d4db0b8c4549aff3e4d32252",
+      "tracked_diff_sha256": "13bc1b6f8944a9fb4345195d1148ea94b4831f1cbed9e8e1a2433a1c9633c034",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T14:41:19Z",
+      "platform": "amd",
+      "configuration": "security-test; fresh storage; authenticated HTTP and management TLS probes",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "f8d83c7ac280851b87418ae43d41565b371a91238a56fb553dd7fa17dad424c2",
+      "serial_sha256": "00d6610624e8803315b3360780a66ad5e630291ee6ad4302d5d5e6d53796c750",
+      "service_sha256": {
+        "httpd.elf": "3dfe58a360ef24ae6560e025e65bfabba48a29a7e6bd28079e454fcab9027ca2",
+        "ns.elf": "8500f58b27836d7764d8b0415fbaf88e8ca175d1a7ebf9bed98c145b390d019f",
+        "observe.elf": "e1f481137ee8aed15d2eaaf0092713b1f3f863ed2027932608aacd67056a4a38",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c"
+      },
+      "summary": {
+        "passed": 18,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+    14.220061] [metadata admission] 22 independent pools; heap-held nonblocking observation, busy state and owner sizes passed",
+        "[+    14.229290] [telemetry snapshot] 256 preparation/publication rejections, heap-held captures, checked sizing and generation-qualified heap reads passed",
+        "[+    91.201912] SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x2023bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "http_inventory": [
+        {
+          "name": "root_metadata",
+          "state": "sampled",
+          "dimensions": [
+            {
+              "unit": "bytes",
+              "total_limit": 4194304,
+              "ordinary_limit": 3145728,
+              "total_used": 91040,
+              "ordinary_used": 75352
+            },
+            {
+              "unit": "nodes",
+              "total_limit": 16384,
+              "ordinary_limit": 12288,
+              "total_used": 679,
+              "ordinary_used": 562
+            }
+          ]
+        },
+        {
+          "name": "namespace_nodes",
+          "state": "sampled",
+          "dimensions": [
+            {
+              "unit": "bytes",
+              "total_limit": 8388608,
+              "ordinary_limit": 6291456,
+              "total_used": 39848,
+              "ordinary_used": 30888
+            },
+            {
+              "unit": "nodes",
+              "total_limit": 40960,
+              "ordinary_limit": 30720,
+              "total_used": 396,
+              "ordinary_used": 316
+            }
+          ]
+        },
+        {
+          "name": "authority_nodes",
+          "state": "sampled",
+          "dimensions": [
+            {
+              "unit": "bytes",
+              "total_limit": 16777216,
+              "ordinary_limit": 12582912,
+              "total_used": 27840,
+              "ordinary_used": 15232
+            },
+            {
+              "unit": "nodes",
+              "total_limit": 131072,
+              "ordinary_limit": 98304,
+              "total_used": 435,
+              "ordinary_used": 238
+            }
+          ]
+        },
+        {
+          "name": "mailbox_nodes",
+          "state": "sampled",
+          "dimensions": [
+            {
+              "unit": "bytes",
+              "total_limit": 2097152,
+              "ordinary_limit": 1572864,
+              "total_used": 384,
+              "ordinary_used": 384
+            },
+            {
+              "unit": "nodes",
+              "total_limit": 16384,
+              "ordinary_limit": 12288,
+              "total_used": 6,
+              "ordinary_used": 6
+            }
+          ]
+        },
+        {
+          "name": "deferred_nodes",
+          "state": "sampled",
+          "dimensions": [
+            {
+              "unit": "bytes",
+              "total_limit": 1048576,
+              "ordinary_limit": 786432,
+              "total_used": 40,
+              "ordinary_used": 40
+            },
+            {
+              "unit": "nodes",
+              "total_limit": 16384,
+              "ordinary_limit": 12288,
+              "total_used": 1,
+              "ordinary_used": 1
+            }
+          ]
+        },
+        {
+          "name": "observer_backing",
+          "state": "sampled",
+          "dimensions": [
+            {
+              "unit": "bytes",
+              "total_limit": 16777216,
+              "ordinary_limit": 12582912,
+              "total_used": 5072,
+              "ordinary_used": 752
+            },
+            {
+              "unit": "bundles",
+              "total_limit": 65536,
+              "ordinary_limit": 49152,
+              "total_used": 114,
+              "ordinary_used": 32
+            }
+          ]
+        },
+        {
+          "name": "completion_nodes",
+          "state": "sampled",
+          "dimensions": [
+            {
+              "unit": "bytes",
+              "total_limit": 8388608,
+              "ordinary_limit": 6291456,
+              "total_used": 26952,
+              "ordinary_used": 5888
+            },
+            {
+              "unit": "nodes",
+              "total_limit": 20480,
+              "ordinary_limit": 15360,
+              "total_used": 178,
+              "ordinary_used": 39
+            }
+          ]
+        },
+        {
+          "name": "device_nodes",
+          "state": "sampled",
+          "dimensions": [
+            {
+              "unit": "bytes",
+              "total_limit": 16777216,
+              "ordinary_limit": 12582912,
+              "total_used": 3912,
+              "ordinary_used": 3192
+            },
+            {
+              "unit": "nodes",
+              "total_limit": 139264,
+              "ordinary_limit": 104448,
+              "total_used": 63,
+              "ordinary_used": 52
+            }
+          ]
+        },
+        {
+          "name": "iommu_nodes",
+          "state": "sampled",
+          "dimensions": [
+            {
+              "unit": "bytes",
+              "total_limit": 25165824,
+              "ordinary_limit": 18874368,
+              "total_used": 672,
+              "ordinary_used": 216
+            },
+            {
+              "unit": "nodes",
+              "total_limit": 262144,
+              "ordinary_limit": 196608,
+              "total_used": 8,
+              "ordinary_used": 3
+            }
+          ]
+        },
+        {
+          "name": "principal_history",
+          "state": "sampled",
+          "dimensions": [
+            {
+              "unit": "bytes",
+              "total_limit": 1048576,
+              "ordinary_limit": 786432,
+              "total_used": 45448,
+              "ordinary_used": 35880
+            },
+            {
+              "unit": "nodes",
+              "total_limit": 4096,
+              "ordinary_limit": 3072,
+              "total_used": 247,
+              "ordinary_used": 195
+            }
+          ]
+        },
+        {
+          "name": "thread_metadata",
+          "state": "sampled",
+          "dimensions": [
+            {
+              "unit": "bytes",
+              "total_limit": 8388608,
+              "ordinary_limit": 6291456,
+              "total_used": 38912,
+              "ordinary_used": 2432
+            },
+            {
+              "unit": "bundles",
+              "total_limit": 4096,
+              "ordinary_limit": 3072,
+              "total_used": 32,
+              "ordinary_used": 2
+            }
+          ]
+        },
+        {
+          "name": "thread_table",
+          "state": "sampled",
+          "dimensions": [
+            {
+              "unit": "bytes",
+              "total_limit": 33554432,
+              "ordinary_limit": 25165824,
+              "total_used": 26624,
+              "ordinary_used": 0
+            },
+            {
+              "unit": "slots",
+              "total_limit": 32768,
+              "ordinary_limit": 24576,
+              "total_used": 64,
+              "ordinary_used": 0
+            }
+          ]
+        },
+        {
+          "name": "root_table",
+          "state": "sampled",
+          "dimensions": [
+            {
+              "unit": "bytes",
+              "total_limit": 16777216,
+              "ordinary_limit": 12582912,
+              "total_used": 70720,
+              "ordinary_used": 70720
+            },
+            {
+              "unit": "slots",
+              "total_limit": 16384,
+              "ordinary_limit": 12288,
+              "total_used": 260,
+              "ordinary_used": 260
+            }
+          ]
+        },
+        {
+          "name": "waiter_accounts",
+          "state": "sampled",
+          "dimensions": [
+            {
+              "unit": "bundles",
+              "total_limit": 8192,
+              "ordinary_limit": 6144,
+              "total_used": 181,
+              "ordinary_used": 151
+            }
+          ]
+        },
+        {
+          "name": "timer_accounts",
+          "state": "sampled",
+          "dimensions": [
+            {
+              "unit": "bundles",
+              "total_limit": 16384,
+              "ordinary_limit": 12288,
+              "total_used": 218,
+              "ordinary_used": 166
+            }
+          ]
+        },
+        {
+          "name": "completion_accounts",
+          "state": "sampled",
+          "dimensions": [
+            {
+              "unit": "bundles",
+              "total_limit": 24576,
+              "ordinary_limit": 18432,
+              "total_used": 104,
+              "ordinary_used": 44
+            }
+          ]
+        },
+        {
+          "name": "namespace_accounts",
+          "state": "sampled",
+          "dimensions": [
+            {
+              "unit": "bundles",
+              "total_limit": 32768,
+              "ordinary_limit": 24576,
+              "total_used": 526,
+              "ordinary_used": 434
+            }
+          ]
+        },
+        {
+          "name": "scratch_nodes",
+          "state": "sampled",
+          "dimensions": [
+            {
+              "unit": "bytes",
+              "total_limit": 524288,
+              "ordinary_limit": 393216,
+              "total_used": 7728,
+              "ordinary_used": 5256
+            },
+            {
+              "unit": "nodes",
+              "total_limit": 8192,
+              "ordinary_limit": 6144,
+              "total_used": 128,
+              "ordinary_used": 88
+            }
+          ]
+        },
+        {
+          "name": "snapshot_buffers",
+          "state": "sampled",
+          "dimensions": [
+            {
+              "unit": "bytes",
+              "total_limit": 4194304,
+              "ordinary_limit": 3145728,
+              "total_used": 3080,
+              "ordinary_used": 904
+            },
+            {
+              "unit": "buffers",
+              "total_limit": 8192,
+              "ordinary_limit": 6144,
+              "total_used": 21,
+              "ordinary_used": 8
+            }
+          ]
+        },
+        {
+          "name": "mapping_nodes",
+          "state": "sampled",
+          "dimensions": [
+            {
+              "unit": "bytes",
+              "total_limit": 1048576,
+              "ordinary_limit": 786432,
+              "total_used": 7200,
+              "ordinary_used": 5400
+            },
+            {
+              "unit": "nodes",
+              "total_limit": 8192,
+              "ordinary_limit": 6144,
+              "total_used": 60,
+              "ordinary_used": 45
+            }
+          ]
+        },
+        {
+          "name": "memory_capability_nodes",
+          "state": "sampled",
+          "dimensions": [
+            {
+              "unit": "bytes",
+              "total_limit": 4194304,
+              "ordinary_limit": 3145728,
+              "total_used": 15000,
+              "ordinary_used": 12248
+            },
+            {
+              "unit": "nodes",
+              "total_limit": 32768,
+              "ordinary_limit": 24576,
+              "total_used": 237,
+              "ordinary_used": 194
+            }
+          ]
+        },
+        {
+          "name": "observer_lists",
+          "state": "sampled",
+          "dimensions": [
+            {
+              "unit": "allocations",
+              "total_limit": 8192,
+              "ordinary_limit": 6144,
+              "total_used": 349,
+              "ordinary_used": 151
+            }
+          ]
+        }
+      ],
+      "http_diagnostics": [
+        "PASS: initial metrics request with complete metadata admission inventory",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.500s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.498s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.516s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 29.83s; ingress recovered",
+        "PASS: port 18602: verified TLS 1.3 reader and administrator observations",
+        "status progress: idle_tls_peers=1 healthy_seconds=1.148",
+        "status progress: idle_tls_peers=3 healthy_seconds=1.504",
+        "status progress: partial_header=1 healthy_seconds=1.028",
+        "status progress: idle_tls_peers=1 healthy_seconds=0.925",
+        "status progress: idle_tls_peers=3 healthy_seconds=0.845",
+        "status progress: partial_header=1 healthy_seconds=0.900",
+        "status progress: idle_tls_peers=1 healthy_seconds=0.829",
+        "status progress: idle_tls_peers=3 healthy_seconds=0.915",
+        "status progress: partial_header=1 healthy_seconds=0.907",
+        "PASS: healthy status requests beside idle TLS peers and incomplete authenticated headers",
+        "PASS: port 18602: missing/unregistered certificate, wrong name/root and plaintext rejected; reader recovered",
+        "PASS: port 17602: verified TLS 1.3 reader and administrator observations",
+        "PASS: port 17602: missing/unregistered certificate, wrong name/root and plaintext rejected; reader recovered",
+        "PASS: reader mutation rejected before incomplete signed body/controller dispatch",
+        "PASS: cluster-sign verified reader observation; wrong server name rejected before HTTP submission"
+      ]
+    }
+  ],
+  "validation": {
+    "host_suite": "Complete scripts/run-host-tests.sh passed; includes expected rejected legacy crypto mutation controls.",
+    "focused_harness": {
+      "passed": 64,
+      "failed": 0,
+      "categories": [
+        "shared admission",
+        "allocation/holder rollback",
+        "observer handles",
+        "policy and atomic counter mechanics",
+        "current SDK wire grammar"
+      ]
+    },
+    "strict_kernel_checks": [
+      "AArch64 acpi,kernel_tests",
+      "AArch64 acpi minimal",
+      "x86_64 acpi minimal"
+    ],
+    "service_bundles": [
+      "AArch64 test and minimal, rebuilt and signed; test user image rebuilt",
+      "x86_64 test and minimal, rebuilt and signed"
+    ],
+    "formatting": "cargo fmt --all -- --check and git diff --check passed"
+  },
+  "preflight_attempts": [
+    {
+      "platform": "arm",
+      "booted": false,
+      "result": "Runner stopped before boot because the freshly restaged test bundle lacked sitas-user.elf.",
+      "diagnostic": "error: test bundle requires sitas-user.elf; run scripts/build-catten-user.sh --embed",
+      "resolution": "Rebuilt and signed the required fixture with scripts/build-catten-user.sh --embed; passing run recorded separately above.",
+      "capture_limitation": "Original complete preflight log was not retained; the emitted diagnostic is preserved here."
+    }
+  ],
+  "limits": [
+    "Only admitted metadata pools are exposed; remaining R7 allocations, aggregate sponsor/heap and concurrent pressure work remain open.",
+    "Host mutex fixtures do not establish native IRQ behavior.",
+    "The native observer fixture checks busy capture under a held pool and heap guard; HTTP validates complete sampled/busy records but does not force a busy response.",
+    "Observation supplies no resource mutation, retry, reset or physical release authority."
+  ]
+}

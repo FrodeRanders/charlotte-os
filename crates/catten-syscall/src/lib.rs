@@ -191,7 +191,8 @@ pub struct DomainIdentityInfo {
 // ---- observability wire format ---------------------------------------------
 
 pub const THREAD_STATISTICS_MAGIC: u64 = 0x3154_4154_534f_4343; // "CCOSTAT1"
-pub const THREAD_STATISTICS_VERSION: u64 = 8;
+pub mod metadata_pools;
+pub const THREAD_STATISTICS_VERSION: u64 = 9;
 
 pub mod thread_statistics_header {
     pub const MAGIC: usize = 0;
@@ -221,7 +222,10 @@ pub mod thread_statistics_header {
     pub const ROOT_RECOVERY_ABANDONED: usize = 17;
     pub const ROOT_RECOVERY_REJECTED_ADMISSIONS: usize = 18;
     pub const ROOT_RECOVERY_CAPACITY: usize = 19;
-    pub const WORDS: usize = 20;
+    pub const METADATA_RECORD_BYTES: usize = 20;
+    /// Zero without SystemObserver; otherwise the complete metadata catalog.
+    pub const METADATA_RECORD_COUNT: usize = 21;
+    pub const WORDS: usize = 22;
 }
 
 pub mod thread_statistics_record {

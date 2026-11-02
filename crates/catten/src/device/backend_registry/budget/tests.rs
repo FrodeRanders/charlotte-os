@@ -208,9 +208,9 @@ fn byte_pressure<D>() {
 pub(in crate::device) fn with_ordinary_pressure(work: impl FnOnce()) {
     let before = snapshot();
     let count = ORDINARY[1] - before.1[1];
-    POOL.lock().reserve(false, [0, count]).unwrap();
+    let pressure = admission::Reservation::<IommuNodes, 2>::reserve(false, [0, count]).unwrap();
     work();
-    POOL.lock().release(false, [0, count]).unwrap();
+    drop(pressure);
     assert_eq!(snapshot(), before);
 }
 

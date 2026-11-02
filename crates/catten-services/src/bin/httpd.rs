@@ -557,6 +557,7 @@ struct ThreadReport {
     cpu_busy_ticks: u64,
     rows: alloc::vec::Vec<ThreadRow>,
     domains: alloc::vec::Vec<DomainRow>,
+    pools: alloc::vec::Vec<catten_syscall::metadata_pools::Sample>,
 }
 
 struct HistoryRow {
@@ -587,10 +588,11 @@ fn thread_report(snapshot: &Snapshot, observe_conn: ConnectionRef<'_>) -> Option
     let word_bytes = core::mem::size_of::<u64>();
     let max_len = (header_words
         + THREAD_SAMPLE_ROWS * THREAD_STATISTICS_RECORD_U64S
-        + DOMAIN_SAMPLE_ROWS * THREAD_STATISTICS_DOMAIN_RECORD_U64S)
+        + DOMAIN_SAMPLE_ROWS * THREAD_STATISTICS_DOMAIN_RECORD_U64S
+        + catten_syscall::metadata_pools::COUNT * catten_syscall::metadata_pools::WORDS)
         .checked_mul(word_bytes)?;
     let bytes = read_moved(snapshot, observe_conn, observability::OP_THREAD_SNAPSHOT, 0, max_len)?;
-    let len = bytes.len();
+    let pools = catten_syscall::metadata_pools::from_statistics(&bytes)?.collect();
     let mut header = [0u64; THREAD_STATISTICS_HEADER_U64S];
     for (slot, word) in header.iter_mut().zip(bytes.chunks_exact(word_bytes)) {
         *slot = u64::from_le_bytes(word.try_into().ok()?);
@@ -604,9 +606,7 @@ fn thread_report(snapshot: &Snapshot, observe_conn: ConnectionRef<'_>) -> Option
     {
         return None;
     }
-    let max_by_len = (len.saturating_sub(header_words * word_bytes))
-        / (THREAD_STATISTICS_RECORD_U64S * word_bytes);
-    let count = (header[thread_header::RECORD_COUNT] as usize).min(max_by_len);
+    let count = usize::try_from(header[thread_header::RECORD_COUNT]).ok()?;
     let mut rows = alloc::vec::Vec::with_capacity(count);
     for i in 0..count {
         let base = (header_words + i * THREAD_STATISTICS_RECORD_U64S) * word_bytes;
@@ -634,10 +634,7 @@ fn thread_report(snapshot: &Snapshot, observe_conn: ConnectionRef<'_>) -> Option
         });
     }
     let domain_base_words = header_words + count * THREAD_STATISTICS_RECORD_U64S;
-    let max_domains_by_len = (len.saturating_sub(domain_base_words * word_bytes))
-        / (THREAD_STATISTICS_DOMAIN_RECORD_U64S * word_bytes);
-    let domain_count =
-        (header[thread_header::DOMAIN_RECORD_COUNT] as usize).min(max_domains_by_len);
+    let domain_count = usize::try_from(header[thread_header::DOMAIN_RECORD_COUNT]).ok()?;
     let mut domains = alloc::vec::Vec::with_capacity(domain_count);
     for i in 0..domain_count {
         let base = (domain_base_words + i * THREAD_STATISTICS_DOMAIN_RECORD_U64S) * word_bytes;
@@ -672,6 +669,7 @@ fn thread_report(snapshot: &Snapshot, observe_conn: ConnectionRef<'_>) -> Option
         cpu_busy_ticks: header[thread_header::CPU_BUSY_TICKS],
         rows,
         domains,
+        pools,
     })
 }
 
@@ -914,6 +912,41 @@ fn render_threads(s: &mut String, report: &ThreadReport) {
             domain.heap_total_allocated_bytes,
             domain.heap_lock_spins
         );
+    }
+    s.push_str("],\"metadata_pools\":[");
+    for (index, pool) in report.pools.iter().enumerate() {
+        if index != 0 {
+            s.push(',');
+        }
+        let _ = write!(
+            s,
+            "{{\"name\":\"{}\",\"state\":\"{}\",\"dimensions\":[",
+            pool.id.name(),
+            if pool.used.is_some() {
+                "sampled"
+            } else {
+                "busy"
+            }
+        );
+        for dimension in 0..pool.id.dimensions() {
+            if dimension != 0 {
+                s.push(',');
+            }
+            let _ = write!(
+                s,
+                "{{\"unit\":\"{}\",\"total_limit\":{},\"ordinary_limit\":{},\"total_used\":",
+                pool.id.units()[dimension],
+                pool.total_limit[dimension],
+                pool.ordinary_limit[dimension]
+            );
+            if let Some((total, ordinary)) = pool.used {
+                let _ = write!(s, "{},\"ordinary_used\":{}", total[dimension], ordinary[dimension]);
+            } else {
+                s.push_str("null,\"ordinary_used\":null");
+            }
+            s.push('}');
+        }
+        s.push_str("]}");
     }
     s.push_str("]}");
 }

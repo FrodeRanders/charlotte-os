@@ -1012,6 +1012,13 @@ the corrected RPC polling paths, and the remaining notification gaps.
 
 ## Observers, completions and timers
 
+- Metadata pool plumbing uses `klib::admission`'s family-typed owners and one
+  fixed catalog. Keep sponsorship capture, layout selection and category-specific
+  disposal with the complete local owner. Read-only observation uses independent
+  nonblocking pool samples; busy usage is absent, and callbacks run after guard
+  release. Adding a pool updates the catalog and current wire contract. See
+  `docs/reference/metadata-admission.md`.
+
 - Completion, detached-operation and CQ registry entries use typed
   `entry_budget` nodes with independent `completion_nodes` byte/count admission.
   Pass the existing exact target's captured classification to node preparation;

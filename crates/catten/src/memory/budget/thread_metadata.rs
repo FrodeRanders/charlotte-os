@@ -1,24 +1,19 @@
 //! Requested bytes and bundle counts for stable thread contexts and their
 //! preallocated retirement nodes. The existing principal history sponsors all
 //! generations; no ASID lookup is needed at final post-guard deallocation.
-use charlotte_lifecycle::resources::AdmissionPool;
-
-use crate::memory::{
-    Mutex,
-    usage::principal_history::ThreadMetadataCharge,
+use crate::{
+    klib::admission::{
+        self,
+        ThreadMetadata,
+    },
+    memory::usage::principal_history::ThreadMetadataCharge,
 };
-
-const NODE_LIMIT: [u64; 2] = crate::resource_policy::POLICY.thread_metadata.total;
-const ORDINARY_LIMIT: [u64; 2] = crate::resource_policy::POLICY.thread_metadata.ordinary;
-
-static NODE: Mutex<AdmissionPool<2>> = Mutex::new(AdmissionPool::new(NODE_LIMIT, ORDINARY_LIMIT));
 
 #[derive(Debug)]
 #[must_use]
 pub(crate) struct Charge {
-    amount: [u64; 2],
-    platform: bool,
-    // Field release occurs after Drop's node guard has left. No root/generation
+    _node: admission::Reservation<ThreadMetadata, 2>,
+    // Node reservation releases its guard before the principal field drops. No root/generation
     // lookup can redirect a late refund to a replacement domain or principal.
     _principal: Option<ThreadMetadataCharge>,
 }
@@ -34,34 +29,22 @@ impl Charge {
             .map(|principal| ThreadMetadataCharge::try_new(principal, amount))
             .transpose()
             .map_err(|_| super::Error::Limit)?;
-        {
-            let mut node = NODE.lock();
-            node.reserve(platform, amount).map_err(|_| super::Error::Limit)?;
-        }
+        let node =
+            admission::Reservation::reserve(platform, amount).map_err(|_| super::Error::Limit)?;
         Ok(Self {
-            amount,
-            platform,
+            _node: node,
             _principal: principal,
         })
     }
 }
 
-impl Drop for Charge {
-    fn drop(&mut self) {
-        let mut node = NODE.lock();
-        node.release(self.platform, self.amount).expect("thread metadata node underflow");
-    }
-}
-
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn snapshot() -> ([u64; 2], [u64; 2]) {
-    let node = NODE.lock();
-    node.used()
+    admission::used::<ThreadMetadata, 2>()
 }
 
 /// Serialized boot qualification: fallback must not enter this counter lock.
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(in crate::memory) fn with_locked(work: impl FnOnce()) {
-    let _node = NODE.lock();
-    work();
+    admission::with_locked::<ThreadMetadata, 2, _>(work)
 }

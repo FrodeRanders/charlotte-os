@@ -1,21 +1,16 @@
 //! Shared table backing retains its triggering principal and trusted class
 //! through actual deallocation, including concurrent replacement candidates.
-use charlotte_lifecycle::resources::AdmissionPool;
-
-use crate::memory::{
-    Mutex,
-    usage::principal_history::ThreadTableCharge,
+use crate::{
+    klib::admission::{
+        self,
+        ThreadTable,
+    },
+    memory::usage::principal_history::ThreadTableCharge,
 };
-
-static NODE: Mutex<AdmissionPool<2>> = Mutex::new(AdmissionPool::new(
-    crate::resource_policy::POLICY.thread_table.total,
-    crate::resource_policy::POLICY.thread_table.ordinary,
-));
 
 #[derive(Debug)]
 pub struct Charge {
-    amount: [u64; 2],
-    platform: bool,
+    _node: admission::Reservation<ThreadTable, 2>,
     _principal: Option<ThreadTableCharge>,
 }
 
@@ -29,24 +24,18 @@ impl Charge {
             .map(|id| ThreadTableCharge::try_new(id, amount))
             .transpose()
             .map_err(|_| super::Error::Limit)?;
-        NODE.lock().reserve(platform, amount).map_err(|_| super::Error::Limit)?;
+        let node =
+            admission::Reservation::reserve(platform, amount).map_err(|_| super::Error::Limit)?;
         Ok(Self {
-            amount,
-            platform,
+            _node: node,
             _principal: principal,
         })
     }
 }
 
-impl Drop for Charge {
-    fn drop(&mut self) {
-        NODE.lock().release(self.platform, self.amount).expect("thread table node underflow");
-    }
-}
-
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn snapshot() -> ([u64; 2], [u64; 2]) {
-    NODE.lock().used()
+    admission::used::<ThreadTable, 2>()
 }
 
 /// Counter-only saturation is separate from the real-buffer controls.

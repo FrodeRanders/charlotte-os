@@ -862,6 +862,8 @@ pub fn test_syscall_dispatch() {
                     .expect("statistics field should contain one u64"),
             )
         };
+        assert_eq!(catten_syscall::metadata_pools::from_statistics(&bytes).unwrap().len(), 0);
+        assert_eq!(field(header::METADATA_RECORD_COUNT), 0);
         assert_eq!(field(header::MAGIC), THREAD_STATISTICS_MAGIC);
         assert_eq!(field(header::VERSION), THREAD_STATISTICS_VERSION);
         assert_eq!(
@@ -904,6 +906,10 @@ pub fn test_syscall_dispatch() {
             usize::try_from(system.regs[1]).expect("system statistics length exceeds usize"),
         )
         .expect("system statistics snapshot should be readable");
+        let pools = catten_syscall::metadata_pools::from_statistics(&system_bytes).unwrap();
+        assert_eq!(pools.len(), catten_syscall::metadata_pools::COUNT);
+        assert!(pools.into_iter().any(|pool| pool.used.is_some()));
+        crate::klib::admission::test_observation();
         let system_count = u64::from_le_bytes(
             system_bytes[3 * size_of::<u64>()..4 * size_of::<u64>()]
                 .try_into()

@@ -3,11 +3,12 @@
 //! through actual node deallocation; logical retirement does not refund it.
 use core::alloc::AllocError;
 
-use charlotte_lifecycle::resources::AdmissionPool;
-
-use crate::{
-    cpu::multiprocessor::spin::mutex::Mutex,
-    klib::collections::retirement_list::{
+use crate::klib::{
+    admission::{
+        self,
+        NamespaceNodes,
+    },
+    collections::retirement_list::{
         AdmittedMap,
         PreparedEntry,
         RetiredEntry,
@@ -17,23 +18,13 @@ use crate::{
 pub(crate) type Map<K, V> = AdmittedMap<K, V, Charge>;
 pub(crate) type Prepared<T> = PreparedEntry<T, Charge>;
 pub(crate) type Retired<T> = RetiredEntry<T, Charge>;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) const NODE_LIMIT: [u64; 2] = crate::resource_policy::POLICY.namespace_nodes.total;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) const ORDINARY_LIMIT: [u64; 2] = crate::resource_policy::POLICY.namespace_nodes.ordinary;
-static POOL: Mutex<AdmissionPool<2>> = Mutex::new(AdmissionPool::new(NODE_LIMIT, ORDINARY_LIMIT));
 
-#[derive(Debug)]
-#[must_use]
-pub(crate) struct Charge {
-    bytes: u64,
-    platform: bool,
-}
-impl Drop for Charge {
-    fn drop(&mut self) {
-        POOL.lock()
-            .release(self.platform, [self.bytes, 1])
-            .expect("namespace node admission underflow");
-    }
-}
+pub(crate) type Charge = admission::NodeCharge<NamespaceNodes>;
+
 pub(crate) fn prepare<T>(platform: bool) -> Result<Prepared<T>, AllocError> {
     prepare_with(platform, PreparedEntry::try_new_charged)
 }
@@ -41,21 +32,19 @@ fn prepare_with<T>(
     platform: bool,
     allocate: impl FnOnce(Charge) -> Result<Prepared<T>, AllocError>,
 ) -> Result<Prepared<T>, AllocError> {
-    let bytes = u64::try_from(Prepared::<T>::allocation_bytes()).map_err(|_| AllocError)?;
-    POOL.lock().reserve(platform, [bytes, 1]).map_err(|_| AllocError)?;
-    allocate(Charge {
-        bytes,
+    admission::prepare_node_with::<_, NamespaceNodes>(
         platform,
-    })
+        PreparedEntry::<T, Charge>::allocation_bytes(),
+        allocate,
+    )
 }
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn snapshot() -> ([u64; 2], [u64; 2]) {
-    POOL.lock().used()
+    admission::used::<NamespaceNodes, 2>()
 }
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn with_locked(work: impl FnOnce()) {
-    let _pool = POOL.lock();
-    work();
+    admission::with_locked::<NamespaceNodes, 2, _>(work)
 }
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_allocation<T>(family: &'static str) {

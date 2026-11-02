@@ -84,6 +84,17 @@ by absolute path. Unset selects the default; empty, relative, missing and
 directory paths reject. The file is trusted Rust source and belongs in the
 reviewed build inputs, not in an application manifest or upload request.
 
+The 22 admitted metadata pools share family-typed charge mechanics and an
+independent static counter lock per pool. Resource owners retain sponsorship,
+completion and disposal policy. Version-9 thread statistics append a read-only
+inventory for validated system observers; ordinary snapshots contain no pool
+records. HTTP status JSON exposes each pool's units, ordinary/total limits and
+usage in \texttt{threads.metadata\_pools}. Busy samples have absent usage.
+Samples are independent, byte values describe requested layouts, and overlapping
+or count-only pools cannot be summed into physical RAM consumption. This
+consolidation changes no numerical limits or cleanup authority. See
+\repofile|docs/reference/metadata-admission.md| for the wire contract.
+
 A profile defines \texttt{POLICY: Policy} in the policy module's scope. It can
 start from \texttt{DEFAULT} and override related fields. The checked-in
 \repofile|crates/catten/src/resource_policy/larger.rs| demonstrates co-scaling

@@ -9,13 +9,15 @@ operator procedure, authority, planning and qualification process.
 [Policy](../../crates/catten/src/resource_policy.rs) groups typed, copyable
 immutable settings. Family-local constant aliases forward to those fields;
 existing reservation helpers still enforce admission at their owning boundary.
-Twenty-one metadata families share the checked `AdmissionPool` counter mechanics:
+Twenty-two metadata families share [typed admission owners and a read-only
+runtime inventory](metadata-admission.md), using checked `AdmissionPool` mechanics:
 root metadata, global namespace nodes, authority nodes, mailbox endpoint nodes,
 deferred source-disposal nodes, observer backing, completion registry nodes,
 device namespace/payload nodes, IOMMU backend nodes, principal history, thread
 metadata, thread-table backing, ASID-table backing, waiter, timer, completion and
 capability/IPC/mailbox namespace accounts,
-scratch nodes, snapshot buffers, mapping nodes and memory-capability nodes.
+scratch nodes, snapshot buffers, mapping nodes, memory-capability nodes and
+observer-list allocations.
 Each retains its own lock, typed charge, captured
 classification and allocation-lifetime release policy. The shared counter
 owns no resource and grants no cleanup authority; both counters change together

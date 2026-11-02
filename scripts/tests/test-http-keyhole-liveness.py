@@ -8,11 +8,39 @@ also be used against a guest deliberately left running, using its forwarded port
 
 import argparse
 import json
+import re
 from pathlib import Path
 import socket
 import struct
 import time
 from management_tls import connect
+
+
+# Consume the SDK catalog so native status qualification follows the same current
+# identities/units without maintaining another pool inventory.
+CATALOG = re.findall(
+    r'\(\w+,\s*(\w+),\s*([12]),\s*"([^"]+)",\s*"([^"]*)"\)',
+    (Path(__file__).resolve().parents[2] /
+     "crates/catten-syscall/src/metadata_pools.rs").read_text(),
+)
+
+def metadata_pools(document):
+    pools = document["threads"]["metadata_pools"]
+    assert CATALOG and len(pools) == len(CATALOG)
+    for pool, (name, count, first, second) in zip(pools, CATALOG):
+        assert pool["name"] == name
+        assert pool["state"] in ("sampled", "busy")
+        dimensions = pool["dimensions"]
+        assert len(dimensions) == int(count)
+        for dimension, unit in zip(dimensions, (first, second)):
+            assert dimension["unit"] == unit
+            assert 0 < dimension["ordinary_limit"] < dimension["total_limit"]
+            total, ordinary = dimension["total_used"], dimension["ordinary_used"]
+            if pool["state"] == "busy":
+                assert total is None and ordinary is None
+            else:
+                assert 0 <= ordinary <= total <= dimension["total_limit"]
+                assert ordinary <= dimension["ordinary_limit"]
 
 
 def read_metrics(port, require_dns_catalog=False, require_ns_status=False):
@@ -42,6 +70,7 @@ def read_metrics(port, require_dns_catalog=False, require_ns_status=False):
         assert header.startswith(b"HTTP/1.1 200 "), header
         document = json.loads(body[:content_length])
         assert "http" in document
+        metadata_pools(document)
         if require_dns_catalog:
             catalog = document["dns"]["catalog"]
             assert catalog["schema"] == "charlotte.dns-catalog.v1"
@@ -98,7 +127,7 @@ def main():
         time.sleep(0.1)
 
     metrics(args.port, args.require_dns_catalog, args.require_ns_status)
-    print("PASS: initial metrics request", flush=True)
+    print("PASS: initial metrics request with complete metadata admission inventory", flush=True)
     # EOF before a request must close this socket while leaving the server running.
     with socket.create_connection(("127.0.0.1", args.port), timeout=12) as client:
         client.shutdown(socket.SHUT_WR)

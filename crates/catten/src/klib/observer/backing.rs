@@ -1,74 +1,50 @@
 //! Uniform observer allocation ownership through final weak/allocator release.
 //! Count admission covers the fixed private charge holder; actual Arc layout
 //! bytes (including header/alignment) are admitted before payload allocation.
-use core::{
-    alloc::{
-        AllocError,
-        Layout,
-    },
-    sync::atomic::{
-        AtomicU64,
-        Ordering,
-    },
+use core::alloc::{
+    AllocError,
+    Layout,
 };
 
-use charlotte_lifecycle::resources::AdmissionPool;
-
-use crate::{
-    cpu::multiprocessor::spin::mutex::Mutex,
-    klib::charged_allocator::{
+use crate::klib::{
+    admission::{
+        self,
+        ObserverBacking,
+    },
+    charged_allocator::{
         ChargedAllocator,
         PayloadAdmission,
     },
 };
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) const LIMIT: [u64; 2] = crate::resource_policy::POLICY.observer_backing.total;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) const ORDINARY: [u64; 2] = crate::resource_policy::POLICY.observer_backing.ordinary;
-static POOL: Mutex<AdmissionPool<2>> = Mutex::new(AdmissionPool::new(LIMIT, ORDINARY));
 
-#[derive(Debug)]
-pub(crate) struct Charge {
-    bytes: AtomicU64,
-    platform: bool,
-}
-impl Drop for Charge {
-    fn drop(&mut self) {
-        POOL.lock()
-            .release(self.platform, [self.bytes.load(Ordering::Acquire), 1])
-            .expect("observer backing budget underflow");
-    }
-}
+pub(crate) type Charge = admission::LayoutCharge<ObserverBacking>;
+
 #[derive(Debug)]
 pub(crate) struct LayoutAdmission;
 impl PayloadAdmission<Charge> for LayoutAdmission {
     fn reserve(charge: &Charge, layout: Layout) -> Result<(), AllocError> {
-        let bytes = u64::try_from(layout.size()).map_err(|_| AllocError)?;
-        POOL.lock().reserve(charge.platform, [bytes, 0]).map_err(|_| AllocError)?;
-        assert_eq!(charge.bytes.swap(bytes, Ordering::AcqRel), 0);
-        Ok(())
+        charge.admit_layout(layout)
     }
 
     fn rollback(charge: &Charge, layout: Layout) {
-        let bytes = charge.bytes.swap(0, Ordering::AcqRel);
-        assert_eq!(bytes, layout.size() as u64);
-        POOL.lock().release(charge.platform, [bytes, 0]).expect("observer byte rollback underflow");
+        charge.rollback_layout(layout);
     }
 }
 pub(crate) type Allocator = ChargedAllocator<Charge, LayoutAdmission>;
 pub(super) fn allocator(platform: bool) -> Result<Allocator, AllocError> {
-    POOL.lock().reserve(platform, [0, 1]).map_err(|_| AllocError)?;
-    Allocator::try_new_with_policy(Charge {
-        bytes: AtomicU64::new(0),
-        platform,
-    })
+    Allocator::try_new_with_policy(Charge::reserve(platform)?)
 }
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn snapshot() -> ([u64; 2], [u64; 2]) {
-    POOL.lock().used()
+    admission::used::<ObserverBacking, 2>()
 }
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn with_locked(work: impl FnOnce()) {
-    let _guard = POOL.lock();
-    work();
+    admission::with_locked::<ObserverBacking, 2, _>(work)
 }
 
 #[cfg(feature = "kernel_tests")]

@@ -2,34 +2,21 @@
 //! Original bytes/class follow preparation and producer-LP queued storage.
 use core::alloc::AllocError;
 
-use charlotte_lifecycle::resources::AdmissionPool;
-
 use super::PreparedDisposal;
-use crate::cpu::multiprocessor::spin::mutex::Mutex;
+use crate::klib::admission::{
+    self,
+    DeferredNodes,
+};
 
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) const LIMIT: [u64; 2] = crate::resource_policy::POLICY.deferred_nodes.total;
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) const ORDINARY: [u64; 2] = crate::resource_policy::POLICY.deferred_nodes.ordinary;
-static POOL: Mutex<AdmissionPool<2>> = Mutex::new(AdmissionPool::new(LIMIT, ORDINARY));
 
-#[derive(Debug)]
-#[must_use]
-pub(crate) struct Charge {
-    bytes: u64,
-    platform: bool,
-}
-impl Drop for Charge {
-    fn drop(&mut self) {
-        POOL.lock()
-            .release(self.platform, [self.bytes, 1])
-            .expect("deferred node budget underflow");
-    }
-}
+pub(crate) type Charge = admission::NodeCharge<DeferredNodes>;
+
 fn reserve(bytes: u64, platform: bool) -> Result<Charge, AllocError> {
-    POOL.lock().reserve(platform, [bytes, 1]).map_err(|_| AllocError)?;
-    Ok(Charge {
-        bytes,
-        platform,
-    })
+    Charge::reserve(platform, bytes)
 }
 pub(crate) fn prepare(platform: bool) -> Result<PreparedDisposal, AllocError> {
     prepare_with(platform, PreparedDisposal::try_new_charged)
@@ -43,12 +30,11 @@ fn prepare_with(
 }
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn snapshot() -> ([u64; 2], [u64; 2]) {
-    POOL.lock().used()
+    admission::used::<DeferredNodes, 2>()
 }
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn with_locked(work: impl FnOnce()) {
-    let _pool = POOL.lock();
-    work();
+    admission::with_locked::<DeferredNodes, 2, _>(work)
 }
 #[cfg(any(test, feature = "kernel_tests"))]
 mod tests;

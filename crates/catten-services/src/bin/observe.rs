@@ -364,7 +364,8 @@ fn snapshot_sample(system_observer: u64) -> Option<HistorySample> {
     // The syscall creates a fresh capability for this caller.
     let memory = unsafe { OwnedMemory::from_raw(memory) }.ok()?;
     let mapping = memory.map_read_only().ok()?;
-    let bytes = mapping.as_slice();
+    let bytes = mapping.as_slice().get(..usize::try_from(length).ok()?)?;
+    let _pools = catten_syscall::metadata_pools::from_statistics(bytes)?;
     if read_word(bytes, statistics_header::MAGIC)? != THREAD_STATISTICS_MAGIC
         || read_word(bytes, statistics_header::VERSION)? != THREAD_STATISTICS_VERSION
         || read_word(bytes, statistics_header::RECORD_BYTES)?
