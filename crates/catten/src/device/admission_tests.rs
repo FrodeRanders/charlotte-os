@@ -36,6 +36,8 @@ fn destroy_failed(id: u64) -> Result<(), dma::Error> {
 
 pub(crate) fn test_admission() {
     dma_tables::test_admission();
+    #[cfg(feature = "kernel_tests")]
+    node_budget::test_admission();
     registry::tests::run();
     backend_registry::tests::run();
     mapping_storage::tests::run();
@@ -193,7 +195,7 @@ pub(super) fn drop_grant_under_guards(prepared: PreparedDmaDomain) {
             let physical = crate::memory::PHYSICAL_FRAME_ALLOCATOR.lock();
             let _heap = crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
             let free = physical.free_frames();
-            drop(prepared);
+            node_budget::with_locked(|| drop(prepared));
             assert_eq!(physical.free_frames(), free);
             assert_eq!(DESTROYS.load(Ordering::Relaxed), before);
         });

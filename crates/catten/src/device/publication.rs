@@ -23,11 +23,11 @@ impl GrantAdmission {
     }
 
     pub(super) fn new(owner: AddressSpaceId) -> Result<Self, DeviceError> {
+        let (captured, backing_platform) = crate::memory::capture_address_space_storage(owner);
         let address_space = if owner == crate::memory::KERNEL_ASID {
             None
         } else {
-            let handle = crate::memory::current_address_space_handle(owner)
-                .ok_or(DeviceError::NamespaceRetired)?;
+            let handle = captured.ok_or(DeviceError::NamespaceRetired)?;
             Some(AddressSpaceOperation::acquire(handle).map_err(operation_error)?)
         };
         let mut admission = Self {
@@ -39,7 +39,7 @@ impl GrantAdmission {
                 authority: None,
             }),
         };
-        match registry::PreparedStorage::try_new() {
+        match registry::PreparedStorage::try_new(backing_platform) {
             Ok(storage) => admission.resources.storage = Some(storage),
             Err(error) => {
                 admission.finish()?;

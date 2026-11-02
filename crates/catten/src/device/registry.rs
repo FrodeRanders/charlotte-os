@@ -2,12 +2,15 @@
 //! Lookup/relink/detach never allocate or destroy a node; release is explicit.
 use core::mem::ManuallyDrop;
 
-use super::*;
-pub(super) use crate::klib::collections::retirement_list::AdmittedMap as Map;
-use crate::klib::collections::retirement_list::{
-    PreparedEntry,
-    RetiredEntry,
+pub(super) use super::node_budget::{
+    Map as DeviceMap,
+    Retired as RetiredEntry,
 };
+use super::{
+    node_budget::Prepared as PreparedEntry,
+    *,
+};
+pub(super) use crate::klib::collections::retirement_list::AdmittedMap as Map;
 
 struct Storage {
     namespace: Option<PreparedEntry<(AddressSpaceId, AsDeviceCaps)>>,
@@ -18,13 +21,13 @@ struct Storage {
 #[must_use]
 pub(super) struct PreparedStorage(ManuallyDrop<Storage>);
 impl PreparedStorage {
-    pub(super) fn try_new() -> Result<Self, DeviceError> {
+    pub(super) fn try_new(platform: bool) -> Result<Self, DeviceError> {
         // Both allocations precede local lifecycle/device/backend holds. A
         // second-node rejection destroys only empty first-node storage here.
         if test_fault!(tests::reject(1)) {
             return Err(DeviceError::ResourceLimit);
         }
-        let namespace = PreparedEntry::try_new().map_err(|_| DeviceError::ResourceLimit)?;
+        let namespace = node_budget::prepare(platform).map_err(|_| DeviceError::ResourceLimit)?;
         #[cfg(feature = "kernel_tests")]
         tests::boundary(false);
         if test_fault!(tests::reject(2)) {
@@ -33,7 +36,7 @@ impl PreparedStorage {
             drop(namespace);
             return Err(DeviceError::ResourceLimit);
         }
-        let capability = PreparedEntry::try_new().map_err(|_| DeviceError::ResourceLimit)?;
+        let capability = node_budget::prepare(platform).map_err(|_| DeviceError::ResourceLimit)?;
         #[cfg(feature = "kernel_tests")]
         tests::boundary(false);
         Ok(Self(ManuallyDrop::new(Storage {
@@ -44,7 +47,7 @@ impl PreparedStorage {
 
     pub(super) fn publish(
         &mut self,
-        devices: &mut Map<AddressSpaceId, AsDeviceCaps>,
+        devices: &mut DeviceMap<AddressSpaceId, AsDeviceCaps>,
         owner: AddressSpaceId,
         cap: DeviceCap,
         object: DeviceObject,

@@ -24,6 +24,7 @@ fn visible(root: memory::AddressSpaceHandle, cap: DeviceCap) -> bool {
 pub(in crate::device) fn run() {
     registry::tests::begin_real();
     for category in 0..3 {
+        let nodes_before = node_budget::snapshot();
         let root = loader::create_user_address_space_handle();
         let cap = if category == 2 {
             grant_interrupt(root.id(), 225).unwrap()
@@ -36,10 +37,14 @@ pub(in crate::device) fn run() {
             }
             cap
         };
+        let live_nodes = node_budget::snapshot();
+        assert_eq!(live_nodes.0[1], nodes_before.0[1] + 2);
+        assert_eq!(live_nodes.1[1], nodes_before.1[1] + 2);
         let mut owner = PreparedClose::new(root.id(), cap).unwrap();
         {
             let heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
-            owner.claim().unwrap();
+            node_budget::with_locked(|| owner.claim()).unwrap();
+            assert_eq!(node_budget::snapshot(), live_nodes);
             assert_eq!(used(root.id()), 1);
             assert!(!visible(root, cap));
             drop(heap);
@@ -58,10 +63,12 @@ pub(in crate::device) fn run() {
             CloseProgress::Complete => panic!("device close root completed before metadata"),
         };
         owner.clean().unwrap();
+        assert_eq!(node_budget::snapshot(), live_nodes);
         assert_eq!(used(root.id()), 1, "confirmed cleanup alone cannot refund metadata");
         owner.finish().unwrap();
         assert_eq!(used(root.id()), 0);
         assert!(matches!(closing.poll().unwrap(), CloseProgress::Complete));
+        assert_eq!(node_budget::snapshot(), nodes_before);
     }
 
     let root = loader::create_user_address_space_handle();
@@ -128,7 +135,7 @@ fn rejected_or_abandoned(failure: usize) {
     assert_eq!(used(root.id()), 1);
     dma_tables::test_drop_under_guards(|| {
         let _devices = DEVICES.lock();
-        drop(owner);
+        node_budget::with_locked(|| drop(owner));
     });
     assert_eq!(used(root.id()), 1);
     assert_eq!(memory::current_address_space_handle(root.id()), Some(root));

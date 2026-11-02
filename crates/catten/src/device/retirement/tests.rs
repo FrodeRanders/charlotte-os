@@ -191,7 +191,7 @@ fn failed_cleanup(failure: Failure) {
         closing.start_cleanup_with_devices(|receipt| {
             unlocked();
             if failure == Failure::Abandon {
-                drop(receipt);
+                node_budget::with_locked(|| drop(receipt));
                 return Err(DeviceError::UnmapFailed);
             }
             receipt.finish_with(

@@ -129,6 +129,8 @@ pub(crate) struct Policy {
     pub observer_backing: Pool<2>,
     /// Completion, detached-operation and CQ registry-node layouts and counts.
     pub completion_nodes: Pool<2>,
+    /// Device namespace and capability node layouts/counts, including candidates.
+    pub device_nodes: Pool<2>,
     pub mailbox_records: Scoped<1>,
     /// Queue sets, requested ring bytes.
     pub mailbox_queues: Scoped<2>,
@@ -175,6 +177,7 @@ impl Policy {
             || !self.observer_lists.valid()
             || !self.observer_backing.valid()
             || !self.completion_nodes.valid()
+            || !self.device_nodes.valid()
             || !self.mailbox_records.valid()
             || !self.mailbox_queues.valid()
             || !self.ipc_records.valid()

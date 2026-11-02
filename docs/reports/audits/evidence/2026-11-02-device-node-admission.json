@@ -1,0 +1,224 @@
+{
+  "schema": "charlotte.device-node-admission.v1",
+  "date": "2026-11-02",
+  "base_revision": "c63c782361b9c9467319cdafc6b53de36ea9a290",
+  "scope": "Independent requested-byte/count backing admission for device namespace and MMIO/IRQ/DMA capability payload nodes, through empty candidates, published descriptors and complete detached/retired owners.",
+  "source_sha256": {
+    "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
+    "crates/catten/src/device/admission_tests.rs": "ba085b4af1386087b0972e07e028161f320b011b77673937cbac39a607a7ad33",
+    "crates/catten/src/device/backend_registry/tests.rs": "a5699e907ce2f4a09aa3c0c7bb4229150e2da217084000e859b29b35bd54ccd4",
+    "crates/catten/src/device/close.rs": "f4959661c26498d3f5f586030c2eac44658f5c45313a3832e75ddc6e99f05d3c",
+    "crates/catten/src/device/close/tests.rs": "4da6280e77167882fa94038202103d4dc21f962a5224a33ee12291bca86faf40",
+    "crates/catten/src/device/mapping.rs": "9e6afd32e1f80da353b1a692d79f30bf40d64afad09058ac0a16152463ac912a",
+    "crates/catten/src/device/mod.rs": "060d36278f696b35acd7c8007bc153127af786414a83271a9467f4a61cef976f",
+    "crates/catten/src/device/node_budget.rs": "940f01206be49234428afba0a46712b2a4f194e32e24e76a1c58b76575f49204",
+    "crates/catten/src/device/node_budget/tests.rs": "767860633c405aba023aa219c10a00f256783fdfe1780500321857d1abbfee51",
+    "crates/catten/src/device/publication.rs": "add1aeb94dd63a15255345ff9b430eda5a7557e0bd3819fa230821b008f69490",
+    "crates/catten/src/device/registry.rs": "5475cadfd26bb551d1837eefc560cc7f3cf93f0c82c60b15e4603ac26e747994",
+    "crates/catten/src/device/registry/tests.rs": "6911f883991910dd36e2845eff70c1e4772835e647b2559d26fe17efaa141855",
+    "crates/catten/src/device/retirement.rs": "45538c5f6e0b2f01ae4ae6b342b3b5e0a47371ec04d084d0ab6883a800ab53d6",
+    "crates/catten/src/device/retirement/tests.rs": "7f5f23c91eba05e4caf5c157adff5a49eb16832f614feb2f9ff3f9db65bd88e6",
+    "crates/catten/src/klib/collections/retirement_list.rs": "ef0447d659221379641fad66a9d93489574062cebb855d01e3247496716a0d65",
+    "crates/catten/src/memory/operation.rs": "830a3a6299adfe7f2c735ce4baa58e40dc065d9e65a9bfddf2c5f6f8c5818b0b",
+    "crates/catten/src/resource_policy.rs": "a703f056bf58c0d0a13901d8d998e3bc05b556456ffe25b4f8e65995887972c8",
+    "crates/catten/src/resource_policy/defaults.rs": "7d0b63fc235396cbd78b86c989ff0d02c25133450fcbb15ca8fff948d45cf506",
+    "crates/catten/src/resource_policy/tests.rs": "4bcf8cb20326c77b13b7e20a4800dbc9a90c0839b97780a95d909f840040b6bf",
+    "crates/charlotte-lifecycle/src/resources.rs": "9ec29fce823650806ede3dc1a9539543dd5ccc784bbadee05d8478844a247270",
+    "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
+    "scripts/tests/test-resource-policy.py": "05e518a7f3cc0627cddbb324c3b3f683a09bc67d71d4aa1d2191a23eb8f22032"
+  },
+  "artifact_note": "Runtime sources were frozen before the campaigns. Every manifest tracked-diff identity equals the final runtime patch. Documentation/evidence edits followed manifest preparation; new source identities are included explicitly.",
+  "policy": {
+    "field": "device_nodes",
+    "dimensions": [
+      "actual requested retirement-node layout bytes including charge and inline payload storage",
+      "prepared/published/retained nodes"
+    ],
+    "ordinary": [
+      12582912,
+      104448
+    ],
+    "total": [
+      16777216,
+      139264
+    ],
+    "native_layout_bytes": {
+      "namespace": 48,
+      "capability": 72,
+      "charge": 16
+    },
+    "largest_layout_bytes_at_count_ceiling": {
+      "ordinary": 7520256,
+      "total": 10027008
+    },
+    "charge_overhead_at_total_count_ceiling_bytes": 2228224,
+    "decision": "Twice existing unified-capability ceilings plus the root-metadata complete-root planning envelope: 2*(49152+3072) ordinary and 2*(65536+4096) total. Candidate/replacement/retirement headroom preserves existing resource limits; independent byte ceilings permit layout growth. No RAM preallocation.",
+    "cost": "16 extra bytes per node (2176 KiB at total count ceiling), an independent short admission/refund operation and an existing ResourceLimit rejection. No extra holder allocation, runtime registry or cleanup family.",
+    "classification": "Capture root generation and table-account backing classification under one table hold, then acquire that exact AddressSpaceOperation before node allocation. A retirement/reuse race rejects lease acquisition. Permanent kernel storage is trusted. Original class survives promotion, detachment and retirement; allocator/release never re-resolves ASID. Resource grants stay separate.",
+    "rejection": "Each node quota rejection precedes its own heap allocation. First/second node failure publishes no authority, hardware/reset work or descriptor. A partial two-node preparation disposes original unused storage before exact-root completion, outside local publication guards.",
+    "release": "Typed DeviceMap/Prepared/Retired nodes carry original backing through existing GrantAdmission, PreparedClose, DmaOperation and PreparedNamespaceDevices. Actual node deallocation precedes refund. Existing complete fallback retains nodes/authority/root without entering the pool; hardware uncertainty never authorizes refund or replay.",
+    "exclusions": "IOMMU backend domain/requester/context, mapping/walker and table-ledger storage, nested allocations, allocator bookkeeping and aggregate principal/general-heap accounting remain separate."
+  },
+  "native_campaigns": [
+    {
+      "platform": "arm",
+      "instance": "device-nodes-20261102-arm",
+      "architecture": "aarch64",
+      "cpus": 4,
+      "fresh_storage": true,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T10:50:49Z",
+      "base_revision": "c63c782361b9c9467319cdafc6b53de36ea9a290",
+      "tracked_runtime_diff_sha256": "b87b9c77ed226033313892278e743657c00b38f68d6aa5dc09866ddb6a49b740",
+      "kernel_sha256": "3366e6582b240baa1f3ba541e91c36907b0dfb97c8b2e08be2b617dedb2aabb7",
+      "boot_image_sha256": "e7fce760233dbe38825fa445a1329f2a2f7cb54ac6a83003dc4fdda50e2b398c",
+      "initial_disk_sha256": "2072c54ccda7f4def2811e85d91b5e145ac3d0389855b73c07cdca67df9f0b85",
+      "bundle_map_sha256": "4a5ee89fd763eed1af5a7613cfc7a2428c1e0b623ac6bf63e6ec7eb5fdc2bd38",
+      "runner_exit_code": 0,
+      "diagnostic_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "passed": 19,
+      "failed": 0,
+      "pending": 0,
+      "native_layout_bytes": {
+        "namespace": 48,
+        "capability": 72,
+        "charge": 16
+      },
+      "serial_sha256": "decef9485358dbdf47acba4bd39c051306e3efa40fc4469601e6b8a7d01bea01",
+      "receipts": [
+        "[+     9.729372] [device node pressure] actual mixed candidates ordinary=104447 trusted=34815 at 104448/139264; 256 heap-held layout and 128 complete-storage denials; MMIO/IRQ/DMA reject before hardware/authority, one-node rollback, two-node recovery, trusted storage without resource privilege and promoted original refund passed",
+        "[+     9.731302] [device node admission] layouts namespace=48 capability=72 charge=16; 128 allocator rejections, independent byte denial, retained empty candidates across exact root close/ASID reuse and original-class deallocation refunds passed",
+        "[+     9.735528] [device registry ownership] device/unified node rejection precedes all MMIO/IRQ/DMA authority/hardware; heap-held authority admission, namespace creation/reuse and capability publication; explicit post-guard node disposal and exact-root completion passed",
+        "[+     9.738480] [backend registry ownership] node rejection, heap-held publication/claimed-cell restoration/detach and exact zero-fence reuse passed; guarded complete-grant abandonment retains one root/reservation and unused backend nodes without new IOMMU table/data charge",
+        "[+     9.748122] [device authority close] heap-held MMIO/IRQ claim retains original charge; scratch/direct/IRQ success disposes metadata before staged root completion; detach/invalidation/scratch rejection and MMIO/IRQ guarded abandonment retain five root leases, five authority charges and four scratch pages",
+        "[+     9.798550] [DMA creation ownership] exact unit/engine state restored on success/error; detached-domain and absent-engine claims reject before work; complete-unit/grant Drop under all guards retains one unit and one domain table, two data frames, metadata, exact root and original authority reservation",
+        "[+     9.995392] [DMA creation ownership] backend error preserves registered obligation through unlocked rollback; confirmed refund and failed exact root/reservation retention passed (one additional retained root/reservation)",
+        "[+    10.007934] [device retirement] unlocked MMIO/DMA completion, exact leaf ownership, partial failure, preparation rejection and abandonment passed; six closing roots retained",
+        "[+    10.892650] [backend registry rejection] every required node rejected before reset/domain IDs/backing; original requester/registry snapshot, table charges and authority preserved",
+        "[+    10.902336] [DMA metadata rejection] mapping/walker admission rejected before new table/data leaves; exact pin cleanup and unchanged table charges; same domain remains usable",
+        "[+    12.344228] [device retirement runtime] scratch/direct MMIO retired with secondary LPs online",
+        "[+    84.737110] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "platform": "intel",
+      "instance": "device-nodes-20261102-intel",
+      "architecture": "x86_64",
+      "cpus": 4,
+      "fresh_storage": true,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T10:51:58Z",
+      "base_revision": "c63c782361b9c9467319cdafc6b53de36ea9a290",
+      "tracked_runtime_diff_sha256": "b87b9c77ed226033313892278e743657c00b38f68d6aa5dc09866ddb6a49b740",
+      "kernel_sha256": "82326212288bd52901733dc18e1c9258d60ef57da55d223f22148b2d61e59645",
+      "boot_image_sha256": "8ef6dc153ee629bc7b40fa866170fc698840bc20b67bb10edad925046720293d",
+      "initial_disk_sha256": "bae2e64e0fb6f9c80fbec2647799a5faa9f591d7385dc7e337cd17673532ccc4",
+      "bundle_map_sha256": "1e8d1d5b4aa82acc192c0afdb4b577ee5617a233b0e41452a3eb7aa148b9f8d2",
+      "runner_exit_code": 0,
+      "diagnostic_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "passed": 17,
+      "failed": 0,
+      "pending": 0,
+      "native_layout_bytes": {
+        "namespace": 48,
+        "capability": 72,
+        "charge": 16
+      },
+      "serial_sha256": "60ebb27e9f11be3da77ba63c65373fac0d6eda5c5302e182f2da186ec471ebe8",
+      "receipts": [
+        "[+    13.439637] [device node pressure] actual mixed candidates ordinary=104447 trusted=34815 at 104448/139264; 256 heap-held layout and 128 complete-storage denials; MMIO/IRQ/DMA reject before hardware/authority, one-node rollback, two-node recovery, trusted storage without resource privilege and promoted original refund passed",
+        "[+    13.442254] [device node admission] layouts namespace=48 capability=72 charge=16; 128 allocator rejections, independent byte denial, retained empty candidates across exact root close/ASID reuse and original-class deallocation refunds passed",
+        "[+    13.449775] [device registry ownership] device/unified node rejection precedes all MMIO/IRQ/DMA authority/hardware; heap-held authority admission, namespace creation/reuse and capability publication; explicit post-guard node disposal and exact-root completion passed",
+        "[+    13.454857] [backend registry ownership] node rejection, heap-held publication/claimed-cell restoration/detach and exact zero-fence reuse passed; guarded complete-grant abandonment retains one root/reservation and unused backend nodes without new IOMMU table/data charge",
+        "[+    13.468181] [device authority close] heap-held MMIO/IRQ claim retains original charge; scratch/direct/IRQ success disposes metadata before staged root completion; detach/invalidation/scratch rejection and MMIO/IRQ guarded abandonment retain five root leases, five authority charges and four scratch pages",
+        "[+    13.528793] [DMA creation ownership] exact unit/engine state restored on success/error; detached-domain and absent-engine claims reject before work; complete-unit/grant Drop under all guards retains one unit and one domain table, two data frames, metadata, exact root and original authority reservation",
+        "[+    13.718961] [DMA creation ownership] backend error preserves registered obligation through unlocked rollback; confirmed refund and failed exact root/reservation retention passed (one additional retained root/reservation)",
+        "[+    13.730137] [device retirement] unlocked MMIO/DMA completion, exact leaf ownership, partial failure, preparation rejection and abandonment passed; six closing roots retained",
+        "[+    14.572212] [backend registry rejection] every required node rejected before reset/domain IDs/backing; original requester/registry snapshot, table charges and authority preserved",
+        "[+    14.585630] [DMA metadata rejection] mapping/walker admission rejected before new table/data leaves; exact pin cleanup and unchanged table charges; same domain remains usable",
+        "[+    16.131453] [device retirement runtime] scratch/direct MMIO retired with secondary LPs online",
+        "[+    90.484557] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "platform": "amd",
+      "instance": "device-nodes-20261102-amd",
+      "architecture": "x86_64",
+      "cpus": 4,
+      "fresh_storage": true,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-02T11:00:18Z",
+      "base_revision": "c63c782361b9c9467319cdafc6b53de36ea9a290",
+      "tracked_runtime_diff_sha256": "b87b9c77ed226033313892278e743657c00b38f68d6aa5dc09866ddb6a49b740",
+      "kernel_sha256": "05fcbda651a1085773e92c81f266a6ca66aef73806290501d6ea8e24d43cda8d",
+      "boot_image_sha256": "89cf8f9c51523e5892add23cc5f73cd7a92449f534f5ff76ec1b7109d40fd565",
+      "initial_disk_sha256": "bae2e64e0fb6f9c80fbec2647799a5faa9f591d7385dc7e337cd17673532ccc4",
+      "bundle_map_sha256": "1e8d1d5b4aa82acc192c0afdb4b577ee5617a233b0e41452a3eb7aa148b9f8d2",
+      "runner_exit_code": 0,
+      "diagnostic_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "passed": 17,
+      "failed": 0,
+      "pending": 0,
+      "native_layout_bytes": {
+        "namespace": 48,
+        "capability": 72,
+        "charge": 16
+      },
+      "serial_sha256": "e05a4c6a0097a0407b9737294842bc4df5fce91c38f252470299bb8277725942",
+      "receipts": [
+        "[+    13.082289] [device node pressure] actual mixed candidates ordinary=104447 trusted=34815 at 104448/139264; 256 heap-held layout and 128 complete-storage denials; MMIO/IRQ/DMA reject before hardware/authority, one-node rollback, two-node recovery, trusted storage without resource privilege and promoted original refund passed",
+        "[+    13.085068] [device node admission] layouts namespace=48 capability=72 charge=16; 128 allocator rejections, independent byte denial, retained empty candidates across exact root close/ASID reuse and original-class deallocation refunds passed",
+        "[+    13.092796] [device registry ownership] device/unified node rejection precedes all MMIO/IRQ/DMA authority/hardware; heap-held authority admission, namespace creation/reuse and capability publication; explicit post-guard node disposal and exact-root completion passed",
+        "[+    13.097328] [backend registry ownership] node rejection, heap-held publication/claimed-cell restoration/detach and exact zero-fence reuse passed; guarded complete-grant abandonment retains one root/reservation and unused backend nodes without new IOMMU table/data charge",
+        "[+    13.110167] [device authority close] heap-held MMIO/IRQ claim retains original charge; scratch/direct/IRQ success disposes metadata before staged root completion; detach/invalidation/scratch rejection and MMIO/IRQ guarded abandonment retain five root leases, five authority charges and four scratch pages",
+        "[+    13.167508] [DMA creation ownership] exact unit/engine state restored on success/error; detached-domain and absent-engine claims reject before work; complete-unit/grant Drop under all guards retains one unit and one domain table, two data frames, metadata, exact root and original authority reservation",
+        "[+    13.360752] [DMA creation ownership] backend error preserves registered obligation through unlocked rollback; confirmed refund and failed exact root/reservation retention passed (one additional retained root/reservation)",
+        "[+    13.372299] [device retirement] unlocked MMIO/DMA completion, exact leaf ownership, partial failure, preparation rejection and abandonment passed; six closing roots retained",
+        "[+    14.233486] [backend registry rejection] every required node rejected before reset/domain IDs/backing; original requester/registry snapshot, table charges and authority preserved",
+        "[+    14.250563] [DMA metadata rejection] mapping/walker admission rejected before new table/data leaves; exact pin cleanup and unchanged table charges; same domain remains usable",
+        "[+    15.714450] [device retirement runtime] scratch/direct MMIO retired with secondary LPs online",
+        "[+    89.743469] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    }
+  ],
+  "native_failures": [],
+  "bundle_identity_encoding": "SHA-256 of UTF-8 JSON bundle_sha256 mapping with sorted keys and comma/colon separators without whitespace.",
+  "host_validation": {
+    "shared_collection": "rustc --edition=2024 --test crates/catten/src/klib/collections/retirement_list.rs; run resulting binary; 16 passed, zero failed; exit zero",
+    "shared_collection_log_sha256": "6608b3ec856f0de7674ea01d73b8ed802cdcc57febeae534a168dfabb607ad93",
+    "policy": "python3 scripts/tests/test-resource-policy.py; three groups passed; exit zero",
+    "policy_log_sha256": "0cd95db4867762c8996e7062eecdee86ea6e6801086994b153f2799aea82060b",
+    "kernel_tests_clippy": "CATTEN_AARCH64_SERVICE_BUNDLE set to test bundle; cargo clippy -p catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi,kernel_tests --offline --locked -- -D warnings; exit zero",
+    "kernel_tests_clippy_log_sha256": "ea1790407c52ce36a2a679feb15925b6059c265c4090317f6927237bc650dbe7",
+    "minimal_clippy": "Same target/strict offline locked command with minimal bundle and acpi only; exit zero",
+    "minimal_clippy_log_sha256": "09a5bbd412e25fd2c87e1715067dc18f593244b5860cbb0b31197432276cbcc5",
+    "formatting": "cargo fmt --all -- --check; exit zero",
+    "full_host_suite": "Not repeated for this kernel-only change. Changed policy and shared retirement collection run directly; new family and containing-device-owner controls run on all three targets."
+  },
+  "controls": [
+    "Actual mixed empty namespace/capability-layout candidates fill ordinary 104448 and total 139264 ceilings. The additional 104447 ordinary and 34815 trusted candidates reflect the two pre-existing root namespaces, not lower limits.",
+    "With the real heap held, 64 ordinary and 64 trusted rounds reject both individual layouts (256 denials) and the complete two-node storage constructor (128 denials). All three actual MMIO/IRQ/DMA grant adapters reject 32 times at ordinary exhaustion, and for both roots at total exhaustion (288 adapter denials), with original node/authority/device state and route ownership unchanged.",
+    "One available ordinary slot runs all three adapters 32 times (96 denials) and one extra complete-storage rejection. First-node allocation succeeds, second-node admission rejects and the original partial candidate recovers exactly. Two slots permit real MMIO grant/close; promotion cannot redirect its original ordinary refund. Exact two-kind refill restores full admission.",
+    "Trusted real MMIO grant/close and complete grant preparation/cancellation progress at ordinary backing exhaustion. Unified capability resource counters remain ordinary, proving that trusted metadata backing alone grants no platform resource admission.",
+    "Two concrete layouts each inject 64 node-allocator rejections (128 total), recovering original byte/count reservations. Oversized inline layout types independently reject ordinary/total bytes before entering the allocation callback, without constructing those payloads.",
+    "Original empty two-node storage outlives actual root close and exact numeric ASID reuse by a trusted successor; later explicit disposal refunds only the original ordinary bytes/count. Empty candidates have no device authority, mapping or hardware obligation.",
+    "Existing real device/unified publication and explicit MMIO/IRQ claim fixtures also hold the node pool guard. Scratch/direct mapped MMIO and IRQ close retain original node charges through cleanup and recover exactly after staged root completion.",
+    "Existing complete DMA grant, backend-metadata grant, explicit-close and namespace abandonment fixtures add the node pool guard to their existing holds. Their original authority, roots, scratch and hardware obligations remain retained; no extra deliberate-retention owner is introduced. Existing native NVMe/reset/map/unmap recovery fixtures execute unchanged.",
+    "Shared retirement-collection host controls establish payload disposal and actual node deallocation before charge refund, allocation-error rollback and inert detached-node fallback. Backing admission does not supply hardware completion or broader caller-context qualification."
+  ],
+  "qualification_limits": [
+    "Serialized kernel-fixture pressure, not sustained concurrent hostile EL0 fairness or forced native general heap OOM. Byte rejection uses oversized layout admission, not real byte-ceiling allocations; node allocation failures are injected.",
+    "Empty-candidate ASID reuse is backing-lifetime qualification, not physical MMIO/DMA retirement. Existing mapped MMIO and NVMe tests retain their narrower reset/completion contracts; no outstanding device I/O or new hardware timeout is injected.",
+    "IOMMU backend registry, per-domain mapping/walker and table-ledger backing still need independent admission. Other registry/control storage, allocator bookkeeping, all-family signed-principal admission, general heap and worst-case latency remain open.",
+    "No new reserve grant, lease kind, physical completion proof, retry/replay owner, cleanup registry or owner family. SEC-07 remains partial; C12/C13/C14 and wider G1/G4/essential-progress gates remain applicable."
+  ]
+}

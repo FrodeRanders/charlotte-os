@@ -2,8 +2,10 @@
 //! Failed invalidation/abandonment retains the whole operation without cleanup.
 use core::mem::ManuallyDrop;
 
-use super::*;
-use crate::klib::collections::retirement_list::RetiredEntry;
+use super::{
+    registry::RetiredEntry,
+    *,
+};
 
 struct Resources {
     asid: AddressSpaceId,

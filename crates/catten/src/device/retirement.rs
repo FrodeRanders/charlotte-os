@@ -2,14 +2,16 @@
 //! registry storage is the work list; Drop retains unfinished records without
 //! attempting hardware teardown or releasing authority under unknown guards.
 
-use super::*;
+use super::{
+    registry::RetiredEntry,
+    *,
+};
 use crate::{
     capability::{
         LifecycleGuard,
         ObjectKind,
     },
     cpu::isa::interface::memory::AddressSpaceInterface,
-    klib::collections::retirement_list::RetiredEntry,
     memory::{
         AddressSpaceHandle,
         retirement::ClosingAddressSpace,

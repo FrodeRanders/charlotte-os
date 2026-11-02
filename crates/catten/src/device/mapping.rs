@@ -106,8 +106,7 @@ pub(super) struct DmaOperation {
     asid: AddressSpaceId,
     cap: DeviceCap,
     id: u64,
-    payload:
-        Option<crate::klib::collections::retirement_list::RetiredEntry<(DeviceCap, DeviceObject)>>,
+    payload: Option<super::registry::RetiredEntry<(DeviceCap, DeviceObject)>>,
     authority: Option<crate::capability::RetiredRecord>,
     wait_platform: bool,
     interest: core::mem::ManuallyDrop<Option<super::domain_creation::readiness::Interest>>,

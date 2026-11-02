@@ -334,6 +334,15 @@ the corrected RPC polling paths, and the remaining notification gaps.
 
 ## Capability and IPC publication
 
+- Device namespace and MMIO/IRQ/DMA payload nodes use typed `DeviceMap` storage
+  and independent `device_nodes` requested-byte/count admission. Capture trusted
+  backing class with the exact root generation, then acquire that root lease
+  before allocation. Keep backing reserve separate from resource grants; retain
+  original charges through unused candidates, publication, detached cleanup and
+  actual node deallocation. Complete grant/close/namespace fallback remains inert
+  under the node-pool guard too. IOMMU backend/mapping/walker and ledger backing
+  remain separate. See `docs/reference/device-node-admission.md`.
+
 - Mailbox endpoint candidates use typed `mailbox_node_budget` storage and
   independent `mailbox_nodes` byte/count admission before other preparation
   allocations. Retain captured backing classification unchanged through the

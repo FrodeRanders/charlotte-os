@@ -97,6 +97,7 @@ pub(in crate::device) fn finish_real() {
 }
 
 pub(in crate::device) fn run() {
+    let backing_before = node_budget::snapshot();
     begin_real();
     let root = crate::service::loader::create_user_address_space_handle();
     for kind in 0..3 {
@@ -145,7 +146,7 @@ pub(in crate::device) fn run() {
                 operation_in_flight: false,
             }, // ABI fixture, no hardware backing.
         };
-        let cap = admission.publish(&mut devices, object).unwrap();
+        let cap = node_budget::with_locked(|| admission.publish(&mut devices, object)).unwrap();
         // The original namespace node is reused after the first publication.
         assert!(devices.get(&root.id()).unwrap().caps.contains_key(&cap));
         drop(devices);
@@ -171,6 +172,7 @@ pub(in crate::device) fn run() {
     admission.finish().unwrap();
     assert_eq!(crate::capability::admission_tests::test_namespace_used(exhausted.id()), 0);
     crate::memory::close_user_address_space_handle(exhausted).unwrap();
+    assert_eq!(node_budget::snapshot(), backing_before);
     finish_real();
     crate::logln!(
         "[device registry ownership] device/unified node rejection precedes all MMIO/IRQ/DMA \

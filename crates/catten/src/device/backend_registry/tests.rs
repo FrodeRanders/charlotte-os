@@ -7,7 +7,10 @@ use core::sync::atomic::{
 
 use super::*;
 use crate::{
-    device::*,
+    device::{
+        registry::Map,
+        *,
+    },
     memory,
 };
 
@@ -173,7 +176,7 @@ pub(in crate::device) fn run() {
     let before = dma_tables::used();
     dma_tables::test_drop_under_guards(|| {
         let _devices = DEVICES.lock();
-        drop(grant);
+        node_budget::with_locked(|| drop(grant));
     });
     assert_eq!(dma_tables::used(), before);
     assert_eq!(crate::capability::admission_tests::test_namespace_used(root.id()), 1);

@@ -49,6 +49,7 @@ mod domain_creation;
 mod mapping;
 pub(crate) use mapping::MapError;
 mod mapping_storage;
+mod node_budget;
 mod private_domain;
 mod publication;
 mod registry;
@@ -137,7 +138,7 @@ use core::sync::atomic::{
 
 #[cfg(target_arch = "x86_64")]
 use iommu as dma;
-use registry::Map;
+use registry::DeviceMap as Map;
 #[cfg(target_arch = "aarch64")]
 use smmu as dma;
 use spin::LazyLock;
