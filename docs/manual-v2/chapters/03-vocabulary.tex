@@ -1,7 +1,7 @@
 \chapter{Vocabulary}
 \label{chap:vocabulary}
 
-This chapter defines the manual's CharlotteOS-specific terms.
+This chapter defines specific terms used in this manual.
 
 \section{Protection domain}
 
@@ -23,7 +23,7 @@ architectural discussion prefers the semantic term.
 An \textbf{execution context} is a kernel-scheduled thread. It may have:
 
 \begin{itemize}
-    \item LP affinity.
+    \item Logical processor (LP) affinity.
     \item Priority or scheduling class.
     \item A current protection domain.
     \item A wait state.
@@ -35,13 +35,13 @@ An \textbf{execution context} is a kernel-scheduled thread. It may have:
 A \textbf{logical processor} is CharlotteOS's representation of a schedulable
 hardware execution context, typically one CPU core or one hyperthread.
 
-An LP is \textbf{not} a shard (in the sitas sense). A typical mapping is:
+An LP is not a shard (in the Sitas sense). A typical mapping is:
 
 \begin{center}
 \begin{tikzpicture}[
     box/.style={draw, rounded corners, align=center, inner sep=5pt},
 ]
-    \node[box] (shard) {one sitas shard};
+    \node[box] (shard) {one Sitas shard};
     \node[box, right=0.8cm of shard] (thread) {one LP-affine\\userspace thread};
     \node[box, right=0.8cm of thread] (cpu) {normally one\\logical CPU};
     \draw[<->] (shard) -- (thread);
@@ -49,9 +49,8 @@ An LP is \textbf{not} a shard (in the sitas sense). A typical mapping is:
 \end{tikzpicture}
 \end{center}
 
-The architecture retains the distinction so that CPU hotplug, 
-oversubscription, migration, asymmetric CPUs, and multiple sharded processes
-remain possible.
+The architecture makes this distinction so that CPU hotplug, oversubscription,
+migration, asymmetric CPUs, and multiple sharded processes remain possible.
 
 \section{Sitas shard}
 
@@ -67,7 +66,7 @@ A \textbf{shard} is a userspace ownership and execution domain:
 \section{Capability}
 
 A \textbf{capability} is an unforgeable reference to a kernel object, carrying
-rights. It answers: ``May I perform this operation?''
+rights. It answers the question: ``May I perform this operation?''
 
 Capabilities are scoped to a protection domain's capability table. A process
 cannot fabricate a capability; the kernel issues one through an authorized
@@ -88,8 +87,8 @@ An \textbf{endpoint} is a bounded server-side IPC receive object. It has:
 \section{Connection capability}
 
 A \textbf{connection capability} is a client-side authority to send or call an
-endpoint. Possession of a service name is not authority. A name service resolves a
-name and conditionally returns a connection capability.
+endpoint. A name service resolves a name and conditionally returns a connection
+capability associated with that name.
 
 \section{Message}
 
@@ -105,7 +104,7 @@ A \textbf{message} is a kernel-validated IPC envelope consisting of:
     \item Optional reply authority.
 \end{itemize}
 
-The kernel understands the envelope structure; arbitrary Rust types remain a
+The kernel understands the envelope structure while arbitrary Rust types remain a
 userspace concern.
 
 \section{Reply token}
@@ -127,8 +126,8 @@ call. It is:
 A \textbf{resource capability} authorizes operations on a kernel-managed object
 such as a memory object, endpoint, connection, interrupt, MMIO region, DMA domain,
 or a completion for an operation or timer. The unified namespace also holds
-mailbox and system-observer authority. CQ identifiers select domain-local
-queues and are not a separate capability family.
+mailbox and system-observer authority. Completion queue (CQ) identifiers select
+domain-local queues and are not a separate capability family.
 
 \section{Operation and completion queue}
 
@@ -136,19 +135,19 @@ An \textbf{operation} is submitted work whose progress may depend on the kernel,
 hardware, or a privileged service.
 
 A \textbf{completion queue (CQ)} is the aggregated, per-shard or per-process
-destination for operation results. It is waitable (with \texttt{checked CQ wait}) and has
-non-lossy terminal completion semantics.
+destination for operation results. It is waitable (with \texttt{checked CQ wait})
+and has non-lossy terminal completion semantics.
 
 \section{Notification}
 
 A \textbf{notification} means: ``State may have changed; inspect the corresponding
-object or queue.'' It may be coalesced. It is not itself a result.
+object or queue.'' It may be coalesced, but is itself not a result.
 
 \section{Rust Waker}
 
 A Rust \texttt{Waker} means: ``Poll this userspace future again.'' It is a
-userspace scheduling hint. It is \textbf{not} a kernel completion record and
-should not cross the ABI directly.
+userspace scheduling hint, is not a kernel completion record, and it should not
+cross the ABI directly.
 
 \section{Distinctions that matter}
 

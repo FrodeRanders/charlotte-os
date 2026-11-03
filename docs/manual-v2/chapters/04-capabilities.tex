@@ -107,29 +107,28 @@ services delegate whatever the protocol authorizes.
 
 \begin{enumerate}
     \item A process starts without ambient authority. Every capability it
-        holds was explicitly granted by
-        a trusted component (the supervisor, the name service, or another service
-        under a protocol). There is no ambient authority to strip away and the
-        default is none.
+        holds was explicitly granted by a trusted component (the supervisor,
+        the name service, or another service under a protocol). There is no
+        ambient authority to strip away and the default is none.
 
-    \item Kernel-mediated authority is enumerable: a process's capability table
+    \item Kernel-mediated authority is enumerable: a process' capability table
         records the kernel objects it may use. This makes authority easier to
         audit, but does not by itself account for device side effects, protocol
         state, or implementation defects.
 
     \item Delegation is mediated: a process cannot grant authority it
-        does not hold; it cannot grant rights beyond what it possesses; and every
-        delegation crosses the kernel, which enforces both constraints.
+        does not hold; it cannot grant rights beyond what it possesses; and as
+        every delegation crosses the kernel, the kernel enforces both constraints.
 
     \item Teardown revokes the destroyed domain's capabilities and closes its
         endpoint relationships. Existing tests cover stale connections and
         pending-call reconciliation.
 
     \item Completion submissions share a bounded per-domain operation budget;
-        a full budget returns \texttt{WouldBlock}. Completion timers also have
-        separate event limits: at most the domain's completion capacity,
-        clamped to 1,024, and 8,192 events across the node. Ordinary domains may
-        use 6,144 of those events, leaving a share for kernel-designated
+        an exhausted budget results in \texttt{WouldBlock}. Completion timers
+        also have separate event limits: at most the domain's completion capacity,
+        currently clamped to 1,024, and 8,192 events across the node. Ordinary
+        domains may use 6,144 of those events, leaving a share for kernel-designated
         platform work. A cancelled event stays charged until its LP removes
         the queue node. Shared capability-record admission additionally covers
         all six families: 4,096 records per namespace, 65,536 per node and

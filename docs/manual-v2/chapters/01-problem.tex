@@ -3,7 +3,7 @@
 
 \section{A mismatch at the operating-system boundary}
 
-CharlotteOS is our attempt to address a particular mismatch. Async runtimes,
+CharlotteOS is an attempt to address a particular mismatch. Asyncronous runtimes,
 least-privilege services, and isolated components are often built above interfaces organized
 around blocking calls, ambient namespaces, and machine-wide policy. This manual
 calls the resulting adapters, duplicated concurrency models, and policy layers
@@ -37,15 +37,16 @@ That translation can introduce:
 
 A process on a conventional OS commonly begins with access to broad filesystem
 and network namespaces. Security policy then removes authority with mechanisms
-such as chroot, seccomp, and namespaces. This approach requires the developer to
-enumerate what the process must not reach. Programs that omit a restriction
-retain more authority than they need, which increases the effect of a compromise.
+such as \texttt{chroot}, \texttt{seccomp}, and namespaces. This approach requires
+the developer to enumerate what the process must not reach. Programs that omit
+a restriction retain more authority than they need, which increases the effect
+of a compromise.
 
 \subsection{Hardware asynchrony disguised as software synchrony}
 
 Hardware is inherently asynchronous with respect to the CPU. A disk controller
 signals completion via an interrupt. A network card delivers packets on its own
-schedule. A timer fires after a programmed interval. Yet the operating system
+schedule and a timer fires after a programmed interval. Yet the operating system
 interface presents these as synchronous calls: \texttt{read()} returns when the
 data is ready, blocking the calling thread in the meantime.
 
@@ -54,20 +55,21 @@ with thread pools; real-time systems may use carefully tuned polling loops.
 
 \subsection{Fault propagation across trust boundaries}
 
-A bug in a device driver can crash a monolithic kernel. A memory corruption in one
-application can, in a system without hardware-enforced isolation, corrupt another.
-Address-space isolation contains faults between drivers and applications, but it
-also puts IPC on performance-critical paths. A design that cannot keep that path
-cheap faces pressure to move services back into the kernel.
+A bug in a device driver can crash a monolithic kernel. In a system without
+hardware-enforced isolation, a memory corruption in one application can corrupt
+another. Address-space isolation contains faults between drivers and applications,
+but it also puts IPC on performance-critical paths. A design that cannot keep that
+path cheap may be tempted to move services (back) into the kernel.
 
 A common compromise is to isolate untrusted code in virtual machines while
-keeping trusted code in the kernel. Kernel defects can still cross that boundary.
+keeping trusted code in the kernel, but kernel defects can still cross that
+boundary.
 
 \section{Why Rust ownership is not enough}
 
 Safe Rust prevents many data races, use-after-free errors, and null-pointer
-dereferences. Unsafe code, hardware interfaces, and logic errors remain. This
-is a substantial improvement for systems programming, but Rust
+dereferences. Still, unsafe code, hardware interfaces, and logic errors remain.
+Safe Rust is a substantial improvement for systems programming, but Rust
 programs run on operating systems that do not share Rust's ownership discipline.
 
 \begin{itemize}
@@ -102,8 +104,8 @@ The design starts with a few requirements:
         Capabilities are unforgeable and must be explicitly granted.
 
     \item Isolation by default: every protection domain should run in its
-        own address space. Communication crosses a kernel-mediated boundary.
-        A fault in one domain should not propagate to another.
+        own address space. Communication across boundaries are kernel-mediated,
+        so a fault in one domain should not propagate to another.
 
     \item Ownership that crosses boundaries: data movement between
         domains should support ownership transfer. The kernel should be able to

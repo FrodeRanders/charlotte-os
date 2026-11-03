@@ -6,7 +6,7 @@ In CharlotteOS, we bring together ideas from three projects.
 \section{Our starting point}
 
 \begin{quote}
-\textbf{Hardware is asynchronous; the operating system and the userspace runtime
+\textbf{Hardware is asynchronous, so the operating system and the userspace runtime
 should be too.}
 \end{quote}
 
@@ -20,7 +20,7 @@ CharlotteOS contributes the mechanisms that \emph{must} be privileged:
 
 \begin{itemize}
     \item Address-space isolation through page tables and the MMU.
-    \item Kernel scheduling of threads across logical processors.
+    \item Kernel scheduling of threads across logical processors (LPs).
     \item LP-local state and interrupt routing.
     \item Page-table manipulation and physical-memory management.
     \item MMIO and DMA authority delegation.
@@ -36,8 +36,7 @@ without compromising isolation, it belongs in userspace.
 \subsection{Sitas: the shard-per-core execution discipline}
 
 Sitas (\url{https://github.com/FrodeRanders/sitas}) contributes an execution
-discipline: a set of rules about how state is
-owned and mutated:
+discipline, i.e. a set of rules about how state is owned and mutated:
 
 \begin{quote}
 Only the owning shard mutates shard-local state. Cross-shard interaction occurs
@@ -64,13 +63,13 @@ Sitas provides:
         state by value, never by borrowed reference into runtime internals.
 \end{itemize}
 
-The sitas discipline is enforced by Rust's type system within a single protection
-domain. CharlotteOS extends it across domains through the kernel.
+The Sitas discipline is enforced by Rust's type system within a single protection
+domain and CharlotteOS extends it across domains through the kernel.
 
 \subsection{Xous: the isolated userspace service model}
 
-Xous, a microkernel OS for Precursor and Betrusted hardware, contributes the
-protection-domain service model:
+Xous (\url{https://xous.dev}), a microkernel OS for Precursor and Betrusted hardware,
+contributes the protection-domain service model:
 
 \begin{itemize}
     \item Services are userspace servers: drivers, filesystems, and
@@ -81,23 +80,23 @@ protection-domain service model:
         with that server.
     \item IPC is a kernel primitive: the kernel mediates and validates
         communication between protection domains.
-    \item Scalar messages are distinct from memory-bearing messages:
+    \item Scalar messages are distinct from memory-based messages:
         small control-plane operations (opcodes, handles, status codes) travel
         in fixed-size messages; bulk data travels as memory-object attachments.
     \item Memory IPC distinguishes ownership transfer from borrowing:
         move transfers ownership permanently. Borrow grants temporary access,
         revoked on reply or cancellation.
     \item A userspace name service maps human-readable names to opaque
-        server identities; the kernel knows nothing about strings.
+        server identities.
 \end{itemize}
 
-CharlotteOS adopts Xous's userspace-server model and combines it with the sitas
+CharlotteOS adopts Xous's userspace-server model and combines it with the Sitas
 execution discipline and an async-native kernel. The detailed co-design is
 maintained in \repofile|docs/architecture/sitas-xous.md|.
 
 \section{How they fit together}
 
-The three systems do not collapse into one. They compose at well-defined
+The three systems do not collapse into one and compose at well-defined
 boundaries:
 
 \begin{center}
@@ -105,7 +104,7 @@ boundaries:
 \hline
 \textbf{Layer} & \textbf{Provided by} \\
 \hline
-Shard-local async execution & sitas \\
+Shard-local async execution & Sitas \\
 Cross-domain protection and IPC & CharlotteOS kernel (Xous-inspired) \\
 Completion delivery for kernel/device ops & CharlotteOS kernel \\
 Service discovery and policy & Userspace (name service, supervisor) \\
@@ -136,7 +135,7 @@ The layers are:
             \setlength{\itemsep}{0pt}
             \item one or more externally visible IPC endpoints
             \item protocol-specific request/reply handling
-            \item one sitas executor per assigned shard
+            \item one Sitas executor per assigned shard
             \item shard-local state
             \item typed in-process commands
             \item driver or service implementation
@@ -194,16 +193,15 @@ grants, and DMA mappings, is a \textbf{composition} of these three primitives.
 \subsection{Capabilities: ``May I?''}
 
 A capability answers one question: \textbf{``May I perform this operation?''}
-It grants permission to act. Operations describe the work. Examples include
+It grants permission to act and operations describe the work. Examples include
 endpoint capabilities, connection capabilities, memory-object capabilities,
-interrupt capabilities,
-DMA-domain capabilities, and timer capabilities.
+interrupt capabilities, DMA-domain capabilities, and timer capabilities.
 
 \subsection{Endpoints: ``With whom?''}
 
 An endpoint answers: \textbf{``Who am I communicating with?''} It provides
 bounded rendezvous between protection domains. Endpoints know nothing about packet
-buffers, futures, DMA, or ownership. They carry requests and replies.
+buffers, futures, DMA, or ownership. They just carry requests and replies.
 
 \subsection{Memory Objects: ``Where is the data, and who owns it?''}
 
@@ -253,7 +251,7 @@ This leaves some things outside the model:
 
 \subsection{Blocking is still useful}
 
-When no sitas task is runnable, the shard's execution context should block in one
+When no Sitas task is runnable, the shard's execution context should block in one
 kernel wait operation:
 
 \begin{center}
@@ -289,8 +287,8 @@ into futures.}
 \subsection{Immediate operations remain immediate}
 
 Operations that cannot meaningfully block, such as capability duplication,
-metadata queries, nonblocking CQ drain, and closing a quiescent object, complete
-synchronously. The ABI does not force asynchronous ceremony onto inherently
+metadata queries, nonblocking CQ drain, and closing a quiescent object, they
+complete synchronously. The ABI does not force asynchronous ceremony onto inherently
 synchronous work.
 
 \subsection{No asynchronous userspace upcalls}
@@ -307,7 +305,7 @@ path is:
     \node[stage, below=0.4cm of s1] (s2) {kernel records result\\or notification};
     \node[stage, below=0.4cm of s2] (s3) {blocked execution context\\becomes runnable};
     \node[stage, below=0.4cm of s3] (s4) {normal return to userspace};
-    \node[stage, below=0.4cm of s4] (s5) {sitas executor drains\\CQ/endpoints};
+    \node[stage, below=0.4cm of s4] (s5) {Sitas executor drains\\CQ/endpoints};
     \node[stage, below=0.4cm of s5] (s6) {executor wakes\\relevant Rust tasks};
     \draw[->] (s1) -- (s2);
     \draw[->] (s2) -- (s3);
@@ -331,10 +329,10 @@ principles from \autoref{chap:problem}:
         can do is enumerable and auditable by construction.
     \item Endpoints make communication authenticated: a client that holds
         a connection capability has proven (at grant time) that it is authorized
-        to communicate. The kernel enforces this on every message.
+        to communicate and the kernel enforces this on every message.
     \item Memory objects constrain stale cross-domain access: ownership moves
-        through the kernel and is enforced by page tables. Correctness still
-        depends on MMU, TLB, and DMA handling.
+        through the kernel and is enforced by page tables, which of course puts
+        a dependency on MMU, TLB, and DMA handling.
     \item Composition limits the privileged code footprint: most system functionality
         lives in userspace, where faults can be contained to a service domain.
     \item The async model reduces adaptation: the kernel and runtime share

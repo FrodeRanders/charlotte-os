@@ -2,14 +2,14 @@
 \label{chap:endpoints}
 
 An endpoint answers: \textbf{``Who am I communicating with?''} It is
-CharlotteOS's primary primitive for calls between protection domains.
+CharlotteOS' primary primitive for calls between protection domains.
 
 \section{Server and connection model}
 
-An \textbf{endpoint} is a bounded server-side IPC receive object. A service creates
-one and receives messages on it. A \textbf{connection capability} is a client-side
-authority to send to that endpoint. Connections are minted from the endpoint
-(typically by the name service) and delegated to clients.
+An \textbf{endpoint} is a bounded server-side IPC receive object. A service
+creates one through which it receives messages. A \textbf{connection capability}
+is a client-side authority to send to that endpoint. Connections are minted
+from the endpoint (typically by the name service) and delegated to clients.
 
 \begin{verbatim}
 Service creates endpoint:   endpoint_create(interface="ns", capacity=16)
