@@ -149,6 +149,14 @@ the corrected RPC polling paths, and the remaining notification gaps.
 
 ## Trust, boot and placement
 
+- Validate the firmware LP count through the shared scheduler limit before any
+  per-LP factory or secondary startup. Optional framebuffer consoles retain the
+  complete opaque C backend context for the boot lifetime; never adopt its base
+  pointer as a Rust Box. Future retirement needs explicit complete-backend
+  deinit and outer-context qualification. See
+  [boot allocation boundaries](boot-allocation-boundaries.md), including the
+  unresolved framebuffer geometry/budget requirement.
+
 - Keep mandatory startup validation and operational checks independent of
   `kernel_tests`. Native fixture modules, adapters, fault injection and synthetic
   workers require that feature; host logic uses `cfg(test)`. Minimal images must

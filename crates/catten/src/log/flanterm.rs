@@ -1,11 +1,13 @@
-use alloc::boxed::Box;
 use core::{
     ffi::{
         c_char,
         c_void,
     },
     fmt::Write,
-    ptr::null_mut,
+    ptr::{
+        NonNull,
+        null_mut,
+    },
 };
 
 use flanterm_bindings::*;
@@ -26,8 +28,19 @@ use crate::{
 /// or terminal initialization fails. Writes then return without drawing;
 /// the logging layer decides whether to use another console.
 pub struct FlantermConsole {
-    ctx: Option<Box<flanterm_context>>,
+    ctx: Option<BootContext>,
 }
+
+/// The C backend owns a larger `flanterm_fb_context` and its child buffers.
+/// Retain that complete allocation for the boot lifetime; a Rust Box of its
+/// base `flanterm_context` would have the wrong allocation layout. Dropping this
+/// handle is deliberately inert. There is no console replacement/retirement
+/// path; adding one requires explicit backend deinit outside console guards.
+struct BootContext(NonNull<flanterm_context>);
+
+// The context has no thread affinity. FT_CTX serializes every C operation,
+// and no other alias is retained after successful initialization.
+unsafe impl Send for BootContext {}
 
 impl FlantermConsole {
     /// Whether a framebuffer terminal is actually available.
@@ -40,7 +53,7 @@ impl Write for FlantermConsole {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         if let Some(ctx) = self.ctx.as_mut() {
             unsafe {
-                flanterm_write(&mut **ctx, s.as_ptr() as *const c_char, s.len());
+                flanterm_write(ctx.0.as_ptr(), s.as_ptr() as *const c_char, s.len());
             }
         }
         Ok(())
@@ -72,7 +85,6 @@ fn init_console() -> FlantermConsole {
             ctx: None,
         };
     }
-    crate::early_logln!("flanterm: framebuffer terminal initialised successfully");
     let ctx_mut = unsafe {
         flanterm_fb_init(
             Some(malloc),
@@ -103,25 +115,32 @@ fn init_console() -> FlantermConsole {
             0,
         )
     };
-    if ctx_mut.is_null() {
+    let Some(ctx) = NonNull::new(ctx_mut) else {
         crate::early_logln!("flanterm: flanterm_fb_init returned null");
         return FlantermConsole {
             ctx: None,
         };
-    }
+    };
     crate::early_logln!("flanterm: framebuffer terminal initialised successfully");
     FlantermConsole {
-        ctx: Some(unsafe { Box::from_raw(ctx_mut) }),
+        ctx: Some(BootContext(ctx)),
     }
 }
 
-pub extern "C" fn malloc(size: usize) -> *mut c_void {
-    let layout =
-        core::alloc::Layout::from_size_align(size, core::mem::align_of::<max_align_t>()).unwrap();
+extern "C" fn malloc(size: usize) -> *mut c_void {
+    let Ok(layout) =
+        core::alloc::Layout::from_size_align(size, core::mem::align_of::<max_align_t>())
+    else {
+        return null_mut();
+    };
+    if size == 0 {
+        return null_mut();
+    }
     unsafe { alloc::alloc::alloc(layout) as *mut c_void }
 }
 
-pub extern "C" fn free(ptr: *mut c_void, size: usize) {
+/// Called only by the backend for an exact nonzero allocation from `malloc`.
+unsafe extern "C" fn free(ptr: *mut c_void, size: usize) {
     let layout =
         core::alloc::Layout::from_size_align(size, core::mem::align_of::<max_align_t>()).unwrap();
     unsafe { alloc::alloc::dealloc(ptr as *mut u8, layout) };

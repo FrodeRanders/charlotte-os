@@ -1,0 +1,17 @@
+{
+  "crate": "flanterm_bindings",
+  "version": "1.1.4",
+  "registry_checksum": "1d2be2191e396538c2d620e41975c7b9592e7a7de7e237df5cce7118570fc5ed",
+  "files": {
+    "Cargo.toml": "e7b81628801895c7a8890dad9349084a9819547907dc40300270789022c10e19",
+    "README.md": "3b797cb5cb4451c7ce2959dee07a300b961873572cb2f07302812ce0f0076512",
+    "LICENSE": "201cea7095834beb9eed543928cd74ee90d456489a42aa05d6201fac0c5e36c6",
+    "build.rs": "7d5e2995ece339e79110e123b91a9e340cf75e3ae4fa3ecb089529b33b3a8fa3",
+    "src/lib.rs": "9e07ff4ece4c702009b5dfdc017fdab566ab0e7080c06da794db2f8267e8bd19",
+    "flanterm.c": "efcacd21c56277d314ad40545e3375863050ef349770de2c59245876a67f8eab",
+    "flanterm.h": "43e010138e809ed0b6b0dd11d9c48d3a098249815b19b9590aa0c2f8f893f083",
+    "wrapper.h": "f21be67f8bc73ea425da91238f5aed5c3aabdc31139b66f15edb27601f698a59",
+    "backends/fb.c": "7625424414c1fe2945d79ebfd7f39addd1c54279d9430ee8be5484b43d3e3eae",
+    "backends/fb.h": "c3e969d8d48747ecde131a9b2644756ffe001397da40bf217b34b7e5a6f24fca"
+  }
+}

@@ -17,6 +17,8 @@ report is useful for a significant investigation or qualification checkpoint.
 
 ## Reports
 
+- [Boot allocation edges — Q3 sub-batch](2026-11-04-boot-allocation-edges.md) — Early shared CPU-count admission, opaque C-console retention and corrected first-allocation failure cleanup; full host, ARM display/Intel/AMD qualification, preserved failed probes and explicit remaining Q3 scope.
+
 - [Supervisor launch, handoff and store cache — Q2](2026-11-04-supervisor-launch-cache.md) — Retaining complete parents, shared real upgrade path, fixed admitted cache, fail-closed reseeding and three-target qualification; records the minimal-only preflight correction separately.
 
 - [Six-site syscall snapshot admission — Q1](2026-11-04-syscall-snapshot-admission.md) — Shared private-buffer byte admission, reviewed 12/16 MiB defaults, plaintext erasure and combined ARM/Intel/AMD qualification; preserves both arithmetic preflight failures and remaining aggregate gates.

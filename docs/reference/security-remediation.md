@@ -15,7 +15,10 @@ The [SEC-07/18 closure plan](security-closure-plan.md) defines eight work packag
 Q1's six-site snapshot/scratch batch and Q2's launch/handoff/cache batch are
 accepted, with six packages remaining and all four aggregate gates open. It also defines the combined acceptance
 matrix. Its compiler census is a review baseline, not a completed
-allocation/caller inventory or a new readiness percentage. Finding dispositions
+allocation/caller inventory or a new readiness percentage. Q3 is in progress;
+its [boot allocation sub-batch](boot-allocation-boundaries.md) corrects CPU-count
+validation and optional framebuffer ownership/failure cleanup while retaining
+the unqualified geometry and remaining factory review. Finding dispositions
 and existing unresolved incidents remain unchanged.
 
 ## Finding ledger

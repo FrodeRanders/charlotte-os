@@ -196,6 +196,9 @@ pub extern "C" fn bsp_main() -> ! {
         assign_id();
     }
     early_logln!("BSP assigned ID 0.");
+    // Reject unsupported firmware counts before ISA initialization, logging or
+    // scheduler construction can initialize a heap-backed per-LP factory.
+    let _ = get_lp_count();
     init::bsp_init();
     boot_validation::validate_memory();
     crate::service::admission::initialize_boot_policy();

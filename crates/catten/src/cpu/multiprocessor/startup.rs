@@ -15,7 +15,15 @@ use crate::{
 pub(super) static LP_COUNT: LazyLock<RwLock<u32>> = LazyLock::new(|| {
     RwLock::new({
         if let Some(mp_res) = MP_REQUEST.response() {
-            mp_res.cpus().len() as u32
+            let count = mp_res.cpus().len();
+            assert!(
+                (1..=MAX_TRACKED_LPS).contains(&count),
+                "boot logical processor count {count} is outside the supported range \
+                 1..={MAX_TRACKED_LPS}"
+            );
+            // The checked limit is smaller than u32::MAX. All per-LP factories
+            // obtain their count here, before allocating or publishing storage.
+            count as u32
         } else {
             panic!("Limine was not able to start the secondary logical processors!")
         }
@@ -63,7 +71,7 @@ pub static ID_COUNTER: AtomicU32 = AtomicU32::new(0);
 
 /// Per-LP table capacity shared by the MPIDR routing table and the
 /// architecture-independent admission check below.
-const MAX_TRACKED_LPS: usize = 256;
+const MAX_TRACKED_LPS: usize = crate::cpu::scheduler::system_scheduler::MAX_TRACKED_LPS;
 
 #[cfg(target_arch = "aarch64")]
 const UNKNOWN_MPIDR: u64 = u64::MAX;
