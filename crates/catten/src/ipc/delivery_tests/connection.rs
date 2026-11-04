@@ -14,7 +14,7 @@ fn hidden(asid: AddressSpaceId, cap: CapabilityId, peer: AddressSpaceId) {
         connection_delegate(asid, cap, peer, ConnectionRights::ALL),
         Err(IpcError::UnknownCapability)
     );
-    assert_eq!(connection_endpoint_owner(asid, cap), Err(IpcError::UnknownCapability));
+    assert_eq!(connection_endpoint_identity(asid, cap), Err(IpcError::UnknownCapability));
     assert_eq!(watch_connection_closed(asid, cap), Err(IpcError::UnknownCapability));
     assert_eq!(connection_close_watch_count(asid, cap), Err(IpcError::UnknownCapability));
     assert_eq!(close_cap(asid, cap), Err(IpcError::UnknownCapability));

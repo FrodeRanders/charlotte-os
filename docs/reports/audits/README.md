@@ -17,6 +17,8 @@ report is useful for a significant investigation or qualification checkpoint.
 
 ## Reports
 
+- [Supervisor launch, handoff and store cache — Q2](2026-11-04-supervisor-launch-cache.md) — Retaining complete parents, shared real upgrade path, fixed admitted cache, fail-closed reseeding and three-target qualification; records the minimal-only preflight correction separately.
+
 - [Six-site syscall snapshot admission — Q1](2026-11-04-syscall-snapshot-admission.md) — Shared private-buffer byte admission, reviewed 12/16 MiB defaults, plaintext erasure and combined ARM/Intel/AMD qualification; preserves both arithmetic preflight failures and remaining aggregate gates.
 
 - [TLS signature-offer wire investigation](2026-11-01-tls-signature-offers.md) — Captured OpenSSL 4 SM2 offer, controlled peer-version reproduction, strict offer/selection correction, parser regression controls and real guest Kafka/S3 TLS packet evidence.

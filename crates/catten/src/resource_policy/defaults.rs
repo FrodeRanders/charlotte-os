@@ -168,6 +168,10 @@ pub(super) const POLICY: Policy = Policy {
         total: [16 * 1024 * 1024, 8192],
         ordinary: [12 * 1024 * 1024, 6144],
     },
+    service_images: Pool {
+        total: [16 * 1024 * 1024, 64],
+        ordinary: [12 * 1024 * 1024, 48],
+    },
     mapping_nodes: Pool {
         total: [1024 * 1024, 8192],
         ordinary: [768 * 1024, 6144],

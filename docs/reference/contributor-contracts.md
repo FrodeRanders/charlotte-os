@@ -170,6 +170,20 @@ the corrected RPC polling paths, and the remaining notification gaps.
   rejection or publication; never restore a separate preflight plus growable
   insertion after launch. Abandonment retains its slot, and retirement of a
   preparing principal remains Pending. See `docs/reference/scoped-deployment-launch.md`.
+
+- Supervisor launch/handoff parents retain the loaded target, kernel profile,
+  exact source/target operations, transfer prefixes and original buffer charges
+  together. Only explicit post-guard cancellation may run physical cleanup;
+  stop on the first failure without a best-effort retry. Parent abandonment is
+  inert retention. The upgrade syscall uses this same parent and captures the
+  old endpoint generation before classifying its replacement. See
+  `docs/reference/service-launch-ownership.md`.
+- Store images reserve fixed cache publication storage/count before I/O and
+  retain separate `service_images` bytes through private preparation and the
+  immutable kernel-lifetime entry. Signature verification precedes publication;
+  free cancelled bytes before count refund. Do not evict behind a returned cache
+  borrow. An unreadable/denied image is not missing: seeding must stop rather than
+  overwrite it. See `docs/reference/service-launch-ownership.md#store-sourced-images`.
 - Kernel admission policy is published once through
   `service::admission::PreparedBootTrust`. Cluster/deployment manifests borrow
   its `BootTrust` view; never configure their policy independently of the kernel

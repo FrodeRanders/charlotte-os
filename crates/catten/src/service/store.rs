@@ -155,9 +155,20 @@ const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
     bootstrap_elf!(b"deployd", "deployd"),
 ];
 
-/// Loaded, store-sourced service images, keyed by the artifact name.
-static STORE_ELFS: spin::Mutex<alloc::vec::Vec<(&'static [u8], &'static [u8])>> =
-    spin::Mutex::new(alloc::vec::Vec::new());
+mod image_cache;
+use image_cache::{
+    Cache,
+    Image,
+};
+
+use crate::klib::admission::{
+    ByteAllocator,
+    ServiceImages,
+};
+const CACHE_ENTRIES: usize = crate::resource_policy::POLICY.service_images.total[1] as usize;
+const _: () =
+    assert!(MAX_SERVICE_ELF_SIZE as u64 <= crate::resource_policy::POLICY.service_images.total[0]);
+static STORE_ELFS: Cache<CACHE_ENTRIES> = Cache::new();
 
 /// Serialize cache misses without holding a spin lock across IPC waits. This
 /// avoids duplicate object-store reads when several boot tasks request the
@@ -205,10 +216,7 @@ impl Drop for KernelMemoryCap {
 }
 
 fn cached_elf(name: &[u8]) -> Option<&'static [u8]> {
-    STORE_ELFS
-        .lock()
-        .iter()
-        .find_map(|(cached_name, image)| (*cached_name == name).then_some(*image))
+    STORE_ELFS.get(name)
 }
 
 /// Resolve a service ELF by its artifact name.
@@ -226,6 +234,10 @@ pub fn service_elf(name: &'static [u8]) -> Option<&'static [u8]> {
             return Some(image);
         }
     }
+    load_cached_elf(name)
+}
+
+fn load_cached_elf(name: &'static [u8]) -> Option<&'static [u8]> {
     if let Some(image) = cached_elf(name) {
         return Some(image);
     }
@@ -248,16 +260,23 @@ pub fn service_elf(name: &'static [u8]) -> Option<&'static [u8]> {
         return Some(image);
     }
 
-    // The store read blocks until the objstore service is up; the cache and
-    // its spin lock remain free while IPC and block I/O make progress.
-    let image = read_from_store(name)?;
-    if !verified_for_name(name, &image) {
+    // Reserve fixed publication storage/count before I/O; neither waiting nor
+    // copying holds the cache guard. On ordinary failure cancel after return.
+    let mut preparation = STORE_ELFS.prepare(name).ok()?;
+    let image = match read_from_store(name) {
+        Ok(Some(image)) => image,
+        Ok(None) | Err(_) => {
+            preparation.cancel();
+            return None;
+        }
+    };
+    preparation.image = Some(image);
+    if !verified_for_name(name, preparation.image.as_ref().unwrap()) {
         crate::logln!("[store] refusing ELF whose signed identity is not {:?}", name);
+        preparation.cancel();
         return None;
     }
-    let image: &'static [u8] = alloc::vec::Vec::leak(image);
-    STORE_ELFS.lock().push((name, image));
-    Some(image)
+    Some(preparation.publish())
 }
 
 fn verified_for_name(name: &[u8], image: &[u8]) -> bool {
@@ -292,9 +311,11 @@ pub fn seed_embedded_services() -> Result<SeedReport, &'static str> {
     };
 
     for (name, image) in BOOTSTRAP_ELFS {
-        if read_from_store_connection(obj_conn.raw(), name)
-            .is_some_and(|stored| verified_for_name(name, &stored))
-        {
+        // A quota/I/O/IPC failure is not proof of a missing or invalid image:
+        // stop rather than overwriting a possibly newer installed artifact.
+        let stored = read_from_store_connection(obj_conn.raw(), name)
+            .map_err(|_| "existing service image could not be read")?;
+        if stored.is_some_and(|stored| verified_for_name(name, &stored)) {
             report.retained += 1;
             continue;
         }
@@ -424,30 +445,65 @@ fn write_store_kernel_object(object_id: u64, bytes: &[u8]) -> Result<(), &'stati
 
 /// Read one object (the signed ELF) from the object store by its derived
 /// cluster-wide artifact id. Retries until the objstore service is up.
-fn read_from_store(name: &'static [u8]) -> Option<alloc::vec::Vec<u8>> {
-    let obj_conn = connect_objstore()?;
+#[derive(Debug, PartialEq, Eq)]
+enum ReadError {
+    Unavailable,
+    Malformed,
+    Snapshot,
+}
+
+fn read_from_store(name: &'static [u8]) -> Result<Option<Image>, ReadError> {
+    let obj_conn = connect_objstore().ok_or(ReadError::Unavailable)?;
     read_from_store_connection(obj_conn.raw(), name)
 }
 
-fn read_from_store_connection(connection: u64, name: &[u8]) -> Option<alloc::vec::Vec<u8>> {
+fn read_from_store_connection(connection: u64, name: &[u8]) -> Result<Option<Image>, ReadError> {
     let object_id = charlotte_launch::artifact_object_id(name);
-    let read =
-        KernelIpcCap(ipc::scalar_call(KERNEL_ASID, connection, OBJ_OP_READ, object_id).ok()?);
-    ipc::wait_reply(KERNEL_ASID, read.raw()).ok()?;
-    let reply = ipc::poll_reply(KERNEL_ASID, read.raw()).ok().flatten()?;
-    let _unexpected_connection = reply.cap.map(KernelIpcCap);
+    let read = KernelIpcCap(
+        ipc::scalar_call(KERNEL_ASID, connection, OBJ_OP_READ, object_id)
+            .map_err(|_| ReadError::Unavailable)?,
+    );
+    ipc::wait_reply(KERNEL_ASID, read.raw()).map_err(|_| ReadError::Unavailable)?;
+    let reply = ipc::poll_reply(KERNEL_ASID, read.raw())
+        .map_err(|_| ReadError::Unavailable)?
+        .ok_or(ReadError::Unavailable)?;
+    let unexpected_connection = reply.cap.map(KernelIpcCap);
     let memory = reply.memory.map(KernelMemoryCap);
-    if reply.result < 0 {
-        return None;
-    }
-    let memory = memory?;
-    let size = reply.result as usize;
-    if size == 0 || size > MAX_SERVICE_ELF_SIZE {
-        crate::logln!("[store] refusing {size}-byte service ELF for {:?}", name);
-        return None;
-    }
-    // Snapshot through the memory object's direct-map frames. Reusing one
-    // temporary virtual address here used to make correctness depend on TLB
-    // state when successive cache misses ran on different LPs.
-    crate::memory::object::snapshot_bytes(KERNEL_ASID, memory.raw(), size).ok()
+    let Some(size) = read_length(reply.result, memory.is_some(), unexpected_connection.is_some())?
+    else {
+        return Ok(None);
+    };
+    // Same registry-protected rights/state/copy boundary as other snapshots;
+    // this owner retains its separate image-pool allocator through publication.
+    crate::memory::object::snapshot_bytes_in(
+        KERNEL_ASID,
+        memory.as_ref().unwrap().raw(),
+        size,
+        ByteAllocator::<ServiceImages>::new(true),
+    )
+    .map(Some)
+    .map_err(|_| ReadError::Snapshot)
 }
+
+/// Only explicit not-found, or a returned object with an invalid ELF length,
+/// authorizes repair. A scalar error/denial is never an absent-object result.
+fn read_length(result: i64, memory: bool, connection: bool) -> Result<Option<usize>, ReadError> {
+    if connection {
+        return Err(ReadError::Malformed);
+    }
+    if !memory {
+        return if result == 1 {
+            Ok(None)
+        } else {
+            Err(ReadError::Unavailable)
+        };
+    }
+    let size = usize::try_from(result).map_err(|_| ReadError::Malformed)?;
+    if size == 0 || size > MAX_SERVICE_ELF_SIZE {
+        return Ok(None);
+    }
+    Ok(Some(size))
+}
+
+#[cfg(feature = "kernel_tests")]
+pub(crate) mod tests;

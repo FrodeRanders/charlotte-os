@@ -266,8 +266,13 @@ or one that fails identity and signature verification is replaced from the
 bundle. The installer flushes the store before dependent services start, so
 the operation is idempotent across reboot. Services are subsequently resolved
 by logical name, read through the object-store protocol, identity-checked, and
-cached for the boot. The ordinary loader independently enforces ELF and
-signature policy before mapping.
+cached for the boot. Denied, malformed or unreadable responses stop seeding;
+they cannot authorize replacement. The cache reserves fixed publication entries
+before I/O, owns immutable admitted vectors for the kernel lifetime, and has a
+separate 16 MiB/64-entry image budget. It does not consume temporary snapshot
+headroom. The ordinary loader independently enforces ELF and signature policy
+before mapping. See
+\repofile|docs/reference/service-launch-ownership.md|.
 
 The signature record is CLS2, an identity-bearing ELF note. Besides signing
 the complete bytes, it binds the logical service name, artifact class, release

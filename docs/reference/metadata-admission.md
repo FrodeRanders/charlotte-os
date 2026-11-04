@@ -4,7 +4,7 @@
 [`klib::admission`](../../crates/catten/src/klib/admission.rs) supplies four
 family-typed owners: byte/count node charges, fixed-bundle charges, multidimensional
 reservations, and observer actual-layout charges. A single
-[catalog](../../crates/catten-syscall/src/metadata_pools.rs) names all 23 pools,
+[catalog](../../crates/catten-syscall/src/metadata_pools.rs) names all 24 pools,
 their dimensions and units. Every pool keeps its own static counter lock; there
 is no allocated registry, common hot lock or centralized resource owner.
 
@@ -35,11 +35,21 @@ The existing `snapshot_buffers` pool covers both frame catalogs and bounded
 [primitive syscall inputs/plaintext](snapshot-buffer-admission.md#primitive-syscall-inputs).
 Primitive vectors contribute requested bytes and zero frame-buffer counts.
 The reviewed default is 12/16 MiB ordinary/total; count limits stay 6144/8192.
-This expands an existing pool without changing the 23-pool catalog or version 10.
+This temporary-storage extension shares its existing pool. Permanent store
+images have separate admission; they cannot consume that temporary allowance.
+
+`ServiceImages` adds a separate purpose: immutable kernel-lifetime service-image
+backing and reserved cache entries. Fixed cache publication precedes I/O; copied
+bytes use the same `ByteAllocator` and checked memory-object boundary. Temporary
+seed verification copies contribute bytes and zero entries. See
+[launch/cache ownership](service-launch-ownership.md). This appends the 24th pool;
+existing IDs/record widths stay stable, and version 10 rejects rather than
+omitting the new entry. Both architectures' test/minimal services use the updated
+SDK and signed bundles.
 
 ## Read-only runtime inventory
 
-`THREAD_STATISTICS` payload **version 10** has a 22-word little-endian header.
+`THREAD_STATISTICS` payload **version 11** has a 22-word little-endian header.
 Thread and domain records retain their layouts. Header words 20 and 21 hold the
 metadata record size in bytes (88) and count. After both existing sections,
 validated `SystemObserver` snapshots include the complete catalog, in catalog
@@ -122,6 +132,6 @@ builds passed; both architectures' test/minimal service bundles were
 rebuilt and signed. The earlier ARM preflight rejection is recorded separately.
 These runs do not close broader allocation, concurrency or latency gaps.
 
-Current [IPC node qualification](ipc-node-admission.md) covers the appended
-23rd pool and version-10 payload, including previous-version rejection and
-rebuilt/signed test and minimal service bundles.
+The earlier [IPC node qualification](ipc-node-admission.md) records its
+23-pool/version-10 scope. Current [launch/cache qualification](service-launch-ownership.md)
+covers the 24th pool/version-11 payload and rebuilt/signed test/minimal bundles.

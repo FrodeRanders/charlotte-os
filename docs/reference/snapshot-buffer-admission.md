@@ -119,9 +119,9 @@ promotion and charged guarded abandonment.
 
 The [six-site Q1 record](../reports/audits/2026-11-04-syscall-snapshot-admission.md)
 separately records primitive byte controls and the combined final campaign.
-The remaining default-allocator image snapshot in `service::store` belongs to Q2
-because it can enter the persistent cache; it is not covered by these temporary
-owners. Primitive admission failures preserve the handlers' original generic
+Store image snapshots instead use the separate
+[service-image pool and immutable cache](service-launch-ownership.md#store-sourced-images).
+Their permanent lifetime is not covered by these temporary owners. Primitive admission failures preserve the handlers' original generic
 failure statuses; they do not add a new public quota status.
 
 | Audit gate | Added evidence | Remaining acceptance work |

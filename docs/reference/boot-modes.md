@@ -80,7 +80,8 @@ Hardware discovery, actual IOMMU initialization, signed artifact verification,
 resource admission, driver initialization and service readiness/error checks are
 operational requirements. They remain active. The operational launcher also
 seeds missing/invalid signed bootstrap artifacts before publishing its service
-set, retaining valid installed images. First-boot installation never depends on
+set, retaining valid installed images. A denied, malformed or unreadable result
+stops installation rather than authorizing replacement. First-boot installation never depends on
 the NVMe verifier. Regression tests that deliberately
 reject IOMMU initialization or retain abandoned domains are optional fixtures,
 not boot prerequisites. Minimal keeps production assertions, panic diagnostics

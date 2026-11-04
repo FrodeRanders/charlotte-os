@@ -9,7 +9,7 @@ operator procedure, authority, planning and qualification process.
 [Policy](../../crates/catten/src/resource_policy.rs) groups typed, copyable
 immutable settings. Family-local constant aliases forward to those fields;
 existing reservation helpers still enforce admission at their owning boundary.
-Twenty-three metadata families share [typed admission owners and a read-only
+Twenty-four metadata families share [typed admission owners and a read-only
 runtime inventory](metadata-admission.md), using checked `AdmissionPool` mechanics:
 root metadata, global namespace nodes, authority nodes, mailbox endpoint nodes,
 deferred source-disposal nodes, observer backing, completion registry nodes,
@@ -17,7 +17,7 @@ device namespace/payload nodes, IOMMU backend/mapping/cache nodes, principal his
 metadata, thread-table backing, ASID-table backing, waiter, timer, completion and
 capability/IPC/mailbox namespace accounts,
 scratch nodes, snapshot buffers, mapping nodes, memory-capability nodes and
-observer-list allocations and IPC payload nodes.
+observer-list allocations, IPC payload nodes and store-sourced service images.
 Each retains its own lock, typed charge, captured
 classification and allocation-lifetime release policy. The shared counter
 owns no resource and grants no cleanup authority; both counters change together
@@ -72,6 +72,7 @@ unlimited node capacity.
 | `root_table` | three-vector bytes; ASID backing slots, including replacement overlap | principal 8 MiB; 8192 slots | 12 MiB; 12288 slots | 16 MiB; 16384 slots |
 | `scratch_nodes` | node-layout bytes; nodes | — | 384 KiB; 6144 nodes | 512 KiB; 8192 nodes |
 | `snapshot_buffers` | frame/primitive buffer bytes; frame buffers | — | 12 MiB; 6144 buffers | 16 MiB; 8192 buffers |
+| `service_images` | store image bytes; reserved cache entries | — | 12 MiB; 48 entries | 16 MiB; 64 entries |
 | `mapping_nodes` | node-layout bytes; nodes | — | 768 KiB; 6144 nodes | 1 MiB; 8192 nodes |
 | `memory_capability_nodes` | object/capability/namespace/read-borrower layouts and object frame-vector bytes; nodes | — | 3 MiB; 24576 nodes | 4 MiB; 32768 nodes |
 | `memory.objects` | backing objects | 1024 | 6144 | 8192 |

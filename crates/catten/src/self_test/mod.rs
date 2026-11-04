@@ -283,6 +283,8 @@ pub fn run_synchronous_self_tests() {
     crate::memory::preparation::tests::run();
     crate::memory::AddressSpace::test_table_preparation();
     crate::service::loader::admission_tests::test_admission();
+    crate::service::supervisor::test_launch_owners();
+    crate::service::store::tests::run();
     waiters::test_waiter_admission();
     crate::cpu::scheduler::sync::tests::test_admission();
     crate::timers::waiter_tests::test_admission();

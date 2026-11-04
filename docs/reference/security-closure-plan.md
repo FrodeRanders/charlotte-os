@@ -11,12 +11,13 @@ their separate gates in the finding ledger.
 The [inventory checkpoint](../reports/audits/2026-11-04-resource-inventory.md)
 captures compiler-derived review candidates from both headless production
 profiles. It is a starting list, not a finding count or a completed R7-1/R18-1
-review. [Q1 is accepted](../reports/audits/2026-11-04-syscall-snapshot-admission.md);
-seven packages remain. This is a package count, not a weighted effort estimate.
+review. [Q1](../reports/audits/2026-11-04-syscall-snapshot-admission.md) and
+[Q2](../reports/audits/2026-11-04-supervisor-launch-cache.md) are accepted; six
+packages remain. This is a package count, not a weighted effort estimate.
 
 ## Existing coverage to preserve
 
-The 23-pool [metadata inventory](metadata-admission.md), signed-principal
+The 24-pool [metadata inventory](metadata-admission.md), signed-principal
 backing/stack/table admission, prepared payload nodes, original-class retention,
 typed cleanup owners and producer-LP notification contracts are implemented.
 The latest IPC snapshot/work-vector batch passed the full host suite, strict
@@ -40,8 +41,8 @@ into a new patch or invent a new cleanup owner family.
 | ID / status | Bounded scope and existing gates | Required exit evidence |
 | --- | --- | --- |
 | Q1 — accepted 2026-11-04 | Six primitive syscall input/scratch sites listed below; R7-2. Shared snapshot copying and byte admission implemented. | [Final qualification](../reports/audits/2026-11-04-syscall-snapshot-admission.md): captured original class, fallible complete prefixes, protocol-sized 12/16 MiB defaults, unchanged public input/status rules, full-capacity plaintext erasure and exact free/refund. Full host, strict test/minimal checks and ARM 19/19, Intel 17/17, AMD 17/17. Two failed arithmetic preflights preserved separately. |
-| Q2 — next | `service::supervisor` launch/upgrade transactions, `PreparingUpgrade.moves`, handoff cap storage, and `service::store` cached-image lifetime; R7-2 and C18/G1/G4. | Complete parent owns every prefix and original charge. Qualify `DomainLaunchTransaction` and `PreparingUpgrade` active Drop call chains. Cache entries reserve publication/storage before mutation; no unbounded or uncharged permanent image retention. Test ordinary rollback and guarded abandonment separately. |
-| Q3 — review pending | Remaining heap producer/factory candidates, library edges and profile/boot exclusions; R7-1/R7-2. Start from the frozen inventory and source screen, including PCI traversal, per-LP construction and launch encoders. | Every relevant candidate assigned to an admitted owner, a required fix or a justified exclusion with trigger/bound/lifetime. Follow allocation-capable dependency calls and optional profiles. Compiled but unused helpers are not application-reachability findings. No unexplained raw allocator/factory or macro-origin gap. |
+| Q2 — accepted 2026-11-04 | Named supervisor launch/upgrade parents, the actual upgrade-syscall bridge, handoff arrays and fixed store-image cache; R7-2 and C18/G1/G4. Seeding distinguishes admission/I/O failure from repairable content. | [Qualification](../reports/audits/2026-11-04-supervisor-launch-cache.md): explicit one-shot cancellation and inert complete-parent abandonment, exact source/target generations, original-class arrays, pre-I/O cache publication/count admission and immutable byte ownership. Full host, final strict checks and ARM 19/19, Intel 17/17, AMD 17/17. Evidence distinguishes the final fixture-only gating correction. |
+| Q3 — next review | Remaining heap producer/factory candidates, library edges and profile/boot exclusions; R7-1/R7-2. Start from the frozen inventory and source screen, including PCI traversal, per-LP construction and launch encoders. | Every relevant candidate assigned to an admitted owner, a required fix or a justified exclusion with trigger/bound/lifetime. Follow allocation-capable dependency calls and optional profiles. Compiled but unused helpers are not application-reachability findings. No unexplained raw allocator/factory or macro-origin gap. |
 | Q4 — queued after Q3 | Aggregate heap and signed-principal coverage across the existing pool catalog, restart and quarantine; R7-3. | Application-triggered allocations have family/node and original-principal coverage or a documented applicable exclusion. Count allocator/control overhead explicitly. Transfer, weak retention, ASID reuse and uncertain cleanup cannot refund or redirect original charges. Show a coherent multi-pool capacity plan. |
 | Q5 — review pending | Production caller/context and phase inventory for C01–C18; R18-1, G1/G3/G4. Use explicit/implicit Drop records plus callbacks and entry paths. | Record enclosing locks, IRQ state, allocation/notification/physical work, containing owner and unstarted/Pending/retryable/terminal outcome. Include ARM reaper context, scheduler/IRQ/observer callbacks and supervisor parents. Qualify actual callers; an inner post-guard helper is insufficient. |
 | Q6 — queued after Q5 | Typed retained-owner recovery, supervisor correlation and claimed device-reset support; R18-3/R18-4, G2/G3/G5/G6. Scope starts with root custody and mapping/domain/device owners in C03/C05/C14. | Stable exact-episode custody and mutation authorization; reconcile cached supervisor failure only after all dependency proofs. Extend recovery only with an actual complete eligible owner; consumed errors stay terminal. Test live outstanding I/O, withheld completion/reset rejection, old-MMIO denial and restart/reassignment for each claimed backend. Keep unsupported paths fenced. |
@@ -95,6 +96,33 @@ connector deployment and concurrent EL0 pressure in the
 [acceptance record](../reports/audits/2026-11-04-syscall-snapshot-admission.md).
 Q1 supplies no persistent-cache, supervisor-parent, physical/recovery or
 saturated-progress qualification.
+
+## Accepted batch Q2
+
+The [launch/cache contract](service-launch-ownership.md) defines the accepted
+parent, allocation and disposal boundaries. This deliberately scoped restructuring
+shares actual syscall and supervisor preparation rather than adding a generic
+cleanup registry. Handoff arrays use existing IPC bytes; permanent cache backing
+has its own 16 MiB/64-entry pool so it cannot consume transient snapshot capacity.
+The appended 24th pool requires statistics version 11 and matching rebuilt/signed
+test/minimal service bundles on both architectures. Register/runtime ABI and
+persistent object/signature formats remain unchanged.
+
+The cache work also required fail-closed seeding: a quota/I/O/IPC/snapshot or
+malformed reply cannot authorize overwriting installed state. That necessary
+read/repair boundary belongs to Q2's cache preparation scope. Native controls
+exercise signed store reads, unchanged cached hits and rejection under an
+explicit serialized byte-pressure adapter.
+
+Named launch/handoff parents retain profiles, exact roots, transfers and buffers
+on abandonment, with ordinary cancellation tested separately. They do not make
+bare `PreparedTransfer` or every containing destructor safe. Earlier loader
+`PreparingDomain` cleanup, mandatory boot-only constructors, store IPC-cap/
+lookup helpers, observer startup-claim publication and broader caller/IRQ/
+termination paths remain assigned to the Q3 producer/exclusion review and Q5
+context inventory. Typed continuation and saturated progress remain Q6–Q8.
+Q3 must reconcile the old compiler census with accepted Q1/Q2 owners before
+classifying residual candidates; do not reopen them from collection spelling.
 
 ## Combined acceptance matrix
 

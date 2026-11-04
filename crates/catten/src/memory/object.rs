@@ -5,10 +5,9 @@
 //! syscall ABI for now: callers pass kernel address-space ids, and the registry
 //! enforces that moving an object consumes the sender's capability.
 
-use alloc::{
-    alloc::Global,
-    vec::Vec,
-};
+#[cfg(any(test, feature = "kernel_tests"))]
+use alloc::alloc::Global;
+use alloc::vec::Vec;
 use core::{
     alloc::Allocator,
     mem::ManuallyDrop,
@@ -545,6 +544,7 @@ pub fn info(
 /// This is used at trust boundaries such as executable loading: the complete
 /// image is snapshotted before validation so userspace cannot mutate bytes
 /// between ELF validation and segment mapping.
+#[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn snapshot_bytes(
     asid: AddressSpaceId,
     cap: MemoryObjectCap,

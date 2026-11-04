@@ -189,8 +189,10 @@ are `ResourceLimit` or `NamespaceRetired` (status constants 17/18).
 The observer grant verifies its exact `AddressSpaceHandle` under lifecycle before
 reserving/publishing. `try_start_observability_service` owns a cancellable atomic
 startup claim and `PreparingObserver`/`DomainLaunchTransaction`; failed grants
-close the unstarted domain and delegated bootstrap authority best-effort. No
-observer registry guard spans loader/lifecycle work. The boot-critical wrapper
+explicitly cancel the unstarted domain and delegated bootstrap authority after
+guards leave. A cleanup failure stops and retains remaining ownership; the
+containing launch parent's Drop is inert. Exact grantor/target leases span the
+operation. No observer registry guard spans loader/lifecycle work. The boot-critical wrapper
 still treats launch failure as fatal after cleanup; this adds no automatic
 restart policy or allocator-failure recovery guarantee.
 

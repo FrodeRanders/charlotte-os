@@ -210,9 +210,11 @@ permits larger retained heap consumption; lowering them can restrict otherwise
 valid logical resources. Review actual mixed workloads and adjust central byte
 and count limits together. General heap/principal admission remains open.
 
-The 23-pool catalog, statistics version 10, header/record widths, SDK and signed
-runtime ABI remain unchanged. Services consume current limits from snapshots;
-no service source or bundle rebuild is needed for this kernel-only extension.
+IPC buffer extensions change no header/record widths or runtime ABI. The
+current 24-pool inventory uses statistics version 11, including the separate
+[service-image pool](service-launch-ownership.md#store-sourced-images). Services
+consume current limits from snapshots; catalog changes require matching signed
+bundles, while adding IPC vector layouts alone does not change that grammar.
 
 ## Qualification and remaining scope
 

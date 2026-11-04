@@ -81,39 +81,40 @@ verifies the note before mapping. The FNV-1a object checksum remains corruption
 detection; the CLS2 signature supplies executable authority. Rollback policy, key rotation, and measured
 boot remain future policy work.
 
-\section{What the supervisor prototype provides}
+\section{Shared Kernel Preparation}
+
+The live syscall uses the supervisor's complete preparation path:
 
 \begin{lstlisting}[style=rustCode]
-pub struct UpgradeGrant {
-    pub state_caps: Vec<MemoryObjectCap>,
-    pub endpoint_cap: CapabilityId,
-}
-
-pub fn try_spawn_upgrade(
+pub(crate) fn try_spawn_upgrade_from(
     image: &[u8],
     name_service: &NameServiceHandle,
     rights: ConnectionRights,
-    old_asid: AddressSpaceId,
-    grant: UpgradeGrant,
+    old: AddressSpaceHandle,
+    source: AddressSpaceHandle,
+    grant: UpgradeGrant<'_>,
 ) -> Result<ServiceDomain, UpgradeSpawnError>;
 \end{lstlisting}
 
-The running reference path uses the privileged \texttt{SpawnUpgrade} syscall
-from the userspace service manager. It validates that the manager holds a callable
-connection to the target, loads the new service ELF, moves the state memory
-object to the new domain, writes the bootstrap config page, and starts the new
-domain. The replacement registers a fresh endpoint and the name service
-atomically publishes the new connection and generation before retiring the
-old connection or releasing deferred lookups. The reference path supports both a
-persistent signed echo image and its embedded fallback, plus one state object.
-The separate \texttt{try\_spawn\_upgrade} helper shown above is a kernel
-prototype; the syscall uses a different implementation. The helper owns the loaded replacement and
-all prepared state moves, delegates connections before committing the batch,
-and cancels preparation on failure. Cancellation restores original source
-handles without fresh quota and closes the not-yet-running replacement. This
-helper has no current caller; the running reference manager and syscall still
-transfer one state object. Multi-state syscall integration, rollback policy and
-manager-owned teardown remain future work.
+\texttt{UpgradeGrant} borrows source IDs from the captured namespace. The
+syscall supplies its authorized manager and at most one state object; the old
+endpoint's exact root generation supplies replacement classification before
+loading. Naming, source, old-service and replacement roots remain retained.
+
+\texttt{PreparingUpgrade} owns the launch transaction, every prepared transfer
+and both byte-admitted transfer/target-ID vectors. Reserve both arrays before
+escrow or delegation. Ordinary failure explicitly disposes the prefix after
+guards leave, frees arrays, then cancels the unstarted domain once. The first
+cleanup error stops; abandonment retains all fields and original charges.
+Commit publishes the move batch before destination IDs enter the bootstrap page
+and the initial thread starts. No implicit physical cleanup or reverse-move
+reconstruction runs on parent abandonment.
+
+Native controls qualify original classes, prefix/quota rejection, guarded
+parent retention, maximum 31-entry array layouts and real single-state persistent
+upgrade. They do not establish 31 simultaneous physical transfers or an
+end-to-end multi-state endpoint handoff. See
+\repofile|docs/reference/service-launch-ownership.md|.
 
 \section{What the service must implement}
 

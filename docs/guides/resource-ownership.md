@@ -338,14 +338,16 @@ owned layer. Wrap their outward-facing resources and explain why the operation
 cannot use `MmioRegion`, `Interrupt`, `DmaTransfer`, or another owned type. A
 raw handle must never be managed simultaneously by an owned wrapper.
 
-The kernel-side profile launch path follows the same aggregation rule through
-`DomainLaunchTransaction`. It owns the not-yet-running `LoadedDomain` and any
-profile memory still held by `KERNEL_ASID`. Its explicit abort path closes the
-source object and target address space, which also reclaims connections or
-objects already delegated there; `Drop` repeats that cleanup best-effort. Add a
-new pre-start resource to this transaction instead of appending an `expect`
-after allocation. Capability records carry a typed
-`ProfileCapabilityMetadata` length, never an ad hoc meaning in generic flags.
+The kernel-side launch path follows the same aggregation rule through
+`DomainLaunchTransaction`. It retains the loaded target, kernel-side profile
+and exact source/target root operations. Explicit ordinary cancellation closes
+known resources once after guards leave; its first error stops cleanup.
+`Drop` retains every remaining field instead of attempting physical cleanup or
+retry. `PreparingUpgrade` additionally retains admitted transfer/ID vectors and
+all active transfers, including in the actual upgrade syscall. Add pre-start
+resources to the complete parent. Capability records carry typed
+`ProfileCapabilityMetadata` lengths, never generic flag aliases. See
+[supervisor launch and cache ownership](../reference/service-launch-ownership.md).
 
 ## Kernel capability staging
 

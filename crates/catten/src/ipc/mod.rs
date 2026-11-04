@@ -586,6 +586,14 @@ impl IpcRegistry {
 
 static IPC: LazyLock<RwLock<IpcRegistry>> = LazyLock::new(|| RwLock::new(IpcRegistry::new()));
 
+/// Serialized native parent-abandonment probe. The callback receives no
+/// registry access or authority and must not enter IPC again.
+#[cfg(feature = "kernel_tests")]
+pub(crate) fn with_registry_locked<T>(work: impl FnOnce() -> T) -> T {
+    let _guard = IPC.write();
+    work()
+}
+
 fn cap_admission_error(error: crate::capability::AllocationError) -> IpcError {
     match error {
         crate::capability::AllocationError::Retired => IpcError::PermissionDenied,
@@ -726,10 +734,10 @@ pub fn connection_delegate(
 /// service the requesting manager can actually call. The caller must hold a
 /// live connection with CALL authority; raw ASIDs supplied by userspace are
 /// never trusted.
-pub(crate) fn connection_endpoint_owner(
+pub(crate) fn connection_endpoint_identity(
     caller: AddressSpaceId,
     connection_cap: CapabilityId,
-) -> Result<AddressSpaceId, IpcError> {
+) -> Result<crate::memory::AddressSpaceHandle, IpcError> {
     let ipc = IPC.read();
     let (endpoint_id, rights) = match ipc.cap(caller, connection_cap)? {
         Capability::Connection {
@@ -745,7 +753,10 @@ pub(crate) fn connection_endpoint_owner(
     if endpoint.closed {
         return Err(IpcError::EndpointClosed);
     }
-    Ok(endpoint.owner)
+    ipc.caps
+        .get(&endpoint.owner)
+        .and_then(|namespace| namespace.address_space)
+        .ok_or(IpcError::UnknownCapability)
 }
 
 /// Resolves a capability usable as a connection-minting source.

@@ -32,37 +32,41 @@ The executable snapshot is verified as a CLS2 Ed25519-signed artifact before
 mapping. Executable authority comes from the signed artifact; the object checksum
 detects corruption.
 
-## Multi-state kernel prototype
+## Shared kernel preparation
 
-The supervisor also contains a separate, currently uncalled helper:
+The live syscall uses the supervisor's complete preparation path:
 
 ```rust
-pub fn try_spawn_upgrade(
+pub(crate) fn try_spawn_upgrade_from(
     image: &[u8],
     name_service: &NameServiceHandle,
     rights: ConnectionRights,
-    old_asid: AddressSpaceId,
-    grant: UpgradeGrant,
+    old: AddressSpaceHandle,
+    source: AddressSpaceHandle,
+    grant: UpgradeGrant<'_>,
 ) -> Result<ServiceDomain, UpgradeSpawnError>;
 ```
 
-`UpgradeGrant` describes state capabilities already held by the kernel
-supervisor and an optional old endpoint from which to delegate a connection.
-The userspace upgrade syscall uses a different implementation.
+`UpgradeGrant` borrows IDs from the captured source namespace and optionally
+names an endpoint in the captured old service. The syscall passes its authorized
+manager as source and one or zero state objects. An IPC identity lookup supplies
+the old root generation; replacement classification is captured before loading.
+The old, source, naming and replacement roots remain retained through preparation.
 
-Its preparation owner holds the loaded, not-yet-running replacement and every
-`PreparedTransfer`. Destination identities are reserved before source authority is
-hidden; the state payload remains source-owned until commit. Connection
-delegation completes before atomic move-batch publication. Failure drops the
-preparation owner, restores original source handles without fresh quota, and
-closes the staged replacement domain. Late cancellation is fenced by exact
-namespace identity, including ASID/handle reuse. The legacy scalar reverse-move
-cleanup API has been removed.
+`PreparingUpgrade` owns the launch transaction, every `PreparedTransfer` and both
+byte-admitted transfer/target-ID vectors. Both arrays reserve before escrow or
+delegation. Failure explicitly cancels the known prefix outside guards, frees
+array backing, then cancels the unstarted domain once. Abandonment retains every
+field and original charge; no implicit cleanup or reverse-move reconstruction
+runs. The first cleanup error stops without a second attempt. Commit publishes
+the complete move batch before writing destination IDs and starting the initial
+thread. Source/destination lifetime survives until its phase is complete.
 
-Kernel memory and IPC fixtures test the shared prepared-move mechanism's quota,
-cancellation, retirement and batch-publication behavior. They do not establish
-end-to-end coverage of this unused multi-state helper. See
-[capability admission](../reference/capability-admission.md).
+Native controls cover both allocator classes, quota rejection before allocation
+and after a vector prefix, failed transfer prefixes, guarded whole-parent
+abandonment, maximum 31-entry array layouts, and real single-state/EL0 persistent
+upgrade. They do not claim 31 simultaneous physical handoffs or a multi-state
+endpoint upgrade campaign. See [launch/cache ownership](../reference/service-launch-ownership.md).
 
 ## Service responsibilities
 

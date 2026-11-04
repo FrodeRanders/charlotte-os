@@ -1,11 +1,14 @@
 //! Kernel-only grants/claims are inspected with raw fixture IDs.
 
 use super::*;
-use crate::capability::{
-    self,
-    AllocationError,
-    ObjectKind,
-    admission_tests::*,
+use crate::{
+    capability::{
+        self,
+        AllocationError,
+        ObjectKind,
+        admission_tests::*,
+    },
+    memory::close_user_address_space_handle,
 };
 
 pub(crate) fn test_admission() {
@@ -74,7 +77,7 @@ fn test_preparation_cleanup() {
             config_frame: PAddr::from(0u64),
             status_frame: PAddr::from(0u64),
         };
-        let result = PreparingObserver::new(loaded, grantor.id(), endpoint);
+        let result = PreparingObserver::new(loaded, grantor, endpoint);
         if leave_slot {
             assert!(matches!(result, Err(ObserverLaunchError::Admission)));
         } else {

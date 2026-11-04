@@ -1,10 +1,10 @@
 # Bounded kernel telemetry snapshots
 
-`THREAD_STATISTICS` uses the current version-10 payload and existing `(0, 0)`
+`THREAD_STATISTICS` uses the current version-11 payload and existing `(0, 0)`
 unavailable result. Ordinary callers see their own domain; a validated
 `SystemObserver` capability widens the thread and domain sections and adds the
 [metadata pool inventory](metadata-admission.md#read-only-runtime-inventory).
-Its fixed 22 records are included in checked output sizing; sampling takes no
+Its fixed 24 records are included in checked output sizing; sampling takes no
 allocation and reports independently busy pools without waiting.
 
 The kernel counts selected records under a short source hold, releases it,

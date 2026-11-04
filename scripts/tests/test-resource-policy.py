@@ -70,6 +70,8 @@ class ResourcePolicy(unittest.TestCase):
             "ratio-zero": "p.memory.object_ram.denominator = 0;",
             "ratio-overcommitted": "p.memory.ordinary_share.numerator = 4;",
             "snapshot": "p.snapshot_buffers.ordinary[0] = 1;",
+            "image-cache-capacity": "p.service_images.total[1] = 1025;",
+            "image-cache-reserve": "p.service_images.ordinary = p.service_images.total;",
             "object-frame-vector": "p.memory_capability_nodes.ordinary[0] = 1;",
             "ipc-node-reserve": "p.ipc_nodes.ordinary = p.ipc_nodes.total;",
             "ipc-node-range": "p.ipc_nodes.total[0] = u64::MAX;",

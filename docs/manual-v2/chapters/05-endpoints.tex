@@ -107,8 +107,9 @@ deallocation. Capability backing borrows the recipient authority namespace's
 captured storage class; grantor/requester logical sponsorship stays independent.
 Endpoint/call/reply backing uses its original resource reservation class.
 The expanded pool allows 12/16 MiB and 73728/98304 ordinary/total nodes, sized for
-all four layouts while preserving existing logical ceilings. The 23-pool
-inventory and statistics version 10 remain unchanged. Complete containing
+all four layouts while preserving existing logical ceilings. The current
+24-pool inventory uses statistics version 11, including separate store-image
+admission; header/record widths and runtime ABI remain unchanged. Complete containing
 operations and detached lists retain both charges under unknown guards; nested
 buffers and broader heap/principal admission remain separate. See
 \repofile|docs/reference/ipc-node-admission.md|.

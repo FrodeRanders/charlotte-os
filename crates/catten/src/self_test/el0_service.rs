@@ -68,6 +68,8 @@ struct TestState {
 }
 
 pub fn test_el0_service() {
+    #[cfg(not(feature = "hvf_compat"))]
+    crate::service::store::tests::live();
     ipc::namespace::prepare_fixture(KCLIENT_ASID);
     logln!("Testing EL0 name service, bootstrap delivery, and service restart...");
 

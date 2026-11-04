@@ -156,6 +156,8 @@ pub(crate) struct Policy {
     pub root_table: Pool<2>,
     pub scratch_nodes: Pool<2>,
     pub snapshot_buffers: Pool<2>,
+    /// Kernel-lifetime store image bytes and reserved cache entries.
+    pub service_images: Pool<2>,
     pub mapping_nodes: Pool<2>,
     pub memory_capability_nodes: Pool<2>,
     pub memory: Memory,
@@ -200,11 +202,15 @@ impl Policy {
             || !self.root_table.valid()
             || !self.scratch_nodes.valid()
             || !self.snapshot_buffers.valid()
+            || !self.service_images.valid()
             || !self.mapping_nodes.valid()
             || !self.memory_capability_nodes.valid()
             || !self.memory.objects.valid()
         {
             return Err("domain/ordinary/total ordering or machine range");
+        }
+        if self.service_images.total[1] > 1024 {
+            return Err("service image cache static capacity");
         }
         let m = self.memory;
         if !m.object_ram.valid()

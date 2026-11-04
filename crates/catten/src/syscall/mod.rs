@@ -1826,14 +1826,14 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
         frame.regs[0] = 0;
         return;
     }
-    let old_service_asid =
-        match crate::ipc::connection_endpoint_owner(caller_asid, target_connection) {
-            Ok(asid) => asid,
-            Err(_) => {
-                frame.regs[0] = 0;
-                return;
-            }
-        };
+    let old_service = match crate::ipc::connection_endpoint_identity(caller_asid, target_connection)
+    {
+        Ok(asid) => asid,
+        Err(_) => {
+            frame.regs[0] = 0;
+            return;
+        }
+    };
 
     let persistent_elf;
     let elf = if elf_cap == 0 {
@@ -1894,72 +1894,31 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
             return;
         }
     };
-    let loaded = match crate::service::loader::try_load_domain(elf) {
-        Ok(loaded) => loaded,
-        Err(_) => {
-            if elf_cap != 0 {
-                let _ = crate::memory::object::close_cap(caller_asid, elf_cap);
-            }
-            frame.regs[0] = 0;
-            return;
-        }
+    let states = [state_cap];
+    let grant = crate::service::supervisor::UpgradeGrant {
+        state_caps: if state_cap == 0 {
+            &[]
+        } else {
+            &states
+        },
+        endpoint_cap: 0,
     };
+    let result = crate::service::supervisor::try_spawn_upgrade_from(
+        elf,
+        &ns_handle,
+        crate::ipc::ConnectionRights::CALL,
+        old_service,
+        authorized_manager.expect("manager checked above"),
+        grant,
+    );
     if elf_cap != 0 {
         let _ = crate::memory::object::close_cap(caller_asid, elf_cap);
     }
-
-    // Delegate a bootstrap connection from the name service to the new domain.
-    let bootstrap_conn = match crate::ipc::connection_delegate(
-        ns_handle.domain.asid,
-        ns_handle.endpoint_cap,
-        loaded.asid,
-        crate::ipc::ConnectionRights::CALL,
-    ) {
-        Ok(cap) => cap,
-        Err(_) => {
-            let _ = crate::memory::close_user_address_space_handle(loaded.address_space);
-            frame.regs[0] = 0;
-            return;
-        }
-    };
-    crate::service::bootstrap::write_bootstrap_cap(loaded.config_frame, bootstrap_conn);
-    crate::service::bootstrap::write_manifest(loaded.config_frame, &[]);
-
-    // Move the state cap from the caller to the new domain. Publish the id
-    // returned by move_to: it belongs to the destination address space, and
-    // the manager's source id is now invalid.
-    if state_cap != 0 {
-        let moved_cap = match crate::memory::object::move_to(caller_asid, state_cap, loaded.asid) {
-            Ok(cap) => cap,
-            Err(_) => {
-                let _ = crate::memory::close_user_address_space_handle(loaded.address_space);
-                frame.regs[0] = 0;
-                return;
-            }
-        };
-        crate::service::bootstrap::write_handoff_state(loaded.config_frame, 1, moved_cap, 0);
+    frame.regs[0] = result.map_or(0, |domain| domain.asid as u64);
+    if frame.regs[0] != 0 {
+        // Give the locally queued replacement its original registration head start.
+        crate::cpu::scheduler::yield_lp();
     }
-
-    // Preparation failure tears down the unstarted replacement namespace.
-    let new_asid = loaded.asid;
-    let limits = crate::service::supervisor::adaptive_service_limits(loaded.address_space);
-    if crate::service::supervisor::try_start_upgrade_domain_with_limits(
-        loaded,
-        limits,
-        old_service_asid,
-    )
-    .is_err()
-    {
-        frame.regs[0] = 0;
-        return;
-    }
-    // The replacement was deliberately queued on this LP. Yield once before
-    // returning to the manager so the child reaches its startup/registration
-    // path ahead of the parent issuing the publication lookup.
-    crate::cpu::scheduler::yield_lp();
-
-    // Report the new domain's ASID as evidence.
-    frame.regs[0] = new_asid as u64;
 }
 
 fn deployment_agent_identity(

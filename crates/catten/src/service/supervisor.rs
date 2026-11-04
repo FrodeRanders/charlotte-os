@@ -11,7 +11,6 @@ const NODE_NAME_SERVICE_QUEUE_CAPACITY: usize = 64;
 const CAPABILITY_GRANT_INTERFACE: u64 = u64::from_le_bytes(*b"GRANT\0\0\0");
 const CAPABILITY_GRANT_VERSION: u32 = 1;
 
-use alloc::vec::Vec;
 use core::sync::atomic::{
     AtomicBool,
     Ordering,
@@ -52,7 +51,6 @@ use crate::{
         AddressSpaceHandle,
         AddressSpaceId,
         KERNEL_ASID,
-        close_user_address_space_handle,
         physical::PAddr,
     },
     service::{
@@ -66,6 +64,8 @@ const _: () = assert!(charlotte_launch::USER_STACK_PAGE_SIZE == loader::PAGE_SIZ
 #[derive(Debug)]
 pub enum ProfileLaunchError {
     EmptyProfile,
+    RootAdmission,
+    RootCompletion,
     ProfileTooLarge,
     Load(loader::DomainLoadError),
     BootstrapConnection(ipc::IpcError),
@@ -79,85 +79,16 @@ pub enum ProfileLaunchError {
     Limits(crate::memory::DomainLimitError),
 }
 
-/// Own an unstarted domain and any kernel-side bootstrap profile. Namespace
-/// teardown reclaims already-delegated authority on a preparation failure.
-/// Profile paths explicitly abort; Drop also covers observer startup failures.
-struct DomainLaunchTransaction {
-    loaded: Option<loader::LoadedDomain>,
-    kernel_profile: Option<crate::memory::object::MemoryObjectCap>,
-}
+mod launch_transaction;
+use launch_transaction::DomainLaunchTransaction;
 
-impl DomainLaunchTransaction {
-    fn new(loaded: loader::LoadedDomain) -> Self {
-        Self {
-            loaded: Some(loaded),
-            kernel_profile: None,
-        }
-    }
+mod upgrade_preparation;
+use upgrade_preparation::PreparingUpgrade;
 
-    fn loaded(&self) -> &loader::LoadedDomain {
-        self.loaded.as_ref().expect("profile launch transaction already consumed")
-    }
-
-    fn abort<T>(mut self, error: ProfileLaunchError) -> Result<T, ProfileLaunchError> {
-        if let Some(profile) = self.kernel_profile.take()
-            && let Err(close_error) = crate::memory::object::close_cap(KERNEL_ASID, profile)
-        {
-            self.kernel_profile = Some(profile);
-            self.rollback_best_effort();
-            return Err(ProfileLaunchError::RollbackMemory(close_error));
-        }
-        if let Some(loaded) = self.loaded.take()
-            && let Err(close_error) = close_user_address_space_handle(loaded.address_space)
-        {
-            self.loaded = Some(loaded);
-            self.rollback_best_effort();
-            return Err(ProfileLaunchError::RollbackDomain(close_error));
-        }
-        Err(error)
-    }
-
-    fn finish(mut self) -> loader::LoadedDomain {
-        debug_assert!(self.kernel_profile.is_none());
-        self.loaded.take().expect("profile launch transaction already consumed")
-    }
-
-    fn rollback_best_effort(&mut self) {
-        if let Some(profile) = self.kernel_profile.take() {
-            let _ = crate::memory::object::close_cap(KERNEL_ASID, profile);
-        }
-        if let Some(loaded) = self.loaded.take() {
-            let _ = close_user_address_space_handle(loaded.address_space);
-        }
-    }
-}
-
-impl Drop for DomainLaunchTransaction {
-    fn drop(&mut self) {
-        self.rollback_best_effort();
-    }
-}
-
-struct PreparingUpgrade {
-    loaded: Option<loader::LoadedDomain>,
-    moves: Vec<crate::memory::object::PreparedTransfer>,
-}
-
-impl PreparingUpgrade {
-    fn finish(mut self) -> loader::LoadedDomain {
-        self.moves.clear();
-        self.loaded.take().expect("upgrade preparation already consumed")
-    }
-}
-
-impl Drop for PreparingUpgrade {
-    fn drop(&mut self) {
-        // Restore prepared sources before releasing their destination domain.
-        self.moves.clear();
-        if let Some(loaded) = self.loaded.take() {
-            let _ = close_user_address_space_handle(loaded.address_space);
-        }
-    }
+#[cfg(feature = "kernel_tests")]
+pub(crate) fn test_launch_owners() {
+    launch_transaction::tests::run();
+    upgrade_preparation::tests::run();
 }
 
 /// A running EL0 service protection domain.
@@ -330,7 +261,15 @@ pub(crate) fn try_start_domain_with_limits(
     limits: ServiceLimits,
     platform: bool,
 ) -> Result<ServiceDomain, ProfileLaunchError> {
-    let transaction = DomainLaunchTransaction::new(loaded);
+    let transaction = DomainLaunchTransaction::new(loaded)?;
+    try_start_prepared_domain(transaction, limits, platform)
+}
+
+fn try_start_prepared_domain(
+    transaction: DomainLaunchTransaction,
+    limits: ServiceLimits,
+    platform: bool,
+) -> Result<ServiceDomain, ProfileLaunchError> {
     let loaded = transaction.loaded();
     // Only an explicitly trusted ambient launch path receives the platform
     // progress reserve; the classification never follows descriptor absence.
@@ -392,18 +331,6 @@ pub(crate) fn start_domain_with_limits(
     limits: ServiceLimits,
 ) -> ServiceDomain {
     try_start_domain_with_limits(loaded, limits, true).expect("mandatory service launch failed")
-}
-
-/// Start an upgrade replacement while preserving the target service's
-/// existing platform classification. An ordinary deployed service cannot
-/// promote itself by replacing itself.
-pub(crate) fn try_start_upgrade_domain_with_limits(
-    loaded: loader::LoadedDomain,
-    limits: ServiceLimits,
-    old_asid: AddressSpaceId,
-) -> Result<ServiceDomain, ProfileLaunchError> {
-    let platform = crate::memory::budget::platform_identity(old_asid).is_some();
-    try_start_domain_with_limits(loaded, limits, platform)
 }
 
 pub(crate) fn start_domain(loaded: loader::LoadedDomain) -> ServiceDomain {
@@ -826,8 +753,11 @@ pub fn try_spawn_with_read_only_profile_and_manifest_and_limits(
     let metadata = charlotte_launch::ProfileCapabilityMetadata::new(profile_len)
         .ok_or(ProfileLaunchError::EmptyProfile)?;
     let loaded = loader::try_load_platform_domain(image).map_err(ProfileLaunchError::Load)?;
-    let mut transaction = DomainLaunchTransaction::new(loaded);
+    let mut transaction = DomainLaunchTransaction::new(loaded)?;
 
+    if let Err(error) = transaction.retain_source(name_service.domain.address_space) {
+        return transaction.abort(error);
+    }
     let connection = match ipc::connection_delegate(
         name_service.domain.asid,
         name_service.endpoint_cap,
@@ -856,7 +786,7 @@ pub fn try_spawn_with_read_only_profile_and_manifest_and_limits(
     bootstrap::write_bootstrap_cap(transaction.loaded().config_frame, connection);
     bootstrap::write_profile_cap(transaction.loaded().config_frame, target, metadata);
     bootstrap::write_manifest(transaction.loaded().config_frame, manifest);
-    try_start_domain_with_limits(transaction.finish(), limits, true)
+    try_start_prepared_domain(transaction, limits, true)
 }
 
 /// Launch a signed application with no name-service capability. Its bootstrap
@@ -948,11 +878,14 @@ fn try_spawn_deployment_with_manifest(
     let loaded =
         loader::try_load_domain_with_key(image, artifact_key).map_err(ProfileLaunchError::Load)?;
     crate::memory::install_launch_descriptor(loaded.address_space, descriptor_bytes);
-    let mut transaction = DomainLaunchTransaction::new(loaded);
+    let mut transaction = DomainLaunchTransaction::new(loaded)?;
     if let Err(error) = prepare(transaction.loaded().address_space) {
         return transaction.abort(ProfileLaunchError::Load(error));
     }
     let controller = capability_grant_controller();
+    if let Err(error) = transaction.retain_source(controller.domain.address_space) {
+        return transaction.abort(error);
+    }
     let connection = match ipc::connection_delegate(
         controller.domain.asid,
         controller.endpoint_cap,
@@ -981,7 +914,7 @@ fn try_spawn_deployment_with_manifest(
     bootstrap::write_bootstrap_cap(transaction.loaded().config_frame, connection);
     bootstrap::write_profile_cap(transaction.loaded().config_frame, target, profile_metadata);
     bootstrap::write_manifest(transaction.loaded().config_frame, manifest);
-    try_start_domain_with_limits(transaction.finish(), limits, false)
+    try_start_prepared_domain(transaction, limits, false)
 }
 
 /// Start the node observability service and delegate the unique
@@ -1059,8 +992,11 @@ pub fn try_start_observability_service(
     let image = crate::service::store::service_elf(b"observe")
         .ok_or(ObserverLaunchError::ImageUnavailable)?;
     let loaded = loader::try_load_domain(image).map_err(ObserverLaunchError::Load)?;
-    let prepared =
-        PreparingObserver::new(loaded, name_service.domain.asid, name_service.endpoint_cap)?;
+    let prepared = PreparingObserver::new(
+        loaded,
+        name_service.domain.address_space,
+        name_service.endpoint_cap,
+    )?;
     let domain = prepared.start()?;
     claim.finish(domain.address_space);
     Ok(domain)
@@ -1077,20 +1013,34 @@ struct PreparingObserver {
 impl PreparingObserver {
     fn new(
         loaded: loader::LoadedDomain,
-        grantor: AddressSpaceId,
+        grantor: AddressSpaceHandle,
         endpoint: u64,
     ) -> Result<Self, ObserverLaunchError> {
-        let transaction = DomainLaunchTransaction::new(loaded);
+        let mut transaction =
+            DomainLaunchTransaction::new(loaded).map_err(ObserverLaunchError::Thread)?;
+        if let Err(error) = transaction.retain_source(grantor) {
+            return transaction.abort(error).map_err(ObserverLaunchError::Thread);
+        }
 
-        let connection = ipc::connection_delegate(
-            grantor,
+        let connection = match ipc::connection_delegate(
+            grantor.id(),
             endpoint,
             transaction.loaded().asid,
             ConnectionRights::CALL,
-        )
-        .map_err(ObserverLaunchError::BootstrapConnection)?;
-        let observer_cap = grant_system_observer(transaction.loaded().address_space)
-            .map_err(|_| ObserverLaunchError::Admission)?;
+        ) {
+            Ok(connection) => connection,
+            Err(error) => {
+                transaction.cancel().map_err(ObserverLaunchError::Thread)?;
+                return Err(ObserverLaunchError::BootstrapConnection(error));
+            }
+        };
+        let observer_cap = match grant_system_observer(transaction.loaded().address_space) {
+            Ok(cap) => cap,
+            Err(_) => {
+                transaction.cancel().map_err(ObserverLaunchError::Thread)?;
+                return Err(ObserverLaunchError::Admission);
+            }
+        };
         Ok(Self {
             domain: transaction,
             connection,
@@ -1118,8 +1068,7 @@ impl PreparingObserver {
             }],
         );
         let limits = adaptive_service_limits(self.domain.loaded().address_space);
-        try_start_domain_with_limits(self.domain.finish(), limits, true)
-            .map_err(ObserverLaunchError::Thread)
+        try_start_prepared_domain(self.domain, limits, true).map_err(ObserverLaunchError::Thread)
     }
 }
 
@@ -1203,10 +1152,11 @@ pub struct PollingDriverGrant {
 /// doc). The old service serialised its state into memory objects and
 /// handed its endpoint to the supervisor; the supervisor delivers both to
 /// the new domain via the config-page contract.
-pub struct UpgradeGrant {
-    /// Memory objects the old service moved to the supervisor's AS,
-    /// holding the serialised state the new service should resume from.
-    pub state_caps: Vec<crate::memory::object::MemoryObjectCap>,
+pub struct UpgradeGrant<'a> {
+    /// Borrowed IDs in the captured source namespace. The caller retains its
+    /// list; failed preparation restores source slots, while commit consumes
+    /// their authority. No global-allocator cap catalog is transferred.
+    pub state_caps: &'a [crate::memory::object::MemoryObjectCap],
     /// The old service's endpoint capability, so the new service can
     /// re-register it under the same name. 0 if the new service should
     /// create its own endpoint.
@@ -1435,85 +1385,93 @@ pub enum UpgradeSpawnError {
 /// Load and start a replacement service domain, handing it the old
 /// instance's state and endpoint (§live-service-upgrade design).
 ///
-/// State memory objects are moved from the supervisor (via KERNEL\_ASID) to
-/// the new domain.  `old_asid` is the old service's address space, still
-/// live at this point; `old_endpoint_cap` is its endpoint cap.  The
+/// State memory objects move from the exact retained source namespace. The
+/// old service's captured identity supplies its classification and optional
+/// endpoint grant; a reusable ASID cannot select either. The
 /// supervisor delegates a connection from that endpoint to the new domain
 /// before the old domain is torn down, and writes both the state caps and
 /// the old endpoint cap to the config page so the replacement service can
 /// inspect them.
-pub fn try_spawn_upgrade(
+pub(crate) fn try_spawn_upgrade_from(
     image: &[u8],
     name_service: &NameServiceHandle,
     rights: ConnectionRights,
-    old_asid: AddressSpaceId,
-    grant: UpgradeGrant,
+    old: AddressSpaceHandle,
+    source: AddressSpaceHandle,
+    grant: UpgradeGrant<'_>,
 ) -> Result<ServiceDomain, UpgradeSpawnError> {
     let handoff_caps = grant.state_caps.len() + usize::from(grant.endpoint_cap != 0);
     if handoff_caps >= charlotte_launch::CAPABILITY_VECTOR_CAPACITY {
         return Err(UpgradeSpawnError::HandoffTooLarge);
     }
-    let mut preparation = PreparingUpgrade {
-        loaded: Some(loader::try_load_domain(image).map_err(UpgradeSpawnError::Load)?),
-        moves: Vec::new(),
-    };
-    let loaded = preparation.loaded.as_ref().unwrap();
-    let connection = ipc::connection_delegate(
-        name_service.domain.asid,
-        name_service.endpoint_cap,
-        loaded.asid,
-        rights,
-    )
-    .map_err(UpgradeSpawnError::Ipc)?;
-    bootstrap::write_bootstrap_cap(loaded.config_frame, connection);
-    bootstrap::write_manifest(loaded.config_frame, &[]);
-
-    // One owner cancels all prepared state and the not-yet-running domain.
-    preparation
-        .moves
-        .try_reserve_exact(grant.state_caps.len())
-        .map_err(|_| UpgradeSpawnError::Allocation)?;
-    for &source_cap in &grant.state_caps {
-        preparation.moves.push(
-            crate::memory::object::prepare_move(
-                crate::memory::KERNEL_ASID,
-                source_cap,
-                preparation.loaded.as_ref().unwrap().asid,
-            )
-            .map_err(UpgradeSpawnError::Memory)?,
-        );
+    let platform = crate::memory::budget::platform_identity(old.id()) == Some(old);
+    let storage_platform = crate::memory::budget::platform_identity(source.id()) == Some(source);
+    let loaded = if platform {
+        loader::try_load_platform_domain(image)
+    } else {
+        loader::try_load_domain(image)
     }
-    // Delegate before committing any state; a failure drops preparation and
-    // restores all source handles without reconstructing scalar ownership.
-    let delegated_ep = if grant.endpoint_cap != 0 {
-        Some(
+    .map_err(UpgradeSpawnError::Load)?;
+    let mut domain = DomainLaunchTransaction::new(loaded).map_err(UpgradeSpawnError::Thread)?;
+    for source in [name_service.domain.address_space, old, source] {
+        if let Err(error) = domain.retain_source(source) {
+            return domain.abort(error).map_err(UpgradeSpawnError::Thread);
+        }
+    }
+    let mut preparation = PreparingUpgrade::new(domain, storage_platform);
+    let result = (|| {
+        // Reserve both complete arrays before any source escrow or delegation.
+        preparation.prepare_storage(grant.state_caps.len())?;
+        let loaded = preparation.domain.as_ref().unwrap().loaded();
+        let connection = ipc::connection_delegate(
+            name_service.domain.asid,
+            name_service.endpoint_cap,
+            loaded.asid,
+            rights,
+        )
+        .map_err(UpgradeSpawnError::Ipc)?;
+        bootstrap::write_bootstrap_cap(loaded.config_frame, connection);
+        bootstrap::write_manifest(loaded.config_frame, &[]);
+        for &source_cap in grant.state_caps {
+            let transfer = crate::memory::object::prepare_move(
+                source.id(),
+                source_cap,
+                preparation.domain.as_ref().unwrap().loaded().asid,
+            )
+            .map_err(UpgradeSpawnError::Memory)?;
+            preparation.moves.push(transfer);
+        }
+        let delegated_ep = if grant.endpoint_cap != 0 {
             ipc::connection_delegate(
-                old_asid,
+                old.id(),
                 grant.endpoint_cap,
-                preparation.loaded.as_ref().unwrap().asid,
+                preparation.domain.as_ref().unwrap().loaded().asid,
                 ConnectionRights::SEND | ConnectionRights::CALL,
             )
-            .map_err(UpgradeSpawnError::Ipc)?,
-        )
-    } else {
-        None
-    };
-    let mut target_state_caps = Vec::new();
-    target_state_caps
-        .try_reserve_exact(preparation.moves.len())
-        .map_err(|_| UpgradeSpawnError::Allocation)?;
-    target_state_caps.extend(preparation.moves.iter().map(|transfer| transfer.target_cap()));
-    crate::memory::object::commit_transfers(&mut preparation.moves)
-        .map_err(UpgradeSpawnError::Memory)?;
-    let loaded = preparation.finish();
-    bootstrap::write_handoff_states(
-        loaded.config_frame,
-        &target_state_caps,
-        delegated_ep.unwrap_or(0),
-    );
-    let limits = adaptive_service_limits(loaded.address_space);
-    try_start_upgrade_domain_with_limits(loaded, limits, old_asid)
-        .map_err(UpgradeSpawnError::Thread)
+            .map_err(UpgradeSpawnError::Ipc)?
+        } else {
+            0
+        };
+        // Capacity was already prepared. Keep both vectors in the same parent.
+        for index in 0..preparation.moves.len() {
+            let cap = preparation.moves[index].target_cap();
+            preparation.targets.push(cap);
+        }
+        crate::memory::object::commit_transfers(&mut preparation.moves)
+            .map_err(UpgradeSpawnError::Memory)?;
+        bootstrap::write_handoff_states(
+            preparation.domain.as_ref().unwrap().loaded().config_frame,
+            &preparation.targets,
+            delegated_ep,
+        );
+        Ok(())
+    })();
+    if let Err(error) = result {
+        return preparation.abort(error);
+    }
+    let transaction = preparation.finish();
+    let limits = adaptive_service_limits(transaction.loaded().address_space);
+    try_start_prepared_domain(transaction, limits, platform).map_err(UpgradeSpawnError::Thread)
 }
 
 /// Return the embedded ELF image for a given upgrade selector.

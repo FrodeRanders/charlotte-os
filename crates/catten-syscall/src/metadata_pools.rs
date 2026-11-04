@@ -28,6 +28,7 @@ macro_rules! metadata_pool_catalog {
             (MemoryCapabilityNodes, memory_capability_nodes, 2, "bytes", "nodes"),
             (ObserverLists, observer_lists, 1, "allocations", ""),
             (IpcNodes, ipc_nodes, 2, "bytes", "nodes"),
+            (ServiceImages, service_images, 2, "bytes", "images"),
         }
     };
 }
