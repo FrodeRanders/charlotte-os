@@ -20,18 +20,32 @@ pub(crate) mod tests;
 /// A published claim is never automatically cleared by Drop. Its roots,
 /// backing pins and Revoking loan fences survive an abandoned operation.
 #[must_use]
-struct PreparedReply {
+struct PreparedReply(core::mem::ManuallyDrop<ReplyResources>);
+struct ReplyResources {
     server: AddressSpaceId,
     cap: CapabilityId,
     token: ReplyTokenId,
     call: PendingCallId,
     identities: [(AddressSpaceId, Option<AddressSpaceHandle>); 2],
     namespaces: [Option<AddressSpaceOperation>; 2],
-    loans: Vec<(MemoryBorrow, LoanRevocation)>,
+    loans: Buffer<(MemoryBorrow, LoanRevocation)>,
     connection: Option<ReturnedConnection>,
     memory: Option<crate::memory::object::PreparedTransfer>,
     retired_token: Option<RetiredReply>,
     retired: RetiredMetadata,
+    observers: WaitNotifications,
+}
+impl core::ops::Deref for PreparedReply {
+    type Target = ReplyResources;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl core::ops::DerefMut for PreparedReply {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
 }
 
 /// The source is borrowed authority, retained by the published reply claim.
@@ -69,25 +83,31 @@ impl PreparedReply {
         returned: Option<(CapabilityId, ConnectionRights)>,
         memory: Option<MemoryObjectCap>,
     ) -> Result<Self, IpcError> {
-        let (token, call, identities) = {
+        let (token, call, identities, allocator) = {
             let ipc = IPC.read();
             let (token, call, caller) = validate(&ipc, server, cap)?;
             let identity = |asid| (asid, ipc.caps.get(&asid).and_then(|caps| caps.address_space));
-            (token, call, [identity(caller), identity(server)])
+            (
+                token,
+                call,
+                [identity(caller), identity(server)],
+                ipc.reply_tokens[&token].borrows.allocator().clone(),
+            )
         };
-        let mut operation = Self {
+        let mut operation = Self(core::mem::ManuallyDrop::new(ReplyResources {
             server,
             cap,
             token,
             call,
             identities,
             namespaces: [None, None],
-            loans: Vec::new(),
+            loans: Vec::new_in(allocator),
             connection: None,
             memory: None,
             retired_token: None,
             retired: RetiredMetadata::new(),
-        };
+            observers: WaitNotifications::empty(),
+        }));
         let prepared = (|| {
             // Capture before taking IPC. Acquiring lifecycle beneath IPC would
             // deadlock namespace cleanup. Kernel identity cannot be recycled.
@@ -170,7 +190,7 @@ impl PreparedReply {
             if let Some(connection) = operation.connection.take() {
                 connection.grant.finish();
             }
-            operation.release_namespaces()?;
+            operation.finish_resources()?;
             return Err(error);
         }
         Ok(operation)
@@ -212,7 +232,7 @@ impl PreparedReply {
                 let mut ipc = IPC.write();
                 self.abort_prepared(&mut ipc);
                 drop(ipc);
-                self.release_namespaces()?;
+                self.finish_resources()?;
                 return Err(IpcError::MemoryTransferFailed);
             }
             let mut ipc = IPC.write();
@@ -221,26 +241,30 @@ impl PreparedReply {
             assert_eq!(token.borrows.pop(), Some(borrow));
         }
         let mut ipc = IPC.write();
-        if let Some(connection) = self.connection.as_mut() {
-            assert_eq!(ipc.reply_tokens[&self.token].connection_source, Some(connection.source));
+        let resources = &mut *self.0;
+        if let Some(connection) = resources.connection.as_mut() {
+            assert_eq!(
+                ipc.reply_tokens[&resources.token].connection_source,
+                Some(connection.source)
+            );
             // Source close cannot consume this borrowed capability until the
             // claim ends. Publication and payload install share IPC exclusion.
             assert!(
-                ipc.cap(self.server, connection.source).is_ok(),
+                ipc.cap(resources.server, connection.source).is_ok(),
                 "claimed minting source missing"
             );
         }
-        let published = if let Some(connection) = self.connection.as_mut() {
-            publish(self.memory.as_mut_slice(), &mut [connection.grant.authority.authority()])
-        } else if self.memory.is_some() {
-            publish(self.memory.as_mut_slice(), &mut [])
+        let published = if let Some(connection) = resources.connection.as_mut() {
+            publish(resources.memory.as_mut_slice(), &mut [connection.grant.authority.authority()])
+        } else if resources.memory.is_some() {
+            publish(resources.memory.as_mut_slice(), &mut [])
         } else {
             Ok(())
         };
         if let Err(error) = published {
             self.abort_prepared(&mut ipc);
             drop(ipc);
-            self.release_namespaces()?;
+            self.finish_resources()?;
             return Err(error);
         }
         let returned_memory = self.memory.as_ref().map(|transfer| transfer.target_cap());
@@ -249,9 +273,10 @@ impl PreparedReply {
             self.connection.as_mut().map(|connection| connection.grant.install(&mut ipc));
         self.retired_token =
             Some(ipc.reply_tokens.take(&self.token).expect("claimed reply missing"));
-        let token = &mut self.retired_token.as_mut().unwrap().value_mut().1;
+        let resources = &mut *self.0;
+        let token = &mut resources.retired_token.as_mut().unwrap().value_mut().1;
         assert!(token.completing && token.borrows.is_empty());
-        assert_eq!(token.call, self.call);
+        assert_eq!(token.call, resources.call);
         claim_wait::finish(token.claim_interest.take());
         assert_eq!(ipc.caps[&self.server].address_space, self.identities[1].1);
         let call = ipc.pending_calls.get_mut(&self.call).expect("claimed call missing");
@@ -262,17 +287,15 @@ impl PreparedReply {
             cap: returned_cap,
             memory: returned_memory,
         });
-        let observers = call.observers.close();
+        self.0.observers = call.observers.close();
         ipc.remove_non_connection_cap(self.server, self.cap, &mut self.retired)
             .expect("claimed reply cap missing");
         drop(ipc);
         self.retired_token.take().unwrap().release();
-        let released = self.release_namespaces();
-        signal_observers(observers);
-        released
+        self.finish_resources()
     }
 
-    fn release_namespaces(mut self) -> Result<(), IpcError> {
+    fn finish_resources(mut self) -> Result<(), IpcError> {
         self.retired.release();
         if let Some(connection) = self.connection.take() {
             connection.grant.finish();
@@ -281,12 +304,16 @@ impl PreparedReply {
         assert!(self.loans.is_empty(), "releasing roots before prepared loans finish");
         assert!(self.connection.is_none(), "releasing roots before returned authority cleanup");
         assert!(self.memory.is_none(), "releasing roots before returned memory cleanup");
+        // Empty length does not end allocation lifetime. Dispose the complete
+        // capacity after IPC and child cleanup, while exact roots remain held.
+        drop(take_buffer(&mut self.0.loans));
         let mut error = None;
-        for namespace in self.namespaces.into_iter().flatten() {
+        for namespace in core::mem::take(&mut self.0.namespaces).into_iter().flatten() {
             if namespace.release().is_err() {
                 error = Some(IpcError::UnknownCapability);
             }
         }
+        signal_observers(core::mem::replace(&mut self.0.observers, WaitNotifications::empty()));
         error.map_or(Ok(()), Err)
     }
 

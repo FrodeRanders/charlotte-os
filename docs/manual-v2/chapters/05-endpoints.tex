@@ -130,8 +130,14 @@ allocator, before parsing or preparing transfers. Quota rejection returns
 \texttt{ResourceLimit} and preserves the descriptor and source; successful
 submission retains its existing descriptor-consumption rule. The byte charge
 ends after actual temporary-buffer disposal, before submission roots complete.
-No numerical defaults change. Reply/cancellation revocation-work vectors and
-general heap/principal admission remain open.
+Reply/cancellation work also shares byte admission, cloning the accepted token's
+allocator class. Each entry is 200 bytes; 255 entries request 51000 bytes. Empty
+work allocates nothing. Capacity survives the final pop and is freed after child
+cleanup, before root completion. Complete parents retain returned-memory escrow,
+detached storage and notifications on abandonment. Quota rejection precedes the
+claim and preserves accepted authority. Cleanup headroom is not reserved at call
+acceptance, so saturation can postpone cleanup. No numerical defaults change;
+general heap/principal admission and integrated progress qualification remain open.
 
 Connection-bearing calls and replies admit their
 connection before copying memory, consuming the token or revoking a loan.
@@ -243,9 +249,10 @@ namespaces and endpoint before publication. A single send retains its transfer,
 attachment storage and pending delivery in one containing owner. Explicit finish
 runs after IPC unlock, notifies before completing the roots, and restores an
 unpublished source or releases private copy backing on ordinary rejection.
-Abandonment retains all fields without invoking child cleanup. Other active
-transfer destructors, vector/reply paths and enclosing IRQ contexts require
-separate qualification.
+Complete single/vector-send and claimed-reply parents retain all fields on
+abandonment, including returned-memory escrow and work capacity. Explicit known
+unstarted rejection still restores its preparation. Other active transfer
+parents and enclosing IRQ contexts require separate qualification.
 
 \section{Message envelope}
 

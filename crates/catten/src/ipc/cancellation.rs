@@ -44,16 +44,32 @@ enum RootOwner<'a> {
 /// Records, queue attachments and exact roots remain retained by the claim.
 /// Abandonment retains that claim, the leases and every uncertain loan pin.
 #[must_use]
-pub(super) struct PreparedCancellation<'a> {
+pub(super) struct PreparedCancellation<'a>(core::mem::ManuallyDrop<CancellationResources<'a>>);
+pub(super) struct CancellationResources<'a> {
     asid: AddressSpaceId,
     cap: CapabilityId,
     identity: Identity,
     namespaces: [Option<AddressSpaceOperation>; 2],
-    loans: Vec<(MemoryBorrow, LoanRevocation)>,
+    loans: Buffer<(MemoryBorrow, LoanRevocation)>,
     root_owner: Option<RootOwner<'a>>,
     retired_token: Option<RetiredReply>,
     retired_call: Option<RetiredCall>,
     retired_metadata: RetiredMetadata,
+    memory: Option<MemoryAttachments>,
+    delivery: Option<Delivery>,
+    observers: WaitNotifications,
+}
+impl<'a> core::ops::Deref for PreparedCancellation<'a> {
+    type Target = CancellationResources<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl core::ops::DerefMut for PreparedCancellation<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
 }
 
 fn resolve(
@@ -245,18 +261,25 @@ impl<'a> PreparedCancellation<'a> {
             CapabilityId,
         ) -> Result<Option<Identity>, IpcError>,
     ) -> Result<Self, IpcError> {
-        let identity = resolve(&IPC.read(), asid, cap)?.ok_or(IpcError::Pending)?;
-        let mut operation = Self {
+        let (identity, allocator) = {
+            let ipc = IPC.read();
+            let identity = resolve(&ipc, asid, cap)?.ok_or(IpcError::Pending)?;
+            (identity, ipc.reply_tokens[&identity.token].borrows.allocator().clone())
+        };
+        let mut operation = Self(core::mem::ManuallyDrop::new(CancellationResources {
             asid,
             cap,
             identity,
             namespaces: [None, None],
-            loans: Vec::new(),
+            loans: Vec::new_in(allocator),
             root_owner,
             retired_token: None,
             retired_call: None,
             retired_metadata: RetiredMetadata::new(),
-        };
+            memory: None,
+            delivery: None,
+            observers: WaitNotifications::empty(),
+        }));
         let prepared = (|| {
             // Lifecycle always precedes IPC. Kernel identity is permanent.
             for (index, owner) in [identity.caller, identity.server].into_iter().enumerate() {
@@ -350,7 +373,7 @@ impl<'a> PreparedCancellation<'a> {
             Ok(())
         })();
         if let Err(error) = prepared {
-            operation.release_namespaces()?;
+            operation.finish_resources()?;
             return Err(error);
         }
         Ok(operation)
@@ -362,7 +385,7 @@ impl<'a> PreparedCancellation<'a> {
         }
     }
 
-    fn release_namespaces(self) -> Result<(), IpcError> {
+    fn finish_resources(mut self) -> Result<(), IpcError> {
         assert!(
             self.retired_token.is_none()
                 && self.retired_call.is_none()
@@ -370,12 +393,20 @@ impl<'a> PreparedCancellation<'a> {
             "releasing roots before cancellation metadata disposal"
         );
         assert!(self.loans.is_empty(), "releasing cancellation roots before loans finish");
+        assert!(self.memory.is_none(), "releasing cancellation roots before attachment cleanup");
+        // Keep original byte admission until actual buffer disposal, before
+        // completing roots even when all prepared receipts were already popped.
+        drop(take_buffer(&mut self.0.loans));
         let mut error = None;
-        for namespace in self.namespaces.into_iter().flatten() {
+        for namespace in core::mem::take(&mut self.0.namespaces).into_iter().flatten() {
             if namespace.release().is_err() {
                 error = Some(IpcError::UnknownCapability);
             }
         }
+        if let Some(delivery) = self.0.delivery.take() {
+            delivery.notify();
+        }
+        signal_observers(core::mem::replace(&mut self.0.observers, WaitNotifications::empty()));
         error.map_or(Ok(()), Err)
     }
 
@@ -405,7 +436,7 @@ impl<'a> PreparedCancellation<'a> {
                 token.cleanup_failed = true;
                 claim_wait::finish(token.claim_interest.take());
                 drop(ipc);
-                self.release_namespaces()?;
+                self.finish_resources()?;
                 // Capability and pending record are NOT consumed; no terminal
                 // result is published while a loan's cleanup is uncertain.
                 return Err(IpcError::MemoryTransferFailed);
@@ -472,6 +503,8 @@ impl<'a> PreparedCancellation<'a> {
                 (delivery, message.memory)
             })
             .unzip();
+        self.0.delivery = delivery;
+        self.0.memory = memory;
         // Receive mints at most one visible cap for this one-shot token. Find
         // it without allocating a teardown snapshot or fresh authority.
         let reply_cap = ipc.caps.get(&identity.server).and_then(|caps| {
@@ -487,7 +520,7 @@ impl<'a> PreparedCancellation<'a> {
             ipc.remove_non_connection_cap(identity.server, cap, &mut self.retired_metadata)
                 .expect("claimed reply cap missing");
         }
-        let observers = match identity.target {
+        self.0.observers = match identity.target {
             CloseTarget::Call | CloseTarget::Namespace(_) if identity.caller == self.asid => {
                 let cap = if identity.target == CloseTarget::Call {
                     self.cap
@@ -544,15 +577,10 @@ impl<'a> PreparedCancellation<'a> {
         if let Some(node) = self.retired_call.take() {
             node.release();
         }
-        if let Some(memory) = memory {
+        if let Some(memory) = self.0.memory.take() {
             memory.release_with(&mut release);
         }
-        let released = self.release_namespaces();
-        if let Some(delivery) = delivery {
-            delivery.notify();
-        }
-        signal_observers(observers);
-        released
+        self.finish_resources()
     }
 }
 

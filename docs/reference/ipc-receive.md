@@ -86,7 +86,9 @@ Abandonment performs no child destruction, source restoration, backing
 release, notification or root completion. It retains original charges and is
 terminal, without replay or reconstructed cleanup authority. This qualifies
 the single-send and vector-send parents. Other active `PreparedTransfer`
-destructors, reply/supervisor parents and enclosing IRQ contexts still need
-qualification. See the
+destructors, supervisor parents and enclosing IRQ contexts still need
+qualification. Claimed replies and cancellations retain their complete work,
+returned-memory preparations and notifications through explicit post-guard
+finish; see [revocation work](ipc-node-admission.md#revocation-work-buffers). See the
 [scalar submission controls](../reports/audits/evidence/2026-10-31-scalar-transfer-submission.json)
 and [cleanup scope](cleanup-recovery-details.md#c18-publication-rollback-and-detached-memory).

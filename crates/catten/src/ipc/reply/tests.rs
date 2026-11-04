@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::ipc::close::close_cap_with_wait;
+mod admission;
 mod connection_tests;
 mod memory_tests;
 use crate::memory::{
@@ -29,8 +30,15 @@ struct Fixture {
 
 impl Fixture {
     fn new(count: usize) -> Self {
+        Self::new_classified(count, false)
+    }
+
+    fn new_classified(count: usize, platform: bool) -> Self {
         let caller = crate::service::loader::create_user_address_space_handle();
         let server = crate::service::loader::create_user_address_space_handle();
+        if platform {
+            memory::budget::mark_platform(caller);
+        }
         let endpoint = endpoint_create(server.id(), 0x5250_4c59, 1, 4).unwrap();
         let connection =
             connection_delegate(server.id(), endpoint, caller.id(), ConnectionRights::ALL).unwrap();
@@ -44,9 +52,13 @@ impl Fixture {
             descriptor.extend_from_slice(&2u32.to_le_bytes());
             descriptor.extend_from_slice(&0u32.to_le_bytes());
         }
-        let vector = object::allocate(caller.id(), 1).unwrap();
-        object::write_bytes(caller.id(), vector, &descriptor).unwrap();
-        let call = vector_call(caller.id(), connection, 1, 0, vector).unwrap();
+        let call = if count == 0 {
+            scalar_call(caller.id(), connection, 1, 0).unwrap()
+        } else {
+            let vector = object::allocate(caller.id(), 1).unwrap();
+            object::write_bytes(caller.id(), vector, &descriptor).unwrap();
+            vector_call(caller.id(), connection, 1, 0, vector).unwrap()
+        };
         let reply = receive(server.id(), endpoint).unwrap().reply.unwrap();
         let borrows = {
             let ipc = IPC.read();
@@ -83,6 +95,7 @@ fn unlocked() {
 }
 
 pub(crate) fn run() {
+    admission::run();
     success_and_close_wait();
     claim_episode_race();
     preparation_rollback();
@@ -250,6 +263,7 @@ fn completion_failure() {
     let source = endpoint_create(fixture.server.id(), 2, 1, 4).unwrap();
     let before = crate::capability::admission_tests::test_namespace_used(fixture.caller.id());
     let memory = object::allocate(fixture.server.id(), 1).unwrap();
+    let before_work = node_budget::snapshot();
     let operation = PreparedReply::prepare_with_outputs(
         fixture.server.id(),
         fixture.reply,
@@ -274,6 +288,7 @@ fn completion_failure() {
             Err(IpcError::MemoryTransferFailed)
         );
     });
+    assert_eq!(node_budget::snapshot(), before_work);
     assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));
     assert_eq!(
         crate::capability::admission_tests::test_namespace_used(fixture.caller.id()),
@@ -316,6 +331,17 @@ fn completion_failure() {
 }
 
 fn abandonment() {
+    for guarded in [false, true] {
+        abandonment_round(guarded);
+    }
+    crate::logln!(
+        "[IPC reply work abandonment] complete parent retains work capacity, returned-memory \
+         escrow, hidden grants, roots and two data pages per fixture after promotion; unguarded \
+         and cleanup-guard-held Drop inert"
+    );
+}
+
+fn abandonment_round(guarded: bool) {
     let fixture = Fixture::new(1);
     let source = endpoint_create(fixture.server.id(), 3, 1, 4).unwrap();
     let before = crate::capability::admission_tests::test_namespace_used(fixture.caller.id());
@@ -330,12 +356,30 @@ fn abandonment() {
     )
     .unwrap();
     let destination = operation.connection.as_ref().unwrap().grant.authority.identity();
-    drop(operation);
+    let destination_memory = operation.memory.as_ref().unwrap().target_cap();
+    let held = node_budget::snapshot();
+    let authority = crate::capability::node_admission_used();
+    let frames = memory::PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    let backing = [memory::budget::used(fixture.caller), memory::budget::used(fixture.server)];
+    memory::budget::mark_platform(fixture.caller);
+    assert!(!operation.loans.allocator().platform());
+    if guarded {
+        crate::ipc::loan_work_tests::with_guards(|| drop(operation));
+    } else {
+        drop(operation);
+    }
+    assert_eq!(node_budget::snapshot(), held);
+    assert_eq!(crate::capability::node_admission_used(), authority);
+    assert_eq!(memory::PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), frames);
+    assert_eq!(
+        [memory::budget::used(fixture.caller), memory::budget::used(fixture.server)],
+        backing
+    );
     // The unpublished grant stays with the abandoned reply claim and roots.
     // Its payload storage and original authority/connection counts cannot refund.
     assert_eq!(
         crate::capability::admission_tests::test_namespace_used(fixture.caller.id()),
-        before + 1
+        before + 2
     );
     assert_eq!(records.used(), [before_records[0] + 1, before_records[1], before_records[2]]);
     assert!(!crate::capability::contains(
@@ -352,9 +396,17 @@ fn abandonment() {
     };
     assert_eq!(ipc.reply_tokens[&token].connection_source, Some(source));
     drop(ipc);
-    // Returned memory was never detached or published: preparation Drop safely
-    // restores its original source, even though reply/loan/root claims remain.
-    object::close_cap(fixture.server.id(), memory).unwrap();
+    // The complete parent keeps the actual transfer owner, including source
+    // escrow/pin and unpublished destination. Do not wait on its terminal fence.
+    assert_eq!(
+        object::try_close_cap(fixture.server.id(), memory),
+        Err(MemoryObjectError::LendingActive)
+    );
+    assert!(!crate::capability::contains(
+        fixture.caller.id(),
+        destination_memory,
+        crate::capability::ObjectKind::Memory
+    ));
     assert_eq!(reply(fixture.server.id(), fixture.reply, 1), Err(IpcError::ReplyAlreadyUsed));
     assert_eq!(
         memory::close_user_address_space_handle(fixture.caller),

@@ -40,6 +40,14 @@ the vector owns its allocation. Keep sponsorship selection and safe element
 cleanup with the complete subsystem operation. Shared accounting cannot qualify
 an active parent's destructor under an unknown guard.
 
+An inert child receipt does not make its parent inert: a vector still frees its
+allocation, a transfer may restore escrow, and a notification batch may destroy
+entries. Keep the complete operation in one retaining owner, including pending
+notifications, then explicitly finish children and buffers before root completion.
+Admission for later cleanup must preserve accepted work on rejection. More byte
+headroom reduces denials; it cannot replace an earlier reservation when teardown
+progress must be guaranteed under saturation.
+
 Count limits do not make an infallible map insertion safe under heap exhaustion.
 Prepare fallible payload storage, authority and retirement metadata before
 changing public state. Under serialization, revalidate the captured identity and

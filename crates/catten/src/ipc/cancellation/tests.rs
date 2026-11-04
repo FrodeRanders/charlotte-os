@@ -1,6 +1,7 @@
 //! Deterministic cancellation interleavings before secondary LP startup.
 //! Raw capability IDs belong to these kernel ABI fixtures; applications use typed owners.
 use super::*;
+mod admission;
 use crate::{
     ipc::{
         close::{
@@ -51,8 +52,15 @@ impl Fixture {
     }
 
     fn create(count: usize, delivered: bool, extras: bool) -> Self {
+        Self::classified(count, delivered, extras, false)
+    }
+
+    fn classified(count: usize, delivered: bool, extras: bool, platform: bool) -> Self {
         let caller = crate::service::loader::create_user_address_space_handle();
         let server = crate::service::loader::create_user_address_space_handle();
+        if platform {
+            memory::budget::mark_platform(caller);
+        }
         let endpoint = endpoint_create(server.id(), 0x4341_4e43, 1, 4).unwrap();
         Self::enqueue(caller, server, endpoint, count, delivered, extras)
     }
@@ -97,9 +105,13 @@ impl Fixture {
             descriptor.extend_from_slice(&mode.to_le_bytes());
             descriptor.extend_from_slice(&0u32.to_le_bytes());
         }
-        let vector = object::allocate(caller.id(), 1).unwrap();
-        object::write_bytes(caller.id(), vector, &descriptor).unwrap();
-        let call = vector_call(caller.id(), connection, 1, 0, vector).unwrap();
+        let call = if count == 0 && !extras {
+            scalar_call(caller.id(), connection, 1, 0).unwrap()
+        } else {
+            let vector = object::allocate(caller.id(), 1).unwrap();
+            object::write_bytes(caller.id(), vector, &descriptor).unwrap();
+            vector_call(caller.id(), connection, 1, 0, vector).unwrap()
+        };
         // The vector-call ABI consumes its descriptor on successful submission.
         let (borrows, attachments) = {
             let ipc = IPC.read();
@@ -171,6 +183,7 @@ fn unlocked() {
 }
 
 pub(crate) fn run() {
+    admission::run();
     owned_endpoint_backing_release();
     queued_backing_release();
     success_and_wait();
@@ -399,6 +412,7 @@ fn staged_close() {
 
 fn partial_failure() {
     let fixture = Fixture::new(3, false);
+    let before_work = node_budget::snapshot();
     let operation = PreparedCancellation::prepare(fixture.caller.id(), fixture.call).unwrap();
     let identity = operation.identity;
     let mut finished = 0;
@@ -417,6 +431,7 @@ fn partial_failure() {
             Err(IpcError::MemoryTransferFailed)
         );
     });
+    assert_eq!(node_budget::snapshot(), before_work);
     assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));
     assert_eq!(close_cap(fixture.caller.id(), fixture.call), Err(IpcError::MemoryTransferFailed));
     assert_eq!(receive(fixture.server.id(), fixture.endpoint), Err(IpcError::Pending));
@@ -884,7 +899,9 @@ fn owned_endpoint_abandonment() {
     let fixture = Fixture::create(1, false, false);
     let owner = PreparedEndpointClose::prepare(fixture.server.id(), fixture.endpoint).unwrap();
     let operation = PreparedCancellation::prepare_endpoint_front(&owner).unwrap();
-    drop(operation); // Retains the caller lease, token claim and loan pin.
+    let held = node_budget::snapshot();
+    crate::ipc::loan_work_tests::with_guards(|| drop(operation));
+    assert_eq!(node_budget::snapshot(), held); // Borrowed server, caller lease and pin retained.
     drop(owner); // Retains the borrowed server-root lease and endpoint fence.
     assert_eq!(receive(fixture.server.id(), fixture.endpoint), Err(IpcError::Pending));
     for handle in [fixture.caller, fixture.server] {
@@ -946,8 +963,32 @@ pub(crate) fn run_endpoint_runtime() {
 }
 
 fn abandonment() {
+    for guarded in [false, true] {
+        abandonment_round(guarded);
+    }
+    crate::logln!(
+        "[IPC cancellation work abandonment] complete parent retains work capacity, queue, claim, \
+         roots, mapping and original loan backing after promotion; unguarded and \
+         cleanup-guard-held Drop inert"
+    );
+}
+
+fn abandonment_round(guarded: bool) {
     let fixture = Fixture::create(1, false, false);
-    drop(PreparedCancellation::prepare(fixture.caller.id(), fixture.call).unwrap());
+    let operation = PreparedCancellation::prepare(fixture.caller.id(), fixture.call).unwrap();
+    let held = node_budget::snapshot();
+    let authority = crate::capability::node_admission_used();
+    let frames = memory::PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    memory::budget::mark_platform(fixture.caller);
+    assert!(!operation.loans.allocator().platform());
+    if guarded {
+        crate::ipc::loan_work_tests::with_guards(|| drop(operation));
+    } else {
+        drop(operation);
+    }
+    assert_eq!(node_budget::snapshot(), held);
+    assert_eq!(crate::capability::node_admission_used(), authority);
+    assert_eq!(memory::PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), frames);
     // Probe admission directly: public close intentionally waits forever for
     // this retained claim, so do not block a same-thread fixture on itself.
     assert!(matches!(
@@ -1285,7 +1326,9 @@ fn namespace_abandonment() {
     let mut owner = ClosingAddressSpace::begin(fixture.server).unwrap();
     assert!(owner.start_cleanup().unwrap());
     let call = PreparedCancellation::prepare_namespace_token(&owner, identity.token).unwrap();
-    drop(call);
+    let held = node_budget::snapshot();
+    crate::ipc::loan_work_tests::with_guards(|| drop(call));
+    assert_eq!(node_budget::snapshot(), held);
     let CloseProgress::Pending(owner) = owner.poll().unwrap() else {
         panic!("abandoned namespace call completed")
     };

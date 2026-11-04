@@ -30,9 +30,13 @@ admission and explicit post-IPC disposal. [Staging and token-loan vectors](ipc-n
 retain original byte admission through actual buffer disposal, including growth
 overlap and empty-but-allocated storage. Descriptor byte snapshots use the same
 captured allocator and shared memory-object validation/copy boundary; quota
-failure rejects before parsing or transfer preparation. Reply and cancellation
-revocation-work vectors, allocator overhead and comprehensive
-principal/heap admission remain open.
+failure rejects before parsing or transfer preparation. [Reply/cancellation
+work](ipc-node-admission.md#revocation-work-buffers) clones the token's original
+allocator and retains full capacity through consuming child cleanup and actual
+buffer disposal before root completion. Complete parent fallback is inert,
+including returned-memory escrow and pending notifications. Cleanup headroom is
+not pre-reserved; allocator overhead and comprehensive principal/heap admission
+remain open.
 
 ## Call and endpoint preparation
 

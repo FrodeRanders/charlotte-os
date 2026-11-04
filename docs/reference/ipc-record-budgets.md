@@ -155,6 +155,14 @@ or new live-root admission. Namespace drain notifications and general metadata
 allocation/destruction under IPC remain separate. See
 [claim readiness evidence](../reports/audits/2026-10-12-ipc-close-readiness.md).
 
+Reply/cancellation [work capacity](ipc-node-admission.md#revocation-work-buffers)
+uses the original token's allocator class, not the current actor or later root
+classification. Quota rejection precedes claim publication and leaves accepted
+authority intact. Complete parents retain work, roots, returned preparations,
+detached storage and notifications on abandonment; explicit cleanup frees empty
+work capacity before root completion. Saturation can defer cleanup because that
+capacity is not reserved at call acceptance.
+
 Namespace teardown fences record admission before collecting capabilities to
 drain. Receive and connection-publication paths reject a retiring recipient,
 preventing a late receiver token or delegated connection from escaping that

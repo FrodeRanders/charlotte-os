@@ -55,6 +55,8 @@ mod buffer_tests;
 mod close;
 #[cfg(feature = "kernel_tests")]
 mod descriptor_tests;
+#[cfg(any(test, feature = "kernel_tests"))]
+mod loan_work_tests;
 #[cfg(feature = "kernel_tests")]
 pub(crate) use close::close_address_space_fixture;
 pub use close::close_cap;

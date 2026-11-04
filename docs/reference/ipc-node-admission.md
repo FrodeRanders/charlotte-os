@@ -71,6 +71,7 @@ protocol paths normally reserve their known count once before publication.
 | Capability IDs | 8 | 255 | 2040 |
 | Prepared transfers | 328 | 255 | 83640 |
 | Reply-token loan origins | 32 | 255 | 8160 |
+| Reply/cancellation revocation work | 200 | 255 | 51000 |
 
 Call staging captures allocator class from the original record reservation
 before any vector allocation. Sends use the captured exact sender class. The
@@ -87,8 +88,7 @@ in a temporary returned vector. Ordinary finish leaves IPC before child cleanup,
 storage disposal and notification, completing roots last. Abandonment retains
 all fields. A guarded real copied-vector fixture checks this parent after caller
 promotion. The allocator grants no element-cleanup or physical-completion proof;
-other active vector parents, outer masks and revocation-work storage remain
-separate qualification.
+other active transfer parents and outer masks remain separate qualification.
 
 The descriptor boundary uses `memory::object::snapshot_bytes_in` with the same
 captured IPC allocator. Source rights, revocation state and length are validated
@@ -108,6 +108,41 @@ the same validation/copy implementation; their image/package/store byte
 admission remains separate work. Snapshot allocation/copy still holds the memory
 registry, and ordinary descriptor disposal requires its existing post-IPC caller
 context. This change does not qualify unknown outer heap/IRQ guards or latency.
+
+## Revocation work buffers
+
+`PreparedReply` and `PreparedCancellation` clone the original token's loan-vector
+allocator while capturing token/call/root identities. Their work vectors hold
+`(MemoryBorrow, LoanRevocation)` entries and share `ipc_nodes` requested bytes
+with zero node slots. Promotion, a different closing actor or namespace retirement
+cannot select a new class. Prepare the full capacity before preparing loans or
+publishing the claim; quota denial returns `ResourceLimit` with the accepted
+token and call intact. Empty work reserves nothing, even at the byte ceiling.
+
+The complete parents retain work capacity, exact root leases or borrowed closing
+owners, claims, returned-output preparations, detached metadata/attachments and
+pending notifications in inert storage. Drop invokes no child destruction,
+refund, source restoration, notification or root completion. In particular,
+abandoned returned memory retains its actual transfer owner, source escrow/pin
+and hidden destination; it must not be closed by reconstructing scalar owners.
+Ordinary known-unstarted rejection explicitly restores that preparation.
+
+Each child consumes its typed revocation receipt outside IPC. Successful pops,
+cancelled unstarted prefixes and empty length do not refund capacity. Once child
+cleanup and metadata/attachment disposal are complete, explicitly free the work
+buffer before releasing exact roots, then dispatch pending notifications. Failed
+physical cleanup keeps the child's existing terminal fence/pin and original
+backing charges; freeing an empty parent work buffer grants no retry authority.
+
+A work entry measures 200 bytes; maximum capacity requests 51000 bytes (about
+49.8 KiB). The complete reply/cancellation parents measure 944/472 inline bytes
+on supported targets; these are stack owners, with no new holder allocation or
+payload-node layout change. Current numerical limits remain in place. Capacity
+is requested during cleanup, rather than reserved when the call is accepted:
+byte saturation can reject reply/cancellation and postpone root retirement while
+original authority and backing remain retained. Raising limits adds headroom but
+does not guarantee saturated teardown progress. A stronger guarantee would need
+earlier cleanup-capacity reservation and integrated pressure qualification.
 
 ## Attachment retirement capacity
 
@@ -209,7 +244,7 @@ delivered-receive fixture retains one empty catalog under IPC/heap/pool guards;
 it adopts no physical backing or authority. Host physical retirement is an
 adapter, not a native physical-completion proof.
 
-Current descriptor/vector-capacity qualification passed the full host suite
+Current IPC buffer qualification passed the full host suite
 (including the 47-test byte-allocator and 48-test attachment harnesses), strict
 test/minimal checks on both architectures,
 and fresh four-CPU security campaigns: ARM 19/19, Intel VT-d 17/17 and AMD-Vi
@@ -233,8 +268,17 @@ source/descriptor/frame preservation. A copied
 snapshot retains its original ordinary charge after source mutation, caller
 promotion and root retirement, until actual buffer disposal.
 
-Reply/cancellation revocation-work vectors, other control storage, remaining
-allocations, general heap and aggregate principal admission remain open.
+The [revocation-work evidence](../reports/audits/evidence/2026-11-04-ipc-revocation-work.json)
+records ordinary/trusted queued/delivered lifecycle controls, counter-pressure
+quota denial under the heap guard before claim, original class after promotion,
+full capacity through final pop/publication/attachment release, zero-work
+admission at quota and exact recovery. Existing physical-failure controls verify
+work-buffer disposal while uncertain backing stays fenced. Complete reply,
+standalone cancellation and borrowed endpoint/namespace cancellation parents
+are abandoned under lifecycle/table/IPC/heap/physical/registry/pool guards.
+
+Other control storage, remaining allocations, general heap and aggregate
+principal admission remain open. Cleanup headroom is not pre-reserved.
 Serialized controls do not prove
 sustained hostile concurrent EL0 fairness or all caller/IRQ/destructor contexts.
 SEC-07/18 remain partial.

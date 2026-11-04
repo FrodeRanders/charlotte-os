@@ -1,0 +1,216 @@
+{
+  "schema": "charlotte.ipc-revocation-work.v1",
+  "date": "2026-11-04",
+  "base_revision": "d4bec0f8e95e2b6ba99ab5e39e4f63a468e182ab",
+  "scope": "Allocation-lifetime byte admission for PreparedReply and PreparedCancellation revocation-work vectors, plus inert complete-parent ownership of active returned-memory preparations, detached storage and pending notifications. Existing original-token sponsorship and consuming physical cleanup remain local to each typed parent.",
+  "source_sha256": {
+    ".cargo/config.toml": "361dfe33de51580033bd6eae9134ef0a0c25ec15d0618cd5c18dab419a8b0ec5",
+    "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
+    "crates/catten-syscall/src/lib.rs": "231d3e2ca37f03c987335f874e432cafcfac8b2969dd78ee7c37da82db4c0d2a",
+    "crates/catten-syscall/src/metadata_pools.rs": "11d14166d9d9c66a800dfb0bb2401c8af6875d0c31dc4d4295b72a2633d1b5b9",
+    "crates/catten/src/ipc/attachments.rs": "f0f3628feeb62156dada3107ae5bca892f157431e7e12f68f2683ca8d0b4a6ec",
+    "crates/catten/src/ipc/cancellation.rs": "6a760a647468e0aa888a03e9aba6b5f8d38deefe85028b051fdb150650406032",
+    "crates/catten/src/ipc/cancellation/tests.rs": "097cfb658b3ffdfd6e7e0a94f612f5d823d07208ca8137f91f6e7e6dab3118fc",
+    "crates/catten/src/ipc/cancellation/tests/admission.rs": "187ad94593913a13d106c7ae401ac28018d9370d53fc6e5f40cffbb571ae23ff",
+    "crates/catten/src/ipc/endpoint_close.rs": "63445571a977d24246bf36b9249223a2e29d73ae4888bd44d0e67e1ab8919e56",
+    "crates/catten/src/ipc/loan_work_tests.rs": "bc54f1bff7f2158b9ac0ab62d8694b709fa97bf41993c73385092c063b4ffbf0",
+    "crates/catten/src/ipc/message.rs": "a3e5e32b252915ef6aa06aaa3f6e3a242760b7c4835ae60a73ada6370ebc92f8",
+    "crates/catten/src/ipc/mod.rs": "7eaf0868517b9919baa31a21d98b64878b7b91e0ba7d95c7c6d950ddab1e8dc6",
+    "crates/catten/src/ipc/node_budget.rs": "e538c74137e8b719011ebd4634464973583cf3443bbb87f47c6cdcd9e22b2716",
+    "crates/catten/src/ipc/reply.rs": "045d8f0a41a80c3f0531d5b258135d73fc35265d090538aae3aaade80ef642d8",
+    "crates/catten/src/ipc/reply/tests.rs": "3b23cfb7de703d05e97e3c623b86c71ed233280192636b3973090e7d29af1685",
+    "crates/catten/src/ipc/reply/tests/admission.rs": "ea4ecb1c19c96af0022f13f8be8d68334091e61ccd3b5f82be371c2e184346c9",
+    "crates/catten/src/ipc/transaction.rs": "a0bebf490b258cac7406a76a6db158ef8c7eac3db3334d2d784725de4171a79c",
+    "crates/catten/src/klib/admission.rs": "943997ba7a90d3c6ac59aae593c5e425daf9789fec6ed846227837d4fd86d9f8",
+    "crates/catten/src/klib/admission/byte_allocator.rs": "30042575956fb29aa9677f34f205bcd7c346a0ba2b0474132235de31a6a88dea",
+    "crates/catten/src/klib/observer/registration.rs": "32edc3a64cc1e98e7987820b217d1d86269468e87277d79f009831d97de9ea46",
+    "crates/catten/src/memory/object/revocation.rs": "12773872f468fa1adbaf412afe4033ee9a00bd4bbbb35fc28505e9d830f9baa7",
+    "crates/catten/src/memory/object/transfer.rs": "1983824fb4325839ca38fce87c0daa55bd720a53a0d278cbdb1b794f6367815b",
+    "crates/catten/src/memory/operation.rs": "830a3a6299adfe7f2c735ce4baa58e40dc065d9e65a9bfddf2c5f6f8c5818b0b",
+    "crates/catten/src/resource_policy/defaults.rs": "0b39025646e162f02e9cfa4270db5f0c1d4e9baa08894005b929d5945d26e629",
+    "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
+    "scripts/run-aarch64.sh": "58eede46ad82247673a9791e9cb247d5c32806b88bda86389e1e237d3ec100b8",
+    "scripts/run-host-tests.sh": "d3e773931451d377a76dfff79e150fb02d08c198cd9b3fb733f3da953c23ba2d",
+    "scripts/run-x86_64.sh": "68f5c782f96233721e2ca04f07c2181df7a43396add422ad49f421dbde900aaa"
+  },
+  "artifact_note": "All eight final changed/new Rust sources were frozen before native campaigns and checked against the retained source identities. Later documentation changes and an existing unrelated manual PDF edit affect per-run tracked-diff captures; the PDF is excluded from this change. Source, kernel, boot-image, disk, manifest, serial and selected service hashes identify exercised artifacts. Relevant diagnostics are included inline. Existing signed version-10 service bundles were reused; each runner regenerated signed security fixtures.",
+  "policy": {
+    "field": "ipc_nodes",
+    "ordinary": [
+      12582912,
+      73728
+    ],
+    "total": [
+      16777216,
+      98304
+    ],
+    "charge": "[allocated requested layout bytes, 0 node slots], before Global allocation; actual deallocation precedes original-class refund",
+    "work_entry": "(MemoryBorrow, LoanRevocation)",
+    "entry_bytes": 200,
+    "maximum_entries": 255,
+    "maximum_requested_bytes": 51000,
+    "maximum_note": "Layout-derived bound; the new real mapped-loan lifecycle controls use two work entries, not 255 simultaneous physical loans.",
+    "inline_parent_bytes": {
+      "reply": 944,
+      "cancellation": 472
+    },
+    "layout_note": "These are inline stack parents, with no new holder allocation. Capability/endpoint/pending/reply payload-node layouts and queue slot layouts do not change.",
+    "class": "Clone the accepted token loan-vector allocator during identity capture, before root leasing/revalidation. Ordinary-token promotion and a different reply/closing actor cannot select trusted backing or redirect refunds. Allocator clones themselves reserve nothing.",
+    "decision": "Keep numerical defaults. One maximum work array requests about 49.8 KiB within the existing 12/16 MiB pool; vectors contribute zero node slots and reuse the same accounting and administration. Full mixed-workload pressure is not qualified. Raising limits adds retained-heap headroom and may reduce denials, but cannot guarantee saturated cleanup progress. A hard guarantee would require earlier cleanup-capacity reservation and integrated pressure acceptance.",
+    "cleanup_admission": "Capacity is requested at reply/cancellation preparation, not reserved when the call is accepted. Saturation can return ResourceLimit before claim and postpone cleanup/root retirement while accepted authority/backing remain intact. Empty work needs no allocation or byte headroom.",
+    "abi": "23-pool catalog, statistics version 10, SDK/runtime wire formats and logical resource limits unchanged; no service source or bundle rebuild required"
+  },
+  "ownership": {
+    "parent": "PreparedReply and PreparedCancellation wrap one complete resource struct in ManuallyDrop. Work capacity, exact leases or borrowed closing owner, claims, active returned-memory transfer, hidden grants, retired records/attachments and pending notifications have no implicit destruction on parent abandonment.",
+    "preparation": "Prepare full work capacity before LoanRevocation receipts or token claim publication. Quota denial leaves the accepted token/call unclaimed; allocated unstarted prefixes cancel only their actual typed receipts. Ordinary preparation errors explicitly finish returned preparations and buffer storage after local IPC guards, before root completion.",
+    "finish": "Pop consumes each typed child outside IPC; empty length retains full vector capacity and original class. Success or known-unstarted rollback disposes metadata/attachments, frees the empty work allocation before roots, then dispatches pending notifications. Physical failure keeps the consumed child's existing terminal fence/pin and backing charges; empty parent-buffer disposal is no physical completion/replay proof.",
+    "returned_memory": "Abandonment now retains the actual returned-memory transfer, source escrow/pin and unpublished destination instead of running its active destructor. Nonwaiting source close stays busy and hidden destinations remain unavailable. Explicit ordinary unstarted-error cleanup still restores source ownership.",
+    "fallback": "Guarded Drop is terminal retention, not a recoverable transaction or permission to reconstruct an owner from IDs, counters or backing. No cleanup registry or new owner-family row is introduced."
+  },
+  "native_campaigns": [
+    {
+      "arch": "aarch64",
+      "instance": "loan-work-20261104-arm",
+      "cpus": 4,
+      "revision": "d4bec0f8e95e2b6ba99ab5e39e4f63a468e182ab",
+      "kernel_sha256": "81ddec17a4e1fcb10734f31d25e9be6b513b4524b4f10b77d7ae3b4e1dc7624c",
+      "boot_image_sha256": "d4695e48b4ea8e054edd3d85ae8ad884f85487c8e2c7e5a6cf0ce3c14104d384",
+      "initial_disk_sha256": "51debddd5d0ee275def107ff60d5c41ea60d1319ee96a9c43070e8dbd623335d",
+      "tracked_diff_sha256": "3f8f22599bfae169178ec9595604e4cd14e7383acbed945d828d260fa9602c20",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-04T15:39:37Z",
+      "platform": "arm",
+      "configuration": "security-test; four CPUs; fresh storage; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "0ba722b11757b7e0dc4c3c94d299edf46272497a663b5543d9a00c9782ac388c",
+      "serial_sha256": "799af82b13f5d04f95f80e82de68557188bd4d72d31e491b3e60afd12f4dbf3d",
+      "service_sha256": {
+        "observe.elf": "3550903f199e08b313d438c41febe87959dd312f5de67735152418760caa663c",
+        "security_probe.elf": "11a9f88261e2a8064100e7494d83c418d351a0422bac08e9807128ab964e43f3",
+        "sitas-user.elf": "6f0e7f2113b898f98e16708342db288745e9dcfe2bbbb016027e8db01100391b"
+      },
+      "summary": {
+        "passed": 19,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+     9.298420] [IPC reply work] parent=944 entry=200 max=51000 bytes; ordinary/total quota denial under heap guard before claim, original class after promotion, full capacity through final pop/publication, zero-work admission at quota and exact recovery",
+        "[+     9.776032] [IPC reply work abandonment] complete parent retains work capacity, returned-memory escrow, hidden grants, roots and two data pages per fixture after promotion; unguarded and cleanup-guard-held Drop inert",
+        "[+     9.776549] [IPC reply ownership] unlocked loan detach, competing reply/close, preparation rollback, staged close, partial failure and abandonment passed; failed cleanup retains exact closing roots and original backing charges",
+        "[+     9.788326] [IPC cancellation work] parent=472 entry=200 max=51000 bytes; queued/delivered ordinary/total quota denial under heap guard before claim, original class after promotion, full capacity through final pop/attachment release, zero-work admission at quota and exact recovery",
+        "[+     9.866127] [IPC namespace ownership] unlocked queued/delivered cleanup, both closing peers, preparation rollback, partial failure and abandonment passed; failed roots/backing retained; exact pending token/epoch diagnosed",
+        "[+     9.894233] [IPC cancellation work abandonment] complete parent retains work capacity, queue, claim, roots, mapping and original loan backing after promotion; unguarded and cleanup-guard-held Drop inert",
+        "[+     9.894721] [IPC cancellation ownership] queued/delivered close, unlocked loan cleanup, competing close/reply/receive, staged close, preparation rollback, partial failure and abandonment passed; bulk failure retains queued authority and exact closing roots",
+        "[+    88.211594] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "arch": "x86_64",
+      "instance": "loan-work-20261104-intel",
+      "cpus": 4,
+      "revision": "d4bec0f8e95e2b6ba99ab5e39e4f63a468e182ab",
+      "kernel_sha256": "fb3e99703384de306df6678c0cb1c42a2f245fe690077f5e1cc13d72a59ee46c",
+      "boot_image_sha256": "c5db4e32334adacbb1269c5343b059baea14a3fc7cac72df3e0c0233ea8798aa",
+      "initial_disk_sha256": "861e744e92833aef5b75ec19edbda05c20fe2b3efb98c1bf68d08d7ad6b362d1",
+      "tracked_diff_sha256": "3f8f22599bfae169178ec9595604e4cd14e7383acbed945d828d260fa9602c20",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-04T15:40:53Z",
+      "platform": "intel",
+      "configuration": "security-test; four CPUs; fresh storage; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "6ec627fd88ba11770f35963d52f47f86132d4cc12c8d8d76e3a7e43bc18f37a5",
+      "serial_sha256": "94b4852d513c0fde2bbf8a29ae11117330c04881c46673b14963557a8e073b79",
+      "service_sha256": {
+        "observe.elf": "875e7de7a7759e46e7e5bf563a08531c25bb3c987f8907b9ddb1742612f525f6",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c"
+      },
+      "summary": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+     5.148052] [IPC reply work] parent=944 entry=200 max=51000 bytes; ordinary/total quota denial under heap guard before claim, original class after promotion, full capacity through final pop/publication, zero-work admission at quota and exact recovery",
+        "[+     5.555031] [IPC reply work abandonment] complete parent retains work capacity, returned-memory escrow, hidden grants, roots and two data pages per fixture after promotion; unguarded and cleanup-guard-held Drop inert",
+        "[+     5.556066] [IPC reply ownership] unlocked loan detach, competing reply/close, preparation rollback, staged close, partial failure and abandonment passed; failed cleanup retains exact closing roots and original backing charges",
+        "[+     5.567860] [IPC cancellation work] parent=472 entry=200 max=51000 bytes; queued/delivered ordinary/total quota denial under heap guard before claim, original class after promotion, full capacity through final pop/attachment release, zero-work admission at quota and exact recovery",
+        "[+     5.638200] [IPC namespace ownership] unlocked queued/delivered cleanup, both closing peers, preparation rollback, partial failure and abandonment passed; failed roots/backing retained; exact pending token/epoch diagnosed",
+        "[+     5.661925] [IPC cancellation work abandonment] complete parent retains work capacity, queue, claim, roots, mapping and original loan backing after promotion; unguarded and cleanup-guard-held Drop inert",
+        "[+     5.662946] [IPC cancellation ownership] queued/delivered close, unlocked loan cleanup, competing close/reply/receive, staged close, preparation rollback, partial failure and abandonment passed; bulk failure retains queued authority and exact closing roots",
+        "[+    91.460834] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "arch": "x86_64",
+      "instance": "loan-work-20261104-amd",
+      "cpus": 4,
+      "revision": "d4bec0f8e95e2b6ba99ab5e39e4f63a468e182ab",
+      "kernel_sha256": "92dd41bff9f38ca2634619a83222202ed0b3b0505a22d43669e9712ac11ad4db",
+      "boot_image_sha256": "c489fe6d04c5b371bc88223cb20e069d42237a40e8019c0e5700a0fa9207a24d",
+      "initial_disk_sha256": "861e744e92833aef5b75ec19edbda05c20fe2b3efb98c1bf68d08d7ad6b362d1",
+      "tracked_diff_sha256": "176811c7d9b49eca41e6514885e4aa048416574b49a084d267bb87ac26f4e66c",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-04T15:48:09Z",
+      "platform": "amd",
+      "configuration": "security-test; four CPUs; fresh storage; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "e8cfeb76bed03ed15064b1981cdc536902af3d5ff084568b601ace1847b830f7",
+      "serial_sha256": "6cb1303d3ce6237aa4d6511df3d7a2d6810e8e167803b08c34e9cdaef04ce8c7",
+      "service_sha256": {
+        "observe.elf": "875e7de7a7759e46e7e5bf563a08531c25bb3c987f8907b9ddb1742612f525f6",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c"
+      },
+      "summary": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+     5.061458] [IPC reply work] parent=944 entry=200 max=51000 bytes; ordinary/total quota denial under heap guard before claim, original class after promotion, full capacity through final pop/publication, zero-work admission at quota and exact recovery",
+        "[+     5.472215] [IPC reply work abandonment] complete parent retains work capacity, returned-memory escrow, hidden grants, roots and two data pages per fixture after promotion; unguarded and cleanup-guard-held Drop inert",
+        "[+     5.473195] [IPC reply ownership] unlocked loan detach, competing reply/close, preparation rollback, staged close, partial failure and abandonment passed; failed cleanup retains exact closing roots and original backing charges",
+        "[+     5.484719] [IPC cancellation work] parent=472 entry=200 max=51000 bytes; queued/delivered ordinary/total quota denial under heap guard before claim, original class after promotion, full capacity through final pop/attachment release, zero-work admission at quota and exact recovery",
+        "[+     5.552216] [IPC namespace ownership] unlocked queued/delivered cleanup, both closing peers, preparation rollback, partial failure and abandonment passed; failed roots/backing retained; exact pending token/epoch diagnosed",
+        "[+     5.574799] [IPC cancellation work abandonment] complete parent retains work capacity, queue, claim, roots, mapping and original loan backing after promotion; unguarded and cleanup-guard-held Drop inert",
+        "[+     5.575733] [IPC cancellation ownership] queued/delivered close, unlocked loan cleanup, competing close/reply/receive, staged close, preparation rollback, partial failure and abandonment passed; bulk failure retains queued authority and exact closing roots",
+        "[+    90.415013] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    }
+  ],
+  "validation": {
+    "host_suite": "Complete scripts/run-host-tests.sh passed with local socket access, including expected rejecting parser/backend controls. Existing production ByteAllocator tests trace actual deallocation-before-refund, complete old/candidate overlap, backend-error rollback and immutable allocator class; no host physical-loan model is substituted for native completion.",
+    "strict_kernel_checks": [
+      "AArch64 acpi,kernel_tests clippy -D warnings",
+      "x86_64 acpi,kernel_tests clippy -D warnings",
+      "AArch64 acpi minimal clippy -D warnings",
+      "x86_64 acpi minimal clippy -D warnings"
+    ],
+    "native_builds": "All runners built final kernels and enforced executable/read-only assembly section checks.",
+    "native_controls": [
+      "Reply and queued/delivered cancellation use actual mapped loans. Explicit counter-pressure reservations leave one byte less than the full two-entry work candidate. Preparation rejects under the heap guard before claim, with unchanged epoch, accepted borrows, mappings and counters. Ordinary callers are promoted after call acceptance; both ordinary and trusted original classes are exercised.",
+      "After pressure release, real work arrays have exact two-entry capacity and original allocator class. Counter snapshots remain fully charged through each consuming child and the final-pop reply publication callback. Queued ordinary cancellation additionally checks exact retained work bytes during both real move/copy attachment-release callbacks, after token/pending/cap disposal. Fixture close recovers exact original IPC counters.",
+      "Real zero-loan scalar tokens prepare work under a held heap guard at the ordinary byte ceiling, with zero capacity and unchanged usage; finish invokes no revocation callback and returns all original counters.",
+      "Existing partial physical-failure controls now assert exact work-buffer byte recovery after remaining unstarted children cancel; uncertain loan backing and token/root fences remain and no terminal result is published.",
+      "Actual complete reply and standalone cancellation parents are first dropped unguarded, then under lifecycle/table/IPC/heap/physical/memory-registry/capability-registry/pool guards after caller promotion. Exact work/node/authority/frame counters are unchanged. Reply keeps returned-memory escrow/pin and hidden grants; nonwaiting source close is busy. Cancellation keeps queue/claim/mapped loan. Both exact roots stay retained.",
+      "Actual endpoint-borrowing and namespace-borrowing cancellation parents are also dropped under the same guard set, retaining work capacity and original closing-owner/peer/root claims. Existing staged-close, closing-peers, claim-epoch, source-close, mapping, returned-output and producer-LP notification controls remain enabled."
+    ],
+    "formatting": "cargo fmt --all -- --check and git diff --check passed."
+  },
+  "remaining_limits": [
+    "Cleanup work capacity is not pre-reserved at call acceptance. Saturation can reject or postpone reply/cancellation/root retirement while accepted authority remains retained. A numerical increase alone cannot establish hostile-pressure fairness or saturated teardown progress.",
+    "Other control storage, default image/package/store snapshot callers, allocator bookkeeping and general heap/aggregate principal admission remain open; SEC-07/18 remain partial.",
+    "Guarded probes cover actual claimed parents and borrowed endpoint/namespace variants. They do not independently force every physical-cleanup interruption/notification-dispatch phase or qualify every enclosing caller/IRQ/implicit-destructor context. Ordinary finishing still requires the existing qualified context; allocation/preparation under IPC and bounded-copy/guard latency remain separate work.",
+    "Backend allocation failure uses the existing shared allocator host adapter. Native general heap OOM and panic/unwind are not forced; quota controls use explicit counter reservations. Layout-derived maximum capacity is not a 255-loan physical-pressure campaign.",
+    "Terminal fixtures deliberately retain resources: two reply-abandonment fixtures keep two data pages each plus exact roots, returned-memory escrow/hidden grants and work bytes; two standalone cancellation-abandonment fixtures keep one data page each plus queue/claim/roots and work bytes. Existing failed/endpoint/namespace fixtures retain their original backings and now their work capacities too. None supplies a recovery or replay owner."
+  ]
+}

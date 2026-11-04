@@ -375,6 +375,16 @@ the corrected RPC polling paths, and the remaining notification gaps.
   through actual temporary-buffer disposal before submission roots complete.
   Successful copying supplies bytes, not physical cleanup or root authority.
 
+- Reply/cancellation revocation work clones the accepted token's original
+  allocator; do not reclassify from the actor, promotion or a later ASID lookup.
+  Reserve full byte capacity before preparing loans or publishing the claim.
+  Preserve the accepted call/token on quota denial. Keep the entire work vector,
+  exact roots or borrowed closing owner, returned preparations, detached storage
+  and notifications in the inert parent. Pop/cancel does not refund capacity;
+  explicit buffer disposal follows child cleanup and precedes root completion.
+  Empty work needs no allocation. Current calls do not pre-reserve cleanup
+  headroom; quota/fairness and saturated retirement progress remain separate gates.
+
 - Device namespace and MMIO/IRQ/DMA payload nodes use typed `DeviceMap` storage
   and independent `device_nodes` requested-byte/count admission. Capture trusted
   backing class with the exact root generation, then acquire that root lease
@@ -689,9 +699,11 @@ the corrected RPC polling paths, and the remaining notification gaps.
   and pin completion; serialized cleanup uses `try_retire_cap` without waiting,
   then consumes the backing owner after IPC unlock.
   Restore escrow, release its pin and clear its transfer fence under one memory
-  registry hold; never touch a successor's reused ASID/capability. Abandonment
-  restores unstarted returned-memory escrow but retains the reply/connection
-  source claim, roots and uncertain loan backing; do not force-clear them.
+  registry hold; never touch a successor's reused ASID/capability. Ordinary
+  known-unstarted rejection explicitly restores returned-memory preparation.
+  Complete reply abandonment retains that actual transfer owner, source
+  escrow/pin, hidden grant, claims, roots and work capacity without invoking any
+  child destructor; do not force-clear or reconstruct them.
   Explicit memory-close waits lease the transfer's captured source root and
   retain an owned interest in that exact fence. Prepare its charged source and
   disposal node outside memory/lifecycle/IPC guards, then revalidate before
