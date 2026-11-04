@@ -11,6 +11,10 @@ use core::{
 };
 
 use flanterm_bindings::*;
+use limine::framebuffer::{
+    FRAMEBUFFER_RGB,
+    Framebuffer,
+};
 use spin::LazyLock;
 
 use crate::{
@@ -42,6 +46,117 @@ struct BootContext(NonNull<flanterm_context>);
 // and no other alias is retained after successful initialization.
 unsafe impl Send for BootContext {}
 
+// One boot-lifetime console, not a runtime application allocation pool. Admit
+// the complete fixed C prefix before its first allocation. This permits common
+// 8K modes without permitting firmware geometry to exhaust the kernel heap.
+const MAX_CONSOLE_HEAP_BYTES: usize = 12 * 1024 * 1024;
+const MAX_FRAMEBUFFER_BYTES: usize = 256 * 1024 * 1024;
+const FONT_GLYPHS: usize = 256;
+
+struct FramebufferLayout {
+    address: NonNull<u32>,
+    width: usize,
+    height: usize,
+    pitch: usize,
+    shifts: [u8; 3],
+    font_scale: usize,
+    allocations: [usize; 6],
+    requested_bytes: usize,
+}
+
+impl FramebufferLayout {
+    /// The bootloader supplies the actual mapped framebuffer backing. This
+    /// checks metadata, arithmetic and C allocation bounds, not page ownership.
+    fn validate(fb: &Framebuffer) -> Option<Self> {
+        if fb.memory_model != FRAMEBUFFER_RGB || fb.bpp != 32 {
+            return None;
+        }
+        let address = NonNull::new(fb.address().cast::<u32>())?;
+        if !(address.as_ptr() as usize).is_multiple_of(core::mem::align_of::<u32>()) {
+            return None;
+        }
+        let width = usize::try_from(fb.width).ok()?;
+        let height = usize::try_from(fb.height).ok()?;
+        let pitch = usize::try_from(fb.pitch).ok()?;
+        if !pitch.is_multiple_of(size_of::<u32>()) || pitch < width.checked_mul(size_of::<u32>())? {
+            return None;
+        }
+        let span = height.checked_mul(pitch)?;
+        if span == 0 || span > MAX_FRAMEBUFFER_BYTES {
+            return None;
+        }
+        (address.as_ptr() as usize).checked_add(span)?;
+
+        let shifts = [fb.red_mask_shift, fb.green_mask_shift, fb.blue_mask_shift];
+        if [fb.red_mask_size, fb.green_mask_size, fb.blue_mask_size] != [8; 3] {
+            return None;
+        }
+        let mut channels = 0u32;
+        for shift in shifts {
+            if shift > 24 {
+                return None;
+            }
+            let mask = 0xffu32 << shift;
+            if channels & mask != 0 {
+                return None;
+            }
+            channels |= mask;
+        }
+
+        // Match the pinned backend's automatic scaling, then pass it explicitly
+        // so the checked rows/columns are exactly the ones C will allocate.
+        let font_scale = if width >= 5120 && height >= 2880 {
+            4
+        } else if width >= 2560 && height >= 1440 {
+            2
+        } else {
+            1
+        };
+        let columns = width / FONT_WIDTH.checked_mul(font_scale)?;
+        let rows = height / FONT_HEIGHT.checked_mul(font_scale)?;
+        if columns == 0 || rows == 0 {
+            return None;
+        }
+        let cells = rows.checked_mul(columns)?;
+        // The backend's VGA glyph decoding requires an 8-pixel-wide font.
+        const {
+            assert!(FONT_WIDTH == 8 && FONT_HEIGHT == 16);
+            assert!(super::chars::FONT.len() == FONT_GLYPHS * FONT_HEIGHT);
+        };
+        let font_pixels = FONT_WIDTH.checked_mul(FONT_HEIGHT)?.checked_mul(FONT_GLYPHS)?;
+        let allocations = [
+            size_of::<flanterm_fb_context>(),
+            font_pixels / 8,
+            font_pixels.checked_mul(size_of::<bool>())?,
+            cells.checked_mul(size_of::<flanterm_fb_char>())?,
+            cells.checked_mul(size_of::<flanterm_fb_queue_item>())?,
+            cells.checked_mul(size_of::<*mut flanterm_fb_queue_item>())?,
+        ];
+        let mut requested_bytes = 0usize;
+        for size in allocations {
+            if size == 0 {
+                return None;
+            }
+            core::alloc::Layout::from_size_align(size, core::mem::align_of::<max_align_t>())
+                .ok()?;
+            requested_bytes = requested_bytes.checked_add(size)?;
+        }
+        if requested_bytes > MAX_CONSOLE_HEAP_BYTES {
+            return None;
+        }
+        Some(Self {
+            address,
+            width,
+            height,
+            pitch,
+            shifts,
+            font_scale,
+            allocations,
+            requested_bytes,
+        })
+    }
+}
+
 impl FlantermConsole {
     /// Whether a framebuffer terminal is actually available.
     pub fn is_available(&self) -> bool {
@@ -64,8 +179,7 @@ pub static FT_CTX: LazyLock<Mutex<FlantermConsole>> = LazyLock::new(|| Mutex::ne
 
 /// Attempt to initialise the framebuffer terminal from the Limine framebuffer
 /// response. Returns a console with no backing context if there is no usable
-/// framebuffer (missing response, no framebuffers, zero dimensions, or a null
-/// address), or if `flanterm` itself fails to initialise.
+/// framebuffer, its metadata/bounds are unsupported, or C initialization fails.
 fn init_console() -> FlantermConsole {
     let Some(fb_res) = FRAMEBUFFER_REQUEST.response() else {
         crate::early_logln!("flanterm: no Limine framebuffer response");
@@ -79,26 +193,31 @@ fn init_console() -> FlantermConsole {
             ctx: None,
         };
     };
-    if fb.address().is_null() || fb.width == 0 || fb.height == 0 || fb.pitch == 0 {
-        crate::early_logln!("flanterm: no usable framebuffer (null or zero dimensions)");
+    init_framebuffer(fb)
+}
+
+fn init_framebuffer(fb: &Framebuffer) -> FlantermConsole {
+    let Some(layout) = FramebufferLayout::validate(fb) else {
+        crate::early_logln!("flanterm: unsupported framebuffer metadata or allocation bounds");
         return FlantermConsole {
             ctx: None,
         };
-    }
+    };
+    debug_assert_eq!(layout.allocations.iter().sum::<usize>(), layout.requested_bytes);
     let ctx_mut = unsafe {
         flanterm_fb_init(
             Some(malloc),
             Some(free),
-            fb.address() as *mut u32,
-            fb.width as usize,
-            fb.height as usize,
-            fb.pitch as usize,
-            fb.red_mask_size,
-            fb.red_mask_shift,
-            fb.green_mask_size,
-            fb.green_mask_shift,
-            fb.blue_mask_size,
-            fb.blue_mask_shift,
+            layout.address.as_ptr(),
+            layout.width,
+            layout.height,
+            layout.pitch,
+            8,
+            layout.shifts[0],
+            8,
+            layout.shifts[1],
+            8,
+            layout.shifts[2],
             null_mut(),
             null_mut(),
             null_mut(),
@@ -110,8 +229,8 @@ fn init_console() -> FlantermConsole {
             FONT_WIDTH,
             FONT_HEIGHT,
             0,
-            0,
-            0,
+            layout.font_scale,
+            layout.font_scale,
             0,
         )
     };
@@ -121,7 +240,13 @@ fn init_console() -> FlantermConsole {
             ctx: None,
         };
     };
-    crate::early_logln!("flanterm: framebuffer terminal initialised successfully");
+    crate::early_logln!(
+        "flanterm: framebuffer terminal initialised successfully ({}x{}, scale={}, heap={})",
+        layout.width,
+        layout.height,
+        layout.font_scale,
+        layout.requested_bytes
+    );
     FlantermConsole {
         ctx: Some(BootContext(ctx)),
     }

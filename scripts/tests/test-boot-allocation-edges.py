@@ -20,14 +20,17 @@ def run():
         layout_probe = directory / "layout-probe"
         subprocess.run([cc, "-std=c11", "-DQ3_LAYOUT_PROBE", "-I", str(dependency),
                         str(FIXTURES / "boot-terminal.c"), "-o", str(layout_probe)], check=True)
-        malloc_alignment, base_alignment = subprocess.check_output([str(layout_probe)], text=True).split()
+        malloc_alignment, base_alignment, fb_size, cell_size, queue_size = subprocess.check_output(
+            [str(layout_probe)], text=True).split()
         for source, name in [(dependency / "flanterm.c", "terminal"),
                              (dependency / "backends/fb.c", "framebuffer"),
                              (FIXTURES / "boot-terminal.c", "probe")]:
             subprocess.run([cc, "-std=c11", "-ffreestanding", "-fno-builtin", "-I", str(dependency),
                             "-c", str(source), "-o", str(directory / f"{name}.o")], check=True)
         source = ((FIXTURES / "boot-allocation-edges.rs").read_text().replace("@ROOT@", str(ROOT))
-                  .replace("@MALLOC_ALIGNMENT@", malloc_alignment))
+                  .replace("@MALLOC_ALIGNMENT@", malloc_alignment)
+                  .replace("@FB_SIZE@", fb_size).replace("@CELL_SIZE@", cell_size)
+                  .replace("@QUEUE_SIZE@", queue_size))
         harness = directory / "harness.rs"
         harness.write_text(source.replace("@CONSOLE@", str(ROOT / "crates/catten/src/log/flanterm.rs")))
 
@@ -65,7 +68,19 @@ impl Drop for BootContext {
                                   capture_output=True, text=True)
         output = rejected.stdout + rejected.stderr
         assert rejected.returncode != 0 and "console abandonment released backend storage" in output, output
-        print("Boot allocation edges: CPU boundaries, six C failure prefixes, exact cleanup, allocation-free writes and unsafe-owner rejection passed.")
+        # Reject a missing total-byte guard before malformed backing can enter C.
+        unbounded = directory / "unbounded-console.rs"
+        original = (ROOT / "crates/catten/src/log/flanterm.rs").read_text()
+        guard = "if requested_bytes > MAX_CONSOLE_HEAP_BYTES {"
+        assert original.count(guard) == 1
+        unbounded.write_text(original.replace(guard, "if false {"))
+        harness.write_text(source.replace("@CONSOLE@", str(unbounded)))
+        compile_to(executable)
+        rejected = subprocess.run([str(executable), "--exact", "log::flanterm::terminal", "--nocapture"],
+                                  capture_output=True, text=True)
+        output = rejected.stdout + rejected.stderr
+        assert rejected.returncode != 0 and "unsupported framebuffer metadata accepted" in output, output
+        print("Boot allocation edges: CPU/geometry/byte boundaries, six C failure prefixes, exact planned layouts, padded/minimum/scaled rendering, allocation-free writes and unsafe owner/budget control rejection passed.")
 
 
 if __name__ == "__main__":

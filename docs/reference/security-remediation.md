@@ -1,6 +1,6 @@
 # Security remediation status and completion criteria
 
-Current status updated 2026-11-04. This page records implemented scope,
+Current status updated 2026-11-05. This page records implemented scope,
 remaining acceptance gates and unresolved incidents. Finding dispositions are
 unchanged by documentation consolidation. Source and executable tests define
 current behavior; qualification records cover only their executed scope.
@@ -17,9 +17,10 @@ accepted, with six packages remaining and all four aggregate gates open. It also
 matrix. Its compiler census is a review baseline, not a completed
 allocation/caller inventory or a new readiness percentage. Q3 is in progress;
 its [boot allocation sub-batch](boot-allocation-boundaries.md) corrects CPU-count
-validation and optional framebuffer ownership/failure cleanup while retaining
-the unqualified geometry and remaining factory review. Finding dispositions
-and existing unresolved incidents remain unchanged.
+validation and bounds optional framebuffer geometry, allocation bytes and
+complete ownership. Remaining bootstrap-first-use, PCI/MCFG and factory review
+stays open. Finding dispositions remain unchanged; the ARM display grant-probe
+deadline capture is recorded below as a separate unresolved episode.
 
 ## Finding ledger
 
@@ -174,6 +175,7 @@ does not resolve an earlier failure.
 
 | Observation | Current status and next useful information |
 | --- | --- |
+| November 4–5 ARM display, four CPUs: second grant probe exceeds 45 seconds | Unresolved. Roots `170:10` and `177:9` fail in two identical-kernel/service/initial-disk campaigns after controller-RPC completion; first probes take about 40 seconds. The same bytes without the `ramfb` device pass 19/19, with both probes about 32.7 seconds. Deadlines are unchanged. Status was stage 1/checks 0 because the bitmask is only published at completion; capture the exact resource phase before revising the fixture or attributing the configuration-dependent overrun. Full native display qualification is open, separate from framebuffer geometry controls and the older exit-watch/retirement incidents. [Capture and comparison](../reports/audits/2026-11-04-framebuffer-bounds.md). |
 | November 1 host TLS server/client-identity round trip: `Err(Handshake(32))` | Captured reproduction identifies an unknown SM2 offer in OpenSSL 4's CertificateRequest; the old parser aborts before reading the server certificate. Controlled same-binary OpenSSL 3.6/4.0 comparisons explain the reproduced class; original captures lacked peer versions/wire data. Corrected offer/selection checks pass the full host suite, nine parser controls and ARM Kafka mTLS/Intel S3 TLS campaigns. [Wire investigation and preserved failures](../reports/audits/2026-11-01-tls-signature-offers.md). |
 | November 1 credential-free S3/Kafka campaigns: DHCP verifier waits for disabled httpd | Corrected: DHCP requires its actual status magic/address; listener/authentication and disabled-ingress assertions remain in the dedicated HTTP/management-startup probes. Credential-free ARM Kafka passes 20/0/0 and Intel S3 passes 18/0/0 with explicit disabled-startup assertions; a transport timeout remains unqualified. [Coverage map](boot-modes.md#network-verifier-boundaries), [current evidence and preserved failures](../reports/audits/evidence/2026-11-01-dhcp-verifier.json). No attribution of older NIC incidents. |
 | October 30 AMD-Vi, eight CPUs: adversarial-probe deadline, 17 passed/1 failed | Fixture budget collision reproduced at `091ecfe8`. Separately bounded rollover and grant probes take about 13 and 37 seconds respectively under cancellation traffic; their sum exceeds the former shared 45-second budget. Separated AMD/8 and Intel/4 campaigns pass 18/0/0; ARM/4 passes 20/0/0, each with 20 host check groups and both repetitions/teardown required. Combined fixture allowance is larger; production deadlines and invalidation policy are unchanged. Sustained fairness and latency scaling remain unqualified. [Failed comparisons and qualification](../reports/audits/evidence/2026-10-30-security-fixture-budgets.json); no attribution of the historical retirement-pin failure. |

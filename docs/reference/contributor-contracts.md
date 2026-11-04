@@ -154,8 +154,10 @@ the corrected RPC polling paths, and the remaining notification gaps.
   complete opaque C backend context for the boot lifetime; never adopt its base
   pointer as a Rust Box. Future retirement needs explicit complete-backend
   deinit and outer-context qualification. See
-  [boot allocation boundaries](boot-allocation-boundaries.md), including the
-  unresolved framebuffer geometry/budget requirement.
+  [boot allocation boundaries](boot-allocation-boundaries.md). Validate RGB32
+  layout, checked row/address arithmetic and the complete C allocation prefix
+  before drawing; preserve the reviewed framebuffer-span/requested-byte limits.
+  A cardinality bound does not qualify lazy runtime or IRQ first use.
 
 - Keep mandatory startup validation and operational checks independent of
   `kernel_tests`. Native fixture modules, adapters, fault injection and synthetic

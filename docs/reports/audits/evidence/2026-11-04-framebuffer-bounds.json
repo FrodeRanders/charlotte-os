@@ -1,0 +1,2205 @@
+{
+  "schema": "charlotte.framebuffer-bounds.v1",
+  "started_date": "2026-11-04",
+  "completed_date": "2026-11-05",
+  "base_revision": "5228a5a47bc1793c76516132ac6c69decc63e784",
+  "scope": "Framebuffer pre-C geometry/requested-byte admission plus explicit boot-factory review dispositions. Q3 and aggregate gates remain open; failed native episode unresolved.",
+  "source_sha256": {
+    "Cargo.lock": "169db5ac853b42acc4b8d15970d9f3c46036a97229418bc47e99d03f8e1aa029",
+    "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
+    "crates/catten/Cargo.toml": "6c5803556b781f2aa0bd572aa0a38f532ff9bc790c45bf000bdee9077fe65876",
+    "crates/catten/src/log/flanterm.rs": "325e48916ddd60a4cfd130782d145cf0c85803ff5d25fa92535025db49af9885",
+    "crates/catten/src/log/chars.rs": "1734ad7e252b5d32c94cf54f3e70d1b3c67c77cb01a41f4db1d5be1825afb255",
+    "scripts/tests/test-boot-allocation-edges.py": "b11bb5f4273cc05f0aeab0380b4aa14e24b3da9568b52cd3103941bd0a86d4f4",
+    "scripts/tests/fixtures/boot-allocation-edges.rs": "3fbc1a12f3c32bb1da00f2a5197d48db2ada79cd3452c1b5f6f103a3bdd19b12",
+    "scripts/tests/fixtures/boot-terminal.c": "3e1650b3e69a2541069874a94fa2c1aec9f37bbd7e289ce803f0168b41201ee0",
+    "scripts/run-host-tests.sh": "3adbbbe94e33b00d74fc63cea069ede1796d09dd2d5b0650ff499f777511d750",
+    "crates/catten/src/cpu/multiprocessor/ipi.rs": "4669855f668deb9a0fdc61854b7e269228892e5c39f96c8c95442f72a8ff01e0",
+    "crates/catten/src/cpu/multiprocessor/shard_mailbox.rs": "9981df40fe5acc412f4f433d6b6522c0fd629001bbb13fdfebf5f25a36beee41",
+    "crates/catten/src/cpu/multiprocessor/spin/per_lp.rs": "3993e1cdeef1892c20732181ec7e5ed5e97bf074896883144a996645ac029dc8",
+    "crates/catten/src/cpu/multiprocessor/spin/shard_local.rs": "8714a473a9cd17f2c75a9c6405e602bc9e85351d8d9cb6be470648d169aa686d",
+    "crates/catten/src/cpu/multiprocessor/interrupt_tracking/int_save_restore.rs": "82b8376df9777119cc08365937b7a5e6974d4eb60400fe77107adc910ad53082",
+    "crates/catten/src/cpu/multiprocessor/interrupt_tracking/interrupt_depth.rs": "3cda0e36d8e994a4e8a06d292cdfb04cd1faf31da034b755b8675745fe9eebe7",
+    "crates/catten/src/cpu/isa/aarch64/timers/generic_timer.rs": "5a9f2be3d6a651d772d89d675d45fb2753797dec4a8762fe5c05679b7d0a2e58",
+    "crates/catten/src/cpu/isa/x86_64/timers/apic_timer.rs": "e9ad6ed299ef6d70d355bbb758cc3f24de5d4a604644018098723d0ff2774455",
+    "crates/catten/src/cpu/isa/x86_64/interrupts/dynamic/mod.rs": "34dc177928648681775ee6cb2bd857b203dd85720c1466e0cc3d38e7dad8d2c1",
+    "crates/catten/src/cpu/isa/x86_64/interrupts/x2apic/mod.rs": "1f409835b482bab4ce8a73359e5404a4cf230d4cec1588a0c169cf064044a221",
+    "crates/catten/src/cpu/isa/x86_64/init/ap.rs": "32341cbb798e66e3d6fa468afcb1cb4858f1125ab1a5d073d980cca09bf216b5",
+    "crates/catten/src/cpu/isa/aarch64/interrupts/gic/mod.rs": "dc77e6174da28754ab9b10535aa02faa9c63825c6067507218173f06ff0f160a",
+    "crates/catten/src/cpu/isa/aarch64/interrupts/mod.rs": "cf0b82dadb1d463eec087d08795fc34c9d3bd2ecf1cc02c53571e0506e6db3dd",
+    "crates/catten/src/deferred_work_manager/mod.rs": "2d0e02e02a4f7e4adc5c4a2020d2412a4c59d9fc2efb85d12e2dfe79c4d5b4d9",
+    "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs": "bc6e60a9a310bd87218d1b4d41476689ad16959ffb829ef6b639b064dad95c6c",
+    "crates/catten/src/device_management/drivers/busses/pci_express/mod.rs": "4d15559fbfb3bc8e7826e078bf2ac5f10214c3066edc2bd92a27d766d32cf757",
+    "crates/catten/src/environment/acpi/sdt/mcfg.rs": "20aa66cf50d15d94b661cfa86c046e733e120f58d0481d7dccefe4eb27e7a16e",
+    "crates/catten/src/environment/acpi/mod.rs": "9590f95b2b29445328182322b7305755e27743a4bdc1da2d2a76cf94b0c5f31b",
+    "crates/catten/src/timers/mod.rs": "0b33fcc741f5bb3ecb16bb3551beb2dc5d709e8d7ed4a702b5d384780c2575de",
+    "crates/catten/src/main.rs": "d7cdf191c4d78a6037fa803c2e1733c348e029612c542e62c58bf1b6906dbcbb",
+    "crates/catten/src/init/mod.rs": "6554a1f839d97a0081ab343d33804f3dd42d75bdd16d715d51513585f982133c",
+    "crates/catten/src/cpu/scheduler/system_scheduler/mod.rs": "d927776a6118202c4006b2410189104e719f5313e8f2e511792f5c4040a9aaa7",
+    "crates/flanterm-bindings/CHARLOTTE.md": "6382362ed400c33ff7690378e93f2d63145744d0f0ccee8a799db71d1496163d",
+    "crates/flanterm-bindings/Cargo.toml": "e7b81628801895c7a8890dad9349084a9819547907dc40300270789022c10e19",
+    "crates/flanterm-bindings/LICENSE": "201cea7095834beb9eed543928cd74ee90d456489a42aa05d6201fac0c5e36c6",
+    "crates/flanterm-bindings/README.md": "b85c9eb38bed32320e037a62ccf4a66bcb88b2de556b8535418d177e3293c295",
+    "crates/flanterm-bindings/UPSTREAM.json": "1b5ca2022d15570d6994917742433e483ae0d17b39c6c6a0292aff9113f54df8",
+    "crates/flanterm-bindings/backends/fb.c": "3016551a257c0dd4262f9edb7e0c0279e98c11e05336baae3af0e957a765871e",
+    "crates/flanterm-bindings/backends/fb.h": "c3e969d8d48747ecde131a9b2644756ffe001397da40bf217b34b7e5a6f24fca",
+    "crates/flanterm-bindings/build.rs": "77baedc7058eb818bd1f7d460b6ee891f7f11fd1174c8e90783672d3eac814d2",
+    "crates/flanterm-bindings/flanterm.c": "efcacd21c56277d314ad40545e3375863050ef349770de2c59245876a67f8eab",
+    "crates/flanterm-bindings/flanterm.h": "43e010138e809ed0b6b0dd11d9c48d3a098249815b19b9590aa0c2f8f893f083",
+    "crates/flanterm-bindings/src/lib.rs": "521859aee0d14404cba865733c11c52260478a0cd2a46294d12e544c40a56404",
+    "crates/flanterm-bindings/wrapper.h": "f21be67f8bc73ea425da91238f5aed5c3aabdc31139b66f15edb27601f698a59"
+  },
+  "dependency_source_sha256": {
+    "concurrent-queue-2.5.0/src/lib.rs": "dc69f8a48cc28fe73ea1be88d77cd1aba98947d5a673019e61c630cc04c537ad",
+    "concurrent-queue-2.5.0/src/bounded.rs": "f161cc0e03f59cc764a44dc0782f7fcef7325fc328dfc8cb8c7fd608fc259cc8",
+    "concurrent-queue-2.5.0/src/unbounded.rs": "e90ea841f3f1eac5503b1c3cd2949de64956fc6a164ca65150c6c2bba02d0e16"
+  },
+  "limits": {
+    "console_requested_heap_bytes": 12582912,
+    "framebuffer_span_bytes": 268435456,
+    "allocation_count": 6,
+    "font_pixels": [
+      8,
+      16
+    ],
+    "glyphs": 256,
+    "font_scales": [
+      1,
+      2,
+      4
+    ],
+    "bootloader_supplies_actual_mapped_backing": true,
+    "allocator_overhead_not_in_requested_bytes": true
+  },
+  "host_controls": {
+    "rejected_metadata_cases": 29,
+    "rejections_before_allocation_or_C_entry": true,
+    "six_allocation_failure_prefixes": true,
+    "real_C_allocation_sizes_equal_checked_plan": true,
+    "common_layouts": [
+      [
+        1920,
+        1080,
+        1
+      ],
+      [
+        2560,
+        1440,
+        2
+      ],
+      [
+        3840,
+        2160,
+        2
+      ],
+      [
+        5120,
+        2880,
+        4
+      ],
+      [
+        7680,
+        4320,
+        4
+      ],
+      [
+        8192,
+        8192,
+        4
+      ]
+    ],
+    "rendered_layouts": [
+      [
+        8,
+        16,
+        4
+      ],
+      [
+        128,
+        64,
+        7
+      ],
+      [
+        2560,
+        1440,
+        1
+      ],
+      [
+        5120,
+        2880,
+        3
+      ]
+    ],
+    "rendered_layout_columns": "width,height,padding_words_per_row",
+    "guards_and_padding_preserved": true,
+    "unsafe_base_owner_drop_rejected": true,
+    "removed_heap_guard_rejected_before_C_entry": true
+  },
+  "checks": [
+    {
+      "name": "host-final",
+      "status": "passed",
+      "log_sha256": "a7751f2fffb46a00495259faa5ba4bbebec9459ef52b4cea1c7581527f523717"
+    },
+    {
+      "name": "full-host",
+      "status": "passed",
+      "log_sha256": "0d9059366aa5c187de352cdbf8ade8013027ce058da5300bbbb60b185a43c761"
+    },
+    {
+      "name": "fmt-check",
+      "status": "passed",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "arm-minimal-check",
+      "status": "passed",
+      "log_sha256": "f89e10f8b7cf55a7afb2974c27214c9256e158e2a69ffe089458890ada79227d"
+    },
+    {
+      "name": "x86-minimal-check",
+      "status": "passed",
+      "log_sha256": "b797ee0d88fe8218b24dd685cb921b901d26342720caf524f04403450e47294d"
+    },
+    {
+      "name": "arm-test-check",
+      "status": "passed",
+      "log_sha256": "9219cc5fc8269fafacb9a5b2897003da8097d2caf16b0c6d1b2cf5da941c1a39"
+    },
+    {
+      "name": "x86-test-check",
+      "status": "passed",
+      "log_sha256": "3b66601ed9067888049ba41942d876708a0c2998a5e19b5a9c11785a11c45eb4"
+    }
+  ],
+  "commands": {
+    "focused": "python3 scripts/tests/test-boot-allocation-edges.py",
+    "host": "scripts/run-host-tests.sh",
+    "format": "cargo fmt --all -- --check",
+    "strict": "CATTEN_<ARCH>_SERVICE_BUNDLE=<matching minimal/test bundle> AR_<target>=<LLVM llvm-ar> cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features <acpi,display|acpi,display,kernel_tests> -- -D warnings"
+  },
+  "native": [
+    {
+      "label": "initial",
+      "status": "failed",
+      "runner_reason": "kernel-panic",
+      "cpus": 4,
+      "outer_deadline_seconds": 240,
+      "grant_probe_deadline_ms": 45000,
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18712 CATTEN_DEPLOY_HOST_PORT=17712 scripts/run-aarch64.sh --tests --security-test --display --smp 4 --timeout 240 --fresh-storage --instance q3-framebuffer-arm",
+      "framebuffer_device_present": true,
+      "prepared_utc": "2026-11-04T22:53:04Z",
+      "base_revision": "5228a5a47bc1793c76516132ac6c69decc63e784",
+      "kernel_sha256": "01b1e83cd866a095610bcffccd64f144fd3d40109c4bebdf397a735e94123ebb",
+      "bundle_sha256": {
+        "agent.elf": "671eaa8ba761bd8fe1ab7e1a0be24f5335a9e11be7b1c755ba0cb7e195d81d6a",
+        "cclient.elf": "aedb34755dc2eda6af6f1e1b31592d0055029ccf9b890381492d20134de83d1a",
+        "client.elf": "a46d6c5d3f0110d0cc2bdc693b890ba3522b109e5d65cf9098ad2bdd785c530e",
+        "clusterctl.elf": "30c8cbbc4b9d7edf6872f5bf47d1a33bdfcb09f0276927476d2c9e654cfb176b",
+        "deployd.elf": "058dc4d96a9e77bcd2251596415a3f50fcda30534cff20ba3e016d3341b08d9f",
+        "disco.elf": "3b454feea99eee0adb48380c55000267d800f1307f3df80e4292de467464eed9",
+        "dns.elf": "08fc3ffdb05a9e56cfb9f78f16d04ef08188f2231eaeb6a9c325df0d08623139",
+        "echo.elf": "840324beddaf0c90f459dc0900e78884b631205027e4ff09d0fed89ffa2da1f6",
+        "frouter.elf": "49d2505c668f831564d1b2d2e1bd2d101cac651760ccf35fd69edc5fb54f3994",
+        "fs.elf": "264393d6535c0bd7d9ba212048ce4850b067a8633766b4869621d38b882620b5",
+        "grantctl.elf": "bd1b2b5a826a45d3d745e51a315f9083e080fba037a7aa6c9f7b379c3e6daaa1",
+        "greet.elf": "bf6c98d6d361cd63f7567c7eec56496ca1005e524e12b2815db450d1299f7851",
+        "httpd.elf": "2a20eab99c51d8313efcefce58039dd4e1301cff33f9b8e8813bd565085c3024",
+        "kafka.elf": "2a2632f84471f5c6d38f7580e23b084367d447824fa407a4c9669f7de928fcd7",
+        "kafka_fence_smoke.elf": "69d119e505da5d526d2c33ff8287feda795e1c73a9b5d51b54316aa39cac818c",
+        "kafka_smoke.elf": "01a96abbacf51efd0c52a7a4a31cd3e09b2e8b28338b40a0ab12bf109e16a27d",
+        "kafka_step.elf": "3846828037cc74a2a2b2b8428492ff7ebe6704729c9aab52ac1e6789df6c4b89",
+        "kafka_step_input.elf": "15ee326edc02096db747c467ce9104f419ebceb76cf0efd80647f33d10efd0df",
+        "kafka_step_proc.elf": "f56381d6e2a144b23333f761798a859fde0682f2c7def02a0a55d33b0b608174",
+        "nclient.elf": "0f75db8d899a510ff478965896ca239bbd2394d1abc4ceacd51756f10c19b6b6",
+        "net.elf": "63795434f8e51d1608539c0dd3da3e378b341082de3fb9a622202d3182434fcd",
+        "ns.elf": "2d720f3ba4ef4ef7582d157f068e660cd78851af304d478d47581d5cfcf4f694",
+        "nvme.elf": "4400a62a4f2496a137e23d389d3fb0097000991311b5e7243447eb33a729e360",
+        "nvme_client.elf": "5ab1ff38c3bfaa09ebbf58f28a6daeb888bb8fdf425b8e66c515c3940878e32f",
+        "objstore.elf": "6a043919aeb9f144063fc353b4591a76c19e198da9070a1dba75497c7b936cee",
+        "objstore_client.elf": "ef3fc558720d57d66a35be63fe70937b8046bc97d09b1f480cdd7249ac7dc5c5",
+        "observe.elf": "253c28fd0cef0871e7deb3086c4114f0e989bc7f7870805babd5f9979c89a8d3",
+        "otlp.elf": "94471bfb3ea50341e72b5440e6e81077ad820b6f83f047d78094dc2f626032a9",
+        "raft.elf": "2d32a23459bc273835bbb364e159051dc191dbef81c8342b7943f30070f925a6",
+        "rclient.elf": "d0186fd36a918859f1ed5084419098ed84de029423904adf2ea7d33ddfc7f41d",
+        "relmsg.elf": "28ba7a1fa23272068a2b09be9f6cea40b26b1090d357a7f4ef3176e3356f0104",
+        "rng.elf": "618f8e3159dbf8e526613927fdfd20d2ea7349a50dc6f32372e1fbae2db78868",
+        "s3.elf": "943f4d41427b5b9e40f83b7856ef3ca684bd64819de90b09e0710c27f9d03623",
+        "s3_smoke.elf": "f5c0157554d5550c95660cb096362c03e924884314f97ebee2aa831efdeb1213",
+        "security_probe.elf": "11a9f88261e2a8064100e7494d83c418d351a0422bac08e9807128ab964e43f3",
+        "servicemgr.elf": "3035aa2ee63aefbdd6f80e8e02eaa63eb1339a09f4ab0578fd1e019d341ba5df",
+        "shutdown_probe.elf": "32dc4a43ae45edbfef69e29fbdc33a329ac3543e83f0cad2c620df9ead9ab50b",
+        "sitas-user.elf": "6f0e7f2113b898f98e16708342db288745e9dcfe2bbbb016027e8db01100391b",
+        "tcpclient.elf": "efab9fa7b1c2ab305515ba5a4f7bf30f7dbdd7adf60c2c6d5635a5d3a31af435",
+        "tcpip.elf": "1ee63b257bbbacc1d6d52ef3944ee31a9b170f6eafff089fd54ac92afa3e68af",
+        "time.elf": "a6736abb273494bc03986dd50463998c4e13e2d28e637cddbe9380e74b6fd6f0",
+        "uart.elf": "4277c7745286054fffe64e944d845c17d6b9908076859b1c97d1117948ab12c7"
+      },
+      "initial_disk_sha256": "22548170a4d808e016aa6db3c852135a7fc3aea16af32473252bf24d3ee6b791",
+      "boot_image_sha256": "92078140a6d2a402378bfd109be7cc8578685137ffc57620bd4031b8a48551f1",
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "ca73af160a462fa40ed166dbea6fda0fb2c53a8f2bfba6d50f4dbf719076fdf6",
+        "scripts/run-aarch64.sh": "58eede46ad82247673a9791e9cb247d5c32806b88bda86389e1e237d3ec100b8"
+      },
+      "milestones": [
+        "[+     0.026991] flanterm: framebuffer terminal initialised successfully (800x600, scale=1, heap=230056)",
+        "[+    15.194951] [service] live handoff verified",
+        "[+    17.540534] [service] persistent upgrade completed: ns_waiters=1, ns_handled=1413",
+        "[+    20.155562] [security] standalone entropy rollover passed in 913 ms; domain retired",
+        "[+    60.416185] [security] adversarial grant checks passed in 40187 ms",
+        "[+    84.724078] [security] standalone entropy rollover passed in 18981 ms; domain retired",
+        "[+   130.408235] [security] fixture deadline root=170:10 phase=adversarial application grant checks budget_ms=45000 stage=1 checks=0x0 completed_requests=0"
+      ],
+      "serial_sha256": "8f8b04e02dca7261127aea9bdd414ccf88e78642ef2fcb4a4d24ea30497f0488",
+      "last_progress": [
+        "[+    19.176573] [security] TCP/IP cycle/time progress under socket pressure; retired 869 requests",
+        "[+    19.244777] [EL0 LOG] lp=0 asid=170 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    19.246309] [EL0 LOG] lp=0 asid=170 [security] selected TLS SHA/HMAC known-answer, clone and tamper controls passed",
+        "[+    19.246788] [EL0 LOG] lp=0 asid=170 [security] ephemeral-port HMAC known-answer sequence passed",
+        "[+    20.028876] SELFTEST WAITING: passed=18 pending=1 passed_bitmap=0x3ffff pending_bitmap=0x20000000",
+        "[+    20.031522] SELFTEST PENDING: scoped-launch-security",
+        "[+    20.142168] [EL0 LOG] lp=0 asid=170 [security] hardware entropy: 512 service-only 32-byte requests passed; no entropy bytes logged",
+        "[+    20.155562] [security] standalone entropy rollover passed in 913 ms; domain retired",
+        "[+    20.217225] [EL0 LOG] lp=0 asid=170 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    20.220696] [EL0 LOG] lp=0 asid=170 [security] selected TLS SHA/HMAC known-answer, clone and tamper controls passed",
+        "[+    20.221208] [EL0 LOG] lp=0 asid=170 [security] ephemeral-port HMAC known-answer sequence passed",
+        "[+    20.295086] [EL0 LOG] lp=0 asid=170 [security] reply CQ: 32 controller denials drained through owned multi-source waits",
+        "[+    30.094383] SELFTEST WAITING: passed=18 pending=1 passed_bitmap=0x3ffff pending_bitmap=0x20000000",
+        "[+    30.122617] SELFTEST PENDING: scoped-launch-security",
+        "[+    32.206669] [EL0 LOG] lp=0 asid=170 [security] platform publication: full-queue deadline, silent-call cancellation and all eight slots recovered",
+        "[+    32.323718] [EL0 LOG] lp=0 asid=170 [security] entropy server: retired/missing/oversized/invalid rejected before fill; same-domain loan rejected before admission; minimum/maximum caller buffers and untouched suffix verified",
+        "[+    32.680220] [EL0 LOG] lp=0 asid=170 [security] entropy read: caller buffer, malformed count/missing memory/extra connection/size, device rejection, cancel/Drop and late-result cleanup; original deadline, queue-full/silent timeout distinct and all eight slots recovered",
+        "[+    32.789674] [EL0 LOG] lp=0 asid=170 [security] RNG device: exact completion, short results, terminal timeout/late result, backend faults and complete field retention; no replay",
+        "[+    40.179639] SELFTEST WAITING: passed=18 pending=1 passed_bitmap=0x3ffff pending_bitmap=0x20000000",
+        "[+    40.198681] SELFTEST PENDING: scoped-launch-security",
+        "[+    43.007076] [EL0 LOG] lp=0 asid=170 [security] deployment control CQ: healthy moved reply beside held moved request; original timeout, no replay and receiver-owned backing retained",
+        "[+    48.092188] [EL0 LOG] lp=0 asid=170 [security] controller server CQ: healthy returned record beside held DNS; malformed returned connection rejected, original timeout/no replay; incoming mapping ended and DNS copy retained",
+        "[+    48.191045] [EL0 LOG] lp=0 asid=170 [security] deployment listener CQ: held creation beside complete listen/accept/close; moved setup page and confirmed creation rejection, no replay",
+        "[+    48.498166] [EL0 LOG] lp=0 asid=170 [security] deployment output CQ: TCP terminal and UDP rejection; moved frame cleanup and retired frame rejection",
+        "[+    48.596599] [EL0 LOG] lp=0 asid=170 [security] deployment close CQ: TCP and UDP logical acknowledgements; reaped owner returns Unavailable; pending/socket owners released after logical receipts",
+        "[+    48.851647] [EL0 LOG] lp=0 asid=170 [security] synchronous socket close: reaped owner, explicit TCP/UDP and Drop share consuming close and bounded reply observation",
+        "[+    49.429714] [EL0 LOG] lp=0 asid=170 [security] immediate socket send: full ID, UDP enqueue, retired/missing/reserved/tail/length/extended rejection and high-half isolation",
+        "[+    50.252279] SELFTEST WAITING: passed=18 pending=1 passed_bitmap=0x3ffff pending_bitmap=0x20000000",
+        "[+    50.279980] SELFTEST PENDING: scoped-launch-security",
+        "[+    55.113777] [EL0 LOG] lp=0 asid=170 [security] status snapshot: shared deadline, expired admission, scalar/moved timeout, eight slots, rejected/cancelled/returned page charges and healthy status passed",
+        "[+    55.147601] [EL0 LOG] lp=0 asid=170 [security] controller RPC: scalar/move deadlines, eight queue slots, rejected/cancelled/returned page charges and healthy status passed",
+        "[+    60.346205] SELFTEST WAITING: passed=18 pending=1 passed_bitmap=0x3ffff pending_bitmap=0x20000000",
+        "[+    60.366846] SELFTEST PENDING: scoped-launch-security",
+        "[+    60.383027] [EL0 LOG] lp=0 asid=170 [security-probe] passed checks=0xffff",
+        "[+    60.416185] [security] adversarial grant checks passed in 40187 ms",
+        "[+    64.091083] [security] current metadata returned no authority; retired bearer/metadata shapes rejected; all four public lookup opcodes denied policy-published secavail",
+        "[+    64.516092] [security] current metadata observed absence; retired metadata and bearer operations rejected without authority",
+        "[+    64.648667] [security] probe passed; retired policy fenced, publication generation=1",
+        "[+    65.760082] [EL0 LOG] lp=0 asid=170 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    65.775170] [EL0 LOG] lp=0 asid=170 [security] selected TLS SHA/HMAC known-answer, clone and tamper controls passed",
+        "[+    65.791643] [EL0 LOG] lp=0 asid=170 [security] ephemeral-port HMAC known-answer sequence passed",
+        "[+    70.431797] SELFTEST WAITING: passed=18 pending=1 passed_bitmap=0x3ffff pending_bitmap=0x20000000",
+        "[+    70.459682] SELFTEST PENDING: scoped-launch-security",
+        "[+    80.530668] SELFTEST WAITING: passed=18 pending=1 passed_bitmap=0x3ffff pending_bitmap=0x20000000",
+        "[+    80.560235] SELFTEST PENDING: scoped-launch-security",
+        "[+    84.610778] [EL0 LOG] lp=0 asid=170 [security] hardware entropy: 512 service-only 32-byte requests passed; no entropy bytes logged",
+        "[+    84.724078] [security] standalone entropy rollover passed in 18981 ms; domain retired",
+        "[+    85.447190] [EL0 LOG] lp=0 asid=170 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    85.454231] [EL0 LOG] lp=0 asid=170 [security] selected TLS SHA/HMAC known-answer, clone and tamper controls passed",
+        "[+    85.456417] [EL0 LOG] lp=0 asid=170 [security] ephemeral-port HMAC known-answer sequence passed",
+        "[+    86.547772] [EL0 LOG] lp=0 asid=170 [security] reply CQ: 32 controller denials drained through owned multi-source waits",
+        "[+    90.625340] SELFTEST WAITING: passed=18 pending=1 passed_bitmap=0x3ffff pending_bitmap=0x20000000",
+        "[+    90.656777] SELFTEST PENDING: scoped-launch-security",
+        "[+   100.711559] SELFTEST WAITING: passed=18 pending=1 passed_bitmap=0x3ffff pending_bitmap=0x20000000",
+        "[+   100.734318] SELFTEST PENDING: scoped-launch-security",
+        "[+   104.227353] [EL0 LOG] lp=0 asid=170 [security] platform publication: full-queue deadline, silent-call cancellation and all eight slots recovered",
+        "[+   104.417859] [EL0 LOG] lp=0 asid=170 [security] entropy server: retired/missing/oversized/invalid rejected before fill; same-domain loan rejected before admission; minimum/maximum caller buffers and untouched suffix verified",
+        "[+   104.774155] [EL0 LOG] lp=0 asid=170 [security] entropy read: caller buffer, malformed count/missing memory/extra connection/size, device rejection, cancel/Drop and late-result cleanup; original deadline, queue-full/silent timeout distinct and all eight slots recovered",
+        "[+   104.893075] [EL0 LOG] lp=0 asid=170 [security] RNG device: exact completion, short results, terminal timeout/late result, backend faults and complete field retention; no replay",
+        "[+   110.792966] SELFTEST WAITING: passed=18 pending=1 passed_bitmap=0x3ffff pending_bitmap=0x20000000",
+        "[+   110.816338] SELFTEST PENDING: scoped-launch-security",
+        "[+   115.020880] [EL0 LOG] lp=0 asid=170 [security] deployment control CQ: healthy moved reply beside held moved request; original timeout, no replay and receiver-owned backing retained",
+        "[+   120.069385] [EL0 LOG] lp=0 asid=170 [security] controller server CQ: healthy returned record beside held DNS; malformed returned connection rejected, original timeout/no replay; incoming mapping ended and DNS copy retained",
+        "[+   120.249953] [EL0 LOG] lp=0 asid=170 [security] deployment listener CQ: held creation beside complete listen/accept/close; moved setup page and confirmed creation rejection, no replay",
+        "[+   120.537459] [EL0 LOG] lp=0 asid=170 [security] deployment output CQ: TCP terminal and UDP rejection; moved frame cleanup and retired frame rejection",
+        "[+   120.666957] [EL0 LOG] lp=0 asid=170 [security] deployment close CQ: TCP and UDP logical acknowledgements; reaped owner returns Unavailable; pending/socket owners released after logical receipts",
+        "[+   120.882239] SELFTEST WAITING: passed=18 pending=1 passed_bitmap=0x3ffff pending_bitmap=0x20000000",
+        "[+   120.892164] [EL0 LOG] lp=0 asid=170 [security] synchronous socket close: reaped owner, explicit TCP/UDP and Drop share consuming close and bounded reply observation",
+        "[+   120.905649] SELFTEST PENDING: scoped-launch-security",
+        "[+   121.332999] [EL0 LOG] lp=0 asid=170 [security] immediate socket send: full ID, UDP enqueue, retired/missing/reserved/tail/length/extended rejection and high-half isolation",
+        "[+   126.983402] [EL0 LOG] lp=0 asid=170 [security] status snapshot: shared deadline, expired admission, scalar/moved timeout, eight slots, rejected/cancelled/returned page charges and healthy status passed",
+        "[+   127.035319] [EL0 LOG] lp=0 asid=170 [security] controller RPC: scalar/move deadlines, eight queue slots, rejected/cancelled/returned page charges and healthy status passed",
+        "[+   130.408235] [security] fixture deadline root=170:10 phase=adversarial application grant checks budget_ms=45000 stage=1 checks=0x0 completed_requests=0",
+        "Kernel panic:",
+        "self-test deadline expired while waiting for adversarial application grant checks"
+      ],
+      "root_at_deadline": "170:10",
+      "debugger_frames": "Process 1 stopped\n* thread #1: tid = 0x0001, 0xffffffff80456e5c kernel.elf`catten::panic::panic_stop at panic.rs:184:13, stop reason = signal SIGTRAP\n  thread #2: tid = 0x0002, 0xffffffff80002634 kernel.elf`catten::cpu::isa::aarch64::lp::ops::lp_idle_loop at ops.rs:614:13\n  thread #3: tid = 0x0003, 0xffffffff80002634 kernel.elf`catten::cpu::isa::aarch64::lp::ops::lp_idle_loop at ops.rs:614:13\n  thread #4: tid = 0x0004, 0xffffffff80002634 kernel.elf`catten::cpu::isa::aarch64::lp::ops::lp_idle_loop at ops.rs:614:13\n(lldb) thread backtrace all\n* thread #1, stop reason = signal SIGTRAP\n   * frame #0: 0xffffffff80456e5c kernel.elf`catten::panic::panic_stop at panic.rs:184:13\n     frame #1: 0xffffffff80456c1c kernel.elf`__rustc::rust_begin_unwind(info=0xffff8100002a7628) at panic.rs:0\n     frame #2: 0xffffffff80493cfc kernel.elf`core::panicking::panic_fmt(fmt=Arguments @ 0xffff8100002a7618) at panicking.rs:80:14\n     frame #3: 0xffffffff8030b610 kernel.elf`catten::self_test::el0_security::verify at once.rs:0:18\n     frame #4: 0xffffffff800009e8 kernel.elf`kernel_thread_trampoline + 8\n  thread #2\n       frame #0: 0xffffffff80002634 kernel.elf`catten::cpu::isa::aarch64::lp::ops::lp_idle_loop at ops.rs:614:13\n  thread #3\n       frame #0: 0xffffffff80002634 kernel.elf`catten::cpu::isa::aarch64::lp::ops::lp_idle_loop at ops.rs:614:13\n  thread #4\n       frame #0: 0xffffffff80002634 kernel.elf`catten::cpu::isa::aarch64::lp::ops::lp_idle_loop at ops.rs:614:13",
+      "capture_result": {
+        "reason": "kernel-panic",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 137.59408329194412
+      },
+      "capture_sha256": {
+        "artifacts.json": "765f7e002c0d6ba2071881a4a9ec1a09d5d5348a5cf09aaad8060e3ca902dcbb",
+        "cpus.json": "668bb0bac512f96a6e9c63aab9a9e2e829b422d3b68f000941c1bd423e378043",
+        "failure.json": "6de84eb1eff86c46dd2db4fe66181a7c2ee52954647fc8170dfde7dc104d750f",
+        "kernel.elf": "01b1e83cd866a095610bcffccd64f144fd3d40109c4bebdf397a735e94123ebb",
+        "kernel.symbols": "da0fb55e5973037e500cbfa50686829e2ee6177374be351f449d26601b6fdc46",
+        "lldb.log": "c855be5bfa48e85451f3bf757693419aec08ed1ad7f34958bbc9e90c3cffa727",
+        "manifest.json": "c63ab30cd62082b0357a4c36499594c3704db7e69bc105a6677098525ca360cc",
+        "registers.log": "e4b576bd01e8d333272ca37a2078d42249a2cea654d326107407e9246d2eaac6",
+        "request.json": "7a7e059e0809dda11f7ca139c1a347696f1dfe84b08339d7f86a704aad292159",
+        "result.json": "40fbd944544c9eab0b2502c12ecea9ec8aab1bd0fdb3d0f58540f66641e81c99",
+        "serial-at-trigger.log": "8f8b04e02dca7261127aea9bdd414ccf88e78642ef2fcb4a4d24ea30497f0488",
+        "serial.log": "8f8b04e02dca7261127aea9bdd414ccf88e78642ef2fcb4a4d24ea30497f0488",
+        "watcher.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "identical-kernel-repeat",
+      "status": "failed",
+      "runner_reason": "kernel-panic",
+      "cpus": 4,
+      "outer_deadline_seconds": 240,
+      "grant_probe_deadline_ms": 45000,
+      "command": "CATTEN_SKIP_KERNEL_BUILD=1 CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18712 CATTEN_DEPLOY_HOST_PORT=17712 scripts/run-aarch64.sh --tests --security-test --display --smp 4 --timeout 240 --fresh-storage --instance q3-framebuffer-arm-repeat",
+      "framebuffer_device_present": true,
+      "prepared_utc": "2026-11-04T22:58:32Z",
+      "base_revision": "5228a5a47bc1793c76516132ac6c69decc63e784",
+      "kernel_sha256": "01b1e83cd866a095610bcffccd64f144fd3d40109c4bebdf397a735e94123ebb",
+      "bundle_sha256": {
+        "agent.elf": "671eaa8ba761bd8fe1ab7e1a0be24f5335a9e11be7b1c755ba0cb7e195d81d6a",
+        "cclient.elf": "aedb34755dc2eda6af6f1e1b31592d0055029ccf9b890381492d20134de83d1a",
+        "client.elf": "a46d6c5d3f0110d0cc2bdc693b890ba3522b109e5d65cf9098ad2bdd785c530e",
+        "clusterctl.elf": "30c8cbbc4b9d7edf6872f5bf47d1a33bdfcb09f0276927476d2c9e654cfb176b",
+        "deployd.elf": "058dc4d96a9e77bcd2251596415a3f50fcda30534cff20ba3e016d3341b08d9f",
+        "disco.elf": "3b454feea99eee0adb48380c55000267d800f1307f3df80e4292de467464eed9",
+        "dns.elf": "08fc3ffdb05a9e56cfb9f78f16d04ef08188f2231eaeb6a9c325df0d08623139",
+        "echo.elf": "840324beddaf0c90f459dc0900e78884b631205027e4ff09d0fed89ffa2da1f6",
+        "frouter.elf": "49d2505c668f831564d1b2d2e1bd2d101cac651760ccf35fd69edc5fb54f3994",
+        "fs.elf": "264393d6535c0bd7d9ba212048ce4850b067a8633766b4869621d38b882620b5",
+        "grantctl.elf": "bd1b2b5a826a45d3d745e51a315f9083e080fba037a7aa6c9f7b379c3e6daaa1",
+        "greet.elf": "bf6c98d6d361cd63f7567c7eec56496ca1005e524e12b2815db450d1299f7851",
+        "httpd.elf": "2a20eab99c51d8313efcefce58039dd4e1301cff33f9b8e8813bd565085c3024",
+        "kafka.elf": "2a2632f84471f5c6d38f7580e23b084367d447824fa407a4c9669f7de928fcd7",
+        "kafka_fence_smoke.elf": "69d119e505da5d526d2c33ff8287feda795e1c73a9b5d51b54316aa39cac818c",
+        "kafka_smoke.elf": "01a96abbacf51efd0c52a7a4a31cd3e09b2e8b28338b40a0ab12bf109e16a27d",
+        "kafka_step.elf": "3846828037cc74a2a2b2b8428492ff7ebe6704729c9aab52ac1e6789df6c4b89",
+        "kafka_step_input.elf": "15ee326edc02096db747c467ce9104f419ebceb76cf0efd80647f33d10efd0df",
+        "kafka_step_proc.elf": "f56381d6e2a144b23333f761798a859fde0682f2c7def02a0a55d33b0b608174",
+        "nclient.elf": "0f75db8d899a510ff478965896ca239bbd2394d1abc4ceacd51756f10c19b6b6",
+        "net.elf": "63795434f8e51d1608539c0dd3da3e378b341082de3fb9a622202d3182434fcd",
+        "ns.elf": "2d720f3ba4ef4ef7582d157f068e660cd78851af304d478d47581d5cfcf4f694",
+        "nvme.elf": "4400a62a4f2496a137e23d389d3fb0097000991311b5e7243447eb33a729e360",
+        "nvme_client.elf": "5ab1ff38c3bfaa09ebbf58f28a6daeb888bb8fdf425b8e66c515c3940878e32f",
+        "objstore.elf": "6a043919aeb9f144063fc353b4591a76c19e198da9070a1dba75497c7b936cee",
+        "objstore_client.elf": "ef3fc558720d57d66a35be63fe70937b8046bc97d09b1f480cdd7249ac7dc5c5",
+        "observe.elf": "253c28fd0cef0871e7deb3086c4114f0e989bc7f7870805babd5f9979c89a8d3",
+        "otlp.elf": "94471bfb3ea50341e72b5440e6e81077ad820b6f83f047d78094dc2f626032a9",
+        "raft.elf": "2d32a23459bc273835bbb364e159051dc191dbef81c8342b7943f30070f925a6",
+        "rclient.elf": "d0186fd36a918859f1ed5084419098ed84de029423904adf2ea7d33ddfc7f41d",
+        "relmsg.elf": "28ba7a1fa23272068a2b09be9f6cea40b26b1090d357a7f4ef3176e3356f0104",
+        "rng.elf": "618f8e3159dbf8e526613927fdfd20d2ea7349a50dc6f32372e1fbae2db78868",
+        "s3.elf": "943f4d41427b5b9e40f83b7856ef3ca684bd64819de90b09e0710c27f9d03623",
+        "s3_smoke.elf": "f5c0157554d5550c95660cb096362c03e924884314f97ebee2aa831efdeb1213",
+        "security_probe.elf": "11a9f88261e2a8064100e7494d83c418d351a0422bac08e9807128ab964e43f3",
+        "servicemgr.elf": "3035aa2ee63aefbdd6f80e8e02eaa63eb1339a09f4ab0578fd1e019d341ba5df",
+        "shutdown_probe.elf": "32dc4a43ae45edbfef69e29fbdc33a329ac3543e83f0cad2c620df9ead9ab50b",
+        "sitas-user.elf": "6f0e7f2113b898f98e16708342db288745e9dcfe2bbbb016027e8db01100391b",
+        "tcpclient.elf": "efab9fa7b1c2ab305515ba5a4f7bf30f7dbdd7adf60c2c6d5635a5d3a31af435",
+        "tcpip.elf": "1ee63b257bbbacc1d6d52ef3944ee31a9b170f6eafff089fd54ac92afa3e68af",
+        "time.elf": "a6736abb273494bc03986dd50463998c4e13e2d28e637cddbe9380e74b6fd6f0",
+        "uart.elf": "4277c7745286054fffe64e944d845c17d6b9908076859b1c97d1117948ab12c7"
+      },
+      "initial_disk_sha256": "22548170a4d808e016aa6db3c852135a7fc3aea16af32473252bf24d3ee6b791",
+      "boot_image_sha256": "13a9fdc4c4d248056cf90f28887d5b5de2e2efb44c1dd5623db1cd2a87025f38",
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "ca73af160a462fa40ed166dbea6fda0fb2c53a8f2bfba6d50f4dbf719076fdf6",
+        "scripts/run-aarch64.sh": "58eede46ad82247673a9791e9cb247d5c32806b88bda86389e1e237d3ec100b8"
+      },
+      "milestones": [
+        "[+     0.022642] flanterm: framebuffer terminal initialised successfully (800x600, scale=1, heap=230056)",
+        "[+    14.535470] [service] live handoff verified",
+        "[+    16.984272] [service] persistent upgrade completed: ns_waiters=1, ns_handled=1430",
+        "[+    19.561732] [security] standalone entropy rollover passed in 978 ms; domain retired",
+        "[+    59.647923] [security] adversarial grant checks passed in 40017 ms",
+        "[+    83.313234] [security] standalone entropy rollover passed in 18810 ms; domain retired",
+        "[+   129.057070] [security] fixture deadline root=177:9 phase=adversarial application grant checks budget_ms=45000 stage=1 checks=0x0 completed_requests=0",
+        "[+   129.290786] SELFTEST COMPLETE: passed=18 failed=1 pending=0 passed_bitmap=0x3ffff failed_bitmap=0x20000000 pending_bitmap=0x0"
+      ],
+      "serial_sha256": "3719b77b424d051d26da0ed841a84588449dede6fe5cf03ef964b19a29765928",
+      "last_progress": [
+        "[+    18.582533] [EL0 LOG] lp=0 asid=177 [security] selected TLS SHA/HMAC known-answer, clone and tamper controls passed",
+        "[+    18.583007] [EL0 LOG] lp=0 asid=177 [security] ephemeral-port HMAC known-answer sequence passed",
+        "[+    19.345741] SELFTEST WAITING: passed=18 pending=1 passed_bitmap=0x3ffff pending_bitmap=0x20000000",
+        "[+    19.348254] SELFTEST PENDING: scoped-launch-security",
+        "[+    19.546011] [EL0 LOG] lp=0 asid=177 [security] hardware entropy: 512 service-only 32-byte requests passed; no entropy bytes logged",
+        "[+    19.561732] [security] standalone entropy rollover passed in 978 ms; domain retired",
+        "[+    19.617686] [EL0 LOG] lp=0 asid=177 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    19.620642] [EL0 LOG] lp=0 asid=177 [security] selected TLS SHA/HMAC known-answer, clone and tamper controls passed",
+        "[+    19.621135] [EL0 LOG] lp=0 asid=177 [security] ephemeral-port HMAC known-answer sequence passed",
+        "[+    19.700395] [EL0 LOG] lp=0 asid=177 [security] reply CQ: 32 controller denials drained through owned multi-source waits",
+        "[+    29.401707] SELFTEST WAITING: passed=18 pending=1 passed_bitmap=0x3ffff pending_bitmap=0x20000000",
+        "[+    29.422959] SELFTEST PENDING: scoped-launch-security",
+        "[+    31.639703] [EL0 LOG] lp=0 asid=177 [security] platform publication: full-queue deadline, silent-call cancellation and all eight slots recovered",
+        "[+    31.763703] [EL0 LOG] lp=0 asid=177 [security] entropy server: retired/missing/oversized/invalid rejected before fill; same-domain loan rejected before admission; minimum/maximum caller buffers and untouched suffix verified",
+        "[+    32.125243] [EL0 LOG] lp=0 asid=177 [security] entropy read: caller buffer, malformed count/missing memory/extra connection/size, device rejection, cancel/Drop and late-result cleanup; original deadline, queue-full/silent timeout distinct and all eight slots recovered",
+        "[+    32.257072] [EL0 LOG] lp=0 asid=177 [security] RNG device: exact completion, short results, terminal timeout/late result, backend faults and complete field retention; no replay",
+        "[+    39.473347] SELFTEST WAITING: passed=18 pending=1 passed_bitmap=0x3ffff pending_bitmap=0x20000000",
+        "[+    39.489666] SELFTEST PENDING: scoped-launch-security",
+        "[+    42.437628] [EL0 LOG] lp=0 asid=177 [security] deployment control CQ: healthy moved reply beside held moved request; original timeout, no replay and receiver-owned backing retained",
+        "[+    47.522446] [EL0 LOG] lp=0 asid=177 [security] controller server CQ: healthy returned record beside held DNS; malformed returned connection rejected, original timeout/no replay; incoming mapping ended and DNS copy retained",
+        "[+    47.648773] [EL0 LOG] lp=0 asid=177 [security] deployment listener CQ: held creation beside complete listen/accept/close; moved setup page and confirmed creation rejection, no replay",
+        "[+    47.968317] [EL0 LOG] lp=0 asid=177 [security] deployment output CQ: TCP terminal and UDP rejection; moved frame cleanup and retired frame rejection",
+        "[+    48.094885] [EL0 LOG] lp=0 asid=177 [security] deployment close CQ: TCP and UDP logical acknowledgements; reaped owner returns Unavailable; pending/socket owners released after logical receipts",
+        "[+    48.350170] [EL0 LOG] lp=0 asid=177 [security] synchronous socket close: reaped owner, explicit TCP/UDP and Drop share consuming close and bounded reply observation",
+        "[+    48.909298] [EL0 LOG] lp=0 asid=177 [security] immediate socket send: full ID, UDP enqueue, retired/missing/reserved/tail/length/extended rejection and high-half isolation",
+        "[+    49.542676] SELFTEST WAITING: passed=18 pending=1 passed_bitmap=0x3ffff pending_bitmap=0x20000000",
+        "[+    49.561101] SELFTEST PENDING: scoped-launch-security",
+        "[+    54.552634] [EL0 LOG] lp=0 asid=177 [security] status snapshot: shared deadline, expired admission, scalar/moved timeout, eight slots, rejected/cancelled/returned page charges and healthy status passed",
+        "[+    54.607079] [EL0 LOG] lp=0 asid=177 [security] controller RPC: scalar/move deadlines, eight queue slots, rejected/cancelled/returned page charges and healthy status passed",
+        "[+    59.602430] [EL0 LOG] lp=0 asid=177 [security-probe] passed checks=0xffff",
+        "[+    59.613220] SELFTEST WAITING: passed=18 pending=1 passed_bitmap=0x3ffff pending_bitmap=0x20000000",
+        "[+    59.630247] SELFTEST PENDING: scoped-launch-security",
+        "[+    59.647923] [security] adversarial grant checks passed in 40017 ms",
+        "[+    63.134661] [security] current metadata returned no authority; retired bearer/metadata shapes rejected; all four public lookup opcodes denied policy-published secavail",
+        "[+    63.455833] [security] current metadata observed absence; retired metadata and bearer operations rejected without authority",
+        "[+    63.559511] [security] probe passed; retired policy fenced, publication generation=1",
+        "[+    64.501533] [EL0 LOG] lp=0 asid=177 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    64.550407] [EL0 LOG] lp=0 asid=177 [security] selected TLS SHA/HMAC known-answer, clone and tamper controls passed",
+        "[+    64.552791] [EL0 LOG] lp=0 asid=177 [security] ephemeral-port HMAC known-answer sequence passed",
+        "[+    69.701547] SELFTEST WAITING: passed=18 pending=1 passed_bitmap=0x3ffff pending_bitmap=0x20000000",
+        "[+    69.731295] SELFTEST PENDING: scoped-launch-security",
+        "[+    79.799566] SELFTEST WAITING: passed=18 pending=1 passed_bitmap=0x3ffff pending_bitmap=0x20000000",
+        "[+    79.831096] SELFTEST PENDING: scoped-launch-security",
+        "[+    83.208181] [EL0 LOG] lp=0 asid=177 [security] hardware entropy: 512 service-only 32-byte requests passed; no entropy bytes logged",
+        "[+    83.313234] [security] standalone entropy rollover passed in 18810 ms; domain retired",
+        "[+    84.072542] [EL0 LOG] lp=0 asid=177 [security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[+    84.111334] [EL0 LOG] lp=0 asid=177 [security] selected TLS SHA/HMAC known-answer, clone and tamper controls passed",
+        "[+    84.115075] [EL0 LOG] lp=0 asid=177 [security] ephemeral-port HMAC known-answer sequence passed",
+        "[+    85.065797] [EL0 LOG] lp=0 asid=177 [security] reply CQ: 32 controller denials drained through owned multi-source waits",
+        "[+    89.890860] SELFTEST WAITING: passed=18 pending=1 passed_bitmap=0x3ffff pending_bitmap=0x20000000",
+        "[+    89.915513] SELFTEST PENDING: scoped-launch-security",
+        "[+    99.974237] SELFTEST WAITING: passed=18 pending=1 passed_bitmap=0x3ffff pending_bitmap=0x20000000",
+        "[+    99.996986] SELFTEST PENDING: scoped-launch-security",
+        "[+   102.256511] [EL0 LOG] lp=0 asid=177 [security] platform publication: full-queue deadline, silent-call cancellation and all eight slots recovered",
+        "[+   102.340423] [EL0 LOG] lp=0 asid=177 [security] entropy server: retired/missing/oversized/invalid rejected before fill; same-domain loan rejected before admission; minimum/maximum caller buffers and untouched suffix verified",
+        "[+   102.762672] [EL0 LOG] lp=0 asid=177 [security] entropy read: caller buffer, malformed count/missing memory/extra connection/size, device rejection, cancel/Drop and late-result cleanup; original deadline, queue-full/silent timeout distinct and all eight slots recovered",
+        "[+   102.835705] [EL0 LOG] lp=0 asid=177 [security] RNG device: exact completion, short results, terminal timeout/late result, backend faults and complete field retention; no replay",
+        "[+   110.047761] SELFTEST WAITING: passed=18 pending=1 passed_bitmap=0x3ffff pending_bitmap=0x20000000",
+        "[+   110.068004] SELFTEST PENDING: scoped-launch-security",
+        "[+   113.017529] [EL0 LOG] lp=0 asid=177 [security] deployment control CQ: healthy moved reply beside held moved request; original timeout, no replay and receiver-owned backing retained",
+        "[+   118.166083] [EL0 LOG] lp=0 asid=177 [security] controller server CQ: healthy returned record beside held DNS; malformed returned connection rejected, original timeout/no replay; incoming mapping ended and DNS copy retained",
+        "[+   118.292741] [EL0 LOG] lp=0 asid=177 [security] deployment listener CQ: held creation beside complete listen/accept/close; moved setup page and confirmed creation rejection, no replay",
+        "[+   118.618703] [EL0 LOG] lp=0 asid=177 [security] deployment output CQ: TCP terminal and UDP rejection; moved frame cleanup and retired frame rejection",
+        "[+   118.739084] [EL0 LOG] lp=0 asid=177 [security] deployment close CQ: TCP and UDP logical acknowledgements; reaped owner returns Unavailable; pending/socket owners released after logical receipts",
+        "[+   118.989184] [EL0 LOG] lp=0 asid=177 [security] synchronous socket close: reaped owner, explicit TCP/UDP and Drop share consuming close and bounded reply observation",
+        "[+   119.487625] [EL0 LOG] lp=0 asid=177 [security] immediate socket send: full ID, UDP enqueue, retired/missing/reserved/tail/length/extended rejection and high-half isolation",
+        "[+   120.138086] SELFTEST WAITING: passed=18 pending=1 passed_bitmap=0x3ffff pending_bitmap=0x20000000",
+        "[+   120.165483] SELFTEST PENDING: scoped-launch-security",
+        "[+   125.215815] [EL0 LOG] lp=0 asid=177 [security] status snapshot: shared deadline, expired admission, scalar/moved timeout, eight slots, rejected/cancelled/returned page charges and healthy status passed",
+        "[+   125.322009] [EL0 LOG] lp=0 asid=177 [security] controller RPC: scalar/move deadlines, eight queue slots, rejected/cancelled/returned page charges and healthy status passed",
+        "[+   129.057070] [security] fixture deadline root=177:9 phase=adversarial application grant checks budget_ms=45000 stage=1 checks=0x0 completed_requests=0",
+        "Kernel panic:",
+        "self-test deadline expired while waiting for adversarial application grant checks",
+        "[+   129.207612] SELFTEST FAILED: scoped-launch-security",
+        "[+   129.290786] SELFTEST COMPLETE: passed=18 failed=1 pending=0 passed_bitmap=0x3ffff failed_bitmap=0x20000000 pending_bitmap=0x0"
+      ],
+      "root_at_deadline": "see original deadline diagnostic in last_progress",
+      "debugger_frames": "Process 1 stopped\n* thread #1: tid = 0x0001, 0xffffffff80456e5c kernel.elf`catten::panic::panic_stop at panic.rs:184:13, stop reason = signal SIGTRAP\n  thread #2: tid = 0x0002, 0xffffffff805633dc kernel.elf`plot_char(_ctx=<unavailable>, c=0xffff840000026730, x=<unavailable>, y=<unavailable>) at fb.c:467:29\n  thread #3: tid = 0x0003, 0xffffffff80002634 kernel.elf`catten::cpu::isa::aarch64::lp::ops::lp_idle_loop at ops.rs:614:13\n  thread #4: tid = 0x0004, 0xffffffff80002634 kernel.elf`catten::cpu::isa::aarch64::lp::ops::lp_idle_loop at ops.rs:614:13\n(lldb) thread backtrace all\n* thread #1, stop reason = signal SIGTRAP\n   * frame #0: 0xffffffff80456e5c kernel.elf`catten::panic::panic_stop at panic.rs:184:13\n     frame #1: 0xffffffff80456c1c kernel.elf`__rustc::rust_begin_unwind(info=0xffff8100002a7628) at panic.rs:0\n     frame #2: 0xffffffff80493cfc kernel.elf`core::panicking::panic_fmt(fmt=Arguments @ 0xffff8100002a7618) at panicking.rs:80:14\n     frame #3: 0xffffffff8030b610 kernel.elf`catten::self_test::el0_security::verify at once.rs:0:18\n     frame #4: 0xffffffff800009e8 kernel.elf`kernel_thread_trampoline + 8\n  thread #2\n       frame #0: 0xffffffff805633dc kernel.elf`plot_char(_ctx=<unavailable>, c=0xffff840000026730, x=<unavailable>, y=<unavailable>) at fb.c:467:29\n       frame #1: 0xffffffff80562efc kernel.elf`flanterm_fb_double_buffer_flush(_ctx=0xffff840000000e00) at fb.c:771:13\n       frame #2: 0xffffffff80561280 kernel.elf`flanterm_write(ctx=0xffff840000000e00, buf=<unavailable>, count=<unavailable>) at flanterm.c:111:9\n       frame #3: 0xffffffff80332f7c kernel.elf`<catten::log::flanterm::FlantermConsole as core::fmt::Write>::write_str(self=0xffffffff807c3fa0, s=(data_ptr = 0x0000000000000000, length = 1)) at flanterm.rs:171:17 [inlined]\n       frame #4: 0xffffffff80332f64 kernel.elf`catten::log::_write_args(args=Arguments @ 0x0000000c66110cc0, newline=true) at mod.rs:211:33\n       frame #5: 0xffffffff80445d10 kernel.elf`catten::self_test::results::coordinator at mod.rs:267:9\n       frame #6: 0xffffffff800009e8 kernel.elf`kernel_thread_trampoline + 8\n  thread #3\n       frame #0: 0xffffffff80002634 kernel.elf`catten::cpu::isa::aarch64::lp::ops::lp_idle_loop at ops.rs:614:13\n  thread #4\n       frame #0: 0xffffffff80002634 kernel.elf`catten::cpu::isa::aarch64::lp::ops::lp_idle_loop at ops.rs:614:13",
+      "capture_result": {
+        "reason": "kernel-panic",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 135.78074229194317
+      },
+      "capture_sha256": {
+        "artifacts.json": "c4d06a70ced12dcf7a054f079888c867d87aeafdbed491f83ce3d05b3e13aee3",
+        "cpus.json": "e4d3adf20f920f32511a8af43f2520788197acbb1272358e744b31251df2868d",
+        "failure.json": "e46ae723d1f8a1668788016373d5f1d0cc47a49c7bfc3c25163fc1bf5534678b",
+        "kernel.elf": "01b1e83cd866a095610bcffccd64f144fd3d40109c4bebdf397a735e94123ebb",
+        "kernel.symbols": "da0fb55e5973037e500cbfa50686829e2ee6177374be351f449d26601b6fdc46",
+        "lldb.log": "3c54d6b300cf88fb32ba14e98697eb560be1802968050c7b8cacb30db6ec8ca6",
+        "manifest.json": "f583764845cf3ab9a9820b8ddb28d507bfa4b1b81067cee2c9b02e8a3a2a27d8",
+        "registers.log": "4a6c6d3adb8974f6287b738e32e8a3cc5865e5deec50ec53927fcf009787e087",
+        "request.json": "7a7e059e0809dda11f7ca139c1a347696f1dfe84b08339d7f86a704aad292159",
+        "result.json": "346526372495b4532c298afd2e6a3c385b3cb0a845bbb6666bbf82bb00b21490",
+        "serial-at-trigger.log": "e044f6ec205d75c3a02428af50cf57d9e77c6b6ca881941001ef345a4146132d",
+        "serial.log": "3719b77b424d051d26da0ed841a84588449dede6fe5cf03ef964b19a29765928",
+        "watcher.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "no-ramfb-control",
+      "status": "passed",
+      "runner_reason": "complete",
+      "cpus": 4,
+      "outer_deadline_seconds": 240,
+      "grant_probe_deadline_ms": 45000,
+      "command": "CATTEN_SKIP_KERNEL_BUILD=1 CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18712 CATTEN_DEPLOY_HOST_PORT=17712 scripts/run-aarch64.sh --tests --security-test --smp 4 --timeout 240 --fresh-storage --instance q3-framebuffer-arm-no-ramfb",
+      "framebuffer_device_present": false,
+      "prepared_utc": "2026-11-04T23:03:22Z",
+      "base_revision": "5228a5a47bc1793c76516132ac6c69decc63e784",
+      "kernel_sha256": "01b1e83cd866a095610bcffccd64f144fd3d40109c4bebdf397a735e94123ebb",
+      "bundle_sha256": {
+        "agent.elf": "671eaa8ba761bd8fe1ab7e1a0be24f5335a9e11be7b1c755ba0cb7e195d81d6a",
+        "cclient.elf": "aedb34755dc2eda6af6f1e1b31592d0055029ccf9b890381492d20134de83d1a",
+        "client.elf": "a46d6c5d3f0110d0cc2bdc693b890ba3522b109e5d65cf9098ad2bdd785c530e",
+        "clusterctl.elf": "30c8cbbc4b9d7edf6872f5bf47d1a33bdfcb09f0276927476d2c9e654cfb176b",
+        "deployd.elf": "058dc4d96a9e77bcd2251596415a3f50fcda30534cff20ba3e016d3341b08d9f",
+        "disco.elf": "3b454feea99eee0adb48380c55000267d800f1307f3df80e4292de467464eed9",
+        "dns.elf": "08fc3ffdb05a9e56cfb9f78f16d04ef08188f2231eaeb6a9c325df0d08623139",
+        "echo.elf": "840324beddaf0c90f459dc0900e78884b631205027e4ff09d0fed89ffa2da1f6",
+        "frouter.elf": "49d2505c668f831564d1b2d2e1bd2d101cac651760ccf35fd69edc5fb54f3994",
+        "fs.elf": "264393d6535c0bd7d9ba212048ce4850b067a8633766b4869621d38b882620b5",
+        "grantctl.elf": "bd1b2b5a826a45d3d745e51a315f9083e080fba037a7aa6c9f7b379c3e6daaa1",
+        "greet.elf": "bf6c98d6d361cd63f7567c7eec56496ca1005e524e12b2815db450d1299f7851",
+        "httpd.elf": "2a20eab99c51d8313efcefce58039dd4e1301cff33f9b8e8813bd565085c3024",
+        "kafka.elf": "2a2632f84471f5c6d38f7580e23b084367d447824fa407a4c9669f7de928fcd7",
+        "kafka_fence_smoke.elf": "69d119e505da5d526d2c33ff8287feda795e1c73a9b5d51b54316aa39cac818c",
+        "kafka_smoke.elf": "01a96abbacf51efd0c52a7a4a31cd3e09b2e8b28338b40a0ab12bf109e16a27d",
+        "kafka_step.elf": "3846828037cc74a2a2b2b8428492ff7ebe6704729c9aab52ac1e6789df6c4b89",
+        "kafka_step_input.elf": "15ee326edc02096db747c467ce9104f419ebceb76cf0efd80647f33d10efd0df",
+        "kafka_step_proc.elf": "f56381d6e2a144b23333f761798a859fde0682f2c7def02a0a55d33b0b608174",
+        "nclient.elf": "0f75db8d899a510ff478965896ca239bbd2394d1abc4ceacd51756f10c19b6b6",
+        "net.elf": "63795434f8e51d1608539c0dd3da3e378b341082de3fb9a622202d3182434fcd",
+        "ns.elf": "2d720f3ba4ef4ef7582d157f068e660cd78851af304d478d47581d5cfcf4f694",
+        "nvme.elf": "4400a62a4f2496a137e23d389d3fb0097000991311b5e7243447eb33a729e360",
+        "nvme_client.elf": "5ab1ff38c3bfaa09ebbf58f28a6daeb888bb8fdf425b8e66c515c3940878e32f",
+        "objstore.elf": "6a043919aeb9f144063fc353b4591a76c19e198da9070a1dba75497c7b936cee",
+        "objstore_client.elf": "ef3fc558720d57d66a35be63fe70937b8046bc97d09b1f480cdd7249ac7dc5c5",
+        "observe.elf": "253c28fd0cef0871e7deb3086c4114f0e989bc7f7870805babd5f9979c89a8d3",
+        "otlp.elf": "94471bfb3ea50341e72b5440e6e81077ad820b6f83f047d78094dc2f626032a9",
+        "raft.elf": "2d32a23459bc273835bbb364e159051dc191dbef81c8342b7943f30070f925a6",
+        "rclient.elf": "d0186fd36a918859f1ed5084419098ed84de029423904adf2ea7d33ddfc7f41d",
+        "relmsg.elf": "28ba7a1fa23272068a2b09be9f6cea40b26b1090d357a7f4ef3176e3356f0104",
+        "rng.elf": "618f8e3159dbf8e526613927fdfd20d2ea7349a50dc6f32372e1fbae2db78868",
+        "s3.elf": "943f4d41427b5b9e40f83b7856ef3ca684bd64819de90b09e0710c27f9d03623",
+        "s3_smoke.elf": "f5c0157554d5550c95660cb096362c03e924884314f97ebee2aa831efdeb1213",
+        "security_probe.elf": "11a9f88261e2a8064100e7494d83c418d351a0422bac08e9807128ab964e43f3",
+        "servicemgr.elf": "3035aa2ee63aefbdd6f80e8e02eaa63eb1339a09f4ab0578fd1e019d341ba5df",
+        "shutdown_probe.elf": "32dc4a43ae45edbfef69e29fbdc33a329ac3543e83f0cad2c620df9ead9ab50b",
+        "sitas-user.elf": "6f0e7f2113b898f98e16708342db288745e9dcfe2bbbb016027e8db01100391b",
+        "tcpclient.elf": "efab9fa7b1c2ab305515ba5a4f7bf30f7dbdd7adf60c2c6d5635a5d3a31af435",
+        "tcpip.elf": "1ee63b257bbbacc1d6d52ef3944ee31a9b170f6eafff089fd54ac92afa3e68af",
+        "time.elf": "a6736abb273494bc03986dd50463998c4e13e2d28e637cddbe9380e74b6fd6f0",
+        "uart.elf": "4277c7745286054fffe64e944d845c17d6b9908076859b1c97d1117948ab12c7"
+      },
+      "initial_disk_sha256": "22548170a4d808e016aa6db3c852135a7fc3aea16af32473252bf24d3ee6b791",
+      "boot_image_sha256": "3aaef861258a06a45cf0633462856e86664118d0016768f9ff927464c2fdbc95",
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "ca73af160a462fa40ed166dbea6fda0fb2c53a8f2bfba6d50f4dbf719076fdf6",
+        "scripts/run-aarch64.sh": "58eede46ad82247673a9791e9cb247d5c32806b88bda86389e1e237d3ec100b8"
+      },
+      "milestones": [
+        "[+     0.017055] flanterm: no Limine framebuffer response",
+        "[+    11.005192] [service] live handoff verified",
+        "[+    13.371951] [service] persistent upgrade completed: ns_waiters=1, ns_handled=1350",
+        "[+    15.980610] [security] standalone entropy rollover passed in 925 ms; domain retired",
+        "[+    48.695932] [security] adversarial grant checks passed in 32664 ms",
+        "[+    49.738263] [security] standalone entropy rollover passed in 813 ms; domain retired",
+        "[+    82.458596] [security] adversarial grant checks passed in 32673 ms",
+        "[+    82.603420] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "serial_sha256": "5825668d75ed4542a8a9c6daac5b76c9496b282227cba3012e692e65ccbf3563"
+    }
+  ],
+  "controlled_repeat_identity": {
+    "kernel_sha256": true,
+    "bundle_sha256": true,
+    "initial_disk_sha256": true
+  },
+  "failed_episode_disposition": "Unresolved 45-second second grant-probe deadline, after controller-RPC log. First grant probe passed in 40187 ms. Status bitmask only publishes at completion; no attribution to allocator, framebuffer, host scheduling, or older incidents. A successful repeat does not explain the failure. No deadline was extended.",
+  "factory_review": {
+    "basis": "Selected producer records from the previous four-profile census; the current boot contract supplies trigger/bound/lifetime dispositions. This is not a new complete inventory, reachability proof or implicit-drop review. Source identities for these selected unchanged factories are checked against that census.",
+    "previous_evidence": "2026-11-04-boot-allocation-edges.json",
+    "records": [
+      {
+        "kind": "collection_operation",
+        "body": "lookup_first_virtio_net",
+        "body_kind": "function",
+        "source": [
+          "<rust-src>/library/alloc/src/macros.rs",
+          60,
+          52
+        ],
+        "body_origin": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          661,
+          6
+        ],
+        "callee": "alloc::boxed::Box::<[&busses::pci_express::topology::PcieBusSegment; 1]>::new_uninit",
+        "value_type": "alloc::boxed::Box<core::mem::MaybeUninit<[&device_management::drivers::busses::pci_express::topology::PcieBusSegment; 1]>>",
+        "id": "55c71277d04e8fa6",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Required firmware/traversal review: MCFG complete header/entries, segment budget/ranges and bounded visited bus identities before descent."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "lookup_first_nvme",
+        "body_kind": "function",
+        "source": [
+          "<rust-src>/library/alloc/src/macros.rs",
+          60,
+          52
+        ],
+        "body_origin": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          899,
+          54
+        ],
+        "callee": "alloc::boxed::Box::<[&busses::pci_express::topology::PcieBusSegment; 1]>::new_uninit",
+        "value_type": "alloc::boxed::Box<core::mem::MaybeUninit<[&device_management::drivers::busses::pci_express::topology::PcieBusSegment; 1]>>",
+        "id": "5cc42d6ac5e5beeb",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Required firmware/traversal review: MCFG complete header/entries, segment budget/ranges and bounded visited bus identities before descent."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "lookup_first_virtio_rng",
+        "body_kind": "function",
+        "source": [
+          "<rust-src>/library/alloc/src/macros.rs",
+          60,
+          52
+        ],
+        "body_origin": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          1152,
+          60
+        ],
+        "callee": "alloc::boxed::Box::<[&busses::pci_express::topology::PcieBusSegment; 1]>::new_uninit",
+        "value_type": "alloc::boxed::Box<core::mem::MaybeUninit<[&device_management::drivers::busses::pci_express::topology::PcieBusSegment; 1]>>",
+        "id": "8c3177ce4d516a38",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Required firmware/traversal review: MCFG complete header/entries, segment budget/ranges and bounded visited bus identities before descent."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "lookup_first_ahci",
+        "body_kind": "function",
+        "source": [
+          "<rust-src>/library/alloc/src/macros.rs",
+          60,
+          52
+        ],
+        "body_origin": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          983,
+          54
+        ],
+        "callee": "alloc::boxed::Box::<[&busses::pci_express::topology::PcieBusSegment; 1]>::new_uninit",
+        "value_type": "alloc::boxed::Box<core::mem::MaybeUninit<[&device_management::drivers::busses::pci_express::topology::PcieBusSegment; 1]>>",
+        "id": "92de03be32bab2b2",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Required firmware/traversal review: MCFG complete header/entries, segment budget/ranges and bounded visited bus identities before descent."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "lookup_first_e1000e",
+        "body_kind": "function",
+        "source": [
+          "<rust-src>/library/alloc/src/macros.rs",
+          60,
+          52
+        ],
+        "body_origin": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          799,
+          56
+        ],
+        "callee": "alloc::boxed::Box::<[&busses::pci_express::topology::PcieBusSegment; 1]>::new_uninit",
+        "value_type": "alloc::boxed::Box<core::mem::MaybeUninit<[&device_management::drivers::busses::pci_express::topology::PcieBusSegment; 1]>>",
+        "id": "95b17ad2cb4a5ccd",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Required firmware/traversal review: MCFG complete header/entries, segment budget/ranges and bounded visited bus identities before descent."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "lookup_first_virtio_blk",
+        "body_kind": "function",
+        "source": [
+          "<rust-src>/library/alloc/src/macros.rs",
+          60,
+          52
+        ],
+        "body_origin": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          1046,
+          60
+        ],
+        "callee": "alloc::boxed::Box::<[&busses::pci_express::topology::PcieBusSegment; 1]>::new_uninit",
+        "value_type": "alloc::boxed::Box<core::mem::MaybeUninit<[&device_management::drivers::busses::pci_express::topology::PcieBusSegment; 1]>>",
+        "id": "d7d2e094f57856bb",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Required firmware/traversal review: MCFG complete header/entries, segment budget/ranges and bounded visited bus identities before descent."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "lookup_first_virtio_rng",
+        "body_kind": "function",
+        "source": [
+          "<rust-src>/library/alloc/src/macros.rs",
+          60,
+          52
+        ],
+        "body_origin": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          1152,
+          60
+        ],
+        "callee": "alloc::boxed::Box::<[(&busses::pci_express::topology::PcieEndpoint, u8, u8); 1]>::new_uninit",
+        "value_type": "alloc::boxed::Box<core::mem::MaybeUninit<[(&device_management::drivers::busses::pci_express::topology::PcieEndpoint, u8, u8); 1]>>",
+        "id": "f5cfc5bdb29eaff4",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Required firmware/traversal review: MCFG complete header/entries, segment budget/ranges and bounded visited bus identities before descent."
+      },
+      {
+        "kind": "collection_or_copy",
+        "body": "GENERIC_TIMERS::{closure#0}",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/isa/aarch64/timers/generic_timer.rs",
+          64,
+          5
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/isa/aarch64/timers/generic_timer.rs",
+          63,
+          89
+        ],
+        "callee": "<core::iter::Map<core::ops::Range<u32>, {closure@crates/catten/src/cpu/isa/aarch64/timers/generic_timer.rs:65:14: 65:17}> as Iterator>::collect::<alloc::vec::Vec<alloc::sync::Arc<lock_api::Mutex<multiprocessor::spin::mutex::MutexCore, ArmGenericTimer>>>>",
+        "value_type": "alloc::vec::Vec<alloc::sync::Arc<lock_api::Mutex<cpu::multiprocessor::spin::mutex::MutexCore, cpu::isa::aarch64::timers::generic_timer::ArmGenericTimer>>>",
+        "id": "7280c9d5cce058e1",
+        "profiles": [
+          "arm-acpi-minimal",
+          "arm-acpi-display"
+        ],
+        "disposition": "Fixed platform cardinality or existing event admission; explicit bootstrap/owning-LP first-use qualification still required. Not a completed context review."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "GENERIC_TIMERS::{closure#0}::{closure#0}",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/isa/aarch64/timers/generic_timer.rs",
+          65,
+          18
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/isa/aarch64/timers/generic_timer.rs",
+          65,
+          17
+        ],
+        "callee": "alloc::sync::Arc::<lock_api::Mutex<multiprocessor::spin::mutex::MutexCore, ArmGenericTimer>>::new",
+        "value_type": "alloc::sync::Arc<lock_api::Mutex<cpu::multiprocessor::spin::mutex::MutexCore, cpu::isa::aarch64::timers::generic_timer::ArmGenericTimer>>",
+        "id": "ce071b920c24d353",
+        "profiles": [
+          "arm-acpi-minimal",
+          "arm-acpi-display"
+        ],
+        "disposition": "Fixed platform cardinality or existing event admission; explicit bootstrap/owning-LP first-use qualification still required. Not a completed context review."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "AP_INTERRUPT_STACKS::{closure#0}",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/isa/x86_64/init/ap.rs",
+          31,
+          19
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/isa/x86_64/init/ap.rs",
+          29,
+          89
+        ],
+        "callee": "alloc::vec::Vec::<[u8; 16384]>::with_capacity",
+        "value_type": "alloc::vec::Vec<[u8; 16384]>",
+        "id": "329d0d6b9c31c419",
+        "profiles": [
+          "x86-acpi-minimal",
+          "x86-acpi-display"
+        ],
+        "disposition": "Bounded boot construction in the current boot contract; aggregate allocator/temporary overhead and outer contexts remain Q4/Q5."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "AP_INTERRUPT_STACKS::{closure#0}",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/isa/x86_64/init/ap.rs",
+          33,
+          9
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/isa/x86_64/init/ap.rs",
+          29,
+          89
+        ],
+        "callee": "alloc::vec::Vec::<[u8; 16384]>::push",
+        "value_type": "()",
+        "id": "71ce62da411cf5a0",
+        "profiles": [
+          "x86-acpi-minimal",
+          "x86-acpi-display"
+        ],
+        "disposition": "Bounded boot construction in the current boot contract; aggregate allocator/temporary overhead and outer contexts remain Q4/Q5."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "AP_INTERRUPT_STACKS::{closure#0}",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/isa/x86_64/init/ap.rs",
+          33,
+          19
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/isa/x86_64/init/ap.rs",
+          29,
+          89
+        ],
+        "callee": "alloc::boxed::Box::<[u8; 16384]>::new",
+        "value_type": "alloc::boxed::Box<[u8; 16384]>",
+        "id": "53c997e3e4bb1a0c",
+        "profiles": [
+          "x86-acpi-minimal",
+          "x86-acpi-display"
+        ],
+        "disposition": "Bounded boot construction in the current boot contract; aggregate allocator/temporary overhead and outer contexts remain Q4/Q5."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "AP_DF_STACKS::{closure#0}",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/isa/x86_64/init/ap.rs",
+          40,
+          19
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/isa/x86_64/init/ap.rs",
+          38,
+          82
+        ],
+        "callee": "alloc::vec::Vec::<[u8; 16384]>::with_capacity",
+        "value_type": "alloc::vec::Vec<[u8; 16384]>",
+        "id": "7eff117ec3950990",
+        "profiles": [
+          "x86-acpi-minimal",
+          "x86-acpi-display"
+        ],
+        "disposition": "Bounded boot construction in the current boot contract; aggregate allocator/temporary overhead and outer contexts remain Q4/Q5."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "AP_DF_STACKS::{closure#0}",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/isa/x86_64/init/ap.rs",
+          42,
+          9
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/isa/x86_64/init/ap.rs",
+          38,
+          82
+        ],
+        "callee": "alloc::vec::Vec::<[u8; 16384]>::push",
+        "value_type": "()",
+        "id": "fbff86e775d18971",
+        "profiles": [
+          "x86-acpi-minimal",
+          "x86-acpi-display"
+        ],
+        "disposition": "Bounded boot construction in the current boot contract; aggregate allocator/temporary overhead and outer contexts remain Q4/Q5."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "AP_DF_STACKS::{closure#0}",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/isa/x86_64/init/ap.rs",
+          42,
+          19
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/isa/x86_64/init/ap.rs",
+          38,
+          82
+        ],
+        "callee": "alloc::boxed::Box::<[u8; 16384]>::new",
+        "value_type": "alloc::boxed::Box<[u8; 16384]>",
+        "id": "a10a4a4e8a4c67da",
+        "profiles": [
+          "x86-acpi-minimal",
+          "x86-acpi-display"
+        ],
+        "disposition": "Bounded boot construction in the current boot contract; aggregate allocator/temporary overhead and outer contexts remain Q4/Q5."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "AP_NMI_STACKS::{closure#0}",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/isa/x86_64/init/ap.rs",
+          49,
+          22
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/isa/x86_64/init/ap.rs",
+          47,
+          83
+        ],
+        "callee": "alloc::vec::Vec::<[u8; 16384]>::with_capacity",
+        "value_type": "alloc::vec::Vec<[u8; 16384]>",
+        "id": "088f34f05716afdf",
+        "profiles": [
+          "x86-acpi-minimal",
+          "x86-acpi-display"
+        ],
+        "disposition": "Bounded boot construction in the current boot contract; aggregate allocator/temporary overhead and outer contexts remain Q4/Q5."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "AP_NMI_STACKS::{closure#0}",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/isa/x86_64/init/ap.rs",
+          51,
+          9
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/isa/x86_64/init/ap.rs",
+          47,
+          83
+        ],
+        "callee": "alloc::vec::Vec::<[u8; 16384]>::push",
+        "value_type": "()",
+        "id": "83120ee9b9f7d6f2",
+        "profiles": [
+          "x86-acpi-minimal",
+          "x86-acpi-display"
+        ],
+        "disposition": "Bounded boot construction in the current boot contract; aggregate allocator/temporary overhead and outer contexts remain Q4/Q5."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "AP_NMI_STACKS::{closure#0}",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/isa/x86_64/init/ap.rs",
+          51,
+          22
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/isa/x86_64/init/ap.rs",
+          47,
+          83
+        ],
+        "callee": "alloc::boxed::Box::<[u8; 16384]>::new",
+        "value_type": "alloc::boxed::Box<[u8; 16384]>",
+        "id": "9a7fdf05b5b71d43",
+        "profiles": [
+          "x86-acpi-minimal",
+          "x86-acpi-display"
+        ],
+        "disposition": "Bounded boot construction in the current boot contract; aggregate allocator/temporary overhead and outer contexts remain Q4/Q5."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "AP_TSS::{closure#0}",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/isa/x86_64/init/ap.rs",
+          59,
+          9
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/isa/x86_64/init/ap.rs",
+          56,
+          69
+        ],
+        "callee": "alloc::vec::Vec::<gdt::Tss>::push",
+        "value_type": "()",
+        "id": "5ca4183cab666cff",
+        "profiles": [
+          "x86-acpi-minimal",
+          "x86-acpi-display"
+        ],
+        "disposition": "Bounded boot construction in the current boot contract; aggregate allocator/temporary overhead and outer contexts remain Q4/Q5."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "AP_GDTS::{closure#0}",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/isa/x86_64/init/ap.rs",
+          72,
+          9
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/isa/x86_64/init/ap.rs",
+          69,
+          66
+        ],
+        "callee": "alloc::vec::Vec::<gdt::Gdt>::push",
+        "value_type": "()",
+        "id": "b269741daca26815",
+        "profiles": [
+          "x86-acpi-minimal",
+          "x86-acpi-display"
+        ],
+        "disposition": "Bounded boot construction in the current boot contract; aggregate allocator/temporary overhead and outer contexts remain Q4/Q5."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "AP_IDTS::{closure#0}",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/isa/x86_64/init/ap.rs",
+          83,
+          9
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/isa/x86_64/init/ap.rs",
+          77,
+          92
+        ],
+        "callee": "alloc::vec::Vec::<idt::Idt>::push",
+        "value_type": "()",
+        "id": "5c41892d88342530",
+        "profiles": [
+          "x86-acpi-minimal",
+          "x86-acpi-display"
+        ],
+        "disposition": "Bounded boot construction in the current boot contract; aggregate allocator/temporary overhead and outer contexts remain Q4/Q5."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "AP_IDTRS::{closure#0}",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/isa/x86_64/init/ap.rs",
+          91,
+          9
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/isa/x86_64/init/ap.rs",
+          88,
+          94
+        ],
+        "callee": "alloc::vec::Vec::<Idtr>::push",
+        "value_type": "()",
+        "id": "f7c35828d2092eec",
+        "profiles": [
+          "x86-acpi-minimal",
+          "x86-acpi-display"
+        ],
+        "disposition": "Bounded boot construction in the current boot contract; aggregate allocator/temporary overhead and outer contexts remain Q4/Q5."
+      },
+      {
+        "kind": "collection_or_copy",
+        "body": "APIC_TIMERS::{closure#0}",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/isa/x86_64/timers/apic_timer.rs",
+          38,
+          22
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/isa/x86_64/timers/apic_timer.rs",
+          38,
+          21
+        ],
+        "callee": "<core::iter::Map<core::ops::Range<u32>, {closure@crates/catten/src/cpu/isa/x86_64/timers/apic_timer.rs:38:46: 38:49}> as Iterator>::collect::<alloc::vec::Vec<spin::once::Once<alloc::sync::Arc<lock_api::Mutex<multiprocessor::spin::mutex::MutexCore, ApicTimer>>>>>",
+        "value_type": "alloc::vec::Vec<spin::once::Once<alloc::sync::Arc<lock_api::Mutex<cpu::multiprocessor::spin::mutex::MutexCore, cpu::isa::x86_64::timers::apic_timer::ApicTimer>>>>",
+        "id": "b25ed494cd377890",
+        "profiles": [
+          "x86-acpi-minimal",
+          "x86-acpi-display"
+        ],
+        "disposition": "Fixed platform cardinality or existing event admission; explicit bootstrap/owning-LP first-use qualification still required. Not a completed context review."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "apic_timer::<impl at crates/catten/src/cpu/isa/x86_64/timers/apic_timer.rs:61:1: 61:15>::determine_timer_resolution",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/isa/x86_64/timers/apic_timer.rs",
+          91,
+          13
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/isa/x86_64/timers/apic_timer.rs",
+          72,
+          45
+        ],
+        "callee": "alloc::vec::Vec::<u128>::push",
+        "value_type": "()",
+        "id": "1b36d189dc84340c",
+        "profiles": [
+          "x86-acpi-minimal",
+          "x86-acpi-display"
+        ],
+        "disposition": "Fixed platform cardinality or existing event admission; explicit bootstrap/owning-LP first-use qualification still required. Not a completed context review."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "apic_timer::<impl at crates/catten/src/cpu/isa/x86_64/timers/apic_timer.rs:121:1: 121:31>::get::{closure#0}",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/isa/x86_64/timers/apic_timer.rs",
+          131,
+          27
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/isa/x86_64/timers/apic_timer.rs",
+          131,
+          26
+        ],
+        "callee": "alloc::sync::Arc::<lock_api::Mutex<multiprocessor::spin::mutex::MutexCore, ApicTimer>>::new",
+        "value_type": "alloc::sync::Arc<lock_api::Mutex<cpu::multiprocessor::spin::mutex::MutexCore, cpu::isa::x86_64::timers::apic_timer::ApicTimer>>",
+        "id": "30425ca024e61dcc",
+        "profiles": [
+          "x86-acpi-minimal",
+          "x86-acpi-display"
+        ],
+        "disposition": "Fixed platform cardinality or existing event admission; explicit bootstrap/owning-LP first-use qualification still required. Not a completed context review."
+      },
+      {
+        "kind": "collection_or_copy",
+        "body": "int_save_restore::<impl at crates/catten/src/cpu/multiprocessor/interrupt_tracking/int_save_restore.rs:58:1: 58:14>::new",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/multiprocessor/interrupt_tracking/int_save_restore.rs",
+          62,
+          24
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/multiprocessor/interrupt_tracking/int_save_restore.rs",
+          59,
+          21
+        ],
+        "callee": "<core::iter::Map<core::ops::Range<usize>, {closure@crates/catten/src/cpu/multiprocessor/interrupt_tracking/int_save_restore.rs:62:42: 62:45}> as Iterator>::collect::<alloc::vec::Vec<Atomic<bool>>>",
+        "value_type": "alloc::vec::Vec<core::sync::atomic::Atomic<bool>>",
+        "id": "2dabc31a704dd740",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Bounded validated LP-count vectors, mandatory post-heap BSP logging, boot-lifetime storage; Q4 overhead remains."
+      },
+      {
+        "kind": "collection_or_copy",
+        "body": "int_save_restore::<impl at crates/catten/src/cpu/multiprocessor/interrupt_tracking/int_save_restore.rs:58:1: 58:14>::new",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/multiprocessor/interrupt_tracking/int_save_restore.rs",
+          63,
+          26
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/multiprocessor/interrupt_tracking/int_save_restore.rs",
+          59,
+          21
+        ],
+        "callee": "<core::iter::Map<core::ops::Range<usize>, {closure@crates/catten/src/cpu/multiprocessor/interrupt_tracking/int_save_restore.rs:63:44: 63:47}> as Iterator>::collect::<alloc::vec::Vec<sync_cell::SyncUnsafeCell<usize>>>",
+        "value_type": "alloc::vec::Vec<klib::sync_cell::SyncUnsafeCell<usize>>",
+        "id": "aae6d9c60beebd84",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Bounded validated LP-count vectors, mandatory post-heap BSP logging, boot-lifetime storage; Q4 overhead remains."
+      },
+      {
+        "kind": "collection_or_copy",
+        "body": "int_save_restore::<impl at crates/catten/src/cpu/multiprocessor/interrupt_tracking/int_save_restore.rs:58:1: 58:14>::new",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/multiprocessor/interrupt_tracking/int_save_restore.rs",
+          64,
+          29
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/multiprocessor/interrupt_tracking/int_save_restore.rs",
+          59,
+          21
+        ],
+        "callee": "<core::iter::Map<core::ops::Range<usize>, {closure@crates/catten/src/cpu/multiprocessor/interrupt_tracking/int_save_restore.rs:64:47: 64:50}> as Iterator>::collect::<alloc::vec::Vec<sync_cell::SyncUnsafeCell<bool>>>",
+        "value_type": "alloc::vec::Vec<klib::sync_cell::SyncUnsafeCell<bool>>",
+        "id": "5de3bb810cb4e15c",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Bounded validated LP-count vectors, mandatory post-heap BSP logging, boot-lifetime storage; Q4 overhead remains."
+      },
+      {
+        "kind": "collection_or_copy",
+        "body": "ipi::<impl at crates/catten/src/cpu/multiprocessor/ipi.rs:71:1: 71:18>::new",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/multiprocessor/ipi.rs",
+          74,
+          21
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/multiprocessor/ipi.rs",
+          72,
+          36
+        ],
+        "callee": "<core::iter::Map<core::ops::Range<u32>, {closure@crates/catten/src/cpu/multiprocessor/ipi.rs:75:22: 75:25}> as Iterator>::collect::<alloc::vec::Vec<ConcurrentQueue<IpiRpc>>>",
+        "value_type": "alloc::vec::Vec<concurrent_queue::ConcurrentQueue<cpu::multiprocessor::ipi::IpiRpc>>",
+        "id": "b43c8b0d0ca05a04",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Eager BSP fixed LP-count by 256-slot queues; dependency buffer construction reviewed; Q4 overhead/Q7 eviction policy remain."
+      },
+      {
+        "kind": "dependency_factory",
+        "body": "ipi::<impl at crates/catten/src/cpu/multiprocessor/ipi.rs:71:1: 71:18>::new::{closure#0}",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/multiprocessor/ipi.rs",
+          75,
+          26
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/multiprocessor/ipi.rs",
+          75,
+          25
+        ],
+        "callee": "ConcurrentQueue::<IpiRpc>::bounded",
+        "value_type": "concurrent_queue::ConcurrentQueue<cpu::multiprocessor::ipi::IpiRpc>",
+        "id": "36161d124f6e3ddd",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Eager BSP fixed LP-count by 256-slot queues; dependency buffer construction reviewed; Q4 overhead/Q7 eviction policy remain."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "try_run_on_lp",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/multiprocessor/ipi.rs",
+          149,
+          18
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/multiprocessor/ipi.rs",
+          148,
+          78
+        ],
+        "callee": "alloc::sync::Arc::<spin::mutex::Mutex<Option<F>>>::new",
+        "value_type": "alloc::sync::Arc<spin::mutex::Mutex<core::option::Option<F>>>",
+        "id": "d2c9577ce5a20d30",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "No in-tree production caller; native self-test/generic helper only. Re-review before production use."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "try_run_on_lp",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/multiprocessor/ipi.rs",
+          151,
+          31
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/multiprocessor/ipi.rs",
+          148,
+          78
+        ],
+        "callee": "alloc::boxed::Box::<{closure@crates/catten/src/cpu/multiprocessor/ipi.rs:151:54: 151:61}>::new",
+        "value_type": "alloc::boxed::Box<{closure@crates/catten/src/cpu/multiprocessor/ipi.rs:151:54: 151:61}>",
+        "id": "ffb67db5769a08ed",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "No in-tree production caller; native self-test/generic helper only. Re-review before production use."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "shard_mailbox::<impl at crates/catten/src/cpu/multiprocessor/shard_mailbox.rs:131:1: 131:27>::new",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/multiprocessor/shard_mailbox.rs",
+          136,
+          29
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/multiprocessor/shard_mailbox.rs",
+          134,
+          36
+        ],
+        "callee": "alloc::vec::Vec::<alloc::sync::Arc<SharedMailbox<M>>>::with_capacity",
+        "value_type": "alloc::vec::Vec<alloc::sync::Arc<cpu::multiprocessor::shard_mailbox::SharedMailbox<M>>>",
+        "id": "92f5b22b582c50e2",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "No in-tree production caller; native self-test/generic helper only. Re-review before production use."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "shard_mailbox::<impl at crates/catten/src/cpu/multiprocessor/shard_mailbox.rs:131:1: 131:27>::new",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/multiprocessor/shard_mailbox.rs",
+          138,
+          13
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/multiprocessor/shard_mailbox.rs",
+          134,
+          36
+        ],
+        "callee": "alloc::vec::Vec::<alloc::sync::Arc<SharedMailbox<M>>>::push",
+        "value_type": "()",
+        "id": "8624cb263587f34c",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "No in-tree production caller; native self-test/generic helper only. Re-review before production use."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "shard_mailbox::<impl at crates/catten/src/cpu/multiprocessor/shard_mailbox.rs:131:1: 131:27>::new",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/multiprocessor/shard_mailbox.rs",
+          138,
+          28
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/multiprocessor/shard_mailbox.rs",
+          134,
+          36
+        ],
+        "callee": "alloc::sync::Arc::<SharedMailbox<M>>::new",
+        "value_type": "alloc::sync::Arc<cpu::multiprocessor::shard_mailbox::SharedMailbox<M>>",
+        "id": "6db46fd8687d87e0",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "No in-tree production caller; native self-test/generic helper only. Re-review before production use."
+      },
+      {
+        "kind": "dependency_factory",
+        "body": "shard_mailbox::<impl at crates/catten/src/cpu/multiprocessor/shard_mailbox.rs:131:1: 131:27>::new",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/multiprocessor/shard_mailbox.rs",
+          140,
+          24
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/multiprocessor/shard_mailbox.rs",
+          134,
+          36
+        ],
+        "callee": "ConcurrentQueue::<M>::bounded",
+        "value_type": "concurrent_queue::ConcurrentQueue<M>",
+        "id": "e008ff8c502e15bc",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "No in-tree production caller; native self-test/generic helper only. Re-review before production use."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "shard_local::<impl at crates/catten/src/cpu/multiprocessor/spin/shard_local.rs:83:1: 83:22>::new",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/multiprocessor/spin/shard_local.rs",
+          87,
+          25
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/multiprocessor/spin/shard_local.rs",
+          85,
+          42
+        ],
+        "callee": "alloc::vec::Vec::<UnsafeCell<T>>::with_capacity",
+        "value_type": "alloc::vec::Vec<core::cell::UnsafeCell<T>>",
+        "id": "a2dff4386bad283f",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "No in-tree production caller; native self-test/generic helper only. Re-review before production use."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "shard_local::<impl at crates/catten/src/cpu/multiprocessor/spin/shard_local.rs:83:1: 83:22>::new",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/multiprocessor/spin/shard_local.rs",
+          88,
+          32
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/multiprocessor/spin/shard_local.rs",
+          85,
+          42
+        ],
+        "callee": "alloc::vec::Vec::<Atomic<bool>>::with_capacity",
+        "value_type": "alloc::vec::Vec<core::sync::atomic::Atomic<bool>>",
+        "id": "7b2c71a82fd9f7a8",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "No in-tree production caller; native self-test/generic helper only. Re-review before production use."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "shard_local::<impl at crates/catten/src/cpu/multiprocessor/spin/shard_local.rs:83:1: 83:22>::new",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/multiprocessor/spin/shard_local.rs",
+          90,
+          13
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/multiprocessor/spin/shard_local.rs",
+          85,
+          42
+        ],
+        "callee": "alloc::vec::Vec::<UnsafeCell<T>>::push",
+        "value_type": "()",
+        "id": "5f6c25c140b5e6cf",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "No in-tree production caller; native self-test/generic helper only. Re-review before production use."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "shard_local::<impl at crates/catten/src/cpu/multiprocessor/spin/shard_local.rs:83:1: 83:22>::new",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/multiprocessor/spin/shard_local.rs",
+          91,
+          13
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/multiprocessor/spin/shard_local.rs",
+          85,
+          42
+        ],
+        "callee": "alloc::vec::Vec::<Atomic<bool>>::push",
+        "value_type": "()",
+        "id": "e6c88f62512e8268",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "No in-tree production caller; native self-test/generic helper only. Re-review before production use."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "shard_local::<impl at crates/catten/src/cpu/multiprocessor/spin/shard_local.rs:83:1: 83:22>::new",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/multiprocessor/spin/shard_local.rs",
+          94,
+          20
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/multiprocessor/spin/shard_local.rs",
+          85,
+          42
+        ],
+        "callee": "alloc::vec::Vec::<UnsafeCell<T>>::into_boxed_slice",
+        "value_type": "alloc::boxed::Box<[core::cell::UnsafeCell<T>]>",
+        "id": "3b409d56add888c0",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "No in-tree production caller; native self-test/generic helper only. Re-review before production use."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "shard_local::<impl at crates/catten/src/cpu/multiprocessor/spin/shard_local.rs:83:1: 83:22>::new",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/cpu/multiprocessor/spin/shard_local.rs",
+          95,
+          27
+        ],
+        "body_origin": [
+          "crates/catten/src/cpu/multiprocessor/spin/shard_local.rs",
+          85,
+          42
+        ],
+        "callee": "alloc::vec::Vec::<Atomic<bool>>::into_boxed_slice",
+        "value_type": "alloc::boxed::Box<[core::sync::atomic::Atomic<bool>]>",
+        "id": "ad0aaff5bff3bafa",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "No in-tree production caller; native self-test/generic helper only. Re-review before production use."
+      },
+      {
+        "kind": "dependency_factory",
+        "body": "deferred_work_manager::<impl at crates/catten/src/deferred_work_manager/mod.rs:27:1: 27:25>::new",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/deferred_work_manager/mod.rs",
+          30,
+          20
+        ],
+        "body_origin": [
+          "crates/catten/src/deferred_work_manager/mod.rs",
+          28,
+          21
+        ],
+        "callee": "ConcurrentQueue::<DeferredTask>::unbounded",
+        "value_type": "concurrent_queue::ConcurrentQueue<deferred_work_manager::DeferredTask>",
+        "id": "b7a24e3cfcae138a",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Uninhabited task and no production worker/submission; unbounded queue construction is inline/no allocation in pinned dependency."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "busses::pci_express::topology::<impl at crates/catten/src/device_management/drivers/busses/pci_express/topology.rs:211:1: 211:20>::new_boxed",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          230,
+          23
+        ],
+        "body_origin": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          224,
+          10
+        ],
+        "callee": "alloc::boxed::Box::<busses::pci_express::topology::PcieBusSegment>::new",
+        "value_type": "alloc::boxed::Box<device_management::drivers::busses::pci_express::topology::PcieBusSegment>",
+        "id": "ecb1e2fd57434eb0",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Required firmware/traversal review: MCFG complete header/entries, segment budget/ranges and bounded visited bus identities before descent."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "busses::pci_express::topology::<impl at crates/catten/src/device_management/drivers/busses/pci_express/topology.rs:211:1: 211:20>::new_boxed",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          244,
+          17
+        ],
+        "body_origin": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          224,
+          10
+        ],
+        "callee": "alloc::vec::Vec::<busses::pci_express::topology::PcieDevice>::push",
+        "value_type": "()",
+        "id": "aeb57173b867da50",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Required firmware/traversal review: MCFG complete header/entries, segment budget/ranges and bounded visited bus identities before descent."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "busses::pci_express::topology::<impl at crates/catten/src/device_management/drivers/busses/pci_express/topology.rs:392:1: 392:18>::new",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          431,
+          36
+        ],
+        "body_origin": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          400,
+          10
+        ],
+        "callee": "alloc::boxed::Box::<busses::pci_express::topology::PcieEndpoint>::new",
+        "value_type": "alloc::boxed::Box<device_management::drivers::busses::pci_express::topology::PcieEndpoint>",
+        "id": "cbb0ae1b3ca0d6e9",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Required firmware/traversal review: MCFG complete header/entries, segment budget/ranges and bounded visited bus identities before descent."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "push_bridge_buses",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          642,
+          21
+        ],
+        "body_origin": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          637,
+          89
+        ],
+        "callee": "alloc::vec::Vec::<&busses::pci_express::topology::PcieBusSegment>::push",
+        "value_type": "()",
+        "id": "145f353b6f48515c",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Required firmware/traversal review: MCFG complete header/entries, segment budget/ranges and bounded visited bus identities before descent."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "push_bridge_buses",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          648,
+          25
+        ],
+        "body_origin": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          637,
+          89
+        ],
+        "callee": "alloc::vec::Vec::<&busses::pci_express::topology::PcieBusSegment>::push",
+        "value_type": "()",
+        "id": "b0dfcbcd6ebaebaf",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Required firmware/traversal review: MCFG complete header/entries, segment budget/ranges and bounded visited bus identities before descent."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "lookup_first_ahci",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          992,
+          29
+        ],
+        "body_origin": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          983,
+          54
+        ],
+        "callee": "alloc::vec::Vec::<(&busses::pci_express::topology::PcieEndpoint, u8, u8)>::push",
+        "value_type": "()",
+        "id": "d93dd9b0d552dbec",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Required firmware/traversal review: MCFG complete header/entries, segment budget/ranges and bounded visited bus identities before descent."
+      },
+      {
+        "kind": "collection_or_copy",
+        "body": "lookup_first_ahci",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          996,
+          51
+        ],
+        "body_origin": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          983,
+          54
+        ],
+        "callee": "<FilterMap<Enumerate<core::slice::Iter<'_, busses::pci_express::topology::PcieFunction>>, {closure@crates/catten/src/device_management/drivers/busses/pci_express/topology.rs:1000:37: 1000:55}> as Iterator>::collect::<alloc::vec::Vec<(&busses::pci_express::topology::PcieEndpoint, u8, u8)>>",
+        "value_type": "alloc::vec::Vec<(&device_management::drivers::busses::pci_express::topology::PcieEndpoint, u8, u8)>",
+        "id": "72a2332e132b0017",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Required firmware/traversal review: MCFG complete header/entries, segment budget/ranges and bounded visited bus identities before descent."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "lookup_first_virtio_blk",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          1055,
+          29
+        ],
+        "body_origin": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          1046,
+          60
+        ],
+        "callee": "alloc::vec::Vec::<(&busses::pci_express::topology::PcieEndpoint, u8, u8)>::push",
+        "value_type": "()",
+        "id": "6c5ce0ccce98e2e8",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Required firmware/traversal review: MCFG complete header/entries, segment budget/ranges and bounded visited bus identities before descent."
+      },
+      {
+        "kind": "collection_or_copy",
+        "body": "lookup_first_virtio_blk",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          1059,
+          51
+        ],
+        "body_origin": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          1046,
+          60
+        ],
+        "callee": "<FilterMap<Enumerate<core::slice::Iter<'_, busses::pci_express::topology::PcieFunction>>, {closure@crates/catten/src/device_management/drivers/busses/pci_express/topology.rs:1063:37: 1063:55}> as Iterator>::collect::<alloc::vec::Vec<(&busses::pci_express::topology::PcieEndpoint, u8, u8)>>",
+        "value_type": "alloc::vec::Vec<(&device_management::drivers::busses::pci_express::topology::PcieEndpoint, u8, u8)>",
+        "id": "4495f464b0fe0693",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Required firmware/traversal review: MCFG complete header/entries, segment budget/ranges and bounded visited bus identities before descent."
+      },
+      {
+        "kind": "collection_or_copy",
+        "body": "lookup_first_virtio_rng",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          1166,
+          53
+        ],
+        "body_origin": [
+          "crates/catten/src/device_management/drivers/busses/pci_express/topology.rs",
+          1152,
+          60
+        ],
+        "callee": "<FilterMap<Enumerate<core::slice::Iter<'_, busses::pci_express::topology::PcieFunction>>, {closure@crates/catten/src/device_management/drivers/busses/pci_express/topology.rs:1170:37: 1170:56}> as Iterator>::collect::<alloc::vec::Vec<(&busses::pci_express::topology::PcieEndpoint, u8, u8)>>",
+        "value_type": "alloc::vec::Vec<(&device_management::drivers::busses::pci_express::topology::PcieEndpoint, u8, u8)>",
+        "id": "427776f5d8a811a1",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Required firmware/traversal review: MCFG complete header/entries, segment budget/ranges and bounded visited bus identities before descent."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "find_table_type",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/environment/acpi/mod.rs",
+          265,
+          12
+        ],
+        "body_origin": [
+          "crates/catten/src/environment/acpi/mod.rs",
+          263,
+          49
+        ],
+        "callee": "<alloc::vec::Vec<common::memory::address::paddr::PAddr> as Clone>::clone",
+        "value_type": "alloc::vec::Vec<cpu::isa::common::memory::address::paddr::PAddr>",
+        "id": "1f3913d5a1e5332f",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Required firmware/traversal review: MCFG complete header/entries, segment budget/ranges and bounded visited bus identities before descent."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "parse_xsdt",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/environment/acpi/mod.rs",
+          298,
+          27
+        ],
+        "body_origin": [
+          "crates/catten/src/environment/acpi/mod.rs",
+          271,
+          36
+        ],
+        "callee": "alloc::vec::Vec::<common::memory::address::paddr::PAddr>::with_capacity",
+        "value_type": "alloc::vec::Vec<cpu::isa::common::memory::address::paddr::PAddr>",
+        "id": "1dfea58b52929645",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Required firmware/traversal review: MCFG complete header/entries, segment budget/ranges and bounded visited bus identities before descent."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "parse_xsdt",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/environment/acpi/mod.rs",
+          302,
+          13
+        ],
+        "body_origin": [
+          "crates/catten/src/environment/acpi/mod.rs",
+          271,
+          36
+        ],
+        "callee": "alloc::vec::Vec::<common::memory::address::paddr::PAddr>::push",
+        "value_type": "()",
+        "id": "dbd1b76555b28c2f",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Required firmware/traversal review: MCFG complete header/entries, segment budget/ranges and bounded visited bus identities before descent."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "parse_xsdt",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/environment/acpi/mod.rs",
+          309,
+          17
+        ],
+        "body_origin": [
+          "crates/catten/src/environment/acpi/mod.rs",
+          271,
+          36
+        ],
+        "callee": "alloc::vec::Vec::<common::memory::address::paddr::PAddr>::push",
+        "value_type": "()",
+        "id": "3f305e20d97bfada",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Required firmware/traversal review: MCFG complete header/entries, segment budget/ranges and bounded visited bus identities before descent."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "parse_xsdt",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/environment/acpi/mod.rs",
+          309,
+          17
+        ],
+        "body_origin": [
+          "crates/catten/src/environment/acpi/mod.rs",
+          271,
+          36
+        ],
+        "callee": "hashbrown::hash_map::Entry::<'_, AcpiTableType, alloc::vec::Vec<common::memory::address::paddr::PAddr>, DefaultHashBuilder>::or_insert_with::<fn() -> alloc::vec::Vec<common::memory::address::paddr::PAddr> {alloc::vec::Vec::<common::memory::address::paddr::PAddr>::new}>",
+        "value_type": "&mut alloc::vec::Vec<cpu::isa::common::memory::address::paddr::PAddr>",
+        "id": "c1a804eb4ad0ccc6",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Required firmware/traversal review: MCFG complete header/entries, segment budget/ranges and bounded visited bus identities before descent."
+      },
+      {
+        "kind": "collection_or_copy",
+        "body": "parse_xsdt",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/environment/acpi/mod.rs",
+          313,
+          59
+        ],
+        "body_origin": [
+          "crates/catten/src/environment/acpi/mod.rs",
+          271,
+          36
+        ],
+        "callee": "alloc::slice::<impl [u8]>::to_vec",
+        "value_type": "alloc::vec::Vec<u8>",
+        "id": "090d6376acb9b691",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Required firmware/traversal review: MCFG complete header/entries, segment budget/ranges and bounded visited bus identities before descent."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "parse_mcfg::{closure#0}",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/environment/acpi/sdt/mcfg.rs",
+          40,
+          36
+        ],
+        "body_origin": [
+          "crates/catten/src/environment/acpi/sdt/mcfg.rs",
+          27,
+          22
+        ],
+        "callee": "alloc::vec::Vec::<PcieSegmentGroup>::with_capacity",
+        "value_type": "alloc::vec::Vec<device_management::drivers::busses::pci_express::topology::PcieSegmentGroup>",
+        "id": "603fa7bfa955a52d",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Required firmware/traversal review: MCFG complete header/entries, segment budget/ranges and bounded visited bus identities before descent."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "parse_mcfg::{closure#0}",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/environment/acpi/sdt/mcfg.rs",
+          45,
+          21
+        ],
+        "body_origin": [
+          "crates/catten/src/environment/acpi/sdt/mcfg.rs",
+          27,
+          22
+        ],
+        "callee": "alloc::vec::Vec::<PcieSegmentGroup>::push",
+        "value_type": "()",
+        "id": "b1c3086c60bb8cdf",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Required firmware/traversal review: MCFG complete header/entries, segment budget/ranges and bounded visited bus identities before descent."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "bsp_init",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/init/mod.rs",
+          54,
+          17
+        ],
+        "body_origin": [
+          "crates/catten/src/init/mod.rs",
+          26,
+          18
+        ],
+        "callee": "alloc::boxed::Box::<RoundRobin>::new",
+        "value_type": "alloc::boxed::Box<cpu::scheduler::lp_schedulers::round_robin::RoundRobin>",
+        "id": "a2e48ba2d38205fa",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Bounded boot construction in the current boot contract; aggregate allocator/temporary overhead and outer contexts remain Q4/Q5."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "ap_init",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/init/mod.rs",
+          76,
+          17
+        ],
+        "body_origin": [
+          "crates/catten/src/init/mod.rs",
+          62,
+          17
+        ],
+        "callee": "alloc::boxed::Box::<RoundRobin>::new",
+        "value_type": "alloc::boxed::Box<cpu::scheduler::lp_schedulers::round_robin::RoundRobin>",
+        "id": "ce628d0d2ada62d5",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Bounded boot construction in the current boot contract; aggregate allocator/temporary overhead and outer contexts remain Q4/Q5."
+      },
+      {
+        "kind": "collection_operation",
+        "body": "timers::<impl at crates/catten/src/timers/mod.rs:170:1: 170:19>::new::{closure#0}",
+        "body_kind": "function",
+        "source": [
+          "crates/catten/src/timers/mod.rs",
+          172,
+          34
+        ],
+        "body_origin": [
+          "crates/catten/src/timers/mod.rs",
+          172,
+          33
+        ],
+        "callee": "alloc::boxed::Box::<queue::Node>::try_new_uninit",
+        "value_type": "core::result::Result<alloc::boxed::Box<core::mem::MaybeUninit<timers::queue::Node>>, core::alloc::AllocError>",
+        "id": "e83b9782e24280ca",
+        "profiles": [
+          "arm-acpi-minimal",
+          "x86-acpi-minimal",
+          "arm-acpi-display",
+          "x86-acpi-display"
+        ],
+        "disposition": "Fixed platform cardinality or existing event admission; explicit bootstrap/owning-LP first-use qualification still required. Not a completed context review."
+      }
+    ]
+  },
+  "remaining": [
+    "Explicit bootstrap construction/owning-LP initialization for runtime-reachable timer and IRQ storage",
+    "MCFG header/entry geometry and segment budget; PCI advertised ranges and one bounded visited-bus set before descent",
+    "Other producer/dependency assignments",
+    "Q4 aggregate/principal/control overhead",
+    "Q5 wider caller/IRQ/implicit destruction",
+    "Grant-probe deadline episode requires exact in-probe progress diagnostics; no causal resolution claimed",
+    "Q6-Q8 recovery, pressure/progress and combined qualification"
+  ],
+  "evidence_policy": "Relevant failed/passing diagnostics and artifact hashes are retained inline. Complete local captures remain ignored; they are not durable citations needed to interpret this file."
+}
