@@ -17,6 +17,8 @@ report is useful for a significant investigation or qualification checkpoint.
 
 ## Reports
 
+- [Six-site syscall snapshot admission — Q1](2026-11-04-syscall-snapshot-admission.md) — Shared private-buffer byte admission, reviewed 12/16 MiB defaults, plaintext erasure and combined ARM/Intel/AMD qualification; preserves both arithmetic preflight failures and remaining aggregate gates.
+
 - [TLS signature-offer wire investigation](2026-11-01-tls-signature-offers.md) — Captured OpenSSL 4 SM2 offer, controlled peer-version reproduction, strict offer/selection correction, parser regression controls and real guest Kafka/S3 TLS packet evidence.
 
 - [Master thread-table admission and boot-stack qualification](2026-11-01-security-thread-table.md) — Original-principal buffer admission, allocator-free guarded publication and a measured boot-stack capacity increase, with failed captures and the final three-backend matrix retained separately.

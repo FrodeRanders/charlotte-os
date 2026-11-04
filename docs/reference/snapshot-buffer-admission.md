@@ -1,4 +1,4 @@
-# Mapping, copy and DMA snapshot buffers
+# Snapshot and primitive syscall buffers
 
 Kernel admission capacity for this family comes from the default compile-time
 [resource policy](resource-policy.md). Related values can be adjusted together
@@ -6,14 +6,15 @@ in a reviewed build profile; see [Configuration](../guides/configuration.md).
 Structural/protocol bounds and original-charge/physical-completion rules remain
 separate contracts.
 
-CPU mapping, copy-pin and DMA-pin frame snapshots share fixed kernel admission:
+CPU mapping, copy-pin and DMA-pin frame snapshots share fixed kernel admission
+with bounded upgrade/deployment/shutdown syscall input and plaintext buffers:
 
 | Dimension | Total | Ordinary callers |
 | --- | --- | --- |
-| Requested vector-buffer bytes | 4 MiB | 3 MiB |
+| Requested vector-buffer bytes | 16 MiB | 12 MiB |
 | Buffer reservations | 8192 | 6144 |
 
-A nonempty buffer reserves `pages * size_of::<PAddr>()` bytes and one count before
+A nonempty frame buffer reserves `pages * size_of::<PAddr>()` bytes and one count before
 the fallible vector allocator. The per-object frame bound is unchanged. On the
 supported targets one maximum-sized snapshot requests 128 KiB. These are
 requested buffer layouts, excluding allocator overhead/excess storage, inline
@@ -61,12 +62,67 @@ refund follows buffer deallocation after allocator return; abandonment enters no
 allocator, registry or counter. Ordinary containing cleanup still requires its
 qualified post-guard context.
 
+## Primitive syscall inputs
+
+`syscall::snapshot_buffers` captures trusted storage class from the exact
+already-authorized manager/agent generation, before buffer allocation. The
+executing caller's current thread retains its root; the class token borrows that
+identity and grants no root or teardown authority. The user-thread `StackSlot`
+retains an `AddressSpaceOperation` until qualified off-CPU stack retirement;
+no additional root lease is needed just to own these private bytes. Copying
+rechecks the captured
+generation and uses `memory::object::snapshot_bytes_in`, retaining its shared
+read-rights, object-state and length checks under the memory-object registry.
+Only completed private copies reach signature/protocol validation. Promotion,
+root retirement and ASID reuse cannot redirect their original byte charges.
+
+`ByteAllocator<SnapshotBuffers>` admits requested bytes and **zero buffer counts**
+before allocation. The frame-catalog count contract is unchanged. Scoped image
+and descriptor copies share one `ScopedInputs`; pickup and private plaintext
+share one `OperationalInputs`. Failure disposes the complete private prefix
+after the copying helper's registry guard has left. Public handlers retain their
+existing status and source-cap consumption rules. Their signature, freshness,
+launch reservation and publication checks still run unchanged. These primitive
+byte owners free on ordinary local Drop; they contain no active physical
+cleanup, callback, capability element or authority. This does not qualify the
+surrounding supervisor launch/upgrade transactions or arbitrary enclosing callers.
+
+The plaintext owner allocates once before decryption and cannot reallocate after
+initialization. It exposes borrowed slices and erases initialized and spare
+capacity before vector deallocation, which precedes original-class refund.
+Successful output, authentication failure and later profile/launch rejection
+retain that same owner. Forced termination/abort and other secret copies remain
+separate [SEC-15 limitations](secret-state-lifetimes.md).
+
+The default bytes increased from 3/4 to 12/16 MiB ordinary/total so existing
+protocol maxima remain usable. A maximum image plus descriptor needs
+4194304 + 3584 bytes; a maximum pickup plus plaintext needs 4269180 + 65536 bytes.
+Two pickup/plaintext pairs plus the former 3 MiB ordinary frame allowance need
+11815160 bytes, leaving 767752 bytes within the new ordinary ceiling before
+other retained usage. This permits an extra 9/12 MiB of ordinary/total heap
+retention; it allocates no backing in advance. The minimum configured kernel
+heap is 8 MiB initially plus 64 MiB growth reserve, shared with other families.
+This pool can therefore consume 16 MiB of that 72 MiB envelope; allocator
+overhead and concurrent family usage need the aggregate Q4 capacity plan.
+No new pool, SDK format or service bundle is needed. Keeping the old limit
+would deny legal inputs; splitting parsers would add lifetime/validation
+complexity without solving aggregate admission. Shared competition and saturated
+cleanup/management progress remain Q7/Q8 acceptance work, even with more bytes.
+Reviewed profiles still require their own sizing and workload qualification.
+
 ## Acceptance scope
 
 The [audit evidence](../reports/audits/2026-10-25-security-snapshot-buffer-admission.md)
 qualifies real byte/count exhaustion, trusted reserve, rejection before allocation
 and pin publication, buffer-free-before-refund order, generation reuse, late
 promotion and charged guarded abandonment.
+
+The [six-site Q1 record](../reports/audits/2026-11-04-syscall-snapshot-admission.md)
+separately records primitive byte controls and the combined final campaign.
+The remaining default-allocator image snapshot in `service::store` belongs to Q2
+because it can enter the persistent cache; it is not covered by these temporary
+owners. Primitive admission failures preserve the handlers' original generic
+failure statuses; they do not add a new public quota status.
 
 | Audit gate | Added evidence | Remaining acceptance work |
 | --- | --- | --- |

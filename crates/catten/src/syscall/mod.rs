@@ -27,7 +27,13 @@ pub(crate) mod mailbox_retirement;
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod mailbox_tests;
 mod mailbox_words;
+mod snapshot_buffers;
 pub(crate) mod statistics;
+
+#[cfg(feature = "kernel_tests")]
+pub(crate) fn test_snapshot_buffers() {
+    snapshot_buffers::tests::run();
+}
 
 pub use catten_syscall::SyscallNumber;
 
@@ -1850,7 +1856,17 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
             frame.regs[0] = 0;
             return;
         }
-        persistent_elf = match crate::memory::object::snapshot_bytes(caller_asid, elf_cap, size) {
+        let class = match snapshot_buffers::Class::capture(
+            authorized_manager.expect("manager checked above"),
+        ) {
+            Ok(class) => class,
+            Err(_) => {
+                let _ = crate::memory::object::close_cap(caller_asid, elf_cap);
+                frame.regs[0] = 0;
+                return;
+            }
+        };
+        persistent_elf = match class.snapshot(elf_cap, size) {
             Ok(image) => image,
             Err(_) => {
                 let _ = crate::memory::object::close_cap(caller_asid, elf_cap);
@@ -1946,10 +1962,16 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
     frame.regs[0] = new_asid as u64;
 }
 
-fn deployment_agent_authorized(caller_asid: crate::memory::AddressSpaceId) -> bool {
-    crate::service::supervisor::DEPLOYMENT_AGENT_ASID.lock().is_some_and(|handle| {
-        handle.id() == caller_asid && crate::memory::address_space_handle_is_current(handle)
+fn deployment_agent_identity(
+    caller_asid: crate::memory::AddressSpaceId,
+) -> Option<crate::memory::AddressSpaceHandle> {
+    (*crate::service::supervisor::DEPLOYMENT_AGENT_ASID.lock()).filter(|handle| {
+        handle.id() == caller_asid && crate::memory::address_space_handle_is_current(*handle)
     })
+}
+
+fn deployment_agent_authorized(caller_asid: crate::memory::AddressSpaceId) -> bool {
+    deployment_agent_identity(caller_asid).is_some()
 }
 
 fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
@@ -1968,7 +1990,8 @@ fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
             let _ = crate::memory::object::close_cap(caller_asid, descriptor_cap);
         }
     };
-    if !deployment_agent_authorized(caller_asid)
+    let actor = deployment_agent_identity(caller_asid);
+    if actor.is_none()
         || elf_cap == 0
         || descriptor_cap == 0
         || descriptor_cap == elf_cap
@@ -1983,22 +2006,23 @@ fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
         frame.regs[0] = 0;
         return;
     }
-    let image = crate::memory::object::snapshot_bytes(
-        caller_asid,
-        elf_cap,
-        elf_size.expect("ELF size checked above"),
-    );
-    let descriptor = crate::memory::object::snapshot_bytes(
-        caller_asid,
-        descriptor_cap,
-        descriptor_size.expect("descriptor size checked above"),
-    );
+    let inputs =
+        actor.and_then(|actor| snapshot_buffers::Class::capture(actor).ok()).and_then(|class| {
+            class
+                .scoped(
+                    (elf_cap, elf_size.expect("ELF size checked above")),
+                    (descriptor_cap, descriptor_size.expect("descriptor size checked above")),
+                )
+                .ok()
+        });
     close_inputs();
-    let (Ok(image), Ok(descriptor)) = (image, descriptor) else {
+    let Some(inputs) = inputs else {
         frame.regs[0] = 0;
         return;
     };
-    let Some(decoded) = charlotte_launch::deployment::decode(&descriptor) else {
+    let image = &inputs.image;
+    let descriptor = &inputs.descriptor;
+    let Some(decoded) = charlotte_launch::deployment::decode(descriptor) else {
         frame.regs[0] = 0;
         return;
     };
@@ -2007,7 +2031,7 @@ fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
         return;
     };
     if charlotte_launch::signature_note::verify_elf_for_name(
-        &image,
+        image,
         &trust.artifact_key,
         decoded.artifact_name,
     ) != charlotte_launch::signature_note::VerifyOutcome::Valid
@@ -2023,8 +2047,8 @@ fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
     };
     let Some(domain) = preparation.launch(|| {
         crate::service::supervisor::try_spawn_with_deployment_descriptor(
-            &image,
-            &descriptor,
+            image,
+            descriptor,
             &trust.deployment_key,
             &trust.artifact_key,
         )
@@ -2048,7 +2072,8 @@ fn sys_spawn_operational_connector(frame: &mut TrapFrame) {
             let _ = crate::memory::object::close_cap(caller_asid, package_cap);
         }
     };
-    if !deployment_agent_authorized(caller_asid)
+    let actor = deployment_agent_identity(caller_asid);
+    if actor.is_none()
         || package_cap == 0
         || package_size.is_none_or(|size| {
             !(charlotte_launch::operations_pickup::PICKUP_HEADER_LEN
@@ -2060,17 +2085,20 @@ fn sys_spawn_operational_connector(frame: &mut TrapFrame) {
         frame.regs[0] = 0;
         return;
     }
-    let package = crate::memory::object::snapshot_bytes(
-        caller_asid,
-        package_cap,
-        package_size.expect("pickup package size checked above"),
-    );
+    let inputs =
+        actor.and_then(|actor| snapshot_buffers::Class::capture(actor).ok()).and_then(|class| {
+            class
+                .operational(package_cap, package_size.expect("pickup package size checked above"))
+                .ok()
+        });
     close_input();
-    let Ok(package) = package else {
+    let Some(mut inputs) = inputs else {
         frame.regs[0] = 0;
         return;
     };
-    let Some(pickup) = charlotte_launch::operations_pickup::Pickup::decode(&package) else {
+    let package = &inputs.package;
+    let plaintext = &mut inputs.plaintext;
+    let Some(pickup) = charlotte_launch::operations_pickup::Pickup::decode(package) else {
         frame.regs[0] = 0;
         return;
     };
@@ -2133,9 +2161,7 @@ fn sys_spawn_operational_connector(frame: &mut TrapFrame) {
 
             let preparation = crate::service::supervisor::PreparingDeployment::reserve(principal)?;
             preparation.launch(|| {
-                let mut profile = zeroize::Zeroizing::new(alloc::vec::Vec::new());
-                profile.try_reserve_exact(envelope.ciphertext.len()).ok()?;
-                profile.resize(envelope.ciphertext.len(), 0);
+                plaintext.try_initialize_zeroed(envelope.ciphertext.len()).ok()?;
                 let profile_len = charlotte_launch::operations::open(
                     pickup.envelope,
                     recipient_private_key,
@@ -2143,10 +2169,10 @@ fn sys_spawn_operational_connector(frame: &mut TrapFrame) {
                     &trust.cluster_id,
                     &pickup.binding.release_digest,
                     pickup.now_unix_seconds,
-                    &mut profile,
+                    plaintext,
                 )
                 .ok()?;
-                let profile = profile.get(..profile_len)?;
+                let profile = plaintext.get(..profile_len)?;
                 let valid_profile = match pickup.binding.profile_kind {
                     charlotte_launch::operations::PROFILE_KIND_S3 => {
                         charlotte_protocol_s3::Profile::decode(profile).is_some()
@@ -2215,7 +2241,8 @@ fn sys_request_node_shutdown(frame: &mut TrapFrame) {
             let _ = crate::memory::object::close_cap(caller_asid, envelope_cap);
         }
     };
-    if !deployment_agent_authorized(caller_asid)
+    let actor = deployment_agent_identity(caller_asid);
+    if actor.is_none()
         || envelope_cap == 0
         || envelope_size != Some(charlotte_launch::shutdown::ENCODED_LEN)
     {
@@ -2223,17 +2250,16 @@ fn sys_request_node_shutdown(frame: &mut TrapFrame) {
         frame.regs[0] = u64::MAX;
         return;
     }
-    let envelope = crate::memory::object::snapshot_bytes(
-        caller_asid,
-        envelope_cap,
-        charlotte_launch::shutdown::ENCODED_LEN,
-    );
+    let envelope =
+        actor.and_then(|actor| snapshot_buffers::Class::capture(actor).ok()).and_then(|class| {
+            class.snapshot(envelope_cap, charlotte_launch::shutdown::ENCODED_LEN).ok()
+        });
     close_input();
     let Some(trust) = crate::service::admission::configured_admission_trust() else {
         frame.regs[0] = u64::MAX;
         return;
     };
-    let Ok(envelope) = envelope else {
+    let Some(envelope) = envelope else {
         frame.regs[0] = u64::MAX;
         return;
     };

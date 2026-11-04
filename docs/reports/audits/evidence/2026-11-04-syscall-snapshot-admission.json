@@ -1,0 +1,223 @@
+{
+  "schema": "charlotte.syscall-snapshot-admission.v1",
+  "date": "2026-11-04",
+  "base_revision": "321091491044c9aeeb2de3a71ace1d09390c1f10",
+  "scope": "Q1: six primitive syscall image/descriptor/pickup/plaintext/shutdown buffers; shared source-validation/copy and allocation-lifetime byte admission. No persistent store-cache or supervisor-transaction qualification.",
+  "source_sha256": {
+    ".cargo/config.toml": "361dfe33de51580033bd6eae9134ef0a0c25ec15d0618cd5c18dab419a8b0ec5",
+    "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
+    "crates/catten-syscall/src/lib.rs": "231d3e2ca37f03c987335f874e432cafcfac8b2969dd78ee7c37da82db4c0d2a",
+    "crates/catten-syscall/src/metadata_pools.rs": "11d14166d9d9c66a800dfb0bb2401c8af6875d0c31dc4d4295b72a2633d1b5b9",
+    "crates/catten/src/cpu/scheduler/threads/mod.rs": "13123b115a4de54f3ce9ba310beb45268fe15c84d681a82ba1f0b00cb2ab73a8",
+    "crates/catten/src/klib/admission.rs": "943997ba7a90d3c6ac59aae593c5e425daf9789fec6ed846227837d4fd86d9f8",
+    "crates/catten/src/klib/admission/byte_allocator.rs": "30042575956fb29aa9677f34f205bcd7c346a0ba2b0474132235de31a6a88dea",
+    "crates/catten/src/klib/mod.rs": "e774215513a558bc23847c36141ab5b6e8570c0e349af61cd7f84c9b2f2dc041",
+    "crates/catten/src/klib/sensitive_buffer.rs": "65890a203ff75cc2060a1b650c20e41eee0070e92e89d24a0bad3379a78261fc",
+    "crates/catten/src/klib/sensitive_buffer/tests.rs": "39068bfb40fba9c3d6ae82b901055d79053faff5a4b5de9e47336b9d809f8abb",
+    "crates/catten/src/memory/budget.rs": "a067cbfa4c68a5bdeeb8f9b73b47fb0b819cee4c96142f724b351bad2d0c39d8",
+    "crates/catten/src/memory/object.rs": "049c89730f9656d8b3823d215efb3c4a1eab4577905e5c068ed0bdbe84e73b4b",
+    "crates/catten/src/memory/object/snapshot_storage.rs": "7ec63a1847009bdf736656a9633667b8cf133daa87ff3c0147941ee4374e292e",
+    "crates/catten/src/memory/object/snapshot_storage/admission.rs": "ff13ee3ed7e54250a6568d52176d353159ff313204120e32ed69c6ca035edee9",
+    "crates/catten/src/memory/object/snapshot_storage/tests.rs": "4edd56e26c0b6ffdaa47a6162d71ab612b8b5ff0b776aec9880a8fd86ba19cc4",
+    "crates/catten/src/memory/operation.rs": "830a3a6299adfe7f2c735ce4baa58e40dc065d9e65a9bfddf2c5f6f8c5818b0b",
+    "crates/catten/src/memory/retirement.rs": "4b7ed4b7d1e1777d6be65359e3bf61b1a7e8b0b6a55503f4047ee1035395e1c0",
+    "crates/catten/src/memory/thread_stack.rs": "d35f8e7d6be4840a346bf880748438e75a03306c2ebd759d1152ade2f4ebbd9d",
+    "crates/catten/src/memory/thread_stack/stacks.rs": "500d31d62205d25010bfe6f2b98ae2825e001feb098f9e555ececa7a7db2d7fa",
+    "crates/catten/src/resource_policy.rs": "653f130fb43d7f2667fd32ff2b8a069ac2649a8d134739c3e368379a6221cc63",
+    "crates/catten/src/resource_policy/defaults.rs": "116f8556e75e78c3eea895622f263ef87f9e56aff38edd8ba372bbe12fc3a7da",
+    "crates/catten/src/self_test/syscall.rs": "d33b0f90bc8b80ce1a6ce1b11a983064268257f698ff267b13ddf824054a69ae",
+    "crates/catten/src/service/store.rs": "f1204bef03f21eece34cb098fceb69622de222417241ff7c8e2fb45235009c7c",
+    "crates/catten/src/syscall/mod.rs": "782ff9b44d09556ca4fc17d3be81f1a66dd1c52d0a2a5dd24e0444ecf8e80153",
+    "crates/catten/src/syscall/snapshot_buffers.rs": "2493d433b63405441e468524bf731db825770b4c89a608406d072434338d38b1",
+    "crates/catten/src/syscall/snapshot_buffers/tests.rs": "13104c5863c958df0419bb1826f9e9b4e02f731a6f1208b40fb0c3c4d3085082",
+    "crates/charlotte-launch/src/deployment.rs": "23e17427f23c5e18015b8f42dad6f6652786bb06a5b8db042b1d8378f3e66771",
+    "crates/charlotte-launch/src/lib.rs": "186c381af2fed1fbb2640e5639f9fb36a8ea637d539dfd452e3c9ec7d3872e14",
+    "crates/charlotte-launch/src/operations.rs": "511d677444cb7d22621593e64a8f8b3f0a7e257e4d8d78a5b73e705959c052eb",
+    "crates/charlotte-launch/src/operations_bundle.rs": "36e6b4ca928bfb51027dd1d94e103905d95ab618b0a83c0182795845a178fd3c",
+    "crates/charlotte-launch/src/operations_pickup.rs": "707cc735894520eed1ee7a2eea432f98bab6607a110f261bb9884e0bd5b8e144",
+    "crates/charlotte-launch/src/release.rs": "56ec61085e336e20f018d45859823a05b7b63568a035f2e1346760b11a8d95d8",
+    "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
+    "scripts/run-aarch64.sh": "58eede46ad82247673a9791e9cb247d5c32806b88bda86389e1e237d3ec100b8",
+    "scripts/run-host-tests.sh": "68d47b0d64c289a0ba17ae62a7d9dbb18e8caa2da1a32aff364d67b231b9a385",
+    "scripts/run-x86_64.sh": "68f5c782f96233721e2ca04f07c2181df7a43396add422ad49f421dbde900aaa",
+    "scripts/tests/test-sensitive-buffer.py": "c84524efcdd5c05f36c1e5db4943f362fe2e86e6d17bdcb5546d28b3c37be7c0"
+  },
+  "freeze_note": "All ten changed/new Rust and host-test script sources were frozen after correcting the native sizing arithmetic. Final host, strict test/minimal checks and three native campaigns use these sources; final documentation updates can differ in tracked-diff hashes. Existing version-10 signed service bundles were reused and runners regenerated per-run signed security fixtures.",
+  "policy": {
+    "family": "snapshot_buffers",
+    "ordinary": [
+      12582912,
+      6144
+    ],
+    "total": [
+      16777216,
+      8192
+    ],
+    "primitive_charge": "[requested layout bytes, 0 frame-buffer counts], before Global; actual deallocation precedes refund",
+    "frame_catalog_charge": "[pages * size_of::<PAddr>(), 1], unchanged contract; byte ceiling raised",
+    "bounds": {
+      "image": 4194304,
+      "descriptor": 3584,
+      "pickup": 4269180,
+      "plaintext": 65536,
+      "shutdown": 144,
+      "scoped_pair": 4197888,
+      "operational_pair": 4334716,
+      "two_operational_pairs_plus_old_ordinary_allowance": 11815160
+    },
+    "decision": "Raise ordinary/total bytes from 3/4 MiB to 12/16 MiB; preserve frame-buffer count limits, all protocol maxima, the 23-pool catalog and statistics version 10. Two maximum pickup/plaintext lifetimes plus the former 3 MiB frame allowance fit with 767752 bytes of ordinary headroom before other retained usage. No new pool/SDK/service build or parser restructuring.",
+    "cost": "Permits another 9/12 MiB ordinary/total requested heap retention, without preallocation. The default kernel heap is initially 8 MiB plus at least 64 MiB growth reserve; 16 MiB competes within that 72 MiB envelope with other families and allocator overhead. Mixed family/principal capacity and saturated progress remain Q4/Q7/Q8; this is no guaranteed per-service share."
+  },
+  "ownership": {
+    "capture": "Capture from the exact authenticated deployment-agent/upgrade-manager handle while executing its syscall. accepting checks the live generation; platform_identity must equal that captured handle. Current execution/thread retains the root; Class is a borrowed identity/class token, not a root lease or cleanup authority. Recheck generation before the common registry-protected snapshot.",
+    "operation": "ScopedInputs owns both image and descriptor; OperationalInputs owns pickup and private plaintext. Private-prefix failure leaves the helper registry guard before Drop. Returned bytes retain original allocator through promotion, root retirement and ASID reuse. The private class token is not an arbitrary concurrent root-retirement adapter.",
+    "erasure": "SensitiveBuffer allocates/zero-initializes once before decryption, rejects later nonempty-capacity initialization, exposes only borrowed slices, and zeroizes initialized and spare capacity before Vec deallocation. No reallocation of initialized plaintext. Successful output, HPKE rejection and later launch/profile rejection all retain that same local owner.",
+    "boundary": "Original public authorization, status, input-cap consumption, signature, freshness, launch-admission and publication logic remains. Byte owners contain no active physical cleanup/capability elements. Surrounding supervisor parents/caller Drop contexts remain Q2/Q5; abort, termination, compiler/library and original-input secret copies remain SEC-15 limitations."
+  },
+  "native_campaigns": [
+    {
+      "arch": "aarch64",
+      "instance": "q1-20261104-arm-final",
+      "cpus": 4,
+      "revision": "321091491044c9aeeb2de3a71ace1d09390c1f10",
+      "kernel_sha256": "c80787fb85d99e81395ca376ddd84817e6a1777a6cc54fb732bb6c35c7356674",
+      "boot_image_sha256": "c610339ce5e1fbc761b2cb7437f30e20d09bc428c505765051013eddfae50b45",
+      "initial_disk_sha256": "51debddd5d0ee275def107ff60d5c41ea60d1319ee96a9c43070e8dbd623335d",
+      "tracked_diff_sha256": "cbdb90e629dd6ba9a827fff54566776fbe53b49a2f1ae36dcef095ac4c49c3c7",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-04T19:10:55Z",
+      "platform": "arm",
+      "configuration": "security-test; four CPUs; fresh storage; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "964b933bcdda3ea3a44e925329299e397f85c7bbd3deaeebb082e2dd6e8f8ee4",
+      "serial_sha256": "a3a1aa593fd84d97586b0b448e2752af77a0730de3049dc87b0c8176419006c8",
+      "service_sha256": {
+        "observe.elf": "3550903f199e08b313d438c41febe87959dd312f5de67735152418760caa663c",
+        "security_probe.elf": "11a9f88261e2a8064100e7494d83c418d351a0422bac08e9807128ab964e43f3",
+        "sitas-user.elf": "6f0e7f2113b898f98e16708342db288745e9dcfe2bbbb016027e8db01100391b"
+      },
+      "summary": {
+        "passed": 19,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+     3.614108] [snapshot count pressure] 6143 ordinary + 2048 reserve actual buffers; 6144/8192 limits, three adapter denials, empty escrow and exact old/new-generation unpin refund passed",
+        "[+     3.617548] [snapshot byte pressure] 96 ordinary + 32 reserve actual buffers, up to 128 KiB each; exact 12582912/16777216 byte limits before count limits and post-deallocation baseline recovery passed",
+        "[+     8.850900] [syscall snapshot maxima] image+descriptor=4194304+3584; two pickup+plaintext=4269180+65536 each and 3145728 actual mixed bytes; peak additional=11815160; policy=12582912/16777216; exact recovery",
+        "[+     8.860316] [syscall snapshot consumption] four public handlers, invalid content and quota denial: original status/input consumption, zero scoped receipt and exact refund passed",
+        "[+     8.860712] [syscall snapshots] all six buffers: maxima, original class/generation, ordinary/total denial before allocator entry, prefix cleanup and public input consumption passed; exact byte/count recovery",
+        "[+    85.587674] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18682 CATTEN_DEPLOY_HOST_PORT=17682 scripts/run-aarch64.sh --tests --security-test --smp 4 --timeout 240 --fresh-storage --instance q1-20261104-arm-final"
+    },
+    {
+      "arch": "x86_64",
+      "instance": "q1-20261104-intel-final",
+      "cpus": 4,
+      "revision": "321091491044c9aeeb2de3a71ace1d09390c1f10",
+      "kernel_sha256": "ab36a92d19f943ec3d57ee8b99d6abdfd034aff505b725c09fe1305e0fc6d5e1",
+      "boot_image_sha256": "5a5862b1d50b1a16dd3e04e0e2666dce6f2ba9d2ac8dddc55a6d813fc0bced0d",
+      "initial_disk_sha256": "861e744e92833aef5b75ec19edbda05c20fe2b3efb98c1bf68d08d7ad6b362d1",
+      "tracked_diff_sha256": "cbdb90e629dd6ba9a827fff54566776fbe53b49a2f1ae36dcef095ac4c49c3c7",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-04T19:12:06Z",
+      "platform": "intel",
+      "configuration": "security-test; four CPUs; fresh storage; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "bea690b7d760c5a27ca6a56e4f6f062d05d468dfba95986b57e1557a90a367a4",
+      "serial_sha256": "d4c80b1e7414ebfb70a4305608a0cb5d1d8673e4b64d4b0bb85e948f9257b40e",
+      "service_sha256": {
+        "observe.elf": "875e7de7a7759e46e7e5bf563a08531c25bb3c987f8907b9ddb1742612f525f6",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c"
+      },
+      "summary": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+     2.749339] [snapshot count pressure] 6143 ordinary + 2048 reserve actual buffers; 6144/8192 limits, three adapter denials, empty escrow and exact old/new-generation unpin refund passed",
+        "[+     2.752051] [snapshot byte pressure] 96 ordinary + 32 reserve actual buffers, up to 128 KiB each; exact 12582912/16777216 byte limits before count limits and post-deallocation baseline recovery passed",
+        "[+    14.078630] [syscall snapshot maxima] image+descriptor=4194304+3584; two pickup+plaintext=4269180+65536 each and 3145728 actual mixed bytes; peak additional=11815160; policy=12582912/16777216; exact recovery",
+        "[+    14.086416] [syscall snapshot consumption] four public handlers, invalid content and quota denial: original status/input consumption, zero scoped receipt and exact refund passed",
+        "[+    14.087556] [syscall snapshots] all six buffers: maxima, original class/generation, ordinary/total denial before allocator entry, prefix cleanup and public input consumption passed; exact byte/count recovery",
+        "[+   101.337544] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18683 CATTEN_DEPLOY_HOST_PORT=17683 scripts/run-x86_64.sh --tests --security-test --iommu intel --smp 4 --timeout 240 --fresh-storage --instance q1-20261104-intel-final"
+    },
+    {
+      "arch": "x86_64",
+      "instance": "q1-20261104-amd-final",
+      "cpus": 4,
+      "revision": "321091491044c9aeeb2de3a71ace1d09390c1f10",
+      "kernel_sha256": "6f53fa9f29605f31540e284d77eb645a00208893f14cd4faf50bb97b45df05f4",
+      "boot_image_sha256": "3d13da52ce4cffb586967a780c5b52e1c6646e08da679432394d74cf2bc3a1c9",
+      "initial_disk_sha256": "861e744e92833aef5b75ec19edbda05c20fe2b3efb98c1bf68d08d7ad6b362d1",
+      "tracked_diff_sha256": "cbdb90e629dd6ba9a827fff54566776fbe53b49a2f1ae36dcef095ac4c49c3c7",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-04T19:39:20Z",
+      "platform": "amd",
+      "configuration": "security-test; four CPUs; fresh storage; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "cb1d0170ac4e2108ddabe4fa5daa011908eaf87b2334254bfc9ec119b8b0f951",
+      "serial_sha256": "2a0fa691409b217a03266352386dce12663f37a4e9d1e3a116201732eeca1434",
+      "service_sha256": {
+        "observe.elf": "875e7de7a7759e46e7e5bf563a08531c25bb3c987f8907b9ddb1742612f525f6",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c"
+      },
+      "summary": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+     2.273118] [snapshot count pressure] 6143 ordinary + 2048 reserve actual buffers; 6144/8192 limits, three adapter denials, empty escrow and exact old/new-generation unpin refund passed",
+        "[+     2.275433] [snapshot byte pressure] 96 ordinary + 32 reserve actual buffers, up to 128 KiB each; exact 12582912/16777216 byte limits before count limits and post-deallocation baseline recovery passed",
+        "[+    11.270610] [syscall snapshot maxima] image+descriptor=4194304+3584; two pickup+plaintext=4269180+65536 each and 3145728 actual mixed bytes; peak additional=11815160; policy=12582912/16777216; exact recovery",
+        "[+    11.278125] [syscall snapshot consumption] four public handlers, invalid content and quota denial: original status/input consumption, zero scoped receipt and exact refund passed",
+        "[+    11.278974] [syscall snapshots] all six buffers: maxima, original class/generation, ordinary/total denial before allocator entry, prefix cleanup and public input consumption passed; exact byte/count recovery",
+        "[+    98.420681] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "command": "CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18683 CATTEN_DEPLOY_HOST_PORT=17683 scripts/run-x86_64.sh --tests --security-test --iommu amd --smp 4 --timeout 240 --fresh-storage --instance q1-20261104-amd-final"
+    }
+  ],
+  "validation": {
+    "host_suite": "Complete scripts/run-host-tests.sh passed, including local socket tests and expected rejecting controls. New optimized standalone harness compiles actual SensitiveBuffer, ByteAllocator, admission/policy/SDK; 46 tests pass (four new owner controls, 42 existing shared controls).",
+    "sensitive_owner_diagnostics": [
+      "test klib::sensitive_buffer::tests::backend_rejection_after_a_live_package_preserves_then_refunds_the_complete_prefix ... ok",
+      "test klib::sensitive_buffer::tests::full_capacity_erased_before_free_with_original_ordinary_or_trusted_charge ... ok",
+      "test klib::sensitive_buffer::tests::initialized_secrets_cannot_reallocate_or_lose_their_original_owner ... ok",
+      "test klib::sensitive_buffer::tests::quota_denial_and_empty_storage_do_not_allocate_or_refund_live_bytes ... ok",
+      "Sensitive-buffer unwiped control rejected: tracer detected plaintext before backend free"
+    ],
+    "host_erasure": "The global allocator tracer reads still-live full requested capacity before System.dealloc, for ordinary/trusted and full/truncated secrets. It observes zero bytes while the complete original requested charge is still held, then exact refund. Removing both zeroize calls fails with plaintext reached the backend allocator. No freed-memory read.",
+    "host_failure": "A real null-returning Global backend rejects plaintext allocation after a live admitted package prefix. ByteAllocator refunds only unused candidate admission; package bytes and data stay intact until full disposal. Quota and repeat-initialization rejection retain exact owners and counters. No general native heap OOM injection.",
+    "native_maxima": "Real object-backed maximum image+descriptor copies; two actual maximum pickup copies and maximum initialized plaintext buffers plus 3 MiB actual byte storage share the same byte allocator. That byte storage represents old frame allowance in the sizing fixture, not actual frame catalogs. Separate existing frame-catalog controls now exhaust actual 12/16 MiB and 6144/8192 limits.",
+    "native_failures": "Deterministic counter-pressure adapters deny ordinary/total copies under a held heap guard before backend entry. Descriptor quota failure cancels an allocated image prefix; a second-copy error adapter separately models backend rejection after that prefix. Actual public four-handler invalid-content and quota paths consume original source caps/status, publish no scoped receipt and recover exact counters.",
+    "native_class": "Old ordinary capture stays ordinary after trusted promotion; new trusted capture uses reserve class. Real returned copies survive source-root close with original charges, stale classes reject successor generation caps, and disposal refunds exact original counters. These are serialized boot fixtures, not concurrent EL0 saturation.",
+    "strict_checks": [
+      "AArch64 acpi,kernel_tests clippy -D warnings",
+      "AArch64 acpi minimal clippy -D warnings",
+      "x86_64 acpi,kernel_tests clippy -D warnings",
+      "x86_64 acpi minimal clippy -D warnings"
+    ],
+    "formatting": "cargo fmt --all -- --check and git diff --check passed; native runners enforce assembly sections and boot profiles."
+  },
+  "remaining_gates": [
+    "Q2 persistent store snapshots and active supervisor launch/upgrade transaction contexts remain; one default Global snapshot caller is deliberately outside Q1.",
+    "Q3 remaining producer/dependency/profile/boot review and Q4 all-family aggregate original-principal/heap coverage remain open. A compiler record is not a finding or a closed inventory.",
+    "Q5/Q6 broader caller/IRQ/Drop qualification, typed recovery and claimed live-I/O device proofs remain open.",
+    "Q7/Q8 cleanup capacity, hostile sustained EL0 pressure, healthy timer/management/teardown budgets and integrated three-target recovery matrix remain unqualified. Larger byte limits establish no fairness/progress guarantee.",
+    "SEC-07/18 remain partial and all four aggregate gates I/C/P/M open. Q1 accepted leaves seven packages; package counts are not a weighted readiness percentage. Historical Intel retirement-pin and ARM exit-watch incidents are not explained by these passing campaigns."
+  ]
+}

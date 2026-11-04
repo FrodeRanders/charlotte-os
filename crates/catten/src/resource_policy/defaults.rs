@@ -163,8 +163,10 @@ pub(super) const POLICY: Policy = Policy {
         ordinary: [384 * 1024, 6144],
     },
     snapshot_buffers: Pool {
-        total: [4 * 1024 * 1024, 8192],
-        ordinary: [3 * 1024 * 1024, 6144],
+        // Shared frame catalogs and primitive syscall bytes. Two maximum
+        // pickup/plaintext pairs plus the former 3 MiB ordinary allowance fit.
+        total: [16 * 1024 * 1024, 8192],
+        ordinary: [12 * 1024 * 1024, 6144],
     },
     mapping_nodes: Pool {
         total: [1024 * 1024, 8192],

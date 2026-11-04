@@ -1,7 +1,8 @@
 # SEC-07/18 closure work and batch acceptance
 
-This is the remaining-work baseline at `b15250b6`, dated 2026-11-04. It maps
-existing [R7/R18 requirements](security-remediation.md) to eight work packages;
+The work-package scope was baselined at `b15250b6` on 2026-11-04. Current
+acceptance is recorded below. It maps existing
+[R7/R18 requirements](security-remediation.md) to eight work packages;
 it adds no findings and relaxes no acceptance gate. Existing admission and
 cleanup qualifications remain valid in their recorded scopes. Production trust,
 node authentication, security time and physical-platform qualification retain
@@ -10,7 +11,8 @@ their separate gates in the finding ledger.
 The [inventory checkpoint](../reports/audits/2026-11-04-resource-inventory.md)
 captures compiler-derived review candidates from both headless production
 profiles. It is a starting list, not a finding count or a completed R7-1/R18-1
-review. No implementation or qualification package below is accepted yet.
+review. [Q1 is accepted](../reports/audits/2026-11-04-syscall-snapshot-admission.md);
+seven packages remain. This is a package count, not a weighted effort estimate.
 
 ## Existing coverage to preserve
 
@@ -30,15 +32,15 @@ allocate no backing at that site.
 
 ## Work packages
 
-Statuses describe this baseline, not estimated effort. Keep each package's
+Statuses describe current acceptance, not estimated effort. Keep each package's
 scope and exit test current; new discoveries must be assigned explicitly, with
 an explanation if they change scope. Do not silently turn each source match
 into a new patch or invent a new cleanup owner family.
 
 | ID / status | Bounded scope and existing gates | Required exit evidence |
 | --- | --- | --- |
-| Q1 — selected, implementation pending | Six primitive syscall input/scratch sites listed below; R7-2. Reuse snapshot copying and admission mechanics. | Captured sponsorship, adequate reviewed byte limits, fallible preparation, original input-consumption rules, plaintext erasure, quota/backend rejection and exact disposal/refund. One combined final campaign. |
-| Q2 — queued | `service::supervisor` launch/upgrade transactions, `PreparingUpgrade.moves`, handoff cap storage, and `service::store` cached-image lifetime; R7-2 and C18/G1/G4. | Complete parent owns every prefix and original charge. Qualify `DomainLaunchTransaction` and `PreparingUpgrade` active Drop call chains. Cache entries reserve publication/storage before mutation; no unbounded or uncharged permanent image retention. Test ordinary rollback and guarded abandonment separately. |
+| Q1 — accepted 2026-11-04 | Six primitive syscall input/scratch sites listed below; R7-2. Shared snapshot copying and byte admission implemented. | [Final qualification](../reports/audits/2026-11-04-syscall-snapshot-admission.md): captured original class, fallible complete prefixes, protocol-sized 12/16 MiB defaults, unchanged public input/status rules, full-capacity plaintext erasure and exact free/refund. Full host, strict test/minimal checks and ARM 19/19, Intel 17/17, AMD 17/17. Two failed arithmetic preflights preserved separately. |
+| Q2 — next | `service::supervisor` launch/upgrade transactions, `PreparingUpgrade.moves`, handoff cap storage, and `service::store` cached-image lifetime; R7-2 and C18/G1/G4. | Complete parent owns every prefix and original charge. Qualify `DomainLaunchTransaction` and `PreparingUpgrade` active Drop call chains. Cache entries reserve publication/storage before mutation; no unbounded or uncharged permanent image retention. Test ordinary rollback and guarded abandonment separately. |
 | Q3 — review pending | Remaining heap producer/factory candidates, library edges and profile/boot exclusions; R7-1/R7-2. Start from the frozen inventory and source screen, including PCI traversal, per-LP construction and launch encoders. | Every relevant candidate assigned to an admitted owner, a required fix or a justified exclusion with trigger/bound/lifetime. Follow allocation-capable dependency calls and optional profiles. Compiled but unused helpers are not application-reachability findings. No unexplained raw allocator/factory or macro-origin gap. |
 | Q4 — queued after Q3 | Aggregate heap and signed-principal coverage across the existing pool catalog, restart and quarantine; R7-3. | Application-triggered allocations have family/node and original-principal coverage or a documented applicable exclusion. Count allocator/control overhead explicitly. Transfer, weak retention, ASID reuse and uncertain cleanup cannot refund or redirect original charges. Show a coherent multi-pool capacity plan. |
 | Q5 — review pending | Production caller/context and phase inventory for C01–C18; R18-1, G1/G3/G4. Use explicit/implicit Drop records plus callbacks and entry paths. | Record enclosing locks, IRQ state, allocation/notification/physical work, containing owner and unstarted/Pending/retryable/terminal outcome. Include ARM reaper context, scheduler/IRQ/observer callbacks and supervisor parents. Qualify actual callers; an inner post-guard helper is insufficient. |
@@ -52,7 +54,7 @@ specific call path and a separately reviewable sub-batch before editing. Keep
 it within the parent package's acceptance record. Common custody extraction
 waits for a second complete eligible adapter, as the cleanup contract requires.
 
-## Selected batch Q1
+## Accepted batch Q1
 
 These six sites are one batch because they produce bounded primitive byte
 storage through shared code. The source paths and protocol bounds are fixed:
@@ -63,7 +65,7 @@ storage through shared code. The source paths and protocol bounds are fixed:
 | Scoped launch image | `syscall::sys_spawn_artifact_scoped`, line 1986 | At most `MAX_ARTIFACT_ELF_SIZE`; retain alongside the descriptor until launch validation finishes. |
 | Scoped launch descriptor | Same handler, line 1991 | At most `deployment::MAX_DESCRIPTOR_LEN`; shares the image's complete operation. |
 | Operational pickup | `syscall::sys_spawn_operational_connector`, line 2063 | At most `operations_pickup::MAX_PICKUP_LEN`; artifact/envelope slices borrow this storage. |
-| Decrypted profile | Same handler, lines 2136–2138 | At most `operations::MAX_PROFILE_LEN`; erase initialized plaintext on ordinary disposal while retaining original admission. Abort erasure remains a separate SEC-15 limitation. |
+| Decrypted profile | Same handler, lines 2136–2138 | At most `operations::MAX_PROFILE_LEN`; erase initialized and spare plaintext capacity on ordinary disposal while retaining original admission. Abort erasure remains a separate SEC-15 limitation. |
 | Signed shutdown envelope | `syscall::sys_request_node_shutdown`, line 2226 | Exactly `shutdown::ENCODED_LEN`; preserve signature, freshness and input-consumption checks. |
 
 `memory::object::snapshot_bytes_in` already supplies the common validation/copy
@@ -71,27 +73,28 @@ boundary. Its remaining store caller belongs to Q2 because the image can enter
 the permanent cache. Q1 must not accidentally refund a cached image or change
 store ownership merely to simplify a buffer type.
 
-Sizing must precede policy changes. Current maximum artifact size is 4194304
-bytes; maximum pickup is 4269252 bytes, and pickup plus maximum plaintext is
-4334788 bytes. The existing frame-snapshot pool has only 3/4 MiB ordinary/total
-byte limits. Blindly selecting it would reject legal maximum-sized inputs.
+The accepted defaults share the existing pool's byte dimension at **12/16 MiB
+ordinary/total**, retaining 6144/8192 frame-buffer counts. Primitive buffers add
+bytes and zero frame-buffer counts. Maximum artifact is 4194304 bytes; maximum
+pickup is 4269180 bytes, and pickup plus plaintext is 4334716 bytes. Two maximum
+pickup/plaintext lifetimes plus the former 3 MiB frame-snapshot allowance total
+11815160 bytes and fit the new ordinary ceiling. The baseline 3/4 MiB bytes
+would reject legal inputs. This permits an extra 9/12 MiB heap retention without
+preallocation; shared competition and aggregate heap/principal sizing remain
+open. See the [current capacity and ownership contract](snapshot-buffer-admission.md#primitive-syscall-inputs)
+for the reviewed cost, heap envelope and alternatives.
 
-Evaluate sharing that pool's byte dimension with reviewed additional headroom,
-or justify a distinct purpose before adding a pool. As a sizing candidate,
-12/16 MiB ordinary/total would fit two maximum pickup/plaintext lifetimes plus
-the existing 3 MiB ordinary frame-snapshot allowance (11815304 bytes total).
-This is a proposal, not the current configuration or a progress guarantee.
-Compare actual mixed usage, retained cache ownership and kernel heap reserve;
-larger limits permit more retained heap consumption. Preserve protocol maxima
-instead of splitting/contorting the parser simply to fit today's byte ceiling.
-
-Required focused controls: simultaneous live image/descriptor and
-pickup/plaintext storage; ordinary/trusted original class; rejection before
-publication; backend failure after an allocated prefix; no changed signature,
-freshness or source-cap consumption; plaintext wiping; cancellation/disposal
-and original-charge recovery. Review the final batch once, then run the full
-host suite, strict test/minimal checks and ARM/Intel/AMD qualification against
-that source identity. No full guest campaign per individual buffer edit.
+Focused controls cover actual simultaneous maximum-sized copies/plaintext,
+ordinary/trusted original class, generation reuse, pre-allocation quota denial,
+partial-prefix failure, public input consumption and disposal. Optimized host
+tracing observes full-capacity erasure while admission remains charged before
+backend free, and rejects an unwiped control. The combined final host, strict
+checks and three-target campaigns pass on frozen sources. Counter/error
+adapters and the maximum-copy fixture are distinguished from authenticated
+connector deployment and concurrent EL0 pressure in the
+[acceptance record](../reports/audits/2026-11-04-syscall-snapshot-admission.md).
+Q1 supplies no persistent-cache, supervisor-parent, physical/recovery or
+saturated-progress qualification.
 
 ## Combined acceptance matrix
 

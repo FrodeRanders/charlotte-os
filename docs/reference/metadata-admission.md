@@ -31,6 +31,12 @@ charge. Pop/clear never release capacity admission. The containing operation
 still decides when element cleanup and buffer disposal are safe; the allocator
 supplies no physical-completion or recovery proof.
 
+The existing `snapshot_buffers` pool covers both frame catalogs and bounded
+[primitive syscall inputs/plaintext](snapshot-buffer-admission.md#primitive-syscall-inputs).
+Primitive vectors contribute requested bytes and zero frame-buffer counts.
+The reviewed default is 12/16 MiB ordinary/total; count limits stay 6144/8192.
+This expands an existing pool without changing the 23-pool catalog or version 10.
+
 ## Read-only runtime inventory
 
 `THREAD_STATISTICS` payload **version 10** has a 22-word little-endian header.

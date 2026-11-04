@@ -71,7 +71,7 @@ unlimited node capacity.
 | `thread_table` | three-vector bytes; backing slots, including replacement overlap | principal 16 MiB; 16384 slots | 24 MiB; 24576 slots | 32 MiB; 32768 slots |
 | `root_table` | three-vector bytes; ASID backing slots, including replacement overlap | principal 8 MiB; 8192 slots | 12 MiB; 12288 slots | 16 MiB; 16384 slots |
 | `scratch_nodes` | node-layout bytes; nodes | — | 384 KiB; 6144 nodes | 512 KiB; 8192 nodes |
-| `snapshot_buffers` | vector-buffer bytes; buffers | — | 3 MiB; 6144 buffers | 4 MiB; 8192 buffers |
+| `snapshot_buffers` | frame/primitive buffer bytes; frame buffers | — | 12 MiB; 6144 buffers | 16 MiB; 8192 buffers |
 | `mapping_nodes` | node-layout bytes; nodes | — | 768 KiB; 6144 nodes | 1 MiB; 8192 nodes |
 | `memory_capability_nodes` | object/capability/namespace/read-borrower layouts and object frame-vector bytes; nodes | — | 3 MiB; 24576 nodes | 4 MiB; 32768 nodes |
 | `memory.objects` | backing objects | 1024 | 6144 | 8192 |

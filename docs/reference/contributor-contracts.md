@@ -375,6 +375,17 @@ the corrected RPC polling paths, and the remaining notification gaps.
   through actual temporary-buffer disposal before submission roots complete.
   Successful copying supplies bytes, not physical cleanup or root authority.
 
+- Bounded upgrade/deployment/shutdown syscall copies and operational plaintext
+  share `snapshot_buffers` requested bytes with zero frame-buffer counts. Capture
+  class from the exact already-authorized executing root, use the common checked
+  copy boundary, and retain every private prefix in its operation owner until
+  actual disposal. Preserve public input-consumption/signature/freshness rules.
+  Prepare plaintext once before writing secrets, erase full capacity before
+  deallocation/refund, and do not reallocate initialized secrets. These primitive
+  owners grant no physical or root cleanup authority; qualify surrounding active
+  transaction/caller destructors separately. See
+  `docs/reference/snapshot-buffer-admission.md#primitive-syscall-inputs`.
+
 - Reply/cancellation revocation work clones the accepted token's original
   allocator; do not reclassify from the actor, promotion or a later ASID lookup.
   Reserve full byte capacity before preparing loans or publishing the claim.

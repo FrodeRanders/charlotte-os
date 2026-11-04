@@ -169,6 +169,7 @@ pub(crate) fn test_dma_unmap_status(
 
 pub fn test_syscall_dispatch() {
     logln!("Testing syscall dispatch subsystem...");
+    syscall::test_snapshot_buffers();
     let asid = crate::ipc::namespace::fixture_id(0xcafe);
     crate::ipc::namespace::prepare_fixture(asid);
     completion::open_address_space(asid, 256);
