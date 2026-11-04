@@ -1,0 +1,153 @@
+# SEC-07/18 closure work and batch acceptance
+
+This is the remaining-work baseline at `b15250b6`, dated 2026-11-04. It maps
+existing [R7/R18 requirements](security-remediation.md) to eight work packages;
+it adds no findings and relaxes no acceptance gate. Existing admission and
+cleanup qualifications remain valid in their recorded scopes. Production trust,
+node authentication, security time and physical-platform qualification retain
+their separate gates in the finding ledger.
+
+The [inventory checkpoint](../reports/audits/2026-11-04-resource-inventory.md)
+captures compiler-derived review candidates from both headless production
+profiles. It is a starting list, not a finding count or a completed R7-1/R18-1
+review. No implementation or qualification package below is accepted yet.
+
+## Existing coverage to preserve
+
+The 23-pool [metadata inventory](metadata-admission.md), signed-principal
+backing/stack/table admission, prepared payload nodes, original-class retention,
+typed cleanup owners and producer-LP notification contracts are implemented.
+The latest IPC snapshot/work-vector batch passed the full host suite, strict
+test/minimal checks and four-CPU ARM 19/19, Intel 17/17 and AMD 17/17 campaigns.
+These are local qualifications, not sustained pressure/recovery acceptance.
+
+Do not treat an ordinary `Vec` or `Arc` spelling as a bypass. For example,
+`completion/delivery/preparation.rs` already reserves CQ ring/backlog bytes via
+`cq_budget`; object frame catalogs and IOMMU ledgers retain explicit capacity
+reservations. Reconcile the inventory with their current owner contracts before
+reopening them. Empty collection constructors and reference clones normally
+allocate no backing at that site.
+
+## Work packages
+
+Statuses describe this baseline, not estimated effort. Keep each package's
+scope and exit test current; new discoveries must be assigned explicitly, with
+an explanation if they change scope. Do not silently turn each source match
+into a new patch or invent a new cleanup owner family.
+
+| ID / status | Bounded scope and existing gates | Required exit evidence |
+| --- | --- | --- |
+| Q1 — selected, implementation pending | Six primitive syscall input/scratch sites listed below; R7-2. Reuse snapshot copying and admission mechanics. | Captured sponsorship, adequate reviewed byte limits, fallible preparation, original input-consumption rules, plaintext erasure, quota/backend rejection and exact disposal/refund. One combined final campaign. |
+| Q2 — queued | `service::supervisor` launch/upgrade transactions, `PreparingUpgrade.moves`, handoff cap storage, and `service::store` cached-image lifetime; R7-2 and C18/G1/G4. | Complete parent owns every prefix and original charge. Qualify `DomainLaunchTransaction` and `PreparingUpgrade` active Drop call chains. Cache entries reserve publication/storage before mutation; no unbounded or uncharged permanent image retention. Test ordinary rollback and guarded abandonment separately. |
+| Q3 — review pending | Remaining heap producer/factory candidates, library edges and profile/boot exclusions; R7-1/R7-2. Start from the frozen inventory and source screen, including PCI traversal, per-LP construction and launch encoders. | Every relevant candidate assigned to an admitted owner, a required fix or a justified exclusion with trigger/bound/lifetime. Follow allocation-capable dependency calls and optional profiles. Compiled but unused helpers are not application-reachability findings. No unexplained raw allocator/factory or macro-origin gap. |
+| Q4 — queued after Q3 | Aggregate heap and signed-principal coverage across the existing pool catalog, restart and quarantine; R7-3. | Application-triggered allocations have family/node and original-principal coverage or a documented applicable exclusion. Count allocator/control overhead explicitly. Transfer, weak retention, ASID reuse and uncertain cleanup cannot refund or redirect original charges. Show a coherent multi-pool capacity plan. |
+| Q5 — review pending | Production caller/context and phase inventory for C01–C18; R18-1, G1/G3/G4. Use explicit/implicit Drop records plus callbacks and entry paths. | Record enclosing locks, IRQ state, allocation/notification/physical work, containing owner and unstarted/Pending/retryable/terminal outcome. Include ARM reaper context, scheduler/IRQ/observer callbacks and supervisor parents. Qualify actual callers; an inner post-guard helper is insufficient. |
+| Q6 — queued after Q5 | Typed retained-owner recovery, supervisor correlation and claimed device-reset support; R18-3/R18-4, G2/G3/G5/G6. Scope starts with root custody and mapping/domain/device owners in C03/C05/C14. | Stable exact-episode custody and mutation authorization; reconcile cached supervisor failure only after all dependency proofs. Extend recovery only with an actual complete eligible owner; consumed errors stay terminal. Test live outstanding I/O, withheld completion/reset rejection, old-MMIO denial and restart/reassignment for each claimed backend. Keep unsupported paths fenced. |
+| Q7 — queued, design required | Cleanup capacity and essential-service progress under saturation; R7-4 and SEC-06. IPC work admission at cleanup is a concrete known case. | Accepted work retains capacity needed for its promised cleanup, or a demonstrated bounded drainage policy establishes progress. No actor-based reclassification, force-refund or busy retry. Healthy management, timer/scheduler and ordinary teardown meet fixed budgets under real pressure. A larger byte limit alone does not close this package. |
+| Q8 — blocked on relevant Q1–Q7 exits | Combined three-target pressure/recovery matrix and incident correlation; R7-5/R18-5, G7. | Execute the matrix below on fixed final sources, with real backing and exact retained/released accounting. Preserve failures separately from repeats. Investigate the Intel retirement-pin and ARM exit-watch incidents with exact owner/generation/phase diagnostics; passing repeats do not resolve them. Publish accepted gates and remaining blockers explicitly. |
+
+Q3 and Q5 are review packages, not blanket requests to rewrite their subsystems.
+If they expose authority-publication or physical-release changes, define the
+specific call path and a separately reviewable sub-batch before editing. Keep
+it within the parent package's acceptance record. Common custody extraction
+waits for a second complete eligible adapter, as the cleanup contract requires.
+
+## Selected batch Q1
+
+These six sites are one batch because they produce bounded primitive byte
+storage through shared code. The source paths and protocol bounds are fixed:
+
+| Boundary | Code at this baseline | Retained bytes / existing rule |
+| --- | --- | --- |
+| Upgrade input image | `syscall::sys_spawn_upgrade`, `snapshot_bytes` at line 1853 | At most `MAX_ARTIFACT_ELF_SIZE`; original authorization and input cleanup remain applicable. |
+| Scoped launch image | `syscall::sys_spawn_artifact_scoped`, line 1986 | At most `MAX_ARTIFACT_ELF_SIZE`; retain alongside the descriptor until launch validation finishes. |
+| Scoped launch descriptor | Same handler, line 1991 | At most `deployment::MAX_DESCRIPTOR_LEN`; shares the image's complete operation. |
+| Operational pickup | `syscall::sys_spawn_operational_connector`, line 2063 | At most `operations_pickup::MAX_PICKUP_LEN`; artifact/envelope slices borrow this storage. |
+| Decrypted profile | Same handler, lines 2136–2138 | At most `operations::MAX_PROFILE_LEN`; erase initialized plaintext on ordinary disposal while retaining original admission. Abort erasure remains a separate SEC-15 limitation. |
+| Signed shutdown envelope | `syscall::sys_request_node_shutdown`, line 2226 | Exactly `shutdown::ENCODED_LEN`; preserve signature, freshness and input-consumption checks. |
+
+`memory::object::snapshot_bytes_in` already supplies the common validation/copy
+boundary. Its remaining store caller belongs to Q2 because the image can enter
+the permanent cache. Q1 must not accidentally refund a cached image or change
+store ownership merely to simplify a buffer type.
+
+Sizing must precede policy changes. Current maximum artifact size is 4194304
+bytes; maximum pickup is 4269252 bytes, and pickup plus maximum plaintext is
+4334788 bytes. The existing frame-snapshot pool has only 3/4 MiB ordinary/total
+byte limits. Blindly selecting it would reject legal maximum-sized inputs.
+
+Evaluate sharing that pool's byte dimension with reviewed additional headroom,
+or justify a distinct purpose before adding a pool. As a sizing candidate,
+12/16 MiB ordinary/total would fit two maximum pickup/plaintext lifetimes plus
+the existing 3 MiB ordinary frame-snapshot allowance (11815304 bytes total).
+This is a proposal, not the current configuration or a progress guarantee.
+Compare actual mixed usage, retained cache ownership and kernel heap reserve;
+larger limits permit more retained heap consumption. Preserve protocol maxima
+instead of splitting/contorting the parser simply to fit today's byte ceiling.
+
+Required focused controls: simultaneous live image/descriptor and
+pickup/plaintext storage; ordinary/trusted original class; rejection before
+publication; backend failure after an allocated prefix; no changed signature,
+freshness or source-cap consumption; plaintext wiping; cancellation/disposal
+and original-charge recovery. Review the final batch once, then run the full
+host suite, strict test/minimal checks and ARM/Intel/AMD qualification against
+that source identity. No full guest campaign per individual buffer edit.
+
+## Combined acceptance matrix
+
+This is a planned matrix, not executed qualification. Freeze exact case commands,
+artifacts, seeds, offered load, deadlines and backend support before its first
+run. The budgets below are initial fixture acceptance targets; failing them
+requires diagnosis and an explicit revised plan, not a passing-repeat overwrite.
+Production deadlines and invalidation policy do not change to satisfy a fixture.
+
+- Targets: fresh four-CPU AArch64/SMMUv3, x86/Intel VT-d and x86/AMD-Vi security
+  profiles. Retain the existing native controls. Add an eight-CPU AMD repeat for
+  scaling/incident comparison; it cannot substitute for the three base targets.
+- Load: 120 seconds after readiness, with at least eight ordinary EL0 clients
+  from at least two independently signed principals. Choose domain/principal
+  counts from the target pool's per-sponsor ceilings before execution; eight
+  single-domain workers alone need not reach a node ceiling. Exercise actual object/image/heap,
+  call/endpoint/CQ/observer and snapshot backing at ordinary and aggregate
+  ceilings. Include cancellation, weak retention, retirement/restart and
+  generation reuse. Record the first binding budget rather than bypassing it
+  to force a different ceiling. Counter adapters supplement real backing
+  pressure and explicitly cover otherwise unreachable counter dimensions.
+- Progress: already-admitted healthy status responses within the existing
+  three-second fixture bound; a fresh healthy status connection must finish
+  within ten seconds while the client pool is occupied. Use a 100 ms
+  timer/scheduler heartbeat with no gap over one second. Healthy ordinary
+  fixture-domain teardown must finish within ten seconds after its stop request.
+  Injected uncertainty must expose its retained Pending/failed owner state within
+  that bound, never manufacture completion. Keep cooperative completion,
+  waiter-admission rejection and physical failure outcomes distinct.
+- Faults: combine live loan/copy/DMA work and thread switching with peer/root
+  close, genuinely withheld/stale CPU acknowledgement, hardware completion
+  timeout/reset rejection, interrupted publication and partial physical-release
+  rejection. Every claimed device recovery backend must have actual outstanding
+  I/O; merely enabling NVMe queues is insufficient.
+- Outcomes: confirmed cleanup returns exact original family/principal charges;
+  uncertainty retains the correct owner/fence/charge and forbids reuse. Check
+  guard/IRQ state and later healthy progress, not just an error return. Capture
+  exact generation, target, phase and cause for exit-watch/retirement failures.
+- Outer budgets: 300 seconds per base campaign after guest start, including a
+  30-second pressure-stop/drain phase. Any separate whole-node retirement case
+  has a declared 90-second outer budget. Register all expected cases before
+  execution; no missing, pending or failed case is an acceptance pass.
+
+## Gate decisions and reporting
+
+| Gate | Required packages | Current decision |
+| --- | --- | --- |
+| I — complete allocation/principal inventory with no unexplained application bypass | Q1–Q4 | Open; compiler census captured, manual/dependency/profile review and accounting remain. |
+| C — qualified production cleanup contexts and typed continuation/recovery | Q2, Q5, Q6 | Open; current C01–C18 local controls are preserved, broader calls and recovery remain. |
+| P — sustained essential-service and accepted-cleanup progress | Q7, Q8 | Open; finite isolated controls and safe quota denial do not establish saturation progress. |
+| M — integrated QEMU pressure/recovery acceptance | Q8 and preceding required exits | Open; the combined matrix above has not run. |
+
+Report package acceptance criteria completed, gates accepted, unresolved failures
+and changed scope. Candidate counts, package counts and passing test totals are
+not weighted readiness percentages. The earlier conversational implementation
+estimate is provisional; this checkpoint supplies no measured percentage.
+Completing this QEMU milestone still leaves R18-6 physical qualification and
+the production trust/authentication/time/custody gates. Do not close SEC-07/18
+or explain historical incidents merely by consolidating this checklist.

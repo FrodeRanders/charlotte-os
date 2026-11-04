@@ -7,6 +7,24 @@ carry the detailed implementation requirements. The
 [security ledger](../reference/security-remediation.md) tracks unfinished work;
 [dated reports](../reports/README.md) retain particular experiments and incidents.
 
+## Plan and validate a batch
+
+Use the [current closure plan](../reference/security-closure-plan.md) to select
+a finite scope and exit criteria. Group related small changes that share an
+ownership invariant and validation matrix; retain reviewable commits. Run
+focused checks during development and one full required campaign against the
+final batch sources. Repeat broader testing when a change or unresolved failure
+justifies it. Authority publication, physical release and recovery changes need
+their own explicit review boundaries even within a larger work package.
+
+Report accepted criteria, gates, remaining packages and unresolved failures.
+Passing test counts and source matches do not measure readiness. Compiler and
+source inventories identify review candidates; trace actual callers, captured
+sponsorship, allocated capacity and destruction before calling a site a bypass.
+Preserve existing qualified owners and justified exclusions. Changed scope and
+failed campaigns must remain explicit; do not extend deadlines after observing
+a failure simply to obtain a passing repeat.
+
 ## Own the complete operation
 
 A capability handle, a backing allocation and a root lease each protect different

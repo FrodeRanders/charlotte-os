@@ -1,6 +1,6 @@
 # Security remediation status and completion criteria
 
-Current status updated 2026-11-02. This page records implemented scope,
+Current status updated 2026-11-04. This page records implemented scope,
 remaining acceptance gates and unresolved incidents. Finding dispositions are
 unchanged by documentation consolidation. Source and executable tests define
 current behavior; qualification records cover only their executed scope.
@@ -10,6 +10,12 @@ the reusable reasoning and [subsystem contributor contracts](contributor-contrac
 for implementation requirements. [Historical audits](../reports/README.md#audits)
 retain their original findings and execution records. Their old remaining-work
 paragraphs are not the current backlog.
+
+The [SEC-07/18 closure plan](security-closure-plan.md) defines eight remaining
+work packages, the selected six-site snapshot/scratch batch and the combined
+acceptance matrix. Its compiler census is a review baseline, not a completed
+allocation/caller inventory or a new readiness percentage. Finding dispositions
+and existing unresolved incidents remain unchanged.
 
 ## Finding ledger
 

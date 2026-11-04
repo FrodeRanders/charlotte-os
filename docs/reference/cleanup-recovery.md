@@ -171,6 +171,11 @@ it is not a fallback transition in this controller.
 These gates refine the [R7/R18 deliverables](security-remediation.md). Update
 their current boundary in place when work changes it.
 
+The [closure work plan](security-closure-plan.md) maps these existing gates to
+bounded review/implementation packages and a predefined integrated matrix.
+Its Drop census includes guard releases and generic code; it is not a count of
+unsafe destructors or a substitute for caller/IRQ qualification.
+
 | Gap | Remaining acceptance |
 | --- | --- |
 | G1: destructor and outer-context qualification | Enumerate every relevant production caller and implicit field drop. Qualify enclosing locks/IRQ state, allocation, notification, callbacks and physical cleanup. Test rejection/abandonment under the relevant guards. Inner post-guard disposal alone is insufficient. |
