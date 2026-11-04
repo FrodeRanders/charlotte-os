@@ -28,8 +28,10 @@ nodes retain both charges through actual deallocation. [Attachment retirement
 capacity](ipc-node-admission.md#attachment-retirement-capacity) shares byte
 admission and explicit post-IPC disposal. [Staging and token-loan vectors](ipc-node-admission.md#staging-and-loan-vectors)
 retain original byte admission through actual buffer disposal, including growth
-overlap and empty-but-allocated storage. Descriptor byte snapshots, reply and
-cancellation revocation-work vectors, allocator overhead and comprehensive
+overlap and empty-but-allocated storage. Descriptor byte snapshots use the same
+captured allocator and shared memory-object validation/copy boundary; quota
+failure rejects before parsing or transfer preparation. Reply and cancellation
+revocation-work vectors, allocator overhead and comprehensive
 principal/heap admission remain open.
 
 ## Call and endpoint preparation

@@ -63,7 +63,7 @@ unlimited node capacity.
 | `mailbox_nodes` | endpoint node-layout bytes; nodes | — | 1536 KiB; 12288 nodes | 2 MiB; 16384 nodes |
 | `deferred_nodes` | source-disposal node-layout bytes; nodes | — | 768 KiB; 12288 nodes | 1 MiB; 16384 nodes |
 | `completion_nodes` | completion/detached/CQ node-layout bytes; nodes | — | 6 MiB; 15360 nodes | 8 MiB; 20480 nodes |
-| `ipc_nodes` | IPC payload-node layouts, staging/token-loan and retirement-buffer bytes; nodes | — | 12 MiB; 73728 nodes | 16 MiB; 98304 nodes |
+| `ipc_nodes` | IPC payload-node layouts, descriptor/staging/token-loan and retirement-buffer bytes; nodes | — | 12 MiB; 73728 nodes | 16 MiB; 98304 nodes |
 | `device_nodes` | device namespace/payload node-layout bytes; nodes | — | 12 MiB; 104448 nodes | 16 MiB; 139264 nodes |
 | `iommu_nodes` | IOMMU metadata-layout bytes (nodes and ledger buffers); nodes | — | 18 MiB; 196608 nodes | 24 MiB; 262144 nodes |
 | `principal_history` | node-layout bytes; nodes | — | 768 KiB; 3072 nodes | 1 MiB; 4096 nodes |
@@ -86,10 +86,11 @@ not node slots, alongside their already-admitted object record. Maximum object
 size must fit both ordinary metadata catalog bytes and snapshot-buffer bytes;
 profile validation rejects an incompatible maximum before kernel build.
 
-IPC staging/token-loan vectors and attachment retirement catalogs consume only
+IPC descriptor snapshots, staging/token-loan vectors and attachment retirement catalogs consume only
 `ipc_nodes` bytes, with zero node slots. Original requester classification follows
 full allocated capacity through growth overlap, queueing, delivery and explicit
-post-IPC disposal. A maximum retirement catalog requests 34680 bytes alongside
+post-IPC disposal. A descriptor snapshot requests 4082 bytes and is freed before
+submission roots complete. A maximum retirement catalog requests 34680 bytes alongside
 2040 cap-ID bytes; one full transfer-staging vector requests 83640 bytes.
 The node-only sizing plan excludes these buffers; see
 [IPC backing](ipc-node-admission.md#attachment-retirement-capacity).

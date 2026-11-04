@@ -54,6 +54,8 @@ mod attachments;
 mod buffer_tests;
 mod close;
 #[cfg(feature = "kernel_tests")]
+mod descriptor_tests;
+#[cfg(feature = "kernel_tests")]
 pub(crate) use close::close_address_space_fixture;
 pub use close::close_cap;
 mod message;
@@ -177,6 +179,7 @@ pub use catten_syscall::CAP_VECTOR_MAX;
 /// `ipc_vector_send` / `ipc_vector_call`. Each entry specifies a
 /// memory-object capability and how it should be transferred.
 pub use catten_syscall::CapVectorEntry;
+const CAP_VECTOR_BYTES: usize = 2 + CAP_VECTOR_MAX * core::mem::size_of::<CapVectorEntry>();
 
 impl ConnectionRights {
     pub const ALL: Self =
@@ -1241,12 +1244,16 @@ fn read_vector_page(
     transfers: &mut Buffer<crate::memory::object::PreparedTransfer>,
 ) -> Result<(), IpcError> {
     assert!(out.is_empty() && transfers.is_empty());
-    let vector_bytes = crate::memory::object::snapshot_bytes(
+    let vector_bytes: Buffer<u8> = crate::memory::object::snapshot_bytes_in(
         sender,
         cap_vector_page,
-        2 + CAP_VECTOR_MAX * core::mem::size_of::<CapVectorEntry>(),
+        CAP_VECTOR_BYTES,
+        crate::klib::admission::ByteAllocator::new(platform),
     )
-    .map_err(|_| IpcError::UnknownCapability)?;
+    .map_err(|error| match error {
+        crate::memory::object::MemoryObjectError::FrameAllocFailed => IpcError::ResourceLimit,
+        _ => IpcError::UnknownCapability,
+    })?;
     let count = u16::from_le_bytes(
         vector_bytes
             .get(..2)

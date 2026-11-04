@@ -125,8 +125,13 @@ transfer-staging and reply-token loan vectors share byte-only admission through
 an allocator carrying the original class. Growth admits the full candidate while
 old capacity remains charged; pop/clear retain capacity until deallocation.
 The capability-vector allocator adds another 8 inline bytes per message slot.
-No numerical defaults change. Descriptor byte snapshots, reply/cancellation
-revocation-work vectors and general heap/principal admission remain open.
+Descriptor snapshots also reserve 4082 requested bytes through the captured IPC
+allocator, before parsing or preparing transfers. Quota rejection returns
+\texttt{ResourceLimit} and preserves the descriptor and source; successful
+submission retains its existing descriptor-consumption rule. The byte charge
+ends after actual temporary-buffer disposal, before submission roots complete.
+No numerical defaults change. Reply/cancellation revocation-work vectors and
+general heap/principal admission remain open.
 
 Connection-bearing calls and replies admit their
 connection before copying memory, consuming the token or revoking a loan.

@@ -66,6 +66,7 @@ protocol paths normally reserve their known count once before publication.
 
 | Buffer | Entry bytes | Maximum entries | Maximum requested bytes |
 | --- | --- | --- | --- |
+| Descriptor byte snapshot | 1 | 4082 | 4082 |
 | Parsed descriptor entries | 16 | 255 | 4080 |
 | Capability IDs | 8 | 255 | 2040 |
 | Prepared transfers | 328 | 255 | 83640 |
@@ -88,6 +89,25 @@ all fields. A guarded real copied-vector fixture checks this parent after caller
 promotion. The allocator grants no element-cleanup or physical-completion proof;
 other active vector parents, outer masks and revocation-work storage remain
 separate qualification.
+
+The descriptor boundary uses `memory::object::snapshot_bytes_in` with the same
+captured IPC allocator. Source rights, revocation state and length are validated
+under the memory-object registry before allocation/copy. A complete 4082-byte
+copy precedes descriptor parsing; only those copied bytes are subsequently
+validated and used. Later source mutation cannot change the parsed snapshot.
+Quota or backend allocation failure returns `ResourceLimit`; invalid sources
+retain their `UnknownCapability` result and malformed entries retain
+`MemoryTransferFailed`. Snapshot rejection preserves the caller's descriptor and source;
+successful submission consumes the descriptor under the existing contract.
+
+This temporary byte vector contributes zero node slots and stays charged until
+actual disposal on every parse/transfer outcome, before the containing
+submission completes its exact roots. It has no active capability elements or
+new holder allocation. Default `snapshot_bytes` callers use `Global` through
+the same validation/copy implementation; their image/package/store byte
+admission remains separate work. Snapshot allocation/copy still holds the memory
+registry, and ordinary descriptor disposal requires its existing post-IPC caller
+context. This change does not qualify unknown outer heap/IRQ guards or latency.
 
 ## Attachment retirement capacity
 
@@ -189,8 +209,9 @@ delivered-receive fixture retains one empty catalog under IPC/heap/pool guards;
 it adopts no physical backing or authority. Host physical retirement is an
 adapter, not a native physical-completion proof.
 
-Current vector-capacity qualification passed the full host suite (including
-the 47-test byte-allocator and 48-test attachment harnesses), strict test/minimal checks on both architectures,
+Current descriptor/vector-capacity qualification passed the full host suite
+(including the 47-test byte-allocator and 48-test attachment harnesses), strict
+test/minimal checks on both architectures,
 and fresh four-CPU security campaigns: ARM 19/19, Intel VT-d 17/17 and AMD-Vi
 17/17, with zero failures or pending tests. Numerical limits and wire formats
 remain unchanged.
@@ -204,8 +225,16 @@ and frames. Existing partial vector and scalar-send rollback controls use the
 same admitted buffers; a new guarded complete vector-send owner retains two data
 pages and its original roots/authority.
 
-Descriptor byte snapshots, reply/cancellation revocation-work vectors, other
-control storage, remaining allocations, general heap and aggregate principal
-admission remain open. Serialized controls do not prove
+The [descriptor evidence](../reports/audits/evidence/2026-11-04-ipc-descriptor-capacity.json)
+records ordinary/total quota rejection before allocation while holding the
+heap guard, using explicit counter-pressure reservations, plus trusted headroom,
+invalid source/length and malformed rollback, public send rejection/retry and
+source/descriptor/frame preservation. A copied
+snapshot retains its original ordinary charge after source mutation, caller
+promotion and root retirement, until actual buffer disposal.
+
+Reply/cancellation revocation-work vectors, other control storage, remaining
+allocations, general heap and aggregate principal admission remain open.
+Serialized controls do not prove
 sustained hostile concurrent EL0 fairness or all caller/IRQ/destructor contexts.
 SEC-07/18 remain partial.

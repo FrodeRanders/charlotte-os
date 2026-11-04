@@ -5,8 +5,14 @@
 //! syscall ABI for now: callers pass kernel address-space ids, and the registry
 //! enforces that moving an object consumes the sender's capability.
 
-use alloc::vec::Vec;
-use core::mem::ManuallyDrop;
+use alloc::{
+    alloc::Global,
+    vec::Vec,
+};
+use core::{
+    alloc::Allocator,
+    mem::ManuallyDrop,
+};
 
 #[cfg(feature = "kernel_tests")]
 use crate::memory::ADDRESS_SPACE_LIFECYCLE;
@@ -544,6 +550,18 @@ pub(crate) fn snapshot_bytes(
     cap: MemoryObjectCap,
     len: usize,
 ) -> Result<Vec<u8>, MemoryObjectError> {
+    snapshot_bytes_in(asid, cap, len, Global)
+}
+
+/// Snapshot with the caller's captured allocation policy. The returned vector
+/// retains its allocator through actual disposal; source rights and copying use
+/// the same registry-protected validation as the default-allocator boundary.
+pub(crate) fn snapshot_bytes_in<A: Allocator>(
+    asid: AddressSpaceId,
+    cap: MemoryObjectCap,
+    len: usize,
+    allocator: A,
+) -> Result<Vec<u8, A>, MemoryObjectError> {
     let registry = MEMORY_OBJECTS.lock();
     let cap_entry = registry.lookup(asid, cap)?;
     if !cap_entry.rights.contains(MemoryObjectRights::MAP_READ) {
@@ -564,7 +582,7 @@ pub(crate) fn snapshot_bytes(
     }
     // Snapshot allocation is caller-sized; prepare it fallibly so a rejected
     // or oversized request cannot abort the kernel under heap pressure.
-    let mut bytes = Vec::new();
+    let mut bytes = Vec::new_in(allocator);
     bytes.try_reserve_exact(len).map_err(|_| MemoryObjectError::FrameAllocFailed)?;
     for frame in &object.frames {
         let remaining = len - bytes.len();

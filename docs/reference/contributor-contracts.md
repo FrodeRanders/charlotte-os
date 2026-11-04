@@ -356,7 +356,7 @@ the corrected RPC polling paths, and the remaining notification gaps.
   the remaining complete owners and charge. Empty length supplies no physical
   completion or replay authority. See `docs/reference/ipc-node-admission.md`.
 
-- IPC parsed-descriptor, cap-ID, transfer-staging and reply-token loan vectors
+- IPC descriptor-byte, parsed-entry, cap-ID, transfer-staging and reply-token loan vectors
   use `ByteAllocator<IpcNodes>` for requested bytes and zero node slots. Capture
   class from the original call reservation or exact sender before allocation;
   move the cap vector's allocator into attachment storage without reclassification.
@@ -366,6 +366,14 @@ the corrected RPC polling paths, and the remaining notification gaps.
   explicit disposal leaves IPC and completes exact roots last. This allocator
   supplies no element-cleanup, physical-completion or replay proof. See
   `docs/reference/ipc-node-admission.md#staging-and-loan-vectors`.
+
+- IPC descriptor snapshots pass their captured allocator to
+  `memory::object::snapshot_bytes_in`; share source-rights/state/length validation
+  and registry-protected copying with the default snapshot boundary. Parse only
+  the completed copy. Admission rejection must precede parsing/transfers, retain
+  descriptor/source ownership and return `ResourceLimit`. Carry allocation charge
+  through actual temporary-buffer disposal before submission roots complete.
+  Successful copying supplies bytes, not physical cleanup or root authority.
 
 - Device namespace and MMIO/IRQ/DMA payload nodes use typed `DeviceMap` storage
   and independent `device_nodes` requested-byte/count admission. Capture trusted

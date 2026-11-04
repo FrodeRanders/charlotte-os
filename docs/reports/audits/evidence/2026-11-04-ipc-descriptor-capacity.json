@@ -1,0 +1,200 @@
+{
+  "schema": "charlotte.ipc-descriptor-capacity.v1",
+  "date": "2026-11-04",
+  "base_revision": "24c71fd2be03a0c76a712756272221f1032b002d",
+  "scope": "Allocation-lifetime byte admission for the temporary IPC vector descriptor snapshot, using the existing captured-class ByteAllocator<IpcNodes> and a shared allocator-parameterized memory-object snapshot boundary. Reply/cancellation revocation-work vectors remain separate work.",
+  "source_sha256": {
+    ".cargo/config.toml": "361dfe33de51580033bd6eae9134ef0a0c25ec15d0618cd5c18dab419a8b0ec5",
+    "Cargo.lock": "7c17f5d3cfb3620a17e8c86b9bb487165c09093d955190bbceda33afbe868356",
+    "crates/catten-syscall/src/lib.rs": "231d3e2ca37f03c987335f874e432cafcfac8b2969dd78ee7c37da82db4c0d2a",
+    "crates/catten-syscall/src/metadata_pools.rs": "11d14166d9d9c66a800dfb0bb2401c8af6875d0c31dc4d4295b72a2633d1b5b9",
+    "crates/catten/src/ipc/attachments.rs": "f0f3628feeb62156dada3107ae5bca892f157431e7e12f68f2683ca8d0b4a6ec",
+    "crates/catten/src/ipc/buffer_tests.rs": "b143837c2035d31a6c145a086afff8bbca457dc7b6fb36bff60c1a9bfaee30a2",
+    "crates/catten/src/ipc/descriptor_tests.rs": "416c96bd5a5c49eae4027adbebc582a1e0ab3103d98fd76392b051db5350d376",
+    "crates/catten/src/ipc/mod.rs": "5573925855e14f048ec4dd7a424f3d50ebb877d5a9012cbd0d56adbf6740dfb5",
+    "crates/catten/src/ipc/node_budget.rs": "e538c74137e8b719011ebd4634464973583cf3443bbb87f47c6cdcd9e22b2716",
+    "crates/catten/src/ipc/record_tests.rs": "0b6acbf474d4f50641a96912b8118e2d236835f033e0091f87f446a7753f73a0",
+    "crates/catten/src/ipc/submission.rs": "e4f97d92b3ddd5c5daf284a8082c7273cb69e2a29b88161fffeacd06bfdd2ae1",
+    "crates/catten/src/ipc/transaction.rs": "a0bebf490b258cac7406a76a6db158ef8c7eac3db3334d2d784725de4171a79c",
+    "crates/catten/src/klib/admission.rs": "943997ba7a90d3c6ac59aae593c5e425daf9789fec6ed846227837d4fd86d9f8",
+    "crates/catten/src/klib/admission/byte_allocator.rs": "30042575956fb29aa9677f34f205bcd7c346a0ba2b0474132235de31a6a88dea",
+    "crates/catten/src/memory/object.rs": "049c89730f9656d8b3823d215efb3c4a1eab4577905e5c068ed0bdbe84e73b4b",
+    "crates/catten/src/resource_policy/defaults.rs": "0b39025646e162f02e9cfa4270db5f0c1d4e9baa08894005b929d5945d26e629",
+    "crates/catten/src/self_test/ipc/vector.rs": "26087c191d4809d8dddf75cfcb200a5be84af48375e8b405b47910eebfa65422",
+    "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
+    "scripts/run-aarch64.sh": "58eede46ad82247673a9791e9cb247d5c32806b88bda86389e1e237d3ec100b8",
+    "scripts/run-host-tests.sh": "d3e773931451d377a76dfff79e150fb02d08c198cd9b3fb733f3da953c23ba2d",
+    "scripts/run-x86_64.sh": "68f5c782f96233721e2ca04f07c2181df7a43396add422ad49f421dbde900aaa",
+    "scripts/tests/test-tls-signature-lists.py": "4ca97824624b18beb0b29927d4755d8f709198fbd42d130defd985bb9b6f416b"
+  },
+  "artifact_note": "All final Rust sources were frozen before native campaigns; the four changed/new Rust identities were checked against that freeze. Subsequent documentation changes affect per-run tracked-diff hashes. An existing unrelated manual PDF edit is present in working-tree captures and is excluded from this change. The archived manifest, kernel, boot-image, disk, service and serial hashes below identify exercised artifacts; relevant diagnostics are included inline. Existing signed version-10 service bundles were reused; each runner regenerated signed security fixtures.",
+  "policy": {
+    "field": "ipc_nodes",
+    "ordinary": [
+      12582912,
+      73728
+    ],
+    "total": [
+      16777216,
+      98304
+    ],
+    "descriptor_requested_bytes": 4082,
+    "derivation": "2-byte count plus CAP_VECTOR_MAX=255 times size_of(CapVectorEntry)=16, bounded by the existing one-page descriptor grammar",
+    "charge": "[4082 requested bytes, 0 node slots], admitted before Global allocation and refunded only after actual deallocation",
+    "class": "Original PreparedCall record reservation for calls; exact sender-generation classification captured by Submission for sends. No later receiver, promotion or ASID lookup changes the allocator class.",
+    "decision": "Keep numerical defaults. One descriptor adds about 3.99 KiB of temporary backing to the same pool; no new holder, node layout, queue slot field, reserve category or persistent per-operation allocation is introduced. This competes with nodes and other vectors for same-class bytes. Raising limits would allow more retained heap consumption; measured mixed-workload headroom may justify a modest central adjustment. Serialized controls are not a simultaneous RAM-fit or essential-service fairness guarantee.",
+    "abi": "23-pool catalog, statistics version 10, SDK/runtime ABI and descriptor grammar unchanged; no service source or bundle rebuild required"
+  },
+  "ownership": {
+    "boundary": "snapshot_bytes_in validates source read rights, retirement/revocation/lend state and requested length under the memory-object registry, then fallibly allocates and copies using the supplied allocator. Default snapshot_bytes uses Global through the same implementation; its other callers are not brought into IPC admission.",
+    "parsing": "read_vector_page requests the bounded complete descriptor copy with the captured IPC allocator. Only copied bytes are parsed and used for transfer preparation; subsequent source mutation cannot alter that snapshot. The snapshot is not an atomic observation of concurrently writable source bytes, and grants no source authority.",
+    "rejection": "FrameAllocFailed from snapshot allocation, including quota denial, maps to IpcError::ResourceLimit. Other snapshot failures retain UnknownCapability; malformed counts/entries retain MemoryTransferFailed. Denial precedes descriptor parsing and transfer preparation. Input descriptor/source ownership is preserved; the existing successful-submission path closes the descriptor.",
+    "lifetime": "The temporary vector owns only copied bytes and its captured allocator. Success, malformed parse and later transfer rejection dispose it after local IPC guards, before the containing submission completes exact roots. Actual free precedes byte refund. Existing complete call/vector-send owners retain active transfer prefixes separately; byte admission supplies no physical completion/replay authority."
+  },
+  "native_campaigns": [
+    {
+      "arch": "aarch64",
+      "instance": "descriptors-20261104-arm",
+      "cpus": 4,
+      "revision": "24c71fd2be03a0c76a712756272221f1032b002d",
+      "kernel_sha256": "84a469f9913f1b82adbefd534d1b622fc728c21fceb97607c6bdc34c2fd2ef81",
+      "boot_image_sha256": "7f6b63dfb62777becdc2a1fca86a7494b4348401faa38085fc01a1226967970a",
+      "initial_disk_sha256": "51debddd5d0ee275def107ff60d5c41ea60d1319ee96a9c43070e8dbd623335d",
+      "tracked_diff_sha256": "83e23f3a190f0b7c97528ed833597bc7228f4b51d59eb5205b640ba16d845730",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-04T12:08:47Z",
+      "platform": "arm",
+      "configuration": "security-test; four CPUs; fresh storage; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "0f0abd8e6bfdcb78e13fa5472bbcb284b3c614462604342b70f4989c7d389550",
+      "serial_sha256": "cbcf009f3a755627a71bf6b8b5c894fdd157e9fd2c3bd5dafeca39b760c4949e",
+      "service_sha256": {
+        "observe.elf": "3550903f199e08b313d438c41febe87959dd312f5de67735152418760caa663c",
+        "security_probe.elf": "11a9f88261e2a8064100e7494d83c418d351a0422bac08e9807128ab964e43f3",
+        "sitas-user.elf": "6f0e7f2113b898f98e16708342db288745e9dcfe2bbbb016027e8db01100391b"
+      },
+      "summary": {
+        "passed": 19,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+     3.818007] [IPC vector capacity] real ordinary/total byte pressure, heap-held growth denial, full old/candidate rejection, original pointer/prefix and popped capacity retained; exact recovery; cap=8 transfer=328 loan=32 allocator=1 bytes",
+        "[+     3.821057] [IPC loan capacity] real mapped read loan, caller promotion, receive/reply revocation and call close recover exact backing; token keeps original loan-vector allocation until actual disposal",
+        "[+     3.822681] [IPC vector rollback] transfer capacity admitted before cap-ID quota rejection; complete copied transfer retained until post-guard finish; original counts, authority, buffer bytes, source and physical frames recovered",
+        "[+     3.830418] [IPC descriptor capacity] 4082 requested bytes; ordinary/total quota denial under heap guard, trusted headroom, invalid source/length and malformed rollback; public send rejection preserves source/descriptor/frames, retry delivers; immutable copied bytes and original class survive promotion/root retirement until actual buffer disposal",
+        "[+     6.524622] [IPC scalar submission] copy/move sends and copy/move/read/write calls prepare outside IPC with both roots; attachment/authority/endpoint rejection restores sources; heap-held send publication and inert complete scalar/vector-send abandonment passed; vector fixture retains two data pages and its complete original root/transfer/catalog owner after promotion",
+        "[+     6.525435] [IPC staged rollback] partial vector, storage/publication rejection, closed destination, unlocked copy release and exact root retention passed",
+        "[+     8.683772] [ipc vector staging] all four modes cancel privately; mixed reply, queued/delivered cancellation and endpoint close revoke all loans",
+        "[+    85.085766] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "arch": "x86_64",
+      "instance": "descriptors-20261104-intel",
+      "cpus": 4,
+      "revision": "24c71fd2be03a0c76a712756272221f1032b002d",
+      "kernel_sha256": "f774c43c5946aa46fe6e6aa0cd98aa42bc8d8a70fdc19f2fb24f4be0a68b2fa1",
+      "boot_image_sha256": "4bfc3781444a2233cca241e6feac479ada5a8c550b9333a5bb438fd3abe31e53",
+      "initial_disk_sha256": "861e744e92833aef5b75ec19edbda05c20fe2b3efb98c1bf68d08d7ad6b362d1",
+      "tracked_diff_sha256": "26d6ae5cda97530d065a4312a784aed5301602c2fdee424237351627bc8cb40a",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-04T12:09:58Z",
+      "platform": "intel",
+      "configuration": "security-test; four CPUs; fresh storage; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "486f85ed376e719bf95cf30d37b4a26e28563cb91af9b3bd17f27b5bbe7dec0b",
+      "serial_sha256": "ad63b05e2e3a57d2609357ad9ce4cf03514c41633cadecf8afd3681f67e13047",
+      "service_sha256": {
+        "observe.elf": "875e7de7a7759e46e7e5bf563a08531c25bb3c987f8907b9ddb1742612f525f6",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c"
+      },
+      "summary": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+     3.014264] [IPC vector capacity] real ordinary/total byte pressure, heap-held growth denial, full old/candidate rejection, original pointer/prefix and popped capacity retained; exact recovery; cap=8 transfer=328 loan=32 allocator=1 bytes",
+        "[+     3.017564] [IPC loan capacity] real mapped read loan, caller promotion, receive/reply revocation and call close recover exact backing; token keeps original loan-vector allocation until actual disposal",
+        "[+     3.019861] [IPC vector rollback] transfer capacity admitted before cap-ID quota rejection; complete copied transfer retained until post-guard finish; original counts, authority, buffer bytes, source and physical frames recovered",
+        "[+     3.024935] [IPC descriptor capacity] 4082 requested bytes; ordinary/total quota denial under heap guard, trusted headroom, invalid source/length and malformed rollback; public send rejection preserves source/descriptor/frames, retry delivers; immutable copied bytes and original class survive promotion/root retirement until actual buffer disposal",
+        "[+     5.750653] [IPC scalar submission] copy/move sends and copy/move/read/write calls prepare outside IPC with both roots; attachment/authority/endpoint rejection restores sources; heap-held send publication and inert complete scalar/vector-send abandonment passed; vector fixture retains two data pages and its complete original root/transfer/catalog owner after promotion",
+        "[+     5.752709] [IPC staged rollback] partial vector, storage/publication rejection, closed destination, unlocked copy release and exact root retention passed",
+        "[+     7.707990] [ipc vector staging] all four modes cancel privately; mixed reply, queued/delivered cancellation and endpoint close revoke all loans",
+        "[+    93.231271] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "arch": "x86_64",
+      "instance": "descriptors-20261104-amd",
+      "cpus": 4,
+      "revision": "24c71fd2be03a0c76a712756272221f1032b002d",
+      "kernel_sha256": "369a8c4f92878a12e7b9bad5a6af7cac34157bab872d7ae292e46551eae03134",
+      "boot_image_sha256": "6a712df21e84f13ac3f119f925e54db0673728941eb413cbd05fe2395557aec0",
+      "initial_disk_sha256": "861e744e92833aef5b75ec19edbda05c20fe2b3efb98c1bf68d08d7ad6b362d1",
+      "tracked_diff_sha256": "a5dfcdec15932439ab45b536dfd8de73c0f5dcbe8effa951a48ed1b952a391dd",
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-04T12:13:26Z",
+      "platform": "amd",
+      "configuration": "security-test; four CPUs; fresh storage; management disabled",
+      "result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "manifest_sha256": "2385b9bd1598af1e0b1537c37a7fe905e377ad4986d447baaea086f06cc127c9",
+      "serial_sha256": "31e64bae5fab22bd33bda1ae3e5c43b936bd5d8f730f144aa6997d005a8059de",
+      "service_sha256": {
+        "observe.elf": "875e7de7a7759e46e7e5bf563a08531c25bb3c987f8907b9ddb1742612f525f6",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c"
+      },
+      "summary": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0
+      },
+      "diagnostics": [
+        "[+     2.829395] [IPC vector capacity] real ordinary/total byte pressure, heap-held growth denial, full old/candidate rejection, original pointer/prefix and popped capacity retained; exact recovery; cap=8 transfer=328 loan=32 allocator=1 bytes",
+        "[+     2.832709] [IPC loan capacity] real mapped read loan, caller promotion, receive/reply revocation and call close recover exact backing; token keeps original loan-vector allocation until actual disposal",
+        "[+     2.834860] [IPC vector rollback] transfer capacity admitted before cap-ID quota rejection; complete copied transfer retained until post-guard finish; original counts, authority, buffer bytes, source and physical frames recovered",
+        "[+     2.839684] [IPC descriptor capacity] 4082 requested bytes; ordinary/total quota denial under heap guard, trusted headroom, invalid source/length and malformed rollback; public send rejection preserves source/descriptor/frames, retry delivers; immutable copied bytes and original class survive promotion/root retirement until actual buffer disposal",
+        "[+     5.431231] [IPC scalar submission] copy/move sends and copy/move/read/write calls prepare outside IPC with both roots; attachment/authority/endpoint rejection restores sources; heap-held send publication and inert complete scalar/vector-send abandonment passed; vector fixture retains two data pages and its complete original root/transfer/catalog owner after promotion",
+        "[+     5.432958] [IPC staged rollback] partial vector, storage/publication rejection, closed destination, unlocked copy release and exact root retention passed",
+        "[+     7.313926] [ipc vector staging] all four modes cancel privately; mixed reply, queued/delivered cancellation and endpoint close revoke all loans",
+        "[+    91.600314] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    }
+  ],
+  "validation": {
+    "host_suite": "Complete scripts/run-host-tests.sh passed with local socket access, including production parser and expected rejecting old-parser controls. Shared ByteAllocator and attachment tests retain actual deallocation tracing, full old/candidate overlap, backend rejection and original-class checks.",
+    "strict_kernel_checks": [
+      "AArch64 acpi,kernel_tests clippy -D warnings",
+      "x86_64 acpi,kernel_tests clippy -D warnings",
+      "AArch64 acpi minimal clippy -D warnings",
+      "x86_64 acpi minimal clippy -D warnings"
+    ],
+    "native_builds": "All runners built final kernels and enforced executable/read-only assembly section checks.",
+    "native_controls": [
+      "Explicit counter reservations leave 4081 bytes of ordinary or total headroom. The production descriptor boundary rejects its actual 4082-byte candidate while the primary heap allocator is held, with no cap/transfer allocation and exact unchanged counters. This is a quota-pressure adapter, not heap OOM or physically allocated saturation of the entire pool.",
+      "A real trusted-class descriptor snapshot allocates while ordinary admission is pressured; only total bytes rise by exactly 4082, node slots stay unchanged, and disposal restores exact counters.",
+      "Zero/oversized snapshot lengths and an invalid descriptor capability reject under the heap hold before allocation. A real zero-count descriptor rejects after copying and returns exact byte admission.",
+      "Public vector_send quota rejection leaves queue length zero, source unlent, descriptor count intact and physical free-frame count unchanged. After pressure is released, retrying the same descriptor delivers the copied 0x5a payload and consumes the descriptor; receive/close recovers original IPC counters.",
+      "An actual 4082-byte snapshot retains its original copied count and capability bytes after source mutation, remains ordinary after caller promotion, and stays charged across source/root retirement. Final vector disposal returns exact original bytes and unchanged node counts. IRQ state is preserved.",
+      "Existing mixed-mode vector reply, queued/delivered cancellation, endpoint-close, partial-transfer rollback and returned-resource controls run with admitted descriptor bytes through the shared parser path."
+    ],
+    "formatting": "cargo fmt --all -- --check and git diff --check passed."
+  },
+  "remaining_limits": [
+    "PreparedReply.loans and PreparedCancellation.loans revocation-work vectors still use Global; qualifying their complete active destructors and admission is separate work.",
+    "Default snapshot_bytes image/package/store and other callers still use Global. Remaining control storage, allocator overhead and general heap/aggregate principal admission remain open.",
+    "Snapshot allocation and copying still hold the memory-object registry. Ordinary temporary-byte disposal occurs in existing post-IPC callers; no new qualification of unknown outer heap/lifecycle/IRQ masks, guard latency or hostile concurrent EL0 fairness is claimed.",
+    "Backend failure is traced through the shared allocator host adapter; native general heap OOM is not forced. Quota controls use explicit counter reservations. Prior real-buffer saturation controls remain in the native suite.",
+    "Admission, copied bytes, readiness and metadata retention supply no physical completion, cancellation permission or replay authority. SEC-07/18 remain partial."
+  ]
+}

@@ -73,8 +73,8 @@ there is no mutable budget or teardown endpoint. History and cluster formats
 retain their own existing fields.
 
 The `ipc_nodes` row admits capability, endpoint, pending-call and reply-token layouts;
-parsed descriptors, cap-ID/staged-transfer/token-loan vectors and attachment
-retirement catalogs contribute bytes and zero node slots to that same pool,
+descriptor byte snapshots, parsed entries, cap-ID/staged-transfer/token-loan
+vectors and attachment retirement catalogs contribute bytes and zero node slots to that same pool,
 retaining original requester class through actual buffer release.
 Logical IPC resource counts retain their separate owners. Earlier catalog IDs
 and record widths stay unchanged; version 9 rejects rather than silently omitting
