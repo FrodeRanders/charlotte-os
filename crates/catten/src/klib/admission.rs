@@ -19,6 +19,7 @@ use crate::cpu::multiprocessor::spin::mutex::Mutex;
 mod byte_allocator;
 pub(crate) use byte_allocator::{
     ByteAllocator,
+    ByteCharge,
     ByteSponsor,
 };
 

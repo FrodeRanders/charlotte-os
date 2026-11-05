@@ -193,9 +193,10 @@ For fixed pools, every ordinary dimension is positive and below the total;
 domain dimensions must fit the ordinary pool. A reserve is the difference
 between total and ordinary admission, not a guaranteed share for one service.
 
-Diagnostic scratch has a separate signed-principal requested-byte ceiling,
+Selected kernel buffers share a signed-principal requested-byte ceiling,
 \path{Policy.memory.principal_kernel_buffer_bytes}, defaulting to 16 MiB.
-It currently covers diagnostic buffers and root heap/image frame catalogs.
+It covers diagnostic buffers, primitive syscall inputs/plaintext, CPU/copy/DMA
+frame snapshots and root heap/image frame catalogs.
 Diagnostics also retain their shared snapshot pool and 1 MiB local working bound;
 root catalogs consume the existing memory-metadata byte pool. It reserves no backing in advance and is
 not a general kernel-metadata limit. See

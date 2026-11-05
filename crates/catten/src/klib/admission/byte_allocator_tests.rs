@@ -21,6 +21,7 @@ use std::alloc::{
 use crate::klib::admission::{
     self,
     ByteAllocator,
+    ByteCharge,
     ByteSponsor,
     IpcNodes,
     Reservation,
@@ -207,4 +208,27 @@ fn captured_sponsor_funds_complete_growth_and_refunds_only_after_actual_free() {
     let block = allocator.allocate(zero).unwrap();
     unsafe { allocator.deallocate(block.cast(), zero) };
     assert_eq!(SPONSOR_USED.load(Ordering::Acquire), 0);
+}
+
+#[test]
+fn fixed_buffer_byte_charge_is_linear_and_returns_only_its_original_reservation() {
+    assert_eq!(SPONSOR_USED.load(Ordering::Acquire), 0);
+    SPONSOR_LIMIT.store(32, Ordering::Release);
+    let charge = ByteCharge::try_new(Sponsor, 32).unwrap();
+    assert_eq!(SPONSOR_USED.load(Ordering::Acquire), 32);
+    assert!(ByteCharge::try_new(Sponsor, 1).is_err());
+    assert_eq!(SPONSOR_USED.load(Ordering::Acquire), 32);
+    let moved = charge;
+    drop(moved);
+    assert_eq!(SPONSOR_USED.load(Ordering::Acquire), 0);
+    let before = used();
+    let rejected = (|| {
+        let _principal = ByteCharge::try_new(Sponsor, 24)?;
+        Reservation::<IpcNodes, 2>::reserve(false, [u64::MAX, 0])
+    })();
+    assert!(rejected.is_err());
+    assert_eq!(SPONSOR_USED.load(Ordering::Acquire), 0);
+    assert_eq!(used(), before);
+    drop(ByteCharge::try_new(Sponsor, 0).unwrap());
+    SPONSOR_LIMIT.store(u64::MAX, Ordering::Release);
 }

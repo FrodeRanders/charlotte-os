@@ -32,6 +32,34 @@ impl ByteSponsor for () {
     fn release(&self, _: u64) {}
 }
 
+/// Linear byte funding for a separately owned fixed buffer. The containing
+/// owner must retain this charge until actual deallocation; wrap it with that
+/// buffer in inert storage when abandonment cannot qualify disposal.
+#[derive(Debug)]
+#[must_use]
+pub(crate) struct ByteCharge<S: ByteSponsor> {
+    sponsor: S,
+    bytes: u64,
+}
+impl<S: ByteSponsor> ByteCharge<S> {
+    pub(crate) fn try_new(sponsor: S, bytes: u64) -> Result<Self, AllocError> {
+        if bytes != 0 {
+            sponsor.reserve(bytes)?;
+        }
+        Ok(Self {
+            sponsor,
+            bytes,
+        })
+    }
+}
+impl<S: ByteSponsor> Drop for ByteCharge<S> {
+    fn drop(&mut self) {
+        if self.bytes != 0 {
+            self.sponsor.release(self.bytes);
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct ByteAllocator<F: Family<2>, S: ByteSponsor = ()> {
     platform: bool,

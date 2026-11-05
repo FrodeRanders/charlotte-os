@@ -16,7 +16,9 @@ working buffers:
 | Buffer reservations | 8192 | 6144 |
 
 A nonempty frame buffer reserves `pages * size_of::<PAddr>()` bytes and one count before
-the fallible vector allocator. The per-object frame bound is unchanged. On the
+the fallible vector allocator, plus the same bytes against its captured signed
+principal. Preparation accepts only an empty vector of exactly the admitted
+capacity. The per-object frame bound is unchanged. On the
 supported targets one maximum-sized snapshot requests 128 KiB. These are
 requested buffer layouts, excluding allocator overhead/excess storage, inline
 owner fields, mapping nodes and other metadata allocations. Mapping nodes have
@@ -26,16 +28,22 @@ separate [requested-layout admission](mapping-node-admission.md).
 
 Every factory receives the exact caller namespace handle captured by its existing
 map/copy/DMA operation. Classification is captured once from that handle's trusted
-memory-sponsor policy, before counter or allocator entry. A reused ASID cannot
+memory-sponsor policy, together with its verified principal under one root-table
+hold, before counter or allocator entry. A reused ASID cannot
 select a successor's reserve classification. Names, manifest roles and callers
 cannot choose reserve; later promotion cannot reclassify an existing reservation
 or its refund. Borrowed backing does not substitute its owner's policy for the
-calling namespace's policy. This adds no per-principal ceiling or guaranteed share
-for one platform service.
+calling namespace's policy. All production requested-byte paths in this family
+also share the existing **16 MiB signed-principal kernel-buffer ceiling** with
+[root heap/image catalogs](page-table-lifetime.md#root-data-frame-catalogs).
+Sibling roots and restarts share that boot-lifetime history record. This is a
+byte ceiling, not per-principal count admission or a guaranteed service share.
+Unidentified kernel/raw fixture roots retain family admission; signed application
+launch prebinds its principal before execution. No caller input selects that exception.
 
 The typed `Snapshot` retains vector storage and original admission together in
 inert fields. Preparation cancellation and ordinary disposal free the buffer
-before refunding the charge. Allocation rejection returns its original unused
+before refunding both original charges. Allocation rejection returns its original unused
 reservation; quota rejection returns `ResourceLimit` before the allocator. An
 allocator rejection returns `FrameAllocFailed`. Existing backend conversions and
 public ABI remain unchanged.
@@ -58,14 +66,15 @@ Their existing source pin/fence remains required. This is a distinct current
 purpose, not an uncharged allocator or compatibility path. Zero-size snapshot
 preparation rejects; it never supplies an empty fallback for an ordinary snapshot.
 
-The counter is an independent leaf mutex released before allocation. Explicit
-refund follows buffer deallocation after allocator return; abandonment enters no
-allocator, registry or counter. Ordinary containing cleanup still requires its
-qualified post-guard context.
+Principal and family counters use independent leaf holds, each released before
+the next stage and allocation. Family rejection cancels only the unused principal
+prefix. Explicit refund follows buffer deallocation after allocator return;
+abandonment enters no allocator, registry, history record or counter. Ordinary
+containing cleanup still requires its qualified post-guard context.
 
 ## Primitive syscall inputs
 
-`syscall::snapshot_buffers` captures trusted storage class from the exact
+`syscall::snapshot_buffers` captures trusted storage class and original principal from the exact
 already-authorized manager/agent generation, before buffer allocation. The
 executing caller's current thread retains its root; the class token borrows that
 identity and grants no root or teardown authority. The user-thread `StackSlot`
@@ -77,7 +86,8 @@ read-rights, object-state and length checks under the memory-object registry.
 Only completed private copies reach signature/protocol validation. Promotion,
 root retirement and ASID reuse cannot redirect their original byte charges.
 
-`ByteAllocator<SnapshotBuffers>` admits requested bytes and **zero buffer counts**
+`ByteAllocator<SnapshotBuffers, Sponsor>` admits the entire requested layout
+against the original principal and family bytes, with **zero buffer counts**,
 before allocation. The frame-catalog count contract is unchanged. Scoped image
 and descriptor copies share one `ScopedInputs`; pickup and private plaintext
 share one `OperationalInputs`. Failure disposes the complete private prefix
@@ -90,7 +100,7 @@ surrounding supervisor launch/upgrade transactions or arbitrary enclosing caller
 
 The plaintext owner allocates once before decryption and cannot reallocate after
 initialization. It exposes borrowed slices and erases initialized and spare
-capacity before vector deallocation, which precedes original-class refund.
+capacity before vector deallocation, which precedes original-class and original-principal refunds.
 Successful output, authentication failure and later profile/launch rejection
 retain that same owner. Forced termination/abort and other secret copies remain
 separate [SEC-15 limitations](secret-state-lifetimes.md).
@@ -118,14 +128,21 @@ pool with zero frame-buffer counts. Their allocator additionally captures the
 verified requester's 16 MiB kernel-buffer principal allowance from the existing
 history record. The original class and principal follow actual allocated
 capacity and complete growth overlap until deallocation, including root close
-and ASID reuse. `SystemObserver` widens visibility, not sponsorship. This does
-not retrofit principal charges onto the other snapshot/input families above.
+and ASID reuse. `SystemObserver` widens visibility, not sponsorship. The same
+principal counter now covers the primitive and frame buffers above.
 See [telemetry scratch](telemetry-snapshots.md) for capture, guard and local
 failure disposal contracts. The family byte/count ceilings remain unchanged;
 this adds a shared consumer rather than another pool or an unbacked capacity
 promise. Joint capacity and sustained progress remain Q4/Q7/Q8 work.
 
 ## Acceptance scope
+
+The [Q4 principal qualification](../reports/audits/2026-11-05-q4-snapshot-principals.md)
+adds sibling-root byte denial, independent sponsors, public input consumption on
+family/principal rejection, frame allocation-prefix rollback, exact capacity,
+retained copy-pin disposal after close/reuse, free-before-both-refunds and guarded
+metadata abandonment. Private fixture principals enter at the trusted constructor
+boundary; signature verification is covered separately by the combined campaign.
 
 The [audit evidence](../reports/audits/2026-10-25-security-snapshot-buffer-admission.md)
 qualifies real byte/count exhaustion, trusted reserve, rejection before allocation
@@ -142,7 +159,7 @@ failure statuses; they do not add a new public quota status.
 | Audit gate | Added evidence | Remaining acceptance work |
 | --- | --- | --- |
 | R7-2 | This snapshot family rejects quota/allocation failure before publication and retains its original allocation owner. | Other metadata families and the complete application-triggerable allocation inventory. |
-| R7-3 | One shared requested-byte/count ceiling covers concurrent and retained snapshot buffers, including across root retirement. | Aggregate signed-principal snapshot/general-heap admission and allocator overhead. |
+| R7-3 | Shared family bytes/counts and original-principal requested bytes cover concurrent and retained snapshot buffers, including across root retirement. | General-heap and other metadata principal admission, allocator/control overhead and coherent joint capacity. Frame counts have no principal share guarantee. |
 | R7-4/R7-5 | Serialized actual-buffer pressure, trusted reserve and teardown at exhaustion. | Sustained concurrent EL0 pressure with management, timer/scheduler and teardown latency/progress. |
 | R18/G1 | Existing typed owner/physical-proof boundaries remain; publication/fallback contexts are guarded controls. | Broader caller/destructor/IRQ contexts, concurrent hardware failures and authorized recovery custody. |
 

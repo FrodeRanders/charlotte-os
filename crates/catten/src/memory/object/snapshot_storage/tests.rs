@@ -19,6 +19,7 @@ fn available() {
     assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());
     assert!(PRIMARY_ALLOCATOR.try_lock().is_some());
     assert!(PHYSICAL_FRAME_ALLOCATOR.try_lock().is_some());
+    assert!(memory::usage::principal_history_available());
 }
 fn pressure(handle: AddressSpaceHandle, pages: usize, owners: &mut Vec<Preparing>, bound: usize) {
     loop {
@@ -43,6 +44,8 @@ pub(crate) fn run() {
     release_order_and_classification();
     count_pressure();
     byte_pressure();
+    principal_coverage();
+    exact_capacity();
     crate::logln!(
         "[snapshot buffer admission] 64 charged allocation rejections; 64 \
          buffer-free-before-refund observations; real ordinary/total count and byte exhaustion, \
@@ -51,8 +54,120 @@ pub(crate) fn run() {
     );
 }
 
+fn signed_root(name: &[u8]) -> (AddressSpaceHandle, u64) {
+    let principal = charlotte_launch::artifact_principal_id(name);
+    let space = memory::AddressSpace::try_new_principal_user(
+        false,
+        memory::prepare_principal_backing(principal, false).unwrap(),
+    )
+    .unwrap();
+    let handle = memory::register_user_address_space(space).unwrap();
+    memory::register_domain_authority(handle, principal, 0).unwrap();
+    (handle, principal)
+}
+
+fn exact_capacity() {
+    let (handle, principal) = signed_root(b"snapshot-capacity-rejection");
+    let before = admitted();
+    for over_capacity in [false, true] {
+        let result = Preparing::with_factory(
+            handle,
+            4,
+            |_| Ok(()),
+            |frames, pages| {
+                frames.try_reserve_exact(pages + usize::from(over_capacity)).unwrap();
+                if !over_capacity {
+                    frames.push(PAddr::try_from(0usize).unwrap());
+                }
+                Ok(())
+            },
+        );
+        assert_eq!(result.err(), Some(MemoryObjectError::FrameAllocFailed));
+        assert_eq!(admitted(), before);
+        assert_eq!(memory::kernel_buffers::test_used(principal), 0);
+    }
+    memory::close_user_address_space_handle(handle).unwrap();
+}
+
+fn principal_coverage() {
+    use memory::kernel_buffers::{
+        test_limit,
+        test_used,
+    };
+    let before = admitted();
+    let (first, principal) = signed_root(b"snapshot-frame-principal");
+    let (sibling, same) = signed_root(b"snapshot-frame-principal");
+    let (healthy, other) = signed_root(b"snapshot-frame-healthy");
+    assert_eq!(principal, same);
+    test_limit(principal, 16);
+    let cap = allocate(first.id(), 1).unwrap();
+    let copy = pin_for_copy(first.id(), cap).unwrap();
+    let prepared = Preparing::new(sibling, 1).unwrap();
+    assert_eq!(test_used(principal), 16);
+    let full = admitted();
+    for _ in 0..64 {
+        denied(first, cap, 1);
+    }
+    assert_eq!(test_used(principal), 16);
+    let healthy_snapshot = Preparing::new(healthy, 1).unwrap();
+    assert_eq!(test_used(other), 8);
+    memory::budget::mark_platform(first);
+    assert_eq!(admitted().1, [full.1[0] + 8, full.1[1] + 1]);
+    assert!(Preparing::new(first, 1).is_err());
+    memory::close_user_address_space_handle(first).unwrap();
+    assert_eq!(test_used(principal), 16);
+    let (replacement, replacement_principal) = signed_root(b"snapshot-frame-healthy");
+    assert_eq!(replacement.id(), first.id());
+    assert_ne!(replacement, first);
+    assert_eq!(replacement_principal, other);
+    unpin_copy(copy);
+    assert_eq!(test_used(principal), 8);
+    prepared.finish();
+    assert_eq!(test_used(principal), 0);
+    assert_eq!(test_used(other), 8);
+    let sibling_cap = allocate(sibling.id(), 1).unwrap();
+    let dma = pin_for_dma(sibling.id(), sibling_cap, true, false, false).unwrap();
+    assert_eq!(test_used(principal), 8);
+    unpin_dma(dma); // Known unused pin: no hardware mapping was published.
+    assert_eq!(test_used(principal), 0);
+    let mut orphan = Preparing::new(sibling, 1).unwrap();
+    let snapshot = core::mem::take(&mut orphan.0);
+    orphan.finish();
+    let charged = admitted();
+    snapshot.finish_with(|| {
+        available();
+        assert_eq!(admitted(), charged);
+        assert_eq!(test_used(principal), 8, "principal refund preceded buffer free");
+    });
+    assert_eq!(test_used(principal), 0);
+    for handle in [sibling, healthy, replacement] {
+        memory::close_user_address_space_handle(handle).unwrap();
+    }
+    assert_eq!(test_used(other), 8);
+    healthy_snapshot.finish();
+    assert_eq!(test_used(other), 0);
+    assert_eq!(admitted(), before);
+    // Complete snapshot abandonment retains both counters under their guards.
+    let (retained, retained_principal) = signed_root(b"snapshot-frame-retained");
+    let snapshot = Preparing::new(retained, 1).unwrap();
+    let charged = admitted();
+    memory::usage::with_principal_history_locked(|| {
+        let _heap = PRIMARY_ALLOCATOR.lock();
+        admission::with_locked(|| drop(snapshot));
+    });
+    assert_eq!(admitted(), charged);
+    assert_eq!(test_used(retained_principal), 8);
+    memory::close_user_address_space_handle(retained).unwrap();
+    assert_eq!(test_used(retained_principal), 8);
+    crate::logln!(
+        "[snapshot principal frames] shared-root copy/DMA/map denials, original class, \
+         independent sponsor, retained old-principal refund after close/reuse, free-before-refund \
+         and guarded abandonment passed"
+    );
+}
+
 fn allocation_rejection() {
-    let handle = root();
+    let (handle, principal) = signed_root(b"snapshot-allocation-rejection");
     let before = admitted();
     for _ in 0..64 {
         let result = Preparing::with_factory(
@@ -63,11 +178,13 @@ fn allocation_rejection() {
                 available();
                 assert_eq!(pages, 35);
                 assert_eq!(admitted().0, [before.0[0] + 35 * 8, before.0[1] + 1]);
+                assert_eq!(memory::kernel_buffers::test_used(principal), 35 * 8);
                 Err(MemoryObjectError::FrameAllocFailed)
             },
         );
         assert_eq!(result.err(), Some(MemoryObjectError::FrameAllocFailed));
         assert_eq!(admitted(), before);
+        assert_eq!(memory::kernel_buffers::test_used(principal), 0);
     }
     for pages in [0, usize::MAX] {
         assert_eq!(Preparing::new(handle, pages).err(), Some(MemoryObjectError::FrameAllocFailed));

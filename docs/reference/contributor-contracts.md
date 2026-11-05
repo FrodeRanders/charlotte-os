@@ -415,7 +415,9 @@ the corrected RPC polling paths, and the remaining notification gaps.
 
 - Bounded upgrade/deployment/shutdown syscall copies and operational plaintext
   share `snapshot_buffers` requested bytes with zero frame-buffer counts. Capture
-  class from the exact already-authorized executing root, use the common checked
+  class and verified principal together from the exact already-authorized
+  executing root. Admit against the original principal kernel-buffer allowance
+  and shared family bytes, use the common checked
   copy boundary, and retain every private prefix in its operation owner until
   actual disposal. Preserve public input-consumption/signature/freshness rules.
   Prepare plaintext once before writing secrets, erase full capacity before

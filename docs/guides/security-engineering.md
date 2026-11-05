@@ -62,6 +62,10 @@ allocation. Both admission stages precede allocation; allocator clones preserve
 the sponsor and actual deallocation precedes both refunds. Family-only default
 allocators do not acquire principal coverage automatically. Use the existing
 boot-lifetime principal record rather than adding a second identity registry.
+For a fixed buffer whose existing typed owner controls physical completion, pair
+`ByteCharge` with that buffer inside the same inert owner. Release it only after
+buffer deallocation; reject an allocator adapter that returns unadmitted capacity.
+Sharing the byte mechanics need not replace that owner or its completion proof.
 
 An inert child receipt does not make its parent inert: a vector still frees its
 allocation, a transfer may restore escrow, and a notification batch may destroy

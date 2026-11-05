@@ -6,6 +6,7 @@ use crate::{
         self,
         Family,
         Reservation,
+        SnapshotBuffers,
     },
     memory::allocators::global_allocator::PRIMARY_ALLOCATOR,
     syscall::{
@@ -20,6 +21,17 @@ fn used() -> ([u64; 2], [u64; 2]) {
 }
 fn root() -> AddressSpaceHandle {
     crate::service::loader::create_user_address_space_handle()
+}
+fn signed_root(name: &[u8]) -> (AddressSpaceHandle, u64) {
+    let principal = charlotte_launch::artifact_principal_id(name);
+    let space = memory::AddressSpace::try_new_principal_user(
+        false,
+        memory::prepare_principal_backing(principal, false).unwrap(),
+    )
+    .unwrap();
+    let handle = memory::register_user_address_space(space).unwrap();
+    memory::register_domain_authority(handle, principal, 0).unwrap();
+    (handle, principal)
 }
 fn close(handle: AddressSpaceHandle) {
     memory::close_user_address_space_handle(handle).unwrap();
@@ -42,6 +54,7 @@ pub(crate) fn run() {
     original_class_and_generation();
     rejection_and_prefix();
     syscall_consumption();
+    principal_coverage();
     crate::logln!(
         "[syscall snapshots] all six buffers: maxima, original class/generation, ordinary/total \
          denial before allocator entry, prefix cleanup and public input consumption passed; exact \
@@ -51,7 +64,7 @@ pub(crate) fn run() {
 
 fn simultaneous_maxima() {
     let before = used();
-    let handle = root();
+    let (handle, principal) = signed_root(b"primitive-snapshot-maxima");
     let class = Class::capture(handle).unwrap();
     let maximum = charlotte_launch::operations_pickup::MAX_PICKUP_LEN;
     let profile = charlotte_launch::operations::MAX_PROFILE_LEN;
@@ -93,6 +106,7 @@ fn simultaneous_maxima() {
     assert_eq!(second.package.len(), maximum);
     let bytes = allowance + 2 * (maximum + profile);
     assert_eq!(bytes, 11_815_160);
+    assert_eq!(memory::kernel_buffers::test_used(principal), bytes as u64);
     assert_eq!(
         used(),
         (
@@ -101,6 +115,7 @@ fn simultaneous_maxima() {
         )
     );
     drop((second, first, mixed));
+    assert_eq!(memory::kernel_buffers::test_used(principal), 0);
     assert_eq!(used(), baseline);
     object::close_cap(handle.id(), descriptor).unwrap();
     object::close_cap(handle.id(), cap).unwrap();
@@ -115,6 +130,73 @@ fn simultaneous_maxima() {
         profile,
         SnapshotBuffers::ORDINARY[0],
         SnapshotBuffers::TOTAL[0]
+    );
+}
+
+fn principal_coverage() {
+    use memory::kernel_buffers::{
+        test_limit,
+        test_used,
+    };
+    let before = used();
+    let (first, principal) = signed_root(b"primitive-snapshot-principal");
+    let (sibling, same) = signed_root(b"primitive-snapshot-principal");
+    let (healthy, other) = signed_root(b"primitive-snapshot-healthy");
+    assert_eq!(principal, same);
+    test_limit(principal, 96);
+    let cap = input(first, 128);
+    object::write_bytes(first.id(), cap, &[0xa5; 128]).unwrap();
+    let class = Class::capture(first).unwrap();
+    let bytes = class.snapshot(cap, 64).unwrap();
+    let sibling_cap = input(sibling, 128);
+    assert_eq!(test_used(principal), 64);
+    for _ in 0..64 {
+        assert!(
+            Class::capture(sibling).unwrap().scoped((sibling_cap, 64), (sibling_cap, 64)).is_err()
+        );
+        assert!(class.scoped((cap, 64), (cap, 33)).is_err());
+        assert_eq!(test_used(principal), 64);
+    }
+    // With all remaining principal bytes occupied by a sibling buffer, both
+    // frame-pin and diagnostic factories must reject through the same counter.
+    let sibling_bytes = Class::capture(sibling).unwrap().snapshot(sibling_cap, 32).unwrap();
+    assert_eq!(test_used(principal), 96);
+    assert_eq!(object::pin_for_copy(first.id(), cap).err(), Some(MemoryObjectError::ResourceLimit));
+    let mut diagnostics = crate::klib::collections::snapshot::Budget::with_allocator(
+        1024,
+        memory::kernel_buffers::telemetry_allocator(first.id()).unwrap(),
+    );
+    assert!(diagnostics.prepare::<u8>(1).is_err());
+    memory::budget::mark_platform(first);
+    assert_eq!(test_used(principal), 96);
+    assert!(Class::capture(first).unwrap().snapshot(cap, 1).is_err());
+    let healthy_cap = input(healthy, 64);
+    let healthy_bytes = Class::capture(healthy).unwrap().snapshot(healthy_cap, 64).unwrap();
+    assert_eq!(test_used(other), 64);
+    close(first);
+    let (replacement, replacement_principal) = signed_root(b"primitive-snapshot-healthy");
+    assert_eq!(replacement.id(), first.id());
+    assert_ne!(replacement, first);
+    assert_eq!(replacement_principal, other);
+    assert_eq!(test_used(principal), 96);
+    drop((bytes, sibling_bytes));
+    assert_eq!(test_used(principal), 0);
+    assert_eq!(test_used(other), 64);
+    // Reject the descriptor after a successfully copied image, not before it.
+    test_limit(principal, 95);
+    let sibling_class = Class::capture(sibling).unwrap();
+    assert!(sibling_class.scoped((sibling_cap, 32), (sibling_cap, 64)).is_err());
+    assert_eq!(test_used(principal), 0);
+    drop(healthy_bytes);
+    for handle in [sibling, healthy, replacement] {
+        close(handle);
+    }
+    assert_eq!(test_used(other), 0);
+    assert_eq!(used(), before);
+    crate::logln!(
+        "[snapshot principal inputs] signed maxima, sibling byte ceiling, frame/diagnostic \
+         sharing, promotion, prefix rollback and retained old-principal refund after ASID reuse \
+         passed"
     );
 }
 
@@ -214,9 +296,17 @@ fn frame(handle: AddressSpaceHandle, cap: u64, len: usize) -> TrapFrame {
 
 fn syscall_consumption() {
     let before = used();
-    let handle = root();
+    let (handle, principal) = signed_root(b"snapshot-public-handler-principal");
     let previous = crate::service::supervisor::DEPLOYMENT_AGENT_ASID.lock().replace(handle);
-    for denied in [false, true] {
+    for denied in [0, 1, 2] {
+        memory::kernel_buffers::test_limit(
+            principal,
+            if denied == 2 {
+                0
+            } else {
+                crate::resource_policy::POLICY.memory.principal_kernel_buffer_bytes
+            },
+        );
         for number in [
             call_no::SPAWN_ARTIFACT_SCOPED,
             call_no::SPAWN_OPERATIONAL_CONNECTOR,
@@ -235,7 +325,7 @@ fn syscall_consumption() {
                 frame.regs[4] = charlotte_launch::deployment::MAX_DESCRIPTOR_LEN as u64;
             }
             let baseline = used();
-            let pressure = denied.then(|| fill_budget(false, 0));
+            let pressure = (denied == 1).then(|| fill_budget(false, 0));
             syscall::syscall_dispatch(&mut frame, number);
             assert_eq!(
                 frame.regs[0],
@@ -254,6 +344,7 @@ fn syscall_consumption() {
             }
             drop(pressure);
             assert_eq!(used(), baseline);
+            assert_eq!(memory::kernel_buffers::test_used(principal), 0);
         }
     }
     *crate::service::supervisor::DEPLOYMENT_AGENT_ASID.lock() = previous;
@@ -263,23 +354,33 @@ fn syscall_consumption() {
         crate::ipc::connection_mint(handle.id(), endpoint, crate::ipc::ConnectionRights::CALL)
             .unwrap();
     let previous = crate::service::supervisor::LIVE_UPGRADE_MANAGER_ASID.lock().replace(handle);
-    for denied in [false, true] {
+    for denied in [0, 1, 2] {
+        memory::kernel_buffers::test_limit(
+            principal,
+            if denied == 2 {
+                0
+            } else {
+                crate::resource_policy::POLICY.memory.principal_kernel_buffer_bytes
+            },
+        );
         let cap = input(handle, 512);
         let mut frame = frame(handle, cap, 512);
         frame.regs[4] = connection;
         let baseline = used();
-        let pressure = denied.then(|| fill_budget(false, 0));
+        let pressure = (denied == 1).then(|| fill_budget(false, 0));
         syscall::syscall_dispatch(&mut frame, call_no::SPAWN_UPGRADE);
         assert_eq!(frame.regs[0], 0);
         assert!(object::info(handle.id(), cap).is_err());
         drop(pressure);
         assert_eq!(used(), baseline);
+        assert_eq!(memory::kernel_buffers::test_used(principal), 0);
     }
     *crate::service::supervisor::LIVE_UPGRADE_MANAGER_ASID.lock() = previous;
     close(handle);
     assert_eq!(used(), before);
     crate::logln!(
         "[syscall snapshot consumption] four public handlers, invalid content and quota denial: \
-         original status/input consumption, zero scoped receipt and exact refund passed"
+         family/principal denial, original status/input consumption, zero scoped receipt and \
+         exact refund passed"
     );
 }

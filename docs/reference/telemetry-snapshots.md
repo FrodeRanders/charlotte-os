@@ -27,7 +27,8 @@ All three vectors also share the existing `snapshot_buffers` requested-byte
 pool (16 MiB total, 12 MiB ordinary). They consume bytes and zero frame-buffer
 counts. Each allocation first admits its whole requested layout against the
 captured signed principal's **16 MiB kernel-buffer ceiling**, shared with
-[root frame catalogs](page-table-lifetime.md#root-data-frame-catalogs), then against the
+[root frame catalogs](page-table-lifetime.md#root-data-frame-catalogs) and
+[primitive input/plaintext and CPU/copy/DMA frame buffers](snapshot-buffer-admission.md), then against the
 family. The counter lives in the existing boot-lifetime principal-history record;
 there is no second registry. Allocation/family rejection refunds only the unused
 prefix. Growth admits the full candidate while the old allocation stays charged;

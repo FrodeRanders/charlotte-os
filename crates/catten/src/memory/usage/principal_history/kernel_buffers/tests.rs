@@ -27,7 +27,7 @@ fn domain(principal: u64) -> AddressSpaceHandle {
 fn used(principal: u64) -> u64 {
     HISTORY.lock().get(&principal).unwrap().kernel_buffers.used()[0]
 }
-fn budget(root: AddressSpaceHandle) -> Budget<TelemetryAllocator> {
+fn budget(root: AddressSpaceHandle) -> Budget<SnapshotAllocator> {
     Budget::with_allocator(1024, telemetry_allocator(root.id()).unwrap())
 }
 

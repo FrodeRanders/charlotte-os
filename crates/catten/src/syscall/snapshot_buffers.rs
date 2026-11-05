@@ -2,13 +2,7 @@
 use alloc::vec::Vec;
 
 use crate::{
-    klib::{
-        admission::{
-            ByteAllocator,
-            SnapshotBuffers,
-        },
-        sensitive_buffer::SensitiveBuffer,
-    },
+    klib::sensitive_buffer::SensitiveBuffer,
     memory::{
         self,
         AddressSpaceHandle,
@@ -20,7 +14,7 @@ use crate::{
     },
 };
 
-type Allocator = ByteAllocator<SnapshotBuffers>;
+type Allocator = memory::kernel_buffers::SnapshotAllocator;
 type Bytes = Vec<u8, Allocator>;
 
 /// Borrow the executing caller's exact authorized generation. The syscall
@@ -45,10 +39,11 @@ impl Class {
         if !memory::budget::accepting(origin) {
             return Err(MemoryObjectError::AddressSpaceClosing);
         }
-        let platform = memory::budget::platform_identity(origin.id()) == Some(origin);
+        let storage = memory::kernel_buffers::capture_storage(origin)
+            .map_err(|_| MemoryObjectError::AddressSpaceMissing)?;
         Ok(Self {
             origin,
-            allocator: Allocator::new(platform),
+            allocator: storage.allocator(),
         })
     }
 

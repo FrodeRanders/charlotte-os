@@ -11,10 +11,23 @@ pub(super) const TOTAL_LIMIT: [u64; 2] = crate::resource_policy::POLICY.snapshot
 pub(super) const ORDINARY_LIMIT: [u64; 2] =
     crate::resource_policy::POLICY.snapshot_buffers.ordinary;
 
-pub(super) type Charge = admission::Reservation<SnapshotBuffers, 2>;
-pub(super) fn reserve(platform: bool, bytes: usize) -> Result<Charge, MemoryObjectError> {
+pub(super) struct Charge {
+    _family: admission::Reservation<SnapshotBuffers, 2>,
+    _principal: admission::ByteCharge<crate::memory::kernel_buffers::Sponsor>,
+}
+pub(super) fn reserve(
+    storage: crate::memory::kernel_buffers::CapturedStorage,
+    bytes: usize,
+) -> Result<Charge, MemoryObjectError> {
     let amount = [u64::try_from(bytes).map_err(|_| MemoryObjectError::ResourceLimit)?, 1];
-    Charge::reserve(platform, amount).map_err(|_| MemoryObjectError::ResourceLimit)
+    let principal =
+        storage.reserve_bytes(amount[0]).map_err(|_| MemoryObjectError::ResourceLimit)?;
+    let family = admission::Reservation::reserve(storage.platform(), amount)
+        .map_err(|_| MemoryObjectError::ResourceLimit)?;
+    Ok(Charge {
+        _family: family,
+        _principal: principal,
+    })
 }
 
 #[cfg(any(test, feature = "kernel_tests"))]

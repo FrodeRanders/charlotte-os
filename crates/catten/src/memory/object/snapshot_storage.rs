@@ -86,12 +86,16 @@ impl Preparing {
             .checked_mul(core::mem::size_of::<PAddr>())
             .filter(|bytes| *bytes != 0)
             .ok_or(MemoryObjectError::FrameAllocFailed)?;
-        let platform = super::super::budget::platform_identity(handle.id()) == Some(handle);
+        let storage = crate::memory::kernel_buffers::capture_storage(handle)
+            .map_err(|_| MemoryObjectError::AddressSpaceMissing)?;
         let mut owner = Self(Snapshot::default());
         let result = (|| {
             before(0)?;
-            owner.0.0.charge = Some(admission::reserve(platform, bytes)?);
+            owner.0.0.charge = Some(admission::reserve(storage, bytes)?);
             allocate(&mut owner.0.0.frames, pages)?;
+            if owner.0.0.frames.capacity() != pages || !owner.0.0.frames.is_empty() {
+                return Err(MemoryObjectError::FrameAllocFailed);
+            }
             before(1)
         })();
         if let Err(error) = result {
