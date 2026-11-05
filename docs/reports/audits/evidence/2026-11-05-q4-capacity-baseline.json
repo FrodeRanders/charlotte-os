@@ -1,0 +1,951 @@
+{
+  "schema": "charlotte.q4-capacity-baseline.v1",
+  "date": "2026-11-05",
+  "base_revision": "d1cf898b7fe2fb37173d38c101b73c7e7977a128",
+  "default_policy_capture": {
+    "schema": "charlotte.resource-capacity.v1",
+    "rust_toolchain": "nightly-2026-07-27",
+    "host_pointer_bits": 64,
+    "selected_policy": "crates/catten/src/resource_policy/defaults.rs",
+    "source_sha256": {
+      "crates/catten/src/resource_policy/defaults.rs": "5af92e7bbe98df056b756ac42ea22d6c782886e4dd83aeb7adf9a860b11bf7e2",
+      "crates/catten/src/resource_policy.rs": "65fabe39c05280361fb576caad355dc78fd6f18017c305ea491a1c588a920272",
+      "crates/catten-syscall/src/cq_ring_tests.rs": "b7d03a0597a776a31d1bde5dd46e3a778ec13f85cba8fdde82da554c1779d48c",
+      "crates/catten-syscall/src/lib.rs": "3133313e95497cad356f5e058eecf31d8bfb305e99f5aabd12a3cb7c2e54f517",
+      "crates/catten-syscall/src/metadata_pools/tests.rs": "31b2869464675a8075e2e790437bb249212ff09c9942f56fd15d8b6b3924f464",
+      "crates/catten-syscall/src/metadata_pools.rs": "4d226d4e741ef991e73a50111d797a1094c77f504be8e2a0f04ae7cacc087bed",
+      "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
+      "scripts/audit-resource-capacity.py": "b4c4ee69c4b228daeeabbd9ac6e96c2aae5f193f35b59f78a847d6d60284dbe2"
+    },
+    "metadata_pools": [
+      {
+        "name": "root_metadata",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          4194304,
+          16384
+        ],
+        "ordinary": [
+          3145728,
+          12288
+        ]
+      },
+      {
+        "name": "namespace_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          8388608,
+          40960
+        ],
+        "ordinary": [
+          6291456,
+          30720
+        ]
+      },
+      {
+        "name": "authority_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          16777216,
+          131072
+        ],
+        "ordinary": [
+          12582912,
+          98304
+        ]
+      },
+      {
+        "name": "mailbox_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          2097152,
+          16384
+        ],
+        "ordinary": [
+          1572864,
+          12288
+        ]
+      },
+      {
+        "name": "deferred_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          1048576,
+          16384
+        ],
+        "ordinary": [
+          786432,
+          12288
+        ]
+      },
+      {
+        "name": "observer_backing",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "bundles"
+        ],
+        "total": [
+          16777216,
+          65536
+        ],
+        "ordinary": [
+          12582912,
+          49152
+        ]
+      },
+      {
+        "name": "completion_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          8388608,
+          20480
+        ],
+        "ordinary": [
+          6291456,
+          15360
+        ]
+      },
+      {
+        "name": "device_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          16777216,
+          139264
+        ],
+        "ordinary": [
+          12582912,
+          104448
+        ]
+      },
+      {
+        "name": "iommu_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          25165824,
+          262144
+        ],
+        "ordinary": [
+          18874368,
+          196608
+        ]
+      },
+      {
+        "name": "principal_history",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          1048576,
+          4096
+        ],
+        "ordinary": [
+          786432,
+          3072
+        ]
+      },
+      {
+        "name": "thread_metadata",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "bundles"
+        ],
+        "total": [
+          8388608,
+          4096
+        ],
+        "ordinary": [
+          6291456,
+          3072
+        ]
+      },
+      {
+        "name": "thread_table",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "slots"
+        ],
+        "total": [
+          33554432,
+          32768
+        ],
+        "ordinary": [
+          25165824,
+          24576
+        ]
+      },
+      {
+        "name": "root_table",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "slots"
+        ],
+        "total": [
+          16777216,
+          16384
+        ],
+        "ordinary": [
+          12582912,
+          12288
+        ]
+      },
+      {
+        "name": "waiter_accounts",
+        "dimensions": 1,
+        "units": [
+          "bundles"
+        ],
+        "total": [
+          8192
+        ],
+        "ordinary": [
+          6144
+        ]
+      },
+      {
+        "name": "timer_accounts",
+        "dimensions": 1,
+        "units": [
+          "bundles"
+        ],
+        "total": [
+          16384
+        ],
+        "ordinary": [
+          12288
+        ]
+      },
+      {
+        "name": "completion_accounts",
+        "dimensions": 1,
+        "units": [
+          "bundles"
+        ],
+        "total": [
+          24576
+        ],
+        "ordinary": [
+          18432
+        ]
+      },
+      {
+        "name": "namespace_accounts",
+        "dimensions": 1,
+        "units": [
+          "bundles"
+        ],
+        "total": [
+          32768
+        ],
+        "ordinary": [
+          24576
+        ]
+      },
+      {
+        "name": "scratch_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          524288,
+          8192
+        ],
+        "ordinary": [
+          393216,
+          6144
+        ]
+      },
+      {
+        "name": "snapshot_buffers",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "buffers"
+        ],
+        "total": [
+          16777216,
+          8192
+        ],
+        "ordinary": [
+          12582912,
+          6144
+        ]
+      },
+      {
+        "name": "mapping_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          1048576,
+          8192
+        ],
+        "ordinary": [
+          786432,
+          6144
+        ]
+      },
+      {
+        "name": "memory_capability_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          4194304,
+          32768
+        ],
+        "ordinary": [
+          3145728,
+          24576
+        ]
+      },
+      {
+        "name": "observer_lists",
+        "dimensions": 1,
+        "units": [
+          "allocations"
+        ],
+        "total": [
+          8192
+        ],
+        "ordinary": [
+          6144
+        ]
+      },
+      {
+        "name": "ipc_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          16777216,
+          98304
+        ],
+        "ordinary": [
+          12582912,
+          73728
+        ]
+      },
+      {
+        "name": "service_images",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "images"
+        ],
+        "total": [
+          16777216,
+          64
+        ],
+        "ordinary": [
+          12582912,
+          48
+        ]
+      }
+    ],
+    "byte_pool_count": 19,
+    "byte_ceiling_sums": {
+      "total": 215482368,
+      "ordinary": 161611776
+    },
+    "separate_queue_byte_ceilings": [
+      {
+        "name": "mailbox_queues",
+        "total_bytes": 8388608,
+        "ordinary_bytes": 6291456
+      },
+      {
+        "name": "completion_queues",
+        "total_bytes": 4194304,
+        "ordinary_bytes": 3145728
+      }
+    ],
+    "kernel_heap": {
+      "initial_bytes": 8388608,
+      "growth_min_bytes": 67108864,
+      "growth_max_bytes": 268435456,
+      "ram_divisor": 64
+    },
+    "local": {
+      "telemetry_working_bytes": 1048576
+    },
+    "usable_ram_samples": [
+      {
+        "usable_bytes": 384827392,
+        "growth_reserve_bytes": 67108864,
+        "total_mapped_heap_bytes": 75497472
+      },
+      {
+        "usable_bytes": 396361728,
+        "growth_reserve_bytes": 67108864,
+        "total_mapped_heap_bytes": 75497472
+      },
+      {
+        "usable_bytes": 536870912,
+        "growth_reserve_bytes": 67108864,
+        "total_mapped_heap_bytes": 75497472
+      },
+      {
+        "usable_bytes": 1073741824,
+        "growth_reserve_bytes": 67108864,
+        "total_mapped_heap_bytes": 75497472
+      },
+      {
+        "usable_bytes": 4294967296,
+        "growth_reserve_bytes": 67108864,
+        "total_mapped_heap_bytes": 75497472
+      },
+      {
+        "usable_bytes": 8589934592,
+        "growth_reserve_bytes": 134217728,
+        "total_mapped_heap_bytes": 142606336
+      },
+      {
+        "usable_bytes": 17179869184,
+        "growth_reserve_bytes": 268435456,
+        "total_mapped_heap_bytes": 276824064
+      }
+    ],
+    "interpretation": [
+      "Independent ceilings, not allocated usage, disjoint partitions or jointly reachable maxima.",
+      "Count-only account/control allocations, allocator overhead and boot/transient/retained backing are not converted into bytes here.",
+      "Queue ceilings remain separate; this report does not assert absence of accounting overlap.",
+      "Usable-RAM samples are inputs to the real heap formula, not guest RAM or native measurements.",
+      "No original-principal coverage, cleanup progress or aggregate acceptance is established."
+    ]
+  },
+  "larger_policy_control": {
+    "schema": "charlotte.resource-capacity.v1",
+    "rust_toolchain": "nightly-2026-07-27",
+    "host_pointer_bits": 64,
+    "selected_policy": "crates/catten/src/resource_policy/larger.rs",
+    "source_sha256": {
+      "crates/catten/src/resource_policy/defaults.rs": "5af92e7bbe98df056b756ac42ea22d6c782886e4dd83aeb7adf9a860b11bf7e2",
+      "crates/catten/src/resource_policy/larger.rs": "1b1931ff708012be415b6f6f28429ab77fc919c79613025aefedc764d23a885c",
+      "crates/catten/src/resource_policy.rs": "65fabe39c05280361fb576caad355dc78fd6f18017c305ea491a1c588a920272",
+      "crates/catten-syscall/src/cq_ring_tests.rs": "b7d03a0597a776a31d1bde5dd46e3a778ec13f85cba8fdde82da554c1779d48c",
+      "crates/catten-syscall/src/lib.rs": "3133313e95497cad356f5e058eecf31d8bfb305e99f5aabd12a3cb7c2e54f517",
+      "crates/catten-syscall/src/metadata_pools/tests.rs": "31b2869464675a8075e2e790437bb249212ff09c9942f56fd15d8b6b3924f464",
+      "crates/catten-syscall/src/metadata_pools.rs": "4d226d4e741ef991e73a50111d797a1094c77f504be8e2a0f04ae7cacc087bed",
+      "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
+      "scripts/audit-resource-capacity.py": "b4c4ee69c4b228daeeabbd9ac6e96c2aae5f193f35b59f78a847d6d60284dbe2"
+    },
+    "metadata_pools": [
+      {
+        "name": "root_metadata",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          4194304,
+          16384
+        ],
+        "ordinary": [
+          3145728,
+          12288
+        ]
+      },
+      {
+        "name": "namespace_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          8388608,
+          40960
+        ],
+        "ordinary": [
+          6291456,
+          30720
+        ]
+      },
+      {
+        "name": "authority_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          16777216,
+          131072
+        ],
+        "ordinary": [
+          12582912,
+          98304
+        ]
+      },
+      {
+        "name": "mailbox_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          2097152,
+          16384
+        ],
+        "ordinary": [
+          1572864,
+          12288
+        ]
+      },
+      {
+        "name": "deferred_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          1048576,
+          16384
+        ],
+        "ordinary": [
+          786432,
+          12288
+        ]
+      },
+      {
+        "name": "observer_backing",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "bundles"
+        ],
+        "total": [
+          16777216,
+          65536
+        ],
+        "ordinary": [
+          12582912,
+          49152
+        ]
+      },
+      {
+        "name": "completion_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          8388608,
+          20480
+        ],
+        "ordinary": [
+          6291456,
+          15360
+        ]
+      },
+      {
+        "name": "device_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          16777216,
+          139264
+        ],
+        "ordinary": [
+          12582912,
+          104448
+        ]
+      },
+      {
+        "name": "iommu_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          25165824,
+          262144
+        ],
+        "ordinary": [
+          18874368,
+          196608
+        ]
+      },
+      {
+        "name": "principal_history",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          1048576,
+          4096
+        ],
+        "ordinary": [
+          786432,
+          3072
+        ]
+      },
+      {
+        "name": "thread_metadata",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "bundles"
+        ],
+        "total": [
+          8388608,
+          4096
+        ],
+        "ordinary": [
+          6291456,
+          3072
+        ]
+      },
+      {
+        "name": "thread_table",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "slots"
+        ],
+        "total": [
+          33554432,
+          32768
+        ],
+        "ordinary": [
+          25165824,
+          24576
+        ]
+      },
+      {
+        "name": "root_table",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "slots"
+        ],
+        "total": [
+          16777216,
+          16384
+        ],
+        "ordinary": [
+          12582912,
+          12288
+        ]
+      },
+      {
+        "name": "waiter_accounts",
+        "dimensions": 1,
+        "units": [
+          "bundles"
+        ],
+        "total": [
+          8192
+        ],
+        "ordinary": [
+          6144
+        ]
+      },
+      {
+        "name": "timer_accounts",
+        "dimensions": 1,
+        "units": [
+          "bundles"
+        ],
+        "total": [
+          16384
+        ],
+        "ordinary": [
+          12288
+        ]
+      },
+      {
+        "name": "completion_accounts",
+        "dimensions": 1,
+        "units": [
+          "bundles"
+        ],
+        "total": [
+          24576
+        ],
+        "ordinary": [
+          18432
+        ]
+      },
+      {
+        "name": "namespace_accounts",
+        "dimensions": 1,
+        "units": [
+          "bundles"
+        ],
+        "total": [
+          32768
+        ],
+        "ordinary": [
+          24576
+        ]
+      },
+      {
+        "name": "scratch_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          655360,
+          10240
+        ],
+        "ordinary": [
+          491520,
+          7680
+        ]
+      },
+      {
+        "name": "snapshot_buffers",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "buffers"
+        ],
+        "total": [
+          20971520,
+          10240
+        ],
+        "ordinary": [
+          15728640,
+          7680
+        ]
+      },
+      {
+        "name": "mapping_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          1310720,
+          10240
+        ],
+        "ordinary": [
+          983040,
+          7680
+        ]
+      },
+      {
+        "name": "memory_capability_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          4194304,
+          32768
+        ],
+        "ordinary": [
+          3145728,
+          24576
+        ]
+      },
+      {
+        "name": "observer_lists",
+        "dimensions": 1,
+        "units": [
+          "allocations"
+        ],
+        "total": [
+          8192
+        ],
+        "ordinary": [
+          6144
+        ]
+      },
+      {
+        "name": "ipc_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          16777216,
+          98304
+        ],
+        "ordinary": [
+          12582912,
+          73728
+        ]
+      },
+      {
+        "name": "service_images",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "images"
+        ],
+        "total": [
+          16777216,
+          64
+        ],
+        "ordinary": [
+          12582912,
+          48
+        ]
+      }
+    ],
+    "byte_pool_count": 19,
+    "byte_ceiling_sums": {
+      "total": 220069888,
+      "ordinary": 165052416
+    },
+    "separate_queue_byte_ceilings": [
+      {
+        "name": "mailbox_queues",
+        "total_bytes": 8388608,
+        "ordinary_bytes": 6291456
+      },
+      {
+        "name": "completion_queues",
+        "total_bytes": 4194304,
+        "ordinary_bytes": 3145728
+      }
+    ],
+    "kernel_heap": {
+      "initial_bytes": 8388608,
+      "growth_min_bytes": 67108864,
+      "growth_max_bytes": 268435456,
+      "ram_divisor": 64
+    },
+    "local": {
+      "telemetry_working_bytes": 1048576
+    },
+    "usable_ram_samples": [
+      {
+        "usable_bytes": 4296015872,
+        "growth_reserve_bytes": 69206016,
+        "total_mapped_heap_bytes": 77594624
+      },
+      {
+        "usable_bytes": 18446744073708503040,
+        "growth_reserve_bytes": 268435456,
+        "total_mapped_heap_bytes": 276824064
+      }
+    ],
+    "interpretation": [
+      "Independent ceilings, not allocated usage, disjoint partitions or jointly reachable maxima.",
+      "Count-only account/control allocations, allocator overhead and boot/transient/retained backing are not converted into bytes here.",
+      "Queue ceilings remain separate; this report does not assert absence of accounting overlap.",
+      "Usable-RAM samples are inputs to the real heap formula, not guest RAM or native measurements.",
+      "No original-principal coverage, cleanup progress or aggregate acceptance is established."
+    ]
+  },
+  "validation": {
+    "default_and_larger_actual_policy_compilation": "passed with -D warnings",
+    "catalog_count": 24,
+    "byte_dimension_count": 19,
+    "larger_changed_only": [
+      "scratch_nodes",
+      "snapshot_buffers",
+      "mapping_nodes"
+    ],
+    "larger_scaling": "All byte/count dimensions of those three pools increased by exactly 5/4",
+    "rounding_4097_usable_MiB": "66 MiB reserve",
+    "extreme_valid_usable_MiB": "17592186044415 MiB: 256 MiB clamped reserve",
+    "overflow_input": "Rejected before compilation; no JSON output",
+    "invalid_selected_policy": "Actual compile-time validation rejected equal ordinary/total limits; no JSON output"
+  },
+  "native_boot_observations": [
+    {
+      "profile": "ARM SMMUv3 security",
+      "scope": "Reused Q3 boot-formula observation; no Q4 pressure qualification",
+      "kernel_sha256": "c6529593f8e06c0a741693ca50e7c6bf094deeb756e9e77baba16a5a658e4e1c",
+      "serial_sha256": "1baa3cc0e998aa8a2ed58d2062683fd0176981796cda2cd805a3afc9d9c3392b",
+      "guest_memory_mib": 512,
+      "diagnostics": [
+        "[+     0.011686] Kernel heap: usable=378 MiB initial=8 MiB reserve=64 MiB total=72 MiB",
+        "[+     0.032349] [boot validation] memory passed: usable=378 MiB, free=78477 frames, heap reserve=64 MiB"
+      ]
+    },
+    {
+      "profile": "Intel VT-d security",
+      "scope": "Reused Q3 boot-formula observation; no Q4 pressure qualification",
+      "kernel_sha256": "008f32b62701fd677b3f5a20a7a4d0fd291c94324efb89a21618c3d6085e2ff8",
+      "serial_sha256": "3d219fc04ee8174e54b24058e3fe580af03a2bc1c15a4ccc223121364ba42af3",
+      "guest_memory_mib": 512,
+      "diagnostics": [
+        "[+     0.018290] Kernel heap: usable=367 MiB initial=8 MiB reserve=64 MiB total=72 MiB",
+        "[+     0.032522] [boot validation] memory passed: usable=367 MiB, free=75502 frames, heap reserve=64 MiB"
+      ]
+    },
+    {
+      "profile": "AMD-Vi security",
+      "scope": "Reused Q3 boot-formula observation; no Q4 pressure qualification",
+      "kernel_sha256": "1d146d3df966f516c0f570df8dfb1c5778922ceb52cbdd2d8e9356e5b7ca6035",
+      "serial_sha256": "8e6a344cca1eb86c9a1f30e042f551bc20ae01fe06870526b068a0994a644a2d",
+      "guest_memory_mib": 512,
+      "diagnostics": [
+        "[+     0.018436] Kernel heap: usable=367 MiB initial=8 MiB reserve=64 MiB total=72 MiB",
+        "[+     0.031119] [boot validation] memory passed: usable=367 MiB, free=75500 frames, heap reserve=64 MiB"
+      ]
+    }
+  ],
+  "remaining": [
+    "Measure peak live allocator backing/fragmentation and boot/control/retained overlap for a defined workload",
+    "No general kernel-metadata original-principal coverage is supplied by this census",
+    "No joint byte gate, limit increase or capacity guarantee is implemented",
+    "Q4-Q8 and all aggregate acceptance gates remain open"
+  ]
+}

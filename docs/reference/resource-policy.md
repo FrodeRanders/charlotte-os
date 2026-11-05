@@ -134,6 +134,14 @@ partitions or a complete RAM ledger. They omit boot costs, some metadata and
 allocator overhead. A configured reserve does not prove available physical RAM,
 bounded lock hold times, fairness or service progress.
 
+The [Q4 capacity baseline](../reports/audits/2026-11-05-q4-capacity-baseline.md)
+derives 205.5 MiB total/154.125 MiB ordinary across the default catalog's 19
+byte-denominated metadata ceilings, alongside the native 72 MiB heap envelope.
+It records the limits of that comparison and the RAM cost of possible 96/128 MiB
+growth floors; no limit change or aggregate acceptance follows from the census.
+Use [the policy census](../../scripts/audit-resource-capacity.py) to reproduce
+values for a selected profile instead of copying defaults into a sizing script.
+
 ## Validation and coupled changes
 
 Compile-time validation rejects zero/overlapping ordinary reserves, domain limits

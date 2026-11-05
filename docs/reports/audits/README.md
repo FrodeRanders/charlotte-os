@@ -17,6 +17,8 @@ report is useful for a significant investigation or qualification checkpoint.
 
 ## Reports
 
+- [Q4 shared heap capacity baseline](2026-11-05-q4-capacity-baseline.md) — Reproducible actual-policy/catalog ceilings, reused native heap observations and explicit RAM tradeoffs for possible reserve increases; Q4 remains in progress.
+
 - [Q3 producer review and final corrections](2026-11-05-q3-producer-review.md) — Accepted producer assignments, fixed-scratch Kafka validity and boot-prepared hardware tags; host, strict profiles, three-target security, minimal boots and live Kafka qualification. Q4–Q8 and finding-wide gates remain open.
 
 - [Explicit bootstrap storage and immutable IORT discovery — Q3](2026-11-05-bootstrap-storage.md) — BSP preparation, owning-LP timer phases, fixed calibration and allocation-free cached firmware lookup; host and native minimal/security qualification.
