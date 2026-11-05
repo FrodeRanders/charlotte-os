@@ -529,6 +529,18 @@ through endpoint IPC and registers itself with the node name service.
 Machine-wide observation is therefore explicit authority rather than an
 ambient privilege.
 
+Diagnostic thread/domain capture and encoding share an unchanged 1 MiB
+per-request working bound. Their vector allocations also use the existing
+16/12 MiB total/ordinary snapshot-byte pool and a separate 16 MiB requested-byte
+allowance in the signed principal's boot-lifetime record. Principal and trusted
+class are captured from the verified root before source locks or allocation;
+the observer capability does not change either. Original charges survive
+promotion, root retirement and ASID reuse until actual buffer deallocation.
+Full old/candidate growth overlap is admitted before allocation. This introduces
+no new metadata pool or preallocated heap reserve and does not complete general
+metadata/principal accounting or sustained-pressure qualification. See
+\repofile|docs/reference/telemetry-snapshots.md|.
+
 An HTTP \texttt{GET /metrics} adapter is a reasonable userspace consumer of
 this IPC protocol, but it is not implemented yet. The present TCP/IP service
 does not supply the complete server-side bind/listen/accept path needed to host

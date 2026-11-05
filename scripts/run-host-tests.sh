@@ -343,6 +343,7 @@ CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaul
 "$host_rustc" --edition=2024 --test --crate-name snapshot_tests - \
     -o "$repo_root/target/host-self-tests/snapshot-tests" <<EOF
 #![allow(dead_code)]
+#![feature(allocator_api)]
 extern crate alloc;
 #[path = "$repo_root/crates/catten/src/resource_policy.rs"]
 mod resource_policy;

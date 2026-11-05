@@ -82,7 +82,9 @@ fn capture_inner(frame: &mut TrapFrame, reject: usize) {
         0
     };
     let prepared = (|| {
-        let mut budget = Budget::new(MAX_WORKING_BYTES);
+        let allocator = crate::memory::kernel_buffers::telemetry_allocator(asid)
+            .map_err(|_| Error::Allocation)?;
+        let mut budget = Budget::with_allocator(MAX_WORKING_BYTES, allocator);
         if reject == 1 {
             return Err(Error::Allocation);
         }
@@ -225,6 +227,8 @@ pub(crate) fn test_capture(asid: crate::memory::AddressSpaceId) {
             allocators::global_allocator::PRIMARY_ALLOCATOR,
         },
     };
+    memory::kernel_buffers::test_admission();
+    let scratch = crate::klib::admission::used::<crate::klib::admission::SnapshotBuffers, 2>();
     let caps = test_namespace_used(asid);
     let frames = memory::PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     for _ in 0..64 {
@@ -241,6 +245,10 @@ pub(crate) fn test_capture(asid: crate::memory::AddressSpaceId) {
             test_rejection(&mut frame, stage);
             assert_eq!((frame.regs[0], frame.regs[1]), (0, 0));
             assert_eq!(test_namespace_used(asid), caps);
+            assert_eq!(
+                crate::klib::admission::used::<crate::klib::admission::SnapshotBuffers, 2>(),
+                scratch
+            );
             assert_eq!(memory::PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), frames);
         }
     }

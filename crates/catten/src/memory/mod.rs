@@ -33,6 +33,7 @@ pub use spin::{
 };
 pub(crate) use usage::principal_history::{
     BackingCharge as PrincipalBackingCharge,
+    kernel_buffers,
     prepare_backing as prepare_principal_backing,
 };
 

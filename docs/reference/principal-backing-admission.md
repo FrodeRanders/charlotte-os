@@ -85,6 +85,14 @@ Thread contexts and retirement nodes have a separate shared
 survives root retirement until actual metadata deallocation; it does not consume
 a data-page or memory-object unit.
 
+Diagnostic thread/domain/encoding buffers additionally retain a separate
+16 MiB requested-byte kernel-buffer allowance in this same principal record.
+They use the shared byte allocator and retain their original captured sponsor
+until actual deallocation, including across root retirement and reuse. This is
+not a page charge or general metadata accounting. The record's larger concrete
+layout remains covered by existing principal-history node admission. See
+[diagnostic scratch](telemetry-snapshots.md).
+
 ## Verification and limits
 
 Native kernel controls exercise mixed real heap/image/object backing across
@@ -108,8 +116,9 @@ abandoned reservation. It abstracts page counts and does not model object-count
 admission, allocator metadata, hardware, wall-clock progress or executable refinement.
 
 This implements an aggregate boundary for these data/table/stack families. It does
-not bound general kernel heap/metadata beyond those two thread layouts, fresh shared kernel tables, IOMMU/device metadata, capabilities, IPC,
-completions or every other family by principal. Principal-history records remain
+not bound general kernel heap/metadata beyond those two thread layouts and the
+explicit diagnostic buffers. Fresh shared kernel tables, IOMMU/device metadata,
+capabilities, IPC, completions and other metadata still need principal coverage. Principal-history records remain
 for the boot lifetime; their nodes and root candidates now share a separate
 [byte/count pool](principal-history-admission.md). Principal-record lookup and IRQ-masked hold times still need hostile-pressure
 qualification. Kernel-only unidentified work retains its existing family/node policy. Independent principals

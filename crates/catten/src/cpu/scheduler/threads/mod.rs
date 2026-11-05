@@ -883,10 +883,10 @@ pub(crate) fn statistics_for_asid(
     try_statistics(Some(asid), &mut budget)
 }
 
-pub(crate) fn try_statistics(
+pub(crate) fn try_statistics<A: core::alloc::Allocator + Clone>(
     asid: Option<AddressSpaceId>,
-    budget: &mut crate::klib::collections::snapshot::Budget,
-) -> Result<Vec<ThreadStatisticsSnapshot>, crate::klib::collections::snapshot::Error> {
+    budget: &mut crate::klib::collections::snapshot::Budget<A>,
+) -> Result<Vec<ThreadStatisticsSnapshot, A>, crate::klib::collections::snapshot::Error> {
     let count = MASTER_THREAD_TABLE
         .read()
         .iter()
@@ -899,9 +899,9 @@ pub(crate) fn try_statistics(
     Ok(output.into_vec())
 }
 
-pub(crate) fn capture_statistics(
+pub(crate) fn capture_statistics<A: core::alloc::Allocator>(
     asid: Option<AddressSpaceId>,
-    output: &mut crate::klib::collections::snapshot::Buffer<ThreadStatisticsSnapshot>,
+    output: &mut crate::klib::collections::snapshot::Buffer<ThreadStatisticsSnapshot, A>,
 ) -> Result<(), crate::klib::collections::snapshot::Error> {
     let table = MASTER_THREAD_TABLE.read();
     for (tid, entry) in table.iter().enumerate() {

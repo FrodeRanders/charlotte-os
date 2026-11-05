@@ -114,6 +114,9 @@ snapshot scratch is 1 MiB per request. These forward to `Policy.local`.
 - Heap backing per root: 1264 pages, the existing launch ABI's `0x4f0000`-byte
   heap interval; the launch's ordinary initial heap is a separate value. Image/
   runtime backing permits 16384 pages per root. Private tables allow 1024 pages.
+- Captured signed-principal kernel-buffer requested bytes: 16 MiB, currently
+  used by diagnostic scratch only. This adds no preallocation or general metadata
+  coverage. See [telemetry scratch](telemetry-snapshots.md).
 - IOMMU per-domain and per-unit backing: 1024 and 2048 pages respectively.
 - Independent usable-RAM ratios: objects, heap and image each 1/4; stack 1/8;
   private tables 1/16; fresh shared tables 1/64; IOMMU tables 1/32. Each pool

@@ -254,11 +254,13 @@ pub(crate) fn domain_usage(asid: AddressSpaceId) -> Option<DomainUsageSnapshot> 
 }
 
 /// Snapshot every live domain's accounting.
-pub(crate) fn try_domain_usage(
+pub(crate) fn try_domain_usage<A: core::alloc::Allocator + Clone>(
     asid: Option<AddressSpaceId>,
-    budget: &mut crate::klib::collections::snapshot::Budget,
-) -> Result<Vec<(AddressSpaceHandle, DomainUsageSnapshot)>, crate::klib::collections::snapshot::Error>
-{
+    budget: &mut crate::klib::collections::snapshot::Budget<A>,
+) -> Result<
+    Vec<(AddressSpaceHandle, DomainUsageSnapshot), A>,
+    crate::klib::collections::snapshot::Error,
+> {
     let count = DOMAIN_USAGE
         .lock()
         .iter()
@@ -269,12 +271,12 @@ pub(crate) fn try_domain_usage(
     Ok(output.into_vec())
 }
 
-pub(crate) fn capture_domain_usage(
+pub(crate) fn capture_domain_usage<A: core::alloc::Allocator>(
     asid: Option<AddressSpaceId>,
-    output: &mut crate::klib::collections::snapshot::Buffer<(
-        AddressSpaceHandle,
-        DomainUsageSnapshot,
-    )>,
+    output: &mut crate::klib::collections::snapshot::Buffer<
+        (AddressSpaceHandle, DomainUsageSnapshot),
+        A,
+    >,
 ) -> Result<(), crate::klib::collections::snapshot::Error> {
     let table = DOMAIN_USAGE.lock();
     for (id, (handle, usage)) in table.iter() {

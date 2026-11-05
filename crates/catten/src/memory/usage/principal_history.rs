@@ -39,6 +39,7 @@ struct History {
     thread_metadata: VectorBudget<2>,
     thread_table: VectorBudget<2>,
     root_table: VectorBudget<2>,
+    kernel_buffers: VectorBudget<1>,
 }
 
 impl Default for History {
@@ -52,6 +53,9 @@ impl Default for History {
                 crate::resource_policy::POLICY.memory.principal_thread_table,
             ),
             heap_bytes: 0,
+            kernel_buffers: VectorBudget::new([crate::resource_policy::POLICY
+                .memory
+                .principal_kernel_buffer_bytes]),
             thread_metadata: VectorBudget::new(
                 crate::resource_policy::POLICY.memory.principal_thread_metadata,
             ),
@@ -64,6 +68,7 @@ impl Default for History {
 }
 
 pub(in crate::memory) mod admission;
+pub(crate) mod kernel_buffers;
 type Storage = PreparedEntry<(u64, History), admission::Charge>;
 type Table = AdmittedMap<u64, History, admission::Charge>;
 static HISTORY: LazyLock<Mutex<Table>> = LazyLock::new(|| Mutex::new(Table::new()));

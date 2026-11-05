@@ -7,7 +7,8 @@ Structural/protocol bounds and original-charge/physical-completion rules remain
 separate contracts.
 
 CPU mapping, copy-pin and DMA-pin frame snapshots share fixed kernel admission
-with bounded upgrade/deployment/shutdown syscall input and plaintext buffers:
+with bounded upgrade/deployment/shutdown syscall input/plaintext and diagnostic
+working buffers:
 
 | Dimension | Total | Ordinary callers |
 | --- | --- | --- |
@@ -109,6 +110,20 @@ would deny legal inputs; splitting parsers would add lifetime/validation
 complexity without solving aggregate admission. Shared competition and saturated
 cleanup/management progress remain Q7/Q8 acceptance work, even with more bytes.
 Reviewed profiles still require their own sizing and workload qualification.
+
+## Diagnostic working buffers
+
+Thread/domain snapshot capture and encoded telemetry bytes use the same byte
+pool with zero frame-buffer counts. Their allocator additionally captures the
+verified requester's 16 MiB kernel-buffer principal allowance from the existing
+history record. The original class and principal follow actual allocated
+capacity and complete growth overlap until deallocation, including root close
+and ASID reuse. `SystemObserver` widens visibility, not sponsorship. This does
+not retrofit principal charges onto the other snapshot/input families above.
+See [telemetry scratch](telemetry-snapshots.md) for capture, guard and local
+failure disposal contracts. The family byte/count ceilings remain unchanged;
+this adds a shared consumer rather than another pool or an unbacked capacity
+promise. Joint capacity and sustained progress remain Q4/Q7/Q8 work.
 
 ## Acceptance scope
 

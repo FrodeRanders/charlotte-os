@@ -193,6 +193,13 @@ For fixed pools, every ordinary dimension is positive and below the total;
 domain dimensions must fit the ordinary pool. A reserve is the difference
 between total and ordinary admission, not a guaranteed share for one service.
 
+Diagnostic scratch has a separate signed-principal requested-byte ceiling,
+\path{Policy.memory.principal_kernel_buffer_bytes}, defaulting to 16 MiB.
+It currently covers diagnostic buffers only, alongside their shared snapshot
+pool and 1 MiB local working bound. It reserves no backing in advance and is
+not a general kernel-metadata limit. See
+\repofile|docs/reference/telemetry-snapshots.md|.
+
 Examples of settings that require joint review include:
 \begin{itemize}
     \item Memory-object size, aggregate domain/principal backing and snapshot

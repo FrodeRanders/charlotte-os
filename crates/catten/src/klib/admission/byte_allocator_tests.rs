@@ -21,6 +21,7 @@ use std::alloc::{
 use crate::klib::admission::{
     self,
     ByteAllocator,
+    ByteSponsor,
     IpcNodes,
     Reservation,
 };
@@ -30,6 +31,10 @@ static PEAK: AtomicU64 = AtomicU64::new(0);
 static WATCH: AtomicUsize = AtomicUsize::new(0);
 static AT_FREE: AtomicU64 = AtomicU64::new(0);
 static FREES: AtomicUsize = AtomicUsize::new(0);
+static SPONSOR_USED: AtomicU64 = AtomicU64::new(0);
+static SPONSOR_LIMIT: AtomicU64 = AtomicU64::new(u64::MAX);
+static SPONSOR_PEAK: AtomicU64 = AtomicU64::new(0);
+static SPONSOR_AT_FREE: AtomicU64 = AtomicU64::new(0);
 struct Tracer;
 #[global_allocator]
 static GLOBAL: Tracer = Tracer;
@@ -37,6 +42,7 @@ unsafe impl GlobalAlloc for Tracer {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         if TRACK.load(Ordering::Acquire) {
             PEAK.fetch_max(used().0[0], Ordering::AcqRel);
+            SPONSOR_PEAK.fetch_max(SPONSOR_USED.load(Ordering::Acquire), Ordering::AcqRel);
         }
         unsafe { System.alloc(layout) }
     }
@@ -45,6 +51,7 @@ unsafe impl GlobalAlloc for Tracer {
         unsafe { System.dealloc(pointer, layout) };
         if WATCH.load(Ordering::Acquire) == pointer as usize {
             AT_FREE.store(used().0[0], Ordering::Release);
+            SPONSOR_AT_FREE.store(SPONSOR_USED.load(Ordering::Acquire), Ordering::Release);
             FREES.fetch_add(1, Ordering::AcqRel);
         }
     }
@@ -142,4 +149,62 @@ fn zero_sized_storage_and_allocator_clones_reserve_nothing() {
     empty.try_reserve_exact(100).unwrap();
     drop(empty);
     assert_eq!(used(), before);
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Sponsor;
+impl ByteSponsor for Sponsor {
+    fn reserve(&self, bytes: u64) -> Result<(), core::alloc::AllocError> {
+        SPONSOR_USED.fetch_update(Ordering::AcqRel, Ordering::Acquire, |used| {
+            used.checked_add(bytes).filter(|next| *next <= SPONSOR_LIMIT.load(Ordering::Acquire))
+        }).map(|_| ()).map_err(|_| core::alloc::AllocError)
+    }
+    fn release(&self, bytes: u64) {
+        let old = SPONSOR_USED.fetch_sub(bytes, Ordering::AcqRel);
+        assert!(old >= bytes);
+    }
+}
+
+#[test]
+fn captured_sponsor_funds_complete_growth_and_refunds_only_after_actual_free() {
+    let before = used();
+    assert_eq!(SPONSOR_USED.load(Ordering::Acquire), 0);
+    let allocator = ByteAllocator::<IpcNodes, _>::with_sponsor(false, Sponsor);
+    let mut values = Vec::<u64, _>::new_in(allocator.clone());
+    values.try_reserve_exact(2).unwrap();
+    values.extend([7, 9]);
+    watch(&values);
+    SPONSOR_PEAK.store(0, Ordering::Release);
+    TRACK.store(true, Ordering::Release);
+    values.try_reserve_exact(1).unwrap();
+    TRACK.store(false, Ordering::Release);
+    WATCH.store(0, Ordering::Release);
+    assert_eq!(SPONSOR_PEAK.load(Ordering::Acquire), 16 + 24);
+    assert_eq!(SPONSOR_AT_FREE.load(Ordering::Acquire), 16 + 24);
+    assert_eq!(SPONSOR_USED.load(Ordering::Acquire), 24);
+    SPONSOR_LIMIT.store(24, Ordering::Release);
+    let pointer = values.as_ptr();
+    assert!(values.try_reserve_exact(2).is_err());
+    assert_eq!(values.as_ptr(), pointer);
+    assert_eq!(values.as_slice(), [7, 9]);
+    assert_eq!(values.capacity(), 3);
+    assert_eq!(SPONSOR_USED.load(Ordering::Acquire), 24);
+    SPONSOR_LIMIT.store(u64::MAX, Ordering::Release);
+    let full = crate::resource_policy::POLICY.ipc_nodes.ordinary[0];
+    let pressure = Reservation::<IpcNodes, 2>::reserve(false, [full-used().1[0], 0]).unwrap();
+    assert!(allocator.allocate(Layout::new::<u64>()).is_err());
+    assert_eq!(SPONSOR_USED.load(Ordering::Acquire), 24);
+    drop(pressure);
+    assert!(allocator.test_allocation_rejection(Layout::new::<u64>()).is_err());
+    assert_eq!(SPONSOR_USED.load(Ordering::Acquire), 24);
+    watch(&values);
+    drop(values);
+    WATCH.store(0, Ordering::Release);
+    assert_eq!(SPONSOR_AT_FREE.load(Ordering::Acquire), 24);
+    assert_eq!(SPONSOR_USED.load(Ordering::Acquire), 0);
+    assert_eq!(used(), before);
+    let zero = Layout::from_size_align(0, 8).unwrap();
+    let block = allocator.allocate(zero).unwrap();
+    unsafe { allocator.deallocate(block.cast(), zero) };
+    assert_eq!(SPONSOR_USED.load(Ordering::Acquire), 0);
 }

@@ -1,6 +1,6 @@
 # Kernel allocation producer review
 
-This is Q3's current producer/factory assignment, reviewed 2026-11-05. The
+This is Q3's producer/factory assignment at `d1cf898b`, reviewed 2026-11-05. The
 [closure plan](security-closure-plan.md) records package acceptance. This review
 does not supply aggregate/original-principal admission (Q4), the complete
 caller/IRQ/destructor inventory (Q5), recovery (Q6), progress (Q7) or combined
@@ -46,7 +46,7 @@ coverage. The required Q4 rows below remain actual unfinished work.
 | `memory_objects` (13 records) | Existing admitted owner | Object frame catalogs and snapshots retain their existing prepared byte reservations and captured backing classification; actual frames keep physical admission. Bare default snapshot wrapper is fixture-only. See [memory-capability-node-admission](memory-capability-node-admission.md). |
 | `inputs` (14 records) | Accepted Q1 ownership | Primitive image/descriptor/pickup/plaintext buffers capture actor class and retain byte admission through deallocation; sensitive spare capacity is wiped. See [snapshot-buffer-admission](snapshot-buffer-admission.md). |
 | `launch_cache` (21 records) | Accepted Q2 ownership | Complete launch/handoff/upgrade parents retain source/target roots, profiles, transfers and admitted vector prefixes. Fixed image cache reserves independent bytes/count before I/O and immutable publication. See [service-launch-ownership](service-launch-ownership.md). |
-| `telemetry_q4` (17 records) | Required Q4 fix | Diagnostic snapshots/encoding use fallible prepared buffers and one 1 MiB per-request working bound. They still require aggregate and original-principal backing admission; per-request bounds are not accepted as that proof. See [telemetry-snapshots](telemetry-snapshots.md). |
+| `telemetry_q4` (17 records at Q3 baseline) | Q4 diagnostic admission qualified | Diagnostic snapshots/encoding retain the 1 MiB local bound and now use captured principal plus shared snapshot-buffer byte admission through actual vector deallocation, with [host/native qualification](../reports/audits/2026-11-05-q4-diagnostic-buffers.md). General overhead/capacity and pressure gates remain open. See [telemetry-snapshots](telemetry-snapshots.md). |
 | `frame_tracking_q4` (11 records) | Required Q4 fix | Each heap/image frame reserves physical admission before fallible owned_frames tracking growth; registration pushes only into prepared capacity. Count follows admitted backing, but vector capacity/old-candidate overlap still needs original-principal/aggregate kernel-byte coverage. See [page-table-lifetime](page-table-lifetime.md). |
 
 ## Dependency and optional-profile boundaries
@@ -81,8 +81,9 @@ merely because no current application reaches them.
 
 ## Next aggregate work
 
-Q4 must add aggregate/original-principal coverage to the diagnostic snapshot
-working buffers and heap/image frame-tracking vector capacity, including growth
+Q4 adds diagnostic snapshot buffer admission through the existing shared byte
+allocator and principal record. Heap/image frame-tracking vector capacity still
+requires aggregate/original-principal coverage, including growth
 overlap and actual deallocation. It must also reconcile existing per-family
 admission with signed-principal coverage and the common heap envelope, accounting
 for allocator/control backing, boot reservations, weak/private holders, restart,

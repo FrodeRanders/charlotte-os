@@ -56,7 +56,12 @@ before allocation while the old buffer remains charged, then refunds only after
 deallocation. Allocator clones retain captured class without reserving again;
 the vector owns its allocation. Keep sponsorship selection and safe element
 cleanup with the complete subsystem operation. Shared accounting cannot qualify
-an active parent's destructor under an unknown guard.
+an active parent's destructor under an unknown guard. A migrated buffer family
+can supply a typed `ByteSponsor` that captures its verified principal before
+allocation. Both admission stages precede allocation; allocator clones preserve
+the sponsor and actual deallocation precedes both refunds. Family-only default
+allocators do not acquire principal coverage automatically. Use the existing
+boot-lifetime principal record rather than adding a second identity registry.
 
 An inert child receipt does not make its parent inert: a vector still frees its
 allocation, a transfer may restore escrow, and a notification batch may destroy

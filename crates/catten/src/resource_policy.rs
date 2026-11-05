@@ -82,6 +82,8 @@ pub(crate) struct Memory {
     /// Retained and candidate master-table bytes and slots per principal.
     pub principal_thread_table: [u64; 2],
     pub principal_root_table: [u64; 2],
+    /// Captured-principal requested bytes for migrated kernel buffer families.
+    pub principal_kernel_buffer_bytes: u64,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct KernelHeap {
@@ -271,6 +273,11 @@ impl Policy {
             i += 1;
         }
         let l = self.local;
+        if m.principal_kernel_buffer_bytes < l.telemetry_working_bytes as u64
+            || m.principal_kernel_buffer_bytes > isize::MAX as u64
+        {
+            return Err("principal kernel buffer bytes");
+        }
         if l.waiters_per_source == 0
             || l.waiters_per_source as u64 > self.waiters.domain[0]
             || l.watches_per_endpoint == 0

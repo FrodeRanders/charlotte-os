@@ -421,7 +421,7 @@ fn sys_launch_descriptor_matches(frame: &mut TrapFrame) {
     frame.regs[0] = u64::from(matches);
 }
 
-fn push_u64(bytes: &mut alloc::vec::Vec<u8>, value: u64) {
+fn push_u64<A: core::alloc::Allocator>(bytes: &mut alloc::vec::Vec<u8, A>, value: u64) {
     bytes.extend_from_slice(&value.to_le_bytes());
 }
 

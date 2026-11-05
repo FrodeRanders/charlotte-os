@@ -1,7 +1,11 @@
 //! Fallible, bounded scratch for diagnostic snapshots. Prepare outside source
 //! guards; capture never grows storage and rejects a source that outgrew it.
 
-use alloc::vec::Vec;
+use alloc::{
+    alloc::Global,
+    vec::Vec,
+};
+use core::alloc::Allocator;
 
 /// Per diagnostic request, across capture buffers and encoded scratch. This
 /// does not replace general heap or aggregate principal admission.
@@ -15,18 +19,28 @@ pub(crate) enum Error {
     SourceChanged,
 }
 
-pub(crate) struct Budget {
+pub(crate) struct Budget<A: Allocator + Clone = Global> {
     remaining: usize,
+    allocator: A,
 }
 
 impl Budget {
+    // Raw global scratch is confined to pure host/boot fixtures. Operational
+    // callers must supply their admitted, captured allocator explicitly.
+    #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn new(bytes: usize) -> Self {
+        Self::with_allocator(bytes, Global)
+    }
+}
+impl<A: Allocator + Clone> Budget<A> {
+    pub(crate) fn with_allocator(bytes: usize, allocator: A) -> Self {
         Self {
             remaining: bytes,
+            allocator,
         }
     }
 
-    pub(crate) fn prepare<T: Copy>(&mut self, count: usize) -> Result<Buffer<T>, Error> {
+    pub(crate) fn prepare<T: Copy>(&mut self, count: usize) -> Result<Buffer<T, A>, Error> {
         self.prepare_with(count, |values, count| {
             values.try_reserve_exact(count).map_err(|_| Error::Allocation)
         })
@@ -35,13 +49,13 @@ impl Budget {
     fn prepare_with<T: Copy>(
         &mut self,
         count: usize,
-        allocate: impl FnOnce(&mut Vec<T>, usize) -> Result<(), Error>,
-    ) -> Result<Buffer<T>, Error> {
+        allocate: impl FnOnce(&mut Vec<T, A>, usize) -> Result<(), Error>,
+    ) -> Result<Buffer<T, A>, Error> {
         let bytes = count.checked_mul(core::mem::size_of::<T>()).ok_or(Error::Capacity)?;
         if bytes > self.remaining {
             return Err(Error::Capacity);
         }
-        let mut values = Vec::new();
+        let mut values = Vec::new_in(self.allocator.clone());
         allocate(&mut values, count)?;
         // Charge actual capacity too, rather than trusting a reserve request.
         let actual =
@@ -57,12 +71,12 @@ impl Budget {
     }
 }
 
-pub(crate) struct Buffer<T: Copy> {
-    values: Vec<T>,
+pub(crate) struct Buffer<T: Copy, A: Allocator = Global> {
+    values: Vec<T, A>,
     limit: usize,
 }
 
-impl<T: Copy> Buffer<T> {
+impl<T: Copy, A: Allocator> Buffer<T, A> {
     pub(crate) fn push(&mut self, value: T) -> Result<(), Error> {
         if self.values.len() == self.limit {
             return Err(Error::SourceChanged);
@@ -71,7 +85,7 @@ impl<T: Copy> Buffer<T> {
         Ok(())
     }
 
-    pub(crate) fn into_vec(self) -> Vec<T> {
+    pub(crate) fn into_vec(self) -> Vec<T, A> {
         self.values
     }
 }

@@ -80,6 +80,8 @@ class ResourcePolicy(unittest.TestCase):
             "thread-table-reserve": "p.thread_table.ordinary = p.thread_table.total;",
             "thread-table-principal": "p.memory.principal_thread_table[1] = u64::MAX;",
             "principal": "p.memory.principal_thread_metadata[0] = u64::MAX;",
+            "principal-buffers-small": "p.memory.principal_kernel_buffer_bytes = 1;",
+            "principal-buffers-range": "p.memory.principal_kernel_buffer_bytes = u64::MAX;",
             "queue": "p.local.endpoint_capacity = usize::MAX;",
             "heap-alignment": "p.kernel_heap.initial_bytes = 1;",
             "heap-overflow": "p.kernel_heap.growth_max_bytes = usize::MAX;",
