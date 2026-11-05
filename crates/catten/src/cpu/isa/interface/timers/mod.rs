@@ -2,6 +2,7 @@ use alloc::sync::Arc;
 
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
 pub use crate::klib::time::duration::ExtDuration;
+pub(crate) mod bootstrap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LpTimerError {
@@ -25,6 +26,12 @@ pub trait LpTimerIfce {
     type IntDispatchNum;
     type Timestamp;
 
+    /// BSP-only backing allocation before secondary startup or runtime entry.
+    fn prepare_boot_storage();
+    /// Hardware setup on the owning LP, after its interrupt controller is ready.
+    fn initialize_local_boot();
+    /// Observe complete publication after the boot interrupt barrier.
+    fn boot_ready() -> bool;
     fn get() -> Arc<Mutex<Self>>;
     // Timestamp functions
     fn now() -> Self::Timestamp;

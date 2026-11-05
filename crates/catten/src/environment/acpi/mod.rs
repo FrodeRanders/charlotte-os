@@ -37,6 +37,13 @@ use crate::{
 pub mod aml;
 pub mod sdt;
 
+/// Construct firmware catalogs before secondary startup and runtime DMA grants.
+pub(crate) fn prepare_boot_storage() {
+    LazyLock::force(&TABLE_MAP);
+    #[cfg(target_arch = "aarch64")]
+    sdt::iort::prepare_boot_discovery();
+}
+
 static TABLE_MAP: LazyLock<HashMap<AcpiTableType, Vec<PAddr>>> = LazyLock::new(|| {
     if let Some(xsdp_ptr) = get_xsdp() {
         let xsdp: &Xsdp = unsafe { xsdp_ptr.as_ref() };
@@ -260,9 +267,9 @@ pub fn is_acpi_available() -> bool {
     get_xsdp().is_some()
 }
 
-pub fn find_table_type(table: AcpiTableType) -> Result<Vec<PAddr>, Error> {
+pub fn find_table_type(table: AcpiTableType) -> Result<&'static [PAddr], Error> {
     if let Some(table_addrs) = TABLE_MAP.get(&table) {
-        Ok(table_addrs.clone())
+        Ok(table_addrs.as_slice())
     } else {
         Err(Error::TableNotFound)
     }

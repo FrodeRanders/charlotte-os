@@ -17,6 +17,8 @@ report is useful for a significant investigation or qualification checkpoint.
 
 ## Reports
 
+- [Explicit bootstrap storage and immutable IORT discovery — Q3](2026-11-05-bootstrap-storage.md) — BSP preparation, owning-LP timer phases, fixed calibration and allocation-free cached firmware lookup; host and native minimal/security qualification.
+
 - [Selective upstream ports: address map and bounded PCI boot](2026-11-05-selective-upstream-ports.md) — Preserved arena/reset contracts, checked MCFG preparation and flat bounded traversal; combined host and three-target qualification.
 
 - [Framebuffer bounds and ARM deadline capture — Q3](2026-11-04-framebuffer-bounds.md) — Checked C allocation/geometry bounds and concrete boot-factory dispositions; preserves the ARM second-probe deadline separately from its controlled repeat.

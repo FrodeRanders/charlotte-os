@@ -7,6 +7,7 @@ use spin::{
     lazylock::LazyLock,
     once::Once,
 };
+mod calibration;
 
 use super::tsc::TSC_CYCLE_PERIOD;
 //use crate::cpu::isa::interrupts::x2apic::X2Apic;
@@ -18,6 +19,7 @@ use crate::{
             interface::timers::{
                 LpTimerError,
                 LpTimerIfce,
+                bootstrap::BootTimer,
             },
             lp::ops::get_lp_id,
             x86_64::constants::msrs,
@@ -30,12 +32,9 @@ use crate::{
     klib::time::duration::ExtDuration,
 };
 
-/// One lazily initialized timer state per logical processor. Each slot is
-/// first constructed by its owning LP, so calibration and x2APIC register
-/// setup execute against that LP's local hardware rather than repeatedly on
-/// whichever processor first touches this static.
-pub static APIC_TIMERS: LazyLock<Vec<Once<Arc<Mutex<ApicTimer>>>>> =
-    LazyLock::new(|| (0..get_lp_count()).map(|_| Once::new()).collect());
+// All backing is prepared by the BSP. Only the owning LP calibrates its slot;
+// runtime get never allocates, calibrates or waits for an initializer.
+static APIC_TIMERS: Once<Vec<BootTimer<ApicTimer>>> = Once::new();
 
 pub type LpTimer = ApicTimer;
 
@@ -71,50 +70,42 @@ impl ApicTimer {
 
     fn determine_timer_resolution(&mut self) {
         const SAMPLE_TICKS: u32 = 10_000;
-        const NUM_SAMPLES: usize = 10;
 
-        let mut samples = Vec::<u128>::new();
         let _ = self.set_interrupt_mask(true);
         let _ = Self::set_divisor(self, ApicTimerDivisors::DivBy1);
-        for _ in 0..NUM_SAMPLES {
+        let resolution = calibration::resolution(|| {
             Self::set_timer_initial_count(SAMPLE_TICKS);
             let tsc_start = rdtsc();
             if !crate::klib::spin::bounded_spin(100_000_000, || {
                 Self::read_timer_current_count() == 0
             }) {
-                crate::early_logln!("[APIC] timer did not reach zero during calibration");
-                break;
+                return None;
             }
             let tsc_end = rdtsc();
             let duration = (tsc_end - tsc_start) as u128 * (*TSC_CYCLE_PERIOD).as_picos();
             let apic_timer_duration = duration / SAMPLE_TICKS as u128;
-            samples.push(apic_timer_duration);
-        }
-        let mut sum = 0u128;
-        for sample in samples.iter() {
-            sum += *sample;
-        }
-        let ps = sum / NUM_SAMPLES as u128;
-        self.resolution = ExtDuration::from_picos(ps);
+            Some(apic_timer_duration)
+        });
+        Self::set_timer_initial_count(0);
+        self.resolution = ExtDuration::from_picos(
+            resolution.expect("incomplete or invalid APIC timer calibration"),
+        );
     }
 
-    pub fn new(interrupt_vector: <ApicTimer as LpTimerIfce>::IntDispatchNum) -> Self {
-        let mut t = ApicTimer {
+    fn prepared() -> Self {
+        Self {
             resolution: ExtDuration::from_secs(0),
             reset_value: 0,
-        };
-        t.determine_timer_resolution();
-        t.set_divisor(ApicTimerDivisors::DivBy1).expect("Setting the x2APIC timer divisor failed");
-        t.set_isr_dispatch_number(interrupt_vector)
-            .expect("Setting the interrupt vector number for the x2APIC timer failed");
-        t.set_interrupt_mask(false).expect("Error unmasking timer interrupt in the x2APIC.");
-        t
+        }
     }
-}
 
-impl Default for ApicTimer {
-    fn default() -> Self {
-        ApicTimer::new(LAPIC_TIMER_VECTOR)
+    fn initialize_local(&mut self) {
+        self.determine_timer_resolution();
+        self.set_divisor(ApicTimerDivisors::DivBy1)
+            .expect("Setting the x2APIC timer divisor failed");
+        self.set_isr_dispatch_number(LAPIC_TIMER_VECTOR)
+            .expect("Setting the interrupt vector number for the x2APIC timer failed");
+        self.set_interrupt_mask(false).expect("Error unmasking timer interrupt in the x2APIC.");
     }
 }
 
@@ -126,10 +117,26 @@ impl LpTimerIfce for ApicTimer {
 
     const NAME: &'static str = "x86-64 x2APIC Timer";
 
+    fn prepare_boot_storage() {
+        LazyLock::force(&TSC_CYCLE_PERIOD);
+        APIC_TIMERS.call_once(|| {
+            (0..get_lp_count()).map(|_| BootTimer::prepare(Self::prepared())).collect()
+        });
+    }
+
+    fn initialize_local_boot() {
+        APIC_TIMERS.get().expect("timer backing missing at boot")[get_lp_id() as usize]
+            .initialize(Self::initialize_local);
+    }
+
+    fn boot_ready() -> bool {
+        APIC_TIMERS.get().is_some_and(|timers| {
+            timers.len() == get_lp_count() as usize && timers.iter().all(BootTimer::ready)
+        })
+    }
+
     fn get() -> Arc<Mutex<Self>> {
-        APIC_TIMERS[get_lp_id() as usize]
-            .call_once(|| Arc::new(Mutex::new(ApicTimer::new(LAPIC_TIMER_VECTOR))))
-            .clone()
+        APIC_TIMERS.get().expect("timer backing missing at boot")[get_lp_id() as usize].get()
     }
 
     fn now() -> Self::Timestamp {

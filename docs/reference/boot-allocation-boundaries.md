@@ -24,10 +24,10 @@ or aggregate heap size. The current concrete dispositions are:
 | `RoundRobin` Box and scheduler BTreeMap | One installation per LP in BSP/AP initialization before `INIT_BARRIER`; at most 256 | Boot lifetime. Idle threads and observer children retain their existing admitted owners; scheduler container/allocator overhead remains Q4. |
 | x86 AP interrupt/DF/NMI stacks, TSS/GDT/IDT arrays | Secondary ISA initialization; at most 255 AP entries | Boot lifetime; three 16 KiB stack arrays plus table arrays and temporary construction buffers. No runtime hotplug producer. Count total/peak overhead in Q4. |
 | `INT_STATE`'s three vectors | First mandatory post-heap BSP logging before AP startup; each has validated LP-count length | Boot lifetime; later interrupt-save/restore does not grow these vectors. Allocator capacity/overhead remains Q4. |
-| x86 `LAPICS` boxed shard | `LocalIntCtlr::init_lp` in bootstrap, before the interrupt-initialization barrier | One fixed shard per validated LP, boot lifetime. No later growth. |
+| x86 `LAPICS` boxed shard | Explicit BSP preparation before AP startup; controller setup fills each owning LP slot | One fixed shard per validated LP, boot lifetime. Timer state lives separately in its single prepared platform slot; controller initialization no longer calibrates a duplicate timer. |
 | IPI command queues | Explicit BSP force before AP startup; 256 bounded slots per validated LP | Boot lifetime. Pinned `concurrent-queue` allocates the fixed slot buffer during construction; push/pop/force-push do not grow it. Eviction/progress policy remains Q7. |
-| `TIMER_QUEUES`, ARM `GENERIC_TIMERS`, x86 `APIC_TIMERS` and per-slot Arc | First timer enqueue/rearm can initialize global storage; x86's Once constructs its Arc/calibrates on the calling LP | Fixed LP-count cardinality, boot lifetime once created. **Required Q3/Q5 work:** explicit bootstrap construction/owning-LP initialization before runtime first use. Local interrupt-controller initialization does not preconstruct the separate x86 Arc timer. Event nodes retain their existing independent admission. |
-| x86 `DYN_IH_MATRIX` | First device vector registration/lookup; 219 handler slots per LP | Fixed boot-lifetime storage, but a boot with no earlier eligible vector registration lacks an unconditional initialization boundary. Include it in the bootstrap-storage batch and qualify caller/IRQ context. |
+| `TIMER_QUEUES`, ARM `GENERIC_TIMERS`, x86 `APIC_TIMERS` and per-slot Arc | Explicit BSP-only allocation before AP startup; hardware initialized once on each owning LP after its controller and before `INTERRUPT_INIT_BARRIER` | Fixed validated LP-count storage, boot lifetime. Runtime access observes prepared/ready state and clones existing references; it cannot initialize storage or hardware. Event nodes retain independent admission. Broader timer caller/destructor qualification remains Q5. |
+| x86 `DYN_IH_MATRIX` | Explicit BSP preparation before AP startup; 219 handler slots per validated LP | Runtime registration/lookup cannot construct missing backing. The assembly symbol has the actual dispatcher receiver type, with the prepared table behind its Once; no LazyLock-layout reinterpretation. Boot lifetime, no runtime growth. |
 | `ShardLocal`, `ShardMailboxSet`, `try_run_on_lp` | Current concrete callers are native self-tests only | Compiled generic helpers are not application reachability. Production use requires a new trigger/bound/owner review. |
 | `INT_DEPTH` and ARM `ACKED_INTID` | No current production caller found for the depth exports or the ARM record/argument-less EOI path; ARM dispatch calls `end_of_int(intid)` directly | Compiled unused helpers, not a runtime allocation finding. Review any future caller; symbol visibility is not reachability. |
 | Deferred-work manager | Eager BSP construction, but `DeferredTask` is uninhabited and no worker is started | Pinned `ConcurrentQueue::unbounded()` stores null head/tail inline and allocates blocks only on push. There is no safely constructible current task or production submission. Adding a task variant requires bounded admission and an actual worker contract. |
@@ -37,6 +37,46 @@ outer guard or all implicit destruction. In particular,
 x86's three 16 KiB interrupt-stack arrays require up to 12 MiB at 256 LPs before
 their tables and other per-LP storage. No resource ceiling was raised by this
 check; changing the shared limit needs that capacity review.
+
+### Bootstrap timer phases and firmware discovery
+
+The BSP allocates queue tables and all platform timer Arcs after heap/policy
+initialization and before releasing AP startup. Allocation failure stops mandatory
+boot; these fixed, validated platform-count objects are not admitted runtime
+pools. Timestamp-period initialization also precedes AP startup. ARM construction
+only prepares metadata; it no longer writes the BSP timer once per remote slot.
+
+Each LP initializes its own hardware with CPU interrupts already masked, after
+its local interrupt controller is ready. The slot transitions Prepared to
+Initializing to Ready. Hardware/setup failure retains Initializing and forbids
+replay or use; only completion publishes Ready after the local timer guard is
+released. Runtime get reads a completed slot and clones its existing owner. It
+never allocates, spins on an initializer or programs hardware. Queue and dynamic
+IRQ lookups likewise reject missing bootstrap storage. The BSP verifies every
+LP is ready after the common interrupt barrier, independently of `kernel_tests`.
+
+x86 calibrates its one authoritative timer state using ten complete, positive
+samples and checked accumulation, with no sample vector. A timeout, zero sample
+or overflow cannot publish a usable timer. The existing bounded hardware poll
+remains boot-only; no scheduler readiness contract exists before timer startup.
+The controller no longer calibrates a separate unused copy.
+
+ACPI's catalog is also prepared before AP startup. Table lookup returns a static
+borrow instead of cloning a vector for each DMA request. Its XSDT length bounds
+address cardinality to at most 8187; catalog growth/control overhead remains Q4.
+IORT discovery validates the node count against the actual remaining table bytes
+and a minimum 16-byte node before reserving its exact vector. At the 64 KiB table
+ceiling there can be at most 4093 nodes. Invalid node/mapping geometry returns
+unsupported discovery before hardware setup; allocation failure stops boot.
+Temporary node storage is released on that BSP-only parse, outside device/backend
+publication guards. The immutable optional SMMUv3 configuration is retained once;
+runtime stream-ID translation neither reparses firmware nor allocates metadata.
+This changes no requester translation, backend reset or DMA completion policy.
+
+The [bootstrap qualification](../reports/audits/2026-11-05-bootstrap-storage.md)
+records actual tests and limitations. Serial host adapters qualify allocation
+phases and parser/cache behavior, not IRQ masking or physical hardware. Native
+minimal boots must observe mandatory preparation without a regression fixture.
 
 ## Framebuffer terminal
 
@@ -171,10 +211,10 @@ as a Cargo feature does not establish a reachable FDT allocation producer or a
 supported boot exclusion. Complete discovery/power/IOMMU integration before
 claiming support; this boot sub-batch does not implement it.
 
-The next identified Q3 correction is explicit bootstrap construction and
-owning-LP initialization for the runtime-reachable storage above. The bounded
-MCFG/PCI boot producer now has the concrete assignment in this contract; it does
-not complete the remaining producer/dependency review.
+The timer/IRQ bootstrap-storage batch now supplies the unconditional preparation
+boundary above. Remaining Q3 work is the complete producer/dependency and profile
+assignment, including launch encoders and firmware/logging helpers; Q4 still owns
+aggregate/control overhead and Q5 owns broader enclosing caller contexts.
 
 Other PCI/ACPI collections, launch encoders and dependency factories still need
 explicit trigger/bound/lifetime assignments. Compiled unused helpers need

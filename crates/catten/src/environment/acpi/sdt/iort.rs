@@ -9,6 +9,8 @@ use core::{
     ptr,
 };
 
+use spin::Once;
+
 use crate::{
     environment::acpi::{
         self,
@@ -23,6 +25,11 @@ const NODE_HEADER_SIZE: usize = 16;
 const NODE_SMMUV3: u8 = 4;
 const NODE_PCI_ROOT_COMPLEX: u8 = 2;
 const ID_MAPPING_SIZE: usize = 20;
+static BOOT_CONFIG: Once<Option<SmmuV3Config>> = Once::new();
+
+pub(crate) fn prepare_boot_discovery() {
+    BOOT_CONFIG.call_once(parse_smmuv3);
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct SmmuV3Config {
@@ -79,6 +86,10 @@ fn range_valid(offset: usize, length: usize, table_len: usize) -> bool {
 
 /// Discover the first PCI root complex routed through an SMMUv3.
 pub fn discover_smmuv3() -> Option<SmmuV3Config> {
+    *BOOT_CONFIG.get().expect("IORT discovery was not prepared at boot")
+}
+
+fn parse_smmuv3() -> Option<SmmuV3Config> {
     let table = *acpi::find_table_type(AcpiTableType::IORT).ok()?.first()?;
     let base = unsafe { table.into_hhdm_ptr::<u8>() };
     let header = unsafe { &*base.cast::<SdtHeader>() };
@@ -86,12 +97,25 @@ pub fn discover_smmuv3() -> Option<SmmuV3Config> {
         return None;
     }
     let table_len = header.length as usize;
-    if table_len < IORT_HEADER_SIZE {
+    // Header validation bounds the trusted firmware slice before construction.
+    parse_table(unsafe { core::slice::from_raw_parts(base, table_len) })
+}
+
+fn parse_table(bytes: &[u8]) -> Option<SmmuV3Config> {
+    let table_len = bytes.len();
+    if !(IORT_HEADER_SIZE..=acpi::MAX_ACPI_TABLE_LEN as usize).contains(&table_len) {
         return None;
     }
+    let base = bytes.as_ptr();
     let node_count = read_u32(base, size_of::<SdtHeader>()) as usize;
     let mut offset = read_u32(base, size_of::<SdtHeader>() + 4) as usize;
-    let mut nodes = alloc::vec::Vec::with_capacity(node_count);
+    // Every node consumes at least one complete header in this bounded table.
+    // Reject impossible firmware counts before requesting any heap storage.
+    if offset < IORT_HEADER_SIZE || node_count > table_len.checked_sub(offset)? / NODE_HEADER_SIZE {
+        return None;
+    }
+    let mut nodes = alloc::vec::Vec::new();
+    nodes.try_reserve_exact(node_count).expect("boot IORT node storage unavailable");
     for _ in 0..node_count {
         if !range_valid(offset, NODE_HEADER_SIZE, table_len) {
             return None;
@@ -111,6 +135,13 @@ pub fn discover_smmuv3() -> Option<SmmuV3Config> {
     }
 
     for root in nodes.iter().filter(|node| node.kind == NODE_PCI_ROOT_COMPLEX) {
+        if root.mapping_count > 0
+            && (root.mapping_offset < NODE_HEADER_SIZE
+                || root.mapping_count
+                    > root.length.checked_sub(root.mapping_offset)? / ID_MAPPING_SIZE)
+        {
+            return None;
+        }
         let mappings_start = root.offset.checked_add(root.mapping_offset)?;
         for index in 0..root.mapping_count {
             let mapping = mappings_start.checked_add(index.checked_mul(ID_MAPPING_SIZE)?)?;
@@ -144,3 +175,7 @@ pub fn discover_smmuv3() -> Option<SmmuV3Config> {
     }
     None
 }
+
+#[cfg(test)]
+#[path = "iort/tests.rs"]
+mod tests;

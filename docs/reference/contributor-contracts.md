@@ -158,6 +158,14 @@ the corrected RPC polling paths, and the remaining notification gaps.
   layout, checked row/address arithmetic and the complete C allocation prefix
   before drawing; preserve the reviewed framebuffer-span/requested-byte limits.
   A cardinality bound does not qualify lazy runtime or IRQ first use.
+- Prepare timer/queue/IRQ backing and the ACPI catalog on the BSP before AP
+  startup. Initialize each timer only on its owning LP, after local controller
+  setup with CPU IRQs already masked, and publish Ready only after its guard
+  leaves. Verify all slots after the boot barrier. Runtime access must reject
+  missing preparation instead of allocating, calibrating or waiting on a once
+  initializer. Preserve the actual dispatcher receiver type at the assembly
+  symbol. Cached IORT discovery validates node capacity before allocation and
+  retains immutable metadata; runtime requester lookup borrows or copies it.
 - Prepare complete bounded MCFG metadata before mapping ECAM. Keep bus-zero
   addressing, advertised ranges, one fixed visited/worklist per window and the
   global device/function quotas. Preserve stable endpoint owners for reset

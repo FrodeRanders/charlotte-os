@@ -23,7 +23,10 @@ use alloc::{
 };
 use core::arch::asm;
 
-use spin::lazylock::LazyLock;
+use spin::{
+    Once,
+    lazylock::LazyLock,
+};
 
 use crate::{
     cpu::{
@@ -32,6 +35,7 @@ use crate::{
             interface::timers::{
                 LpTimerError,
                 LpTimerIfce,
+                bootstrap::BootTimer,
             },
             lp::ops::get_lp_id,
         },
@@ -60,11 +64,7 @@ pub static TIMER_CYCLE_PERIOD: LazyLock<ExtDuration> = LazyLock::new(|| {
     ExtDuration::from_picos(ps)
 });
 
-pub static GENERIC_TIMERS: LazyLock<Vec<Arc<Mutex<ArmGenericTimer>>>> = LazyLock::new(|| {
-    (0..get_lp_count())
-        .map(|_| Arc::new(Mutex::new(ArmGenericTimer::new(LAPIC_TIMER_VECTOR))))
-        .collect()
-});
+static GENERIC_TIMERS: Once<Vec<BootTimer<ArmGenericTimer>>> = Once::new();
 
 /// Read the system counter frequency (`CNTFRQ_EL0`) in Hz.
 fn read_cntfrq() -> u64 {
@@ -136,21 +136,18 @@ pub struct ArmGenericTimer {
 }
 
 impl ArmGenericTimer {
-    pub fn new(dispatch_num: <Self as LpTimerIfce>::IntDispatchNum) -> Self {
+    fn prepared() -> Self {
+        Self {
+            compare_value: 0,
+            dispatch_num: LAPIC_TIMER_VECTOR,
+        }
+    }
+
+    fn initialize_local(&mut self) {
         // Ensure the timer starts disabled but with its interrupt unmasked, so
         // that arming it later (by programming CNTV_CVAL and setting ENABLE) is
         // all that is required to make it fire.
         write_cntv_ctl(0);
-        ArmGenericTimer {
-            compare_value: 0,
-            dispatch_num,
-        }
-    }
-}
-
-impl Default for ArmGenericTimer {
-    fn default() -> Self {
-        ArmGenericTimer::new(LAPIC_TIMER_VECTOR)
     }
 }
 
@@ -162,8 +159,26 @@ impl LpTimerIfce for ArmGenericTimer {
 
     const NAME: &'static str = "ARM Generic Timer (EL1 Virtual)";
 
+    fn prepare_boot_storage() {
+        LazyLock::force(&TIMER_CYCLE_PERIOD);
+        GENERIC_TIMERS.call_once(|| {
+            (0..get_lp_count()).map(|_| BootTimer::prepare(Self::prepared())).collect()
+        });
+    }
+
+    fn initialize_local_boot() {
+        GENERIC_TIMERS.get().expect("timer backing missing at boot")[get_lp_id() as usize]
+            .initialize(Self::initialize_local);
+    }
+
+    fn boot_ready() -> bool {
+        GENERIC_TIMERS.get().is_some_and(|timers| {
+            timers.len() == get_lp_count() as usize && timers.iter().all(BootTimer::ready)
+        })
+    }
+
     fn get() -> Arc<Mutex<Self>> {
-        GENERIC_TIMERS[get_lp_id() as usize].clone()
+        GENERIC_TIMERS.get().expect("timer backing missing at boot")[get_lp_id() as usize].get()
     }
 
     fn now() -> Self::Timestamp {

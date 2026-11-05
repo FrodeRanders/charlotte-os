@@ -53,7 +53,7 @@ use core::{
     },
 };
 
-use spin::LazyLock;
+use spin::Once;
 
 use crate::{
     cpu::{
@@ -86,8 +86,52 @@ use crate::{
     },
 };
 
-pub static TIMER_QUEUES: LazyLock<PerLp<TimerQueue>> =
-    LazyLock::new(|| PerLp::new(TimerQueue::default));
+pub static TIMER_QUEUES: BootTimerQueues = BootTimerQueues(Once::new());
+
+pub struct BootTimerQueues(Once<PerLp<TimerQueue>>);
+
+impl core::ops::Deref for BootTimerQueues {
+    type Target = PerLp<TimerQueue>;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.get().expect("timer queues were not prepared at boot")
+    }
+}
+
+/// BSP-only allocation, before any secondary LP or scheduler can use these.
+pub(crate) fn prepare_boot_storage() {
+    LpTimer::prepare_boot_storage();
+    TIMER_QUEUES.0.call_once(|| PerLp::new(TimerQueue::default));
+    #[cfg(target_arch = "x86_64")]
+    {
+        spin::LazyLock::force(&crate::cpu::isa::interrupts::x2apic::LAPICS);
+        crate::cpu::isa::interrupts::dynamic::DYN_IH_MATRIX.prepare_boot_storage();
+    }
+}
+
+/// Hardware setup is LP-local and precedes the interrupt initialization barrier.
+pub(crate) fn initialize_local_boot() {
+    assert!(
+        !crate::cpu::isa::lp::ops::get_int_state(),
+        "timer boot requires masked CPU interrupts"
+    );
+    LpTimer::initialize_local_boot();
+    crate::logln!(
+        "[bootstrap storage] lp={} local timer initialized without backing allocation",
+        crate::cpu::isa::lp::ops::get_lp_id()
+    );
+}
+
+pub(crate) fn validate_boot_storage() {
+    assert!(TIMER_QUEUES.0.get().is_some());
+    assert!(LpTimer::boot_ready(), "not all LP timers initialized at boot barrier");
+    #[cfg(target_arch = "x86_64")]
+    assert!(crate::cpu::isa::interrupts::dynamic::DYN_IH_MATRIX.boot_ready());
+    crate::logln!(
+        "[bootstrap storage] all {} LP timers ready; shared timer queues and IRQ storage prepared",
+        crate::cpu::multiprocessor::get_lp_count()
+    );
+}
 
 const MAX_DIAGNOSTIC_LPS: usize = 256;
 

@@ -208,6 +208,9 @@ pub extern "C" fn bsp_main() -> ! {
     // a preempted initializer.
     spin::LazyLock::force(&crate::cpu::multiprocessor::ipi::IPI_CMD_QUEUES);
     spin::LazyLock::force(&crate::deferred_work_manager::DWM);
+    crate::timers::prepare_boot_storage();
+    #[cfg(feature = "acpi")]
+    crate::environment::acpi::prepare_boot_storage();
     logln!("System initialized.");
     start_secondary_lps().expect("Failed to start secondary LPs");
     INIT_BARRIER.wait();
@@ -217,7 +220,9 @@ pub extern "C" fn bsp_main() -> ! {
     // being deferred until the final hand-off to the scheduler.
     mask_interrupts!();
     LocalIntCtlr::init_lp();
+    crate::timers::initialize_local_boot();
     INTERRUPT_INIT_BARRIER.wait();
+    crate::timers::validate_boot_storage();
     crate::debug_trace::start_watchdog();
     {
         let name_service = crate::service::supervisor::start_node_name_service();
@@ -419,6 +424,7 @@ pub unsafe extern "C" fn ap_main(_cpuinfo: &MpInfo) -> ! {
     let lp_id = get_lp_id();
     logln!("LP {lp_id}: Starting local interrupt controller initialization.");
     LocalIntCtlr::init_lp();
+    crate::timers::initialize_local_boot();
     logln!("LP {lp_id}: Initialized local interrupt controller.");
     INTERRUPT_INIT_BARRIER.wait();
     logln!("LP {lp_id}: Bootstrapping complete.");

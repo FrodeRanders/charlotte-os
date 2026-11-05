@@ -56,9 +56,9 @@ enum IcrDestShorthand {
     _AllExcludingSelf = 0b11,
 }
 
-pub struct X2Apic {
-    pub timer: ApicTimer,
-}
+// The timer's authoritative state is the preallocated APIC_TIMERS slot, set up
+// on this LP after controller initialization. Do not calibrate a second copy.
+pub struct X2Apic;
 
 impl X2Apic {
     /// # Initialize the local APIC in x2APIC mode
@@ -72,9 +72,7 @@ impl X2Apic {
             msrs::write(msrs::x2apic::SPURIOUS_INTERRUPT_VECTOR_REG, sivr_val);
         }
         Self::set_timer_lvt_entry(timer_int_vec, false);
-        X2Apic {
-            timer: ApicTimer::new(timer_int_vec),
-        }
+        X2Apic
     }
 
     pub fn record_id() {
