@@ -78,6 +78,38 @@ records actual tests and limitations. Serial host adapters qualify allocation
 phases and parser/cache behavior, not IRQ masking or physical hardware. Native
 minimal boots must observe mandatory preparation without a regression fixture.
 
+### Hardware-ASID return storage
+
+ARM prepares its tag allocator immediately after BSP heap initialization, before
+user roots can acquire hardware ASIDs. The captured hardware width selects
+256 or 65536 u16 return slots: **512 bytes or 128 KiB** of requested boot backing.
+Zero and the firmware's kernel tag remain excluded. This generous complete
+reserve removes growing allocation from tag return without limiting usable tags
+or introducing a second reclamation mechanism. Boot allocation failure stops
+initialization; runtime access rejects missing preparation. Global allocator
+headers and aggregate headroom remain Q4.
+
+Allocate/return only moves values in that prepared vector. A capacity assertion
+precedes push. The root still owns its tag linearly, and its existing confirmed
+TLBI/DSB boundary still precedes return. Preparation supplies neither quiescence
+nor reset/retry authority. Host controls exhaust and recycle 8/16-bit ranges,
+reject backing failure before issuance, and reject a growing-return control.
+Native campaigns qualify only their captured hardware width.
+
+### Boot launch encoders and firmware diagnostics
+
+Compiled cluster service input and its encoder reject more than the shared
+protocol's 16-service limit before collecting bindings. These temporary vectors
+and encoded pages belong to steady-state boot composition, not an application
+input API. Kernel S3/Kafka/Kafka-step builders have only optional fixture callers;
+production operational launch uses the admitted encoded profile instead.
+
+CPU identification produces fixed-size 12/48-byte strings during finish_boot.
+The one-time ACPI table diagnostic is bounded by the catalog; unknown signatures
+format their four borrowed bytes without allocating or assuming UTF-8. The
+inactive allocating PCI capability walkers have been removed; active driver
+lookups retain their existing bounded, claim-aware paths.
+
 ## Framebuffer terminal
 
 The optional `display` profile initializes one terminal from the bootloader
@@ -211,14 +243,9 @@ as a Cargo feature does not establish a reachable FDT allocation producer or a
 supported boot exclusion. Complete discovery/power/IOMMU integration before
 claiming support; this boot sub-batch does not implement it.
 
-The timer/IRQ bootstrap-storage batch now supplies the unconditional preparation
-boundary above. Remaining Q3 work is the complete producer/dependency and profile
-assignment, including launch encoders and firmware/logging helpers; Q4 still owns
-aggregate/control overhead and Q5 owns broader enclosing caller contexts.
-
-Other PCI/ACPI collections, launch encoders and dependency factories still need
-explicit trigger/bound/lifetime assignments. Compiled unused helpers need
-call-site evidence rather than an application-reachability assumption. Address-space
-frame-tracking vector overhead belongs in Q4's original-principal/capacity
-review; enclosing guards and implicit destruction remain Q5. This page closes
-neither the Q3 inventory nor SEC-07/18.
+The complete current producer/dependency/profile assignments live in the
+[kernel allocation review](kernel-allocation-review.md), including bounded boot
+storage, fixture-only helpers, existing admitted owners and explicit Q4 work.
+Address-space frame-tracking vectors and diagnostic snapshot scratch still need
+aggregate/original-principal backing coverage; enclosing guards and implicit
+destruction remain Q5. These assignments do not close SEC-07/18.

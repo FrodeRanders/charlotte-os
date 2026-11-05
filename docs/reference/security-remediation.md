@@ -12,15 +12,15 @@ retain their original findings and execution records. Their old remaining-work
 paragraphs are not the current backlog.
 
 The [SEC-07/18 closure plan](security-closure-plan.md) defines eight work packages:
-Q1's six-site snapshot/scratch batch and Q2's launch/handoff/cache batch are
-accepted, with six packages remaining and all four aggregate gates open. It also defines the combined acceptance
-matrix. Its compiler census is a review baseline, not a completed
-allocation/caller inventory or a new readiness percentage. Q3 is in progress;
-its [boot allocation sub-batch](boot-allocation-boundaries.md) corrects CPU-count
-validation and bounds optional framebuffer geometry, allocation bytes and
-complete ownership, and adds bounded MCFG/PCI boot preparation and traversal.
-Timer/IRQ storage and immutable IORT discovery now initialize explicitly at boot.
-Remaining producer/dependency/profile review stays open.
+Q1's snapshot/scratch batch, Q2's launch/handoff/cache batch and
+[Q3's producer review](kernel-allocation-review.md) are accepted. Five packages
+remain and all four aggregate gates are open. Q3 assigns all 738 current
+non-drop candidates and records dependency/profile exclusions; it does not
+complete aggregate/principal accounting or caller/Drop review. Q4 retains
+explicit diagnostic scratch and heap/image frame-tracking admission gaps,
+alongside the coherent multi-pool capacity and original-principal review.
+Package counts are not weighted readiness percentages. The plan also defines
+the combined acceptance matrix.
 Finding dispositions remain unchanged; the ARM display grant-probe
 deadline capture is recorded below as a separate unresolved episode.
 

@@ -2137,7 +2137,7 @@ fn sys_spawn_operational_connector(frame: &mut TrapFrame) {
                         charlotte_protocol_s3::Profile::decode(profile).is_some()
                     }
                     charlotte_launch::operations::PROFILE_KIND_KAFKA => {
-                        charlotte_protocol_kafka::Profile::decode(profile).is_ok()
+                        charlotte_protocol_kafka::Profile::validate_encoded(profile).is_ok()
                     }
                     _ => false,
                 };

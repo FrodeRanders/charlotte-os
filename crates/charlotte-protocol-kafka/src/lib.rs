@@ -232,6 +232,104 @@ pub struct Profile<'a> {
     pub transaction_timeout_ms: u32,
 }
 
+// Shared borrowed representation: one parser and validator serve heap-free
+// kernel validation and the userspace-owned profile. Credential bytes stay borrowed.
+struct ProfileView<'a, 's> {
+    instance_name: &'a [u8],
+    authority_endpoints: &'s [AuthorityEndpoint<'a>],
+    endpoint_ipv4: [u8; 4],
+    host: &'a [u8],
+    port: u16,
+    broker_endpoints: &'s [BrokerEndpoint<'a>],
+    tls: bool,
+    ca_certificate_der: &'a [u8],
+    topic: &'a [u8],
+    partition: i32,
+    produce_routes: &'s [ProduceRoute<'a>],
+    max_produce_routes: u16,
+    group: &'a [u8],
+    transactional_id: &'a [u8],
+    authentication: Authentication<'a>,
+    rights: u64,
+    transaction_timeout_ms: u32,
+}
+
+impl<'a, 's> From<&'s Profile<'a>> for ProfileView<'a, 's> {
+    fn from(profile: &'s Profile<'a>) -> Self {
+        Self {
+            instance_name: profile.instance_name,
+            authority_endpoints: &profile.authority_endpoints,
+            endpoint_ipv4: profile.endpoint_ipv4,
+            host: profile.host,
+            port: profile.port,
+            broker_endpoints: &profile.broker_endpoints,
+            tls: profile.tls,
+            ca_certificate_der: profile.ca_certificate_der,
+            topic: profile.topic,
+            partition: profile.partition,
+            produce_routes: &profile.produce_routes,
+            max_produce_routes: profile.max_produce_routes,
+            group: profile.group,
+            transactional_id: profile.transactional_id,
+            authentication: profile.authentication,
+            rights: profile.rights,
+            transaction_timeout_ms: profile.transaction_timeout_ms,
+        }
+    }
+}
+
+impl<'a> ProfileView<'a, '_> {
+    fn into_owned(self) -> Profile<'a> {
+        Profile {
+            instance_name: self.instance_name,
+            authority_endpoints: self.authority_endpoints.to_vec(),
+            endpoint_ipv4: self.endpoint_ipv4,
+            host: self.host,
+            port: self.port,
+            broker_endpoints: self.broker_endpoints.to_vec(),
+            tls: self.tls,
+            ca_certificate_der: self.ca_certificate_der,
+            topic: self.topic,
+            partition: self.partition,
+            produce_routes: self.produce_routes.to_vec(),
+            max_produce_routes: self.max_produce_routes,
+            group: self.group,
+            transactional_id: self.transactional_id,
+            authentication: self.authentication,
+            rights: self.rights,
+            transaction_timeout_ms: self.transaction_timeout_ms,
+        }
+    }
+}
+
+struct ProfileScratch<'a> {
+    produce_routes: [ProduceRoute<'a>; MAX_PRODUCE_ROUTES],
+    broker_endpoints: [BrokerEndpoint<'a>; MAX_BROKER_ENDPOINTS],
+    authority_endpoints: [AuthorityEndpoint<'a>; MAX_AUTHORITY_ENDPOINTS],
+}
+
+impl ProfileScratch<'_> {
+    fn new() -> Self {
+        Self {
+            produce_routes: [ProduceRoute {
+                topic: &[],
+                partition: 0,
+            }; MAX_PRODUCE_ROUTES],
+            broker_endpoints: [BrokerEndpoint {
+                endpoint_ipv4: [0; 4],
+                host: &[],
+                port: 0,
+            }; MAX_BROKER_ENDPOINTS],
+            authority_endpoints: [AuthorityEndpoint {
+                service_name: &[],
+                rights: 0,
+            }; MAX_AUTHORITY_ENDPOINTS],
+        }
+    }
+}
+// Bound parser metadata, independently of the already-owned encoded bytes.
+const _: () = assert!(core::mem::size_of::<ProfileScratch<'static>>() <= 4096);
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProfileError {
     TooLarge,
@@ -252,7 +350,7 @@ impl Profile<'_> {
     /// Validate and size the whole frame before allocating. The erasing owner
     /// exists before credentials are written and transfers directly to callers.
     pub fn encode(&self) -> Result<zeroize::Zeroizing<Vec<u8>>, ProfileError> {
-        validate_profile(self)?;
+        validate_profile(&ProfileView::from(self))?;
         let route_bytes = self.produce_routes.iter().try_fold(0usize, |total, route| {
             total.checked_add(PROFILE_ROUTE_HEADER_LEN + route.topic.len())
         });
@@ -359,162 +457,172 @@ impl Profile<'_> {
         Ok(output)
     }
 
+    /// Validate the complete current profile without heap allocation. Uses at
+    /// most 4096 bytes of fixed list scratch; credential fields remain borrowed.
+    pub fn validate_encoded(input: &[u8]) -> Result<(), ProfileError> {
+        let mut scratch = ProfileScratch::new();
+        decode_profile(input, &mut scratch).map(|_| ())
+    }
+
     pub fn decode(input: &'_ [u8]) -> Result<Profile<'_>, ProfileError> {
-        if input.len() < PROFILE_HEADER_LEN
-            || input.len() > MAX_PROFILE_BYTES
-            || input[0..8] != PROFILE_MAGIC
-        {
-            return Err(ProfileError::InvalidHeader);
-        }
-        if get_u16(input, 8)? != PROFILE_VERSION {
-            return Err(ProfileError::UnsupportedVersion);
-        }
-        if get_u16(input, 10)? as usize != PROFILE_HEADER_LEN
-            || get_u32(input, 12)? as usize != input.len()
-        {
-            return Err(ProfileError::InvalidHeader);
-        }
-        let expected: [u8; 32] = input
-            [PROFILE_DIGEST_OFFSET..PROFILE_DIGEST_OFFSET + PROFILE_DIGEST_LEN]
-            .try_into()
-            .map_err(|_| ProfileError::InvalidHeader)?;
-        let mut hasher = charlotte_launch::sha256::Sha256::new();
-        hasher.update(&input[..PROFILE_DIGEST_OFFSET]);
-        hasher.update(&[0; PROFILE_DIGEST_LEN]);
-        hasher.update(&input[PROFILE_DIGEST_OFFSET + PROFILE_DIGEST_LEN..]);
-        if hasher.finalize() != expected {
-            return Err(ProfileError::DigestMismatch);
-        }
-        let flags = get_u16(input, 54)?;
-        let route_count = get_u16(input, 72)? as usize;
-        let broker_count = get_u16(input, 88)? as usize;
-        let authentication_kind = get_u16(input, 90)?;
-        let instance_name_len = get_u16(input, 96)? as usize;
-        let authority_count = get_u16(input, 98)? as usize;
-        let max_produce_routes = get_u16(input, 74)?;
-        if input[108..PROFILE_HEADER_LEN].iter().any(|byte| *byte != 0) {
-            return Err(ProfileError::InvalidHeader);
-        }
-        if flags & !PROFILE_FLAG_TLS != 0
-            || route_count > MAX_PRODUCE_ROUTES
-            || route_count > usize::from(max_produce_routes)
-            || usize::from(max_produce_routes) > MAX_PRODUCE_ROUTES
-        {
-            return Err(ProfileError::TooManyRoutes);
-        }
-        if broker_count > MAX_BROKER_ENDPOINTS.saturating_sub(1) {
-            return Err(ProfileError::TooManyBrokers);
-        }
-        if authority_count == 0 || authority_count > MAX_AUTHORITY_ENDPOINTS {
-            return Err(ProfileError::TooManyAuthorities);
-        }
-        let lengths = [
-            instance_name_len,
-            get_u16(input, 76)? as usize,
-            get_u32(input, 84)? as usize,
-            get_u16(input, 78)? as usize,
-            get_u16(input, 80)? as usize,
-            get_u16(input, 82)? as usize,
-            get_u16(input, 92)? as usize,
-            get_u16(input, 94)? as usize,
-            get_u32(input, 100)? as usize,
-            get_u32(input, 104)? as usize,
-        ];
-        let mut offset = PROFILE_HEADER_LEN;
-        let mut fields: [&[u8]; 10] = [&[]; 10];
-        for (slot, len) in fields.iter_mut().zip(lengths) {
-            let end = offset.checked_add(len).ok_or(ProfileError::TooLarge)?;
-            *slot = input.get(offset..end).ok_or(ProfileError::InvalidField)?;
-            offset = end;
-        }
-        let authentication = decode_authentication(
-            authentication_kind,
-            [fields[6], fields[7], fields[8], fields[9]],
-        )?;
-        let mut produce_routes = Vec::with_capacity(route_count);
-        for _ in 0..route_count {
-            let header = input
-                .get(offset..offset + PROFILE_ROUTE_HEADER_LEN)
-                .ok_or(ProfileError::InvalidField)?;
-            let partition = get_i32(header, 0)?;
-            let topic_len = get_u16(header, 4)? as usize;
-            if get_u16(header, 6)? != 0 {
-                return Err(ProfileError::InvalidField);
-            }
-            offset += PROFILE_ROUTE_HEADER_LEN;
-            let end = offset.checked_add(topic_len).ok_or(ProfileError::TooLarge)?;
-            let topic = input.get(offset..end).ok_or(ProfileError::InvalidField)?;
-            offset = end;
-            produce_routes.push(ProduceRoute {
-                topic,
-                partition,
-            });
-        }
-        let mut broker_endpoints = Vec::with_capacity(broker_count);
-        for _ in 0..broker_count {
-            let header = input
-                .get(offset..offset + PROFILE_BROKER_HEADER_LEN)
-                .ok_or(ProfileError::InvalidField)?;
-            let endpoint_ipv4 = header[0..4].try_into().map_err(|_| ProfileError::InvalidField)?;
-            let port = get_u16(header, 4)?;
-            let host_len = get_u16(header, 6)? as usize;
-            offset += PROFILE_BROKER_HEADER_LEN;
-            let end = offset.checked_add(host_len).ok_or(ProfileError::TooLarge)?;
-            let host = input.get(offset..end).ok_or(ProfileError::InvalidField)?;
-            offset = end;
-            broker_endpoints.push(BrokerEndpoint {
-                endpoint_ipv4,
-                host,
-                port,
-            });
-        }
-        let mut authority_endpoints = Vec::with_capacity(authority_count);
-        for _ in 0..authority_count {
-            let header = input
-                .get(offset..offset + PROFILE_AUTHORITY_HEADER_LEN)
-                .ok_or(ProfileError::InvalidField)?;
-            let rights = get_u64(header, 0)?;
-            let service_name_len = get_u16(header, 8)? as usize;
-            if header[10..PROFILE_AUTHORITY_HEADER_LEN].iter().any(|byte| *byte != 0) {
-                return Err(ProfileError::InvalidField);
-            }
-            offset += PROFILE_AUTHORITY_HEADER_LEN;
-            let end = offset.checked_add(service_name_len).ok_or(ProfileError::TooLarge)?;
-            let service_name = input.get(offset..end).ok_or(ProfileError::InvalidField)?;
-            offset = end;
-            authority_endpoints.push(AuthorityEndpoint {
-                service_name,
-                rights,
-            });
-        }
-        if offset != input.len() {
-            return Err(ProfileError::InvalidField);
-        }
-        let profile = Profile {
-            instance_name: fields[0],
-            authority_endpoints,
-            endpoint_ipv4: input[48..52].try_into().map_err(|_| ProfileError::InvalidHeader)?,
-            host: fields[1],
-            port: get_u16(input, 52)?,
-            broker_endpoints,
-            tls: flags & PROFILE_FLAG_TLS != 0,
-            ca_certificate_der: fields[2],
-            topic: fields[3],
-            partition: get_i32(input, 68)?,
-            produce_routes,
-            max_produce_routes,
-            group: fields[4],
-            transactional_id: fields[5],
-            authentication,
-            rights: get_u64(input, 56)?,
-            transaction_timeout_ms: get_u32(input, 64)?,
-        };
-        validate_profile(&profile)?;
-        Ok(profile)
+        let mut scratch = ProfileScratch::new();
+        decode_profile(input, &mut scratch).map(ProfileView::into_owned)
     }
 }
 
-fn validate_profile(profile: &Profile<'_>) -> Result<(), ProfileError> {
+fn decode_profile<'a, 's>(
+    input: &'a [u8],
+    scratch: &'s mut ProfileScratch<'a>,
+) -> Result<ProfileView<'a, 's>, ProfileError> {
+    if input.len() < PROFILE_HEADER_LEN
+        || input.len() > MAX_PROFILE_BYTES
+        || input[0..8] != PROFILE_MAGIC
+    {
+        return Err(ProfileError::InvalidHeader);
+    }
+    if get_u16(input, 8)? != PROFILE_VERSION {
+        return Err(ProfileError::UnsupportedVersion);
+    }
+    if get_u16(input, 10)? as usize != PROFILE_HEADER_LEN
+        || get_u32(input, 12)? as usize != input.len()
+    {
+        return Err(ProfileError::InvalidHeader);
+    }
+    let expected: [u8; 32] = input
+        [PROFILE_DIGEST_OFFSET..PROFILE_DIGEST_OFFSET + PROFILE_DIGEST_LEN]
+        .try_into()
+        .map_err(|_| ProfileError::InvalidHeader)?;
+    let mut hasher = charlotte_launch::sha256::Sha256::new();
+    hasher.update(&input[..PROFILE_DIGEST_OFFSET]);
+    hasher.update(&[0; PROFILE_DIGEST_LEN]);
+    hasher.update(&input[PROFILE_DIGEST_OFFSET + PROFILE_DIGEST_LEN..]);
+    if hasher.finalize() != expected {
+        return Err(ProfileError::DigestMismatch);
+    }
+    let flags = get_u16(input, 54)?;
+    let route_count = get_u16(input, 72)? as usize;
+    let broker_count = get_u16(input, 88)? as usize;
+    let authentication_kind = get_u16(input, 90)?;
+    let instance_name_len = get_u16(input, 96)? as usize;
+    let authority_count = get_u16(input, 98)? as usize;
+    let max_produce_routes = get_u16(input, 74)?;
+    if input[108..PROFILE_HEADER_LEN].iter().any(|byte| *byte != 0) {
+        return Err(ProfileError::InvalidHeader);
+    }
+    if flags & !PROFILE_FLAG_TLS != 0
+        || route_count > MAX_PRODUCE_ROUTES
+        || route_count > usize::from(max_produce_routes)
+        || usize::from(max_produce_routes) > MAX_PRODUCE_ROUTES
+    {
+        return Err(ProfileError::TooManyRoutes);
+    }
+    if broker_count > MAX_BROKER_ENDPOINTS.saturating_sub(1) {
+        return Err(ProfileError::TooManyBrokers);
+    }
+    if authority_count == 0 || authority_count > MAX_AUTHORITY_ENDPOINTS {
+        return Err(ProfileError::TooManyAuthorities);
+    }
+    let lengths = [
+        instance_name_len,
+        get_u16(input, 76)? as usize,
+        get_u32(input, 84)? as usize,
+        get_u16(input, 78)? as usize,
+        get_u16(input, 80)? as usize,
+        get_u16(input, 82)? as usize,
+        get_u16(input, 92)? as usize,
+        get_u16(input, 94)? as usize,
+        get_u32(input, 100)? as usize,
+        get_u32(input, 104)? as usize,
+    ];
+    let mut offset = PROFILE_HEADER_LEN;
+    let mut fields: [&[u8]; 10] = [&[]; 10];
+    for (slot, len) in fields.iter_mut().zip(lengths) {
+        let end = offset.checked_add(len).ok_or(ProfileError::TooLarge)?;
+        *slot = input.get(offset..end).ok_or(ProfileError::InvalidField)?;
+        offset = end;
+    }
+    let authentication =
+        decode_authentication(authentication_kind, [fields[6], fields[7], fields[8], fields[9]])?;
+    for slot in &mut scratch.produce_routes[..route_count] {
+        let header = input
+            .get(offset..offset + PROFILE_ROUTE_HEADER_LEN)
+            .ok_or(ProfileError::InvalidField)?;
+        let partition = get_i32(header, 0)?;
+        let topic_len = get_u16(header, 4)? as usize;
+        if get_u16(header, 6)? != 0 {
+            return Err(ProfileError::InvalidField);
+        }
+        offset += PROFILE_ROUTE_HEADER_LEN;
+        let end = offset.checked_add(topic_len).ok_or(ProfileError::TooLarge)?;
+        let topic = input.get(offset..end).ok_or(ProfileError::InvalidField)?;
+        offset = end;
+        *slot = ProduceRoute {
+            topic,
+            partition,
+        };
+    }
+    for slot in &mut scratch.broker_endpoints[..broker_count] {
+        let header = input
+            .get(offset..offset + PROFILE_BROKER_HEADER_LEN)
+            .ok_or(ProfileError::InvalidField)?;
+        let endpoint_ipv4 = header[0..4].try_into().map_err(|_| ProfileError::InvalidField)?;
+        let port = get_u16(header, 4)?;
+        let host_len = get_u16(header, 6)? as usize;
+        offset += PROFILE_BROKER_HEADER_LEN;
+        let end = offset.checked_add(host_len).ok_or(ProfileError::TooLarge)?;
+        let host = input.get(offset..end).ok_or(ProfileError::InvalidField)?;
+        offset = end;
+        *slot = BrokerEndpoint {
+            endpoint_ipv4,
+            host,
+            port,
+        };
+    }
+    for slot in &mut scratch.authority_endpoints[..authority_count] {
+        let header = input
+            .get(offset..offset + PROFILE_AUTHORITY_HEADER_LEN)
+            .ok_or(ProfileError::InvalidField)?;
+        let rights = get_u64(header, 0)?;
+        let service_name_len = get_u16(header, 8)? as usize;
+        if header[10..PROFILE_AUTHORITY_HEADER_LEN].iter().any(|byte| *byte != 0) {
+            return Err(ProfileError::InvalidField);
+        }
+        offset += PROFILE_AUTHORITY_HEADER_LEN;
+        let end = offset.checked_add(service_name_len).ok_or(ProfileError::TooLarge)?;
+        let service_name = input.get(offset..end).ok_or(ProfileError::InvalidField)?;
+        offset = end;
+        *slot = AuthorityEndpoint {
+            service_name,
+            rights,
+        };
+    }
+    if offset != input.len() {
+        return Err(ProfileError::InvalidField);
+    }
+    let profile = ProfileView {
+        instance_name: fields[0],
+        authority_endpoints: &scratch.authority_endpoints[..authority_count],
+        endpoint_ipv4: input[48..52].try_into().map_err(|_| ProfileError::InvalidHeader)?,
+        host: fields[1],
+        port: get_u16(input, 52)?,
+        broker_endpoints: &scratch.broker_endpoints[..broker_count],
+        tls: flags & PROFILE_FLAG_TLS != 0,
+        ca_certificate_der: fields[2],
+        topic: fields[3],
+        partition: get_i32(input, 68)?,
+        produce_routes: &scratch.produce_routes[..route_count],
+        max_produce_routes,
+        group: fields[4],
+        transactional_id: fields[5],
+        authentication,
+        rights: get_u64(input, 56)?,
+        transaction_timeout_ms: get_u32(input, 64)?,
+    };
+    validate_profile(&profile)?;
+    Ok(profile)
+}
+
+fn validate_profile(profile: &ProfileView<'_, '_>) -> Result<(), ProfileError> {
     if profile.instance_name.is_empty()
         || profile.instance_name.len() > MAX_INSTANCE_NAME_BYTES
         || !profile.instance_name.iter().all(u8::is_ascii_graphic)
@@ -946,7 +1054,7 @@ mod tests {
         }]
     }
 
-    fn profile_without_authentication() -> Profile<'static> {
+    pub(super) fn profile_without_authentication() -> Profile<'static> {
         Profile {
             instance_name: DEFAULT_NAME,
             authority_endpoints: authorities(),
@@ -968,7 +1076,7 @@ mod tests {
         }
     }
 
-    fn refresh_profile_digest(encoded: &mut [u8]) {
+    pub(super) fn refresh_profile_digest(encoded: &mut [u8]) {
         encoded[PROFILE_DIGEST_OFFSET..PROFILE_DIGEST_OFFSET + PROFILE_DIGEST_LEN].fill(0);
         let digest = charlotte_launch::sha256::digest(encoded);
         encoded[PROFILE_DIGEST_OFFSET..PROFILE_DIGEST_OFFSET + PROFILE_DIGEST_LEN]
@@ -1489,3 +1597,6 @@ mod tests {
         assert_eq!(unpack_routed_record_arg(encoded), (0x1234_5678, 7, MAX_RECORD_BYTES));
     }
 }
+
+#[cfg(test)]
+mod validation_tests;

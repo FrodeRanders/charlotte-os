@@ -740,10 +740,10 @@ trusted launcher and the read-only capability.
 
 The kernel prepares a profile-backed launch transactionally. An owning launch
 object retains the not-yet-running domain, delegated connection, and transient
-kernel profile object until read-only transfer succeeds. Allocation,
-delegation, or transfer failure closes the earlier resources and the target
-address space before an error is returned; a best-effort destructor protects
-future early-return paths.
+kernel profile object until read-only transfer succeeds. Ordinary rejection
+consumes explicit cancellation after helper guards leave. Cleanup stops on its
+first failure, retaining remaining roots, profile, and authority; abandonment
+retains the complete transaction without a second destructor cleanup pass.
 
 The fixed 112-byte \texttt{CHKAFP7} header declares one authentication choice:
 none, SCRAM-SHA-256, P-256 mTLS, or both. Four explicit
@@ -757,6 +757,12 @@ profile and authentication types omit aggregate Debug formatting. Individual
 fields and output bytes can still be copied or logged. Authentication policy
 and secret ownership remain behind the connector's read-only launch capability.
 The profile has no optional authentication sections or compatibility fallback.
+
+Kernel operational launch validates through the shared borrowed profile parser,
+using 3840 bytes of fixed list scratch with a 4096-byte compile-time ceiling
+and no heap allocation. Credential bytes remain borrowed. Userspace decoding
+materializes its three vectors only after complete validation. The full 64\,KiB
+frame and existing route, broker, and authority limits remain unchanged.
 
 The same digest covers a non-empty printable-ASCII instance name and a bounded
 set of separately published authority endpoints, whose names are each at most

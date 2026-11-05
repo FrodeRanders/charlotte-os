@@ -66,6 +66,14 @@ launcher borrows the encoder's returned zeroizing owner through its existing
 launch scope, and the connector retains its existing zeroizing password/private-key
 copies.
 
+Kernel operational launch calls `Profile::validate_encoded`, which shares the
+same borrowed parser/field validator as owned decode. It uses 3840 bytes of fixed
+list scratch (compile-time ceiling 4096), makes no heap allocation and retains
+credential bytes behind the input borrow. The userspace decoder materializes
+its three vectors only after complete validation. The full 64 KiB frame and
+64 routes/31 additional brokers/64 authorities remain accepted; no wire, rights
+or authentication rule changes.
+
 ### Current profile wire contract
 
 The only accepted profile is `CHKAFP7\0`, version 7, with an exact 112-byte
@@ -103,8 +111,10 @@ formats are unchanged: connector decoding remains the inner-format authority.
 Profile-backed launch is prepared as one kernel transaction. Until the initial
 thread starts, an owning launch object retains the unloaded domain and any
 kernel-owned profile memory. Connection delegation, profile allocation, or
-read-only transfer failure closes all earlier resources and the target address
-space; `Drop` remains a best-effort fallback for future early-return paths.
+read-only transfer rejection consumes explicit cancellation after helper guards
+leave. Cleanup stops on its first failure and retains remaining roots, profile
+and authority. `Drop` retains the complete transaction without a second cleanup
+pass; see [launch ownership](service-launch-ownership.md).
 
 The instance name and every access-point name are non-empty printable ASCII and
 at most 256 bytes. They are covered by the profile digest and cannot be

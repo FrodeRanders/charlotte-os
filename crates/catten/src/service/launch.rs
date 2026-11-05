@@ -157,10 +157,15 @@ fn parse_cluster_tcp_service(value: &'static str) -> Option<ClusterTcpService> {
 }
 
 pub(crate) fn configured_cluster_tcp_services() -> Vec<ClusterTcpService> {
-    option_env!("CATTEN_CLUSTER_SERVICES")
+    let entries = option_env!("CATTEN_CLUSTER_SERVICES")
         .unwrap_or("")
         .split(';')
-        .filter(|entry| !entry.is_empty())
+        .filter(|entry| !entry.is_empty());
+    assert!(
+        entries.clone().count() <= charlotte_launch::ingress::MAX_SERVICES,
+        "too many compiled cluster services"
+    );
+    entries
         .map(|entry| {
             parse_cluster_tcp_service(entry)
                 .unwrap_or_else(|| panic!("invalid compiled cluster service {entry:?}"))
@@ -169,6 +174,10 @@ pub(crate) fn configured_cluster_tcp_services() -> Vec<ClusterTcpService> {
 }
 
 fn encode_cluster_tcp_services(services: &[ClusterTcpService]) -> Vec<u8> {
+    assert!(
+        services.len() <= charlotte_launch::ingress::MAX_SERVICES,
+        "too many cluster services for launch encoding"
+    );
     let bindings = services
         .iter()
         .map(|service| charlotte_launch::ingress::ServiceBinding {

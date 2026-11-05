@@ -48,12 +48,14 @@ mod environment { pub mod acpi {
 use core::{cell::Cell,sync::atomic::{AtomicUsize,Ordering}};
 use std::alloc::{GlobalAlloc,Layout,System};
 thread_local! { static TRACK:Cell<bool>=const{Cell::new(false)}; }
+thread_local! { static FAIL_NEXT:Cell<bool>=const{Cell::new(false)}; }
 static ALLOCATIONS:AtomicUsize=AtomicUsize::new(0);
 struct Tracer;
 #[global_allocator] static ALLOCATOR:Tracer=Tracer;
 unsafe impl GlobalAlloc for Tracer {
     unsafe fn alloc(&self,layout:Layout)->*mut u8 {
         if TRACK.try_with(Cell::get).unwrap_or(false) {ALLOCATIONS.fetch_add(1,Ordering::Relaxed);}
+        if FAIL_NEXT.try_with(|fail|fail.replace(false)).unwrap_or(false) {return core::ptr::null_mut();}
         unsafe {System.alloc(layout)}
     }
     unsafe fn dealloc(&self,pointer:*mut u8,layout:Layout) {unsafe {System.dealloc(pointer,layout)}}
@@ -122,4 +124,38 @@ fn measure(f:impl FnOnce())->usize {
     // Invalidate the fixture's firmware pointer after copying immutable metadata.
     environment::acpi::TABLE.store(core::ptr::null_mut(),Ordering::Release);drop(bytes);
     assert_eq!(measure(||for _ in 0..1000 {assert_eq!(iort::discover_smmuv3().unwrap().stream_id(0x107),Some(0x207));}),0);
+}
+
+
+type HwAsid = u16;
+#[path="@HW_ASID@"] mod hw_asid;
+
+#[test] fn hardware_asid_allocation_failure_precedes_any_issued_tag() {
+    FAIL_NEXT.with(|fail|fail.set(true));
+    let rejected=hw_asid::HwAsidAllocator::try_new(256,0);
+    assert!(rejected.is_err());
+    assert!(!FAIL_NEXT.with(Cell::get));
+    let mut prepared=hw_asid::HwAsidAllocator::try_new(256,0).unwrap();
+    assert_eq!(prepared.allocate(),Some(1));
+}
+
+#[test] fn hardware_asid_return_and_exhaustion_allocate_no_backing() {
+    for (limit,reserved) in [(4u32,2u16),(256,0),(256,128),(65536,0),(65536,65535)] {
+        let mut allocator=hw_asid::HwAsidAllocator::try_new(limit,reserved).unwrap();
+        let capacity=allocator.capacity();
+        let mut issued=Vec::with_capacity(limit as usize);
+        let mut seen=vec![false;limit as usize];
+        assert_eq!(measure(|| {
+            while let Some(tag)=allocator.allocate() {
+                assert!(tag!=0 && tag!=reserved && !seen[tag as usize]);
+                seen[tag as usize]=true;issued.push(tag);
+            }
+            assert_eq!(issued.len(),limit as usize-1-usize::from(reserved!=0));
+            assert_eq!(allocator.allocate(),None);
+            for &tag in &issued {allocator.release(tag);}
+            for &tag in issued.iter().rev() {assert_eq!(allocator.allocate(),Some(tag));}
+            assert_eq!(allocator.allocate(),None);
+        }),0,"hardware tag retirement allocated backing");
+        assert_eq!(allocator.capacity(),capacity);
+    }
 }

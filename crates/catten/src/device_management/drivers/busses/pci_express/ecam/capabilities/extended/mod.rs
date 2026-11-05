@@ -2,21 +2,7 @@
 pub mod aer;
 pub mod rsbar;
 
-use super::*;
-use crate::{
-    device_management::drivers::busses::pci_express::ecam::{
-        capabilities::standard::{
-            PciCapabilityId,
-            find_capability,
-        },
-        headers::read_u16,
-    },
-    klib::bitwise::mask_shift_read,
-};
-
-/// This is the offset where the extended capability range starts in the PCI Express extended
-/// configuration space.
-const PCIE_EXT_CAP_RANGE_BASE: u16 = 256;
+use crate::klib::bitwise::mask_shift_read;
 
 /// PCI Express Extended Capability IDs
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,79 +47,4 @@ impl PcieExtCapVerOffset {
 pub struct PcieExtCapabilityHeader {
     pub id: PcieExtCapId,
     pub next_ver: PcieExtCapVerOffset,
-}
-
-/// An iterator over the PCIe extended capabilities of a device.
-/// It traverses the linked list of extended capabilities starting from the first capability offset
-/// (PCIE_EXT_CAP_RANGE_BASE). Keeps track of seen offsets to avoid infinite loops in case of
-/// malformed lists.
-struct PcieExtCapIter {
-    cfg_space: *const PcieCfgSpace,
-    current_offset: PcieExtCapVerOffset,
-    seen_offsets: Vec<PcieExtCapVerOffset>,
-}
-
-impl PcieExtCapIter {
-    fn try_new(cfg_space: *const PcieCfgSpace) -> Result<Self, Error> {
-        if find_capability(cfg_space, PciCapabilityId::PciExpress).is_ok() {
-            let starting_offset = PcieExtCapVerOffset::new(PCIE_EXT_CAP_RANGE_BASE);
-            Ok(Self {
-                cfg_space,
-                current_offset: starting_offset,
-                seen_offsets: Vec::new(),
-            })
-        } else {
-            Err(Error::NotPciExpress)
-        }
-    }
-
-    fn current(&mut self) -> *mut PcieExtCapabilityHeader {
-        unsafe {
-            // Safety: We got the address from the previous capability or the starting
-            // offset, both of which are valid within the PCIe extended configuration space.
-            (&raw mut self.cfg_space)
-                .add(self.current_offset.get_offset() as usize)
-                .cast::<PcieExtCapabilityHeader>()
-        }
-    }
-
-    fn at_end(&self) -> bool {
-        self.current_offset.get_offset() == 0
-            || self.current_offset.get_offset() >= size_of::<PcieCfgSpace>() as u16
-            || self.seen_offsets.contains(&self.current_offset)
-    }
-}
-
-impl Iterator for PcieExtCapIter {
-    type Item = *mut PcieExtCapabilityHeader;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.at_end() {
-            None
-        } else {
-            self.seen_offsets.push(self.current_offset);
-            let current = self.current();
-            // `next_ver` is the second 16-bit field of the extended header.
-            self.current_offset = PcieExtCapVerOffset::new(unsafe { read_u16(current.cast(), 2) });
-            Some(current)
-        }
-    }
-}
-
-pub fn find_extended_capabilities(
-    cfg_space: *const PcieCfgSpace,
-    req_id: PcieExtCapId,
-) -> Vec<*mut PcieExtCapabilityHeader> {
-    if let Ok(iter) = PcieExtCapIter::try_new(cfg_space) {
-        let mut matches = Vec::new();
-        for cap in iter {
-            let ext_cap_id = unsafe { read_u16(cap.cast(), 0) };
-            if ext_cap_id == req_id as u16 {
-                matches.push(cap);
-            }
-        }
-        matches
-    } else {
-        Vec::new()
-    }
 }

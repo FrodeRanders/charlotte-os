@@ -1,4 +1,5 @@
 //! Real EL0 scoped applications, configured roots and adversarial grant IPC.
+mod profile_validation;
 use alloc::vec::Vec;
 
 use charlotte_launch::security_probe_status as status;
@@ -587,6 +588,7 @@ fn wait_for_rng_idle(domain: &ServiceDomain, after_dispatch: Option<u64>) -> u64
 }
 
 extern "C" fn verify() {
+    profile_validation::run();
     assert!(
         crate::service::launch::steady_state().appliance.is_some(),
         "security test needs tcpip"

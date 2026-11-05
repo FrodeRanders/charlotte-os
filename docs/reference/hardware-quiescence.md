@@ -47,7 +47,10 @@ with IRQs enabled, sleeping one millisecond between batches. IRQ tails stage
 retirement rather than synchronously waiting on a preempted shootdown initiator.
 Root-close callers must allow stack-retirement leases to finish. Arm retains
 its broadcast TLBI/DSB boundary and uses the root's owned hardware tag at final
-teardown; a missing live root in range invalidation now rejects.
+teardown; a missing live root in range invalidation now rejects. Its tag-return
+vector is completely reserved at boot, so returning a confirmed retired tag
+cannot allocate under the allocator guard. This does not change the invalidation
+or physical-release boundary.
 
 ## DMA completion
 

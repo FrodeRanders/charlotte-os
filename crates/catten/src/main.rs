@@ -2,7 +2,6 @@
 #![no_main]
 #![feature(extend_one)]
 #![feature(iter_advance_by)]
-#![feature(likely_unlikely)]
 #![feature(step_trait)]
 #![feature(allocator_api)]
 #![cfg_attr(target_arch = "x86_64", feature(abi_custom))]
@@ -200,6 +199,8 @@ pub extern "C" fn bsp_main() -> ! {
     // scheduler construction can initialize a heap-backed per-LP factory.
     let _ = get_lp_count();
     init::bsp_init();
+    #[cfg(target_arch = "aarch64")]
+    crate::cpu::isa::memory::paging::prepare_boot_storage();
     boot_validation::validate_memory();
     crate::service::admission::initialize_boot_policy();
     // Construct global queues that can later be reached from interrupt or

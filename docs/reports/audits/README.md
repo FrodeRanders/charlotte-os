@@ -17,6 +17,8 @@ report is useful for a significant investigation or qualification checkpoint.
 
 ## Reports
 
+- [Q3 producer review and final corrections](2026-11-05-q3-producer-review.md) — Accepted producer assignments, fixed-scratch Kafka validity and boot-prepared hardware tags; host, strict profiles, three-target security, minimal boots and live Kafka qualification. Q4–Q8 and finding-wide gates remain open.
+
 - [Explicit bootstrap storage and immutable IORT discovery — Q3](2026-11-05-bootstrap-storage.md) — BSP preparation, owning-LP timer phases, fixed calibration and allocation-free cached firmware lookup; host and native minimal/security qualification.
 
 - [Selective upstream ports: address map and bounded PCI boot](2026-11-05-selective-upstream-ports.md) — Preserved arena/reset contracts, checked MCFG preparation and flat bounded traversal; combined host and three-target qualification.

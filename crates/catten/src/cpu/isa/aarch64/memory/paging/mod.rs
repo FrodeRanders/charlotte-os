@@ -1,8 +1,8 @@
 //! # AArch64 Paging (VMSAv8-64, 4 KiB granule)
 
 pub mod descriptor;
+mod hw_asid;
 pub mod walker;
-
 use alloc::vec::Vec;
 use core::{
     arch::asm,
@@ -10,6 +10,7 @@ use core::{
 };
 
 use descriptor::Descriptor;
+use hw_asid::HwAsidAllocator;
 
 use super::MemoryInterfaceImpl;
 use crate::{
@@ -95,50 +96,29 @@ pub(crate) fn encode_hw_asid(asid: HwAsid) -> u64 {
     (asid as u64) << hw_asid_shift()
 }
 
-struct HwAsidAllocator {
-    next: u32,
-    limit: u32,
-    reserved_kernel: HwAsid,
-    free: Vec<HwAsid>,
-}
+static HW_ASID_ALLOCATOR: spin::Once<Mutex<HwAsidAllocator>> = spin::Once::new();
 
-impl HwAsidAllocator {
-    fn new() -> Self {
+/// BSP-only return-storage allocation, before any user root can acquire a tag.
+pub(crate) fn prepare_boot_storage() {
+    let allocator = HW_ASID_ALLOCATOR.call_once(|| {
         let ttbr0: u64;
-        unsafe {
-            asm!("mrs {ttbr0}, ttbr0_el1", ttbr0 = out(reg) ttbr0, options(nomem, nostack, preserves_flags));
-        }
-        Self {
-            next: 1,
-            limit: 1u32 << *HW_ASID_BITS,
-            reserved_kernel: ((ttbr0 >> hw_asid_shift()) & 0xffff) as HwAsid,
-            free: Vec::new(),
-        }
-    }
-
-    fn allocate(&mut self) -> Option<HwAsid> {
-        if let Some(asid) = self.free.pop() {
-            return Some(asid);
-        }
-        if self.next == self.reserved_kernel as u32 {
-            self.next += 1;
-        }
-        if self.next >= self.limit {
-            return None;
-        }
-        let asid = self.next as HwAsid;
-        self.next += 1;
-        Some(asid)
-    }
-
-    fn release(&mut self, asid: HwAsid) {
-        debug_assert_ne!(asid, 0);
-        self.free.push(asid);
-    }
+        unsafe { asm!("mrs {ttbr0}, ttbr0_el1", ttbr0 = out(reg) ttbr0, options(nomem, nostack, preserves_flags)); }
+        let reserved_kernel = ((ttbr0 >> hw_asid_shift()) & 0xffff) as HwAsid;
+        Mutex::new(HwAsidAllocator::try_new(1u32 << *HW_ASID_BITS, reserved_kernel)
+            .expect("mandatory hardware ASID return storage unavailable"))
+    });
+    let capacity = allocator.lock().capacity();
+    crate::logln!(
+        "[hardware ASID] boot return storage prepared: {} tags, {} requested bytes; retirement \
+         cannot grow",
+        capacity,
+        capacity * size_of::<HwAsid>()
+    );
 }
 
-static HW_ASID_ALLOCATOR: LazyLock<Mutex<HwAsidAllocator>> =
-    LazyLock::new(|| Mutex::new(HwAsidAllocator::new()));
+fn hw_asid_allocator() -> &'static Mutex<HwAsidAllocator> {
+    HW_ASID_ALLOCATOR.get().expect("hardware ASID storage was not prepared at boot")
+}
 
 /// The logical [`AddressSpaceId`](crate::memory::AddressSpaceId) of the thread
 /// currently executing on each logical processor, maintained by the context
@@ -159,12 +139,7 @@ pub static CURRENT_LOGICAL_ASID: [AtomicUsize; MAX_TRACKED_LPS] =
 
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn self_test_hw_asid_allocator() {
-    let mut allocator = HwAsidAllocator {
-        next: 1,
-        limit: 4,
-        reserved_kernel: 2,
-        free: Vec::new(),
-    };
+    let mut allocator = HwAsidAllocator::try_new(4, 2).unwrap();
     assert_eq!(allocator.allocate(), Some(1));
     assert_eq!(allocator.allocate(), Some(3));
     assert_eq!(allocator.allocate(), None, "exhaustion must be reported without panicking");
@@ -299,7 +274,7 @@ impl AddressSpace {
         ttbr0: &mut u64,
     ) -> Option<HwAsid> {
         if *hw_asid == 0 {
-            *hw_asid = HW_ASID_ALLOCATOR.lock().allocate()?;
+            *hw_asid = hw_asid_allocator().lock().allocate()?;
             *owns_hw_asid = true;
             *ttbr0 = (*ttbr0 & TTBR_BADDR_MASK) | encode_hw_asid(*hw_asid);
         }
@@ -647,7 +622,7 @@ impl AddressSpace {
             // A tag cannot be reused until all cores have discarded entries
             // belonging to its previous page-table lifetime.
             super::tlb::inval_hardware_asid(self.hw_asid);
-            HW_ASID_ALLOCATOR.lock().release(self.hw_asid);
+            hw_asid_allocator().lock().release(self.hw_asid);
             self.owns_hw_asid = false;
         }
 
