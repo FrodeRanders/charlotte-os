@@ -26,7 +26,8 @@ response closes that unreturned output through the existing memory boundary.
 All three vectors also share the existing `snapshot_buffers` requested-byte
 pool (16 MiB total, 12 MiB ordinary). They consume bytes and zero frame-buffer
 counts. Each allocation first admits its whole requested layout against the
-captured signed principal's **16 MiB kernel-buffer ceiling**, then against the
+captured signed principal's **16 MiB kernel-buffer ceiling**, shared with
+[root frame catalogs](page-table-lifetime.md#root-data-frame-catalogs), then against the
 family. The counter lives in the existing boot-lifetime principal-history record;
 there is no second registry. Allocation/family rejection refunds only the unused
 prefix. Growth admits the full candidate while the old allocation stays charged;
@@ -51,7 +52,7 @@ physical/capability element requiring retained rollback in these buffers.
 The output object retains its existing independent physical/capability owner.
 
 The 1 MiB per-request bound is unchanged. The 16 MiB principal ceiling permits
-sixteen such maximum working sets in isolation and allocates no backing in
+sixteen such maximum working sets in isolation from other charged kernel buffers and allocates no backing in
 advance; the shared family may bind earlier, including competition with frame
 snapshots and primitive syscall inputs. Family ceilings and kernel heap reserve
 are unchanged. This corrects diagnostic scratch admission, not all downstream

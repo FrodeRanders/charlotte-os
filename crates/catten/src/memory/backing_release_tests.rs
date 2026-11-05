@@ -21,6 +21,7 @@ use super::{
     usage::principal_history::admission_tests::{
         bind_raw_fixture,
         check_retention,
+        fault_principal,
     },
 };
 
@@ -40,6 +41,9 @@ fn run_inner(destroy: &mut impl FnMut(&mut AddressSpace, &mut Deallocator<'_>) -
     // Reject each position separately, then all six. Synthetic Err happens
     // before the real allocator: rejected frames remain allocated forever.
     for reject in [0, 1, 2, 3, 4, 5, 6, usize::MAX] {
+        let metadata_before =
+            crate::klib::admission::used::<crate::klib::admission::MemoryCapabilityNodes, 2>();
+        let principal_before = super::kernel_buffers::test_used(fault_principal());
         let heap_before = backing_budget::test_used_pages(Kind::Heap);
         let image_before = backing_budget::test_used_pages(Kind::Image);
         let tables_before = super::translation::account::test_used_pages();
@@ -48,6 +52,7 @@ fn run_inner(destroy: &mut impl FnMut(&mut AddressSpace, &mut Deallocator<'_>) -
         bind_raw_fixture(&mut space);
         install(&mut space, Kind::Heap, charlotte_launch::HEAP_VADDR);
         install(&mut space, Kind::Image, charlotte_launch::HEAP_VADDR + 4096);
+        let catalog_bytes = space.owned_frames.capacity_bytes();
         // An unowned leaf shares these tables, but not their backing lifetime.
         let foreign = PreparingUserFrame::allocate_zeroed().unwrap();
         space
@@ -82,13 +87,41 @@ fn run_inner(destroy: &mut impl FnMut(&mut AddressSpace, &mut Deallocator<'_>) -
             failed
         );
         assert_eq!(attempts, 6);
+        let retained_bytes = if failed == 0 {
+            0
+        } else {
+            catalog_bytes
+        };
+        assert_eq!(
+            super::kernel_buffers::test_used(fault_principal()),
+            principal_before + retained_bytes
+        );
         assert!(!space.heap_account.accepting());
         assert!(!space.image_account.accepting());
         // Even success refunds only when the owning account fields drop.
         assert_eq!(backing_budget::test_used_pages(Kind::Heap), heap_before + 1);
         assert_eq!(backing_budget::test_used_pages(Kind::Image), image_before + 1);
         assert_eq!(destroy(&mut space, &mut |_| panic!("partial destruction retried a frame")), 0);
-        drop(space);
+        if failed == 0 {
+            drop(space);
+        } else {
+            super::usage::with_principal_history_locked(|| {
+                let _heap = super::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
+                crate::klib::admission::with_locked::<
+                    crate::klib::admission::MemoryCapabilityNodes,
+                    2,
+                    _,
+                >(|| drop(space));
+            });
+        }
+        let metadata_after =
+            crate::klib::admission::used::<crate::klib::admission::MemoryCapabilityNodes, 2>();
+        assert_eq!(metadata_after.0, [metadata_before.0[0] + retained_bytes, metadata_before.0[1]]);
+        assert_eq!(metadata_after.1, [metadata_before.1[0] + retained_bytes, metadata_before.1[1]]);
+        assert_eq!(
+            super::kernel_buffers::test_used(fault_principal()),
+            principal_before + retained_bytes
+        );
         assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free_before - failed - 1);
         let retained = u64::from(failed != 0);
         assert_eq!(backing_budget::test_used_pages(Kind::Heap), heap_before + retained);

@@ -89,6 +89,47 @@ destruction. Failure/abandonment retains hierarchy, charges and slot. These loca
 boundaries do not qualify arbitrary enclosing IRQ contexts or provide recovery
 for abandoned owners.
 
+## Root data-frame catalogs
+
+Heap/image frames are recorded in one root-owned `FrameTracker`, separate from
+private table pages and their physical admission. Its vector uses
+`ByteAllocator<MemoryCapabilityNodes, CapturedSponsor>`: requested buffer bytes
+consume the existing memory-metadata pool with zero node slots and the signed
+principal's 16 MiB kernel-buffer allowance, shared with diagnostic scratch.
+The verified translation account supplies principal and trusted class at root
+construction; class remains fixed through promotion, growth and retirement.
+There is no new pool or preallocated backing. Inline tracker fields participate
+in the existing actual ASID-table payload layout; allocator overhead remains
+outside these requested-byte counters.
+
+`PreparingUserBacking` reserves physical admission, then fallible catalog
+capacity, then the actual data frame. Catalog rejection returns the unused
+physical reservation without frame allocation. Capacity that was successfully
+allocated remains charged even if a later data-frame preparation is cancelled.
+Growth admits full old/candidate overlap. Bounded push cannot grow published
+tracking; empty length and drained identities do not refund capacity.
+
+For initial identity installation, `prepare_binding` admits all still-unidentified
+capacity before the existing combined physical-account binding. Its token
+exclusively borrows that exact catalog. Physical rejection explicitly cancels
+unused funding; success consumes the token into its once-bound principal.
+Already funded capacity pays once and a foreign principal rejects. The allocator's
+private cell cannot escape or change while another operation uses the vector.
+No allocation, recopying, raw-parts adoption or class promotion occurs in this
+publication step. Token abandonment retains admission without entering locks.
+
+Both physical destructor walks disarm before release and call catalog `finish`
+only when the complete owned table/data walk succeeds. Actual vector deallocation
+precedes family and principal refunds. Physical rejection or abandoned cleanup
+retains the full catalog allocation and original charges even after every
+identity has been drained. Its inert fallback performs no allocator, counter or
+physical work. Retained capacity supplies no custody or replay permission for a
+terminal partial release. Provisional orphans retain their separate physical
+charges; catalog disposal cannot prove their completion.
+
+This qualifies catalog ownership and named cleanup paths, not every enclosing
+caller/IRQ context or sustained progress. See the [Q4 qualification](../reports/audits/2026-11-05-q4-frame-tracking.md).
+
 ## Verification
 
 The synchronous boot fixture builds two private, never-installed roots mapping

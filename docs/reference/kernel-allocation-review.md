@@ -7,7 +7,7 @@ caller/IRQ/destructor inventory (Q5), recovery (Q6), progress (Q7) or combined
 qualification (Q8).
 
 The [version-controlled review](../reports/audits/evidence/2026-11-05-q3-producer-review.json)
-reconciles 738 non-drop records from both current headless production profiles:
+reconciles 738 non-drop records from both headless production profiles at that baseline:
 144 allocator/growth/copy/factory operations, 505 owned-result operations and
 89 empty constructors/reference clones. It includes all source/body origins,
 614 kernel source identities and named dependency/profile supplements. Grouping
@@ -47,7 +47,7 @@ coverage. The required Q4 rows below remain actual unfinished work.
 | `inputs` (14 records) | Accepted Q1 ownership | Primitive image/descriptor/pickup/plaintext buffers capture actor class and retain byte admission through deallocation; sensitive spare capacity is wiped. See [snapshot-buffer-admission](snapshot-buffer-admission.md). |
 | `launch_cache` (21 records) | Accepted Q2 ownership | Complete launch/handoff/upgrade parents retain source/target roots, profiles, transfers and admitted vector prefixes. Fixed image cache reserves independent bytes/count before I/O and immutable publication. See [service-launch-ownership](service-launch-ownership.md). |
 | `telemetry_q4` (17 records at Q3 baseline) | Q4 diagnostic admission qualified | Diagnostic snapshots/encoding retain the 1 MiB local bound and now use captured principal plus shared snapshot-buffer byte admission through actual vector deallocation, with [host/native qualification](../reports/audits/2026-11-05-q4-diagnostic-buffers.md). General overhead/capacity and pressure gates remain open. See [telemetry-snapshots](telemetry-snapshots.md). |
-| `frame_tracking_q4` (11 records) | Required Q4 fix | Each heap/image frame reserves physical admission before fallible owned_frames tracking growth; registration pushes only into prepared capacity. Count follows admitted backing, but vector capacity/old-candidate overlap still needs original-principal/aggregate kernel-byte coverage. See [page-table-lifetime](page-table-lifetime.md). |
+| `frame_tracking_q4` (11 records at Q3 baseline) | Q4 catalog admission qualified | Root-owned `FrameTracker` admits requested bytes through the common allocator and existing signed-principal buffer counter, including full growth overlap and initial identity binding. Physical failure and abandonment retain actual capacity and original charges; [qualification](../reports/audits/2026-11-05-q4-frame-tracking.md) preserves the separate AMD fixture failure and corrected-phase matrix. See [root data-frame catalogs](page-table-lifetime.md#root-data-frame-catalogs). |
 
 ## Dependency and optional-profile boundaries
 
@@ -81,11 +81,10 @@ merely because no current application reaches them.
 
 ## Next aggregate work
 
-Q4 adds diagnostic snapshot buffer admission through the existing shared byte
-allocator and principal record. Heap/image frame-tracking vector capacity still
-requires aggregate/original-principal coverage, including growth
-overlap and actual deallocation. It must also reconcile existing per-family
-admission with signed-principal coverage and the common heap envelope, accounting
+Q4 adds diagnostic and root frame-catalog buffer admission through the existing
+shared byte allocator and principal record, including growth overlap and actual
+deallocation. It must still reconcile other per-family admission with signed-principal
+coverage and the common heap envelope, accounting
 for allocator/control backing, boot reservations, weak/private holders, restart,
 retention and quarantine. Existing global ordinary/trusted pool admission alone
 must not be reported as completed principal accounting.

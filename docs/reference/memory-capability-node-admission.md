@@ -137,6 +137,20 @@ object maxima or measured mixed workloads may warrant co-scaling the central
 metadata and snapshot limits. These independent ceilings do not guarantee RAM
 fit or sustained service fairness.
 
+## Root heap/image frame tracking
+
+The same byte dimension now also covers root-owned heap/image physical-address
+catalogs, with zero node slots. Their dynamic `FrameTracker` uses the common byte
+allocator, full old/candidate overlap and the captured signed principal's kernel
+buffer allowance; the fixed object catalog above retains its existing separate
+owner and physical-principal contracts. Root class is captured at construction
+and cannot change on promotion. Successful complete root release frees the
+catalog before refund; physical failure and abandonment retain all capacity and
+original charges. See [root data-frame catalogs](page-table-lifetime.md#root-data-frame-catalogs)
+for initial identity binding, guard context and retained-error obligations.
+The shared 3/4 MiB ordinary/total ceilings are unchanged. Requested layouts do
+not establish joint heap fit, allocator overhead coverage or saturation progress.
+
 ## Qualification and remaining scope
 
 The [audit

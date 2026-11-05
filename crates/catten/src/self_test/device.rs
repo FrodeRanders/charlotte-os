@@ -181,7 +181,6 @@ pub fn test_device_capabilities() {
         // --- MMIO map / unmap against a real address space -----------------
         test_mmio_map_unmap();
         test_failed_dma_map_releases_pin();
-        test_stale_address_space_handle();
         #[cfg(target_arch = "aarch64")]
         crate::cpu::isa::memory::paging::self_test_hw_asid_allocator();
         irq = test_stale_interrupt_wake(irq);
@@ -229,7 +228,7 @@ pub fn test_device_capabilities() {
 /// A delayed teardown handle must not close a new domain that reused the
 /// predecessor's numeric ASID.
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
-fn test_stale_address_space_handle() {
+pub(crate) fn test_stale_address_space_handle() {
     use crate::{
         memory::{
             AddressSpaceCloseError,

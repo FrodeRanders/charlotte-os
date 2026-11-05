@@ -16,11 +16,12 @@ Q1's snapshot/scratch batch, Q2's launch/handoff/cache batch and
 [Q3's producer review](kernel-allocation-review.md) are accepted. Five packages
 remain and all four aggregate gates are open. Q3 assigned its 738
 non-drop review candidates and records dependency/profile exclusions; it does not
-complete aggregate/principal accounting or caller/Drop review. Q4 retains
-the heap/image frame-tracking admission gap, alongside the coherent multi-pool
-capacity and original-principal review. Diagnostic scratch now has
-[qualified shared-byte/principal admission](../reports/audits/2026-11-05-q4-diagnostic-buffers.md);
-that scoped correction does not accept Q4.
+complete aggregate/principal accounting or caller/Drop review. Q4 retains the wider metadata/principal, allocator-overhead and coherent
+multi-pool capacity review. [Diagnostic scratch](../reports/audits/2026-11-05-q4-diagnostic-buffers.md)
+and [root frame catalogs](../reports/audits/2026-11-05-q4-frame-tracking.md) now have
+qualified shared-byte/principal admission. These scoped corrections do not
+accept Q4. The frame-catalog record preserves its AMD device-fixture failure
+separately from the corrected-phase final matrix.
 Package counts are not weighted readiness percentages. The plan also defines
 the combined acceptance matrix.
 Finding dispositions remain unchanged; the ARM display grant-probe

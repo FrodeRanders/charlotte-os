@@ -195,8 +195,9 @@ between total and ordinary admission, not a guaranteed share for one service.
 
 Diagnostic scratch has a separate signed-principal requested-byte ceiling,
 \path{Policy.memory.principal_kernel_buffer_bytes}, defaulting to 16 MiB.
-It currently covers diagnostic buffers only, alongside their shared snapshot
-pool and 1 MiB local working bound. It reserves no backing in advance and is
+It currently covers diagnostic buffers and root heap/image frame catalogs.
+Diagnostics also retain their shared snapshot pool and 1 MiB local working bound;
+root catalogs consume the existing memory-metadata byte pool. It reserves no backing in advance and is
 not a general kernel-metadata limit. See
 \repofile|docs/reference/telemetry-snapshots.md|.
 

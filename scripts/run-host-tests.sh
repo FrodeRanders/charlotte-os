@@ -216,6 +216,9 @@ mod memory { pub mod object {
 EOF
 "$repo_root/target/host-self-tests/frame-vector-tests" --test-threads=1
 
+# Root catalogs retain backing and both byte charges until confirmed disposal.
+python3 "$repo_root/scripts/tests/test-frame-tracking.py"
+
 # Production byte allocator: complete growth overlap, real deallocation and original class.
 CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
 "$host_rustc" --edition=2024 --test --crate-name byte_allocator_tests - \

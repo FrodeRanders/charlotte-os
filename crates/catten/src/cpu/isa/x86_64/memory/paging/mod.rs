@@ -1,6 +1,5 @@
 pub mod pte;
 pub mod pth_walker;
-use alloc::vec::Vec;
 use core::{
     arch::asm,
     iter::Iterator,
@@ -64,7 +63,7 @@ pub struct AddressSpace {
     owns_root: bool,
     /// Physical frames allocated for this address space's user mappings.
     /// Page-table frames are recovered by the existing lower-half tree walk.
-    owned_frames: Vec<PAddr>,
+    pub(crate) owned_frames: crate::memory::frame_tracking::FrameTracker,
     pub(crate) thread_stack_slots: u64,
     /// Terminal thread-admission fence for this exact root lifetime.
     pub(crate) thread_admission_closed: bool,
@@ -148,7 +147,7 @@ impl AddressSpace {
         Ok(AddressSpace {
             cr3: <PAddr as Into<u64>>::into(frame) & CR3_ADDRESS_MASK,
             owns_root: true,
-            owned_frames: Vec::new(),
+            owned_frames: crate::memory::frame_tracking::FrameTracker::new(&table_account),
             thread_stack_slots: 0,
             thread_admission_closed: false,
             heap_account: crate::memory::backing_budget::Account::new(
@@ -183,15 +182,11 @@ impl AddressSpace {
     /// Record one physical frame that belongs to this user address space's
     /// mappings and must be reclaimed when the address space is torn down.
     pub(crate) fn register_user_frame(&mut self, frame: PAddr) {
-        assert!(
-            self.owned_frames.len() < self.owned_frames.capacity(),
-            "user frame tracking was not preflighted"
-        );
         self.owned_frames.push(frame);
     }
 
     pub(crate) fn prepare_user_frame(&mut self) -> Result<(), alloc::collections::TryReserveError> {
-        self.owned_frames.try_reserve(1)
+        self.owned_frames.prepare()
     }
 
     pub fn get_cr3(&self) -> u64 {
@@ -253,7 +248,7 @@ impl AddressSpaceInterface for AddressSpace {
         AddressSpace {
             cr3,
             owns_root: false,
-            owned_frames: Vec::new(),
+            owned_frames: crate::memory::frame_tracking::FrameTracker::unidentified(),
             thread_stack_slots: 0,
             thread_admission_closed: false,
             heap_account: crate::memory::backing_budget::Account::new(
@@ -707,10 +702,14 @@ impl AddressSpace {
             }
         }
         release.release(root_frame);
-        for frame in self.owned_frames.drain(..) {
+        for frame in self.owned_frames.drain() {
             release.release(frame);
         }
-        release.finish()
+        let failed = release.finish();
+        if failed == 0 {
+            self.owned_frames.finish();
+        }
+        failed
     }
 
     /// Explicit final-root release reports rejected backing to the retained

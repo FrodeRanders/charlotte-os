@@ -5,6 +5,7 @@ pub(crate) mod backing_budget;
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod backing_release_tests;
 pub mod budget;
+pub(crate) mod frame_tracking;
 pub mod linear;
 pub mod object;
 pub(crate) mod operation;
@@ -204,14 +205,23 @@ pub(crate) fn register_domain_authority(
         .expect("published root lost prepared authority slot");
     slot.validate(address_space, principal)?;
     slot.history.publish(principal);
-    budget::bind_principal(
+    let binding = root
+        .owned_frames
+        .prepare_binding(principal)
+        .map_err(|_| DomainAuthorityError::ResourceLimit)?;
+    if budget::bind_principal(
         address_space,
         principal,
         &mut root.heap_account,
         &mut root.image_account,
         &mut root.table_account,
     )
-    .map_err(|_| DomainAuthorityError::ResourceLimit)?;
+    .is_err()
+    {
+        binding.cancel();
+        return Err(DomainAuthorityError::ResourceLimit);
+    }
+    binding.commit();
     slot.install(address_space, principal, roles)
 }
 

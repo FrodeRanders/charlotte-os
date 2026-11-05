@@ -17,6 +17,8 @@ report is useful for a significant investigation or qualification checkpoint.
 
 ## Reports
 
+- [Q4 root frame-tracking admission](2026-11-05-q4-frame-tracking.md) — Shared family/principal bytes through growth and initial binding, retained failed-root catalogs, full host/strict/three-target/minimal qualification; preserves the original AMD device reuse-fixture failure and its phase correction. Q4 remains in progress.
+
 - [Q4 diagnostic buffer admission](2026-11-05-q4-diagnostic-buffers.md) — Shared snapshot bytes and captured signed-principal charges through actual vector deallocation; host, strict profiles, ARM/Intel/AMD security and two minimal boots. Preserves the failed growth control and sandbox failures separately; Q4 remains in progress.
 
 - [Q4 shared heap capacity baseline](2026-11-05-q4-capacity-baseline.md) — Reproducible actual-policy/catalog ceilings, reused native heap observations and explicit RAM tradeoffs for possible reserve increases; Q4 remains in progress.

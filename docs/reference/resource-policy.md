@@ -74,7 +74,7 @@ unlimited node capacity.
 | `snapshot_buffers` | frame/primitive buffer bytes; frame buffers | — | 12 MiB; 6144 buffers | 16 MiB; 8192 buffers |
 | `service_images` | store image bytes; reserved cache entries | — | 12 MiB; 48 entries | 16 MiB; 64 entries |
 | `mapping_nodes` | node-layout bytes; nodes | — | 768 KiB; 6144 nodes | 1 MiB; 8192 nodes |
-| `memory_capability_nodes` | object/capability/namespace/read-borrower layouts and object frame-vector bytes; nodes | — | 3 MiB; 24576 nodes | 4 MiB; 32768 nodes |
+| `memory_capability_nodes` | object/capability/namespace/read-borrower layouts and object/root frame-catalog bytes; nodes | — | 3 MiB; 24576 nodes | 4 MiB; 32768 nodes |
 | `memory.objects` | backing objects | 1024 | 6144 | 8192 |
 
 IOMMU ledger buffers consume only the `iommu_nodes` byte dimension; the node
@@ -115,7 +115,7 @@ snapshot scratch is 1 MiB per request. These forward to `Policy.local`.
   heap interval; the launch's ordinary initial heap is a separate value. Image/
   runtime backing permits 16384 pages per root. Private tables allow 1024 pages.
 - Captured signed-principal kernel-buffer requested bytes: 16 MiB, currently
-  used by diagnostic scratch only. This adds no preallocation or general metadata
+  used by diagnostic scratch and root heap/image frame-catalog capacity. This adds no preallocation or general metadata
   coverage. See [telemetry scratch](telemetry-snapshots.md).
 - IOMMU per-domain and per-unit backing: 1024 and 2048 pages respectively.
 - Independent usable-RAM ratios: objects, heap and image each 1/4; stack 1/8;

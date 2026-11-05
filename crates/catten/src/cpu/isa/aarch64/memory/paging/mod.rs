@@ -3,7 +3,6 @@
 pub mod descriptor;
 mod hw_asid;
 pub mod walker;
-use alloc::vec::Vec;
 use core::{
     arch::asm,
     sync::atomic::AtomicUsize,
@@ -171,7 +170,7 @@ pub struct AddressSpace {
     /// Physical frames allocated for this address space's user mappings
     /// (ELF segments, runtime pages, heap). Page-table frames are recovered by
     /// walking the TTBR0 hierarchy at teardown.
-    owned_frames: Vec<PAddr>,
+    pub(crate) owned_frames: crate::memory::frame_tracking::FrameTracker,
     pub(crate) thread_stack_slots: u64,
     /// Terminal thread-admission fence for this exact root lifetime.
     pub(crate) thread_admission_closed: bool,
@@ -191,6 +190,12 @@ impl AddressSpace {
     /// AArch64 roots remain lazy: allocation failure is reported by mapping,
     /// not by constructing the still-empty address-space owner.
     pub fn try_new_user() -> Result<Self, super::Error> {
+        Self::try_new_with_account(crate::memory::translation::Account::new())
+    }
+
+    fn try_new_with_account(
+        table_account: crate::memory::translation::Account,
+    ) -> Result<Self, super::Error> {
         let current = Self::get_current();
         Ok(Self {
             ttbr0_el1: 0,
@@ -198,7 +203,7 @@ impl AddressSpace {
             hw_asid: 0,
             owns_hw_asid: false,
             owns_root: true,
-            owned_frames: Vec::new(),
+            owned_frames: crate::memory::frame_tracking::FrameTracker::new(&table_account),
             thread_stack_slots: 0,
             thread_admission_closed: false,
             heap_account: crate::memory::backing_budget::Account::new(
@@ -207,44 +212,40 @@ impl AddressSpace {
             image_account: crate::memory::backing_budget::Account::new(
                 crate::memory::backing_budget::Kind::Image,
             ),
-            table_account: crate::memory::translation::Account::new(),
+            table_account,
         })
     }
 
     /// Trusted ambient supervisor construction; classification precedes lazy
     /// root allocation and cannot be selected by manifest roles or syscalls.
+    #[cfg(feature = "kernel_tests")]
     pub(crate) fn try_new_platform_user() -> Result<Self, super::Error> {
-        let mut space = Self::try_new_user()?;
-        space.table_account.mark_platform();
-        Ok(space)
+        let mut account = crate::memory::translation::Account::new();
+        account.mark_platform();
+        Self::try_new_with_account(account)
     }
 
-    /// Bind the verified sponsor before the lazy root can allocate a table.
+    /// Bind the verified sponsor before constructing even empty tracking storage.
     pub(crate) fn try_new_principal_user(
         platform: bool,
         principal: crate::memory::PrincipalBackingCharge,
     ) -> Result<Self, super::Error> {
-        let mut space = if platform {
-            Self::try_new_platform_user()?
-        } else {
-            Self::try_new_user()?
-        };
-        space.table_account.bind_principal(principal);
-        Ok(space)
+        let mut account = crate::memory::translation::Account::new();
+        if platform {
+            account.mark_platform();
+        }
+        account.bind_principal(principal);
+        Self::try_new_with_account(account)
     }
 
     /// Record one physical frame that belongs to this user address space's
     /// mappings and must be reclaimed when the address space is torn down.
     pub(crate) fn register_user_frame(&mut self, frame: PAddr) {
-        assert!(
-            self.owned_frames.len() < self.owned_frames.capacity(),
-            "user frame tracking was not preflighted"
-        );
         self.owned_frames.push(frame);
     }
 
     pub(crate) fn prepare_user_frame(&mut self) -> Result<(), alloc::collections::TryReserveError> {
-        self.owned_frames.try_reserve(1)
+        self.owned_frames.prepare()
     }
 
     #[cfg(any(test, feature = "kernel_tests"))]
@@ -346,7 +347,7 @@ impl AddressSpaceInterface for AddressSpace {
             hw_asid: ((ttbr0_el1 >> hw_asid_shift()) & 0xffff) as HwAsid,
             owns_hw_asid: false,
             owns_root: false,
-            owned_frames: Vec::new(),
+            owned_frames: crate::memory::frame_tracking::FrameTracker::unidentified(),
             thread_stack_slots: 0,
             thread_admission_closed: false,
             heap_account: crate::memory::backing_budget::Account::new(
@@ -654,10 +655,14 @@ impl AddressSpace {
             unsafe { free_user_tables(root_frame.into(), 0, &mut release) };
             release.release(root_frame);
         }
-        for frame in self.owned_frames.drain(..) {
+        for frame in self.owned_frames.drain() {
             release.release(frame);
         }
-        release.finish()
+        let failed = release.finish();
+        if failed == 0 {
+            self.owned_frames.finish();
+        }
+        failed
     }
 
     /// Explicit final-root release reports rejected backing to the retained

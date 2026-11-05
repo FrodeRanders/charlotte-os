@@ -273,6 +273,11 @@ pub fn run_synchronous_self_tests() {
         return;
     }
     results::register_boot_suite();
+    // This check requires deterministic ASID/tag recycling. Run it before
+    // any fixture or operational service can publish competing user roots;
+    // the shared free-slot stack promises no next-caller reuse under churn.
+    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+    device::test_stale_address_space_handle();
     memory::vmem::test_vmem();
     crate::memory::allocators::memory::retirement_tests::test_kernel_retirement();
     memory::object::test_memory_objects();
@@ -281,6 +286,7 @@ pub fn run_synchronous_self_tests() {
     crate::service::supervisor::retirement::tests::run();
     crate::memory::AddressSpace::test_backing_release();
     crate::memory::preparation::tests::run();
+    crate::memory::frame_tracking::tests::run();
     crate::memory::AddressSpace::test_table_preparation();
     crate::service::loader::admission_tests::test_admission();
     crate::service::supervisor::test_launch_owners();

@@ -56,6 +56,10 @@ impl<F: Family<2>, S: ByteSponsor> ByteAllocator<F, S> {
         self.platform
     }
 
+    pub(crate) fn sponsor(&self) -> &S {
+        &self.sponsor
+    }
+
     fn allocate_with(
         &self,
         layout: Layout,

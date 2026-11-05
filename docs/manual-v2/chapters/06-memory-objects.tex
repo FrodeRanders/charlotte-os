@@ -126,6 +126,17 @@ the 248-byte object-node layout. Numerical defaults remain unchanged, and profil
 validation requires a maximum catalog to fit ordinary metadata and snapshot byte
 ceilings. General heap/principal admission and sustained fairness remain open.
 
+Root heap/image frame catalogs use a separate retaining \texttt{FrameTracker}
+with byte-only admission from this same metadata pool and the signed principal's
+16 MiB kernel-buffer allowance shared with diagnostics. Full old/candidate
+capacity overlaps before growth; constructor-captured class survives promotion.
+Initial identity binding admits any existing unidentified capacity before
+physical binding commits. Only a completely successful owning release walk may
+free the catalog and refund its bytes. Failure or abandonment retains capacity
+even after its identities have been drained, without granting physical retry.
+See \repofile|docs/reference/page-table-lifetime.md|. General metadata/principal
+coverage, allocator overhead and sustained progress remain separate gates.
+
 Mapping preparation now owns its partial node and shared snapshot in inert
 fields before either factory. Ordinary constructor rejection and every
 constructed completion/rejection explicitly dispose after local memory/table

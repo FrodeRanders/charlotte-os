@@ -177,7 +177,7 @@ fn binding_is_atomic() {
     assert_eq!(backing_used(principal), Amount::default());
 }
 
-fn fault_principal() -> u64 {
+pub(in crate::memory) fn fault_principal() -> u64 {
     charlotte_launch::artifact_principal_id(b"aggregate-backing-faults")
 }
 
@@ -194,6 +194,7 @@ pub(in crate::memory) fn bind_raw_fixture(root: &mut AddressSpace) {
     root.table_account.bind_principal(
         BackingCharge::try_new(principal, amount(root.table_account.pages(), 0)).unwrap(),
     );
+    root.owned_frames.prepare_binding(principal).unwrap().commit();
 }
 
 pub(in crate::memory) fn bind_fixture(handle: AddressSpaceHandle) {
