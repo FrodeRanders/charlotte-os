@@ -355,10 +355,10 @@ impl PreparedCall {
             reply_charge: None,
             connection: None,
             attaching: None,
-            transfers: buffer(false),
-            memory: buffer(false),
+            transfers: buffer(empty_buffer_allocator()),
+            memory: buffer(empty_buffer_allocator()),
             queued_memory: None,
-            borrows: buffer(false),
+            borrows: buffer(empty_buffer_allocator()),
             attempted: false,
         }));
         let prepared = (|| {
@@ -384,9 +384,10 @@ impl PreparedCall {
                 owner.reply_charge = Some(charge.split([0, 0, 1]));
                 owner.call_charge = Some(charge);
             }
-            owner.transfers = buffer(owner.platform);
-            owner.memory = buffer(owner.platform);
-            owner.borrows = buffer(owner.platform);
+            let allocator = capture_buffer_allocator(caller, identity, owner.platform)?;
+            owner.transfers = buffer(allocator.clone());
+            owner.memory = buffer(allocator.clone());
+            owner.borrows = buffer(allocator);
             owner.storage = Some(allocate(owner.platform)?);
             let resources = &mut *owner.0;
             resources.storage.as_mut().unwrap().bind_charge(resources.call_charge.take().unwrap());

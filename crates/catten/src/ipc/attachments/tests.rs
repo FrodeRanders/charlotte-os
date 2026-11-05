@@ -91,7 +91,7 @@ fn public_paths() {
             _ => unreachable!(),
         };
         if outcome == 0 {
-            let pressure = Charge::reserve(
+            let pressure = Reservation::<IpcNodes, 2>::reserve(
                 false,
                 [crate::resource_policy::POLICY.ipc_nodes.ordinary[0] - staged.1[0], 0],
             )

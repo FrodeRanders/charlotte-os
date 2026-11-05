@@ -47,6 +47,49 @@ existing IDs/record widths stay stable, and version 10 rejects rather than
 omitting the new entry. Both architectures' test/minimal services use the updated
 SDK and signed bundles.
 
+## Principal coverage and remaining reconciliation
+
+The catalog is the finite Q4 pool checklist below. Family admission and original
+ordinary/platform classification do not establish an aggregate principal byte
+limit. “Pending” means principal coverage has not been qualified here; it does
+not discard the family's existing admission or cleanup tests. Other logical or
+physical limits may supply a derived bound, but that proof and its contribution
+to the common heap plan must be recorded before accepting an exclusion.
+
+| Pool | Qualified principal backing scope | Remaining Q4 boundary |
+| --- | --- | --- |
+| `root_metadata` | Pending | Root policy, usage, authority and retained generation-account nodes. |
+| `namespace_nodes` | Pending | Exact original namespace sponsor through detached/final release. |
+| `authority_nodes` | Pending | Recipient backing sponsor separately from logical grantor. |
+| `mailbox_nodes` | Pending | Payload nodes through close and retained authority. |
+| `deferred_nodes` | Pending | Original accepted-operation sponsor through producer-LP disposal. |
+| `observer_backing` | Pending | Actual layout, private holder and final weak reference. |
+| `completion_nodes` | Pending | Payloads, CQ backing and detached backlog; distinguish logical limits. |
+| `device_nodes` | Pending | Original grant/capability sponsor through hardware uncertainty. |
+| `iommu_nodes` | Pending | Domain/unit nodes, quarantine, cache and ledger capacities. |
+| `principal_history` | Pending | Boot-lifetime records and duplicate candidates, including initial-record admission. |
+| `thread_metadata` | Context/retirement requested bytes and bundles | Allocator excess/control overhead and joint heap fit. |
+| `thread_table` | Retained/candidate table requested bytes and slots | Allocator excess and joint heap fit. |
+| `root_table` | Retained/candidate ASID-table requested bytes and slots | Allocator excess and joint heap fit. |
+| `waiter_accounts` | Pending | Bundle count is not actual allocator/control-byte accounting. |
+| `timer_accounts` | Pending | Shared account, private holder and retained weak references. |
+| `completion_accounts` | Pending | Record/CQ/watch accounts and final allocation release. |
+| `namespace_accounts` | Pending | Capability/IPC/mailbox accounts beyond root retirement. |
+| `scratch_nodes` | Pending | Extent and namespace backing through retained mapping work. |
+| `snapshot_buffers` | All production requested-byte paths | Counts have no principal share guarantee; overhead/joint heap fit. |
+| `mapping_nodes` | Pending | Original mapping sponsor through detach and physical uncertainty. |
+| `memory_capability_nodes` | Root heap/image catalog bytes | Object catalogs/records, namespace/capability/borrower nodes and overhead. |
+| `observer_lists` | Pending | List/control allocation and final weak-only backing. |
+| `ipc_nodes` | Descriptor, staging, loan, revocation and attachment-catalog bytes | Payload nodes, endpoint queue backing, accounts and overhead. |
+| `service_images` | Pending | Immutable boot cache sponsorship versus requesting application work. |
+
+The [backing-principal reference](principal-backing-admission.md) identifies
+existing page/stack and requested-byte ceilings; the
+[capacity baseline](../reports/audits/2026-11-05-q4-capacity-baseline.md) supplies
+independent pool and mapped-heap envelopes. This table tracks coverage, not
+weighted readiness. A completed pool row still cannot establish simultaneous
+heap fit, bounded IRQ latency, cleanup capacity or service fairness.
+
 ## Read-only runtime inventory
 
 `THREAD_STATISTICS` payload **version 11** has a 22-word little-endian header.

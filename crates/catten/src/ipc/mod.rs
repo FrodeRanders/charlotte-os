@@ -133,9 +133,50 @@ use readiness::{
 
 type WaiterList = ListRef<waiter_budget::Charge>;
 type WaitNotifications = NotificationBatch<waiter_budget::Charge>;
-type Buffer<T> = Vec<T, crate::klib::admission::ByteAllocator<crate::klib::admission::IpcNodes>>;
-fn buffer<T>(platform: bool) -> Buffer<T> {
-    Vec::new_in(crate::klib::admission::ByteAllocator::new(platform))
+type BufferAllocator = crate::klib::admission::ByteAllocator<
+    crate::klib::admission::IpcNodes,
+    crate::memory::kernel_buffers::Sponsor,
+>;
+type Buffer<T> = Vec<T, BufferAllocator>;
+fn buffer<T>(allocator: impl Into<BufferAllocator>) -> Buffer<T> {
+    Vec::new_in(allocator.into())
+}
+
+/// Empty operation placeholders have no allocation. Replace their policy with
+/// captured funding before growth; this is also the permanent kernel exemption.
+fn empty_buffer_allocator() -> BufferAllocator {
+    BufferAllocator::with_sponsor(false, crate::memory::kernel_buffers::Sponsor::unidentified())
+}
+
+fn capture_buffer_allocator(
+    caller: AddressSpaceId,
+    identity: Option<crate::memory::AddressSpaceHandle>,
+    platform: bool,
+) -> Result<BufferAllocator, IpcError> {
+    let sponsor = match identity {
+        Some(root) => crate::memory::kernel_buffers::capture_storage(root)
+            .map_err(|_| IpcError::UnknownCapability)?
+            .sponsor(),
+        None if caller == crate::memory::KERNEL_ASID
+            || (cfg!(any(test, feature = "kernel_tests"))
+                && caller == namespace::fixture_id(caller)) =>
+        {
+            // Permanent kernel or explicitly prepared synthetic boot fixtures;
+            // an authenticated application cannot select this boundary.
+            crate::memory::kernel_buffers::Sponsor::unidentified()
+        }
+        None => return Err(IpcError::UnknownCapability),
+    };
+    // Preserve class from the already accepted reservation, including promotion
+    // between reservation and capture. Principal comes from that exact root.
+    Ok(BufferAllocator::with_sponsor(platform, sponsor))
+}
+
+#[cfg(any(test, feature = "kernel_tests"))]
+impl From<bool> for BufferAllocator {
+    fn from(platform: bool) -> Self {
+        Self::with_sponsor(platform, crate::memory::kernel_buffers::Sponsor::unidentified())
+    }
 }
 fn take_buffer<T>(value: &mut Buffer<T>) -> Buffer<T> {
     let empty = Vec::new_in(value.allocator().clone());
@@ -1252,19 +1293,21 @@ fn read_vector_page(
     cap_vector_page: MemoryObjectCap,
     target: AddressSpaceId,
     is_call: bool,
-    platform: bool,
+    allocator: impl Into<BufferAllocator>,
     out: &mut Buffer<MemoryObjectCap>,
     transfers: &mut Buffer<crate::memory::object::PreparedTransfer>,
 ) -> Result<(), IpcError> {
     assert!(out.is_empty() && transfers.is_empty());
+    let allocator = allocator.into();
     let vector_bytes: Buffer<u8> = crate::memory::object::snapshot_bytes_in(
         sender,
         cap_vector_page,
         CAP_VECTOR_BYTES,
-        crate::klib::admission::ByteAllocator::new(platform),
+        allocator.clone(),
     )
     .map_err(|error| match error {
-        crate::memory::object::MemoryObjectError::FrameAllocFailed => IpcError::ResourceLimit,
+        crate::memory::object::MemoryObjectError::FrameAllocFailed
+        | crate::memory::object::MemoryObjectError::ResourceLimit => IpcError::ResourceLimit,
         _ => IpcError::UnknownCapability,
     })?;
     let count = u16::from_le_bytes(
@@ -1278,7 +1321,7 @@ fn read_vector_page(
         return Err(IpcError::MemoryTransferFailed);
     }
     let entries_ptr = unsafe { vector_bytes.as_ptr().add(2) } as *const CapVectorEntry;
-    let mut entries = buffer(platform);
+    let mut entries = buffer(allocator);
     entries.try_reserve_exact(count).map_err(|_| IpcError::ResourceLimit)?;
     for i in 0..count {
         let entry = unsafe { core::ptr::read_unaligned(entries_ptr.add(i)) };

@@ -1,6 +1,6 @@
 # Security remediation status and completion criteria
 
-Current status updated 2026-11-05. This page records implemented scope,
+Current status updated 2026-11-06. This page records implemented scope,
 remaining acceptance gates and unresolved incidents. Finding dispositions are
 unchanged by documentation consolidation. Source and executable tests define
 current behavior; qualification records cover only their executed scope.
@@ -22,7 +22,10 @@ and [root frame catalogs](../reports/audits/2026-11-05-q4-frame-tracking.md) now
 qualified shared-byte/principal admission. The
 [snapshot-family principal batch](../reports/audits/2026-11-05-q4-snapshot-principals.md)
 extends that existing counter to primitive inputs/plaintext and CPU/copy/DMA
-frame snapshots. These scoped corrections do not
+frame snapshots. [IPC working/retirement buffers](../reports/audits/2026-11-06-q4-ipc-principals.md)
+now retain the same original-principal funding. The
+[24-pool checklist](metadata-admission.md#principal-coverage-and-remaining-reconciliation)
+tracks the remaining Q4 reconciliation. These scoped corrections do not
 accept Q4. The frame-catalog record preserves its AMD device-fixture failure
 separately from the corrected-phase final matrix.
 Package counts are not weighted readiness percentages. The plan also defines

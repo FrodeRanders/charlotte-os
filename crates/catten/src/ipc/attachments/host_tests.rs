@@ -19,6 +19,7 @@ static ALLOCATOR: Tracer = Tracer;
 static WATCH: AtomicUsize = AtomicUsize::new(0);
 static FREES: AtomicUsize = AtomicUsize::new(0);
 static AT_FREE: AtomicU64 = AtomicU64::new(0);
+static PRINCIPAL_AT_FREE: AtomicU64 = AtomicU64::new(0);
 unsafe impl GlobalAlloc for Tracer {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         unsafe { System.alloc(layout) }
@@ -27,6 +28,10 @@ unsafe impl GlobalAlloc for Tracer {
     unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
         if pointer as usize == WATCH.load(Ordering::Acquire) {
             AT_FREE.store(used().0[0], Ordering::Release);
+            PRINCIPAL_AT_FREE.store(
+                crate::memory::kernel_buffers::USED.load(Ordering::Acquire),
+                Ordering::Release,
+            );
             FREES.fetch_add(1, Ordering::AcqRel);
         }
         unsafe { System.dealloc(pointer, layout) }
@@ -104,7 +109,7 @@ fn empty_bounds_exact_capacity_and_quota_precede_allocator() {
     );
     let limit = crate::resource_policy::POLICY.ipc_nodes.ordinary[0];
     let input = caps(1);
-    let pressure = Charge::reserve(false, [limit - used().1[0], 0]).unwrap();
+    let pressure = Reservation::<IpcNodes, 2>::reserve(false, [limit - used().1[0], 0]).unwrap();
     assert!(
         MemoryAttachments::try_new_with(input, |_, _| panic!("quota reached allocator")).is_err()
     );
@@ -177,4 +182,37 @@ fn interrupted_callback_retains_remaining_owners_and_full_capacity() {
         used(),
         ([before.0[0] + held(3), before.0[1]], [before.1[0] + held(3), before.1[1]])
     );
+}
+
+#[test]
+fn principal_fixed_retirement_bytes_refund_after_free_and_rejected_prefix() {
+    use crate::memory::kernel_buffers::{
+        LIMIT,
+        Sponsor,
+        USED,
+    };
+    let before = used();
+    assert_eq!(USED.load(Ordering::Acquire), 0);
+    let allocator = BufferAllocator::with_sponsor(false, Sponsor(true));
+    let mut input = buffer(allocator.clone());
+    input.try_reserve_exact(3).unwrap();
+    input.extend(0..3u64);
+    let owner = MemoryAttachments::try_new(input).unwrap();
+    assert_eq!(USED.load(Ordering::Acquire), held(3));
+    watch(&owner.0.retired);
+    owner.finish();
+    freed(before.0[0] + bytes(3));
+    assert_eq!(PRINCIPAL_AT_FREE.load(Ordering::Acquire), bytes(3));
+    assert_eq!(USED.load(Ordering::Acquire), 0);
+    let mut input = buffer(allocator);
+    input.try_reserve_exact(3).unwrap();
+    input.extend(0..3u64);
+    LIMIT.store(held(3) - 1, Ordering::Release);
+    assert!(
+        MemoryAttachments::try_new_with(input, |_, _| panic!("principal denial reached allocator"))
+            .is_err()
+    );
+    assert_eq!(USED.load(Ordering::Acquire), 0);
+    LIMIT.store(u64::MAX, Ordering::Release);
+    assert_eq!(used(), before);
 }

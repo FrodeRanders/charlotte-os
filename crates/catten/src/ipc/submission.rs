@@ -15,7 +15,7 @@ struct Submission {
     payload: Capability,
     endpoint: EndpointId,
     server: AddressSpaceId,
-    platform: bool,
+    allocator: BufferAllocator,
     namespaces: [(AddressSpaceId, Option<AddressSpaceHandle>); 2],
     roots: [Option<AddressSpaceOperation>; 2],
 }
@@ -52,8 +52,7 @@ impl Submission {
             payload,
             endpoint,
             server,
-            platform: caller == KERNEL_ASID
-                || trusted.is_some_and(|root| namespaces[0].1 == Some(root)),
+            allocator: empty_buffer_allocator(),
             namespaces,
             roots: [None, None],
         };
@@ -70,6 +69,16 @@ impl Submission {
                     owner.complete()?;
                     return Err(error);
                 }
+            }
+        }
+        let platform =
+            caller == KERNEL_ASID || trusted.is_some_and(|root| namespaces[0].1 == Some(root));
+        let captured = capture_buffer_allocator(caller, namespaces[0].1, platform);
+        match captured {
+            Ok(allocator) => owner.allocator = allocator,
+            Err(error) => {
+                owner.complete()?;
+                return Err(error);
             }
         }
         let validation = owner.validate(&IPC.read());
@@ -199,7 +208,10 @@ impl PreparedSend {
             MemoryObjectCap,
             AddressSpaceId,
         ) -> Result<object::PreparedTransfer, object::MemoryObjectError>,
-        attachments: impl FnOnce(bool, MemoryObjectCap) -> Result<MemoryAttachments, IpcError>,
+        attachments: impl FnOnce(
+            BufferAllocator,
+            MemoryObjectCap,
+        ) -> Result<MemoryAttachments, IpcError>,
     ) -> Result<(), IpcError> {
         let resources = &mut *self.0;
         assert!(resources.transfer.is_none() && resources.memory.is_none());
@@ -209,7 +221,7 @@ impl PreparedSend {
                 .map_err(|_| IpcError::MemoryTransferFailed)?,
         );
         resources.memory = Some(attachments(
-            submission.platform,
+            submission.allocator.clone(),
             resources.transfer.as_ref().unwrap().target_cap(),
         )?);
         Ok(())
@@ -294,11 +306,11 @@ struct VectorSendResources {
 }
 impl PreparedVectorSend {
     fn new(submission: Submission) -> Self {
-        let platform = submission.platform;
+        let allocator = submission.allocator.clone();
         Self(core::mem::ManuallyDrop::new(VectorSendResources {
             submission: Some(submission),
-            transfers: buffer(platform),
-            caps: buffer(platform),
+            transfers: buffer(allocator.clone()),
+            caps: buffer(allocator),
             memory: None,
             delivery: None,
         }))
@@ -312,7 +324,7 @@ impl PreparedVectorSend {
             descriptor,
             submission.server,
             false,
-            submission.platform,
+            submission.allocator.clone(),
             &mut resources.caps,
             &mut resources.transfers,
         )?;
@@ -391,7 +403,7 @@ pub(super) fn vector(
                     descriptor,
                     submission.server,
                     true,
-                    resources.platform,
+                    resources.memory.allocator().clone(),
                     &mut resources.memory,
                     &mut resources.transfers,
                 )?;

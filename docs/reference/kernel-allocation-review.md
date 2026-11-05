@@ -86,7 +86,10 @@ frame-catalog buffer admission through the existing shared byte mechanics and
 principal record, including growth overlap and actual deallocation. The
 [snapshot principal qualification](../reports/audits/2026-11-05-q4-snapshot-principals.md)
 covers the remaining requested-byte paths of the snapshot family; it does not
-add per-principal count shares or cover unrelated parent metadata. Q4 must still
+add per-principal count shares or cover unrelated parent metadata.
+[IPC working/retirement buffers](../reports/audits/2026-11-06-q4-ipc-principals.md)
+now use that same original-principal counter; payload/queue/account coverage
+remains outside that scope. Q4 must still
 reconcile other per-family admission with signed-principal coverage and the common heap envelope, accounting
 for allocator/control backing, boot reservations, weak/private holders, restart,
 retention and quarantine. Existing global ordinary/trusted pool admission alone

@@ -395,8 +395,9 @@ the corrected RPC polling paths, and the remaining notification gaps.
   completion or replay authority. See `docs/reference/ipc-node-admission.md`.
 
 - IPC descriptor-byte, parsed-entry, cap-ID, transfer-staging and reply-token loan vectors
-  use `ByteAllocator<IpcNodes>` for requested bytes and zero node slots. Capture
-  class from the original call reservation or exact sender before allocation;
+  use `ByteAllocator<IpcNodes, Sponsor>` for requested bytes and zero node slots.
+  Capture original principal from the leased exact caller/sender root outside
+  IPC and retain the original reservation class before allocation;
   move the cap vector's allocator into attachment storage without reclassification.
   Growth must admit the full candidate while old capacity remains charged;
   pop/clear cannot refund capacity. Deallocate before refund. Keep every prepared

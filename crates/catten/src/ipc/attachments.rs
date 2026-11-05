@@ -8,6 +8,7 @@ use core::{
 use super::*;
 use crate::{
     klib::admission::{
+        ByteCharge,
         IpcNodes,
         Reservation,
     },
@@ -17,7 +18,23 @@ use crate::{
     },
 };
 
-type Charge = Reservation<IpcNodes, 2>;
+#[derive(Debug)]
+struct Charge {
+    _family: Reservation<IpcNodes, 2>,
+    _principal: ByteCharge<crate::memory::kernel_buffers::Sponsor>,
+}
+impl Charge {
+    fn reserve(allocator: &BufferAllocator, bytes: u64) -> Result<Self, IpcError> {
+        let principal = ByteCharge::try_new(*allocator.sponsor(), bytes)
+            .map_err(|_| IpcError::ResourceLimit)?;
+        let family = Reservation::reserve(allocator.platform(), [bytes, 0])
+            .map_err(|_| IpcError::ResourceLimit)?;
+        Ok(Self {
+            _family: family,
+            _principal: principal,
+        })
+    }
+}
 #[derive(Debug)]
 struct Storage {
     caps: Buffer<MemoryObjectCap>,
@@ -28,7 +45,7 @@ struct Storage {
 impl Default for Storage {
     fn default() -> Self {
         Self {
-            caps: buffer(false),
+            caps: buffer(empty_buffer_allocator()),
             retired: Vec::new(),
             charge: None,
         }
@@ -62,19 +79,19 @@ impl MemoryAttachments {
             return Err(IpcError::ResourceLimit);
         }
         let count = caps.len();
-        let platform = caps.allocator().platform();
         let bytes = u64::try_from(
             Layout::array::<RetiredMemory>(count).map_err(|_| IpcError::ResourceLimit)?.size(),
         )
         .map_err(|_| IpcError::ResourceLimit)?;
+        let charge = if count == 0 {
+            None
+        } else {
+            Some(Charge::reserve(caps.allocator(), bytes)?)
+        };
         let mut storage = Storage {
             caps,
             retired: Vec::new(),
-            charge: if count == 0 {
-                None
-            } else {
-                Some(Charge::reserve(platform, [bytes, 0]).map_err(|_| IpcError::ResourceLimit)?)
-            },
+            charge,
         };
         if count != 0 {
             allocate(&mut storage.retired, count)?;
@@ -85,8 +102,11 @@ impl MemoryAttachments {
         Ok(Self(ManuallyDrop::new(storage)))
     }
 
-    pub(super) fn single(platform: bool, cap: MemoryObjectCap) -> Result<Self, IpcError> {
-        let mut caps = buffer(platform);
+    pub(super) fn single(
+        allocator: impl Into<BufferAllocator>,
+        cap: MemoryObjectCap,
+    ) -> Result<Self, IpcError> {
+        let mut caps = buffer(allocator);
         caps.try_reserve_exact(1).map_err(|_| IpcError::ResourceLimit)?;
         caps.push(cap);
         Self::try_new(caps)

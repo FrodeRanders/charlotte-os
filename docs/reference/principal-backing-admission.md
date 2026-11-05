@@ -86,7 +86,8 @@ survives root retirement until actual metadata deallocation; it does not consume
 a data-page or memory-object unit.
 
 Diagnostic thread/domain/encoding buffers, bounded primitive syscall inputs and
-plaintext, CPU/copy/DMA frame snapshots and root heap/image frame catalogs retain
+plaintext, CPU/copy/DMA frame snapshots, IPC working/retirement buffers and root
+heap/image frame catalogs retain
 a separate 16 MiB requested-byte kernel-buffer allowance in this same principal
 record. Vectors use the shared byte allocator; fixed frame snapshots pair a
 linear byte charge with their existing inert owner. They retain their original captured sponsor
@@ -96,7 +97,8 @@ verified constructor account and support admitted initial identity binding;
 failed physical release retains their allocation and both original byte charges. The record's larger concrete
 layout remains covered by existing principal-history node admission. See
 [diagnostic scratch](telemetry-snapshots.md) and
-[snapshot/input admission](snapshot-buffer-admission.md).
+[snapshot/input admission](snapshot-buffer-admission.md) and
+[IPC vector funding](ipc-node-admission.md#staging-and-loan-vectors).
 
 ## Verification and limits
 
@@ -122,7 +124,7 @@ admission, allocator metadata, hardware, wall-clock progress or executable refin
 
 This implements an aggregate boundary for these data/table/stack families. It does
 not bound general kernel heap/metadata beyond those two thread layouts and the
-explicit snapshot/input/diagnostic buffers and root frame catalogs. Fresh shared kernel tables, IOMMU/device metadata,
+explicit snapshot/input/diagnostic/IPC buffers and root frame catalogs. Fresh shared kernel tables, IOMMU/device metadata,
 capabilities, IPC, completions and other metadata still need principal coverage. Principal-history records remain
 for the boot lifetime; their nodes and root candidates now share a separate
 [byte/count pool](principal-history-admission.md). Principal-record lookup and IRQ-masked hold times still need hostile-pressure

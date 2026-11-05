@@ -35,7 +35,8 @@ cannot choose reserve; later promotion cannot reclassify an existing reservation
 or its refund. Borrowed backing does not substitute its owner's policy for the
 calling namespace's policy. All production requested-byte paths in this family
 also share the existing **16 MiB signed-principal kernel-buffer ceiling** with
-[root heap/image catalogs](page-table-lifetime.md#root-data-frame-catalogs).
+[root heap/image catalogs](page-table-lifetime.md#root-data-frame-catalogs) and
+[IPC working/retirement buffers](ipc-node-admission.md#staging-and-loan-vectors).
 Sibling roots and restarts share that boot-lifetime history record. This is a
 byte ceiling, not per-principal count admission or a guaranteed service share.
 Unidentified kernel/raw fixture roots retain family admission; signed application

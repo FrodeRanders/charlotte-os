@@ -317,7 +317,23 @@ mod cpu { pub mod multiprocessor { pub mod spin { pub mod mutex {
 mod klib {
     #[path = "$repo_root/crates/catten/src/klib/admission.rs"] pub mod admission;
 }
-mod memory { pub mod object {
+mod memory {
+    pub mod kernel_buffers {
+        use core::{alloc::AllocError, sync::atomic::{AtomicU64,Ordering}};
+        pub static USED: AtomicU64 = AtomicU64::new(0);
+        pub static LIMIT: AtomicU64 = AtomicU64::new(u64::MAX);
+        #[derive(Clone,Copy,Debug)] pub struct Sponsor(pub bool);
+        impl Sponsor { pub fn unidentified()->Self { Self(false) } }
+        impl crate::klib::admission::ByteSponsor for Sponsor {
+            fn reserve(&self,n:u64)->Result<(),AllocError> {
+                if self.0 { USED.fetch_update(Ordering::AcqRel,Ordering::Acquire,|v|
+                    v.checked_add(n).filter(|n| *n <= LIMIT.load(Ordering::Acquire)))
+                    .map_err(|_|AllocError)?; } Ok(())
+            }
+            fn release(&self,n:u64) { if self.0 { assert!(USED.fetch_sub(n,Ordering::AcqRel)>=n); } }
+        }
+    }
+    pub mod object {
     pub static DROPS: core::sync::atomic::AtomicUsize=core::sync::atomic::AtomicUsize::new(0);
     #[derive(Debug)] pub struct RetiredMemory(pub u64);
     impl Drop for RetiredMemory {
@@ -329,8 +345,11 @@ mod memory { pub mod object {
 }}
 mod ipc {
     use alloc::vec::Vec;
-    type Buffer<T> = Vec<T,crate::klib::admission::ByteAllocator<crate::klib::admission::IpcNodes>>;
-    fn buffer<T>(platform:bool)->Buffer<T> { Vec::new_in(crate::klib::admission::ByteAllocator::new(platform)) }
+    type BufferAllocator=crate::klib::admission::ByteAllocator<crate::klib::admission::IpcNodes,crate::memory::kernel_buffers::Sponsor>;
+    type Buffer<T> = Vec<T,BufferAllocator>;
+    fn empty_buffer_allocator()->BufferAllocator { BufferAllocator::with_sponsor(false,crate::memory::kernel_buffers::Sponsor::unidentified()) }
+    impl From<bool> for BufferAllocator { fn from(p:bool)->Self { Self::with_sponsor(p,crate::memory::kernel_buffers::Sponsor::unidentified()) } }
+    fn buffer<T>(allocator:impl Into<BufferAllocator>)->Buffer<T> { Vec::new_in(allocator.into()) }
     type AddressSpaceId=usize;
     type MemoryObjectCap=u64;
     const CAP_VECTOR_MAX:usize=crate::CAP_VECTOR_MAX;

@@ -14,7 +14,7 @@ pub(crate) struct Sponsor {
 }
 
 impl Sponsor {
-    pub(in crate::memory) const fn unidentified() -> Self {
+    pub(crate) const fn unidentified() -> Self {
         Self {
             principal: None,
         }
@@ -77,6 +77,10 @@ pub(crate) struct CapturedStorage {
     sponsor: Sponsor,
 }
 impl CapturedStorage {
+    pub(crate) fn sponsor(self) -> Sponsor {
+        self.sponsor
+    }
+
     pub(crate) fn allocator(self) -> SnapshotAllocator {
         ByteAllocator::with_sponsor(self.platform, self.sponsor)
     }
@@ -160,4 +164,10 @@ pub(in crate::memory) fn test_with_backing_limit(principal: u64, pages: u64, wor
     };
     work();
     HISTORY.lock().get_mut(&principal).unwrap().backing.set_limit(previous).unwrap();
+}
+
+#[cfg(feature = "kernel_tests")]
+pub(crate) fn test_with_history_locked<R>(work: impl FnOnce() -> R) -> R {
+    let _history = HISTORY.lock();
+    work()
 }

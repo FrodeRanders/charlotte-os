@@ -54,10 +54,14 @@ destructors, caller IRQ masks and copy latency require separate qualification.
 
 ## Staging and loan vectors
 
-`klib::admission::ByteAllocator<IpcNodes>` attaches requested-byte admission to
-standard `Vec` allocations. It reserves bytes and zero node slots before calling
-`Global`, rolls back an allocation rejection, and deallocates before refund.
-Allocator clones/moves preserve one immutable captured class and reserve nothing
+`klib::admission::ByteAllocator<IpcNodes, Sponsor>` attaches requested-byte
+admission to standard `Vec` allocations. It admits the full requested layout
+against the original signed principal's 16 MiB kernel-buffer counter and family
+bytes, with zero node slots, before `Global`. Allocation/family rejection returns
+only the unused prefix. Actual deallocation precedes both refunds. This counter
+also funds snapshot/input/diagnostic and root frame-catalog bytes; there is no
+new pool, principal registry or eager backing.
+Allocator clones/moves preserve one immutable captured class and principal and reserve nothing
 by themselves. Reported blocks have the requested size, keeping deallocation
 layout accounting exact. Default growth reserves the full candidate while the
 old allocation remains charged; rejection preserves pointer, capacity and data.
@@ -69,17 +73,23 @@ protocol paths normally reserve their known count once before publication.
 | Descriptor byte snapshot | 1 | 4082 | 4082 |
 | Parsed descriptor entries | 16 | 255 | 4080 |
 | Capability IDs | 8 | 255 | 2040 |
-| Prepared transfers | 328 | 255 | 83640 |
+| Prepared transfers | 352 | 255 | 89760 |
 | Reply-token loan origins | 32 | 255 | 8160 |
 | Reply/cancellation revocation work | 200 | 255 | 51000 |
 
-Call staging captures allocator class from the original record reservation
-before any vector allocation. Sends use the captured exact sender class. The
+Call staging retains class from the original record reservation and captures
+its exact caller root's prebound principal after root leasing, outside IPC and
+before vector allocation. Sends similarly capture the exact sender's principal
+while retaining the trusted class already selected for that submission. Signed
+roots cannot fall back to unidentified funding. Permanent kernel work and
+explicit synthetic kernel-test namespaces keep their family-only exemption.
+Empty operation placeholders allocate nothing and acquire captured funding
+before production growth. The
 capability vector moves into `MemoryAttachments` with its allocator; retirement
-catalog admission borrows that class, without a new caller-supplied class or ASID
-lookup. Loan vectors move into the reply token unchanged. Pop/clear do not refund
+catalog admission borrows that class and principal, without a new caller-supplied
+identity or later ASID lookup. Loan vectors move into the reply token unchanged. Pop/clear do not refund
 capacity: even an empty token loan vector stays charged until actual node/payload
-disposal. The allocator stores one class byte without a holder allocation.
+disposal. The allocator stores captured policy inline, without a holder allocation.
 
 `PreparedVectorSend` owns the submission/root leases, cap and transfer buffers,
 retirement catalog and delivery. The parser fills this owner (or `PreparedCall`)
@@ -115,7 +125,8 @@ context. This change does not qualify unknown outer heap/IRQ guards or latency.
 allocator while capturing token/call/root identities. Their work vectors hold
 `(MemoryBorrow, LoanRevocation)` entries and share `ipc_nodes` requested bytes
 with zero node slots. Promotion, a different closing actor or namespace retirement
-cannot select a new class. Prepare the full capacity before preparing loans or
+cannot select a new class or principal. Reply and cancellation charge the accepted
+caller even when a healthy server or a namespace-close worker performs cleanup. Prepare the full capacity before preparing loans or
 publishing the claim; quota denial returns `ResourceLimit` with the accepted
 token and call intact. Empty work reserves nothing, even at the byte ceiling.
 
@@ -135,7 +146,7 @@ physical cleanup keeps the child's existing terminal fence/pin and original
 backing charges; freeing an empty parent work buffer grants no retry authority.
 
 A work entry measures 200 bytes; maximum capacity requests 51000 bytes (about
-49.8 KiB). The complete reply/cancellation parents measure 944/472 inline bytes
+49.8 KiB). The complete reply/cancellation parents measure 984/528 inline bytes
 on supported targets; these are stack owners, with no new holder allocation or
 payload-node layout change. Current numerical limits remain in place. Capacity
 is requested during cleanup, rather than reserved when the call is accepted:
@@ -169,8 +180,14 @@ iterator buffer is freed. Interrupted callback dispatch retains all remaining
 owners and the allocation/charge. A child consumes its own typed retirement
 owner, including terminal retention on physical failure; this metadata handoff
 supplies no physical proof or replay permission. Explicit disposal frees the
-buffer before refund. Empty length or successful delivery alone cannot invoke
+buffer before both refunds. Empty length or successful delivery alone cannot invoke
 implicit cleanup under an unknown outer guard.
+
+The [Q4 IPC-principal qualification](../reports/audits/2026-11-06-q4-ipc-principals.md)
+adds original-principal funding, host free-before-both-refunds tracing, public
+vector-send rejection and retained mapped-loan reply/cancellation denial. Private
+fixture ceilings preserve live charges; these are serialized admission controls,
+not sustained EL0 fairness or guaranteed saturated cleanup.
 
 ## Capacity and administration
 
@@ -184,8 +201,8 @@ A conservative count plan permits every ordinary/total unified capability slot
 (49152/65536) to hold an IPC payload, plus all pending and reply nodes
 (6144/8192 each) and endpoints (768/1024): **62208/82944 nodes**. This leaves
 candidate/layout headroom while preserving a quarter of each pool for trusted
-admission. Native capability/endpoint/pending/reply layouts are 120/272/200/184
-bytes. This upper-bound mix requests 8466432/11288576 bytes (about 8.07/10.77 MiB),
+admission. Native capability/endpoint/pending/reply layouts are 120/272/200/200
+bytes. This upper-bound mix requests 8564736/11419648 bytes (about 8.17/10.89 MiB),
 within the 12/16 MiB budgets before retirement catalogs, other nested
 allocations and allocator overhead. Added backing fields cost 16 bytes per
 capability/endpoint node
@@ -193,22 +210,35 @@ capability/endpoint node
 Independent ceilings do not promise simultaneous RAM fit or progress.
 
 Retirement entries measure 136 bytes on supported 64-bit targets. A maximum
-255-entry catalog requests 34680 bytes (about 33.9 KiB). Its inline reservation
-adds 24 bytes to each queued-message payload slot; its capability-vector allocator
-adds another 8 inline bytes after alignment. Together, at the existing
-ordinary/total queue backing-slot ceilings these fields represent 768/1024 KiB
-before allocator overhead. The reply-token layout includes its 8-byte vector
-allocator growth to 184 bytes.
-These slot fields retain the existing endpoint queue accounting. Catalogs now
-compete with node layouts for the same byte budget. Native real-capacity and
-public-path controls require no numerical limit increase; measured mixed workloads
-may justify adjusting central limits. The node-only plan above excludes catalogs.
+255-entry catalog requests 34680 bytes (about 33.9 KiB). The composite retirement
+reservation occupies 48 bytes inline, and the principal-bearing cap-vector
+allocator occupies 24 bytes (native x86 DWARF: alignment 8), without a holder
+allocation. Compared with the earlier family-only 24-byte reservation and
+8-byte aligned allocator contribution, these fields add **40 bytes per queued
+attachment owner**. At the existing 24576/32768 ordinary/total queue-slot ceilings,
+that is at most another 960/1280 KiB of requested queue payload, before allocator
+overhead. This is a capacity upper bound, not observed simultaneous queue usage.
+Actual queue allocation uses the complete current message layout; node admission
+also uses current payload sizes. The reply-token node is now 200 bytes rather
+than 184. These fields reserve no backing in advance. The old vector-capacity
+fixture still prints the 1-byte family-only allocator control size; that is not
+the principal-bearing production allocator size.
+
+Catalogs and working buffers still compete with node layouts for the same byte
+budget. Native pressure and public-path controls require no numerical limit
+increase; measured mixed workloads may justify adjusting central limits. The
+node-only plan above excludes catalogs and queue backing. Cleanup work is still
+admitted after acceptance, so family or principal saturation can postpone reply,
+cancellation and retirement. Existing complete owners retain work on rejection;
+this batch does not establish saturated teardown progress.
 
 Sharing the existing pool avoids another reserve and administration category,
 but these layouts now compete for same-class bytes and slots. Raising limits
 permits larger retained heap consumption; lowering them can restrict otherwise
 valid logical resources. Review actual mixed workloads and adjust central byte
-and count limits together. General heap/principal admission remains open.
+and count limits together. Payload/queue/account principal coverage, allocator overhead and joint heap
+capacity remain open. The [current principal checklist](metadata-admission.md#principal-coverage-and-remaining-reconciliation)
+distinguishes these from the funded IPC buffer paths.
 
 IPC buffer extensions change no header/record widths or runtime ABI. The
 current 24-pool inventory uses statistics version 11, including the separate
