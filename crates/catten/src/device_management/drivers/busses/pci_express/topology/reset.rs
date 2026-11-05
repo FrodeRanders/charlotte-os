@@ -192,49 +192,11 @@ impl ResetSource<'_> {
     }
 }
 
-fn find_function(
-    function: &PcieFunction,
-    bus: u8,
-    device: u8,
-    wanted: u32,
-    depth: u8,
-) -> Option<&PcieEndpoint> {
-    match function {
-        PcieFunction::Endpoint(endpoint)
-            if (u32::from(bus) << 8
-                | u32::from(device) << 3
-                | u32::from(endpoint.number.get_inner()))
-                == wanted =>
-        {
-            Some(endpoint)
-        }
-        PcieFunction::Bridge(next) if depth < MAX_PCIE_BRIDGE_DEPTH => {
-            find_bus(next, wanted, depth + 1)
-        }
-        _ => None,
-    }
-}
-
-fn find_bus(bus: &PcieBusSegment, wanted: u32, depth: u8) -> Option<&PcieEndpoint> {
-    for device in &bus.devices {
-        let endpoint = match device {
-            PcieDevice::SingleFunc(single) => find_function(
-                &single.function,
-                bus.number,
-                single.number.get_inner(),
-                wanted,
-                depth,
-            ),
-            PcieDevice::MultiFunc(multi) => multi.functions.iter().find_map(|function| {
-                find_function(function, bus.number, multi.number.get_inner(), wanted, depth)
-            }),
-            PcieDevice::Empty => None,
-        };
-        if endpoint.is_some() {
-            return endpoint;
-        }
-    }
-    None
+pub(super) fn find_group(group: &PcieSegmentGroup, wanted: u32) -> Option<&PcieEndpoint> {
+    group.endpoints().find_map(|(bus, endpoint, device, function)| {
+        let identity = u32::from(bus.number) << 8 | u32::from(device) << 3 | u32::from(function);
+        (identity == wanted).then_some(endpoint)
+    })
 }
 
 #[cfg(any(test, feature = "kernel_tests"))]
@@ -242,12 +204,8 @@ pub(crate) fn test_target(topology: &PcieTopology) -> Option<(usize, u32)> {
     if topology.segments.len() != 1 {
         return None;
     }
-    let bus = &topology.segments[0].root_bus;
-    for function in 0..256 {
-        let requester = u32::from(bus.number) << 8 | function;
-        let Some(endpoint) = find_bus(bus, requester, 0) else {
-            continue;
-        };
+    for (bus, endpoint, device, function) in topology.segments[0].endpoints() {
+        let requester = u32::from(bus.number) << 8 | u32::from(device) << 3 | u32::from(function);
         let id = endpoint.identifier;
         if (id.vendor_id, id.device_id) != (0x1b36, 0x0010) {
             continue;
@@ -271,7 +229,7 @@ pub(crate) fn test_target(topology: &PcieTopology) -> Option<(usize, u32)> {
 pub(crate) fn supports_qemu_nvme(topology: &PcieTopology, requester: u32) -> bool {
     topology.segments.len() == 1
         && topology.segments[0].pcie_segment_group_num == 0
-        && find_bus(&topology.segments[0].root_bus, requester, 0).is_some_and(|endpoint| {
+        && find_group(&topology.segments[0], requester).is_some_and(|endpoint| {
             let id = endpoint.identifier;
             (id.vendor_id, id.device_id, id.class_code, id.subclass, id.prog_if)
                 == (0x1b36, 0x0010, 1, 8, 2)
@@ -282,13 +240,8 @@ pub(crate) fn supports_qemu_nvme(topology: &PcieTopology, requester: u32) -> boo
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_assert_disabled_config_available(topology: &PcieTopology) {
     assert_eq!(topology.segments.len(), 1);
-    let bus = &topology.segments[0].root_bus;
     let mut found = false;
-    for function in 0..256 {
-        let requester = u32::from(bus.number) << 8 | function;
-        let Some(endpoint) = find_bus(bus, requester, 0) else {
-            continue;
-        };
+    for (_, endpoint, _, _) in topology.segments[0].endpoints() {
         if (endpoint.identifier.vendor_id, endpoint.identifier.device_id) != (0x1b36, 0x0010) {
             continue;
         }
@@ -311,7 +264,7 @@ pub(crate) fn prepare_qemu_nvme(
     if !supports_qemu_nvme(topology, requester) {
         return Err(());
     }
-    let endpoint = find_bus(&topology.segments[0].root_bus, requester, 0).ok_or(())?;
+    let endpoint = find_group(&topology.segments[0], requester).ok_or(())?;
     let config = endpoint.cfg_ptr.lock();
     if config.reset_ranges.is_some() {
         return Err(());
@@ -408,38 +361,25 @@ pub(crate) fn prepare_qemu_nvme(
 /// Called under device serialization; range overlap is only an exclusion
 /// query of the exact endpoint claim, never reset authority or a retry owner.
 pub(crate) fn claimed_range(topology: &PcieTopology, base: usize, bytes: usize) -> bool {
-    fn bus_claimed(bus: &PcieBusSegment, base: usize, end: usize) -> bool {
-        fn function_claimed(function: &PcieFunction, base: usize, end: usize) -> bool {
-            match function {
-                PcieFunction::Endpoint(endpoint) => {
-                    endpoint.cfg_ptr.lock().reset_ranges.is_some_and(|ranges| {
-                        ranges
-                            .into_iter()
-                            .flatten()
-                            .any(|(start, bytes)| start < end && base < start + bytes)
-                    })
-                }
-                PcieFunction::Bridge(bus) => bus_claimed(bus, base, end),
-                PcieFunction::Empty => false,
-            }
-        }
-        bus.devices.iter().any(|device| match device {
-            PcieDevice::SingleFunc(device) => function_claimed(&device.function, base, end),
-            PcieDevice::MultiFunc(device) => {
-                device.functions.iter().any(|function| function_claimed(function, base, end))
-            }
-            PcieDevice::Empty => false,
-        })
-    }
     let Some(end) = base.checked_add(bytes) else {
         return true;
     };
-    topology.segments.iter().any(|segment| bus_claimed(&segment.root_bus, base, end))
+    topology.segments.iter().any(|segment| {
+        segment.endpoints().any(|(_, endpoint, _, _)| {
+            endpoint.cfg_ptr.lock().reset_ranges.is_some_and(|ranges| {
+                ranges
+                    .into_iter()
+                    .flatten()
+                    .any(|(start, bytes)| start < end && base < start + bytes)
+            })
+        })
+    })
 }
 
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) mod tests;
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) fn test_admission() {
+    super::tests::run();
     tests::run();
 }

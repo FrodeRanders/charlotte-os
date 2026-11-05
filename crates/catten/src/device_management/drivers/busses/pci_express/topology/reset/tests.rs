@@ -127,7 +127,7 @@ fn fixture() -> (PcieTopology, Box<[u64; 512]>) {
         ecam_vaddr: VAddr::from(0u64),
         start_bus_num: 0,
         end_bus_num: 0,
-        root_bus: Box::new(PcieBusSegment {
+        buses: alloc::vec![PcieBusSegment {
             number: 0,
             devices: alloc::vec![PcieDevice::SingleFunc(PcieSingleFuncDevice {
                 number: PcieDeviceNum(0),
@@ -146,7 +146,7 @@ fn fixture() -> (PcieTopology, Box<[u64; 512]>) {
                     }),
                 })),
             })],
-        }),
+        }],
     }]);
     (topology, registers)
 }
@@ -164,7 +164,7 @@ pub(super) fn run() {
         prepare_qemu_nvme(&topology, 0, |_, _| {
             // Change only an unused BAR's type flags while range admission runs.
             // Exact six-register revalidation must reject before claim/mutation.
-            let endpoint = find_bus(&topology.segments[0].root_bus, 0, 0).unwrap();
+            let endpoint = find_group(&topology.segments[0], 0).unwrap();
             let config = endpoint.config().unwrap();
             unsafe { write_volatile(config.as_ptr().cast::<u8>().add(0x24).cast::<u32>(), 1) };
             true
@@ -172,7 +172,7 @@ pub(super) fn run() {
         .is_err()
     );
     {
-        let endpoint = find_bus(&topology.segments[0].root_bus, 0, 0).unwrap();
+        let endpoint = find_group(&topology.segments[0], 0).unwrap();
         let config = endpoint.config().unwrap();
         unsafe { write_volatile(config.as_ptr().cast::<u8>().add(0x24).cast::<u32>(), 0) };
     }
@@ -193,7 +193,7 @@ pub(super) fn run() {
         prepare_qemu_nvme(&topology, 0, |_, _| true).unwrap_or_else(|_| panic!("RAM reset claim"));
     source.phase = Phase::Ready; // State adapter, never a hardware completion.
     source.activate().unwrap_or_else(|_| panic!("RAM activation"));
-    let endpoint = find_bus(&topology.segments[0].root_bus, 0, 0).unwrap();
+    let endpoint = find_group(&topology.segments[0], 0).unwrap();
     let config = endpoint.config().unwrap();
     assert_eq!(unsafe { read_volatile(config.as_ptr().cast::<u8>().add(4).cast::<u16>()) } & 6, 6);
     drop(config);

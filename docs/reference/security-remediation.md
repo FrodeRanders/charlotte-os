@@ -18,8 +18,9 @@ matrix. Its compiler census is a review baseline, not a completed
 allocation/caller inventory or a new readiness percentage. Q3 is in progress;
 its [boot allocation sub-batch](boot-allocation-boundaries.md) corrects CPU-count
 validation and bounds optional framebuffer geometry, allocation bytes and
-complete ownership. Remaining bootstrap-first-use, PCI/MCFG and factory review
-stays open. Finding dispositions remain unchanged; the ARM display grant-probe
+complete ownership, and adds bounded MCFG/PCI boot preparation and traversal.
+Remaining bootstrap-first-use and producer/dependency review stays open.
+Finding dispositions remain unchanged; the ARM display grant-probe
 deadline capture is recorded below as a separate unresolved episode.
 
 ## Finding ledger

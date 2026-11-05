@@ -16,7 +16,6 @@ use crate::{
         Error,
         MAX_DEVICES_PER_BUS,
         MAX_FUNCTIONS_PER_DEVICE,
-        MAX_PCIE_BRIDGE_DEPTH,
         device_class::PciIdentifier,
         ecam,
         ecam::{
@@ -35,7 +34,13 @@ use crate::{
 };
 
 pub type PcieSegmentGroupNum = u16;
+pub(crate) mod enumeration;
 pub(crate) mod reset;
+use enumeration::{
+    Budget,
+    Buses,
+    Error as EnumerationError,
+};
 pub type PcieBusSegmentNum = u8;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
@@ -150,7 +155,10 @@ impl PcieTopology {
         let segment_group = self
             .segments
             .iter()
-            .find(|sg| sg.pcie_segment_group_num == segment_group)
+            .find(|sg| {
+                sg.pcie_segment_group_num == segment_group
+                    && (sg.start_bus_num..=sg.end_bus_num).contains(&bus_segment)
+            })
             .ok_or(Error::InvalidLocation)?;
         if bus_segment < segment_group.start_bus_num || bus_segment > segment_group.end_bus_num {
             return Err(Error::InvalidLocation);
@@ -173,32 +181,63 @@ pub struct PcieSegmentGroup {
                         * address space */
     start_bus_num: PcieBusSegmentNum,
     end_bus_num: PcieBusSegmentNum,
-    root_bus: Box<PcieBusSegment>, /* Root bus of this segment's topology; the rest of the
-                                    * topology
-                                    * can be traversed from here */
+    // Immutable, one record per discovered bus; endpoint Boxes remain stable
+    // for the existing reset-claim cells after boot publication.
+    buses: Vec<PcieBusSegment>,
 }
 
 impl PcieSegmentGroup {
-    pub fn new(
+    pub(crate) fn try_new(
         pcie_segment_group_num: PcieSegmentGroupNum,
         ecam_paddr: PAddr,
         start_bus_num: PcieBusSegmentNum,
         end_bus_num: PcieBusSegmentNum,
-    ) -> Self {
+        budget: &mut Budget,
+    ) -> Result<Self, EnumerationError> {
+        let mut buses = Vec::new();
+        buses
+            .try_reserve_exact(usize::from(end_bus_num) - usize::from(start_bus_num) + 1)
+            .map_err(|_| EnumerationError::StorageUnavailable)?;
+        let pending = Buses::new(start_bus_num, end_bus_num);
+        // ECAM mappings are permanent shared-kernel boot mappings. Any later
+        // mandatory-boot rejection stops initialization; it never unmaps or
+        // re-adopts a partial mapping/endpoint prefix.
         let ecam_vaddr = ecam::map_ecam(ecam_paddr);
-        PcieSegmentGroup {
+        let buses =
+            Self::enumerate_prepared(ecam_vaddr, pcie_segment_group_num, budget, pending, buses)?;
+        Ok(Self {
             pcie_segment_group_num,
             ecam_paddr,
             ecam_vaddr,
             start_bus_num,
             end_bus_num,
-            root_bus: PcieBusSegment::new_boxed(
+            buses,
+        })
+    }
+
+    fn enumerate_prepared(
+        ecam_vaddr: VAddr,
+        pcie_segment_group_num: u16,
+        budget: &mut Budget,
+        mut pending: Buses,
+        mut buses: Vec<PcieBusSegment>,
+    ) -> Result<Vec<PcieBusSegment>, EnumerationError> {
+        while let Some(number) = pending.next() {
+            buses.push(PcieBusSegment::try_new(
                 ecam_vaddr,
                 pcie_segment_group_num,
-                start_bus_num,
-                0,
-            ),
+                number,
+                budget,
+                &mut pending,
+            )?);
         }
+        Ok(buses)
+    }
+
+    fn endpoints(&self) -> impl Iterator<Item = (&PcieBusSegment, &PcieEndpoint, u8, u8)> {
+        self.buses.iter().flat_map(|bus| {
+            bus.endpoints().map(move |(ep, device, function)| (bus, ep, device, function))
+        })
     }
 }
 
@@ -209,42 +248,57 @@ pub struct PcieBusSegment {
 }
 
 impl PcieBusSegment {
-    /// Allocate the bus before descending through any bridges it contains.
-    ///
-    /// A bus used to own a comparatively large fixed device array. Constructing
-    /// that array recursively retained one copy on the kernel stack for every
-    /// bridge level. VMware's PCIe topology is deep enough to exhaust that
-    /// stack, while QEMU's shallow topology did not expose the problem. Store
-    /// only occupied slots; every device retains its PCI device number.
-    fn new_boxed(
+    fn try_new(
         ecam_vaddr: VAddr,
         segment_group_num: PcieSegmentGroupNum,
         bus_num: PcieBusSegmentNum,
-        depth: u8,
-    ) -> Box<Self> {
-        logln!(
-            "[drivers::busses::pci_express] Enumerating PCIe bus segment {} of segment group {}",
-            bus_num,
-            segment_group_num
-        );
-        let mut bus = Box::new(PcieBusSegment {
-            number: bus_num,
-            devices: Vec::new(),
-        });
-        logln!(
-            "[drivers::busses::pci_express] Initialized device array for bus segment {} of \
-             segment group {}. Starting device enumeration...",
-            bus_num,
-            segment_group_num
-        );
+        budget: &mut Budget,
+        pending: &mut Buses,
+    ) -> Result<Self, EnumerationError> {
+        // One nonrecursive, hardware-sized local prefix. Allocate exact occupied
+        // device storage once; errors drop only private metadata, not hardware.
+        let mut prepared: [Option<PcieDevice>; MAX_DEVICES_PER_BUS] =
+            [const { None }; MAX_DEVICES_PER_BUS];
+        let mut count = 0;
         for device_num in 0..MAX_DEVICES_PER_BUS {
-            let device =
-                PcieDevice::new(ecam_vaddr, segment_group_num, bus_num, device_num as u8, depth);
+            let device = PcieDevice::try_new(
+                ecam_vaddr,
+                segment_group_num,
+                bus_num,
+                device_num as u8,
+                budget,
+                pending,
+            )?;
             if !matches!(device, PcieDevice::Empty) {
-                bus.devices.push(device);
+                prepared[count] = Some(device);
+                count += 1;
             }
         }
-        bus
+        let mut devices = Vec::new();
+        devices.try_reserve_exact(count).map_err(|_| EnumerationError::StorageUnavailable)?;
+        devices.extend(prepared.into_iter().take(count).map(|device| device.unwrap()));
+        Ok(Self {
+            number: bus_num,
+            devices,
+        })
+    }
+
+    fn endpoints(&self) -> impl Iterator<Item = (&PcieEndpoint, u8, u8)> {
+        self.devices.iter().flat_map(|device| {
+            let (number, functions): (u8, &[PcieFunction]) = match device {
+                PcieDevice::Empty => (0, &[]),
+                PcieDevice::SingleFunc(single) => {
+                    (single.number.get_inner(), core::slice::from_ref(&single.function))
+                }
+                PcieDevice::MultiFunc(multi) => (multi.number.get_inner(), &multi.functions),
+            };
+            functions.iter().filter_map(move |function| match function {
+                PcieFunction::Endpoint(endpoint) => {
+                    Some((&**endpoint, number, endpoint.number.get_inner()))
+                }
+                _ => None,
+            })
+        })
     }
 }
 
@@ -256,13 +310,14 @@ pub enum PcieDevice {
 }
 
 impl PcieDevice {
-    fn new(
+    fn try_new(
         ecam_vaddr: VAddr,
         segment_group_num: PcieSegmentGroupNum,
         bus_num: PcieBusSegmentNum,
         device_num: u8,
-        depth: u8,
-    ) -> Self {
+        budget: &mut Budget,
+        pending: &mut Buses,
+    ) -> Result<Self, EnumerationError> {
         let cfg_space_vaddr = ecam_vaddr
             + PcieLocation::new(
                 segment_group_num,
@@ -274,23 +329,27 @@ impl PcieDevice {
 
         let cfg_space = cfg_space_vaddr.into_ptr::<PcieCfgSpace>();
         if !unsafe { PcieCfgSpace::has_device_present(cfg_space) } {
-            PcieDevice::Empty
+            Ok(PcieDevice::Empty)
         } else if unsafe { PcieCfgSpace::device_is_multifunction(cfg_space) } {
-            PcieDevice::MultiFunc(PcieMultiFuncDevice::new(
+            budget.accept_device()?;
+            Ok(PcieDevice::MultiFunc(PcieMultiFuncDevice::try_new(
                 ecam_vaddr,
                 segment_group_num,
                 bus_num,
                 device_num,
-                depth,
-            ))
+                budget,
+                pending,
+            )?))
         } else {
-            PcieDevice::SingleFunc(PcieSingleFuncDevice::new(
+            budget.accept_device()?;
+            Ok(PcieDevice::SingleFunc(PcieSingleFuncDevice::try_new(
                 ecam_vaddr,
                 segment_group_num,
                 bus_num,
                 device_num,
-                depth,
-            ))
+                budget,
+                pending,
+            )?))
         }
     }
 }
@@ -302,24 +361,26 @@ pub struct PcieSingleFuncDevice {
 }
 
 impl PcieSingleFuncDevice {
-    fn new(
+    fn try_new(
         ecam_vaddr: VAddr,
         segment_group_num: PcieSegmentGroupNum,
         bus_num: PcieBusSegmentNum,
         device_num: u8,
-        depth: u8,
-    ) -> Self {
-        PcieSingleFuncDevice {
+        budget: &mut Budget,
+        pending: &mut Buses,
+    ) -> Result<Self, EnumerationError> {
+        Ok(PcieSingleFuncDevice {
             number: PcieDeviceNum(device_num),
-            function: PcieFunction::new(
+            function: PcieFunction::try_new(
                 ecam_vaddr,
                 segment_group_num,
                 bus_num,
                 device_num,
                 PcieFunctionNum(0),
-                depth,
-            ),
-        }
+                budget,
+                pending,
+            )?,
+        })
     }
 }
 
@@ -330,30 +391,32 @@ pub struct PcieMultiFuncDevice {
 }
 
 impl PcieMultiFuncDevice {
-    fn new(
+    fn try_new(
         ecam_vaddr: VAddr,
         segment_group_num: PcieSegmentGroupNum,
         bus_num: PcieBusSegmentNum,
         device_num: u8,
-        depth: u8,
-    ) -> Self {
+        budget: &mut Budget,
+        pending: &mut Buses,
+    ) -> Result<Self, EnumerationError> {
         let mut functions: [PcieFunction; MAX_FUNCTIONS_PER_DEVICE] =
             [const { PcieFunction::Empty }; MAX_FUNCTIONS_PER_DEVICE];
         for (i, function) in functions.iter_mut().enumerate() {
-            *function = PcieFunction::new(
+            *function = PcieFunction::try_new(
                 ecam_vaddr,
                 segment_group_num,
                 bus_num,
                 device_num,
                 PcieFunctionNum::try_from(i as u8).unwrap(),
-                depth,
-            );
+                budget,
+                pending,
+            )?;
         }
 
-        PcieMultiFuncDevice {
+        Ok(PcieMultiFuncDevice {
             number: PcieDeviceNum(device_num),
             functions,
-        }
+        })
     }
 }
 
@@ -383,21 +446,19 @@ pub enum PcieFunction {
                                   * can be represented as an endpoint struct containing its
                                   * relevant config space info
                                   * and BAR addresses */
-    Bridge(Box<PcieBusSegment>), /* If this function is a bridge, then it has a bus segment
-                                  * behind it which can be
-                                  * traversed like the root bus segments in the
-                                  * topology */
+    Bridge(PcieBusSegmentNum), // Descriptive edge only; the flat segment owns each bus once.
 }
 
 impl PcieFunction {
-    fn new(
+    fn try_new(
         ecam_vaddr: VAddr,
         segment_group_num: PcieSegmentGroupNum,
         bus_num: PcieBusSegmentNum,
         device_num: u8,
         function_num: PcieFunctionNum,
-        depth: u8,
-    ) -> Self {
+        budget: &mut Budget,
+        pending: &mut Buses,
+    ) -> Result<Self, EnumerationError> {
         let cfg_space_vaddr = ecam_vaddr
             + PcieLocation::new(
                 segment_group_num,
@@ -408,33 +469,23 @@ impl PcieFunction {
             .get_ecam_offset();
         let cfg_space = cfg_space_vaddr.into_ptr::<PcieCfgSpace>();
         if !unsafe { PcieCfgSpace::has_device_present(cfg_space) } {
-            PcieFunction::Empty
-        } else if unsafe { PcieCfgSpace::device_is_bridge(cfg_space) } {
-            if depth >= MAX_PCIE_BRIDGE_DEPTH {
-                logln!(
-                    "[drivers::busses::pci_express] Bridge nesting limit reached at bus {} device \
-                     {}; not descending",
-                    bus_num,
-                    device_num
-                );
-                return PcieFunction::Empty;
-            }
-            let secondary_bus_segment_number =
-                unsafe { CfgBridgeHeader::secondary_bus_num_at(cfg_space.cast()) };
-            PcieFunction::Bridge(PcieBusSegment::new_boxed(
-                ecam_vaddr,
-                segment_group_num,
-                secondary_bus_segment_number,
-                depth + 1,
-            ))
+            return Ok(PcieFunction::Empty);
+        }
+        budget.accept_function()?;
+        if unsafe { PcieCfgSpace::device_is_bridge(cfg_space) } {
+            let secondary = unsafe { CfgBridgeHeader::secondary_bus_num_at(cfg_space.cast()) };
+            pending.discover(secondary);
+            Ok(PcieFunction::Bridge(secondary))
         } else {
-            PcieFunction::Endpoint(Box::new(PcieEndpoint::new(
+            let endpoint = Box::try_new(PcieEndpoint::new(
                 ecam_vaddr,
                 segment_group_num,
                 bus_num,
                 device_num,
                 function_num,
-            )))
+            ))
+            .map_err(|_| EnumerationError::StorageUnavailable)?;
+            Ok(PcieFunction::Endpoint(endpoint))
         }
     }
 }
@@ -450,6 +501,19 @@ pub struct PcieEndpoint {
      * driver */
     cfg_ptr: SpinMutex<ConfigSpace>,
 }
+
+// Exact occupied-device vectors and one endpoint Box per accepted function;
+// the preallocated bus vectors have at most 256 records per accepted region.
+// Boot metadata is retained once, separately from allocator/table overhead (Q4).
+const _: () = {
+    assert!(
+        enumeration::MAX_FUNCTIONS * (size_of::<PcieDevice>() + size_of::<PcieEndpoint>())
+            + enumeration::MAX_REGIONS
+                * (size_of::<PcieSegmentGroup>() + 256 * size_of::<PcieBusSegment>())
+            <= 16 * 1024 * 1024
+    );
+    assert!(size_of::<[Option<PcieDevice>; MAX_DEVICES_PER_BUS]>() <= 8192);
+};
 
 // The logical reset claim survives mutex release and owner abandonment. Only
 // the reset adapter accesses a claimed pointer; ordinary config helpers reject.
@@ -540,7 +604,10 @@ impl PcieSegmentGroup {
             self.end_bus_num,
             indent = indent
         )?;
-        self.root_bus.fmt_tree(f, indent + TREE_INDENT_STEP)
+        for bus in &self.buses {
+            bus.fmt_tree(f, indent + TREE_INDENT_STEP)?;
+        }
+        Ok(())
     }
 }
 
@@ -591,8 +658,7 @@ impl PcieBusSegment {
 
 impl PcieFunction {
     /// Renders a single function as one line of the topology tree, prefixed with its
-    /// `bus:device.function` (BDF) address. Bridges additionally recurse into the bus segment
-    /// behind them.
+    /// `bus:device.function` (BDF) address and the descriptive downstream bus.
     fn fmt_tree(
         &self,
         f: &mut core::fmt::Formatter<'_>,
@@ -621,35 +687,11 @@ impl PcieFunction {
                     bus,
                     device,
                     function,
-                    secondary_bus.number,
+                    secondary_bus,
                     indent = indent
                 )?;
-                secondary_bus.fmt_tree(f, indent + TREE_INDENT_STEP)
+                Ok(())
             }
-        }
-    }
-}
-
-/// Add every secondary bus reachable through this device list to a depth-first
-/// traversal. A PCIe root-port device is commonly multifunction (VMware puts
-/// NVMe behind function 0 and E1000E behind function 1), so inspecting only
-/// the first function silently hides otherwise enumerated endpoints.
-fn push_bridge_buses<'a>(devices: &'a [PcieDevice], stack: &mut Vec<&'a PcieBusSegment>) {
-    for device in devices {
-        match device {
-            PcieDevice::SingleFunc(single) => {
-                if let PcieFunction::Bridge(bus) = &single.function {
-                    stack.push(bus);
-                }
-            }
-            PcieDevice::MultiFunc(multi) => {
-                for function in &multi.functions {
-                    if let PcieFunction::Bridge(bus) = function {
-                        stack.push(bus);
-                    }
-                }
-            }
-            PcieDevice::Empty => {}
         }
     }
 }
@@ -661,113 +703,87 @@ pub fn lookup_first_virtio_net(
 ) -> Option<(u64, usize, u32, u32, Option<u64>)> {
     for group in &topology.segments {
         // Walk the bus hierarchy starting at the root bus of each segment.
-        let mut stack = alloc::vec![&*group.root_bus];
-        while let Some(bus) = stack.pop() {
-            for dev in &bus.devices {
-                let (ep, device, function) = match dev {
-                    PcieDevice::SingleFunc(sfd) => match &sfd.function {
-                        PcieFunction::Endpoint(ep) => {
-                            (ep, sfd.number.get_inner(), ep.number.get_inner())
-                        }
-                        _ => continue,
-                    },
-                    PcieDevice::MultiFunc(mfd) => {
-                        match mfd.functions.first().and_then(|f| {
-                            if let PcieFunction::Endpoint(ep) = f {
-                                Some((ep, mfd.number.get_inner(), ep.number.get_inner()))
-                            } else {
-                                None
-                            }
-                        }) {
-                            Some(ep) => ep,
-                            None => continue,
-                        }
-                    }
-                    _ => continue,
-                };
-                if ep.identifier.vendor_id != 0x1af4 {
+        for (bus, ep, device, function) in group.endpoints() {
+            if ep.identifier.vendor_id != 0x1af4 {
+                continue;
+            }
+            if ep.identifier.device_id < 0x1000 || ep.identifier.device_id > 0x107f {
+                continue;
+            }
+            if (ep.identifier.class_code, ep.identifier.subclass) != (0x02, 0x00) {
+                continue;
+            }
+            let requester_id =
+                ((bus.number as u32) << 8) | ((device as u32) << 3) | function as u32;
+            let Some(cfg) = ep.config() else {
+                continue;
+            };
+            let header = cfg.as_ptr().cast::<CfgEndpointHeader>();
+            // QEMU places all modern virtio regions in BAR 4. Verify the
+            // vendor capability instead of mistaking the transitional
+            // legacy I/O BAR for a DMA-isolatable transport.
+            let cfg_bytes = cfg.as_ptr().cast::<u8>();
+            let mut capability = unsafe { CfgEndpointHeader::capabilities_offset_at(header) }
+                .map(|offset| offset as usize)
+                .unwrap_or(0);
+            let mut modern_bar = None;
+            for _ in 0..48 {
+                if capability < 0x40 || capability + 16 > 0x100 {
+                    break;
+                }
+                let id = unsafe { core::ptr::read_volatile(cfg_bytes.add(capability)) };
+                let next =
+                    unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 1)) } as usize;
+                let len =
+                    unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 2)) } as usize;
+                let cfg_type = unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 3)) };
+                if id == 0x09 && len >= 16 {
+                    let bar = unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 4)) };
+                    let offset = unsafe {
+                        core::ptr::read_unaligned(cfg_bytes.add(capability + 8).cast::<u32>())
+                    };
+                    let length = unsafe {
+                        core::ptr::read_unaligned(cfg_bytes.add(capability + 12).cast::<u32>())
+                    };
+                    logln!(
+                        "[net] virtio cap type={} bar={} offset={:#x} length={:#x}",
+                        cfg_type,
+                        bar,
+                        offset,
+                        length
+                    );
+                }
+                if id == 0x09 && len >= 16 && cfg_type == 1 {
+                    modern_bar =
+                        Some(unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 4)) });
+                }
+                if next == 0 || next == capability {
+                    break;
+                }
+                capability = next;
+            }
+            let bar_index = modern_bar? as usize;
+            if bar_index >= 6 {
+                continue;
+            }
+            let bar = unsafe { CfgEndpointHeader::bar_at(header, bar_index) } as u64;
+            if bar & 1 != 0 {
+                continue;
+            }
+            let phys_base = if bar & 0x4 != 0 {
+                if bar_index + 1 >= 6 {
                     continue;
                 }
-                if ep.identifier.device_id < 0x1000 || ep.identifier.device_id > 0x107f {
-                    continue;
-                }
-                if (ep.identifier.class_code, ep.identifier.subclass) != (0x02, 0x00) {
-                    continue;
-                }
-                let requester_id =
-                    ((bus.number as u32) << 8) | ((device as u32) << 3) | function as u32;
-                let Some(cfg) = ep.config() else {
-                    continue;
-                };
-                let header = cfg.as_ptr().cast::<CfgEndpointHeader>();
-                // QEMU places all modern virtio regions in BAR 4. Verify the
-                // vendor capability instead of mistaking the transitional
-                // legacy I/O BAR for a DMA-isolatable transport.
-                let cfg_bytes = cfg.as_ptr().cast::<u8>();
-                let mut capability = unsafe { CfgEndpointHeader::capabilities_offset_at(header) }
-                    .map(|offset| offset as usize)
-                    .unwrap_or(0);
-                let mut modern_bar = None;
-                for _ in 0..48 {
-                    if capability < 0x40 || capability + 16 > 0x100 {
-                        break;
-                    }
-                    let id = unsafe { core::ptr::read_volatile(cfg_bytes.add(capability)) };
-                    let next =
-                        unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 1)) } as usize;
-                    let len =
-                        unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 2)) } as usize;
-                    let cfg_type =
-                        unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 3)) };
-                    if id == 0x09 && len >= 16 {
-                        let bar =
-                            unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 4)) };
-                        let offset = unsafe {
-                            core::ptr::read_unaligned(cfg_bytes.add(capability + 8).cast::<u32>())
-                        };
-                        let length = unsafe {
-                            core::ptr::read_unaligned(cfg_bytes.add(capability + 12).cast::<u32>())
-                        };
-                        logln!(
-                            "[net] virtio cap type={} bar={} offset={:#x} length={:#x}",
-                            cfg_type,
-                            bar,
-                            offset,
-                            length
-                        );
-                    }
-                    if id == 0x09 && len >= 16 && cfg_type == 1 {
-                        modern_bar = Some(unsafe {
-                            core::ptr::read_volatile(cfg_bytes.add(capability + 4))
-                        });
-                    }
-                    if next == 0 || next == capability {
-                        break;
-                    }
-                    capability = next;
-                }
-                let bar_index = modern_bar? as usize;
-                if bar_index >= 6 {
-                    continue;
-                }
-                let bar = unsafe { CfgEndpointHeader::bar_at(header, bar_index) } as u64;
-                if bar & 1 != 0 {
-                    continue;
-                }
-                let phys_base = if bar & 0x4 != 0 {
-                    if bar_index + 1 >= 6 {
-                        continue;
-                    }
-                    (bar & 0xffff_fff0)
-                        | ((unsafe { CfgEndpointHeader::bar_at(header, bar_index + 1) } as u64
-                            & 0xffff_ffff)
-                            << 32)
-                } else {
-                    bar & 0xffff_fff0
-                };
-                let legacy_irq = unsafe { CfgEndpointHeader::interrupt_line_at(header) } as u32;
-                if phys_base != 0 {
-                    if crate::device::msi_available()
+                (bar & 0xffff_fff0)
+                    | ((unsafe { CfgEndpointHeader::bar_at(header, bar_index + 1) } as u64
+                        & 0xffff_ffff)
+                        << 32)
+            } else {
+                bar & 0xffff_fff0
+            };
+            let legacy_irq = unsafe { CfgEndpointHeader::interrupt_line_at(header) } as u32;
+            if phys_base != 0 {
+                if crate::device::msi_available()
                         && let Some(message) = crate::device::allocate_msi(requester_id)
                         && crate::device_management::drivers::busses::pci_express::ecam::capabilities::standard::msix::program_vector0(
                             cfg.as_ptr(),
@@ -783,10 +799,8 @@ pub fn lookup_first_virtio_net(
                         );
                         return Some((phys_base, 4, message.intid, requester_id, Some(message.address)));
                     }
-                    return Some((phys_base, 4, legacy_irq, requester_id, None));
-                }
+                return Some((phys_base, 4, legacy_irq, requester_id, None));
             }
-            push_bridge_buses(&bus.devices, &mut stack);
         }
     }
     None
@@ -798,65 +812,44 @@ pub fn lookup_first_virtio_net(
 /// userspace driver.
 pub fn lookup_first_e1000e(topology: &PcieTopology) -> Option<(u64, usize, u32, u32, Option<u64>)> {
     for group in &topology.segments {
-        let mut stack = alloc::vec![&*group.root_bus];
-        while let Some(bus) = stack.pop() {
-            for dev in &bus.devices {
-                let (ep, device, function) = match dev {
-                    PcieDevice::SingleFunc(sfd) => match &sfd.function {
-                        PcieFunction::Endpoint(ep) => {
-                            (ep, sfd.number.get_inner(), ep.number.get_inner())
-                        }
-                        _ => continue,
-                    },
-                    PcieDevice::MultiFunc(mfd) => match mfd.functions.first().and_then(|f| {
-                        if let PcieFunction::Endpoint(ep) = f {
-                            Some((ep, mfd.number.get_inner(), ep.number.get_inner()))
-                        } else {
-                            None
-                        }
-                    }) {
-                        Some(ep) => ep,
-                        None => continue,
-                    },
-                    _ => continue,
-                };
-                if ep.identifier.vendor_id != 0x8086
-                    || ep.identifier.device_id != 0x10d3
-                    || (ep.identifier.class_code, ep.identifier.subclass) != (0x02, 0x00)
-                {
-                    continue;
-                }
+        for (bus, ep, device, function) in group.endpoints() {
+            if ep.identifier.vendor_id != 0x8086
+                || ep.identifier.device_id != 0x10d3
+                || (ep.identifier.class_code, ep.identifier.subclass) != (0x02, 0x00)
+            {
+                continue;
+            }
 
-                let requester_id =
-                    ((bus.number as u32) << 8) | ((device as u32) << 3) | function as u32;
-                let Some(cfg) = ep.config() else {
-                    continue;
-                };
-                let header = cfg.as_ptr().cast::<CfgEndpointHeader>();
-                let bar0 = unsafe { CfgEndpointHeader::bar_at(header, 0) } as u64;
-                logln!(
-                    "[e1000e] found Intel 82574L at {:02x}:{:02x}.{} (BAR0={:#x}, IRQ line={})",
-                    bus.number,
-                    device,
-                    function,
-                    bar0,
-                    unsafe { CfgEndpointHeader::interrupt_line_at(header) }
-                );
-                if bar0 & 1 != 0 {
-                    continue;
-                }
-                let phys_base = if bar0 & 0x4 != 0 {
-                    (bar0 & 0xffff_fff0)
-                        | ((unsafe { CfgEndpointHeader::bar_at(header, 1) } as u64) << 32)
-                } else {
-                    bar0 & 0xffff_fff0
-                };
-                if phys_base == 0 {
-                    continue;
-                }
+            let requester_id =
+                ((bus.number as u32) << 8) | ((device as u32) << 3) | function as u32;
+            let Some(cfg) = ep.config() else {
+                continue;
+            };
+            let header = cfg.as_ptr().cast::<CfgEndpointHeader>();
+            let bar0 = unsafe { CfgEndpointHeader::bar_at(header, 0) } as u64;
+            logln!(
+                "[e1000e] found Intel 82574L at {:02x}:{:02x}.{} (BAR0={:#x}, IRQ line={})",
+                bus.number,
+                device,
+                function,
+                bar0,
+                unsafe { CfgEndpointHeader::interrupt_line_at(header) }
+            );
+            if bar0 & 1 != 0 {
+                continue;
+            }
+            let phys_base = if bar0 & 0x4 != 0 {
+                (bar0 & 0xffff_fff0)
+                    | ((unsafe { CfgEndpointHeader::bar_at(header, 1) } as u64) << 32)
+            } else {
+                bar0 & 0xffff_fff0
+            };
+            if phys_base == 0 {
+                continue;
+            }
 
-                let legacy_irq = unsafe { CfgEndpointHeader::interrupt_line_at(header) } as u32;
-                if crate::device::msi_available()
+            let legacy_irq = unsafe { CfgEndpointHeader::interrupt_line_at(header) } as u32;
+            if crate::device::msi_available()
                     && let Some(message) = crate::device::allocate_msi(requester_id)
                     && crate::device_management::drivers::busses::pci_express::ecam::capabilities::standard::msix::program_vector0(
                         cfg.as_ptr(),
@@ -874,20 +867,17 @@ pub fn lookup_first_e1000e(topology: &PcieTopology) -> Option<(u64, usize, u32, 
                     return Some((phys_base, 32, message.intid, requester_id, Some(message.address)));
                 }
 
-                // Keep the fallback usable on platforms without an MSI
-                // allocator. MSI-X setup normally enables these command bits.
-                let cfg_bytes = cfg.as_ptr().cast::<u8>();
-                let command =
-                    unsafe { core::ptr::read_volatile(cfg_bytes.add(0x04).cast::<u16>()) };
-                unsafe {
-                    core::ptr::write_volatile(
-                        cfg_bytes.add(0x04).cast::<u16>(),
-                        command | (1 << 1) | (1 << 2),
-                    )
-                };
-                return Some((phys_base, 32, legacy_irq, requester_id, None));
-            }
-            push_bridge_buses(&bus.devices, &mut stack);
+            // Keep the fallback usable on platforms without an MSI
+            // allocator. MSI-X setup normally enables these command bits.
+            let cfg_bytes = cfg.as_ptr().cast::<u8>();
+            let command = unsafe { core::ptr::read_volatile(cfg_bytes.add(0x04).cast::<u16>()) };
+            unsafe {
+                core::ptr::write_volatile(
+                    cfg_bytes.add(0x04).cast::<u16>(),
+                    command | (1 << 1) | (1 << 2),
+                )
+            };
+            return Some((phys_base, 32, legacy_irq, requester_id, None));
         }
     }
     None
@@ -898,56 +888,33 @@ pub fn lookup_first_e1000e(topology: &PcieTopology) -> Option<(u64, usize, u32, 
 /// value when MSI-X is unavailable.
 pub fn lookup_first_nvme(topology: &PcieTopology) -> Option<(u64, u32, u32, Option<u64>)> {
     for group in &topology.segments {
-        let mut stack = alloc::vec![&*group.root_bus];
-        while let Some(bus) = stack.pop() {
-            for dev in &bus.devices {
-                let (ep, device, function) = match dev {
-                    PcieDevice::SingleFunc(sfd) => match &sfd.function {
-                        PcieFunction::Endpoint(ep) => {
-                            (ep, sfd.number.get_inner(), ep.number.get_inner())
-                        }
-                        _ => continue,
-                    },
-                    PcieDevice::MultiFunc(mfd) => {
-                        match mfd.functions.first().and_then(|f| {
-                            if let PcieFunction::Endpoint(ep) = f {
-                                Some((ep, mfd.number.get_inner(), ep.number.get_inner()))
-                            } else {
-                                None
-                            }
-                        }) {
-                            Some(ep) => ep,
-                            None => continue,
-                        }
-                    }
-                    _ => continue,
+        for (bus, ep, device, function) in group.endpoints() {
+            let requester_id =
+                ((bus.number as u32) << 8) | ((device as u32) << 3) | function as u32;
+            let (class, subclass, prog_if) =
+                (ep.identifier.class_code, ep.identifier.subclass, ep.identifier.prog_if);
+            if (class, subclass, prog_if) != (0x01, 0x08, 0x02) {
+                continue;
+            }
+            let Some(cfg) = ep.config() else {
+                continue;
+            };
+            let (phys_base, legacy_irq) = {
+                let header = cfg.as_ptr().cast::<CfgEndpointHeader>();
+                let bar0 = unsafe { CfgEndpointHeader::bar_at(header, 0) } as u64;
+                let bar0_phys = if bar0 & 0x4 != 0 {
+                    let bar1 = unsafe { CfgEndpointHeader::bar_at(header, 1) } as u64;
+                    (bar0 & 0xffff_fff0) | ((bar1 & 0xffff_ffff) << 32)
+                } else {
+                    bar0 & 0xffff_fff0
                 };
-                let requester_id =
-                    ((bus.number as u32) << 8) | ((device as u32) << 3) | function as u32;
-                let (class, subclass, prog_if) =
-                    (ep.identifier.class_code, ep.identifier.subclass, ep.identifier.prog_if);
-                if (class, subclass, prog_if) != (0x01, 0x08, 0x02) {
-                    continue;
-                }
-                let Some(cfg) = ep.config() else {
-                    continue;
-                };
-                let (phys_base, legacy_irq) = {
-                    let header = cfg.as_ptr().cast::<CfgEndpointHeader>();
-                    let bar0 = unsafe { CfgEndpointHeader::bar_at(header, 0) } as u64;
-                    let bar0_phys = if bar0 & 0x4 != 0 {
-                        let bar1 = unsafe { CfgEndpointHeader::bar_at(header, 1) } as u64;
-                        (bar0 & 0xffff_fff0) | ((bar1 & 0xffff_ffff) << 32)
-                    } else {
-                        bar0 & 0xffff_fff0
-                    };
-                    (bar0_phys, unsafe { CfgEndpointHeader::interrupt_line_at(header) } as u32)
-                };
-                if phys_base != 0 {
-                    // Only program MSI-X when the kernel's MSI mechanism (the
-                    // GIC ITS/v2m on AArch64, the LAPIC on x86_64) is actually
-                    // available.
-                    if crate::device::msi_available()
+                (bar0_phys, unsafe { CfgEndpointHeader::interrupt_line_at(header) } as u32)
+            };
+            if phys_base != 0 {
+                // Only program MSI-X when the kernel's MSI mechanism (the
+                // GIC ITS/v2m on AArch64, the LAPIC on x86_64) is actually
+                // available.
+                if crate::device::msi_available()
                         && let Some(message) = crate::device::allocate_msi(requester_id)
                         && crate::device_management::drivers::busses::pci_express::ecam::capabilities::standard::msix::program_vector0(
                             cfg.as_ptr(),
@@ -968,10 +935,8 @@ pub fn lookup_first_nvme(topology: &PcieTopology) -> Option<(u64, u32, u32, Opti
                                 Some(message.address),
                             ));
                         }
-                    return Some((phys_base, legacy_irq, requester_id, None));
-                }
+                return Some((phys_base, legacy_irq, requester_id, None));
             }
-            push_bridge_buses(&bus.devices, &mut stack);
         }
     }
     None
@@ -982,59 +947,32 @@ pub fn lookup_first_nvme(topology: &PcieTopology) -> Option<(u64, u32, u32, Opti
 /// driver, so no MSI/MSI-X vector is configured here.
 pub fn lookup_first_ahci(topology: &PcieTopology) -> Option<(u64, u32, u32, Option<u64>)> {
     for group in &topology.segments {
-        let mut stack = alloc::vec![&*group.root_bus];
-        while let Some(bus) = stack.pop() {
-            for dev in &bus.devices {
-                let functions: alloc::vec::Vec<(&PcieEndpoint, u8, u8)> = match dev {
-                    PcieDevice::SingleFunc(sfd) => {
-                        let mut v = alloc::vec::Vec::new();
-                        if let PcieFunction::Endpoint(ep) = &sfd.function {
-                            v.push((ep.as_ref(), sfd.number.get_inner(), ep.number.get_inner()));
-                        }
-                        v
-                    }
-                    PcieDevice::MultiFunc(mfd) => mfd
-                        .functions
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(func, function)| match function {
-                            PcieFunction::Endpoint(ep) => {
-                                Some((ep.as_ref(), mfd.number.get_inner(), func as u8))
-                            }
-                            _ => None,
-                        })
-                        .collect(),
-                    _ => alloc::vec::Vec::new(),
-                };
-                for (ep, device, function) in functions {
-                    let requester_id =
-                        ((bus.number as u32) << 8) | ((device as u32) << 3) | function as u32;
-                    if (ep.identifier.class_code, ep.identifier.subclass, ep.identifier.prog_if)
-                        != (0x01, 0x06, 0x01)
-                    {
-                        continue;
-                    }
-                    let Some(cfg) = ep.config() else {
-                        continue;
-                    };
-                    let header = cfg.as_ptr().cast::<CfgEndpointHeader>();
-                    // The HBA register block (ABAR) is memory BAR 5.
-                    let bar5 = unsafe { CfgEndpointHeader::bar_at(header, 5) } as u64;
-                    if bar5 & 0x4 != 0 {
-                        // A 64-bit BAR cannot start in the last BAR slot:
-                        // there is no BAR6 to hold its upper half. Treat the
-                        // firmware descriptor as malformed instead of reading
-                        // past the BAR array.
-                        continue;
-                    }
-                    let abar = bar5 & 0xffff_fff0;
-                    let legacy_irq = unsafe { CfgEndpointHeader::interrupt_line_at(header) } as u32;
-                    if abar != 0 {
-                        return Some((abar, legacy_irq, requester_id, None));
-                    }
-                }
+        for (bus, ep, device, function) in group.endpoints() {
+            let requester_id =
+                ((bus.number as u32) << 8) | ((device as u32) << 3) | function as u32;
+            if (ep.identifier.class_code, ep.identifier.subclass, ep.identifier.prog_if)
+                != (0x01, 0x06, 0x01)
+            {
+                continue;
             }
-            push_bridge_buses(&bus.devices, &mut stack);
+            let Some(cfg) = ep.config() else {
+                continue;
+            };
+            let header = cfg.as_ptr().cast::<CfgEndpointHeader>();
+            // The HBA register block (ABAR) is memory BAR 5.
+            let bar5 = unsafe { CfgEndpointHeader::bar_at(header, 5) } as u64;
+            if bar5 & 0x4 != 0 {
+                // A 64-bit BAR cannot start in the last BAR slot:
+                // there is no BAR6 to hold its upper half. Treat the
+                // firmware descriptor as malformed instead of reading
+                // past the BAR array.
+                continue;
+            }
+            let abar = bar5 & 0xffff_fff0;
+            let legacy_irq = unsafe { CfgEndpointHeader::interrupt_line_at(header) } as u32;
+            if abar != 0 {
+                return Some((abar, legacy_irq, requester_id, None));
+            }
         }
     }
     None
@@ -1045,102 +983,71 @@ pub fn lookup_first_ahci(topology: &PcieTopology) -> Option<(u64, u32, u32, Opti
 /// used ring, so no MSI/MSI-X vector is configured.
 pub fn lookup_first_virtio_blk(topology: &PcieTopology) -> Option<(u64, u32, u32, Option<u64>)> {
     for group in &topology.segments {
-        let mut stack = alloc::vec![&*group.root_bus];
-        while let Some(bus) = stack.pop() {
-            for dev in &bus.devices {
-                let functions: alloc::vec::Vec<(&PcieEndpoint, u8, u8)> = match dev {
-                    PcieDevice::SingleFunc(sfd) => {
-                        let mut v = alloc::vec::Vec::new();
-                        if let PcieFunction::Endpoint(ep) = &sfd.function {
-                            v.push((ep.as_ref(), sfd.number.get_inner(), ep.number.get_inner()));
-                        }
-                        v
-                    }
-                    PcieDevice::MultiFunc(mfd) => mfd
-                        .functions
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(func, function)| match function {
-                            PcieFunction::Endpoint(ep) => {
-                                Some((ep.as_ref(), mfd.number.get_inner(), func as u8))
-                            }
-                            _ => None,
-                        })
-                        .collect(),
-                    _ => alloc::vec::Vec::new(),
-                };
-                for (ep, device, function) in functions {
-                    if ep.identifier.vendor_id != 0x1af4 {
-                        continue;
-                    }
-                    if (ep.identifier.class_code, ep.identifier.subclass) != (0x01, 0x00) {
-                        continue;
-                    }
-                    let requester_id =
-                        ((bus.number as u32) << 8) | ((device as u32) << 3) | function as u32;
-                    let Some(cfg) = ep.config() else {
-                        continue;
-                    };
-                    let header = cfg.as_ptr().cast::<CfgEndpointHeader>();
-                    // Locate the modern transport BAR via the common-config
-                    // vendor capability (type 1).
-                    let cfg_bytes = cfg.as_ptr().cast::<u8>();
-                    let mut capability =
-                        unsafe { CfgEndpointHeader::capabilities_offset_at(header) }
-                            .map(|offset| offset as usize)
-                            .unwrap_or(0);
-                    let mut modern_bar = None;
-                    for _ in 0..48 {
-                        if capability < 0x40 || capability + 16 > 0x100 {
-                            break;
-                        }
-                        let id = unsafe { core::ptr::read_volatile(cfg_bytes.add(capability)) };
-                        let next =
-                            unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 1)) }
-                                as usize;
-                        let len = unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 2)) }
-                            as usize;
-                        let cfg_type =
-                            unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 3)) };
-                        if id == 0x09 && len >= 16 && cfg_type == 1 {
-                            modern_bar = Some(unsafe {
-                                core::ptr::read_volatile(cfg_bytes.add(capability + 4))
-                            });
-                        }
-                        if next == 0 || next == capability {
-                            break;
-                        }
-                        capability = next;
-                    }
-                    let Some(bar_index) = modern_bar else {
-                        continue;
-                    };
-                    let bar_index = bar_index as usize;
-                    if bar_index >= 6 {
-                        continue;
-                    }
-                    let bar = unsafe { CfgEndpointHeader::bar_at(header, bar_index) } as u64;
-                    if bar & 1 != 0 {
-                        continue;
-                    }
-                    let phys_base = if bar & 0x4 != 0 {
-                        if bar_index + 1 >= 6 {
-                            continue;
-                        }
-                        (bar & 0xffff_fff0)
-                            | ((unsafe { CfgEndpointHeader::bar_at(header, bar_index + 1) } as u64
-                                & 0xffff_ffff)
-                                << 32)
-                    } else {
-                        bar & 0xffff_fff0
-                    };
-                    let legacy_irq = unsafe { CfgEndpointHeader::interrupt_line_at(header) } as u32;
-                    if phys_base != 0 {
-                        return Some((phys_base, legacy_irq, requester_id, None));
-                    }
-                }
+        for (bus, ep, device, function) in group.endpoints() {
+            if ep.identifier.vendor_id != 0x1af4 {
+                continue;
             }
-            push_bridge_buses(&bus.devices, &mut stack);
+            if (ep.identifier.class_code, ep.identifier.subclass) != (0x01, 0x00) {
+                continue;
+            }
+            let requester_id =
+                ((bus.number as u32) << 8) | ((device as u32) << 3) | function as u32;
+            let Some(cfg) = ep.config() else {
+                continue;
+            };
+            let header = cfg.as_ptr().cast::<CfgEndpointHeader>();
+            // Locate the modern transport BAR via the common-config
+            // vendor capability (type 1).
+            let cfg_bytes = cfg.as_ptr().cast::<u8>();
+            let mut capability = unsafe { CfgEndpointHeader::capabilities_offset_at(header) }
+                .map(|offset| offset as usize)
+                .unwrap_or(0);
+            let mut modern_bar = None;
+            for _ in 0..48 {
+                if capability < 0x40 || capability + 16 > 0x100 {
+                    break;
+                }
+                let id = unsafe { core::ptr::read_volatile(cfg_bytes.add(capability)) };
+                let next =
+                    unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 1)) } as usize;
+                let len =
+                    unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 2)) } as usize;
+                let cfg_type = unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 3)) };
+                if id == 0x09 && len >= 16 && cfg_type == 1 {
+                    modern_bar =
+                        Some(unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 4)) });
+                }
+                if next == 0 || next == capability {
+                    break;
+                }
+                capability = next;
+            }
+            let Some(bar_index) = modern_bar else {
+                continue;
+            };
+            let bar_index = bar_index as usize;
+            if bar_index >= 6 {
+                continue;
+            }
+            let bar = unsafe { CfgEndpointHeader::bar_at(header, bar_index) } as u64;
+            if bar & 1 != 0 {
+                continue;
+            }
+            let phys_base = if bar & 0x4 != 0 {
+                if bar_index + 1 >= 6 {
+                    continue;
+                }
+                (bar & 0xffff_fff0)
+                    | ((unsafe { CfgEndpointHeader::bar_at(header, bar_index + 1) } as u64
+                        & 0xffff_ffff)
+                        << 32)
+            } else {
+                bar & 0xffff_fff0
+            };
+            let legacy_irq = unsafe { CfgEndpointHeader::interrupt_line_at(header) } as u32;
+            if phys_base != 0 {
+                return Some((phys_base, legacy_irq, requester_id, None));
+            }
         }
     }
     None
@@ -1151,105 +1058,76 @@ pub fn lookup_first_virtio_blk(topology: &PcieTopology) -> Option<(u64, u32, u32
 /// MSI/MSI-X vector is configured.
 pub fn lookup_first_virtio_rng(topology: &PcieTopology) -> Option<(u64, u32, u32, Option<u64>)> {
     for group in &topology.segments {
-        let mut stack = alloc::vec![&*group.root_bus];
-        while let Some(bus) = stack.pop() {
-            for dev in &bus.devices {
-                let functions: alloc::vec::Vec<(&PcieEndpoint, u8, u8)> = match dev {
-                    PcieDevice::SingleFunc(single) => match &single.function {
-                        PcieFunction::Endpoint(endpoint) => alloc::vec![(
-                            endpoint.as_ref(),
-                            single.number.get_inner(),
-                            endpoint.number.get_inner()
-                        ),],
-                        _ => alloc::vec::Vec::new(),
-                    },
-                    PcieDevice::MultiFunc(multi) => multi
-                        .functions
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(function, entry)| match entry {
-                            PcieFunction::Endpoint(endpoint) => {
-                                Some((endpoint.as_ref(), multi.number.get_inner(), function as u8))
-                            }
-                            _ => None,
-                        })
-                        .collect(),
-                    _ => alloc::vec::Vec::new(),
-                };
-                for (endpoint, device, function) in functions {
-                    if endpoint.identifier.vendor_id != 0x1af4
-                        || !matches!(endpoint.identifier.device_id, 0x1005 | 0x1044)
-                    {
-                        continue;
-                    }
-                    let requester_id =
-                        ((bus.number as u32) << 8) | ((device as u32) << 3) | function as u32;
-                    let Some(cfg) = endpoint.config() else {
-                        continue;
-                    };
-                    let header = cfg.as_ptr().cast::<CfgEndpointHeader>();
-                    let cfg_bytes = cfg.as_ptr().cast::<u8>();
-                    let mut capability =
-                        unsafe { CfgEndpointHeader::capabilities_offset_at(header) }
-                            .map(|offset| offset as usize)
-                            .unwrap_or(0);
-                    let mut modern_bar = None;
-                    for _ in 0..48 {
-                        if capability < 0x40 || capability + 16 > 0x100 {
-                            break;
-                        }
-                        let id = unsafe { core::ptr::read_volatile(cfg_bytes.add(capability)) };
-                        let next =
-                            unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 1)) }
-                                as usize;
-                        let len = unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 2)) }
-                            as usize;
-                        let cfg_type =
-                            unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 3)) };
-                        if id == 0x09 && len >= 16 && cfg_type == 1 {
-                            modern_bar = Some(unsafe {
-                                core::ptr::read_volatile(cfg_bytes.add(capability + 4))
-                            });
-                        }
-                        if next == 0 || next == capability {
-                            break;
-                        }
-                        capability = next;
-                    }
-                    let Some(bar_index) = modern_bar else {
-                        continue;
-                    };
-                    let bar_index = bar_index as usize;
-                    if bar_index >= 6 {
-                        continue;
-                    }
-                    let bar = unsafe { CfgEndpointHeader::bar_at(header, bar_index) } as u64;
-                    if bar & 1 != 0 {
-                        continue;
-                    }
-                    let physical = if bar & 0x4 != 0 {
-                        if bar_index + 1 >= 6 {
-                            continue;
-                        }
-                        (bar & 0xffff_fff0)
-                            | ((unsafe { CfgEndpointHeader::bar_at(header, bar_index + 1) } as u64
-                                & 0xffff_ffff)
-                                << 32)
-                    } else {
-                        bar & 0xffff_fff0
-                    };
-                    if physical != 0 {
-                        return Some((
-                            physical,
-                            unsafe { CfgEndpointHeader::interrupt_line_at(header) } as u32,
-                            requester_id,
-                            None,
-                        ));
-                    }
-                }
+        for (bus, endpoint, device, function) in group.endpoints() {
+            if endpoint.identifier.vendor_id != 0x1af4
+                || !matches!(endpoint.identifier.device_id, 0x1005 | 0x1044)
+            {
+                continue;
             }
-            push_bridge_buses(&bus.devices, &mut stack);
+            let requester_id =
+                ((bus.number as u32) << 8) | ((device as u32) << 3) | function as u32;
+            let Some(cfg) = endpoint.config() else {
+                continue;
+            };
+            let header = cfg.as_ptr().cast::<CfgEndpointHeader>();
+            let cfg_bytes = cfg.as_ptr().cast::<u8>();
+            let mut capability = unsafe { CfgEndpointHeader::capabilities_offset_at(header) }
+                .map(|offset| offset as usize)
+                .unwrap_or(0);
+            let mut modern_bar = None;
+            for _ in 0..48 {
+                if capability < 0x40 || capability + 16 > 0x100 {
+                    break;
+                }
+                let id = unsafe { core::ptr::read_volatile(cfg_bytes.add(capability)) };
+                let next =
+                    unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 1)) } as usize;
+                let len =
+                    unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 2)) } as usize;
+                let cfg_type = unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 3)) };
+                if id == 0x09 && len >= 16 && cfg_type == 1 {
+                    modern_bar =
+                        Some(unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 4)) });
+                }
+                if next == 0 || next == capability {
+                    break;
+                }
+                capability = next;
+            }
+            let Some(bar_index) = modern_bar else {
+                continue;
+            };
+            let bar_index = bar_index as usize;
+            if bar_index >= 6 {
+                continue;
+            }
+            let bar = unsafe { CfgEndpointHeader::bar_at(header, bar_index) } as u64;
+            if bar & 1 != 0 {
+                continue;
+            }
+            let physical = if bar & 0x4 != 0 {
+                if bar_index + 1 >= 6 {
+                    continue;
+                }
+                (bar & 0xffff_fff0)
+                    | ((unsafe { CfgEndpointHeader::bar_at(header, bar_index + 1) } as u64
+                        & 0xffff_ffff)
+                        << 32)
+            } else {
+                bar & 0xffff_fff0
+            };
+            if physical != 0 {
+                return Some((
+                    physical,
+                    unsafe { CfgEndpointHeader::interrupt_line_at(header) } as u32,
+                    requester_id,
+                    None,
+                ));
+            }
         }
     }
     None
 }
+
+#[cfg(any(test, feature = "kernel_tests"))]
+mod tests;

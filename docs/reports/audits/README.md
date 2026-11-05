@@ -17,6 +17,8 @@ report is useful for a significant investigation or qualification checkpoint.
 
 ## Reports
 
+- [Selective upstream ports: address map and bounded PCI boot](2026-11-05-selective-upstream-ports.md) — Preserved arena/reset contracts, checked MCFG preparation and flat bounded traversal; combined host and three-target qualification.
+
 - [Framebuffer bounds and ARM deadline capture — Q3](2026-11-04-framebuffer-bounds.md) — Checked C allocation/geometry bounds and concrete boot-factory dispositions; preserves the ARM second-probe deadline separately from its controlled repeat.
 
 - [Boot allocation edges — Q3 sub-batch](2026-11-04-boot-allocation-edges.md) — Early shared CPU-count admission, opaque C-console retention and corrected first-allocation failure cleanup; full host, ARM display/Intel/AMD qualification, preserved failed probes and explicit remaining Q3 scope.

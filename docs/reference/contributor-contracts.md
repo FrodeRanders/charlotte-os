@@ -158,6 +158,12 @@ the corrected RPC polling paths, and the remaining notification gaps.
   layout, checked row/address arithmetic and the complete C allocation prefix
   before drawing; preserve the reviewed framebuffer-span/requested-byte limits.
   A cardinality bound does not qualify lazy runtime or IRQ first use.
+- Prepare complete bounded MCFG metadata before mapping ECAM. Keep bus-zero
+  addressing, advertised ranges, one fixed visited/worklist per window and the
+  global device/function quotas. Preserve stable endpoint owners for reset
+  claims; private metadata rejection grants no hardware teardown or replay.
+  Review the requested-byte formula, page tables and Q4 headroom when increasing
+  limits. See [boot allocation boundaries](boot-allocation-boundaries.md).
 
 - Keep mandatory startup validation and operational checks independent of
   `kernel_tests`. Native fixture modules, adapters, fault injection and synthetic
@@ -589,6 +595,12 @@ the corrected RPC polling paths, and the remaining notification gaps.
   never recycle it.
 
 ## CPU backing and page tables
+
+- Validate software address-region tiling before publication. Use checked raw
+  exclusive ends and offset containment, preserving ARM TTBR1/HHDM addresses.
+  A virtual arena extent is not physical allocation admission or support for a
+  new paging mode. Keep active arena bases stable unless explicitly migrating
+  their consumers.
 
 - Demand-backed heap frames use the embedded address-space `heap_account`.
   Retain the exact generation and table guard across admission/mapping, prepare

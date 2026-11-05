@@ -8,106 +8,10 @@ use crate::{
     klib::size::*,
 };
 
-/// The rest of the kernel only sees the correct linear address map for the system it is running on
-pub static LA_MAP: LazyLock<&'static LinearAddressMap> = LazyLock::new(|| match *VADDR_SIG_BITS {
-    39 => &LA_MAP_39BIT,
-    48 => &LA_MAP_48BIT,
-    57 => &LA_MAP_57BIT,
-    _ => panic!("Unsupported virtual address size"),
-});
-
-static LA_MAP_39BIT: LazyLock<LinearAddressMap> = LazyLock::new(|| LinearAddressMap {
-    null_page: LinearMemoryRegion {
-        base: VAddr::from(0x0000_0000_0000_0000usize),
-        length: kibibytes(4),
-    },
-    application: LinearMemoryRegion {
-        base: VAddr::from(0x0000000000001000usize),
-        length: gibibytes(512),
-    },
-    direct_mapping: LinearMemoryRegion {
-        base: VAddr::from(0xffffff8000000000usize),
-        length: gibibytes(512),
-    },
-    kernel_stack_arena: LinearMemoryRegion {
-        base: VAddr::from(0xffffff0000000000usize),
-        length: gibibytes(4),
-    },
-    kernel_mmio: LinearMemoryRegion {
-        base: VAddr::from(0xffffff0800000000usize),
-        length: gibibytes(4),
-    },
-    kernel_allocator_arena: LinearMemoryRegion {
-        base: VAddr::from(0xffffff1000000000usize),
-        length: gibibytes(988),
-    },
-    kernel_image: LinearMemoryRegion {
-        base: VAddr::from(0xffffffff80000000usize),
-        length: gibibytes(2),
-    },
-});
-
-static LA_MAP_48BIT: LazyLock<LinearAddressMap> = LazyLock::new(|| LinearAddressMap {
-    null_page: LinearMemoryRegion {
-        base: VAddr::from(0x0000_0000_0000_0000usize),
-        length: kibibytes(4),
-    },
-    application: LinearMemoryRegion {
-        base: VAddr::from(0x0000000000001000usize),
-        length: tebibytes(256),
-    },
-    direct_mapping: LinearMemoryRegion {
-        base: VAddr::from(0xffffff8000000000usize),
-        length: tebibytes(256),
-    },
-    kernel_stack_arena: LinearMemoryRegion {
-        base: VAddr::from(0xffff810000000000usize),
-        length: tebibytes(1),
-    },
-    kernel_mmio: LinearMemoryRegion {
-        base: VAddr::from(0xffff820000000000usize),
-        length: tebibytes(2),
-    },
-    kernel_allocator_arena: LinearMemoryRegion {
-        base: VAddr::from(0xffff840000000000usize),
-        length: tebibytes(506),
-    },
-    kernel_image: LinearMemoryRegion {
-        base: VAddr::from(0xffffffff80000000usize),
-        length: gibibytes(2),
-    },
-});
-
-static LA_MAP_57BIT: LazyLock<LinearAddressMap> = LazyLock::new(|| LinearAddressMap {
-    null_page: LinearMemoryRegion {
-        base: VAddr::from(0x0000_0000_0000_0000usize),
-        length: kibibytes(4),
-    },
-    application: LinearMemoryRegion {
-        base: VAddr::from(0x0000000000001000usize),
-        length: pebibytes(128),
-    },
-    direct_mapping: LinearMemoryRegion {
-        base: VAddr::from(0xffffff8000000000usize),
-        length: pebibytes(128),
-    },
-    kernel_stack_arena: LinearMemoryRegion {
-        base: VAddr::from(0xff80000000000000usize),
-        length: pebibytes(1),
-    },
-    kernel_mmio: LinearMemoryRegion {
-        base: VAddr::from(0xff88000000000000usize),
-        length: pebibytes(1),
-    },
-    kernel_allocator_arena: LinearMemoryRegion {
-        base: VAddr::from(0xff90000000000000usize),
-        length: pebibytes(253),
-    },
-    kernel_image: LinearMemoryRegion {
-        base: VAddr::from(0xffffffff80000000usize),
-        length: gibibytes(2),
-    },
-});
+// Range invariants adapted from upstream CharlotteOS aec5f68df26e5eeb932f6431a477260d354468fd.
+// Keep this fork's active stack/MMIO/heap bases and ARM's raw TTBR1 addresses.
+pub static LA_MAP: LazyLock<LinearAddressMap> =
+    LazyLock::new(|| LinearAddressMap::for_width(*VADDR_SIG_BITS, cfg!(target_arch = "aarch64")));
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegionType {
@@ -131,6 +35,67 @@ pub struct LinearAddressMap {
 }
 
 impl LinearAddressMap {
+    fn for_width(bits: u8, aarch64: bool) -> Self {
+        let (stack, mmio, heap) = match bits {
+            39 => (0xffff_ffe0_0000_0000usize, 0xffff_ffe1_0000_0000, 0xffff_ffe2_0000_0000),
+            48 => (0xffff_8100_0000_0000usize, 0xffff_8200_0000_0000, 0xffff_8400_0000_0000),
+            57 => (0xff80_0000_0000_0000usize, 0xff88_0000_0000_0000, 0xff90_0000_0000_0000),
+            _ => panic!("Unsupported virtual address size"),
+        };
+        let half = 1usize << (bits - 1);
+        // The shared VAddr API uses a canonical lower-half software subset.
+        // ARM's TTBR1 can additionally use bit-(bits-1)-clear upper addresses,
+        // including the bootloader's HHDM base. Never canonicalize those away.
+        let upper = usize::MAX
+            - if aarch64 {
+                (1usize << bits) - 1
+            } else {
+                half - 1
+            };
+        let image = usize::MAX - gibibytes(2) + 1;
+        let region = |base, length| LinearMemoryRegion {
+            // All bases are checked below before the map is published.
+            base: unsafe { VAddr::from_raw_unchecked(base) },
+            length,
+        };
+        let map = Self {
+            null_page: region(0, kibibytes(4)),
+            application: region(kibibytes(4), half - kibibytes(4)),
+            direct_mapping: region(upper, stack - upper),
+            kernel_stack_arena: region(stack, mmio - stack),
+            kernel_mmio: region(mmio, heap - mmio),
+            kernel_allocator_arena: region(heap, image - heap),
+            kernel_image: region(image, gibibytes(2)),
+        };
+        map.validate(half as u128, upper as u128);
+        map
+    }
+
+    fn validate(&self, half: u128, upper: u128) {
+        let tile = |regions: &[&LinearMemoryRegion], start: u128, end: u128| {
+            let mut cursor = start;
+            for region in regions {
+                let base: usize = region.base.into();
+                assert_eq!(base as u128, cursor, "misplaced software address region");
+                assert!(region.length > 0, "empty software address region");
+                cursor += region.length as u128;
+            }
+            assert_eq!(cursor, end, "software address regions have a gap or overlap");
+        };
+        tile(&[&self.null_page, &self.application], 0, half);
+        tile(
+            &[
+                &self.direct_mapping,
+                &self.kernel_stack_arena,
+                &self.kernel_mmio,
+                &self.kernel_allocator_arena,
+                &self.kernel_image,
+            ],
+            upper,
+            1u128 << 64,
+        );
+    }
+
     pub fn region_type(&self, addr: VAddr) -> RegionType {
         if self.null_page.contains(addr) {
             RegionType::NullPage
@@ -147,10 +112,7 @@ impl LinearAddressMap {
         } else if self.kernel_image.contains(addr) {
             RegionType::KernelImage
         } else {
-            unreachable!(
-                "This should be unreachable because the entire address space is tightly mapped \
-                 and the VAddr type guarantees a valid address."
-            );
+            unreachable!("Address lies outside the configured software regions.");
         }
     }
 
@@ -174,12 +136,21 @@ pub struct LinearMemoryRegion {
 
 impl LinearMemoryRegion {
     pub fn contains(&self, addr: VAddr) -> bool {
-        addr >= self.base && addr < (self.base + self.length)
+        let base: usize = self.base.into();
+        let address: usize = addr.into();
+        address.checked_sub(base).is_some_and(|offset| offset < self.length)
     }
 }
 
 impl From<LinearMemoryRegion> for (VAddr, VAddr) {
     fn from(val: LinearMemoryRegion) -> Self {
-        (val.base, val.base + val.length)
+        let base: usize = val.base.into();
+        let end = base.checked_add(val.length).expect("exclusive region end is not representable");
+        // Exclusive lower-half endpoints need not themselves be canonical.
+        (val.base, unsafe { VAddr::from_raw_unchecked(end) })
     }
 }
+
+#[cfg(test)]
+#[path = "address_map/tests.rs"]
+mod tests;

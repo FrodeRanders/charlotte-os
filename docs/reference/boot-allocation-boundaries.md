@@ -107,6 +107,60 @@ the framebuffer device passes 19/19. Full native display qualification remains
 open; this does not identify the overrun's exact phase or cause. See the
 [preserved comparison](../reports/audits/2026-11-04-framebuffer-bounds.md).
 
+## Address regions and PCI firmware topology
+
+The software address map validates contiguous, nonempty lower/upper regions
+before publication. Containment uses checked unsigned offsets; exclusive ends
+are raw, checked addresses rather than canonicalizing arithmetic. The 48-bit
+stack/MMIO/heap bases stay unchanged. ARM retains raw TTBR1/HHDM addresses;
+the shared lower software region ends at the sign-bit boundary. Model controls
+cover 39/48/57-bit layouts, but do not add native LA57 or device-tree support.
+Virtual extents neither reserve physical heap nor raise a runtime pool ceiling.
+
+Mandatory ACPI boot validates all MCFG tables before any ECAM mapping. Require
+complete 44-byte headers and 16-byte entries, matching declared length, checksum,
+zero reserved fields, ordered bus ranges and checked physical extents within
+the architecture mask. At most **32 windows** are accepted across all tables;
+same-segment bus overlap and overlapping advertised physical ECAM slices reject.
+A rejected table leaves the parser's prior private prefix unchanged. Firmware
+still supplies actual mapped table backing; this is not a provenance proof.
+
+ECAM bases remain bus-zero-relative, including nonzero starting buses. The
+mapper retains its full 256 MiB boot window and accepts 1 MiB-aligned bases,
+using 4 KiB leaves when 2 MiB leaves cannot encode the base. These are permanent
+shared-kernel mappings. Partial mapping or metadata failure stops mandatory boot;
+it does not unmap, replay or adopt a failed hardware prefix. Firmware resource
+reservation reconciliation remains outside this validation boundary.
+
+Each window has one fixed 256-entry bus worklist and visited set. Mark identities
+at discovery, including empty buses; ignore repeated and out-of-range bridges.
+A flat immutable bus collection replaces recursive ownership. Reserve its exact
+advertised bus capacity before mapping; each bus prepares at most 32 devices
+privately before one exact vector reservation. Separate global quotas cap
+accepted device slots and functions at **16,384 each**, including bridges.
+Endpoint Box and vector allocation are fallible; a rejected private metadata
+prefix drops its heap storage without hardware cleanup. Endpoint Boxes stay
+stable for reset-claim cells. Borrowed iterators replace allocating lookup stacks
+and cover all eight multifunction positions, keeping depth-first sibling order.
+The existing reset backend/claim/retirement scope is unchanged.
+
+These generous limits support many more functions than current test machines
+without complicated incremental boot admission. Their compile-time requested
+metadata bound is at most **16 MiB**, plus allocator overhead and page tables
+assigned to Q4. Raising a ceiling requires reviewing that formula, scan latency,
+page-table cost and aggregate headroom. The 32 full ECAM windows consume at most
+8 GiB of virtual MMIO space, not 8 GiB of heap. This boot-only producer has no
+runtime hotplug growth path.
+
+Host controls exercise range boundaries, malformed and overlapping tables,
+atomic rejection, exact quota exhaustion, all 256 buses and allocation-free
+preparation/worklists; restoring old containment fails. Native fixtures run the
+real builder on private RAM with cycles, out-of-range bridges, function seven,
+stable endpoint identity and rejected function prefixes. They do not inject
+allocator OOM or qualify a real 1 MiB-only-aligned ECAM platform. See the
+[selective-port checkpoint](../reports/audits/2026-11-05-selective-upstream-ports.md)
+for executed native profiles and artifact identities.
+
 ## Remaining review
 
 The current supported firmware path is ACPI. An ARM `devicetree`-only strict
@@ -117,15 +171,10 @@ as a Cargo feature does not establish a reachable FDT allocation producer or a
 supported boot exclusion. Complete discovery/power/IOMMU integration before
 claiming support; this boot sub-batch does not implement it.
 
-The next identified Q3 corrections are the runtime-reachable bootstrap storage
-above and bounded PCI/MCFG enumeration. PCI's depth-eight check does not prevent
-repeated visits/branch multiplication or enforce a segment's advertised bus
-range. MCFG's generic SDT validation permits lengths shorter than its additional
-eight-byte reserved header, before subtracting that header and allocating the
-segment vector. Require complete entry geometry and a reviewed segment bound
-before publication/mapping, and one bounded visited-bus identity set per segment
-before descending. Treat this as a discrete firmware/traversal batch; do not
-claim a bounded exclusion from depth alone.
+The next identified Q3 correction is explicit bootstrap construction and
+owning-LP initialization for the runtime-reachable storage above. The bounded
+MCFG/PCI boot producer now has the concrete assignment in this contract; it does
+not complete the remaining producer/dependency review.
 
 Other PCI/ACPI collections, launch encoders and dependency factories still need
 explicit trigger/bound/lifetime assignments. Compiled unused helpers need

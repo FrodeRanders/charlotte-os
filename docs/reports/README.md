@@ -20,6 +20,7 @@ execution records. For current knowledge and work, use:
 
 ## Investigations
 
+- [Upstream review before possible fork detachment](investigations/2026-11-05-upstream-review.md)
 - [Native OTLP export and CPU pressure accounting](investigations/2026-10-31-native-otlp.md)
 - [Minimal boot idle activity](investigations/2026-10-31-minimal-idle-profile.md)
 - [Kafka soak scratch-window exhaustion](investigations/2026-09-14-kafka-soak-scratch-window-exhaustion.md)
