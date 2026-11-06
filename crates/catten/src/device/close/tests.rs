@@ -25,7 +25,9 @@ pub(in crate::device) fn run() {
     registry::tests::begin_real();
     for category in 0..3 {
         let nodes_before = node_budget::snapshot();
-        let root = loader::create_user_address_space_handle();
+        let (root, principal) =
+            registry::tests::principal_root(b"device-close-success-principal", false);
+        let metadata_base = memory::kernel_buffers::test_metadata_used(principal);
         let cap = if category == 2 {
             grant_interrupt(root.id(), 225).unwrap()
         } else {
@@ -38,6 +40,8 @@ pub(in crate::device) fn run() {
             cap
         };
         let live_nodes = node_budget::snapshot();
+        let live_bytes = memory::kernel_buffers::test_metadata_used(principal);
+        assert!(live_bytes > metadata_base);
         assert_eq!(live_nodes.0[1], nodes_before.0[1] + 2);
         assert_eq!(live_nodes.1[1], nodes_before.1[1] + 2);
         let mut owner = PreparedClose::new(root.id(), cap).unwrap();
@@ -63,12 +67,14 @@ pub(in crate::device) fn run() {
             CloseProgress::Complete => panic!("device close root completed before metadata"),
         };
         owner.clean().unwrap();
+        assert_eq!(memory::kernel_buffers::test_metadata_used(principal), live_bytes);
         assert_eq!(node_budget::snapshot(), live_nodes);
         assert_eq!(used(root.id()), 1, "confirmed cleanup alone cannot refund metadata");
         owner.finish().unwrap();
         assert_eq!(used(root.id()), 0);
         assert!(matches!(closing.poll().unwrap(), CloseProgress::Complete));
         assert_eq!(node_budget::snapshot(), nodes_before);
+        assert_eq!(memory::kernel_buffers::test_metadata_used(principal), 0);
     }
 
     let root = loader::create_user_address_space_handle();
@@ -87,7 +93,8 @@ pub(in crate::device) fn run() {
 }
 
 fn rejected_or_abandoned(failure: usize) {
-    let root = loader::create_user_address_space_handle();
+    let (root, principal) =
+        registry::tests::principal_root(b"device-close-retained-principal", false);
     let cap = if failure == 4 {
         grant_interrupt(root.id(), 225).unwrap()
     } else {
@@ -95,6 +102,7 @@ fn rejected_or_abandoned(failure: usize) {
         mmio_map_any(root.id(), cap, true).unwrap();
         cap
     };
+    let live_bytes = memory::kernel_buffers::test_metadata_used(principal);
     let mut owner = PreparedClose::new(root.id(), cap).unwrap();
     owner.claim().unwrap();
     let base = match owner.0.object {
@@ -135,9 +143,12 @@ fn rejected_or_abandoned(failure: usize) {
     assert_eq!(used(root.id()), 1);
     dma_tables::test_drop_under_guards(|| {
         let _devices = DEVICES.lock();
-        node_budget::with_locked(|| drop(owner));
+        node_budget::with_locked(|| {
+            memory::kernel_buffers::test_with_history_locked(|| drop(owner));
+        });
     });
     assert_eq!(used(root.id()), 1);
+    assert_eq!(memory::kernel_buffers::test_metadata_used(principal), live_bytes);
     assert_eq!(memory::current_address_space_handle(root.id()), Some(root));
     assert_eq!(
         memory::close_user_address_space_handle(root),

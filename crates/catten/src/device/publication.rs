@@ -8,7 +8,7 @@ pub(super) struct GrantAdmission {
 }
 pub(super) struct Resources {
     owner: AddressSpaceId,
-    backing_platform: bool,
+    backing: crate::memory::kernel_buffers::CapturedStorage,
     pub(super) address_space: Option<AddressSpaceOperation>,
     pub(super) reservation: Option<crate::capability::Reservation>,
     storage: Option<registry::PreparedStorage>,
@@ -16,7 +16,7 @@ pub(super) struct Resources {
 }
 impl GrantAdmission {
     pub(super) fn backing_platform(&self) -> bool {
-        self.resources.backing_platform
+        self.resources.backing.platform()
     }
 
     pub(super) fn platform(&self) -> bool {
@@ -28,7 +28,7 @@ impl GrantAdmission {
     }
 
     pub(super) fn new(owner: AddressSpaceId) -> Result<Self, DeviceError> {
-        let (captured, backing_platform) = crate::memory::capture_address_space_storage(owner);
+        let (captured, backing) = crate::memory::capture_address_space_sponsor(owner);
         let address_space = if owner == crate::memory::KERNEL_ASID {
             None
         } else {
@@ -38,14 +38,14 @@ impl GrantAdmission {
         let mut admission = Self {
             resources: ManuallyDrop::new(Resources {
                 owner,
-                backing_platform,
+                backing,
                 address_space,
                 reservation: None,
                 storage: None,
                 authority: None,
             }),
         };
-        match registry::PreparedStorage::try_new(backing_platform) {
+        match registry::PreparedStorage::try_new(backing) {
             Ok(storage) => admission.resources.storage = Some(storage),
             Err(error) => {
                 admission.finish()?;

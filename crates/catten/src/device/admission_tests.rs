@@ -157,7 +157,7 @@ fn prepare_fixture(
     has_domain: bool,
     fails: bool,
 ) -> (crate::memory::AddressSpaceHandle, PreparedDmaDomain) {
-    let root = crate::service::loader::create_user_address_space_handle();
+    let (root, _) = registry::tests::principal_root(b"device-grant-fixture-principal", false);
     let mut prepared = PreparedDmaDomain::new(
         root.id(),
         if fails {
@@ -195,7 +195,11 @@ pub(super) fn drop_grant_under_guards(prepared: PreparedDmaDomain) {
             let physical = crate::memory::PHYSICAL_FRAME_ALLOCATOR.lock();
             let _heap = crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
             let free = physical.free_frames();
-            node_budget::with_locked(|| backend_registry::budget::with_locked(|| drop(prepared)));
+            node_budget::with_locked(|| {
+                backend_registry::budget::with_locked(|| {
+                    crate::memory::kernel_buffers::test_with_history_locked(|| drop(prepared));
+                })
+            });
             assert_eq!(physical.free_frames(), free);
             assert_eq!(DESTROYS.load(Ordering::Relaxed), before);
         });
@@ -203,6 +207,7 @@ pub(super) fn drop_grant_under_guards(prepared: PreparedDmaDomain) {
 }
 
 fn test_grant_abandonment() {
+    let principal = charlotte_launch::artifact_principal_id(b"device-grant-fixture-principal");
     // Fake backend obligations: these do not install a hardware domain. The
     // real root and capability admission exercise implicit field destruction.
     for has_domain in [false, true] {
@@ -221,7 +226,9 @@ fn test_grant_abandonment() {
             assert_eq!(prepared.resources.creation.id, Some(u64::MAX));
             assert_eq!(used(root.id()), 1);
         }
+        let bytes = crate::memory::kernel_buffers::test_metadata_used(principal);
         drop_grant_under_guards(prepared);
+        assert_eq!(crate::memory::kernel_buffers::test_metadata_used(principal), bytes);
         assert_retained_root(root);
     }
     let (root, mut prepared) = prepare_fixture(true, true);

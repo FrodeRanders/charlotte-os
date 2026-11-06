@@ -76,7 +76,7 @@ to the common heap plan must be recorded before accepting an exclusion.
 | `deferred_nodes` | Pending | Original accepted-operation sponsor through producer-LP disposal. |
 | `observer_backing` | Pending | Actual layout, private holder and final weak reference. |
 | `completion_nodes` | Pending | Payloads, CQ backing and detached backlog; distinguish logical limits. |
-| `device_nodes` | Pending | Original grant/capability sponsor through hardware uncertainty. |
+| `device_nodes` | Actual namespace and MMIO/IRQ/DMA payload-node layouts from captured grant principal | Backend/IOMMU storage, allocator excess and joint heap fit; hardware completion remains separate. |
 | `iommu_nodes` | Pending | Domain/unit nodes, quarantine, cache and ledger capacities. |
 | `principal_history` | Pending | Boot-lifetime records and duplicate candidates, including initial-record admission. |
 | `thread_metadata` | Context/retirement requested bytes and bundles | Allocator excess/control overhead and joint heap fit. |

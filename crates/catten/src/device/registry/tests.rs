@@ -181,3 +181,17 @@ pub(in crate::device) fn run() {
          passed"
     );
 }
+
+/// Trusted fixture constructor; signature verification has separate launch controls.
+pub(in crate::device) fn principal_root(
+    name: &[u8],
+    trusted: bool,
+) -> (crate::memory::AddressSpaceHandle, u64) {
+    let principal = charlotte_launch::artifact_principal_id(name);
+    let root = crate::memory::AddressSpace::try_new_principal_user(
+        trusted,
+        crate::memory::prepare_principal_backing(principal, trusted).unwrap(),
+    )
+    .unwrap();
+    (crate::memory::register_user_address_space(root).unwrap(), principal)
+}

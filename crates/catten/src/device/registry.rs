@@ -20,13 +20,16 @@ struct Storage {
 #[must_use]
 pub(super) struct PreparedStorage(ManuallyDrop<Storage>);
 impl PreparedStorage {
-    pub(super) fn try_new(platform: bool) -> Result<Self, DeviceError> {
+    pub(super) fn try_new(
+        storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
+    ) -> Result<Self, DeviceError> {
+        let storage = storage.into();
         // Both allocations precede local lifecycle/device/backend holds. A
         // second-node rejection destroys only empty first-node storage here.
         if test_fault!(tests::reject(1)) {
             return Err(DeviceError::ResourceLimit);
         }
-        let namespace = node_budget::prepare(platform).map_err(|_| DeviceError::ResourceLimit)?;
+        let namespace = node_budget::prepare(storage).map_err(|_| DeviceError::ResourceLimit)?;
         #[cfg(feature = "kernel_tests")]
         tests::boundary(false);
         if test_fault!(tests::reject(2)) {
@@ -35,7 +38,7 @@ impl PreparedStorage {
             drop(namespace);
             return Err(DeviceError::ResourceLimit);
         }
-        let capability = node_budget::prepare(platform).map_err(|_| DeviceError::ResourceLimit)?;
+        let capability = node_budget::prepare(storage).map_err(|_| DeviceError::ResourceLimit)?;
         #[cfg(feature = "kernel_tests")]
         tests::boundary(false);
         Ok(Self(ManuallyDrop::new(Storage {

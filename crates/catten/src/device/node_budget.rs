@@ -22,18 +22,23 @@ pub(super) const LIMIT: [u64; 2] = crate::resource_policy::POLICY.device_nodes.t
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(super) const ORDINARY: [u64; 2] = crate::resource_policy::POLICY.device_nodes.ordinary;
 
-pub(super) type Charge = admission::NodeCharge<DeviceNodes>;
+pub(super) type Charge =
+    admission::NodeCharge<DeviceNodes, crate::memory::kernel_buffers::MetadataSponsor>;
 
-pub(super) fn prepare<T>(platform: bool) -> Result<Prepared<T>, AllocError> {
-    prepare_with(platform, PreparedEntry::try_new_charged)
+pub(super) fn prepare<T>(
+    storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
+) -> Result<Prepared<T>, AllocError> {
+    prepare_with(storage, PreparedEntry::try_new_charged)
 }
 fn prepare_with<T>(
-    platform: bool,
+    storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
     allocate: impl FnOnce(Charge) -> Result<Prepared<T>, AllocError>,
 ) -> Result<Prepared<T>, AllocError> {
-    admission::prepare_node_with::<_, DeviceNodes>(
-        platform,
+    let storage = storage.into();
+    admission::prepare_node_with_sponsor::<_, DeviceNodes, _>(
+        storage.platform(),
         PreparedEntry::<T, Charge>::allocation_bytes(),
+        storage.metadata_sponsor(),
         allocate,
     )
 }

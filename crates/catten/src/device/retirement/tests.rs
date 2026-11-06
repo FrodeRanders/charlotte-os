@@ -46,7 +46,8 @@ pub(crate) fn run() {
 }
 
 fn successful_cleanup() {
-    let handle = loader::create_user_address_space_handle();
+    let (handle, principal) =
+        registry::tests::principal_root(b"device-namespace-success-principal", false);
     let cap = grant_mmio(handle.id(), 0x0900_0000, 2).unwrap();
     let base = mmio_map_any(handle.id(), cap, true).unwrap();
     assert_eq!(
@@ -124,6 +125,7 @@ fn successful_cleanup() {
     assert_eq!(reused, base);
     object::release_scratch(handle.id(), reused, 2).unwrap();
     assert!(matches!(closing.poll().unwrap(), CloseProgress::Complete));
+    assert_eq!(memory::kernel_buffers::test_metadata_used(principal), 0);
     let fresh = loader::create_user_address_space_handle();
     assert_eq!(fresh.id(), handle.id());
     assert_ne!(fresh, handle);
@@ -151,7 +153,7 @@ fn preparation_failure() {
     assert_eq!(memory::current_address_space_handle(handle.id()), Some(handle));
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Failure {
     Detach,
     Invalidate,
@@ -162,9 +164,16 @@ enum Failure {
 
 fn failed_cleanup(failure: Failure) {
     let before = backing_budget::test_used_pages(backing_budget::Kind::Heap);
-    let handle = loader::create_user_address_space_handle();
+    let (handle, principal) =
+        registry::tests::principal_root(b"device-namespace-retained-principal", false);
+    let principal_base = memory::kernel_buffers::test_metadata_used(principal);
+    let node_base = node_budget::snapshot().0[0];
     assert!(memory::commit_user_heap_page_handle(handle, charlotte_launch::HEAP_VADDR));
     let first = grant_mmio(handle.id(), 0x0900_0000, 1).unwrap();
+    let authority_bytes = memory::kernel_buffers::test_metadata_used(principal)
+        - principal_base
+        - (node_budget::snapshot().0[0] - node_base);
+    assert!(authority_bytes > 0);
     let cap = grant_mmio(handle.id(), 0x0900_0000, 2).unwrap();
     let base = mmio_map_any(handle.id(), cap, true).unwrap();
     let domain = grant_dma_domain_with_backend(
@@ -191,7 +200,9 @@ fn failed_cleanup(failure: Failure) {
         closing.start_cleanup_with_devices(|receipt| {
             unlocked();
             if failure == Failure::Abandon {
-                node_budget::with_locked(|| drop(receipt));
+                node_budget::with_locked(|| {
+                    memory::kernel_buffers::test_with_history_locked(|| drop(receipt));
+                });
                 return Err(DeviceError::UnmapFailed);
             }
             receipt.finish_with(
@@ -220,6 +231,17 @@ fn failed_cleanup(failure: Failure) {
             )
         }),
         Err(AddressSpaceCloseError::DeviceCleanupFailed)
+    );
+    let retained_nodes = node_budget::snapshot().0[0] - node_base;
+    let authorities = crate::capability::admission_tests::test_namespace_used(handle.id()) as u64;
+    let retained_bytes = memory::kernel_buffers::test_metadata_used(principal);
+    assert_eq!(retained_bytes, principal_base + retained_nodes + authorities * authority_bytes);
+    crate::logln!(
+        "[device namespace principal retention] remaining nodes={} authority={} bytes after {:?}; \
+         confirmed siblings refunded, exact root/remaining authority retained",
+        retained_nodes,
+        authorities * authority_bytes,
+        failure
     );
     assert_eq!(destroyed, failure == Failure::Dma);
     assert_eq!(released, matches!(failure, Failure::Scratch | Failure::Dma));

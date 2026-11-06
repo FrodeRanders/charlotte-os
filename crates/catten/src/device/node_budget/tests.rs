@@ -166,32 +166,46 @@ fn pressure() {
 
 fn retained_candidates() {
     let baseline = snapshot();
-    let root = new_root(false);
-    let (captured, class) = memory::capture_address_space_storage(root.id());
+    let (root, principal) =
+        crate::device::registry::tests::principal_root(b"device-node-retained", false);
+    let (captured, policy) = memory::capture_address_space_sponsor(root.id());
     assert_eq!(captured, Some(root));
-    assert!(!class);
-    let storage = PreparedStorage::try_new(class).unwrap();
+    assert!(!policy.platform());
+    let storage = PreparedStorage::try_new(policy).unwrap();
     let retained = snapshot();
     memory::close_user_address_space_handle(root).unwrap();
     assert_eq!(snapshot(), retained);
-    let successor = new_root(true);
+    let retained_bytes = memory::kernel_buffers::test_metadata_used(principal);
+    assert_eq!(
+        retained_bytes,
+        (Prepared::<(usize, AsDeviceCaps)>::allocation_bytes()
+            + Prepared::<(DeviceCap, DeviceObject)>::allocation_bytes()) as u64
+    );
+    let (successor, other) =
+        crate::device::registry::tests::principal_root(b"device-node-successor", true);
+    let other_base = memory::kernel_buffers::test_metadata_used(other);
     assert_eq!(successor.id(), root.id());
     assert_ne!(successor, root);
-    let (captured, class) = memory::capture_address_space_storage(successor.id());
+    let (captured, policy) = memory::capture_address_space_sponsor(successor.id());
     assert_eq!(captured, Some(successor));
-    assert!(class);
-    let next = PreparedStorage::try_new(class).unwrap();
+    assert!(policy.platform());
+    let next = PreparedStorage::try_new(policy).unwrap();
     let both = snapshot();
     let bytes = Prepared::<(usize, AsDeviceCaps)>::allocation_bytes()
         + Prepared::<(DeviceCap, DeviceObject)>::allocation_bytes();
+    let other_live = memory::kernel_buffers::test_metadata_used(other);
     storage.release();
+    assert_eq!(memory::kernel_buffers::test_metadata_used(principal), 0);
+    assert_eq!(memory::kernel_buffers::test_metadata_used(other), other_live);
     assert_eq!(
         snapshot(),
         ([both.0[0] - bytes as u64, both.0[1] - 2], [both.1[0] - bytes as u64, both.1[1] - 2])
     );
     next.release();
+    assert_eq!(memory::kernel_buffers::test_metadata_used(other), other_base);
     memory::close_user_address_space_handle(successor).unwrap();
     assert_eq!(snapshot(), baseline);
+    assert_eq!(memory::kernel_buffers::test_metadata_used(other), 0);
 }
 
 fn allocation_rejection<T>() {
@@ -220,6 +234,7 @@ pub(in crate::device) fn run() {
     assert_eq!(snapshot(), before);
     pressure();
     retained_candidates();
+    principal_funding();
     assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
     crate::logln!(
         "[device node admission] layouts namespace={} capability={} charge={}; 128 allocator \
@@ -228,5 +243,111 @@ pub(in crate::device) fn run() {
         Prepared::<(usize, AsDeviceCaps)>::allocation_bytes(),
         Prepared::<(DeviceCap, DeviceObject)>::allocation_bytes(),
         core::mem::size_of::<Charge>()
+    );
+}
+
+fn principal_funding() {
+    use memory::kernel_buffers::{
+        capture_storage,
+        test_metadata_limit as limit,
+        test_metadata_used as used,
+    };
+    let before = snapshot();
+    let (root, principal) =
+        crate::device::registry::tests::principal_root(b"device-node-principal", false);
+    let (sibling, same) =
+        crate::device::registry::tests::principal_root(b"device-node-principal", false);
+    assert_eq!(same, principal);
+    let (healthy, other) =
+        crate::device::registry::tests::principal_root(b"device-node-healthy", false);
+    let policy = capture_storage(root).unwrap();
+    let namespace = Prepared::<(usize, AsDeviceCaps)>::allocation_bytes() as u64;
+    let capability = Prepared::<(DeviceCap, DeviceObject)>::allocation_bytes() as u64;
+    let base = used(principal);
+    let healthy_base = used(other);
+    for _ in 0..64 {
+        assert!(prepare_with::<(usize, AsDeviceCaps)>(policy, |_| Err(AllocError)).is_err());
+        assert!(prepare_with::<(DeviceCap, DeviceObject)>(policy, |_| Err(AllocError)).is_err());
+        assert_eq!(used(principal), base);
+        assert_eq!(snapshot(), before);
+    }
+    let first = device::grant_mmio(root.id(), 0x0900_0000, 1).unwrap();
+    let live = used(principal);
+    let authority = live - base - namespace - capability;
+    assert!(authority > 0);
+    memory::budget::mark_platform(root);
+    limit(principal, live);
+    {
+        let _heap = PRIMARY_ALLOCATOR.lock();
+        reject_grants(root);
+    }
+    assert_eq!(used(principal), live);
+    let family = snapshot();
+    let counts = crate::capability::node_admission_used();
+    for headroom in [
+        0,
+        namespace - 1,
+        namespace,
+        namespace + capability - 1,
+        namespace + capability,
+        namespace + capability + authority - 1,
+    ] {
+        limit(principal, live + headroom);
+        assert_eq!(device::grant_mmio(root.id(), 0x0900_0000, 1), Err(DeviceError::ResourceLimit));
+        assert_eq!(device::grant_interrupt(root.id(), 225), Err(DeviceError::ResourceLimit));
+        assert_eq!(
+            device::grant_dma_domain_with_backend(
+                root.id(),
+                |_| panic!("principal denial reached hardware"),
+                |_| panic!("unstarted denial destroyed hardware")
+            ),
+            Err(DeviceError::ResourceLimit)
+        );
+        assert_eq!(used(principal), live);
+        assert_eq!(snapshot(), family);
+        assert_eq!(crate::capability::node_admission_used(), counts);
+        assert_eq!(device::interrupt_route_owner(225), None);
+    }
+    let independent = device::grant_mmio(healthy.id(), 0x0900_0000, 1).unwrap();
+    assert_eq!(used(other), healthy_base + namespace + capability + authority);
+    device::close_cap(healthy.id(), independent).unwrap();
+    assert_eq!(used(other), healthy_base + namespace);
+    limit(principal, crate::resource_policy::POLICY.memory.principal_metadata_bytes);
+    device::close_cap(root.id(), first).unwrap();
+    assert_eq!(used(principal), base + namespace);
+    for value in [root, sibling, healthy] {
+        memory::close_user_address_space_handle(value).unwrap();
+    }
+    assert_eq!(used(principal), 0);
+    assert_eq!(used(other), 0);
+    assert_eq!(snapshot(), before);
+    let (root, pressure_principal) =
+        crate::device::registry::tests::principal_root(b"device-node-byte-pressure", false);
+    let policy = capture_storage(root).unwrap();
+    let baseline = used(pressure_principal);
+    let ceiling = crate::resource_policy::POLICY.memory.principal_metadata_bytes;
+    let mut held = alloc::vec::Vec::with_capacity((ceiling / capability) as usize + 1);
+    while let Ok(node) = prepare::<(DeviceCap, DeviceObject)>(policy) {
+        held.push(node);
+        assert!(held.len() <= (ceiling / capability) as usize);
+    }
+    assert!(ceiling - used(pressure_principal) < capability);
+    assert!(snapshot().1[1] < ORDINARY[1]);
+    let count = held.len();
+    drop(held);
+    assert_eq!(used(pressure_principal), baseline);
+    memory::close_user_address_space_handle(root).unwrap();
+    assert_eq!(used(pressure_principal), 0);
+    assert_eq!(snapshot(), before);
+    crate::logln!(
+        "[device node principal] namespace/payload/authority={}/{}/{} bytes; siblings, 128 funded \
+         allocator failures, 96 heap-held adapter denials, six MMIO/IRQ/DMA prefix controls, \
+         healthy grant, immutable promotion, retained candidates across funded ASID reuse and {} \
+         real candidates at {}-byte ceiling passed",
+        namespace,
+        capability,
+        authority,
+        count,
+        ceiling
     );
 }

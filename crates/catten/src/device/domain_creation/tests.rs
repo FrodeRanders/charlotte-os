@@ -204,7 +204,8 @@ pub(super) fn run() {
         Tables,
     };
     let baseline = dma_tables::used();
-    let root = crate::service::loader::create_user_address_space_handle();
+    let (root, principal) =
+        crate::device::registry::tests::principal_root(b"device-unit-grant-principal", false);
     let memory = object::allocate(root.id(), 2).unwrap();
     let mut grant =
         PreparedDmaDomain::new(root.id(), |_| panic!("abandoned creation replayed")).unwrap();
@@ -242,6 +243,8 @@ pub(super) fn run() {
     let retained = source.interest();
     slot.lock().readiness = Some(source);
     let drops = DROPS.load(Ordering::Relaxed);
+    let principal_bytes = memory::kernel_buffers::test_metadata_used(principal);
+    assert!(principal_bytes > 0);
     dma_tables::test_drop_under_guards(|| {
         crate::capability::admission_tests::test_with_registry_locked(|| {
             let owner = Preparing::begin(&slot, &mut grant.resources.creation, ready).unwrap();
@@ -249,10 +252,20 @@ pub(super) fn run() {
             let _slot = slot.lock();
             let _devices = DEVICES.lock();
             crate::cpu::scheduler::deferred::admission::with_locked(|| drop(owner));
-            crate::cpu::scheduler::deferred::admission::with_locked(|| drop(grant));
+            crate::cpu::scheduler::deferred::admission::with_locked(|| {
+                memory::kernel_buffers::test_with_history_locked(|| {
+                    crate::device::node_budget::with_locked(|| drop(grant));
+                });
+            });
         });
     });
     assert_eq!(DROPS.load(Ordering::Relaxed), drops);
+    assert_eq!(memory::kernel_buffers::test_metadata_used(principal), principal_bytes);
+    crate::logln!(
+        "[device unit principal retention] complete unit/grant/pin owner retains {} \
+         original-principal metadata bytes through guarded abandonment",
+        principal_bytes
+    );
     assert_eq!(dma_tables::used(), (baseline.0 + 2, baseline.1 + 1));
     assert!(matches!(slot.lock().state, UnitState::Claimed));
     assert!(!retained.completed(), "abandonment must not fabricate availability");
