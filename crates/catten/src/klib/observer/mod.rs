@@ -53,10 +53,9 @@ impl WaitSponsor {
     /// admission still follows the existing explicit platform grant.
     pub(crate) fn try_new_with_backing_class(
         platform: bool,
-        backing_platform: bool,
+        storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
     ) -> Result<Self, core::alloc::AllocError> {
-        waiter_budget::DomainBudget::try_new_with_backing_class(platform, backing_platform)
-            .map(Self)
+        waiter_budget::DomainBudget::try_new_with_backing_class(platform, storage).map(Self)
     }
 
     pub(crate) fn retire(&self) {

@@ -1,85 +1,88 @@
 # Generation-owned waiter account backing
 
-Each root prepares one `WaitSponsor` account before registry publication.
-Threads, entries and transient preparations retain that exact account rather
-than resolving a reusable ASID. Entry admission remains separate from the
-account's own shared backing.
+Each root prepares one `WaitSponsor` before publication. Threads, entries and
+transient preparations retain that exact account instead of resolving an ASID.
 
 | Policy field | Ordinary | Total |
 | --- | ---: | ---: |
 | `waiter_accounts` | 6144 | 8192 |
 
-One slot admits a fixed allocation bundle: the account Arc and its private
-`ChargedAllocator` holder. This counts allocation lifetimes, not requested heap
-bytes or allocator overhead. Reservation precedes either allocation; holder or
-payload allocation failure returns the original reservation. Root preparation
-failure returns `MemorySponsorAllocationFailed`, without publishing an ASID.
+One slot covers an account Arc and its private `ChargedAllocator` holder.
+`klib::account_backing` combines that typed family reservation with a captured
+`SponsoredAllocator`. Both actual requested layouts, including Arc control and
+alignment bytes, consume the principal's shared **1 MiB reactor-account allowance**
+(`principal_reactor_account_bytes`). The allowance is independent of namespace
+accounts and the 16 MiB working-buffer allowance. It uses the existing boot-lifetime
+principal record, with no second identity registry or per-account heap owner.
 
-The defaults allow twice the root-metadata pool's count-only capacity of 3072
-ordinary or 4096 total complete roots. That leaves headroom for independently
-retained accounts and concurrent preparations without reducing that existing
-capacity. The remaining quarter is reserved for trusted preparation. This is
-an independent ceiling, not preallocated RAM, a per-service entitlement or a
-guarantee that all other resources can reach their ceilings simultaneously.
-Sharing the entry pool would couple long-lived roots to active waits; a separate
-fixed-bundle count keeps those lifetimes independent with one leaf counter.
+Family reservation precedes either allocation; principal bytes are reserved at
+each actual allocation boundary. Rejection rolls back unused reservations.
+Actual deallocation precedes that allocation's byte refund; the family slot
+returns only after both payload and private holder are freed. Weak references
+and allocator clones retain their original funding. Allocator excess and external
+reference fields remain outside this account's own byte charge.
 
-Reusing the existing allocation owner costs one private holder allocation per
-account and one extra machine word per account reference. Existing byte admission
-covers the enclosing [root-account layout](root-metadata-admission.md), including
-its separate timer owner; the 4/3 MiB ceilings still accommodate the count-only
-complete-root capacity. No existing limit is raised. This avoids introducing
-another custom reference-counting or weak-lifetime mechanism.
+The unchanged global ceilings leave twice the count-only complete-root needs
+at 3072 ordinary/4096 total roots, with one quarter trusted reserve. These are
+independent ceilings, not preallocated RAM or service entitlements. The separate
+principal allowance bounds retained generations without consuming buffer funding
+needed for inputs or cleanup. A larger allowance permits more retained memory;
+a smaller one can reject mandatory root or namespace preparation. No qualified
+workload requires increasing global limits or reducing logical limits.
 
-## Classification and release
+## Captured sponsorship and release
 
-Backing classification comes from the unpublished root's trusted translation
-account, as for its registry metadata. A name, role or later ASID lookup cannot
-select reserve. This does not grant permission to use platform waiter-entry
-capacity: that still requires the existing explicit platform grant. Later
-promotion changes future entry admission only, never the backing's original
-classification or final refund.
+The unpublished root supplies its prebound verified principal and trusted
+translation-storage class.
+Capture precedes allocation and publication guards. A name, role, manifest field,
+worker or later ASID lookup cannot select reserve or the refund recipient.
+Unidentified permanent-kernel/raw fixture construction is a trusted exemption;
+signed application roots use their prebound account. A copied funding token is
+neither a root lease nor authority to publish or release physical backing.
 
-Root retirement closes the account to new entries. Existing entries, thread
-owners, allocator clones and weak references keep the original backing charged.
-The payload and private holder must both be deallocated before refund; neither
-root close nor final strong release suffices while weak backing remains. Exact
-ASID reuse creates a fresh account and cannot refund the old generation.
+Storage funding grants no platform privilege for waiter entries. Existing explicit,
+generation-qualified resource grants remain separate. Promotion can change
+future resource admission but cannot reclassify backing or redirect its refund.
+Root close, namespace replacement and exact ASID reuse cannot return live bytes
+or credit a successor. Final strong release cannot refund weak-only backing.
 
-Preparation and cancellation retain their existing ownership boundary. The
-containing `PreparingAccount` keeps all partial fields inert on abandonment,
-including the backing charge, under lifecycle/table/ledger/heap/pool guards.
-Ordinary cancellation explicitly disposes unused fields outside those local
-guards. Final reference disposal still needs its caller's qualified context;
-this change does not qualify every scheduler, token or parent destructor.
-The pool lock only changes counters and leaves before allocator entry.
+Root retirement closes the waiter account to new entries. Existing entries and
+thread owners retain that same account until disposal.
 
-## Qualification
+The existing complete root/namespace owners retain partial fields on abandonment.
+Ordinary cancellation and final disposal occur outside their local publication
+guards. Counter locks leave before allocation; the principal-history leaf lookup
+never enters another subsystem. These mechanics qualify no arbitrary parent
+or scheduler destructor and add no physical completion or retry authority.
 
-The [versioned evidence](../reports/audits/evidence/2026-11-01-waiter-account-admission.json)
-records real allocations to ordinary and total ceilings, heap-held denial before
-allocation, trusted root publication at ordinary exhaustion, rollback of failed
-root registration, unchanged backing classification after promotion, and recovery
-by closing an existing root at total exhaustion. A retired account with a
-counter-only waiter-entry charge and weak reference survives actual root close
-and exact ASID reuse; final weak
-release returns exactly its original slot without changing its successor.
+## Qualification and remaining scope
 
-The existing four partial-preparation rejection phases return every unused
-account. Sixty-four heap/pool-held publications allocate and refund nothing;
-actual partial-parent abandonment retains two account bundles. The host suite
-also executes the shared allocation owner's failure, weak-reference, clone and
-deallocation-order controls.
-Account-specific native pressure rejects at admission; holder/payload allocation
-errors are exercised by those shared host controls, rather than forced native
-heap exhaustion.
+[Reactor-account qualification](../reports/audits/2026-11-06-q4-reactor-principals.md)
+records native actual layouts for all six account types, sibling sharing,
+384 heap-held denials, independent healthy sponsorship, immutable promotion,
+four real root and eight namespace rejection prefixes, and real bundle pressure
+at the default principal byte ceiling while family count headroom remains.
+Root rejection restores frames, roots and original charges. Namespace rejection
+preserves established account identity and its CQ. Existing complete unpublished
+root abandonment retains funded accounts under history, family and publication
+locks without adding another deliberately retained object.
 
-Timer accounts have their own [backing admission](timer-account-admission.md).
-Completion/CQ/watch accounts have separate [backing admission](completion-account-admission.md).
-Capability/IPC/mailbox accounts have separate [backing admission](namespace-account-admission.md).
-Wakers/callbacks have admitted [observer handles](observer-ownership.md). Other
-registry metadata and aggregate principal/general-heap admission remain open. These
-bounded fixtures do not establish sustained hostile-pressure fairness, physical
-hardware behavior or a complete allocation/destructor inventory. SEC-07 remains
-partial; existing C03/C16 and G1/G4 boundaries in
-[cleanup/recovery](cleanup-recovery.md) remain applicable.
+Real waiter admission, prepared timer/event/cancellation backing, completion weak
+backing, a typed retired heap CQ and an owned watch entry retain their respective
+original principals across root close and same-slot generation reuse. Final weak
+release returns the old principal's bytes without changing the successor.
+The heap CQ has no physical mapping or consumer; this is no physical CQ proof.
+The [original family evidence](../reports/audits/evidence/2026-11-01-waiter-account-admission.json)
+records actual ordinary/total family exhaustion, trusted reserve, partial
+publication rollback and guarded parent controls remain. Shared host allocation
+controls cover holder/payload failure, allocator clones, actual free ordering,
+alignment and concurrent final-weak release; native heap exhaustion is not forced.
+
+The runtime pool inventory reports bundle counts, not principal byte usage.
+Other account families, enclosing metadata, allocator excess and joint heap fit
+remain separate Q4 work. Sustained hostile-pressure progress, arbitrary caller/IRQ
+safety and physical hardware behavior remain unqualified. SEC-07 stays partial;
+existing C03/C16/C18 and G1/G4 boundaries in [cleanup/recovery](cleanup-recovery.md)
+remain applicable. See [namespace accounts](namespace-account-admission.md),
+[observer handles](observer-ownership.md) and the
+[principal coverage checklist](metadata-admission.md#principal-coverage-and-remaining-reconciliation).

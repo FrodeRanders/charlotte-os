@@ -1,93 +1,91 @@
 # Scheduler and completion timer-account backing
 
 Scheduler sleeps/watchdogs and completion timers use separate generation-owned
-accounts of the same fixed layout. Each account has independent backing
-admission in addition to the shared [event limits](scheduler-timer-budgets.md).
-Entries, events and cancellation state can retain an account after its root or
-completion namespace has gone.
+accounts of the same fixed layout. Events and cancellation handles can retain
+an account after its root or namespace has gone.
 
 | Policy field | Ordinary | Total |
 | --- | ---: | ---: |
 | `timer_accounts` | 12288 | 16384 |
 
-One slot admits the account Arc and its private `ChargedAllocator` holder.
-Reservation precedes either allocation; ordinary allocation rejection frees
-unused backing before returning the original reservation. This counts fixed
-allocation bundles, including weak-only storage, rather than exact bytes or
-allocator overhead. Event and waiter admission remain separate.
+One slot covers an account Arc and its private `ChargedAllocator` holder.
+`klib::account_backing` combines that typed family reservation with a captured
+`SponsoredAllocator`. Both actual requested layouts, including Arc control and
+alignment bytes, consume the principal's shared **1 MiB reactor-account allowance**
+(`principal_reactor_account_bytes`). The allowance is independent of namespace
+accounts and the 16 MiB working-buffer allowance. It uses the existing boot-lifetime
+principal record, with no second identity registry or per-account heap owner.
 
-A complete root can have one scheduler account and one current completion-timer
-account. These defaults allow twice those two-account needs at the root-metadata
-pool's count-only capacity of 3072 ordinary or 4096 total complete roots. Extra
-capacity accommodates retained generations, namespace replacement and concurrent
-preparation. One quarter remains a shared trusted reserve, without per-service
-entitlements. No existing ceiling is raised and no RAM is preallocated.
-Coupling accounts to active event counts would unnecessarily limit idle roots.
+Family reservation precedes either allocation; principal bytes are reserved at
+each actual allocation boundary. Rejection rolls back unused reservations.
+Actual deallocation precedes that allocation's byte refund; the family slot
+returns only after both payload and private holder are freed. Weak references
+and allocator clones retain their original funding. Allocator excess and external
+reference fields remain outside this account's own byte charge.
 
-Reusing the allocation owner costs one private holder allocation per account
-and one extra machine word in each account reference. Enclosing admitted layouts
-reserve their actual larger size. Every fully prepared namespace has one fresh
-timer account, so this also bounds complete namespace candidates and published
-namespaces, including empty ones. Independently surviving record/CQ/watch accounts
-have their own [backing admission](completion-account-admission.md). Global nodes
-prepared before account admission have separate
-[byte/count admission](namespace-node-admission.md). No worst-case
-global lookup latency follows from this count.
+The unchanged global ceilings leave twice the count-only complete-root needs
+at 3072 ordinary/4096 total roots, with one quarter trusted reserve. These are
+independent ceilings, not preallocated RAM or service entitlements. The separate
+principal allowance bounds retained generations without consuming buffer funding
+needed for inputs or cleanup. A larger allowance permits more retained memory;
+a smaller one can reject mandatory root or namespace preparation. No qualified
+workload requires increasing global limits or reducing logical limits.
 
-## Classification and lifetime
+## Captured sponsorship and release
 
-Scheduler account preparation captures backing classification from the
-unpublished translation root before registry publication. Completion namespace
-preparation captures one current generation and that root's trusted translation
-storage class together under the address-space table hold, before allocation.
-The permanent kernel is trusted; absent raw fixture IDs are ordinary. Publication
-still validates the captured generation and retirement state. The captured
-identity supplies no lease or physical cleanup authority.
+Scheduler preparation captures the unpublished root’s prebound principal and
+translation-storage class. Completion namespace preparation captures the exact
+current generation, principal and class together under one root-table hold.
+Capture precedes allocation and publication guards. A name, role, manifest field,
+worker or later ASID lookup cannot select reserve or the refund recipient.
+Unidentified permanent-kernel/raw fixture construction is a trusted exemption;
+signed application roots use their prebound account. A copied funding token is
+neither a root lease nor authority to publish or release physical backing.
 
-Backing admission grants no platform event privilege. Scheduler event admission
-still follows the explicit platform grant; completion submission still validates
-its captured platform identity. Promotion can change future event admission,
-while existing backing and event charges retain their original classification.
-No application role, name, manifest field or later ASID lookup selects reserve.
+Storage funding grants no platform privilege for timer events. Existing explicit,
+generation-qualified resource grants remain separate. Promotion can change
+future resource admission but cannot reclassify backing or redirect its refund.
+Root close, namespace replacement and exact ASID reuse cannot return live bytes
+or credit a successor. Final strong release cannot refund weak-only backing.
 
-Retirement closes scheduler accounts to new events. Namespace disposal ends its
-account ownership but cannot refund an independently retained event, cancellation
-handle, allocator clone or weak allocation. The payload and private holder must
-both be freed before the original backing slot returns. Root close, namespace
-replacement, final strong release and exact ASID reuse cannot refund surviving
-backing or credit a successor generation.
+Root retirement closes scheduler accounts to new events. Completion timer
+submission retains its existing captured-root validation; namespace disposal
+cannot refund an independently retained event or cancellation allocation.
 
-The existing root-account, unpublished-namespace and retired-namespace owners
-retain complete fields on abandonment. Their guarded controls hold the actual
-account pool as well as publication/heap guards. Ordinary cancellation and final
-disposal retain their existing post-guard context requirements; this admission
-does not qualify every active parent, timer or scheduler destructor. Counter
-holds leave before allocation and never resolve an ASID or enter another lock.
+The existing complete root/namespace owners retain partial fields on abandonment.
+Ordinary cancellation and final disposal occur outside their local publication
+guards. Counter locks leave before allocation; the principal-history leaf lookup
+never enters another subsystem. These mechanics qualify no arbitrary parent
+or scheduler destructor and add no physical completion or retry authority.
 
-## Qualification and remaining work
+## Qualification and remaining scope
 
-The [versioned evidence](../reports/audits/evidence/2026-11-01-timer-account-admission.json)
-records real account allocations to both ceilings, heap-held admission denial,
-trusted root/namespace preparation at ordinary exhaustion, failed root and
-namespace rollback, immutable classification after promotion and exact recovery
-after close at total exhaustion. Actual completion timer submission verifies
-that trusted backing alone grants no event reserve privilege.
+[Reactor-account qualification](../reports/audits/2026-11-06-q4-reactor-principals.md)
+records native actual layouts for all six account types, sibling sharing,
+384 heap-held denials, independent healthy sponsorship, immutable promotion,
+four real root and eight namespace rejection prefixes, and real bundle pressure
+at the default principal byte ceiling while family count headroom remains.
+Root rejection restores frames, roots and original charges. Namespace rejection
+preserves established account identity and its CQ. Existing complete unpublished
+root abandonment retains funded accounts under history, family and publication
+locks without adding another deliberately retained object.
 
-A real prepared event and cancellation handle retain the original scheduler
-account across root close and exact ASID reuse. Node disposal leaves cancellation
-backing charged; handle release ends event admission, while an account weak
-reference retains backing admission until final weak release. Completion namespace
-replacement separately exercises final weak retention of its own timer account.
-Five namespace preparation failure stages return unused timer-account admission;
-64 fresh publications/removals execute under real heap/account-pool guards.
-Existing partial root preparation and actual namespace abandonment controls
-retain their new backing charges without introducing another deliberate leak.
+Real waiter admission, prepared timer/event/cancellation backing, completion weak
+backing, a typed retired heap CQ and an owned watch entry retain their respective
+original principals across root close and same-slot generation reuse. Final weak
+release returns the old principal's bytes without changing the successor.
+The heap CQ has no physical mapping or consumer; this is no physical CQ proof.
+The [original family evidence](../reports/audits/evidence/2026-11-01-timer-account-admission.json)
+records actual ordinary/total family exhaustion, trusted reserve, partial
+publication rollback and guarded parent controls remain. Shared host allocation
+controls cover holder/payload failure, allocator clones, actual free ordering,
+alignment and concurrent final-weak release; native heap exhaustion is not forced.
 
-Holder/payload allocation errors are exercised by the shared allocation owner's
-18 host tests, rather than forced native heap exhaustion. These fixtures do not
-establish aggregate principal/general-heap accounting, sustained hostile-pressure
-fairness, arbitrary destructor safety or physical hardware behavior. Capability,
-IPC and mailbox accounts have separate [backing admission](namespace-account-admission.md).
-Wakers/callbacks have admitted [observer handles](observer-ownership.md). Other
-registry metadata remains open. SEC-07 remains partial; existing C03/C16/C18 and G1/G4 boundaries in
-[cleanup/recovery](cleanup-recovery.md) continue to apply.
+The runtime pool inventory reports bundle counts, not principal byte usage.
+Other account families, enclosing metadata, allocator excess and joint heap fit
+remain separate Q4 work. Sustained hostile-pressure progress, arbitrary caller/IRQ
+safety and physical hardware behavior remain unqualified. SEC-07 stays partial;
+existing C03/C16/C18 and G1/G4 boundaries in [cleanup/recovery](cleanup-recovery.md)
+remain applicable. See [namespace accounts](namespace-account-admission.md),
+[observer handles](observer-ownership.md) and the
+[principal coverage checklist](metadata-admission.md#principal-coverage-and-remaining-reconciliation).

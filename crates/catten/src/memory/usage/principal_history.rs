@@ -41,12 +41,16 @@ struct History {
     root_table: VectorBudget<2>,
     kernel_buffers: VectorBudget<1>,
     namespace_account_bytes: VectorBudget<1>,
+    reactor_account_bytes: VectorBudget<1>,
 }
 
 impl Default for History {
     fn default() -> Self {
         Self {
             stack_pages: 0,
+            reactor_account_bytes: VectorBudget::new([crate::resource_policy::POLICY
+                .memory
+                .principal_reactor_account_bytes]),
             namespace_account_bytes: VectorBudget::new([crate::resource_policy::POLICY
                 .memory
                 .principal_namespace_account_bytes]),

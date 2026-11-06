@@ -4,20 +4,26 @@
 
 use core::alloc::AllocError;
 
-use crate::klib::admission::{
-    self,
-    WaiterAccounts,
-};
+#[cfg(any(test, feature = "kernel_tests"))]
+use crate::klib::admission;
+use crate::klib::admission::WaiterAccounts;
 
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) const NODE_LIMIT: u64 = crate::resource_policy::POLICY.waiter_accounts.total[0];
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) const ORDINARY_LIMIT: u64 = crate::resource_policy::POLICY.waiter_accounts.ordinary[0];
 
-pub(crate) type Charge = admission::BundleCharge<WaiterAccounts>;
+pub(crate) type Allocator = crate::klib::account_backing::Allocator<
+    WaiterAccounts,
+    crate::memory::kernel_buffers::ReactorSponsor,
+>;
+pub(crate) type AccountRef<T> = alloc::sync::Arc<T, Allocator>;
 
-pub(super) fn reserve(platform: bool) -> Result<Charge, AllocError> {
-    Charge::reserve(platform)
+pub(super) fn allocator(
+    storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
+) -> Result<Allocator, AllocError> {
+    let storage = storage.into();
+    crate::klib::account_backing::allocator(storage.platform(), storage.reactor_sponsor())
 }
 
 #[cfg(any(test, feature = "kernel_tests"))]

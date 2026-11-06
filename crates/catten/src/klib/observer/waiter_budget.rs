@@ -1,17 +1,12 @@
 //! Generation-owned admission for scheduler waiter entries. Kernel callback
 //! observer implementations remain explicitly outside this budget.
 
-use alloc::sync::Arc;
-
 use charlotte_lifecycle::resources::CountBudget;
 use spin::LazyLock;
 
-use crate::{
-    cpu::multiprocessor::spin::mutex::Mutex,
-    klib::charged_allocator::ChargedAllocator,
-};
+use crate::cpu::multiprocessor::spin::mutex::Mutex;
 
-pub(crate) type AccountRef = Arc<DomainBudget, ChargedAllocator<super::account_budget::Charge>>;
+pub(crate) type AccountRef = super::account_budget::AccountRef<DomainBudget>;
 
 pub(crate) const DOMAIN_LIMIT: usize = crate::resource_policy::POLICY.waiters.domain[0] as usize;
 pub(crate) const NODE_LIMIT: usize = crate::resource_policy::POLICY.waiters.pool.total[0] as usize;
@@ -39,10 +34,9 @@ impl DomainBudget {
 
     pub(super) fn try_new_with_backing_class(
         platform: bool,
-        backing_platform: bool,
+        storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
     ) -> Result<AccountRef, core::alloc::AllocError> {
-        let charge = super::account_budget::reserve(backing_platform)?;
-        let allocator = ChargedAllocator::try_new(charge)?;
+        let allocator = super::account_budget::allocator(storage)?;
         allocator.try_arc(Self(Mutex::new(Account {
             count: CountBudget::new(DOMAIN_LIMIT),
             platform,

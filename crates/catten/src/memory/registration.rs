@@ -204,13 +204,15 @@ pub(super) fn test_abandonment() {
     let mut owner = PreparingRegistration::capture(root);
     owner
         .prepare(
-            || budget::PreparingAccount::try_new(false),
+            || budget::PreparingAccount::try_new(storage),
             || metadata::PreparingMetadata::try_new(false),
             || crate::ipc::namespace::PreparingNamespace::try_new_with_backing_class(storage),
         )
         .unwrap();
     let principal_bytes = kernel_buffers::test_account_used(principal);
     assert!(principal_bytes > 0);
+    let reactor_bytes = kernel_buffers::test_reactor_used(principal);
+    assert!(reactor_bytes > 0);
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let occupied = ADDRESS_SPACE_TABLE.lock().iter().filter(|entry| entry.is_some()).count();
     {
@@ -224,7 +226,11 @@ pub(super) fn test_abandonment() {
             usage::with_principal_history_locked(|| {
                 let _heap = allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
                 crate::klib::namespace_account_budget::with_locked(|| {
-                    crate::klib::namespace_node_budget::with_locked(|| drop(owner));
+                    crate::klib::namespace_node_budget::with_locked(|| {
+                        crate::klib::observer::account_budget::with_locked(|| {
+                            crate::timers::account_budget::with_locked(|| drop(owner));
+                        });
+                    });
                 });
             });
             assert_eq!(allocator.free_frames(), free);
@@ -233,11 +239,13 @@ pub(super) fn test_abandonment() {
     }
     assert_eq!(crate::klib::namespace_account_budget::snapshot(), (accounts.0 + 3, accounts.1 + 3));
     assert_eq!(kernel_buffers::test_account_used(principal), principal_bytes);
+    assert_eq!(kernel_buffers::test_reactor_used(principal), reactor_bytes);
     crate::logln!(
         "[memory sponsor registration retention] guarded abandonment retains one unpublished \
          root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; \
-         no ASID published; {} original principal account bytes retained",
-        principal_bytes
+         no ASID published; {} namespace + {} reactor original principal account bytes retained",
+        principal_bytes,
+        reactor_bytes
     );
 }
 

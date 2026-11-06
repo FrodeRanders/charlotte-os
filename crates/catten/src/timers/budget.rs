@@ -4,17 +4,15 @@
 //! it
 //! early.
 
+#[cfg(any(test, feature = "kernel_tests"))]
 use alloc::sync::Arc;
 
 use charlotte_lifecycle::resources::CountBudget;
 use spin::LazyLock;
 
-use crate::{
-    cpu::multiprocessor::spin::mutex::Mutex,
-    klib::charged_allocator::ChargedAllocator,
-};
+use crate::cpu::multiprocessor::spin::mutex::Mutex;
 
-pub(crate) type AccountRef = Arc<DomainBudget, ChargedAllocator<super::account_budget::Charge>>;
+pub(crate) type AccountRef = super::account_budget::AccountRef<DomainBudget>;
 
 pub(crate) const MAX_DOMAIN_TIMERS: usize =
     crate::resource_policy::POLICY.timers.domain[0] as usize;
@@ -56,10 +54,9 @@ impl DomainBudget {
 
     pub(crate) fn try_new(
         completion_capacity: usize,
-        backing_platform: bool,
+        storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
     ) -> Result<AccountRef, core::alloc::AllocError> {
-        let charge = super::account_budget::reserve(backing_platform)?;
-        let allocator = ChargedAllocator::try_new(charge)?;
+        let allocator = super::account_budget::allocator(storage)?;
         allocator.try_arc(Self(Mutex::new(Account {
             count: CountBudget::new(completion_capacity.min(MAX_DOMAIN_TIMERS)),
             platform: false,
@@ -90,13 +87,13 @@ impl SchedulerSponsor {
         Self::try_new_with_backing_class(platform, platform)
     }
 
-    /// Trusted backing classification is captured before root publication;
+    /// Original principal and trusted storage class are captured before root publication;
     /// future event admission retains its separate explicit platform grant.
     pub(crate) fn try_new_with_backing_class(
         platform: bool,
-        backing_platform: bool,
+        storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
     ) -> Result<Self, core::alloc::AllocError> {
-        let domain = DomainBudget::try_new(MAX_DOMAIN_TIMERS, backing_platform)?;
+        let domain = DomainBudget::try_new(MAX_DOMAIN_TIMERS, storage)?;
         domain.0.lock().platform = platform;
         Ok(Self(domain))
     }

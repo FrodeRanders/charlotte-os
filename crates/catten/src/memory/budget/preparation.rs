@@ -33,19 +33,25 @@ struct Resources {
 }
 
 impl PreparingAccount {
-    /// Storage classification comes from the unpublished translation account.
+    /// Storage classification and principal come from the unpublished translation account.
     /// Payload sponsorship still follows the existing explicit platform grant.
-    pub(crate) fn try_new(platform: bool) -> Result<Self, AllocError> {
-        Self::prepare(false, platform, |_| Ok(()))
+    pub(crate) fn try_new(
+        storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
+    ) -> Result<Self, AllocError> {
+        Self::prepare(false, storage.into(), |_| Ok(()))
     }
 
     pub(super) fn try_new_kernel() -> Result<Self, AllocError> {
-        Self::prepare(true, true, |_| Ok(()))
+        Self::prepare(
+            true,
+            crate::memory::kernel_buffers::CapturedStorage::unidentified(true),
+            |_| Ok(()),
+        )
     }
 
     fn prepare(
         platform: bool,
-        storage_platform: bool,
+        storage: crate::memory::kernel_buffers::CapturedStorage,
         mut before: impl FnMut(u8) -> Result<(), AllocError>,
     ) -> Result<Self, AllocError> {
         // Capturing a policy limit does not publish a generation or retain a
@@ -60,13 +66,11 @@ impl PreparingAccount {
         }));
         let result = (|| {
             before(1)?;
-            owner.0.node = Some(admission::prepare(storage_platform)?);
+            owner.0.node = Some(admission::prepare(storage.platform())?);
             before(2)?;
-            owner.0.waiters =
-                Some(WaitSponsor::try_new_with_backing_class(platform, storage_platform)?);
+            owner.0.waiters = Some(WaitSponsor::try_new_with_backing_class(platform, storage)?);
             before(3)?;
-            owner.0.timers =
-                Some(SchedulerSponsor::try_new_with_backing_class(platform, storage_platform)?);
+            owner.0.timers = Some(SchedulerSponsor::try_new_with_backing_class(platform, storage)?);
             before(4)?;
             Ok(())
         })();

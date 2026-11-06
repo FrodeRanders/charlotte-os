@@ -1199,22 +1199,24 @@ the corrected RPC polling paths, and the remaining notification gaps.
   while the scheduler holds its thread table. Use `ObserverList`/`WaiterSource`
   and invoke detached notifications after subsystem guards are released.
 - Generation-owned waiter accounts use independent `waiter_accounts` admission
-  through `ChargedAllocator`. Capture backing classification from the unpublished
-  root; retain it through retirement, ASID reuse and final weak/allocator release.
+  through `ChargedAllocator` and `SponsoredAllocator`. Capture backing class and
+  verified principal from the unpublished root; retain it through retirement, ASID
+  reuse and final weak/allocator release.
   Trusted backing does not grant platform entry admission, and later promotion
   cannot reclassify the original allocation. Keep containing partial preparation
   inert beneath unknown guards; explicit cancellation leaves local publication
   guards before disposal. See `docs/reference/waiter-account-admission.md`.
 - Scheduler and completion timer accounts use independent `timer_accounts`
-  backing admission through final weak/allocator release. Capture trusted storage
-  class from the unpublished root for scheduler accounts, or together with the
+  backing admission and actual-layout principal funding through final weak/allocator
+  release. Capture original principal and trusted storage class from the unpublished root for scheduler accounts, or together with the
   exact current generation before completion namespace preparation. Keep backing
   class separate from explicit event reserve grants; promotion cannot reclassify
   an existing allocation. Root/namespace fallback retains original charges under
   publication/heap/pool guards. See `docs/reference/timer-account-admission.md`.
 - Completion record, CQ and watch accounts use typed charged `AccountRef` owners
-  and shared `completion_accounts` backing admission. Capture their class with
-  the namespace's exact root before preparation; do not turn trusted backing
+  and shared `completion_accounts` backing admission plus actual-layout funding
+  by original principal. Capture their principal and class with the namespace's
+  exact root before preparation; do not turn trusted backing
   into a record/CQ/watch reserve grant. Keep the original charge through retained
   work and final weak/allocator release. Partial namespace rejection releases
   unused accounts outside publication guards; complete namespace fallback stays

@@ -109,11 +109,21 @@ fn pressure() {
 fn retirement() {
     let before = snapshot();
     let entries = waiter_budget::node_used();
-    let old = memory::register_user_address_space(AddressSpace::try_new_user().unwrap()).unwrap();
+    let principal = charlotte_launch::artifact_principal_id(b"reactor-lifetime-klib");
+    let space = AddressSpace::try_new_principal_user(
+        false,
+        memory::prepare_principal_backing(principal, false).unwrap(),
+    )
+    .unwrap();
+    let old = memory::register_user_address_space(space).unwrap();
     let sponsor = memory::budget::waiter_sponsor(old.id());
     let weak = Arc::downgrade(&sponsor.0);
+    let funded = memory::kernel_buffers::test_reactor_used(principal);
+    assert!(funded > 0);
     let entry = waiter_budget::reserve(&sponsor.0).unwrap();
     memory::close_user_address_space_handle(old).unwrap();
+    let retained_bytes = memory::kernel_buffers::test_reactor_used(principal);
+    assert!(retained_bytes > 0 && retained_bytes <= funded);
     assert_eq!(snapshot(), (before.0 + 1, before.1 + 1));
     assert!(matches!(waiter_budget::reserve(&sponsor.0), Err(RegistrationError::Closed)));
     let next = memory::register_user_address_space(AddressSpace::try_new_user().unwrap()).unwrap();
@@ -125,8 +135,10 @@ fn retirement() {
     drop(entry);
     assert_eq!(waiter_budget::node_used(), entries);
     assert!(weak.upgrade().is_none());
+    assert_eq!(memory::kernel_buffers::test_reactor_used(principal), retained_bytes);
     assert_eq!(snapshot(), (before.0 + 2, before.1 + 2));
     drop(weak);
+    assert_eq!(memory::kernel_buffers::test_reactor_used(principal), 0);
     assert_eq!(snapshot(), (before.0 + 1, before.1 + 1));
     assert_eq!(successor.used(), 0);
     drop(successor);

@@ -238,6 +238,7 @@ pub(super) const POLICY: Policy = Policy {
         principal_root_table: [8 * 1024 * 1024, 8192],
         principal_kernel_buffer_bytes: 16 * 1024 * 1024,
         principal_namespace_account_bytes: 1024 * 1024,
+        principal_reactor_account_bytes: 1024 * 1024,
     },
     kernel_heap: KernelHeap {
         initial_bytes: 8 * 1024 * 1024,

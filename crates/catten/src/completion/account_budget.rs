@@ -1,18 +1,11 @@
 //! Independent backing for the three fixed-layout namespace account types.
 //! Resource entry/ring/watch admission stays separate. Original backing class
 //! follows the account Arc and private holder through final weak/allocator release.
-use alloc::sync::Arc;
 use core::alloc::AllocError;
 
-use crate::klib::{
-    admission::{
-        self,
-        CompletionAccounts,
-    },
-    charged_allocator::ChargedAllocator,
-};
-
-pub(crate) type AccountRef<T> = Arc<T, ChargedAllocator<Charge>>;
+#[cfg(any(test, feature = "kernel_tests"))]
+use crate::klib::admission;
+use crate::klib::admission::CompletionAccounts;
 
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) const NODE_LIMIT: u64 = crate::resource_policy::POLICY.completion_accounts.total[0];
@@ -20,11 +13,18 @@ pub(crate) const NODE_LIMIT: u64 = crate::resource_policy::POLICY.completion_acc
 pub(crate) const ORDINARY_LIMIT: u64 =
     crate::resource_policy::POLICY.completion_accounts.ordinary[0];
 
-pub(crate) type Charge = admission::BundleCharge<CompletionAccounts>;
+pub(crate) type Allocator = crate::klib::account_backing::Allocator<
+    CompletionAccounts,
+    crate::memory::kernel_buffers::ReactorSponsor,
+>;
+pub(crate) type AccountRef<T> = alloc::sync::Arc<T, Allocator>;
 
 /// Only record, CQ and watch account constructors use this fixed-bundle pool.
-pub(super) fn allocator(platform: bool) -> Result<ChargedAllocator<Charge>, AllocError> {
-    ChargedAllocator::try_new(Charge::reserve(platform)?)
+pub(super) fn allocator(
+    storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
+) -> Result<Allocator, AllocError> {
+    let storage = storage.into();
+    crate::klib::account_backing::allocator(storage.platform(), storage.reactor_sponsor())
 }
 
 #[cfg(any(test, feature = "kernel_tests"))]

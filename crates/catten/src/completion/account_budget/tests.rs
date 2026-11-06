@@ -1,4 +1,6 @@
 //! Serialized real-allocation pressure and exact-generation lifetime controls.
+use alloc::sync::Arc;
+
 use super::*;
 use crate::{
     completion::{
@@ -169,14 +171,24 @@ fn pressure() {
 
 fn retained_generation() {
     let before = snapshot();
-    let root = memory::register_user_address_space(AddressSpace::try_new_user().unwrap()).unwrap();
+    let principal = charlotte_launch::artifact_principal_id(b"reactor-lifetime-completion");
+    let space = AddressSpace::try_new_principal_user(
+        false,
+        memory::prepare_principal_backing(principal, false).unwrap(),
+    )
+    .unwrap();
+    let root = memory::register_user_address_space(space).unwrap();
     completion::open_address_space_with_cq(root.id(), 4, 2).unwrap();
     let records = completion::record_admission(root.id()).unwrap();
     let queues = completion::cq_admission(root.id()).unwrap();
     let watches = completion::watch_admission(root.id()).unwrap();
+    let timers = COMPLETIONS.read()[&root.id()].timer_budget.clone();
+    let timer_weak = Arc::downgrade(&timers);
     let record_weak = Arc::downgrade(&records);
     let queue_weak = Arc::downgrade(&queues);
     let watch_weak = Arc::downgrade(&watches);
+    let funded = memory::kernel_buffers::test_reactor_used(principal);
+    assert!(funded > 0);
     let cap = completion::submit(root.id(), OpCode::Read, Some(alloc::vec![9])).unwrap();
     let captured = completion::completion_of(root.id(), cap).unwrap();
     let completion_weak = Arc::downgrade(&captured);
@@ -199,6 +211,8 @@ fn retained_generation() {
     };
     let queue = RetiredCq::from_node(retired.cqs.take(&DEFAULT_CQ).unwrap());
     memory::close_user_address_space_handle(root).unwrap();
+    let retained_bytes = memory::kernel_buffers::test_reactor_used(principal);
+    assert!(retained_bytes > 0 && retained_bytes <= funded);
     let successor =
         memory::register_user_address_space(AddressSpace::try_new_user().unwrap()).unwrap();
     assert_eq!(root.id(), successor.id());
@@ -209,7 +223,7 @@ fn retained_generation() {
     assert_eq!(queues.used()[0], 1);
     assert_eq!(watches.used(), 1);
     assert_eq!(snapshot(), (before.0 + 6, before.1 + 6));
-    drop((records, queues, watches));
+    drop((records, queues, watches, timers));
     drop(captured);
     assert!(completion_weak.upgrade().is_none());
     assert_eq!(record_weak.upgrade().unwrap().used(), 1);
@@ -220,11 +234,19 @@ fn retained_generation() {
     assert!(queue_weak.upgrade().is_none());
     assert!(watch_weak.upgrade().is_none());
     assert_eq!(snapshot(), (before.0 + 6, before.1 + 6));
+    assert_eq!(memory::kernel_buffers::test_reactor_used(principal), retained_bytes);
+    drop(timer_weak);
+    let after_timer = memory::kernel_buffers::test_reactor_used(principal);
+    assert!(after_timer < retained_bytes);
     drop(record_weak);
     assert_eq!(snapshot(), (before.0 + 5, before.1 + 5));
+    assert!(memory::kernel_buffers::test_reactor_used(principal) < after_timer);
+    let after_record = memory::kernel_buffers::test_reactor_used(principal);
     drop(queue_weak);
+    assert!(memory::kernel_buffers::test_reactor_used(principal) < after_record);
     assert_eq!(snapshot(), (before.0 + 4, before.1 + 4));
     drop(watch_weak);
+    assert_eq!(memory::kernel_buffers::test_reactor_used(principal), 0);
     assert_eq!(snapshot(), (before.0 + 3, before.1 + 3));
     {
         let registry = COMPLETIONS.read();
@@ -237,8 +259,8 @@ fn retained_generation() {
     assert_eq!(snapshot(), before);
     crate::logln!(
         "[completion account lifetime] real completion/weak backing, retired heap CQ and owned \
-         watch entry retained original accounts across root close and exact ASID reuse; three \
-         final-weak refunds left successor unchanged"
+         watch entry retained original accounts across root close and exact ASID reuse; four \
+         reactor final-weak original-principal refunds left successor unchanged"
     );
 }
 

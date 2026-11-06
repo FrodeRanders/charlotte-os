@@ -29,10 +29,10 @@ pre-publication signed sponsor; they are not refunded with these four nodes.
 Including the existing memory-account node in this pool increases the count
 ceiling from 12288/9216 to 16384/12288, preserving the previous count-only capacity of 4096 total or 3072
 ordinary complete roots before other retained/prepared nodes. Native layouts
-are 392 bytes for the three policy nodes and 144 bytes for the account, totaling
-536 bytes per complete root. The admitted waiter and timer account allocators
-each enlarge their inline owner by eight bytes. Those count ceilings consume
-2,195,456 total or 1,646,592 ordinary layout bytes, within the unchanged 4/3 MiB
+are 392 bytes for the three policy nodes and 176 bytes for the account, totaling
+568 bytes per complete root. The waiter and timer account references each occupy
+32 bytes, including their captured original-principal allocator. Those count ceilings consume
+2,326,528 total or 1,744,896 ordinary layout bytes, within the unchanged 4/3 MiB
 byte ceilings. The larger count ceiling preserves complete-root capacity while allowing more
 simultaneous small nodes; the byte ceiling still bounds mixed/retained storage.
 It does not preallocate RAM. A separate pool or combined allocation would

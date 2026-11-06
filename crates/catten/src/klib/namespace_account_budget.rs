@@ -4,21 +4,13 @@
 use alloc::sync::Arc;
 use core::alloc::AllocError;
 
-use crate::klib::{
-    admission::{
-        self,
-        NamespaceAccounts,
-    },
-    charged_allocator::{
-        ChargedAllocator,
-        PreAdmitted,
-    },
-};
+#[cfg(any(test, feature = "kernel_tests"))]
+use crate::klib::admission;
+use crate::klib::admission::NamespaceAccounts;
 
-pub(crate) type Allocator = ChargedAllocator<
-    Charge,
-    PreAdmitted,
-    admission::SponsoredAllocator<crate::memory::kernel_buffers::NamespaceSponsor>,
+pub(crate) type Allocator = crate::klib::account_backing::Allocator<
+    NamespaceAccounts,
+    crate::memory::kernel_buffers::NamespaceSponsor,
 >;
 pub(crate) type AccountRef<T> = Arc<T, Allocator>;
 #[cfg(any(test, feature = "kernel_tests"))]
@@ -27,17 +19,12 @@ pub(crate) const NODE_LIMIT: u64 = crate::resource_policy::POLICY.namespace_acco
 pub(crate) const ORDINARY_LIMIT: u64 =
     crate::resource_policy::POLICY.namespace_accounts.ordinary[0];
 
-pub(crate) type Charge = admission::BundleCharge<NamespaceAccounts>;
-
 /// Only the four fixed-layout namespace account constructors use this pool.
 pub(crate) fn allocator(
     storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
 ) -> Result<Allocator, AllocError> {
     let storage = storage.into();
-    Allocator::try_new_with_backing(
-        Charge::reserve(storage.platform())?,
-        admission::SponsoredAllocator::new(storage.namespace_sponsor()),
-    )
+    crate::klib::account_backing::allocator(storage.platform(), storage.namespace_sponsor())
 }
 
 #[cfg(any(test, feature = "kernel_tests"))]

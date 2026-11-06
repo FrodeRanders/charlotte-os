@@ -110,6 +110,14 @@ remain an independent family ceiling. This adds no registry or eager backing;
 allocator excess and external reference fields still need their enclosing owners'
 accounting. See [namespace-account qualification](namespace-account-admission.md).
 
+Waiter, scheduler/completion timer and record/CQ/watch account backing shares a
+separate 1 MiB reactor-account allowance in that same record. The six types fund
+their actual Arc and private-holder layouts through final weak/allocator release.
+Root preparation captures its unpublished account; completion preparation captures
+principal, class and exact generation under one root-table hold. The same shared
+fixed-bundle allocator funds namespace and reactor accounts, with separate family
+and principal policies. See [reactor-account qualification](../reports/audits/2026-11-06-q4-reactor-principals.md).
+
 ## Verification and limits
 
 Native kernel controls exercise mixed real heap/image/object backing across

@@ -86,6 +86,8 @@ pub(crate) struct Memory {
     pub principal_kernel_buffer_bytes: u64,
     /// Actual namespace-account Arc and private holder layouts per principal.
     pub principal_namespace_account_bytes: u64,
+    /// Actual waiter, timer and completion account/holder layouts per principal.
+    pub principal_reactor_account_bytes: u64,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct KernelHeap {
@@ -284,6 +286,11 @@ impl Policy {
             || m.principal_namespace_account_bytes > isize::MAX as u64
         {
             return Err("principal namespace account bytes");
+        }
+        if m.principal_reactor_account_bytes == 0
+            || m.principal_reactor_account_bytes > isize::MAX as u64
+        {
+            return Err("principal reactor account bytes");
         }
         if l.waiters_per_source == 0
             || l.waiters_per_source as u64 > self.waiters.domain[0]

@@ -345,13 +345,13 @@ fn register_user_address_space_with(
     ) -> Result<usize, crate::klib::collections::id_table::Error>,
     reject: impl FnOnce(AddressSpace),
 ) -> Result<AddressSpaceHandle, AddressSpaceRegistrationError> {
-    let platform = address_space.table_account.is_platform();
+    let storage = kernel_buffers::capture_unpublished(&address_space);
     registration::register(
         address_space,
         publish,
         reject,
-        || budget::PreparingAccount::try_new(platform),
-        || registration::metadata::PreparingMetadata::try_new(platform),
+        || budget::PreparingAccount::try_new(storage),
+        || registration::metadata::PreparingMetadata::try_new(storage.platform()),
     )
 }
 

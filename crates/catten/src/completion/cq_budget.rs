@@ -33,8 +33,10 @@ impl DomainBudget {
         Self::try_new(false).expect("mandatory CQ account allocation failed")
     }
 
-    pub(crate) fn try_new(backing_platform: bool) -> Result<AccountRef, core::alloc::AllocError> {
-        let allocator = super::account_budget::allocator(backing_platform)?;
+    pub(crate) fn try_new(
+        storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
+    ) -> Result<AccountRef, core::alloc::AllocError> {
+        let allocator = super::account_budget::allocator(storage)?;
         allocator.try_arc(Self(Mutex::new(VectorBudget::new(DOMAIN_LIMIT))))
     }
 

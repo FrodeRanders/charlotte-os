@@ -26,11 +26,12 @@ independently caps requested storage as layouts grow. A quarter remains shared t
 without per-type or per-service progress entitlements. No existing resource limit
 is raised and no RAM is preallocated.
 
-Native layouts are 112/128 bytes for capability/IPC nodes, 160 bytes for a
+Native layouts are 112/128 bytes for capability/IPC nodes, 224 bytes for a
 completion node, 96 bytes for a mailbox-capability node and 136 bytes for a word
-namespace node: 632 bytes for all five. These layouts include the captured
-[account funding references](namespace-account-admission.md). Twice the complete-root count capacity
-uses 5,177,344 total or 3,883,008 ordinary layout bytes, below the 8/6 MiB byte
+namespace node: 696 bytes for all five. These layouts include the captured
+[namespace-account](namespace-account-admission.md) and
+[reactor-account funding references](completion-account-admission.md). Twice the complete-root count capacity
+uses 5,701,632 total or 4,276,224 ordinary layout bytes, below the 8/6 MiB byte
 ceilings. Current layouts hit count ceilings first, even for the largest type;
 byte-denial controls deliberately use oversized synthetic layouts.
 

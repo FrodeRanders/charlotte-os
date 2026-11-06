@@ -124,6 +124,11 @@ snapshot scratch is 1 MiB per request. These forward to `Policy.local`.
   including weak-only retention. It is independent of the 16 MiB buffer ceiling
   and adds no preallocation or per-service fairness guarantee. See
   [namespace accounts](namespace-account-admission.md).
+- Captured signed-principal reactor-account requested bytes: 1 MiB, under
+  `principal_reactor_account_bytes`. Waiter, scheduler/completion timer and
+  record/CQ/watch accounts share actual Arc/holder funding through final weak
+  release. This remains separate from namespace-account and buffer funding;
+  global family count ceilings are unchanged. See [account funding](completion-account-admission.md).
 - IOMMU per-domain and per-unit backing: 1024 and 2048 pages respectively.
 - Independent usable-RAM ratios: objects, heap and image each 1/4; stack 1/8;
   private tables 1/16; fresh shared tables 1/64; IOMMU tables 1/32. Each pool
@@ -151,12 +156,16 @@ It records the limits of that comparison and the RAM cost of possible 96/128 MiB
 growth floors; no limit change or aggregate acceptance follows from the census.
 Use [the policy census](../../scripts/audit-resource-capacity.py) to reproduce
 values for a selected profile instead of copying defaults into a sizing script.
-Its version-2 output also records selected buffer and namespace-account principal
+Its version-2 output also records selected buffer, namespace-account and reactor-account principal
 byte ceilings. They overlap applicable family bounds and are not additive RAM use.
 The namespace-account count ceiling implies a separate 2.4375/3.25 MiB
 ordinary/total upper bound at the currently measured largest 104-byte bundle;
 partial holders and weak retention retain their slots. This derived bound is
 outside the 19 byte-denominated pool sum and is not an aggregate acceptance.
+The six reactor-account types measure 64–80 bytes per complete bundle. Their
+unchanged family counts imply separate ordinary/total bounds of 432/576 KiB for
+waiters, 864/1152 KiB for timers and 1440/1920 KiB for completion accounts. These
+bounds also sit outside that byte-pool sum; they are not disjoint usage or a heap-fit proof.
 
 ## Validation and coupled changes
 

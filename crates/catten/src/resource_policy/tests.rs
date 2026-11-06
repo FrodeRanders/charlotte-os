@@ -288,3 +288,12 @@ fn namespace_account_principal_bytes_reject_zero_and_unsupported_layout_size() {
         assert_eq!(policy.validate(), Err("principal namespace account bytes"));
     }
 }
+
+#[test]
+fn reactor_account_principal_bytes_reject_zero_and_unsupported_layout_size() {
+    for bytes in [0, isize::MAX as u64 + 1] {
+        let mut policy = DEFAULT;
+        policy.memory.principal_reactor_account_bytes = bytes;
+        assert_eq!(policy.validate(), Err("principal reactor account bytes"));
+    }
+}

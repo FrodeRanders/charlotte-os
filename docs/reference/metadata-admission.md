@@ -82,16 +82,16 @@ to the common heap plan must be recorded before accepting an exclusion.
 | `thread_metadata` | Context/retirement requested bytes and bundles | Allocator excess/control overhead and joint heap fit. |
 | `thread_table` | Retained/candidate table requested bytes and slots | Allocator excess and joint heap fit. |
 | `root_table` | Retained/candidate ASID-table requested bytes and slots | Allocator excess and joint heap fit. |
-| `waiter_accounts` | Pending | Bundle count is not actual allocator/control-byte accounting. |
-| `timer_accounts` | Pending | Shared account, private holder and retained weak references. |
-| `completion_accounts` | Pending | Record/CQ/watch accounts and final allocation release. |
+| `waiter_accounts` | Actual waiter-account Arc and private-holder layouts | Allocator excess, enclosing references and joint heap fit. |
+| `timer_accounts` | Actual scheduler/completion timer-account Arc and holder layouts | Allocator excess, enclosing references and joint heap fit. |
+| `completion_accounts` | Actual record/CQ/watch account Arc and holder layouts | Allocator excess, enclosing references and joint heap fit. |
 | `namespace_accounts` | Actual capability/IPC/mailbox Arc and holder layouts | Allocator excess and joint heap fit; external reference fields stay with parent pools and other account families remain separate. |
 | `scratch_nodes` | Pending | Extent and namespace backing through retained mapping work. |
 | `snapshot_buffers` | All production requested-byte paths | Counts have no principal share guarantee; overhead/joint heap fit. |
 | `mapping_nodes` | Pending | Original mapping sponsor through detach and physical uncertainty. |
 | `memory_capability_nodes` | Root heap/image catalog bytes | Object catalogs/records, namespace/capability/borrower nodes and overhead. |
 | `observer_lists` | Pending | List/control allocation and final weak-only backing. |
-| `ipc_nodes` | Descriptor, staging, loan, revocation and attachment-catalog bytes | Payload nodes, endpoint queue backing, accounts and overhead. |
+| `ipc_nodes` | Descriptor, staging, loan, revocation and attachment-catalog bytes | Payload nodes, endpoint queue backing and overhead; namespace accounts tracked separately. |
 | `service_images` | Pending | Immutable boot cache sponsorship versus requesting application work. |
 
 The [backing-principal reference](principal-backing-admission.md) identifies

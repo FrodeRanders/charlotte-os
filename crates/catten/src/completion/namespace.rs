@@ -64,29 +64,28 @@ impl Namespace {
     // Mandatory private boot fixture; runtime publication uses fallible Preparing.
     #[cfg(any(test, feature = "kernel_tests"))]
     pub(super) fn for_fixture(asid: AddressSpaceId, capacity: usize) -> Self {
-        let (root, backing_platform) = crate::memory::capture_address_space_storage(asid);
-        Self::try_new(root, capacity, backing_platform, &mut |_| Ok(()))
+        let (root, storage) = crate::memory::capture_address_space_sponsor(asid);
+        Self::try_new(root, capacity, storage, &mut |_| Ok(()))
             .expect("mandatory completion namespace allocation failed")
     }
 
     fn try_new(
         root: Option<crate::memory::AddressSpaceHandle>,
         capacity: usize,
-        backing_platform: bool,
+        storage: crate::memory::kernel_buffers::CapturedStorage,
         before_allocate: &mut impl FnMut(u8) -> Result<(), core::alloc::AllocError>,
     ) -> Result<Self, core::alloc::AllocError> {
         let capacity = capacity.min(budget::MAX_DOMAIN_RECORDS);
         // No payload/source/authority is published. Partial account construction
         // releases only unused Arcs outside local registry/lifecycle guards.
         before_allocate(1)?;
-        let timer_budget =
-            crate::timers::budget::DomainBudget::try_new(capacity, backing_platform)?;
+        let timer_budget = crate::timers::budget::DomainBudget::try_new(capacity, storage)?;
         before_allocate(2)?;
-        let record_budget = budget::DomainBudget::try_new(capacity, backing_platform)?;
+        let record_budget = budget::DomainBudget::try_new(capacity, storage)?;
         before_allocate(3)?;
-        let cq_budget = cq_budget::DomainBudget::try_new(backing_platform)?;
+        let cq_budget = cq_budget::DomainBudget::try_new(storage)?;
         before_allocate(4)?;
-        let watch_budget = watch_budget::DomainBudget::try_new(capacity, backing_platform)?;
+        let watch_budget = watch_budget::DomainBudget::try_new(capacity, storage)?;
         Ok(Self(ManuallyDrop::new(NamespaceState {
             table: AdmittedMap::new(),
             capacity,

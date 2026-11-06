@@ -1,0 +1,1749 @@
+{
+  "schema": "charlotte.q4-reactor-principals.v1",
+  "date": "2026-11-06",
+  "base_revision": "a5813b29a5e1f0e981fcf6edf35b9556abd9fca5",
+  "scope": "Actual original-principal funding for waiter, scheduler/completion timer and record/CQ/watch account Arcs and private holders; three existing catalog families; Q4 remains open.",
+  "source_sha256": {
+    "Cargo.lock": "169db5ac853b42acc4b8d15970d9f3c46036a97229418bc47e99d03f8e1aa029",
+    "crates/catten/src/capability.rs": "3cadd4aa05f567c3ca0573eb90bfe877b84ec8830b943be1ca42fb66e8299208",
+    "crates/catten/src/capability/budget.rs": "1915607d54dc149ebc7f41513c3011667bcd1f172b39457d61a8a88a473e85b6",
+    "crates/catten/src/capability/namespace_account_tests.rs": "82e6780c62bb3a4874fd7efd9a9c20b24ce12f9539f78c1fea31df82c8850b99",
+    "crates/catten/src/completion/account_budget.rs": "4d8a1625f196e6729a262694a3389ab6cdbd00406a81acb07339194ad9dd42e8",
+    "crates/catten/src/completion/account_budget/tests.rs": "cdeb3f7cce5cb2bf4671da62d46b02a8966572d1dc7e0cf4b62df5f2e4c1b9bd",
+    "crates/catten/src/completion/budget.rs": "fed0a3ff516a65f46c4705baf860e755818f9176b799b5ba9902166a1f79650d",
+    "crates/catten/src/completion/cq_budget.rs": "e687365d5ee0772c8d7e3c59a9c650303b98edb55f4983678e5a9d9ad4960e62",
+    "crates/catten/src/completion/namespace.rs": "d59ba41e4daf5b93056118f1a42255b368e503bc74467f466d0bffe8a618437a",
+    "crates/catten/src/completion/namespace/preparation.rs": "010c770cd6dba1e4cf091af95255d2d07c89b2238efd8717663c3a0435bfacdd",
+    "crates/catten/src/completion/watch_budget.rs": "c59621071937ccb65e08e2eac3af0e8a57a203ec04a112a1492b7d564bb56a97",
+    "crates/catten/src/ipc/budget.rs": "dfcd1c11972ae0189b704ed624261d85f0c9a6d9728fdd5dadfb7a4bd9f00576",
+    "crates/catten/src/ipc/namespace.rs": "f4ab404079c0424ceaee5e8919a57e24fce7579ba114c942ed882655a4c6e01d",
+    "crates/catten/src/ipc/record_budget.rs": "05f9f510675f70c431690f9c6e2f0256ad69dfaf002c8884a1c648ddb3a53ff0",
+    "crates/catten/src/klib/account_backing.rs": "332a0cc31069f6421b21c2968e1c8ab7585e8c85e4bf39dc1ca7b83e4116af18",
+    "crates/catten/src/klib/admission.rs": "8e56648eb662a62df1a6340dae285c4c8d0148d1e8b62fcd1711e2227684106d",
+    "crates/catten/src/klib/admission/byte_allocator.rs": "b65017248c8b588db3d619fe7bd27cd96dd9994c8893c57e672237b0910da009",
+    "crates/catten/src/klib/admission/byte_allocator_tests.rs": "72d623a330d557a6830845f535b845e82f4cf46bbbc8008dda2e3d65f073bc40",
+    "crates/catten/src/klib/charged_allocator.rs": "14447a1ec1ec8c2b7ee011b375aa2d194580d761f6912b5d47dc410ed208ce8f",
+    "crates/catten/src/klib/charged_allocator/tests.rs": "abe120f4474cddfb43547ebcca8843f9a0b3edbbdcf1dff818f4f090c6b67420",
+    "crates/catten/src/klib/mod.rs": "da082ebcdfb9e511023165a2031f18691474dda494ea0e10164875201d89e212",
+    "crates/catten/src/klib/namespace_account_budget.rs": "001c22db9bd1a1e36e658a5049a98a8ee9fcd9b1aa49120a8c8af13be91f1f10",
+    "crates/catten/src/klib/observer/account_budget.rs": "b77408c0ccccaf71c2885d53b5b517998b6f2e934a8613e925b04321ebd1b3c2",
+    "crates/catten/src/klib/observer/account_budget/tests.rs": "b96d160a1b2cb934cf14ac5a484e1a47a0c5680900152b525f2c03b1f1ea5dc0",
+    "crates/catten/src/klib/observer/mod.rs": "229f9c2f9d1250909dcd894550703c4c3817038597950a026d8214dd8a1b4b26",
+    "crates/catten/src/klib/observer/waiter_budget.rs": "dc82b003b40344376eb19dfdf77e3513fa960327af9d5a194ab08dd0f3e7d0fd",
+    "crates/catten/src/memory/budget.rs": "e62eb149ecf356f58fe9a1b4e607fb6f0812d53647161e46cb72aa78cc69d9b8",
+    "crates/catten/src/memory/budget/preparation.rs": "b0fa0448a6c2a1fdb7855901e0a5f056489129dc494db6d55f256d0ecbd21a39",
+    "crates/catten/src/memory/budget/preparation/tests.rs": "34e0be245c5a25edef237787bc7c0e6fddf7014b0280746e0c02ede02d1c9b33",
+    "crates/catten/src/memory/mod.rs": "e42d0bf6876fb2f6303efcc8b686d425dd3349c59173d6eb84899de72e2ed3ff",
+    "crates/catten/src/memory/registration.rs": "4b63de63d26c45ae561b3e61ffc0718f09307171d5c1efbe580390aae83f14ea",
+    "crates/catten/src/memory/usage/principal_history.rs": "f3c28dd1ca5f75a8a633d044e1b7d8b8ba1622fd48ba3943e276b79547d1a6e8",
+    "crates/catten/src/memory/usage/principal_history/kernel_buffers.rs": "f193587f070f411e248ae2f5ba5d7996f53bd346cdcace34ced5ad1c23d8ef3e",
+    "crates/catten/src/memory/usage/principal_history/kernel_buffers/reactor_tests.rs": "cd2cd90a7b4ec2e50cd7f80d0f1e7169f1312d2b93009266c0aecc89b2bb7427",
+    "crates/catten/src/resource_policy.rs": "c954023d73ef7acb8f8015e506caa49c6b074cbac0a7b697e1e561f8b96a094e",
+    "crates/catten/src/resource_policy/defaults.rs": "a6151e5f30f3b569fb7285bfbb9b3eb265a0d70dbdc8223f01e65c5c2717b71a",
+    "crates/catten/src/resource_policy/tests.rs": "d250b4923c2d07f8ed74cb220e97c641f02cea03d734c8fb2506560c7b489007",
+    "crates/catten/src/syscall/mailbox_budget.rs": "c741ac08e18f449db9771df349ced8142d7acd6f63ffc45fafe895af51226062",
+    "crates/catten/src/syscall/mailbox_node_tests.rs": "954cd9cde6a42202fc971d489a556255455ee864fa3e3cac94ea857a8488b21a",
+    "crates/catten/src/syscall/mailbox_publication.rs": "b9ee167166fb6c3a7035c855276dc39c0992d59cbf0f2962a3c15fd91c9fa5d7",
+    "crates/catten/src/syscall/mailbox_queue.rs": "e8d635c5ef164e1cc57906c0f2c26d370914ab3aecc8d635c182723fbc6c2df9",
+    "crates/catten/src/syscall/mailbox_tests.rs": "086d6b794b71c4cd84ae581a7604fea99fb1aa6bf81929f197a915fa340d540e",
+    "crates/catten/src/syscall/mod.rs": "f2eaea54ad63945f73846236a36ac23bf768f86b5b43c9c2a21fcc49b9632839",
+    "crates/catten/src/timers/account_budget.rs": "7b9ab4b42900abc9b231d57e7be8fdf81dfc89ff0f023e3b99cc229518741568",
+    "crates/catten/src/timers/budget.rs": "fa34638f8fa3b210ad0dfe42755b3c26ab2d5d1ebb8ea76fe7e7403d53ee297c",
+    "crates/catten/src/timers/budget/account_tests.rs": "d202cac82d238f126d2ff61d811e3f278719a016c385b642123065bd89aeb036",
+    "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
+    "scripts/audit-resource-capacity.py": "9fdac4a810612a289e1a9287a39ffe9ead1fc758cb249ef1ba046fd26d3882f3",
+    "scripts/run-host-tests.sh": "ad7bfdabf1d8ae43f7459917d6f0773b878bb363b65654576f51526a657a2d58"
+  },
+  "limits": {
+    "existing_global_limits_changed": false,
+    "principal_reactor_account_bytes": 1048576,
+    "principal_namespace_account_bytes": 1048576,
+    "principal_kernel_buffer_bytes": 16777216,
+    "waiter_ordinary_total": [
+      6144,
+      8192
+    ],
+    "timer_ordinary_total": [
+      12288,
+      16384
+    ],
+    "completion_ordinary_total": [
+      18432,
+      24576
+    ],
+    "root_prefix_headroom_bytes": [
+      0,
+      71,
+      72,
+      143
+    ],
+    "namespace_prefix_headroom_bytes": [
+      0,
+      71,
+      72,
+      135,
+      136,
+      215,
+      216,
+      279
+    ],
+    "live_shared_fixture_bytes": 568,
+    "default_pressure_record_bundles": 16381,
+    "default_pressure_root_bytes": 144,
+    "default_pressure_remaining_bytes": 48
+  },
+  "layout_measurements": {
+    "waiter_bundle": 72,
+    "scheduler_bundle": 72,
+    "completion_timer_bundle": 72,
+    "record_bundle": 64,
+    "cq_bundle": 80,
+    "watch_bundle": 64,
+    "private_holder": 24,
+    "account_reference": 32,
+    "previous_account_reference": 16,
+    "root_policy_nodes": 392,
+    "root_memory_account": 176,
+    "complete_root": 568,
+    "completion_namespace_node": 224,
+    "five_namespace_nodes": 696,
+    "root_count_ceiling_layout_bytes_total_ordinary": [
+      2326528,
+      1744896
+    ],
+    "double_namespace_count_headroom_bytes_total_ordinary": [
+      5701632,
+      4276224
+    ],
+    "reactor_count_derived_bound_bytes_ordinary_total": [
+      2801664,
+      3735552
+    ]
+  },
+  "capacity_census": {
+    "schema": "charlotte.resource-capacity.v2",
+    "rust_toolchain": "nightly-2026-07-27",
+    "host_pointer_bits": 64,
+    "selected_policy": "crates/catten/src/resource_policy/defaults.rs",
+    "source_sha256": {
+      "crates/catten/src/resource_policy/defaults.rs": "a6151e5f30f3b569fb7285bfbb9b3eb265a0d70dbdc8223f01e65c5c2717b71a",
+      "crates/catten/src/resource_policy.rs": "c954023d73ef7acb8f8015e506caa49c6b074cbac0a7b697e1e561f8b96a094e",
+      "crates/catten-syscall/src/cq_ring_tests.rs": "b7d03a0597a776a31d1bde5dd46e3a778ec13f85cba8fdde82da554c1779d48c",
+      "crates/catten-syscall/src/lib.rs": "3133313e95497cad356f5e058eecf31d8bfb305e99f5aabd12a3cb7c2e54f517",
+      "crates/catten-syscall/src/metadata_pools/tests.rs": "31b2869464675a8075e2e790437bb249212ff09c9942f56fd15d8b6b3924f464",
+      "crates/catten-syscall/src/metadata_pools.rs": "4d226d4e741ef991e73a50111d797a1094c77f504be8e2a0f04ae7cacc087bed",
+      "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
+      "scripts/audit-resource-capacity.py": "9fdac4a810612a289e1a9287a39ffe9ead1fc758cb249ef1ba046fd26d3882f3"
+    },
+    "metadata_pools": [
+      {
+        "name": "root_metadata",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          4194304,
+          16384
+        ],
+        "ordinary": [
+          3145728,
+          12288
+        ]
+      },
+      {
+        "name": "namespace_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          8388608,
+          40960
+        ],
+        "ordinary": [
+          6291456,
+          30720
+        ]
+      },
+      {
+        "name": "authority_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          16777216,
+          131072
+        ],
+        "ordinary": [
+          12582912,
+          98304
+        ]
+      },
+      {
+        "name": "mailbox_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          2097152,
+          16384
+        ],
+        "ordinary": [
+          1572864,
+          12288
+        ]
+      },
+      {
+        "name": "deferred_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          1048576,
+          16384
+        ],
+        "ordinary": [
+          786432,
+          12288
+        ]
+      },
+      {
+        "name": "observer_backing",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "bundles"
+        ],
+        "total": [
+          16777216,
+          65536
+        ],
+        "ordinary": [
+          12582912,
+          49152
+        ]
+      },
+      {
+        "name": "completion_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          8388608,
+          20480
+        ],
+        "ordinary": [
+          6291456,
+          15360
+        ]
+      },
+      {
+        "name": "device_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          16777216,
+          139264
+        ],
+        "ordinary": [
+          12582912,
+          104448
+        ]
+      },
+      {
+        "name": "iommu_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          25165824,
+          262144
+        ],
+        "ordinary": [
+          18874368,
+          196608
+        ]
+      },
+      {
+        "name": "principal_history",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          1048576,
+          4096
+        ],
+        "ordinary": [
+          786432,
+          3072
+        ]
+      },
+      {
+        "name": "thread_metadata",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "bundles"
+        ],
+        "total": [
+          8388608,
+          4096
+        ],
+        "ordinary": [
+          6291456,
+          3072
+        ]
+      },
+      {
+        "name": "thread_table",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "slots"
+        ],
+        "total": [
+          33554432,
+          32768
+        ],
+        "ordinary": [
+          25165824,
+          24576
+        ]
+      },
+      {
+        "name": "root_table",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "slots"
+        ],
+        "total": [
+          16777216,
+          16384
+        ],
+        "ordinary": [
+          12582912,
+          12288
+        ]
+      },
+      {
+        "name": "waiter_accounts",
+        "dimensions": 1,
+        "units": [
+          "bundles"
+        ],
+        "total": [
+          8192
+        ],
+        "ordinary": [
+          6144
+        ]
+      },
+      {
+        "name": "timer_accounts",
+        "dimensions": 1,
+        "units": [
+          "bundles"
+        ],
+        "total": [
+          16384
+        ],
+        "ordinary": [
+          12288
+        ]
+      },
+      {
+        "name": "completion_accounts",
+        "dimensions": 1,
+        "units": [
+          "bundles"
+        ],
+        "total": [
+          24576
+        ],
+        "ordinary": [
+          18432
+        ]
+      },
+      {
+        "name": "namespace_accounts",
+        "dimensions": 1,
+        "units": [
+          "bundles"
+        ],
+        "total": [
+          32768
+        ],
+        "ordinary": [
+          24576
+        ]
+      },
+      {
+        "name": "scratch_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          524288,
+          8192
+        ],
+        "ordinary": [
+          393216,
+          6144
+        ]
+      },
+      {
+        "name": "snapshot_buffers",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "buffers"
+        ],
+        "total": [
+          16777216,
+          8192
+        ],
+        "ordinary": [
+          12582912,
+          6144
+        ]
+      },
+      {
+        "name": "mapping_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          1048576,
+          8192
+        ],
+        "ordinary": [
+          786432,
+          6144
+        ]
+      },
+      {
+        "name": "memory_capability_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          4194304,
+          32768
+        ],
+        "ordinary": [
+          3145728,
+          24576
+        ]
+      },
+      {
+        "name": "observer_lists",
+        "dimensions": 1,
+        "units": [
+          "allocations"
+        ],
+        "total": [
+          8192
+        ],
+        "ordinary": [
+          6144
+        ]
+      },
+      {
+        "name": "ipc_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          16777216,
+          98304
+        ],
+        "ordinary": [
+          12582912,
+          73728
+        ]
+      },
+      {
+        "name": "service_images",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "images"
+        ],
+        "total": [
+          16777216,
+          64
+        ],
+        "ordinary": [
+          12582912,
+          48
+        ]
+      }
+    ],
+    "byte_pool_count": 19,
+    "byte_ceiling_sums": {
+      "total": 215482368,
+      "ordinary": 161611776
+    },
+    "separate_queue_byte_ceilings": [
+      {
+        "name": "mailbox_queues",
+        "total_bytes": 8388608,
+        "ordinary_bytes": 6291456
+      },
+      {
+        "name": "completion_queues",
+        "total_bytes": 4194304,
+        "ordinary_bytes": 3145728
+      }
+    ],
+    "kernel_heap": {
+      "initial_bytes": 8388608,
+      "growth_min_bytes": 67108864,
+      "growth_max_bytes": 268435456,
+      "ram_divisor": 64
+    },
+    "local": {
+      "telemetry_working_bytes": 1048576
+    },
+    "principal_byte_limits": {
+      "kernel_buffer_bytes": 16777216,
+      "namespace_account_bytes": 1048576,
+      "reactor_account_bytes": 1048576
+    },
+    "usable_ram_samples": [
+      {
+        "usable_bytes": 384827392,
+        "growth_reserve_bytes": 67108864,
+        "total_mapped_heap_bytes": 75497472
+      },
+      {
+        "usable_bytes": 396361728,
+        "growth_reserve_bytes": 67108864,
+        "total_mapped_heap_bytes": 75497472
+      },
+      {
+        "usable_bytes": 536870912,
+        "growth_reserve_bytes": 67108864,
+        "total_mapped_heap_bytes": 75497472
+      },
+      {
+        "usable_bytes": 1073741824,
+        "growth_reserve_bytes": 67108864,
+        "total_mapped_heap_bytes": 75497472
+      },
+      {
+        "usable_bytes": 4294967296,
+        "growth_reserve_bytes": 67108864,
+        "total_mapped_heap_bytes": 75497472
+      },
+      {
+        "usable_bytes": 8589934592,
+        "growth_reserve_bytes": 134217728,
+        "total_mapped_heap_bytes": 142606336
+      },
+      {
+        "usable_bytes": 17179869184,
+        "growth_reserve_bytes": 268435456,
+        "total_mapped_heap_bytes": 276824064
+      }
+    ],
+    "interpretation": [
+      "Independent ceilings, not allocated usage, disjoint partitions or jointly reachable maxima.",
+      "Count-only account/control allocations, allocator overhead and boot/transient/retained backing are not converted into bytes here.",
+      "Queue ceilings remain separate; this report does not assert absence of accounting overlap.",
+      "Usable-RAM samples are inputs to the real heap formula, not guest RAM or native measurements.",
+      "Reported principal ceilings do not prove complete coverage, cleanup progress or aggregate acceptance; they overlap applicable family ceilings."
+    ]
+  },
+  "native_layout": {
+    "profile": "AMD-Vi security",
+    "kernel_sha256": "97085fc3fe998e16771af84e4fe01e8ac4581784cbc87c6288124dd7d92dd2d2",
+    "command": [
+      "dwarfdump",
+      "--regex",
+      "--name",
+      "^Arc<catten::klib::observer::waiter_budget::DomainBudget,.*ReactorAccountBudget",
+      "--name",
+      "^ArcInner<.*Allocation<.*WaiterAccounts.*",
+      "--name",
+      "^Node<.*catten::completion::namespace::Namespace.*NamespaceNodes",
+      "target/x86_64-unknown-none-catten/debug/catten"
+    ],
+    "diagnostics": [
+      "target/x86_64-unknown-none-catten/debug/catten:\tfile format elf64-x86-64",
+      "",
+      "0x00037085: DW_TAG_structure_type",
+      "              DW_AT_name\t(\"Arc<catten::klib::observer::waiter_budget::DomainBudget, catten::klib::charged_allocator::ChargedAllocator<catten::klib::admission::BundleCharge<catten::klib::admission::WaiterAccounts>, catten::klib::charged_allocator::PreAdmitted, catten::klib::admission::byte_allocator::SponsoredAllocator<catten::memory::usage::principal_history::kernel_buffers::PrincipalBytes<catten::memory::usage::principal_history::kernel_buffers::ReactorAccountBudget>>>>\")",
+      "              DW_AT_byte_size\t(0x20)",
+      "              DW_AT_accessibility\t(DW_ACCESS_public)",
+      "              DW_AT_alignment\t(8)",
+      "",
+      "0x00037244: DW_TAG_structure_type",
+      "              DW_AT_name\t(\"ArcInner<catten::klib::charged_allocator::Allocation<catten::klib::admission::BundleCharge<catten::klib::admission::WaiterAccounts>, catten::klib::charged_allocator::PreAdmitted>>\")",
+      "              DW_AT_byte_size\t(0x18)",
+      "              DW_AT_accessibility\t(DW_ACCESS_private)",
+      "              DW_AT_alignment\t(8)",
+      "",
+      "0x00bc079f: DW_TAG_structure_type",
+      "              DW_AT_name\t(\"ArcInner<core::mem::maybe_uninit::MaybeUninit<catten::klib::charged_allocator::Allocation<catten::klib::admission::BundleCharge<catten::klib::admission::WaiterAccounts>, catten::klib::charged_allocator::PreAdmitted>>>\")",
+      "              DW_AT_byte_size\t(0x18)",
+      "              DW_AT_accessibility\t(DW_ACCESS_private)",
+      "              DW_AT_alignment\t(8)",
+      "",
+      "0x00dd763e: DW_TAG_structure_type",
+      "              DW_AT_name\t(\"Node<(usize, catten::completion::namespace::Namespace), catten::klib::admission::NodeCharge<catten::klib::admission::NamespaceNodes>>\")",
+      "              DW_AT_byte_size\t(0xe0)",
+      "              DW_AT_accessibility\t(DW_ACCESS_private)",
+      "              DW_AT_alignment\t(8)"
+    ]
+  },
+  "checks": [
+    {
+      "name": "format",
+      "status": "passed",
+      "command": "cargo fmt --all -- --check"
+    },
+    {
+      "name": "standalone fixture format",
+      "status": "passed",
+      "command": "cargo fmt --all -- --check crates/catten/src/klib/admission/byte_allocator_tests.rs"
+    },
+    {
+      "name": "full host",
+      "status": "passed",
+      "command": "CARGO_NET_OFFLINE=true scripts/run-host-tests.sh",
+      "log_sha256": "56e90fdcaa91da3b2195c1d44903d1afc477c51058b365342573158cf5f09a9b",
+      "milestones": [
+        "test resource_policy::tests::reactor_account_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "test charged_allocator::tests::captured_backing_rejects_holder_and_payload_without_losing_original_charge ... ok",
+        "test charged_allocator::tests::captured_backing_funds_actual_holder_payload_and_final_weak_release ... ok",
+        "test klib::charged_allocator::tests::captured_backing_funds_actual_holder_payload_and_final_weak_release ... ok",
+        "test klib::charged_allocator::tests::captured_backing_rejects_holder_and_payload_without_losing_original_charge ... ok",
+        "test resource_policy::tests::reactor_account_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "test resource_policy::tests::reactor_account_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "test resource_policy::tests::reactor_account_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "test resource_policy::tests::reactor_account_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "test byte_allocator_tests::standalone_backing_adapter_funds_bytes_without_changing_family_counts ... ok",
+        "test resource_policy::tests::reactor_account_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "test resource_policy::tests::reactor_account_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "test resource_policy::tests::reactor_account_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "test resource_policy::tests::reactor_account_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "test charged_allocator::tests::captured_backing_funds_actual_holder_payload_and_final_weak_release ... ok",
+        "test charged_allocator::tests::captured_backing_rejects_holder_and_payload_without_losing_original_charge ... ok",
+        "SHA-256, CLS2 metadata, placement-policy, and signed-deployment self-tests pass"
+      ]
+    },
+    {
+      "name": "ARM test",
+      "status": "passed",
+      "command": "CARGO_NET_OFFLINE=true CATTEN_AARCH64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/aarch64-unknown-none\" cargo clippy --locked -p catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi,kernel_tests -- -D warnings",
+      "log_sha256": "cd6a1baf9ff723ac3a022c727e6934c94a0d835a0607417d6cd68c6e843bea08",
+      "diagnostics": [
+        "    Blocking waiting for file lock on build directory",
+        "warning: catten@0.8.1: DEVELOPMENT image: public fixture trust; do not deploy real secrets",
+        "    Checking catten v0.8.1 (/Users/froran/Projects/private/charlotte-os/crates/catten)",
+        "    Finished `dev` profile [optimized + debuginfo] target(s) in 8.33s"
+      ]
+    },
+    {
+      "name": "x86 test",
+      "status": "passed",
+      "command": "CARGO_NET_OFFLINE=true CATTEN_X86_64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/x86_64-unknown-none\" cargo clippy --locked -p catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi,kernel_tests -- -D warnings",
+      "log_sha256": "b75bf184ad69f817f35e4b6f67aaaefd5142c6ba4312281d22347fd1d6cd8ed3",
+      "diagnostics": [
+        "    Blocking waiting for file lock on build directory",
+        "warning: catten@0.8.1: DEVELOPMENT image: public fixture trust; do not deploy real secrets",
+        "    Checking catten v0.8.1 (/Users/froran/Projects/private/charlotte-os/crates/catten)",
+        "    Finished `dev` profile [optimized + debuginfo] target(s) in 3.88s"
+      ]
+    },
+    {
+      "name": "ARM minimal",
+      "status": "passed",
+      "command": "CARGO_NET_OFFLINE=true CATTEN_AARCH64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/aarch64-unknown-none-minimal\" cargo clippy --locked -p catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+      "log_sha256": "24bb9d30dcd2580e3ae620023f306fea852ce830940b26b39954e9355aa3b551",
+      "diagnostics": [
+        "    Blocking waiting for file lock on build directory",
+        "warning: catten@0.8.1: DEVELOPMENT image: public fixture trust; do not deploy real secrets",
+        "    Checking catten v0.8.1 (/Users/froran/Projects/private/charlotte-os/crates/catten)",
+        "    Finished `dev` profile [optimized + debuginfo] target(s) in 10.30s"
+      ]
+    },
+    {
+      "name": "x86 minimal",
+      "status": "passed",
+      "command": "CARGO_NET_OFFLINE=true CATTEN_X86_64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/x86_64-unknown-none-minimal\" cargo clippy --locked -p catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+      "log_sha256": "ccd0e4d3e84e090ca5cad7fa63638f18d689f61980a1331af92f9cd99609b77c",
+      "diagnostics": [
+        "    Blocking waiting for file lock on build directory",
+        "warning: catten@0.8.1: DEVELOPMENT image: public fixture trust; do not deploy real secrets",
+        "    Checking catten v0.8.1 (/Users/froran/Projects/private/charlotte-os/crates/catten)",
+        "    Finished `dev` profile [optimized + debuginfo] target(s) in 5.97s"
+      ]
+    },
+    {
+      "name": "manual",
+      "status": "passed",
+      "source_sha256": "647f7ab47bbb801a196f96cfc3b922f075aa3be39a235207531d5bf129cf0629",
+      "pdf_sha256": "22bc99e353ccf46db91437924f1c3ef14aa5287fe3bd39faef3ff8f9e7e5e39d",
+      "command": "pdflatex --shell-escape -interaction=nonstopmode -halt-on-error -output-directory=/tmp/charlotte-q4-reactor-manual charlotte.tex (twice, from docs/manual-v2)",
+      "passes": [
+        {
+          "pass_number": 1,
+          "log_sha256": "7f37ced280f66532bc7208aaec4b71366fa88db5a877b59561e624520f7d0392",
+          "result": "260-page manual built successfully; existing overfull boxes remain in unchanged paragraphs."
+        },
+        {
+          "pass_number": 2,
+          "log_sha256": "21177f9e6ab415a26042618fe561db3962424ed4b045953f5a040efa626422df",
+          "result": "260-page manual built successfully; existing overfull boxes remain in unchanged paragraphs."
+        }
+      ]
+    },
+    {
+      "name": "capacity census",
+      "status": "passed",
+      "command": "python3 scripts/audit-resource-capacity.py --output target/q4-reactor-capacity.json"
+    }
+  ],
+  "native": [
+    {
+      "profile": "ARM SMMUv3 security",
+      "status": "passed",
+      "deferred_tests_passed": 19,
+      "base_revision": "a5813b29a5e1f0e981fcf6edf35b9556abd9fca5",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-06T00:46:57Z",
+      "kernel_sha256": "b5d5f8f4b93106d67efe66fb2025f3f99e1d7d867c37646783d8f989dce6eb07",
+      "boot_image_sha256": "d38a345c5f75779216ba39c1bd4cb7d642c52d04a0c29823dd8a314c3d2df755",
+      "initial_disk_sha256": "71220674713d03a86470003470fc56bc83b7da8a1107b285b5e6d64f1423e9d7",
+      "bundle_sha256": {
+        "agent.elf": "671eaa8ba761bd8fe1ab7e1a0be24f5335a9e11be7b1c755ba0cb7e195d81d6a",
+        "cclient.elf": "aedb34755dc2eda6af6f1e1b31592d0055029ccf9b890381492d20134de83d1a",
+        "client.elf": "a46d6c5d3f0110d0cc2bdc693b890ba3522b109e5d65cf9098ad2bdd785c530e",
+        "clusterctl.elf": "30c8cbbc4b9d7edf6872f5bf47d1a33bdfcb09f0276927476d2c9e654cfb176b",
+        "deployd.elf": "058dc4d96a9e77bcd2251596415a3f50fcda30534cff20ba3e016d3341b08d9f",
+        "disco.elf": "3b454feea99eee0adb48380c55000267d800f1307f3df80e4292de467464eed9",
+        "dns.elf": "08fc3ffdb05a9e56cfb9f78f16d04ef08188f2231eaeb6a9c325df0d08623139",
+        "echo.elf": "840324beddaf0c90f459dc0900e78884b631205027e4ff09d0fed89ffa2da1f6",
+        "frouter.elf": "49d2505c668f831564d1b2d2e1bd2d101cac651760ccf35fd69edc5fb54f3994",
+        "fs.elf": "264393d6535c0bd7d9ba212048ce4850b067a8633766b4869621d38b882620b5",
+        "grantctl.elf": "bd1b2b5a826a45d3d745e51a315f9083e080fba037a7aa6c9f7b379c3e6daaa1",
+        "greet.elf": "bf6c98d6d361cd63f7567c7eec56496ca1005e524e12b2815db450d1299f7851",
+        "httpd.elf": "2a20eab99c51d8313efcefce58039dd4e1301cff33f9b8e8813bd565085c3024",
+        "kafka.elf": "6d2e4c632f19a76a3f946d393d8c7a4ad55a3eb037a17d249eb285d8b6a29e0e",
+        "kafka_fence_smoke.elf": "69d119e505da5d526d2c33ff8287feda795e1c73a9b5d51b54316aa39cac818c",
+        "kafka_smoke.elf": "b5d2cf1309ba703dffc3e7dc1336cd2395af79c586f802fe2a17abe987b7124b",
+        "kafka_step.elf": "2a23f2cf94d86bad97612b5b692031b2bb9d572398f9123631505c91b9f6aa89",
+        "kafka_step_input.elf": "b005dfcafb79e1787d8f61b75b36211b1fd8c85b7ff0b832c05cc48d4dcd5d00",
+        "kafka_step_proc.elf": "f56381d6e2a144b23333f761798a859fde0682f2c7def02a0a55d33b0b608174",
+        "nclient.elf": "0f75db8d899a510ff478965896ca239bbd2394d1abc4ceacd51756f10c19b6b6",
+        "net.elf": "63795434f8e51d1608539c0dd3da3e378b341082de3fb9a622202d3182434fcd",
+        "ns.elf": "2d720f3ba4ef4ef7582d157f068e660cd78851af304d478d47581d5cfcf4f694",
+        "nvme.elf": "4400a62a4f2496a137e23d389d3fb0097000991311b5e7243447eb33a729e360",
+        "nvme_client.elf": "5ab1ff38c3bfaa09ebbf58f28a6daeb888bb8fdf425b8e66c515c3940878e32f",
+        "objstore.elf": "6a043919aeb9f144063fc353b4591a76c19e198da9070a1dba75497c7b936cee",
+        "objstore_client.elf": "ef3fc558720d57d66a35be63fe70937b8046bc97d09b1f480cdd7249ac7dc5c5",
+        "observe.elf": "253c28fd0cef0871e7deb3086c4114f0e989bc7f7870805babd5f9979c89a8d3",
+        "otlp.elf": "94471bfb3ea50341e72b5440e6e81077ad820b6f83f047d78094dc2f626032a9",
+        "raft.elf": "2d32a23459bc273835bbb364e159051dc191dbef81c8342b7943f30070f925a6",
+        "rclient.elf": "d0186fd36a918859f1ed5084419098ed84de029423904adf2ea7d33ddfc7f41d",
+        "relmsg.elf": "28ba7a1fa23272068a2b09be9f6cea40b26b1090d357a7f4ef3176e3356f0104",
+        "rng.elf": "618f8e3159dbf8e526613927fdfd20d2ea7349a50dc6f32372e1fbae2db78868",
+        "s3.elf": "943f4d41427b5b9e40f83b7856ef3ca684bd64819de90b09e0710c27f9d03623",
+        "s3_smoke.elf": "f5c0157554d5550c95660cb096362c03e924884314f97ebee2aa831efdeb1213",
+        "security_probe.elf": "11a9f88261e2a8064100e7494d83c418d351a0422bac08e9807128ab964e43f3",
+        "servicemgr.elf": "3035aa2ee63aefbdd6f80e8e02eaa63eb1339a09f4ab0578fd1e019d341ba5df",
+        "shutdown_probe.elf": "32dc4a43ae45edbfef69e29fbdc33a329ac3543e83f0cad2c620df9ead9ab50b",
+        "sitas-user.elf": "6f0e7f2113b898f98e16708342db288745e9dcfe2bbbb016027e8db01100391b",
+        "tcpclient.elf": "efab9fa7b1c2ab305515ba5a4f7bf30f7dbdd7adf60c2c6d5635a5d3a31af435",
+        "tcpip.elf": "1ee63b257bbbacc1d6d52ef3944ee31a9b170f6eafff089fd54ac92afa3e68af",
+        "time.elf": "a6736abb273494bc03986dd50463998c4e13e2d28e637cddbe9380e74b6fd6f0",
+        "uart.elf": "4277c7745286054fffe64e944d845c17d6b9908076859b1c97d1117948ab12c7"
+      },
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "ca73af160a462fa40ed166dbea6fda0fb2c53a8f2bfba6d50f4dbf719076fdf6",
+        "scripts/run-aarch64.sh": "58eede46ad82247673a9791e9cb247d5c32806b88bda86389e1e237d3ec100b8"
+      },
+      "qemu_arguments": [
+        "-M",
+        "virt,gic-version=3,msi=gicv2m,iommu=smmuv3,default-bus-bypass-iommu=off",
+        "-m",
+        "512M",
+        "-bios",
+        "/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
+        "-drive",
+        "file=./os-images/charlotte-aarch64-debug-q4-reactor-arm-final.img,format=raw,if=none,id=boot0",
+        "-device",
+        "virtio-blk-pci,drive=boot0,addr=3",
+        "-cpu",
+        "cortex-a710",
+        "-object",
+        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "-device",
+        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on,addr=4",
+        "-smp",
+        "4",
+        "-drive",
+        "if=none,file=./os-images/nvme-disk-q4-reactor-arm-final.img,format=raw,id=nvme0",
+        "-device",
+        "nvme,drive=nvme0,serial=cat0,max_ioqpairs=4,addr=2",
+        "-nic",
+        "none",
+        "-netdev",
+        "user,id=charlotte-net,hostfwd=tcp::17802-:7444",
+        "-device",
+        "virtio-net-pci,netdev=charlotte-net,disable-legacy=on,iommu_platform=on,mac=52:54:00:12:34:56,addr=1",
+        "-display",
+        "none",
+        "-qmp",
+        "unix:/tmp/ctdiag-1wh71liw/qmp.sock,server=on,wait=off",
+        "-gdb",
+        "unix:/tmp/ctdiag-1wh71liw/gdb.sock,server=on,wait=off",
+        "-serial",
+        "file:/tmp/charlotte-q4-reactor-arm-final-serial.log"
+      ],
+      "bundle_unchanged_from_qualified_namespace_batch": true,
+      "serial_sha256": "3a000ed1f5a2d40e3157d3b2d1b619d8d2f5f55d09cd0f56fabced67a55bd990",
+      "runner_sha256": "2cef8f0f574a1f734fc0c5cf1e0cbc475883fbed4d399c7b692f94d48eb02f31",
+      "runner_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "milestones": [
+        "[+     0.010503] Kernel heap: usable=375 MiB initial=8 MiB reserve=64 MiB total=72 MiB",
+        "[+     1.095447] [root metadata layouts] three policy nodes 392 bytes; memory account 176 bytes; complete root 568 bytes",
+        "[+     1.111797] [principal history pressure] 3043 ordinary + 1020 reserved real candidate nodes; ordinary registration rejected before publication, trusted root admitted, total exhaustion and existing-root close/recovery passed",
+        "[+     1.112572] [principal history admission] charged candidates/publications, allocation rejection, full ordinary/total pools, trusted-constructor reserve, close progress/recovery and guarded abandonment passed",
+        "[+     1.208427] [principal history preparation] 64 heap-held first/duplicate publications; allocation-free monotonic stack/heap updates, root retirement/restart and unrelated-principal ASID reuse passed",
+        "[+     1.221832] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; no ASID published; 256 namespace + 144 reactor original principal account bytes retained",
+        "[+     1.315653] [waiter account admission] real-account ordinary/total exhaustion, pre-allocation denial, trusted root reserve, immutable classification, root rollback and final-weak release across exact ASID reuse passed",
+        "[+     1.341591] [timer account lifetime] actual event/node/cancellation retention across root close and exact ASID reuse; final-weak backing refund and successor independence passed",
+        "[+     2.056354] [completion account lifetime] real completion/weak backing, retired heap CQ and owned watch entry retained original accounts across root close and exact ASID reuse; four reactor final-weak original-principal refunds left successor unchanged",
+        "[+     6.750411] [namespace node layouts] complete five-node root 696 bytes; count-headroom layouts 5701632 total / 4276224 ordinary bytes",
+        "[+     6.843374] [namespace account principal] actual cap/endpoint/record/mailbox bundles=72/80/104/104 bytes; sibling sharing, 256 heap-held denials, independent sponsor, three root-prefix rollbacks, promotion, four final-weak refunds after ASID reuse and 14560 real bundles at 1048576-byte principal ceiling passed",
+        "[+     9.677683] [reactor account principal] waiter/scheduler/timer/record/CQ/watch bundles=72/72/72/64/80/64 bytes; sibling sharing, 384 heap-held denials, four root and eight namespace prefixes, healthy sponsor, immutable promotion and 16381 real bundles at 1048576-byte ceiling passed",
+        "[+    84.809058] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "profile": "Intel VT-d security",
+      "status": "passed",
+      "deferred_tests_passed": 17,
+      "base_revision": "a5813b29a5e1f0e981fcf6edf35b9556abd9fca5",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-06T00:48:31Z",
+      "kernel_sha256": "2e8b237d8c64981848cc477b0c90a2702023af1ef7523a6cac27a6d0d75481b7",
+      "boot_image_sha256": "7e002d07b949ec744dbf5af0ebe745a8ef616e6e10884a94d9cea796a456e0e8",
+      "initial_disk_sha256": "6dc9db7495e27f2ab53a04b0f62747f4fd7a63f24f62fa0024c6a7939b0df278",
+      "bundle_sha256": {
+        "agent.elf": "41a34c422e5fab4565e123c13c2fdc144c2fb6752a5beb58acf7bbf7cb6d4c90",
+        "ahci.elf": "f607c8fdb0d1954938c33a7718dfe34521dbb444053c4f5887e4c95d40084f13",
+        "client.elf": "e1f6895d2bf32024d60ca4d0e41331738f2060857fff2106239fed2a7a3c4d25",
+        "clusterctl.elf": "a7dfe023ea1e27b8efc847bdf74066c336316b97e46cbd9d9221bc9e364267e7",
+        "deployd.elf": "df4b70928fe00d8ee8485b371524d453f71e9615e56966b680861991adcf9553",
+        "disco.elf": "741687e1d4139e2e707bed02837a4325699d496da3a11a1bfed95896cd191169",
+        "dns.elf": "2a6c84256737204e09dda339530d5a9a90f59cf06f3afd8eab5d022d977e32ae",
+        "e1000e.elf": "4efef0ca0179440dcbe0a29850c0497d3874b63b7d367a05b90204fb518b695a",
+        "echo.elf": "adebef36a9b262b7b1fbe81c610d6f2e0e3376e7d51b6e1459d909b7b1f71342",
+        "frouter.elf": "9d9e4d719278d43343e48cdcbe4b55c38034f25d528e80212df0eea81062698b",
+        "fs.elf": "c2f153ba2858c2bf54e996c9a697dbb7b093b9a94099dca39f1eebe303ab3837",
+        "grantctl.elf": "06af7e79a7a335b210e7dccfe4da9767eb555d8a4703340cb13c2b0144729312",
+        "greet.elf": "e69730b6a6db30aa0f379daeca6dd37f2931536125f2acd198670cd00dc82da0",
+        "httpd.elf": "081d51db9f5fc430dce97409e2a07971876be103ce141b1892fb3878a7e1bcb2",
+        "kafka.elf": "9ee3f990d493ba747ec443740c75787c117ad2330225cd628933ec31b8192f38",
+        "kafka_smoke.elf": "41b7af7299634f43438bac5ead66018fcc6e9fa016331f4639208f41e1576856",
+        "nclient.elf": "9020fc6a1e97f45f0295a0cc3bff59b6ace9a13364bacfd039365cc39507eaa0",
+        "net.elf": "3ba1c1a4a3058b25333ce696136b082f9f8c23fa9d192eff7e1253bac2fce915",
+        "ns.elf": "8500f58b27836d7764d8b0415fbaf88e8ca175d1a7ebf9bed98c145b390d019f",
+        "nvme.elf": "3905ba29c4acbc07cec559e9af09e9ad9eadfdf7fe05d0311eeb7c9444a867ba",
+        "nvme_client.elf": "41b44a10a7e331a96f11de006749d74a17edd600680bd29a9f914c18bf9b1c2f",
+        "objstore.elf": "ffafabc799a8aa8d61025d2ff648bdd1b3b8321034f89dfa88e9a75745be6c3a",
+        "objstore_client.elf": "5280c4a66778ec0b52786d0b2b6075a7c5c7e80dc0d7b8310a502b512421ce9c",
+        "observe.elf": "2c0fdaf0c2c57a672fb15bdb611815f49142b68c02e3220c203bc18e7f8d0fae",
+        "otlp.elf": "1500357bb14efc05e3c941ce4ee65e2797995d5cb097b649fc7cfaa5d05ff65b",
+        "raft.elf": "a2ca3ee01e5a8456b1251341a71299d8d40893b7047c7daf050972243cce087e",
+        "rclient.elf": "cbdd0af55b0da8254fa8d962a7b75cb40cd061bce05baa59c4bcc5b019867805",
+        "relmsg.elf": "3acfb247379fa6b247c2926dfcf11bf4212d525ef59de26e3e64408b77d18ce5",
+        "rng.elf": "10d114d3331fa67939d412be287765f2fefae9b716421231f8901f12c456d71d",
+        "s3.elf": "ad19d44e30b6d58fa542c40c0b1a38e27ecb9883f8db76e8b3cf6288eb03dce3",
+        "s3_smoke.elf": "b57d03565926b9dbc67ed22ec445e9fe733cf43ac2be2c79435f84345469d2d8",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c",
+        "servicemgr.elf": "2ba39555142fd4f1fcdf8004f542cdf97b65267f3f2e05814e00822fe1cbe72e",
+        "shutdown_probe.elf": "fe7212dd8752c33be2f604436ca482f72eeb18ccbc3d4c69eb0bda9381415163",
+        "tcpclient.elf": "e85b5df90c422d46508051201d04ed42f6bf9b720b409347d266525e33622520",
+        "tcpip.elf": "b07bb35ff810ecfb21d10301c50f13e389f0ced45ff2392c75a0b594369f1de6",
+        "time.elf": "1afa0fc691f5dd06b7f9ea5f095e5048ac2c9fba0f0ca97f622e83c5961fd612",
+        "virtio_blk.elf": "f73eef9a720299a7764ad46b8c6875955259d1ca6903a3d95bc64ec23930d304"
+      },
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "ca73af160a462fa40ed166dbea6fda0fb2c53a8f2bfba6d50f4dbf719076fdf6",
+        "scripts/run-x86_64.sh": "68f5c782f96233721e2ca04f07c2181df7a43396add422ad49f421dbde900aaa"
+      },
+      "qemu_arguments": [
+        "-M",
+        "q35",
+        "-cpu",
+        "max",
+        "-smp",
+        "4",
+        "-m",
+        "512M",
+        "-drive",
+        "if=pflash,format=raw,unit=0,file=/opt/homebrew/opt/qemu/share/qemu/edk2-x86_64-code.fd,readonly=on",
+        "-drive",
+        "if=none,file=./os-images/charlotte-x86_64-debug-q4-reactor-intel-final.img,format=raw,id=esp,readonly=on",
+        "-device",
+        "qemu-xhci,id=xhci",
+        "-device",
+        "usb-storage,bus=xhci.0,drive=esp,bootindex=1",
+        "-drive",
+        "if=none,file=./os-images/x86-data-q4-reactor-intel-final.img,format=raw,id=data0",
+        "-device",
+        "nvme,drive=data0,serial=cat0",
+        "-device",
+        "intel-iommu",
+        "-object",
+        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "-device",
+        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on",
+        "-display",
+        "none",
+        "-no-reboot",
+        "-nic",
+        "none",
+        "-netdev",
+        "user,id=net0,hostfwd=tcp::17803-:7444",
+        "-device",
+        "virtio-net-pci-non-transitional,netdev=net0,iommu_platform=on,mac=52:54:00:12:34:56",
+        "-qmp",
+        "unix:/tmp/ctdiag-31fnlfio/qmp.sock,server=on,wait=off",
+        "-gdb",
+        "unix:/tmp/ctdiag-31fnlfio/gdb.sock,server=on,wait=off",
+        "-serial",
+        "file:/tmp/charlotte-x86-q4-reactor-intel-final-serial.log"
+      ],
+      "bundle_unchanged_from_qualified_namespace_batch": true,
+      "serial_sha256": "969b758da64099e63db3797bb8d0432a12e8b7a17a5de6d8c4c049316a2be53f",
+      "runner_sha256": "9771792cfe9129923d40722ae7a3185f02c9b9f8f4885bd85e82840a30784143",
+      "runner_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "milestones": [
+        "[+     0.018398] Kernel heap: usable=364 MiB initial=8 MiB reserve=64 MiB total=72 MiB",
+        "[+     1.118038] [root metadata layouts] three policy nodes 392 bytes; memory account 176 bytes; complete root 568 bytes",
+        "[+     1.137269] [principal history pressure] 3035 ordinary + 1020 reserved real candidate nodes; ordinary registration rejected before publication, trusted root admitted, total exhaustion and existing-root close/recovery passed",
+        "[+     1.138684] [principal history admission] charged candidates/publications, allocation rejection, full ordinary/total pools, trusted-constructor reserve, close progress/recovery and guarded abandonment passed",
+        "[+     1.201922] [principal history preparation] 64 heap-held first/duplicate publications; allocation-free monotonic stack/heap updates, root retirement/restart and unrelated-principal ASID reuse passed",
+        "[+     1.218260] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; no ASID published; 256 namespace + 144 reactor original principal account bytes retained",
+        "[+     1.319106] [waiter account admission] real-account ordinary/total exhaustion, pre-allocation denial, trusted root reserve, immutable classification, root rollback and final-weak release across exact ASID reuse passed",
+        "[+     1.344018] [timer account lifetime] actual event/node/cancellation retention across root close and exact ASID reuse; final-weak backing refund and successor independence passed",
+        "[+     2.037715] [completion account lifetime] real completion/weak backing, retired heap CQ and owned watch entry retained original accounts across root close and exact ASID reuse; four reactor final-weak original-principal refunds left successor unchanged",
+        "[+     6.860068] [namespace node layouts] complete five-node root 696 bytes; count-headroom layouts 5701632 total / 4276224 ordinary bytes",
+        "[+     6.961541] [namespace account principal] actual cap/endpoint/record/mailbox bundles=72/80/104/104 bytes; sibling sharing, 256 heap-held denials, independent sponsor, three root-prefix rollbacks, promotion, four final-weak refunds after ASID reuse and 14560 real bundles at 1048576-byte principal ceiling passed",
+        "[+    15.065804] [reactor account principal] waiter/scheduler/timer/record/CQ/watch bundles=72/72/72/64/80/64 bytes; sibling sharing, 384 heap-held denials, four root and eight namespace prefixes, healthy sponsor, immutable promotion and 16381 real bundles at 1048576-byte ceiling passed",
+        "[+    91.807407] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "profile": "AMD-Vi security",
+      "status": "passed",
+      "deferred_tests_passed": 17,
+      "base_revision": "a5813b29a5e1f0e981fcf6edf35b9556abd9fca5",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-06T00:51:41Z",
+      "kernel_sha256": "97085fc3fe998e16771af84e4fe01e8ac4581784cbc87c6288124dd7d92dd2d2",
+      "boot_image_sha256": "5eabd71e15ae0bcd1a6cd2bbd9f3f5201392c12f5aa34180a333dca7c9f8a0e3",
+      "initial_disk_sha256": "6dc9db7495e27f2ab53a04b0f62747f4fd7a63f24f62fa0024c6a7939b0df278",
+      "bundle_sha256": {
+        "agent.elf": "41a34c422e5fab4565e123c13c2fdc144c2fb6752a5beb58acf7bbf7cb6d4c90",
+        "ahci.elf": "f607c8fdb0d1954938c33a7718dfe34521dbb444053c4f5887e4c95d40084f13",
+        "client.elf": "e1f6895d2bf32024d60ca4d0e41331738f2060857fff2106239fed2a7a3c4d25",
+        "clusterctl.elf": "a7dfe023ea1e27b8efc847bdf74066c336316b97e46cbd9d9221bc9e364267e7",
+        "deployd.elf": "df4b70928fe00d8ee8485b371524d453f71e9615e56966b680861991adcf9553",
+        "disco.elf": "741687e1d4139e2e707bed02837a4325699d496da3a11a1bfed95896cd191169",
+        "dns.elf": "2a6c84256737204e09dda339530d5a9a90f59cf06f3afd8eab5d022d977e32ae",
+        "e1000e.elf": "4efef0ca0179440dcbe0a29850c0497d3874b63b7d367a05b90204fb518b695a",
+        "echo.elf": "adebef36a9b262b7b1fbe81c610d6f2e0e3376e7d51b6e1459d909b7b1f71342",
+        "frouter.elf": "9d9e4d719278d43343e48cdcbe4b55c38034f25d528e80212df0eea81062698b",
+        "fs.elf": "c2f153ba2858c2bf54e996c9a697dbb7b093b9a94099dca39f1eebe303ab3837",
+        "grantctl.elf": "06af7e79a7a335b210e7dccfe4da9767eb555d8a4703340cb13c2b0144729312",
+        "greet.elf": "e69730b6a6db30aa0f379daeca6dd37f2931536125f2acd198670cd00dc82da0",
+        "httpd.elf": "081d51db9f5fc430dce97409e2a07971876be103ce141b1892fb3878a7e1bcb2",
+        "kafka.elf": "9ee3f990d493ba747ec443740c75787c117ad2330225cd628933ec31b8192f38",
+        "kafka_smoke.elf": "41b7af7299634f43438bac5ead66018fcc6e9fa016331f4639208f41e1576856",
+        "nclient.elf": "9020fc6a1e97f45f0295a0cc3bff59b6ace9a13364bacfd039365cc39507eaa0",
+        "net.elf": "3ba1c1a4a3058b25333ce696136b082f9f8c23fa9d192eff7e1253bac2fce915",
+        "ns.elf": "8500f58b27836d7764d8b0415fbaf88e8ca175d1a7ebf9bed98c145b390d019f",
+        "nvme.elf": "3905ba29c4acbc07cec559e9af09e9ad9eadfdf7fe05d0311eeb7c9444a867ba",
+        "nvme_client.elf": "41b44a10a7e331a96f11de006749d74a17edd600680bd29a9f914c18bf9b1c2f",
+        "objstore.elf": "ffafabc799a8aa8d61025d2ff648bdd1b3b8321034f89dfa88e9a75745be6c3a",
+        "objstore_client.elf": "5280c4a66778ec0b52786d0b2b6075a7c5c7e80dc0d7b8310a502b512421ce9c",
+        "observe.elf": "2c0fdaf0c2c57a672fb15bdb611815f49142b68c02e3220c203bc18e7f8d0fae",
+        "otlp.elf": "1500357bb14efc05e3c941ce4ee65e2797995d5cb097b649fc7cfaa5d05ff65b",
+        "raft.elf": "a2ca3ee01e5a8456b1251341a71299d8d40893b7047c7daf050972243cce087e",
+        "rclient.elf": "cbdd0af55b0da8254fa8d962a7b75cb40cd061bce05baa59c4bcc5b019867805",
+        "relmsg.elf": "3acfb247379fa6b247c2926dfcf11bf4212d525ef59de26e3e64408b77d18ce5",
+        "rng.elf": "10d114d3331fa67939d412be287765f2fefae9b716421231f8901f12c456d71d",
+        "s3.elf": "ad19d44e30b6d58fa542c40c0b1a38e27ecb9883f8db76e8b3cf6288eb03dce3",
+        "s3_smoke.elf": "b57d03565926b9dbc67ed22ec445e9fe733cf43ac2be2c79435f84345469d2d8",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c",
+        "servicemgr.elf": "2ba39555142fd4f1fcdf8004f542cdf97b65267f3f2e05814e00822fe1cbe72e",
+        "shutdown_probe.elf": "fe7212dd8752c33be2f604436ca482f72eeb18ccbc3d4c69eb0bda9381415163",
+        "tcpclient.elf": "e85b5df90c422d46508051201d04ed42f6bf9b720b409347d266525e33622520",
+        "tcpip.elf": "b07bb35ff810ecfb21d10301c50f13e389f0ced45ff2392c75a0b594369f1de6",
+        "time.elf": "1afa0fc691f5dd06b7f9ea5f095e5048ac2c9fba0f0ca97f622e83c5961fd612",
+        "virtio_blk.elf": "f73eef9a720299a7764ad46b8c6875955259d1ca6903a3d95bc64ec23930d304"
+      },
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "ca73af160a462fa40ed166dbea6fda0fb2c53a8f2bfba6d50f4dbf719076fdf6",
+        "scripts/run-x86_64.sh": "68f5c782f96233721e2ca04f07c2181df7a43396add422ad49f421dbde900aaa"
+      },
+      "qemu_arguments": [
+        "-M",
+        "q35",
+        "-cpu",
+        "max",
+        "-smp",
+        "4",
+        "-m",
+        "512M",
+        "-drive",
+        "if=pflash,format=raw,unit=0,file=/opt/homebrew/opt/qemu/share/qemu/edk2-x86_64-code.fd,readonly=on",
+        "-drive",
+        "if=none,file=./os-images/charlotte-x86_64-debug-q4-reactor-amd.img,format=raw,id=esp,readonly=on",
+        "-device",
+        "qemu-xhci,id=xhci",
+        "-device",
+        "usb-storage,bus=xhci.0,drive=esp,bootindex=1",
+        "-drive",
+        "if=none,file=./os-images/x86-data-q4-reactor-amd.img,format=raw,id=data0",
+        "-device",
+        "nvme,drive=data0,serial=cat0",
+        "-device",
+        "amd-iommu,dma-remap=on",
+        "-object",
+        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "-device",
+        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on",
+        "-display",
+        "none",
+        "-no-reboot",
+        "-nic",
+        "none",
+        "-netdev",
+        "user,id=net0,hostfwd=tcp::17803-:7444",
+        "-device",
+        "virtio-net-pci-non-transitional,netdev=net0,iommu_platform=on,mac=52:54:00:12:34:56",
+        "-qmp",
+        "unix:/tmp/ctdiag-4gozp7cg/qmp.sock,server=on,wait=off",
+        "-gdb",
+        "unix:/tmp/ctdiag-4gozp7cg/gdb.sock,server=on,wait=off",
+        "-serial",
+        "file:/tmp/charlotte-x86-q4-reactor-amd-serial.log"
+      ],
+      "bundle_unchanged_from_qualified_namespace_batch": true,
+      "serial_sha256": "87d26e4386a32eb112203cdd31225ef71be70162d98df41e820c75bd3e05d829",
+      "runner_sha256": "4c5dd6fd2aa45412d05ea922a947ab330cdfc458ee04656c4ec3807e7d10f109",
+      "runner_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "milestones": [
+        "[+     0.018315] Kernel heap: usable=364 MiB initial=8 MiB reserve=64 MiB total=72 MiB",
+        "[+     1.130500] [root metadata layouts] three policy nodes 392 bytes; memory account 176 bytes; complete root 568 bytes",
+        "[+     1.151689] [principal history pressure] 3035 ordinary + 1020 reserved real candidate nodes; ordinary registration rejected before publication, trusted root admitted, total exhaustion and existing-root close/recovery passed",
+        "[+     1.153048] [principal history admission] charged candidates/publications, allocation rejection, full ordinary/total pools, trusted-constructor reserve, close progress/recovery and guarded abandonment passed",
+        "[+     1.216222] [principal history preparation] 64 heap-held first/duplicate publications; allocation-free monotonic stack/heap updates, root retirement/restart and unrelated-principal ASID reuse passed",
+        "[+     1.233225] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; no ASID published; 256 namespace + 144 reactor original principal account bytes retained",
+        "[+     1.333907] [waiter account admission] real-account ordinary/total exhaustion, pre-allocation denial, trusted root reserve, immutable classification, root rollback and final-weak release across exact ASID reuse passed",
+        "[+     1.358197] [timer account lifetime] actual event/node/cancellation retention across root close and exact ASID reuse; final-weak backing refund and successor independence passed",
+        "[+     2.056126] [completion account lifetime] real completion/weak backing, retired heap CQ and owned watch entry retained original accounts across root close and exact ASID reuse; four reactor final-weak original-principal refunds left successor unchanged",
+        "[+     6.963714] [namespace node layouts] complete five-node root 696 bytes; count-headroom layouts 5701632 total / 4276224 ordinary bytes",
+        "[+     7.067867] [namespace account principal] actual cap/endpoint/record/mailbox bundles=72/80/104/104 bytes; sibling sharing, 256 heap-held denials, independent sponsor, three root-prefix rollbacks, promotion, four final-weak refunds after ASID reuse and 14560 real bundles at 1048576-byte principal ceiling passed",
+        "[+    15.094701] [reactor account principal] waiter/scheduler/timer/record/CQ/watch bundles=72/72/72/64/80/64 bytes; sibling sharing, 384 heap-held denials, four root and eight namespace prefixes, healthy sponsor, immutable promotion and 16381 real bundles at 1048576-byte ceiling passed",
+        "[+    91.125562] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "profile": "ARM SMMUv3 minimal",
+      "status": "passed",
+      "deferred_tests_passed": null,
+      "base_revision": "a5813b29a5e1f0e981fcf6edf35b9556abd9fca5",
+      "cpus": 4,
+      "timeout_seconds": 90,
+      "prepared_utc": "2026-11-06T00:49:30Z",
+      "kernel_sha256": "61a6a5297bc3a954bd7b2e47f84cde5d2877df61732a6b4ed166d718e9b9ad7a",
+      "boot_image_sha256": "8b37fb4097ef6512658c9f5ceaab18ba41ddac1c944d34ffb7c9452cd2e74d6c",
+      "initial_disk_sha256": "06a100ce446a3299f9745c3f4660b0f2d0eda5511f96d2595685b6c9009a5a44",
+      "bundle_sha256": {
+        "agent.elf": "671eaa8ba761bd8fe1ab7e1a0be24f5335a9e11be7b1c755ba0cb7e195d81d6a",
+        "clusterctl.elf": "30c8cbbc4b9d7edf6872f5bf47d1a33bdfcb09f0276927476d2c9e654cfb176b",
+        "deployd.elf": "058dc4d96a9e77bcd2251596415a3f50fcda30534cff20ba3e016d3341b08d9f",
+        "disco.elf": "3b454feea99eee0adb48380c55000267d800f1307f3df80e4292de467464eed9",
+        "dns.elf": "08fc3ffdb05a9e56cfb9f78f16d04ef08188f2231eaeb6a9c325df0d08623139",
+        "frouter.elf": "49d2505c668f831564d1b2d2e1bd2d101cac651760ccf35fd69edc5fb54f3994",
+        "fs.elf": "264393d6535c0bd7d9ba212048ce4850b067a8633766b4869621d38b882620b5",
+        "grantctl.elf": "bd1b2b5a826a45d3d745e51a315f9083e080fba037a7aa6c9f7b379c3e6daaa1",
+        "httpd.elf": "2a20eab99c51d8313efcefce58039dd4e1301cff33f9b8e8813bd565085c3024",
+        "kafka.elf": "6d2e4c632f19a76a3f946d393d8c7a4ad55a3eb037a17d249eb285d8b6a29e0e",
+        "kafka_step.elf": "2a23f2cf94d86bad97612b5b692031b2bb9d572398f9123631505c91b9f6aa89",
+        "net.elf": "63795434f8e51d1608539c0dd3da3e378b341082de3fb9a622202d3182434fcd",
+        "ns.elf": "2d720f3ba4ef4ef7582d157f068e660cd78851af304d478d47581d5cfcf4f694",
+        "nvme.elf": "4400a62a4f2496a137e23d389d3fb0097000991311b5e7243447eb33a729e360",
+        "objstore.elf": "6a043919aeb9f144063fc353b4591a76c19e198da9070a1dba75497c7b936cee",
+        "observe.elf": "253c28fd0cef0871e7deb3086c4114f0e989bc7f7870805babd5f9979c89a8d3",
+        "otlp.elf": "94471bfb3ea50341e72b5440e6e81077ad820b6f83f047d78094dc2f626032a9",
+        "relmsg.elf": "28ba7a1fa23272068a2b09be9f6cea40b26b1090d357a7f4ef3176e3356f0104",
+        "rng.elf": "618f8e3159dbf8e526613927fdfd20d2ea7349a50dc6f32372e1fbae2db78868",
+        "s3.elf": "943f4d41427b5b9e40f83b7856ef3ca684bd64819de90b09e0710c27f9d03623",
+        "tcpip.elf": "1ee63b257bbbacc1d6d52ef3944ee31a9b170f6eafff089fd54ac92afa3e68af",
+        "time.elf": "a6736abb273494bc03986dd50463998c4e13e2d28e637cddbe9380e74b6fd6f0",
+        "uart.elf": "4277c7745286054fffe64e944d845c17d6b9908076859b1c97d1117948ab12c7"
+      },
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "ca73af160a462fa40ed166dbea6fda0fb2c53a8f2bfba6d50f4dbf719076fdf6",
+        "scripts/run-aarch64.sh": "58eede46ad82247673a9791e9cb247d5c32806b88bda86389e1e237d3ec100b8"
+      },
+      "qemu_arguments": [
+        "-M",
+        "virt,gic-version=3,msi=gicv2m,iommu=smmuv3,default-bus-bypass-iommu=off",
+        "-m",
+        "512M",
+        "-bios",
+        "/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
+        "-drive",
+        "file=./os-images/charlotte-aarch64-debug-q4-reactor-arm-minimal-minimal.img,format=raw,if=none,id=boot0",
+        "-device",
+        "virtio-blk-pci,drive=boot0,addr=3",
+        "-cpu",
+        "cortex-a710",
+        "-object",
+        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "-device",
+        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on,addr=4",
+        "-smp",
+        "4",
+        "-drive",
+        "if=none,file=./os-images/nvme-disk-q4-reactor-arm-minimal-minimal.img,format=raw,id=nvme0",
+        "-device",
+        "nvme,drive=nvme0,serial=cat0,max_ioqpairs=4,addr=2",
+        "-nic",
+        "none",
+        "-netdev",
+        "user,id=charlotte-net,hostfwd=tcp::17804-:7444",
+        "-device",
+        "virtio-net-pci,netdev=charlotte-net,disable-legacy=on,iommu_platform=on,mac=52:54:00:12:34:56,addr=1",
+        "-display",
+        "none",
+        "-qmp",
+        "unix:/tmp/ctdiag-mjtjn5mc/qmp.sock,server=on,wait=off",
+        "-gdb",
+        "unix:/tmp/ctdiag-mjtjn5mc/gdb.sock,server=on,wait=off",
+        "-serial",
+        "file:/tmp/charlotte-q4-reactor-arm-minimal-minimal-serial.log"
+      ],
+      "bundle_unchanged_from_qualified_namespace_batch": true,
+      "serial_sha256": "009c3b4a1b432dea517695e005d2baa8989ba84085ebcc0eedb29fb67a33b5fe",
+      "runner_sha256": "6bf0be452966456fcec2d525bbe78ac263ae2eb4cc3aba41c624a0b8b2be80ef",
+      "runner_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "milestones": [
+        "[+     0.011503] Kernel heap: usable=441 MiB initial=8 MiB reserve=64 MiB total=72 MiB",
+        "[+     3.940724] BOOT COMPLETE: validation passed; local storage ready; services submitted"
+      ]
+    },
+    {
+      "profile": "Intel VT-d minimal",
+      "status": "passed",
+      "deferred_tests_passed": null,
+      "base_revision": "a5813b29a5e1f0e981fcf6edf35b9556abd9fca5",
+      "cpus": 4,
+      "timeout_seconds": 90,
+      "prepared_utc": "2026-11-06T00:54:25Z",
+      "kernel_sha256": "ae27cb5392b1ed45c44cacaf0a7e8f500b70513a74f44c497a54f54ce6c98a04",
+      "boot_image_sha256": "b77cbceaf7fde4663ba13fc430b4559c0615c352404712173f6d4a752b1b429a",
+      "initial_disk_sha256": "56c1f355b2d055f964c15b0b4176b212659708e7f0f449d7edabd1522e81fca9",
+      "bundle_sha256": {
+        "agent.elf": "41a34c422e5fab4565e123c13c2fdc144c2fb6752a5beb58acf7bbf7cb6d4c90",
+        "ahci.elf": "f607c8fdb0d1954938c33a7718dfe34521dbb444053c4f5887e4c95d40084f13",
+        "clusterctl.elf": "a7dfe023ea1e27b8efc847bdf74066c336316b97e46cbd9d9221bc9e364267e7",
+        "deployd.elf": "df4b70928fe00d8ee8485b371524d453f71e9615e56966b680861991adcf9553",
+        "disco.elf": "741687e1d4139e2e707bed02837a4325699d496da3a11a1bfed95896cd191169",
+        "dns.elf": "2a6c84256737204e09dda339530d5a9a90f59cf06f3afd8eab5d022d977e32ae",
+        "e1000e.elf": "4efef0ca0179440dcbe0a29850c0497d3874b63b7d367a05b90204fb518b695a",
+        "frouter.elf": "9d9e4d719278d43343e48cdcbe4b55c38034f25d528e80212df0eea81062698b",
+        "fs.elf": "c2f153ba2858c2bf54e996c9a697dbb7b093b9a94099dca39f1eebe303ab3837",
+        "grantctl.elf": "06af7e79a7a335b210e7dccfe4da9767eb555d8a4703340cb13c2b0144729312",
+        "httpd.elf": "081d51db9f5fc430dce97409e2a07971876be103ce141b1892fb3878a7e1bcb2",
+        "kafka.elf": "9ee3f990d493ba747ec443740c75787c117ad2330225cd628933ec31b8192f38",
+        "net.elf": "3ba1c1a4a3058b25333ce696136b082f9f8c23fa9d192eff7e1253bac2fce915",
+        "ns.elf": "8500f58b27836d7764d8b0415fbaf88e8ca175d1a7ebf9bed98c145b390d019f",
+        "nvme.elf": "3905ba29c4acbc07cec559e9af09e9ad9eadfdf7fe05d0311eeb7c9444a867ba",
+        "objstore.elf": "ffafabc799a8aa8d61025d2ff648bdd1b3b8321034f89dfa88e9a75745be6c3a",
+        "observe.elf": "2c0fdaf0c2c57a672fb15bdb611815f49142b68c02e3220c203bc18e7f8d0fae",
+        "otlp.elf": "1500357bb14efc05e3c941ce4ee65e2797995d5cb097b649fc7cfaa5d05ff65b",
+        "relmsg.elf": "3acfb247379fa6b247c2926dfcf11bf4212d525ef59de26e3e64408b77d18ce5",
+        "rng.elf": "10d114d3331fa67939d412be287765f2fefae9b716421231f8901f12c456d71d",
+        "s3.elf": "ad19d44e30b6d58fa542c40c0b1a38e27ecb9883f8db76e8b3cf6288eb03dce3",
+        "tcpip.elf": "b07bb35ff810ecfb21d10301c50f13e389f0ced45ff2392c75a0b594369f1de6",
+        "time.elf": "1afa0fc691f5dd06b7f9ea5f095e5048ac2c9fba0f0ca97f622e83c5961fd612",
+        "virtio_blk.elf": "f73eef9a720299a7764ad46b8c6875955259d1ca6903a3d95bc64ec23930d304"
+      },
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "ca73af160a462fa40ed166dbea6fda0fb2c53a8f2bfba6d50f4dbf719076fdf6",
+        "scripts/run-x86_64.sh": "68f5c782f96233721e2ca04f07c2181df7a43396add422ad49f421dbde900aaa"
+      },
+      "qemu_arguments": [
+        "-M",
+        "q35",
+        "-cpu",
+        "max",
+        "-smp",
+        "4",
+        "-m",
+        "512M",
+        "-drive",
+        "if=pflash,format=raw,unit=0,file=/opt/homebrew/opt/qemu/share/qemu/edk2-x86_64-code.fd,readonly=on",
+        "-drive",
+        "if=none,file=./os-images/charlotte-x86_64-debug-q4-reactor-intel-minimal-minimal.img,format=raw,id=esp,readonly=on",
+        "-device",
+        "qemu-xhci,id=xhci",
+        "-device",
+        "usb-storage,bus=xhci.0,drive=esp,bootindex=1",
+        "-drive",
+        "if=none,file=./os-images/x86-data-q4-reactor-intel-minimal-minimal.img,format=raw,id=data0",
+        "-device",
+        "nvme,drive=data0,serial=cat0",
+        "-device",
+        "intel-iommu",
+        "-object",
+        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "-device",
+        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on",
+        "-display",
+        "none",
+        "-no-reboot",
+        "-nic",
+        "none",
+        "-netdev",
+        "user,id=net0,hostfwd=tcp::17805-:7444",
+        "-device",
+        "virtio-net-pci-non-transitional,netdev=net0,iommu_platform=on,mac=52:54:00:12:34:56",
+        "-qmp",
+        "unix:/tmp/ctdiag-wd8_z8ow/qmp.sock,server=on,wait=off",
+        "-gdb",
+        "unix:/tmp/ctdiag-wd8_z8ow/gdb.sock,server=on,wait=off",
+        "-serial",
+        "file:/tmp/charlotte-x86-q4-reactor-intel-minimal-minimal-serial.log"
+      ],
+      "bundle_unchanged_from_qualified_namespace_batch": true,
+      "serial_sha256": "584f49402f7b667956be69a739d7297ea7802691c6b5a25565f1572997877e15",
+      "runner_sha256": "5dd9c0a58ab83818e1050a3791303cbd807c64191971f81ac648e1b57ec277db",
+      "runner_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "milestones": [
+        "[+     0.018899] Kernel heap: usable=422 MiB initial=8 MiB reserve=64 MiB total=72 MiB",
+        "[+     3.870851] BOOT COMPLETE: validation passed; local storage ready; services submitted"
+      ]
+    }
+  ],
+  "native_commands": [
+    "CARGO_NET_OFFLINE=true CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18802 CATTEN_DEPLOY_HOST_PORT=17802 scripts/run-aarch64.sh --tests --security-test --smp 4 --timeout 240 --fresh-storage --instance q4-reactor-arm-final",
+    "CARGO_NET_OFFLINE=true CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18803 CATTEN_DEPLOY_HOST_PORT=17803 scripts/run-x86_64.sh --tests --security-test --iommu intel --smp 4 --timeout 240 --fresh-storage --instance q4-reactor-intel-final",
+    "CARGO_NET_OFFLINE=true CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18803 CATTEN_DEPLOY_HOST_PORT=17803 scripts/run-x86_64.sh --tests --security-test --iommu amd --smp 4 --timeout 240 --fresh-storage --instance q4-reactor-amd",
+    "CARGO_NET_OFFLINE=true CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18804 CATTEN_DEPLOY_HOST_PORT=17804 scripts/run-aarch64.sh --minimal --smp 4 --timeout 90 --fresh-storage --instance q4-reactor-arm-minimal",
+    "CARGO_NET_OFFLINE=true CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18805 CATTEN_DEPLOY_HOST_PORT=17805 scripts/run-x86_64.sh --minimal --iommu intel --smp 4 --timeout 90 --fresh-storage --instance q4-reactor-intel-minimal"
+  ],
+  "preliminary_native": [
+    {
+      "profile": "ARM SMMUv3 security",
+      "status": "passed",
+      "deferred_tests_passed": 19,
+      "base_revision": "a5813b29a5e1f0e981fcf6edf35b9556abd9fca5",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-06T00:43:27Z",
+      "kernel_sha256": "dac58b234a2ad6a1eb7eb7b49474f2530034f159c2d5ebc5437a4b9911033456",
+      "boot_image_sha256": "ae439d7c67cdcd470bbc8e77145c84cf824dce0ee61a23ff191ac909494fcea4",
+      "initial_disk_sha256": "71220674713d03a86470003470fc56bc83b7da8a1107b285b5e6d64f1423e9d7",
+      "bundle_sha256": {
+        "agent.elf": "671eaa8ba761bd8fe1ab7e1a0be24f5335a9e11be7b1c755ba0cb7e195d81d6a",
+        "cclient.elf": "aedb34755dc2eda6af6f1e1b31592d0055029ccf9b890381492d20134de83d1a",
+        "client.elf": "a46d6c5d3f0110d0cc2bdc693b890ba3522b109e5d65cf9098ad2bdd785c530e",
+        "clusterctl.elf": "30c8cbbc4b9d7edf6872f5bf47d1a33bdfcb09f0276927476d2c9e654cfb176b",
+        "deployd.elf": "058dc4d96a9e77bcd2251596415a3f50fcda30534cff20ba3e016d3341b08d9f",
+        "disco.elf": "3b454feea99eee0adb48380c55000267d800f1307f3df80e4292de467464eed9",
+        "dns.elf": "08fc3ffdb05a9e56cfb9f78f16d04ef08188f2231eaeb6a9c325df0d08623139",
+        "echo.elf": "840324beddaf0c90f459dc0900e78884b631205027e4ff09d0fed89ffa2da1f6",
+        "frouter.elf": "49d2505c668f831564d1b2d2e1bd2d101cac651760ccf35fd69edc5fb54f3994",
+        "fs.elf": "264393d6535c0bd7d9ba212048ce4850b067a8633766b4869621d38b882620b5",
+        "grantctl.elf": "bd1b2b5a826a45d3d745e51a315f9083e080fba037a7aa6c9f7b379c3e6daaa1",
+        "greet.elf": "bf6c98d6d361cd63f7567c7eec56496ca1005e524e12b2815db450d1299f7851",
+        "httpd.elf": "2a20eab99c51d8313efcefce58039dd4e1301cff33f9b8e8813bd565085c3024",
+        "kafka.elf": "6d2e4c632f19a76a3f946d393d8c7a4ad55a3eb037a17d249eb285d8b6a29e0e",
+        "kafka_fence_smoke.elf": "69d119e505da5d526d2c33ff8287feda795e1c73a9b5d51b54316aa39cac818c",
+        "kafka_smoke.elf": "b5d2cf1309ba703dffc3e7dc1336cd2395af79c586f802fe2a17abe987b7124b",
+        "kafka_step.elf": "2a23f2cf94d86bad97612b5b692031b2bb9d572398f9123631505c91b9f6aa89",
+        "kafka_step_input.elf": "b005dfcafb79e1787d8f61b75b36211b1fd8c85b7ff0b832c05cc48d4dcd5d00",
+        "kafka_step_proc.elf": "f56381d6e2a144b23333f761798a859fde0682f2c7def02a0a55d33b0b608174",
+        "nclient.elf": "0f75db8d899a510ff478965896ca239bbd2394d1abc4ceacd51756f10c19b6b6",
+        "net.elf": "63795434f8e51d1608539c0dd3da3e378b341082de3fb9a622202d3182434fcd",
+        "ns.elf": "2d720f3ba4ef4ef7582d157f068e660cd78851af304d478d47581d5cfcf4f694",
+        "nvme.elf": "4400a62a4f2496a137e23d389d3fb0097000991311b5e7243447eb33a729e360",
+        "nvme_client.elf": "5ab1ff38c3bfaa09ebbf58f28a6daeb888bb8fdf425b8e66c515c3940878e32f",
+        "objstore.elf": "6a043919aeb9f144063fc353b4591a76c19e198da9070a1dba75497c7b936cee",
+        "objstore_client.elf": "ef3fc558720d57d66a35be63fe70937b8046bc97d09b1f480cdd7249ac7dc5c5",
+        "observe.elf": "253c28fd0cef0871e7deb3086c4114f0e989bc7f7870805babd5f9979c89a8d3",
+        "otlp.elf": "94471bfb3ea50341e72b5440e6e81077ad820b6f83f047d78094dc2f626032a9",
+        "raft.elf": "2d32a23459bc273835bbb364e159051dc191dbef81c8342b7943f30070f925a6",
+        "rclient.elf": "d0186fd36a918859f1ed5084419098ed84de029423904adf2ea7d33ddfc7f41d",
+        "relmsg.elf": "28ba7a1fa23272068a2b09be9f6cea40b26b1090d357a7f4ef3176e3356f0104",
+        "rng.elf": "618f8e3159dbf8e526613927fdfd20d2ea7349a50dc6f32372e1fbae2db78868",
+        "s3.elf": "943f4d41427b5b9e40f83b7856ef3ca684bd64819de90b09e0710c27f9d03623",
+        "s3_smoke.elf": "f5c0157554d5550c95660cb096362c03e924884314f97ebee2aa831efdeb1213",
+        "security_probe.elf": "11a9f88261e2a8064100e7494d83c418d351a0422bac08e9807128ab964e43f3",
+        "servicemgr.elf": "3035aa2ee63aefbdd6f80e8e02eaa63eb1339a09f4ab0578fd1e019d341ba5df",
+        "shutdown_probe.elf": "32dc4a43ae45edbfef69e29fbdc33a329ac3543e83f0cad2c620df9ead9ab50b",
+        "sitas-user.elf": "6f0e7f2113b898f98e16708342db288745e9dcfe2bbbb016027e8db01100391b",
+        "tcpclient.elf": "efab9fa7b1c2ab305515ba5a4f7bf30f7dbdd7adf60c2c6d5635a5d3a31af435",
+        "tcpip.elf": "1ee63b257bbbacc1d6d52ef3944ee31a9b170f6eafff089fd54ac92afa3e68af",
+        "time.elf": "a6736abb273494bc03986dd50463998c4e13e2d28e637cddbe9380e74b6fd6f0",
+        "uart.elf": "4277c7745286054fffe64e944d845c17d6b9908076859b1c97d1117948ab12c7"
+      },
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "ca73af160a462fa40ed166dbea6fda0fb2c53a8f2bfba6d50f4dbf719076fdf6",
+        "scripts/run-aarch64.sh": "58eede46ad82247673a9791e9cb247d5c32806b88bda86389e1e237d3ec100b8"
+      },
+      "qemu_arguments": [
+        "-M",
+        "virt,gic-version=3,msi=gicv2m,iommu=smmuv3,default-bus-bypass-iommu=off",
+        "-m",
+        "512M",
+        "-bios",
+        "/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
+        "-drive",
+        "file=./os-images/charlotte-aarch64-debug-q4-reactor-arm.img,format=raw,if=none,id=boot0",
+        "-device",
+        "virtio-blk-pci,drive=boot0,addr=3",
+        "-cpu",
+        "cortex-a710",
+        "-object",
+        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "-device",
+        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on,addr=4",
+        "-smp",
+        "4",
+        "-drive",
+        "if=none,file=./os-images/nvme-disk-q4-reactor-arm.img,format=raw,id=nvme0",
+        "-device",
+        "nvme,drive=nvme0,serial=cat0,max_ioqpairs=4,addr=2",
+        "-nic",
+        "none",
+        "-netdev",
+        "user,id=charlotte-net,hostfwd=tcp::17802-:7444",
+        "-device",
+        "virtio-net-pci,netdev=charlotte-net,disable-legacy=on,iommu_platform=on,mac=52:54:00:12:34:56,addr=1",
+        "-display",
+        "none",
+        "-qmp",
+        "unix:/tmp/ctdiag-hugna1mp/qmp.sock,server=on,wait=off",
+        "-gdb",
+        "unix:/tmp/ctdiag-hugna1mp/gdb.sock,server=on,wait=off",
+        "-serial",
+        "file:/tmp/charlotte-q4-reactor-arm-serial.log"
+      ],
+      "bundle_unchanged_from_qualified_namespace_batch": true,
+      "serial_sha256": "b5ac4def229944548f48c3fcf3a95c08bd6f0ff89990bc86e2b9de4c134f6c43",
+      "runner_sha256": "8bc62f87c6f0567bfc7a86defad9c9f66c2696e2b6238fe088bcc41693d7c38c",
+      "runner_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "milestones": [
+        "[+     0.018520] Kernel heap: usable=375 MiB initial=8 MiB reserve=64 MiB total=72 MiB",
+        "[+     1.402380] [root metadata layouts] three policy nodes 392 bytes; memory account 176 bytes; complete root 568 bytes",
+        "[+     1.490926] [principal history pressure] 3043 ordinary + 1020 reserved real candidate nodes; ordinary registration rejected before publication, trusted root admitted, total exhaustion and existing-root close/recovery passed",
+        "[+     1.492690] [principal history admission] charged candidates/publications, allocation rejection, full ordinary/total pools, trusted-constructor reserve, close progress/recovery and guarded abandonment passed",
+        "[+     1.869204] [principal history preparation] 64 heap-held first/duplicate publications; allocation-free monotonic stack/heap updates, root retirement/restart and unrelated-principal ASID reuse passed",
+        "[+     1.891504] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; no ASID published; 256 namespace + 144 reactor original principal account bytes retained",
+        "[+     2.159398] [waiter account admission] real-account ordinary/total exhaustion, pre-allocation denial, trusted root reserve, immutable classification, root rollback and final-weak release across exact ASID reuse passed",
+        "[+     2.226022] [timer account lifetime] actual event/node/cancellation retention across root close and exact ASID reuse; final-weak backing refund and successor independence passed",
+        "[+     4.065676] [completion account lifetime] real completion/weak backing, retired heap CQ and owned watch entry retained original accounts across root close and exact ASID reuse; four reactor final-weak original-principal refunds left successor unchanged",
+        "[+    11.829732] [namespace node layouts] complete five-node root 696 bytes; count-headroom layouts 5701632 total / 4276224 ordinary bytes",
+        "[+    11.939438] [namespace account principal] actual cap/endpoint/record/mailbox bundles=72/80/104/104 bytes; sibling sharing, 256 heap-held denials, independent sponsor, three root-prefix rollbacks, promotion, four final-weak refunds after ASID reuse and 14560 real bundles at 1048576-byte principal ceiling passed",
+        "[+    14.618142] [reactor account principal] waiter/scheduler/timer/record/CQ/watch bundles=72/72/72/64/80/64 bytes; sibling sharing, 384 heap-held denials, four root and eight namespace prefixes, healthy sponsor, immutable promotion and 16381 real bundles at 1048576-byte ceiling passed",
+        "[+    88.962594] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "profile": "Intel VT-d security",
+      "status": "passed",
+      "deferred_tests_passed": 17,
+      "base_revision": "a5813b29a5e1f0e981fcf6edf35b9556abd9fca5",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-06T00:44:47Z",
+      "kernel_sha256": "56a5a83efcec948e6ed18b93ed6ad6e247e8172ef297a9bcc4882487896a8a48",
+      "boot_image_sha256": "f2bbdf52525a302bd5d59ec0f1a1549e5b6da144b204fcd89d7bc83bee6cf398",
+      "initial_disk_sha256": "6dc9db7495e27f2ab53a04b0f62747f4fd7a63f24f62fa0024c6a7939b0df278",
+      "bundle_sha256": {
+        "agent.elf": "41a34c422e5fab4565e123c13c2fdc144c2fb6752a5beb58acf7bbf7cb6d4c90",
+        "ahci.elf": "f607c8fdb0d1954938c33a7718dfe34521dbb444053c4f5887e4c95d40084f13",
+        "client.elf": "e1f6895d2bf32024d60ca4d0e41331738f2060857fff2106239fed2a7a3c4d25",
+        "clusterctl.elf": "a7dfe023ea1e27b8efc847bdf74066c336316b97e46cbd9d9221bc9e364267e7",
+        "deployd.elf": "df4b70928fe00d8ee8485b371524d453f71e9615e56966b680861991adcf9553",
+        "disco.elf": "741687e1d4139e2e707bed02837a4325699d496da3a11a1bfed95896cd191169",
+        "dns.elf": "2a6c84256737204e09dda339530d5a9a90f59cf06f3afd8eab5d022d977e32ae",
+        "e1000e.elf": "4efef0ca0179440dcbe0a29850c0497d3874b63b7d367a05b90204fb518b695a",
+        "echo.elf": "adebef36a9b262b7b1fbe81c610d6f2e0e3376e7d51b6e1459d909b7b1f71342",
+        "frouter.elf": "9d9e4d719278d43343e48cdcbe4b55c38034f25d528e80212df0eea81062698b",
+        "fs.elf": "c2f153ba2858c2bf54e996c9a697dbb7b093b9a94099dca39f1eebe303ab3837",
+        "grantctl.elf": "06af7e79a7a335b210e7dccfe4da9767eb555d8a4703340cb13c2b0144729312",
+        "greet.elf": "e69730b6a6db30aa0f379daeca6dd37f2931536125f2acd198670cd00dc82da0",
+        "httpd.elf": "081d51db9f5fc430dce97409e2a07971876be103ce141b1892fb3878a7e1bcb2",
+        "kafka.elf": "9ee3f990d493ba747ec443740c75787c117ad2330225cd628933ec31b8192f38",
+        "kafka_smoke.elf": "41b7af7299634f43438bac5ead66018fcc6e9fa016331f4639208f41e1576856",
+        "nclient.elf": "9020fc6a1e97f45f0295a0cc3bff59b6ace9a13364bacfd039365cc39507eaa0",
+        "net.elf": "3ba1c1a4a3058b25333ce696136b082f9f8c23fa9d192eff7e1253bac2fce915",
+        "ns.elf": "8500f58b27836d7764d8b0415fbaf88e8ca175d1a7ebf9bed98c145b390d019f",
+        "nvme.elf": "3905ba29c4acbc07cec559e9af09e9ad9eadfdf7fe05d0311eeb7c9444a867ba",
+        "nvme_client.elf": "41b44a10a7e331a96f11de006749d74a17edd600680bd29a9f914c18bf9b1c2f",
+        "objstore.elf": "ffafabc799a8aa8d61025d2ff648bdd1b3b8321034f89dfa88e9a75745be6c3a",
+        "objstore_client.elf": "5280c4a66778ec0b52786d0b2b6075a7c5c7e80dc0d7b8310a502b512421ce9c",
+        "observe.elf": "2c0fdaf0c2c57a672fb15bdb611815f49142b68c02e3220c203bc18e7f8d0fae",
+        "otlp.elf": "1500357bb14efc05e3c941ce4ee65e2797995d5cb097b649fc7cfaa5d05ff65b",
+        "raft.elf": "a2ca3ee01e5a8456b1251341a71299d8d40893b7047c7daf050972243cce087e",
+        "rclient.elf": "cbdd0af55b0da8254fa8d962a7b75cb40cd061bce05baa59c4bcc5b019867805",
+        "relmsg.elf": "3acfb247379fa6b247c2926dfcf11bf4212d525ef59de26e3e64408b77d18ce5",
+        "rng.elf": "10d114d3331fa67939d412be287765f2fefae9b716421231f8901f12c456d71d",
+        "s3.elf": "ad19d44e30b6d58fa542c40c0b1a38e27ecb9883f8db76e8b3cf6288eb03dce3",
+        "s3_smoke.elf": "b57d03565926b9dbc67ed22ec445e9fe733cf43ac2be2c79435f84345469d2d8",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c",
+        "servicemgr.elf": "2ba39555142fd4f1fcdf8004f542cdf97b65267f3f2e05814e00822fe1cbe72e",
+        "shutdown_probe.elf": "fe7212dd8752c33be2f604436ca482f72eeb18ccbc3d4c69eb0bda9381415163",
+        "tcpclient.elf": "e85b5df90c422d46508051201d04ed42f6bf9b720b409347d266525e33622520",
+        "tcpip.elf": "b07bb35ff810ecfb21d10301c50f13e389f0ced45ff2392c75a0b594369f1de6",
+        "time.elf": "1afa0fc691f5dd06b7f9ea5f095e5048ac2c9fba0f0ca97f622e83c5961fd612",
+        "virtio_blk.elf": "f73eef9a720299a7764ad46b8c6875955259d1ca6903a3d95bc64ec23930d304"
+      },
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "ca73af160a462fa40ed166dbea6fda0fb2c53a8f2bfba6d50f4dbf719076fdf6",
+        "scripts/run-x86_64.sh": "68f5c782f96233721e2ca04f07c2181df7a43396add422ad49f421dbde900aaa"
+      },
+      "qemu_arguments": [
+        "-M",
+        "q35",
+        "-cpu",
+        "max",
+        "-smp",
+        "4",
+        "-m",
+        "512M",
+        "-drive",
+        "if=pflash,format=raw,unit=0,file=/opt/homebrew/opt/qemu/share/qemu/edk2-x86_64-code.fd,readonly=on",
+        "-drive",
+        "if=none,file=./os-images/charlotte-x86_64-debug-q4-reactor-intel.img,format=raw,id=esp,readonly=on",
+        "-device",
+        "qemu-xhci,id=xhci",
+        "-device",
+        "usb-storage,bus=xhci.0,drive=esp,bootindex=1",
+        "-drive",
+        "if=none,file=./os-images/x86-data-q4-reactor-intel.img,format=raw,id=data0",
+        "-device",
+        "nvme,drive=data0,serial=cat0",
+        "-device",
+        "intel-iommu",
+        "-object",
+        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "-device",
+        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on",
+        "-display",
+        "none",
+        "-no-reboot",
+        "-nic",
+        "none",
+        "-netdev",
+        "user,id=net0,hostfwd=tcp::17803-:7444",
+        "-device",
+        "virtio-net-pci-non-transitional,netdev=net0,iommu_platform=on,mac=52:54:00:12:34:56",
+        "-qmp",
+        "unix:/tmp/ctdiag-g2ht_eda/qmp.sock,server=on,wait=off",
+        "-gdb",
+        "unix:/tmp/ctdiag-g2ht_eda/gdb.sock,server=on,wait=off",
+        "-serial",
+        "file:/tmp/charlotte-x86-q4-reactor-intel-serial.log"
+      ],
+      "bundle_unchanged_from_qualified_namespace_batch": true,
+      "serial_sha256": "709befb89bdf8baa9ab56b9db34a40e4d5942348d28a041aacd93137b2558684",
+      "runner_sha256": "3990e3adc8067e21e20d87cd23c3e6f2364c879a11f679222fb8270e8273045a",
+      "runner_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "milestones": [
+        "[+     0.019301] Kernel heap: usable=364 MiB initial=8 MiB reserve=64 MiB total=72 MiB",
+        "[+     1.172671] [root metadata layouts] three policy nodes 392 bytes; memory account 176 bytes; complete root 568 bytes",
+        "[+     1.196167] [principal history pressure] 3035 ordinary + 1020 reserved real candidate nodes; ordinary registration rejected before publication, trusted root admitted, total exhaustion and existing-root close/recovery passed",
+        "[+     1.197599] [principal history admission] charged candidates/publications, allocation rejection, full ordinary/total pools, trusted-constructor reserve, close progress/recovery and guarded abandonment passed",
+        "[+     1.274188] [principal history preparation] 64 heap-held first/duplicate publications; allocation-free monotonic stack/heap updates, root retirement/restart and unrelated-principal ASID reuse passed",
+        "[+     1.293811] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; no ASID published; 256 namespace + 144 reactor original principal account bytes retained",
+        "[+     1.417666] [waiter account admission] real-account ordinary/total exhaustion, pre-allocation denial, trusted root reserve, immutable classification, root rollback and final-weak release across exact ASID reuse passed",
+        "[+     1.447496] [timer account lifetime] actual event/node/cancellation retention across root close and exact ASID reuse; final-weak backing refund and successor independence passed",
+        "[+     2.298000] [completion account lifetime] real completion/weak backing, retired heap CQ and owned watch entry retained original accounts across root close and exact ASID reuse; four reactor final-weak original-principal refunds left successor unchanged",
+        "[+     7.542101] [namespace node layouts] complete five-node root 696 bytes; count-headroom layouts 5701632 total / 4276224 ordinary bytes",
+        "[+     7.651136] [namespace account principal] actual cap/endpoint/record/mailbox bundles=72/80/104/104 bytes; sibling sharing, 256 heap-held denials, independent sponsor, three root-prefix rollbacks, promotion, four final-weak refunds after ASID reuse and 14560 real bundles at 1048576-byte principal ceiling passed",
+        "[+    17.547543] [reactor account principal] waiter/scheduler/timer/record/CQ/watch bundles=72/72/72/64/80/64 bytes; sibling sharing, 384 heap-held denials, four root and eight namespace prefixes, healthy sponsor, immutable promotion and 16381 real bundles at 1048576-byte ceiling passed",
+        "[+    96.396415] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    }
+  ],
+  "failed_preflights": [
+    {
+      "name": "ARM initial compile",
+      "status": "failed preflight; corrected before final qualification",
+      "log_sha256": "a5b20e8bde94c5058f175eed268173943dacfad12f242a0bf74b569ba9ff23ba",
+      "diagnostics": [
+        "   Compiling catten v0.8.1 (/Users/froran/Projects/private/charlotte-os/crates/catten)",
+        "warning: catten@0.8.1: DEVELOPMENT image: public fixture trust; do not deploy real secrets",
+        "error[E0433]: cannot find type `Arc` in this scope",
+        "  --> crates/catten/src/completion/account_budget/tests.rs:92:21",
+        "   |",
+        "92 |             assert!(Arc::ptr_eq(&entries.record_budget, &records));",
+        "   |                     ^^^ use of undeclared type `Arc`",
+        "   |",
+        "help: consider importing one of these structs",
+        "   |",
+        " 2 + use crate::completion::Arc;",
+        "   |",
+        " 2 + use alloc::sync::Arc;",
+        "   |",
+        "",
+        "error[E0433]: cannot find type `Arc` in this scope",
+        "  --> crates/catten/src/completion/account_budget/tests.rs:93:21",
+        "   |",
+        "93 |             assert!(Arc::ptr_eq(&entries.cq_budget, &queues));",
+        "   |                     ^^^ use of undeclared type `Arc`",
+        "   |",
+        "help: consider importing one of these structs",
+        "   |",
+        " 2 + use crate::completion::Arc;",
+        "   |",
+        " 2 + use alloc::sync::Arc;",
+        "   |",
+        "",
+        "error[E0433]: cannot find type `Arc` in this scope",
+        "  --> crates/catten/src/completion/account_budget/tests.rs:94:21",
+        "   |",
+        "94 |             assert!(Arc::ptr_eq(&entries.watch_budget, &watches));",
+        "   |                     ^^^ use of undeclared type `Arc`",
+        "   |",
+        "help: consider importing one of these structs",
+        "   |",
+        " 2 + use crate::completion::Arc;",
+        "   |",
+        " 2 + use alloc::sync::Arc;",
+        "   |",
+        "",
+        "error[E0433]: cannot find type `Arc` in this scope",
+        "   --> crates/catten/src/completion/account_budget/tests.rs:177:23",
+        "    |",
+        "177 |     let record_weak = Arc::downgrade(&records);",
+        "    |                       ^^^ use of undeclared type `Arc`",
+        "    |",
+        "help: consider importing one of these structs",
+        "    |",
+        "  2 + use crate::completion::Arc;",
+        "    |",
+        "  2 + use alloc::sync::Arc;",
+        "    |",
+        "",
+        "error[E0433]: cannot find type `Arc` in this scope",
+        "   --> crates/catten/src/completion/account_budget/tests.rs:178:22",
+        "    |",
+        "178 |     let queue_weak = Arc::downgrade(&queues);",
+        "    |                      ^^^ use of undeclared type `Arc`",
+        "    |",
+        "help: consider importing one of these structs",
+        "    |",
+        "  2 + use crate::completion::Arc;",
+        "    |",
+        "  2 + use alloc::sync::Arc;",
+        "    |",
+        "",
+        "error[E0433]: cannot find type `Arc` in this scope",
+        "   --> crates/catten/src/completion/account_budget/tests.rs:179:22",
+        "    |",
+        "179 |     let watch_weak = Arc::downgrade(&watches);",
+        "    |                      ^^^ use of undeclared type `Arc`",
+        "    |",
+        "help: consider importing one of these structs",
+        "    |",
+        "  2 + use crate::completion::Arc;",
+        "    |",
+        "  2 + use alloc::sync::Arc;",
+        "    |",
+        "",
+        "error[E0433]: cannot find type `Arc` in this scope",
+        "   --> crates/catten/src/completion/account_budget/tests.rs:182:27",
+        "    |",
+        "182 |     let completion_weak = Arc::downgrade(&captured);",
+        "    |                           ^^^ use of undeclared type `Arc`",
+        "    |",
+        "help: consider importing one of these structs",
+        "    |",
+        "  2 + use crate::completion::Arc;",
+        "    |",
+        "  2 + use alloc::sync::Arc;",
+        "    |",
+        "",
+        "error: unused import: `alloc::sync::Arc`",
+        " --> crates/catten/src/klib/observer/waiter_budget.rs:5:5",
+        "  |",
+        "5 | use alloc::sync::Arc;",
+        "  |     ^^^^^^^^^^^^^^^^",
+        "  |",
+        "  = note: `-D unused-imports` implied by `-D warnings`",
+        "  = help: to override `-D warnings` add `#[allow(unused_imports)]`",
+        "",
+        "For more information about this error, try `rustc --explain E0433`.",
+        "warning: catten@0.8.1: DEVELOPMENT image: public fixture trust; do not deploy real secrets",
+        "error: could not compile `catten` (bin \"catten\") due to 8 previous errors"
+      ]
+    },
+    {
+      "name": "ARM minimal compile",
+      "status": "failed preflight; corrected before final qualification",
+      "log_sha256": "ac9ef7f33f4a7b377b251b159ae0f6350c7fc6f8a519e8f5a5bc51db0b6166ec",
+      "diagnostics": [
+        "   Compiling catten v0.8.1 (/Users/froran/Projects/private/charlotte-os/crates/catten)",
+        "warning: catten@0.8.1: DEVELOPMENT image: public fixture trust; do not deploy real secrets",
+        "error: unused import: `self`",
+        " --> crates/catten/src/completion/account_budget.rs:7:5",
+        "  |",
+        "7 |     self,",
+        "  |     ^^^^",
+        "  |",
+        "  = note: `-D unused-imports` implied by `-D warnings`",
+        "  = help: to override `-D warnings` add `#[allow(unused_imports)]`",
+        "",
+        "error: unused import: `self`",
+        " --> crates/catten/src/klib/namespace_account_budget.rs:8:5",
+        "  |",
+        "8 |     self,",
+        "  |     ^^^^",
+        "",
+        "error: unused import: `self`",
+        " --> crates/catten/src/klib/observer/account_budget.rs:8:5",
+        "  |",
+        "8 |     self,",
+        "  |     ^^^^",
+        "",
+        "error: unused import: `self`",
+        " --> crates/catten/src/timers/account_budget.rs:7:5",
+        "  |",
+        "7 |     self,",
+        "  |     ^^^^",
+        "",
+        "warning: catten@0.8.1: DEVELOPMENT image: public fixture trust; do not deploy real secrets",
+        "error: could not compile `catten` (bin \"catten\") due to 4 previous errors"
+      ]
+    },
+    {
+      "name": "x86 minimal compile",
+      "status": "failed preflight; corrected before final qualification",
+      "log_sha256": "ce11b93d99b7b74fda30db7036f1a756cd0b115a324d710dcb2645f1d6624497",
+      "diagnostics": [
+        "    Blocking waiting for file lock on build directory",
+        "   Compiling catten v0.8.1 (/Users/froran/Projects/private/charlotte-os/crates/catten)",
+        "warning: catten@0.8.1: DEVELOPMENT image: public fixture trust; do not deploy real secrets",
+        "error: unused import: `self`",
+        " --> crates/catten/src/completion/account_budget.rs:7:5",
+        "  |",
+        "7 |     self,",
+        "  |     ^^^^",
+        "  |",
+        "  = note: `-D unused-imports` implied by `-D warnings`",
+        "  = help: to override `-D warnings` add `#[allow(unused_imports)]`",
+        "",
+        "error: unused import: `self`",
+        " --> crates/catten/src/klib/namespace_account_budget.rs:8:5",
+        "  |",
+        "8 |     self,",
+        "  |     ^^^^",
+        "",
+        "error: unused import: `self`",
+        " --> crates/catten/src/klib/observer/account_budget.rs:8:5",
+        "  |",
+        "8 |     self,",
+        "  |     ^^^^",
+        "",
+        "error: unused import: `self`",
+        " --> crates/catten/src/timers/account_budget.rs:7:5",
+        "  |",
+        "7 |     self,",
+        "  |     ^^^^",
+        "",
+        "warning: catten@0.8.1: DEVELOPMENT image: public fixture trust; do not deploy real secrets",
+        "error: could not compile `catten` (bin \"catten\") due to 4 previous errors"
+      ]
+    },
+    {
+      "name": "formatter parse preflight",
+      "status": "failed preflight; corrected",
+      "diagnostics": [
+        "error[E0753]: expected outer doc comment at completion/account_budget/tests.rs:2:1",
+        "A newly added import preceded the module inner documentation comment; the import was moved after the documentation."
+      ]
+    }
+  ],
+  "evidence_policy": "Inline results, diagnostics and artifact identities remain readable without temporary logs. Preliminary native passes precede test-only import scoping and are retained separately; final qualification uses the frozen source/input identities. Signed bundles are identical to the preceding qualified batch. User manual edits are included in the commit; runner whole-tree diff hashes can include documentation work and do not replace source/input hashes.",
+  "remaining": [
+    "Remaining catalog principal coverage, allocator excess and coherent joint heap fit (Q4).",
+    "Complete production caller/IRQ/implicit destruction review (Q5).",
+    "Recovery custody and physical completion contracts (Q6), sustained service/cleanup progress (Q7), combined pressure/incident matrix (Q8).",
+    "ARM display second grant-probe, Intel retirement-pin and ARM exit-watch incidents remain unresolved."
+  ]
+}

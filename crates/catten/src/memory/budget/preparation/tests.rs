@@ -34,7 +34,7 @@ pub(super) fn run() {
     for reject in 1..=4 {
         let mut visits = 0;
         assert!(
-            PreparingAccount::prepare(false, false, |stage| {
+            PreparingAccount::prepare(false, false.into(), |stage| {
                 visits += 1;
                 assert!(LEDGER.try_lock().is_some());
                 assert!(ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());

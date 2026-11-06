@@ -39,9 +39,9 @@ impl DomainBudget {
 
     pub(crate) fn try_new(
         capacity: usize,
-        backing_platform: bool,
+        storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
     ) -> Result<AccountRef, core::alloc::AllocError> {
-        let allocator = super::account_budget::allocator(backing_platform)?;
+        let allocator = super::account_budget::allocator(storage)?;
         allocator
             .try_arc(Self(Mutex::new(VectorBudget::new([capacity.min(MAX_DOMAIN_RECORDS) as u64]))))
     }
