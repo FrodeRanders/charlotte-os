@@ -25,6 +25,7 @@ use crate::klib::admission::{
     ByteSponsor,
     IpcNodes,
     Reservation,
+    SponsoredAllocator,
 };
 type A = ByteAllocator<IpcNodes>;
 static TRACK: AtomicBool = AtomicBool::new(false);
@@ -156,10 +157,15 @@ fn zero_sized_storage_and_allocator_clones_reserve_nothing() {
 struct Sponsor;
 impl ByteSponsor for Sponsor {
     fn reserve(&self, bytes: u64) -> Result<(), core::alloc::AllocError> {
-        SPONSOR_USED.fetch_update(Ordering::AcqRel, Ordering::Acquire, |used| {
-            used.checked_add(bytes).filter(|next| *next <= SPONSOR_LIMIT.load(Ordering::Acquire))
-        }).map(|_| ()).map_err(|_| core::alloc::AllocError)
+        SPONSOR_USED
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |used| {
+                used.checked_add(bytes)
+                    .filter(|next| *next <= SPONSOR_LIMIT.load(Ordering::Acquire))
+            })
+            .map(|_| ())
+            .map_err(|_| core::alloc::AllocError)
     }
+
     fn release(&self, bytes: u64) {
         let old = SPONSOR_USED.fetch_sub(bytes, Ordering::AcqRel);
         assert!(old >= bytes);
@@ -192,7 +198,7 @@ fn captured_sponsor_funds_complete_growth_and_refunds_only_after_actual_free() {
     assert_eq!(SPONSOR_USED.load(Ordering::Acquire), 24);
     SPONSOR_LIMIT.store(u64::MAX, Ordering::Release);
     let full = crate::resource_policy::POLICY.ipc_nodes.ordinary[0];
-    let pressure = Reservation::<IpcNodes, 2>::reserve(false, [full-used().1[0], 0]).unwrap();
+    let pressure = Reservation::<IpcNodes, 2>::reserve(false, [full - used().1[0], 0]).unwrap();
     assert!(allocator.allocate(Layout::new::<u64>()).is_err());
     assert_eq!(SPONSOR_USED.load(Ordering::Acquire), 24);
     drop(pressure);
@@ -230,5 +236,26 @@ fn fixed_buffer_byte_charge_is_linear_and_returns_only_its_original_reservation(
     assert_eq!(SPONSOR_USED.load(Ordering::Acquire), 0);
     assert_eq!(used(), before);
     drop(ByteCharge::try_new(Sponsor, 0).unwrap());
+    SPONSOR_LIMIT.store(u64::MAX, Ordering::Release);
+}
+
+#[test]
+fn standalone_backing_adapter_funds_bytes_without_changing_family_counts() {
+    assert_eq!(SPONSOR_USED.load(Ordering::Acquire), 0);
+    let before = used();
+    SPONSOR_LIMIT.store(32, Ordering::Release);
+    let allocator = SponsoredAllocator::new(Sponsor);
+    let layout = Layout::from_size_align(32, 16).unwrap();
+    let block = allocator.allocate(layout).unwrap();
+    assert_eq!(SPONSOR_USED.load(Ordering::Acquire), 32);
+    assert!(allocator.allocate(Layout::new::<u8>()).is_err());
+    assert_eq!(used(), before);
+    WATCH.store(block.cast::<u8>().as_ptr() as usize, Ordering::Release);
+    FREES.store(0, Ordering::Release);
+    unsafe { allocator.deallocate(block.cast(), layout) };
+    WATCH.store(0, Ordering::Release);
+    assert_eq!(SPONSOR_AT_FREE.load(Ordering::Acquire), 32);
+    assert_eq!(FREES.load(Ordering::Acquire), 1);
+    assert_eq!(SPONSOR_USED.load(Ordering::Acquire), 0);
     SPONSOR_LIMIT.store(u64::MAX, Ordering::Release);
 }

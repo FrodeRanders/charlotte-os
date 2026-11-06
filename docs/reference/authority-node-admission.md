@@ -13,8 +13,8 @@ deallocation. Published authority and backing admission have separate lifetimes.
 
 The count ceilings are twice the existing capability ceilings (49152/65536).
 This leaves capacity for unused candidates and overlapping retirement while
-preserving capability limits. The current 64-byte native layout reaches count
-ceilings at 6/8 MiB; independent byte ceilings bound future layout growth.
+preserving capability limits. The current 80-byte native layout, including its funded original account
+reference, reaches count ceilings at 7.5/10 MiB; independent byte ceilings bound future layout growth.
 Admission adds 16 bytes per authority node, a short pool operation at preparation
 and release, and another possible `ResourceLimit` rejection. These ceilings
 reserve no RAM and cannot guarantee heap availability or progress if retained

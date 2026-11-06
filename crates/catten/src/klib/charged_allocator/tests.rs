@@ -523,3 +523,109 @@ fn payload_initialization_needs_no_allocator_or_payload_disposal() {
     drop(weak);
     assert_eq!(used.load(Ordering::SeqCst), 0);
 }
+
+#[derive(Default)]
+struct BackingState {
+    used: AtomicUsize,
+    limit: AtomicUsize,
+    allocations: AtomicUsize,
+    frees: AtomicUsize,
+    held_at_free: AtomicUsize,
+}
+#[derive(Clone)]
+struct Backing(Arc<BackingState>);
+// SAFETY: This host adapter forwards unchanged Global pointers/layouts. It
+// observes the actual Arc layouts supplied by the production owning adapter.
+unsafe impl Allocator for Backing {
+    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        self.0
+            .used
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |used| {
+                used.checked_add(layout.size())
+                    .filter(|bytes| *bytes <= self.0.limit.load(Ordering::Acquire))
+            })
+            .map_err(|_| AllocError)?;
+        match Global.allocate(layout) {
+            Ok(block) => {
+                self.0.allocations.fetch_add(1, Ordering::AcqRel);
+                Ok(block)
+            }
+            Err(error) => {
+                self.0.used.fetch_sub(layout.size(), Ordering::AcqRel);
+                Err(error)
+            }
+        }
+    }
+
+    unsafe fn deallocate(&self, pointer: NonNull<u8>, layout: Layout) {
+        assert!(self.0.used.load(Ordering::Acquire) >= layout.size());
+        unsafe { Global.deallocate(pointer, layout) };
+        self.0
+            .held_at_free
+            .store(self.0.used.fetch_sub(layout.size(), Ordering::AcqRel), Ordering::Release);
+        self.0.frees.fetch_add(1, Ordering::AcqRel);
+    }
+}
+fn backing(limit: usize) -> (Arc<BackingState>, Backing) {
+    let state = Arc::new(BackingState::default());
+    state.limit.store(limit, Ordering::Release);
+    (state.clone(), Backing(state))
+}
+#[test]
+fn captured_backing_funds_actual_holder_payload_and_final_weak_release() {
+    #[repr(align(256))]
+    struct Aligned([u8; 257]);
+    let used = Arc::new(AtomicUsize::new(0));
+    let (state, backing) = backing(4096);
+    let allocator: ChargedAllocator<_, PreAdmitted, _> =
+        ChargedAllocator::try_new_with_backing(Charge::new(&used), backing).unwrap();
+    let holder = state.used.load(Ordering::Acquire);
+    assert!(holder > 0);
+    let retained = allocator.clone();
+    assert_eq!(state.allocations.load(Ordering::Acquire), 1);
+    let value = allocator.try_arc(Aligned([7; 257])).unwrap();
+    assert_eq!(value.0[256], 7);
+    let total = state.used.load(Ordering::Acquire);
+    assert!(total > holder + core::mem::size_of::<Aligned>());
+    let weak = Arc::downgrade(&value);
+    drop(value);
+    assert_eq!(state.used.load(Ordering::Acquire), total);
+    assert_eq!(used.load(Ordering::Acquire), 1);
+    drop(weak);
+    assert_eq!(state.used.load(Ordering::Acquire), holder);
+    assert_eq!(state.frees.load(Ordering::Acquire), 1);
+    assert_eq!(used.load(Ordering::Acquire), 1);
+    assert!(retained.clone().try_arc(0u8).is_err());
+    drop(retained);
+    assert_eq!(state.used.load(Ordering::Acquire), 0);
+    assert_eq!(state.frees.load(Ordering::Acquire), 2);
+    assert_eq!(state.held_at_free.load(Ordering::Acquire), holder);
+    assert_eq!(used.load(Ordering::Acquire), 0);
+}
+#[test]
+fn captured_backing_rejects_holder_and_payload_without_losing_original_charge() {
+    let used = Arc::new(AtomicUsize::new(0));
+    let (state, adapter) = backing(0);
+    let rejected: Result<ChargedAllocator<_, PreAdmitted, _>, _> =
+        ChargedAllocator::try_new_with_backing(Charge::new(&used), adapter);
+    assert!(rejected.is_err());
+    assert_eq!(used.load(Ordering::Acquire), 0);
+    assert_eq!(state.allocations.load(Ordering::Acquire), 0);
+    let dropped = Arc::new(AtomicUsize::new(0));
+    let (state, adapter) = backing(4096);
+    let allocator: ChargedAllocator<_, PreAdmitted, _> =
+        ChargedAllocator::try_new_with_backing(Charge::new(&used), adapter).unwrap();
+    state.limit.store(state.used.load(Ordering::Acquire), Ordering::Release);
+    assert!(
+        allocator
+            .try_arc(Payload {
+                used: used.clone(),
+                dropped: dropped.clone()
+            })
+            .is_err()
+    );
+    assert_eq!(state.used.load(Ordering::Acquire), 0);
+    assert_eq!(state.frees.load(Ordering::Acquire), 1);
+    assert_eq!(used.load(Ordering::Acquire), 0);
+    assert_eq!(dropped.load(Ordering::Acquire), 1);
+}

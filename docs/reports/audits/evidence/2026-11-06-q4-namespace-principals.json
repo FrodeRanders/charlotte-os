@@ -1,0 +1,1376 @@
+{
+  "schema": "charlotte.q4-namespace-principals.v1",
+  "date": "2026-11-06",
+  "base_revision": "63e76d20d4746d46144b0fd90b46f87eb8393090",
+  "scope": "Actual requested-layout principal funding for four namespace-account payloads and private holders; wider Q4 coverage remains open.",
+  "source_sha256": {
+    "Cargo.lock": "169db5ac853b42acc4b8d15970d9f3c46036a97229418bc47e99d03f8e1aa029",
+    "crates/catten/src/capability.rs": "3cadd4aa05f567c3ca0573eb90bfe877b84ec8830b943be1ca42fb66e8299208",
+    "crates/catten/src/capability/budget.rs": "1915607d54dc149ebc7f41513c3011667bcd1f172b39457d61a8a88a473e85b6",
+    "crates/catten/src/capability/namespace_account_tests.rs": "82e6780c62bb3a4874fd7efd9a9c20b24ce12f9539f78c1fea31df82c8850b99",
+    "crates/catten/src/ipc/budget.rs": "dfcd1c11972ae0189b704ed624261d85f0c9a6d9728fdd5dadfb7a4bd9f00576",
+    "crates/catten/src/ipc/namespace.rs": "f4ab404079c0424ceaee5e8919a57e24fce7579ba114c942ed882655a4c6e01d",
+    "crates/catten/src/ipc/record_budget.rs": "05f9f510675f70c431690f9c6e2f0256ad69dfaf002c8884a1c648ddb3a53ff0",
+    "crates/catten/src/klib/admission.rs": "8e56648eb662a62df1a6340dae285c4c8d0148d1e8b62fcd1711e2227684106d",
+    "crates/catten/src/klib/admission/byte_allocator.rs": "b65017248c8b588db3d619fe7bd27cd96dd9994c8893c57e672237b0910da009",
+    "crates/catten/src/klib/admission/byte_allocator_tests.rs": "72d623a330d557a6830845f535b845e82f4cf46bbbc8008dda2e3d65f073bc40",
+    "crates/catten/src/klib/charged_allocator.rs": "14447a1ec1ec8c2b7ee011b375aa2d194580d761f6912b5d47dc410ed208ce8f",
+    "crates/catten/src/klib/charged_allocator/tests.rs": "abe120f4474cddfb43547ebcca8843f9a0b3edbbdcf1dff818f4f090c6b67420",
+    "crates/catten/src/klib/namespace_account_budget.rs": "96b631ca15461fe3ff5231e15ed233d1ea2a75c3b3f551b1ca46025cc181253a",
+    "crates/catten/src/memory/budget.rs": "e62eb149ecf356f58fe9a1b4e607fb6f0812d53647161e46cb72aa78cc69d9b8",
+    "crates/catten/src/memory/mod.rs": "e2ae9541558456fcc8ae0e25bc00356a04e303df99ef00a25d6ece516bc7eb60",
+    "crates/catten/src/memory/registration.rs": "1217ae199165cca0c3f27039436d0f7855cbd84904942f1eb9743da4687fabd3",
+    "crates/catten/src/memory/usage/principal_history.rs": "6af620f2c812b3b97e152091744e720c13d0c2ef0b2303b6ed80d6903864b4bd",
+    "crates/catten/src/memory/usage/principal_history/kernel_buffers.rs": "34ee16cddfaf3463424d66fd1cd49299d8597bef0636cf7f228ad65d6c6b485a",
+    "crates/catten/src/resource_policy.rs": "d0a06c111d6efffb53d111563e8825d273478ad22b75619f8dd9fbad6e049a9c",
+    "crates/catten/src/resource_policy/defaults.rs": "43f1905225cf16f19cef585206c4fa3f594eefb1af4c5c80d4ebd55ccdf3a514",
+    "crates/catten/src/resource_policy/tests.rs": "239b20934f88fc4a6e71e7160c485da7b097f3593347a47cf5cf95c0896a893a",
+    "crates/catten/src/syscall/mailbox_budget.rs": "c741ac08e18f449db9771df349ced8142d7acd6f63ffc45fafe895af51226062",
+    "crates/catten/src/syscall/mailbox_node_tests.rs": "954cd9cde6a42202fc971d489a556255455ee864fa3e3cac94ea857a8488b21a",
+    "crates/catten/src/syscall/mailbox_publication.rs": "b9ee167166fb6c3a7035c855276dc39c0992d59cbf0f2962a3c15fd91c9fa5d7",
+    "crates/catten/src/syscall/mailbox_queue.rs": "e8d635c5ef164e1cc57906c0f2c26d370914ab3aecc8d635c182723fbc6c2df9",
+    "crates/catten/src/syscall/mailbox_tests.rs": "086d6b794b71c4cd84ae581a7604fea99fb1aa6bf81929f197a915fa340d540e",
+    "crates/catten/src/syscall/mod.rs": "f2eaea54ad63945f73846236a36ac23bf768f86b5b43c9c2a21fcc49b9632839",
+    "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
+    "scripts/audit-resource-capacity.py": "b90ce8e08b51a7876e0f81725bd1dd429d8f1e1a4ccdcd3b3cd9f1ea8f181265"
+  },
+  "limits": {
+    "existing_global_limits_changed": false,
+    "new_principal_namespace_account_bytes": 1048576,
+    "principal_kernel_buffer_bytes": 16777216,
+    "namespace_ordinary_bundles": 24576,
+    "namespace_total_bundles": 32768,
+    "private_fixture_headroom": "Current 616-byte shared usage, then +0/+72/+152 registration prefix headroom; default restored without refunding charges.",
+    "real_default_pressure_bundles": 14560,
+    "mandatory_root_account_bytes": 256
+  },
+  "checks": [
+    {
+      "name": "format",
+      "status": "passed",
+      "command": "cargo fmt --all -- --check crates/catten/src/klib/admission/byte_allocator_tests.rs"
+    },
+    {
+      "name": "full host",
+      "status": "passed",
+      "command": "CARGO_NET_OFFLINE=true scripts/run-host-tests.sh",
+      "log_sha256": "cc6ced7aa0e5d15e6c5c1f579ef013932e0922cd1d842c23696b9173cce526f3",
+      "milestones": [
+        "test resource_policy::tests::namespace_account_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "test charged_allocator::tests::captured_backing_funds_actual_holder_payload_and_final_weak_release ... ok",
+        "test charged_allocator::tests::captured_backing_rejects_holder_and_payload_without_losing_original_charge ... ok",
+        "test klib::charged_allocator::tests::captured_backing_funds_actual_holder_payload_and_final_weak_release ... ok",
+        "test klib::charged_allocator::tests::captured_backing_rejects_holder_and_payload_without_losing_original_charge ... ok",
+        "test resource_policy::tests::namespace_account_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "test resource_policy::tests::namespace_account_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "test resource_policy::tests::namespace_account_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "test resource_policy::tests::namespace_account_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "test byte_allocator_tests::standalone_backing_adapter_funds_bytes_without_changing_family_counts ... ok",
+        "test resource_policy::tests::namespace_account_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "test resource_policy::tests::namespace_account_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "test resource_policy::tests::namespace_account_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "test resource_policy::tests::namespace_account_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "test charged_allocator::tests::captured_backing_rejects_holder_and_payload_without_losing_original_charge ... ok",
+        "test charged_allocator::tests::captured_backing_funds_actual_holder_payload_and_final_weak_release ... ok",
+        "SHA-256, CLS2 metadata, placement-policy, and signed-deployment self-tests pass"
+      ]
+    },
+    {
+      "name": "ARM test",
+      "status": "passed",
+      "log_sha256": "1e43fabfd13a21501372a0d05d0a32ad2c519d76d09266d3f31b07d4ff47fc95"
+    },
+    {
+      "name": "x86 test",
+      "status": "passed",
+      "log_sha256": "52516246ab1589817a5bb97d2a660be5529a0ee4abfb401d30885c3bdd5aa627"
+    },
+    {
+      "name": "ARM minimal",
+      "status": "passed",
+      "log_sha256": "1423a885abdaa734406a960b9c5393cec1646923df7be76daa63b5a459121333"
+    },
+    {
+      "name": "x86 minimal",
+      "status": "passed",
+      "log_sha256": "347889fdb6a9e90191e36b93bb45bacdb14e6cb8962bc19eebe165e33a15b67f"
+    }
+  ],
+  "native": [
+    {
+      "profile": "ARM SMMUv3 security",
+      "status": "passed",
+      "scope": "final frozen-source qualification",
+      "deferred_tests_passed": 19,
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-05T23:55:39Z",
+      "base_revision": "63e76d20d4746d46144b0fd90b46f87eb8393090",
+      "kernel_sha256": "c4df6cc51dcca8a021e3d6a78a80c02f83241bb9e87d1a96922ebd8125e438f3",
+      "boot_image_sha256": "77afd6d24b75c8519d1b2db232a38fd35ea98c8e6325a75959c2396e479e7742",
+      "initial_disk_sha256": "71220674713d03a86470003470fc56bc83b7da8a1107b285b5e6d64f1423e9d7",
+      "bundle_sha256": {
+        "agent.elf": "671eaa8ba761bd8fe1ab7e1a0be24f5335a9e11be7b1c755ba0cb7e195d81d6a",
+        "cclient.elf": "aedb34755dc2eda6af6f1e1b31592d0055029ccf9b890381492d20134de83d1a",
+        "client.elf": "a46d6c5d3f0110d0cc2bdc693b890ba3522b109e5d65cf9098ad2bdd785c530e",
+        "clusterctl.elf": "30c8cbbc4b9d7edf6872f5bf47d1a33bdfcb09f0276927476d2c9e654cfb176b",
+        "deployd.elf": "058dc4d96a9e77bcd2251596415a3f50fcda30534cff20ba3e016d3341b08d9f",
+        "disco.elf": "3b454feea99eee0adb48380c55000267d800f1307f3df80e4292de467464eed9",
+        "dns.elf": "08fc3ffdb05a9e56cfb9f78f16d04ef08188f2231eaeb6a9c325df0d08623139",
+        "echo.elf": "840324beddaf0c90f459dc0900e78884b631205027e4ff09d0fed89ffa2da1f6",
+        "frouter.elf": "49d2505c668f831564d1b2d2e1bd2d101cac651760ccf35fd69edc5fb54f3994",
+        "fs.elf": "264393d6535c0bd7d9ba212048ce4850b067a8633766b4869621d38b882620b5",
+        "grantctl.elf": "bd1b2b5a826a45d3d745e51a315f9083e080fba037a7aa6c9f7b379c3e6daaa1",
+        "greet.elf": "bf6c98d6d361cd63f7567c7eec56496ca1005e524e12b2815db450d1299f7851",
+        "httpd.elf": "2a20eab99c51d8313efcefce58039dd4e1301cff33f9b8e8813bd565085c3024",
+        "kafka.elf": "6d2e4c632f19a76a3f946d393d8c7a4ad55a3eb037a17d249eb285d8b6a29e0e",
+        "kafka_fence_smoke.elf": "69d119e505da5d526d2c33ff8287feda795e1c73a9b5d51b54316aa39cac818c",
+        "kafka_smoke.elf": "b5d2cf1309ba703dffc3e7dc1336cd2395af79c586f802fe2a17abe987b7124b",
+        "kafka_step.elf": "2a23f2cf94d86bad97612b5b692031b2bb9d572398f9123631505c91b9f6aa89",
+        "kafka_step_input.elf": "b005dfcafb79e1787d8f61b75b36211b1fd8c85b7ff0b832c05cc48d4dcd5d00",
+        "kafka_step_proc.elf": "f56381d6e2a144b23333f761798a859fde0682f2c7def02a0a55d33b0b608174",
+        "nclient.elf": "0f75db8d899a510ff478965896ca239bbd2394d1abc4ceacd51756f10c19b6b6",
+        "net.elf": "63795434f8e51d1608539c0dd3da3e378b341082de3fb9a622202d3182434fcd",
+        "ns.elf": "2d720f3ba4ef4ef7582d157f068e660cd78851af304d478d47581d5cfcf4f694",
+        "nvme.elf": "4400a62a4f2496a137e23d389d3fb0097000991311b5e7243447eb33a729e360",
+        "nvme_client.elf": "5ab1ff38c3bfaa09ebbf58f28a6daeb888bb8fdf425b8e66c515c3940878e32f",
+        "objstore.elf": "6a043919aeb9f144063fc353b4591a76c19e198da9070a1dba75497c7b936cee",
+        "objstore_client.elf": "ef3fc558720d57d66a35be63fe70937b8046bc97d09b1f480cdd7249ac7dc5c5",
+        "observe.elf": "253c28fd0cef0871e7deb3086c4114f0e989bc7f7870805babd5f9979c89a8d3",
+        "otlp.elf": "94471bfb3ea50341e72b5440e6e81077ad820b6f83f047d78094dc2f626032a9",
+        "raft.elf": "2d32a23459bc273835bbb364e159051dc191dbef81c8342b7943f30070f925a6",
+        "rclient.elf": "d0186fd36a918859f1ed5084419098ed84de029423904adf2ea7d33ddfc7f41d",
+        "relmsg.elf": "28ba7a1fa23272068a2b09be9f6cea40b26b1090d357a7f4ef3176e3356f0104",
+        "rng.elf": "618f8e3159dbf8e526613927fdfd20d2ea7349a50dc6f32372e1fbae2db78868",
+        "s3.elf": "943f4d41427b5b9e40f83b7856ef3ca684bd64819de90b09e0710c27f9d03623",
+        "s3_smoke.elf": "f5c0157554d5550c95660cb096362c03e924884314f97ebee2aa831efdeb1213",
+        "security_probe.elf": "11a9f88261e2a8064100e7494d83c418d351a0422bac08e9807128ab964e43f3",
+        "servicemgr.elf": "3035aa2ee63aefbdd6f80e8e02eaa63eb1339a09f4ab0578fd1e019d341ba5df",
+        "shutdown_probe.elf": "32dc4a43ae45edbfef69e29fbdc33a329ac3543e83f0cad2c620df9ead9ab50b",
+        "sitas-user.elf": "6f0e7f2113b898f98e16708342db288745e9dcfe2bbbb016027e8db01100391b",
+        "tcpclient.elf": "efab9fa7b1c2ab305515ba5a4f7bf30f7dbdd7adf60c2c6d5635a5d3a31af435",
+        "tcpip.elf": "1ee63b257bbbacc1d6d52ef3944ee31a9b170f6eafff089fd54ac92afa3e68af",
+        "time.elf": "a6736abb273494bc03986dd50463998c4e13e2d28e637cddbe9380e74b6fd6f0",
+        "uart.elf": "4277c7745286054fffe64e944d845c17d6b9908076859b1c97d1117948ab12c7"
+      },
+      "bundle_unchanged_from_qualified_ipc_principal_batch": true,
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "ca73af160a462fa40ed166dbea6fda0fb2c53a8f2bfba6d50f4dbf719076fdf6",
+        "scripts/run-aarch64.sh": "58eede46ad82247673a9791e9cb247d5c32806b88bda86389e1e237d3ec100b8"
+      },
+      "qemu_arguments": [
+        "-M",
+        "virt,gic-version=3,msi=gicv2m,iommu=smmuv3,default-bus-bypass-iommu=off",
+        "-m",
+        "512M",
+        "-bios",
+        "/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
+        "-drive",
+        "file=./os-images/charlotte-aarch64-debug-q4-accounts-arm.img,format=raw,if=none,id=boot0",
+        "-device",
+        "virtio-blk-pci,drive=boot0,addr=3",
+        "-cpu",
+        "cortex-a710",
+        "-object",
+        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "-device",
+        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on,addr=4",
+        "-smp",
+        "4",
+        "-drive",
+        "if=none,file=./os-images/nvme-disk-q4-accounts-arm.img,format=raw,id=nvme0",
+        "-device",
+        "nvme,drive=nvme0,serial=cat0,max_ioqpairs=4,addr=2",
+        "-nic",
+        "none",
+        "-netdev",
+        "user,id=charlotte-net,hostfwd=tcp::17792-:7444",
+        "-device",
+        "virtio-net-pci,netdev=charlotte-net,disable-legacy=on,iommu_platform=on,mac=52:54:00:12:34:56,addr=1",
+        "-display",
+        "none",
+        "-qmp",
+        "unix:/tmp/ctdiag-zn_sfkpl/qmp.sock,server=on,wait=off",
+        "-gdb",
+        "unix:/tmp/ctdiag-zn_sfkpl/gdb.sock,server=on,wait=off",
+        "-serial",
+        "file:/tmp/charlotte-q4-accounts-arm-serial.log"
+      ],
+      "serial_sha256": "c67b2796582c5f2443b3835712c9609b298ddcc2479a896d52804dc8a99e9f78",
+      "runner_sha256": "5fe66db2ed4c78f9008bdc4170c0d7ab9c0e209085a5312463d783dd039e55fc",
+      "runner_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "milestones": [
+        "[+     0.012621] Kernel heap: usable=376 MiB initial=8 MiB reserve=64 MiB total=72 MiB",
+        "[+     0.150485] [device] stale address-space teardown rejected after ASID reuse",
+        "[+     1.125542] [root release] rejected frame=0x4011f000: CannotDeallocateUnallocatedFrame",
+        "[+     1.125921] [root release] quarantined failures=1 heap_pages=1 image_pages=0",
+        "[+     1.161595] [root release] rejected frame=0x40140000: CannotDeallocateUnallocatedFrame",
+        "[+     1.161797] [root release] quarantined failures=1 heap_pages=1 image_pages=1",
+        "[+     1.163178] [root release] rejected frame=0x4013f000: CannotDeallocateUnallocatedFrame",
+        "[+     1.163669] [root release] quarantined failures=1 heap_pages=1 image_pages=1",
+        "[+     1.164499] [root release] rejected frame=0x4013e000: CannotDeallocateUnallocatedFrame",
+        "[+     1.164695] [root release] quarantined failures=1 heap_pages=1 image_pages=1",
+        "[+     1.165425] [root release] rejected frame=0x4013d000: CannotDeallocateUnallocatedFrame",
+        "[+     1.165624] [root release] quarantined failures=1 heap_pages=1 image_pages=1",
+        "[+     1.166132] [root release] rejected frame=0x4013c000: CannotDeallocateUnallocatedFrame",
+        "[+     1.166324] [root release] quarantined failures=1 heap_pages=1 image_pages=1",
+        "[+     1.166845] [root release] rejected frame=0x40146000: CannotDeallocateUnallocatedFrame",
+        "[+     1.167039] [root release] quarantined failures=1 heap_pages=1 image_pages=1",
+        "[+     1.167781] [root release] rejected frame=0x40145000: CannotDeallocateUnallocatedFrame",
+        "[+     1.168658] [root release] rejected frame=0x40144000: CannotDeallocateUnallocatedFrame",
+        "[+     1.169531] [root release] rejected frame=0x40143000: CannotDeallocateUnallocatedFrame",
+        "[+     1.170430] [root release] rejected frame=0x40142000: CannotDeallocateUnallocatedFrame",
+        "[+     1.171296] [root release] rejected frame=0x40141000: CannotDeallocateUnallocatedFrame",
+        "[+     1.172159] [root release] rejected frame=0x40147000: CannotDeallocateUnallocatedFrame",
+        "[+     1.172620] [root release] quarantined failures=6 heap_pages=1 image_pages=1",
+        "[+     1.173209] [root release] success, each table/root/heap/image failure, all-release failure, no retry, borrowed root and foreign leaf passed (12 retained frames; 7 heap and 7 image charges; 28 table charges)",
+        "[+     1.445685] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; no ASID published; 256 original principal account bytes retained",
+        "[+     3.381404] [snapshot principal frames] shared-root copy/DMA/map denials, original class, independent sponsor, retained old-principal refund after close/reuse, free-before-refund and guarded abandonment passed",
+        "[+     3.391320] [snapshot buffer admission] 64 charged allocation rejections; 64 buffer-free-before-refund observations; real ordinary/total count and byte exhaustion, three pin/map rejection paths, empty escrow, trusted reserve, promotion/root reuse and exact baseline recovery passed; no quota reset",
+        "[+     4.480884] [IPC vector capacity] real ordinary/total byte pressure, heap-held growth denial, full old/candidate rejection, original pointer/prefix and popped capacity retained; exact recovery; cap=8 transfer=384 loan=32 allocator=1 bytes",
+        "[+     4.509640] [IPC buffer principal] sibling denial, full growth overlap, diagnostic sharing, promotion, independent sponsor, retained old-principal refund after root reuse, attachment-prefix rollback and guarded metadata retention passed",
+        "[+     4.533516] [IPC descriptor principal] 64 public vector-send denials preserve descriptor/source and exact byte prefix; funded retry delivers; principal fully refunded",
+        "[+     4.547009] [IPC loan capacity] real mapped read loan, caller promotion, receive/reply revocation and call close recover exact backing; token keeps original loan-vector allocation until actual disposal",
+        "[+     4.566899] [IPC attachment capacity] ordinary=486 trusted=163 real empty buffers; byte-only ordinary/total exhaustion, 64 allocated-prefix rejections and exact recovery; retired=136 max=34680 bytes; node slots unchanged",
+        "[+     5.261607] [IPC node admission] 512 allocator rejections; actual pending/reply/capability/endpoint layouts 216/216/136/320 bytes; complete node keeps backing and logical record reservations through real disposal",
+        "[+     8.967129] [IPC reply work] parent=1080 entry=200 max=51000 bytes; ordinary/total quota denial under heap guard before claim, original class after promotion, full capacity through final pop/publication, zero-work admission at quota and exact recovery",
+        "[+     9.660245] [IPC cancellation work] parent=528 entry=200 max=51000 bytes; queued/delivered ordinary/total quota denial under heap guard before claim, original class after promotion, full capacity through final pop/attachment release, zero-work admission at quota and exact recovery",
+        "[+    11.260676] [syscall snapshot maxima] image+descriptor=4194304+3584; two pickup+plaintext=4269180+65536 each and 3145728 actual mixed bytes; peak additional=11815160; policy=12582912/16777216; exact recovery",
+        "[+    11.270992] [snapshot principal inputs] signed maxima, sibling byte ceiling, frame/diagnostic sharing, promotion, prefix rollback and retained old-principal refund after ASID reuse passed",
+        "[+    11.271414] [syscall snapshots] all six buffers: maxima, original class/generation, ordinary/total denial before allocator entry, prefix cleanup and public input consumption passed; exact byte/count recovery",
+        "[+    11.313313] [namespace node layouts] complete five-node root 632 bytes; count-headroom layouts 5177344 total / 3883008 ordinary bytes",
+        "[+    11.365346] [namespace account pressure] 24271 ordinary + 8156 reserved actual accounts; 24576/32768 ceilings, 256 heap-held four-constructor denials, zero/one/two-slot root rollback, trusted backing without authority/IPC/mailbox privilege, existing receiver/word progress and immutable promotion/close/recovery passed",
+        "[+    11.416879] [namespace account principal] actual cap/endpoint/record/mailbox bundles=72/80/104/104 bytes; sibling sharing, 256 heap-held denials, independent sponsor, three root-prefix rollbacks, promotion, four final-weak refunds after ASID reuse and 14560 real bundles at 1048576-byte principal ceiling passed",
+        "[+    14.035765] [mailbox node backing] bytes=80 actual candidates ordinary=12284 trusted=4095; ordinary/total ceilings 12288/16384; 64 allocation failures, byte denials, 128 heap-held admission denials, receiver reuse, pre-promotion capture, fresh promotion reserve, trusted backing without grants, final-root release and exact ASID-reuse recovery passed",
+        "[+    88.565590] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "profile": "Intel VT-d security",
+      "status": "passed",
+      "scope": "final frozen-source qualification",
+      "deferred_tests_passed": 17,
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-05T23:56:58Z",
+      "base_revision": "63e76d20d4746d46144b0fd90b46f87eb8393090",
+      "kernel_sha256": "ff71876b6b2addbd678c4c5cd9950edcc00886446152c230dde0b8d80de7e165",
+      "boot_image_sha256": "bf0ebef20c1fcb0c0bb3cebb6d1b41673d52099d012b070afaad69faa097b224",
+      "initial_disk_sha256": "6dc9db7495e27f2ab53a04b0f62747f4fd7a63f24f62fa0024c6a7939b0df278",
+      "bundle_sha256": {
+        "agent.elf": "41a34c422e5fab4565e123c13c2fdc144c2fb6752a5beb58acf7bbf7cb6d4c90",
+        "ahci.elf": "f607c8fdb0d1954938c33a7718dfe34521dbb444053c4f5887e4c95d40084f13",
+        "client.elf": "e1f6895d2bf32024d60ca4d0e41331738f2060857fff2106239fed2a7a3c4d25",
+        "clusterctl.elf": "a7dfe023ea1e27b8efc847bdf74066c336316b97e46cbd9d9221bc9e364267e7",
+        "deployd.elf": "df4b70928fe00d8ee8485b371524d453f71e9615e56966b680861991adcf9553",
+        "disco.elf": "741687e1d4139e2e707bed02837a4325699d496da3a11a1bfed95896cd191169",
+        "dns.elf": "2a6c84256737204e09dda339530d5a9a90f59cf06f3afd8eab5d022d977e32ae",
+        "e1000e.elf": "4efef0ca0179440dcbe0a29850c0497d3874b63b7d367a05b90204fb518b695a",
+        "echo.elf": "adebef36a9b262b7b1fbe81c610d6f2e0e3376e7d51b6e1459d909b7b1f71342",
+        "frouter.elf": "9d9e4d719278d43343e48cdcbe4b55c38034f25d528e80212df0eea81062698b",
+        "fs.elf": "c2f153ba2858c2bf54e996c9a697dbb7b093b9a94099dca39f1eebe303ab3837",
+        "grantctl.elf": "06af7e79a7a335b210e7dccfe4da9767eb555d8a4703340cb13c2b0144729312",
+        "greet.elf": "e69730b6a6db30aa0f379daeca6dd37f2931536125f2acd198670cd00dc82da0",
+        "httpd.elf": "081d51db9f5fc430dce97409e2a07971876be103ce141b1892fb3878a7e1bcb2",
+        "kafka.elf": "9ee3f990d493ba747ec443740c75787c117ad2330225cd628933ec31b8192f38",
+        "kafka_smoke.elf": "41b7af7299634f43438bac5ead66018fcc6e9fa016331f4639208f41e1576856",
+        "nclient.elf": "9020fc6a1e97f45f0295a0cc3bff59b6ace9a13364bacfd039365cc39507eaa0",
+        "net.elf": "3ba1c1a4a3058b25333ce696136b082f9f8c23fa9d192eff7e1253bac2fce915",
+        "ns.elf": "8500f58b27836d7764d8b0415fbaf88e8ca175d1a7ebf9bed98c145b390d019f",
+        "nvme.elf": "3905ba29c4acbc07cec559e9af09e9ad9eadfdf7fe05d0311eeb7c9444a867ba",
+        "nvme_client.elf": "41b44a10a7e331a96f11de006749d74a17edd600680bd29a9f914c18bf9b1c2f",
+        "objstore.elf": "ffafabc799a8aa8d61025d2ff648bdd1b3b8321034f89dfa88e9a75745be6c3a",
+        "objstore_client.elf": "5280c4a66778ec0b52786d0b2b6075a7c5c7e80dc0d7b8310a502b512421ce9c",
+        "observe.elf": "2c0fdaf0c2c57a672fb15bdb611815f49142b68c02e3220c203bc18e7f8d0fae",
+        "otlp.elf": "1500357bb14efc05e3c941ce4ee65e2797995d5cb097b649fc7cfaa5d05ff65b",
+        "raft.elf": "a2ca3ee01e5a8456b1251341a71299d8d40893b7047c7daf050972243cce087e",
+        "rclient.elf": "cbdd0af55b0da8254fa8d962a7b75cb40cd061bce05baa59c4bcc5b019867805",
+        "relmsg.elf": "3acfb247379fa6b247c2926dfcf11bf4212d525ef59de26e3e64408b77d18ce5",
+        "rng.elf": "10d114d3331fa67939d412be287765f2fefae9b716421231f8901f12c456d71d",
+        "s3.elf": "ad19d44e30b6d58fa542c40c0b1a38e27ecb9883f8db76e8b3cf6288eb03dce3",
+        "s3_smoke.elf": "b57d03565926b9dbc67ed22ec445e9fe733cf43ac2be2c79435f84345469d2d8",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c",
+        "servicemgr.elf": "2ba39555142fd4f1fcdf8004f542cdf97b65267f3f2e05814e00822fe1cbe72e",
+        "shutdown_probe.elf": "fe7212dd8752c33be2f604436ca482f72eeb18ccbc3d4c69eb0bda9381415163",
+        "tcpclient.elf": "e85b5df90c422d46508051201d04ed42f6bf9b720b409347d266525e33622520",
+        "tcpip.elf": "b07bb35ff810ecfb21d10301c50f13e389f0ced45ff2392c75a0b594369f1de6",
+        "time.elf": "1afa0fc691f5dd06b7f9ea5f095e5048ac2c9fba0f0ca97f622e83c5961fd612",
+        "virtio_blk.elf": "f73eef9a720299a7764ad46b8c6875955259d1ca6903a3d95bc64ec23930d304"
+      },
+      "bundle_unchanged_from_qualified_ipc_principal_batch": true,
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "ca73af160a462fa40ed166dbea6fda0fb2c53a8f2bfba6d50f4dbf719076fdf6",
+        "scripts/run-x86_64.sh": "68f5c782f96233721e2ca04f07c2181df7a43396add422ad49f421dbde900aaa"
+      },
+      "qemu_arguments": [
+        "-M",
+        "q35",
+        "-cpu",
+        "max",
+        "-smp",
+        "4",
+        "-m",
+        "512M",
+        "-drive",
+        "if=pflash,format=raw,unit=0,file=/opt/homebrew/opt/qemu/share/qemu/edk2-x86_64-code.fd,readonly=on",
+        "-drive",
+        "if=none,file=./os-images/charlotte-x86_64-debug-q4-accounts-intel.img,format=raw,id=esp,readonly=on",
+        "-device",
+        "qemu-xhci,id=xhci",
+        "-device",
+        "usb-storage,bus=xhci.0,drive=esp,bootindex=1",
+        "-drive",
+        "if=none,file=./os-images/x86-data-q4-accounts-intel.img,format=raw,id=data0",
+        "-device",
+        "nvme,drive=data0,serial=cat0",
+        "-device",
+        "intel-iommu",
+        "-object",
+        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "-device",
+        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on",
+        "-display",
+        "none",
+        "-no-reboot",
+        "-nic",
+        "none",
+        "-netdev",
+        "user,id=net0,hostfwd=tcp::17793-:7444",
+        "-device",
+        "virtio-net-pci-non-transitional,netdev=net0,iommu_platform=on,mac=52:54:00:12:34:56",
+        "-qmp",
+        "unix:/tmp/ctdiag-h1dat6ty/qmp.sock,server=on,wait=off",
+        "-gdb",
+        "unix:/tmp/ctdiag-h1dat6ty/gdb.sock,server=on,wait=off",
+        "-serial",
+        "file:/tmp/charlotte-x86-q4-accounts-intel-serial.log"
+      ],
+      "serial_sha256": "5f45ff137ff4b0dea72def9438276cb05a83285e0943afe2da64bc5d8ba33ee5",
+      "runner_sha256": "4e3da0ff099d7ab9f19d7dc5a09262eae625a98b9861ba3fea333b4c5cc191b2",
+      "runner_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "milestones": [
+        "[+     0.018666] Kernel heap: usable=365 MiB initial=8 MiB reserve=64 MiB total=72 MiB",
+        "[+     0.147207] [device] stale address-space teardown rejected after ASID reuse",
+        "[+     0.994379] [root release] rejected frame=0x1a5000: CannotDeallocateUnallocatedFrame",
+        "[+     0.994961] [root release] quarantined failures=1 heap_pages=1 image_pages=0",
+        "[+     1.041651] [root release] rejected frame=0x1c6000: CannotDeallocateUnallocatedFrame",
+        "[+     1.042093] [root release] quarantined failures=1 heap_pages=1 image_pages=1",
+        "[+     1.043096] [root release] rejected frame=0x1c5000: CannotDeallocateUnallocatedFrame",
+        "[+     1.043560] [root release] quarantined failures=1 heap_pages=1 image_pages=1",
+        "[+     1.044471] [root release] rejected frame=0x1c4000: CannotDeallocateUnallocatedFrame",
+        "[+     1.044865] [root release] quarantined failures=1 heap_pages=1 image_pages=1",
+        "[+     1.045826] [root release] rejected frame=0x1c2000: CannotDeallocateUnallocatedFrame",
+        "[+     1.046307] [root release] quarantined failures=1 heap_pages=1 image_pages=1",
+        "[+     1.047326] [root release] rejected frame=0x1c7000: CannotDeallocateUnallocatedFrame",
+        "[+     1.047766] [root release] quarantined failures=1 heap_pages=1 image_pages=1",
+        "[+     1.048674] [root release] rejected frame=0x1cc000: CannotDeallocateUnallocatedFrame",
+        "[+     1.049105] [root release] quarantined failures=1 heap_pages=1 image_pages=1",
+        "[+     1.050009] [root release] rejected frame=0x1cb000: CannotDeallocateUnallocatedFrame",
+        "[+     1.050844] [root release] rejected frame=0x1ca000: CannotDeallocateUnallocatedFrame",
+        "[+     1.051666] [root release] rejected frame=0x1c9000: CannotDeallocateUnallocatedFrame",
+        "[+     1.052501] [root release] rejected frame=0x1c3000: CannotDeallocateUnallocatedFrame",
+        "[+     1.053350] [root release] rejected frame=0x1c8000: CannotDeallocateUnallocatedFrame",
+        "[+     1.054168] [root release] rejected frame=0x1cd000: CannotDeallocateUnallocatedFrame",
+        "[+     1.054575] [root release] quarantined failures=6 heap_pages=1 image_pages=1",
+        "[+     1.055075] [root release] success, each table/root/heap/image failure, all-release failure, no retry, borrowed root and foreign leaf passed (12 retained frames; 7 heap and 7 image charges; 28 table charges)",
+        "[+     1.259140] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; no ASID published; 256 original principal account bytes retained",
+        "[+     2.222852] [snapshot principal frames] shared-root copy/DMA/map denials, original class, independent sponsor, retained old-principal refund after close/reuse, free-before-refund and guarded abandonment passed",
+        "[+     2.224608] [snapshot buffer admission] 64 charged allocation rejections; 64 buffer-free-before-refund observations; real ordinary/total count and byte exhaustion, three pin/map rejection paths, empty escrow, trusted reserve, promotion/root reuse and exact baseline recovery passed; no quota reset",
+        "[+     2.764974] [IPC vector capacity] real ordinary/total byte pressure, heap-held growth denial, full old/candidate rejection, original pointer/prefix and popped capacity retained; exact recovery; cap=8 transfer=384 loan=32 allocator=1 bytes",
+        "[+     2.769431] [IPC buffer principal] sibling denial, full growth overlap, diagnostic sharing, promotion, independent sponsor, retained old-principal refund after root reuse, attachment-prefix rollback and guarded metadata retention passed",
+        "[+     2.774716] [IPC descriptor principal] 64 public vector-send denials preserve descriptor/source and exact byte prefix; funded retry delivers; principal fully refunded",
+        "[+     2.780406] [IPC loan capacity] real mapped read loan, caller promotion, receive/reply revocation and call close recover exact backing; token keeps original loan-vector allocation until actual disposal",
+        "[+     2.792159] [IPC attachment capacity] ordinary=486 trusted=163 real empty buffers; byte-only ordinary/total exhaustion, 64 allocated-prefix rejections and exact recovery; retired=136 max=34680 bytes; node slots unchanged",
+        "[+     3.077489] [IPC node admission] 512 allocator rejections; actual pending/reply/capability/endpoint layouts 216/216/136/320 bytes; complete node keeps backing and logical record reservations through real disposal",
+        "[+     5.647028] [IPC reply work] parent=1080 entry=200 max=51000 bytes; ordinary/total quota denial under heap guard before claim, original class after promotion, full capacity through final pop/publication, zero-work admission at quota and exact recovery",
+        "[+     6.107469] [IPC cancellation work] parent=528 entry=200 max=51000 bytes; queued/delivered ordinary/total quota denial under heap guard before claim, original class after promotion, full capacity through final pop/attachment release, zero-work admission at quota and exact recovery",
+        "[+     7.650521] [syscall snapshot maxima] image+descriptor=4194304+3584; two pickup+plaintext=4269180+65536 each and 3145728 actual mixed bytes; peak additional=11815160; policy=12582912/16777216; exact recovery",
+        "[+     7.664429] [snapshot principal inputs] signed maxima, sibling byte ceiling, frame/diagnostic sharing, promotion, prefix rollback and retained old-principal refund after ASID reuse passed",
+        "[+     7.665366] [syscall snapshots] all six buffers: maxima, original class/generation, ordinary/total denial before allocator entry, prefix cleanup and public input consumption passed; exact byte/count recovery",
+        "[+     7.707330] [namespace node layouts] complete five-node root 632 bytes; count-headroom layouts 5177344 total / 3883008 ordinary bytes",
+        "[+     7.761170] [namespace account pressure] 24247 ordinary + 8156 reserved actual accounts; 24576/32768 ceilings, 256 heap-held four-constructor denials, zero/one/two-slot root rollback, trusted backing without authority/IPC/mailbox privilege, existing receiver/word progress and immutable promotion/close/recovery passed",
+        "[+     7.808517] [namespace account principal] actual cap/endpoint/record/mailbox bundles=72/80/104/104 bytes; sibling sharing, 256 heap-held denials, independent sponsor, three root-prefix rollbacks, promotion, four final-weak refunds after ASID reuse and 14560 real bundles at 1048576-byte principal ceiling passed",
+        "[+    20.972861] [mailbox node backing] bytes=80 actual candidates ordinary=12284 trusted=4095; ordinary/total ceilings 12288/16384; 64 allocation failures, byte denials, 128 heap-held admission denials, receiver reuse, pre-promotion capture, fresh promotion reserve, trusted backing without grants, final-root release and exact ASID-reuse recovery passed",
+        "[+    97.226429] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "profile": "AMD-Vi security",
+      "status": "passed",
+      "scope": "final frozen-source qualification",
+      "deferred_tests_passed": 17,
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-06T00:02:21Z",
+      "base_revision": "63e76d20d4746d46144b0fd90b46f87eb8393090",
+      "kernel_sha256": "95bbd51c1ec2b6fa095f5ad132dfb25c9371a2677ef49bfb7f5bf582d20f0c6c",
+      "boot_image_sha256": "e424b276628c5e96ffa1e987308af10714e6a0893d5a0d1e1e021280824058da",
+      "initial_disk_sha256": "6dc9db7495e27f2ab53a04b0f62747f4fd7a63f24f62fa0024c6a7939b0df278",
+      "bundle_sha256": {
+        "agent.elf": "41a34c422e5fab4565e123c13c2fdc144c2fb6752a5beb58acf7bbf7cb6d4c90",
+        "ahci.elf": "f607c8fdb0d1954938c33a7718dfe34521dbb444053c4f5887e4c95d40084f13",
+        "client.elf": "e1f6895d2bf32024d60ca4d0e41331738f2060857fff2106239fed2a7a3c4d25",
+        "clusterctl.elf": "a7dfe023ea1e27b8efc847bdf74066c336316b97e46cbd9d9221bc9e364267e7",
+        "deployd.elf": "df4b70928fe00d8ee8485b371524d453f71e9615e56966b680861991adcf9553",
+        "disco.elf": "741687e1d4139e2e707bed02837a4325699d496da3a11a1bfed95896cd191169",
+        "dns.elf": "2a6c84256737204e09dda339530d5a9a90f59cf06f3afd8eab5d022d977e32ae",
+        "e1000e.elf": "4efef0ca0179440dcbe0a29850c0497d3874b63b7d367a05b90204fb518b695a",
+        "echo.elf": "adebef36a9b262b7b1fbe81c610d6f2e0e3376e7d51b6e1459d909b7b1f71342",
+        "frouter.elf": "9d9e4d719278d43343e48cdcbe4b55c38034f25d528e80212df0eea81062698b",
+        "fs.elf": "c2f153ba2858c2bf54e996c9a697dbb7b093b9a94099dca39f1eebe303ab3837",
+        "grantctl.elf": "06af7e79a7a335b210e7dccfe4da9767eb555d8a4703340cb13c2b0144729312",
+        "greet.elf": "e69730b6a6db30aa0f379daeca6dd37f2931536125f2acd198670cd00dc82da0",
+        "httpd.elf": "081d51db9f5fc430dce97409e2a07971876be103ce141b1892fb3878a7e1bcb2",
+        "kafka.elf": "9ee3f990d493ba747ec443740c75787c117ad2330225cd628933ec31b8192f38",
+        "kafka_smoke.elf": "41b7af7299634f43438bac5ead66018fcc6e9fa016331f4639208f41e1576856",
+        "nclient.elf": "9020fc6a1e97f45f0295a0cc3bff59b6ace9a13364bacfd039365cc39507eaa0",
+        "net.elf": "3ba1c1a4a3058b25333ce696136b082f9f8c23fa9d192eff7e1253bac2fce915",
+        "ns.elf": "8500f58b27836d7764d8b0415fbaf88e8ca175d1a7ebf9bed98c145b390d019f",
+        "nvme.elf": "3905ba29c4acbc07cec559e9af09e9ad9eadfdf7fe05d0311eeb7c9444a867ba",
+        "nvme_client.elf": "41b44a10a7e331a96f11de006749d74a17edd600680bd29a9f914c18bf9b1c2f",
+        "objstore.elf": "ffafabc799a8aa8d61025d2ff648bdd1b3b8321034f89dfa88e9a75745be6c3a",
+        "objstore_client.elf": "5280c4a66778ec0b52786d0b2b6075a7c5c7e80dc0d7b8310a502b512421ce9c",
+        "observe.elf": "2c0fdaf0c2c57a672fb15bdb611815f49142b68c02e3220c203bc18e7f8d0fae",
+        "otlp.elf": "1500357bb14efc05e3c941ce4ee65e2797995d5cb097b649fc7cfaa5d05ff65b",
+        "raft.elf": "a2ca3ee01e5a8456b1251341a71299d8d40893b7047c7daf050972243cce087e",
+        "rclient.elf": "cbdd0af55b0da8254fa8d962a7b75cb40cd061bce05baa59c4bcc5b019867805",
+        "relmsg.elf": "3acfb247379fa6b247c2926dfcf11bf4212d525ef59de26e3e64408b77d18ce5",
+        "rng.elf": "10d114d3331fa67939d412be287765f2fefae9b716421231f8901f12c456d71d",
+        "s3.elf": "ad19d44e30b6d58fa542c40c0b1a38e27ecb9883f8db76e8b3cf6288eb03dce3",
+        "s3_smoke.elf": "b57d03565926b9dbc67ed22ec445e9fe733cf43ac2be2c79435f84345469d2d8",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c",
+        "servicemgr.elf": "2ba39555142fd4f1fcdf8004f542cdf97b65267f3f2e05814e00822fe1cbe72e",
+        "shutdown_probe.elf": "fe7212dd8752c33be2f604436ca482f72eeb18ccbc3d4c69eb0bda9381415163",
+        "tcpclient.elf": "e85b5df90c422d46508051201d04ed42f6bf9b720b409347d266525e33622520",
+        "tcpip.elf": "b07bb35ff810ecfb21d10301c50f13e389f0ced45ff2392c75a0b594369f1de6",
+        "time.elf": "1afa0fc691f5dd06b7f9ea5f095e5048ac2c9fba0f0ca97f622e83c5961fd612",
+        "virtio_blk.elf": "f73eef9a720299a7764ad46b8c6875955259d1ca6903a3d95bc64ec23930d304"
+      },
+      "bundle_unchanged_from_qualified_ipc_principal_batch": true,
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "ca73af160a462fa40ed166dbea6fda0fb2c53a8f2bfba6d50f4dbf719076fdf6",
+        "scripts/run-x86_64.sh": "68f5c782f96233721e2ca04f07c2181df7a43396add422ad49f421dbde900aaa"
+      },
+      "qemu_arguments": [
+        "-M",
+        "q35",
+        "-cpu",
+        "max",
+        "-smp",
+        "4",
+        "-m",
+        "512M",
+        "-drive",
+        "if=pflash,format=raw,unit=0,file=/opt/homebrew/opt/qemu/share/qemu/edk2-x86_64-code.fd,readonly=on",
+        "-drive",
+        "if=none,file=./os-images/charlotte-x86_64-debug-q4-accounts-amd.img,format=raw,id=esp,readonly=on",
+        "-device",
+        "qemu-xhci,id=xhci",
+        "-device",
+        "usb-storage,bus=xhci.0,drive=esp,bootindex=1",
+        "-drive",
+        "if=none,file=./os-images/x86-data-q4-accounts-amd.img,format=raw,id=data0",
+        "-device",
+        "nvme,drive=data0,serial=cat0",
+        "-device",
+        "amd-iommu,dma-remap=on",
+        "-object",
+        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "-device",
+        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on",
+        "-display",
+        "none",
+        "-no-reboot",
+        "-nic",
+        "none",
+        "-netdev",
+        "user,id=net0,hostfwd=tcp::17793-:7444",
+        "-device",
+        "virtio-net-pci-non-transitional,netdev=net0,iommu_platform=on,mac=52:54:00:12:34:56",
+        "-qmp",
+        "unix:/tmp/ctdiag-ncxdsvx_/qmp.sock,server=on,wait=off",
+        "-gdb",
+        "unix:/tmp/ctdiag-ncxdsvx_/gdb.sock,server=on,wait=off",
+        "-serial",
+        "file:/tmp/charlotte-x86-q4-accounts-amd-serial.log"
+      ],
+      "serial_sha256": "8d863d709056a0c92448cc0cdcd76590119f1e30f5b7903ed52f5a1b3b1723bd",
+      "runner_sha256": "cda270784444e6db3814495ffe574566e1bdaeaa397a1c781cc770995afa625c",
+      "runner_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "milestones": [
+        "[+     0.026856] Kernel heap: usable=365 MiB initial=8 MiB reserve=64 MiB total=72 MiB",
+        "[+     0.176448] [device] stale address-space teardown rejected after ASID reuse",
+        "[+     1.034676] [root release] rejected frame=0x1a7000: CannotDeallocateUnallocatedFrame",
+        "[+     1.035270] [root release] quarantined failures=1 heap_pages=1 image_pages=0",
+        "[+     1.078986] [root release] rejected frame=0x1c8000: CannotDeallocateUnallocatedFrame",
+        "[+     1.079435] [root release] quarantined failures=1 heap_pages=1 image_pages=1",
+        "[+     1.080437] [root release] rejected frame=0x1c7000: CannotDeallocateUnallocatedFrame",
+        "[+     1.080879] [root release] quarantined failures=1 heap_pages=1 image_pages=1",
+        "[+     1.081808] [root release] rejected frame=0x1c6000: CannotDeallocateUnallocatedFrame",
+        "[+     1.082230] [root release] quarantined failures=1 heap_pages=1 image_pages=1",
+        "[+     1.083143] [root release] rejected frame=0x1c4000: CannotDeallocateUnallocatedFrame",
+        "[+     1.083550] [root release] quarantined failures=1 heap_pages=1 image_pages=1",
+        "[+     1.084421] [root release] rejected frame=0x1c9000: CannotDeallocateUnallocatedFrame",
+        "[+     1.084851] [root release] quarantined failures=1 heap_pages=1 image_pages=1",
+        "[+     1.085743] [root release] rejected frame=0x1ce000: CannotDeallocateUnallocatedFrame",
+        "[+     1.086194] [root release] quarantined failures=1 heap_pages=1 image_pages=1",
+        "[+     1.087052] [root release] rejected frame=0x1cd000: CannotDeallocateUnallocatedFrame",
+        "[+     1.087850] [root release] rejected frame=0x1cc000: CannotDeallocateUnallocatedFrame",
+        "[+     1.088701] [root release] rejected frame=0x1cb000: CannotDeallocateUnallocatedFrame",
+        "[+     1.089495] [root release] rejected frame=0x1c5000: CannotDeallocateUnallocatedFrame",
+        "[+     1.090275] [root release] rejected frame=0x1ca000: CannotDeallocateUnallocatedFrame",
+        "[+     1.091073] [root release] rejected frame=0x1cf000: CannotDeallocateUnallocatedFrame",
+        "[+     1.091478] [root release] quarantined failures=6 heap_pages=1 image_pages=1",
+        "[+     1.091907] [root release] success, each table/root/heap/image failure, all-release failure, no retry, borrowed root and foreign leaf passed (12 retained frames; 7 heap and 7 image charges; 28 table charges)",
+        "[+     1.289548] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; no ASID published; 256 original principal account bytes retained",
+        "[+     2.193967] [snapshot principal frames] shared-root copy/DMA/map denials, original class, independent sponsor, retained old-principal refund after close/reuse, free-before-refund and guarded abandonment passed",
+        "[+     2.195720] [snapshot buffer admission] 64 charged allocation rejections; 64 buffer-free-before-refund observations; real ordinary/total count and byte exhaustion, three pin/map rejection paths, empty escrow, trusted reserve, promotion/root reuse and exact baseline recovery passed; no quota reset",
+        "[+     2.727944] [IPC vector capacity] real ordinary/total byte pressure, heap-held growth denial, full old/candidate rejection, original pointer/prefix and popped capacity retained; exact recovery; cap=8 transfer=384 loan=32 allocator=1 bytes",
+        "[+     2.732226] [IPC buffer principal] sibling denial, full growth overlap, diagnostic sharing, promotion, independent sponsor, retained old-principal refund after root reuse, attachment-prefix rollback and guarded metadata retention passed",
+        "[+     2.737499] [IPC descriptor principal] 64 public vector-send denials preserve descriptor/source and exact byte prefix; funded retry delivers; principal fully refunded",
+        "[+     2.743081] [IPC loan capacity] real mapped read loan, caller promotion, receive/reply revocation and call close recover exact backing; token keeps original loan-vector allocation until actual disposal",
+        "[+     2.754046] [IPC attachment capacity] ordinary=486 trusted=163 real empty buffers; byte-only ordinary/total exhaustion, 64 allocated-prefix rejections and exact recovery; retired=136 max=34680 bytes; node slots unchanged",
+        "[+     3.039008] [IPC node admission] 512 allocator rejections; actual pending/reply/capability/endpoint layouts 216/216/136/320 bytes; complete node keeps backing and logical record reservations through real disposal",
+        "[+     5.593740] [IPC reply work] parent=1080 entry=200 max=51000 bytes; ordinary/total quota denial under heap guard before claim, original class after promotion, full capacity through final pop/publication, zero-work admission at quota and exact recovery",
+        "[+     6.043588] [IPC cancellation work] parent=528 entry=200 max=51000 bytes; queued/delivered ordinary/total quota denial under heap guard before claim, original class after promotion, full capacity through final pop/attachment release, zero-work admission at quota and exact recovery",
+        "[+     7.469802] [syscall snapshot maxima] image+descriptor=4194304+3584; two pickup+plaintext=4269180+65536 each and 3145728 actual mixed bytes; peak additional=11815160; policy=12582912/16777216; exact recovery",
+        "[+     7.482365] [snapshot principal inputs] signed maxima, sibling byte ceiling, frame/diagnostic sharing, promotion, prefix rollback and retained old-principal refund after ASID reuse passed",
+        "[+     7.483310] [syscall snapshots] all six buffers: maxima, original class/generation, ordinary/total denial before allocator entry, prefix cleanup and public input consumption passed; exact byte/count recovery",
+        "[+     7.525035] [namespace node layouts] complete five-node root 632 bytes; count-headroom layouts 5177344 total / 3883008 ordinary bytes",
+        "[+     7.577734] [namespace account pressure] 24247 ordinary + 8156 reserved actual accounts; 24576/32768 ceilings, 256 heap-held four-constructor denials, zero/one/two-slot root rollback, trusted backing without authority/IPC/mailbox privilege, existing receiver/word progress and immutable promotion/close/recovery passed",
+        "[+     7.626327] [namespace account principal] actual cap/endpoint/record/mailbox bundles=72/80/104/104 bytes; sibling sharing, 256 heap-held denials, independent sponsor, three root-prefix rollbacks, promotion, four final-weak refunds after ASID reuse and 14560 real bundles at 1048576-byte principal ceiling passed",
+        "[+    20.403098] [mailbox node backing] bytes=80 actual candidates ordinary=12284 trusted=4095; ordinary/total ceilings 12288/16384; 64 allocation failures, byte denials, 128 heap-held admission denials, receiver reuse, pre-promotion capture, fresh promotion reserve, trusted backing without grants, final-root release and exact ASID-reuse recovery passed",
+        "[+    96.652679] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "profile": "ARM SMMUv3 minimal",
+      "status": "passed",
+      "scope": "final frozen-source qualification",
+      "deferred_tests_passed": null,
+      "cpus": 4,
+      "timeout_seconds": 90,
+      "prepared_utc": "2026-11-06T00:01:12Z",
+      "base_revision": "63e76d20d4746d46144b0fd90b46f87eb8393090",
+      "kernel_sha256": "1f0cc4b0f006778c37249956ee0b9d026b4984fa5f6e722b7aa06e11c9b09a8d",
+      "boot_image_sha256": "31a3bde2478134d4930fe003ef5968c2028aa60cca317ba4aa9296b39ee7b7c6",
+      "initial_disk_sha256": "06a100ce446a3299f9745c3f4660b0f2d0eda5511f96d2595685b6c9009a5a44",
+      "bundle_sha256": {
+        "agent.elf": "671eaa8ba761bd8fe1ab7e1a0be24f5335a9e11be7b1c755ba0cb7e195d81d6a",
+        "clusterctl.elf": "30c8cbbc4b9d7edf6872f5bf47d1a33bdfcb09f0276927476d2c9e654cfb176b",
+        "deployd.elf": "058dc4d96a9e77bcd2251596415a3f50fcda30534cff20ba3e016d3341b08d9f",
+        "disco.elf": "3b454feea99eee0adb48380c55000267d800f1307f3df80e4292de467464eed9",
+        "dns.elf": "08fc3ffdb05a9e56cfb9f78f16d04ef08188f2231eaeb6a9c325df0d08623139",
+        "frouter.elf": "49d2505c668f831564d1b2d2e1bd2d101cac651760ccf35fd69edc5fb54f3994",
+        "fs.elf": "264393d6535c0bd7d9ba212048ce4850b067a8633766b4869621d38b882620b5",
+        "grantctl.elf": "bd1b2b5a826a45d3d745e51a315f9083e080fba037a7aa6c9f7b379c3e6daaa1",
+        "httpd.elf": "2a20eab99c51d8313efcefce58039dd4e1301cff33f9b8e8813bd565085c3024",
+        "kafka.elf": "6d2e4c632f19a76a3f946d393d8c7a4ad55a3eb037a17d249eb285d8b6a29e0e",
+        "kafka_step.elf": "2a23f2cf94d86bad97612b5b692031b2bb9d572398f9123631505c91b9f6aa89",
+        "net.elf": "63795434f8e51d1608539c0dd3da3e378b341082de3fb9a622202d3182434fcd",
+        "ns.elf": "2d720f3ba4ef4ef7582d157f068e660cd78851af304d478d47581d5cfcf4f694",
+        "nvme.elf": "4400a62a4f2496a137e23d389d3fb0097000991311b5e7243447eb33a729e360",
+        "objstore.elf": "6a043919aeb9f144063fc353b4591a76c19e198da9070a1dba75497c7b936cee",
+        "observe.elf": "253c28fd0cef0871e7deb3086c4114f0e989bc7f7870805babd5f9979c89a8d3",
+        "otlp.elf": "94471bfb3ea50341e72b5440e6e81077ad820b6f83f047d78094dc2f626032a9",
+        "relmsg.elf": "28ba7a1fa23272068a2b09be9f6cea40b26b1090d357a7f4ef3176e3356f0104",
+        "rng.elf": "618f8e3159dbf8e526613927fdfd20d2ea7349a50dc6f32372e1fbae2db78868",
+        "s3.elf": "943f4d41427b5b9e40f83b7856ef3ca684bd64819de90b09e0710c27f9d03623",
+        "tcpip.elf": "1ee63b257bbbacc1d6d52ef3944ee31a9b170f6eafff089fd54ac92afa3e68af",
+        "time.elf": "a6736abb273494bc03986dd50463998c4e13e2d28e637cddbe9380e74b6fd6f0",
+        "uart.elf": "4277c7745286054fffe64e944d845c17d6b9908076859b1c97d1117948ab12c7"
+      },
+      "bundle_unchanged_from_qualified_ipc_principal_batch": true,
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "ca73af160a462fa40ed166dbea6fda0fb2c53a8f2bfba6d50f4dbf719076fdf6",
+        "scripts/run-aarch64.sh": "58eede46ad82247673a9791e9cb247d5c32806b88bda86389e1e237d3ec100b8"
+      },
+      "qemu_arguments": [
+        "-M",
+        "virt,gic-version=3,msi=gicv2m,iommu=smmuv3,default-bus-bypass-iommu=off",
+        "-m",
+        "512M",
+        "-bios",
+        "/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
+        "-drive",
+        "file=./os-images/charlotte-aarch64-debug-q4-accounts-arm-minimal.img,format=raw,if=none,id=boot0",
+        "-device",
+        "virtio-blk-pci,drive=boot0,addr=3",
+        "-cpu",
+        "cortex-a710",
+        "-object",
+        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "-device",
+        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on,addr=4",
+        "-smp",
+        "4",
+        "-drive",
+        "if=none,file=./os-images/nvme-disk-q4-accounts-arm-minimal.img,format=raw,id=nvme0",
+        "-device",
+        "nvme,drive=nvme0,serial=cat0,max_ioqpairs=4,addr=2",
+        "-nic",
+        "none",
+        "-netdev",
+        "user,id=charlotte-net,hostfwd=tcp::17794-:7444",
+        "-device",
+        "virtio-net-pci,netdev=charlotte-net,disable-legacy=on,iommu_platform=on,mac=52:54:00:12:34:56,addr=1",
+        "-display",
+        "none",
+        "-qmp",
+        "unix:/tmp/ctdiag-fzt6_ugm/qmp.sock,server=on,wait=off",
+        "-gdb",
+        "unix:/tmp/ctdiag-fzt6_ugm/gdb.sock,server=on,wait=off",
+        "-serial",
+        "file:/tmp/charlotte-q4-accounts-arm-minimal-serial.log"
+      ],
+      "serial_sha256": "e7a621b6948428f04659bf49d4c076ce96181ad955cf74c76070d0663a54c3dd",
+      "runner_sha256": "e0fb4eed85d2050547ca39a1d554392f44883e2eedc9cbc6fc400164ad43d2a3",
+      "runner_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "milestones": [
+        "[+     0.024036] Kernel heap: usable=441 MiB initial=8 MiB reserve=64 MiB total=72 MiB",
+        "[+     4.581608] BOOT COMPLETE: validation passed; local storage ready; services submitted"
+      ]
+    },
+    {
+      "profile": "Intel VT-d minimal",
+      "status": "passed",
+      "scope": "final frozen-source qualification",
+      "deferred_tests_passed": null,
+      "cpus": 4,
+      "timeout_seconds": 90,
+      "prepared_utc": "2026-11-06T00:06:16Z",
+      "base_revision": "63e76d20d4746d46144b0fd90b46f87eb8393090",
+      "kernel_sha256": "91ac60e64d2deb2e1deef170567294163ca1a46b0ce343574f3dbcfd2dd9cf88",
+      "boot_image_sha256": "acef877f684d328348984736e033410fcb5993bb9e1b45d3945b6f518f863a15",
+      "initial_disk_sha256": "56c1f355b2d055f964c15b0b4176b212659708e7f0f449d7edabd1522e81fca9",
+      "bundle_sha256": {
+        "agent.elf": "41a34c422e5fab4565e123c13c2fdc144c2fb6752a5beb58acf7bbf7cb6d4c90",
+        "ahci.elf": "f607c8fdb0d1954938c33a7718dfe34521dbb444053c4f5887e4c95d40084f13",
+        "clusterctl.elf": "a7dfe023ea1e27b8efc847bdf74066c336316b97e46cbd9d9221bc9e364267e7",
+        "deployd.elf": "df4b70928fe00d8ee8485b371524d453f71e9615e56966b680861991adcf9553",
+        "disco.elf": "741687e1d4139e2e707bed02837a4325699d496da3a11a1bfed95896cd191169",
+        "dns.elf": "2a6c84256737204e09dda339530d5a9a90f59cf06f3afd8eab5d022d977e32ae",
+        "e1000e.elf": "4efef0ca0179440dcbe0a29850c0497d3874b63b7d367a05b90204fb518b695a",
+        "frouter.elf": "9d9e4d719278d43343e48cdcbe4b55c38034f25d528e80212df0eea81062698b",
+        "fs.elf": "c2f153ba2858c2bf54e996c9a697dbb7b093b9a94099dca39f1eebe303ab3837",
+        "grantctl.elf": "06af7e79a7a335b210e7dccfe4da9767eb555d8a4703340cb13c2b0144729312",
+        "httpd.elf": "081d51db9f5fc430dce97409e2a07971876be103ce141b1892fb3878a7e1bcb2",
+        "kafka.elf": "9ee3f990d493ba747ec443740c75787c117ad2330225cd628933ec31b8192f38",
+        "net.elf": "3ba1c1a4a3058b25333ce696136b082f9f8c23fa9d192eff7e1253bac2fce915",
+        "ns.elf": "8500f58b27836d7764d8b0415fbaf88e8ca175d1a7ebf9bed98c145b390d019f",
+        "nvme.elf": "3905ba29c4acbc07cec559e9af09e9ad9eadfdf7fe05d0311eeb7c9444a867ba",
+        "objstore.elf": "ffafabc799a8aa8d61025d2ff648bdd1b3b8321034f89dfa88e9a75745be6c3a",
+        "observe.elf": "2c0fdaf0c2c57a672fb15bdb611815f49142b68c02e3220c203bc18e7f8d0fae",
+        "otlp.elf": "1500357bb14efc05e3c941ce4ee65e2797995d5cb097b649fc7cfaa5d05ff65b",
+        "relmsg.elf": "3acfb247379fa6b247c2926dfcf11bf4212d525ef59de26e3e64408b77d18ce5",
+        "rng.elf": "10d114d3331fa67939d412be287765f2fefae9b716421231f8901f12c456d71d",
+        "s3.elf": "ad19d44e30b6d58fa542c40c0b1a38e27ecb9883f8db76e8b3cf6288eb03dce3",
+        "tcpip.elf": "b07bb35ff810ecfb21d10301c50f13e389f0ced45ff2392c75a0b594369f1de6",
+        "time.elf": "1afa0fc691f5dd06b7f9ea5f095e5048ac2c9fba0f0ca97f622e83c5961fd612",
+        "virtio_blk.elf": "f73eef9a720299a7764ad46b8c6875955259d1ca6903a3d95bc64ec23930d304"
+      },
+      "bundle_unchanged_from_qualified_ipc_principal_batch": true,
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "ca73af160a462fa40ed166dbea6fda0fb2c53a8f2bfba6d50f4dbf719076fdf6",
+        "scripts/run-x86_64.sh": "68f5c782f96233721e2ca04f07c2181df7a43396add422ad49f421dbde900aaa"
+      },
+      "qemu_arguments": [
+        "-M",
+        "q35",
+        "-cpu",
+        "max",
+        "-smp",
+        "4",
+        "-m",
+        "512M",
+        "-drive",
+        "if=pflash,format=raw,unit=0,file=/opt/homebrew/opt/qemu/share/qemu/edk2-x86_64-code.fd,readonly=on",
+        "-drive",
+        "if=none,file=./os-images/charlotte-x86_64-debug-q4-accounts-intel-minimal.img,format=raw,id=esp,readonly=on",
+        "-device",
+        "qemu-xhci,id=xhci",
+        "-device",
+        "usb-storage,bus=xhci.0,drive=esp,bootindex=1",
+        "-drive",
+        "if=none,file=./os-images/x86-data-q4-accounts-intel-minimal.img,format=raw,id=data0",
+        "-device",
+        "nvme,drive=data0,serial=cat0",
+        "-device",
+        "intel-iommu",
+        "-object",
+        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "-device",
+        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on",
+        "-display",
+        "none",
+        "-no-reboot",
+        "-nic",
+        "none",
+        "-netdev",
+        "user,id=net0,hostfwd=tcp::17795-:7444",
+        "-device",
+        "virtio-net-pci-non-transitional,netdev=net0,iommu_platform=on,mac=52:54:00:12:34:56",
+        "-qmp",
+        "unix:/tmp/ctdiag-o5291p1j/qmp.sock,server=on,wait=off",
+        "-gdb",
+        "unix:/tmp/ctdiag-o5291p1j/gdb.sock,server=on,wait=off",
+        "-serial",
+        "file:/tmp/charlotte-x86-q4-accounts-intel-minimal-serial.log"
+      ],
+      "serial_sha256": "00abf2fbba3686781cdc42b5dd4cac84f0ca363e2726730fb66776d742d4a0a3",
+      "runner_sha256": "0c1203a5f66225c114eed10b45b5ceafc7024d775dfbd08f82431025bbb9fd6b",
+      "runner_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "milestones": [
+        "[+     0.018933] Kernel heap: usable=422 MiB initial=8 MiB reserve=64 MiB total=72 MiB",
+        "[+     3.764861] BOOT COMPLETE: validation passed; local storage ready; services submitted"
+      ]
+    }
+  ],
+  "failed_compile_preflights": [
+    {
+      "name": "standalone module invocation",
+      "status": "failed",
+      "log_sha256": "7a815acdd262e7d79f9c5713b84ec5604f3fb238a23ed2ee05ddef1b979494af",
+      "diagnostics": [
+        "error[E0433]: cannot find module or crate `alloc` in this scope",
+        "  |     ^^^^^ use of unresolved module or unlinked crate `alloc`",
+        "error[E0658]: use of unstable library feature `allocator_api`",
+        "   = help: add `#![feature(allocator_api)]` to the crate attributes to enable",
+        "error[E0658]: use of unstable library feature `allocator_api`",
+        "   = help: add `#![feature(allocator_api)]` to the crate attributes to enable",
+        "error[E0658]: use of unstable library feature `allocator_api`",
+        "   = help: add `#![feature(allocator_api)]` to the crate attributes to enable",
+        "error[E0658]: use of unstable library feature `allocator_api`",
+        "   = help: add `#![feature(allocator_api)]` to the crate attributes to enable",
+        "error[E0658]: use of unstable library feature `allocator_api`",
+        "   = help: add `#![feature(allocator_api)]` to the crate attributes to enable",
+        "error[E0658]: use of unstable library feature `allocator_api`",
+        "   = help: add `#![feature(allocator_api)]` to the crate attributes to enable",
+        "error[E0658]: use of unstable library feature `allocator_api`",
+        "   = help: add `#![feature(allocator_api)]` to the crate attributes to enable",
+        "error[E0658]: use of unstable library feature `allocator_api`",
+        "   = help: add `#![feature(allocator_api)]` to the crate attributes to enable",
+        "error[E0658]: use of unstable library feature `allocator_api`",
+        "    = help: add `#![feature(allocator_api)]` to the crate attributes to enable",
+        "error[E0658]: use of unstable library feature `allocator_api`",
+        "    = help: add `#![feature(allocator_api)]` to the crate attributes to enable",
+        "error[E0658]: use of unstable library feature `allocator_api`",
+        "    = help: add `#![feature(allocator_api)]` to the crate attributes to enable",
+        "error[E0658]: use of unstable library feature `allocator_api`",
+        "    = help: add `#![feature(allocator_api)]` to the crate attributes to enable",
+        "error[E0658]: use of unstable library feature `allocator_api`",
+        "    = help: add `#![feature(allocator_api)]` to the crate attributes to enable",
+        "error[E0658]: use of unstable library feature `allocator_api`",
+        "    = help: add `#![feature(allocator_api)]` to the crate attributes to enable",
+        "error[E0658]: use of unstable library feature `allocator_api`",
+        "    = help: add `#![feature(allocator_api)]` to the crate attributes to enable"
+      ],
+      "correction": "Use the standalone allocator feature/extern harness; retain the shared class-only capture adapter and use the exact richer capture for mailbox; wire the new hooks into actual controls."
+    },
+    {
+      "name": "shared capture prototype",
+      "status": "failed",
+      "log_sha256": "917bc7fabe580dddffd80d0f01706e8ebbf8b97939d250167568b46f550727b8",
+      "diagnostics": [
+        "error[E0308]: mismatched types",
+        "   |                                     -------------------- ^^^^^^^^^^^^^^^^ expected `bool`, found `CapturedStorage`",
+        "error[E0308]: mismatched types",
+        "   |                      ------------------                 ^^^^^^^^^^^^^^^^ expected `bool`, found `CapturedStorage`",
+        "error[E0308]: mismatched types",
+        "   |         -------------                 ^^^^^^^^^^^^^^^^ expected `bool`, found `CapturedStorage`",
+        "error[E0600]: cannot apply unary operator `!` to type `CapturedStorage`",
+        "note: an implementation of `Not` might be missing for `CapturedStorage`",
+        " 96 | pub(crate) struct CapturedStorage {",
+        "error[E0308]: mismatched types",
+        "    |                   ------------------------ ^^^^^ expected `bool`, found `CapturedStorage`",
+        "error[E0600]: cannot apply unary operator `!` to type `CapturedStorage`",
+        "note: an implementation of `Not` might be missing for `CapturedStorage`",
+        " 96 | pub(crate) struct CapturedStorage {",
+        "error[E0308]: mismatched types",
+        "    |                ------------------------ ^^^^^ expected `bool`, found `CapturedStorage`",
+        "error[E0308]: mismatched types",
+        "   |                 ^^^^^^^^^^^^^^^^ expected `bool`, found `CapturedStorage`",
+        "error[E0308]: mismatched types",
+        "   |               ---------------------------------- ^^^^^^^^^^^^^^^^ expected `bool`, found `CapturedStorage`",
+        "Some errors have detailed explanations: E0308, E0600.",
+        "For more information about an error, try `rustc --explain E0308`.",
+        "error: could not compile `catten` (bin \"catten\") due to 9 previous errors"
+      ],
+      "correction": "Use the standalone allocator feature/extern harness; retain the shared class-only capture adapter and use the exact richer capture for mailbox; wire the new hooks into actual controls."
+    },
+    {
+      "name": "unwired fixture hooks",
+      "status": "failed",
+      "log_sha256": "325aa40d5dc387e2366a4745ebd45f79948e06c38bc5529e439b51e3181c3da7",
+      "diagnostics": [
+        "error: function `test_account_used` is never used",
+        "error: function `test_account_limit` is never used",
+        "error: could not compile `catten` (bin \"catten\") due to 2 previous errors"
+      ],
+      "correction": "Use the standalone allocator feature/extern harness; retain the shared class-only capture adapter and use the exact richer capture for mailbox; wire the new hooks into actual controls."
+    }
+  ],
+  "commands": {
+    "strict": "CARGO_NET_OFFLINE=true CATTEN_<ARCH>_SERVICE_BUNDLE=<unchanged staged bundle> cargo clippy --locked -p catten --target target_specs/<arch>-unknown-none-catten.json --no-default-features --features acpi[,kernel_tests] -- -D warnings",
+    "arm": "CARGO_NET_OFFLINE=true CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18792 CATTEN_DEPLOY_HOST_PORT=17792 scripts/run-aarch64.sh --tests --security-test --smp 4 --timeout 240 --fresh-storage --instance q4-accounts-arm",
+    "intel": "CARGO_NET_OFFLINE=true CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18793 CATTEN_DEPLOY_HOST_PORT=17793 scripts/run-x86_64.sh --tests --security-test --iommu intel --smp 4 --timeout 240 --fresh-storage --instance q4-accounts-intel",
+    "amd": "CARGO_NET_OFFLINE=true CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18793 CATTEN_DEPLOY_HOST_PORT=17793 scripts/run-x86_64.sh --tests --security-test --iommu amd --smp 4 --timeout 240 --fresh-storage --instance q4-accounts-amd",
+    "ARM minimal": "CARGO_NET_OFFLINE=true CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18794 CATTEN_DEPLOY_HOST_PORT=17794 scripts/run-aarch64.sh --minimal --smp 4 --timeout 90 --fresh-storage --instance q4-accounts-arm",
+    "Intel minimal": "CARGO_NET_OFFLINE=true CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=18795 CATTEN_DEPLOY_HOST_PORT=17795 scripts/run-x86_64.sh --minimal --iommu intel --smp 4 --timeout 90 --fresh-storage --instance q4-accounts-intel"
+  },
+  "remaining": [
+    "All-family principal accounting, allocator/control overhead and joint heap capacity (Q4).",
+    "Complete production caller/IRQ/implicit destruction review (Q5).",
+    "Recovery custody and physical completion contracts (Q6), sustained service/cleanup progress (Q7), combined pressure/incident matrix (Q8).",
+    "ARM display second grant-probe, Intel retirement-pin and ARM exit-watch incidents remain unresolved."
+  ],
+  "evidence_policy": "Published milestones, diagnostics and artifact identities are inline; temporary source logs are hashed but not required to read the result. Runs reuse exact previously qualified signed bundles. Unrelated user edits to manual chapter 06 are excluded from this change; whole-tree runner diff hashes include concurrent documentation and do not replace frozen source/input hashes.",
+  "layout_measurements": {
+    "capability_bundle_bytes": 72,
+    "endpoint_bundle_bytes": 80,
+    "record_bundle_bytes": 104,
+    "mailbox_bundle_bytes": 104,
+    "holder_bytes": 24,
+    "account_reference_bytes": 32,
+    "previous_account_reference_bytes": 16,
+    "authority_node_bytes": 80,
+    "ipc_node_bytes": {
+      "capability": 136,
+      "endpoint": 320,
+      "pending": 216,
+      "reply": 216
+    },
+    "ipc_node_plan_bytes": {
+      "ordinary": 9584640,
+      "total": 12779520
+    },
+    "namespace_five_node_root_bytes": 632,
+    "namespace_account_count_derived_bound_bytes": {
+      "ordinary": 2555904,
+      "total": 3407872
+    }
+  },
+  "native_layout": {
+    "kernel_sha256": "95bbd51c1ec2b6fa095f5ad132dfb25c9371a2677ef49bfb7f5bf582d20f0c6c",
+    "profile": "AMD-Vi security",
+    "command": [
+      "dwarfdump",
+      "--regex",
+      "--name",
+      "^Arc<catten::capability::budget::DomainBudget,.*NamespaceAccountBudget",
+      "--name",
+      "^ArcInner<.*Allocation<.*NamespaceAccounts.*",
+      "--name",
+      "^Node<.*capability::Entry.*AuthorityNodes",
+      "target/x86_64-unknown-none-catten/debug/catten"
+    ],
+    "diagnostics": [
+      "target/x86_64-unknown-none-catten/debug/catten:\tfile format elf64-x86-64",
+      "",
+      "0x000eea1c: DW_TAG_structure_type",
+      "              DW_AT_name\t(\"Node<(u64, catten::capability::Entry), catten::klib::admission::NodeCharge<catten::klib::admission::AuthorityNodes>>\")",
+      "              DW_AT_byte_size\t(0x50)",
+      "              DW_AT_accessibility\t(DW_ACCESS_private)",
+      "              DW_AT_alignment\t(8)",
+      "",
+      "0x000fd5f7: DW_TAG_structure_type",
+      "              DW_AT_name\t(\"ArcInner<catten::klib::charged_allocator::Allocation<catten::klib::admission::BundleCharge<catten::klib::admission::NamespaceAccounts>, catten::klib::charged_allocator::PreAdmitted>>\")",
+      "              DW_AT_byte_size\t(0x18)",
+      "              DW_AT_accessibility\t(DW_ACCESS_private)",
+      "              DW_AT_alignment\t(8)",
+      "",
+      "0x000fd663: DW_TAG_structure_type",
+      "              DW_AT_name\t(\"Arc<catten::capability::budget::DomainBudget, catten::klib::charged_allocator::ChargedAllocator<catten::klib::admission::BundleCharge<catten::klib::admission::NamespaceAccounts>, catten::klib::charged_allocator::PreAdmitted, catten::klib::admission::byte_allocator::SponsoredAllocator<catten::memory::usage::principal_history::kernel_buffers::PrincipalBytes<catten::memory::usage::principal_history::kernel_buffers::NamespaceAccountBudget>>>>\")",
+      "              DW_AT_byte_size\t(0x20)",
+      "              DW_AT_accessibility\t(DW_ACCESS_public)",
+      "              DW_AT_alignment\t(8)",
+      "",
+      "0x00aab860: DW_TAG_structure_type",
+      "              DW_AT_name\t(\"ArcInner<core::mem::maybe_uninit::MaybeUninit<catten::klib::charged_allocator::Allocation<catten::klib::admission::BundleCharge<catten::klib::admission::NamespaceAccounts>, catten::klib::charged_allocator::PreAdmitted>>>\")",
+      "              DW_AT_byte_size\t(0x18)",
+      "              DW_AT_accessibility\t(DW_ACCESS_private)",
+      "              DW_AT_alignment\t(8)"
+    ]
+  },
+  "capacity_census": {
+    "schema": "charlotte.resource-capacity.v2",
+    "rust_toolchain": "nightly-2026-07-27",
+    "host_pointer_bits": 64,
+    "selected_policy": "crates/catten/src/resource_policy/defaults.rs",
+    "source_sha256": {
+      "crates/catten/src/resource_policy/defaults.rs": "43f1905225cf16f19cef585206c4fa3f594eefb1af4c5c80d4ebd55ccdf3a514",
+      "crates/catten/src/resource_policy.rs": "d0a06c111d6efffb53d111563e8825d273478ad22b75619f8dd9fbad6e049a9c",
+      "crates/catten-syscall/src/cq_ring_tests.rs": "b7d03a0597a776a31d1bde5dd46e3a778ec13f85cba8fdde82da554c1779d48c",
+      "crates/catten-syscall/src/lib.rs": "3133313e95497cad356f5e058eecf31d8bfb305e99f5aabd12a3cb7c2e54f517",
+      "crates/catten-syscall/src/metadata_pools/tests.rs": "31b2869464675a8075e2e790437bb249212ff09c9942f56fd15d8b6b3924f464",
+      "crates/catten-syscall/src/metadata_pools.rs": "4d226d4e741ef991e73a50111d797a1094c77f504be8e2a0f04ae7cacc087bed",
+      "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
+      "scripts/audit-resource-capacity.py": "b90ce8e08b51a7876e0f81725bd1dd429d8f1e1a4ccdcd3b3cd9f1ea8f181265"
+    },
+    "metadata_pools": [
+      {
+        "name": "root_metadata",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          4194304,
+          16384
+        ],
+        "ordinary": [
+          3145728,
+          12288
+        ]
+      },
+      {
+        "name": "namespace_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          8388608,
+          40960
+        ],
+        "ordinary": [
+          6291456,
+          30720
+        ]
+      },
+      {
+        "name": "authority_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          16777216,
+          131072
+        ],
+        "ordinary": [
+          12582912,
+          98304
+        ]
+      },
+      {
+        "name": "mailbox_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          2097152,
+          16384
+        ],
+        "ordinary": [
+          1572864,
+          12288
+        ]
+      },
+      {
+        "name": "deferred_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          1048576,
+          16384
+        ],
+        "ordinary": [
+          786432,
+          12288
+        ]
+      },
+      {
+        "name": "observer_backing",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "bundles"
+        ],
+        "total": [
+          16777216,
+          65536
+        ],
+        "ordinary": [
+          12582912,
+          49152
+        ]
+      },
+      {
+        "name": "completion_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          8388608,
+          20480
+        ],
+        "ordinary": [
+          6291456,
+          15360
+        ]
+      },
+      {
+        "name": "device_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          16777216,
+          139264
+        ],
+        "ordinary": [
+          12582912,
+          104448
+        ]
+      },
+      {
+        "name": "iommu_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          25165824,
+          262144
+        ],
+        "ordinary": [
+          18874368,
+          196608
+        ]
+      },
+      {
+        "name": "principal_history",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          1048576,
+          4096
+        ],
+        "ordinary": [
+          786432,
+          3072
+        ]
+      },
+      {
+        "name": "thread_metadata",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "bundles"
+        ],
+        "total": [
+          8388608,
+          4096
+        ],
+        "ordinary": [
+          6291456,
+          3072
+        ]
+      },
+      {
+        "name": "thread_table",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "slots"
+        ],
+        "total": [
+          33554432,
+          32768
+        ],
+        "ordinary": [
+          25165824,
+          24576
+        ]
+      },
+      {
+        "name": "root_table",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "slots"
+        ],
+        "total": [
+          16777216,
+          16384
+        ],
+        "ordinary": [
+          12582912,
+          12288
+        ]
+      },
+      {
+        "name": "waiter_accounts",
+        "dimensions": 1,
+        "units": [
+          "bundles"
+        ],
+        "total": [
+          8192
+        ],
+        "ordinary": [
+          6144
+        ]
+      },
+      {
+        "name": "timer_accounts",
+        "dimensions": 1,
+        "units": [
+          "bundles"
+        ],
+        "total": [
+          16384
+        ],
+        "ordinary": [
+          12288
+        ]
+      },
+      {
+        "name": "completion_accounts",
+        "dimensions": 1,
+        "units": [
+          "bundles"
+        ],
+        "total": [
+          24576
+        ],
+        "ordinary": [
+          18432
+        ]
+      },
+      {
+        "name": "namespace_accounts",
+        "dimensions": 1,
+        "units": [
+          "bundles"
+        ],
+        "total": [
+          32768
+        ],
+        "ordinary": [
+          24576
+        ]
+      },
+      {
+        "name": "scratch_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          524288,
+          8192
+        ],
+        "ordinary": [
+          393216,
+          6144
+        ]
+      },
+      {
+        "name": "snapshot_buffers",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "buffers"
+        ],
+        "total": [
+          16777216,
+          8192
+        ],
+        "ordinary": [
+          12582912,
+          6144
+        ]
+      },
+      {
+        "name": "mapping_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          1048576,
+          8192
+        ],
+        "ordinary": [
+          786432,
+          6144
+        ]
+      },
+      {
+        "name": "memory_capability_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          4194304,
+          32768
+        ],
+        "ordinary": [
+          3145728,
+          24576
+        ]
+      },
+      {
+        "name": "observer_lists",
+        "dimensions": 1,
+        "units": [
+          "allocations"
+        ],
+        "total": [
+          8192
+        ],
+        "ordinary": [
+          6144
+        ]
+      },
+      {
+        "name": "ipc_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          16777216,
+          98304
+        ],
+        "ordinary": [
+          12582912,
+          73728
+        ]
+      },
+      {
+        "name": "service_images",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "images"
+        ],
+        "total": [
+          16777216,
+          64
+        ],
+        "ordinary": [
+          12582912,
+          48
+        ]
+      }
+    ],
+    "byte_pool_count": 19,
+    "byte_ceiling_sums": {
+      "total": 215482368,
+      "ordinary": 161611776
+    },
+    "separate_queue_byte_ceilings": [
+      {
+        "name": "mailbox_queues",
+        "total_bytes": 8388608,
+        "ordinary_bytes": 6291456
+      },
+      {
+        "name": "completion_queues",
+        "total_bytes": 4194304,
+        "ordinary_bytes": 3145728
+      }
+    ],
+    "kernel_heap": {
+      "initial_bytes": 8388608,
+      "growth_min_bytes": 67108864,
+      "growth_max_bytes": 268435456,
+      "ram_divisor": 64
+    },
+    "local": {
+      "telemetry_working_bytes": 1048576
+    },
+    "principal_byte_limits": {
+      "kernel_buffer_bytes": 16777216,
+      "namespace_account_bytes": 1048576
+    },
+    "usable_ram_samples": [
+      {
+        "usable_bytes": 384827392,
+        "growth_reserve_bytes": 67108864,
+        "total_mapped_heap_bytes": 75497472
+      },
+      {
+        "usable_bytes": 396361728,
+        "growth_reserve_bytes": 67108864,
+        "total_mapped_heap_bytes": 75497472
+      },
+      {
+        "usable_bytes": 536870912,
+        "growth_reserve_bytes": 67108864,
+        "total_mapped_heap_bytes": 75497472
+      },
+      {
+        "usable_bytes": 1073741824,
+        "growth_reserve_bytes": 67108864,
+        "total_mapped_heap_bytes": 75497472
+      },
+      {
+        "usable_bytes": 4294967296,
+        "growth_reserve_bytes": 67108864,
+        "total_mapped_heap_bytes": 75497472
+      },
+      {
+        "usable_bytes": 8589934592,
+        "growth_reserve_bytes": 134217728,
+        "total_mapped_heap_bytes": 142606336
+      },
+      {
+        "usable_bytes": 17179869184,
+        "growth_reserve_bytes": 268435456,
+        "total_mapped_heap_bytes": 276824064
+      }
+    ],
+    "interpretation": [
+      "Independent ceilings, not allocated usage, disjoint partitions or jointly reachable maxima.",
+      "Count-only account/control allocations, allocator overhead and boot/transient/retained backing are not converted into bytes here.",
+      "Queue ceilings remain separate; this report does not assert absence of accounting overlap.",
+      "Usable-RAM samples are inputs to the real heap formula, not guest RAM or native measurements.",
+      "Reported principal ceilings do not prove complete coverage, cleanup progress or aggregate acceptance; they overlap applicable family ceilings."
+    ]
+  }
+}

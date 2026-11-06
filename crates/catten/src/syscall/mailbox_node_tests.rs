@@ -42,7 +42,7 @@ pub(super) fn run() {
     assert_eq!(full_ordinary.1[1], mailbox_node_budget::ORDINARY[1]);
     memory::budget::mark_platform(old);
     let promoted = capture_mailbox_identity(old.id());
-    assert!(!captured.backing_platform && promoted.backing_platform);
+    assert!(!captured.storage.platform() && promoted.storage.platform());
     // A fresh authorized capture can use reserve. The earlier operation must
     // keep its ordinary class, so exercise it separately with the heap held.
     let promoted_cap = open(old.id(), Some(get_lp_id()), promoted).unwrap();

@@ -66,6 +66,11 @@ For a fixed buffer whose existing typed owner controls physical completion, pair
 `ByteCharge` with that buffer inside the same inert owner. Release it only after
 buffer deallocation; reject an allocator adapter that returns unadmitted capacity.
 Sharing the byte mechanics need not replace that owner or its completion proof.
+For shared fixed accounts, pass a captured `SponsoredAllocator` into the existing
+`ChargedAllocator` so both payload and private-holder layouts are funded at their
+actual allocation boundary. Preserve the typed family reservation until both are
+freed, and keep weak/allocator clones on that same original policy. This avoids
+replicating private Arc layout formulas or adding a second ownership controller.
 
 An inert child receipt does not make its parent inert: a vector still frees its
 allocation, a transfer may restore escrow, and a notification batch may destroy

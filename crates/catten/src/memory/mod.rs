@@ -549,14 +549,29 @@ pub fn address_space_handle_is_current(handle: AddressSpaceHandle) -> bool {
 pub(crate) fn capture_address_space_storage(
     asid: AddressSpaceId,
 ) -> (Option<AddressSpaceHandle>, bool) {
+    let (root, storage) = capture_address_space_sponsor(asid);
+    (root, storage.platform())
+}
+
+/// The same exact capture with the immutable principal funding token retained.
+/// It grants no root lease or resource-admission privilege.
+pub(crate) fn capture_address_space_sponsor(
+    asid: AddressSpaceId,
+) -> (Option<AddressSpaceHandle>, kernel_buffers::CapturedStorage) {
     let table = ADDRESS_SPACE_TABLE.lock();
     let root = table.generation(asid).ok().map(|generation| AddressSpaceHandle {
         id: asid,
         generation,
     });
-    let platform =
-        asid == KERNEL_ASID || table.get(asid).is_ok_and(|root| root.table_account.is_platform());
-    (root, platform)
+    let storage = if asid == KERNEL_ASID {
+        kernel_buffers::CapturedStorage::unidentified(true)
+    } else {
+        table
+            .get(asid)
+            .map(kernel_buffers::capture_unpublished)
+            .unwrap_or_else(|_| kernel_buffers::CapturedStorage::unidentified(false))
+    };
+    (root, storage)
 }
 
 /// Close one exact address-space lifetime, rejecting a handle left behind by

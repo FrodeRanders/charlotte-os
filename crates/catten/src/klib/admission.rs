@@ -21,6 +21,7 @@ pub(crate) use byte_allocator::{
     ByteAllocator,
     ByteCharge,
     ByteSponsor,
+    SponsoredAllocator,
 };
 
 /// State is private: observation does not expose mutation or cleanup authority.

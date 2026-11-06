@@ -477,9 +477,14 @@ the corrected RPC polling paths, and the remaining notification gaps.
 
 - Capability, IPC endpoint/record and mailbox accounts use typed charged
   `AccountRef` owners with `namespace_accounts` backing admission. Capture class
-  from the unpublished translation root before root publication; lazy mailbox
-  preparation captures generation and trusted storage class together before
-  allocation. Keep backing class separate from explicit resource grants and
+  and verified principal from the unpublished translation root before root
+  publication; lazy mailbox preparation captures generation, principal and trusted
+  storage class together before allocation. Fund actual Arc payload and private
+  holder layouts through the existing principal history and captured backing
+  allocator, retaining global bundle admission. A `SponsoredAllocator` supplies
+  principal byte mechanics, not a replacement for the complete typed family
+  owner; do not introduce standalone unbounded backing through this adapter. Do not copy an Arc header formula
+  or refund live weak/allocator backing. Keep backing class separate from explicit resource grants and
   retain it through delegation, retirement, ASID reuse and final weak/allocator
   release. Complete parent fallback remains inert under publication/heap/pool
   guards. See `docs/reference/namespace-account-admission.md`.

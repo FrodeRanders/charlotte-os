@@ -42,9 +42,9 @@ impl PreparingRegistration {
         ipc: impl FnOnce() -> Result<crate::ipc::namespace::PreparingNamespace, core::alloc::AllocError>,
     ) -> Result<(), AddressSpaceRegistrationError> {
         self.0.namespace = Some(
-            crate::capability::prepare_namespace(
-                self.0.root.as_ref().unwrap().table_account.is_platform(),
-            )
+            crate::capability::prepare_namespace(kernel_buffers::capture_unpublished(
+                self.0.root.as_ref().unwrap(),
+            ))
             .map_err(|_| AddressSpaceRegistrationError::CapabilityNamespaceAllocationFailed)?,
         );
         self.0.account = Some(
@@ -105,14 +105,14 @@ pub(super) fn register(
     account: impl FnOnce() -> Result<budget::PreparingAccount, core::alloc::AllocError>,
     metadata: impl FnOnce() -> Result<metadata::PreparingMetadata, core::alloc::AllocError>,
 ) -> Result<AddressSpaceHandle, AddressSpaceRegistrationError> {
-    let backing_platform = root.table_account.is_platform();
+    let storage = kernel_buffers::capture_unpublished(&root);
     register_with_ipc(
         root,
         publish,
         reject,
         account,
         metadata,
-        || crate::ipc::namespace::PreparingNamespace::try_new_with_backing_class(backing_platform),
+        || crate::ipc::namespace::PreparingNamespace::try_new_with_backing_class(storage),
         |_| {},
     )
 }
@@ -194,15 +194,23 @@ fn register_with_ipc(
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(super) fn test_abandonment() {
     let accounts = crate::klib::namespace_account_budget::snapshot();
-    let root = AddressSpace::try_new_user().unwrap();
+    let principal = charlotte_launch::artifact_principal_id(b"account-registration-retained");
+    let root = AddressSpace::try_new_principal_user(
+        false,
+        prepare_principal_backing(principal, false).unwrap(),
+    )
+    .unwrap();
+    let storage = kernel_buffers::capture_unpublished(&root);
     let mut owner = PreparingRegistration::capture(root);
     owner
         .prepare(
             || budget::PreparingAccount::try_new(false),
             || metadata::PreparingMetadata::try_new(false),
-            crate::ipc::namespace::PreparingNamespace::try_new,
+            || crate::ipc::namespace::PreparingNamespace::try_new_with_backing_class(storage),
         )
         .unwrap();
+    let principal_bytes = kernel_buffers::test_account_used(principal);
+    assert!(principal_bytes > 0);
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let occupied = ADDRESS_SPACE_TABLE.lock().iter().filter(|entry| entry.is_some()).count();
     {
@@ -224,10 +232,12 @@ pub(super) fn test_abandonment() {
         });
     }
     assert_eq!(crate::klib::namespace_account_budget::snapshot(), (accounts.0 + 3, accounts.1 + 3));
+    assert_eq!(kernel_buffers::test_account_used(principal), principal_bytes);
     crate::logln!(
         "[memory sponsor registration retention] guarded abandonment retains one unpublished \
          root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; \
-         no ASID published"
+         no ASID published; {} original principal account bytes retained",
+        principal_bytes
     );
 }
 

@@ -30,12 +30,14 @@ impl PreparingNamespace {
         Self::try_new_with_backing_class(false)
     }
 
-    pub(crate) fn try_new_with_backing_class(backing_platform: bool) -> Result<Self, AllocError> {
-        Self::prepare(backing_platform, |_| Ok(()))
+    pub(crate) fn try_new_with_backing_class(
+        storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
+    ) -> Result<Self, AllocError> {
+        Self::prepare(storage.into(), |_| Ok(()))
     }
 
     fn prepare(
-        backing_platform: bool,
+        storage: crate::memory::kernel_buffers::CapturedStorage,
         mut before: impl FnMut(u8) -> Result<(), AllocError>,
     ) -> Result<Self, AllocError> {
         let mut owner = Self(ManuallyDrop::new(Resources {
@@ -45,11 +47,11 @@ impl PreparingNamespace {
         }));
         let result = (|| {
             before(1)?;
-            owner.0.node = Some(namespace_nodes::prepare(backing_platform)?);
+            owner.0.node = Some(namespace_nodes::prepare(storage.platform())?);
             before(2)?;
-            owner.0.endpoints = Some(budget::DomainBudget::try_new(backing_platform)?);
+            owner.0.endpoints = Some(budget::DomainBudget::try_new(storage)?);
             before(3)?;
-            owner.0.records = Some(record_budget::DomainBudget::try_new(backing_platform)?);
+            owner.0.records = Some(record_budget::DomainBudget::try_new(storage)?);
             before(4)
         })();
         if let Err(error) = result {
@@ -100,7 +102,7 @@ impl PreparingNamespace {
 
     #[cfg(any(test, feature = "kernel_tests"))]
     pub(crate) fn test_reject_at(reject: u8) -> Result<Self, AllocError> {
-        Self::prepare(false, |stage| {
+        Self::prepare(false.into(), |stage| {
             assert!(IPC.try_write().is_some());
             assert!(crate::memory::ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());
             assert!(crate::memory::ADDRESS_SPACE_TABLE.try_lock().is_some());
@@ -156,9 +158,11 @@ pub(crate) fn test_preparation() {
 }
 
 #[cfg(any(test, feature = "kernel_tests"))]
-pub(crate) fn assert_account_backing_denied(platform: bool) {
-    assert!(budget::DomainBudget::try_new(platform).is_err());
-    assert!(record_budget::DomainBudget::try_new(platform).is_err());
+pub(crate) fn assert_account_backing_denied(
+    storage: impl Into<crate::memory::kernel_buffers::CapturedStorage> + Copy,
+) {
+    assert!(budget::DomainBudget::try_new(storage).is_err());
+    assert!(record_budget::DomainBudget::try_new(storage).is_err());
 }
 
 #[cfg(any(test, feature = "kernel_tests"))]
@@ -175,4 +179,28 @@ pub(crate) fn assert_ordinary_backing_fixture(root: AddressSpaceHandle) {
     close_cap(root.id(), endpoint).unwrap();
     assert_eq!(budget::node_used(), endpoints);
     assert_eq!(record_budget::node_used(), records);
+}
+
+#[cfg(feature = "kernel_tests")]
+pub(crate) fn account_bytes_for_test(
+    storage: crate::memory::kernel_buffers::CapturedStorage,
+    principal: u64,
+) -> [u64; 2] {
+    let before = crate::memory::kernel_buffers::test_account_used(principal);
+    let endpoint = budget::DomainBudget::try_new(storage).unwrap();
+    let first = crate::memory::kernel_buffers::test_account_used(principal) - before;
+    drop(endpoint);
+    assert_eq!(crate::memory::kernel_buffers::test_account_used(principal), before);
+    let records = record_budget::DomainBudget::try_new(storage).unwrap();
+    let second = crate::memory::kernel_buffers::test_account_used(principal) - before;
+    drop(records);
+    assert_eq!(crate::memory::kernel_buffers::test_account_used(principal), before);
+    [first, second]
+}
+#[cfg(feature = "kernel_tests")]
+pub(crate) fn account_weaks_for_test(asid: usize) -> (impl Fn() -> bool, impl Fn() -> bool) {
+    let ipc = IPC.read();
+    let endpoints = alloc::sync::Arc::downgrade(&ipc.caps.get(&asid).unwrap().endpoint_budget);
+    let records = alloc::sync::Arc::downgrade(&ipc.caps.get(&asid).unwrap().record_budget);
+    (move || endpoints.upgrade().is_none(), move || records.upgrade().is_none())
 }

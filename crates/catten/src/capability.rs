@@ -76,14 +76,14 @@ struct Entry {
 impl AddressSpaceCapabilities {
     fn try_new(
         address_space: Option<crate::memory::AddressSpaceHandle>,
-        backing_platform: bool,
+        storage: crate::memory::kernel_buffers::CapturedStorage,
     ) -> Result<Self, AllocationError> {
         Ok(Self {
             next_serial: 1,
             address_space,
             platform: false,
-            backing_platform,
-            budget: budget::DomainBudget::try_new(backing_platform)?,
+            backing_platform: storage.platform(),
+            budget: budget::DomainBudget::try_new(storage)?,
             objects: AdmittedMap::new(),
         })
     }
@@ -109,8 +109,10 @@ struct NamespaceStorage {
 }
 
 pub(crate) fn prepare_namespace(
-    backing_platform: bool,
+    storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
 ) -> Result<PreparingNamespace, AllocationError> {
+    let storage = storage.into();
+    let backing_platform = storage.platform();
     if test_fault!(namespace_tests::reject(1)) {
         return Err(AllocationError::AllocationFailed);
     }
@@ -121,7 +123,7 @@ pub(crate) fn prepare_namespace(
     let value = if test_fault!(namespace_tests::reject(2)) {
         Err(AllocationError::AllocationFailed)
     } else {
-        AddressSpaceCapabilities::try_new(None, backing_platform)
+        AddressSpaceCapabilities::try_new(None, storage)
     };
     match value {
         Ok(value) => Ok(PreparingNamespace(core::mem::ManuallyDrop::new(NamespaceStorage {
@@ -311,7 +313,9 @@ impl PreparedReservation {
         };
         let record = PreparingRecord::try_new(backing_platform)?;
         let namespace = if missing {
-            match prepare_namespace(owner == crate::memory::KERNEL_ASID) {
+            match prepare_namespace(crate::memory::kernel_buffers::CapturedStorage::unidentified(
+                owner == crate::memory::KERNEL_ASID,
+            )) {
                 Ok(namespace) => Some(namespace),
                 Err(error) => {
                     record.finish();

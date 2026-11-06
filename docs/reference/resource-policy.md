@@ -118,6 +118,12 @@ snapshot scratch is 1 MiB per request. These forward to `Policy.local`.
   used by snapshot frame buffers, primitive syscall inputs/plaintext, diagnostic
   scratch, IPC working/retirement buffers and root heap/image frame-catalog capacity. This adds no preallocation,
   per-principal frame-count guarantee or general metadata coverage. See [telemetry scratch](telemetry-snapshots.md).
+- Captured signed-principal namespace-account requested bytes: 1 MiB, under
+  `principal_namespace_account_bytes`. Capability, IPC endpoint/record and mailbox
+  accounts share this ceiling through actual Arc payload and private-holder free,
+  including weak-only retention. It is independent of the 16 MiB buffer ceiling
+  and adds no preallocation or per-service fairness guarantee. See
+  [namespace accounts](namespace-account-admission.md).
 - IOMMU per-domain and per-unit backing: 1024 and 2048 pages respectively.
 - Independent usable-RAM ratios: objects, heap and image each 1/4; stack 1/8;
   private tables 1/16; fresh shared tables 1/64; IOMMU tables 1/32. Each pool
@@ -145,6 +151,12 @@ It records the limits of that comparison and the RAM cost of possible 96/128 MiB
 growth floors; no limit change or aggregate acceptance follows from the census.
 Use [the policy census](../../scripts/audit-resource-capacity.py) to reproduce
 values for a selected profile instead of copying defaults into a sizing script.
+Its version-2 output also records selected buffer and namespace-account principal
+byte ceilings. They overlap applicable family bounds and are not additive RAM use.
+The namespace-account count ceiling implies a separate 2.4375/3.25 MiB
+ordinary/total upper bound at the currently measured largest 104-byte bundle;
+partial holders and weak retention retain their slots. This derived bound is
+outside the 19 byte-denominated pool sum and is not an aggregate acceptance.
 
 ## Validation and coupled changes
 

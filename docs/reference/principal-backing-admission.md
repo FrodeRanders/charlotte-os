@@ -100,6 +100,16 @@ layout remains covered by existing principal-history node admission. See
 [snapshot/input admission](snapshot-buffer-admission.md) and
 [IPC vector funding](ipc-node-admission.md#staging-and-loan-vectors).
 
+Namespace account backing has its own 1 MiB actual requested-layout allowance
+in that same history record. It covers the four capability/IPC/mailbox account
+Arcs and their private holders, including control/alignment bytes, until each
+actual allocation is freed. Original principal and storage class are captured
+from the unpublished verified root or exact lazy-mailbox generation. Account
+promotion, delegation, root close and ASID reuse do not reset it. Bundle counts
+remain an independent family ceiling. This adds no registry or eager backing;
+allocator excess and external reference fields still need their enclosing owners'
+accounting. See [namespace-account qualification](namespace-account-admission.md).
+
 ## Verification and limits
 
 Native kernel controls exercise mixed real heap/image/object backing across
@@ -125,7 +135,7 @@ admission, allocator metadata, hardware, wall-clock progress or executable refin
 This implements an aggregate boundary for these data/table/stack families. It does
 not bound general kernel heap/metadata beyond those two thread layouts and the
 explicit snapshot/input/diagnostic/IPC buffers and root frame catalogs. Fresh shared kernel tables, IOMMU/device metadata,
-capabilities, IPC, completions and other metadata still need principal coverage. Principal-history records remain
+capability/IPC payloads, other account families, completions and other metadata still need principal coverage. Principal-history records remain
 for the boot lifetime; their nodes and root candidates now share a separate
 [byte/count pool](principal-history-admission.md). Principal-record lookup and IRQ-masked hold times still need hostile-pressure
 qualification. Kernel-only unidentified work retains its existing family/node policy. Independent principals

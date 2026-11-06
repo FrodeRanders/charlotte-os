@@ -42,7 +42,7 @@ coverage. The required Q4 rows below remain actual unfinished work.
 | `tables` (16 records) | Existing admitted owner | Runtime root/thread IdTables use charged candidates for payload/generation/return-ID arrays, including old/candidate overlap. Retirement reuses prepared capacity; uncharged generic insertion has no production caller. See [root-table-admission](root-table-admission.md). |
 | `iommu_ledger` (5 records) | Existing admitted owner | DMA ledger vectors reserve exact capacity through the containing table/domain owner and existing iommu_nodes backing; pushes do not grow published storage. See [iommu-table-admission](iommu-table-admission.md). |
 | `observer_timer` (43 records) | Existing admitted owner | Observer entries/handles/list/account backing and anonymous timer node/cancellation ownership use existing typed fallible admission. Reference/delivery transfers retain the original allocation owner. See [observer-ownership](observer-ownership.md). |
-| `shared_allocator` (14 records) | Shared admitted mechanism | ByteAllocator and ChargedAllocator are backend adapters, not new resource families. Concrete callers supply typed layout/class reservations; allocation holders retain admission through final weak/deallocation. See [metadata-admission](metadata-admission.md). |
+| `shared_allocator` (14 records) | Shared admitted mechanism | ByteAllocator, SponsoredAllocator and ChargedAllocator are backend adapters, not new resource families. Concrete callers supply typed layout/class reservations; allocation holders retain admission through final weak/deallocation. See [metadata-admission](metadata-admission.md). |
 | `memory_objects` (13 records) | Existing admitted owner | Object frame catalogs and snapshots retain their existing prepared byte reservations and captured backing classification; actual frames keep physical admission. Bare default snapshot wrapper is fixture-only. See [memory-capability-node-admission](memory-capability-node-admission.md). |
 | `inputs` (14 records) | Accepted Q1 ownership | Primitive image/descriptor/pickup/plaintext buffers capture actor class and signed principal and retain both byte charges through deallocation; sensitive spare capacity is wiped. See [snapshot-buffer-admission](snapshot-buffer-admission.md). |
 | `launch_cache` (21 records) | Accepted Q2 ownership | Complete launch/handoff/upgrade parents retain source/target roots, profiles, transfers and admitted vector prefixes. Fixed image cache reserves independent bytes/count before I/O and immutable publication. See [service-launch-ownership](service-launch-ownership.md). |
@@ -89,7 +89,9 @@ covers the remaining requested-byte paths of the snapshot family; it does not
 add per-principal count shares or cover unrelated parent metadata.
 [IPC working/retirement buffers](../reports/audits/2026-11-06-q4-ipc-principals.md)
 now use that same original-principal counter; payload/queue/account coverage
-remains outside that scope. Q4 must still
+remains outside that scope. [Namespace accounts](../reports/audits/2026-11-06-q4-namespace-principals.md)
+now fund actual capability/IPC/mailbox Arc and holder layouts through final
+weak/allocator release. Q4 must still
 reconcile other per-family admission with signed-principal coverage and the common heap envelope, accounting
 for allocator/control backing, boot reservations, weak/private holders, restart,
 retention and quarantine. Existing global ordinary/trusted pool admission alone

@@ -35,13 +35,15 @@ struct DomainState {
 pub(crate) struct DomainBudget(Mutex<DomainState>);
 
 impl DomainBudget {
-    pub(crate) fn try_new(backing_platform: bool) -> Result<AccountRef, core::alloc::AllocError> {
-        crate::klib::namespace_account_budget::allocator(backing_platform)?.try_arc(Self(
-            Mutex::new(DomainState {
+    pub(crate) fn try_new(
+        storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
+    ) -> Result<AccountRef, core::alloc::AllocError> {
+        crate::klib::namespace_account_budget::allocator(storage)?.try_arc(Self(Mutex::new(
+            DomainState {
                 records: VectorBudget::new(DOMAIN_LIMIT),
                 retired: false,
-            }),
-        ))
+            },
+        )))
     }
 
     #[cfg(any(test, feature = "kernel_tests"))]

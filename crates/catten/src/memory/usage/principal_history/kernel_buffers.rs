@@ -8,21 +8,40 @@ use crate::klib::admission::{
     SnapshotBuffers,
 };
 
+pub(crate) trait ByteBudget: Clone + Copy + core::fmt::Debug {
+    const NAMESPACE_ACCOUNTS: bool;
+}
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Sponsor {
-    principal: Option<u64>,
+pub(crate) struct BufferBudget;
+impl ByteBudget for BufferBudget {
+    const NAMESPACE_ACCOUNTS: bool = false;
+}
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct NamespaceAccountBudget;
+impl ByteBudget for NamespaceAccountBudget {
+    const NAMESPACE_ACCOUNTS: bool = true;
 }
 
-impl Sponsor {
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct PrincipalBytes<F: ByteBudget> {
+    principal: Option<u64>,
+    family: core::marker::PhantomData<F>,
+}
+pub(crate) type Sponsor = PrincipalBytes<BufferBudget>;
+pub(crate) type NamespaceSponsor = PrincipalBytes<NamespaceAccountBudget>;
+
+impl<F: ByteBudget> PrincipalBytes<F> {
     pub(crate) const fn unidentified() -> Self {
         Self {
             principal: None,
+            family: core::marker::PhantomData,
         }
     }
 
     pub(in crate::memory) fn from_account(account: &crate::memory::translation::Account) -> Self {
         Self {
             principal: account.principal(),
+            family: core::marker::PhantomData,
         }
     }
 
@@ -31,6 +50,7 @@ impl Sponsor {
         assert_ne!(principal, 0);
         Self {
             principal: Some(principal),
+            family: core::marker::PhantomData,
         }
     }
 
@@ -39,14 +59,18 @@ impl Sponsor {
     }
 }
 
-impl ByteSponsor for Sponsor {
+fn byte_budget<F: ByteBudget>(entry: &mut History) -> &mut VectorBudget<1> {
+    if F::NAMESPACE_ACCOUNTS {
+        &mut entry.namespace_account_bytes
+    } else {
+        &mut entry.kernel_buffers
+    }
+}
+impl<F: ByteBudget> ByteSponsor for PrincipalBytes<F> {
     fn reserve(&self, bytes: u64) -> Result<(), AllocError> {
         if let Some(principal) = self.principal {
-            HISTORY
-                .lock()
-                .get_mut(&principal)
-                .ok_or(AllocError)?
-                .kernel_buffers
+            let mut history = HISTORY.lock();
+            byte_budget::<F>(history.get_mut(&principal).ok_or(AllocError)?)
                 .reserve([bytes])
                 .map_err(|_| AllocError)?;
         }
@@ -55,13 +79,10 @@ impl ByteSponsor for Sponsor {
 
     fn release(&self, bytes: u64) {
         if let Some(principal) = self.principal {
-            HISTORY
-                .lock()
-                .get_mut(&principal)
-                .expect("buffer principal missing")
-                .kernel_buffers
+            let mut history = HISTORY.lock();
+            byte_budget::<F>(history.get_mut(&principal).expect("byte principal missing"))
                 .release([bytes])
-                .expect("principal buffer underflow");
+                .expect("principal byte underflow");
         }
     }
 }
@@ -77,6 +98,22 @@ pub(crate) struct CapturedStorage {
     sponsor: Sponsor,
 }
 impl CapturedStorage {
+    /// Permanent kernel and trusted raw preparation/fixtures only. Signed
+    /// application construction must capture its prebound translation account.
+    pub(crate) const fn unidentified(platform: bool) -> Self {
+        Self {
+            platform,
+            sponsor: Sponsor::unidentified(),
+        }
+    }
+
+    pub(crate) fn namespace_sponsor(self) -> NamespaceSponsor {
+        NamespaceSponsor {
+            principal: self.sponsor.principal,
+            family: core::marker::PhantomData,
+        }
+    }
+
     pub(crate) fn sponsor(self) -> Sponsor {
         self.sponsor
     }
@@ -85,7 +122,7 @@ impl CapturedStorage {
         ByteAllocator::with_sponsor(self.platform, self.sponsor)
     }
 
-    pub(in crate::memory) fn platform(self) -> bool {
+    pub(crate) fn platform(self) -> bool {
         self.platform
     }
 
@@ -94,6 +131,22 @@ impl CapturedStorage {
         bytes: u64,
     ) -> Result<ByteCharge<Sponsor>, AllocError> {
         ByteCharge::try_new(self.sponsor, bytes)
+    }
+}
+
+pub(in crate::memory) fn capture_unpublished(
+    root: &crate::memory::AddressSpace,
+) -> CapturedStorage {
+    CapturedStorage {
+        platform: root.table_account.is_platform(),
+        sponsor: Sponsor::from_account(&root.table_account),
+    }
+}
+
+#[cfg(any(test, feature = "kernel_tests"))]
+impl From<bool> for CapturedStorage {
+    fn from(platform: bool) -> Self {
+        Self::unidentified(platform)
     }
 }
 
@@ -170,4 +223,17 @@ pub(in crate::memory) fn test_with_backing_limit(principal: u64, pages: u64, wor
 pub(crate) fn test_with_history_locked<R>(work: impl FnOnce() -> R) -> R {
     let _history = HISTORY.lock();
     work()
+}
+
+#[cfg(any(test, feature = "kernel_tests"))]
+pub(crate) fn test_account_used(principal: u64) -> u64 {
+    HISTORY.lock().get(&principal).map_or(0, |entry| entry.namespace_account_bytes.used()[0])
+}
+#[cfg(feature = "kernel_tests")]
+pub(crate) fn test_account_limit(principal: u64, bytes: u64) {
+    let mut history = HISTORY.lock();
+    let budget = &mut history.get_mut(&principal).unwrap().namespace_account_bytes;
+    let mut candidate = VectorBudget::new([bytes]);
+    candidate.reserve(budget.used()).unwrap();
+    *budget = candidate;
 }

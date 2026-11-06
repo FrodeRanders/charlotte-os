@@ -73,7 +73,7 @@ protocol paths normally reserve their known count once before publication.
 | Descriptor byte snapshot | 1 | 4082 | 4082 |
 | Parsed descriptor entries | 16 | 255 | 4080 |
 | Capability IDs | 8 | 255 | 2040 |
-| Prepared transfers | 352 | 255 | 89760 |
+| Prepared transfers | 384 | 255 | 97920 |
 | Reply-token loan origins | 32 | 255 | 8160 |
 | Reply/cancellation revocation work | 200 | 255 | 51000 |
 
@@ -146,7 +146,7 @@ physical cleanup keeps the child's existing terminal fence/pin and original
 backing charges; freeing an empty parent work buffer grants no retry authority.
 
 A work entry measures 200 bytes; maximum capacity requests 51000 bytes (about
-49.8 KiB). The complete reply/cancellation parents measure 984/528 inline bytes
+49.8 KiB). The complete reply/cancellation parents measure 1080/528 inline bytes
 on supported targets; these are stack owners, with no new holder allocation or
 payload-node layout change. Current numerical limits remain in place. Capacity
 is requested during cleanup, rather than reserved when the call is accepted:
@@ -201,8 +201,8 @@ A conservative count plan permits every ordinary/total unified capability slot
 (49152/65536) to hold an IPC payload, plus all pending and reply nodes
 (6144/8192 each) and endpoints (768/1024): **62208/82944 nodes**. This leaves
 candidate/layout headroom while preserving a quarter of each pool for trusted
-admission. Native capability/endpoint/pending/reply layouts are 120/272/200/200
-bytes. This upper-bound mix requests 8564736/11419648 bytes (about 8.17/10.89 MiB),
+admission. Native capability/endpoint/pending/reply layouts are 136/320/216/216
+bytes. This upper-bound mix requests 9584640/12779520 bytes (about 9.14/12.19 MiB),
 within the 12/16 MiB budgets before retirement catalogs, other nested
 allocations and allocator overhead. Added backing fields cost 16 bytes per
 capability/endpoint node
@@ -219,8 +219,9 @@ attachment owner**. At the existing 24576/32768 ordinary/total queue-slot ceilin
 that is at most another 960/1280 KiB of requested queue payload, before allocator
 overhead. This is a capacity upper bound, not observed simultaneous queue usage.
 Actual queue allocation uses the complete current message layout; node admission
-also uses current payload sizes. The reply-token node is now 200 bytes rather
-than 184. These fields reserve no backing in advance. The old vector-capacity
+also uses current payload sizes. The reply-token node is 216 bytes, including the enlarged original account
+reference. Namespace account references occupy 32 rather than 16 bytes after
+[actual payload/holder funding](namespace-account-admission.md). These fields reserve no backing in advance. The old vector-capacity
 fixture still prints the 1-byte family-only allocator control size; that is not
 the principal-bearing production allocator size.
 

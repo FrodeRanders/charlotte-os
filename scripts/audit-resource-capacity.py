@@ -39,6 +39,8 @@ fn main() {
     println!("heap\t{}\t{}\t{}\t{}", P.kernel_heap.initial_bytes,
         P.kernel_heap.growth_min_bytes, P.kernel_heap.growth_max_bytes, P.kernel_heap.ram_divisor);
     println!("local\ttelemetry_working_bytes\t{}", P.local.telemetry_working_bytes);
+    println!("principal\tkernel_buffer_bytes\t{}", P.memory.principal_kernel_buffer_bytes);
+    println!("principal\tnamespace_account_bytes\t{}", P.memory.principal_namespace_account_bytes);
     for bytes in std::env::args().skip(1) {
         let usable = bytes.parse::<u64>().unwrap();
         let reserve = P.kernel_heap.growth_reserve_bytes(usable);
@@ -69,7 +71,7 @@ def capture(policy, usable_mib):
         result = subprocess.run([str(binary)] + [str(value * MIB) for value in usable_mib],
                                 check=True, capture_output=True, text=True)
     pools, queues, samples = [], [], []
-    heap, local, pointer_bits = {}, {}, None
+    heap, local, principal, pointer_bits = {}, {}, {}, None
     for line in result.stdout.splitlines():
         fields = line.split("\t")
         if fields[0] == "pool":
@@ -87,6 +89,8 @@ def capture(policy, usable_mib):
                                     map(int, fields[1:]))))
         elif fields[0] == "local":
             local[fields[1]] = int(fields[2])
+        elif fields[0] == "principal":
+            principal[fields[1]] = int(fields[2])
         elif fields[0] == "target":
             pointer_bits = int(fields[1])
         else:
@@ -99,18 +103,18 @@ def capture(policy, usable_mib):
     sources.update(SDK.parent.rglob("*.rs"))
     def identity(path):
         return str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else str(path)
-    return dict(schema="charlotte.resource-capacity.v1", rust_toolchain=channel, host_pointer_bits=pointer_bits,
+    return dict(schema="charlotte.resource-capacity.v2", rust_toolchain=channel, host_pointer_bits=pointer_bits,
                 selected_policy=identity(policy), source_sha256={identity(p): sha(p) for p in sorted(sources)},
                 metadata_pools=pools, byte_pool_count=len(byte_pools),
                 byte_ceiling_sums=dict(total=sum(p["total"][0] for p in byte_pools),
                                        ordinary=sum(p["ordinary"][0] for p in byte_pools)),
-                separate_queue_byte_ceilings=queues, kernel_heap=heap, local=local, usable_ram_samples=samples,
+                separate_queue_byte_ceilings=queues, kernel_heap=heap, local=local, principal_byte_limits=principal, usable_ram_samples=samples,
                 interpretation=[
                     "Independent ceilings, not allocated usage, disjoint partitions or jointly reachable maxima.",
                     "Count-only account/control allocations, allocator overhead and boot/transient/retained backing are not converted into bytes here.",
                     "Queue ceilings remain separate; this report does not assert absence of accounting overlap.",
                     "Usable-RAM samples are inputs to the real heap formula, not guest RAM or native measurements.",
-                    "No original-principal coverage, cleanup progress or aggregate acceptance is established.",
+                    "Reported principal ceilings do not prove complete coverage, cleanup progress or aggregate acceptance; they overlap applicable family ceilings.",
                 ])
 
 

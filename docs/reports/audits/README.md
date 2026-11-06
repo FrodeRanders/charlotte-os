@@ -17,6 +17,8 @@ report is useful for a significant investigation or qualification checkpoint.
 
 ## Reports
 
+- [Q4 namespace-account principal admission](2026-11-06-q4-namespace-principals.md) — Captured funding for all four namespace account payload/holder layouts, reusable backing allocation, real principal pressure and late weak refunds; current pool ceilings remain unchanged. Q4 remains in progress.
+
 - [Q4 IPC buffer principal admission](2026-11-06-q4-ipc-principals.md) — Original-principal funding for descriptors, staging, loan/revocation vectors and attachment retirement storage; full host/native qualification, unchanged limits and a current 24-pool coverage checklist. Q4 remains in progress.
 
 - [Q4 snapshot-family principal admission](2026-11-05-q4-snapshot-principals.md) — Original-principal funding for primitive inputs/plaintext and CPU/copy/DMA frame buffers; full native qualification with unchanged limits. Q4 remains in progress.

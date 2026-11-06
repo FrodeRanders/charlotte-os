@@ -917,12 +917,12 @@ struct AdmittedMailboxEndpoint {
 impl AsMailboxCaps {
     fn try_new(
         address_space: Option<crate::memory::AddressSpaceHandle>,
-        backing_platform: bool,
+        storage: crate::memory::kernel_buffers::CapturedStorage,
     ) -> Result<Self, mailbox_budget::Error> {
         Ok(Self {
             address_space,
             endpoints: mailbox_node_budget::Map::new(),
-            budget: mailbox_budget::DomainBudget::try_new(backing_platform)?,
+            budget: mailbox_budget::DomainBudget::try_new(storage)?,
         })
     }
 }
@@ -1012,15 +1012,15 @@ fn sys_mailbox_open_recv(frame: &mut TrapFrame) {
 struct MailboxIdentity {
     address_space: Option<crate::memory::AddressSpaceHandle>,
     platform: Option<crate::memory::AddressSpaceHandle>,
-    backing_platform: bool,
+    storage: crate::memory::kernel_buffers::CapturedStorage,
 }
 
 fn capture_mailbox_identity(asid: AddressSpaceId) -> MailboxIdentity {
-    let (address_space, backing_platform) = crate::memory::capture_address_space_storage(asid);
+    let (address_space, storage) = crate::memory::capture_address_space_sponsor(asid);
     MailboxIdentity {
         address_space,
         platform: crate::memory::budget::platform_identity(asid),
-        backing_platform,
+        storage,
     }
 }
 

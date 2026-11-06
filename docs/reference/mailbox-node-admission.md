@@ -15,7 +15,8 @@ The count ceiling is twice the existing mailbox resource ceiling (6144/8192).
 This leaves headroom for unused candidates and retirement without lowering
 existing mailbox or capability limits. No memory is preallocated. A quarter
 remains trusted reserve; it is shared capacity, not a per-service entitlement.
-The current native layout is 64 bytes, so count ceilings bind at 768 KiB/1 MiB.
+The current native layout is 80 bytes, including its original funded account
+reference, so count ceilings bind at 960/1280 KiB.
 Independent byte ceilings bound later layout growth.
 
 The charge adds 16 bytes per endpoint node and a short pool operation at

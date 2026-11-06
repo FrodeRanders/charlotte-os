@@ -35,8 +35,10 @@ static NODE: LazyLock<Mutex<NodeBudget>> = LazyLock::new(|| {
 pub(crate) struct DomainBudget(Mutex<VectorBudget<2>>);
 
 impl DomainBudget {
-    pub(crate) fn try_new(backing_platform: bool) -> Result<AccountRef, core::alloc::AllocError> {
-        crate::klib::namespace_account_budget::allocator(backing_platform)?
+    pub(crate) fn try_new(
+        storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
+    ) -> Result<AccountRef, core::alloc::AllocError> {
+        crate::klib::namespace_account_budget::allocator(storage)?
             .try_arc(Self(Mutex::new(VectorBudget::new(DOMAIN_LIMIT))))
     }
 

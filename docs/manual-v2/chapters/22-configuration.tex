@@ -202,6 +202,14 @@ root catalogs consume the existing memory-metadata byte pool. It reserves no bac
 not a general kernel-metadata limit. See
 \repofile|docs/reference/telemetry-snapshots.md|.
 
+Namespace account payloads and their private Arc holders share a separate
+\path{Policy.memory.principal_namespace_account_bytes} ceiling of 1 MiB per
+signed principal, retained across generations and final weak release. It funds
+actual requested layouts without allocating RAM in advance. The 24576/32768
+ordinary/total bundle ceilings remain independent. Allocator excess and other
+metadata still require joint sizing. See
+\repofile|docs/reference/namespace-account-admission.md|.
+
 Examples of settings that require joint review include:
 \begin{itemize}
     \item Memory-object size, aggregate domain/principal backing and snapshot

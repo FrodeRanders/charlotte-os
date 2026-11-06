@@ -60,6 +60,53 @@ impl<S: ByteSponsor> Drop for ByteCharge<S> {
     }
 }
 
+/// Requested-layout funding for backing already bounded by a separate typed
+/// family owner, including the actual Arc payload and private holder layouts.
+/// Clones copy policy only; actual allocation/free owns the byte reservation.
+#[derive(Clone, Debug)]
+pub(crate) struct SponsoredAllocator<S: ByteSponsor>(S);
+impl<S: ByteSponsor> SponsoredAllocator<S> {
+    pub(crate) const fn new(sponsor: S) -> Self {
+        Self(sponsor)
+    }
+
+    fn allocate_with(
+        &self,
+        layout: Layout,
+        allocate: impl FnOnce(Layout) -> Result<NonNull<[u8]>, AllocError>,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+        let bytes = u64::try_from(layout.size()).map_err(|_| AllocError)?;
+        if bytes == 0 {
+            return allocate(layout);
+        }
+        self.0.reserve(bytes)?;
+        match allocate(layout) {
+            Ok(block) => Ok(block),
+            Err(error) => {
+                self.0.release(bytes);
+                Err(error)
+            }
+        }
+    }
+}
+// SAFETY: The unchanged pointer/layout belongs to Global. Funding covers the
+// requested size, and only actual deallocation (or failed allocation) refunds.
+unsafe impl<S: ByteSponsor> Allocator for SponsoredAllocator<S> {
+    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        self.allocate_with(layout, |layout| {
+            let block = Global.allocate(layout)?;
+            Ok(NonNull::slice_from_raw_parts(block.cast(), layout.size()))
+        })
+    }
+
+    unsafe fn deallocate(&self, pointer: NonNull<u8>, layout: Layout) {
+        unsafe { Global.deallocate(pointer, layout) };
+        if layout.size() != 0 {
+            self.0.release(layout.size() as u64);
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct ByteAllocator<F: Family<2>, S: ByteSponsor = ()> {
     platform: bool,
@@ -93,23 +140,7 @@ impl<F: Family<2>, S: ByteSponsor> ByteAllocator<F, S> {
         layout: Layout,
         allocate: impl FnOnce(Layout) -> Result<NonNull<[u8]>, AllocError>,
     ) -> Result<NonNull<[u8]>, AllocError> {
-        let bytes = u64::try_from(layout.size()).map_err(|_| AllocError)?;
-        if bytes == 0 {
-            return allocate(layout);
-        }
-        self.sponsor.reserve(bytes)?;
-        if let Err(error) = reserve::<F, 2>(self.platform, [bytes, 0]) {
-            self.sponsor.release(bytes);
-            return Err(error);
-        }
-        match allocate(layout) {
-            Ok(block) => Ok(block),
-            Err(error) => {
-                release::<F, 2>(self.platform, [bytes, 0]);
-                self.sponsor.release(bytes);
-                Err(error)
-            }
-        }
+        SponsoredAllocator::new(FamilySponsor(self)).allocate_with(layout, allocate)
     }
 
     #[cfg(test)]
@@ -131,9 +162,30 @@ impl<F: Family<2>> Default for ByteAllocator<F> {
     }
 }
 
-// SAFETY: Global receives the unchanged pointer/layout. Returned blocks report
-// the requested size, so a fitting deallocation layout has that same byte size.
-// Captured class moves/clones unchanged; no allocator Drop refunds backing.
+#[derive(Debug)]
+struct FamilySponsor<'a, F: Family<2>, S: ByteSponsor>(&'a ByteAllocator<F, S>);
+impl<F: Family<2>, S: ByteSponsor> Clone for FamilySponsor<'_, F, S> {
+    fn clone(&self) -> Self {
+        Self(self.0)
+    }
+}
+impl<F: Family<2>, S: ByteSponsor> ByteSponsor for FamilySponsor<'_, F, S> {
+    fn reserve(&self, bytes: u64) -> Result<(), AllocError> {
+        self.0.sponsor.reserve(bytes)?;
+        if let Err(error) = reserve::<F, 2>(self.0.platform, [bytes, 0]) {
+            self.0.sponsor.release(bytes);
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    fn release(&self, bytes: u64) {
+        release::<F, 2>(self.0.platform, [bytes, 0]);
+        self.0.sponsor.release(bytes);
+    }
+}
+// SAFETY: The shared backing adapter passes the unchanged Global pointer/layout.
+// Its borrowed policy exists only during this allocation/free call.
 unsafe impl<F: Family<2>, S: ByteSponsor> Allocator for ByteAllocator<F, S> {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         self.allocate_with(layout, |layout| {
@@ -143,12 +195,7 @@ unsafe impl<F: Family<2>, S: ByteSponsor> Allocator for ByteAllocator<F, S> {
     }
 
     unsafe fn deallocate(&self, pointer: NonNull<u8>, layout: Layout) {
-        unsafe { Global.deallocate(pointer, layout) };
-        if layout.size() != 0 {
-            release::<F, 2>(self.platform, [layout.size() as u64, 0]);
-            self.sponsor.release(layout.size() as u64);
-        }
+        unsafe { SponsoredAllocator::new(FamilySponsor(self)).deallocate(pointer, layout) };
     }
-    // Allocator's default grow allocates the full candidate before copying and
-    // deallocating the old buffer. Never use incremental-only realloc admission.
+    // Default grow funds the whole candidate while retaining the old capacity.
 }

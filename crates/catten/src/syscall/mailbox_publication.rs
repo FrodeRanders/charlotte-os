@@ -62,18 +62,18 @@ impl PreparingMailbox {
         if test_fault!(tests::reject(1)) {
             return Err(Error::AllocationFailed);
         }
-        self.0.endpoint_node = Some(mailbox_node_budget::prepare(captured.backing_platform)?);
+        self.0.endpoint_node = Some(mailbox_node_budget::prepare(captured.storage.platform())?);
         if test_fault!(tests::reject(2)) {
             return Err(Error::AllocationFailed);
         }
         self.0.namespace_node = Some(
-            node_budget::prepare(captured.backing_platform).map_err(|_| Error::AllocationFailed)?,
+            node_budget::prepare(captured.storage.platform())
+                .map_err(|_| Error::AllocationFailed)?,
         );
         if test_fault!(tests::reject(3)) {
             return Err(Error::AllocationFailed);
         }
-        self.0.namespace =
-            Some(AsMailboxCaps::try_new(captured.address_space, captured.backing_platform)?);
+        self.0.namespace = Some(AsMailboxCaps::try_new(captured.address_space, captured.storage)?);
         self.0.authority = Some(
             PreparedReservation::try_new(asid, ObjectKind::Mailbox, captured.address_space)
                 .map_err(admission_error)?,

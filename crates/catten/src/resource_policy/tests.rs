@@ -279,3 +279,12 @@ fn principal_root_table_capacity_rejects_overcommit() {
         assert_eq!(p.validate(), Err("principal root table"));
     }
 }
+
+#[test]
+fn namespace_account_principal_bytes_reject_zero_and_unsupported_layout_size() {
+    for bytes in [0, isize::MAX as u64 + 1] {
+        let mut policy = DEFAULT;
+        policy.memory.principal_namespace_account_bytes = bytes;
+        assert_eq!(policy.validate(), Err("principal namespace account bytes"));
+    }
+}

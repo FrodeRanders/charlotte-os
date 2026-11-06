@@ -42,8 +42,10 @@ fn account(asid: AddressSpaceId) -> mailbox_budget::AccountRef {
     USER_MAILBOX_CAPS.read().get(&asid).unwrap().budget.clone()
 }
 
-pub(crate) fn assert_account_backing_denied(platform: bool) {
-    assert!(mailbox_budget::DomainBudget::try_new(platform).is_err());
+pub(crate) fn assert_account_backing_denied(
+    storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
+) {
+    assert!(mailbox_budget::DomainBudget::try_new(storage).is_err());
 }
 
 pub(crate) fn prepare_account_backing_fixture(root: crate::memory::AddressSpaceHandle) {
@@ -201,4 +203,20 @@ fn test_generation_fence() {
         "[mailbox account lifetime] retired identity rejected across real root close/ASID reuse; \
          final-weak original backing refund preserved successor"
     );
+}
+
+pub(crate) fn account_bytes_for_test(
+    storage: crate::memory::kernel_buffers::CapturedStorage,
+    principal: u64,
+) -> u64 {
+    let before = crate::memory::kernel_buffers::test_account_used(principal);
+    let account = mailbox_budget::DomainBudget::try_new(storage).unwrap();
+    let bytes = crate::memory::kernel_buffers::test_account_used(principal) - before;
+    drop(account);
+    assert_eq!(crate::memory::kernel_buffers::test_account_used(principal), before);
+    bytes
+}
+pub(crate) fn account_weak_for_test(asid: usize) -> impl Fn() -> bool {
+    let weak = alloc::sync::Arc::downgrade(&USER_MAILBOX_CAPS.read().get(&asid).unwrap().budget);
+    move || weak.upgrade().is_none()
 }

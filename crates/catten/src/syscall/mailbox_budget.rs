@@ -44,8 +44,10 @@ struct DomainState {
 pub(crate) struct DomainBudget(Mutex<DomainState>);
 
 impl DomainBudget {
-    pub(crate) fn try_new(backing_platform: bool) -> Result<AccountRef, Error> {
-        let allocator = crate::klib::namespace_account_budget::allocator(backing_platform)
+    pub(crate) fn try_new(
+        storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
+    ) -> Result<AccountRef, Error> {
+        let allocator = crate::klib::namespace_account_budget::allocator(storage)
             .map_err(|_| Error::AllocationFailed)?;
         allocator
             .try_arc(Self(Mutex::new(DomainState {

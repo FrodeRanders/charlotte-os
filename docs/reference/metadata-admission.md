@@ -5,8 +5,9 @@
 family-typed owners: byte/count node charges, fixed-bundle charges, multidimensional
 reservations, and observer actual-layout charges. A single
 [catalog](../../crates/catten-syscall/src/metadata_pools.rs) names all 24 pools,
-their dimensions and units. Every pool keeps its own static counter lock; there
-is no allocated registry, common hot lock or centralized resource owner.
+their dimensions and units. Every pool keeps its own static counter lock; the
+pool inventory adds no allocated registry, common pool-counter lock or centralized
+resource owner. Separate principal funding uses the existing history lock.
 
 Family code still captures trusted sponsorship, chooses the actual allocation
 layout, translates errors and retains the charge inside its complete operation.
@@ -30,6 +31,16 @@ Default growth admits the full candidate while retaining the old allocation's
 charge. Pop/clear never release capacity admission. The containing operation
 still decides when element cleanup and buffer disposal are safe; the allocator
 supplies no physical-completion or recovery proof.
+
+`SponsoredAllocator<S>` supplies the same requested-layout byte funding without
+another family counter when a separate typed owner already bounds allocations.
+`ByteAllocator` composes its family/original-principal policy through that adapter.
+`ChargedAllocator<C, P, A>` can select it for both actual Arc allocations: account
+payload and private charge holder, including headers and alignment. The default
+backing allocator is still `Global`; unmigrated owners retain their representation
+and policy. Family slots survive until both allocations are gone; principal bytes
+refund per allocation only after actual free. This qualifies allocation mechanics,
+not arbitrary active parent destruction or hardware completion.
 
 The existing `snapshot_buffers` pool covers both frame catalogs and bounded
 [primitive syscall inputs/plaintext](snapshot-buffer-admission.md#primitive-syscall-inputs).
@@ -74,7 +85,7 @@ to the common heap plan must be recorded before accepting an exclusion.
 | `waiter_accounts` | Pending | Bundle count is not actual allocator/control-byte accounting. |
 | `timer_accounts` | Pending | Shared account, private holder and retained weak references. |
 | `completion_accounts` | Pending | Record/CQ/watch accounts and final allocation release. |
-| `namespace_accounts` | Pending | Capability/IPC/mailbox accounts beyond root retirement. |
+| `namespace_accounts` | Actual capability/IPC/mailbox Arc and holder layouts | Allocator excess and joint heap fit; external reference fields stay with parent pools and other account families remain separate. |
 | `scratch_nodes` | Pending | Extent and namespace backing through retained mapping work. |
 | `snapshot_buffers` | All production requested-byte paths | Counts have no principal share guarantee; overhead/joint heap fit. |
 | `mapping_nodes` | Pending | Original mapping sponsor through detach and physical uncertainty. |

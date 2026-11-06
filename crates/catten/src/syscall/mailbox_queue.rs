@@ -64,7 +64,7 @@ impl Operation {
             mailbox_words::Words::backing_bytes_for(n)?,
         )?);
         self.0.node = Some(
-            node_budget::prepare(self.0.captured.backing_platform)
+            node_budget::prepare(self.0.captured.storage.platform())
                 .map_err(|_| Error::AllocationFailed)?,
         );
         if test_fault!(tests::reject_backing()) {
@@ -93,13 +93,11 @@ impl Operation {
         // Legacy word callers share the same family account even without
         // endpoint grants. Competing preparations cannot create separate quotas.
         self.0.namespace_node = Some(
-            node_budget::prepare(self.0.captured.backing_platform)
+            node_budget::prepare(self.0.captured.storage.platform())
                 .map_err(|_| Error::AllocationFailed)?,
         );
-        self.0.namespace = Some(AsMailboxCaps::try_new(
-            self.0.captured.address_space,
-            self.0.captured.backing_platform,
-        )?);
+        self.0.namespace =
+            Some(AsMailboxCaps::try_new(self.0.captured.address_space, self.0.captured.storage)?);
         let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
         mailbox_publication::validate(self.0.asid, self.0.captured)?;
         let mut registry = USER_MAILBOX_CAPS.write();
