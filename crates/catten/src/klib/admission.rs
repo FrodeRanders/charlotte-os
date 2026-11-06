@@ -133,8 +133,16 @@ pub(crate) fn prepare_node_with<T, F: Family<2>>(
     allocation_bytes: usize,
     allocate: impl FnOnce(NodeCharge<F>) -> Result<T, AllocError>,
 ) -> Result<T, AllocError> {
+    prepare_node_with_sponsor::<T, F, _>(platform, allocation_bytes, (), allocate)
+}
+pub(crate) fn prepare_node_with_sponsor<T, F: Family<2>, S: ByteSponsor>(
+    platform: bool,
+    allocation_bytes: usize,
+    sponsor: S,
+    allocate: impl FnOnce(NodeCharge<F, S>) -> Result<T, AllocError>,
+) -> Result<T, AllocError> {
     let bytes = u64::try_from(allocation_bytes).map_err(|_| AllocError)?;
-    allocate(NodeCharge::reserve(platform, bytes)?)
+    allocate(NodeCharge::with_sponsor(platform, bytes, sponsor)?)
 }
 
 #[derive(Debug)]

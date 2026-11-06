@@ -130,8 +130,8 @@ snapshot scratch is 1 MiB per request. These forward to `Policy.local`.
   release. This remains separate from namespace-account and buffer funding;
   global family count ceilings are unchanged. See [account funding](completion-account-admission.md).
 - Migrated general metadata requested bytes per signed principal: 8 MiB, under
-  `principal_metadata_bytes`. Authority and mailbox endpoint nodes currently
-  share this allowance. It follows actual node lifetime, independently of
+  `principal_metadata_bytes`. Authority/mailbox endpoint, root metadata and all
+  five global namespace-node layouts currently share this allowance. It follows actual node lifetime, independently of
   namespace/reactor accounts and buffer funding; other node families remain
   unqualified until migrated or explicitly reconciled. See [record-node funding](authority-node-admission.md).
 - IOMMU per-domain and per-unit backing: 1024 and 2048 pages respectively.

@@ -471,8 +471,9 @@ the corrected RPC polling paths, and the remaining notification gaps.
 
 - The five global capability/IPC/completion/mailbox namespace maps use typed
   `namespace_node_budget` storage. Reserve actual node-layout bytes and one slot
-  before allocation, with the same captured trusted storage class as account
-  preparation. Publication only relinks storage; release/refund follows actual
+  before allocation, with the same captured original principal and trusted class
+  as account preparation. Retain actual-layout principal funding in the shared
+  sponsored `NodeCharge`; family denial rolls back unused principal bytes. Publication only relinks storage; release/refund follows actual
   deallocation outside local guards. Promotion, removal, root close and ASID
   reuse cannot reclassify or refund retained nodes. Keep complete parent fallback
   inert beneath publication/heap/pool guards. See
@@ -706,8 +707,9 @@ the corrected RPC polling paths, and the remaining notification gaps.
   `docs/reference/memory-capability-node-admission.md`.
 
 - Root memory-account nodes share the root-metadata byte/count pool with policy,
-  usage and authority nodes. Capture storage classification from the unpublished
-  translation account before allocation. Publication relinks prepared storage;
+  usage and authority nodes. Capture original principal and storage classification
+  from the unpublished prebound translation account before allocation, and fund
+  actual node layouts through the shared sponsored `NodeCharge`. Publication relinks prepared storage;
   retirement/reuse/promotion cannot refund or reclassify a surviving node.
   Retain the exact generation's closed ledger node until its final memory-object
   charge ends, then detach under the ledger and release outside it. Deallocate

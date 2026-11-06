@@ -35,7 +35,7 @@ impl Preparing {
         }));
         let result = (|| {
             before_allocate(0)?;
-            preparing.0.node = Some(node_budget::prepare(storage.platform())?);
+            preparing.0.node = Some(node_budget::prepare(storage)?);
             preparing.0.entries =
                 Some(Namespace::try_new(root, capacity, storage, &mut before_allocate)?);
             Ok::<_, core::alloc::AllocError>(())

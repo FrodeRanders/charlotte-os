@@ -47,7 +47,7 @@ impl PreparingNamespace {
         }));
         let result = (|| {
             before(1)?;
-            owner.0.node = Some(namespace_nodes::prepare(storage.platform())?);
+            owner.0.node = Some(namespace_nodes::prepare(storage)?);
             before(2)?;
             owner.0.endpoints = Some(budget::DomainBudget::try_new(storage)?);
             before(3)?;
@@ -203,4 +203,9 @@ pub(crate) fn account_weaks_for_test(asid: usize) -> (impl Fn() -> bool, impl Fn
     let endpoints = alloc::sync::Arc::downgrade(&ipc.caps.get(&asid).unwrap().endpoint_budget);
     let records = alloc::sync::Arc::downgrade(&ipc.caps.get(&asid).unwrap().record_budget);
     (move || endpoints.upgrade().is_none(), move || records.upgrade().is_none())
+}
+
+#[cfg(feature = "kernel_tests")]
+pub(crate) fn node_bytes_for_test() -> u64 {
+    namespace_nodes::Prepared::<(AddressSpaceId, AsIpcCaps)>::allocation_bytes() as u64
 }

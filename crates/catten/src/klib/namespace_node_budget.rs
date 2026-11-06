@@ -23,18 +23,23 @@ pub(crate) const NODE_LIMIT: [u64; 2] = crate::resource_policy::POLICY.namespace
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(crate) const ORDINARY_LIMIT: [u64; 2] = crate::resource_policy::POLICY.namespace_nodes.ordinary;
 
-pub(crate) type Charge = admission::NodeCharge<NamespaceNodes>;
+pub(crate) type Charge =
+    admission::NodeCharge<NamespaceNodes, crate::memory::kernel_buffers::MetadataSponsor>;
 
-pub(crate) fn prepare<T>(platform: bool) -> Result<Prepared<T>, AllocError> {
-    prepare_with(platform, PreparedEntry::try_new_charged)
+pub(crate) fn prepare<T>(
+    storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
+) -> Result<Prepared<T>, AllocError> {
+    prepare_with(storage, PreparedEntry::try_new_charged)
 }
 fn prepare_with<T>(
-    platform: bool,
+    storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
     allocate: impl FnOnce(Charge) -> Result<Prepared<T>, AllocError>,
 ) -> Result<Prepared<T>, AllocError> {
-    admission::prepare_node_with::<_, NamespaceNodes>(
-        platform,
+    let storage = storage.into();
+    admission::prepare_node_with_sponsor::<_, NamespaceNodes, _>(
+        storage.platform(),
         PreparedEntry::<T, Charge>::allocation_bytes(),
+        storage.metadata_sponsor(),
         allocate,
     )
 }

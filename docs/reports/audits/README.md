@@ -17,6 +17,8 @@ report is useful for a significant investigation or qualification checkpoint.
 
 ## Reports
 
+- [Q4 root/namespace principal funding](2026-11-06-q4-container-principals.md) — Actual-layout funding for nine root/global namespace shapes, quota prefixes and funded failed-root recovery/abandonment; limits unchanged. Q4 remains in progress.
+
 - [Q4 authority/mailbox node principal funding](2026-11-06-q4-record-node-principals.md) — Shared captured-principal node charges, actual candidate pressure and retained ownership; existing pool limits remain unchanged. Q4 remains in progress.
 
 - [Q4 reactor-account principal admission](2026-11-06-q4-reactor-principals.md) — Actual-layout funding for six waiter/timer/completion account types, shared fixed-bundle plumbing and three more catalog families; global limits remain unchanged. Q4 remains in progress.

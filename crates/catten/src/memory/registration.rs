@@ -205,7 +205,7 @@ pub(super) fn test_abandonment() {
     owner
         .prepare(
             || budget::PreparingAccount::try_new(storage),
-            || metadata::PreparingMetadata::try_new(false),
+            || metadata::PreparingMetadata::try_new(storage),
             || crate::ipc::namespace::PreparingNamespace::try_new_with_backing_class(storage),
         )
         .unwrap();
@@ -213,6 +213,8 @@ pub(super) fn test_abandonment() {
     assert!(principal_bytes > 0);
     let reactor_bytes = kernel_buffers::test_reactor_used(principal);
     assert!(reactor_bytes > 0);
+    let metadata_bytes = kernel_buffers::test_metadata_used(principal);
+    assert!(metadata_bytes > 0);
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let occupied = ADDRESS_SPACE_TABLE.lock().iter().filter(|entry| entry.is_some()).count();
     {
@@ -240,12 +242,15 @@ pub(super) fn test_abandonment() {
     assert_eq!(crate::klib::namespace_account_budget::snapshot(), (accounts.0 + 3, accounts.1 + 3));
     assert_eq!(kernel_buffers::test_account_used(principal), principal_bytes);
     assert_eq!(kernel_buffers::test_reactor_used(principal), reactor_bytes);
+    assert_eq!(kernel_buffers::test_metadata_used(principal), metadata_bytes);
     crate::logln!(
         "[memory sponsor registration retention] guarded abandonment retains one unpublished \
          root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; \
-         no ASID published; {} namespace + {} reactor original principal account bytes retained",
+         no ASID published; {} namespace + {} reactor account + {} metadata original principal \
+         bytes retained",
         principal_bytes,
-        reactor_bytes
+        reactor_bytes,
+        metadata_bytes
     );
 }
 

@@ -248,7 +248,10 @@ fn abandoned() {
     assert_eq!(local.used(), 1);
     let preparing_bytes = memory::kernel_buffers::test_metadata_used(preparing_principal);
     let retired_bytes = memory::kernel_buffers::test_metadata_used(retired_principal);
-    assert!(preparing_bytes > 0 && preparing_bytes == retired_bytes);
+    assert!(retired_bytes > 0);
+    let candidate_namespace =
+        node_budget::Prepared::<(AddressSpaceId, AsMailboxCaps)>::allocation_bytes() as u64;
+    assert_eq!(preparing_bytes, retired_bytes + candidate_namespace);
     assert_eq!(retired_local.used(), 1);
     let bytes = mailbox_node_budget::Prepared::allocation_bytes() as u64;
     assert_eq!(

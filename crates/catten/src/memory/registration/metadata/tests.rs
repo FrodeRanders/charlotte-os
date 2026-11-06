@@ -4,6 +4,7 @@ use crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR;
 
 pub(super) fn run() {
     admission_tests::run();
+    principal_tests::run();
     rejection();
     let mut limits = DomainLimitsTable::new();
     let mut usage = usage::DomainUsageTable::new();
@@ -103,7 +104,7 @@ fn rejection() {
                         drop(root);
                     },
                     || budget::PreparingAccount::try_new(false),
-                    || PreparingMetadata::prepare(false, |stage| {
+                    || PreparingMetadata::prepare(false.into(), |stage| {
                         visits += 1;
                         assert!(ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());
                         assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());
@@ -209,3 +210,5 @@ fn generation_reuse() {
 }
 
 mod admission_tests;
+
+mod principal_tests;

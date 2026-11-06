@@ -29,21 +29,36 @@ pre-publication signed sponsor; they are not refunded with these four nodes.
 Including the existing memory-account node in this pool increases the count
 ceiling from 12288/9216 to 16384/12288, preserving the previous count-only capacity of 4096 total or 3072
 ordinary complete roots before other retained/prepared nodes. Native layouts
-are 392 bytes for the three policy nodes and 176 bytes for the account, totaling
-568 bytes per complete root. The waiter and timer account references each occupy
+are 440 bytes for the three policy nodes and 192 bytes for the account, totaling
+632 bytes per complete root. The waiter and timer account references each occupy
 32 bytes, including their captured original-principal allocator. Those count ceilings consume
-2,326,528 total or 1,744,896 ordinary layout bytes, within the unchanged 4/3 MiB
+2,588,672 total or 1,941,504 ordinary layout bytes, within the unchanged 4/3 MiB
 byte ceilings. The larger count ceiling preserves complete-root capacity while allowing more
 simultaneous small nodes; the byte ceiling still bounds mixed/retained storage.
 It does not preallocate RAM. A separate pool or combined allocation would
 complicate independent retirement lifetimes. Shared admission with extra count
 capacity retains the existing ownership structure; other ceilings still apply.
 
+[Container principal qualification](../reports/audits/2026-11-06-q4-container-principals.md)
+checks sibling sharing, twelve actual root-registration quota boundaries, heap-held
+principal denial, independently funded healthy creation and all five namespace
+layouts. The existing memory-charge fixture retains only its original funded
+ledger node after root close/reuse. The complete failed-root fixture retains
+original principal bytes through rejected invalidation, restores them after
+confirmed recovery and keeps them on guarded terminal abandonment. Existing
+unpublished-root fallback also retains its full captured funding under history,
+publication and allocator guards, without adding another deliberate leak.
+
 ## Publication and lifetime
 
-Preparation uses the existing trusted classification captured from the
-unpublished root's translation account. Names, roles, artifact classes and
-manifest fields cannot select reserve. Later promotion cannot reclassify an
+Preparation captures the original verified principal and trusted classification
+from the unpublished root's prebound translation account. Both `PreparingAccount`
+and `PreparingMetadata` pass that same policy to their typed node adapter.
+`NodeCharge<RootMetadata, MetadataSponsor>` funds each actual layout against the
+shared 8 MiB metadata allowance before family byte/count admission and allocation.
+Family or allocation rejection returns unused funding; actual node deallocation
+precedes either refund. This supplies no new physical or publication authority.
+Names, roles, artifact classes and manifest fields cannot select reserve. Later promotion cannot reclassify an
 existing node or change which allowance its final refund returns.
 
 `PreparingAccount` and `PreparingMetadata` retain their admitted nodes inside

@@ -31,12 +31,14 @@ struct Resources {
 pub(in crate::memory) struct PreparingMetadata(ManuallyDrop<Resources>);
 
 impl PreparingMetadata {
-    pub(in crate::memory) fn try_new(platform: bool) -> Result<Self, AllocError> {
-        Self::prepare(platform, |_| Ok(()))
+    pub(in crate::memory) fn try_new(
+        storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
+    ) -> Result<Self, AllocError> {
+        Self::prepare(storage.into(), |_| Ok(()))
     }
 
     fn prepare(
-        platform: bool,
+        storage: crate::memory::kernel_buffers::CapturedStorage,
         mut before: impl FnMut(u8) -> Result<(), AllocError>,
     ) -> Result<Self, AllocError> {
         let mut owner = Self(ManuallyDrop::new(Resources {
@@ -47,13 +49,13 @@ impl PreparingMetadata {
         }));
         let result = (|| {
             before(1)?;
-            owner.0.limits = Some(admission::prepare(platform)?);
+            owner.0.limits = Some(admission::prepare(storage)?);
             before(2)?;
-            owner.0.usage = Some(admission::prepare(platform)?);
+            owner.0.usage = Some(admission::prepare(storage)?);
             before(3)?;
-            owner.0.authority = Some(admission::prepare(platform)?);
+            owner.0.authority = Some(admission::prepare(storage)?);
             before(4)?;
-            owner.0.history = Some(usage::PreparingHistory::try_new(platform)?);
+            owner.0.history = Some(usage::PreparingHistory::try_new(storage.platform())?);
             before(5)
         })();
         if let Err(error) = result {

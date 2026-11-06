@@ -26,33 +26,39 @@ independently caps requested storage as layouts grow. A quarter remains shared t
 without per-type or per-service progress entitlements. No existing resource limit
 is raised and no RAM is preallocated.
 
-Native layouts are 136/128 bytes for capability/IPC nodes, 224 bytes for a
-completion node, 96 bytes for a mailbox-capability node and 136 bytes for a word
-namespace node: 720 bytes for all five. These layouts include the captured
+Native layouts are 152/144 bytes for capability/IPC nodes, 240 bytes for a
+completion node, 112 bytes for a mailbox-capability node and 152 bytes for a word
+namespace node: 800 bytes for all five. These layouts include the captured
 [namespace-account](namespace-account-admission.md) and
 [reactor-account funding references](completion-account-admission.md). The capability
 namespace also retains its immutable principal/class token for authority-record
 preparation. Twice the complete-root count capacity
-uses 5,898,240 total or 4,423,680 ordinary layout bytes, below the 8/6 MiB byte
-ceilings. A mix consisting only of 224-byte completion nodes is byte-bound at
-37449 total or 28086 ordinary nodes before those shared count ceilings. The
+uses 6,553,600 total or 4,915,200 ordinary layout bytes, below the 8/6 MiB byte
+ceilings. A mix consisting only of 240-byte completion nodes is byte-bound at
+34952 total or 26214 ordinary nodes before those shared count ceilings. The
 count-pressure controls use capability namespace nodes; they do not demonstrate
 count-first capacity for every layout. Independent byte-denial controls use
 oversized synthetic layouts. Increasing the byte ceiling would admit more of the
 largest type but consume more heap; the reviewed complete-root mix needs no such
 increase.
 
-The typed charge adds one requested-byte count and original-class flag to each
-node. Reusing the existing admitted map and retirement collection preserves
+The 32-byte typed charge carries requested bytes, captured class and the original
+principal policy. `NodeCharge<NamespaceNodes, MetadataSponsor>` funds actual node
+layouts against the shared 8 MiB metadata allowance before family admission and
+allocation. Capability/IPC roots capture the unpublished prebound translation
+policy; completion and mailbox capture the exact current root before preparation.
+Family denial rolls back unused principal funding. Actual free precedes both
+refunds, including losing candidates prepared beside an existing namespace.
+Reusing the existing admitted map and retirement collection preserves
 allocation-free relinking and their post-deallocation refund order. This adds
 admission work outside publication guards and at actual node release; it does
-not bound allocator overhead, nested payload bytes or aggregate principal use.
+not bound allocator excess, nested payload bytes or general kernel heap use.
 
 ## Capture, publication and release
 
-Capability and IPC preparation capture trusted storage class from the owned
-unpublished translation root. Completion and lazy mailbox/word preparation
-capture it with the exact current generation before allocation, using their
+Capability and IPC preparation capture original principal and trusted class from the
+owned unpublished translation root. Completion and lazy mailbox/word preparation
+capture that policy with the exact current generation before allocation, using their
 existing captured identities and leases. Permanent kernel namespaces are trusted;
 raw fixture namespaces remain ordinary. Names, roles and manifest fields do not
 select reserve. Metadata admission grants no resource reserve privilege.
@@ -77,6 +83,14 @@ completion permits release. Root, namespace, mailbox and detached-node fallback
 remain inert beneath unknown guards; explicit cancellation/disposal retains its
 existing caller-context requirements. This adds no cleanup family, retry owner,
 root lease or physical completion proof.
+
+[Principal qualification](../reports/audits/2026-11-06-q4-container-principals.md)
+reconciles all five namespace layouts separately from authority/endpoint nodes.
+Mailbox preparation retains both its existing namespace and losing candidate;
+six quota prefixes preserve the existing receiver, counters and identity. The
+existing complete-root recovery/abandonment fixtures now carry funded principals
+through failed invalidation and confirmed or terminal release. This preserves
+typed physical prerequisites rather than adding a new cleanup owner.
 
 ## Qualification and remaining scope
 

@@ -1,0 +1,1691 @@
+{
+  "schema": "charlotte.q4-container-principals.v1",
+  "date": "2026-11-06",
+  "base_revision": "9508dd00a2c4122e73bcbe9c3439bbae8ffcd46f",
+  "scope": "Requested-layout principal funding for four root metadata and all five global namespace-node layouts; Q4 remains open.",
+  "source_sha256": {
+    "Cargo.lock": "169db5ac853b42acc4b8d15970d9f3c46036a97229418bc47e99d03f8e1aa029",
+    "crates/catten/src/capability.rs": "fd667b5644f5b7ec9b6db200dc421813a7ae47e1b8e260a7b76f1568099c3ab3",
+    "crates/catten/src/capability/budget.rs": "1915607d54dc149ebc7f41513c3011667bcd1f172b39457d61a8a88a473e85b6",
+    "crates/catten/src/capability/namespace_account_tests.rs": "82e6780c62bb3a4874fd7efd9a9c20b24ce12f9539f78c1fea31df82c8850b99",
+    "crates/catten/src/capability/namespace_node_tests.rs": "cf93bf0e90fd916dee9255179f1844f1b8d3b17dfe9a3efe4641a47a0f9f683d",
+    "crates/catten/src/capability/record.rs": "a834f9ca9baf6a2887d416631478190851c1c3551f26ad2a5462bd80d49cbd94",
+    "crates/catten/src/capability/record_backing_tests.rs": "2498f46e56921bda75be27e6fa8de767905858f818791668497ed2eda5a06123",
+    "crates/catten/src/capability/record_budget.rs": "0ef2d234ec231a88f403cd40d1f36bc21970c2e719730c4f1603790eba6936d9",
+    "crates/catten/src/capability/record_tests.rs": "04704d05be4cb5bd25bf3cbf50795c7835fda70a7d3294fbfd1127841d67fc9f",
+    "crates/catten/src/completion/account_budget.rs": "4d8a1625f196e6729a262694a3389ab6cdbd00406a81acb07339194ad9dd42e8",
+    "crates/catten/src/completion/account_budget/tests.rs": "cdeb3f7cce5cb2bf4671da62d46b02a8966572d1dc7e0cf4b62df5f2e4c1b9bd",
+    "crates/catten/src/completion/budget.rs": "fed0a3ff516a65f46c4705baf860e755818f9176b799b5ba9902166a1f79650d",
+    "crates/catten/src/completion/cq_budget.rs": "e687365d5ee0772c8d7e3c59a9c650303b98edb55f4983678e5a9d9ad4960e62",
+    "crates/catten/src/completion/namespace.rs": "d59ba41e4daf5b93056118f1a42255b368e503bc74467f466d0bffe8a618437a",
+    "crates/catten/src/completion/namespace/preparation.rs": "0e27d6aec48c6418b2d1c096b74b2ff3c6fb705d361202ed1c35f4179c19a6a8",
+    "crates/catten/src/completion/watch_budget.rs": "c59621071937ccb65e08e2eac3af0e8a57a203ec04a112a1492b7d564bb56a97",
+    "crates/catten/src/ipc/budget.rs": "dfcd1c11972ae0189b704ed624261d85f0c9a6d9728fdd5dadfb7a4bd9f00576",
+    "crates/catten/src/ipc/namespace.rs": "27652a1ff49c0942bb8927d3c76531fb938eda1242d5d487e65ff3f7c42491e8",
+    "crates/catten/src/ipc/record_budget.rs": "05f9f510675f70c431690f9c6e2f0256ad69dfaf002c8884a1c648ddb3a53ff0",
+    "crates/catten/src/klib/account_backing.rs": "332a0cc31069f6421b21c2968e1c8ab7585e8c85e4bf39dc1ca7b83e4116af18",
+    "crates/catten/src/klib/admission.rs": "0b8ee0a656d965bafcda584f80c39558e831dd387e85a7c1db1950764e2c18af",
+    "crates/catten/src/klib/admission/byte_allocator.rs": "b65017248c8b588db3d619fe7bd27cd96dd9994c8893c57e672237b0910da009",
+    "crates/catten/src/klib/admission/byte_allocator_tests.rs": "72d623a330d557a6830845f535b845e82f4cf46bbbc8008dda2e3d65f073bc40",
+    "crates/catten/src/klib/admission/tests.rs": "b51af5d6f55dcefd1bc04e490414724890b64a29821c53e84b14ea89ceb7035c",
+    "crates/catten/src/klib/charged_allocator.rs": "14447a1ec1ec8c2b7ee011b375aa2d194580d761f6912b5d47dc410ed208ce8f",
+    "crates/catten/src/klib/charged_allocator/tests.rs": "abe120f4474cddfb43547ebcca8843f9a0b3edbbdcf1dff818f4f090c6b67420",
+    "crates/catten/src/klib/mod.rs": "da082ebcdfb9e511023165a2031f18691474dda494ea0e10164875201d89e212",
+    "crates/catten/src/klib/namespace_account_budget.rs": "001c22db9bd1a1e36e658a5049a98a8ee9fcd9b1aa49120a8c8af13be91f1f10",
+    "crates/catten/src/klib/namespace_node_budget.rs": "4d5fd0849ab66735e81fce2117b8377ce132ddaa83ba586fd77b861eb1774371",
+    "crates/catten/src/klib/observer/account_budget.rs": "b77408c0ccccaf71c2885d53b5b517998b6f2e934a8613e925b04321ebd1b3c2",
+    "crates/catten/src/klib/observer/account_budget/tests.rs": "b96d160a1b2cb934cf14ac5a484e1a47a0c5680900152b525f2c03b1f1ea5dc0",
+    "crates/catten/src/klib/observer/mod.rs": "229f9c2f9d1250909dcd894550703c4c3817038597950a026d8214dd8a1b4b26",
+    "crates/catten/src/klib/observer/waiter_budget.rs": "dc82b003b40344376eb19dfdf77e3513fa960327af9d5a194ab08dd0f3e7d0fd",
+    "crates/catten/src/memory/budget.rs": "e62eb149ecf356f58fe9a1b4e607fb6f0812d53647161e46cb72aa78cc69d9b8",
+    "crates/catten/src/memory/budget/preparation.rs": "d5d50548e745eb2981f9a466d438f4d370849fe672b670d29ba622cff6b9e6a4",
+    "crates/catten/src/memory/budget/preparation/tests.rs": "34e0be245c5a25edef237787bc7c0e6fddf7014b0280746e0c02ede02d1c9b33",
+    "crates/catten/src/memory/budget/tests.rs": "ce0bc96c64e468761a09d54dbed19480cad9e9dd45813168dd3eeb6929a17367",
+    "crates/catten/src/memory/mod.rs": "70c2cecb490a9ff58389df731851250902f2e394f049716036e1b30050da3186",
+    "crates/catten/src/memory/registration.rs": "2f0ba1e51e16f772f37619cecbb3eddadbf34a0cbe69eff8460b4a1a500b86da",
+    "crates/catten/src/memory/registration/metadata.rs": "149aabbfc9f7edbb10b136b9c1eb7fe7615da83c790aadf0d05ad5aed072f974",
+    "crates/catten/src/memory/registration/metadata/admission.rs": "c6364bb802ac0d5272e6bceeb89896609b6f8612a5d20a53cb754b0cf3f10360",
+    "crates/catten/src/memory/registration/metadata/tests.rs": "297300723f725c798fc24c45cea4eda3d3f9f019469c6bd4d40a3a50945de094",
+    "crates/catten/src/memory/registration/metadata/tests/principal_tests.rs": "7ba319601d83e4fe8920bc0fb6c9df57f20bec035ac32dab132d1bb118c57356",
+    "crates/catten/src/memory/retirement/recovery/tests.rs": "7831608b89daf778defd1edbd982e5c8f2b6bd0cbe1513a3bc3830e1d219e6ac",
+    "crates/catten/src/memory/usage/principal_history.rs": "83c774427e827f2faa83b16fcf02e3046f39d156bf698d05a716a17dcf8a214f",
+    "crates/catten/src/memory/usage/principal_history/kernel_buffers.rs": "a9cab66cf45459ec8af2f256909b566b423e091a89e248d123efb041670f3635",
+    "crates/catten/src/memory/usage/principal_history/kernel_buffers/reactor_tests.rs": "cd2cd90a7b4ec2e50cd7f80d0f1e7169f1312d2b93009266c0aecc89b2bb7427",
+    "crates/catten/src/resource_policy.rs": "b3004919de47a6ed8c6b678f2ab2bb99fc7094fb828fcae91b6885d5687a7af6",
+    "crates/catten/src/resource_policy/defaults.rs": "48be11b7ee2dea19d1abbc0025cab6eaba40f53acebd6387492908b993b84b30",
+    "crates/catten/src/resource_policy/tests.rs": "571cf532bff4e5a5164802ee6994b181ba5d23ec07626caf774e7ef455be33a9",
+    "crates/catten/src/syscall/mailbox_budget.rs": "c741ac08e18f449db9771df349ced8142d7acd6f63ffc45fafe895af51226062",
+    "crates/catten/src/syscall/mailbox_node_budget.rs": "c1810c64aa5358cc80b9e491d80046365ac5c22e40702b07ece4769318f44a34",
+    "crates/catten/src/syscall/mailbox_node_tests.rs": "954cd9cde6a42202fc971d489a556255455ee864fa3e3cac94ea857a8488b21a",
+    "crates/catten/src/syscall/mailbox_publication.rs": "e4ff62cdfa44f049aa7c74eac66a48bd63adb4d4680d8534e1fdcba900ffa5dc",
+    "crates/catten/src/syscall/mailbox_publication_tests.rs": "ec9a13baac76bb90b053cb9161ab3dcf25de0f1fde5182a5380213a086c98808",
+    "crates/catten/src/syscall/mailbox_queue.rs": "552dea1156ca48e9729a3e8d583a93ab4b5371b733055aed639ec46590c4539e",
+    "crates/catten/src/syscall/mailbox_tests.rs": "225a627fa92ff02073bfdd246b3c1ca018bade85991c97c08db9c06a67457570",
+    "crates/catten/src/syscall/mod.rs": "f2eaea54ad63945f73846236a36ac23bf768f86b5b43c9c2a21fcc49b9632839",
+    "crates/catten/src/timers/account_budget.rs": "7b9ab4b42900abc9b231d57e7be8fdf81dfc89ff0f023e3b99cc229518741568",
+    "crates/catten/src/timers/budget.rs": "fa34638f8fa3b210ad0dfe42755b3c26ab2d5d1ebb8ea76fe7e7403d53ee297c",
+    "crates/catten/src/timers/budget/account_tests.rs": "d202cac82d238f126d2ff61d811e3f278719a016c385b642123065bd89aeb036",
+    "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
+    "scripts/audit-resource-capacity.py": "e5f5809a39d413c25ddff2889be5536ba8bf0514432a997692ad9b0668218ef0",
+    "scripts/run-host-tests.sh": "ad7bfdabf1d8ae43f7459917d6f0773b878bb363b65654576f51526a657a2d58"
+  },
+  "failed_native_source_sha256": {
+    "Cargo.lock": "169db5ac853b42acc4b8d15970d9f3c46036a97229418bc47e99d03f8e1aa029",
+    "crates/catten/src/capability.rs": "fd667b5644f5b7ec9b6db200dc421813a7ae47e1b8e260a7b76f1568099c3ab3",
+    "crates/catten/src/capability/budget.rs": "1915607d54dc149ebc7f41513c3011667bcd1f172b39457d61a8a88a473e85b6",
+    "crates/catten/src/capability/namespace_account_tests.rs": "82e6780c62bb3a4874fd7efd9a9c20b24ce12f9539f78c1fea31df82c8850b99",
+    "crates/catten/src/capability/namespace_node_tests.rs": "cf93bf0e90fd916dee9255179f1844f1b8d3b17dfe9a3efe4641a47a0f9f683d",
+    "crates/catten/src/capability/record.rs": "a834f9ca9baf6a2887d416631478190851c1c3551f26ad2a5462bd80d49cbd94",
+    "crates/catten/src/capability/record_backing_tests.rs": "2498f46e56921bda75be27e6fa8de767905858f818791668497ed2eda5a06123",
+    "crates/catten/src/capability/record_budget.rs": "0ef2d234ec231a88f403cd40d1f36bc21970c2e719730c4f1603790eba6936d9",
+    "crates/catten/src/capability/record_tests.rs": "04704d05be4cb5bd25bf3cbf50795c7835fda70a7d3294fbfd1127841d67fc9f",
+    "crates/catten/src/completion/account_budget.rs": "4d8a1625f196e6729a262694a3389ab6cdbd00406a81acb07339194ad9dd42e8",
+    "crates/catten/src/completion/account_budget/tests.rs": "cdeb3f7cce5cb2bf4671da62d46b02a8966572d1dc7e0cf4b62df5f2e4c1b9bd",
+    "crates/catten/src/completion/budget.rs": "fed0a3ff516a65f46c4705baf860e755818f9176b799b5ba9902166a1f79650d",
+    "crates/catten/src/completion/cq_budget.rs": "e687365d5ee0772c8d7e3c59a9c650303b98edb55f4983678e5a9d9ad4960e62",
+    "crates/catten/src/completion/namespace.rs": "d59ba41e4daf5b93056118f1a42255b368e503bc74467f466d0bffe8a618437a",
+    "crates/catten/src/completion/namespace/preparation.rs": "0e27d6aec48c6418b2d1c096b74b2ff3c6fb705d361202ed1c35f4179c19a6a8",
+    "crates/catten/src/completion/watch_budget.rs": "c59621071937ccb65e08e2eac3af0e8a57a203ec04a112a1492b7d564bb56a97",
+    "crates/catten/src/ipc/budget.rs": "dfcd1c11972ae0189b704ed624261d85f0c9a6d9728fdd5dadfb7a4bd9f00576",
+    "crates/catten/src/ipc/namespace.rs": "27652a1ff49c0942bb8927d3c76531fb938eda1242d5d487e65ff3f7c42491e8",
+    "crates/catten/src/ipc/record_budget.rs": "05f9f510675f70c431690f9c6e2f0256ad69dfaf002c8884a1c648ddb3a53ff0",
+    "crates/catten/src/klib/account_backing.rs": "332a0cc31069f6421b21c2968e1c8ab7585e8c85e4bf39dc1ca7b83e4116af18",
+    "crates/catten/src/klib/admission.rs": "0b8ee0a656d965bafcda584f80c39558e831dd387e85a7c1db1950764e2c18af",
+    "crates/catten/src/klib/admission/byte_allocator.rs": "b65017248c8b588db3d619fe7bd27cd96dd9994c8893c57e672237b0910da009",
+    "crates/catten/src/klib/admission/byte_allocator_tests.rs": "72d623a330d557a6830845f535b845e82f4cf46bbbc8008dda2e3d65f073bc40",
+    "crates/catten/src/klib/admission/tests.rs": "b51af5d6f55dcefd1bc04e490414724890b64a29821c53e84b14ea89ceb7035c",
+    "crates/catten/src/klib/charged_allocator.rs": "14447a1ec1ec8c2b7ee011b375aa2d194580d761f6912b5d47dc410ed208ce8f",
+    "crates/catten/src/klib/charged_allocator/tests.rs": "abe120f4474cddfb43547ebcca8843f9a0b3edbbdcf1dff818f4f090c6b67420",
+    "crates/catten/src/klib/mod.rs": "da082ebcdfb9e511023165a2031f18691474dda494ea0e10164875201d89e212",
+    "crates/catten/src/klib/namespace_account_budget.rs": "001c22db9bd1a1e36e658a5049a98a8ee9fcd9b1aa49120a8c8af13be91f1f10",
+    "crates/catten/src/klib/namespace_node_budget.rs": "4d5fd0849ab66735e81fce2117b8377ce132ddaa83ba586fd77b861eb1774371",
+    "crates/catten/src/klib/observer/account_budget.rs": "b77408c0ccccaf71c2885d53b5b517998b6f2e934a8613e925b04321ebd1b3c2",
+    "crates/catten/src/klib/observer/account_budget/tests.rs": "b96d160a1b2cb934cf14ac5a484e1a47a0c5680900152b525f2c03b1f1ea5dc0",
+    "crates/catten/src/klib/observer/mod.rs": "229f9c2f9d1250909dcd894550703c4c3817038597950a026d8214dd8a1b4b26",
+    "crates/catten/src/klib/observer/waiter_budget.rs": "dc82b003b40344376eb19dfdf77e3513fa960327af9d5a194ab08dd0f3e7d0fd",
+    "crates/catten/src/memory/budget.rs": "e62eb149ecf356f58fe9a1b4e607fb6f0812d53647161e46cb72aa78cc69d9b8",
+    "crates/catten/src/memory/budget/preparation.rs": "d5d50548e745eb2981f9a466d438f4d370849fe672b670d29ba622cff6b9e6a4",
+    "crates/catten/src/memory/budget/preparation/tests.rs": "34e0be245c5a25edef237787bc7c0e6fddf7014b0280746e0c02ede02d1c9b33",
+    "crates/catten/src/memory/budget/tests.rs": "ce0bc96c64e468761a09d54dbed19480cad9e9dd45813168dd3eeb6929a17367",
+    "crates/catten/src/memory/mod.rs": "70c2cecb490a9ff58389df731851250902f2e394f049716036e1b30050da3186",
+    "crates/catten/src/memory/registration.rs": "2f0ba1e51e16f772f37619cecbb3eddadbf34a0cbe69eff8460b4a1a500b86da",
+    "crates/catten/src/memory/registration/metadata.rs": "149aabbfc9f7edbb10b136b9c1eb7fe7615da83c790aadf0d05ad5aed072f974",
+    "crates/catten/src/memory/registration/metadata/admission.rs": "c6364bb802ac0d5272e6bceeb89896609b6f8612a5d20a53cb754b0cf3f10360",
+    "crates/catten/src/memory/registration/metadata/tests.rs": "297300723f725c798fc24c45cea4eda3d3f9f019469c6bd4d40a3a50945de094",
+    "crates/catten/src/memory/registration/metadata/tests/principal_tests.rs": "7ba319601d83e4fe8920bc0fb6c9df57f20bec035ac32dab132d1bb118c57356",
+    "crates/catten/src/memory/retirement/recovery/tests.rs": "ad331ae2784097b472a1f8dc20359acc1c4951a0cb7f0ebf01796ba240620293",
+    "crates/catten/src/memory/usage/principal_history.rs": "83c774427e827f2faa83b16fcf02e3046f39d156bf698d05a716a17dcf8a214f",
+    "crates/catten/src/memory/usage/principal_history/kernel_buffers.rs": "a9cab66cf45459ec8af2f256909b566b423e091a89e248d123efb041670f3635",
+    "crates/catten/src/memory/usage/principal_history/kernel_buffers/reactor_tests.rs": "cd2cd90a7b4ec2e50cd7f80d0f1e7169f1312d2b93009266c0aecc89b2bb7427",
+    "crates/catten/src/resource_policy.rs": "b3004919de47a6ed8c6b678f2ab2bb99fc7094fb828fcae91b6885d5687a7af6",
+    "crates/catten/src/resource_policy/defaults.rs": "48be11b7ee2dea19d1abbc0025cab6eaba40f53acebd6387492908b993b84b30",
+    "crates/catten/src/resource_policy/tests.rs": "571cf532bff4e5a5164802ee6994b181ba5d23ec07626caf774e7ef455be33a9",
+    "crates/catten/src/syscall/mailbox_budget.rs": "c741ac08e18f449db9771df349ced8142d7acd6f63ffc45fafe895af51226062",
+    "crates/catten/src/syscall/mailbox_node_budget.rs": "c1810c64aa5358cc80b9e491d80046365ac5c22e40702b07ece4769318f44a34",
+    "crates/catten/src/syscall/mailbox_node_tests.rs": "954cd9cde6a42202fc971d489a556255455ee864fa3e3cac94ea857a8488b21a",
+    "crates/catten/src/syscall/mailbox_publication.rs": "e4ff62cdfa44f049aa7c74eac66a48bd63adb4d4680d8534e1fdcba900ffa5dc",
+    "crates/catten/src/syscall/mailbox_publication_tests.rs": "ec9a13baac76bb90b053cb9161ab3dcf25de0f1fde5182a5380213a086c98808",
+    "crates/catten/src/syscall/mailbox_queue.rs": "552dea1156ca48e9729a3e8d583a93ab4b5371b733055aed639ec46590c4539e",
+    "crates/catten/src/syscall/mailbox_tests.rs": "225a627fa92ff02073bfdd246b3c1ca018bade85991c97c08db9c06a67457570",
+    "crates/catten/src/syscall/mod.rs": "f2eaea54ad63945f73846236a36ac23bf768f86b5b43c9c2a21fcc49b9632839",
+    "crates/catten/src/timers/account_budget.rs": "7b9ab4b42900abc9b231d57e7be8fdf81dfc89ff0f023e3b99cc229518741568",
+    "crates/catten/src/timers/budget.rs": "fa34638f8fa3b210ad0dfe42755b3c26ab2d5d1ebb8ea76fe7e7403d53ee297c",
+    "crates/catten/src/timers/budget/account_tests.rs": "d202cac82d238f126d2ff61d811e3f278719a016c385b642123065bd89aeb036",
+    "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
+    "scripts/audit-resource-capacity.py": "e5f5809a39d413c25ddff2889be5536ba8bf0514432a997692ad9b0668218ef0",
+    "scripts/run-host-tests.sh": "ad7bfdabf1d8ae43f7459917d6f0773b878bb363b65654576f51526a657a2d58"
+  },
+  "limits": {
+    "existing_limits_changed": false,
+    "principal_metadata_bytes": 8388608,
+    "principal_kernel_buffer_bytes": 16777216,
+    "principal_namespace_account_bytes": 1048576,
+    "principal_reactor_account_bytes": 1048576,
+    "root_metadata_bytes_total_ordinary": [
+      4194304,
+      3145728
+    ],
+    "root_metadata_nodes_total_ordinary": [
+      16384,
+      12288
+    ],
+    "namespace_bytes_total_ordinary": [
+      8388608,
+      6291456
+    ],
+    "namespace_nodes_total_ordinary": [
+      40960,
+      30720
+    ]
+  },
+  "layout_measurements": {
+    "root_policy_nodes_bytes": 440,
+    "ledger_node_bytes": 192,
+    "four_root_nodes_bytes": 632,
+    "namespace_node_bytes": {
+      "capability": 152,
+      "ipc": 144,
+      "completion": 240,
+      "mailbox": 112,
+      "words": 152
+    },
+    "five_namespace_nodes_bytes": 800,
+    "mandatory_registration_metadata_bytes": 928,
+    "root_count_layout_bytes_total_ordinary": [
+      2588672,
+      1941504
+    ],
+    "double_namespace_count_headroom_bytes_total_ordinary": [
+      6553600,
+      4915200
+    ],
+    "largest_namespace_byte_ceiling_count_total_ordinary": [
+      34952,
+      26214
+    ],
+    "root_construction_layouts_bytes": [
+      152,
+      192,
+      88,
+      208,
+      144,
+      144
+    ],
+    "root_prefix_headroom_bytes": [
+      0,
+      151,
+      152,
+      343,
+      344,
+      431,
+      432,
+      639,
+      640,
+      783,
+      784,
+      927
+    ],
+    "mailbox_candidate_prefix_headroom_bytes": [
+      0,
+      95,
+      96,
+      207,
+      208,
+      303
+    ],
+    "before_root_staging_principal_bytes": 1672,
+    "confirmed_ipc_namespace_free_bytes": 144,
+    "retained_failed_root_principal_bytes": 1528,
+    "confirmed_recovery_principal_bytes": 0
+  },
+  "capacity_census": {
+    "schema": "charlotte.resource-capacity.v2",
+    "rust_toolchain": "nightly-2026-07-27",
+    "host_pointer_bits": 64,
+    "selected_policy": "crates/catten/src/resource_policy/defaults.rs",
+    "source_sha256": {
+      "crates/catten/src/resource_policy/defaults.rs": "48be11b7ee2dea19d1abbc0025cab6eaba40f53acebd6387492908b993b84b30",
+      "crates/catten/src/resource_policy.rs": "b3004919de47a6ed8c6b678f2ab2bb99fc7094fb828fcae91b6885d5687a7af6",
+      "crates/catten-syscall/src/cq_ring_tests.rs": "b7d03a0597a776a31d1bde5dd46e3a778ec13f85cba8fdde82da554c1779d48c",
+      "crates/catten-syscall/src/lib.rs": "3133313e95497cad356f5e058eecf31d8bfb305e99f5aabd12a3cb7c2e54f517",
+      "crates/catten-syscall/src/metadata_pools/tests.rs": "31b2869464675a8075e2e790437bb249212ff09c9942f56fd15d8b6b3924f464",
+      "crates/catten-syscall/src/metadata_pools.rs": "4d226d4e741ef991e73a50111d797a1094c77f504be8e2a0f04ae7cacc087bed",
+      "rust-toolchain.toml": "2c5e123bc7a8d210e448f0cc32b410c0b33c5fafa29614de7dd53dc2b4b4e243",
+      "scripts/audit-resource-capacity.py": "e5f5809a39d413c25ddff2889be5536ba8bf0514432a997692ad9b0668218ef0"
+    },
+    "metadata_pools": [
+      {
+        "name": "root_metadata",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          4194304,
+          16384
+        ],
+        "ordinary": [
+          3145728,
+          12288
+        ]
+      },
+      {
+        "name": "namespace_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          8388608,
+          40960
+        ],
+        "ordinary": [
+          6291456,
+          30720
+        ]
+      },
+      {
+        "name": "authority_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          16777216,
+          131072
+        ],
+        "ordinary": [
+          12582912,
+          98304
+        ]
+      },
+      {
+        "name": "mailbox_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          2097152,
+          16384
+        ],
+        "ordinary": [
+          1572864,
+          12288
+        ]
+      },
+      {
+        "name": "deferred_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          1048576,
+          16384
+        ],
+        "ordinary": [
+          786432,
+          12288
+        ]
+      },
+      {
+        "name": "observer_backing",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "bundles"
+        ],
+        "total": [
+          16777216,
+          65536
+        ],
+        "ordinary": [
+          12582912,
+          49152
+        ]
+      },
+      {
+        "name": "completion_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          8388608,
+          20480
+        ],
+        "ordinary": [
+          6291456,
+          15360
+        ]
+      },
+      {
+        "name": "device_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          16777216,
+          139264
+        ],
+        "ordinary": [
+          12582912,
+          104448
+        ]
+      },
+      {
+        "name": "iommu_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          25165824,
+          262144
+        ],
+        "ordinary": [
+          18874368,
+          196608
+        ]
+      },
+      {
+        "name": "principal_history",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          1048576,
+          4096
+        ],
+        "ordinary": [
+          786432,
+          3072
+        ]
+      },
+      {
+        "name": "thread_metadata",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "bundles"
+        ],
+        "total": [
+          8388608,
+          4096
+        ],
+        "ordinary": [
+          6291456,
+          3072
+        ]
+      },
+      {
+        "name": "thread_table",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "slots"
+        ],
+        "total": [
+          33554432,
+          32768
+        ],
+        "ordinary": [
+          25165824,
+          24576
+        ]
+      },
+      {
+        "name": "root_table",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "slots"
+        ],
+        "total": [
+          16777216,
+          16384
+        ],
+        "ordinary": [
+          12582912,
+          12288
+        ]
+      },
+      {
+        "name": "waiter_accounts",
+        "dimensions": 1,
+        "units": [
+          "bundles"
+        ],
+        "total": [
+          8192
+        ],
+        "ordinary": [
+          6144
+        ]
+      },
+      {
+        "name": "timer_accounts",
+        "dimensions": 1,
+        "units": [
+          "bundles"
+        ],
+        "total": [
+          16384
+        ],
+        "ordinary": [
+          12288
+        ]
+      },
+      {
+        "name": "completion_accounts",
+        "dimensions": 1,
+        "units": [
+          "bundles"
+        ],
+        "total": [
+          24576
+        ],
+        "ordinary": [
+          18432
+        ]
+      },
+      {
+        "name": "namespace_accounts",
+        "dimensions": 1,
+        "units": [
+          "bundles"
+        ],
+        "total": [
+          32768
+        ],
+        "ordinary": [
+          24576
+        ]
+      },
+      {
+        "name": "scratch_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          524288,
+          8192
+        ],
+        "ordinary": [
+          393216,
+          6144
+        ]
+      },
+      {
+        "name": "snapshot_buffers",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "buffers"
+        ],
+        "total": [
+          16777216,
+          8192
+        ],
+        "ordinary": [
+          12582912,
+          6144
+        ]
+      },
+      {
+        "name": "mapping_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          1048576,
+          8192
+        ],
+        "ordinary": [
+          786432,
+          6144
+        ]
+      },
+      {
+        "name": "memory_capability_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          4194304,
+          32768
+        ],
+        "ordinary": [
+          3145728,
+          24576
+        ]
+      },
+      {
+        "name": "observer_lists",
+        "dimensions": 1,
+        "units": [
+          "allocations"
+        ],
+        "total": [
+          8192
+        ],
+        "ordinary": [
+          6144
+        ]
+      },
+      {
+        "name": "ipc_nodes",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "nodes"
+        ],
+        "total": [
+          16777216,
+          98304
+        ],
+        "ordinary": [
+          12582912,
+          73728
+        ]
+      },
+      {
+        "name": "service_images",
+        "dimensions": 2,
+        "units": [
+          "bytes",
+          "images"
+        ],
+        "total": [
+          16777216,
+          64
+        ],
+        "ordinary": [
+          12582912,
+          48
+        ]
+      }
+    ],
+    "byte_pool_count": 19,
+    "byte_ceiling_sums": {
+      "total": 215482368,
+      "ordinary": 161611776
+    },
+    "separate_queue_byte_ceilings": [
+      {
+        "name": "mailbox_queues",
+        "total_bytes": 8388608,
+        "ordinary_bytes": 6291456
+      },
+      {
+        "name": "completion_queues",
+        "total_bytes": 4194304,
+        "ordinary_bytes": 3145728
+      }
+    ],
+    "kernel_heap": {
+      "initial_bytes": 8388608,
+      "growth_min_bytes": 67108864,
+      "growth_max_bytes": 268435456,
+      "ram_divisor": 64
+    },
+    "local": {
+      "telemetry_working_bytes": 1048576
+    },
+    "principal_byte_limits": {
+      "kernel_buffer_bytes": 16777216,
+      "namespace_account_bytes": 1048576,
+      "reactor_account_bytes": 1048576,
+      "metadata_bytes": 8388608
+    },
+    "usable_ram_samples": [
+      {
+        "usable_bytes": 384827392,
+        "growth_reserve_bytes": 67108864,
+        "total_mapped_heap_bytes": 75497472
+      },
+      {
+        "usable_bytes": 396361728,
+        "growth_reserve_bytes": 67108864,
+        "total_mapped_heap_bytes": 75497472
+      },
+      {
+        "usable_bytes": 536870912,
+        "growth_reserve_bytes": 67108864,
+        "total_mapped_heap_bytes": 75497472
+      },
+      {
+        "usable_bytes": 1073741824,
+        "growth_reserve_bytes": 67108864,
+        "total_mapped_heap_bytes": 75497472
+      },
+      {
+        "usable_bytes": 4294967296,
+        "growth_reserve_bytes": 67108864,
+        "total_mapped_heap_bytes": 75497472
+      },
+      {
+        "usable_bytes": 8589934592,
+        "growth_reserve_bytes": 134217728,
+        "total_mapped_heap_bytes": 142606336
+      },
+      {
+        "usable_bytes": 17179869184,
+        "growth_reserve_bytes": 268435456,
+        "total_mapped_heap_bytes": 276824064
+      }
+    ],
+    "interpretation": [
+      "Independent ceilings, not allocated usage, disjoint partitions or jointly reachable maxima.",
+      "Count-only account/control allocations, allocator overhead and boot/transient/retained backing are not converted into bytes here.",
+      "Queue ceilings remain separate; this report does not assert absence of accounting overlap.",
+      "Usable-RAM samples are inputs to the real heap formula, not guest RAM or native measurements.",
+      "Reported principal ceilings do not prove complete coverage, cleanup progress or aggregate acceptance; they overlap applicable family ceilings."
+    ]
+  },
+  "native_layout": {
+    "profile": "AMD-Vi security",
+    "kernel_sha256": "218c35b34831eb7e58bf5ab1e2168a56c432fb1918cc1154481c9cec151c7c1b",
+    "command": [
+      "dwarfdump",
+      "--regex",
+      "--name",
+      "^Node<.*DomainLimits.*RootMetadata",
+      "--name",
+      "^Node<.*DomainUsage.*RootMetadata",
+      "--name",
+      "^Node<.*DomainAuthoritySlot.*RootMetadata",
+      "--name",
+      "^Node<.*DomainAccount.*RootMetadata",
+      "--name",
+      "^Node<.*AddressSpaceCapabilities.*NamespaceNodes",
+      "--name",
+      "^Node<.*AsIpcCaps.*NamespaceNodes",
+      "--name",
+      "^Node<.*completion::namespace::Namespace.*NamespaceNodes",
+      "--name",
+      "^Node<.*AsMailboxCaps.*NamespaceNodes",
+      "--name",
+      "^Node<.*mailbox_queue::Namespace.*NamespaceNodes",
+      "target/x86_64-unknown-none-catten/debug/catten"
+    ],
+    "diagnostics": [
+      "target/x86_64-unknown-none-catten/debug/catten:\tfile format elf64-x86-64",
+      "",
+      "0x00132c65: DW_TAG_structure_type",
+      "              DW_AT_name\t(\"Node<(usize, catten::syscall::AsMailboxCaps), catten::klib::admission::NodeCharge<catten::klib::admission::NamespaceNodes, catten::memory::usage::principal_history::kernel_buffers::PrincipalBytes<catten::memory::usage::principal_history::kernel_buffers::MetadataBudget>>>\")",
+      "              DW_AT_byte_size\t(0x70)",
+      "              DW_AT_accessibility\t(DW_ACCESS_private)",
+      "              DW_AT_alignment\t(8)",
+      "",
+      "0x00132d3c: DW_TAG_structure_type",
+      "              DW_AT_name\t(\"Node<(usize, catten::syscall::mailbox_queue::Namespace), catten::klib::admission::NodeCharge<catten::klib::admission::NamespaceNodes, catten::memory::usage::principal_history::kernel_buffers::PrincipalBytes<catten::memory::usage::principal_history::kernel_buffers::MetadataBudget>>>\")",
+      "              DW_AT_byte_size\t(0x98)",
+      "              DW_AT_accessibility\t(DW_ACCESS_private)",
+      "              DW_AT_alignment\t(8)",
+      "",
+      "0x00132ff3: DW_TAG_structure_type",
+      "              DW_AT_name\t(\"Node<(usize, catten::capability::AddressSpaceCapabilities), catten::klib::admission::NodeCharge<catten::klib::admission::NamespaceNodes, catten::memory::usage::principal_history::kernel_buffers::PrincipalBytes<catten::memory::usage::principal_history::kernel_buffers::MetadataBudget>>>\")",
+      "              DW_AT_byte_size\t(0x98)",
+      "              DW_AT_accessibility\t(DW_ACCESS_private)",
+      "              DW_AT_alignment\t(8)",
+      "",
+      "0x001330ca: DW_TAG_structure_type",
+      "              DW_AT_name\t(\"Node<(usize, (catten::memory::AddressSpaceHandle, catten::memory::DomainLimits)), catten::klib::admission::NodeCharge<catten::klib::admission::RootMetadata, catten::memory::usage::principal_history::kernel_buffers::PrincipalBytes<catten::memory::usage::principal_history::kernel_buffers::MetadataBudget>>>\")",
+      "              DW_AT_byte_size\t(0x58)",
+      "              DW_AT_accessibility\t(DW_ACCESS_private)",
+      "              DW_AT_alignment\t(8)",
+      "",
+      "0x001331a1: DW_TAG_structure_type",
+      "              DW_AT_name\t(\"Node<(usize, (catten::memory::AddressSpaceHandle, catten::memory::usage::DomainUsage)), catten::klib::admission::NodeCharge<catten::klib::admission::RootMetadata, catten::memory::usage::principal_history::kernel_buffers::PrincipalBytes<catten::memory::usage::principal_history::kernel_buffers::MetadataBudget>>>\")",
+      "              DW_AT_byte_size\t(0xd0)",
+      "              DW_AT_accessibility\t(DW_ACCESS_private)",
+      "              DW_AT_alignment\t(16)",
+      "",
+      "0x0013337e: DW_TAG_structure_type",
+      "              DW_AT_name\t(\"Node<(usize, catten::memory::DomainAuthoritySlot), catten::klib::admission::NodeCharge<catten::klib::admission::RootMetadata, catten::memory::usage::principal_history::kernel_buffers::PrincipalBytes<catten::memory::usage::principal_history::kernel_buffers::MetadataBudget>>>\")",
+      "              DW_AT_byte_size\t(0x90)",
+      "              DW_AT_accessibility\t(DW_ACCESS_private)",
+      "              DW_AT_alignment\t(8)",
+      "",
+      "0x00485177: DW_TAG_structure_type",
+      "              DW_AT_name\t(\"Node<(usize, catten::completion::namespace::Namespace), catten::klib::admission::NodeCharge<catten::klib::admission::NamespaceNodes, catten::memory::usage::principal_history::kernel_buffers::PrincipalBytes<catten::memory::usage::principal_history::kernel_buffers::MetadataBudget>>>\")",
+      "              DW_AT_byte_size\t(0xf0)",
+      "              DW_AT_accessibility\t(DW_ACCESS_private)",
+      "              DW_AT_alignment\t(8)",
+      "",
+      "0x0060bd45: DW_TAG_structure_type",
+      "              DW_AT_name\t(\"Node<(usize, catten::ipc::AsIpcCaps), catten::klib::admission::NodeCharge<catten::klib::admission::NamespaceNodes, catten::memory::usage::principal_history::kernel_buffers::PrincipalBytes<catten::memory::usage::principal_history::kernel_buffers::MetadataBudget>>>\")",
+      "              DW_AT_byte_size\t(0x90)",
+      "              DW_AT_accessibility\t(DW_ACCESS_private)",
+      "              DW_AT_alignment\t(8)",
+      "",
+      "0x00df65b7: DW_TAG_structure_type",
+      "              DW_AT_name\t(\"Node<((usize, usize), catten::memory::budget::DomainAccount), catten::klib::admission::NodeCharge<catten::klib::admission::RootMetadata, catten::memory::usage::principal_history::kernel_buffers::PrincipalBytes<catten::memory::usage::principal_history::kernel_buffers::MetadataBudget>>>\")",
+      "              DW_AT_byte_size\t(0xc0)",
+      "              DW_AT_accessibility\t(DW_ACCESS_private)",
+      "              DW_AT_alignment\t(8)"
+    ]
+  },
+  "checks": [
+    {
+      "name": "format",
+      "status": "passed",
+      "command": "cargo fmt --all -- --check"
+    },
+    {
+      "name": "standalone fixture format",
+      "status": "passed",
+      "command": "cargo fmt --all -- --check crates/catten/src/klib/admission/byte_allocator_tests.rs"
+    },
+    {
+      "name": "full host",
+      "status": "passed",
+      "command": "CARGO_NET_OFFLINE=true scripts/run-host-tests.sh",
+      "log_sha256": "eab3180e2f82afb1d6fe7b97def0b04ebe2ea092f96f221011d2a9d11710d7f3",
+      "milestones": [
+        "test klib::admission::tests::funded_node_rejection_returns_original_sponsor_and_family ... ok",
+        "test resource_policy::tests::metadata_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "test klib::admission::tests::funded_node_rejection_returns_original_sponsor_and_family ... ok",
+        "test resource_policy::tests::metadata_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "test klib::admission::tests::funded_node_rejection_returns_original_sponsor_and_family ... ok",
+        "test resource_policy::tests::metadata_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "test klib::admission::tests::funded_node_rejection_returns_original_sponsor_and_family ... ok",
+        "test resource_policy::tests::metadata_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "test klib::admission::tests::funded_node_rejection_returns_original_sponsor_and_family ... ok",
+        "test resource_policy::tests::metadata_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "test klib::admission::tests::funded_node_rejection_returns_original_sponsor_and_family ... ok",
+        "test resource_policy::tests::metadata_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "test klib::admission::tests::funded_node_rejection_returns_original_sponsor_and_family ... ok",
+        "test resource_policy::tests::metadata_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "test klib::admission::tests::funded_node_rejection_returns_original_sponsor_and_family ... ok",
+        "test resource_policy::tests::metadata_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "test resource_policy::tests::metadata_principal_bytes_reject_zero_and_unsupported_layout_size ... ok",
+        "SHA-256, CLS2 metadata, placement-policy, and signed-deployment self-tests pass"
+      ]
+    },
+    {
+      "name": "ARM test",
+      "status": "passed",
+      "command": "CARGO_NET_OFFLINE=true CATTEN_AARCH64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/aarch64-unknown-none\" cargo clippy --locked -p catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi,kernel_tests -- -D warnings",
+      "log_sha256": "8ae50df0356f36ef27352203435a751c3cfbcc7881c675c559a36ee400057bb1",
+      "diagnostics": [
+        "    Blocking waiting for file lock on build directory",
+        "warning: catten@0.8.1: DEVELOPMENT image: public fixture trust; do not deploy real secrets",
+        "    Checking catten v0.8.1 (/Users/froran/Projects/private/charlotte-os/crates/catten)",
+        "    Finished `dev` profile [optimized + debuginfo] target(s) in 4.42s"
+      ]
+    },
+    {
+      "name": "x86 test",
+      "status": "passed",
+      "command": "CARGO_NET_OFFLINE=true CATTEN_X86_64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/x86_64-unknown-none\" cargo clippy --locked -p catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi,kernel_tests -- -D warnings",
+      "log_sha256": "6c217988c82d181f0d43461b6e1a97f1e9f4929b5ea4b8525b6f42f1757d6cae",
+      "diagnostics": [
+        "warning: catten@0.8.1: DEVELOPMENT image: public fixture trust; do not deploy real secrets",
+        "    Checking catten v0.8.1 (/Users/froran/Projects/private/charlotte-os/crates/catten)",
+        "    Finished `dev` profile [optimized + debuginfo] target(s) in 2.40s"
+      ]
+    },
+    {
+      "name": "ARM minimal",
+      "status": "passed",
+      "command": "CARGO_NET_OFFLINE=true CATTEN_AARCH64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/aarch64-unknown-none-minimal\" cargo clippy --locked -p catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+      "log_sha256": "d881d7056dbc2ca1d7a5251417640eb4a3778ffdaa6b44ba7ff67a460c801c9a",
+      "diagnostics": [
+        "    Blocking waiting for file lock on build directory",
+        "warning: catten@0.8.1: DEVELOPMENT image: public fixture trust; do not deploy real secrets",
+        "    Finished `dev` profile [optimized + debuginfo] target(s) in 4.43s"
+      ]
+    },
+    {
+      "name": "x86 minimal",
+      "status": "passed",
+      "command": "CARGO_NET_OFFLINE=true CATTEN_X86_64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/x86_64-unknown-none-minimal\" cargo clippy --locked -p catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+      "log_sha256": "0ededbeefe5daacb634fa2d562c17830df0b063d8adc6182a7361cbb8f3bed44",
+      "diagnostics": [
+        "    Blocking waiting for file lock on build directory",
+        "warning: catten@0.8.1: DEVELOPMENT image: public fixture trust; do not deploy real secrets",
+        "    Finished `dev` profile [optimized + debuginfo] target(s) in 4.45s"
+      ]
+    },
+    {
+      "name": "capacity census",
+      "status": "passed",
+      "command": "python3 scripts/audit-resource-capacity.py --output target/q4-containers-capacity.json"
+    }
+  ],
+  "native": [
+    {
+      "profile": "ARM SMMUv3 security",
+      "status": "passed",
+      "command": "CARGO_NET_OFFLINE=true CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=19002 CATTEN_DEPLOY_HOST_PORT=18002 scripts/run-aarch64.sh --tests --security-test --smp 4 --timeout 240 --fresh-storage --instance q4-containers-arm-final",
+      "deferred_tests_passed": 19,
+      "base_revision": "9508dd00a2c4122e73bcbe9c3439bbae8ffcd46f",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-06T07:41:14Z",
+      "kernel_sha256": "e1ebe510cc7e282fb61cddd33971e4a3c5cb836d5015258bdbfa657498114894",
+      "boot_image_sha256": "c969a0bbd6b0b7c057fb73301bfcd30ba9f874c4b9c5035c76d3798f25386ecb",
+      "initial_disk_sha256": "71220674713d03a86470003470fc56bc83b7da8a1107b285b5e6d64f1423e9d7",
+      "bundle_sha256": {
+        "agent.elf": "671eaa8ba761bd8fe1ab7e1a0be24f5335a9e11be7b1c755ba0cb7e195d81d6a",
+        "cclient.elf": "aedb34755dc2eda6af6f1e1b31592d0055029ccf9b890381492d20134de83d1a",
+        "client.elf": "a46d6c5d3f0110d0cc2bdc693b890ba3522b109e5d65cf9098ad2bdd785c530e",
+        "clusterctl.elf": "30c8cbbc4b9d7edf6872f5bf47d1a33bdfcb09f0276927476d2c9e654cfb176b",
+        "deployd.elf": "058dc4d96a9e77bcd2251596415a3f50fcda30534cff20ba3e016d3341b08d9f",
+        "disco.elf": "3b454feea99eee0adb48380c55000267d800f1307f3df80e4292de467464eed9",
+        "dns.elf": "08fc3ffdb05a9e56cfb9f78f16d04ef08188f2231eaeb6a9c325df0d08623139",
+        "echo.elf": "840324beddaf0c90f459dc0900e78884b631205027e4ff09d0fed89ffa2da1f6",
+        "frouter.elf": "49d2505c668f831564d1b2d2e1bd2d101cac651760ccf35fd69edc5fb54f3994",
+        "fs.elf": "264393d6535c0bd7d9ba212048ce4850b067a8633766b4869621d38b882620b5",
+        "grantctl.elf": "bd1b2b5a826a45d3d745e51a315f9083e080fba037a7aa6c9f7b379c3e6daaa1",
+        "greet.elf": "bf6c98d6d361cd63f7567c7eec56496ca1005e524e12b2815db450d1299f7851",
+        "httpd.elf": "2a20eab99c51d8313efcefce58039dd4e1301cff33f9b8e8813bd565085c3024",
+        "kafka.elf": "6d2e4c632f19a76a3f946d393d8c7a4ad55a3eb037a17d249eb285d8b6a29e0e",
+        "kafka_fence_smoke.elf": "69d119e505da5d526d2c33ff8287feda795e1c73a9b5d51b54316aa39cac818c",
+        "kafka_smoke.elf": "b5d2cf1309ba703dffc3e7dc1336cd2395af79c586f802fe2a17abe987b7124b",
+        "kafka_step.elf": "2a23f2cf94d86bad97612b5b692031b2bb9d572398f9123631505c91b9f6aa89",
+        "kafka_step_input.elf": "b005dfcafb79e1787d8f61b75b36211b1fd8c85b7ff0b832c05cc48d4dcd5d00",
+        "kafka_step_proc.elf": "f56381d6e2a144b23333f761798a859fde0682f2c7def02a0a55d33b0b608174",
+        "nclient.elf": "0f75db8d899a510ff478965896ca239bbd2394d1abc4ceacd51756f10c19b6b6",
+        "net.elf": "63795434f8e51d1608539c0dd3da3e378b341082de3fb9a622202d3182434fcd",
+        "ns.elf": "2d720f3ba4ef4ef7582d157f068e660cd78851af304d478d47581d5cfcf4f694",
+        "nvme.elf": "4400a62a4f2496a137e23d389d3fb0097000991311b5e7243447eb33a729e360",
+        "nvme_client.elf": "5ab1ff38c3bfaa09ebbf58f28a6daeb888bb8fdf425b8e66c515c3940878e32f",
+        "objstore.elf": "6a043919aeb9f144063fc353b4591a76c19e198da9070a1dba75497c7b936cee",
+        "objstore_client.elf": "ef3fc558720d57d66a35be63fe70937b8046bc97d09b1f480cdd7249ac7dc5c5",
+        "observe.elf": "253c28fd0cef0871e7deb3086c4114f0e989bc7f7870805babd5f9979c89a8d3",
+        "otlp.elf": "94471bfb3ea50341e72b5440e6e81077ad820b6f83f047d78094dc2f626032a9",
+        "raft.elf": "2d32a23459bc273835bbb364e159051dc191dbef81c8342b7943f30070f925a6",
+        "rclient.elf": "d0186fd36a918859f1ed5084419098ed84de029423904adf2ea7d33ddfc7f41d",
+        "relmsg.elf": "28ba7a1fa23272068a2b09be9f6cea40b26b1090d357a7f4ef3176e3356f0104",
+        "rng.elf": "618f8e3159dbf8e526613927fdfd20d2ea7349a50dc6f32372e1fbae2db78868",
+        "s3.elf": "943f4d41427b5b9e40f83b7856ef3ca684bd64819de90b09e0710c27f9d03623",
+        "s3_smoke.elf": "f5c0157554d5550c95660cb096362c03e924884314f97ebee2aa831efdeb1213",
+        "security_probe.elf": "11a9f88261e2a8064100e7494d83c418d351a0422bac08e9807128ab964e43f3",
+        "servicemgr.elf": "3035aa2ee63aefbdd6f80e8e02eaa63eb1339a09f4ab0578fd1e019d341ba5df",
+        "shutdown_probe.elf": "32dc4a43ae45edbfef69e29fbdc33a329ac3543e83f0cad2c620df9ead9ab50b",
+        "sitas-user.elf": "6f0e7f2113b898f98e16708342db288745e9dcfe2bbbb016027e8db01100391b",
+        "tcpclient.elf": "efab9fa7b1c2ab305515ba5a4f7bf30f7dbdd7adf60c2c6d5635a5d3a31af435",
+        "tcpip.elf": "1ee63b257bbbacc1d6d52ef3944ee31a9b170f6eafff089fd54ac92afa3e68af",
+        "time.elf": "a6736abb273494bc03986dd50463998c4e13e2d28e637cddbe9380e74b6fd6f0",
+        "uart.elf": "4277c7745286054fffe64e944d845c17d6b9908076859b1c97d1117948ab12c7"
+      },
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "ca73af160a462fa40ed166dbea6fda0fb2c53a8f2bfba6d50f4dbf719076fdf6",
+        "scripts/run-aarch64.sh": "58eede46ad82247673a9791e9cb247d5c32806b88bda86389e1e237d3ec100b8"
+      },
+      "qemu_arguments": [
+        "-M",
+        "virt,gic-version=3,msi=gicv2m,iommu=smmuv3,default-bus-bypass-iommu=off",
+        "-m",
+        "512M",
+        "-bios",
+        "/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
+        "-drive",
+        "file=./os-images/charlotte-aarch64-debug-q4-containers-arm-final.img,format=raw,if=none,id=boot0",
+        "-device",
+        "virtio-blk-pci,drive=boot0,addr=3",
+        "-cpu",
+        "cortex-a710",
+        "-object",
+        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "-device",
+        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on,addr=4",
+        "-smp",
+        "4",
+        "-drive",
+        "if=none,file=./os-images/nvme-disk-q4-containers-arm-final.img,format=raw,id=nvme0",
+        "-device",
+        "nvme,drive=nvme0,serial=cat0,max_ioqpairs=4,addr=2",
+        "-nic",
+        "none",
+        "-netdev",
+        "user,id=charlotte-net,hostfwd=tcp::18002-:7444",
+        "-device",
+        "virtio-net-pci,netdev=charlotte-net,disable-legacy=on,iommu_platform=on,mac=52:54:00:12:34:56,addr=1",
+        "-display",
+        "none",
+        "-qmp",
+        "unix:/tmp/ctdiag-lgeua7h2/qmp.sock,server=on,wait=off",
+        "-gdb",
+        "unix:/tmp/ctdiag-lgeua7h2/gdb.sock,server=on,wait=off",
+        "-serial",
+        "file:/tmp/charlotte-q4-containers-arm-final-serial.log"
+      ],
+      "bundle_unchanged_from_qualified_record_node_batch": true,
+      "serial_sha256": "56a088b826ec5421cd2017de447838b5d55a5eba253391a82ff3846ca3ae63d7",
+      "runner_sha256": "b44a47695dd3b4674ec761802a5b4dabc61958855f6395f61875c9ee4b447182",
+      "runner_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "milestones": [
+        "[+     0.013125] Kernel heap: usable=374 MiB initial=8 MiB reserve=64 MiB total=72 MiB",
+        "[+     1.033002] [root container principal recovery] 1528 bytes retained through rejected invalidation, confirmed release zeroed original principal and preserved funded successor; 1528 bytes retained by guarded complete-root abandonment",
+        "[+     1.177687] [root metadata layouts] three policy nodes 440 bytes; memory account 192 bytes; complete root 632 bytes",
+        "[+     1.181198] [namespace node principal] completion/mailbox/word namespace additions=504 bytes; separate authority=96 endpoint=96 bytes; exact five-namespace composition passed",
+        "[+     1.182294] [root container principal] root construction layouts=[152, 192, 88, 208, 144, 144], mandatory=928 bytes; sibling sharing, twelve exact quota prefixes, 128 heap-held denials, healthy principal and full five-namespace accounting/release passed",
+        "[+     1.198906] [principal history pressure] 3038 ordinary + 1020 reserved real candidate nodes; ordinary registration rejected before publication, trusted root admitted, total exhaustion and existing-root close/recovery passed",
+        "[+     1.333264] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; no ASID published; 256 namespace + 144 reactor account + 928 metadata original principal bytes retained",
+        "[+     7.679437] [namespace node layouts] complete five-node root 800 bytes; count-headroom layouts 6553600 total / 4915200 ordinary bytes",
+        "[+     7.793039] [capability record ownership] all six kinds reject storage before serial/charge mutation; heap-held captured admission/publication/escrow/detach; mixed batch rejection is atomic, move retains its exact retired source charge until explicit completion; cancellation and late tokens preserve exact accounts; guarded preparation/retirement abandonment retains two original ordinary charges after root reuse",
+        "[+     7.937912] [authority node backing] bytes=96 actual candidates ordinary=98134 trusted=32760; ordinary/total ceilings 98304/131072; 64 allocation failures, byte denials, 128 heap-held admission denials, immutable promotion, trusted storage without grants, retained record across root close/ASID reuse, exact recovery passed",
+        "[+     8.090532] [record node principal] authority/mailbox payload layouts=96/96 bytes; sibling sharing, 128 funded allocator failures, principal denials before allocation, six mailbox prefixes, healthy sponsor, promotion, retained original record across exact ASID reuse and 87371 real candidates at 8388608-byte ceiling passed",
+        "[+    10.347688] [mailbox node backing] bytes=96 actual candidates ordinary=12284 trusted=4095; ordinary/total ceilings 12288/16384; 64 allocation failures, byte denials, 128 heap-held admission denials, receiver reuse, pre-promotion capture, fresh promotion reserve, trusted backing without grants, final-root release and exact ASID-reuse recovery passed",
+        "[+    10.353005] [mailbox metadata principal retention] complete unpublished/retired parents retain 1344/1232 original-principal node bytes under history/publication/pool/heap guards",
+        "[+    84.588779] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "profile": "Intel VT-d security",
+      "status": "passed",
+      "command": "CARGO_NET_OFFLINE=true CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=19003 CATTEN_DEPLOY_HOST_PORT=18003 scripts/run-x86_64.sh --tests --security-test --iommu intel --smp 4 --timeout 240 --fresh-storage --instance q4-containers-intel-final",
+      "deferred_tests_passed": 17,
+      "base_revision": "9508dd00a2c4122e73bcbe9c3439bbae8ffcd46f",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-06T07:39:54Z",
+      "kernel_sha256": "9e5268495565317946d442fb5a66dc132f5159d7c7169caff7d7863f45d52edb",
+      "boot_image_sha256": "20f6a8dd608e47a25a6c135a1a898ada8c4b7781104db12c2e2e804cac9ff2b4",
+      "initial_disk_sha256": "6dc9db7495e27f2ab53a04b0f62747f4fd7a63f24f62fa0024c6a7939b0df278",
+      "bundle_sha256": {
+        "agent.elf": "41a34c422e5fab4565e123c13c2fdc144c2fb6752a5beb58acf7bbf7cb6d4c90",
+        "ahci.elf": "f607c8fdb0d1954938c33a7718dfe34521dbb444053c4f5887e4c95d40084f13",
+        "client.elf": "e1f6895d2bf32024d60ca4d0e41331738f2060857fff2106239fed2a7a3c4d25",
+        "clusterctl.elf": "a7dfe023ea1e27b8efc847bdf74066c336316b97e46cbd9d9221bc9e364267e7",
+        "deployd.elf": "df4b70928fe00d8ee8485b371524d453f71e9615e56966b680861991adcf9553",
+        "disco.elf": "741687e1d4139e2e707bed02837a4325699d496da3a11a1bfed95896cd191169",
+        "dns.elf": "2a6c84256737204e09dda339530d5a9a90f59cf06f3afd8eab5d022d977e32ae",
+        "e1000e.elf": "4efef0ca0179440dcbe0a29850c0497d3874b63b7d367a05b90204fb518b695a",
+        "echo.elf": "adebef36a9b262b7b1fbe81c610d6f2e0e3376e7d51b6e1459d909b7b1f71342",
+        "frouter.elf": "9d9e4d719278d43343e48cdcbe4b55c38034f25d528e80212df0eea81062698b",
+        "fs.elf": "c2f153ba2858c2bf54e996c9a697dbb7b093b9a94099dca39f1eebe303ab3837",
+        "grantctl.elf": "06af7e79a7a335b210e7dccfe4da9767eb555d8a4703340cb13c2b0144729312",
+        "greet.elf": "e69730b6a6db30aa0f379daeca6dd37f2931536125f2acd198670cd00dc82da0",
+        "httpd.elf": "081d51db9f5fc430dce97409e2a07971876be103ce141b1892fb3878a7e1bcb2",
+        "kafka.elf": "9ee3f990d493ba747ec443740c75787c117ad2330225cd628933ec31b8192f38",
+        "kafka_smoke.elf": "41b7af7299634f43438bac5ead66018fcc6e9fa016331f4639208f41e1576856",
+        "nclient.elf": "9020fc6a1e97f45f0295a0cc3bff59b6ace9a13364bacfd039365cc39507eaa0",
+        "net.elf": "3ba1c1a4a3058b25333ce696136b082f9f8c23fa9d192eff7e1253bac2fce915",
+        "ns.elf": "8500f58b27836d7764d8b0415fbaf88e8ca175d1a7ebf9bed98c145b390d019f",
+        "nvme.elf": "3905ba29c4acbc07cec559e9af09e9ad9eadfdf7fe05d0311eeb7c9444a867ba",
+        "nvme_client.elf": "41b44a10a7e331a96f11de006749d74a17edd600680bd29a9f914c18bf9b1c2f",
+        "objstore.elf": "ffafabc799a8aa8d61025d2ff648bdd1b3b8321034f89dfa88e9a75745be6c3a",
+        "objstore_client.elf": "5280c4a66778ec0b52786d0b2b6075a7c5c7e80dc0d7b8310a502b512421ce9c",
+        "observe.elf": "2c0fdaf0c2c57a672fb15bdb611815f49142b68c02e3220c203bc18e7f8d0fae",
+        "otlp.elf": "1500357bb14efc05e3c941ce4ee65e2797995d5cb097b649fc7cfaa5d05ff65b",
+        "raft.elf": "a2ca3ee01e5a8456b1251341a71299d8d40893b7047c7daf050972243cce087e",
+        "rclient.elf": "cbdd0af55b0da8254fa8d962a7b75cb40cd061bce05baa59c4bcc5b019867805",
+        "relmsg.elf": "3acfb247379fa6b247c2926dfcf11bf4212d525ef59de26e3e64408b77d18ce5",
+        "rng.elf": "10d114d3331fa67939d412be287765f2fefae9b716421231f8901f12c456d71d",
+        "s3.elf": "ad19d44e30b6d58fa542c40c0b1a38e27ecb9883f8db76e8b3cf6288eb03dce3",
+        "s3_smoke.elf": "b57d03565926b9dbc67ed22ec445e9fe733cf43ac2be2c79435f84345469d2d8",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c",
+        "servicemgr.elf": "2ba39555142fd4f1fcdf8004f542cdf97b65267f3f2e05814e00822fe1cbe72e",
+        "shutdown_probe.elf": "fe7212dd8752c33be2f604436ca482f72eeb18ccbc3d4c69eb0bda9381415163",
+        "tcpclient.elf": "e85b5df90c422d46508051201d04ed42f6bf9b720b409347d266525e33622520",
+        "tcpip.elf": "b07bb35ff810ecfb21d10301c50f13e389f0ced45ff2392c75a0b594369f1de6",
+        "time.elf": "1afa0fc691f5dd06b7f9ea5f095e5048ac2c9fba0f0ca97f622e83c5961fd612",
+        "virtio_blk.elf": "f73eef9a720299a7764ad46b8c6875955259d1ca6903a3d95bc64ec23930d304"
+      },
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "ca73af160a462fa40ed166dbea6fda0fb2c53a8f2bfba6d50f4dbf719076fdf6",
+        "scripts/run-x86_64.sh": "68f5c782f96233721e2ca04f07c2181df7a43396add422ad49f421dbde900aaa"
+      },
+      "qemu_arguments": [
+        "-M",
+        "q35",
+        "-cpu",
+        "max",
+        "-smp",
+        "4",
+        "-m",
+        "512M",
+        "-drive",
+        "if=pflash,format=raw,unit=0,file=/opt/homebrew/opt/qemu/share/qemu/edk2-x86_64-code.fd,readonly=on",
+        "-drive",
+        "if=none,file=./os-images/charlotte-x86_64-debug-q4-containers-intel-final.img,format=raw,id=esp,readonly=on",
+        "-device",
+        "qemu-xhci,id=xhci",
+        "-device",
+        "usb-storage,bus=xhci.0,drive=esp,bootindex=1",
+        "-drive",
+        "if=none,file=./os-images/x86-data-q4-containers-intel-final.img,format=raw,id=data0",
+        "-device",
+        "nvme,drive=data0,serial=cat0",
+        "-device",
+        "intel-iommu",
+        "-object",
+        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "-device",
+        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on",
+        "-display",
+        "none",
+        "-no-reboot",
+        "-nic",
+        "none",
+        "-netdev",
+        "user,id=net0,hostfwd=tcp::18003-:7444",
+        "-device",
+        "virtio-net-pci-non-transitional,netdev=net0,iommu_platform=on,mac=52:54:00:12:34:56",
+        "-qmp",
+        "unix:/tmp/ctdiag-mvi7pgte/qmp.sock,server=on,wait=off",
+        "-gdb",
+        "unix:/tmp/ctdiag-mvi7pgte/gdb.sock,server=on,wait=off",
+        "-serial",
+        "file:/tmp/charlotte-x86-q4-containers-intel-final-serial.log"
+      ],
+      "bundle_unchanged_from_qualified_record_node_batch": true,
+      "serial_sha256": "90c952f7b45598a5b2d80b3f3f07643e9c9b09498e5e45646c64172de8e33d5a",
+      "runner_sha256": "4ffb8a838646b0962fe799f1ede99716778e120c6be825e3882e8c0b9f28d64f",
+      "runner_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "milestones": [
+        "[+     0.019624] Kernel heap: usable=363 MiB initial=8 MiB reserve=64 MiB total=72 MiB",
+        "[+     1.587484] [root container principal recovery] 1528 bytes retained through rejected invalidation, confirmed release zeroed original principal and preserved funded successor; 1528 bytes retained by guarded complete-root abandonment",
+        "[+     2.208250] [root metadata layouts] three policy nodes 440 bytes; memory account 192 bytes; complete root 632 bytes",
+        "[+     2.219081] [namespace node principal] completion/mailbox/word namespace additions=504 bytes; separate authority=96 endpoint=96 bytes; exact five-namespace composition passed",
+        "[+     2.221971] [root container principal] root construction layouts=[152, 192, 88, 208, 144, 144], mandatory=928 bytes; sibling sharing, twelve exact quota prefixes, 128 heap-held denials, healthy principal and full five-namespace accounting/release passed",
+        "[+     2.271110] [principal history pressure] 3030 ordinary + 1020 reserved real candidate nodes; ordinary registration rejected before publication, trusted root admitted, total exhaustion and existing-root close/recovery passed",
+        "[+     2.568670] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; no ASID published; 256 namespace + 144 reactor account + 928 metadata original principal bytes retained",
+        "[+    10.755613] [namespace node layouts] complete five-node root 800 bytes; count-headroom layouts 6553600 total / 4915200 ordinary bytes",
+        "[+    10.876632] [capability record ownership] all six kinds reject storage before serial/charge mutation; heap-held captured admission/publication/escrow/detach; mixed batch rejection is atomic, move retains its exact retired source charge until explicit completion; cancellation and late tokens preserve exact accounts; guarded preparation/retirement abandonment retains two original ordinary charges after root reuse",
+        "[+    10.998785] [authority node backing] bytes=96 actual candidates ordinary=98126 trusted=32760; ordinary/total ceilings 98304/131072; 64 allocation failures, byte denials, 128 heap-held admission denials, immutable promotion, trusted storage without grants, retained record across root close/ASID reuse, exact recovery passed",
+        "[+    11.225433] [record node principal] authority/mailbox payload layouts=96/96 bytes; sibling sharing, 128 funded allocator failures, principal denials before allocation, six mailbox prefixes, healthy sponsor, promotion, retained original record across exact ASID reuse and 87371 real candidates at 8388608-byte ceiling passed",
+        "[+    21.099393] [mailbox node backing] bytes=96 actual candidates ordinary=12284 trusted=4095; ordinary/total ceilings 12288/16384; 64 allocation failures, byte denials, 128 heap-held admission denials, receiver reuse, pre-promotion capture, fresh promotion reserve, trusted backing without grants, final-root release and exact ASID-reuse recovery passed",
+        "[+    21.106410] [mailbox metadata principal retention] complete unpublished/retired parents retain 1344/1232 original-principal node bytes under history/publication/pool/heap guards",
+        "[+   101.599200] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "profile": "AMD-Vi security",
+      "status": "passed",
+      "command": "CARGO_NET_OFFLINE=true CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=19003 CATTEN_DEPLOY_HOST_PORT=18003 scripts/run-x86_64.sh --tests --security-test --iommu amd --smp 4 --timeout 240 --fresh-storage --instance q4-containers-amd",
+      "deferred_tests_passed": 17,
+      "base_revision": "9508dd00a2c4122e73bcbe9c3439bbae8ffcd46f",
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-06T09:06:16Z",
+      "kernel_sha256": "218c35b34831eb7e58bf5ab1e2168a56c432fb1918cc1154481c9cec151c7c1b",
+      "boot_image_sha256": "5a893aa3fc41de57b0ad21c0d61fd039209b2464da0aa7ba5db72e9b642b3da0",
+      "initial_disk_sha256": "6dc9db7495e27f2ab53a04b0f62747f4fd7a63f24f62fa0024c6a7939b0df278",
+      "bundle_sha256": {
+        "agent.elf": "41a34c422e5fab4565e123c13c2fdc144c2fb6752a5beb58acf7bbf7cb6d4c90",
+        "ahci.elf": "f607c8fdb0d1954938c33a7718dfe34521dbb444053c4f5887e4c95d40084f13",
+        "client.elf": "e1f6895d2bf32024d60ca4d0e41331738f2060857fff2106239fed2a7a3c4d25",
+        "clusterctl.elf": "a7dfe023ea1e27b8efc847bdf74066c336316b97e46cbd9d9221bc9e364267e7",
+        "deployd.elf": "df4b70928fe00d8ee8485b371524d453f71e9615e56966b680861991adcf9553",
+        "disco.elf": "741687e1d4139e2e707bed02837a4325699d496da3a11a1bfed95896cd191169",
+        "dns.elf": "2a6c84256737204e09dda339530d5a9a90f59cf06f3afd8eab5d022d977e32ae",
+        "e1000e.elf": "4efef0ca0179440dcbe0a29850c0497d3874b63b7d367a05b90204fb518b695a",
+        "echo.elf": "adebef36a9b262b7b1fbe81c610d6f2e0e3376e7d51b6e1459d909b7b1f71342",
+        "frouter.elf": "9d9e4d719278d43343e48cdcbe4b55c38034f25d528e80212df0eea81062698b",
+        "fs.elf": "c2f153ba2858c2bf54e996c9a697dbb7b093b9a94099dca39f1eebe303ab3837",
+        "grantctl.elf": "06af7e79a7a335b210e7dccfe4da9767eb555d8a4703340cb13c2b0144729312",
+        "greet.elf": "e69730b6a6db30aa0f379daeca6dd37f2931536125f2acd198670cd00dc82da0",
+        "httpd.elf": "081d51db9f5fc430dce97409e2a07971876be103ce141b1892fb3878a7e1bcb2",
+        "kafka.elf": "9ee3f990d493ba747ec443740c75787c117ad2330225cd628933ec31b8192f38",
+        "kafka_smoke.elf": "41b7af7299634f43438bac5ead66018fcc6e9fa016331f4639208f41e1576856",
+        "nclient.elf": "9020fc6a1e97f45f0295a0cc3bff59b6ace9a13364bacfd039365cc39507eaa0",
+        "net.elf": "3ba1c1a4a3058b25333ce696136b082f9f8c23fa9d192eff7e1253bac2fce915",
+        "ns.elf": "8500f58b27836d7764d8b0415fbaf88e8ca175d1a7ebf9bed98c145b390d019f",
+        "nvme.elf": "3905ba29c4acbc07cec559e9af09e9ad9eadfdf7fe05d0311eeb7c9444a867ba",
+        "nvme_client.elf": "41b44a10a7e331a96f11de006749d74a17edd600680bd29a9f914c18bf9b1c2f",
+        "objstore.elf": "ffafabc799a8aa8d61025d2ff648bdd1b3b8321034f89dfa88e9a75745be6c3a",
+        "objstore_client.elf": "5280c4a66778ec0b52786d0b2b6075a7c5c7e80dc0d7b8310a502b512421ce9c",
+        "observe.elf": "2c0fdaf0c2c57a672fb15bdb611815f49142b68c02e3220c203bc18e7f8d0fae",
+        "otlp.elf": "1500357bb14efc05e3c941ce4ee65e2797995d5cb097b649fc7cfaa5d05ff65b",
+        "raft.elf": "a2ca3ee01e5a8456b1251341a71299d8d40893b7047c7daf050972243cce087e",
+        "rclient.elf": "cbdd0af55b0da8254fa8d962a7b75cb40cd061bce05baa59c4bcc5b019867805",
+        "relmsg.elf": "3acfb247379fa6b247c2926dfcf11bf4212d525ef59de26e3e64408b77d18ce5",
+        "rng.elf": "10d114d3331fa67939d412be287765f2fefae9b716421231f8901f12c456d71d",
+        "s3.elf": "ad19d44e30b6d58fa542c40c0b1a38e27ecb9883f8db76e8b3cf6288eb03dce3",
+        "s3_smoke.elf": "b57d03565926b9dbc67ed22ec445e9fe733cf43ac2be2c79435f84345469d2d8",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c",
+        "servicemgr.elf": "2ba39555142fd4f1fcdf8004f542cdf97b65267f3f2e05814e00822fe1cbe72e",
+        "shutdown_probe.elf": "fe7212dd8752c33be2f604436ca482f72eeb18ccbc3d4c69eb0bda9381415163",
+        "tcpclient.elf": "e85b5df90c422d46508051201d04ed42f6bf9b720b409347d266525e33622520",
+        "tcpip.elf": "b07bb35ff810ecfb21d10301c50f13e389f0ced45ff2392c75a0b594369f1de6",
+        "time.elf": "1afa0fc691f5dd06b7f9ea5f095e5048ac2c9fba0f0ca97f622e83c5961fd612",
+        "virtio_blk.elf": "f73eef9a720299a7764ad46b8c6875955259d1ca6903a3d95bc64ec23930d304"
+      },
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "ca73af160a462fa40ed166dbea6fda0fb2c53a8f2bfba6d50f4dbf719076fdf6",
+        "scripts/run-x86_64.sh": "68f5c782f96233721e2ca04f07c2181df7a43396add422ad49f421dbde900aaa"
+      },
+      "qemu_arguments": [
+        "-M",
+        "q35",
+        "-cpu",
+        "max",
+        "-smp",
+        "4",
+        "-m",
+        "512M",
+        "-drive",
+        "if=pflash,format=raw,unit=0,file=/opt/homebrew/opt/qemu/share/qemu/edk2-x86_64-code.fd,readonly=on",
+        "-drive",
+        "if=none,file=./os-images/charlotte-x86_64-debug-q4-containers-amd.img,format=raw,id=esp,readonly=on",
+        "-device",
+        "qemu-xhci,id=xhci",
+        "-device",
+        "usb-storage,bus=xhci.0,drive=esp,bootindex=1",
+        "-drive",
+        "if=none,file=./os-images/x86-data-q4-containers-amd.img,format=raw,id=data0",
+        "-device",
+        "nvme,drive=data0,serial=cat0",
+        "-device",
+        "amd-iommu,dma-remap=on",
+        "-object",
+        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "-device",
+        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on",
+        "-display",
+        "none",
+        "-no-reboot",
+        "-nic",
+        "none",
+        "-netdev",
+        "user,id=net0,hostfwd=tcp::18003-:7444",
+        "-device",
+        "virtio-net-pci-non-transitional,netdev=net0,iommu_platform=on,mac=52:54:00:12:34:56",
+        "-qmp",
+        "unix:/tmp/ctdiag-ore4ts_3/qmp.sock,server=on,wait=off",
+        "-gdb",
+        "unix:/tmp/ctdiag-ore4ts_3/gdb.sock,server=on,wait=off",
+        "-serial",
+        "file:/tmp/charlotte-x86-q4-containers-amd-serial.log"
+      ],
+      "bundle_unchanged_from_qualified_record_node_batch": true,
+      "serial_sha256": "0577d7ecb2cc4661e2f4087c18034394779e0c8e272901131a1145b942e4bd05",
+      "runner_sha256": "b1335b659229a151aa7db0eedb0cb2281cced181a1e7c1ad5018bff2aec13376",
+      "runner_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "milestones": [
+        "[+     0.018191] Kernel heap: usable=363 MiB initial=8 MiB reserve=64 MiB total=72 MiB",
+        "[+     1.038497] [root container principal recovery] 1528 bytes retained through rejected invalidation, confirmed release zeroed original principal and preserved funded successor; 1528 bytes retained by guarded complete-root abandonment",
+        "[+     1.196418] [root metadata layouts] three policy nodes 440 bytes; memory account 192 bytes; complete root 632 bytes",
+        "[+     1.201178] [namespace node principal] completion/mailbox/word namespace additions=504 bytes; separate authority=96 endpoint=96 bytes; exact five-namespace composition passed",
+        "[+     1.202847] [root container principal] root construction layouts=[152, 192, 88, 208, 144, 144], mandatory=928 bytes; sibling sharing, twelve exact quota prefixes, 128 heap-held denials, healthy principal and full five-namespace accounting/release passed",
+        "[+     1.222233] [principal history pressure] 3030 ordinary + 1020 reserved real candidate nodes; ordinary registration rejected before publication, trusted root admitted, total exhaustion and existing-root close/recovery passed",
+        "[+     1.302534] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability/IPC namespaces, complete sponsors and policy/usage/authority metadata; no ASID published; 256 namespace + 144 reactor account + 928 metadata original principal bytes retained",
+        "[+     7.126019] [namespace node layouts] complete five-node root 800 bytes; count-headroom layouts 6553600 total / 4915200 ordinary bytes",
+        "[+     7.241533] [capability record ownership] all six kinds reject storage before serial/charge mutation; heap-held captured admission/publication/escrow/detach; mixed batch rejection is atomic, move retains its exact retired source charge until explicit completion; cancellation and late tokens preserve exact accounts; guarded preparation/retirement abandonment retains two original ordinary charges after root reuse",
+        "[+     7.359830] [authority node backing] bytes=96 actual candidates ordinary=98126 trusted=32760; ordinary/total ceilings 98304/131072; 64 allocation failures, byte denials, 128 heap-held admission denials, immutable promotion, trusted storage without grants, retained record across root close/ASID reuse, exact recovery passed",
+        "[+     7.556779] [record node principal] authority/mailbox payload layouts=96/96 bytes; sibling sharing, 128 funded allocator failures, principal denials before allocation, six mailbox prefixes, healthy sponsor, promotion, retained original record across exact ASID reuse and 87371 real candidates at 8388608-byte ceiling passed",
+        "[+    15.552950] [mailbox node backing] bytes=96 actual candidates ordinary=12284 trusted=4095; ordinary/total ceilings 12288/16384; 64 allocation failures, byte denials, 128 heap-held admission denials, receiver reuse, pre-promotion capture, fresh promotion reserve, trusted backing without grants, final-root release and exact ASID-reuse recovery passed",
+        "[+    15.559349] [mailbox metadata principal retention] complete unpublished/retired parents retain 1344/1232 original-principal node bytes under history/publication/pool/heap guards",
+        "[+    91.313375] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "profile": "ARM SMMUv3 minimal",
+      "status": "passed",
+      "command": "CARGO_NET_OFFLINE=true CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=19004 CATTEN_DEPLOY_HOST_PORT=18004 scripts/run-aarch64.sh --minimal --smp 4 --timeout 90 --fresh-storage --instance q4-containers-arm-minimal",
+      "deferred_tests_passed": null,
+      "base_revision": "9508dd00a2c4122e73bcbe9c3439bbae8ffcd46f",
+      "cpus": 4,
+      "timeout_seconds": 90,
+      "prepared_utc": "2026-11-06T09:47:32Z",
+      "kernel_sha256": "9328aad126c7d19491fe80ecb6dd788a1349bfab9054eea11475b90ea67e2580",
+      "boot_image_sha256": "d0ac8821ce72de20b6f82a3cef69f9831a8052efce2cc38b6e9a6816c3904a7b",
+      "initial_disk_sha256": "06a100ce446a3299f9745c3f4660b0f2d0eda5511f96d2595685b6c9009a5a44",
+      "bundle_sha256": {
+        "agent.elf": "671eaa8ba761bd8fe1ab7e1a0be24f5335a9e11be7b1c755ba0cb7e195d81d6a",
+        "clusterctl.elf": "30c8cbbc4b9d7edf6872f5bf47d1a33bdfcb09f0276927476d2c9e654cfb176b",
+        "deployd.elf": "058dc4d96a9e77bcd2251596415a3f50fcda30534cff20ba3e016d3341b08d9f",
+        "disco.elf": "3b454feea99eee0adb48380c55000267d800f1307f3df80e4292de467464eed9",
+        "dns.elf": "08fc3ffdb05a9e56cfb9f78f16d04ef08188f2231eaeb6a9c325df0d08623139",
+        "frouter.elf": "49d2505c668f831564d1b2d2e1bd2d101cac651760ccf35fd69edc5fb54f3994",
+        "fs.elf": "264393d6535c0bd7d9ba212048ce4850b067a8633766b4869621d38b882620b5",
+        "grantctl.elf": "bd1b2b5a826a45d3d745e51a315f9083e080fba037a7aa6c9f7b379c3e6daaa1",
+        "httpd.elf": "2a20eab99c51d8313efcefce58039dd4e1301cff33f9b8e8813bd565085c3024",
+        "kafka.elf": "6d2e4c632f19a76a3f946d393d8c7a4ad55a3eb037a17d249eb285d8b6a29e0e",
+        "kafka_step.elf": "2a23f2cf94d86bad97612b5b692031b2bb9d572398f9123631505c91b9f6aa89",
+        "net.elf": "63795434f8e51d1608539c0dd3da3e378b341082de3fb9a622202d3182434fcd",
+        "ns.elf": "2d720f3ba4ef4ef7582d157f068e660cd78851af304d478d47581d5cfcf4f694",
+        "nvme.elf": "4400a62a4f2496a137e23d389d3fb0097000991311b5e7243447eb33a729e360",
+        "objstore.elf": "6a043919aeb9f144063fc353b4591a76c19e198da9070a1dba75497c7b936cee",
+        "observe.elf": "253c28fd0cef0871e7deb3086c4114f0e989bc7f7870805babd5f9979c89a8d3",
+        "otlp.elf": "94471bfb3ea50341e72b5440e6e81077ad820b6f83f047d78094dc2f626032a9",
+        "relmsg.elf": "28ba7a1fa23272068a2b09be9f6cea40b26b1090d357a7f4ef3176e3356f0104",
+        "rng.elf": "618f8e3159dbf8e526613927fdfd20d2ea7349a50dc6f32372e1fbae2db78868",
+        "s3.elf": "943f4d41427b5b9e40f83b7856ef3ca684bd64819de90b09e0710c27f9d03623",
+        "tcpip.elf": "1ee63b257bbbacc1d6d52ef3944ee31a9b170f6eafff089fd54ac92afa3e68af",
+        "time.elf": "a6736abb273494bc03986dd50463998c4e13e2d28e637cddbe9380e74b6fd6f0",
+        "uart.elf": "4277c7745286054fffe64e944d845c17d6b9908076859b1c97d1117948ab12c7"
+      },
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "ca73af160a462fa40ed166dbea6fda0fb2c53a8f2bfba6d50f4dbf719076fdf6",
+        "scripts/run-aarch64.sh": "58eede46ad82247673a9791e9cb247d5c32806b88bda86389e1e237d3ec100b8"
+      },
+      "qemu_arguments": [
+        "-M",
+        "virt,gic-version=3,msi=gicv2m,iommu=smmuv3,default-bus-bypass-iommu=off",
+        "-m",
+        "512M",
+        "-bios",
+        "/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
+        "-drive",
+        "file=./os-images/charlotte-aarch64-debug-q4-containers-arm-minimal-minimal.img,format=raw,if=none,id=boot0",
+        "-device",
+        "virtio-blk-pci,drive=boot0,addr=3",
+        "-cpu",
+        "cortex-a710",
+        "-object",
+        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "-device",
+        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on,addr=4",
+        "-smp",
+        "4",
+        "-drive",
+        "if=none,file=./os-images/nvme-disk-q4-containers-arm-minimal-minimal.img,format=raw,id=nvme0",
+        "-device",
+        "nvme,drive=nvme0,serial=cat0,max_ioqpairs=4,addr=2",
+        "-nic",
+        "none",
+        "-netdev",
+        "user,id=charlotte-net,hostfwd=tcp::18004-:7444",
+        "-device",
+        "virtio-net-pci,netdev=charlotte-net,disable-legacy=on,iommu_platform=on,mac=52:54:00:12:34:56,addr=1",
+        "-display",
+        "none",
+        "-qmp",
+        "unix:/tmp/ctdiag-4mxmes1b/qmp.sock,server=on,wait=off",
+        "-gdb",
+        "unix:/tmp/ctdiag-4mxmes1b/gdb.sock,server=on,wait=off",
+        "-serial",
+        "file:/tmp/charlotte-q4-containers-arm-minimal-minimal-serial.log"
+      ],
+      "bundle_unchanged_from_qualified_record_node_batch": true,
+      "serial_sha256": "9dc1a0c5a5d42612e53d926b27e7a89ec46def768149e4f46e3ec2f148de155c",
+      "runner_sha256": "7fcf345154135f07abfffa5d25ebcaedf5d99b8f76dac08265a779f08ca6dde0",
+      "runner_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "milestones": [
+        "[+     0.010392] Kernel heap: usable=441 MiB initial=8 MiB reserve=64 MiB total=72 MiB",
+        "[+     3.907930] BOOT COMPLETE: validation passed; local storage ready; services submitted"
+      ]
+    },
+    {
+      "profile": "Intel VT-d minimal",
+      "status": "passed",
+      "command": "CARGO_NET_OFFLINE=true CATTEN_SKIP_EMBED_BUILD=1 CATTEN_HTTP_HOST_PORT=19005 CATTEN_DEPLOY_HOST_PORT=18005 scripts/run-x86_64.sh --minimal --iommu intel --smp 4 --timeout 90 --fresh-storage --instance q4-containers-intel-minimal",
+      "deferred_tests_passed": null,
+      "base_revision": "9508dd00a2c4122e73bcbe9c3439bbae8ffcd46f",
+      "cpus": 4,
+      "timeout_seconds": 90,
+      "prepared_utc": "2026-11-06T10:04:47Z",
+      "kernel_sha256": "bdd842895a653d4257a0587e872dbac5f28a2f5cdbfa0e3cb8d96ec32a43f457",
+      "boot_image_sha256": "28f02866f9a89d3e7dd2918e45c6b527215313162709e573ad4e6789e5945eb7",
+      "initial_disk_sha256": "56c1f355b2d055f964c15b0b4176b212659708e7f0f449d7edabd1522e81fca9",
+      "bundle_sha256": {
+        "agent.elf": "41a34c422e5fab4565e123c13c2fdc144c2fb6752a5beb58acf7bbf7cb6d4c90",
+        "ahci.elf": "f607c8fdb0d1954938c33a7718dfe34521dbb444053c4f5887e4c95d40084f13",
+        "clusterctl.elf": "a7dfe023ea1e27b8efc847bdf74066c336316b97e46cbd9d9221bc9e364267e7",
+        "deployd.elf": "df4b70928fe00d8ee8485b371524d453f71e9615e56966b680861991adcf9553",
+        "disco.elf": "741687e1d4139e2e707bed02837a4325699d496da3a11a1bfed95896cd191169",
+        "dns.elf": "2a6c84256737204e09dda339530d5a9a90f59cf06f3afd8eab5d022d977e32ae",
+        "e1000e.elf": "4efef0ca0179440dcbe0a29850c0497d3874b63b7d367a05b90204fb518b695a",
+        "frouter.elf": "9d9e4d719278d43343e48cdcbe4b55c38034f25d528e80212df0eea81062698b",
+        "fs.elf": "c2f153ba2858c2bf54e996c9a697dbb7b093b9a94099dca39f1eebe303ab3837",
+        "grantctl.elf": "06af7e79a7a335b210e7dccfe4da9767eb555d8a4703340cb13c2b0144729312",
+        "httpd.elf": "081d51db9f5fc430dce97409e2a07971876be103ce141b1892fb3878a7e1bcb2",
+        "kafka.elf": "9ee3f990d493ba747ec443740c75787c117ad2330225cd628933ec31b8192f38",
+        "net.elf": "3ba1c1a4a3058b25333ce696136b082f9f8c23fa9d192eff7e1253bac2fce915",
+        "ns.elf": "8500f58b27836d7764d8b0415fbaf88e8ca175d1a7ebf9bed98c145b390d019f",
+        "nvme.elf": "3905ba29c4acbc07cec559e9af09e9ad9eadfdf7fe05d0311eeb7c9444a867ba",
+        "objstore.elf": "ffafabc799a8aa8d61025d2ff648bdd1b3b8321034f89dfa88e9a75745be6c3a",
+        "observe.elf": "2c0fdaf0c2c57a672fb15bdb611815f49142b68c02e3220c203bc18e7f8d0fae",
+        "otlp.elf": "1500357bb14efc05e3c941ce4ee65e2797995d5cb097b649fc7cfaa5d05ff65b",
+        "relmsg.elf": "3acfb247379fa6b247c2926dfcf11bf4212d525ef59de26e3e64408b77d18ce5",
+        "rng.elf": "10d114d3331fa67939d412be287765f2fefae9b716421231f8901f12c456d71d",
+        "s3.elf": "ad19d44e30b6d58fa542c40c0b1a38e27ecb9883f8db76e8b3cf6288eb03dce3",
+        "tcpip.elf": "b07bb35ff810ecfb21d10301c50f13e389f0ced45ff2392c75a0b594369f1de6",
+        "time.elf": "1afa0fc691f5dd06b7f9ea5f095e5048ac2c9fba0f0ca97f622e83c5961fd612",
+        "virtio_blk.elf": "f73eef9a720299a7764ad46b8c6875955259d1ca6903a3d95bc64ec23930d304"
+      },
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "ca73af160a462fa40ed166dbea6fda0fb2c53a8f2bfba6d50f4dbf719076fdf6",
+        "scripts/run-x86_64.sh": "68f5c782f96233721e2ca04f07c2181df7a43396add422ad49f421dbde900aaa"
+      },
+      "qemu_arguments": [
+        "-M",
+        "q35",
+        "-cpu",
+        "max",
+        "-smp",
+        "4",
+        "-m",
+        "512M",
+        "-drive",
+        "if=pflash,format=raw,unit=0,file=/opt/homebrew/opt/qemu/share/qemu/edk2-x86_64-code.fd,readonly=on",
+        "-drive",
+        "if=none,file=./os-images/charlotte-x86_64-debug-q4-containers-intel-minimal-minimal.img,format=raw,id=esp,readonly=on",
+        "-device",
+        "qemu-xhci,id=xhci",
+        "-device",
+        "usb-storage,bus=xhci.0,drive=esp,bootindex=1",
+        "-drive",
+        "if=none,file=./os-images/x86-data-q4-containers-intel-minimal-minimal.img,format=raw,id=data0",
+        "-device",
+        "nvme,drive=data0,serial=cat0",
+        "-device",
+        "intel-iommu",
+        "-object",
+        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "-device",
+        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on",
+        "-display",
+        "none",
+        "-no-reboot",
+        "-nic",
+        "none",
+        "-netdev",
+        "user,id=net0,hostfwd=tcp::18005-:7444",
+        "-device",
+        "virtio-net-pci-non-transitional,netdev=net0,iommu_platform=on,mac=52:54:00:12:34:56",
+        "-qmp",
+        "unix:/tmp/ctdiag-j40kv9v6/qmp.sock,server=on,wait=off",
+        "-gdb",
+        "unix:/tmp/ctdiag-j40kv9v6/gdb.sock,server=on,wait=off",
+        "-serial",
+        "file:/tmp/charlotte-x86-q4-containers-intel-minimal-minimal-serial.log"
+      ],
+      "bundle_unchanged_from_qualified_record_node_batch": true,
+      "serial_sha256": "632e4220de4038242c2571fd85404a351157c6a3c99550d14dd6033152205538",
+      "runner_sha256": "96395977260cdbd61b15f1dac2d35fc645d0092eab4e65ba7cd2401803e66bf1",
+      "runner_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "milestones": [
+        "[+     0.018769] Kernel heap: usable=422 MiB initial=8 MiB reserve=64 MiB total=72 MiB",
+        "[+     3.745382] BOOT COMPLETE: validation passed; local storage ready; services submitted"
+      ]
+    }
+  ],
+  "failed_native": [
+    {
+      "profile": "ARM SMMUv3 security",
+      "status": "failed initial native fixture",
+      "kernel_sha256": "10d1591925150bc8ca2ccdde94d80f09002f1e7dac94b952a3814d937cf5d3e2",
+      "boot_image_sha256": "ac49e3c0ecbdcf3ea8e0724a83da0bf33ff057ce8557506119e90b53c1c3576d",
+      "initial_disk_sha256": "71220674713d03a86470003470fc56bc83b7da8a1107b285b5e6d64f1423e9d7",
+      "bundle_sha256": {
+        "agent.elf": "671eaa8ba761bd8fe1ab7e1a0be24f5335a9e11be7b1c755ba0cb7e195d81d6a",
+        "cclient.elf": "aedb34755dc2eda6af6f1e1b31592d0055029ccf9b890381492d20134de83d1a",
+        "client.elf": "a46d6c5d3f0110d0cc2bdc693b890ba3522b109e5d65cf9098ad2bdd785c530e",
+        "clusterctl.elf": "30c8cbbc4b9d7edf6872f5bf47d1a33bdfcb09f0276927476d2c9e654cfb176b",
+        "deployd.elf": "058dc4d96a9e77bcd2251596415a3f50fcda30534cff20ba3e016d3341b08d9f",
+        "disco.elf": "3b454feea99eee0adb48380c55000267d800f1307f3df80e4292de467464eed9",
+        "dns.elf": "08fc3ffdb05a9e56cfb9f78f16d04ef08188f2231eaeb6a9c325df0d08623139",
+        "echo.elf": "840324beddaf0c90f459dc0900e78884b631205027e4ff09d0fed89ffa2da1f6",
+        "frouter.elf": "49d2505c668f831564d1b2d2e1bd2d101cac651760ccf35fd69edc5fb54f3994",
+        "fs.elf": "264393d6535c0bd7d9ba212048ce4850b067a8633766b4869621d38b882620b5",
+        "grantctl.elf": "bd1b2b5a826a45d3d745e51a315f9083e080fba037a7aa6c9f7b379c3e6daaa1",
+        "greet.elf": "bf6c98d6d361cd63f7567c7eec56496ca1005e524e12b2815db450d1299f7851",
+        "httpd.elf": "2a20eab99c51d8313efcefce58039dd4e1301cff33f9b8e8813bd565085c3024",
+        "kafka.elf": "6d2e4c632f19a76a3f946d393d8c7a4ad55a3eb037a17d249eb285d8b6a29e0e",
+        "kafka_fence_smoke.elf": "69d119e505da5d526d2c33ff8287feda795e1c73a9b5d51b54316aa39cac818c",
+        "kafka_smoke.elf": "b5d2cf1309ba703dffc3e7dc1336cd2395af79c586f802fe2a17abe987b7124b",
+        "kafka_step.elf": "2a23f2cf94d86bad97612b5b692031b2bb9d572398f9123631505c91b9f6aa89",
+        "kafka_step_input.elf": "b005dfcafb79e1787d8f61b75b36211b1fd8c85b7ff0b832c05cc48d4dcd5d00",
+        "kafka_step_proc.elf": "f56381d6e2a144b23333f761798a859fde0682f2c7def02a0a55d33b0b608174",
+        "nclient.elf": "0f75db8d899a510ff478965896ca239bbd2394d1abc4ceacd51756f10c19b6b6",
+        "net.elf": "63795434f8e51d1608539c0dd3da3e378b341082de3fb9a622202d3182434fcd",
+        "ns.elf": "2d720f3ba4ef4ef7582d157f068e660cd78851af304d478d47581d5cfcf4f694",
+        "nvme.elf": "4400a62a4f2496a137e23d389d3fb0097000991311b5e7243447eb33a729e360",
+        "nvme_client.elf": "5ab1ff38c3bfaa09ebbf58f28a6daeb888bb8fdf425b8e66c515c3940878e32f",
+        "objstore.elf": "6a043919aeb9f144063fc353b4591a76c19e198da9070a1dba75497c7b936cee",
+        "objstore_client.elf": "ef3fc558720d57d66a35be63fe70937b8046bc97d09b1f480cdd7249ac7dc5c5",
+        "observe.elf": "253c28fd0cef0871e7deb3086c4114f0e989bc7f7870805babd5f9979c89a8d3",
+        "otlp.elf": "94471bfb3ea50341e72b5440e6e81077ad820b6f83f047d78094dc2f626032a9",
+        "raft.elf": "2d32a23459bc273835bbb364e159051dc191dbef81c8342b7943f30070f925a6",
+        "rclient.elf": "d0186fd36a918859f1ed5084419098ed84de029423904adf2ea7d33ddfc7f41d",
+        "relmsg.elf": "28ba7a1fa23272068a2b09be9f6cea40b26b1090d357a7f4ef3176e3356f0104",
+        "rng.elf": "618f8e3159dbf8e526613927fdfd20d2ea7349a50dc6f32372e1fbae2db78868",
+        "s3.elf": "943f4d41427b5b9e40f83b7856ef3ca684bd64819de90b09e0710c27f9d03623",
+        "s3_smoke.elf": "f5c0157554d5550c95660cb096362c03e924884314f97ebee2aa831efdeb1213",
+        "security_probe.elf": "11a9f88261e2a8064100e7494d83c418d351a0422bac08e9807128ab964e43f3",
+        "servicemgr.elf": "3035aa2ee63aefbdd6f80e8e02eaa63eb1339a09f4ab0578fd1e019d341ba5df",
+        "shutdown_probe.elf": "32dc4a43ae45edbfef69e29fbdc33a329ac3543e83f0cad2c620df9ead9ab50b",
+        "sitas-user.elf": "6f0e7f2113b898f98e16708342db288745e9dcfe2bbbb016027e8db01100391b",
+        "tcpclient.elf": "efab9fa7b1c2ab305515ba5a4f7bf30f7dbdd7adf60c2c6d5635a5d3a31af435",
+        "tcpip.elf": "1ee63b257bbbacc1d6d52ef3944ee31a9b170f6eafff089fd54ac92afa3e68af",
+        "time.elf": "a6736abb273494bc03986dd50463998c4e13e2d28e637cddbe9380e74b6fd6f0",
+        "uart.elf": "4277c7745286054fffe64e944d845c17d6b9908076859b1c97d1117948ab12c7"
+      },
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-06T01:27:09Z",
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "ca73af160a462fa40ed166dbea6fda0fb2c53a8f2bfba6d50f4dbf719076fdf6",
+        "scripts/run-aarch64.sh": "58eede46ad82247673a9791e9cb247d5c32806b88bda86389e1e237d3ec100b8"
+      },
+      "qemu_arguments": [
+        "-M",
+        "virt,gic-version=3,msi=gicv2m,iommu=smmuv3,default-bus-bypass-iommu=off",
+        "-m",
+        "512M",
+        "-bios",
+        "/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
+        "-drive",
+        "file=./os-images/charlotte-aarch64-debug-q4-containers-arm.img,format=raw,if=none,id=boot0",
+        "-device",
+        "virtio-blk-pci,drive=boot0,addr=3",
+        "-cpu",
+        "cortex-a710",
+        "-object",
+        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "-device",
+        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on,addr=4",
+        "-smp",
+        "4",
+        "-drive",
+        "if=none,file=./os-images/nvme-disk-q4-containers-arm.img,format=raw,id=nvme0",
+        "-device",
+        "nvme,drive=nvme0,serial=cat0,max_ioqpairs=4,addr=2",
+        "-nic",
+        "none",
+        "-netdev",
+        "user,id=charlotte-net,hostfwd=tcp::18002-:7444",
+        "-device",
+        "virtio-net-pci,netdev=charlotte-net,disable-legacy=on,iommu_platform=on,mac=52:54:00:12:34:56,addr=1",
+        "-display",
+        "none",
+        "-qmp",
+        "unix:/tmp/ctdiag-1yqsmv09/qmp.sock,server=on,wait=off",
+        "-gdb",
+        "unix:/tmp/ctdiag-1yqsmv09/gdb.sock,server=on,wait=off",
+        "-serial",
+        "file:/tmp/charlotte-q4-containers-arm-serial.log"
+      ],
+      "serial_sha256": "6a401ea5fbda9da3fab6a385f4a97ba6d629f7a49a0dd45a2721d0dd3fa7acda",
+      "runner_sha256": "079f206ffbdbe2caa17e7685e1b9a248b9987576a7edbc231d2789ee70efd229",
+      "runner_result": {
+        "reason": "kernel-panic",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 9.726702000014484
+      },
+      "diagnostics": [
+        "[+     2.079470] [memory object] deferred map guard borrower AS asid=20",
+        "[+     2.123004] First-class memory object tests passed.",
+        "[+     2.166054] [heap admission] pool reserve/refund, zero backing, quota, repeated touch, retirement and exact ASID reuse passed",
+        "***",
+        "Kernel panic:",
+        "panicked at crates/catten/src/memory/retirement/recovery/tests.rs:103:5:",
+        "assertion `left == right` failed",
+        "  left: 1528",
+        " right: 1672",
+        "Kernel backtrace (raw return addresses; text=0xffffffff80000000..0xffffffff8059593c, sp=0xffff00005cb7f2d0, fp=0xffff00005cb7f350):",
+        "  #00 0xffffffff80352418",
+        "  #01 0xffffffff804c0840",
+        "  #02 0xffffffff804c0818",
+        "  #03 0xffffffff804c08b0",
+        "  #04 0xffffffff803093d8",
+        "***"
+      ],
+      "cause": "The new assertion captured 1672 bytes before staging. Confirmed IPC drain actually freed its 144-byte namespace, so 1528 bytes correctly remained at the rejected final-root barrier.",
+      "correction": "Capture after staging and independently require exactly the IPC layout bytes and one namespace slot to have been released. Preserve the remaining principal bytes unchanged across rejected invalidation. Production ownership/release logic unchanged."
+    },
+    {
+      "profile": "Intel VT-d security",
+      "status": "failed initial native fixture",
+      "kernel_sha256": "1bff8b7db39cc365aa430f9eb9e2b41250ebc1f90da6a63d5608d897b4cdb4b4",
+      "boot_image_sha256": "e6137531d52735f72fdafc1eb7e8f71de2cc199d5538e1f7988ae9bc93a4b96f",
+      "initial_disk_sha256": "6dc9db7495e27f2ab53a04b0f62747f4fd7a63f24f62fa0024c6a7939b0df278",
+      "bundle_sha256": {
+        "agent.elf": "41a34c422e5fab4565e123c13c2fdc144c2fb6752a5beb58acf7bbf7cb6d4c90",
+        "ahci.elf": "f607c8fdb0d1954938c33a7718dfe34521dbb444053c4f5887e4c95d40084f13",
+        "client.elf": "e1f6895d2bf32024d60ca4d0e41331738f2060857fff2106239fed2a7a3c4d25",
+        "clusterctl.elf": "a7dfe023ea1e27b8efc847bdf74066c336316b97e46cbd9d9221bc9e364267e7",
+        "deployd.elf": "df4b70928fe00d8ee8485b371524d453f71e9615e56966b680861991adcf9553",
+        "disco.elf": "741687e1d4139e2e707bed02837a4325699d496da3a11a1bfed95896cd191169",
+        "dns.elf": "2a6c84256737204e09dda339530d5a9a90f59cf06f3afd8eab5d022d977e32ae",
+        "e1000e.elf": "4efef0ca0179440dcbe0a29850c0497d3874b63b7d367a05b90204fb518b695a",
+        "echo.elf": "adebef36a9b262b7b1fbe81c610d6f2e0e3376e7d51b6e1459d909b7b1f71342",
+        "frouter.elf": "9d9e4d719278d43343e48cdcbe4b55c38034f25d528e80212df0eea81062698b",
+        "fs.elf": "c2f153ba2858c2bf54e996c9a697dbb7b093b9a94099dca39f1eebe303ab3837",
+        "grantctl.elf": "06af7e79a7a335b210e7dccfe4da9767eb555d8a4703340cb13c2b0144729312",
+        "greet.elf": "e69730b6a6db30aa0f379daeca6dd37f2931536125f2acd198670cd00dc82da0",
+        "httpd.elf": "081d51db9f5fc430dce97409e2a07971876be103ce141b1892fb3878a7e1bcb2",
+        "kafka.elf": "9ee3f990d493ba747ec443740c75787c117ad2330225cd628933ec31b8192f38",
+        "kafka_smoke.elf": "41b7af7299634f43438bac5ead66018fcc6e9fa016331f4639208f41e1576856",
+        "nclient.elf": "9020fc6a1e97f45f0295a0cc3bff59b6ace9a13364bacfd039365cc39507eaa0",
+        "net.elf": "3ba1c1a4a3058b25333ce696136b082f9f8c23fa9d192eff7e1253bac2fce915",
+        "ns.elf": "8500f58b27836d7764d8b0415fbaf88e8ca175d1a7ebf9bed98c145b390d019f",
+        "nvme.elf": "3905ba29c4acbc07cec559e9af09e9ad9eadfdf7fe05d0311eeb7c9444a867ba",
+        "nvme_client.elf": "41b44a10a7e331a96f11de006749d74a17edd600680bd29a9f914c18bf9b1c2f",
+        "objstore.elf": "ffafabc799a8aa8d61025d2ff648bdd1b3b8321034f89dfa88e9a75745be6c3a",
+        "objstore_client.elf": "5280c4a66778ec0b52786d0b2b6075a7c5c7e80dc0d7b8310a502b512421ce9c",
+        "observe.elf": "2c0fdaf0c2c57a672fb15bdb611815f49142b68c02e3220c203bc18e7f8d0fae",
+        "otlp.elf": "1500357bb14efc05e3c941ce4ee65e2797995d5cb097b649fc7cfaa5d05ff65b",
+        "raft.elf": "a2ca3ee01e5a8456b1251341a71299d8d40893b7047c7daf050972243cce087e",
+        "rclient.elf": "cbdd0af55b0da8254fa8d962a7b75cb40cd061bce05baa59c4bcc5b019867805",
+        "relmsg.elf": "3acfb247379fa6b247c2926dfcf11bf4212d525ef59de26e3e64408b77d18ce5",
+        "rng.elf": "10d114d3331fa67939d412be287765f2fefae9b716421231f8901f12c456d71d",
+        "s3.elf": "ad19d44e30b6d58fa542c40c0b1a38e27ecb9883f8db76e8b3cf6288eb03dce3",
+        "s3_smoke.elf": "b57d03565926b9dbc67ed22ec445e9fe733cf43ac2be2c79435f84345469d2d8",
+        "security_probe.elf": "0b7bdddc88803534f71a30310ce45d6885ddb0e75e2209967b1c37e44f16438c",
+        "servicemgr.elf": "2ba39555142fd4f1fcdf8004f542cdf97b65267f3f2e05814e00822fe1cbe72e",
+        "shutdown_probe.elf": "fe7212dd8752c33be2f604436ca482f72eeb18ccbc3d4c69eb0bda9381415163",
+        "tcpclient.elf": "e85b5df90c422d46508051201d04ed42f6bf9b720b409347d266525e33622520",
+        "tcpip.elf": "b07bb35ff810ecfb21d10301c50f13e389f0ced45ff2392c75a0b594369f1de6",
+        "time.elf": "1afa0fc691f5dd06b7f9ea5f095e5048ac2c9fba0f0ca97f622e83c5961fd612",
+        "virtio_blk.elf": "f73eef9a720299a7764ad46b8c6875955259d1ca6903a3d95bc64ec23930d304"
+      },
+      "cpus": 4,
+      "timeout_seconds": 240,
+      "prepared_utc": "2026-11-06T01:28:20Z",
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ee9c72704400b4386ab605f7cb885639b63183e2716f9f5ef276ad01377f00f8",
+        "scripts/lib/boot-common.sh": "ca73af160a462fa40ed166dbea6fda0fb2c53a8f2bfba6d50f4dbf719076fdf6",
+        "scripts/run-x86_64.sh": "68f5c782f96233721e2ca04f07c2181df7a43396add422ad49f421dbde900aaa"
+      },
+      "qemu_arguments": [
+        "-M",
+        "q35",
+        "-cpu",
+        "max",
+        "-smp",
+        "4",
+        "-m",
+        "512M",
+        "-drive",
+        "if=pflash,format=raw,unit=0,file=/opt/homebrew/opt/qemu/share/qemu/edk2-x86_64-code.fd,readonly=on",
+        "-drive",
+        "if=none,file=./os-images/charlotte-x86_64-debug-q4-containers-intel.img,format=raw,id=esp,readonly=on",
+        "-device",
+        "qemu-xhci,id=xhci",
+        "-device",
+        "usb-storage,bus=xhci.0,drive=esp,bootindex=1",
+        "-drive",
+        "if=none,file=./os-images/x86-data-q4-containers-intel.img,format=raw,id=data0",
+        "-device",
+        "nvme,drive=data0,serial=cat0",
+        "-device",
+        "intel-iommu",
+        "-object",
+        "rng-random,filename=/dev/urandom,id=charlotte-rng",
+        "-device",
+        "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on",
+        "-display",
+        "none",
+        "-no-reboot",
+        "-nic",
+        "none",
+        "-netdev",
+        "user,id=net0,hostfwd=tcp::18003-:7444",
+        "-device",
+        "virtio-net-pci-non-transitional,netdev=net0,iommu_platform=on,mac=52:54:00:12:34:56",
+        "-qmp",
+        "unix:/tmp/ctdiag-z92h3hsp/qmp.sock,server=on,wait=off",
+        "-gdb",
+        "unix:/tmp/ctdiag-z92h3hsp/gdb.sock,server=on,wait=off",
+        "-serial",
+        "file:/tmp/charlotte-x86-q4-containers-intel-serial.log"
+      ],
+      "serial_sha256": "cf067853d8369c6c52df228c145288c6f3e4dd81d96bcb690b4edb9ac9c08cac",
+      "runner_sha256": "8a0a29b64a568d9ea9d4072062e0ef6b53c356a92ac4826b4129193bd40bc45d",
+      "runner_result": {
+        "reason": "kernel-panic",
+        "errors": [],
+        "qmp": "captured",
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "cpu_count": 4,
+        "snapshot": "captured",
+        "elapsed_seconds": 3.2434427499538288
+      },
+      "diagnostics": [
+        "[+     1.012977] [memory object] writer AS asid=26",
+        "[+     1.016484] First-class memory object tests passed.",
+        "[+     1.019651] [heap admission] pool reserve/refund, zero backing, quota, repeated touch, retirement and exact ASID reuse passed",
+        "***",
+        "Kernel panic:",
+        "panicked at crates/catten/src/memory/retirement/recovery/tests.rs:103:5:",
+        "assertion `left == right` failed",
+        "  left: 1528",
+        " right: 1672",
+        "Kernel backtrace (raw return addresses; text=0xffffffff80000000..0xffffffff805ea69a, sp=0xffff80001c003a70, fp=0xffff80001c003b10):",
+        "  #00 0xffffffff8053886e",
+        "  #01 0xffffffff804b4d2b",
+        "  #02 0xffffffff804b4c97",
+        "  #03 0xffffffff804b4e0d",
+        "  #04 0xffffffff800478d8",
+        "***"
+      ],
+      "cause": "The new assertion captured 1672 bytes before staging. Confirmed IPC drain actually freed its 144-byte namespace, so 1528 bytes correctly remained at the rejected final-root barrier.",
+      "correction": "Capture after staging and independently require exactly the IPC layout bytes and one namespace slot to have been released. Preserve the remaining principal bytes unchanged across rejected invalidation. Production ownership/release logic unchanged."
+    }
+  ],
+  "evidence_policy": "Final results, original failures, diagnostics and artifact identities are inline and readable without temporary logs. Original failed runs have separate names and source identities. Signed bundle identities match the preceding qualified record-node batch. Runner whole-tree diff hashes can include documentation changes; frozen source/input hashes identify qualification inputs.",
+  "remaining": [
+    "Remaining catalog principal coverage, allocator excess and coherent joint heap fit (Q4).",
+    "Complete production caller/IRQ/implicit destruction review (Q5).",
+    "Recovery custody and physical completion contracts (Q6), sustained service/cleanup progress (Q7), combined pressure/incident matrix (Q8).",
+    "ARM display second grant-probe, Intel retirement-pin and ARM exit-watch incidents remain unresolved."
+  ]
+}

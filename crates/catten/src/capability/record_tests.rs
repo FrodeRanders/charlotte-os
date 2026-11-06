@@ -271,6 +271,7 @@ fn abandonment(before: (usize, usize)) {
     let root = memory::register_user_address_space(space).unwrap();
     let local = account(root);
     let storage = CAPABILITIES.lock().get(&root.id()).unwrap().storage;
+    let metadata_base = memory::kernel_buffers::test_metadata_used(principal);
     let mut preparation = PreparingRecord::try_new(storage).unwrap();
     preparation.test_charge(&local);
     let cap = try_allocate(root.id(), ObjectKind::Memory).unwrap();
@@ -295,7 +296,7 @@ fn abandonment(before: (usize, usize)) {
     assert_eq!(local.used(), 2);
     assert_eq!(
         memory::kernel_buffers::test_metadata_used(principal),
-        2 * record_budget::Prepared::allocation_bytes() as u64
+        metadata_base + 2 * record_budget::Prepared::allocation_bytes() as u64
     );
     memory::close_user_address_space_handle(root).unwrap();
     assert_eq!(local.used(), 2);

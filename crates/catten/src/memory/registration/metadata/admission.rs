@@ -10,21 +10,24 @@ use crate::klib::{
     collections::retirement_list::PreparedEntry,
 };
 
-pub(in crate::memory) type Charge = admission::NodeCharge<RootMetadata>;
+pub(in crate::memory) type Charge =
+    admission::NodeCharge<RootMetadata, crate::memory::kernel_buffers::MetadataSponsor>;
 
 pub(in crate::memory) fn prepare<T>(
-    platform: bool,
+    storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
 ) -> Result<PreparedEntry<T, Charge>, AllocError> {
-    prepare_with(platform, PreparedEntry::try_new_charged)
+    prepare_with(storage, PreparedEntry::try_new_charged)
 }
 
 pub(in crate::memory) fn prepare_with<T>(
-    platform: bool,
+    storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
     allocate: impl FnOnce(Charge) -> Result<PreparedEntry<T, Charge>, AllocError>,
 ) -> Result<PreparedEntry<T, Charge>, AllocError> {
-    admission::prepare_node_with::<_, RootMetadata>(
-        platform,
+    let storage = storage.into();
+    admission::prepare_node_with_sponsor::<_, RootMetadata, _>(
+        storage.platform(),
         PreparedEntry::<T, Charge>::allocation_bytes(),
+        storage.metadata_sponsor(),
         allocate,
     )
 }

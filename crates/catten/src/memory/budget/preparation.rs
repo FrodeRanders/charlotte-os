@@ -66,7 +66,7 @@ impl PreparingAccount {
         }));
         let result = (|| {
             before(1)?;
-            owner.0.node = Some(admission::prepare(storage.platform())?);
+            owner.0.node = Some(admission::prepare(storage)?);
             before(2)?;
             owner.0.waiters = Some(WaitSponsor::try_new_with_backing_class(platform, storage)?);
             before(3)?;

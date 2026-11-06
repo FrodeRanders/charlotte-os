@@ -64,8 +64,7 @@ impl Operation {
             mailbox_words::Words::backing_bytes_for(n)?,
         )?);
         self.0.node = Some(
-            node_budget::prepare(self.0.captured.storage.platform())
-                .map_err(|_| Error::AllocationFailed)?,
+            node_budget::prepare(self.0.captured.storage).map_err(|_| Error::AllocationFailed)?,
         );
         if test_fault!(tests::reject_backing()) {
             return Err(Error::AllocationFailed);
@@ -93,8 +92,7 @@ impl Operation {
         // Legacy word callers share the same family account even without
         // endpoint grants. Competing preparations cannot create separate quotas.
         self.0.namespace_node = Some(
-            node_budget::prepare(self.0.captured.storage.platform())
-                .map_err(|_| Error::AllocationFailed)?,
+            node_budget::prepare(self.0.captured.storage).map_err(|_| Error::AllocationFailed)?,
         );
         self.0.namespace =
             Some(AsMailboxCaps::try_new(self.0.captured.address_space, self.0.captured.storage)?);

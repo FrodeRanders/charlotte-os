@@ -236,10 +236,13 @@ pub(crate) fn test_metadata_principal(
     let captured = capture_mailbox_identity(first.id());
     let payload = mailbox_node_budget::Prepared::allocation_bytes() as u64;
     let baseline = used(principal);
+    let other_base = used(other);
+    let namespace =
+        node_budget::Prepared::<(AddressSpaceId, AsMailboxCaps)>::allocation_bytes() as u64;
     mailbox_node_budget::test_principal_rejection(captured.storage);
     assert_eq!(used(principal), baseline);
     let receiver = open_mailbox_endpoint(first.id(), None, captured).unwrap();
-    let shared = baseline + payload + authority_bytes;
+    let shared = baseline + namespace + payload + authority_bytes;
     assert_eq!(used(principal), shared);
     let nodes = mailbox_node_budget::snapshot();
     let resource = mailbox_budget::node_used();
@@ -255,11 +258,22 @@ pub(crate) fn test_metadata_principal(
         }
         assert_eq!(open_mailbox_endpoint(first.id(), None, captured), Ok(receiver));
     }
-    for headroom in [0, payload - 1, payload, payload + authority_bytes - 1] {
+    for headroom in [
+        0,
+        payload - 1,
+        payload,
+        payload + namespace - 1,
+        payload + namespace,
+        payload + namespace + authority_bytes - 1,
+    ] {
         limit(principal, shared + headroom);
         assert_eq!(
             open_mailbox_endpoint(first.id(), Some(get_lp_id()), captured),
-            Err(Error::ResourceLimit)
+            Err(if headroom >= payload && headroom < payload + namespace {
+                Error::AllocationFailed
+            } else {
+                Error::ResourceLimit
+            })
         );
         assert_eq!(used(principal), shared);
         assert_eq!(mailbox_node_budget::snapshot(), nodes);
@@ -268,11 +282,11 @@ pub(crate) fn test_metadata_principal(
     }
     let independent =
         open_mailbox_endpoint(healthy.id(), None, capture_mailbox_identity(healthy.id())).unwrap();
-    assert_eq!(used(other), payload + authority_bytes);
+    assert_eq!(used(other), other_base + namespace + payload + authority_bytes);
     mailbox_publication::close(healthy.id(), independent).unwrap();
-    assert_eq!(used(other), 0);
+    assert_eq!(used(other), other_base + namespace);
     mailbox_publication::close(first.id(), receiver).unwrap();
-    assert_eq!(used(principal), baseline);
+    assert_eq!(used(principal), baseline + namespace);
     limit(principal, crate::resource_policy::POLICY.memory.principal_metadata_bytes);
     payload
 }

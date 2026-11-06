@@ -351,7 +351,7 @@ fn register_user_address_space_with(
         publish,
         reject,
         || budget::PreparingAccount::try_new(storage),
-        || registration::metadata::PreparingMetadata::try_new(storage.platform()),
+        || registration::metadata::PreparingMetadata::try_new(storage),
     )
 }
 

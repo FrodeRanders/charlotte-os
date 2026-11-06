@@ -119,8 +119,8 @@ fixed-bundle allocator funds namespace and reactor accounts, with separate famil
 and principal policies. See [reactor-account qualification](../reports/audits/2026-11-06-q4-reactor-principals.md).
 
 Migrated general metadata nodes share an independent **8 MiB** allowance in the
-same principal record (`principal_metadata_bytes`). Unified authority and mailbox
-endpoint nodes currently use it; this does not fund other node families
+same principal record (`principal_metadata_bytes`). Unified authority, mailbox endpoint, four root metadata and five global
+namespace-node layouts currently use it; this does not fund other node families
 automatically. Capture comes from the immutable recipient authority namespace or
 the exact mailbox operation root. Candidate, published, detached and retained
 node layouts remain funded through actual deallocation. Resource grants and

@@ -112,12 +112,10 @@ pub(crate) fn prepare_namespace(
     storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
 ) -> Result<PreparingNamespace, AllocationError> {
     let storage = storage.into();
-    let backing_platform = storage.platform();
     if test_fault!(namespace_tests::reject(1)) {
         return Err(AllocationError::AllocationFailed);
     }
-    let node =
-        node_budget::prepare(backing_platform).map_err(|_| AllocationError::AllocationFailed)?;
+    let node = node_budget::prepare(storage).map_err(|_| AllocationError::AllocationFailed)?;
     #[cfg(feature = "kernel_tests")]
     namespace_tests::boundary(false);
     let value = if test_fault!(namespace_tests::reject(2)) {
@@ -844,4 +842,16 @@ pub fn kind_of(owner: AddressSpaceId, cap: ObjectCapability) -> Option<ObjectKin
         .get(&owner)
         .and_then(|table| table.objects.get(&cap))
         .map(|entry| entry.kind)
+}
+
+#[cfg(feature = "kernel_tests")]
+pub(crate) fn namespace_node_bytes_for_test() -> u64 {
+    node_budget::Prepared::<(AddressSpaceId, AddressSpaceCapabilities)>::allocation_bytes() as u64
+}
+#[cfg(feature = "kernel_tests")]
+pub(crate) fn test_funded_namespace_fixture(
+    root: crate::memory::AddressSpaceHandle,
+    principal: u64,
+) {
+    namespace_node_tests::funded_fixture(root, principal);
 }

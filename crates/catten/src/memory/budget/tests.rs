@@ -40,8 +40,13 @@ fn generation_lifetime() {
     let baseline = node_snapshot();
     let metadata_baseline = admission::snapshot();
     let node_bytes = account_node_bytes();
-    let old =
-        memory::register_user_address_space(memory::AddressSpace::try_new_user().unwrap()).unwrap();
+    let principal = charlotte_launch::artifact_principal_id(b"root-ledger-principal");
+    let root = memory::AddressSpace::try_new_principal_user(
+        false,
+        memory::prepare_principal_backing(principal, false).unwrap(),
+    )
+    .unwrap();
+    let old = memory::register_user_address_space(root).unwrap();
     // Production lookup and counter reservation with the actual heap held:
     // the first use cannot lazily allocate a map node or either sponsor.
     let (waiters, timers, charge) = {
@@ -71,6 +76,7 @@ fn generation_lifetime() {
     assert_eq!(timers.used(), 1);
     memory::close_user_address_space_handle(old).unwrap();
     assert!(LEDGER.lock().domains.contains_key(&(old.id(), old.generation())));
+    assert_eq!(memory::kernel_buffers::test_metadata_used(principal), node_bytes);
     // The three policy nodes were freed, but the closed memory account still
     // owns its original node admission independently of ASID-table capacity.
     assert_eq!(
@@ -95,6 +101,7 @@ fn generation_lifetime() {
     // its last memory charge. Old timer/waiter allocations still have owners.
     let with_successor = admission::snapshot();
     drop(charge);
+    assert_eq!(memory::kernel_buffers::test_metadata_used(principal), 0);
     assert_eq!(
         admission::snapshot(),
         (

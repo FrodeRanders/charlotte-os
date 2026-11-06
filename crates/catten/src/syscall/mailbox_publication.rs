@@ -66,10 +66,8 @@ impl PreparingMailbox {
         if test_fault!(tests::reject(2)) {
             return Err(Error::AllocationFailed);
         }
-        self.0.namespace_node = Some(
-            node_budget::prepare(captured.storage.platform())
-                .map_err(|_| Error::AllocationFailed)?,
-        );
+        self.0.namespace_node =
+            Some(node_budget::prepare(captured.storage).map_err(|_| Error::AllocationFailed)?);
         if test_fault!(tests::reject(3)) {
             return Err(Error::AllocationFailed);
         }

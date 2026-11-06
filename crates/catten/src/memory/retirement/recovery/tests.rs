@@ -53,7 +53,8 @@ fn test_namespace_metadata() {
     let before = backing_budget::test_used_pages(Kind::Heap);
     let nodes_before = mailbox_node_budget::snapshot();
     let scratch_before = memory::object::scratch_admission_snapshot();
-    let handle = loader::create_user_address_space_handle();
+    let principal = charlotte_launch::artifact_principal_id(b"root-metadata-recovery-principal");
+    let handle = principal_root(principal);
     assert!(memory::commit_user_heap_page_handle(handle, charlotte_launch::HEAP_VADDR));
     let family_used = mailbox::populate(handle);
     let nodes_retained = mailbox_node_budget::snapshot();
@@ -69,7 +70,18 @@ fn test_namespace_metadata() {
     memory::object::reserve_scratch(handle.id(), 2).unwrap();
     let scratch_retained = memory::object::scratch_admission_snapshot();
     assert_eq!(scratch_retained.0[1], scratch_before.0[1] + 2);
+    let before_staging = memory::kernel_buffers::test_metadata_used(principal);
+    let namespaces_before = crate::klib::namespace_node_budget::snapshot();
     let owner = super::super::tests::stage(handle);
+    // Confirmed IPC drain releases its global namespace before final root
+    // invalidation. The remaining metadata stays in this physical root owner.
+    let retained_bytes = memory::kernel_buffers::test_metadata_used(principal);
+    let ipc_bytes = crate::ipc::namespace::node_bytes_for_test();
+    assert_eq!(before_staging - retained_bytes, ipc_bytes);
+    let namespaces_staged = crate::klib::namespace_node_budget::snapshot();
+    assert_eq!(namespaces_before.0[0] - namespaces_staged.0[0], ipc_bytes);
+    assert_eq!(namespaces_before.0[1] - namespaces_staged.0[1], 1);
+    assert!(retained_bytes > 0);
     assert_eq!(owner.metadata.as_ref().unwrap().test_scratch_extents(), 1);
     owner.metadata.as_ref().unwrap().test_assert_retained(handle);
     mailbox::assert_hidden(handle);
@@ -97,6 +109,7 @@ fn test_namespace_metadata() {
         )
         .unwrap();
     assert_eq!(result.state, State::AwaitingRetry);
+    assert_eq!(memory::kernel_buffers::test_metadata_used(principal), retained_bytes);
     assert_eq!(mailbox_node_budget::snapshot(), nodes_retained);
     assert_eq!(family_used(), 2);
     assert_eq!(queue_used(), mailbox::queue_amount());
@@ -125,9 +138,12 @@ fn test_namespace_metadata() {
         })
         .unwrap();
     assert_eq!(result.state, State::Recovered);
+    assert_eq!(memory::kernel_buffers::test_metadata_used(principal), 0);
     assert_eq!(mailbox_node_budget::snapshot(), nodes_before);
     assert_eq!(backing_budget::test_used_pages(Kind::Heap), before);
-    let successor = loader::create_user_address_space_handle();
+    let other_principal =
+        charlotte_launch::artifact_principal_id(b"root-metadata-recovery-successor");
+    let successor = principal_root(other_principal);
     assert_eq!(successor.id(), handle.id());
     assert_ne!(successor, handle);
     memory::object::reserve_scratch(successor.id(), 2).unwrap();
@@ -136,6 +152,7 @@ fn test_namespace_metadata() {
     assert_eq!(mailbox_node_budget::snapshot(), nodes_retained);
     let successor_queue = mailbox::captured_queue_used(successor);
     let successor_authority = crate::capability::record_tests::captured_account_used(successor);
+    let successor_bytes = memory::kernel_buffers::test_metadata_used(other_principal);
     {
         let lifecycle = memory::ADDRESS_SPACE_LIFECYCLE.lock();
         assert!(crate::capability::detach_address_space(handle, &lifecycle).is_none());
@@ -143,6 +160,7 @@ fn test_namespace_metadata() {
         assert!(memory::object::detach_scratch(handle).is_none());
     }
     assert_eq!(registry.claim(ticket).err(), Some(RetryError::Terminal));
+    assert_eq!(memory::kernel_buffers::test_metadata_used(other_principal), successor_bytes);
     assert_eq!(mailbox_node_budget::snapshot(), nodes_retained);
     assert_eq!(successor_family(), 2);
     assert_eq!(successor_queue(), mailbox::queue_amount());
@@ -152,6 +170,7 @@ fn test_namespace_metadata() {
     assert_eq!(queue_used(), [0, 0]);
     assert_eq!(authority_used(), 0);
     memory::close_user_address_space_handle(successor).unwrap();
+    assert_eq!(memory::kernel_buffers::test_metadata_used(other_principal), 0);
     assert_eq!(mailbox_node_budget::snapshot(), nodes_before);
     assert_eq!(successor_family(), 0);
     assert_eq!(successor_queue(), [0, 0]);
@@ -162,7 +181,9 @@ fn test_namespace_metadata() {
 
     // Actual bounded custody attempt abandonment retains the complete root,
     // both payloads and all original charges below every relevant local guard.
-    let handle = loader::create_user_address_space_handle();
+    let abandoned_principal =
+        charlotte_launch::artifact_principal_id(b"root-metadata-recovery-abandoned");
+    let handle = principal_root(abandoned_principal);
     assert!(memory::commit_user_heap_page_handle(handle, charlotte_launch::HEAP_VADDR));
     let family_used = mailbox::populate(handle);
     let queue_used = mailbox::captured_queue_used(handle);
@@ -175,6 +196,8 @@ fn test_namespace_metadata() {
     let ticket =
         registry.retain(owner).unwrap_or_else(|_| panic!("completed custody slot not reusable"));
     let attempt = registry.claim(ticket).unwrap();
+    let abandoned_bytes = memory::kernel_buffers::test_metadata_used(abandoned_principal);
+    assert!(abandoned_bytes > 0);
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     {
         let _registry = registry.inner.lock();
@@ -185,11 +208,18 @@ fn test_namespace_metadata() {
         let _heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
         memory::object::test_with_scratch_locked(|| {
             mailbox::under_registry_guards(|| {
-                mailbox_node_budget::with_locked(|| drop(attempt));
+                mailbox_node_budget::with_locked(|| {
+                    memory::kernel_buffers::test_with_history_locked(|| {
+                        memory::registration::metadata::admission::with_locked(|| {
+                            crate::klib::namespace_node_budget::with_locked(|| drop(attempt));
+                        });
+                    });
+                });
             });
         });
     }
     assert_eq!(status(&registry, ticket).state, State::Abandoned);
+    assert_eq!(memory::kernel_buffers::test_metadata_used(abandoned_principal), abandoned_bytes);
     assert_eq!(mailbox_node_budget::snapshot(), nodes_retained);
     assert_eq!(registry.claim(ticket).err(), Some(RetryError::Terminal));
     assert_eq!(family_used(), 2);
@@ -212,12 +242,28 @@ fn test_namespace_metadata() {
         node_bytes
     );
     crate::logln!(
+        "[root container principal recovery] {} bytes retained through rejected invalidation, \
+         confirmed release zeroed original principal and preserved funded successor; {} bytes \
+         retained by guarded complete-root abandonment",
+        retained_bytes,
+        abandoned_bytes
+    );
+    crate::logln!(
         "[root metadata ownership] rejected barrier retains mailbox words and original charges; \
          confirmed custody retry releases metadata post-guard before root backing; stale \
          extraction preserves reused generation; guarded attempt abandonment retains one complete \
          root/slot, two mailbox charges, three shared authority charges, one heap page and queue \
          backing plus its scratch namespace/extent nodes"
     );
+}
+
+fn principal_root(principal: u64) -> memory::AddressSpaceHandle {
+    let root = memory::AddressSpace::try_new_principal_user(
+        false,
+        memory::prepare_principal_backing(principal, false).unwrap(),
+    )
+    .unwrap();
+    memory::register_user_address_space(root).unwrap()
 }
 
 fn test_retry_and_reuse() {

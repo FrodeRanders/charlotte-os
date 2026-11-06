@@ -110,9 +110,19 @@ fn funded_node_rejection_returns_original_sponsor_and_family() {
     let full =
         Reservation::<Nodes, 2>::reserve(false, [Nodes::ORDINARY[0] - 128, Nodes::ORDINARY[1] - 1])
             .unwrap();
-    assert!(Charge::with_sponsor(false, 64, sponsor).is_err());
+    assert!(Charge::with_sponsor(false, 64, sponsor.clone()).is_err());
     assert_eq!(used_bytes.load(Ordering::Acquire), 128);
     drop(full);
+    let before = used::<Nodes, 2>();
+    assert!(
+        prepare_node_with_sponsor::<(), Nodes, _>(false, 64, sponsor, |_charge| {
+            assert_eq!(used_bytes.load(Ordering::Acquire), 192);
+            Err(AllocError)
+        })
+        .is_err()
+    );
+    assert_eq!(used_bytes.load(Ordering::Acquire), 128);
+    assert_eq!(used::<Nodes, 2>(), before);
     std::thread::spawn(move || drop(charge)).join().unwrap();
     assert_eq!(used_bytes.load(Ordering::Acquire), 0);
     assert_eq!(used::<Nodes, 2>(), ([0, 0], [0, 0]));
