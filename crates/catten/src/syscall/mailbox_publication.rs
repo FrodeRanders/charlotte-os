@@ -62,7 +62,7 @@ impl PreparingMailbox {
         if test_fault!(tests::reject(1)) {
             return Err(Error::AllocationFailed);
         }
-        self.0.endpoint_node = Some(mailbox_node_budget::prepare(captured.storage.platform())?);
+        self.0.endpoint_node = Some(mailbox_node_budget::prepare(captured.storage)?);
         if test_fault!(tests::reject(2)) {
             return Err(Error::AllocationFailed);
         }

@@ -26,14 +26,21 @@ independently caps requested storage as layouts grow. A quarter remains shared t
 without per-type or per-service progress entitlements. No existing resource limit
 is raised and no RAM is preallocated.
 
-Native layouts are 112/128 bytes for capability/IPC nodes, 224 bytes for a
+Native layouts are 136/128 bytes for capability/IPC nodes, 224 bytes for a
 completion node, 96 bytes for a mailbox-capability node and 136 bytes for a word
-namespace node: 696 bytes for all five. These layouts include the captured
+namespace node: 720 bytes for all five. These layouts include the captured
 [namespace-account](namespace-account-admission.md) and
-[reactor-account funding references](completion-account-admission.md). Twice the complete-root count capacity
-uses 5,701,632 total or 4,276,224 ordinary layout bytes, below the 8/6 MiB byte
-ceilings. Current layouts hit count ceilings first, even for the largest type;
-byte-denial controls deliberately use oversized synthetic layouts.
+[reactor-account funding references](completion-account-admission.md). The capability
+namespace also retains its immutable principal/class token for authority-record
+preparation. Twice the complete-root count capacity
+uses 5,898,240 total or 4,423,680 ordinary layout bytes, below the 8/6 MiB byte
+ceilings. A mix consisting only of 224-byte completion nodes is byte-bound at
+37449 total or 28086 ordinary nodes before those shared count ceilings. The
+count-pressure controls use capability namespace nodes; they do not demonstrate
+count-first capacity for every layout. Independent byte-denial controls use
+oversized synthetic layouts. Increasing the byte ceiling would admit more of the
+largest type but consume more heap; the reviewed complete-root mix needs no such
+increase.
 
 The typed charge adds one requested-byte count and original-class flag to each
 node. Reusing the existing admitted map and retirement collection preserves

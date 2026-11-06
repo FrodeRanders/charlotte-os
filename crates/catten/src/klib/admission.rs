@@ -94,24 +94,38 @@ fn release<F: Family<N>, const N: usize>(platform: bool, amount: [u64; N]) {
 
 #[derive(Debug)]
 #[must_use]
-pub(crate) struct NodeCharge<F: Family<2>> {
+pub(crate) struct NodeCharge<F: Family<2>, S: ByteSponsor = ()> {
     bytes: u64,
     platform: bool,
+    sponsor: S,
     family: PhantomData<F>,
 }
 impl<F: Family<2>> NodeCharge<F> {
     pub(crate) fn reserve(platform: bool, bytes: u64) -> Result<Self, AllocError> {
-        reserve::<F, 2>(platform, [bytes, 1])?;
+        Self::with_sponsor(platform, bytes, ())
+    }
+}
+impl<F: Family<2>, S: ByteSponsor> NodeCharge<F, S> {
+    /// The typed node owner must retain this charge through actual deallocation.
+    /// Sponsor capture belongs to its adapter, never a later registry lookup.
+    pub(crate) fn with_sponsor(platform: bool, bytes: u64, sponsor: S) -> Result<Self, AllocError> {
+        sponsor.reserve(bytes)?;
+        if let Err(error) = reserve::<F, 2>(platform, [bytes, 1]) {
+            sponsor.release(bytes);
+            return Err(error);
+        }
         Ok(Self {
             bytes,
             platform,
+            sponsor,
             family: PhantomData,
         })
     }
 }
-impl<F: Family<2>> Drop for NodeCharge<F> {
+impl<F: Family<2>, S: ByteSponsor> Drop for NodeCharge<F, S> {
     fn drop(&mut self) {
         release::<F, 2>(self.platform, [self.bytes, 1]);
+        self.sponsor.release(self.bytes);
     }
 }
 pub(crate) fn prepare_node_with<T, F: Family<2>>(

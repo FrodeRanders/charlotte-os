@@ -262,9 +262,16 @@ fn cancellations() {
     memory::close_user_address_space_handle(successor).unwrap();
 }
 fn abandonment(before: (usize, usize)) {
-    let root = loader::create_user_address_space_handle();
+    let principal = charlotte_launch::artifact_principal_id(b"authority-record-retained");
+    let space = memory::AddressSpace::try_new_principal_user(
+        false,
+        memory::prepare_principal_backing(principal, false).unwrap(),
+    )
+    .unwrap();
+    let root = memory::register_user_address_space(space).unwrap();
     let local = account(root);
-    let mut preparation = PreparingRecord::try_new(false).unwrap();
+    let storage = CAPABILITIES.lock().get(&root.id()).unwrap().storage;
+    let mut preparation = PreparingRecord::try_new(storage).unwrap();
     preparation.test_charge(&local);
     let cap = try_allocate(root.id(), ObjectKind::Memory).unwrap();
     let retired =
@@ -275,20 +282,30 @@ fn abandonment(before: (usize, usize)) {
         let lifecycle = memory::ADDRESS_SPACE_LIFECYCLE.lock();
         let registry = CAPABILITIES.lock();
         let heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
-        record_budget::with_locked(|| {
-            drop(preparation);
-            drop(retired);
+        memory::kernel_buffers::test_with_history_locked(|| {
+            record_budget::with_locked(|| {
+                drop(preparation);
+                drop(retired);
+            });
         });
         drop(heap);
         drop(registry);
         drop(lifecycle);
     }
     assert_eq!(local.used(), 2);
+    assert_eq!(
+        memory::kernel_buffers::test_metadata_used(principal),
+        2 * record_budget::Prepared::allocation_bytes() as u64
+    );
     memory::close_user_address_space_handle(root).unwrap();
     assert_eq!(local.used(), 2);
     let successor = loader::create_user_address_space_handle();
     assert_eq!(successor.id(), root.id());
     assert_eq!(account(successor).used(), 0);
+    assert_eq!(
+        memory::kernel_buffers::test_metadata_used(principal),
+        2 * record_budget::Prepared::allocation_bytes() as u64
+    );
     assert_eq!(budget::node_used(), (before.0 + 2, before.1 + 2));
     memory::close_user_address_space_handle(successor).unwrap();
 }

@@ -129,6 +129,11 @@ snapshot scratch is 1 MiB per request. These forward to `Policy.local`.
   record/CQ/watch accounts share actual Arc/holder funding through final weak
   release. This remains separate from namespace-account and buffer funding;
   global family count ceilings are unchanged. See [account funding](completion-account-admission.md).
+- Migrated general metadata requested bytes per signed principal: 8 MiB, under
+  `principal_metadata_bytes`. Authority and mailbox endpoint nodes currently
+  share this allowance. It follows actual node lifetime, independently of
+  namespace/reactor accounts and buffer funding; other node families remain
+  unqualified until migrated or explicitly reconciled. See [record-node funding](authority-node-admission.md).
 - IOMMU per-domain and per-unit backing: 1024 and 2048 pages respectively.
 - Independent usable-RAM ratios: objects, heap and image each 1/4; stack 1/8;
   private tables 1/16; fresh shared tables 1/64; IOMMU tables 1/32. Each pool
@@ -156,8 +161,8 @@ It records the limits of that comparison and the RAM cost of possible 96/128 MiB
 growth floors; no limit change or aggregate acceptance follows from the census.
 Use [the policy census](../../scripts/audit-resource-capacity.py) to reproduce
 values for a selected profile instead of copying defaults into a sizing script.
-Its version-2 output also records selected buffer, namespace-account and reactor-account principal
-byte ceilings. They overlap applicable family bounds and are not additive RAM use.
+Its version-2 output also records selected buffer, namespace-account, reactor-account and general-metadata
+principal byte ceilings. They overlap applicable family bounds and are not additive RAM use.
 The namespace-account count ceiling implies a separate 2.4375/3.25 MiB
 ordinary/total upper bound at the currently measured largest 104-byte bundle;
 partial holders and weak retention retain their slots. This derived bound is

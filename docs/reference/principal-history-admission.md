@@ -25,7 +25,12 @@ setter. They cover the exact charged retirement-node layout, including key,
 history/counters, link and charge. Root policy/usage/authority nodes have a
 [separate bounded pool](root-metadata-admission.md). Allocator overhead and other
 heap allocations remain separate. Count limits bind first for
-the layouts exercised by the native controls.
+the layouts exercised by the native controls. The current node is 248 requested
+bytes, including the shared general-metadata principal counter. At the unchanged
+4096/3072 node ceilings this needs 1015808/761856 total/ordinary bytes, below
+1 MiB/768 KiB. The additional counter therefore needs no pool increase; it does
+not provide principal funding for the history nodes themselves. See
+[record-node capacity](../reports/audits/2026-11-06-q4-record-node-principals.md).
 
 ## Preparation and publication
 

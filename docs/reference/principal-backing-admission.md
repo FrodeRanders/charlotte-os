@@ -118,6 +118,14 @@ principal, class and exact generation under one root-table hold. The same shared
 fixed-bundle allocator funds namespace and reactor accounts, with separate family
 and principal policies. See [reactor-account qualification](../reports/audits/2026-11-06-q4-reactor-principals.md).
 
+Migrated general metadata nodes share an independent **8 MiB** allowance in the
+same principal record (`principal_metadata_bytes`). Unified authority and mailbox
+endpoint nodes currently use it; this does not fund other node families
+automatically. Capture comes from the immutable recipient authority namespace or
+the exact mailbox operation root. Candidate, published, detached and retained
+node layouts remain funded through actual deallocation. Resource grants and
+physical completion rules stay separate. See [record-node qualification](../reports/audits/2026-11-06-q4-record-node-principals.md).
+
 ## Verification and limits
 
 Native kernel controls exercise mixed real heap/image/object backing across

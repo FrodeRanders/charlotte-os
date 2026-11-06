@@ -88,6 +88,8 @@ pub(crate) struct Memory {
     pub principal_namespace_account_bytes: u64,
     /// Actual waiter, timer and completion account/holder layouts per principal.
     pub principal_reactor_account_bytes: u64,
+    /// Original-principal requested layout bytes for migrated metadata nodes.
+    pub principal_metadata_bytes: u64,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct KernelHeap {
@@ -291,6 +293,9 @@ impl Policy {
             || m.principal_reactor_account_bytes > isize::MAX as u64
         {
             return Err("principal reactor account bytes");
+        }
+        if m.principal_metadata_bytes == 0 || m.principal_metadata_bytes > isize::MAX as u64 {
+            return Err("principal metadata bytes");
         }
         if l.waiters_per_source == 0
             || l.waiters_per_source as u64 > self.waiters.domain[0]

@@ -220,3 +220,59 @@ pub(crate) fn account_weak_for_test(asid: usize) -> impl Fn() -> bool {
     let weak = alloc::sync::Arc::downgrade(&USER_MAILBOX_CAPS.read().get(&asid).unwrap().budget);
     move || weak.upgrade().is_none()
 }
+
+/// Real endpoint/authority composition, using existing production capture and close.
+pub(crate) fn test_metadata_principal(
+    first: crate::memory::AddressSpaceHandle,
+    healthy: crate::memory::AddressSpaceHandle,
+    principal: u64,
+    other: u64,
+    authority_bytes: u64,
+) -> u64 {
+    use crate::memory::kernel_buffers::{
+        test_metadata_limit as limit,
+        test_metadata_used as used,
+    };
+    let captured = capture_mailbox_identity(first.id());
+    let payload = mailbox_node_budget::Prepared::allocation_bytes() as u64;
+    let baseline = used(principal);
+    mailbox_node_budget::test_principal_rejection(captured.storage);
+    assert_eq!(used(principal), baseline);
+    let receiver = open_mailbox_endpoint(first.id(), None, captured).unwrap();
+    let shared = baseline + payload + authority_bytes;
+    assert_eq!(used(principal), shared);
+    let nodes = mailbox_node_budget::snapshot();
+    let resource = mailbox_budget::node_used();
+    let caps = crate::capability::node_admission_used();
+    limit(principal, shared);
+    {
+        let _heap = crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
+        for _ in 0..128 {
+            assert_eq!(
+                open_mailbox_endpoint(first.id(), Some(get_lp_id()), captured),
+                Err(Error::ResourceLimit)
+            );
+        }
+        assert_eq!(open_mailbox_endpoint(first.id(), None, captured), Ok(receiver));
+    }
+    for headroom in [0, payload - 1, payload, payload + authority_bytes - 1] {
+        limit(principal, shared + headroom);
+        assert_eq!(
+            open_mailbox_endpoint(first.id(), Some(get_lp_id()), captured),
+            Err(Error::ResourceLimit)
+        );
+        assert_eq!(used(principal), shared);
+        assert_eq!(mailbox_node_budget::snapshot(), nodes);
+        assert_eq!(mailbox_budget::node_used(), resource);
+        assert_eq!(crate::capability::node_admission_used(), caps);
+    }
+    let independent =
+        open_mailbox_endpoint(healthy.id(), None, capture_mailbox_identity(healthy.id())).unwrap();
+    assert_eq!(used(other), payload + authority_bytes);
+    mailbox_publication::close(healthy.id(), independent).unwrap();
+    assert_eq!(used(other), 0);
+    mailbox_publication::close(first.id(), receiver).unwrap();
+    assert_eq!(used(principal), baseline);
+    limit(principal, crate::resource_policy::POLICY.memory.principal_metadata_bytes);
+    payload
+}

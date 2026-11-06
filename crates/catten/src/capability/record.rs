@@ -14,13 +14,15 @@ struct Storage {
 /// Inert fallback must not refund or deallocate beneath unknown outer guards.
 pub(super) struct PreparingRecord(ManuallyDrop<Storage>);
 impl PreparingRecord {
-    pub(super) fn try_new(backing_platform: bool) -> Result<Self, AllocationError> {
+    pub(super) fn try_new(
+        storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
+    ) -> Result<Self, AllocationError> {
         #[cfg(feature = "kernel_tests")]
         let entry_irq = crate::cpu::isa::lp::ops::get_int_state();
         if test_fault!(record_tests::reject()) {
             return Err(AllocationError::AllocationFailed);
         }
-        let node = record_budget::prepare(backing_platform)?;
+        let node = record_budget::prepare(storage)?;
         #[cfg(feature = "kernel_tests")]
         record_tests::boundary(false, entry_irq);
         Ok(Self(ManuallyDrop::new(Storage {

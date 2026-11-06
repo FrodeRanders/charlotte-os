@@ -24,13 +24,16 @@ pub(super) fn run() {
     record_budget::test_rejection();
     let before = record_budget::snapshot();
     let capabilities = budget::node_used();
-    let old = root(false);
+    let retained_principal =
+        charlotte_launch::artifact_principal_id(b"authority-node-retained-principal");
+    let old = funded_root(retained_principal);
     let trusted = root(true);
     let old_account = CAPABILITIES.lock().get(&old.id()).unwrap().budget.clone();
     let old_cap = try_allocate(old.id(), ObjectKind::Memory).unwrap();
     let retained =
         retire_record(old.id(), old_cap, ObjectKind::Memory, |s| s == EntryState::Live).unwrap();
     let bytes = record_budget::Prepared::allocation_bytes() as u64;
+    assert_eq!(memory::kernel_buffers::test_metadata_used(retained_principal), bytes);
     assert_eq!(
         record_budget::snapshot(),
         ([before.0[0] + bytes, before.0[1] + 1], [before.1[0] + bytes, before.1[1] + 1])
@@ -91,7 +94,9 @@ pub(super) fn run() {
             Err(AllocationError::Retired)
         ));
     });
+    assert_eq!(memory::kernel_buffers::test_metadata_used(retained_principal), bytes);
     retained.release();
+    assert_eq!(memory::kernel_buffers::test_metadata_used(retained_principal), 0);
     assert_eq!(old_account.used(), 0);
     assert_eq!(
         record_budget::snapshot(),
@@ -117,5 +122,100 @@ pub(super) fn run() {
         counts.1,
         record_budget::ORDINARY[1],
         record_budget::LIMIT[1]
+    );
+    principal_funding();
+}
+
+fn funded_root(principal: u64) -> memory::AddressSpaceHandle {
+    let space = AddressSpace::try_new_principal_user(
+        false,
+        memory::prepare_principal_backing(principal, false).unwrap(),
+    )
+    .unwrap();
+    memory::register_user_address_space(space).unwrap()
+}
+fn principal_funding() {
+    use memory::kernel_buffers::{
+        test_metadata_limit as limit,
+        test_metadata_used as used,
+    };
+    let before = record_budget::snapshot();
+    let principal = charlotte_launch::artifact_principal_id(b"authority-mailbox-node-principal");
+    let other = charlotte_launch::artifact_principal_id(b"authority-mailbox-node-healthy");
+    let first = funded_root(principal);
+    let second = funded_root(principal);
+    let healthy = funded_root(other);
+    let storage = CAPABILITIES.lock().get(&first.id()).unwrap().storage;
+    assert_eq!(used(principal), 0);
+    record_budget::test_principal_rejection(storage);
+    assert_eq!(used(principal), 0);
+    let a = try_allocate(first.id(), ObjectKind::SystemObserver).unwrap();
+    let c = try_allocate(second.id(), ObjectKind::SystemObserver).unwrap();
+    let bytes = record_budget::Prepared::allocation_bytes() as u64;
+    assert_eq!(used(principal), 2 * bytes);
+    let payload = crate::syscall::mailbox_tests::test_metadata_principal(
+        first, healthy, principal, other, bytes,
+    );
+    assert_eq!(used(principal), 2 * bytes);
+    limit(principal, 2 * bytes);
+    let nodes = record_budget::snapshot();
+    mark_platform(first);
+    {
+        let _heap = PRIMARY_ALLOCATOR.lock();
+        for _ in 0..128 {
+            denied(first);
+        }
+    }
+    assert_eq!(used(principal), 2 * bytes);
+    assert_eq!(record_budget::snapshot(), nodes);
+    let independent = try_allocate(healthy.id(), ObjectKind::SystemObserver).unwrap();
+    assert_eq!(used(other), bytes);
+    assert!(remove(healthy.id(), independent, ObjectKind::SystemObserver));
+    let retained =
+        retire_record(first.id(), a, ObjectKind::SystemObserver, |s| s == EntryState::Live)
+            .unwrap();
+    memory::close_user_address_space_handle(first).unwrap();
+    assert_eq!(used(principal), 2 * bytes);
+    let replacement = funded_root(other);
+    assert_eq!(replacement.id(), first.id());
+    assert_ne!(replacement, first);
+    let new = try_allocate(replacement.id(), ObjectKind::SystemObserver).unwrap();
+    assert_eq!(used(other), bytes);
+    retained.release();
+    assert_eq!(used(principal), bytes);
+    assert_eq!(used(other), bytes);
+    assert!(remove(second.id(), c, ObjectKind::SystemObserver));
+    assert_eq!(used(principal), 0);
+    assert!(remove(replacement.id(), new, ObjectKind::SystemObserver));
+    limit(principal, crate::resource_policy::POLICY.memory.principal_metadata_bytes);
+    for root in [second, healthy, replacement] {
+        memory::close_user_address_space_handle(root).unwrap();
+    }
+    assert_eq!(used(other), 0);
+    assert_eq!(record_budget::snapshot(), before);
+    let pressure = funded_root(principal);
+    let storage = CAPABILITIES.lock().get(&pressure.id()).unwrap().storage;
+    let ceiling = crate::resource_policy::POLICY.memory.principal_metadata_bytes;
+    let mut held = alloc::vec::Vec::with_capacity((ceiling / bytes) as usize + 1);
+    while let Ok(node) = record_budget::prepare(storage) {
+        held.push(node);
+        assert!(held.len() <= (ceiling / bytes) as usize);
+    }
+    assert!(ceiling - used(principal) < bytes);
+    assert!(record_budget::snapshot().1[1] < record_budget::ORDINARY[1]);
+    let count = held.len();
+    drop(held);
+    assert_eq!(used(principal), 0);
+    memory::close_user_address_space_handle(pressure).unwrap();
+    assert_eq!(record_budget::snapshot(), before);
+    crate::logln!(
+        "[record node principal] authority/mailbox payload layouts={}/{} bytes; sibling sharing, \
+         128 funded allocator failures, principal denials before allocation, four mailbox \
+         prefixes, healthy sponsor, promotion, retained original record across exact ASID reuse \
+         and {} real candidates at {}-byte ceiling passed",
+        bytes,
+        payload,
+        count,
+        ceiling
     );
 }

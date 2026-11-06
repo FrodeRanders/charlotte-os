@@ -15,11 +15,11 @@ The count ceiling is twice the existing mailbox resource ceiling (6144/8192).
 This leaves headroom for unused candidates and retirement without lowering
 existing mailbox or capability limits. No memory is preallocated. A quarter
 remains trusted reserve; it is shared capacity, not a per-service entitlement.
-The current native layout is 80 bytes, including its original funded account
-reference, so count ceilings bind at 960/1280 KiB.
+The current native layout is 96 bytes, including its original funded account
+reference, so count ceilings bind at 1152/1536 KiB.
 Independent byte ceilings bound later layout growth.
 
-The charge adds 16 bytes per endpoint node and a short pool operation at
+The complete charge occupies 32 bytes per endpoint node and a short pool operation at
 preparation/release. Rejection can now report `ResourceLimit` before allocation.
 Candidate headroom cannot guarantee heap availability, completion or fairness
 when retained work exhausts it. Global namespace nodes, account bundles, word-ring
@@ -27,8 +27,8 @@ backing and authority nodes continue to consume their separate admission.
 
 ## Classification, publication and release
 
-The existing `MailboxIdentity` captures the exact root generation and trusted
-translation-backing class together before preparation. An owning root
+The existing `MailboxIdentity` captures the exact root generation, original
+verified principal and trusted translation-backing class together before preparation. An owning root
 operation is acquired before allocating storage. Later promotion cannot
 reclassify a node or an already captured operation; trusted backing does not
 grant platform mailbox resource admission. Permanent kernel backing is trusted; raw fixture
@@ -37,6 +37,12 @@ entering the node pool.
 
 Fresh captures after authorized promotion may use trusted reserve under the
 existing classification policy; they do not reclassify earlier captures/nodes.
+
+`NodeCharge<MailboxNodes, MetadataSponsor>` admits the actual endpoint-node
+layout against the principal's shared 8 MiB metadata allowance and this family's
+independent byte/count pool. Both precede allocation. Family rejection refunds
+unused principal funding. Node free precedes both backing refunds; neither a
+resource-grant change nor a later root lookup chooses the principal.
 
 Endpoint admission precedes namespace-node/account/authority preparation, so an
 exhausted endpoint pool rejects before touching the heap. Every partial failure
@@ -60,6 +66,15 @@ charges. Confirmed retry releases metadata outside local guards, before root
 backing and slot completion. Abandonment keeps that exact receipt and its slot;
 it cannot authorize ASID reuse or reconstruct a cleanup operation. No cleanup
 family, retry owner or physical completion rule changes.
+
+[Principal qualification](../reports/audits/2026-11-06-q4-record-node-principals.md)
+checks the real endpoint/authority composition, shared sibling funding, 64 injected
+funded allocation failures, 128 heap-held quota denials, receiver reuse, healthy
+sponsorship and four endpoint/authority quota prefixes. Rejection preserves
+node/resource counts and original principal bytes. The existing unpublished and
+retired mailbox abandonment control now uses prebound principals and retains
+both funded nodes under history/publication/pool/heap guards, without another
+intentional leak or a new physical completion claim.
 
 ## Qualification and remaining scope
 

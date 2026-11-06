@@ -185,7 +185,14 @@ fn staged_close(root: memory::AddressSpaceHandle, captured: MailboxIdentity) {
 }
 fn abandoned() {
     let backing = mailbox_node_budget::snapshot();
-    let preparing_root = loader::create_user_address_space_handle();
+    let preparing_principal =
+        charlotte_launch::artifact_principal_id(b"mailbox-preparing-node-retained");
+    let space = memory::AddressSpace::try_new_principal_user(
+        false,
+        memory::prepare_principal_backing(preparing_principal, false).unwrap(),
+    )
+    .unwrap();
+    let preparing_root = memory::register_user_address_space(space).unwrap();
     let captured = capture_mailbox_identity(preparing_root.id());
     let cap = open(preparing_root.id(), Some(0), captured).unwrap();
     close(preparing_root.id(), cap).unwrap();
@@ -197,7 +204,14 @@ fn abandoned() {
         preparing.0.reservation =
             Some(preparing.0.authority.as_mut().unwrap().reserve_in_lifecycle(&lifecycle).unwrap());
     }
-    let retired_root = loader::create_user_address_space_handle();
+    let retired_principal =
+        charlotte_launch::artifact_principal_id(b"mailbox-retired-node-retained");
+    let space = memory::AddressSpace::try_new_principal_user(
+        false,
+        memory::prepare_principal_backing(retired_principal, false).unwrap(),
+    )
+    .unwrap();
+    let retired_root = memory::register_user_address_space(space).unwrap();
     let cap =
         open(retired_root.id(), Some(0), capture_mailbox_identity(retired_root.id())).unwrap();
     let retired_local = USER_MAILBOX_CAPS.read().get(&retired_root.id()).unwrap().budget.clone();
@@ -216,8 +230,10 @@ fn abandoned() {
         crate::klib::namespace_account_budget::with_locked(|| {
             node_budget::with_locked(|| {
                 mailbox_node_budget::with_locked(|| {
-                    drop(preparing);
-                    drop(retired);
+                    memory::kernel_buffers::test_with_history_locked(|| {
+                        drop(preparing);
+                        drop(retired);
+                    });
                 });
             });
         });
@@ -230,6 +246,9 @@ fn abandoned() {
         drop(lifecycle);
     }
     assert_eq!(local.used(), 1);
+    let preparing_bytes = memory::kernel_buffers::test_metadata_used(preparing_principal);
+    let retired_bytes = memory::kernel_buffers::test_metadata_used(retired_principal);
+    assert!(preparing_bytes > 0 && preparing_bytes == retired_bytes);
     assert_eq!(retired_local.used(), 1);
     let bytes = mailbox_node_budget::Prepared::allocation_bytes() as u64;
     assert_eq!(
@@ -241,6 +260,12 @@ fn abandoned() {
     );
     assert_eq!(crate::capability::admission_tests::test_namespace_used(preparing_root.id()), 1);
     assert_eq!(crate::capability::admission_tests::test_namespace_used(retired_root.id()), 1);
+    crate::logln!(
+        "[mailbox metadata principal retention] complete unpublished/retired parents retain {}/{} \
+         original-principal node bytes under history/publication/pool/heap guards",
+        preparing_bytes,
+        retired_bytes
+    );
     for root in [preparing_root, retired_root] {
         let closing = memory::retirement::ClosingAddressSpace::begin(root).unwrap();
         assert!(

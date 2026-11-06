@@ -12,6 +12,7 @@ pub(crate) enum ByteBudgetKind {
     Buffer,
     NamespaceAccount,
     ReactorAccount,
+    Metadata,
 }
 pub(crate) trait ByteBudget: Clone + Copy + core::fmt::Debug {
     const KIND: ByteBudgetKind;
@@ -34,6 +35,12 @@ impl ByteBudget for ReactorAccountBudget {
 }
 
 #[derive(Clone, Copy, Debug)]
+pub(crate) struct MetadataBudget;
+impl ByteBudget for MetadataBudget {
+    const KIND: ByteBudgetKind = ByteBudgetKind::Metadata;
+}
+
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct PrincipalBytes<F: ByteBudget> {
     principal: Option<u64>,
     family: core::marker::PhantomData<F>,
@@ -41,6 +48,7 @@ pub(crate) struct PrincipalBytes<F: ByteBudget> {
 pub(crate) type Sponsor = PrincipalBytes<BufferBudget>;
 pub(crate) type NamespaceSponsor = PrincipalBytes<NamespaceAccountBudget>;
 pub(crate) type ReactorSponsor = PrincipalBytes<ReactorAccountBudget>;
+pub(crate) type MetadataSponsor = PrincipalBytes<MetadataBudget>;
 
 impl<F: ByteBudget> PrincipalBytes<F> {
     pub(crate) const fn unidentified() -> Self {
@@ -76,6 +84,7 @@ fn byte_budget<F: ByteBudget>(entry: &mut History) -> &mut VectorBudget<1> {
         ByteBudgetKind::Buffer => &mut entry.kernel_buffers,
         ByteBudgetKind::NamespaceAccount => &mut entry.namespace_account_bytes,
         ByteBudgetKind::ReactorAccount => &mut entry.reactor_account_bytes,
+        ByteBudgetKind::Metadata => &mut entry.metadata_bytes,
     }
 }
 impl<F: ByteBudget> ByteSponsor for PrincipalBytes<F> {
@@ -128,6 +137,13 @@ impl CapturedStorage {
 
     pub(crate) fn reactor_sponsor(self) -> ReactorSponsor {
         ReactorSponsor {
+            principal: self.sponsor.principal,
+            family: core::marker::PhantomData,
+        }
+    }
+
+    pub(crate) fn metadata_sponsor(self) -> MetadataSponsor {
+        MetadataSponsor {
             principal: self.sponsor.principal,
             family: core::marker::PhantomData,
         }
@@ -270,6 +286,19 @@ pub(crate) fn test_reactor_used(principal: u64) -> u64 {
 pub(crate) fn test_reactor_limit(principal: u64, bytes: u64) {
     let mut history = HISTORY.lock();
     let budget = &mut history.get_mut(&principal).unwrap().reactor_account_bytes;
+    let mut candidate = VectorBudget::new([bytes]);
+    candidate.reserve(budget.used()).unwrap();
+    *budget = candidate;
+}
+
+#[cfg(any(test, feature = "kernel_tests"))]
+pub(crate) fn test_metadata_used(principal: u64) -> u64 {
+    HISTORY.lock().get(&principal).map_or(0, |entry| entry.metadata_bytes.used()[0])
+}
+#[cfg(feature = "kernel_tests")]
+pub(crate) fn test_metadata_limit(principal: u64, bytes: u64) {
+    let mut history = HISTORY.lock();
+    let budget = &mut history.get_mut(&principal).unwrap().metadata_bytes;
     let mut candidate = VectorBudget::new([bytes]);
     candidate.reserve(budget.used()).unwrap();
     *budget = candidate;

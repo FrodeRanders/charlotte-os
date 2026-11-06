@@ -75,3 +75,45 @@ fn bundle_headroom_and_concurrent_release() {
     });
     assert_eq!(used::<Bundles, 1>(), ([0], [0]));
 }
+
+#[test]
+fn funded_node_rejection_returns_original_sponsor_and_family() {
+    use alloc::sync::Arc;
+    use core::sync::atomic::{
+        AtomicU64,
+        Ordering,
+    };
+    #[derive(Clone, Debug)]
+    struct Sponsor(Arc<AtomicU64>);
+    impl ByteSponsor for Sponsor {
+        fn reserve(&self, bytes: u64) -> Result<(), AllocError> {
+            self.0
+                .try_update(Ordering::AcqRel, Ordering::Acquire, |used| {
+                    used.checked_add(bytes).filter(|sum| *sum <= 512)
+                })
+                .map(|_| ())
+                .map_err(|_| AllocError)
+        }
+
+        fn release(&self, bytes: u64) {
+            assert!(self.0.fetch_sub(bytes, Ordering::AcqRel) >= bytes);
+        }
+    }
+    let used_bytes = Arc::new(AtomicU64::new(0));
+    let sponsor = Sponsor(used_bytes.clone());
+    type Charge = NodeCharge<Nodes, Sponsor>;
+    let charge = Charge::with_sponsor(false, 128, sponsor.clone()).unwrap();
+    assert_eq!(used_bytes.load(Ordering::Acquire), 128);
+    let before = used::<Nodes, 2>();
+    assert!(Charge::with_sponsor(false, 513, sponsor.clone()).is_err());
+    assert_eq!(used::<Nodes, 2>(), before);
+    let full =
+        Reservation::<Nodes, 2>::reserve(false, [Nodes::ORDINARY[0] - 128, Nodes::ORDINARY[1] - 1])
+            .unwrap();
+    assert!(Charge::with_sponsor(false, 64, sponsor).is_err());
+    assert_eq!(used_bytes.load(Ordering::Acquire), 128);
+    drop(full);
+    std::thread::spawn(move || drop(charge)).join().unwrap();
+    assert_eq!(used_bytes.load(Ordering::Acquire), 0);
+    assert_eq!(used::<Nodes, 2>(), ([0, 0], [0, 0]));
+}

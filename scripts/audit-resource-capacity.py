@@ -42,6 +42,7 @@ fn main() {
     println!("principal\tkernel_buffer_bytes\t{}", P.memory.principal_kernel_buffer_bytes);
     println!("principal\tnamespace_account_bytes\t{}", P.memory.principal_namespace_account_bytes);
     println!("principal\treactor_account_bytes\t{}", P.memory.principal_reactor_account_bytes);
+    println!("principal\tmetadata_bytes\t{}", P.memory.principal_metadata_bytes);
     for bytes in std::env::args().skip(1) {
         let usable = bytes.parse::<u64>().unwrap();
         let reserve = P.kernel_heap.growth_reserve_bytes(usable);

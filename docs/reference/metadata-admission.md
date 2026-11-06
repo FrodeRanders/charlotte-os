@@ -71,8 +71,8 @@ to the common heap plan must be recorded before accepting an exclusion.
 | --- | --- | --- |
 | `root_metadata` | Pending | Root policy, usage, authority and retained generation-account nodes. |
 | `namespace_nodes` | Pending | Exact original namespace sponsor through detached/final release. |
-| `authority_nodes` | Pending | Recipient backing sponsor separately from logical grantor. |
-| `mailbox_nodes` | Pending | Payload nodes through close and retained authority. |
+| `authority_nodes` | Actual node layouts, captured from the recipient authority namespace | Allocator excess, enclosing metadata and joint heap fit; logical grantor remains separate. |
+| `mailbox_nodes` | Actual endpoint-node layouts from the captured root principal | Allocator excess, word-ring storage and joint heap fit. |
 | `deferred_nodes` | Pending | Original accepted-operation sponsor through producer-LP disposal. |
 | `observer_backing` | Pending | Actual layout, private holder and final weak reference. |
 | `completion_nodes` | Pending | Payloads, CQ backing and detached backlog; distinguish logical limits. |

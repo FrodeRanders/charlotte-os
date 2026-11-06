@@ -54,7 +54,7 @@ struct AddressSpaceCapabilities {
     next_serial: u64,
     address_space: Option<crate::memory::AddressSpaceHandle>,
     platform: bool,
-    backing_platform: bool,
+    storage: crate::memory::kernel_buffers::CapturedStorage,
     budget: budget::AccountRef,
     objects: record_budget::Map<ObjectCapability, Entry>,
 }
@@ -82,7 +82,7 @@ impl AddressSpaceCapabilities {
             next_serial: 1,
             address_space,
             platform: false,
-            backing_platform: storage.platform(),
+            storage,
             budget: budget::DomainBudget::try_new(storage)?,
             objects: AdmittedMap::new(),
         })
@@ -284,7 +284,7 @@ struct ReservationStorage {
     owner: AddressSpaceId,
     kind: ObjectKind,
     identity: Option<crate::memory::AddressSpaceHandle>,
-    backing_platform: bool,
+    storage: crate::memory::kernel_buffers::CapturedStorage,
     namespace: Option<PreparingNamespace>,
     record: PreparingRecord,
 }
@@ -302,16 +302,21 @@ impl PreparedReservation {
         if owner == crate::memory::KERNEL_ASID {
             identity = None;
         }
-        let (missing, backing_platform) = {
+        let (missing, storage) = {
             let tables = CAPABILITIES.lock();
             match tables.get(&owner) {
-                Some(table) if table.address_space == identity => (false, table.backing_platform),
+                Some(table) if table.address_space == identity => (false, table.storage),
                 Some(_) => return Err(AllocationError::Retired),
                 None if identity.is_some() => return Err(AllocationError::Retired),
-                None => (true, owner == crate::memory::KERNEL_ASID),
+                None => (
+                    true,
+                    crate::memory::kernel_buffers::CapturedStorage::unidentified(
+                        owner == crate::memory::KERNEL_ASID,
+                    ),
+                ),
             }
         };
-        let record = PreparingRecord::try_new(backing_platform)?;
+        let record = PreparingRecord::try_new(storage)?;
         let namespace = if missing {
             match prepare_namespace(crate::memory::kernel_buffers::CapturedStorage::unidentified(
                 owner == crate::memory::KERNEL_ASID,
@@ -329,7 +334,7 @@ impl PreparedReservation {
             owner,
             kind,
             identity,
-            backing_platform,
+            storage,
             namespace,
             record,
         })))
@@ -338,7 +343,7 @@ impl PreparedReservation {
     /// Allocation class captured from the exact authority namespace before
     /// preparation. Borrowing it grants no logical resource privilege.
     pub(crate) fn backing_platform(&self) -> bool {
-        self.0.backing_platform
+        self.0.storage.platform()
     }
 
     fn reserve(&mut self) -> Result<Reservation, AllocationError> {

@@ -17,6 +17,8 @@ report is useful for a significant investigation or qualification checkpoint.
 
 ## Reports
 
+- [Q4 authority/mailbox node principal funding](2026-11-06-q4-record-node-principals.md) — Shared captured-principal node charges, actual candidate pressure and retained ownership; existing pool limits remain unchanged. Q4 remains in progress.
+
 - [Q4 reactor-account principal admission](2026-11-06-q4-reactor-principals.md) — Actual-layout funding for six waiter/timer/completion account types, shared fixed-bundle plumbing and three more catalog families; global limits remain unchanged. Q4 remains in progress.
 
 - [Q4 namespace-account principal admission](2026-11-06-q4-namespace-principals.md) — Captured funding for all four namespace account payload/holder layouts, reusable backing allocation, real principal pressure and late weak refunds; current pool ceilings remain unchanged. Q4 remains in progress.

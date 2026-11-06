@@ -26,20 +26,28 @@ pub(super) const LIMIT: [u64; 2] = crate::resource_policy::POLICY.mailbox_nodes.
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(super) const ORDINARY: [u64; 2] = crate::resource_policy::POLICY.mailbox_nodes.ordinary;
 
-pub(super) type Charge = admission::NodeCharge<MailboxNodes>;
+pub(super) type Charge =
+    admission::NodeCharge<MailboxNodes, crate::memory::kernel_buffers::MetadataSponsor>;
 
-fn reserve(bytes: u64, platform: bool) -> Result<Charge, Error> {
-    Charge::reserve(platform, bytes).map_err(|_| Error::ResourceLimit)
+fn reserve(
+    bytes: u64,
+    storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
+) -> Result<Charge, Error> {
+    let storage = storage.into();
+    Charge::with_sponsor(storage.platform(), bytes, storage.metadata_sponsor())
+        .map_err(|_| Error::ResourceLimit)
 }
-pub(super) fn prepare(platform: bool) -> Result<Prepared, Error> {
-    prepare_with(platform, Prepared::try_new_charged)
+pub(super) fn prepare(
+    storage: impl Into<crate::memory::kernel_buffers::CapturedStorage>,
+) -> Result<Prepared, Error> {
+    prepare_with(storage.into(), Prepared::try_new_charged)
 }
 fn prepare_with(
-    platform: bool,
+    storage: crate::memory::kernel_buffers::CapturedStorage,
     allocate: impl FnOnce(Charge) -> Result<Prepared, AllocError>,
 ) -> Result<Prepared, Error> {
     let bytes = u64::try_from(Prepared::allocation_bytes()).map_err(|_| Error::ResourceLimit)?;
-    allocate(reserve(bytes, platform)?).map_err(|_| Error::AllocationFailed)
+    allocate(reserve(bytes, storage)?).map_err(|_| Error::AllocationFailed)
 }
 
 /// Detached storage retains both backing admission and its mailbox resource
@@ -70,10 +78,22 @@ pub(crate) fn with_locked(work: impl FnOnce()) {
 pub(super) fn test_rejection() {
     let before = snapshot();
     for _ in 0..64 {
-        assert!(matches!(prepare_with(false, |_| Err(AllocError)), Err(Error::AllocationFailed)));
+        assert!(matches!(
+            prepare_with(false.into(), |_| Err(AllocError)),
+            Err(Error::AllocationFailed)
+        ));
         assert_eq!(snapshot(), before);
     }
     assert!(matches!(reserve(ORDINARY[0] + 1, false), Err(Error::ResourceLimit)));
     assert!(matches!(reserve(LIMIT[0] + 1, true), Err(Error::ResourceLimit)));
     assert_eq!(snapshot(), before);
+}
+
+#[cfg(feature = "kernel_tests")]
+pub(super) fn test_principal_rejection(storage: crate::memory::kernel_buffers::CapturedStorage) {
+    let before = snapshot();
+    for _ in 0..64 {
+        assert!(prepare_with(storage, |_| Err(AllocError)).is_err());
+        assert_eq!(snapshot(), before);
+    }
 }

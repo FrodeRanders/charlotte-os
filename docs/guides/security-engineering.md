@@ -72,6 +72,13 @@ actual allocation boundary. Preserve the typed family reservation until both are
 freed, and keep weak/allocator clones on that same original policy. This avoids
 replicating private Arc layout formulas or adding a second ownership controller.
 
+For prepared map nodes, the existing retirement collection already retains the
+charge outside node deallocation. Supply a captured `ByteSponsor` to its typed
+`NodeCharge` to share family/principal reserve and rollback without duplicating
+a node owner. Keep recipient storage sponsorship separate from logical grantor
+charges and keep actual deallocation before either refund. Default unsponsored
+families do not gain principal coverage merely by sharing that implementation.
+
 An inert child receipt does not make its parent inert: a vector still frees its
 allocation, a transfer may restore escrow, and a notification batch may destroy
 entries. Keep the complete operation in one retaining owner, including pending

@@ -450,8 +450,10 @@ the corrected RPC polling paths, and the remaining notification gaps.
 
 - Mailbox endpoint candidates use typed `mailbox_node_budget` storage and
   independent `mailbox_nodes` byte/count admission before other preparation
-  allocations. Retain captured backing classification unchanged through the
-  operation, separately from resource grants. Publication/detachment only relinks storage; the typed retired
+  allocations. Retain the captured original principal and backing classification
+  unchanged through the operation, separately from resource grants. Fund the actual
+  node layout with the shared sponsored `NodeCharge` before allocation. Publication
+  and detachment only relink storage; the typed retired
   endpoint frees its node before refunding backing or mailbox resource charges.
   Final-root invalidation rejection and complete-owner abandonment retain the
   original nodes/charges. Receiver reuse requires no fresh storage. See
@@ -459,10 +461,11 @@ the corrected RPC polling paths, and the remaining notification gaps.
 
 - Unified authority records use typed `record_budget` storage with independent
   `authority_nodes` requested-byte/count admission before allocation. Capture
-  immutable backing class from the exact capability namespace outside local
-  publication guards; later promotion cannot reclassify it, and trusted backing
-  grants no resource privilege. Retain candidates and detached/retired records
-  until actual node deallocation, including root retirement and ASID reuse.
+  immutable original principal and backing class from the exact capability
+  namespace outside local publication guards; later promotion cannot reclassify it, and trusted backing
+  grants no resource privilege. Fund actual node layouts through the shared
+  sponsored `NodeCharge`; family rejection rolls back unused principal bytes.
+  Retain candidates and detached/retired records until actual node deallocation, including root retirement and ASID reuse.
   Complete preparation/retirement fallback stays inert under unknown guards.
   See `docs/reference/authority-node-admission.md`.
 
