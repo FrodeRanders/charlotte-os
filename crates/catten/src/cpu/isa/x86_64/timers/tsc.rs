@@ -37,6 +37,17 @@ pub fn rdtsc() -> u64 {
     ((tsc_high as u64) << 32) | tsc_low as u64
 }
 
+/// Start a hardware measurement before subsequent timer programming. RDTSCP
+/// orders prior execution; LFENCE also keeps following instructions after it.
+/// See Intel SDM Volume 2, RDTSCP. Keep this stronger boundary local to calibration.
+pub(super) fn rdtsc_before_programming() -> u64 {
+    let timestamp = rdtsc();
+    unsafe {
+        asm!("lfence", options(nostack));
+    }
+    timestamp
+}
+
 #[inline(always)]
 fn get_tsc_freq() -> u64 {
     TSC_FREQUENCY_REQUEST

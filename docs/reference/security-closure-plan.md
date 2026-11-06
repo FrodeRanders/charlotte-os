@@ -23,10 +23,11 @@ backing/stack/table admission, prepared payload nodes, original-class retention,
 typed cleanup owners and producer-LP notification contracts are implemented.
 The latest device-node principal batch passed the full host suite, strict
 test/minimal checks and four-CPU ARM 19/19, Intel 17/17 and AMD 17/17 campaigns.
-The initial Intel boot rejected a zero APIC calibration sample; an identical-kernel,
-service and initial-disk repeat passed at the same deadline. The incident remains
-[unresolved](security-remediation.md#unresolved-incidents). These are local
-qualifications, not sustained pressure/recovery acceptance.
+The initial Intel boot rejected a zero APIC calibration sample. The
+[APIC follow-up](../reports/audits/2026-11-06-apic-calibration.md) corrects a
+reproduced measurement window and adds raw failed-sample diagnostics; the original
+trigger remains [unattributed](security-remediation.md#unresolved-incidents).
+These are local qualifications, not sustained pressure/recovery acceptance.
 
 Do not treat an ordinary `Vec` or `Arc` spelling as a bypass. For example,
 `completion/delivery/preparation.rs` already reserves CQ ring/backlog bytes via

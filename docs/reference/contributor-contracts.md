@@ -163,8 +163,12 @@ the corrected RPC polling paths, and the remaining notification gaps.
   setup with CPU IRQs already masked, and publish Ready only after its guard
   leaves. Verify all slots after the boot barrier. Runtime access must reject
   missing preparation instead of allocating, calibrating or waiting on a once
-  initializer. Preserve the actual dispatcher receiver type at the assembly
-  symbol. Cached IORT discovery validates node capacity before allocation and
+  initializer. APIC calibration timestamps must enclose programming and confirmed
+  countdown completion, with a start boundary that orders execution. Reject zero,
+  incomplete, reversed or overflowing samples without retry; stop the masked
+  countdown and retain raw sample/LP diagnostics before failing boot. Preserve
+  the actual dispatcher receiver type at the assembly symbol. Cached IORT
+  discovery validates node capacity before allocation and
   retains immutable metadata; runtime requester lookup borrows or copies it.
 - Prepare complete bounded MCFG metadata before mapping ECAM. Keep bus-zero
   addressing, advertised ranges, one fixed visited/worklist per window and the

@@ -56,10 +56,20 @@ IRQ lookups likewise reject missing bootstrap storage. The BSP verifies every
 LP is ready after the common interrupt barrier, independently of `kernel_tests`.
 
 x86 calibrates its one authoritative timer state using ten complete, positive
-samples and checked accumulation, with no sample vector. A timeout, zero sample
-or overflow cannot publish a usable timer. The existing bounded hardware poll
-remains boot-only; no scheduler readiness contract exists before timer startup.
-The controller no longer calibrates a separate unused copy.
+samples and checked accumulation, with no sample vector. Each timestamp interval
+starts before arming the 10000-tick countdown and ends after observed completion.
+The local start boundary uses RDTSCP then LFENCE so subsequent timer programming
+cannot precede the timestamp. The 100000000-attempt hardware poll remains bounded
+and boot-only; no scheduler readiness contract exists before timer startup.
+Timeout, nonzero final count, reversed timestamp, zero resolution or arithmetic
+overflow cannot publish a usable timer. Stop the masked countdown before failure;
+retain sample index, LP, raw TSC endpoints/period and completion/count diagnostics.
+There is no sample retry, fallback period or zero clamp. Programming and completion
+observation overhead remain included in the ten-sample mean; this is not a bound
+on VM scheduling delay or a physical-platform accuracy qualification. The
+controller no longer calibrates a separate unused copy. See the
+[APIC calibration investigation](../reports/audits/2026-11-06-apic-calibration.md)
+for the reproduced ordering mechanism and historical attribution limits.
 
 ACPI's catalog is also prepared before AP startup. Table lookup returns a static
 borrow instead of cloning a vector for each DMA request. Its XSDT length bounds

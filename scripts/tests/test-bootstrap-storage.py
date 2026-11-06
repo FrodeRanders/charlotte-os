@@ -13,17 +13,26 @@ def run():
     rustc = subprocess.check_output(["rustup", "which", "--toolchain", channel, "rustc"], text=True).strip()
     source = (ROOT / "scripts/tests/fixtures/bootstrap-storage.rs").read_text().replace("@ROOT@", str(ROOT))
     actual = ROOT / "crates/catten/src/cpu/isa/interface/timers/bootstrap.rs"
+    actual_calibration = ROOT / "crates/catten/src/cpu/isa/x86_64/timers/apic_timer/calibration.rs"
     actual_hw = ROOT / "crates/catten/src/cpu/isa/aarch64/memory/paging/hw_asid.rs"
     with tempfile.TemporaryDirectory(prefix="charlotte-bootstrap-storage-") as temporary:
         directory = Path(temporary)
         harness, binary = directory / "controls.rs", directory / "controls"
 
-        def compile_and_run(path, *args, capture=False, hw_path=actual_hw):
-            harness.write_text(source.replace("@BOOT_TIMER@", str(path)).replace("@HW_ASID@", str(hw_path)))
+        def compile_and_run(path, *args, capture=False, hw_path=actual_hw, calibration_path=actual_calibration):
+            harness.write_text(source.replace("@BOOT_TIMER@", str(path)).replace("@HW_ASID@", str(hw_path)).replace("@CALIBRATION@", str(calibration_path)))
             subprocess.run([rustc, "--edition=2024", "--test", str(harness), "-o", str(binary)], check=True)
             return subprocess.run([str(binary), *args, "--test-threads=1"], capture_output=capture, text=True)
 
         assert compile_and_run(actual).returncode == 0
+        calibration_control = directory / "late-calibration-start.rs"
+        calibration_source = actual_calibration.read_text()
+        ordering = "    let tsc_start = timestamp();\n    arm(SAMPLE_TICKS);"
+        assert calibration_source.count(ordering) == 1
+        calibration_control.write_text(calibration_source.replace(ordering, "    arm(SAMPLE_TICKS);\n    let tsc_start = timestamp();"))
+        rejected = compile_and_run(actual, "--exact", "calibration_tests::elapsed_countdown_before_timestamp_is_still_measured", capture=True, calibration_path=calibration_control)
+        assert rejected.returncode != 0 and "complete countdown escaped measured interval" in rejected.stdout + rejected.stderr
+        print("Bootstrap storage controls: countdown armed before measurement rejected.")
         control = directory / "allocating-get.rs"
         current = actual.read_text()
         needle = "self.state.clone()"

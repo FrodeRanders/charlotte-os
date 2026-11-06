@@ -42,7 +42,7 @@ mod environment { pub mod acpi {
     pub fn find_table_type(_:AcpiTableType)->Result<&'static[TableAddress],()> {Ok(&ADDRESSES)}
 }}
 #[path="@BOOT_TIMER@"] mod boot_timer;
-#[path="@ROOT@/crates/catten/src/cpu/isa/x86_64/timers/apic_timer/calibration.rs"] mod calibration;
+#[path="@CALIBRATION@"] mod calibration;
 #[path="@ROOT@/crates/catten/src/environment/acpi/sdt/iort.rs"] mod iort;
 
 use core::{cell::Cell,sync::atomic::{AtomicUsize,Ordering}};
@@ -97,15 +97,15 @@ fn measure(f:impl FnOnce())->usize {
 #[test] fn calibration_requires_ten_complete_nonzero_samples_without_heap() {
     let allocations=measure(|| {
         let mut count=0;
-        assert_eq!(calibration::resolution(||{count+=1;Some(count*10)}),Ok(55));
+        assert_eq!(calibration::resolution(||{count+=1;Ok(count*10)}),Ok(55));
         assert_eq!(count,calibration::NUM_SAMPLES as u128);
         for failure in 0..calibration::NUM_SAMPLES {
             let mut sample=0;
-            assert_eq!(calibration::resolution(||{let index=sample;sample+=1;(index!=failure).then_some(100)}),Err(calibration::Error::Incomplete));
+            assert_eq!(calibration::resolution(||{let index=sample;sample+=1;if index==failure {Err(calibration::Error::Incomplete)} else {Ok(100)}}),Err(calibration::Error::Incomplete));
             assert_eq!(sample,failure+1);
         }
-        assert_eq!(calibration::resolution(||Some(0)),Err(calibration::Error::Zero));
-        assert_eq!(calibration::resolution(||Some(u128::MAX)),Err(calibration::Error::Overflow));
+        assert_eq!(calibration::resolution(||Ok(0)),Err(calibration::Error::Zero));
+        assert_eq!(calibration::resolution(||Ok(u128::MAX)),Err(calibration::Error::Overflow));
     });
     assert_eq!(allocations,0);
 }
@@ -159,3 +159,5 @@ type HwAsid = u16;
         assert_eq!(allocator.capacity(),capacity);
     }
 }
+
+#[path="@ROOT@/scripts/tests/fixtures/apic-calibration.rs"] mod calibration_tests;

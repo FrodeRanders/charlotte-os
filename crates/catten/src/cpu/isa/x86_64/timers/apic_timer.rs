@@ -69,27 +69,39 @@ impl ApicTimer {
     }
 
     fn determine_timer_resolution(&mut self) {
-        const SAMPLE_TICKS: u32 = 10_000;
-
         let _ = self.set_interrupt_mask(true);
         let _ = Self::set_divisor(self, ApicTimerDivisors::DivBy1);
+        let mut sample_index = 0;
+        let mut last_sample = None;
         let resolution = calibration::resolution(|| {
-            Self::set_timer_initial_count(SAMPLE_TICKS);
-            let tsc_start = rdtsc();
-            if !crate::klib::spin::bounded_spin(100_000_000, || {
-                Self::read_timer_current_count() == 0
-            }) {
-                return None;
-            }
-            let tsc_end = rdtsc();
-            let duration = (tsc_end - tsc_start) as u128 * (*TSC_CYCLE_PERIOD).as_picos();
-            let apic_timer_duration = duration / SAMPLE_TICKS as u128;
-            Some(apic_timer_duration)
+            sample_index += 1;
+            let sample = calibration::sample(
+                super::tsc::rdtsc_before_programming,
+                Self::set_timer_initial_count,
+                || {
+                    let mut count = u32::MAX;
+                    let completed = crate::klib::spin::bounded_spin(100_000_000, || {
+                        count = Self::read_timer_current_count();
+                        count == 0
+                    });
+                    (completed, count)
+                },
+                (*TSC_CYCLE_PERIOD).as_picos(),
+            );
+            last_sample = Some(sample);
+            sample.resolution()
         });
         Self::set_timer_initial_count(0);
-        self.resolution = ExtDuration::from_picos(
-            resolution.expect("incomplete or invalid APIC timer calibration"),
-        );
+        self.resolution = ExtDuration::from_picos(resolution.unwrap_or_else(|error| {
+            panic!(
+                "invalid APIC calibration: lp={} sample={}/{} error={:?} raw={:?}",
+                get_lp_id(),
+                sample_index,
+                calibration::NUM_SAMPLES,
+                error,
+                last_sample
+            )
+        }));
     }
 
     fn prepared() -> Self {
