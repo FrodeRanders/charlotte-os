@@ -163,6 +163,11 @@ enum Failure {
 }
 
 fn failed_cleanup(failure: Failure) {
+    use crate::klib::admission::{
+        ScratchNodes,
+        used as pool_used,
+    };
+    let scratch_base = pool_used::<ScratchNodes, 2>().0;
     let before = backing_budget::test_used_pages(backing_budget::Kind::Heap);
     let (handle, principal) =
         registry::tests::principal_root(b"device-namespace-retained-principal", false);
@@ -235,12 +240,19 @@ fn failed_cleanup(failure: Failure) {
     let retained_nodes = node_budget::snapshot().0[0] - node_base;
     let authorities = crate::capability::admission_tests::test_namespace_used(handle.id()) as u64;
     let retained_bytes = memory::kernel_buffers::test_metadata_used(principal);
-    assert_eq!(retained_bytes, principal_base + retained_nodes + authorities * authority_bytes);
+    let scratch = pool_used::<ScratchNodes, 2>().0;
+    let retained_scratch = scratch[0] - scratch_base[0];
+    assert_eq!(scratch[1] - scratch_base[1], 2 - u64::from(failure == Failure::Dma));
+    assert_eq!(
+        retained_bytes,
+        principal_base + retained_nodes + authorities * authority_bytes + retained_scratch
+    );
     crate::logln!(
-        "[device namespace principal retention] remaining nodes={} authority={} bytes after {:?}; \
-         confirmed siblings refunded, exact root/remaining authority retained",
+        "[device namespace principal retention] remaining nodes={} authority={} scratch={} bytes \
+         after {:?}; confirmed siblings refunded, exact root/remaining authority retained",
         retained_nodes,
         authorities * authority_bytes,
+        retained_scratch,
         failure
     );
     assert_eq!(destroyed, failure == Failure::Dma);

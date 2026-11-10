@@ -32,16 +32,20 @@ impl Preparing {
         pages: usize,
         mut before: impl FnMut(u8) -> Result<(), MemoryObjectError>,
     ) -> Result<Self, MemoryObjectError> {
+        // Capture node funding and resource class against the caller's exact
+        // generation. The separately admitted snapshot has its own backing class.
+        let (captured, storage) =
+            crate::memory::capture_address_space_resource_sponsor(handle.id());
+        if captured != Some(handle) {
+            return Err(MemoryObjectError::AddressSpaceMissing);
+        }
         let mut owner = Self(ManuallyDrop::new(Resources {
             node: None,
             snapshot: None,
         }));
-        // Capture once against the caller's exact generation before any factory.
-        // Late promotion or ASID reuse must not redirect admission or refund.
-        let platform = crate::memory::budget::platform_identity(handle.id()) == Some(handle);
         let result = (|| {
             before(0)?;
-            owner.0.node = Some(admission::prepare(platform)?);
+            owner.0.node = Some(admission::prepare(storage)?);
             before(1)?;
             owner.0.snapshot = Some(snapshot_storage::Preparing::new(handle, pages)?);
             before(2)

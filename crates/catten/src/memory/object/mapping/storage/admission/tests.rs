@@ -3,6 +3,11 @@ use super::*;
 use crate::memory::{
     self,
     AddressSpaceHandle,
+    allocators::global_allocator::PRIMARY_ALLOCATOR,
+    kernel_buffers::{
+        test_metadata_limit as limit,
+        test_metadata_used as used,
+    },
 };
 
 fn root() -> AddressSpaceHandle {
@@ -34,6 +39,7 @@ pub(in crate::memory::object::mapping::storage) fn run() {
     captured_classification();
     published_lifetime();
     actual_pressure();
+    shared_principal();
     crate::logln!(
         "[mapping node admission] 64 charged allocator rejections; captured classification, \
          published/detached lifetime, actual ordinary/total node exhaustion, trusted reserve, \
@@ -41,22 +47,32 @@ pub(in crate::memory::object::mapping::storage) fn run() {
     );
 }
 fn allocation_failure() {
+    let (handle, principal) = snapshot_storage::tests::principal_root(b"mapping-node-allocator");
+    let storage = memory::kernel_buffers::capture_storage(handle).unwrap();
     let before = snapshot();
+    let original = used(principal);
+    let bytes = Storage::allocation_bytes() as u64;
     for _ in 0..64 {
         assert_eq!(
-            prepare_with(false, |_| {
+            prepare_with(storage, |_| {
                 super::super::tests::available();
                 assert_eq!(snapshot(), increment(before, 1));
-                Err(MemoryObjectError::ResourceLimit)
+                assert_eq!(used(principal), original + bytes);
+                Err(AllocError)
             })
             .err(),
             Some(MemoryObjectError::ResourceLimit)
         );
         assert_eq!(snapshot(), before);
+        assert_eq!(used(principal), original);
     }
+    memory::close_user_address_space_handle(handle).unwrap();
+    assert_eq!(used(principal), 0);
 }
 fn captured_classification() {
-    let handle = root();
+    let (handle, principal) = snapshot_storage::tests::principal_root(b"mapping-node-retained");
+    let base = used(principal);
+    let bytes = Storage::allocation_bytes() as u64;
     let before = snapshot();
     let owner = Preparing::with(handle, 1, |stage| {
         if stage == 0 {
@@ -66,14 +82,20 @@ fn captured_classification() {
     })
     .unwrap();
     assert_eq!(snapshot(), increment(before, 1));
+    assert_eq!(used(principal), base + bytes);
     memory::close_user_address_space_handle(handle).unwrap();
     assert_eq!(snapshot(), increment(before, 1));
-    let successor = root();
+    assert_eq!(used(principal), bytes);
+    let (successor, other) = snapshot_storage::tests::principal_root(b"mapping-node-successor");
+    let other_base = used(other);
     assert_eq!(successor.id(), handle.id());
     assert_ne!(successor, handle);
     owner.finish();
+    assert_eq!(used(principal), 0);
+    assert_eq!(used(other), other_base);
     assert_eq!(snapshot(), before);
     memory::close_user_address_space_handle(successor).unwrap();
+    assert_eq!(used(other), 0);
 }
 fn published_lifetime() {
     let handle = root();
@@ -196,5 +218,72 @@ fn actual_pressure() {
         TOTAL_LIMIT[0],
         ORDINARY_LIMIT[1],
         TOTAL_LIMIT[1]
+    );
+}
+
+fn shared_principal() {
+    let (first, principal) = snapshot_storage::tests::principal_root(b"scratch-mapping-shared");
+    let (sibling, same) = snapshot_storage::tests::principal_root(b"scratch-mapping-shared");
+    let (healthy, other) = snapshot_storage::tests::principal_root(b"scratch-mapping-healthy");
+    assert_eq!(same, principal);
+    let cap = allocate(first.id(), 1).unwrap();
+    let sibling_cap = allocate(sibling.id(), 1).unwrap();
+    let healthy_cap = allocate(healthy.id(), 1).unwrap();
+    let original = used(principal);
+    let scratch_before = memory::object::scratch_admission_snapshot();
+    let address = reserve_scratch(first.id(), 1).unwrap();
+    let pair = used(principal) - original;
+    assert_eq!(pair, memory::object::scratch_admission_snapshot().0[0] - scratch_before.0[0]);
+    release_scratch(first.id(), address, 1).unwrap();
+    let namespace = used(principal) - original;
+    let extent = pair - namespace;
+    let mapping = Storage::allocation_bytes() as u64;
+    assert!(namespace < mapping);
+    let base = used(principal);
+    let scratch = memory::object::scratch_admission_snapshot();
+    let mappings = snapshot();
+    let buffers = snapshot_storage::admitted();
+    let frames = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    limit(principal, base);
+    {
+        let _heap = PRIMARY_ALLOCATOR.lock();
+        assert_eq!(reserve_scratch(first.id(), 1), Err(MemoryObjectError::ResourceLimit));
+    }
+    denied(first, cap);
+    denied(sibling, sibling_cap);
+    // The first node fits. The second candidate must fail before publication.
+    limit(principal, base + pair - 1);
+    assert_eq!(reserve_scratch(first.id(), 1), Err(MemoryObjectError::ResourceLimit));
+    // Both scratch candidates fit. Once its unused namespace is disposed,
+    // there is room for less than a mapping node. Cancel the unused extent.
+    limit(principal, base + pair);
+    assert_eq!(map_any(first.id(), cap, false), Err(MemoryObjectError::ResourceLimit));
+    assert!(!info(first.id(), cap).unwrap().mapped);
+    assert_eq!(used(principal), base);
+    assert_eq!(memory::object::scratch_admission_snapshot(), scratch);
+    assert_eq!(snapshot(), mappings);
+    assert_eq!(snapshot_storage::admitted(), buffers);
+    assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), frames);
+    map_any(healthy.id(), healthy_cap, false).unwrap();
+    unmap(healthy.id(), healthy_cap).unwrap();
+    limit(principal, crate::resource_policy::POLICY.memory.principal_metadata_bytes);
+    map_any(first.id(), cap, false).unwrap();
+    assert_eq!(used(principal), base + extent + mapping);
+    unmap(first.id(), cap).unwrap();
+    assert_eq!(used(principal), base);
+    for (handle, cap) in [(first, cap), (sibling, sibling_cap), (healthy, healthy_cap)] {
+        close_cap(handle.id(), cap).unwrap();
+        memory::close_user_address_space_handle(handle).unwrap();
+    }
+    assert_eq!(used(principal), 0);
+    assert_eq!(used(other), 0);
+    assert_eq!(snapshot(), mappings);
+    assert_eq!(memory::object::scratch_admission_snapshot(), scratch_before);
+    crate::logln!(
+        "[scratch/mapping principal] extent={} namespace={} mapping={} bytes; sibling quotas, \
+         both scratch prefix denials, post-scratch mapping denial, healthy map and exact refunds",
+        extent,
+        namespace,
+        mapping
     );
 }

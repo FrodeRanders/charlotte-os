@@ -1,12 +1,18 @@
 //! Requested scratch-node layouts share admission through actual deallocation.
 use core::alloc::AllocError;
 
-use crate::klib::{
-    admission::{
-        self,
-        ScratchNodes,
+use crate::{
+    klib::{
+        admission::{
+            self,
+            ScratchNodes,
+        },
+        collections::retirement_list::PreparedEntry,
     },
-    collections::retirement_list::PreparedEntry,
+    memory::kernel_buffers::{
+        CapturedStorage,
+        MetadataSponsor,
+    },
 };
 
 #[cfg(any(test, feature = "kernel_tests"))]
@@ -14,19 +20,23 @@ pub(super) const TOTAL_LIMIT: [u64; 2] = crate::resource_policy::POLICY.scratch_
 #[cfg(any(test, feature = "kernel_tests"))]
 pub(super) const ORDINARY_LIMIT: [u64; 2] = crate::resource_policy::POLICY.scratch_nodes.ordinary;
 
-pub(crate) type Charge = admission::NodeCharge<ScratchNodes>;
+pub(crate) type Charge = admission::NodeCharge<ScratchNodes, MetadataSponsor>;
 
-pub(super) fn prepare<T>(platform: bool) -> Result<PreparedEntry<T, Charge>, AllocError> {
-    prepare_with(platform, PreparedEntry::try_new_charged)
+pub(super) fn prepare<T>(
+    storage: impl Into<CapturedStorage>,
+) -> Result<PreparedEntry<T, Charge>, AllocError> {
+    prepare_with(storage, PreparedEntry::try_new_charged)
 }
 
 pub(super) fn prepare_with<T>(
-    platform: bool,
+    storage: impl Into<CapturedStorage>,
     allocate: impl FnOnce(Charge) -> Result<PreparedEntry<T, Charge>, AllocError>,
 ) -> Result<PreparedEntry<T, Charge>, AllocError> {
-    admission::prepare_node_with::<_, ScratchNodes>(
-        platform,
+    let storage = storage.into();
+    admission::prepare_node_with_sponsor::<_, ScratchNodes, _>(
+        storage.platform(),
         PreparedEntry::<T, Charge>::allocation_bytes(),
+        storage.metadata_sponsor(),
         allocate,
     )
 }

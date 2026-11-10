@@ -54,7 +54,8 @@ pub(crate) fn run() {
     );
 }
 
-fn signed_root(name: &[u8]) -> (AddressSpaceHandle, u64) {
+/// A prebound test principal exercises real funding without an EL0 launch.
+pub(in crate::memory::object) fn principal_root(name: &[u8]) -> (AddressSpaceHandle, u64) {
     let principal = charlotte_launch::artifact_principal_id(name);
     let space = memory::AddressSpace::try_new_principal_user(
         false,
@@ -67,7 +68,7 @@ fn signed_root(name: &[u8]) -> (AddressSpaceHandle, u64) {
 }
 
 fn exact_capacity() {
-    let (handle, principal) = signed_root(b"snapshot-capacity-rejection");
+    let (handle, principal) = principal_root(b"snapshot-capacity-rejection");
     let before = admitted();
     for over_capacity in [false, true] {
         let result = Preparing::with_factory(
@@ -95,9 +96,9 @@ fn principal_coverage() {
         test_used,
     };
     let before = admitted();
-    let (first, principal) = signed_root(b"snapshot-frame-principal");
-    let (sibling, same) = signed_root(b"snapshot-frame-principal");
-    let (healthy, other) = signed_root(b"snapshot-frame-healthy");
+    let (first, principal) = principal_root(b"snapshot-frame-principal");
+    let (sibling, same) = principal_root(b"snapshot-frame-principal");
+    let (healthy, other) = principal_root(b"snapshot-frame-healthy");
     assert_eq!(principal, same);
     test_limit(principal, 16);
     let cap = allocate(first.id(), 1).unwrap();
@@ -116,7 +117,7 @@ fn principal_coverage() {
     assert!(Preparing::new(first, 1).is_err());
     memory::close_user_address_space_handle(first).unwrap();
     assert_eq!(test_used(principal), 16);
-    let (replacement, replacement_principal) = signed_root(b"snapshot-frame-healthy");
+    let (replacement, replacement_principal) = principal_root(b"snapshot-frame-healthy");
     assert_eq!(replacement.id(), first.id());
     assert_ne!(replacement, first);
     assert_eq!(replacement_principal, other);
@@ -148,7 +149,7 @@ fn principal_coverage() {
     assert_eq!(test_used(other), 0);
     assert_eq!(admitted(), before);
     // Complete snapshot abandonment retains both counters under their guards.
-    let (retained, retained_principal) = signed_root(b"snapshot-frame-retained");
+    let (retained, retained_principal) = principal_root(b"snapshot-frame-retained");
     let snapshot = Preparing::new(retained, 1).unwrap();
     let charged = admitted();
     memory::usage::with_principal_history_locked(|| {
@@ -167,7 +168,7 @@ fn principal_coverage() {
 }
 
 fn allocation_rejection() {
-    let (handle, principal) = signed_root(b"snapshot-allocation-rejection");
+    let (handle, principal) = principal_root(b"snapshot-allocation-rejection");
     let before = admitted();
     for _ in 0..64 {
         let result = Preparing::with_factory(

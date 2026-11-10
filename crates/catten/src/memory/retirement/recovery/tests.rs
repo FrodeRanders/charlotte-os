@@ -67,10 +67,14 @@ fn test_namespace_metadata() {
     assert_eq!(family_used(), 2);
     assert_eq!(queue_used(), mailbox::queue_amount());
     assert_eq!(authority_used(), 3);
+    let used = memory::kernel_buffers::test_metadata_used;
+    let before_scratch = used(principal);
     memory::object::reserve_scratch(handle.id(), 2).unwrap();
     let scratch_retained = memory::object::scratch_admission_snapshot();
     assert_eq!(scratch_retained.0[1], scratch_before.0[1] + 2);
-    let before_staging = memory::kernel_buffers::test_metadata_used(principal);
+    let scratch_bytes = scratch_retained.0[0] - scratch_before.0[0];
+    let before_staging = used(principal);
+    assert_eq!(before_staging, before_scratch + scratch_bytes);
     let namespaces_before = crate::klib::namespace_node_budget::snapshot();
     let owner = super::super::tests::stage(handle);
     // Confirmed IPC drain releases its global namespace before final root
@@ -189,7 +193,9 @@ fn test_namespace_metadata() {
     let queue_used = mailbox::captured_queue_used(handle);
     assert_eq!(queue_used(), mailbox::queue_amount());
     let authority_used = crate::capability::record_tests::captured_account_used(handle);
+    let before_scratch = used(abandoned_principal);
     memory::object::reserve_scratch(handle.id(), 1).unwrap();
+    assert_eq!(used(abandoned_principal), before_scratch + scratch_bytes);
     assert_eq!(memory::object::scratch_admission_snapshot(), scratch_retained);
     let owner = super::super::tests::stage(handle);
     assert_eq!(owner.metadata.as_ref().unwrap().test_scratch_extents(), 1);
@@ -240,6 +246,11 @@ fn test_namespace_metadata() {
          preserve replacement, existing guarded complete-root abandonment retains original \
          byte/count charges",
         node_bytes
+    );
+    crate::logln!(
+        "[scratch principal recovery] {} bytes retained through final invalidation rejection and \
+         guarded root-attempt abandonment; confirmed release and successor isolation passed",
+        scratch_bytes
     );
     crate::logln!(
         "[root container principal recovery] {} bytes retained through rejected invalidation, \

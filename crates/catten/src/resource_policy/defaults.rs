@@ -159,8 +159,10 @@ pub(super) const POLICY: Policy = Policy {
         ordinary: [12 * 1024 * 1024, 12_288],
     },
     scratch_nodes: Pool {
-        total: [512 * 1024, 8192],
-        ordinary: [384 * 1024, 6144],
+        // Funded charges add 16 bytes per slot. Preserve the previous mixed
+        // namespace/extent envelope at the existing count ceilings.
+        total: [640 * 1024, 8192],
+        ordinary: [480 * 1024, 6144],
     },
     snapshot_buffers: Pool {
         // Shared frame catalogs and primitive syscall bytes. Two maximum
@@ -173,8 +175,10 @@ pub(super) const POLICY: Policy = Policy {
         ordinary: [12 * 1024 * 1024, 48],
     },
     mapping_nodes: Pool {
-        total: [1024 * 1024, 8192],
-        ordinary: [768 * 1024, 6144],
+        // Funded charges add 16 bytes per slot. Keep the count ceiling and
+        // existing layout headroom.
+        total: [1152 * 1024, 8192],
+        ordinary: [864 * 1024, 6144],
     },
     memory_capability_nodes: Pool {
         total: [4 * 1024 * 1024, 32_768],

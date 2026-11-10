@@ -5,30 +5,41 @@ use core::alloc::AllocError;
 use super::*;
 
 pub(super) fn run() {
-    allocation_failure::<(usize, usize)>();
-    allocation_failure::<(AddressSpaceId, Namespace)>();
+    let (handle, principal) = snapshot_storage::tests::principal_root(b"scratch-node-allocator");
+    let storage = memory::kernel_buffers::capture_storage(handle).unwrap();
+    allocation_failure::<(usize, usize)>(storage, principal);
+    allocation_failure::<(AddressSpaceId, Namespace)>(storage, principal);
+    memory::close_user_address_space_handle(handle).unwrap();
+    assert_eq!(memory::kernel_buffers::test_metadata_used(principal), 0);
     captured_classification();
     pressure();
     byte_pressure();
     crate::logln!(
-        "[scratch admission] 128 allocation rejections; real ordinary/total byte and node \
-         exhaustion, partial-quota rollback, trusted reserve, captured classification and \
-         exact-generation close/reuse passed; no budget reset"
+        "[scratch admission] layouts extent={} namespace={}; 128 funded allocation rejections; \
+         ordinary/total byte and node exhaustion, partial-quota rollback, trusted reserve, \
+         captured classification and exact-generation close/reuse passed",
+        ExtentStorage::allocation_bytes(),
+        Storage::allocation_bytes()
     );
 }
 
-fn allocation_failure<T>() {
+fn allocation_failure<T>(storage: memory::kernel_buffers::CapturedStorage, principal: u64) {
     let before = admission::snapshot();
+    let used = memory::kernel_buffers::test_metadata_used;
+    let original = used(principal);
+    let bytes = PreparedEntry::<T, Charge>::allocation_bytes() as u64;
     for _ in 0..64 {
         assert!(
-            admission::prepare_with::<T>(false, |_| {
+            admission::prepare_with::<T>(storage, |_| {
                 available();
                 assert_eq!(admission::snapshot().0[1], before.0[1] + 1);
+                assert_eq!(used(principal), original + bytes);
                 Err(AllocError)
             })
             .is_err()
         );
         assert_eq!(admission::snapshot(), before);
+        assert_eq!(used(principal), original);
     }
 }
 

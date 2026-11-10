@@ -741,9 +741,12 @@ the corrected RPC polling paths, and the remaining notification gaps.
   guard; do not restore a borrowed-guard API that lets temporary guards survive
   through chained detachment calls. Use the pin's fixed-size frame
   batches; do not allocate teardown snapshots or nest registry/table guards.
+  Mapping, scratch extent and scratch namespace nodes use the shared funded
+  node charge. Capture the exact root principal and explicit platform grant
+  before preparation, then refund only after actual node deallocation.
   Scratch admission prepares live-extent metadata fallibly before publication.
-  Release one exact live reservation without allocation; a failed scratch
-  completion must not discharge the mapping pin or clear loan restrictions.
+  Release one exact live reservation without allocation. A failed scratch
+  completion retains the mapping pin and loan restrictions.
   Range checks do not replace generation/reservation ownership. See
   `docs/reference/scratch-admission.md`.
   Public memory-object map/map-any/unmap operations own an

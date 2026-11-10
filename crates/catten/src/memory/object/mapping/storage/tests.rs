@@ -417,11 +417,15 @@ fn rollback_record_lifetime() {
 fn uncertain_rollback() {
     let nodes = admission::snapshot();
     use crate::cpu::isa::memory::tlb::InvalidationError;
-    let handle = root();
+    let (handle, principal) = snapshot_storage::tests::principal_root(b"mapping-node-uncertain");
+    let used = memory::kernel_buffers::test_metadata_used;
     let cap = allocate(handle.id(), 2).unwrap();
+    let base_bytes = used(principal);
+    let bytes = Storage::allocation_bytes() as u64;
     let foreign = allocate(handle.id(), 1).unwrap();
     let base = VAddr::from(0x200000usize);
     map(handle.id(), foreign, base + PAGE_SIZE, true).unwrap();
+    let live = used(principal);
     #[cfg(target_arch = "aarch64")]
     let cause = InvalidationError::AddressSpaceMissing;
     #[cfg(target_arch = "x86_64")]
@@ -434,15 +438,19 @@ fn uncertain_rollback() {
         let state = pin.as_ref().unwrap().retired_mapping().unwrap().value().1.state;
         assert_eq!(state.installed_pages, 1);
         assert_eq!(state.address_space, handle);
+        assert_eq!(used(principal), live + bytes);
         let _registry = MEMORY_OBJECTS.lock();
         let _heap = PRIMARY_ALLOCATOR.lock();
         // Confirmation rejects once; complete pin/node fallback must neither
         // enter either allocator/registry nor reclaim the original backing.
         admission::with_locked(|| {
-            finish_mapping(handle.id(), base, 2, false, result, pin, |_, _, _| Err(cause))
+            memory::kernel_buffers::test_with_history_locked(|| {
+                finish_mapping(handle.id(), base, 2, false, result, pin, |_, _, _| Err(cause))
+            })
         })
     });
     assert_eq!(result, Err(MemoryObjectError::InvalidationFailed(cause)));
+    assert_eq!(used(principal), live + bytes);
     assert_eq!(MEMORY_OBJECTS.lock().objects[&object].retirement_pins, 1);
     assert!(info(handle.id(), foreign).unwrap().mapped);
     unmap(handle.id(), foreign).unwrap();
@@ -455,10 +463,18 @@ fn uncertain_rollback() {
             objects: 1
         }
     );
+    assert_eq!(used(principal), base_bytes + bytes);
+    let namespaces = crate::klib::namespace_node_budget::snapshot();
     assert_eq!(
         memory::close_user_address_space_handle(handle),
         Err(memory::AddressSpaceCloseError::OperationsInFlight)
     );
+    // Closing drains IPC before it reaches the retained mapping pin. Only
+    // that confirmed namespace release may reduce the original charge here.
+    let ipc_bytes = crate::ipc::namespace::node_bytes_for_test();
+    let remaining = crate::klib::namespace_node_budget::snapshot();
+    assert_eq!(namespaces.0[0] - remaining.0[0], ipc_bytes);
+    assert_eq!(namespaces.0[1] - remaining.0[1], 1);
     assert_eq!(
         memory::budget::used(handle),
         memory::budget::Amount {
@@ -466,7 +482,12 @@ fn uncertain_rollback() {
             objects: 1
         }
     );
-    let bytes = Storage::allocation_bytes() as u64;
+    assert_eq!(used(principal), base_bytes + bytes - ipc_bytes);
+    crate::logln!(
+        "[mapping principal retention] {} original metadata bytes retained with the detached node \
+         and pin after rejected invalidation under principal-history and pool guards",
+        bytes
+    );
     assert_eq!(
         admission::snapshot(),
         ([nodes.0[0] + bytes, nodes.0[1] + 1], [nodes.1[0] + bytes, nodes.1[1] + 1])

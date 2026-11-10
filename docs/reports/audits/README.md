@@ -17,6 +17,8 @@ report is useful for a significant investigation or qualification checkpoint.
 
 ## Reports
 
+- [Q4 mapping and scratch principal funding](2026-11-11-q4-mapping-scratch-principals.md) covers original charges for three node layouts, capacity preservation and refunds through mapping and root retirement.
+
 - [Q4 completion principal funding](2026-11-11-q4-completion-principals.md) covers completion registry nodes, kernel CQ storage and original refunds after root close and ASID reuse.
 
 - [APIC calibration interval](2026-11-06-apic-calibration.md) — Reproduced arm-before-timestamp window, ordered measurement interval and raw failure diagnostics; the original Intel panic remains historically unattributed.

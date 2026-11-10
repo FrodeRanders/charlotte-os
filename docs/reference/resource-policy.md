@@ -70,10 +70,10 @@ unlimited node capacity.
 | `thread_metadata` | context/node bytes; bundles | principal 1 MiB; 128 bundles | 6 MiB; 3072 bundles | 8 MiB; 4096 bundles |
 | `thread_table` | three-vector bytes; backing slots, including replacement overlap | principal 16 MiB; 16384 slots | 24 MiB; 24576 slots | 32 MiB; 32768 slots |
 | `root_table` | three-vector bytes; ASID backing slots, including replacement overlap | principal 8 MiB; 8192 slots | 12 MiB; 12288 slots | 16 MiB; 16384 slots |
-| `scratch_nodes` | node-layout bytes; nodes | — | 384 KiB; 6144 nodes | 512 KiB; 8192 nodes |
+| `scratch_nodes` | node-layout bytes; nodes | — | 480 KiB; 6144 nodes | 640 KiB; 8192 nodes |
 | `snapshot_buffers` | frame/primitive buffer bytes; frame buffers | — | 12 MiB; 6144 buffers | 16 MiB; 8192 buffers |
 | `service_images` | store image bytes; reserved cache entries | — | 12 MiB; 48 entries | 16 MiB; 64 entries |
-| `mapping_nodes` | node-layout bytes; nodes | — | 768 KiB; 6144 nodes | 1 MiB; 8192 nodes |
+| `mapping_nodes` | node-layout bytes; nodes | — | 864 KiB; 6144 nodes | 1152 KiB; 8192 nodes |
 | `memory_capability_nodes` | object/capability/namespace/read-borrower layouts and object/root frame-catalog bytes; nodes | — | 3 MiB; 24576 nodes | 4 MiB; 32768 nodes |
 | `memory.objects` | backing objects | 1024 | 6144 | 8192 |
 
@@ -132,8 +132,9 @@ snapshot scratch is 1 MiB per request. These forward to `Policy.local`.
 - Migrated general metadata requested bytes per signed principal: 8 MiB, under
   `principal_metadata_bytes`. Authority/mailbox endpoint, root metadata and all
   five global namespace-node layouts, device namespace/payload nodes, completion
-  registry nodes and CQ heap ring/backlog storage share this allowance. Each
-  charge follows its allocation lifetime. Namespace/reactor accounts and buffer
+  registry nodes, CQ heap ring/backlog storage, scratch extents/namespaces and
+  CPU mapping records share this allowance. Each charge follows its allocation
+  lifetime. Namespace/reactor accounts and buffer
   funding use separate ceilings. Other node families remain subject to the
   [principal coverage review](metadata-admission.md#principal-coverage-and-remaining-reconciliation).
 - IOMMU per-domain and per-unit backing: 1024 and 2048 pages respectively.

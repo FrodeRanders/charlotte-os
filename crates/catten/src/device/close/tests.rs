@@ -2,6 +2,10 @@
 use super::*;
 use crate::{
     capability::admission_tests::test_namespace_used as used,
+    klib::admission::{
+        ScratchNodes,
+        used as pool_used,
+    },
     memory::{
         self,
         retirement::{
@@ -66,10 +70,14 @@ pub(in crate::device) fn run() {
             CloseProgress::Pending(owner) => owner,
             CloseProgress::Complete => panic!("device close root completed before metadata"),
         };
+        let scratch = pool_used::<ScratchNodes, 2>().0;
         owner.clean().unwrap();
-        assert_eq!(memory::kernel_buffers::test_metadata_used(principal), live_bytes);
+        let remaining = pool_used::<ScratchNodes, 2>().0;
+        assert_eq!(scratch[1] - remaining[1], u64::from(category == 0));
+        let freed = scratch[0] - remaining[0];
+        assert_eq!(memory::kernel_buffers::test_metadata_used(principal), live_bytes - freed);
         assert_eq!(node_budget::snapshot(), live_nodes);
-        assert_eq!(used(root.id()), 1, "confirmed cleanup alone cannot refund metadata");
+        assert_eq!(used(root.id()), 1, "device authority stays until metadata disposal");
         owner.finish().unwrap();
         assert_eq!(used(root.id()), 0);
         assert!(matches!(closing.poll().unwrap(), CloseProgress::Complete));

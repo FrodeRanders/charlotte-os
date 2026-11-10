@@ -7,14 +7,13 @@ Installation helpers are private to that boundary except the existing two
 object-family retirement-fixture hooks. Shared mapping records and retirement
 pins still serve their original namespace/loan cleanup owners; storage release
 keeps its object-family scope. Root `map`, `map_any` and `unmap` remain facades.
-No admission, guard or physical-completion policy changes. See the
-[refactoring evidence](../reports/audits/2026-10-25-refactoring-memory-mapping.md).
+The [refactoring evidence](../reports/audits/2026-10-25-refactoring-memory-mapping.md) records the original grouping.
 
 CPU memory-object mapping records share fixed requested-layout admission:
 
 | Dimension | Total | Ordinary callers |
 | --- | --- | --- |
-| Requested node-layout bytes | 1 MiB | 768 KiB |
+| Requested node-layout bytes | 1152 KiB | 864 KiB |
 | Prepared, published or retained nodes | 8192 | 6144 |
 
 These values are the default of the central compile-time
@@ -25,11 +24,18 @@ installation and live resizing are not implemented.
 
 Each node reserves its complete layout, including payload, link and typed charge,
 before fallible allocation. Quota or allocator rejection returns `ResourceLimit`.
-The independent leaf counter leaves before allocator entry. Mapping preparation
-captures trusted classification once against the exact calling namespace handle,
-before either counter or factory. Later promotion and ASID reuse cannot change
-that node's classification or original refund. Caller names/roles/manifests supply
-no reserve claim. Snapshot buffers keep their separate [admission](snapshot-buffer-admission.md).
+The node draws on the original principal's shared 8 MiB metadata allowance
+and the mapping pool. Capture the principal and explicit platform grant from
+the exact calling root before either counter or factory. Leaf admission locks
+leave before allocation. Promotion and ASID reuse preserve the captured charge.
+Snapshot buffers keep their separate backing policy and allowance.
+[Snapshot admission](snapshot-buffer-admission.md)
+
+The funded layout requests 136 bytes per mapping node. The byte ceilings add
+16 bytes per existing slot, or 96 KiB ordinary and 128 KiB total. This covers
+the larger charge at the existing count limits and preserves the earlier layout
+headroom. The byte limit bounds requested storage and permits this extra heap
+use under pressure.
 
 The existing prepared node carries its charge into the existing mapping map,
 `MappingRetirementPin`, selected retirement or whole-map `RetiredObjectMappings`.
@@ -48,8 +54,8 @@ and refund supplies no hardware proof, recovery custody or replay permission.
 Both ceilings apply to overlapping unused candidates and retained nodes as well
 as live mappings. The first applicable dimension rejects; this single layout can
 reach its count ceiling before its byte ceiling. Requested layout excludes
-allocator overhead/free heap backing and other metadata. No aggregate principal
-limit, new root/pin registry or guaranteed reserve share for one service is added.
+allocator overhead and other metadata. Joint heap sizing and sustained
+essential-service progress remain open.
 
 The [audit evidence](../reports/audits/2026-10-25-security-mapping-node-admission.md)
 qualifies actual-node exhaustion, public map/map-any denial without snapshot/pin
@@ -58,3 +64,9 @@ root reuse and existing guarded uncertainty. This advances R7-2/R7-3 and C05/C18
 other metadata families, principal/general-heap budgets, broader cleanup contexts
 and sustained concurrent essential-service progress remain open. SEC-07/18 stay
 partial.
+
+Current principal controls exercise funded allocator rejection, sibling-root
+quota sharing, a failed map after scratch preparation, and exact original
+refunds across root close and ASID reuse. The existing uncertain rollback
+retains its funded detached node and pin beneath the principal history guard.
+[Principal funding evidence](../reports/audits/2026-11-11-q4-mapping-scratch-principals.md)

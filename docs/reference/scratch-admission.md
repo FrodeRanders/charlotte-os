@@ -20,7 +20,7 @@ Namespace candidates and extent nodes share one fixed requested-byte/count pool:
 
 | Dimension | Whole node | Ordinary preparation |
 | --- | --- | --- |
-| Requested node-layout bytes | 512 KiB | 384 KiB |
+| Requested node-layout bytes | 640 KiB | 480 KiB |
 | Prepared, published or retained nodes | 8192 | 6144 |
 
 Every node reserves its actual layout, including payload, link and typed charge,
@@ -32,12 +32,19 @@ detached/quarantined nodes all consume the same pool. Quota or allocation failur
 returns `ResourceLimit`; partial ordinary rejection explicitly disposes and
 refunds its unused prefix without publishing a new range.
 
-Classification is captured once from the trusted policy of the exact retained
-root before either factory. Caller names, roles and manifests supply no reserve
-claim. Later platform promotion cannot reclassify existing nodes or their refunds.
-The counter is a leaf mutex released before allocation; publication does not
-enter it. No userspace setter, new root/pin, registry or recovery owner is added.
-Allocator bookkeeping and aggregate signed-principal admission remain separate.
+Both nodes charge their requested layouts to the original principal's shared
+8 MiB metadata allowance. Capture the exact retained root's principal and
+explicit platform grant before either factory. The node keeps those values
+through later promotion, root retirement and ASID reuse. The leaf admission
+locks leave before allocation. Publication only relinks prepared storage.
+Allocator excess and simultaneous heap use across families remain open.
+
+The funded extent and namespace layouts request 64 and 88 bytes respectively.
+The charge adds 16 bytes per slot. The ordinary and total byte ceilings add
+96 and 128 KiB respectively, preserving capacity for every mix admitted under
+the former defaults. Namespace-heavy mixes still encounter the byte ceiling
+before the count ceiling. The increase permits additional requested heap use
+under pressure and requires no preallocation.
 
 ## Prepared namespace and extent nodes
 
@@ -59,7 +66,7 @@ registry and explicitly frees it after that guard. Neither publication nor
 detachment allocates or deallocates. First-fit lookup and ordered insertion are
 linear; the 131072-page window and existing resource limits do not qualify
 worst-case hold time or concurrent pressure/fairness. The requested layouts now
-have the ceilings above; comprehensive metadata/principal admission remains open.
+have the ceilings above. Joint heap sizing remains open.
 Nodes add allocator overhead rather than a vector
 high-water capacity. There is no compatibility-only old allocation path.
 
@@ -127,8 +134,15 @@ controls now check original scratch bytes/count through rejection, confirmation,
 ASID reuse and guarded abandonment. Serialized pressure is not sustained
 concurrent EL0 pressure or an essential-service latency guarantee.
 
-See [scratch storage evidence](../reports/audits/2026-10-25-security-scratch-storage.md) and
-[memory-object retirement](memory-object-retirement.md). General metadata-byte/
-principal admission, scalar reservation identity, serialized fixture disposal,
-other factory/destructor/outer IRQ contexts, sustained pressure and historical
-failure causes remain separate. No physical/replay proof is added.
+The current principal controls reconcile both layouts during allocator
+rejection, sibling-root quota denial and the extent/namespace preparation
+prefix. A map-any rejection after scratch preparation returns the unused extent.
+Whole-root custody checks reconcile the scratch charge through final invalidation
+rejection, guarded abandonment, confirmed disposal and exact successor reuse.
+MMIO controls reconcile confirmed extent refunds independently of device and
+authority node disposal. [Principal funding evidence](../reports/audits/2026-11-11-q4-mapping-scratch-principals.md)
+
+Scalar reservation identity, broader caller/IRQ contexts, allocator excess,
+sustained pressure and historical failure causes remain open.
+[Scratch storage evidence](../reports/audits/2026-10-25-security-scratch-storage.md)
+and [memory-object retirement](memory-object-retirement.md).

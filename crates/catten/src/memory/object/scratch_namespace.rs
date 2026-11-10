@@ -30,21 +30,24 @@ impl Preparing {
         handle: super::super::AddressSpaceHandle,
         mut before: impl FnMut(u8) -> Result<(), MemoryObjectError>,
     ) -> Result<Self, MemoryObjectError> {
+        // Both candidates share the exact root's principal and resource class.
+        let (captured, storage) =
+            crate::memory::capture_address_space_resource_sponsor(handle.id());
+        if captured != Some(handle) {
+            return Err(MemoryObjectError::AddressSpaceMissing);
+        }
         let mut owner = Self(ManuallyDrop::new(Resources {
             handle,
             extent: None,
             namespace: None,
         }));
-        // Capture trusted classification for this exact root before either
-        // allocator or scratch registry. Later promotion cannot reclassify nodes.
-        let platform = super::super::budget::platform_identity(handle.id()) == Some(handle);
         let result = (|| {
             before(0)?;
             owner.0.extent =
-                Some(admission::prepare(platform).map_err(|_| MemoryObjectError::ResourceLimit)?);
+                Some(admission::prepare(storage).map_err(|_| MemoryObjectError::ResourceLimit)?);
             before(1)?;
             owner.0.namespace =
-                Some(admission::prepare(platform).map_err(|_| MemoryObjectError::ResourceLimit)?);
+                Some(admission::prepare(storage).map_err(|_| MemoryObjectError::ResourceLimit)?);
             before(2)
         })();
         if let Err(error) = result {

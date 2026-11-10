@@ -172,7 +172,10 @@ factory interval. Captured object/size and all admission predicates revalidate
 before snapshot fill, node relink and existing pin acquisition. A lost source or
 competing mapping rejects its unused prefix without table mutation. The table
 walk/rollback retain their existing locking; snapshot disposal leaves local
-memory/table guards. See [mapping storage evidence](../reports/audits/2026-10-25-security-memory-mapping-storage.md).
+memory/table guards. Mapping records and scratch extents retain their original
+principal's requested-layout charges through detachment and physical
+uncertainty. Confirmed scratch release refunds the freed extent independently
+of the mapping record and the root's scratch namespace. See [mapping storage evidence](../reports/audits/2026-10-25-security-memory-mapping-storage.md).
 
 Mapping preparation now retains its partial node/shared-snapshot fields inertly
 on abandonment. Constructor rejection explicitly cancels its unused prefix;

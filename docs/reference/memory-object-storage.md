@@ -189,14 +189,13 @@ ranges still depend on the containing mapping/close owner; they are not allocati
 nonces. Raw serialized fixture and broader outer contexts remain unqualified.
 See [scratch admission](scratch-admission.md) and [evidence](../reports/audits/2026-10-25-security-scratch-storage.md).
 
-Scratch node layouts now share 512 KiB/8,192 total and 384 KiB/6,144 ordinary
-admission. Each extent and namespace candidate reserves before allocation using
-classification captured once from its exact root. Original charges follow unused
-preparation, publication and detached root metadata until actual deallocation;
-partial rejection explicitly refunds, while abandonment retains node and charge.
-Later promotion and ASID reuse cannot redirect a refund. These ceilings include
-concurrent candidates; allocator overhead, aggregate principals and other metadata
-remain separate. See [admission evidence](../reports/audits/2026-10-25-security-scratch-admission.md).
+Scratch node layouts share 640 KiB/8,192 total and 480 KiB/6,144 ordinary
+admission. Each extent and namespace candidate reserves its requested layout
+against the pool and original principal before allocation. Original charges
+follow unused preparation, publication and detached root metadata until actual
+deallocation. Partial rejection refunds the unused prefix, while abandonment
+retains each node and charge. Promotion and ASID reuse preserve original funding.
+Allocator excess and joint heap sizing remain open. See [admission evidence](../reports/audits/2026-10-25-security-scratch-admission.md).
 
 ## Copy-pin snapshots
 
@@ -366,12 +365,13 @@ remain open. SEC-07/18 remain partial.
 ## Mapping-node requested-layout admission
 
 Mapping candidates, published records and detached/retained nodes now share
-1 MiB/8,192 total and 768 KiB/6,144 ordinary ceilings. The exact calling root's
-trusted classification is captured once before reservation and fallible allocation.
+1152 KiB/8,192 total and 864 KiB/6,144 ordinary ceilings. The exact calling
+root's original principal and explicit platform grant determine admission before
+reservation and fallible allocation.
 The same node carries its original charge through publication and every existing
 mapping retirement owner; actual node deallocation precedes refund. Promotion,
 root retirement and ASID reuse cannot reclassify it. Partial preparation and
 uncertain cleanup retain their charges without entering the allocator or counter.
 No replacement node is needed for confirmed unmap. Other metadata, allocator
-overhead, aggregate principals and sustained pressure remain separate; see
+excess, combined heap sizing and sustained pressure remain open. See
 [mapping-node admission](mapping-node-admission.md).
