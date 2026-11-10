@@ -4,7 +4,14 @@
 use charlotte_lifecycle::resources::VectorBudget;
 use spin::LazyLock;
 
-use crate::cpu::multiprocessor::spin::mutex::Mutex;
+use crate::{
+    cpu::multiprocessor::spin::mutex::Mutex,
+    klib::admission::ByteCharge,
+    memory::kernel_buffers::{
+        CapturedStorage,
+        MetadataSponsor,
+    },
+};
 
 pub(crate) type AccountRef = super::account_budget::AccountRef<DomainBudget>;
 
@@ -52,8 +59,18 @@ pub(crate) struct Charge {
     domain: AccountRef,
     platform: bool,
     amount: [u64; 2],
+    _principal: ByteCharge<MetadataSponsor>,
 }
-pub(crate) fn reserve(domain: &AccountRef, platform: bool, amount: [u64; 2]) -> Result<Charge, ()> {
+pub(crate) fn reserve(
+    domain: &AccountRef,
+    storage: impl Into<CapturedStorage>,
+    amount: [u64; 2],
+) -> Result<Charge, ()> {
+    // Prepare before entering either CQ counter lock. Failure and Drop release
+    // this charge after the local guards have left.
+    let storage = storage.into();
+    let principal = ByteCharge::try_new(storage.metadata_sponsor(), amount[1]).map_err(|_| ())?;
+    let platform = storage.platform();
     let mut local = domain.0.lock();
     local.reserve(amount).map_err(|_| ())?;
     let mut node = NODE.lock();
@@ -70,6 +87,7 @@ pub(crate) fn reserve(domain: &AccountRef, platform: bool, amount: [u64; 2]) -> 
         domain: domain.clone(),
         platform,
         amount,
+        _principal: principal,
     })
 }
 impl Drop for Charge {

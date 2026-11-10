@@ -1179,11 +1179,13 @@ the corrected RPC polling paths, and the remaining notification gaps.
 
 - Completion, detached-operation and CQ registry entries use typed
   `entry_budget` nodes with independent `completion_nodes` byte/count admission.
-  Pass the existing exact target's captured classification to node preparation;
-  retain it through publication, backlog delivery, root retirement and slot reuse.
-  Deallocate before refunding original backing, independently of record/CQ and
-  strong/weak account admission. Complete fallback remains inert under the pool
-  guard as well as existing publication/heap guards. See
+  Match the captured root generation to the namespace and pass its principal
+  and explicit resource class to node preparation. The existing CQ storage
+  charge also funds bounded kernel ring and backlog bytes from that principal.
+  Keep charges through publication, backlog delivery, root retirement and slot
+  reuse. Deallocate each node or buffer before refunding its backing. Complete
+  fallback remains inert under the principal history, pool and existing
+  publication/heap guards. See
   `docs/reference/completion-node-admission.md`.
 
 - Notification targets use `ObserverRef`/`ObserverWeak`; `notify(&self)` borrows

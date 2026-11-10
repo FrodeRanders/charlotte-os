@@ -549,7 +549,24 @@ pub fn address_space_handle_is_current(handle: AddressSpaceHandle) -> bool {
 pub(crate) fn capture_address_space_sponsor(
     asid: AddressSpaceId,
 ) -> (Option<AddressSpaceHandle>, kernel_buffers::CapturedStorage) {
+    capture_address_space_sponsor_locked(&ADDRESS_SPACE_TABLE.lock(), asid)
+}
+
+/// Capture sponsorship for factories whose reserve eligibility comes from
+/// the explicit resource grant, independently of trusted root backing.
+pub(crate) fn capture_address_space_resource_sponsor(
+    asid: AddressSpaceId,
+) -> (Option<AddressSpaceHandle>, kernel_buffers::CapturedStorage) {
     let table = ADDRESS_SPACE_TABLE.lock();
+    let (root, storage) = capture_address_space_sponsor_locked(&table, asid);
+    let platform = asid == KERNEL_ASID || root.is_some_and(budget::has_platform_grant);
+    (root, storage.with_platform(platform))
+}
+
+fn capture_address_space_sponsor_locked(
+    table: &AddressSpaceTable,
+    asid: AddressSpaceId,
+) -> (Option<AddressSpaceHandle>, kernel_buffers::CapturedStorage) {
     let root = table.generation(asid).ok().map(|generation| AddressSpaceHandle {
         id: asid,
         generation,

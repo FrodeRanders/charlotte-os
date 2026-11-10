@@ -20,35 +20,42 @@ completion or CQ limits. A quarter remains shared trusted reserve. No RAM is
 preallocated, and this planning envelope does not guarantee heap availability
 or progress when retained work consumes the headroom.
 
-Each node adds a fixed byte/count charge (16 bytes on supported 64-bit targets),
-a short pool operation at preparation/release, and a possible admission rejection.
-Native node layouts are 64 bytes for capability records, 120 for detached
-operations and 184 for CQs on both architectures. Even the largest layout at
-the count ceilings requests about 2.7/3.6 MiB ordinary/total; the 6/8 MiB byte
-ceilings leave layout-growth headroom. Charge overhead at the total count ceiling
-is 320 KiB.
-The byte dimension uses the actual requested retirement-node layout, including
-the charge and inline payload storage. It excludes allocator bookkeeping,
-separately allocated completion Arcs, buffers, rings, backlogs and observer lists;
-those retain their existing owners and admission. Aggregate principal/general
-heap accounting remains separate.
+The funded node charge occupies 32 bytes on supported 64-bit targets. Actual
+node layouts are 80 bytes for capability records, 152 for detached operations
+and 240 for CQs. At the count ceilings, even a population of the largest
+layout requests 3686400/4915200 bytes ordinary/total, within the 6/8 MiB ceilings.
+The layouts include the inline payload and charge. Allocator excess, completion
+record Arcs and private holders, user buffers and observer lists have their own
+owners and remain separate from these layout charges.
 
-## Captured classification and publication
+## Captured sponsorship and publication
 
-The three existing target captures retain exact namespace identity, budget-account
-identity and current trusted resource classification before fallible node work.
-Each node factory receives that captured class explicitly. Permanent kernel work
-is trusted; raw fixture namespaces are ordinary. Application roles and names
-cannot select reserve, and the allocator never re-resolves a numeric ASID.
-Later publication revalidates the captured target through its existing checks;
-the metadata charge supplies no root lease, publication authority or resource
-reserve grant. Promotion, replacement, retirement and ASID reuse cannot reclassify
-an already prepared or retained node.
+The existing target capture takes the root generation, verified principal and
+explicit platform resource class under the root-table hold. The completion
+registry must match that exact generation before preparing work. Existing
+account, capacity and source checks still qualify publication. Permanent kernel
+work uses the trusted class. Raw fixtures with no live root use ordinary class
+and family admission. Trusted root backing alone does not grant access to the
+completion resource reserve.
+
+The three layouts draw on the existing 8 MiB principal metadata allowance.
+The shared funded node factory reserves principal and family bytes before
+allocation. Promotion, replacement, retirement and ASID reuse preserve the
+original charges. The captured principal supplies funding and does not confer
+a root lease, publication authority or physical completion proof.
+
+A CQ also reserves the bounded backlog capacity and its kernel heap ring, when
+present, against the same principal before either allocation. The existing
+CQ charge owns those bytes and the domain and node CQ limits. Physical ring
+frames remain charged through their mapping owners. The CQ state disposes
+detached entries and frees the backlog and heap ring before refunding its
+storage charge. Unused storage refunds follow the same order.
 
 Node admission reserves actual bytes and one slot before its own heap allocation.
 Quota rejection never calls the allocator; allocator rejection releases the
 unstarted reservation. Capability-backed and detached submission preserve
-`SubmitError::WouldBlock`; CQ preparation preserves `CqOpenError::AllocationFailed`.
+`SubmitError::WouldBlock`. CQ storage admission returns `CqOpenError::ResourceLimit`
+and node preparation returns `CqOpenError::AllocationFailed` on rejection.
 Earlier independent record/CQ/list preparation can already have allocated, so a
 rejected complete operation still needs its existing post-guard rollback.
 No new operation or authority is published on failure, and failed CQ replacement
@@ -72,33 +79,26 @@ allocation, callbacks, namespace lookup or nested subsystem acquisition.
 
 ## Qualification and remaining scope
 
-The [versioned evidence](../reports/audits/evidence/2026-11-02-completion-node-admission.json)
-identifies sources and final native artifacts. Fresh four-CPU ARM, Intel VT-d and
-AMD-Vi campaigns run the same production node types and shared pool.
+[Current principal qualification](../reports/audits/2026-11-11-q4-completion-principals.md)
+records the funded layouts, native artifacts and source identities.
+[Original family evidence](../reports/audits/evidence/2026-11-02-completion-node-admission.json)
+covers the earlier layouts and class-only scope.
 
-Controls fill ordinary and total ceilings with actual mixed-layout empty
-candidates. They check 384 heap-held quota denials across all three layouts,
-192 injected allocator failures, independent byte rejection before allocation,
-and complete recovery. Actual submission, detached submission and CQ replacement
-reject without changing original accounts, authority or source identity.
-Trusted production adapters still progress at ordinary exhaustion. Promotion
-cannot redirect an original ordinary refund, and releasing one real node at total
-exhaustion permits exactly one replacement allocation while weak-only completion
-backing remains independently charged.
+Native controls fill ordinary and total ceilings with actual mixed-layout empty
+candidates. They exercise heap-held family denials, funded allocator rejection,
+ordinary and trusted classes, and the three production adapters. Sibling roots
+share the original principal allowance. A rejected CQ replacement preserves
+the existing source and rolls back its private storage prefix. An independent
+principal still replaces its queue and completes an operation.
 
-A separate control retains real detached capability/CQ nodes across root close
-and exact numeric ASID reuse. Their later disposal refunds only original backing
-and leaves the successor untouched. Existing 64-operation detached controls check
-backlog retention through ring publication and post-guard refund. Existing complete
-preparation, terminal, namespace and CQ abandonment controls also hold the new
-pool guard; no additional deliberate-retention instance is introduced. Shared
-collection host tests cover payload disposal and node deallocation before charge
-release. Minimal/full strict builds, policy controls and formatting remain gates.
+The retained capability and queue control crosses root close and ASID reuse
+with a detached operation backlogged in the retained queue. Explicit disposal
+reconciles each original refund independently of the successor and surviving
+completion reference. Physical queue controls charge the kernel backlog and
+verify both alias rejections preserve the frame. The existing guarded namespace
+abandonment retains its full charge while the principal history is locked.
 
-Native pressure is serialized kernel-fixture work. Byte denial uses oversized
-layout admission without constructing that payload; native heap OOM is not forced.
-The allocator failures are injected. These controls do not establish sustained
-hostile concurrent EL0 fairness, aggregate principal admission, worst-case latency,
-arbitrary containing-destructor/IRQ safety or physical CQ retirement. Other
-registry/control storage and general heap accounting remain open. SEC-07 remains
-partial; existing C18 and G1/G4 cleanup boundaries remain applicable.
+The pressure controls use serialized kernel fixtures and injected allocator
+errors. Allocator excess, other record/control allocations, combined heap
+capacity, sustained client progress, broader cleanup contexts and physical
+completion qualification remain open under SEC-07 and C18/G1/G4.

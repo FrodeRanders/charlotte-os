@@ -11,6 +11,10 @@ use core::{
 };
 
 use super::*;
+use crate::memory::{
+    AddressSpaceHandle,
+    kernel_buffers::CapturedStorage,
+};
 
 mod preparation;
 #[cfg(feature = "kernel_tests")]
@@ -98,6 +102,14 @@ impl Namespace {
             watch_budget,
             address_space: root,
         })))
+    }
+
+    /// Bind the captured principal and reserve class to this exact namespace.
+    pub(super) fn captured_storage(
+        &self,
+        (root, storage): (Option<AddressSpaceHandle>, CapturedStorage),
+    ) -> Option<CapturedStorage> {
+        (self.address_space == root).then_some(storage)
     }
 
     /// Retain this whole namespace and the caller's registry hold through

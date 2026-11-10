@@ -128,6 +128,13 @@ impl CapturedStorage {
         }
     }
 
+    pub(in crate::memory) fn with_platform(self, platform: bool) -> Self {
+        Self {
+            platform,
+            ..self
+        }
+    }
+
     pub(crate) fn namespace_sponsor(self) -> NamespaceSponsor {
         NamespaceSponsor {
             principal: self.sponsor.principal,

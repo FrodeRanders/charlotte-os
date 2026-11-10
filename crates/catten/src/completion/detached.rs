@@ -7,7 +7,10 @@
 use core::mem::ManuallyDrop;
 
 use super::*;
-use crate::klib::observer::ObserverRef;
+use crate::{
+    klib::observer::ObserverRef,
+    memory::kernel_buffers::CapturedStorage,
+};
 
 /// A capability-free operation (architecture doc §8.4): tracked only by its
 /// [`OperationId`], delivered exclusively through the CQ ring, and reclaimed
@@ -257,13 +260,13 @@ struct Target {
     records: budget::AccountRef,
     timers: crate::timers::budget::AccountRef,
     capacity: usize,
-    platform: bool,
+    storage: CapturedStorage,
     source: Source,
 }
 
 impl Target {
     fn capture(asid: AddressSpaceId, cq: CqId) -> Result<Self, SubmitError> {
-        let platform = crate::memory::budget::platform_identity(asid);
+        let captured = crate::memory::capture_address_space_resource_sponsor(asid);
         // The refund owner outlives this local registry guard on every path.
         let mut releases = budget::Releases::default();
         let mut registry = COMPLETIONS.write();
@@ -271,6 +274,7 @@ impl Target {
         if entries.address_space.is_some_and(|root| !crate::memory::budget::accepting(root)) {
             return Err(SubmitError::UnknownAddressSpace);
         }
+        let storage = entries.captured_storage(captured).ok_or(SubmitError::UnknownAddressSpace)?;
         flush_cq_backlog(entries, cq, &mut releases);
         let queue = entries.cqs.get(&cq).ok_or(SubmitError::NoCompletionQueue)?;
         if entries.live >= entries.capacity {
@@ -283,8 +287,7 @@ impl Target {
             records: entries.record_budget.clone(),
             timers: entries.timer_budget.clone(),
             capacity: entries.capacity,
-            platform: asid == crate::memory::KERNEL_ASID
-                || platform.is_some_and(|root| Some(root) == entries.address_space),
+            storage,
             source: queue.waiter_source().clone(),
         })
     }
@@ -336,7 +339,7 @@ impl Preparing {
         user_data: u64,
         ids: &operation_ids::OperationIds,
         allocate: impl FnOnce(
-            bool,
+            CapturedStorage,
         ) -> Result<
             PreparedEntry<(OperationId, DetachedOp)>,
             core::alloc::AllocError,
@@ -352,8 +355,9 @@ impl Preparing {
         }));
         let result = (|| {
             let resources = &mut *preparing.0;
-            let charge = budget::reserve(&resources.target.records, resources.target.platform)
-                .map_err(|_| SubmitError::WouldBlock)?;
+            let charge =
+                budget::reserve(&resources.target.records, resources.target.storage.platform())
+                    .map_err(|_| SubmitError::WouldBlock)?;
             resources.record = Some(DetachedOp {
                 user_data,
                 cq: resources.target.cq,
@@ -363,7 +367,7 @@ impl Preparing {
                 record_charge: Some(charge),
             });
             resources.entry =
-                Some(allocate(resources.target.platform).map_err(|_| SubmitError::WouldBlock)?);
+                Some(allocate(resources.target.storage).map_err(|_| SubmitError::WouldBlock)?);
             Ok(())
         })();
         if let Err(error) = result {
@@ -410,7 +414,7 @@ impl Preparing {
         let result = (|| {
             let charge = crate::timers::budget::reserve(
                 &preparing.0.target.timers,
-                preparing.0.target.platform,
+                preparing.0.target.storage.platform(),
             )
             .map_err(|_| SubmitError::WouldBlock)?;
             let (event, cancel) =
@@ -424,7 +428,7 @@ impl Preparing {
                     asid: preparing.0.target.asid,
                     operation: preparing.0.operation,
                 },
-                preparing.0.target.platform,
+                preparing.0.target.storage.platform(),
             )
             .map_err(|_| SubmitError::WouldBlock)?;
             preparing

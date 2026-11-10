@@ -12,6 +12,7 @@ use crate::{
         Reservation,
     },
     klib::observer::ObserverRef,
+    memory::kernel_buffers::CapturedStorage,
 };
 
 struct Target {
@@ -21,12 +22,12 @@ struct Target {
     timers: crate::timers::budget::AccountRef,
     watches: watch_budget::AccountRef,
     capacity: usize,
-    platform: bool,
+    storage: CapturedStorage,
 }
 
 impl Target {
     fn capture(asid: AddressSpaceId) -> Result<Self, SubmitError> {
-        let platform = crate::memory::budget::platform_identity(asid);
+        let captured = crate::memory::capture_address_space_resource_sponsor(asid);
         // The refund owner outlives this local registry guard on every path.
         let mut releases = budget::Releases::default();
         let mut registry = COMPLETIONS.write();
@@ -34,6 +35,7 @@ impl Target {
         if entries.address_space.is_some_and(|root| !crate::memory::budget::accepting(root)) {
             return Err(SubmitError::UnknownAddressSpace);
         }
+        let storage = entries.captured_storage(captured).ok_or(SubmitError::UnknownAddressSpace)?;
         flush_cq_backlog(entries, DEFAULT_CQ, &mut releases);
         if entries.live >= entries.capacity {
             return Err(SubmitError::WouldBlock);
@@ -45,8 +47,7 @@ impl Target {
             timers: entries.timer_budget.clone(),
             watches: entries.watch_budget.clone(),
             capacity: entries.capacity,
-            platform: asid == crate::memory::KERNEL_ASID
-                || platform.is_some_and(|root| Some(root) == entries.address_space),
+            storage,
         })
     }
 
@@ -116,7 +117,7 @@ impl Preparing {
             crate::capability::AllocationError,
         >,
         allocate_node: impl FnOnce(
-            bool,
+            CapturedStorage,
         ) -> Result<
             PreparedEntry<(CompletionCap, CapabilityRecord)>,
             core::alloc::AllocError,
@@ -131,9 +132,8 @@ impl Preparing {
             let resources = &mut *preparing.0;
             assert!(resources.completion.is_some(), "record factory returned no record");
             assert!(resources.buffer.is_none() && resources.record_charge.is_none());
-            resources.entry = Some(
-                allocate_node(resources.target.platform).map_err(|_| SubmitError::WouldBlock)?,
-            );
+            resources.entry =
+                Some(allocate_node(resources.target.storage).map_err(|_| SubmitError::WouldBlock)?);
             resources.authority = Some(
                 allocate_authority(resources.target.asid, resources.target.root)
                     .map_err(|_| SubmitError::WouldBlock)?,
@@ -169,13 +169,16 @@ impl Preparing {
         assert!(resources.operation.is_none() && resources.record_charge.is_none());
         resources.operation = Some(ids.allocate().ok_or(SubmitError::WouldBlock)?);
         resources.record_charge = Some(
-            budget::reserve(&resources.target.records, resources.target.platform)
+            budget::reserve(&resources.target.records, resources.target.storage.platform())
                 .map_err(|_| SubmitError::WouldBlock)?,
         );
         if watch {
             resources.watch = Some(
-                watch_budget::reserve(&resources.target.watches, resources.target.platform)
-                    .map_err(|_| SubmitError::WouldBlock)?,
+                watch_budget::reserve(
+                    &resources.target.watches,
+                    resources.target.storage.platform(),
+                )
+                .map_err(|_| SubmitError::WouldBlock)?,
             );
         }
         Ok(())
@@ -231,9 +234,11 @@ impl Preparing {
     ) -> Result<(), SubmitError> {
         let resources = &mut *self.0;
         assert!(!resources.published && resources.event.is_none() && resources.cancel.is_none());
-        let charge =
-            crate::timers::budget::reserve(&resources.target.timers, resources.target.platform)
-                .map_err(|_| SubmitError::WouldBlock)?;
+        let charge = crate::timers::budget::reserve(
+            &resources.target.timers,
+            resources.target.storage.platform(),
+        )
+        .map_err(|_| SubmitError::WouldBlock)?;
         let (event, cancel) =
             TimerEvent::charged_at(deadline, charge).map_err(|_| SubmitError::WouldBlock)?;
         resources.cancel = Some(TimerCancellation::new(cancel));
@@ -246,7 +251,7 @@ impl Preparing {
                 OpResult::Ok(0),
                 Arc::downgrade(completion),
             ),
-            resources.target.platform,
+            resources.target.storage.platform(),
         )
         .map_err(|_| SubmitError::WouldBlock)?;
         resources

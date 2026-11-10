@@ -44,11 +44,11 @@ fn allocation_and_publication() {
             &OPERATION_IDS,
             Preparing::record,
             |asid, root| PreparedReservation::try_new(asid, ObjectKind::Completion, root),
-            |platform| {
+            |storage| {
                 {
                     let _registry = COMPLETIONS.write();
                 }
-                entry_budget::prepare(platform)
+                entry_budget::prepare(storage)
             },
         )
         .unwrap();

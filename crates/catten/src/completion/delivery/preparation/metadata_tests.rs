@@ -43,11 +43,11 @@ fn fresh_nodes() {
                 None,
                 |platform| ObserverList::try_new(waiter_budget::SOURCE_LIMIT, platform),
                 cq::CompletionQueueRing::new_page,
-                |platform| {
+                |storage| {
                     {
                         let _registry = COMPLETIONS.write();
                     }
-                    entry_budget::prepare(platform)
+                    entry_budget::prepare(storage)
                 },
             )
             .unwrap(),

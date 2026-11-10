@@ -17,6 +17,8 @@ report is useful for a significant investigation or qualification checkpoint.
 
 ## Reports
 
+- [Q4 completion principal funding](2026-11-11-q4-completion-principals.md) covers completion registry nodes, kernel CQ storage and original refunds after root close and ASID reuse.
+
 - [APIC calibration interval](2026-11-06-apic-calibration.md) — Reproduced arm-before-timestamp window, ordered measurement interval and raw failure diagnostics; the original Intel panic remains historically unattributed.
 
 - [Q4 device-node principal funding](2026-11-06-q4-device-principals.md) — Captured principal funding for device namespace/payload nodes, pre-hardware quota boundaries and retained complete owners; limits unchanged. Q4 remains in progress.

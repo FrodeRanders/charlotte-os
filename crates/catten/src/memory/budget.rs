@@ -118,17 +118,21 @@ pub(crate) fn accepting(handle: AddressSpaceHandle) -> bool {
 /// name, role or manifest field can claim access to the progress reserve.
 pub(crate) fn platform_identity(owner: AddressSpaceId) -> Option<AddressSpaceHandle> {
     let table = super::ADDRESS_SPACE_TABLE.lock();
-    let generation = table.generation(owner).ok()?;
-    let platform = owner == KERNEL_ASID
+    let root = AddressSpaceHandle {
+        id: owner,
+        generation: table.generation(owner).ok()?,
+    };
+    has_platform_grant(root).then_some(root)
+}
+
+/// The caller has captured this generation under the root-table hold.
+pub(super) fn has_platform_grant(root: AddressSpaceHandle) -> bool {
+    root.id() == KERNEL_ASID
         || LEDGER
             .lock()
             .domains
-            .get(&(owner, generation))
-            .is_some_and(|account| account.platform && !account.retired);
-    platform.then_some(AddressSpaceHandle {
-        id: owner,
-        generation,
-    })
+            .get(&(root.id(), root.generation()))
+            .is_some_and(|account| account.platform && !account.retired)
 }
 
 impl Drop for Charge {

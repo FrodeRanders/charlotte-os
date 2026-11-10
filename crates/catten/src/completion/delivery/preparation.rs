@@ -2,13 +2,19 @@
 //! Physical frames remain borrowed from their mapping/quiescent caller.
 
 use super::*;
-use crate::klib::observer::{
-    registration::{
-        ListRef,
-        ObserverList,
-        RegistrationError,
+use crate::{
+    klib::observer::{
+        registration::{
+            ListRef,
+            ObserverList,
+            RegistrationError,
+        },
+        waiter_budget,
     },
-    waiter_budget,
+    memory::{
+        AddressSpaceHandle,
+        kernel_buffers::CapturedStorage,
+    },
 };
 
 type Waiters = ListRef<waiter_budget::Charge>;
@@ -19,14 +25,14 @@ struct Target {
     root: Option<crate::memory::AddressSpaceHandle>,
     account: cq_budget::AccountRef,
     capacity: usize,
-    platform: bool,
+    storage: CapturedStorage,
 }
 
 impl Target {
     fn from_namespace(
         asid: AddressSpaceId,
         entries: &Namespace,
-        platform: Option<crate::memory::AddressSpaceHandle>,
+        captured: (Option<AddressSpaceHandle>, CapturedStorage),
     ) -> Result<Self, CqOpenError> {
         if entries.address_space.is_some_and(|root| !crate::memory::budget::accepting(root)) {
             return Err(CqOpenError::RetiringAddressSpace);
@@ -36,18 +42,17 @@ impl Target {
             root: entries.address_space,
             account: entries.cq_budget.clone(),
             capacity: entries.capacity,
-            platform: asid == crate::memory::KERNEL_ASID
-                || platform.is_some_and(|root| Some(root) == entries.address_space),
+            storage: entries.captured_storage(captured).ok_or(CqOpenError::UnknownAddressSpace)?,
         })
     }
 
     fn capture(asid: AddressSpaceId) -> Result<Self, CqOpenError> {
-        let platform = crate::memory::budget::platform_identity(asid);
+        let captured = crate::memory::capture_address_space_resource_sponsor(asid);
         let registry = COMPLETIONS.read();
         Self::from_namespace(
             asid,
             registry.get(&asid).ok_or(CqOpenError::UnknownAddressSpace)?,
-            platform,
+            captured,
         )
     }
 
@@ -102,7 +107,7 @@ impl Prepared {
         allocate_list: impl FnOnce(bool) -> Result<Waiters, RegistrationError>,
         allocate_ring: impl FnOnce(u32) -> Result<RingStorage, cq::CqRingError>,
         allocate_node: impl FnOnce(
-            bool,
+            CapturedStorage,
         )
             -> Result<PreparedEntry<(CqId, CqState)>, core::alloc::AllocError>,
     ) -> Result<Self, CqOpenError> {
@@ -141,13 +146,13 @@ impl Prepared {
             resources.charge = Some(
                 cq_budget::reserve(
                     &resources.target.account,
-                    resources.target.platform,
+                    resources.target.storage,
                     [1, bytes as u64],
                 )
                 .map_err(|_| CqOpenError::ResourceLimit)?,
             );
             resources.node = Some(
-                allocate_node(resources.target.platform)
+                allocate_node(resources.target.storage)
                     .map_err(|_| CqOpenError::AllocationFailed)?,
             );
             resources.state = Some(CqState {
@@ -158,7 +163,7 @@ impl Prepared {
                 retained_limit: resources.target.capacity,
                 work_generation: 0,
                 last_seen_generation: 0,
-                waiters: allocate_list(resources.target.platform)
+                waiters: allocate_list(resources.target.storage.platform())
                     .map_err(|_| CqOpenError::AllocationFailed)?,
                 _buf: None,
                 _storage_charge: resources.charge.take().unwrap(),
@@ -232,8 +237,8 @@ impl Prepared {
         entries: &Namespace,
         cq_entries: u32,
     ) -> (PreparedEntry<(CqId, CqState)>, CqState) {
-        let platform = crate::memory::budget::platform_identity(asid);
-        let target = Target::from_namespace(asid, entries, platform).unwrap();
+        let captured = crate::memory::capture_address_space_resource_sponsor(asid);
+        let target = Target::from_namespace(asid, entries, captured).unwrap();
         let mut prepared = Self::new(target, cq_entries, None).unwrap();
         let result = (prepared.0.node.take().unwrap(), prepared.0.state.take().unwrap());
         prepared.finish();
@@ -291,8 +296,8 @@ impl PreparedNamespace {
         frame: Option<crate::memory::physical::PAddr>,
     ) -> Result<Self, CqOpenError> {
         let mut namespace = namespace::Preparing::new(asid, capacity)?;
-        let platform = crate::memory::budget::platform_identity(asid);
-        let mut queue = match Target::from_namespace(asid, namespace.entries(), platform)
+        let captured = crate::memory::capture_address_space_resource_sponsor(asid);
+        let mut queue = match Target::from_namespace(asid, namespace.entries(), captured)
             .and_then(|target| Prepared::new(target, cq_entries, frame))
         {
             Ok(queue) => queue,

@@ -120,9 +120,9 @@ and principal policies. See [reactor-account qualification](../reports/audits/20
 
 Migrated general metadata nodes share an independent **8 MiB** allowance in the
 same principal record (`principal_metadata_bytes`). Unified authority, mailbox
-endpoint, four root metadata, five global namespace layouts and device
-namespace/payload nodes currently use it; this does not fund other node families
-automatically. Capture comes from the immutable recipient authority namespace or
+endpoint, four root metadata, five global namespace layouts, device
+namespace/payload nodes, completion registry nodes and CQ heap ring/backlog
+storage currently use it. Capture comes from the immutable recipient authority namespace or
 the exact prebound root/operation. Candidate, published, detached and retained
 node layouts remain funded through actual deallocation. Resource grants and
 physical completion rules stay separate. See [record-node qualification](../reports/audits/2026-11-06-q4-record-node-principals.md).

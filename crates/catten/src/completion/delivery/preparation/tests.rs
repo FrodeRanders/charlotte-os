@@ -131,23 +131,33 @@ fn stale_and_retired() {
 }
 
 fn physical_publication() {
+    let (root, principal) = entry_budget::test_principal_root(b"completion-physical-ring", false);
+    let asid = root.id();
+    let other = CLIENT + 1;
+    let used = crate::memory::kernel_buffers::test_metadata_used;
     let frame = crate::memory::PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame().unwrap();
     // Fixture owns this frame until both namespaces and every preparation leave.
     let page = unsafe { frame.into_hhdm_mut::<u8>() };
     unsafe {
         core::ptr::write_bytes(page, 0xa5, 4096);
     }
-    open_address_space(CLIENT, 8);
-    let account = cq_admission(CLIENT).unwrap();
-    let mut prepared = Prepared::new(Target::capture(CLIENT).unwrap(), 8, Some(frame)).unwrap();
+    open_address_space(asid, 8);
+    let account = cq_admission(asid).unwrap();
+    let base = used(principal);
+    let mut prepared = Prepared::new(Target::capture(asid).unwrap(), 8, Some(frame)).unwrap();
+    let node = PreparedEntry::<(CqId, CqState)>::allocation_bytes() as u64;
+    let slots = charlotte_lifecycle::resources::queue_backing_slots(8).unwrap();
+    let backlog = (slots * core::mem::size_of::<BacklogEntry>()) as u64;
+    assert_eq!(used(principal), base + node + backlog);
     assert!(unsafe { core::slice::from_raw_parts(page, 4096) }.iter().all(|byte| *byte == 0xa5));
     // A competing queue takes the frame after capture. Both attachment and
     // whole-namespace publication reject without touching its pending result.
-    open_address_space_with_cq_phys(CLIENT + 1, 8, frame, 8).unwrap();
-    let cap = submit(CLIENT + 1, OpCode::Nop, None).unwrap();
-    complete(CLIENT + 1, cap, OpResult::Ok(91)).unwrap();
-    let mut namespace = PreparedNamespace::new(CLIENT, 8, 8, Some(frame)).unwrap();
+    open_address_space_with_cq_phys(other, 8, frame, 8).unwrap();
+    let cap = submit(other, OpCode::Nop, None).unwrap();
+    complete(other, cap, OpResult::Ok(91)).unwrap();
+    let mut namespace = PreparedNamespace::new(asid, 8, 8, Some(frame)).unwrap();
     let new_account = namespace.0.queue.0.target.account.clone();
+    let live = used(principal);
     let snapshot = Vec::from(unsafe { core::slice::from_raw_parts(page, 4096) });
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
@@ -157,9 +167,11 @@ fn physical_publication() {
         assert_eq!(new_account.used()[0], 1);
         assert_eq!(unsafe { core::slice::from_raw_parts(page, 4096) }, snapshot.as_slice());
     }
+    assert_eq!(used(principal), live);
     namespace.finish();
+    assert_eq!(used(principal), base + node + backlog);
     assert_eq!(new_account.used(), [0, 0]);
-    close_address_space(CLIENT + 1);
+    close_address_space(other);
     // No consumer remains. The original preparation may now publish once.
     // Fresh physical publication now relinks its prepared map node too.
     let retired;
@@ -169,15 +181,22 @@ fn physical_publication() {
         assert!(prepared.0.state.is_none() && prepared.0.node.is_none());
         assert!(retired.is_none());
         assert_eq!(account.used()[0], 1);
-        assert_eq!(unsafe { (*cq_ring_of(CLIENT, DEFAULT_CQ).unwrap()).capacity() }, 8);
+        assert_eq!(unsafe { (*cq_ring_of(asid, DEFAULT_CQ).unwrap()).capacity() }, 8);
     }
     if let Some(retired) = retired {
         retired.finish();
     }
     assert_eq!(account.used()[0], 1);
-    close_address_space(CLIENT);
+    close_address_space(asid);
     assert_eq!(account.used(), [0, 0]);
     prepared.finish();
+    crate::memory::close_user_address_space_handle(root).unwrap();
+    assert_eq!(used(principal), 0);
+    crate::logln!(
+        "[completion physical principal] backlog={} bytes, borrowed frame excluded, alias \
+         rejection retained both preparations",
+        backlog
+    );
     crate::memory::PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame).unwrap();
 }
 
@@ -209,11 +228,17 @@ fn namespace_publication() {
 // Dropping this ManuallyDrop wrapper is the negative control: it must do nothing.
 #[allow(clippy::drop_non_drop)]
 fn guarded_namespace_abandonment() {
-    // Private unpublished raw namespace: bounded deliberate retention, with no
-    // live root or replacement sponsor and no physical backing authority.
+    // Private unpublished namespace with funded backing. This retained owner
+    // does not hold a root lease or physical ring authority.
     let backing = crate::timers::account_budget::snapshot();
     let accounts = account_budget::snapshot();
-    let prepared = PreparedNamespace::new(CLIENT + 20, 8, 8, None).unwrap();
+    let (root, principal) =
+        entry_budget::test_principal_root(b"completion-namespace-abandoned", false);
+    let used = crate::memory::kernel_buffers::test_metadata_used;
+    let root_bytes = used(principal);
+    let prepared = PreparedNamespace::new(root.id(), 8, 8, None).unwrap();
+    let retained = used(principal);
+    assert!(retained > root_bytes);
     let account = prepared.0.queue.0.target.account.clone();
     let timers = Arc::downgrade(&prepared.0.namespace.entries().timer_budget);
     let records = Arc::downgrade(&prepared.0.namespace.entries().record_budget);
@@ -225,10 +250,17 @@ fn guarded_namespace_abandonment() {
         let _heap = PRIMARY_ALLOCATOR.lock();
         crate::timers::account_budget::with_locked(|| {
             account_budget::with_locked(|| {
-                node_budget::with_locked(|| drop(prepared));
+                node_budget::with_locked(|| {
+                    entry_budget::with_locked(|| {
+                        crate::memory::kernel_buffers::test_with_history_locked(|| drop(prepared));
+                    })
+                });
             });
         });
     }
+    assert_eq!(used(principal), retained);
+    crate::memory::close_user_address_space_handle(root).unwrap();
+    assert_eq!(used(principal), retained - root_bytes);
     assert_eq!(account.used(), before);
     assert!(timers.upgrade().is_some());
     assert!(records.upgrade().is_some());
@@ -237,7 +269,8 @@ fn guarded_namespace_abandonment() {
     assert_eq!(account_budget::snapshot(), (accounts.0 + 3, accounts.1 + 3));
     crate::logln!(
         "[CQ namespace retention] heap/registry-held unpublished namespace abandonment retained \
-         global node, all original accounts, complete payload and original CQ charge"
+         global node, all original accounts, complete payload and {} original-principal bytes",
+        retained - root_bytes
     );
 }
 

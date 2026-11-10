@@ -126,26 +126,37 @@ pub(super) fn run() {
 /// Every global namespace allocation contributes its own layout, separately
 /// from the real authority/endpoint nodes created by this owning fixture.
 pub(super) fn funded_fixture(root: memory::AddressSpaceHandle, principal: u64) {
+    use crate::klib::admission::{
+        CompletionNodes,
+        used as pool_used,
+    };
     let before = node_budget::snapshot();
+    let completions = pool_used::<CompletionNodes, 2>();
     let authority = record_budget::snapshot();
     let mailbox = crate::syscall::mailbox_node_budget::snapshot();
     let used = memory::kernel_buffers::test_metadata_used(principal);
     crate::completion::open_address_space_with_cq(root.id(), 4, 2).unwrap();
     crate::syscall::mailbox_tests::prepare_account_backing_fixture(root);
     let namespaces = node_budget::snapshot();
+    let queues = pool_used::<CompletionNodes, 2>();
+    assert_eq!(queues.0[1] - completions.0[1], 1);
+    let queue_node = queues.0[0] - completions.0[0];
+    let queue_bytes = crate::completion::cq_admission(root.id()).unwrap().used()[1];
     assert_eq!(namespaces.0[1] - before.0[1], 3);
     let namespace_bytes = namespaces.0[0] - before.0[0];
     let records = record_budget::snapshot().0[0] - authority.0[0];
     let endpoints = crate::syscall::mailbox_node_budget::snapshot().0[0] - mailbox.0[0];
     assert_eq!(
         memory::kernel_buffers::test_metadata_used(principal) - used,
-        namespace_bytes + records + endpoints
+        namespace_bytes + records + endpoints + queue_node + queue_bytes
     );
     crate::logln!(
         "[namespace node principal] completion/mailbox/word namespace additions={} bytes; \
-         separate authority={} endpoint={} bytes; exact five-namespace composition passed",
+         separate authority={} endpoint={} CQ node={} buffers={} bytes; exact composition passed",
         namespace_bytes,
         records,
-        endpoints
+        endpoints,
+        queue_node,
+        queue_bytes
     );
 }

@@ -38,11 +38,11 @@ fn prepare_and_retire() {
                     Target::capture(CLIENT, DEFAULT_CQ).unwrap(),
                     cookie,
                     &OPERATION_IDS,
-                    |platform| {
+                    |storage| {
                         {
                             let _registry = COMPLETIONS.write();
                         }
-                        entry_budget::prepare(platform)
+                        entry_budget::prepare(storage)
                     },
                 )
                 .unwrap()
