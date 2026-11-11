@@ -881,6 +881,25 @@ notifications are idempotent. QEMU's user network forwards host port 8081 by
 default; \texttt{cluster-sign deployment-notify} is the corresponding host
 client.
 
+The client may contact any member. A follower relays the bounded submission to
+the current Raft leader over a source-validated peer route and correlates the
+committed result back to the ingress request. The management client therefore
+does not need a separate leader-discovery protocol.
+
+An interactive kernel serial console in the \texttt{--deploy-test} flow issues
+these commands against the live cluster for validation. Production operations
+use the userspace notification endpoint, whose remaining hardening includes
+network-level denial-of-service controls, an online audit identity distinct
+from the signing key, and production transport policy. The raw mutation path
+and serial shim remain test-only privileged interfaces.
+
+\subsection{Serve deployment requests without replay}
+
+Deployment ingress progresses through listener setup, input, controller calls,
+output and logical close. Each accepted phase keeps its owner and original
+deadline; advancing one client must leave the other clients observable.
+
+\begin{implementationdetail}{CQ positions and listener setup}
 All seven deployment HTTP controls use owning controller operations bound to
 the default CQ. Each operation retains its accepted pending call, socket,
 receipt-validation envelope and one five-second deadline captured before
@@ -899,6 +918,7 @@ socket into the existing close pool. Uncertain observation, malformed reply,
 binding rejection or expiry aborts with the complete owner live. An admitted idle
 accept has no timer. See
 \repofile|docs/reports/audits/2026-10-22-security-deployment-listener.md|.
+\end{implementationdetail}
 
 Timeout cancels the exact pending owner and returns HTTP 503 with error $-22$
 (\texttt{clusterctl::ERR\_RPC\_TIMEOUT}). Accepted mutations are never replayed.
@@ -908,6 +928,7 @@ and original memory charge. Local cancellation proves neither remote rollback
 nor physical cleanup. Rejected accepted-call CQ binding or wait admission
 retains the whole owning scope through domain abort.
 
+\begin{implementationdetail}{Controller relay and DNS ownership}
 The controller server forwards those seven HTTP controls and named status in
 eight owning CQ positions. Original incoming backing plus one copied DNS request
 reserve at most 2,098,176 bytes; returned records, decoder allocations and copies
@@ -927,6 +948,9 @@ before mappings and incoming reply/loan authority; binding/wait rejection retain
 the pool through abort. Legacy upload/join/key handlers still block on this
 endpoint, and bounded validation remains synchronous. See
 \repofile|docs/reports/audits/2026-10-22-security-controller-relay.md|.
+\end{implementationdetail}
+
+\subsubsection{Read input and send confirmed output prefixes}
 
 Input headers retain five seconds and complete input thirty seconds from
 observed accept completion. Progress and unrelated wakes do not restart those
@@ -943,6 +967,13 @@ only the remainder; timeout, invalid receipt or observation failure ends output
 without resending uncertain bytes. Enqueue is no peer-delivery or rollback proof.
 Each service turn advances input, controller, output and close work before waiting.
 
+\subsubsection{Close before releasing the client position}
+
+Logical close retains the socket and accepted call until a checked receipt.
+Uncertain close retains the whole scope through abort. A receipt does not prove
+peer delivery or physical release.
+
+\begin{implementationdetail}{Logical-close receipts and admission backoff}
 A consuming logical-close owner retains the socket and accepted pending call on
 the same CQ. Its client position releases only after a checked Started (0) or
 Unavailable (1) scalar receipt without attachments, under one original five-second admission/observation budget.
@@ -955,11 +986,14 @@ ownership nor peer delivery or physical release. Foreign live entries and
 unreserved IDs reject; exhausted ID reservation rejects before backend allocation.
 Existing close operations drain on shutdown under their original deadlines while
 other client owners remain live.
+\end{implementationdetail}
 
 DNS execution, legacy controller handlers, response rendering, blocking
 destructors and all-positions admission pressure can still delay healthy clients. HTTP keyhole
 serving remains serial. See
 \repofile|docs/reports/audits/2026-10-22-security-deployment-close.md|.
+
+\subsection{Apply independently signed descriptors}
 
 For a release made from several independently signed components,
 \texttt{cluster-sign deployment-apply} prevalidates all descriptor files,
@@ -977,6 +1011,13 @@ clock range reject. Blocking host file I/O and stdout are not preempted, and
 readiness still uses status polling. Artifacts must already be signed and uploaded; object-store
 credentials remain outside the generated application and its descriptors.
 
+\texttt{deployment-apply} orchestrates independent descriptor admissions.
+Each descriptor occupies a separate Raft entry, so a later failure can leave
+an accepted prefix committed. The client does not replay notifications;
+reconcile accepted work before an explicit retry. Identical descriptor admission
+remains idempotent. The atomic alternative is described next.
+
+\begin{implementationdetail}{Notification and standalone status validation}
 All signer notification commands validate their complete HTTP-202 success body
 before reporting acceptance. Deployment, operations-bundle, shutdown and ingress
 policy use one positive generation; release uses its digest-bound receipt.
@@ -996,12 +1037,9 @@ only JSON whitespace. Extra separators and Unicode whitespace cannot hide
 invalid data from status or apply. Invalid artifact names reject before waiting
 or connecting. Named status observes the current record, which may change while
 it waits; it supplies no binding to an earlier admission.
+\end{implementationdetail}
 
-\texttt{deployment-apply} orchestrates independent descriptor admissions.
-Each descriptor occupies a separate Raft entry, so a later failure can leave
-an accepted prefix committed. The client does not replay notifications;
-reconcile accepted work before an explicit retry. Identical descriptor admission
-remains idempotent. The atomic alternative is described next.
+\subsection{Admit an atomic release}
 
 A signed \texttt{CRELEASE} envelope produced with
 \texttt{cluster-sign release-sign} and submitted with
@@ -1021,6 +1059,12 @@ An exact retry returns a receipt while every component still has those signed
 descriptor bytes; a superseded component rejects without changing live state.
 The signed release record survives catalog snapshots.
 
+Atomic admission changes desired state in one command. Fetching, launching and
+readiness still progress independently for each component. The client retains
+the receipt's exact component generations and the original deadline; uncertain
+submission is not replayed.
+
+\begin{implementationdetail}{Release receipts, startup retries and readiness}
 After atomic admission, agents fetch, launch, and publish independently.
 \texttt{release-apply} validates a complete \texttt{CRLADM01} receipt bound to the
 exact signed envelope digest and descriptor count, then retains each component's
@@ -1028,13 +1072,17 @@ own deployment generation. Older observations stay pending, matching ready
 observations complete, and supersession fails. Malformed receipts or status
 records leave the operation unconfirmed without replaying its notification.
 Release apply carries the same original deadline through startup, receipt
-admission and component observation. A startup attempt can repeat only after a
+admission and component observation.
+
+A startup attempt can repeat only after a
 connection failure before any HTTP write, or a complete HTTP 409 response with
 the single numeric error \texttt{-23}. That checked incompatible-target result
 comes before release/component/operational publication; its negative result may
 itself be committed to Raft. The client retains the exact signed bytes and uses
 at most one second of backoff within its original budget. Other errors, uncertain
-submission and failures after receipt acceptance stop the command. Both QEMU
+submission and failures after receipt acceptance stop the command.
+
+Both QEMU
 deployment-ingress workers first wait for the guest listener and initial DNS
 leader markers in their existing bounded serial loop, then invoke it once with the original fixture
 budget left. QEMU forwarding may accept TCP before the guest listener exists. A
@@ -1042,9 +1090,56 @@ failed worker ends the run; it cannot conceal a lost response or an accepted but
 unready release by restarting admission. An operator must
 reconcile the exact release and component state before choosing a further
 attempt. Standalone \texttt{release-notify} still submits once.
+
 Host polling, blocking host file I/O, and ingress peer
 authentication remain separate work. Coordinated rollback, progress policy, and a semantic process bundle that
 also binds BPMN, schemas, and provenance remain controller work.
+\end{implementationdetail}
+
+\subsection{Observe readiness and reconcile placement}
+
+The same endpoint accepts
+\texttt{GET /v1/deployments/\{percent-encoded-name\}}. It reports
+\texttt{committed}, \texttt{replacing}, or \texttt{ready}, together with
+desired and ready replica counts. A ready observation is generation-safe: all
+desired nodes must have active registrations carrying the exact deployment
+generation. A stale endpoint with the same name cannot make a replacement
+rollout appear ready.
+
+The signed descriptor may carry node key zero to request automatic placement.
+A singleton prefers the current Raft leader and uses a deterministic fallback
+when that node is draining; fixed replica counts and
+\emph{every eligible node} select distinct admitted, non-draining voters. The
+leader continuously reconciles that set after membership changes. A nonzero
+key remains an explicit singleton pin. Replica policy is admitted through a
+\texttt{CRELEASE}, giving affinity decisions the complete component context.
+Full signed artifact names
+up to the 48-byte CLS2 limit travel in memory-backed catalog operations rather
+than the historical eight-byte scalar encoding.
+
+The node agent now reconciles the complete replicated deployment-name set,
+rather than polling only \texttt{greet}. A node can own up to 64 independently
+named application domains. Each domain is fenced by the principal derived from
+its signed artifact name, so a generation change retires only the matching
+application even if address-space identifiers have been reused. This bound is
+kernel admission policy, rather than a naming or descriptor-format limit.
+
+Automatic placement now covers singletons, fixed distinct-node replica sets,
+every eligible voter, stable affinity/anti-affinity ranking, cumulative
+memory-capacity admission, CPU-pressure ranking, rescheduling, and
+exact-generation readiness. The controller commits desired assignments
+through Raft while node agents remain mechanism-only reconcilers. It still
+needs explicit heap/CPU/storage requests, labels and named failure domains,
+multi-instance-per-node execution, rollout surge/unavailability, and rollback.
+
+The development runner's
+\texttt{--deployment-ingress-test --timeout 240} option proves the complete
+host upload to TLS RustFS, signed atomic release admission, S3 pull, scoped
+launch, and generation-safe readiness path. It is an integration fixture;
+production still needs a release controller that manages policy approval,
+progress deadlines, rollback, and operator audit identity.
+
+\subsection{Retire an application under its signed grace}
 
 Retirement is nevertheless bounded locally. On the first reconciliation poll,
 the kernel publishes a drain request and monotonic deadline in the domain's
@@ -1055,6 +1150,15 @@ agent's first retirement poll at or after the signed deadline and reclaims the
 address space only after generation-safe reaping. While retirement is active,
 the agent polls at most ten milliseconds apart.
 Figure~\ref{fig:cooperative-deployment-shutdown} shows this path.
+
+\architecturefigure{cooperative-deployment-shutdown}
+    {Bounded cooperative shutdown for deployment retirement or an enclosing
+    node drain, followed by generation-safe forced retirement. The application
+    can acknowledge but cannot clear or extend a kernel-published lifecycle
+    request.}
+    {fig:cooperative-deployment-shutdown}
+
+\subsection{Coordinate a whole-node shutdown}
 
 Production whole-node shutdown begins off-cluster as a fixed-size, signed
 \texttt{CSHUTDN1} intent. It binds one nonzero target node, a per-node
@@ -1089,6 +1193,17 @@ so an application retains Kafka/S3 authority while it finishes or aborts
 external work. The agent acknowledges and exits only after both child sets are
 empty.
 
+\subsubsection{Drain consumers before their providers}
+
+The kernel's next shutdown layer transfers the published steady-state handles
+out of the launch registry and retires high-level node services in reverse
+dependency order: deployment ingress, deployment control, deployment agent;
+HTTP and time; cluster catalog, reliable messaging, and discovery; TCP/IP; and
+the frame router; and finally the object store. Each phase must be
+generation-safely reclaimed before the next receives its request. Per-phase
+grace is capped by the enclosing node deadline.
+
+\begin{implementationdetail}{Deployment, HTTP and time service drain}
 Deployment ingress, HTTP ingress, and the UTC time service also implement the
 cooperative path. Deployment ingress checks lifecycle on each reactor turn and
 on default-CQ wakes. On shutdown it stops listener replenishment, observes
@@ -1098,23 +1213,30 @@ no further setup is submitted. Logical closes drain under their original
 deadlines, then the other client owners drop together. Cancelled accept grants
 no remote rollback or physical release proof.
 Synchronous preparation/rendering and other phases' socket destructors
-remain separate shutdown latency boundaries. Ordinary socket close and Drop
+remain separate shutdown latency boundaries.
+
+Ordinary socket close and Drop
 share the consuming close owner, one original five-second budget and one
 accepted reply wait. Queue-full admission backoff stops after one second;
 unstarted failure retains the complete driver without a second destructor
 attempt. Accepted uncertainty aborts with its owner live, without ID restoration
-or remote replay. These budgets do not establish whole-service shutdown latency. Controller calls are cancelled through their exact
+or remote replay. These budgets do not establish whole-service shutdown latency.
+
+Controller calls are cancelled through their exact
 owners without proving remote rollback. HTTP ingress retains bounded lifecycle checks around its current
 accept/receive operation. Its receive timeout uses an explicit cancellation
 exchange with TCP/IP: closing only the local call capability would leave the
 server's deferred reply slot occupied and could discard later input if that
 socket were reused. Deployment input instead closes the whole socket owner.
+
 Time closes its public endpoint and
 unwinds any pending NTP call, UDP socket, and persistence connection as one
 owning scope. Already admitted ingress work may finish inside the signed grace,
 but none of these services begins new work after observing the lifecycle
 request.
+\end{implementationdetail}
 
+\begin{implementationdetail}{Transport, startup gates and cluster-core drain}
 The transport phase is cooperative too. TCP/IP runs after every socket
 consumer has drained; it closes admission, completes retained receive calls,
 stops residual protocol sockets, and releases its endpoint and owned NIC
@@ -1140,15 +1262,9 @@ completes its deferred receive, and releases queued messages before discovery
 stops probing and settles pending cluster-status waiters. Bounded
 lifecycle-aware sleeps ensure a configured retry interval does not become
 shutdown latency.
+\end{implementationdetail}
 
-The kernel's next shutdown layer transfers the published steady-state handles
-out of the launch registry and retires high-level node services in reverse
-dependency order: deployment ingress, deployment control, deployment agent;
-HTTP and time; cluster catalog, reliable messaging, and discovery; TCP/IP; and
-the frame router; and finally the object store. Each phase must be
-generation-safely reclaimed before the next receives its request. Per-phase
-grace is capped by the enclosing node deadline.
-
+\begin{implementationdetail}{Shutdown plan ownership and preparation}
 The plan uses inline storage for eleven single-domain service phases and three
 hardware domains. Construction and owner transfer allocate no plan backing.
 Abandoning either coordinator retains every unfinished teardown owner without
@@ -1161,7 +1277,17 @@ precede publication. Losing unstarted preparation is cancelled after local
 guards leave; uncertain cleanup retains its complete owner. Later cleanup
 admission, the agent's fail-closed rejection policy and sustained progress still
 require separate qualification.
+\end{implementationdetail}
 
+\subsubsection{Require device quiescence before reclamation}
+
+The NIC, block and entropy domains transfer once to a device-quiescence
+coordinator. Each driver must publish \texttt{DEVICE\_QUIESCED} and exit before
+its address space and launch-owned device grants can be reclaimed. A deadline
+or thread death cannot prove that DMA stopped; failed quiescence retains the
+domain and IOMMU state in quarantine.
+
+\begin{implementationdetail}{Driver-specific quiescence}
 The remaining NIC, block, and entropy domains transfer exactly once to a
 device-quiescence coordinator. It never converts a deadline into an
 unconditional driver abort. Ordinary lifecycle readiness is insufficient: a
@@ -1179,71 +1305,12 @@ drain transmit descriptors, and then reset or halt the receive/transmit
 engines. A failed flush or drain still stops DMA where possible but withholds
 \texttt{DEVICE\_QUIESCED}. Thread death alone is never treated as evidence
 that DMA stopped.
+\end{implementationdetail}
 
 After verified device quiescence, AArch64 selects the FADT-advertised PSCI SMC
 or HVC conduit, masks interrupts, and invokes \texttt{SYSTEM\_OFF}. It must not
 return: scheduling cannot resume past terminal drain. The fixture accepts QEMU
 exit only after the authoritative success and poweroff records.
-
-\architecturefigure{cooperative-deployment-shutdown}
-    {Bounded cooperative shutdown for deployment retirement or an enclosing
-    node drain, followed by generation-safe forced retirement. The application
-    can acknowledge but cannot clear or extend a kernel-published lifecycle
-    request.}
-    {fig:cooperative-deployment-shutdown}
-
-The client may contact any member. A follower relays the bounded submission to
-the current Raft leader over a source-validated peer route and correlates the
-committed result back to the ingress request. The management client therefore
-does not need a separate leader-discovery protocol.
-
-The same endpoint accepts
-\texttt{GET /v1/deployments/\{percent-encoded-name\}}. It reports
-\texttt{committed}, \texttt{replacing}, or \texttt{ready}, together with
-desired and ready replica counts. A ready observation is generation-safe: all
-desired nodes must have active registrations carrying the exact deployment
-generation. A stale endpoint with the same name cannot make a replacement
-rollout appear ready.
-
-The signed descriptor may carry node key zero to request automatic placement.
-A singleton prefers the current Raft leader and uses a deterministic fallback
-when that node is draining; fixed replica counts and
-\emph{every eligible node} select distinct admitted, non-draining voters. The
-leader continuously reconciles that set after membership changes. A nonzero
-key remains an explicit singleton pin. Replica policy is admitted through a
-\texttt{CRELEASE}, giving affinity decisions the complete component context.
-Full signed artifact names
-up to the 48-byte CLS2 limit travel in memory-backed catalog operations rather
-than the historical eight-byte scalar encoding.
-
-An interactive kernel serial console in the \texttt{--deploy-test} flow issues
-these commands against the live cluster for validation. Production operations
-use the userspace notification endpoint, whose remaining hardening includes
-network-level denial-of-service controls, an online audit identity distinct
-from the signing key, and production transport policy. The raw mutation path
-and serial shim remain test-only privileged interfaces.
-
-The node agent now reconciles the complete replicated deployment-name set,
-rather than polling only \texttt{greet}. A node can own up to 64 independently
-named application domains. Each domain is fenced by the principal derived from
-its signed artifact name, so a generation change retires only the matching
-application even if address-space identifiers have been reused. This bound is
-kernel admission policy, rather than a naming or descriptor-format limit.
-
-Automatic placement now covers singletons, fixed distinct-node replica sets,
-every eligible voter, stable affinity/anti-affinity ranking, cumulative
-memory-capacity admission, CPU-pressure ranking, rescheduling, and
-exact-generation readiness. The controller commits desired assignments
-through Raft while node agents remain mechanism-only reconcilers. It still
-needs explicit heap/CPU/storage requests, labels and named failure domains,
-multi-instance-per-node execution, rollout surge/unavailability, and rollback.
-
-The development runner's
-\texttt{--deployment-ingress-test --timeout 240} option proves the complete
-host upload to TLS RustFS, signed atomic release admission, S3 pull, scoped
-launch, and generation-safe readiness path. It is an integration fixture;
-production still needs a release controller that manages policy approval,
-progress deadlines, rollback, and operator audit identity.
 
 \subsection{Artifact naming}
 

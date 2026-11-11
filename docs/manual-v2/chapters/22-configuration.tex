@@ -76,6 +76,8 @@ ordinary operator capacity settings.
 
 \section{Selecting the compile-time resource policy}
 
+\subsection{Select a reviewed profile}
+
 The default settings are in
 \repofile|crates/catten/src/resource_policy/defaults.rs|. They select reviewed
 capacity values. Operators may edit this central file or select an external
@@ -83,33 +85,6 @@ profile with \texttt{CATTEN\_RESOURCE\_POLICY}, which must name an existing file
 by absolute path. Unset selects the default; empty, relative, missing and
 directory paths reject. The file is trusted Rust source and belongs in the
 reviewed build inputs, not in an application manifest or upload request.
-
-The 23 admitted metadata pools share family-typed charge mechanics and an
-independent static counter lock per pool. Resource owners retain sponsorship,
-completion and disposal policy. Version-10 thread statistics append a read-only
-inventory for validated system observers; ordinary snapshots contain no pool
-records. HTTP status JSON exposes each pool's units, ordinary/total limits and
-usage in \texttt{threads.metadata\_pools}. Busy samples have absent usage.
-Samples are independent, byte values describe requested layouts, and overlapping
-or count-only pools cannot be summed into physical RAM consumption. This
-consolidation changes no existing numerical limits or cleanup authority. The
-independent IPC node pool has its own requested-byte/count limits. See
-\repofile|docs/reference/metadata-admission.md| for the wire contract.
-
-DMA mapping/quarantine records and SMMU walker-cache nodes share the existing
-\texttt{iommu\_nodes} byte/count limits with domain/requester/context metadata.
-They retain the original domain-grant class through actual deallocation;
-promoting the root cannot reclassify later metadata in that domain. No numerical
-limit or statistics grammar changes. The shared ceiling bounds retained storage
-but also makes these layouts compete for its capacity. Raise the reviewed
-central limits if workload planning requires more headroom. Table-ledger buffers
-share the byte dimension with zero node count and retain full old/replacement
-capacity through actual free. Domain-grant or trusted boot class is captured
-before allocation; uncertain physical cleanup retains both page and metadata
-budgets. Default maximum ledger capacity is 16 KiB per domain and 32 KiB per unit,
-with 24/48 KiB during the final doubling. General principal/heap admission remains
-separate work. See
-\repofile|docs/reference/iommu-node-admission.md|.
 
 A profile defines \texttt{POLICY: Policy} in the policy module's scope. It can
 start from \texttt{DEFAULT} and override related fields. The checked-in
@@ -134,6 +109,46 @@ or live-resizing interface. The compiled policy does not change after charges
 exist. Boot-time resource input is a future installation mechanism, not an
 implemented fallback for an invalid build profile.
 
+\subsection{Interpret the metadata pools}
+
+Metadata pool limits bound retained requested storage in their own units.
+They do not add up to physical RAM usage, and changing capacity does not alter
+sponsorship or completion rules. Plan headroom for old and replacement storage
+to overlap during growth.
+
+\begin{implementationdetail}{Pool inventory and observer statistics}
+The 23 admitted metadata pools share family-typed charge mechanics and an
+independent static counter lock per pool. Resource owners retain sponsorship,
+completion and disposal policy. Version-10 thread statistics append a read-only
+inventory for validated system observers; ordinary snapshots contain no pool
+records. HTTP status JSON exposes each pool's units, ordinary/total limits and
+usage in \texttt{threads.metadata\_pools}. Busy samples have absent usage.
+Samples are independent, byte values describe requested layouts, and overlapping
+or count-only pools cannot be summed into physical RAM consumption. This
+consolidation changes no existing numerical limits or cleanup authority. The
+independent IPC node pool has its own requested-byte/count limits. See
+\repofile|docs/reference/metadata-admission.md| for the wire contract.
+\end{implementationdetail}
+
+\begin{implementationdetail}{IOMMU nodes and table ledgers}
+DMA mapping/quarantine records and SMMU walker-cache nodes share the existing
+\texttt{iommu\_nodes} byte/count limits with domain/requester/context metadata.
+They retain the original domain-grant class through actual deallocation;
+promoting the root cannot reclassify later metadata in that domain. No numerical
+limit or statistics grammar changes. The shared ceiling bounds retained storage
+but also makes these layouts compete for its capacity. Raise the reviewed
+central limits if workload planning requires more headroom. Table-ledger buffers
+share the byte dimension with zero node count and retain full old/replacement
+capacity through actual free. Domain-grant or trusted boot class is captured
+before allocation; uncertain physical cleanup retains both page and metadata
+budgets. Default maximum ledger capacity is 16 KiB per domain and 32 KiB per unit,
+with 24/48 KiB during the final doubling. General principal/heap admission remains
+separate work. See
+\repofile|docs/reference/iommu-node-admission.md|.
+\end{implementationdetail}
+
+\subsection{Rebuild service capacities with their consumers}
+
 TLS record and certificate capacities are grouped build constants in
 \repofiletext|crates/catten-services/src/tls_client.rs|{the shared TLS adapter}.
 Each stream owns two
@@ -145,6 +160,8 @@ Driver context layouts and backend erasure flags remain structural build
 contracts. Changing these inputs requires rebuilding and qualifying both service
 variants; the kernel resource profile does not resize them. See
 \repofile|docs/reference/tls-client.md|.
+
+\subsection{Tune entropy deadlines and buffers together}
 
 The entropy request deadline is a separate startup API setting in
 \texttt{EntropyLimits}. Bundled S3, Kafka and TCP/IP select its central
@@ -167,6 +184,8 @@ boot-resource parser or live resizing. DNS's separate
 \texttt{CAPACITY\_NONCE\_TIMEOUT\_MS} groups its 100 ms lookup/fill observation
 budget in the capacity-report context. See
 \repofiletext|docs/reference/entropy.md|{the entropy configuration reference}.
+
+\subsection{Keep publication and device-polling budgets distinct}
 
 RNG publication uses the shared platform-service compile-time policy: 1000 ms
 admission, 5000 ms accepted-call observation and 10 ms queue-full-only admission

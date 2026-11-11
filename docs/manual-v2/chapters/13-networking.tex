@@ -154,6 +154,8 @@ The RPC layer provides request/reply semantics over the reliable message layer:
         on the wire.
 \end{itemize}
 
+\subsubsection{Identify an invocation and retain its deadline}
+
 The implemented DNS v4 remote-call path is narrower than this target model. It
 carries scalar opcode/argument calls. A request is identified by
 caller node, caller DNS-session generation, and call ID, and a reply is
@@ -165,6 +167,12 @@ advancing service generation; requests and replies carry it, and the target
 rejects stale generations before execution. Remote object-capability
 delegation remains future work.
 
+The local caller retains one operation across routing and invocation. Its
+original monotonic deadline covers both phases. Once invocation has been
+accepted, timeout or observation failure can report uncertainty but cannot
+permit replay.
+
+\begin{implementationdetail}{Invocation frames and reply preparation}
 Invocation frames use tags \texttt{0x26/0x27}, complete 32-bit caller/name
 lengths bounded to 4 KiB each, and exact frame termination. Retired
 \texttt{0x10/0x11} frames reject. The caller prepares request bytes before
@@ -172,7 +180,11 @@ publishing in-flight state, with its deadline captured beforehand. The target
 prepares the fixed reply buffer before admitting a local operation and retains
 it with that operation; result encoding uses the same allocation. A follower
 carries its original query deadline into invocation instead of restarting the
-budget, and rejects expired routing results before admission. DNS v4 client calls move a mandatory \texttt{CDNSCL01} memory frame containing
+budget, and rejects expired routing results before admission.
+\end{implementationdetail}
+
+\begin{implementationdetail}{Local call ownership and CQ waiting}
+DNS v4 client calls move a mandatory \texttt{CDNSCL01} memory frame containing
 an exact byte length, complete 1--256-byte name, opcode and signed argument.
 Retired packed-name/12-byte calls reject. The local operation owns both RPC
 phases and its returned connection; each pending RPC binds reply readiness to
@@ -180,34 +192,10 @@ the reactor CQ. One kernel-monotonic deadline begins before decoding and survive
 routing, lookup and invocation. The reactor waits for the earliest remaining
 operation deadline while retaining its separate clock/transport interests.
 Admission rejection after an accepted invocation is uncertain and never permits
-replay. Node-local generation observation and retirement now require the
-\texttt{CNSGEN01} frame under NS interface 2: exact total length, complete
-1--256-byte name and explicit generation. Observation requires zero; retirement
-requires a positive generation and the exact registrar principal or a service
-manager. Retired scalar observation and packed-name retirement reject. Cleanup
-owns its accepted pending call, binds reply readiness to the CQ and carries its
-original five-second monotonic deadline into the reactor's earliest wait.
-Submission/storage rejection follows the existing fail-closed domain policy;
-rejected reply binding retains the accepted owner through abort. Timeout,
-rejection and wakes never permit replay or establish physical cleanup. Raw
-receive/transport adapters, other endpoint-close watches and broader cleanup
-contexts remain separate gaps. A lookup of somebody else's publication does
-not grant DNS retirement authority. NS now owns each registry connection and
-its persistent endpoint-death completion together, admitting the watch before
-policy mutation. It binds request intake to the same default CQ signaled by
-the kernel watches and waits event-only, rechecking lifecycle requests. A CQ
-entry is only a hint: NS confirms its retained watch's exact endpoint-close
-result before internally unpublishing the current full name and generation.
-Replaced watches cannot clear a new generation; caller registrar/manager
-checks remain. Cancellation precedes source disposal. Unexpected watch results
-or rejected CQ waits retain the registry through terminal abort, without
-claiming physical cleanup. The trusted NS constructor prepares 65 completion
-slots before threads/events for 64 live publications plus one replacement;
-ordinary launch budgets and normal node admission retain their existing policy.
-The native fixture observes both DNS-owned and Echo-owned names disappearing
-after death with read-only lookups. Raft completion and the publication scan
-still share one cleanup-submission claim for their captured episode. See
-\repofile|docs/reference/name-service-generations.md|.
+replay.
+\end{implementationdetail}
+
+\subsubsection{Publish a service in two phases}
 
 Registration uses two replicated phases. A \texttt{prepare} command allocates
 the next generation while keeping it invisible. After the owner publishes its
@@ -219,6 +207,7 @@ replicated tombstone must match the owning node and distributed generation, and
 local removal must match the generation captured before the proposal. A delayed
 operation therefore cannot remove a replacement instance.
 
+\begin{implementationdetail}{Registration relay framing}
 Follower registration now uses tags \texttt{0x28/0x29}; automatic retraction
 uses \texttt{0x2a}. Complete 32-bit lengths carry nonempty owner identities
 bounded to 4 KiB and service names bounded to 256 bytes. The old
@@ -236,7 +225,56 @@ the existing publication owner for its one-second protocol retry interval
 and exact-generation termination policy. Transport
 metadata, raw close-watch readiness, and other local scalar adapters remain
 separately qualified. See \path{docs/reference/dns-registration-relay.md}.
+\end{implementationdetail}
 
+\subsubsection{Retract only the captured generation}
+
+Retirement requires the exact registered generation and the registrar's or
+manager's authority. Endpoint death is confirmed through a retained watch before
+the matching publication is removed; lookup alone grants no retirement right.
+
+\begin{implementationdetail}{Generation observation and retirement requests}
+Node-local generation observation and retirement now require the
+\texttt{CNSGEN01} frame under NS interface 2: exact total length, complete
+1--256-byte name and explicit generation. Observation requires zero; retirement
+requires a positive generation and the exact registrar principal or a service
+manager. Retired scalar observation and packed-name retirement reject. Cleanup
+owns its accepted pending call, binds reply readiness to the CQ and carries its
+original five-second monotonic deadline into the reactor's earliest wait.
+Submission/storage rejection follows the existing fail-closed domain policy;
+rejected reply binding retains the accepted owner through abort. Timeout,
+rejection and wakes never permit replay or establish physical cleanup. Raw
+receive/transport adapters, other endpoint-close watches and broader cleanup
+contexts remain separate gaps. A lookup of somebody else's publication does
+not grant DNS retirement authority.
+\end{implementationdetail}
+
+\begin{implementationdetail}{Endpoint-death watches and local retraction}
+NS now owns each registry connection and
+its persistent endpoint-death completion together, admitting the watch before
+policy mutation. It binds request intake to the same default CQ signaled by
+the kernel watches and waits event-only, rechecking lifecycle requests. A CQ
+entry is only a hint: NS confirms its retained watch's exact endpoint-close
+result before internally unpublishing the current full name and generation.
+Replaced watches cannot clear a new generation; caller registrar/manager
+checks remain. Cancellation precedes source disposal. Unexpected watch results
+or rejected CQ waits retain the registry through terminal abort, without
+claiming physical cleanup. The trusted NS constructor prepares 65 completion
+slots before threads/events for 64 live publications plus one replacement;
+ordinary launch budgets and normal node admission retain their existing policy.
+The native fixture observes both DNS-owned and Echo-owned names disappearing
+after death with read-only lookups. Raft completion and the publication scan
+still share one cleanup-submission claim for their captured episode. See
+\repofile|docs/reference/name-service-generations.md|.
+\end{implementationdetail}
+
+\subsubsection{Route queries through the leader}
+
+A follower forwards lookup and routing queries to the known leader. The leader
+answers only after its quorum-contact read barrier succeeds. Catalog and status
+dumps remain diagnostic observations.
+
+\begin{implementationdetail}{Correlated query and catalog protocols}
 Lookup and call-routing decisions do not use follower-local catalog state. A
 follower sends a correlated query to the known leader, and the leader answers
 only when Graft's quorum-contact read barrier succeeds. Correlated query frames
@@ -252,7 +290,9 @@ safely retryable \texttt{ERR\_NOT\_LEADER}; a timeout after remote execution may
 have begun remains \texttt{ERR\_UNCERTAIN}. Raft time is supplied by a persistent
 detached-timer completion, preventing sustained endpoint traffic from freezing
 the lease clock. Catalog and status dumps are diagnostic local observations,
-not linearizable reads. The catalog dump now uses one complete
+not linearizable reads.
+
+The catalog dump now uses one complete
 \texttt{CDNSCAT1} record set, bounded to 64 KiB, with explicit total length,
 row count, full identity lengths, and generations. A result above that bound
 rejects instead of returning a one-page prefix or shortening names. DNS retains
@@ -263,7 +303,9 @@ as \texttt{null}. Both node and cluster views resolve a fresh owned DNS connecti
 per request, so a missed startup publication is not permanent absence. The
 separate registered-count field remains status metadata.
 See \path{docs/reference/dns-catalog.md}.
+\end{implementationdetail}
 
+\begin{implementationdetail}{Local name-service status format}
 Local NS status uses the complete \texttt{CNSSTAT1} observation, bounded to
 17,176 bytes for all 64 supported active publications. Its fixed header carries
 the exact total length, active row count, and number of retained lookup requests;
@@ -275,6 +317,7 @@ transaction, output mapping, and consuming reply; HTTP reports invalid or
 unavailable observations as \texttt{ns:null} and preserves every identity byte.
 This diagnostic listing supplies no application authority or physical cleanup
 proof. See \path{docs/reference/name-service-status.md}.
+\end{implementationdetail}
 
 \subsection{Distributed objects}
 

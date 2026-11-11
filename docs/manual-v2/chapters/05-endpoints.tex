@@ -22,6 +22,10 @@ service normally delegates them after an access check.
 
 \subsection{Namespace publication}
 
+An IPC namespace belongs to one exact root generation. It must be prepared
+before ordinary IPC can use it, and retirement prevents new publication into it.
+
+\begin{implementationdetail}{Namespace publication and retirement}
 Root registration prepares the IPC namespace node and both budget accounts
 fallibly before taking publication guards. It captures an exact-generation
 root lease, releases lifecycle/table guards, then links that prepared storage
@@ -34,6 +38,7 @@ keep their original accounts through ASID reuse. This covers namespace storage;
 guarded per-capability payload factories, account byte/principal
 admission and wider destructor contexts remain audit work. See
 \repofile|docs/reference/ipc-namespace-publication.md|.
+\end{implementationdetail}
 
 \subsection{Endpoint storage admission}
 
@@ -44,12 +49,21 @@ domain, and 1,024 records and 32,768 slots per node. Ordinary domains share
 platform domains. These are initial kernel policies, independent of socket
 capacity, rather than deployment-descriptor settings.
 
+\paragraph*{Create the queue.}
+
+Creation admits the endpoint record and queue capacity before publishing authority.
+A queue admits at most 4,096 messages.
+
+\begin{implementationdetail}{Fallible endpoint preparation}
 A single queue admits at most 4,096 messages. Creation retains its captured
 root, reserves record and slot counts atomically, then prepares endpoint storage,
 queue backing and observer lists fallibly outside IPC. Slots round up to a
 power of two with a minimum of four. Revalidation precedes authority publication
 and allocation-free endpoint relinking. Ordinary unused preparation finishes
 after local guards, root last; abandonment retains every field.
+\end{implementationdetail}
+
+\paragraph*{Resize with temporary headroom.}
 
 Growth retains that exact root and the original endpoint sponsor and
 classification, then reserves and allocates a second queue outside IPC. Both
@@ -60,6 +74,13 @@ concurrent close rejects it. Replaced or unused backing frees after IPC unlock,
 before its charge returns. Promotion cannot reclassify the original endpoint.
 Shrinking reduces message admission and retains backing and its charge.
 
+\paragraph*{Release after the last retained reference.}
+
+Closing the owner drains the queue after confirmed cleanup. Delegated or queued
+connections can keep a closed endpoint record alive, so its admission is returned
+only after the final retained storage has been freed.
+
+\begin{implementationdetail}{Endpoint retirement and metadata publication}
 Owner closure drains the queue and frees its backing after confirmed cleanup.
 Delegated, queued and unobserved returned connections can retain a closed
 endpoint. Final-reference removal detaches its complete node into the existing
@@ -71,8 +92,11 @@ count admission revalidates the captured namespace under IPC, then payload
 allocation leaves the guard again. Publication relinks prepared storage. Linear
 scans and sustained pressure/IRQ hold time remain unqualified. See
 \repofile|docs/reference/endpoint-budgets.md|.
+\end{implementationdetail}
 
 \subsection{Connection, call and reply record admission}
+
+\paragraph*{Choose the sponsor.}
 
 Each sponsoring namespace generation can retain 512 connection capabilities,
 512 pending calls and 512 outstanding reply tokens. Each dimension has a node
@@ -88,6 +112,16 @@ capability-table limit. Sponsorship does not change capability authority.
 Completed and observed calls remain charged until closed, while reply-token
 charges return on reply or cancellation.
 
+\paragraph*{Admit before consuming inputs.}
+
+Connection-bearing calls and replies admit their
+connection before copying memory, consuming the token or revoking a loan.
+Kernel rejection leaves the inputs intact. The consuming Rust
+\texttt{ReplyToken::reply\_connection*} methods close/cancel their token on an
+error and preserve the borrowed grant source; they do not return a retryable
+token.
+
+\begin{implementationdetail}{Call record preparation and rollback}
 Calls reject invalid handles and unavailable queues before preparing record
 storage, then recheck them before mutation. They retain their exact caller root
 and reserve both record counts atomically
@@ -100,6 +134,35 @@ completion retains its detached notification batch with the node until explicit
 finish; fallback retains both. Claim sources use the original token
 classification through promotion and ASID reuse. See \repofile|docs/reference/ipc-record-budgets.md|.
 
+Call preparation uses the same three-phase authority boundary with its existing
+root retained, and pending waiter-list construction also leaves IPC. Call staging
+only revalidates prepared metadata. Shared quota rejects before payload/list
+allocation. Unused shared preparation disposes after local guards, root last;
+abandonment retains the complete prefix. See
+\repofile|docs/reference/ipc-capability-storage.md|.
+\end{implementationdetail}
+
+\paragraph*{Retain admission through teardown.}
+
+Retirement fences new capability publication before taking the cleanup snapshot.
+Existing records keep their original sponsor through delegation and ASID reuse;
+removing authority does not by itself refund retained storage.
+
+\begin{implementationdetail}{Capability publication and teardown}
+Teardown fences admission before taking its capability snapshot. Receive and
+connection-publication paths reject a retiring namespace, preventing late
+capabilities from escaping that snapshot. Charges retain the original
+generation after delegation or ASID reuse. Per-capability payload nodes now
+prepare fallibly after shared count admission and before authority publication.
+Installation only relinks prepared storage. Existing owners keep unused
+preparation and detached payload/authority pairs through post-IPC disposal;
+connection counts return after actual payload/node free. Speculative receive
+rollback keeps queue/token/loans intact and disposes only its reply capability.
+Complete fallback retains metadata and charges. See
+\repofile|docs/reference/ipc-capability-storage.md|.
+\end{implementationdetail}
+
+\begin{implementationdetail}{Payload-node backing budgets}
 Capability, endpoint, pending-call and reply-token payload nodes reserve their
 requested heap layouts before allocation from \texttt{ipc\_nodes}. The same node
 retains backing beside its optional logical record reservation through actual
@@ -113,7 +176,9 @@ admission; header/record widths and runtime ABI remain unchanged. Complete conta
 operations and detached lists retain both charges under unknown guards; nested
 buffers and broader heap/principal admission remain separate. See
 \repofile|docs/reference/ipc-node-admission.md|.
+\end{implementationdetail}
 
+\begin{implementationdetail}{Attachment and cleanup buffer admission}
 Attachment retirement catalogs also reserve exact capacity from that pool's
 byte dimension, with zero node slots and the original requester class. A
 136-byte retirement entry gives a maximum 255-entry catalog of 34680 bytes.
@@ -121,16 +186,20 @@ Call rejection and successful receive keep this storage in their complete owner
 until explicit disposal after IPC unlock. FIFO child handoff preserves full
 capacity and charge through every callback; interruption retains remaining
 owners. Buffer deallocation precedes refund. The inline reservation adds 24 bytes
-per queued-message payload slot. Parsed-descriptor, capability-ID,
+per queued-message payload slot.
+
+Parsed-descriptor, capability-ID,
 transfer-staging and reply-token loan vectors share byte-only admission through
 an allocator carrying the original class. Growth admits the full candidate while
 old capacity remains charged; pop/clear retain capacity until deallocation.
 The capability-vector allocator adds another 8 inline bytes per message slot.
+
 Descriptor snapshots also reserve 4082 requested bytes through the captured IPC
 allocator, before parsing or preparing transfers. Quota rejection returns
 \texttt{ResourceLimit} and preserves the descriptor and source; successful
 submission retains its existing descriptor-consumption rule. The byte charge
 ends after actual temporary-buffer disposal, before submission roots complete.
+
 Reply/cancellation work also shares byte admission, cloning the accepted token's
 allocator class. Each entry is 200 bytes; 255 entries request 51000 bytes. Empty
 work allocates nothing. Capacity survives the final pop and is freed after child
@@ -139,33 +208,9 @@ detached storage and notifications on abandonment. Quota rejection precedes the
 claim and preserves accepted authority. Cleanup headroom is not reserved at call
 acceptance, so saturation can postpone cleanup. No numerical defaults change;
 general heap/principal admission and integrated progress qualification remain open.
+\end{implementationdetail}
 
-Connection-bearing calls and replies admit their
-connection before copying memory, consuming the token or revoking a loan.
-Kernel rejection leaves the inputs intact. The consuming Rust
-\texttt{ReplyToken::reply\_connection*} methods close/cancel their token on an
-error and preserve the borrowed grant source; they do not return a retryable
-token.
-
-Teardown fences admission before taking its capability snapshot. Receive and
-connection-publication paths reject a retiring namespace, preventing late
-capabilities from escaping that snapshot. Charges retain the original
-generation after delegation or ASID reuse. Per-capability payload nodes now
-prepare fallibly after shared count admission and before authority publication.
-Installation only relinks prepared storage. Existing owners keep unused
-preparation and detached payload/authority pairs through post-IPC disposal;
-connection counts return after actual payload/node free. Speculative receive
-rollback keeps queue/token/loans intact and disposes only its reply capability.
-Complete fallback retains metadata and charges. See
-\repofile|docs/reference/ipc-capability-storage.md|.
-
-Call preparation uses the same three-phase authority boundary with its existing
-root retained, and pending waiter-list construction also leaves IPC. Call staging
-only revalidates prepared metadata. Shared quota rejects before payload/list
-allocation. Unused shared preparation disposes after local guards, root last;
-abandonment retains the complete prefix. See
-\repofile|docs/reference/ipc-capability-storage.md|.
-
+\begin{implementationdetail}{Mixed capability and memory publication}
 Direct-grant, receive and returned-connection factories still run under IPC.
 The memory/authority gate now borrows its existing reservations/transfers and
 validates the complete set before mutation under one capability hold, without
@@ -178,8 +223,11 @@ commit is heap-free in the documented maximum-batch control; preparation and
 outer disposal remain separate contexts. See \repofile|docs/reference/ipc-publication-batches.md|.
 Other capability kinds, byte/principal admission, wider contexts and
 comprehensive heap accounting remain incomplete.
+\end{implementationdetail}
 
 \subsection{Receive and reply waiter admission}
+
+\paragraph*{Register before parking.}
 
 Threads waiting for endpoint readiness or a pending-call reply use removable,
 generation-sponsored registrations. Each source links at most 64 entries. They share
@@ -187,6 +235,8 @@ the completion/CQ waiter pools: 1,024 entries per waiting domain, 8,192 per node
 and an ordinary share of 6,144. Sponsorship follows the waiting thread, not the
 endpoint owner. Admission precedes scheduler parking; message or reply state
 that is already ready returns without retaining an entry.
+
+\paragraph*{Cancel the registration when waiting ends.}
 
 Ready admission or thread reaping cancels the owning registration. IPC detaches
 message, reply and source-closure notifications under its registry lock and
@@ -196,18 +246,22 @@ remain charged until their detached storage is actually freed.
 Detached batches no longer occupy the source's linked count; they still occupy
 the shared domain/node pools while a reusable readiness list is rearmed.
 
+\paragraph*{Keep the call and loan through rejected waits.}
+
 Untimed receive and reply waits retry cooperatively when admission is full. A
 reply wait preserves the pending call and its memory loan until reply or explicit
 cancellation revokes receiver access. The existing Rust owners need no manual
 unregister step. Kernel timed reply waits can return without a reply on deadline
 or admission rejection; neither event by itself ends a loan.
 
+\begin{implementationdetail}{Waiter-list preparation}
 Readiness lists and pending-call lists are prepared fallibly before source
 publication. Call preparation precedes memory transfer, lending and delegated
 connection attachments, so failure at this stage leaves those inputs untouched.
 Connection, reply-token and pending-call counts use the separate record budgets
 above. List control blocks and other kernel metadata still need comprehensive
 admission and fallible allocation.
+\end{implementationdetail}
 
 \section{Message classes}
 

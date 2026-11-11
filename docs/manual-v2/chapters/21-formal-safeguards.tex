@@ -120,102 +120,6 @@ provide.
 
 \section{What is modeled}
 
-The logical-close projection starts with two owned sockets. It checks rejected
-admission backoff, accepted-once submission, original deadlines, acknowledgement
-before position release and complete ownership through abort. Both Started and
-Unavailable are logical receipts; neither models physical release. Negative controls
-replay an accepted close or release its owner before acknowledgement. Bound reply
-sources and atomic turns are assumptions; actual ID allocation/reaping, wire
-decoding, socket setup, dynamic
-admission, whole-shutdown timing and physical release remain outside the model.
-A one-owner blocking configuration also checks terminal unstarted admission
-retention. Its destructor-fallback negative control re-enables work after that
-state and violates \texttt{NoReentry}; accepted replay has its existing control.
-This is no recoverable custody, deadline-duration, field-destructor or runtime
-abort proof. See \path{docs/tla/CharlotteDeploymentClose.tla}.
-
-The principal-backing projection shares one ceiling across three root slots and
-unequal object/table/stack footprints. Reserved stack capacity pays before growth;
-a later commitment does not pay twice. One slot can restart under another
-principal. Moves, retirement and abandonment retain the original charge; explicit
-physical confirmation alone refunds it. Six negative controls include early
-reservation refund and double-charged growth. Object counts, allocator/node
-metadata, hardware and pressure fairness lie outside the projection. See
-\path{docs/tla/CharlottePrincipalBacking.tla}.
-
-The thread-metadata projection prepays unequal context/node bundles across two
-roots sharing one principal. Construction, context disposal, actual node free
-and refund remain separate actions. A reused root slot keeps its old charge
-bound to its original principal; abandonment retains admission. Four negative
-controls admit by generation, refund before node deallocation, refund abandonment
-or bill the replacement principal. The safe graph has 4,132 distinct states,
-12,559 generated states and depth 15. Stack-release proof is an input; node
-reserve, allocator overhead, observer/table storage, IRQ contexts and pressure
-fairness lie outside the projection. See
-\path{docs/tla/CharlotteThreadMetadata.tla}.
-
-The principal-history projection follows prepared/root-attached nodes and
-boot-lifetime records through shared total/ordinary admission. Duplicate
-candidates retain their original classification; logical exit and abandonment
-cannot refund storage. Root confirmation and actual deallocation are inputs to
-release. Six negative controls restore early refunds, reclassification, eviction
-or reserve bypass. Its safe graph has 2,539 distinct / 5,410 generated states,
-depth 19. Exact bytes, allocator/hardware/generation proofs and pressure fairness
-remain outside it. The seven focused cases pass. The 24 October follow-up also completes the full
-190-case suite: 47 safe configurations and 143 expected counterexamples across
-44 modules. See
-\path{docs/tla/CharlottePrincipalHistory.tla}.
-
-The controller-server projection checks a preflight/mutation relay beside a
-query. Only checked evidence permits mutation, every phase submits once and the
-original budget survives phase changes. Parking covers both owners; DNS backing
-may survive local termination until its receiver releases it. Negative controls
-turn unknown into absence, restart time, park beside a ready reply or replay
-mutation. Admission, signature/record validation, shutdown, legacy handlers and
-wall-clock fairness are outside the projection. See
-\path{docs/tla/CharlotteControllerRelay.tla}.
-
-The deployment listener projection checks two setup positions through creation,
-listen and idle accept. Each phase accepts once, all setup phases share their
-original deadline and parking covers every owner. Admitted idle accept has no
-timer. Negative controls replay a phase, restart its budget or park beside a
-ready reply. Binding, producer delivery and atomic turns are assumptions;
-shutdown, dynamic cross-phase admission, byte validation, TCP state and
-wall-clock fairness remain outside the projection. See
-\path{docs/tla/CharlotteDeploymentListener.tla}.
-
-The deployment output projection checks two admitted outputs with two abstract
-prefixes. Only a positive producer receipt advances the offset and admits its
-remainder. Wakes grant no progress, uncertainty permits no replay and all chunks
-retain the original deadline. Negative controls replay an uncertain prefix or
-restart its budget. Byte framing, capacity, actual TCP delivery, socket close,
-wall-clock scheduling and whole-service fairness are outside the projection.
-See \path{docs/tla/CharlotteDeploymentOutput.tla}.
-
-The deployment controller projection checks two admitted calls, binding before
-parking, observation beside an unanswered request, original deadlines and
-once-only submission. Receiver backing may survive caller cancellation until
-its own release action. Negative controls park on one silent call while another
-reply is ready or replay a timed-out request. Preparation, byte admission,
-controller-server execution, response latency and physical teardown are omitted.
-See \path{docs/tla/CharlotteDeploymentControl.tla}.
-
-The deployment input projection checks four admitted slots, aggregate input-byte
-bounds, unchanged request budgets and a ready healthy input's bound on
-intervening turns. Negative controls retain a busy input's cursor or restart
-its deadline. Atomic input turns and producer/CQ delivery are assumptions;
-controller calls, response transmission, close, new admissions and wall-clock
-fairness are outside this model. See
-\path{docs/tla/CharlotteDeploymentInput.tla} and its conformance map.
-
-The namespace-drain projection checks one poll with two nonreused token
-identities under an existing admission fence. A competing close can remove the
-selection before cancellation preparation. Rechecking absence permits rescan;
-every still-present claim remains Pending. Negative controls restore stale
-Pending or skip live work. Actual root, loan, backing and peer-completion proofs
-are boundary inputs, and later wakes/deadlines lie outside this projection.
-See \path{docs/tla/CharlotteNamespaceDrain.tla}.
-
 The current suite checks forty-seven safe configurations across forty-four
 specifications. It also checks 143 expected-counterexample
 configurations. The models are divided by state ownership and failure boundary
@@ -223,6 +127,12 @@ so that each remains reviewable.
 The Raft models are deliberately layered: election, log replication,
 membership, pre-membership admission, and snapshots have different state and
 different proof obligations.
+
+\subsection{Use the inventory to find a functional boundary}
+
+The table maps each model to the state it owns and the safety properties it
+checks. Read it as an inventory of separate boundaries. Detailed projection
+notes follow the table, grouped by resource accounting and request lifecycle.
 
 \small
 \begin{longtable}{|p{0.26\textwidth}|p{0.26\textwidth}|p{0.38\textwidth}|}
@@ -429,6 +339,135 @@ example, Ethernet fragmentation and retry timing are not part of the Raft
 election proof; protobuf bytes and peer addresses are not part of joint
 consensus; cryptographic correctness is not part of the service-lifecycle
 trust-bit abstraction. Such omissions are recorded in the conformance map.
+
+\subsection{Resource sponsorship and retirement projections}
+
+These projections distinguish logical ownership from retained storage and
+physical release. Their negative controls check early refunds, successor
+billing and reuse of retired identities.
+
+\begin{implementationdetail}{Principal backing}
+The principal-backing projection shares one ceiling across three root slots and
+unequal object/table/stack footprints. Reserved stack capacity pays before growth;
+a later commitment does not pay twice. One slot can restart under another
+principal. Moves, retirement and abandonment retain the original charge; explicit
+physical confirmation alone refunds it. Six negative controls include early
+reservation refund and double-charged growth. Object counts, allocator/node
+metadata, hardware and pressure fairness lie outside the projection. See
+\path{docs/tla/CharlottePrincipalBacking.tla}.
+\end{implementationdetail}
+
+\begin{implementationdetail}{Thread metadata}
+The thread-metadata projection prepays unequal context/node bundles across two
+roots sharing one principal. Construction, context disposal, actual node free
+and refund remain separate actions. A reused root slot keeps its old charge
+bound to its original principal; abandonment retains admission. Four negative
+controls admit by generation, refund before node deallocation, refund abandonment
+or bill the replacement principal. The safe graph has 4,132 distinct states,
+12,559 generated states and depth 15. Stack-release proof is an input; node
+reserve, allocator overhead, observer/table storage, IRQ contexts and pressure
+fairness lie outside the projection. See
+\path{docs/tla/CharlotteThreadMetadata.tla}.
+\end{implementationdetail}
+
+\begin{implementationdetail}{Principal history}
+The principal-history projection follows prepared/root-attached nodes and
+boot-lifetime records through shared total/ordinary admission. Duplicate
+candidates retain their original classification; logical exit and abandonment
+cannot refund storage. Root confirmation and actual deallocation are inputs to
+release. Six negative controls restore early refunds, reclassification, eviction
+or reserve bypass. Its safe graph has 2,539 distinct / 5,410 generated states,
+depth 19. Exact bytes, allocator/hardware/generation proofs and pressure fairness
+remain outside it. The seven focused cases pass. The 24 October follow-up also completes the full
+190-case suite: 47 safe configurations and 143 expected counterexamples across
+44 modules. See
+\path{docs/tla/CharlottePrincipalHistory.tla}.
+\end{implementationdetail}
+
+\begin{implementationdetail}{Namespace drain}
+The namespace-drain projection checks one poll with two nonreused token
+identities under an existing admission fence. A competing close can remove the
+selection before cancellation preparation. Rechecking absence permits rescan;
+every still-present claim remains Pending. Negative controls restore stale
+Pending or skip live work. Actual root, loan, backing and peer-completion proofs
+are boundary inputs, and later wakes/deadlines lie outside this projection.
+See \path{docs/tla/CharlotteNamespaceDrain.tla}.
+\end{implementationdetail}
+
+\subsection{Deployment request lifecycle projections}
+
+The deployment projections follow a request from listener setup through input,
+controller forwarding, output and close. They check ownership, accepted-once
+submission and original deadlines at each boundary. Each note states the
+assumptions and omitted behaviour of that projection.
+
+\begin{implementationdetail}{Listener setup}
+The deployment listener projection checks two setup positions through creation,
+listen and idle accept. Each phase accepts once, all setup phases share their
+original deadline and parking covers every owner. Admitted idle accept has no
+timer. Negative controls replay a phase, restart its budget or park beside a
+ready reply. Binding, producer delivery and atomic turns are assumptions;
+shutdown, dynamic cross-phase admission, byte validation, TCP state and
+wall-clock fairness remain outside the projection. See
+\path{docs/tla/CharlotteDeploymentListener.tla}.
+\end{implementationdetail}
+
+\begin{implementationdetail}{Input admission and turn rotation}
+The deployment input projection checks four admitted slots, aggregate input-byte
+bounds, unchanged request budgets and a ready healthy input's bound on
+intervening turns. Negative controls retain a busy input's cursor or restart
+its deadline. Atomic input turns and producer/CQ delivery are assumptions;
+controller calls, response transmission, close, new admissions and wall-clock
+fairness are outside this model. See
+\path{docs/tla/CharlotteDeploymentInput.tla} and its conformance map.
+\end{implementationdetail}
+
+\begin{implementationdetail}{Controller calls}
+The deployment controller projection checks two admitted calls, binding before
+parking, observation beside an unanswered request, original deadlines and
+once-only submission. Receiver backing may survive caller cancellation until
+its own release action. Negative controls park on one silent call while another
+reply is ready or replay a timed-out request. Preparation, byte admission,
+controller-server execution, response latency and physical teardown are omitted.
+See \path{docs/tla/CharlotteDeploymentControl.tla}.
+\end{implementationdetail}
+
+\begin{implementationdetail}{Controller-server relay}
+The controller-server projection checks a preflight/mutation relay beside a
+query. Only checked evidence permits mutation, every phase submits once and the
+original budget survives phase changes. Parking covers both owners; DNS backing
+may survive local termination until its receiver releases it. Negative controls
+turn unknown into absence, restart time, park beside a ready reply or replay
+mutation. Admission, signature/record validation, shutdown, legacy handlers and
+wall-clock fairness are outside the projection. See
+\path{docs/tla/CharlotteControllerRelay.tla}.
+\end{implementationdetail}
+
+\begin{implementationdetail}{Output prefixes}
+The deployment output projection checks two admitted outputs with two abstract
+prefixes. Only a positive producer receipt advances the offset and admits its
+remainder. Wakes grant no progress, uncertainty permits no replay and all chunks
+retain the original deadline. Negative controls replay an uncertain prefix or
+restart its budget. Byte framing, capacity, actual TCP delivery, socket close,
+wall-clock scheduling and whole-service fairness are outside the projection.
+See \path{docs/tla/CharlotteDeploymentOutput.tla}.
+\end{implementationdetail}
+
+\begin{implementationdetail}{Logical close}
+The logical-close projection starts with two owned sockets. It checks rejected
+admission backoff, accepted-once submission, original deadlines, acknowledgement
+before position release and complete ownership through abort. Both Started and
+Unavailable are logical receipts; neither models physical release. Negative controls
+replay an accepted close or release its owner before acknowledgement. Bound reply
+sources and atomic turns are assumptions; actual ID allocation/reaping, wire
+decoding, socket setup, dynamic
+admission, whole-shutdown timing and physical release remain outside the model.
+A one-owner blocking configuration also checks terminal unstarted admission
+retention. Its destructor-fallback negative control re-enables work after that
+state and violates \texttt{NoReentry}; accepted replay has its existing control.
+This is no recoverable custody, deadline-duration, field-destructor or runtime
+abort proof. See \path{docs/tla/CharlotteDeploymentClose.tla}.
+\end{implementationdetail}
 
 \section[Model-driven findings]{How model reasoning changes CharlotteOS}
 

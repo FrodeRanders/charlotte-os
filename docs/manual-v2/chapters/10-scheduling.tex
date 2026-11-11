@@ -189,6 +189,13 @@ to rewrite authority or oscillate execution continuously.
 
 \subsection{Generation-safe retirement}
 
+Thread retirement proceeds from identifying the exact generation, through
+leaving the old stack, to releasing backing and metadata. Deferred reapers wait
+for work on their own LP; a readiness signal never substitutes for stack or
+translation quiescence.
+
+\paragraph*{Identify the generation.}
+
 A numeric thread identifier names a table slot that can be reused. Every queued
 scheduler handle, waker, deferred verifier callback, and
 asynchronous retirement request therefore carries the thread generation.
@@ -197,6 +204,8 @@ validate both values before changing state. A delayed cleanup request for an
 exited thread consequently cannot abort a newer thread that reused the same
 numeric identifier. The scheduler-lifecycle boot test exercises stale wake
 rejection and remote owner-LP retirement.
+
+\paragraph*{Retain the complete thread until stack release.}
 
 Deferred retirement owns the complete thread in its prepared node until the
 owner LP is off that stack and explicit stack-pair release succeeds. Only then
@@ -208,6 +217,7 @@ never recovery authority. Failed or abandoned physical retirement remains
 terminal; outer constructor/syscall masks and stack-growth guards still need
 separate qualification. See \repofile|docs/reference/thread-retirement.md|.
 
+\begin{implementationdetail}{Kernel stack ownership}
 The kernel half of each pair now carries a non-copyable \texttt{KernelStack}
 owner with the exact base, page count and one-shot release fence. Teardown
 borrows that owner; no numeric base/length adoption is exposed. Its unmapped
@@ -215,7 +225,20 @@ guard pages need no registry entries, eliminating the former guard-map
 allocations beneath stack-arena serialization. Failure retains the containing
 pair's root and original admission; dropping the range owner performs no
 physical cleanup.
+\end{implementationdetail}
 
+\paragraph*{Release metadata before refunding admission.}
+
+The thread allocation charge stays in the same node through staging, delayed
+reaping, failed retirement and abandonment.
+Confirmed pair release permits context disposal, then node deallocation, then
+refund to the original principal. Root retirement, ASID reuse and trusted
+promotion cannot refund live metadata. Allocation/limit rejection remains
+\texttt{ThreadPreparationFailed}. Table-vector capacity, observer/weak storage,
+allocator overhead and general metadata admission remain separate. See
+\repofile|docs/reference/thread-metadata-admission.md|.
+
+\begin{implementationdetail}{Thread and principal-history capacity}
 Before either heap allocation, thread creation now reserves exact requested
 bytes for its stable context Box and prepared retirement node, plus one bundle
 unit. All generations of a verified signed principal share 1 MiB and 128 bundles;
@@ -227,16 +250,9 @@ before allocation. Published records stay charged for the boot lifetime; losing
 candidates stay in the existing root receipt through failed invalidation and
 refund only after actual node disposal. See
 \repofile|docs/reference/principal-history-admission.md|.
+\end{implementationdetail}
 
-The thread allocation charge stays in the same node through staging, delayed
-reaping, failed retirement and abandonment.
-Confirmed pair release permits context disposal, then node deallocation, then
-refund to the original principal. Root retirement, ASID reuse and trusted
-promotion cannot refund live metadata. Allocation/limit rejection remains
-\texttt{ThreadPreparationFailed}. Table-vector capacity, observer/weak storage,
-allocator overhead and general metadata admission remain separate. See
-\repofile|docs/reference/thread-metadata-admission.md|.
-
+\begin{implementationdetail}{Root-bound waiter and timer sponsors}
 Waiter and scheduler-timer sponsors are now prepared fallibly with each root's
 memory-budget registry node before address-space publication locks. One owner
 retains the unpublished root and both namespace preparations; publication binds
@@ -244,7 +260,11 @@ the account to the exact assigned generation without allocating its metadata.
 The kernel account is prepared on the BSP before scheduler/AP startup. Runtime
 sponsor capture cannot lazily allocate or substitute a successor's account;
 old memory charges and outstanding waiter/timer owners retain their original
-lifetimes independently. Launch-limit and domain-usage nodes now prepare in the
+lifetimes independently.
+\end{implementationdetail}
+
+\begin{implementationdetail}{Root limit, usage and signed-authority metadata}
+Launch-limit and domain-usage nodes now prepare in the
 same registration owner and publish without allocation. Their detached nodes
 follow the exact closing/final-root receipt through failed invalidation; confirmed
 invalidation releases them outside local guards before backing and slot completion.
@@ -257,24 +277,35 @@ ordinary preparation is limited to 3 MiB/9,216 nodes. A root needs all three;
 partial rejection frees unused nodes before refund and publishes no ASID.
 Original charges follow detached nodes through failed invalidation until actual
 post-proof deallocation. Promotion cannot reclassify an existing charge.
+\end{implementationdetail}
+
+\begin{implementationdetail}{IPC metadata during root publication and cleanup}
 IPC namespace storage and both budget accounts also prepare fallibly in the
 same registration owner. Its first exact-root operation lease spans
 lifecycle/table unlock and prepared namespace publication under IPC alone;
 missing namespaces reject instead of recreating. Empty drained namespace
-nodes dispose after IPC unlock. Pending and reply-token nodes likewise prepare outside IPC
+nodes dispose after IPC unlock.
+
+Pending and reply-token nodes likewise prepare outside IPC
 with original call/reply counts and a retained caller-root lease. Their complete
 containing owner explicitly finishes ordinary outcomes; abandonment retains all
 fields, and detached node disposal precedes count refund. Reply/cancellation
 owners retain token nodes through post-IPC disposal; serialized close reuses
 those nodes as its bounded retirement list, while scalar completion fallback
-retains the node and detached notifications together. Endpoint storage and queue
+retains the node and detached notifications together.
+
+Endpoint storage and queue
 growth now also prepare outside IPC while retaining their exact root and
 original sponsor/classification. FIFO replacement relinks without allocation;
 old backing and final closed endpoint nodes dispose after IPC unlock. Complete
-fallback retains their fields. Per-capability payload nodes now prepare fallibly
+fallback retains their fields.
+
+Per-capability payload nodes now prepare fallibly
 before authority mutation and publish by relinking. Detached payload and shared
 authority records leave IPC together in the existing cleanup owners; original
-connection counts follow node free. Call/endpoint shared-authority storage now
+connection counts follow node free.
+
+Call/endpoint shared-authority storage now
 prepares outside IPC with exact roots retained, admission revalidates/relinks
 under IPC, and payload allocation leaves it again. Call pending waiter-list
 construction also leaves IPC. Other guarded factories and memory capability/loan maps,
@@ -283,6 +314,9 @@ contexts remain separate. See
 \repofile|docs/reference/endpoint-budgets.md|. See
 \repofile|docs/reference/root-metadata-admission.md|. See
 \repofile|docs/reference/memory-object-retirement.md|.
+\end{implementationdetail}
+
+\paragraph*{Wait for retirement work.}
 
 Each pinned reaper waits on its LP retirement head instead of polling a timer.
 Staging queues admitted waiter nodes; producer-LP scheduler and idle boundaries
@@ -292,6 +326,7 @@ remain fenced and do not keep the worker runnable. Only rejected waiter
 admission uses the recorded 10\,ms backoff; readiness does not prove quiescence
 or authorize physical retry.
 
+\begin{implementationdetail}{Deliver callbacks before parking}
 Guard-free park setup drains the producer LP's pending deferred callbacks
 before publishing Blocked, under an IRQ-state-preserving local mask. Restoring
 IRQs can switch the producer away before its subsequent yield; that yield
@@ -301,7 +336,15 @@ sleep and untimed completion waits preserve the same ordering. This dispatch
 supplies readiness and metadata disposal, never physical cleanup authority.
 The bounded negative control detects omitted precursor delivery; historical
 IPC exact-exit timeouts remain subject to separate causal verification.
+\end{implementationdetail}
 
+\paragraph*{Compose with memory and IPC close.}
+
+The same event-only pattern lets close operations retain their exact roots and
+accepted work while waiting. Rejected waiter admission leaves authority and
+pins intact, and an observed transition grants no physical retry authority.
+
+\begin{implementationdetail}{Memory transfer-fence waiting}
 Explicit memory close likewise waits on an owned interest in the source
 transfer fence, retaining that transfer's captured root while parked. Its
 charged source and disposal node are prepared before memory-registry publication.
@@ -311,7 +354,9 @@ cannot consume that transport beneath the producer's IPC hold. Wait admission
 rejection leaves authority and pins intact; ordinary loan, DMA, copy and mapping
 pin rejection retains its existing policy. Readiness supplies no hardware
 completion or physical retry authority.
+\end{implementationdetail}
 
+\begin{implementationdetail}{IPC claim waiting}
 IPC close waits use the same event-only policy for reply/cancellation and
 endpoint-close claims. A contended close retains its exact root; source
 publication revalidates the capability and checked claim epoch after fallible
@@ -324,6 +369,7 @@ abandonment supplies no wake or physical retry. The serialized namespace/fixture
 adapter returns Pending on an unexpected claim instead of parking beneath
 lifecycle. Namespace and operation-lease drains retain separate notification
 work. See \repofile|docs/reference/ipc-record-budgets.md|.
+\end{implementationdetail}
 
 \section{Synchronization and lock ordering}
 

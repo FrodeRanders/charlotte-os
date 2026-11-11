@@ -24,6 +24,14 @@ The second pass resolves the table of contents and clickable cross-references.
 For TeXShop, select or create an engine that passes `--shell-escape` to
 `pdflatex`; SyncTeX continues to work with the SVG figures.
 
+For dense implementation passages, use the shared
+`implementationdetail` environment with a short topic title. It produces a
+page-breakable box labelled **Optional detail**. Keep the purpose, normal
+sequence, ownership obligations and caller-visible failure behaviour in the
+main text; group allocation/publication/cleanup mechanics into separate themed
+notes. Add short subsections or steps where the main explanation changes phase,
+rather than collecting an entire lifecycle in one box.
+
 Chapter 5 includes the [reconnecting client example](../../crates/catten-services/examples/reconnecting_client.rs)
 directly through marked `lstinputlisting` ranges. Keep the range markers intact
 when editing the example; its source must compile without additions to the

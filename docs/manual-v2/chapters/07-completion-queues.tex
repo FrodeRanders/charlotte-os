@@ -233,6 +233,7 @@ This avoids capability-table pressure for high-rate operations (timer events,
 network packet completions) while preserving the capability model for operations
 that need first-class authority.
 
+\begin{implementationdetail}{Boot-wide operation identities}
 Operation identities use one checked counter for the lifetime of a boot, shared
 by capability-backed and detached submissions. It issues values from one through
 \texttt{u64::MAX - 1}; zero and the syscall submission-failure sentinel
@@ -241,125 +242,41 @@ with the existing \texttt{WouldBlock}/submission-failure result before reserving
 record, watch, timer or capability resources. Existing operations remain usable.
 Failed preparation never refunds an identity, and namespace replacement never
 resets the counter. Admission failure therefore does not promise retry progress.
+\end{implementationdetail}
 
 \section{Completion-record admission}
 
+A completion record follows four stages: reserve capacity, prepare private
+state, publish into the captured namespace, and retain that state until it can
+be released. Timers add a separate lifetime because cancellation can outlast
+the operation. The following subsections follow that sequence.
+
+\subsection{Reserve capacity}
+
+Capability-backed and detached operations share the namespace's submission-slot
+limit. A separate record budget also counts retained state, so a completed or
+closed operation can still occupy admission while its storage remains live.
+
+\begin{implementationdetail}{Record limits and platform reserve}
 Capability-backed and detached operations share a namespace's configured
 submission-slot limit. A separate record budget counts retained state: at most
 the smaller of that capacity and 1,024 records per namespace, and 8,192 per
 node. Ordinary domains share 6,144 records; kernel-designated platform domains
 may use the remaining pool. The service loader currently configures 16 slots.
-
-A completion retains its charge while a kernel waiter or callback holds a
-strong reference, even after capability closure or domain teardown. A detached
-operation moves its charge into the CQ backlog until its result reaches the
-ring or is discarded during teardown. A fresh generation receives a fresh
-budget owner; old releases cannot credit a replacement. Closing a captured
-object also verifies its identity under the registry lock before revocation.
+\end{implementationdetail}
 
 Observer entries have separate admission, but general weak-only Arc/control-block
 allocations and the entire kernel heap still require broader accounting.
 Timer events have their own charges because deferred
 cancellation can outlive the operation record.
 
-Timer cancellation borrows the handle's retained state allocation and removes
-only a queue entry with that exact object identity. No private numeric
-cancellation counter remains. Retained strong ownership prevents address reuse
-during lookup; equal LP, deadline or cancellation flags grant no authority over
-a successor. Weak-only backing remains charged to its original sponsor.
-This adds no admission failure and is separate from public operation IDs.
+\subsection{Prepare the complete operation}
 
-Queue filtering, cancelled-event purging, expiry and rejected enqueue now
-detach complete event nodes into an owning retirement batch without allocation
-or destruction under the local queue borrow. Duplicate/removed keyed events
-move into its one inline slot. Callers release the queue before explicit,
-iterative disposal; abandoned receipts or queue storage retain all remaining
-nodes, sources, callback references and original charges. This supplies no
-physical completion, root-quiescence or replay proof.
+Preparation keeps the buffer, identity and reservations together through each
+fallible step. Rejection must leave a complete owner that can dispose of the
+unused state after local guards have been released.
 
-Processing captures its already-due prefix against one monotonic cutoff,
-preserving anonymous FIFO and quantum-first ties. A complete local delivery
-owner retains selected and purged payloads after queue unlock; callbacks,
-waiter notifications, temporary observer destruction and payload disposal then
-run on the original LP with IRQs masked. One inline queue claim prevents nested
-drains. Callback enqueue and newly due deadlines wait for the next pass;
-comparator reconciliation occurs before delivery and against current state at
-handback. Shared cancellation is rechecked before each signal starts; selected
-queue absence and a false queue-removal result are not completion or replay
-permission. Fired diagnostics describe expiry selection, not notification proof.
-Abandonment retains every field and leaves the claim fenced. The delivery owner
-cannot be sent/shared across LPs; runtime checks also enforce LP and IRQ policy.
-No allocation, extra reservation or new registry is introduced. IRQ execution,
-unrelated outer guards, completed raw-event destruction, raw cancellation
-references and arbitrary blocking callbacks remain separate qualification work.
-
-Completed unpublished timer nodes have the same inert ownership policy:
-enqueue consumes the complete preparation, and ordinary unused preparation
-consumes \texttt{cancel\_unpublished} after local publication/registry guards
-leave. Scheduler sleep prepares admission and node storage before its local
-publication mask; timed-wait rejection/expired preparation and both completion
-submission families explicitly dispose unused nodes. Caller-owned masks remain
-intact. Abandonment retains node, cancellation backing, callback/source and
-original charge without cleanup. Final strong/weak cancellation references can
-outlive explicit node disposal. Completed raw-event destruction,
-waiter preparation and broader IRQ/outer contexts remain separate work; no
-queue cancellation, physical proof, recovery custody or replay authority is
-created by private-node disposal.
-
-Cancellation likewise returns one complete must-use handback containing the
-exact handle and any removed node/source. Queue mutation and comparator updates
-finish before return; callers retain that owner through enclosing queue/registry
-guards and explicitly finish afterward. Finish disposes payloads before releasing
-the handle. Its Boolean records only queue removal, including false for selected,
-unpublished, stale, busy or remote cases. The bare handle has inert abandonment
-and explicit reference-only release; abandonment does not fabricate cancellation.
-Complete-handback abandonment retains every field and original charge. No new
-allocation, admission, registry, physical proof or replay authority is added.
-Raw Arc/Weak finalization and wider caller/destructor contexts remain separate
-qualification work.
-
-Timer node construction captures its already charged event/source/callback and
-outside admission before allocating empty uninitialized Box storage. The
-allocator receives no payload; rejection leaves it with the same inert owner
-until explicit cancellation after callback return. Successful storage initializes
-once into completed private ownership without allocation or deadline changes.
-Unused empty backing frees before event/source disposal and outside admission;
-abandonment at either phase retains every field and original charge. The node
-layout and single allocation stay unchanged. This creates no queue publication,
-physical proof, retry interface or custody registry. Completed raw-event
-destruction, payload assembly before the shared helper and broader
-caller contexts remain separate.
-
-Timer event preparation now retains its original source/callback before
-reservation, its uninstalled charge through holder allocation, and installed
-admission through cancellation-state allocation. Rejection explicitly disposes
-the original payload before uninstalled admission; completion transfers the
-same event into raw-event or node ownership without changing deadline policy.
-Shared charge-holder preparation allocates empty Arc storage without handing
-the allocator an owning charge. Private initialization occurs once; owning
-rejection cancels after callback return, while parent-borrowed rejection retains
-the original reservation for ordered payload disposal. Phase abandonment is
-inert and retains every field. The same primitive serves records, timers and
-observer lists, preserving layout, one-allocation allowance and strong/weak
-accounting. Shared payload preparation now also retains the complete value and
-original admission outside empty Arc allocation. The allocator owns no payload;
-private initialization consumes the same storage once, ordinary rejection
-disposes payload before backing and admission after callback return, and phase
-abandonment retains every field without heap work. Published Arc/Weak
-finalization, completed raw-event destruction, outer payload factories and wider
-containing contexts remain separate work; no
-physical proof, retry/custody or new registry is added.
-
-Completion record preparation captures its original buffer, operation ID and
-reservation before shared holder and waiter-list allocation. Holder preparation
-borrows the reservation; rejected allocation retains it with the original
-buffer. List allocation receives only captured classification. Ordinary
-rejection disposes buffer and unused list before either installed or uninstalled
-admission; abandonment at all three phases retains every field without cleanup.
-Success transfers the same buffer and identity into the shared Arc helper.
-Published completion destruction, outer factories and broader guard/IRQ contexts
-remain separate; no physical receipt, retry owner or registry is added.
-
+\begin{implementationdetail}{Record and submission preparation}
 The containing capability-submission owner now captures the original buffer
 and target before operation-ID and record/watch admission too. Early watch
 rejection retains its assigned operation and original record charge with that
@@ -372,6 +289,18 @@ exhaustion, hidden authority and publication revalidation remain unchanged;
 target capture, timer/observer factories and wider containing contexts remain
 separate qualification work.
 
+Completion record preparation captures its original buffer, operation ID and
+reservation before shared holder and waiter-list allocation. Holder preparation
+borrows the reservation; rejected allocation retains it with the original
+buffer. List allocation receives only captured classification. Ordinary
+rejection disposes buffer and unused list before either installed or uninstalled
+admission; abandonment at all three phases retains every field without cleanup.
+Success transfers the same buffer and identity into the shared Arc helper.
+Published completion destruction, outer factories and broader guard/IRQ contexts
+remain separate; no physical receipt, retry owner or registry is added.
+\end{implementationdetail}
+
+\begin{implementationdetail}{Observer and callback preparation}
 Shared observer-entry preparation now retains its exact weak observer and
 original waiter/watch charge outside empty Box allocation. The allocator owns
 no payload; rejection cancels explicitly after callback return, freeing empty
@@ -390,27 +319,15 @@ unused disposal. All four phase fallbacks retain complete fields, including the
 original buffered record and charges across namespace replacement. Published
 observation/token/source destruction and wider caller contexts remain separate;
 this creates no physical root lease, quiescence proof or recovery interface.
+\end{implementationdetail}
 
-Backlog-to-ring publication retains delivered detached-record charges in a
-fixed two-class owning batch until the completion registry is unlocked.
-Ordinary/platform charges retain their original accounts; no disposal storage
-is allocated. Full FIFO flushing and logical slot updates remain serialized.
-The same admitted detached nodes relink into the shared retirement list and
-free after local unlock, before either accounting class refunds.
-Checked batch refunds finish before CQ parking or producer notification;
-failed ring writes retain the complete backlog entry. Registry-map metadata
-and broader outer-context qualification remain separate work.
+\subsection{Publish into the captured namespace}
 
-Detached-record metadata uses the shared admitted map: fallible node storage is
-prepared outside the completion registry, then relinked after exact namespace
-and CQ validation. Terminal removal transfers its owning node to the direct
-receipt or backlog. Explicit namespace close drains all remaining nodes after
-local unlock. Namespace, detached-preparation and terminal-receipt abandonment
-retain their complete fields, accounts and sources; ordinary rejection uses an
-explicit unstarted finish. Global namespace/account admission and wider caller
-contexts remain open. None of these owners is a physical completion receipt or
-permission to replay accepted work.
+Publication rechecks the exact namespace and queue captured during preparation.
+Prepared storage is linked into place under serialization. A reused numeric
+identifier does not make a replacement namespace or queue the original target.
 
+\begin{implementationdetail}{Capability-backed publication}
 Capability-backed completion submission prepares records, waiter lists, optional
 watch admission and shared authority storage outside the completion registry.
 Hidden authority admission and final joint publication each revalidate the exact
@@ -431,17 +348,195 @@ abandonment retains all fields. All three individual withdrawal paths remove
 the exact retained CQ row before returning its slot, including full-ring
 terminal abort. Global namespace/account admission and wider timer/observer/caller contexts
 remain open; no physical completion or replay proof is added.
+\end{implementationdetail}
+
+\begin{implementationdetail}{Detached submission and record storage}
+Detached plain/timer submissions capture exact namespace root, record/event
+accounts, trusted classification, capacity and CQ source before preparation.
+Record/event admission and timer node/observer allocation run outside the
+completion registry. Borrowed publication rechecks that capture and retirement;
+a replaced queue rejects even if its numeric ID still exists. Rejected owners
+retain their fields through unlock for unstarted rollback, with no public retry
+owner. Accepted nodes enqueue exactly once afterward; teardown in between flags
+the retained event and keeps its charge until cancelled insertion is discarded.
+Map/authority metadata, backlog reconciliation, capability-backed construction
+and outer caller/IRQ contexts remain separate. Captured identity is no physical
+pin or cleanup receipt.
+
+Detached-record metadata uses the shared admitted map: fallible node storage is
+prepared outside the completion registry, then relinked after exact namespace
+and CQ validation. Terminal removal transfers its owning node to the direct
+receipt or backlog. Explicit namespace close drains all remaining nodes after
+local unlock. Namespace, detached-preparation and terminal-receipt abandonment
+retain their complete fields, accounts and sources; ordinary rejection uses an
+explicit unstarted finish. Global namespace/account admission and wider caller
+contexts remain open. None of these owners is a physical completion receipt or
+permission to replay accepted work.
+\end{implementationdetail}
+
+\subsection{Retain charges through delivery and teardown}
+
+A completion retains its charge while a kernel waiter or callback holds a
+strong reference, even after capability closure or domain teardown. A detached
+operation moves its charge into the CQ backlog until its result reaches the
+ring or is discarded during teardown. A fresh generation receives a fresh
+budget owner; old releases cannot credit a replacement. Closing a captured
+object also verifies its identity under the registry lock before revocation.
+
+Putting a result in the CQ and releasing the operation's remaining storage are
+separate steps. A failed ring write keeps the backlog entry and its charge;
+a delivered result can still leave timer or observer state to be disposed of.
+
+\begin{implementationdetail}{Backlog publication and refunds}
+Backlog-to-ring publication retains delivered detached-record charges in a
+fixed two-class owning batch until the completion registry is unlocked.
+Ordinary/platform charges retain their original accounts; no disposal storage
+is allocated. Full FIFO flushing and logical slot updates remain serialized.
+The same admitted detached nodes relink into the shared retirement list and
+free after local unlock, before either accounting class refunds.
+Checked batch refunds finish before CQ parking or producer notification;
+failed ring writes retain the complete backlog entry. Registry-map metadata
+and broader outer-context qualification remain separate work.
+\end{implementationdetail}
+
+\begin{implementationdetail}{Detached terminal delivery}
+Detached terminal publication returns the complete remaining timer-bearing
+record beyond registry unlock before destroying its observer/cancellation
+fields. Direct-ring delivery leaves the original record charge with that owner;
+only actual backlog retention transfers it into the retained entry. Notification
+then uses the exact published CQ source, even if the queue was replaced during
+the intervening phase. A firing timer still owns its event/node and producer
+reference during notification, retaining separate event admission until queue
+processing finishes. Map removal, backlog draining, construction and outer
+queue/IRQ contexts remain separate. This is logical terminal disposal, not a
+physical cleanup receipt or a retry owner.
+\end{implementationdetail}
+
+\subsection{Manage the timer lifetime separately}
+
+Cancelling an operation does not prove that its timer payload has been released.
+Timer preparation, queue removal and delivery therefore carry their own owners
+and charges. Exact retained object identity distinguishes a timer from any
+successor; a matching deadline or LP is insufficient.
+
+\begin{implementationdetail}{Cancellation identity and address reuse}
+Timer cancellation borrows the handle's retained state allocation and removes
+only a queue entry with that exact object identity. No private numeric
+cancellation counter remains. Retained strong ownership prevents address reuse
+during lookup; equal LP, deadline or cancellation flags grant no authority over
+a successor. Weak-only backing remains charged to its original sponsor.
+This adds no admission failure and is separate from public operation IDs.
+\end{implementationdetail}
+
+\begin{implementationdetail}{Event and shared-charge preparation}
+Timer event preparation now retains its original source/callback before
+reservation, its uninstalled charge through holder allocation, and installed
+admission through cancellation-state allocation. Rejection explicitly disposes
+the original payload before uninstalled admission; completion transfers the
+same event into raw-event or node ownership without changing deadline policy.
+
+Shared charge-holder preparation allocates empty Arc storage without handing
+the allocator an owning charge. Private initialization occurs once; owning
+rejection cancels after callback return, while parent-borrowed rejection retains
+the original reservation for ordered payload disposal. Phase abandonment is
+inert and retains every field. The same primitive serves records, timers and
+observer lists, preserving layout, one-allocation allowance and strong/weak
+accounting.
+
+Shared payload preparation now also retains the complete value and
+original admission outside empty Arc allocation. The allocator owns no payload;
+private initialization consumes the same storage once, ordinary rejection
+disposes payload before backing and admission after callback return, and phase
+abandonment retains every field without heap work. Published Arc/Weak
+finalization, completed raw-event destruction, outer payload factories and wider
+containing contexts remain separate work; no
+physical proof, retry/custody or new registry is added.
+\end{implementationdetail}
+
+\begin{implementationdetail}{Private timer nodes and unused preparation}
+Timer node construction captures its already charged event/source/callback and
+outside admission before allocating empty uninitialized Box storage. The
+allocator receives no payload; rejection leaves it with the same inert owner
+until explicit cancellation after callback return. Successful storage initializes
+once into completed private ownership without allocation or deadline changes.
+Unused empty backing frees before event/source disposal and outside admission;
+abandonment at either phase retains every field and original charge. The node
+layout and single allocation stay unchanged. This creates no queue publication,
+physical proof, retry interface or custody registry. Completed raw-event
+destruction, payload assembly before the shared helper and broader
+caller contexts remain separate.
+
+Completed unpublished timer nodes have the same inert ownership policy:
+enqueue consumes the complete preparation, and ordinary unused preparation
+consumes \texttt{cancel\_unpublished} after local publication/registry guards
+leave. Scheduler sleep prepares admission and node storage before its local
+publication mask; timed-wait rejection/expired preparation and both completion
+submission families explicitly dispose unused nodes. Caller-owned masks remain
+intact. Abandonment retains node, cancellation backing, callback/source and
+original charge without cleanup. Final strong/weak cancellation references can
+outlive explicit node disposal. Completed raw-event destruction,
+waiter preparation and broader IRQ/outer contexts remain separate work; no
+queue cancellation, physical proof, recovery custody or replay authority is
+created by private-node disposal.
+\end{implementationdetail}
+
+\begin{implementationdetail}{Queue removal and cancellation handback}
+Queue filtering, cancelled-event purging, expiry and rejected enqueue now
+detach complete event nodes into an owning retirement batch without allocation
+or destruction under the local queue borrow. Duplicate/removed keyed events
+move into its one inline slot. Callers release the queue before explicit,
+iterative disposal; abandoned receipts or queue storage retain all remaining
+nodes, sources, callback references and original charges. This supplies no
+physical completion, root-quiescence or replay proof.
+
+Cancellation likewise returns one complete must-use handback containing the
+exact handle and any removed node/source. Queue mutation and comparator updates
+finish before return; callers retain that owner through enclosing queue/registry
+guards and explicitly finish afterward. Finish disposes payloads before releasing
+the handle. Its Boolean records only queue removal, including false for selected,
+unpublished, stale, busy or remote cases.
+
+The bare handle has inert abandonment
+and explicit reference-only release; abandonment does not fabricate cancellation.
+Complete-handback abandonment retains every field and original charge. No new
+allocation, admission, registry, physical proof or replay authority is added.
+Raw Arc/Weak finalization and wider caller/destructor contexts remain separate
+qualification work.
+\end{implementationdetail}
+
+\begin{implementationdetail}{Expiry selection and delivery}
+Processing captures its already-due prefix against one monotonic cutoff,
+preserving anonymous FIFO and quantum-first ties. A complete local delivery
+owner retains selected and purged payloads after queue unlock; callbacks,
+waiter notifications, temporary observer destruction and payload disposal then
+run on the original LP with IRQs masked. One inline queue claim prevents nested
+drains. Callback enqueue and newly due deadlines wait for the next pass;
+comparator reconciliation occurs before delivery and against current state at
+handback. Shared cancellation is rechecked before each signal starts; selected
+queue absence and a false queue-removal result are not completion or replay
+permission. Fired diagnostics describe expiry selection, not notification proof.
+Abandonment retains every field and leaves the claim fenced. The delivery owner
+cannot be sent/shared across LPs; runtime checks also enforce LP and IRQ policy.
+No allocation, extra reservation or new registry is introduced. IRQ execution,
+unrelated outer guards, completed raw-event destruction, raw cancellation
+references and arbitrary blocking callbacks remain separate qualification work.
+\end{implementationdetail}
 
 \section{Completion-queue admission}
 
-Queue preparation reserves a registration count and kernel-owned backing
-bytes. Each namespace may register 32 queues with at most 256\,KiB of backing;
-node limits are 2,048 queues and 4\,MiB. Ordinary domains share 1,536 queues
-and 3\,MiB, leaving a reserve for kernel-designated platform domains.
-Backlogs are pre-allocated from the namespace's submission capacity, clamped
-to 1,024 and rounded with checked arithmetic. Heap rings use aligned
-4\,KiB backing. Physical rings remain owned by their address-space mappings;
-their pages are outside this heap-byte budget.
+Queue admission covers both the registered queue and its kernel-owned backing.
+The normal path prepares both before publication. Replacement adds a second
+requirement: enough temporary capacity for the old queue and its candidate to
+coexist.
+
+\subsection{Prepare and publish a queue}
+
+Preparation reserves a queue registration and its kernel-owned backing before
+publication. The pages of a physical ring remain owned by their address-space
+mappings. If CQ preparation fails during domain loading, the loader tears down
+the partially mapped domain and any queues already installed.
+
+\subsection{Replace an existing queue}
 
 Preparation is fallible and precedes publication. Replacement must admit
 both old and staged backing; failure preserves the original queue and its
@@ -450,19 +545,74 @@ and a frame already registered to another queue is rejected. Reusing the same
 queue's frame requires a quiescent consumer. Successful replacement discards
 undelivered results rather than migrating them.
 
+\begin{implementationdetail}{Queue limits and backing layout}
+Queue preparation reserves a registration count and kernel-owned backing
+bytes. Each namespace may register 32 queues with at most 256\,KiB of backing;
+node limits are 2,048 queues and 4\,MiB. Ordinary domains share 1,536 queues
+and 3\,MiB, leaving a reserve for kernel-designated platform domains.
+Backlogs are pre-allocated from the namespace's submission capacity, clamped
+to 1,024 and rounded with checked arithmetic. Heap rings use aligned
+4\,KiB backing. Physical rings remain owned by their address-space mappings;
+their pages are outside this heap-byte budget.
+\end{implementationdetail}
+
+\begin{implementationdetail}{Loader rollback and platform classification}
 An owning loader guard tears down the partially mapped domain if a CQ cannot
 be prepared, including any queues already installed. Trusted ambient supervisor
 paths designate platform domains before preparation; scoped and syscall
 preparation use ordinary admission. General page allocation, observer storage
 and kernel metadata still require further admission and fallible cleanup.
+\end{implementationdetail}
+
+\begin{implementationdetail}{Prepared queue storage and publication}
+CQ map-node, source-list, backlog and heap-ring admission/allocation run outside the
+completion registry, including partial-error disposal. Preparation retains the
+exact namespace root, CQ account, submission capacity and trusted classification;
+publication rechecks identity and retirement. Physical frames remain untouched
+until alias checks and initialization under the same registry hold as queue
+publication. Rejection retains prepared backing and original charges until
+unlock. Whole-namespace preparation includes its fallibly prepared CQ map node.
+Fresh queue publication relinks admitted storage without allocation. Replacement
+detaches the complete old node and payload into one retaining owner; explicit
+finish frees the node before payload destruction and original charge refund.
+Namespace disposal explicitly drains these owners too. Unpublished and retired
+queue abandonment retains every field without cleanup. The registration count
+covers the one prepared node; backing-byte admission still counts ring/backlog
+storage, not aggregate metadata bytes.
+\end{implementationdetail}
+
+\begin{implementationdetail}{Namespace storage and default-queue setup}
+Global namespace metadata also uses the shared admitted map. One preparation
+retains its fallibly allocated node and four original accounts with the private
+namespace/default queue before registry access. Captured retirement and physical
+alias validation precede initialization; no later admission can reject a
+physical-ring publication. Close/replacement detaches the complete node and
+payload without freeing metadata under the registry. Explicit finish frees that
+global node before payload/source/account disposal; unpublished and retired
+fallback retains every field. Runtime CQ setup returns typed allocation errors;
+mandatory bare kernel/demo/fixture setup shares the same preparation through
+a panic wrapper. This adds no separate aggregate count/byte budget for global
+namespace/account storage, including empty namespaces. Sorted global lookups
+are linear in live namespaces; no new scan ceiling is claimed. Wider
+timer/observer disposal and outer caller/IRQ contexts remain separate.
+A captured identity supplies no physical
+pin or permission to retry accepted work; frame owners must quiesce consumers.
+\end{implementationdetail}
 
 \section{Owning endpoint-close and thread-exit registrations}
+
+Lifecycle watches observe a source's end without taking ownership of that source.
+Endpoint and external thread watches can be cancelled independently. Worker-backed
+completions have a stronger obligation: retain the producer until it exits.
+
+\subsection{Watch an endpoint close}
 
 An endpoint-close watch owns a one-shot callback and a removable registration.
 Dropping its completion cancels locally without closing the source endpoint or
 waiting for endpoint death. Message arrival remains a readiness event and does
 not complete a lifecycle watch.
 
+\begin{implementationdetail}{Close-watch capacity and notification disposal}
 Each endpoint accepts at most 128 close registrations across callers. The
 submitting completion namespace may retain its configured capacity, clamped to
 1,024 entries; node admission is 8,192 with an ordinary share of 6,144. Entries
@@ -476,6 +626,9 @@ independent list lock. A detached entry retains its charge even if its token
 is cancelled before notification. Late callbacks cannot change a cancelled
 terminal result or complete a replacement with the same numeric capability.
 List destruction is iterative to bound kernel-stack use.
+\end{implementationdetail}
+
+\subsection{Watch an external thread exit}
 
 External thread-exit watches share the namespace and node registration pools
 with endpoint-close watches. Each target thread accepts at most 128 entries.
@@ -486,6 +639,7 @@ failure rolls back the unpublished completion and reports failure rather than
 pretending that the thread exited. Reaping invokes callbacks outside observer
 and master-table locks, before releasing the thread's stack.
 
+\begin{implementationdetail}{Thread-exit watch preparation}
 Thread-exit preparation captures its original candidate list, weak observer and
 already-admitted watch charge in one inert owner before list/entry allocation.
 The scheduler preparation hook borrows that owner. Ordinary allocation and
@@ -494,6 +648,9 @@ release last; all four phase fallbacks retain every field. Published token/sourc
 and active linked-entry destruction, initial capture/admission and wider
 caller contexts remain separate. A retained list grants no target-thread/root
 lease, physical quiescence proof or recovery authority.
+\end{implementationdetail}
+
+\subsection{Retain a completion worker until exit}
 
 Worker-backed completions bind their callback and registration to the fresh
 thread before publication and execution. Cancellation remains pending until
@@ -522,6 +679,7 @@ discard entries even when an old completion or token remains retained.
 Lists allocate fallibly on first subscription. Empty control blocks and arbitrary
 callback capture sizes remain outside these entry counters.
 
+\begin{implementationdetail}{Terminal subscription transitions}
 Event and worker subscriptions detached by terminal completion stay in one
 transition owner through terminal-state and CQ-result publication. Disposal
 follows both local registry and state unlock, before notification. The exact CQ
@@ -532,63 +690,63 @@ late event watch but retains the worker-exit subscription; terminal installation
 retains neither. Timer cancellation, record/authority/map metadata and outer
 producer/IRQ contexts remain separate qualification work. These subscription
 transitions grant no physical cleanup proof or permission to replay accepted work.
-
-CQ map-node, source-list, backlog and heap-ring admission/allocation run outside the
-completion registry, including partial-error disposal. Preparation retains the
-exact namespace root, CQ account, submission capacity and trusted classification;
-publication rechecks identity and retirement. Physical frames remain untouched
-until alias checks and initialization under the same registry hold as queue
-publication. Rejection retains prepared backing and original charges until
-unlock. Whole-namespace preparation includes its fallibly prepared CQ map node.
-Fresh queue publication relinks admitted storage without allocation. Replacement
-detaches the complete old node and payload into one retaining owner; explicit
-finish frees the node before payload destruction and original charge refund.
-Namespace disposal explicitly drains these owners too. Unpublished and retired
-queue abandonment retains every field without cleanup. The registration count
-covers the one prepared node; backing-byte admission still counts ring/backlog
-storage, not aggregate metadata bytes.
-
-Global namespace metadata also uses the shared admitted map. One preparation
-retains its fallibly allocated node and four original accounts with the private
-namespace/default queue before registry access. Captured retirement and physical
-alias validation precede initialization; no later admission can reject a
-physical-ring publication. Close/replacement detaches the complete node and
-payload without freeing metadata under the registry. Explicit finish frees that
-global node before payload/source/account disposal; unpublished and retired
-fallback retains every field. Runtime CQ setup returns typed allocation errors;
-mandatory bare kernel/demo/fixture setup shares the same preparation through
-a panic wrapper. This adds no separate aggregate count/byte budget for global
-namespace/account storage, including empty namespaces. Sorted global lookups
-are linear in live namespaces; no new scan ceiling is claimed. Wider
-timer/observer disposal and outer caller/IRQ contexts remain separate.
-A captured identity supplies no physical
-pin or permission to retry accepted work; frame owners must quiesce consumers.
-
-Detached terminal publication returns the complete remaining timer-bearing
-record beyond registry unlock before destroying its observer/cancellation
-fields. Direct-ring delivery leaves the original record charge with that owner;
-only actual backlog retention transfers it into the retained entry. Notification
-then uses the exact published CQ source, even if the queue was replaced during
-the intervening phase. A firing timer still owns its event/node and producer
-reference during notification, retaining separate event admission until queue
-processing finishes. Map removal, backlog draining, construction and outer
-queue/IRQ contexts remain separate. This is logical terminal disposal, not a
-physical cleanup receipt or a retry owner.
-
-Detached plain/timer submissions capture exact namespace root, record/event
-accounts, trusted classification, capacity and CQ source before preparation.
-Record/event admission and timer node/observer allocation run outside the
-completion registry. Borrowed publication rechecks that capture and retirement;
-a replaced queue rejects even if its numeric ID still exists. Rejected owners
-retain their fields through unlock for unstarted rollback, with no public retry
-owner. Accepted nodes enqueue exactly once afterward; teardown in between flags
-the retained event and keeps its charge until cancelled insertion is discarded.
-Map/authority metadata, backlog reconciliation, capability-backed construction
-and outer caller/IRQ contexts remain separate. Captured identity is no physical
-pin or cleanup receipt.
+\end{implementationdetail}
 
 \section{Owned completion and CQ waiters}
 
+Waiting has three steps: admit a registration, publish the blocked state while
+closing the lost-wake window, then cancel the registration when the wait ends.
+Admission rejection is a waiting outcome; it does not finish the operation.
+
+\subsection{Admit before parking}
+
+Completion and CQ scheduler waiters use fallible registration before a thread
+is removed from its Ready queue or published as Blocked. Rejection preserves
+its state, queue membership and migration constraints; an already-ready source
+does not park it. Each source links at most 64 registrations, each waiting domain
+generation 1,024, and the node 8,192 with an ordinary share of 6,144. The waiting
+domain sponsors the entry independently of the source's owner. These are kernel
+policy limits, separate from records, close watches, timers and CQ backing.
+
+\subsection{Keep the registration with the waiter}
+
+The Waker owns the registration. Ready admission cancels it even if a competing
+watchdog wins and another strong Waker survives; reaping a Blocked thread also
+cancels it. Detached notification storage remains charged until actually freed.
+Token destruction enters only the independent list lock. Notifications run
+after source locks are released, and CQ notification lists can be drained and
+rearmed without growing an unbounded observer queue. Retirement closes the
+generation's sponsor, while late cleanup cannot credit a replacement ASID.
+
+Endpoint-readiness and pending-call waiters share these admission pools and
+owning cancellation, as described in \autoref{chap:endpoints}. Untimed IPC waits
+also retry under pressure rather than returning while a server still holds a
+live loan. IPC source callbacks run after its registry is released.
+
+\subsection{Distinguish waiting failure from operation completion}
+
+A timed completion wait reports \texttt{WAIT\_ADMISSION\_FAILED} when parking
+is rejected, retaining the operation and its Rust owner for retry or safe Drop.
+The untimed completion-wait ABI instead yields cooperatively and retries until
+terminal completion, preserving borrowed-buffer safety. This overload fallback
+does not guarantee efficient idle waiting or producer progress. CQ waits retain
+their existing return shape and can return without parking when admission fails.
+
+\subsection{Close the lost-wake window}
+
+Timed parking publishes the blocked state and its watchdog under one local
+interrupt mask, then rechecks the condition. The mask preserves the caller's
+entry interrupt state and ends before yielding.
+
+\begin{implementationdetail}{Timed-wait publication ordering}
+Timed waits mask local interrupts across Blocked publication, watchdog enqueue
+and the condition recheck. Without that interval, a quantum interrupt could
+switch out the waiter before its deadline wake exists. An owning local mask
+restores the entry interrupt state on rejection and is dropped before yielding;
+it holds no lock across a context switch. Watchdog storage still needs admission.
+\end{implementationdetail}
+
+\begin{implementationdetail}{Waiter-source and entry preparation}
 Lazy waiter-source initialization retains original sponsor, weak observer,
 candidate, first published winner and shared waiter child in one inert owner.
 Losing candidate disposal remains after the slot guard and before entry admission.
@@ -613,41 +771,15 @@ All three phase fallbacks retain complete fields through source closure and
 sponsor retirement. Published token/source/batch destruction, active linked
 entries, initial source acquisition and wider caller contexts remain separate.
 These metadata owners supply no thread/root lease or physical quiescence proof.
+\end{implementationdetail}
 
-Completion and CQ scheduler waiters use fallible registration before a thread
-is removed from its Ready queue or published as Blocked. Rejection preserves
-its state, queue membership and migration constraints; an already-ready source
-does not park it. Each source links at most 64 registrations, each waiting domain
-generation 1,024, and the node 8,192 with an ordinary share of 6,144. The waiting
-domain sponsors the entry independently of the source's owner. These are kernel
-policy limits, separate from records, close watches, timers and CQ backing.
+\subsection{Apply the same rule to other scheduler sources}
 
-The Waker owns the registration. Ready admission cancels it even if a competing
-watchdog wins and another strong Waker survives; reaping a Blocked thread also
-cancels it. Detached notification storage remains charged until actually freed.
-Token destruction enters only the independent list lock. Notifications run
-after source locks are released, and CQ notification lists can be drained and
-rearmed without growing an unbounded observer queue. Retirement closes the
-generation's sponsor, while late cleanup cannot credit a replacement ASID.
+Kernel blocking locks and scheduler timers also use admitted registrations.
+Rejected registration leaves the thread runnable; it must preserve the resource
+owner while following that wait family's retry policy.
 
-A timed completion wait reports \texttt{WAIT\_ADMISSION\_FAILED} when parking
-is rejected, retaining the operation and its Rust owner for retry or safe Drop.
-The untimed completion-wait ABI instead yields cooperatively and retries until
-terminal completion, preserving borrowed-buffer safety. This overload fallback
-does not guarantee efficient idle waiting or producer progress. CQ waits retain
-their existing return shape and can return without parking when admission fails.
-
-Timed waits mask local interrupts across Blocked publication, watchdog enqueue
-and the condition recheck. Without that interval, a quantum interrupt could
-switch out the waiter before its deadline wake exists. An owning local mask
-restores the entry interrupt state on rejection and is dropped before yielding;
-it holds no lock across a context switch. Watchdog storage still needs admission.
-
-Endpoint-readiness and pending-call waiters share these admission pools and
-owning cancellation, as described in \autoref{chap:endpoints}. Untimed IPC waits
-also retry under pressure rather than returning while a server still holds a
-live loan. IPC source callbacks run after its registry is released.
-
+\begin{implementationdetail}{Blocking mutex and read/write-lock waiters}
 Kernel scheduler-blocking mutex and read/write-lock waiters also share these
 budgets. Each mutex source and each reader/writer source links at most 64 entries.
 Uncontended acquisition allocates nothing; first contention prepares the list
@@ -659,7 +791,9 @@ final reader releases an RwLock's writer waiters. Notifications do not reserve
 ownership, and broadcast does not guarantee fairness or writer priority.
 The blocking family is currently used only by kernel tests;
 existing registry/allocator spin locks are unchanged.
+\end{implementationdetail}
 
+\begin{implementationdetail}{Scheduler timers and preemption storage}
 Scheduler timer observers also use owning admission. Non-scheduler producers
 install one callback in an embedded slot rather than an unbounded weak queue.
 Rejected sleep admission leaves the caller runnable to yield until its counter
@@ -674,6 +808,7 @@ event has one inline queue slot per LP, outside anonymous admission. Rejection
 therefore cannot consume scheduler preemption storage. Charges remain until the
 actual event/node backing and cancellation references are released, including
 an aborted sleeper awaiting its deadline and detached retirement batches.
+\end{implementationdetail}
 
 Every scheduler Observable source now requires fallible owning registration;
 there is no weak-only default. Steady-state publication and self-test results
