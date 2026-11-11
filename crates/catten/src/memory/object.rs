@@ -1,6 +1,6 @@
 //! First-class kernel memory objects.
 //!
-//! This is the kernel-side ownership primitive that sitas-style userspace can
+//! This is the kernel-side ownership primitive that Sitas-style userspace can
 //! eventually name through capabilities. It deliberately stays below the
 //! syscall ABI for now: callers pass kernel address-space ids, and the registry
 //! enforces that moving an object consumes the sender's capability.

@@ -1,14 +1,14 @@
 # CharlotteOS, Sitas, and Xous: A Co-Designed Architecture for Isolated Asynchronous Services
 
 > **Status:** Architecture and implementation redirection note\
-> **Audience:** CharlotteOS and sitas contributors; intended as direct
+> **Audience:** CharlotteOS and Sitas contributors; intended as direct
 > input to Codex\
 > **Purpose:** Replace the earlier *Sitas on CharlotteOS* working draft
 > with a unified model that combines:
 >
 > -   **CharlotteOS** as the protection, scheduling, interrupt, memory,
 >     and completion substrate;
-> -   **sitas** as the shard-per-core userspace execution and ownership
+> -   **Sitas** as the shard-per-core userspace execution and ownership
 >     model;
 > -   **Xous** as the reference model for isolated userspace servers,
 >     connection-oriented IPC, and MMU-enforced memory-message
@@ -80,7 +80,7 @@ repository; repository history is the authority for what has been pushed.
 
 ## 1. Executive conclusion
 
-CharlotteOS, sitas, and Xous fit together, but not by collapsing their
+CharlotteOS, Sitas, and Xous fit together, but not by collapsing their
 abstractions into one universal "async handle."
 
 The coherent architecture is:
@@ -98,7 +98,7 @@ CharlotteOS kernel
 Userspace service process
     one or more externally visible IPC endpoints
     protocol-specific request/reply handling
-    one sitas executor per assigned shard
+    one Sitas executor per assigned shard
     shard-local state
     typed in-process commands
     driver or service implementation
@@ -134,7 +134,7 @@ mechanisms**:
     -   asynchronous kernel work;
     -   completion of operations submitted through a resource
         capability;
-    -   aggregated waiting by a sitas shard.
+    -   aggregated waiting by a Sitas shard.
 
 Sitas then supplies the third layer:
 
@@ -319,7 +319,7 @@ CharlotteOS contributes the mechanisms that must be privileged:
 The CharlotteOS fork already contains substantial experimental work in
 this direction, including completion capabilities, a shared
 completion-queue ring, real AArch64 EL0/SVC execution, bounded IPI
-queues, typed kernel mailboxes, `ShardLocal<T>`, and a no-std sitas
+queues, typed kernel mailboxes, `ShardLocal<T>`, and a no-std Sitas
 userspace smoke path.
 
 ### 2.2 Sitas
@@ -409,10 +409,10 @@ It may have:
 An **LP** is CharlotteOS's representation of a schedulable hardware
 execution context.
 
-An LP is not a sitas shard. A useful initial mapping is:
+An LP is not a Sitas shard. A useful initial mapping is:
 
 ``` text
-one sitas shard
+one Sitas shard
     ↔ one LP-affine userspace thread
     ↔ normally one logical CPU
 ```
@@ -554,7 +554,7 @@ It does **not** mean:
 
 ### 4.1 Blocking is still required
 
-When no sitas task is runnable, the shard's execution context should
+When no Sitas task is runnable, the shard's execution context should
 block in one kernel wait operation.
 
 That is desirable:
@@ -605,7 +605,7 @@ hardware interrupt
     → kernel records result or notification
     → blocked execution context becomes runnable
     → normal return to userspace
-    → sitas executor drains CQ/endpoints
+    → Sitas executor drains CQ/endpoints
     → executor wakes relevant Rust tasks
 ```
 
@@ -616,7 +616,7 @@ required.
 
 ## 5. Two kernel data paths
 
-The earlier CharlotteOS/sitas draft leaned toward a universal
+The earlier CharlotteOS/Sitas draft leaned toward a universal
 completion-capability model. Xous shows why that is insufficient.
 
 CharlotteOS needs two distinct paths.
@@ -992,7 +992,7 @@ applications of the same primitives.
 ## 7. Request/reply and asynchronous service calls
 
 Xous is commonly synchronous at the client API even though communication
-is message based. CharlotteOS and sitas should retain both
+is message based. CharlotteOS and Sitas should retain both
 synchronous-looking futures and true asynchronous service execution.
 
 ## 7.1 Client call
@@ -1039,7 +1039,7 @@ This is essential for:
 ## 7.3 Service-side task routing
 
 The external endpoint receiver should be an ingress adapter. It routes
-work to a sitas shard:
+work to a Sitas shard:
 
 ``` rust
 async fn endpoint_loop(
@@ -1068,7 +1068,7 @@ A CharlotteOS service process may own:
 
 -   several endpoints;
 -   several receiving tasks;
--   several sitas shards;
+-   several Sitas shards;
 -   one or more completion queues;
 -   per-shard endpoint ingress queues.
 
@@ -1081,7 +1081,7 @@ single thread.
 
 ## 8.1 Aggregated wait
 
-A sitas shard should wait on one kernel-managed CQ or wait set rather than
+A Sitas shard should wait on one kernel-managed CQ or wait set rather than
 independently waiting on every operation capability.
 
 ``` text
@@ -1200,7 +1200,7 @@ was registered), and preserves cache warmth.
 Each assigned shard normally has:
 
 -   one LP-affine execution context;
--   one sitas executor;
+-   one Sitas executor;
 -   one ready queue;
 -   one timer structure;
 -   one CQ or CQ partition;
@@ -1208,14 +1208,14 @@ Each assigned shard normally has:
 
 ## 9.2 Internal messages are not kernel IPC
 
-Within one protection domain, use sitas typed mailboxes where practical:
+Within one protection domain, use Sitas typed mailboxes where practical:
 
 ``` text
 external cross-process boundary:
     CharlotteOS endpoint IPC
 
 internal cross-shard boundary:
-    sitas typed owned messages
+    Sitas typed owned messages
 ```
 
 Do not route every internal command through kernel endpoint IPC. That
@@ -1488,7 +1488,7 @@ additionally ensure:
 -   domain death triggers cleanup, quarantine, reset, or deliberate leak
     according to policy.
 
-Retain the sitas "drain or leak rather than use-after-free" principle
+Retain the Sitas "drain or leak rather than use-after-free" principle
 for experimental paths, but design the production kernel to reclaim
 through explicit operation and device teardown.
 
@@ -1572,7 +1572,7 @@ The ABI should leave room for:
 -   cancellation propagation;
 -   admission control.
 
-Do not encode these policies directly into sitas task priority. They
+Do not encode these policies directly into Sitas task priority. They
 cross protection and trust boundaries and require kernel mediation.
 
 ### 14.1 Load rebalancing
@@ -1610,7 +1610,7 @@ continue.
 -   non-lossy kernel CQ backlog;
 -   `CQ_WAIT_CHECKED` blocking through scheduler/observer machinery;
 -   bounded queues and explicit `WouldBlock`;
--   no-std sitas split and CharlotteOS backend;
+-   no-std Sitas split and CharlotteOS backend;
 -   per-shard executor model;
 -   typed in-kernel `ShardMailbox<M>`;
 -   closure-based `ShardLocal<T>` with restricted use;
@@ -1891,7 +1891,7 @@ Reference test:
 EL0 client
     → scalar call
 EL0 echo service
-    → deferred reply from sitas task
+    → deferred reply from Sitas task
 client future completes
 ```
 
@@ -2014,7 +2014,7 @@ Architecture:
 ``` text
 test application
     → socket/network endpoint
-network service with sitas shards
+network service with Sitas shards
     → packet/control endpoint
 virtio-net driver
     → MMIO/virtqueue/IRQ
@@ -2257,7 +2257,7 @@ The combined architecture adopts the following decisions.
 -   scalar and memory message distinction;
 -   move/read-lend/write-lend semantics;
 -   deferred replies;
--   sitas shard-per-core execution inside service processes;
+-   Sitas shard-per-core execution inside service processes;
 -   completion queues for kernel/device operations;
 -   non-lossy terminal completion delivery;
 -   bounded queues and explicit backpressure;
@@ -2301,7 +2301,7 @@ The redirection is successful when all of the following are true:
     unable to access it until it is returned or retransferred.
 4.  Immutable and mutable lending are enforced by mappings, including
     service-death cleanup.
-5.  A sitas shard blocks on one native wait path and wakes for both
+5.  A Sitas shard blocks on one native wait path and wakes for both
     endpoint work and kernel/device completions.
 6.  Terminal CQ results survive userspace ring overflow.
 7.  Remote shard wakes are coalesced rather than mapped one-for-one to
@@ -2333,13 +2333,13 @@ Current status:
     completions via `poll(cap)` and never drain the ring are not stuck
     in a busy-spin.  At EL0, the reference echo service serves its
     entire protocol — including shutdown and restart — from one `CQ_WAIT_CHECKED`
-    with endpoint readiness bound to its default queue, and the sitas
-    `ShardExecutor` (sitas repo) now performs task wakeup from the
+    with endpoint readiness bound to its default queue, and the Sitas
+    `ShardExecutor` (Sitas repo) now performs task wakeup from the
     drained events: a KV shard blocks in its reactor's single wait and
     is     re-polled by waker-integrated channel sends (`el0_sitas`). Per-shard
     CQ ring mapping is in place: the loader maps `SHARD_CQ_COUNT` (4)
     additional CQ ring pages per domain and opens a kernel queue per shard
-    (CqId `i + 1`), and the sitas reactor/waker target the shard's own
+    (CqId `i + 1`), and the Sitas reactor/waker target the shard's own
     queue so a wake never steals another shard's slot. Criterion 5 is
     fully met and boot-validated.
 -   Criterion 9 is met: its connection-invalidation half has smoke-test
@@ -2416,7 +2416,7 @@ does not claim that every scheduler/timer race has been eliminated. The
 implementation order below shows status:
 ```
 
-Preserve the current completion, AArch64, CQ, and sitas work, but
+Preserve the current completion, AArch64, CQ, and Sitas work, but
 reinterpret it as one half of the design.
 
 The missing half is Xous-inspired protection-domain IPC.

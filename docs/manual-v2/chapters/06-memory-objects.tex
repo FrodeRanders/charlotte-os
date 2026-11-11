@@ -307,6 +307,7 @@ invalidation cause. x86 timeouts include their owned epoch and a sampled first
 missing target, which supplies no release or retry authority. The syscall still
 reports uncertain status 9. See
 \repofile|docs/reference/memory-object-retirement.md|.
+
 The final DMA or copy unpin cannot release backing during that interval, and
 borrower cleanup retains loan restrictions until the fence completes. Failed
 detach or abandoned cleanup retains both backing and its original sponsorship
@@ -329,12 +330,12 @@ does not qualify every caller or destructor. See
 Scratch reservation metadata is prepared fallibly before publishing a virtual
 range. Namespace and sorted live-extent records use admitted nodes prepared
 outside scratch serialization; gaps are implicit. Release detaches one exact
-reservation without allocating a free-list node, then frees it after unlock. Partial, combined or
-duplicate releases are rejected. Bulk mapping retirement retains its backing
-pin and loan restrictions if any scratch completion fails, even after successful
-translation invalidation. Completed ranges may be reused; rejected ranges remain
-reserved. This strengthens completion without introducing a live-generation
-lease or a comprehensive kernel-metadata budget.
+reservation without allocating a free-list node, then frees it after unlock.
+Partial, combined or duplicate releases are rejected. Bulk mapping retirement
+retains its backing pin and loan restrictions if any scratch completion fails,
+even after successful translation invalidation. Completed ranges may be reused;
+rejected ranges remain reserved. This strengthens completion without introducing
+a live-generation lease or a comprehensive kernel-metadata budget.
 MMIO retains its existing root/descriptor claim while scratch preparation also
 leaves the device registry; mapped-state admission rechecks atomically with that
 claim. Whole-root sealing carries the complete scratch namespace and extent nodes
@@ -474,8 +475,8 @@ moving or lending rather than relying on an implicit mapping change.
 
 \subsection{Copy}
 
-The receiver gets a byte-for-byte duplicate. The sender retains the original,
-unmodified.
+The receiver gets a byte-for-byte duplicate while the sender retains the unmodified
+original.
 
 \begin{itemize}
     \item \textbf{Use when:} the data is small, the sender needs to keep using it,
@@ -648,7 +649,7 @@ When a device performs DMA, a memory object enters a third ownership state:
     \item CPU ownership: the CPU reads and writes the pages normally.
     \item DMA ownership: the device is reading or writing the pages; the
         CPU must not access them.
-    \item Rust/API ownership: which domain holds the capability.
+    \item Rust/API ownership: the domain holds the capability.
 \end{itemize}
 
 The AArch64 SMMUv3 and x86-64 VT-d/AMD-Vi paths track an explicit DMA pin per
@@ -672,8 +673,8 @@ CPU-unmap failure. Best-effort local teardown does not release uncertain kernel
 DMA pins or their backing charges.
 
 Both DMA-map syscall forms return status, IOVA and a per-call diagnostic
-stage/cause. Backend rejection includes admission and started maintenance;
-it does not prove rollback or authorize retry. A shared-DMA setup failure
+stage/cause. Backend rejection includes admission and started maintenance
+and does not prove rollback or authorize retry. A shared-DMA setup failure
 retains its existing CPU mapping in \texttt{FailedSharedDmaMemory}, which exposes
 no slices or pointers. Its consuming CPU-unmap operation cannot discharge an
 uncertain kernel DMA pin or authorize backing reuse.

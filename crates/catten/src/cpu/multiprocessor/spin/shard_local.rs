@@ -1,6 +1,6 @@
 //! # Shard-Local State (Option B seed)
 //!
-//! A lock-free per-logical-processor container that enforces sitas's strongest
+//! A lock-free per-logical-processor container that enforces Sitas' strongest
 //! invariant: *references to shard-owned state must not escape the access
 //! closure.*
 //!
@@ -15,7 +15,7 @@
 //!    `BorrowGuard`), preventing two concurrent `&mut T` handles to the same LP's slot (panics;
 //!    `try_with` returns `AlreadyBorrowed`).
 //!
-//! The contract mirrors sitas's `ShardLocal<T>`: access is synchronous,
+//! The contract mirrors Sitas' `ShardLocal<T>`: access is synchronous,
 //! non-blocking (no spin-lock acquire), and the reference never crosses the
 //! closure boundary. Cross-LP mutation must go through the IPI/workqueue
 //! machinery, never through a shared lock.

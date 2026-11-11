@@ -18,8 +18,8 @@ hardware-facing mechanism}:
     \item Kernel worker completion and the prototype buffer read/write operations.
 \end{itemize}
 
-These are the current mechanisms. There is no general asynchronous page-operation
-API or CQ entry that by itself proves DMA quiescence.
+There is no general asynchronous page-operation API or CQ entry that by itself
+proves DMA quiescence.
 
 Use endpoint IPC (\autoref{chap:endpoints}) when one protection domain invokes another.
 Confusing these two paths leads to architectural mistakes: a service call is not a
@@ -65,7 +65,7 @@ assigns each side its own fields:
 userspace CQ ring is full.}
 \end{quote}
 
-The implementation preallocates a kernel backlog and bounds accepted operations
+The implementation pre-allocates a kernel backlog and bounds accepted operations
 by submission admission. A retained detached result keeps its original slot
 until delivery; a capability-backed result remains tied to its live completion
 owner. Closing that owner may discard its redundant queued notification.
@@ -88,7 +88,7 @@ treats each completion as a datum that must be delivered at least once.
 \section{Per-shard CQ partitioning}
 
 Each address space owns a set of completion queues, keyed by \rustfn{CqId}. Queue
-0 is the default. For a service with multiple sitas shards, \textbf{per-shard CQ
+0 is the default. For a service with multiple Sitas shards, \textbf{per-shard CQ
 rings} enable targeted wakes:
 
 \begin{itemize}
@@ -290,8 +290,8 @@ permission. Fired diagnostics describe expiry selection, not notification proof.
 Abandonment retains every field and leaves the claim fenced. The delivery owner
 cannot be sent/shared across LPs; runtime checks also enforce LP and IRQ policy.
 No allocation, extra reservation or new registry is introduced. IRQ execution,
-unrelated outer guards, completed raw-event destruction, raw cancellation references and arbitrary
-blocking callbacks remain separate qualification work.
+unrelated outer guards, completed raw-event destruction, raw cancellation
+references and arbitrary blocking callbacks remain separate qualification work.
 
 Completed unpublished timer nodes have the same inert ownership policy:
 enqueue consumes the complete preparation, and ordinary unused preparation
@@ -438,7 +438,7 @@ Queue preparation reserves a registration count and kernel-owned backing
 bytes. Each namespace may register 32 queues with at most 256\,KiB of backing;
 node limits are 2,048 queues and 4\,MiB. Ordinary domains share 1,536 queues
 and 3\,MiB, leaving a reserve for kernel-designated platform domains.
-Backlogs are preallocated from the namespace's submission capacity, clamped
+Backlogs are pre-allocated from the namespace's submission capacity, clamped
 to 1,024 and rounded with checked arithmetic. Heap rings use aligned
 4\,KiB backing. Physical rings remain owned by their address-space mappings;
 their pages are outside this heap-byte budget.
@@ -691,7 +691,7 @@ in-flight operation:
 
 \begin{enumerate}
     \item The kernel marks the operation as \texttt{Cancelling} but \textbf{retains
-        any transferred buffer.} The buffer may still be the target of DMA or
+        any transferred buffer} since the buffer may still be the target of DMA or
         kernel access.
     \item A terminal \texttt{Cancelled} completion is eventually posted to the CQ,
         returning buffer ownership to userspace.

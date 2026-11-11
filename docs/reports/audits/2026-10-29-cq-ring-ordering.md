@@ -1,7 +1,7 @@
 # CQ cursor ordering and consumer ownership audit — 2026-10-29
 
 The remaining shared-CQ ordering gap is fixed in the CharlotteOS SDK and kernel.
-Sitas's safe reader serialization and atomic cursors were already implemented in
+Sitas' safe reader serialization and atomic cursors were already implemented in
 `6d63266eb52492c1958c45f3ed71c8c7a451489a`. CharlotteOS's raw SDK reader was
 already `unsafe` and required one consumer; this audit makes that requirement
 explicit for mixed SDK/Sitas readers and fixes the matching producer protocol.
@@ -30,7 +30,7 @@ are unchanged. The SDK rejects misaligned bases and invalid capacities/indices
 before reading payload or advancing the consumer cursor.
 
 `cq_read` remains an unsafe ABI boundary: the caller retains the mapping and
-excludes concurrent consumers. Sitas's safe readers share an internal consumer
+excludes concurrent consumers. Sitas' safe readers share an internal consumer
 lock, but that lock does not cover independent SDK reads. Mixing those APIs
 requires external serialization. The new guest fixture alternates readers on
 one thread after all shard workers join. CQ records remain hints; the probe

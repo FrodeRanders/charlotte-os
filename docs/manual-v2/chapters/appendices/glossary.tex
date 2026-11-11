@@ -58,7 +58,7 @@
         commands.
 
     \item[LP (Logical Processor)] A schedulable hardware execution context,
-        usually one core or hardware thread. It is distinct from a sitas shard.
+        usually one core or hardware thread. It is distinct from a Sitas shard.
 
     \item[Memory object] A page-backed kernel object with explicit ownership
         and capability semantics. Can be mapped, moved, lent, or copied between
@@ -103,7 +103,7 @@
 
     \item[ShardLocal<T>] A lock-free per-LP container using
         \texttt{UnsafeCell<T>} with owner-check and borrow-flag guard.
-        sitas-derived. Use for single-LP, thread-only kernel data.
+        Sitas-derived. Use for single-LP, thread-only kernel data.
 
     \item[ShardMailbox<M>] A typed bounded per-LP queue with
         \texttt{ShardSender<M>} (cloneable, any LP can send) and

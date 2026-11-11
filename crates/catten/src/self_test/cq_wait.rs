@@ -1,4 +1,4 @@
-//! Self-test: the wake-aware, blocking CQ wait used by the sitas reactor.
+//! Self-test: the wake-aware, blocking CQ wait used by the Sitas reactor.
 //!
 //! Checks that a kernel thread blocked in [`completion::wait_on_cq`] is
 //! released by a posted completion, by an explicit [`completion::wake`] with

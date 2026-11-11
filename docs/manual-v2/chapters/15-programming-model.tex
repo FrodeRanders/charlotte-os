@@ -345,16 +345,16 @@ an unbounded queue.
 
 \subsection{Sitas integration}
 
-When writing code that uses sitas on CharlotteOS:
+When writing code that uses Sitas on CharlotteOS:
 
 \begin{itemize}
-    \item A sitas shard is an LP-affine CharlotteOS user thread.
+    \item A Sitas shard is an LP-affine CharlotteOS user thread.
     \item \texttt{CharlotteReactor::new(lp\_id)} binds a reactor to the calling
         shard's LP.
     \item Async operations return kernel-owned completion handles. A completion
         handle is opaque: wait on it, poll it, close it, or pass it through a
         typed channel.
-    \item Cross-shard work is an owned message. Prefer sitas channels and
+    \item Cross-shard work is an owned message. Prefer Sitas channels and
         futures over shared mutable state.
     \item The executor parks on \texttt{checked CQ wait} (via \texttt{ShardParker}),
         not on a busy-loop.

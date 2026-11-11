@@ -336,7 +336,7 @@ impl SystemScheduler {
     }
 
     /// Submit a thread to a specific LP, pinning it there. Used by
-    /// `ShardRuntime::spawn_shard` to bind a sitas shard to a core.
+    /// `ShardRuntime::spawn_shard` to bind a Sitas shard to a core.
     pub fn submit_to_lp(&self, tid: ThreadId, target_lp: LpId) -> Result<(), Error> {
         let sched = match self.lp_schedulers.get(&target_lp) {
             Some(s) => s,

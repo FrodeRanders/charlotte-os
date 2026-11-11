@@ -1,4 +1,4 @@
-//! Self-test: load the Rust-compiled sitas-based catten-user binary at EL0.
+//! Self-test: load the Rust-compiled Sitas-based catten-user binary at EL0.
 //!
 //! Unlike the hand-written stub in [`super::el0`], this test embeds the full
 //! ELF produced by the repository's pinned toolchain for the catten-user target
@@ -60,7 +60,7 @@ const SITAS_JOIN_PROBE_SUM: u32 = 81;
 
 #[cfg(target_arch = "aarch64")]
 const PAGE_SIZE: usize = 4096;
-/// The Rust-compiled sitas-based catten-user ELF.
+/// The Rust-compiled Sitas-based catten-user ELF.
 #[cfg(target_arch = "aarch64")]
 static mut SITAS_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
 #[cfg(target_arch = "aarch64")]

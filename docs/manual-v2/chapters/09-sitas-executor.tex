@@ -1,7 +1,7 @@
 \chapter{The Sitas Executor}
 \label{chap:sitas-executor}
 
-The sitas executor drives futures on one shard and parks on the shard's completion
+The Sitas executor drives futures on one shard and parks on the shard's completion
 queue when no task is ready. The short loop, future and channel listings below
 explain that architecture; they are not complete runtime APIs. The deployed
 integration and mailbox-index example live in
@@ -9,7 +9,7 @@ integration and mailbox-index example live in
 
 \section{One executor per shard}
 
-Each sitas shard has:
+Each Sitas shard has:
 
 \begin{itemize}
     \item One executor: a cooperative scheduler that polls ready
@@ -135,7 +135,7 @@ which finds its completion ready.
 \section{Cross-shard messaging without the kernel}
 \label{sec:sitas-cross-shard-messaging}
 
-Within one protection domain, tasks on different shards communicate through sitas
+Within one protection domain, tasks on different shards communicate through Sitas
 typed mailboxes rather than kernel endpoint IPC:
 
 \begin{lstlisting}[style=rustCode]
@@ -233,14 +233,14 @@ the removed unchecked syscalls 12/42 have no compatibility adapter.
 \section{A worked example: the mailbox index build}
 \label{sec:sitas-mailbox-index}
 
-The mailbox index build is an end-to-end sitas demo at EL0. It is the
+The mailbox index build is an end-to-end Sitas demo at EL0. It is the
 \texttt{no\_std} counterpart of the host-side \texttt{sharded\_index\_mailbox}
 example: scanners route generated records to logical assembler work units through
 typed mailboxes; assemblers sort the records; and a coordinator merges and verifies
 the runs.
 
 The demo is implemented by \texttt{sitas\_core::mailbox\_index} and runs inside
-\texttt{catten-user}, the EL0 sitas image that the
+\texttt{catten-user}, the EL0 Sitas image that the
 kernel's \texttt{el0\_sitas} self-test loads and verifies.
 
 \subsection{The workload}
@@ -284,7 +284,7 @@ The demo separates kernel and userspace responsibilities.
         primitive.
 \end{itemize}
 
-\textbf{Userspace (the sitas \texttt{no\_std} lane) supplies:}
+\textbf{Userspace (the Sitas \texttt{no\_std} lane) supplies:}
 
 \begin{itemize}
     \item One \texttt{ShardExecutor} per shard, polling its futures and

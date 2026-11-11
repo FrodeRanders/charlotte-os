@@ -6,10 +6,10 @@
 > behavior, source/tests and the manual's implementation-status appendix take
 > precedence over the early proposal text.
 >
-> Phase 2, Option C of the sitas ↔ CharlotteOS collaboration (see
+> Phase 2, Option C of the Sitas ↔ CharlotteOS collaboration (see
 > the earlier out-of-tree `sitas-runtime-model.md` note, §3, §5.4, §9a). This note
 > specifies the userspace↔kernel boundary for asynchronous system calls by
-> treating **sitas as the executable specification** of the ABI: if sitas's
+> treating **Sitas as the executable specification** of the ABI: if Sitas'
 > shard model, completion futures, and cross-shard submit map cleanly onto the
 > interface described here, the interface is right.
 >
@@ -48,20 +48,20 @@ comment on `Thread` in
 > represents so that userspace software can monitor it in real time using the
 > same mechanism the kernel would use."
 
-sitas asks the *same* question from userspace: *what is the right
+Sitas asks the *same* question from userspace: *what is the right
 submission/completion boundary for async I/O?* Its answer — visible in the
 experimental OS-backend branch — is a three-method reactor contract plus an
-owned-buffer completion model. Option C is the observation that **sitas's
+owned-buffer completion model. Option C is the observation that **Sitas'
 reactor contract is the shape of CharlotteOS's syscall ABI**, and its io_uring
 buffer discipline is the shape of the kernel's buffer-ownership contract.
 
-So we design the ABI by making sitas's `ReactorBackend`, `Reply<T>`, and
+So we design the ABI by making Sitas' `ReactorBackend`, `Reply<T>`, and
 `ShardedSubmitter` implementable against it as a thin *translation* (not an
 emulation).
 
 ---
 
-## 2. The reference consumer: what sitas actually demands
+## 2. The reference consumer: what Sitas actually demands
 
 From Phase 1 (Option A) we have a precise, minimal statement of what a
 shard-per-core runtime needs from the OS. This is the specification the ABI must
@@ -111,9 +111,9 @@ completion capability.** Getting the completion capability right *is* getting
 the ABI right. Everything else (the wait primitive, the waker) is comparatively
 trivial and already exists in the kernel.
 
-### 2.3 The completion + buffer-ownership model (`sitas` io_uring path)
+### 2.3 The completion + buffer-ownership model (`Sitas` io_uring path)
 
-sitas's owned-buffer futures give us the cancellation/reclaim contract the
+Sitas' owned-buffer futures give us the cancellation/reclaim contract the
 kernel must honor:
 
 - `read_at(fd, offset, buffer: Vec<u8>) -> future`; on completion the buffer is
@@ -147,7 +147,7 @@ These map onto CharlotteOS's per-LP scheduler + `IPI_CMD_QUEUES` + IPI wake.
 ## 3. The core abstraction: the completion capability
 
 A **completion capability** (`CompletionCap`) is the CharlotteOS realization of
-sitas's `ReactorBackend::Handle`. It is:
+Sitas' `ReactorBackend::Handle`. It is:
 
 > a kernel-managed, per-address-space handle naming an in-flight (or completed)
 > asynchronous operation, that a userspace task can register interest in and
@@ -190,7 +190,7 @@ observer/waker wake path, per-LP timer queues, the AArch64
 
 ## 4. The ABI interface
 
-Five operations. Everything sitas needs is expressible in terms of them.
+Five operations. Everything Sitas needs is expressible in terms of them.
 
 ### 4.1 `submit` — start an async operation
 
@@ -205,7 +205,7 @@ submit(op: OpCode, args: OpArgs, buffers: BufferSet) -> Result<CompletionCap, Su
   the exit-observer pattern in `threads/mod.rs:63-69`.
 - `buffers` transfers **ownership** of userspace buffers to the kernel for the
   operation's duration (see §5, the reclaim contract). This is the direct analog
-  of sitas passing `Vec<u8>` into `read_at`.
+  of Sitas passing `Vec<u8>` into `read_at`.
 - `SubmitError::WouldBlock` reports admission rejection, including submission
   queue/capability capacity and permanent exhaustion of boot-lifetime operation
   IDs. IDs in `1..u64::MAX` are issued once; zero and the syscall failure
@@ -214,7 +214,7 @@ submit(op: OpCode, args: OpArgs, buffers: BufferSet) -> Result<CompletionCap, Su
   before resource reservation or publication and does not prevent existing
   operations from completing. The result does not promise retry progress.
 
-`submit` is the kernel-side of sitas's `submit_* -> Reply<T>` and of
+`submit` is the kernel-side of Sitas' `submit_* -> Reply<T>` and of
 `ShardedSubmitter::submit_with_handle_to`. The `CompletionCap` *is* the
 `Reply<T>` / `JoinHandle`.
 
@@ -234,22 +234,22 @@ wait(cq: CompletionQueueId, min_complete: u32, deadline: Option<Timestamp>)
   an `Observable`; each arriving completion and each wake `notify()`s it. On
   wake the thread is resubmitted to its LP via the existing `Waker` path.
 
-This is precisely sitas's `ReactorBackend::wait(read, write, timeout) -> Event`.
+This is precisely Sitas' `ReactorBackend::wait(read, write, timeout) -> Event`.
 The mapping:
 
-| sitas `wait` | CharlotteOS `wait` |
+| Sitas `wait` | CharlotteOS `wait` |
 |---|---|
 | `read`/`write: &[Handle]` (fds to watch) | *not applicable* — interests are registered at `submit` and reported via the CQ; the shard watches one CQ rather than N handles |
 | `timeout: Option<Duration>` | `deadline: Option<Timestamp>` |
 | returns `Event { woke, readable[], writable[] }` | returns count; CQ entries carry `{ operation, cookie, status, flags, result }` |
 | `woke` (wake pipe drained) | a wake IPI raised the CQ observable with no completion payload |
 
-Note the structural improvement: sitas must *hand the OS the fd set on every
+Note the structural improvement: Sitas must *hand the OS the fd set on every
 wait* because readiness is edge/level-triggered per fd. CharlotteOS registers
 the interest once at `submit` and the completion is a one-shot event delivered to
 the owning shard's CQ. This is why the ABI can present **one** wait source (§2.1
 item 3 folds into item 1) — timers, cross-LP wakes, and async-syscall
-completions all land in the same CQ, resolving sitas's "two wait sources →
+completions all land in the same CQ, resolving Sitas' "two wait sources →
 one" roadmap item natively (`sitas-runtime-model.md` §7.5).
 
 ### 4.3 `wake` — cross-shard wake
@@ -262,7 +262,7 @@ wake(cq: CompletionQueueId) -> Result<(), WakeError>
   as `send_ipi(target_lp)` landing in the target's `irq_dispatcher`, which
   drains and `cond_yield_lp`s — the path already wired on AArch64
   (`aarch64/interrupts/mod.rs:51`).
-- This is sitas's `ReactorWaker::wake`. The `ReactorWaker` is `Clone + Send +
+- This is Sitas' `ReactorWaker::wake`. The `ReactorWaker` is `Clone + Send +
   Sync`; a `CompletionQueueId` (a small copyable capability) satisfies that.
 
 ### 4.4 `cancel` — drop-as-cancellation
@@ -273,7 +273,7 @@ cancel(cap: CompletionCap) -> Result<CancelState, CancelError>
 enum CancelState { AlreadyComplete, CancelRequested }
 ```
 
-- Requests cancellation of the in-flight operation. Mirrors sitas's
+- Requests cancellation of the in-flight operation. Mirrors Sitas'
   `abandon_operation`: the kernel stops waking on the original op and, if
   buffers were transferred, **retains them until a terminal completion is
   observed** (§5). Userspace calls this from a future's `Drop`.
@@ -294,7 +294,7 @@ close(cap: CompletionCap) -> Result<(), CapError>   // release a completed/obser
 
 ## 5. The buffer-ownership / reclaim contract
 
-We use sitas's io_uring ownership rules here. They also apply to buffers passed
+We use Sitas' io_uring ownership rules here. They also apply to buffers passed
 to this kernel.
 
 1. **Transfer on submit.** `submit` moves buffer ownership to the kernel. While
@@ -306,24 +306,24 @@ to this kernel.
    analog of `WriteAtUringCompletion { bytes, buffer }`.
 3. **Cancel is deferred-reclaim.** After `cancel`, the kernel may still touch the
    buffer until it posts the terminal completion. Userspace reclaims only then.
-   This is sitas's `defer_buffer_drop` on the kernel side.
+   This is Sitas' `defer_buffer_drop` on the kernel side.
 4. **Drain-or-leak at teardown.** When an address space exits with operations
    still in flight, the kernel drains outstanding completions; any buffer it may
    still DMA into is *retained (leaked into the dying AS's reaping), never handed
-   to a new owner*. This is the kernel mirror of sitas's `mem::forget`-on-timeout
+   to a new owner*. This is the kernel mirror of Sitas' `mem::forget`-on-timeout
    rule. Because the AS is being torn down, "leak" means "reap with the AS," so
    there is no permanent loss.
 
 This contract is the answer to `sitas-runtime-model.md` §7.2 ("what happens to an
 in-flight async syscall when the awaiting task is dropped?"): **the kernel needs
-a cancel + deferred-reclaim contract mirroring sitas's drain-or-leak,** and here
+a cancel + deferred-reclaim contract mirroring Sitas' drain-or-leak,** and here
 it is, specified by the reference consumer.
 
 ---
 
 ## 6. Backpressure, end to end
 
-sitas has bounded mailboxes and a spawn `BackpressureGuard`; the ABI must carry
+Sitas has bounded mailboxes and a spawn `BackpressureGuard`; the ABI must carry
 backpressure across the boundary (`sitas-runtime-model.md` §7.3).
 
 - **Submission backpressure.** Each shard's submission queue and the per-AS
@@ -335,20 +335,20 @@ backpressure across the boundary (`sitas-runtime-model.md` §7.3).
   kernel does **not** drop completions; it stops producing new ones for that
   shard (applying backpressure upstream to whatever generates them) and marks the
   CQ *overflow-pending*, so the next `wait` reports that draining is required.
-  This mirrors sitas's bounded mailbox semantics (`full_rejections` counter)
+  This mirrors Sitas' bounded mailbox semantics (`full_rejections` counter)
   rather than a lossy queue.
 - **Cross-shard submit backpressure.** `ShardedSubmitter::submit_to(other)` maps
   to enqueuing on the target LP's queue (generalized `IPI_CMD_QUEUES`). Today
   that queue is *unbounded* (`ConcurrentQueue<IpiRpc>`); the ABI requires it to
   become **bounded per target shard**, so a heavily-targeted inbox exerts
-  backpressure instead of growing without limit — matching sitas's bounded
-  `ShardSender<M>` and the cache-coherence analysis in sitas's `ARCHITECTURE.md`.
+  backpressure instead of growing without limit — matching Sitas' bounded
+  `ShardSender<M>` and the cache-coherence analysis in Sitas' `ARCHITECTURE.md`.
 
 ---
 
 ## 7. The shard model on the ABI
 
-| sitas concept | ABI realization | Kernel facility |
+| Sitas concept | ABI realization | Kernel facility |
 |---|---|---|
 | Shard = pinned OS thread | LP-affine thread, one per LP, each owning a CQ | `spawn_thread(asid, entry)`; scheduler is already per-LP |
 | `ShardId` | `CompletionQueueId` / `LpId` | `LpId` (an LP *is* a core — placement is not advisory) |
@@ -363,7 +363,7 @@ backpressure across the boundary (`sitas-runtime-model.md` §7.3).
 ### 7.1 Assembled picture (the CharlotteOS `ReactorBackend`)
 
 ```
-sitas-charlotte backend (implements sitas's ReactorBackend + ShardRuntime)
+sitas-charlotte backend (implements Sitas' ReactorBackend + ShardRuntime)
  ├─ Handle          = CompletionCap                     (the Phase-1 "what is an interest" answer)
  ├─ Waker           = CompletionQueueId                 → wake() = wake(cq) syscall
  ├─ wait(_, _, to)  = wait(own_cq, min_complete, deadline) → drain CQ → Event
@@ -373,39 +373,39 @@ sitas-charlotte backend (implements sitas's ReactorBackend + ShardRuntime)
     channel<M>      = bounded typed capability channel (generalized IPI queue)
 ```
 
-Everything above the backend is sitas unchanged. The backend is a *translation*:
+Everything above the backend is Sitas unchanged. The backend is a *translation*:
 no blocking call is faked, no thread is parked to simulate a completion, no
 signal-handler tightrope — because the kernel's async model already matches
-sitas's.
+Sitas'.
 
 ---
 
 ## 8. Decision-gate answers (Phase 2)
 
-The §9a gate asks: *Do sitas's shard model, completion futures, and cross-shard
+The §9a gate asks: *Do Sitas' shard model, completion futures, and cross-shard
 submit map cleanly onto the ABI? Are cancellation and backpressure expressible?*
 
-1. **Shard model — yes.** A sitas shard = an LP-affine thread with a private CQ.
+1. **Shard model — yes.** A Sitas shard = an LP-affine thread with a private CQ.
    Placement is *stronger* than Unix (an LP is a core; no `sched_setaffinity`
    race). `ShardRuntime::spawn_shard` → `spawn_thread` + CQ creation.
 2. **Completion futures — yes, and more naturally than on Unix.** `Reply<T>` /
    `ReplyFuture<T>` / `JoinHandle` all reduce to "await one `CompletionCap` via
    the CQ." The kernel already stores a `Waker` as an `Observer` and wakes the
-   blocked thread; sitas already stores a `Waker` in `ReplyShared`. Same object,
+   blocked thread; Sitas already stores a `Waker` in `ReplyShared`. Same object,
    different name. The one-shot completion event is a *better* fit than fd
-   readiness (no re-arm, no level/edge nuance), and it unifies sitas's two wait
+   readiness (no re-arm, no level/edge nuance), and it unifies Sitas' two wait
    sources into one CQ.
 3. **Cross-shard submit — yes.** `submit_to(other)` → enqueue on target LP's
    (bounded) queue + `wake`. The kernel already does exactly this for its own
    TLB-shootdown RPCs over `IPI_CMD_QUEUES`; generalizing the message type and
    bounding the queue is the delta.
-4. **Cancellation — yes, and the reference consumer *specifies* it.** sitas's
+4. **Cancellation — yes, and the reference consumer *specifies* it.** Sitas'
    drop-as-cancel + `defer_buffer_drop` + drain-or-leak translate directly into
    §4.4/§5. This turns an open kernel question into a settled contract.
 5. **Backpressure — expressible, with one required kernel change.** Bounded SQ,
    bounded CQ (overflow-pending, non-lossy), and — the change — **bounding the
    per-LP cross-shard queue** (today unbounded). With that, backpressure is
-   end-to-end, matching sitas's bounded mailboxes.
+   end-to-end, matching Sitas' bounded mailboxes.
 
 **Where the design pressure really is (Phase 1's finding, confirmed):** not the
 wait primitive (trivial, already in-kernel) but *what a waitable interest is*.
@@ -421,7 +421,7 @@ buffer-ownership contract**. That is the thing to prototype first in Option C.
   AS) vs. syscall-per-drain. Rings are assumed above for zero-syscall draining;
   needs an mmap-like facility.
 - **Interrupting user code for upcalls.** The async-first model must deliver
-  wakes into a running userspace shard safely; sitas's executor is
+  wakes into a running userspace shard safely; Sitas' executor is
   cooperative-only (no in-shard preemption). Where wakes are *observed* (at the
   next `wait`, never mid-task) must be nailed down (`sitas-runtime-model.md`
   §7.4). The CQ model helps: a wake need not interrupt user code, it only needs
@@ -439,15 +439,15 @@ illustrative — it does not compile into the kernel and commits no ABI numbers.
 
 ```rust
 //! Async syscall / completion-capability ABI — type sketch (Option C).
-//! Specified against sitas's `ReactorBackend` as the reference consumer.
+//! Specified against Sitas' `ReactorBackend` as the reference consumer.
 
 /// A per-address-space handle naming an in-flight or completed async operation.
-/// This is the CharlotteOS answer to sitas's `ReactorBackend::Handle`.
+/// This is the CharlotteOS answer to Sitas' `ReactorBackend::Handle`.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct CompletionCap(u32);
 
 /// Identifies a shard's completion queue; also the cross-shard wake target.
-/// Satisfies sitas's `ReactorWaker: Clone + Send + Sync`.
+/// Satisfies Sitas' `ReactorWaker: Clone + Send + Sync`.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct CompletionQueueId(u32);
 
@@ -456,7 +456,7 @@ pub struct Completion {
     pub cap: CompletionCap,
     pub result: OpResult,
     /// Buffer ownership handed back to userspace (identity + bytes), mirroring
-    /// sitas's `WriteAtUringCompletion { bytes, buffer }`.
+    /// Sitas' `WriteAtUringCompletion { bytes, buffer }`.
     pub returned: Option<BufferSet>,
 }
 
@@ -483,7 +483,7 @@ pub fn wait(cq: CompletionQueueId, min_complete: u32, deadline: Option<Timestamp
 pub fn wake(cq: CompletionQueueId) -> Result<(), WakeError>;
 
 /// Drop-as-cancellation. Kernel retains transferred buffers until it posts the
-/// terminal completion (deferred reclaim), mirroring sitas's abandon path.
+/// terminal completion (deferred reclaim), mirroring Sitas' abandon path.
 pub fn cancel(cap: CompletionCap) -> Result<CancelState, CancelError>;
 
 /// Release a completed/observed capability slot.
@@ -492,9 +492,9 @@ pub fn close(cap: CompletionCap) -> Result<(), CapError>;
 pub enum SubmitError { WouldBlock, BadArgs, NoBuffers /* ... */ } // WouldBlock = backpressure
 pub enum CancelState { AlreadyComplete, CancelRequested }
 
-// ---- how the sitas backend binds to it --------------------------------------
+// ---- how the Sitas backend binds to it --------------------------------------
 
-/// Sketch of the CharlotteOS impl of sitas's `ReactorBackend`.
+/// Sketch of the CharlotteOS impl of Sitas' `ReactorBackend`.
 struct CharlotteReactor { cq: CompletionQueueId }
 
 impl ReactorBackend for CharlotteReactor {
@@ -515,7 +515,7 @@ impl ReactorBackend for CharlotteReactor {
 }
 ```
 
-The key line is `type Handle = CompletionCap`: the abstraction sitas identified
+The key line is `type Handle = CompletionCap`: the abstraction Sitas identified
 in Phase 1 ("what is a waitable interest?") is answered by a kernel-managed
 completion capability rather than a Unix file descriptor — and the rest of the
 backend falls out as a translation.
@@ -523,10 +523,10 @@ backend falls out as a translation.
 ### 9.1 Validation status: the ABI has an executable model
 
 The type sketch above is no longer only on paper. A **reference model of this
-ABI now exists and is tested in the sitas repository** (branch
+ABI now exists and is tested in the Sitas repository** (branch
 the reactor-handle integration branch (`src/charlotte_abi.rs`): an in-memory `MockKernel`
 implementing the five operations (`submit`/`wait`/`wake`/`cancel`/`close`), plus
-a `CharlotteReactor` that implements sitas's `ReactorBackend` contract with
+a `CharlotteReactor` that implements Sitas' `ReactorBackend` contract with
 `Handle = CompletionCap`. It is not a Unix backend and talks to no kernel — it
 is the ABI's semantics made executable, so the shapes can be exercised before
 any kernel path exists.
@@ -540,7 +540,7 @@ Tests validate each decision-gate claim concretely:
   another thread (the model's stand-in for a cross-LP IPI).
 - **Cancellation / deferred reclaim:** `cancel` on an in-flight op returns
   `CancelRequested` and the kernel *keeps* the buffer until the terminal
-  (`Cancelled`) completion hands it back — sitas's `defer_buffer_drop`, mirrored.
+  (`Cancelled`) completion hands it back — Sitas' `defer_buffer_drop`, mirrored.
 - **Backpressure:** a full capability table returns `SubmitError::WouldBlock`;
   a full completion queue refuses the post **non-lossily** (op stays in flight,
   keeps its buffer, queue marked overflow-pending) until a drain frees space.
@@ -643,7 +643,7 @@ instead of the previous `unbounded`. Two push paths exist:
 - `try_push_to` / `try_send_ipi_rpc` — when the target LP's queue is full,
   `push()` on the bounded `ConcurrentQueue` returns `Err(Full(rpc))`, which
   propagates back to the caller as first-class backpressure (analogous to
-  `submit` returning `WouldBlock`). This is the path sitas's
+  `submit` returning `WouldBlock`). This is the path Sitas'
   `ShardedSubmitter::submit_to` would use.
 - `push_to` / `send_ipi_rpc` — a must-not-drop path for kernel-internal RPCs
   (TLB shootdowns, scheduler wakeups). If the queue is full, the oldest entry is
@@ -727,7 +727,7 @@ it. The zero-syscall completion loop is fully wired on the kernel side.
    cross-shard submit exerts backpressure (this also seeds Option B / Phase 3).
    **(Done — see §9.4: bounded per-LP queues with `push`-returns-backpressure
    + `Closure` variant for arbitrary cross-LP work dispatch.)**
-5. **Feed back into Option A:** generalize sitas's `ReactorBackend::Handle` from
+5. **Feed back into Option A:** generalize Sitas' `ReactorBackend::Handle` from
    `RawFd` to an associated type end-to-end (the readiness layer), then implement
    `CharlotteReactor` against a mock of this ABI to validate the shapes before the
    kernel path exists. **(Done — see §9.1.)**
@@ -739,7 +739,7 @@ it. The zero-syscall completion loop is fully wired on the kernel side.
 - Earlier collaboration design note: `sitas-runtime-model.md` (not retained in
   this repository)
   (§3 Option C, §5.4 async syscalls, §7 friction, §9a phased plan, §11 findings).
-- sitas Option A adapter: `src/reactor_backend.rs`
+- Sitas Option A adapter: `src/reactor_backend.rs`
   (`ReactorBackend`/`ReactorWaker`/`ReactorEvent`), `src/executor/driver.rs`
   (idle wait), `src/os/uring.rs` + `src/executor/uring.rs` (buffer-ownership),
   `src/sharded_executor.rs` (`ShardedSubmitter`), `src/shard_mailbox.rs`

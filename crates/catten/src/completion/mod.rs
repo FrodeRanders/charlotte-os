@@ -11,7 +11,7 @@
 //!   [`sleep`](crate::cpu::scheduler::sleep) does, registering the caller's `Waker` as an observer;
 //! - an owned `Vec<u8>` transferred on [`submit`] is retained by the kernel until a terminal
 //!   completion hands it back — the buffer-ownership / deferred-reclaim contract mirrored from
-//!   sitas's `io_uring` discipline.
+//!   Sitas' `io_uring` discipline.
 //!
 //! The [`cq`] submodule provides a shared-memory completion-queue ring (io_uring-
 //! style) for zero-syscall completion delivery to userspace.
@@ -213,7 +213,7 @@ pub enum OpResult {
 pub struct Completed {
     /// The terminal result.
     pub result: OpResult,
-    /// The buffer whose ownership returns to the caller, mirroring sitas's
+    /// The buffer whose ownership returns to the caller, mirroring Sitas'
     /// `WriteAtUringCompletion { bytes, buffer }`.
     pub buffer: Option<Vec<u8>>,
 }

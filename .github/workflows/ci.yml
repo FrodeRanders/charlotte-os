@@ -279,7 +279,7 @@ jobs:
       - name: Install QEMU
         run: brew install qemu mtools
 
-      - name: Check out sitas userspace dependency
+      - name: Check out Sitas userspace dependency
         run: |
           SITAS_DIR="$(cd "$GITHUB_WORKSPACE/../.." && pwd)/gautelis/sitas"
           git clone https://github.com/FrodeRanders/sitas.git "$SITAS_DIR"

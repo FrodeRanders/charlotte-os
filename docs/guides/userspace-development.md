@@ -177,7 +177,7 @@ retroactive—revocation of connections already issued.
 
 ## Building bundled examples
 
-For AArch64, build and stage the service and sitas bundles before invoking the
+For AArch64, build and stage the service and Sitas bundles before invoking the
 runner:
 
 ```sh

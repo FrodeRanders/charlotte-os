@@ -3,7 +3,7 @@
 //! The Catten IPI protocol uses unicast IPIs exclusively. Each LP has a
 //! **bounded** command queue (`IPI_CMD_QUEUES`), so when a target LP's inbox is
 //! full, the sender gets the RPC back (backpressure) instead of the queue
-//! growing without limit. This matches Sitas's bounded `ShardSender<M>`
+//! growing without limit. This matches Sitas' bounded `ShardSender<M>`
 //! semantics and is the kernel side of the cross-shard backpressure contract
 //! specified in `docs/architecture/async-syscall-abi.md` §6.
 //!

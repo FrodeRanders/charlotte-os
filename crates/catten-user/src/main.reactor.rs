@@ -1,6 +1,6 @@
-//! CharlotteOS sitas integration demo — exercises the full async runtime.
+//! CharlotteOS Sitas integration demo — exercises the full async runtime.
 //!
-//! Creates a `CharlotteReactor` (implements sitas's `ReactorBackend`),
+//! Creates a `CharlotteReactor` (implements Sitas' `ReactorBackend`),
 //! uses it to submit an operation via the kernel's COMPLETION_SUBMIT syscall,
 //! waits for the kernel to complete it, and polls the CQ ring for the result.
 //! The result is written to the result page at 0x12000 as a u64 sentinel.

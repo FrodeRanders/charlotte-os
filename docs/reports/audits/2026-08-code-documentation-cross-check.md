@@ -226,14 +226,14 @@ Severity legend: **H** = high (security / cross-domain DoS), **M** = medium
 
 ### 3.8 Sitas shard runtime (M)
 
-- **M — the sitas boot test did not signature-verify its ELF**: `el0_sitas.rs`
+- **M — the Sitas boot test did not signature-verify its ELF**: `el0_sitas.rs`
   used an inline loader that skipped `verify_elf`, diverging from the general
   loader. **Fixed** this session (§4.5).
 - **M — `el0_sitas` config page never zeroed** (`crates/catten/src/self_test/el0_sitas.rs:309-322`):
   `shard_cq_layout()` can read garbage from a reused frame, nondeterministically
   selecting an unmapped per-shard ring. (Masked on cold boot by zeroed frames.)
 - **L — per-shard CQ rings are implemented in the general loader but not
-  exercised by the sitas test**, which uses its own inline loader and only maps
+  exercised by the Sitas test**, which uses its own inline loader and only maps
   queue 0. The "boot-validated per-shard CQ" claim is overstated.
 - **L — budgeted polling never yields** (`sitas-core/src/shard_executor.rs:233-262`):
   the budget is a fairness yield point, not a scheduling boundary, contradicting
