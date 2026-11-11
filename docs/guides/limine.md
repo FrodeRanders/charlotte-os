@@ -196,3 +196,7 @@ The [disposable QEMU Secure Boot matrix](qemu-secure-boot.md) now generates that
 chain under test-only firmware certificates and checks loader/config/kernel/
 policy substitution and kernel policy-state rejection. Ordinary boot defaults
 remain development configuration; the test does not enable production.
+
+For future physical deployments, [UEFI Secure Boot options](../architecture/uefi-secure-boot-options.md)
+compares direct firmware enrollment with an unqualified shim/MOK compatibility
+route and records the enrollment, revocation and production-trust boundaries.

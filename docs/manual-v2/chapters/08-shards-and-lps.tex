@@ -21,7 +21,7 @@ The kernel shards its own state per-LP, meaning each LP has:
 An LP is a \textbf{place}: threads are pinned to an LP at creation and, by default,
 stay there. Migration is opt-in and restricted.
 
-Affinity preserves a deliberate locality choice; it does not establish a
+Affinity makes a deliberate locality choice possibly, without actually establishing a
 NUMA allocation policy. Page-table memory can be remote even when the data
 it translates is local. \href{https://arxiv.org/abs/1910.05398}{Mitosis} and
 \href{https://www.usenix.org/conference/atc24/presentation/gao-bin-scalable}{Hydra}
@@ -38,14 +38,14 @@ A shard is a userspace ownership and execution domain. The rules of the shard ar
 the Sitas discipline:
 
 \begin{enumerate}
-    \item Only the owning shard mutates shard-local state: there is no
-        lock on shard-local data because there is no concurrent access. The
+    \item Only the owning shard mutates shard-local state: \emph{we don't need locking
+        of shard-local data} because there is no concurrent access. The
         executor runs one task at a time on the shard.
 
     \item Cross-shard interaction goes through bounded typed messages:
         a value that moves from shard A to shard B is sent through a typed
-        channel (\rusttype{ShardSender<M>}). The sender loses the value; the
-        receiver gains it.
+        channel (\rusttype{ShardSender<M>}), where the sender loses the value
+        and the receiver gains it.
 
     \item Placement is explicit: code that needs to be shard-local is
         accessed through \rusttype{ShardLocal<T>}, which verifies at runtime that
@@ -87,8 +87,8 @@ configurations remain possible:
         to exercise migration and scheduling paths.
 \end{itemize}
 
-These are extension scenarios, not a claim that CPU hotplug or live shard
-migration is implemented. Current local Ready-thread migration requires
+CPU hotplug or live shard migration is not (yet) implemented and belongs at
+best among the extension scenarios. Current local Ready-thread migration requires
 explicit certification and architecture CPU-ownership qualification. Arm has
 the assembly handoff; x86 permits only never-dispatched contexts until an
 equivalent handoff exists. Pinned userspace shards remain ineligible.

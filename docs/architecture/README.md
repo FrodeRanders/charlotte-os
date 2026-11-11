@@ -49,5 +49,8 @@ logic, and external managed infrastructure at explicit boundaries.
   bindings, including implementation status and rollout plan.
 - [Real-hardware roadmap](real-hardware-roadmap.md) — progression from QEMU
   server models to SystemReady hardware.
+- [UEFI Secure Boot deployment options](uefi-secure-boot-options.md) — direct
+  enrollment and a future shim/MOK compatibility route, trust boundaries and
+  qualification requirements.
 - [EL2 capability root](el2-capability-root.md) — an exploratory security
   design that has not been implemented.
