@@ -177,7 +177,7 @@ EROS demonstrates that:
 We follow this tradition by treating authority, work, readiness, notification,
 and completion as separate concepts.
 
-CharlotteOS’s monotonic, non-reused handles prevent a stale handle from accidentally
+CharlotteOS’ monotonic, non-reused handles prevent a stale handle from accidentally
 naming a later local object. That is useful, but several problems remain:
 
 - capability derivation;
@@ -637,7 +637,7 @@ recovery cannot.
 - Francis M. David et al., [CuriOS: Improving Reliability through Operating System Structure](https://www.usenix.org/legacy/event/osdi08/tech/full_papers/david/david_html/)
 
 CuriOS studies fault containment and recovery for operating-system services.
-It is directly relevant to CharlotteOS’s supervisor and service-generation model.
+It is directly relevant to CharlotteOS’ supervisor and service-generation model.
 
 ### 6.5 Pebble
 
@@ -745,7 +745,7 @@ An early analysis of these tradeoffs is:
 
 - B. Murphy, S. Zeadally, and C. J. Adams, [An Analysis of Process and Memory Models to Support High-Speed Networking in a UNIX Environment](https://www.usenix.org/conference/usenix-1996-annual-technical-conference/analysis-process-and-memory-models-support-high)
 
-CharlotteOS’s explicit transfer modes provide a promising way to manage
+CharlotteOS’ explicit transfer modes provide a promising way to manage
 that complexity, provided their state transitions remain precise across
 failure paths.
 
@@ -819,7 +819,7 @@ the composed system.
 
 Capsicum shows how capability-oriented confinement can coexist with UNIX compatibility.
 
-It is particularly relevant to CharlotteOS’s decision to provide POSIX and
+It is particularly relevant to CharlotteOS’ decision to provide POSIX and
 TCP/IP as compatibility services rather than native authority models.
 
 The major risk is reintroducing ambient authority behind capability-looking
@@ -890,7 +890,7 @@ The main design dimensions are:
 - caching and invalidation;
 - bootstrap trust.
 
-CharlotteOS’s node-local name service, distributed DNS catalog, signed grant
+CharlotteOS’ node-local name service, distributed DNS catalog, signed grant
 descriptors, and attenuated discovery connections preserve this discipline.
 A globally visible name remains routing metadata. A caller still needs an
 already delegated local connection, and policy checks bind the remote call to
