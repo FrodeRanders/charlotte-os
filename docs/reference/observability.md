@@ -170,7 +170,7 @@ word first. The constants in `catten-syscall` are the authoritative ABI.
 ## Security and aggregation
 
 Observability does not imply ambient inspection authority. A normal service can
-inspect only its own protection domain. This is consistent with CharlotteOS's
+inspect only its own protection domain. This is consistent with CharlotteOS'
 capability model and prevents an arbitrary process from learning the activity
 of unrelated services.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Create CharlotteOS's disposable FAT32 UEFI boot image without mounting it.
+# Create CharlotteOS' disposable FAT32 UEFI boot image without mounting it.
 
 set -euo pipefail
 

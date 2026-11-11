@@ -36,7 +36,7 @@ historical decision record.
 
 ## 1. The thesis, stated as an ABI question
 
-CharlotteOS's design premise is that *nearly all syscalls are asynchronous*: a
+CharlotteOS' design premise is that *nearly all syscalls are asynchronous*: a
 syscall **submits** an operation and returns a **completion capability** that
 userspace can wait on, rather than blocking the calling thread until the work is
 done. This intent is already written into the kernel — see the exit-observer
@@ -52,7 +52,7 @@ Sitas asks the *same* question from userspace: *what is the right
 submission/completion boundary for async I/O?* Its answer — visible in the
 experimental OS-backend branch — is a three-method reactor contract plus an
 owned-buffer completion model. Option C is the observation that **Sitas'
-reactor contract is the shape of CharlotteOS's syscall ABI**, and its io_uring
+reactor contract is the shape of CharlotteOS' syscall ABI**, and its io_uring
 buffer discipline is the shape of the kernel's buffer-ownership contract.
 
 So we design the ABI by making Sitas' `ReactorBackend`, `Reply<T>`, and
@@ -140,7 +140,7 @@ cancel.**
 - `ShardSender<M>`/`ShardReceiver<M>` are bounded, owned-message channels
   between shards.
 
-These map onto CharlotteOS's per-LP scheduler + `IPI_CMD_QUEUES` + IPI wake.
+These map onto CharlotteOS' per-LP scheduler + `IPI_CMD_QUEUES` + IPI wake.
 
 ---
 

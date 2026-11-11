@@ -1334,7 +1334,7 @@ ownership types and message-oriented runtimes became much more familiar.
 **Xous.** Xous is a working Rust
 microkernel for embedded devices, with userspace servers and explicit scalar,
 `Send`, `Lend`, and mutable-lend messages
-([Xous kernel documentation](https://xous.dev/kernel/)). It is CharlotteOS's
+([Xous kernel documentation](https://xous.dev/kernel/)). It is CharlotteOS'
 most direct IPC ancestor.
 
 **What CharlotteOS took.** CharlotteOS adopts Xous-style isolated servers and
@@ -1461,7 +1461,7 @@ failure-domain-aware scheduling, health-driven replacement, rolling policy,
 production key rotation and custody, general stateful migration, and
 derivation-based distributed capability revocation remain open.
 
-### 16.6 CharlotteOS's synthesis, stated precisely
+### 16.6 CharlotteOS' synthesis, stated precisely
 
 The inheritance is easiest to understand by strength:
 

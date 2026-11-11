@@ -182,7 +182,7 @@ pub const ERR_NOT_COMMITTED: i64 = -7;
 pub const ERR_CONFIG_IN_PROGRESS: i64 = -8;
 pub const ERR_RESOURCE_LIMIT: i64 = -9;
 
-/// Leaves room for Raft metadata and peer IDs in CharlotteOS's one-page IPC
+/// Leaves room for Raft metadata and peer IDs in CharlotteOS' one-page IPC
 /// transport object.
 pub const MAX_COMMAND_BYTES: usize = 3000;
 

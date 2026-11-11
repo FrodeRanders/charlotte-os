@@ -127,7 +127,7 @@ waitable name-service lookups. Removed peers have their pending calls and
 connection capabilities closed. The IPC adapter carries an exact protobuf
 length with each moved page; decoding no longer depends on zero padding.
 Snapshot replacement remains a single atomic object-store record update,
-preserving CharlotteOS's stronger crash behavior.
+preserving CharlotteOS' stronger crash behavior.
 
 The parity contract and intentional differences are maintained in
 [Raft conformance](../../reference/raft-conformance.md).
@@ -166,7 +166,7 @@ peer IDs, includes self exactly once, rejects stale election rounds, and asks
 the membership object for a (possibly joint-consensus) majority. The runtime
 also accumulates distinct peer IDs before making the same majority check
 (`graft-runtime/src/runtime.rs:210-270`). Git blame attributes the core logic to
-the original Rust implementation commit `cf9de4a` on 2026-06-10. CharlotteOS's
+the original Rust implementation commit `cf9de4a` on 2026-06-10. CharlotteOS'
 no-std port was introduced later in commit `1000cf1` on 2026-07-18 and replaced
 that aggregation with the erroneous configured-voter loop.
 

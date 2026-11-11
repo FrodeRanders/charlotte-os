@@ -41,11 +41,11 @@ configuration. We need current checks before relying on it for a later build.
 | [`guides/`](guides/README.md) | Repeatable contributor workflows: testing, userspace development, and networking |
 | [`platforms/`](platforms/README.md) | AArch64, `sbsa-ref`, and x86-64 platform status |
 | [`reports/`](reports/README.md) | Dated audits, debugging investigations, and milestone records |
-| [`research/`](research/README.md) | Prior systems, their afterlives, and CharlotteOS's inheritance |
+| [`research/`](research/README.md) | Prior systems, their afterlives, and CharlotteOS' inheritance |
 | [`tla/`](tla/README.md) | Executable TLA+ models, model-checking instructions, and Rust conformance map |
 | [`figures.md`](figures.md) | Editable Mermaid sources and explanatory captions for the architecture figure set |
 | [`presentations/charlotte-for-operations.md`](presentations/charlotte-for-operations.md) | Ops-facing slide outline covering the cluster model, development/operations separation, connectors, and production gaps |
-| [`presentations/openshift-and-charlotte.md`](presentations/openshift-and-charlotte.md) | Slide outline comparing OpenShift's Linux-container platform with CharlotteOS's cluster-native operating-system direction |
+| [`presentations/openshift-and-charlotte.md`](presentations/openshift-and-charlotte.md) | Slide outline comparing OpenShift's Linux-container platform with CharlotteOS' cluster-native operating-system direction |
 
 ## Maintenance rules
 

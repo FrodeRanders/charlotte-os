@@ -406,7 +406,7 @@ It may have:
 
 ### 3.3 Logical processor
 
-An **LP** is CharlotteOS's representation of a schedulable hardware
+An **LP** is CharlotteOS' representation of a schedulable hardware
 execution context.
 
 An LP is not a Sitas shard. A useful initial mapping is:
@@ -572,7 +572,7 @@ event arrives
     → wake relevant futures
 ```
 
-CharlotteOS's advantage is not "threads never park." Its advantage is:
+CharlotteOS' advantage is not "threads never park." Its advantage is:
 
 > The shard parks directly on native completion and message state; no
 > helper-thread pool is required merely to convert blocking kernel

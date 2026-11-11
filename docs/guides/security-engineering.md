@@ -1,6 +1,6 @@
 # Security engineering lessons
 
-This guide captures reusable knowledge from CharlotteOS's security work. Read it
+This guide captures reusable knowledge from CharlotteOS' security work. Read it
 when designing or reviewing a resource operation, a service reactor or a trust
 boundary. The [subsystem contributor contracts](../reference/contributor-contracts.md)
 carry the detailed implementation requirements. The

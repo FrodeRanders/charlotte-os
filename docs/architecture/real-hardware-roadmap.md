@@ -121,7 +121,7 @@ Concrete uses, strongest first:
    table / minting authority lives at EL2, even a compromised EL1 kernel
    cannot forge or mint capabilities — it can only use what it was granted.
    This gives a *compromise-resistant microkernel*: the isolation already
-   granted to EL0 drivers is extended to the kernel itself. CharlotteOS's
+   granted to EL0 drivers is extended to the kernel itself. CharlotteOS'
    capability abstraction already provides the right primitive; EL2 is where
    its root belongs. Design sketch: `docs/architecture/el2-capability-root.md`.
 2. **Stage-2 defense-in-depth for EL0 driver domains.** A second, unforgeable

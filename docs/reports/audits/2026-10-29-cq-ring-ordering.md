@@ -2,7 +2,7 @@
 
 The remaining shared-CQ ordering gap is fixed in the CharlotteOS SDK and kernel.
 Sitas' safe reader serialization and atomic cursors were already implemented in
-`6d63266eb52492c1958c45f3ed71c8c7a451489a`. CharlotteOS's raw SDK reader was
+`6d63266eb52492c1958c45f3ed71c8c7a451489a`. CharlotteOS' raw SDK reader was
 already `unsafe` and required one consumer; this audit makes that requirement
 explicit for mixed SDK/Sitas readers and fixes the matching producer protocol.
 

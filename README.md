@@ -6,7 +6,7 @@ its original architecture, and the substantial foundation on which this work
 builds were created by the upstream project and its contributors.
 
 The purpose of this fork is to explore and implement additional operating-system
-mechanisms while retaining CharlotteOS's Rust, capability-oriented, and
+mechanisms while retaining CharlotteOS' Rust, capability-oriented, and
 service-based direction. It is not a replacement for upstream, and features
 described below should not be assumed to be present or supported in the
 upstream repository.

@@ -124,7 +124,7 @@ fn hw_asid_allocator() -> &'static Mutex<HwAsidAllocator> {
 /// switch and read by synchronous EL0 exception paths (e.g. the SVC handler) to
 /// attribute the caller's syscalls.
 ///
-/// This holds CharlotteOS's *logical* address-space id, an index into
+/// This holds CharlotteOS' *logical* address-space id, an index into
 /// [`ADDRESS_SPACE_TABLE`](crate::memory::ADDRESS_SPACE_TABLE). The hardware
 /// [`HwAsid`](crate::cpu::isa::aarch64::memory::paging::walker::HwAsid) is a
 /// separate tag in TTBR0. The caller ASID must not be reconstructed from
