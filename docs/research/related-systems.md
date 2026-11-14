@@ -566,8 +566,9 @@ The manual's [reconnecting client](../guides/reconnecting-clients.md) defines
 `ServiceRestarted` as an application recovery decision for endpoint closure;
 the runtime has no variant with that name. Undelivered queued calls return the
 endpoint-closed result; delivered calls whose server exits before replying
-return cancellation. Rebinding a name does not revoke a still-live old endpoint,
-and an uncertain accepted call does not authorize automatic replay.
+return cancellation. Registering a replacement instance under the same service
+name does not revoke the old endpoint while it is still live. An uncertain
+accepted call does not authorize automatic replay.
 
 #### Restart-with-state
 

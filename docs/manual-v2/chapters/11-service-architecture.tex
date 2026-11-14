@@ -107,8 +107,9 @@ When a service crashes and the supervisor restarts it:
 \begin{enumerate}
     \item Device quiescence and reset: a driver can restart only after its
         hardware-specific cleanup contract permits new grants. Failed or
-        uncertain cleanup retains its fences and backing, so a new service name
-        or generation cannot supply the missing completion proof.
+        uncertain cleanup retains its fences and backing. Registering a replacement
+        service instance with a new publication generation cannot supply the
+        missing completion proof.
     \item Generation increment: the name service advances the replacement's
         publication generation. Existing connections keep their old target.
     \item Stale connections: clients connected to the old instance

@@ -90,6 +90,12 @@ A \textbf{connection capability} is a client-side authority to send or call an
 endpoint. A name service resolves a name and conditionally returns a connection
 capability associated with that name.
 
+A service name is a lookup key that can stay the same when a service instance
+is replaced. The name service records which endpoint is registered under that
+name, together with its publication generation. Changing that registration
+affects new lookups. It does not redirect existing connections to a different
+endpoint.
+
 \section{Message}
 
 A \textbf{message} is a kernel-validated IPC envelope consisting of:

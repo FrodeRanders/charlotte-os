@@ -2,10 +2,12 @@
 
 CharlotteOS has a tested reference implementation of restart-with-state.
 The old service hands off one memory object; the replacement restores it,
-creates a fresh endpoint and registers a new name-service generation. Clients
-holding closed old connections reacquire authority and apply protocol-specific
-recovery. Name rebinding does not revoke a still-live old endpoint. This does not promise uninterrupted
-in-flight requests or arbitrary-service upgrade compatibility.
+creates a fresh endpoint and registers it under the same service name with a
+new publication generation. Clients whose old connections have closed reacquire
+authority and apply protocol-specific recovery. Registering the replacement
+does not revoke the old endpoint while
+it is still live. This does not promise uninterrupted in-flight requests or
+arbitrary-service upgrade compatibility.
 
 ## Running reference path
 
@@ -16,8 +18,9 @@ in-flight requests or arbitrary-service upgrade compatibility.
 4. The privileged `SpawnUpgrade` syscall validates the manager's connection
    authority, snapshots and verifies the executable, loads the replacement,
    transfers the single state object and supplies its bootstrap capabilities.
-5. The replacement reads the state, creates an endpoint and registers the same
-   logical name. The name service publishes the new connection/generation.
+5. The replacement reads the state, creates an endpoint and registers it under
+   the same logical service name. The name service publishes a registration
+   with the new connection and a higher publication generation.
 6. Clients reacquire a connection to the replacement. They replay only when
    the protocol establishes that it is safe; accepted unanswered work may
    already have changed state.

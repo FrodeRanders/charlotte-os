@@ -99,7 +99,8 @@ storage readiness and does not synthesize a self-test verdict. See
     \item Userspace UART driver with only delegated MMIO + IRQ: \textbf{Verified.}
     \item UART crash fixture: endpoint closure, device reset and operation
         reconciliation before replacement: \textbf{Verified in that fixture.}
-        Name rebinding alone does not revoke connections to a live old endpoint.
+        Registering a replacement service instance does not revoke connections
+        to the old endpoint while it is still live.
     \item Virtio-net data path with batched packet buffers: \textbf{Runtime-validated on macOS QEMU TCG.}
     \item Fixed-width stable ABI representations (32-byte CQ entries): \textbf{Implemented; not formally audited.}
     \item Capability misuse and cancellation race adversarial tests: \textbf{Partial; six IPC error-path tests.}

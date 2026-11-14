@@ -36,10 +36,11 @@ service:
         from one address space to another. The sender loses access, and the
         receiver gains it. This is the vehicle for service state.
 
-    \item Generation tracking: the userspace name service records an
-        publication generation. Rebinding a name does not revoke a still-live
-        old endpoint. Once that endpoint closes, its connections reject, and a new
-        lookup can return the replacement generation and connection.
+    \item Generation tracking: the userspace name service records a
+        publication generation. Registering a replacement instance under the same
+        service name does not revoke the old endpoint while it is still live.
+        Once that endpoint closes, its connections reject, and a new lookup can
+        return the replacement instance's generation and connection.
 
     \item EndpointClose and Cancelled: when a service domain exits,
         the kernel closes its endpoint. Queued requests that were never
@@ -73,8 +74,9 @@ this counter handoff does not establish that arbitrary in-flight work is drained
 The supervisor then spawns the new service instance with an extended bootstrap
 contract containing the name service connection and handoff state. The new
 service deserializes the state, creates a fresh endpoint, and re-registers under
-the same name. The name service bumps the generation. Teardown of the stopped
-old domain invalidates its stale client connections.
+the same service name. The name service publishes this replacement registration
+with a higher generation. Teardown of the stopped old domain invalidates its
+stale client connections.
 
 \section{Executable source}
 
@@ -170,7 +172,8 @@ fn main(ctx: Context) -> ! {
 A closed old endpoint rejects further calls. Queued, undelivered calls return
 the endpoint-closed result, but delivered calls that lose their server before a
 reply return cancellation. A timeout or cancelled reply does not prove that a
-delivered request had no effect. Name rebinding alone supplies no such proof.
+delivered request had no effect. Finding a replacement instance through the name
+service does not resolve that uncertainty.
 
 The copyable client in \autoref{sec:reconnecting-client} keeps business progress
 outside its session connection, maps endpoint closure to an application-defined

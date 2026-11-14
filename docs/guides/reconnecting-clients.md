@@ -31,8 +31,9 @@ a reactor that must process inbound work uses [one CQ for all interests](../refe
 `EndpointLost` is the example's own policy classification. Current runtime
 calls report `IpcError::Status(ipc_status::ENDPOINT_CLOSED)` before acceptance,
 or `IPC_REPLY_ENDPOINT_CLOSED` in a terminal reply. Neither proves that a
-replacement exists. A name's new generation does not retarget or revoke a
-still-live old connection. The client must obtain another capability through
+replacement exists. Registering a replacement instance under the same service
+name does not redirect or revoke an existing connection to the old endpoint
+while it is still live. The client must obtain another capability through
 its original authority.
 
 Only endpoint loss enters the reconnect branch. Unstarted queue pressure retries

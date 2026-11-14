@@ -59,7 +59,7 @@ is in the repository history and earlier revisions of this document.
 6. ✓ Terminal CQ results survive ring overflow (non-lossy backlog)
 7. ✓ Coalesced remote shard wakes (idempotent scheduler fix)
 8. ✓ Userspace UART driver with only delegated MMIO + IRQ
-9. ✓ UART crash fixture closes the old endpoint, resets its device and reconciles operations before replacement. Name rebinding alone does not revoke a live endpoint.
+9. ✓ UART crash fixture closes the old endpoint, resets its device and reconciles operations before replacement. Registering a replacement service instance does not revoke the old endpoint while it is still live.
 
 10, 11, 12 are partially met or pending (see §21).
 

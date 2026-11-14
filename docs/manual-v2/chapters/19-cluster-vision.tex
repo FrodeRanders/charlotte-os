@@ -49,7 +49,7 @@ useful description consists of properties such as processor architecture, memory
 accelerators, attached devices, trust domain, and failure domain. If a node
 fails, the operator should replace the resource and let the cluster
 reconstruct the intended placement. If a workload moves, clients should
-continue to address its cluster name.
+continue to reach the service through the same logical name.
 
 That indirection now has an external TCP counterpart. Node addresses serve
 protocols that intentionally target one machine. A cluster service VIP instead
@@ -79,8 +79,10 @@ Amoeba organizes computation around processor pools and capability-protected
 objects, allowing users to address services without selecting a home machine
 \cite{prior:amoeba}. CharlotteOS shares this administrative indirection, but
 its invocation contract preserves request identity, generations, deadlines
-and uncertain outcomes. A remote call that times out may already have changed
-the service, so moving its name does not authorize replay.
+and uncertain outcomes. After a remote call times out, the caller may not know
+whether the service applied the request. Resolving the same logical service
+name to a replacement instance does not, by itself, make it safe to repeat
+that request.
 
 The reason for exposing that uncertainty is the distributed-systems boundary
 identified by Waldo and colleagues: remote interactions introduce latency,
@@ -141,10 +143,12 @@ optimization from defeating availability. Node capacity, architecture,
 devices, policy domains, and actual load all constrain the decision.
 
 Routing follows the same abstraction. Clients address a logical service
-through the cluster name service. The runtime may choose local delivery when caller and
-callee are co-located and network delivery when they are not. If placement
-changes, the name's generation changes, stale endpoints are invalidated, and
-clients resolve again.
+through the cluster name service. The runtime may choose local delivery when
+caller and callee are co-located and network delivery when they are not. When
+placement changes, replacement instances publish new service registrations
+with new publication generations. Existing connections still target their original
+endpoints. Once those endpoints close, clients must resolve the service name
+again to obtain connections to the replacements.
 
 Migration is consequently a cluster operation. Stateless reassignment starts an equivalent instance at
 the new location and retires the old one under generation fencing. Stateful
@@ -359,10 +363,10 @@ required failure diversity, violate trust boundaries, or create ambiguous
 state ownership.
 
 Routing is the indirection that makes placement change tolerable. A logical
-name resolves to an active generation and one or more owners. A local owner
-may be reached through a local endpoint and a remote owner through cluster
-transport without changing the caller's authority. When an owner is
-replaced, generation fencing prevents the retiring instance from deleting or
+service name resolves to active registrations for one or more service instances.
+A local instance may be reached through a local endpoint and a remote instance
+through cluster transport without changing the caller's authority. When an
+instance is replaced, generation fencing prevents the retiring instance from deleting or
 overwriting its successor's registration.
 
 Stateful migration is explicit. The old instance exports only the
@@ -780,9 +784,10 @@ Stateful migration must extend the local live-upgrade protocol from
         cluster transfers that state to the prepared instance;
     \item the target accepts ownership under a fencing protocol;
     \item the new instance registers through the distributed name service,
-        advancing the name generation;
-    \item clients resolving the name reach the new owner, while clients with
-        stale connections observe \texttt{EndpointClosed} and re-resolve; and
+        advancing the service registration's generation;
+    \item clients resolving the same service name reach the new instance, while
+        clients with stale connections observe \texttt{EndpointClosed} and
+        re-resolve; and
     \item after the new owner is committed and reachable, the old instance is
         retired and its resources reclaimed.
 \end{enumerate}
@@ -1147,8 +1152,8 @@ The same endpoint accepts
 \texttt{committed}, \texttt{replacing}, or \texttt{ready}, together with
 desired and ready replica counts. A ready observation is generation-safe: all
 desired nodes must have active registrations carrying the exact deployment
-generation. A stale endpoint with the same name cannot make a replacement
-rollout appear ready.
+generation. An old service instance registered under the same service name
+cannot make a replacement rollout appear ready.
 
 The signed descriptor may carry node key zero to request automatic placement.
 A singleton prefers the current Raft leader and uses a deterministic fallback

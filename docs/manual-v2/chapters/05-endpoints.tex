@@ -469,9 +469,10 @@ maps human-readable names to re-delegable connection capabilities:
     \item Registration: a service registers as \texttt{"driver.nic.v1"}
         with a specific endpoint. The name service stores the endpoint's
         connection.
-    \item Generation tracking: replacement registrations advance the name's
-        generation. A connection continues to identify its original endpoint, so
-        re-registration alone does not revoke it or redirect it to a replacement.
+    \item Generation tracking: registering a replacement service instance
+        advances the publication generation. A connection still identifies its
+        original endpoint, so re-registration alone does not revoke it or
+        redirect it to a replacement.
         Endpoint death closes that instance's communication path.
     \item Authorization: policy-published services use default-deny rules
         checked against the kernel-authenticated caller identity. Ordinary
