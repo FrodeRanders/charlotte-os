@@ -3,7 +3,8 @@
 
 A capability is the answer to one question: \textbf{``May I perform this
 operation?''} It grants permission to act. Operations describe the work.
-CharlotteOS capabilities are unforgeable, delegable, and attenuable.
+CharlotteOS capabilities cannot be forged. They can be passed to another domain,
+and their rights can be reduced.
 
 \section{What a capability is}
 
@@ -25,7 +26,7 @@ Capabilities have four key properties:
         operations are permitted. A client connection might carry only
         \texttt{SEND | CALL} rights without connection-minting authority.
     \item Revocable: when a kernel object is destroyed, all capabilities
-        referencing it become invalid. Subsequent use returns an error.
+        referencing it become invalid. Later use returns an error.
 \end{itemize}
 
 \architecturewidefigure{kernel-userspace-boundary}
@@ -54,7 +55,7 @@ SystemObserver & Authorized telemetry read & Non-secret system-wide kernel snaps
 \hline
 \end{longtable}
 
-\section{Delegation and attenuation}
+\section{Delegation with restricted rights}
 
 Capabilities can be \textbf{delegated} to another protection domain through IPC.
 When delegating, the sender may \textbf{attenuate} the rights: the receiver gets a
@@ -71,13 +72,14 @@ rights being transferred.
 Capsicum brings capability confinement to existing Unix applications. Its
 capability mode restricts access to global namespaces, while file descriptors
 carry rights that can be reduced and passed to another process
-\cite{prior:capsicum}. CharlotteOS shares the possession-and-attenuation rule,
-but makes the capability domain the starting execution environment: a new
+\cite{prior:capsicum}. CharlotteOS follows the same rule: possession grants
+authority, and delegation cannot increase rights. In CharlotteOS, the capability
+domain is the starting execution environment: a new
 application receives explicit bootstrap grants and acquires further service
 connections through policy-controlled delegation.
 
 The difference is where compatibility enters the design. Capsicum preserves
-Unix APIs and offers an incremental compartmentalization path. CharlotteOS
+Unix APIs and offers a way to add isolation gradually. CharlotteOS
 requires applications and service libraries to express their dependencies
 through its native object and IPC model. Software that assumes Unix namespaces
 and process facilities needs adaptation. Services still enforce protocol
@@ -87,7 +89,9 @@ policy beyond kernel rights. See the bootstrap contract below and the
 
 \section{Generation-safe lookup}
 
-Capability values are opaque serials consumed monotonically within one namespace.
+Capability values are serial numbers that callers must treat as identifiers,
+not addresses or rights masks. These numbers are issued in increasing order
+within one namespace.
 Closing an entry does not make its serial available again, and exhaustion rejects
 creation instead of wrapping. Lookup checks the owning namespace and object
 family. A removed serial therefore cannot name a later object in that namespace.

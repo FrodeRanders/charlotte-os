@@ -4,7 +4,7 @@
 
 CharlotteOS uses executable TLA+ models to review stateful functionality. The
 models state each safety contract, explore action orderings in a finite instance,
-retain known-bad designs as counterexamples, and map abstract transitions back to
+keep known-bad designs as counterexamples, and map abstract transitions back to
 Rust.
 
 This is stronger than relying on selected test schedules, but narrower than a
@@ -120,7 +120,7 @@ implementation, and validation:
         separated where restart matters. Delayed messages, old handles, and
         retries are actions rather than assumptions that the environment is
         well behaved.
-    \item \textbf{Retain a negative specification.} When a faulty transition is
+    \item \textbf{Keep a negative specification.} When a faulty transition is
         understood, an \texttt{Unsafe...} action and configuration are kept.
         The check suite requires TLC to find the named invariant violation.
         This proves that the invariant and test harness are capable of seeing
@@ -407,7 +407,7 @@ remain outside it. The seven focused cases pass. The 24 October follow-up also c
 \begin{implementationdetail}{Namespace drain}
 The namespace-drain projection checks one poll with two nonreused token
 identities under an existing admission fence. A competing close can remove the
-selection before cancellation preparation. Rechecking absence permits rescan, whereas
+selection before cancellation preparation. Rechecking absence permits rescan, but
 every still-present claim remains Pending. Negative controls restore stale
 Pending or skip live work. Actual root, loan, backing and peer-completion proofs
 are boundary inputs, and later wakes/deadlines lie outside this projection.
@@ -435,7 +435,7 @@ wall-clock fairness remain outside the projection. See
 \begin{implementationdetail}{Input admission and turn rotation}
 The deployment input projection checks four admitted slots, aggregate input-byte
 bounds, unchanged request budgets and a ready healthy input's bound on
-intervening turns. Negative controls retain a busy input's cursor or restart
+intervening turns. Negative controls keep a busy input's cursor or restart
 its deadline. Atomic input turns and producer/CQ delivery are assumptions, while
 controller calls, response transmission, close, new admissions and wall-clock
 fairness are outside this model. See
@@ -467,7 +467,7 @@ wall-clock fairness are outside the projection. See
 The deployment output projection checks two admitted outputs with two abstract
 prefixes. Only a positive producer receipt advances the offset and admits its
 remainder. Wakes grant no progress, uncertainty permits no replay and all chunks
-retain the original deadline. Negative controls replay an uncertain prefix or
+keep the original deadline. Negative controls replay an uncertain prefix or
 restart its budget. Byte framing, capacity, actual TCP delivery, socket close,
 wall-clock scheduling and whole-service fairness are outside the projection.
 See \path{docs/tla/CharlotteDeploymentOutput.tla}.
@@ -493,7 +493,7 @@ abort proof. See \path{docs/tla/CharlotteDeploymentClose.tla}.
 
 The most valuable result is often a mismatch discovered while constructing the
 model. The correct response depends on which side was wrong: sometimes the
-manual or model overstated functionality, whereas sometimes the code lacked a safety
+manual or model overstated functionality, but sometimes the code lacked a safety
 fence.
 
 \subsection{Authorization is controlled capability issuance}
@@ -586,7 +586,7 @@ supply no physical cleanup proof.
 
 Source comparison found a further exhaustion boundary. The policy store could
 publish an unsigned generation beyond the positive signed NS result range.
-The subsequent NS conversion rejected after policy mutation. Publication now
+The later NS conversion rejected after policy mutation. Publication now
 checks the signed limit first, preserving an active binding or tombstone on
 exhaustion. Host regressions reproduced the earlier behavior and verify that
 \texttt{i64::MAX} can be published once before later attempts reject.
@@ -603,7 +603,7 @@ remain boundary assumptions.
 The base IPC model intentionally collapses vector attachments. The
 \tlbreak{CharlotteIpc}{Transaction} refinement instead represents two or more
 moved entries, a live memory loan, an attached connection, the queue and the
-pending-call registry. Current vector calls carry the memory entries, whereas
+pending-call registry. Current vector calls carry the memory entries, while
 scalar calls carry connection attachments and may copy memory. The refinement
 deliberately composes these paths into a stronger rollback obligation, but it does
 not claim that one current syscall carries every form. No request is visible
@@ -639,7 +639,7 @@ acknowledgement and public completion. Readiness retains the original map
 owner until both the actual command engine and recorded domain cell can be
 claimed. Preparation may lose a race to restoration, and another claimant may
 win before a wake is processed. The owner rechecks the same unit and starts
-mapping work once. Busy waiting requires a qualified scheduled caller, whereas
+mapping work once. Busy waiting requires a qualified scheduled caller, but
 masked ready paths can still complete without waiting.
 
 Before entering unmap, the runtime records the attempt as retained. Only a
@@ -692,7 +692,7 @@ The session model represents a session as the ordered pair
 $(\mathit{serviceGeneration},\mathit{retryEpoch})$. The repaired wire encoding
 packs those values into disjoint 32-bit fields, accepts a replacement session
 only when the packed identity is well formed and strictly newer, and disables
-sends rather than wrapping at exhaustion. Two unsafe configurations retain the
+sends rather than wrapping at exhaustion. Two unsafe configurations preserve the
 old flat-identity collision and receive-regression behaviors as required
 counterexamples.
 
@@ -712,7 +712,7 @@ membership-bearing snapshot and only then clears the durable admission record.
 This ordering covers both crash edges:
 
 \begin{itemize}
-    \item before the membership snapshot is durable, restart retains the
+    \item before the membership snapshot is durable, restart keeps the
         anchor fence and the node cannot campaign;
     \item after the snapshot is durable but before the fence-clear write,
         restart recognizes the strictly newer membership snapshot as completion
@@ -761,12 +761,12 @@ replacement, although the responding voter still held the old bytes.
 
 The core now requires exact current term and a matching admitted source before
 crediting an append or completed-snapshot response. Successful indices cannot
-exceed the local tail. Reordered successes retain the strongest confirmed prefix, and
+exceed the local tail. Reordered successes preserve the strongest confirmed prefix, and
 append rejection cannot back off below it. Committed joiners can still replicate
 before promotion, while voter quorum rules remain unchanged.
 
 \tlbreak{Charlotte}{RaftResponse} checks this boundary in 49,395 distinct states
-and retains four counterexamples. The source tests reproduce the unsafe commit
+and includes four counterexamples. The source tests reproduce the unsafe commit
 before correction. Transport authenticity, request correlation, removal epochs
 and the timing assumptions of the existing quorum-contact read gate remain
 outside this proof.
@@ -807,7 +807,7 @@ confirmation within the request, rather than authority at delivery time.
 The shared no-op wire grammar is unchanged. Each read adds a durable log entry
 and quorum commit, with corresponding storage and latency costs. No performance,
 Jepsen or mixed Charlotte/Graft execution claim is made. Bounded status/ingress
-observations retain receive-time freshness separately, but this is not general lease
+observations track receive-time freshness separately, but this is not general lease
 qualification.
 
 \subsection{Elapsed time comes from the kernel counter}
@@ -815,7 +815,7 @@ qualification.
 The reactors previously counted one 25 ms tick after waking even if seconds had
 passed. They now convert a kernel-monotonic counter from one fixed epoch,
 sampling after waits and before inbound or scheduled work. Fractional ticks
-accumulate, whereas invalid or regressing samples abort with pending work live. Timers
+accumulate, but invalid or regressing samples abort with pending work live. Timers
 wake the service without manufacturing elapsed time. Clock conversion, resource
 readiness delivery and physical cleanup remain outside the read model.
 
@@ -872,7 +872,7 @@ generation, and nodes not draining. A router installs only a complete snapshot
 for which all member routes are known. New flows require the router's installed
 policy to hold a bounded local freshness lease. The policy may lag the latest
 global commit during asynchronous propagation, while an abstract fair expiry action
-prevents an unrenewed lease from persisting forever. Established flows retain
+prevents an unrenewed lease from persisting forever. Established flows keep
 their selected policy while its snapshot remains present. After history
 eviction, the binding remains pinned but its packets fail closed instead of
 silently choosing a new backend. Concrete snapshot installation additionally
@@ -889,7 +889,7 @@ The router now enforces the other two contracts with a five-second monotonic
 snapshot lease and fail-closed missing-epoch tombstones. All three unsafe
 actions remain as regression witnesses.
 
-\subsection{Retained regression patterns}
+\subsection{Saved regression patterns}
 
 Other negative specifications preserve compact versions of repaired faults and
 present conformance obligations:
@@ -1149,7 +1149,7 @@ present conformance obligations:
 \tlbreak{UnsafeFinalize}{BeforeCatchUp} & Automatic FINALIZE bypasses proposed-member catch-up. &
     \tlbreak{ProposedMembers}{CaughtUp} \\
 \hline
-\tlbreak{UnsafeFinalize}{LearnerLeader} & A finalized learner retains leadership. &
+\tlbreak{UnsafeFinalize}{LearnerLeader} & A finalized learner keeps leadership. &
     \tlbreak{LeaderIs}{Eligible} \\
 \hline
 \tlbreak{UnsafeFinalize}{OldOnly} & FINALIZE commits without the new voter majority. &
@@ -1413,7 +1413,7 @@ A practical review checklist is:
         condition, moves a linearization point, or changes durable/volatile
         classification.
     \item Update the safe model and bounds. If repairing a discovered fault,
-        retain the old behavior as an unsafe action and named negative
+        keep the old behavior as an unsafe action and named negative
         configuration.
     \item Add the new action to the required-coverage list in
         \repofile|docs/tla/check.sh|.

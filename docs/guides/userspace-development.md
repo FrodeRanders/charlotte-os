@@ -31,7 +31,7 @@ catten_rt::entry!(main);
 ```
 
 The program does not define `_start`, a panic handler, or a global allocator.
-`entry!` supplies those pieces. `_start` is the ELF entry point, whereas `main` is the
+`entry!` supplies those pieces. `_start` is the ELF entry point, while `main` is the
 Rust developer contract and is not exported as a C ABI function.
 
 `Context` is the supported interface to launch-time state. It provides launch
@@ -247,7 +247,7 @@ the cluster:
 2. **Sign.** `cluster-sign elf-sign` adds the CLS2 note with the application's
    chosen name, class, version, rollback counter, flags, and provenance. The
    in-tree `artifact-policy.tsv` and `scripts/sign-service-elfs.sh` are
-   conveniences for bundled services, whereas an out-of-tree artifact calls
+   conveniences for bundled services, while an out-of-tree artifact calls
    `cluster-sign` directly. Its private-key argument is a restricted key-file
    path rather than hexadecimal key bytes. See
    [Signing and development trust](signing-and-trust.md) for generation and

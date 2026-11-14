@@ -108,7 +108,7 @@ When the interrupt fires:
 \end{enumerate}
 
 The interrupt path uses atomics and controller MMIO, without allocation or
-registry locks. Each route's mailbox retains a generation watermark after
+registry locks. Each route's mailbox stores a generation watermark after
 readiness is claimed, preventing a delayed old publisher from replacing a
 new lifetime's wake. Thread context validates the route and publishes CQ work
 under the device-management guard, detaches the exact queue's waiters and
@@ -123,7 +123,7 @@ consuming \texttt{PreparedDriver}. Storage, entropy and network grants finish
 before any sibling driver can submit DMA and own the shared IOMMU engine.
 ARM embeds signed RNG and NIC images in the hardware bootstrap set so batch
 preparation cannot wait for its own unstarted storage driver to serve the store.
-The owner starts its thread and then completes its lease, whereas fallback retains all
+The owner starts its thread and then completes its lease, but fallback retains all
 fields without physical cleanup. This ordering needs no polling or grant replay.
 Independent dynamic creation still rejects busy admission. Per-return creation
 errors preserve stream/backend/reset cause and confirmed or retained cancellation
@@ -136,7 +136,7 @@ The PL011 UART driver demonstrates the full lifecycle:
 
 \begin{itemize}
     \item Direct MMIO writes to the transmit FIFO: no syscalls.
-    \item Interrupt-driven deferred reads: the driver retains a reply
+    \item Interrupt-driven deferred reads: the driver holds a reply
         token for a pending read. When the RX interrupt fires, the driver reads
         the receive register and completes the deferred reply.
     \item Cooperative shutdown: on graceful exit, the driver unmaps its
@@ -195,14 +195,14 @@ multi-IOMMU topologies remain future work.
 DMA map and map-exclusive syscalls may wait for the existing fixed unit slot
 before their first claim on the domain and command engine. The same operation retains its
 exact address-space generation, public capability claim, original memory pin,
-and transient interest. Source storage is prepared outside backend guards, and
+and temporary interest. Source storage is prepared outside backend guards, and
 restoration signals through producer-LP deferred delivery only when the actual
 engine and all domain cells are present. Admission rechecks and transfers the
 domain, engine, and pin together, then mapping work runs once. Waiting requires
 an already interrupt-enabled scheduled context, so masked or nonscheduled busy
 callers reject explicitly, and serialized kernel fixtures keep the rejecting
 path. No adapter enables interrupts beneath an inherited mask. Admission failure
-releases only the unstarted preparation, whereas hardware or physical uncertainty keeps
+releases only the unstarted preparation, but hardware or physical uncertainty keeps
 its existing retention policy. Map readiness does not change unmap's separate
 admission/completion distinction or authorize hardware or physical cleanup
 replay. See \texttt{docs/reference/dma-map-readiness.md}.

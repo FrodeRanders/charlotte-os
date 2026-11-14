@@ -221,7 +221,7 @@ Changing an inner owner's destructor to retain backing does not qualify an activ
 containing destructor. That parent can still enter physical release or destroy
 metadata. Test the relevant parent path with the actual enclosing guards held.
 
-Keep large transient owners in their containing operation across rejection when
+Keep large temporary owners in their containing operation across rejection when
 possible, because scalar errors can leave ownership with the caller. Review compiled
 frame sizes and the deepest cleanup tail on bounded kernel/boot stacks. A
 complete by-value error can preserve ownership while still exhausting that stack.
@@ -238,7 +238,7 @@ do not introduce it prematurely as an incidental part of an unrelated fix.
 
 Trace every scalar entry point when sharing a submission adapter. A copied
 attachment can use unlocked preparation while its move or loan sibling still
-allocates and rolls back beneath IPC. Keep root capture, complete transient
+allocates and rolls back beneath IPC. Keep root capture, complete temporary
 ownership and post-guard disposal consistent across those modes, because sharing the
 payload encoder alone does not establish that boundary.
 
@@ -356,7 +356,7 @@ Keep tests discriminating: exercise the real production boundary and an unsafe
 control where useful. Separate fixture assumptions from production guarantees, because
 one LP's IRQ mask does not isolate a sponsor shared with other LPs. A passing
 repeat does not explain a failed run. Finite models check their stated
-abstractions, whereas QEMU process loss does not qualify device power-loss durability or
+abstractions, and QEMU process loss does not qualify device power-loss durability or
 physical hardware recovery.
 
 Record both endpoint implementations when reproducing a protocol failure.

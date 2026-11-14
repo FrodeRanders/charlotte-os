@@ -117,7 +117,7 @@ retires admission before releasing subsystem payloads.
 Receive reserves reply authority before dequeuing a call or writing its vector
 result page. A shared-limit rejection preserves queued work, result bytes and
 active loans. An owning receive transaction removes speculative reply authority
-if result writing fails, whereas successful writing and dequeue require no further
+if result writing fails, but successful writing and dequeue require no further
 admission. One-way messages need no reply slot and can drain a full namespace.
 Call-side IPC uses one owning transaction for metadata, fresh authority, memory
 attachments and loan tracking. Memory and pending/delegated IPC authority
@@ -136,7 +136,7 @@ reclaiming delegated authority if preparation fails. These record limits do
 not provide complete aggregate byte protection.
 
 All memory transfer modes use an owning prepared
-transaction. Copies hold private charged pages, whereas moves and loans hold source
+transaction. Copies hold private charged pages, while moves and loans hold source
 escrow and backing-retention pins. Destinations remain hidden until the whole
 mixed-mode batch commits. Loan preparation creates no borrower state, and
 cancellation restores original source slots without fresh quota or receiver
@@ -249,15 +249,15 @@ integers. Application code should use the linear wrappers in
     \item \texttt{DmaTransfer} is created only from unmapped
         \texttt{OwnedMemory} and returns CPU ownership after synchronous DMA
         unmapping.
-    \item \texttt{ReadOperation<'a>} retains its
+    \item \texttt{ReadOperation<'a>} holds its
         \texttt{\&'a mut [u8]} until completion, including the
         cancel-and-wait path in its destructor.
     \item \texttt{Completion} cancels, waits, and closes on drop, but timeout does
         not consume the handle unless a terminal result was observed.
     \item \texttt{Endpoint}, \texttt{Connection}, and \texttt{PendingCall}
-        close exactly once. A pending call retains any memory loan until reply
+        close exactly once. A pending call keeps any memory loan until reply
         observation or cancellation. A single-call deadline uses
-        \texttt{PendingCall::}\allowbreak\texttt{wait\_timeout}, whereas a multi-source reactor uses
+        \texttt{PendingCall::}\allowbreak\texttt{wait\_timeout}, while a multi-source reactor uses
         \texttt{PendingCall::bind\_cq} with endpoint interests on the same CQ.
         \texttt{cq\_wait\_checked} waits to the earliest remaining operation
         deadline with an owned kernel watchdog and no extra completion
@@ -314,14 +314,14 @@ The signed loader also installs a stable artifact principal, exact address-space
 generation, and deployment roles in a kernel-only table. IPC enqueue snapshots
 that authentication data, so every current receive operation returns it
 alongside the numeric sender ASID, so a delayed message cannot inherit the
-identity of a later occupant of the same slot. Runtime ABI 3 retains the twelve-register
+identity of a later occupant of the same slot. Runtime ABI 3 uses the twelve-register
 envelope for scalar, blocking and vector receives (syscalls 71--73), and the old
-nine-register syscalls 22, 27 and 53 are retired. The canonical runtime methods
+nine-register syscalls 22, 27 and 53 are retired. The current runtime methods
 are \texttt{Endpoint::receive} and \texttt{try\_receive}. Error returns clear all
 eleven payload/identity registers, while queued attachments remain owned until delivery. Checked CQ wait 88 uses an explicit timed flag, and 12/42 are retired.
 The safe runtime returns typed readiness/deadline or admission/invalid-request
 errors. Ordinary service reactors abort on rejected waits rather than spin or
-advance protocol time, whereas specialized recovery retains the original pending owners
+advance protocol time, but specialized recovery retains the original pending owners
 and deadlines. Timer-backed admission pauses likewise abort if timer
 submission or successful completion is rejected.
 
@@ -329,7 +329,7 @@ Security-sensitive discovery uses the name service's
 \texttt{OP\_LOOKUP\_AUTHORIZED} protocol. The request names a service and an
 explicit \texttt{SEND}/\texttt{CALL} rights set, but contains no caller identity.
 The co-located policy engine defaults to deny, evaluates the kernel-authenticated
-principal and exact generation, and delegates only an attenuated connection.
+principal and exact generation, and delegates only a connection with restricted rights.
 \texttt{OP\_SET\_POLICY} and \texttt{OP\_REGISTER\_AUTHORIZED} separately require
 administrator and service-manager roles. Issuance, denial, and delegation
 failure enter a bounded administrator-readable audit stream. Public bootstrap
@@ -397,7 +397,7 @@ Application code uses typed owners over the syscall boundary:
 \begin{description}
     \item[\texttt{Completion::submit} and \texttt{Completion::timer}]
         Return an owning completion or a submission error. Buffer-backed reads
-        use \texttt{ReadOperation}, which retains the buffer borrow.
+        use \texttt{ReadOperation}, which holds the buffer borrow.
     \item[\texttt{Completion::poll} and \texttt{wait\_timeout}]
         Observe the exact operation. A timeout or rejected wait admission retains
         the owner, because neither is a terminal result.
@@ -406,7 +406,7 @@ Application code uses typed owners over the syscall boundary:
         or deadline, or an explicit wait error, but it returns no vector of entries.
         Drain the mapped ring separately and observe resources through their owners.
     \item[Owned cancellation and release]
-        \texttt{ReadOperation} and \texttt{Completion} retain their cleanup policy, so
+        \texttt{ReadOperation} and \texttt{Completion} follow their cleanup policy, so
         cancellation cannot release an uncertain buffer merely because a timer expired.
 \end{description}
 
@@ -415,7 +415,7 @@ server endpoint. Its minting methods return owned connections with selected
 \texttt{IpcRights}. Calling a connection returns a \texttt{PendingCall}, not
 the server's reply token. Receive creates an \texttt{IncomingMessage} containing
 the server-side one-shot \texttt{ReplyToken}. Its consuming reply methods finish
-that authority. Memory moves consume their owners, whereas loans borrow them through the
+that authority. Memory moves consume their owners, while loans borrow them through the
 pending call's terminal cleanup. The complete example in
 \autoref{sec:reconnecting-client} uses these APIs.
 
@@ -466,7 +466,7 @@ its owners.
 
 \texttt{OwnedPayload} prepares bounded, length-bearing request memory using
 the existing mapping owner. \texttt{Admission} retries only unstarted queue
-pressure within one deadline, whereas \texttt{CallObservation} retains the pending
+pressure within one deadline, while \texttt{CallObservation} retains the pending
 owner on deadline or rejected wait admission. The explicit
 \texttt{cancel\_on\_failure} convenience policy uses the existing fail-closed
 cleanup. Observation deadlines do not promise bounded teardown latency.

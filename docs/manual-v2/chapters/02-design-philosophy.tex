@@ -14,7 +14,7 @@ The three projects approach this design space from different directions. We
 want to keep the distinctions that make each useful and give them clear ways
 to work together.
 
-\subsection{CharlotteOS: the protection, scheduling, and interrupt substrate}
+\subsection{CharlotteOS: protection, scheduling, and interrupts}
 
 CharlotteOS contributes the mechanisms that \emph{must} be privileged:
 
@@ -58,7 +58,7 @@ Sitas provides:
     \item Typed command/reply APIs: what a shard receives is a specific
         Rust type.
     \item Structured shutdown and cancellation: tasks can be cancelled,
-        and cancellation has defined ownership semantics.
+        and cancellation has defined ownership rules.
     \item Observability through owned snapshots: diagnostics capture
         state by value, never by borrowed reference into runtime internals.
 \end{itemize}
@@ -82,7 +82,7 @@ contributes the protection-domain service model:
         communication between protection domains.
     \item Scalar messages are distinct from memory-based messages:
         small control-plane operations (opcodes, handles, status codes) travel
-        in fixed-size messages, whereas bulk data travels as memory-object attachments.
+        in fixed-size messages, while bulk data travels as memory-object attachments.
     \item Memory IPC distinguishes ownership transfer from borrowing:
         move transfers ownership permanently. Borrow grants temporary access,
         revoked on reply or cancellation.
@@ -162,7 +162,7 @@ The layers are:
 
 \section{The three kernel primitives}
 
-Three orthogonal kernel abstractions form the foundation:
+The kernel is built around three separate abstractions:
 
 \begin{center}
 \begin{tikzpicture}[
@@ -225,12 +225,11 @@ This rule limits the kernel interface and keeps the ABI and trust model reviewab
 ``Asynchronous throughout'' means:
 
 \begin{enumerate}
-    \item Operations that may wait for external progress have submission/completion
-        semantics.
+    \item Operations that may wait for external progress separate submission from completion.
     \item No subsystem boundary forces the caller to dedicate a thread to waiting
         for one operation.
     \item A userspace shard can wait on one aggregated kernel source (the CQ).
-    \item Completions are retained until observed.
+    \item Completions are kept until observed.
     \item Buffers and capabilities have explicit ownership during an operation.
     \item Cancellation and teardown have defined state transitions.
     \item Bounded queues preserve backpressure across layers.
@@ -245,7 +244,7 @@ This leaves some things outside the model:
     \item Every call returns a newly allocated completion capability.
     \item No thread ever blocks.
     \item Every wake sends an IPI.
-    \item All waitable objects have identical semantics.
+    \item All waitable objects behave identically.
     \item Userspace code is interrupted by arbitrary asynchronous callbacks.
 \end{itemize}
 
@@ -336,7 +335,7 @@ principles from \autoref{chap:problem}:
     \item Composition limits the privileged code footprint: most system functionality
         lives in userspace, where faults can be contained to a service domain.
     \item The async model reduces adaptation: the kernel and runtime share
-        submission, completion, and wake semantics.
+        rules for submission, completion, and waking tasks.
     \item Bounded ingress makes pressure visible: endpoint and hardware queues
         apply explicit backpressure. \autoref{chap:scheduling} records the
         implemented family limits and remaining aggregate-accounting gaps.

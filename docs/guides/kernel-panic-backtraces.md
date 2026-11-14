@@ -37,7 +37,7 @@ ELFs currently retain function symbols but not DWARF source lines.
 Before a bounded QEMU run, the runner also copies the matching map to
 `<serial-log>.symbols` and writes `<serial-log>.kernel.sha256`. Keeping these
 two small sidecars with a captured log makes later function lookup independent
-of subsequent kernel rebuilds.
+of later kernel rebuilds.
 
 If `llvm-nm` is not on `PATH`, the build helper searches the active Rust
 toolchain. Install the `llvm-tools-preview` rustup component or set `LLVM_NM`

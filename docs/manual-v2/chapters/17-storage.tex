@@ -193,14 +193,14 @@ validity can select mounting or formatting. Allocation, IPC, device or mapping
 rejection fails startup, because unreadable metadata is not evidence of a blank disk.
 Only two successfully read zero-filled superblock slots permit first-boot
 formatting. Retired format tags reject even alongside a current copy. A valid
-current copy can recover a blank or corrupt peer, whereas nonblank metadata with no
+current copy can recover a blank or corrupt peer, but nonblank metadata with no
 current copy and incompatible layouts fail without reformatting.
 
 The store publishes explicit Starting, Serving, Draining and Failed states.
 Serving follows mount and endpoint registration, and kernel local readiness
 acquires and revalidates that milestone. Diagnostic stages and ordinary I/O
 errors are separate. The marker records startup completion, but later I/O can still fail.
-First-failure diagnostics retain state, operation, LBA/count, phase and
+First-failure diagnostics record state, operation, LBA/count, phase and
 available status/result without retry. See
 \repofile|docs/reports/audits/2026-10-12-security-object-store-readiness.md|.
 
@@ -245,7 +245,7 @@ accidental corruption, but is not cryptographic authentication.
 The store authenticates each sender through the kernel IPC envelope and records
 the creating principal in the object header. Ordinary objects are private to
 that principal and the kernel, including across service replacement. Shared-read
-objects permit other authenticated readers while retaining owner-only mutation.
+objects permit other authenticated readers while keeping owner-only mutation.
 Reserved artifact and executable namespaces are publicly readable but mutable
 only by the kernel and the signed \texttt{clusterctl} administration service.
 A persisted operator table admits at most 64 principal/range grants for read or
@@ -253,7 +253,7 @@ write access, but grants cannot extend the reserved mutation allowlist. Node/ope
 enrollment and management-channel authentication remain separate requirements.
 
 Authorization and data access consume one validated locator/header snapshot.
-Missing objects return NotFound, whereas metadata I/O or validation failure returns an
+Missing objects return NotFound, but metadata I/O or validation failure returns an
 error rather than adopting public ownership defaults. Automatic creation searches
 for an unused positive scalar ID with a directory-sized bound, preserving
 explicitly created objects. Mount rejects duplicate live IDs. Current format
@@ -280,7 +280,7 @@ can use the same host-preseeded model.
 The x86-64 kernel also carries an immutable signed installation bundle for the
 blank-disk appliance path. Once NVMe and the object store are available, it
 checks the stable object ID for every bundled logical name. A valid stored
-artifact is retained, including a newer deployed version, whereas a missing artifact
+artifact is kept, including a newer deployed version, but a missing artifact
 or one that fails identity and signature verification is replaced from the
 bundle. The installer flushes the store before dependent services start, so
 the operation is idempotent across reboot. Services are subsequently resolved
@@ -303,7 +303,7 @@ changing already-committed code.
 
 For preseeded QEMU images, the runner fingerprints the whole blessed bundle.
 It rebuilds an instance's initial NVMe image when that fingerprint changes,
-while \texttt{--reuse-storage} deliberately retains an older store and emits a
+while \texttt{--reuse-storage} deliberately keeps an older store and emits a
 staleness warning. \texttt{--fresh-storage} always recreates it. The image
 producer refuses an object-id collision rather than silently replacing an
 earlier service. The x86-64 options \texttt{--blank-storage} and
@@ -353,7 +353,7 @@ persistence (\texttt{storage=2}), and retired mode 1 and malformed policy values
 reject. Required mode waits for \texttt{"obj"} through the name service.
 One jointly validated two-object pair holds \texttt{CRFTSTA4}
 term/vote/join-admission state and \texttt{CRFTLOG4} snapshot/log state.
-Only two absent records authorize initialization, whereas existing empty, incomplete,
+Only two absent records authorize initialization, but existing empty, incomplete,
 corrupt or unsupported records reject without reset or a memory fallback.
 Older decoders and split-store migration are removed. Each mutation writes
 the complete object and flushes the underlying NVMe device before returning.
@@ -376,7 +376,7 @@ and storage policy) remains in the supervisor-provided manifest. The
 persistent objects hold Raft protocol state, log entries, and snapshots.
 Cross-machine catalog replication is provided separately by the \texttt{dns}
 state machine described in \autoref{chap:consensus} and
-\autoref{chap:cluster-vision}, whereas this generic Raft persistence test
+\autoref{chap:cluster-vision}, while this generic Raft persistence test
 remains a single-voter restart test.
 
 \section{Native filesystem}

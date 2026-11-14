@@ -95,7 +95,7 @@ storage readiness and does not synthesize a self-test verdict. See
     \item Lending enforced by mappings, including death cleanup: \textbf{Verified.}
     \item Single \texttt{checked CQ wait} for endpoint + completions + device interrupts: \textbf{Verified.}
     \item Terminal CQ results survive ring overflow (non-lossy backlog): \textbf{Verified.}
-    \item Coalesced remote shard wakes (idempotent scheduler fix): \textbf{Verified.}
+    \item Combined remote shard wakes (idempotent scheduler fix): \textbf{Verified.}
     \item Userspace UART driver with only delegated MMIO + IRQ: \textbf{Verified.}
     \item UART crash fixture: endpoint closure, device reset and operation
         reconciliation before replacement: \textbf{Verified in that fixture.}
@@ -145,7 +145,7 @@ storage readiness and does not synthesize a self-test verdict. See
 
     \item \textbf{Device capabilities:} MmioRegion and Interrupt object types,
         user-accessible device mappings, GICv3 SPI and x86 MSI/MSI-X routing,
-        and IRQ-to-CQ coalesced delivery (lock-free deferred wake).
+        and IRQ-to-CQ combined delivery (lock-free deferred wake).
 
     \item \textbf{Userspace drivers:} reference UART, NVMe, AHCI, virtio-blk,
         virtio-net, and E1000E drivers use delegated MMIO, interrupts, and DMA domains.
@@ -155,7 +155,7 @@ storage readiness and does not synthesize a self-test verdict. See
     \item \textbf{Syscall dispatch:} AArch64 SVC and x86-64 SYSCALL entry use
         the shared typed \texttt{SyscallNumber} enum. Caller identity comes
         from trusted thread and trap context, never a userspace parameter.
-        Runtime ABI 3 retains the twelve-register IPC receive envelope canonical:
+        Runtime ABI 3 uses the twelve-register IPC receive envelope:
         scalar, blocking and vector receives return the captured sender generation,
         signed-artifact principal and roles. Nine-register syscalls 22/27/53 are
         retired, and checked CQ wait 88 has an explicit timed flag and retired 12/42
@@ -273,7 +273,7 @@ storage readiness and does not synthesize a self-test verdict. See
         RNG resets before releasing shared DMA, and NVMe drains operations,
         flushes, masks interrupts, disables the controller, and
         observes \texttt{RDY=0} before the stronger acknowledgement. AHCI and
-        VirtIO block flush and stop/reset their controllers, whereas VirtIO net and
+        VirtIO block flush and stop/reset their controllers, while VirtIO net and
         E1000E drain transmit descriptors and stop their DMA engines. AArch64
         then selects the FADT-advertised SMC/HVC conduit and boot-validates a
         terminal PSCI \texttt{SYSTEM\_OFF}, while x86-64 ACPI poweroff remains open.
@@ -295,7 +295,7 @@ storage readiness and does not synthesize a self-test verdict. See
         per-LP tracked logical ASID rather than a \texttt{ttbr0\_el1} readback.
         See \emph{AArch64 Port Status} for the full diagnosis. HVF also exposes
         no guest SMMU for the protected-DMA NVMe path. Its compatibility boot
-        therefore runs 15 non-storage tests, whereas the full 18-test suite and
+        therefore runs 15 non-storage tests, but the full 18-test suite and
         persistent-storage workflows require TCG.
     \item \textbf{x86-64 architectural limitations:} PCID/INVPCID and SMAP are
         not enabled, so TLB shootdowns conservatively reload CR3. SMEP is enabled.
@@ -362,11 +362,11 @@ storage readiness and does not synthesize a self-test verdict. See
         admission, and unit-owned fences and contexts retain original charges beyond
         domain destruction. Mapping/walker and ledger backing remain gaps.
         Connection, retained-call and outstanding-reply records have separate
-        domain/node count admission. Grantors sponsor direct connections, whereas
+        domain/node count admission. Grantors sponsor direct connections, while
         callers sponsor call/reply pairs and solicited returned connections.
         Reservation precedes attachment transfer,
         and retirement fences receive and connection publication before teardown.
-        Timed admission failures retain the completion owner, whereas untimed waits
+        Timed admission failures retain the completion owner, but untimed waits
         preserve terminal-state and borrowed-buffer safety through cooperative
         retry. Untimed IPC admission retries preserve pending loans, and source
         preparation precedes attachment transfer. Kernel blocking-lock waiters
@@ -403,7 +403,7 @@ storage readiness and does not synthesize a self-test verdict. See
         observer/weak storage and other general metadata/principal families
         remain open. Principal-history records and root candidates now share a
         separate requested-byte/count pool with reserved platform headroom.
-        Published records remain charged for the boot lifetime, whereas duplicate
+        Published records remain charged for the boot lifetime, but duplicate
         candidates refund only after confirmed root metadata disposal.
         Limits/usage/authority nodes also have a separate byte/count pool whose
         charges survive partial preparation, publication and failed invalidation.
@@ -456,7 +456,7 @@ storage readiness and does not synthesize a self-test verdict. See
         serialization, then revalidate before relink/pin publication. Existing
         pins/receipts retain detached records and peer leases through uncertainty.
         Mapping preparation's partial node/shared-snapshot fields now retain
-        storage inertly on abandonment, whereas ordinary constructed returns explicitly
+        storage inertly on abandonment, but ordinary constructed returns explicitly
         finish after local memory/table guards. Full captured namespace generation
         also revalidates before mapping/pin publication. Broader contexts and
         aggregate metadata admission remain separate.
@@ -481,13 +481,13 @@ storage readiness and does not synthesize a self-test verdict. See
         and concurrent progress remain separate.
         Copy-pin snapshot capacity also prepares outside memory serialization,
         with exact-generation/source revalidation before snapshot fill and pin
-        publication. Bare preparation/pin fallback retains its allocation, whereas
+        publication. Bare preparation/pin fallback retains its allocation, but
         explicit snapshot disposal precedes backing-fence decrement. Automatic
         scoped/source-transfer destructors and aggregate principal admission
         remain separate qualification.
         DMA snapshots now share that inert preparation before either pin counter
         changes, with full source/direction/rights/exclusion revalidation. Bare
-        DMA-pin fallback retains metadata, whereas explicit snapshot free precedes
+        DMA-pin fallback retains metadata, but explicit snapshot free precedes
         counter decrement. Existing backend completion and root/capability
         ownership remain required, without new readiness or replay permission.
         Scratch namespace/extent nodes now also prepare outside local guards,
@@ -503,7 +503,7 @@ storage readiness and does not synthesize a self-test verdict. See
     \item \textbf{Cross-machine Raft boundary:} two TCG guests share a private
         QEMU LAN (stream backend on AArch64, socket backend on x86-64), and the
         reliable-message frame transport and remote Raft peer routing are
-        connected during ordinary networked boots, whereas \texttt{--dns-test} adds
+        connected during ordinary networked boots, while \texttt{--dns-test} adds
         the cross-node validation workload and pass/fail result.
     \item \textbf{Observability HTTP:} the httpd keyhole aggregates the
         \texttt{observe} snapshot and per-service status into a JSON report
@@ -513,7 +513,7 @@ storage readiness and does not synthesize a self-test verdict. See
         projection, and an unnamed platform-service VIP can make it
         location-independent while identifying leader and serving node
         separately. Both views require an enrolled reader or administrator
-        certificate over TLS on port 443, whereas deployment TLS on port 7444 requires
+        certificate over TLS on port 443, while deployment TLS on port 7444 requires
         an administrator before mutation dispatch. One signed, encrypted boot
         resource supplies credentials, roles and adjustable TLS limits to both
         services, and missing credentials disable network admission.
@@ -530,7 +530,7 @@ storage readiness and does not synthesize a self-test verdict. See
         Deployment ingress cancels incomplete input during shutdown, continues
         accepted controller/output work under original budgets, and requires
         all five client phases empty before acknowledgement. The signed ARM
-        shutdown fixture checks held idle TLS clients and cooperative retirement, whereas
+        shutdown fixture checks held idle TLS clients and cooperative retirement, but
         stalled controller/output and receiver-held cleanup remain separate.
         \texttt{--http-test} provisions disposable development credentials,
         adds QEMU forwarding and validates verified HTTPS. Protected enrollment,

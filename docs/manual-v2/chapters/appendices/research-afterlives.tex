@@ -51,7 +51,7 @@ CharlotteOS adopts the strong local authority rule: an opaque, typed object
 capability is authority, may carry attenuated rights, and is not a name,
 notification, completion, or unit of work. Reply tokens are linear authority, while
 memory, device, DMA, observer, and bootstrap access are explicitly delegated.
-The present kernel does \emph{not} retain a general derivation tree, prove
+The present kernel does \emph{not} maintain a general derivation tree, prove
 confinement, or provide CHERI-style protection for arbitrary pointers. This is
 an object model inspired by EROS and seL4. It provides neither an seL4
 refinement nor a substitute for CHERI.
@@ -59,7 +59,7 @@ refinement nor a substitute for CHERI.
 \section{IPC, typed channels, and ownership}
 
 \textbf{Mach.} Pure Mach did not become the dominant Unix organization, but
-it was absorbed into Apple XNU. XNU retains Mach tasks, virtual memory, ports,
+it was absorbed into Apple XNU. XNU uses Mach tasks, virtual memory, ports,
 and IPC while co-locating BSD, networking, filesystems, and I/O components in
 one kernel for performance. Apple's description is candid about this hybrid
 outcome
@@ -115,7 +115,7 @@ libraries and queues on Linux more than as replacement operating systems.
 
 Windows completion ports, BSD \texttt{kqueue}, Linux \texttt{epoll}, and
 Linux \texttt{io\_uring} show the same selective adoption. Submission,
-retained completion, aggregation, and batching became normal interfaces
+stored completion, aggregation, and batching became normal interfaces
 without making notification, readiness, completion, IPC, and authority one
 thing.
 
@@ -127,7 +127,7 @@ Barrelfish supplies the analogy for explicit cross-LP coordination. IX, DPDK,
 and Arrakis inform userspace drivers, batched queues, IOMMU protection, and
 buffer ownership. CharlotteOS makes a different authority choice from Arrakis:
 devices are delegated to isolated driver services, rather than directly to ordinary
-applications. Completion queues retain terminal operation records and remain
+applications. Completion queues store terminal operation records and remain
 separate from endpoint IPC and Rust \texttt{Waker}s.
 
 \section{Service recovery}
@@ -135,7 +135,7 @@ separate from endpoint IPC and Rust \texttt{Waker}s.
 MINIX 3, CuriOS, and Pebble explored minimally privileged userspace services,
 drivers, supervision, and restart. Nooks and SafeDrive instead tried to
 contain faulty extensions while preserving compatibility with in-kernel
-drivers. MINIX remains a research and teaching system, whereas the other projects are
+drivers. MINIX remains a research and teaching system, while the other projects are
 completed prototypes. Their broad result is now conventional: isolate components
 and supervise them. Their harder problem did not disappear: hardware,
 DMA, persistent state, and externally visible effects prevent arbitrary
@@ -196,7 +196,7 @@ Solaris MC extended Unix into a multi-computer single-system image while
 preserving the Solaris ABI
 (\url{https://www.usenix.org/conference/usenix-1996-annual-technical-conference/solaris-mc-multi-computer-os}).
 LegoOS reopened the operating-system boundary for disaggregated processor,
-memory, and storage components, while deliberately retaining common Linux
+memory, and storage components, while deliberately supporting common Linux
 system calls to ease adoption
 (\url{https://www.usenix.org/conference/osdi18/presentation/shan}). These
 systems make useful counterpoints to CharlotteOS. They move the operating
@@ -240,7 +240,7 @@ scheduler work.
 
 Distributed object systems established location-independent service names.
 Modern software load balancers use deterministic connection mapping and
-retained flow state to limit disruption when backend sets change. Maglev is a
+stored flow state to limit disruption when backend sets change. Maglev is a
 production-scale example
 (\url{https://www.usenix.org/system/files/conference/nsdi16/nsdi16-paper-eisenbud.pdf}).
 
@@ -259,7 +259,7 @@ inspectable consequence of application placement and lifecycle.
 
 \subsection{Remote calls and explicit failure}
 
-CharlotteOS retains Amoeba's common service model and accepts the critique in
+CharlotteOS adopts Amoeba's common service model and accepts the critique in
 Waldo et al.'s \emph{A Note on Distributed Computing}. Relmsg v3 carries
 32-bit lengths, fragmentation, request and session identity, bounded duplicate
 handling, retries, and deadlines. Distributed calls include the target
@@ -293,7 +293,7 @@ ideas into a runtime-authority path:
     \item the leader verifies both authorities against trusted UTC and commits
         only compact references and replay fences; and
     \item the selected node retrieves the ciphertext, after which the kernel
-        re-verifies it, decrypts into transient zeroizing memory, and moves a
+        re-verifies it, decrypts into temporary zeroizing memory, and moves a
         read-only profile capability into the connector.
 \end{itemize}
 
@@ -323,7 +323,7 @@ and the effect of connector compromise.
 \section{AI-assisted adaptation and the POSIX question}
 
 Clean-break systems historically faced a severe software-adoption cost. That
-explains why LegoOS retained a Linux ABI and why capability systems such as
+explains why LegoOS supported a Linux ABI and why capability systems such as
 Capsicum add confinement within Unix. Coding agents change this constraint by
 reducing some of the human work required to discover assumptions, translate
 APIs, generate adapters, and build tests. 
@@ -353,7 +353,7 @@ explicit uncertain outcomes. Signed releases drive deterministic replica
 placement, while exact-generation readiness gates publication and DSR, and assigned
 agents retrieve digest-pinned artifacts from central S3. Applications obtain
 signed, attenuated grants, while independently authorized connector profiles
-retain infrastructure details and credentials.
+hold infrastructure details and credentials.
 
 The result is Amoeba-like in invocation, Borg/Kubernetes-like in desired-state
 control, Maglev/CRUSH-like in stable deterministic placement, and
@@ -395,7 +395,7 @@ with production-scale policy, recovery, and trust lifecycle still open \\
 Rejected or narrowed & Failure-transparent remote calls; arbitrary process
 migration; language-only isolation; direct device access by ordinary apps &
 Remote uncertainty is visible; migration is protocol-specific; MMU/IOMMU and
-capabilities enforce isolation; drivers retain device authority \\
+capabilities enforce isolation; drivers hold device authority \\
 \hline
 \end{longtable}
 

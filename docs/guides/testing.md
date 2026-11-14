@@ -496,7 +496,7 @@ CATTEN_HTTP_HOST_PORT=18080 CATTEN_DEPLOY_HOST_PORT=17444 \
 ```
 
 `scripts/tests/test-http-keyhole-liveness.py` checks EOF and abortive peer-close
-recovery, and that an idle client is timed out while subsequent metrics
+recovery, and that an idle client is timed out while later metrics
 requests are attempted. Transport retries are bounded and spaced to span that
 idle budget. The
 five-second request deadline bounds this serial listener's per-client delay;
@@ -1133,7 +1133,7 @@ provide a retry or kernel-unwind proof. See the
 [metadata-retention report](../reports/audits/2026-10-12-thread-metadata-retention.md).
 
 Retirement-head readiness fixtures check deferred callbacks after guarded
-staging, exact-LP isolation, coalesced publication and the late-registration
+staging, exact-LP isolation, combined publication and the late-registration
 readiness recheck. Saturating the source rejects a never-admitted target without
 blocking it or retaining its attempted waiter charge; explicit rejection
 cleanup recovers its stack frames. A terminal failed pair is excluded from
@@ -1420,7 +1420,7 @@ A pre-driver fixture on each supported QEMU NVMe target enables a controller
 with DMA admin queues, rejects one teardown completion after detachment, checks
 pin retention and retiring-map rejection, then retries real invalidation.
 Reassignment rejects while old MMIO authority survives; after cleanup, a real
-controller reset must precede a new domain and leave `EN/RDY=0`. Subsequent
+controller reset must precede a new domain and leave `EN/RDY=0`. Later
 operational NVMe/object-store/persistent-Raft tests verify storage still works.
 The fixture submits no I/O command and does not suppress a physical IOMMU ACK.
 
@@ -1650,7 +1650,7 @@ charge after rejection; nested close/map/unmap and exact-root close must reject
 the live claim. A staged root-close fixture remains Pending until confirmed fake
 backend success consumes authority and completes the older exact lease.
 
-Real QEMU rejection preserves the same payload cell/authority. Subsequent close
+Real QEMU rejection preserves the same payload cell/authority. Later close
 keeps that public claim through actual pre-maintenance/post-drain physical
 boundaries and consumes authority exactly once after confirmed success. Existing
 shared `DmaOperation` guarded abandonment still retains root/claim; no new table,

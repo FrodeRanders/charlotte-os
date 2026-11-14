@@ -101,7 +101,7 @@ scripts/build-catten-user.sh --embed
 
 Run from the repository root with the pinned toolchain. The Sitas helper needs
 the sibling checkout described in \repofile|docs/guides/userspace-development.md|.
-The boot runners prepare these inputs automatically, whereas a bare kernel Cargo build
+The boot runners prepare these inputs automatically, but a bare kernel Cargo build
 needs the corresponding bundle environment variable shown above.
 
 \section{Booting in QEMU}
@@ -170,7 +170,7 @@ platform-specific mounted-image discovery on macOS.
 Use \texttt{--tcpip-test} instead of \texttt{--deploy-test} for the smaller
 focused two-guest smoltcp exchange. \texttt{--live-upgrade-test} runs the isolated
 persistent service-manager handoff. The complete deployment suite is qualified
-with four LPs, whereas two LPs are not a supported test configuration for that load.
+with four LPs, but two LPs are not a supported test configuration for that load.
 
 \section{Booting in VMware}
 
@@ -183,9 +183,9 @@ then converts the FAT boot image and a blank data image to VMware VMDKs:
 
 Open
 \texttt{os-images/vmware/CharlotteOS.vmwarevm/CharlotteOS.vmx} in VMware
-Fusion or Workstation. The SATA boot disk is nonpersistent, whereas the NVMe data disk
+Fusion or Workstation. The SATA boot disk is nonpersistent, while the NVMe data disk
 is persistent. On first boot the guest formats that disk and installs the
-missing signed x86-64 service artifacts. Later boots retain valid artifacts,
+missing signed x86-64 service artifacts. Later boots keep valid artifacts,
 including deployed upgrades. The builder refuses to overwrite an existing
 appliance unless \texttt{--replace} is supplied. The default 1~GiB data disk
 requires the shared 4~MiB userspace heap so the object store can hold its
@@ -227,7 +227,7 @@ unfiltered JSON report without vulnerabilities or warnings, including notices
 that the pinned scanner can otherwise report without failing.
 
 The 26 October 2026 scan first prompted a compatible \texttt{ctutils} update.
-The subsequent pinned Embassy-based TLS migration replaces the old curve API
+The later pinned Embassy-based TLS migration replaces the old curve API
 family with \texttt{crypto-bigint} 0.7.10 and \texttt{ctutils} 0.4.6. The complete
 182-package root graph now passes the fresh advisory gate without ignores.
 This is a point-in-time result, not proof of constant-time code generation on

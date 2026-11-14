@@ -24,7 +24,7 @@ stack and thread limits, signed replica and affinity policy, and deployment
 metadata for each BPMN component. A developer-owned
 \texttt{charlotte/resources.yaml} is created once, preserved across later
 regeneration, and must be reviewed before deployment output becomes usable. The
-same retained values drive descriptor-signing options.
+same reviewed values drive descriptor-signing options.
 
 Generated adapters compile into Charlotte ELFs. After CI builds, signs, and
 uploads them, Charlotte admits their descriptors atomically in a signed
@@ -179,12 +179,12 @@ The semantic model must therefore be a real intermediate representation rather
 than a renaming of Kafka topics. A Charlotte backend should consume concepts
 such as activity, event, correlation, retry, and durable boundary.
 
-\subsection{The execution substrate}
+\subsection{The execution platform}
 
 The lower layer realizes the semantic model. The established Durga backends use
 Java or Rust workers and Kafka communication. The prototype Charlotte target
 starts to use Charlotte execution objects, capabilities, names, and cluster
-desired state, while retaining an external event log where its semantics are
+desired state, while using an external event log where its semantics are
 required. Supervision and the complete process runtime remain target work.
 
 The intended relationship is therefore:
@@ -211,7 +211,7 @@ The intended relationship is therefore:
 \end{center}
 
 Each lower-layer mapping must preserve the process contract. When the available
-substrate lacks a required semantic, the generator retains a suitable service
+platform does not provide a required behavior, the generator uses a suitable service
 such as Kafka or rejects the build. Moving bytes between activities is only one
 part of backend correctness.
 
@@ -348,10 +348,9 @@ code. Capability inference therefore combines several sources:
 \end{itemize}
 
 The generator produces a reviewable authority request. A separate build or
-admission policy decides which capability bindings are acceptable. This retains the distinction from
-\autoref{chap:cluster-vision} between
-an artifact's signed claims and the cluster authority that admits and delegates
-them.
+admission policy decides which capability bindings are acceptable. This follows
+the distinction in \autoref{chap:cluster-vision}: an artifact's signed claims
+are separate from the cluster authority that admits and delegates them.
 
 \subsection{Security graph and communication graph}
 
@@ -392,7 +391,7 @@ contain:
     \item the execution, communication, and requested capability graphs;
     \item signer, build, generator, source, dependency, and toolchain
         provenance;
-    \item an SBOM or the signed digest of retained SBOM and attestation
+    \item an SBOM or the signed digest of saved SBOM and attestation
         evidence;
     \item resource estimates, concurrency declarations, replication policy,
         placement hints, and failure-domain constraints;
@@ -422,7 +421,7 @@ The kernel gives every thread
 in the protected domain the specified 4 KiB-page stack allocation and counts
 the bootstrap thread against the active-thread quota. It first requests
 cooperative application draining and then forcibly retires the domain at the
-signed deadline. Both execution-resource ranges are one through 64, whereas shutdown
+signed deadline. Both execution-resource ranges are one through 64, while shutdown
 grace is zero through 300,000 milliseconds. A quota-exceeding spawn rejects
 before stack construction and returns \texttt{ThreadError::SpawnFailed} through
 the owned runtime, leaving the caller running. Only \texttt{CDEPLOY6} is accepted, and
@@ -440,7 +439,7 @@ collectively realizes one version of a process.
 Bundle signing is proposed future work. It also introduces supply-chain
 questions. The generator and build toolchain become security-sensitive because
 they derive authority and create wrappers. Reproducible generation, separation
-between requested and granted capabilities, independent policy review, retained
+between requested and granted capabilities, independent policy review, saved
 provenance, and verification of the bundle-to-artifact links are necessary.
 Signing generated output does not prove that the BPMN model or generator was
 correct.
@@ -528,7 +527,7 @@ all its time in an external service, and one process definition may serve
 different data distributions. Runtime evidence must refine incomplete or
 incorrect resource estimates and expected frequencies.
 
-Charlotte's observation substrate can refine it. Runtime identities generated
+Charlotte's observation tools can refine it. Runtime identities generated
 from the process model allow the cluster to measure message counts, bytes,
 latency, queue pressure, CPU time, memory pressure, failures, and retry rates per
 activity and edge. A future placement controller can compare declared structure
@@ -635,7 +634,7 @@ resolves only the transactional access point declared by its step profile.
 The generic \texttt{kafka\_step} runner now implements this split: it calls the
 procedure with borrowed input and an attempt number, validates its bounded
 output batch, and atomically produces admitted outputs with the consumed
-offset. It retries timeouts and explicit transient failures and writes terminal,
+offset. It retries timeouts and explicit temporary failures and writes terminal,
 malformed, or exhausted inputs to a configured DLQ. The remaining deployment
 work is direct capability injection, generated artifact construction, and
 controller-managed lifecycle/fencing rather than the transaction loop itself.
@@ -645,8 +644,8 @@ intrinsically durable and internal execution plumbing whose purpose is to
 advance a running process.
 
 An externally meaningful event such as \texttt{ClaimSubmitted} may need a
-retained, replayable, independently consumable record. Kafka or another durable
-event-log service may remain the correct substrate. An internal instruction
+stored, replayable, independently consumable record. Kafka or another durable
+event-log service may remain the right platform. An internal instruction
 such as ``activity A completed, so make B runnable'' may need only the delivery,
 deduplication, and recovery guarantees of the Durga runtime and could use native
 Charlotte messaging.
@@ -691,7 +690,7 @@ compression. It supports verified TLS,
 connector-only SCRAM-SHA-256 authentication, and connector-only P-256 mTLS,
 independently or together. A generated deployment
 would therefore need either to accept that bounded profile, extend the adapter
-under equally explicit authority, or retain a conventional connector outside
+under equally explicit authority, or keep a conventional connector outside
 Charlotte for requirements the native service cannot satisfy.
 
 The distinction cannot be inferred reliably from sequence flow alone. The
@@ -699,7 +698,7 @@ process author or policy must declare durability, ordering, replay, retention,
 and delivery requirements. The Charlotte runtime must define how it recovers an
 in-flight process when a node fails, when an acknowledgement is lost, or when a
 business rule completes twice. If native messaging does not yet satisfy those
-requirements, the backend must retain Kafka for that edge. Removing Kafka from
+requirements, the backend must keep Kafka for that edge. Removing Kafka from
 internal paths is optional, so the Charlotte backend can keep it where needed.
 
 \section{Preserving application intent}
@@ -707,7 +706,7 @@ internal paths is optional, so the Charlotte backend can keep it where needed.
 In a conventional deployment, semantic information is progressively lowered
 into infrastructure objects. A BPMN activity may eventually appear to the
 cluster as a container image, a Deployment, CPU and memory values, labels, and
-network endpoints. Those objects are operationally useful, but they retain
+network endpoints. Those objects are operationally useful, but they carry
 little explanation of why two components communicate or what a latency
 measurement means to the business process.
 
@@ -914,7 +913,7 @@ The next \texttt{charlotte} increment should add:
         calls and observations;
     \item a transactional-step binding that invokes the handler without
         exposing its Kafka connector capability;
-    \item retained provenance compatible with the existing CLS2 metadata; and
+    \item saved provenance compatible with the existing CLS2 metadata; and
     \item a signed semantic bundle binding the BPMN digest, activity and schema
         identities, generated artifacts, communication edges, capability plan,
         and executable deployment descriptors.
@@ -945,14 +944,14 @@ The experiment should verify the following end-to-end properties:
     \item Typed input reaches the rule. Its typed result reaches the generated
         successor or test driver.
 
-    \item Activity-entered, completed, and failed observations retain the BPMN
+    \item Activity-entered, completed, and failed observations include the BPMN
         process and activity identities.
 
     \item The existing stateless assignment handoff can move the generated
         artifact between nodes without changing its logical activity identity.
 
     \item The process-bundle metadata can be independently checked against the
-        BPMN, schemas, generated source, executable digest, and retained
+        BPMN, schemas, generated source, executable digest, and saved
         provenance.
 \end{enumerate}
 
@@ -988,11 +987,12 @@ Answers to these questions determine whether a larger backend is justified.
 Substantial work remains in both projects:
 
 \begin{itemize}
-    \item A substrate-neutral Durga semantic intermediate representation must
-        distinguish process semantics from the present Kafka realization.
+    \item A Durga semantic intermediate representation independent of the target
+        platform must distinguish process behavior from the current Kafka
+        implementation.
 
     \item A stable generated-task contract, schema evolution rules, and explicit
-        delivery and failure semantics are required before backends can be
+        delivery and failure rules are required before backends can be
         compared meaningfully.
 
     \item The generated userspace ABI now covers launch, capability pickup, and
@@ -1007,7 +1007,7 @@ Substantial work remains in both projects:
     \item Generated capability plans and signed descriptor grants establish the
         request and admission shape. Inference rules, organizational review,
         policy evolution, and audit require a production model. The generator
-        requests authority, whereas a separate policy owner grants it.
+        requests authority, while a separate policy owner grants it.
 
     \item Process-bundle format, signatures, artifact and schema identity,
         provenance, and reproducible generation remain to be designed.
@@ -1032,7 +1032,7 @@ Substantial work remains in both projects:
 \end{itemize}
 
 The integration makes these questions testable one layer at a time while
-keeping application semantics distinct from substrate mechanics.
+separating application behavior from platform details.
 
 \section{Next experiment}
 

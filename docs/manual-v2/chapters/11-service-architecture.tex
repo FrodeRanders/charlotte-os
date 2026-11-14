@@ -41,7 +41,7 @@ Its operations are:
         capabilities it needs:
         \begin{itemize}
             \item For deployed applications, a grant-controller connection
-                and immutable signed descriptor, whereas trusted platform services may
+                and immutable signed descriptor, while trusted platform services may
                 instead receive a name-service connection.
             \item For driver domains: an \texttt{MmioRegion} capability, an
                 \texttt{Interrupt} capability and a protected DMA domain as needed.
@@ -53,7 +53,7 @@ Its operations are:
     \item[Monitor] Register to be notified when the domain exits.
     \item[Teardown] Close admission, stop threads and retain an owning transaction
         through mapping, IPC and device cleanup. Only confirmed completion
-        permits physical release and address-space-slot reuse, whereas abandonment can
+        permits physical release and address-space-slot reuse, but abandonment can
         retain the entire root indefinitely.
 \end{description}
 
@@ -70,7 +70,7 @@ maps human-readable names to connection capabilities:
     \item[Registration] A service publishes a name such as
         \texttt{"driver.nic.v1"} with a delegated connection to its endpoint.
         An ordinary application uses the grant controller and its signed
-        deployment descriptor, whereas trusted mediation services have a private
+        deployment descriptor, while trusted mediation services have a private
         connection to the name service.
     \item[Generation tracking] Each registration bumps a generation counter.
         If the service restarts and re-registers with the same name, the new
@@ -87,7 +87,7 @@ maps human-readable names to connection capabilities:
 \end{description}
 
 The name service runs as a \texttt{no\_std} EL0 service process. Boot starts
-exactly one node-local instance and the supervisor retains its registry
+exactly one node-local instance and the supervisor holds its registry
 endpoint. Deployed applications receive an attenuated connection to the grant
 controller through their bootstrap page. Trusted node-local services may instead
 receive a name-service connection. Those paths use the same
@@ -117,7 +117,7 @@ When a service crashes and the supervisor restarts it:
         \autoref{sec:reconnecting-client} provides a compiling Rust example,
         including outcomes that must stop rather than replay an operation.
     \item Outstanding operation reconciliation: the supervisor
-        retains the old domain's operation owners until cancellation, loan
+        keeps the old domain's operation owners until cancellation, loan
         revocation and hardware completion are confirmed. Uncertain work can
         prevent reclamation and restart. Application effects still need their
         protocol's own reconciliation, because teardown does not undo them.

@@ -23,7 +23,7 @@ borrowed through `Context`, along with the immutable descriptor.
 The example allows at most three sessions across the run. Lookup, reconnection
 and the current read share one five-second monotonic deadline via
 `Application::acquire` and `Admission`. Reconnection never restarts that deadline.
-Shutdown is checked between acquisitions and calls. This is a dedicated client, whereas
+Shutdown is checked between acquisitions and calls. This is a dedicated client, while
 a reactor that must process inbound work uses [one CQ for all interests](../reference/cq-wait.md).
 
 ## Error and replay policy
@@ -63,7 +63,7 @@ cleanup limits recorded in
 
 Applications have no publication-readiness subscription. Grant acquisition uses
 bounded availability backoff, capped by the caller's remaining deadline. This is
-timer-driven backoff, whereas accepted RPC replies use the owned readiness wait. Timer
+timer-driven backoff, while accepted RPC replies use the owned readiness wait. Timer
 admission failure follows the existing fail-closed runtime policy. A supervisor
 can later restart the client, but it must preserve any unresolved business
 operation's recovery policy. The example establishes no general overload,

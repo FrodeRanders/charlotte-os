@@ -97,7 +97,7 @@ Executable artifacts carry an Ed25519 CLS2 note that binds the complete ELF to
 its logical service name, artifact class, release metadata, rollback counter,
 policy flags, and signing-key identifier. The loader snapshots the bytes and
 verifies the note before mapping. The FNV-1a object checksum remains corruption
-detection, whereas the CLS2 signature supplies executable authority. Rollback policy, key rotation, and measured
+detection, while the CLS2 signature supplies executable authority. Rollback policy, key rotation, and measured
 boot remain future policy work.
 
 \section{Shared Kernel Preparation}
@@ -168,7 +168,7 @@ fn main(ctx: Context) -> ! {
 \section{What clients see}
 
 A closed old endpoint rejects further calls. Queued, undelivered calls return
-the endpoint-closed result, whereas delivered calls that lose their server before a
+the endpoint-closed result, but delivered calls that lose their server before a
 reply return cancellation. A timeout or cancelled reply does not prove that a
 delivered request had no effect. Name rebinding alone supplies no such proof.
 
@@ -176,7 +176,7 @@ The copyable client in \autoref{sec:reconnecting-client} keeps business progress
 outside its session connection, maps endpoint closure to an application-defined
 restart decision, and preserves one operation deadline across reconnection.
 It stops on an uncertain accepted call. Its read-only business operation can be
-repeated safely, whereas a mutating protocol needs durable request identity, duplicate
+repeated safely, but a mutating protocol needs durable request identity, duplicate
 suppression and outcome reconciliation before replay. Grant-mediated discovery
 must also authorize the replacement publication.
 
@@ -186,7 +186,7 @@ This design is \textbf{restart-with-state}: in-flight requests to the old
 instance can fail during the handoff window, and clients need a recovery policy. It is
 potentially suitable for services whose protocols define retry and state
 recovery. No general latency bound has been measured, and clients must
-explicitly handle transient failures through name-service re-lookup.
+explicitly handle temporary failures through name-service re-lookup.
 
 True zero-downtime would require one of:
 
@@ -226,7 +226,7 @@ instance exits, rather than starting the new instance from scratch.
     \item Failure recovery has an ownership model: if the new service
         fails to start, a future supervisor could restart the old service or a
         fallback.
-        Before transfer, the manager retains the state capability, whereas after
+        Before transfer, the manager holds the state capability, and after
         transfer, it belongs to the replacement. Recovering state after that
         replacement fails requires an explicit policy, beyond capability
         cleanup.

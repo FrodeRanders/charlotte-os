@@ -92,19 +92,19 @@ fn drain_cq(&mut self) {
 }
 \end{lstlisting}
 
-\subsection{Endpoint readiness (coalesced wake)}
+\subsection{Endpoint readiness (combined wake)}
 
 An endpoint can be bound to a CQ. When a message arrives on the endpoint, the
-kernel posts a coalesced wake to the bound CQ. The executor, on waking, calls the
+kernel posts a combined wake to the bound CQ. The executor, on waking, calls the
 endpoint's receive path to drain the pending messages.
 
 Coalescing means: if 10 messages arrive before the shard wakes, the kernel
 delivers one wake instead of 10. The executor drains all 10 messages in one batch.
 
-\subsection{Device interrupts (coalesced wake)}
+\subsection{Device interrupts (combined wake)}
 
 A device interrupt object can be bound to a CQ. When the interrupt fires, the
-kernel posts a coalesced wake. The executor, on waking, calls the device's
+kernel posts a combined wake. The executor, on waking, calls the device's
 interrupt handler (or the driver's polling function).
 
 \section{Task wakeup: from CQ entry to future poll}
@@ -186,13 +186,13 @@ catten_syscall::cq_wake(cq_id); // Peer notification.
 \end{lstlisting}
 
 The sibling Sitas backend uses that same runtime ABI 3 contract. Its reactor
-retains one monotonic deadline, so wakeups cannot restart it. Runtime sleep also
+uses one monotonic deadline, so wakeups cannot restart it. Runtime sleep also
 rechecks its original deadline, so an unrelated completion cannot shorten sleep.
 Rejected waiter admission logs and aborts the domain, preserving uncertain
 operation ownership rather than becoming a fake wake or an executor retry loop.
 
 Mapped per-shard CQ rings isolate reactor wakes. Public parkers sharing a CQ
-retain a 5 ms timer backstop because another reader can consume its shared
+use a 5 ms timer backstop because another reader can consume its shared
 work-generation cursor. This is bounded timer recovery, not a per-waiter readiness
 contract. Removing that backstop requires the corresponding notification proof.
 
@@ -327,7 +327,7 @@ channel-waker-to-reactor chain as the sharded KV service
 
 The demo coordinates like the sharded KV requester: the coordinator parks and
 polls the result mailbox until all three runs arrive, then verifies. A parked
-coordinator consumes no CPU, and a stolen or coalesced wake costs at most one
+coordinator consumes no CPU, and a stolen or combined wake costs at most one
 park interval.
 
 Joining shard threads is also real on CharlotteOS now. A shard thread

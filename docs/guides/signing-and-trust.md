@@ -60,7 +60,7 @@ at the corresponding verifier. These commands do not provision an OS image.
 The reader opens once, rejects symlinks and non-regular inputs on Unix,
 checks the opened descriptor's metadata, bounds input to 4096 bytes, and wipes
 text/decoded buffers on all exits. Blank lines and whole-line `#` comments
-are supported. Ed25519 private files encode 64 bytes, whereas X25519 private files
+are supported. Ed25519 private files encode 64 bytes, while X25519 private files
 encode 32. Unix owner/mode checks do not audit ACLs, backup copies, host memory
 or a hostile signing workstation. Real private-key file handling on non-Unix
 hosts is refused until ACL enforcement exists.

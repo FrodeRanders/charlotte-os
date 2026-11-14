@@ -75,7 +75,7 @@ On the first `DeployedArtifact::poll_retire()` call, the kernel:
 
 The agent retains the `DeployedArtifact` owner until reclamation completes. The
 kernel also retains its `DomainTeardown` owner in the deployment registry while
-close is pending. Existing operation leases can finish, and subsequent retirement
+close is pending. Existing operation leases can finish, and later retirement
 polls advance cleanup after they drain. The supervisor allows five seconds for
 thread reaping and lease drain after teardown starts. If this bound expires or a
 close precondition fails, the registry caches a terminal failure, retains the
@@ -215,7 +215,7 @@ configured retry or reconciliation interval from becoming shutdown latency.
 The object-store phase is cooperative and durable. On `NodeShutdown` the
 service closes its public endpoint before doing any more work, retries the
 block-device flush until it succeeds (or the supervisor's deadline forces the
-domain), then drops its owned block connection and transient IPC resources
+domain), then drops its owned block connection and temporary IPC resources
 before acknowledging readiness. A flush error therefore cannot be reported as
 a successful graceful shutdown.
 
@@ -224,7 +224,7 @@ remaining NIC, block, and entropy drivers to a separate device-shutdown owner
 only after their consumers have gone. That owner publishes the authenticated
 lifecycle request but deliberately has no force-abort transition. An ordinary
 `READY` acknowledgement is insufficient: a driver must release its endpoint,
-drain operations and transient DMA mappings, flush durable state where
+drain operations and temporary DMA mappings, flush durable state where
 applicable, mask interrupts, stop or reset the controller, publish
 `DEVICE_QUIESCED`, and exit. Only then does the kernel reclaim the address
 space and its launch-owned MMIO, interrupt, and IOMMU grants. A deadline overrun
@@ -267,5 +267,5 @@ in-tree hardware adapters. Service-specific `OP_SHUTDOWN` messages remain
 useful for tests and targeted live upgrade, but are not the deployment
 lifecycle authority. Device reset and IOMMU invalidation remain
 adapter-specific proofs rather than a uniform hardware attestation record.
-PSCI poweroff is implemented and boot-validated on AArch64, whereas x86-64 still needs
+PSCI poweroff is implemented and boot-validated on AArch64, while x86-64 still needs
 its ACPI poweroff backend.

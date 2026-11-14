@@ -14,7 +14,7 @@ logging path, which allocated from the kernel heap. A fault before the heap was
 ready caused the panic handler to fault, re-entering itself, recursing until
 stack overflow and triple fault. \textbf{Fix:} the panic handler now uses
 \texttt{early\_logln!} (direct serial writes, no heap dependency). This unmasked
-every subsequent bug.
+every later bug.
 
 \subsection{Blocked threads lost their execution context}
 
@@ -71,7 +71,7 @@ the x86-64 trampoline call \texttt{abort} on return.
 \subsection{Hypervisors that strip TTBR0 ASIDs break TLB isolation}
 
 \textbf{Symptom:} under Apple's Hypervisor.framework, EL0 tests failed with
-apparently unrelated data aborts, wrong syscall results, and deadline panics, whereas
+apparently unrelated data aborts, wrong syscall results, and deadline panics, but
 TCG remained green. \textbf{Root cause:} HVF did not preserve the ASID bits in
 \texttt{TTBR0\_EL1}. Because context switches relied on those tags instead of a
 full TLB flush, low user virtual addresses could resolve through another domain's

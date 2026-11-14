@@ -88,7 +88,7 @@ concurrency and partial failure that a local-call abstraction cannot erase
 \cite{prior:distributed-note}. This is a limit on transparency, not an
 assertion that Amoeba ignored failures. CharlotteOS aims to hide physical
 placement while requiring protocols to decide deduplication, retry and state
-transfer. Applications gain location independence but retain those obligations.
+transfer. Applications gain location independence but have those obligations.
 The \repofiletext|docs/architecture/cluster-artifacts-and-placement.md|{cluster
 architecture} and the related-work section below distinguish the implemented
 stateless reassignment from future stateful migration, and neither is arbitrary
@@ -101,7 +101,7 @@ In the target model, cluster software is a signed execution object with a
 logical identity and a deliberately small execution environment. Its signed
 metadata can bind, among other things, its name, class, release, rollback
 counter, permission to run concurrent instances, and a digest linking to
-retained provenance.
+saved provenance.
 
 Signature validity establishes the artifact identity and accepted origin.
 Capability delegation independently determines what a running workload may
@@ -111,7 +111,7 @@ capabilities.
 
 CharlotteOS therefore combines an immutable, name-bound identity at the
 loading boundary with explicit authority at the execution boundary. Signing
-without confinement accepts an over-powerful program, whereas confinement without
+without confinement accepts an over-powerful program, while confinement without
 authentication accepts code of unknown origin.
 
 This boundary also changes what installing software means. Build systems
@@ -182,7 +182,7 @@ correctness and recovery.
 A Linux container combines ordinary Linux processes with several existing
 facilities rather than introducing a new kernel object equivalent to a virtual
 machine. Those facilities serve different purposes. Namespaces control which
-resources and identifiers are visible, whereas cgroups account for and limit
+resources and identifiers are visible, while cgroups account for and limit
 resource use. Linux capabilities divide some root privileges, seccomp restricts
 the system call interface, and an LSM such as SELinux constrains object access.
 A prepared filesystem and network configuration provide the process's apparent
@@ -218,7 +218,7 @@ rather than something assembled above a set of general-purpose hosts?
 The comparison is useful only if it separates two kinds of complexity.
 
 \subsubsection{Distributed-systems complexity is intrinsic}
-CharlotteOS retains the intrinsic responsibilities of distributed systems:
+CharlotteOS still faces the core problems of distributed systems:
 scheduling, consensus, placement, replication, health management, service
 discovery, upgrades, resource accounting, storage, networking, observability,
 failure detection, load balancing, and recovery from partial failure. Network
@@ -274,7 +274,7 @@ a verified Charlotte execution object loaded directly into a
 capability-constrained address space. Discovering that reconciliation and
 scheduling survive while Pods, OCI, CRI, and much container security
 scaffolding do not would identify which platform ideas are consequences of
-distributed computation and which are consequences of the substrate.
+distributed computation and which are consequences of the underlying platform.
 
 Existing Linux software needs adaptation to run on CharlotteOS. We give up
 that compatibility to explore a smaller, more explicit execution contract.
@@ -336,7 +336,7 @@ include:
 
 This is substantial orchestration work. CharlotteOS seeks a shorter control
 path that acts directly on native execution objects, removing the intermediate
-machine-shaped compatibility environment while retaining the hard distributed
+machine-shaped compatibility environment while facing the hard distributed
 systems problems.
 
 \subsection{Placement, routing, and migration as native operations}
@@ -435,10 +435,10 @@ this chapter.
         assigned node, the authorized agent retrieves the digest-pinned
         ciphertext through a bootstrap S3 capability and moves a bounded pickup
         object to the kernel. The kernel repeats release, descriptor, artifact,
-        envelope, and expiry verification, decrypts into transient zeroizing
+        envelope, and expiry verification, decrypts into temporary zeroizing
         memory, validates the connector-specific profile, and transfers it as a
-        read-only launch capability. Application IPC receives only attenuated
-        connector endpoints, never infrastructure credentials. Production key
+        read-only launch capability. Application IPC receives only
+        connector endpoints with restricted rights, never infrastructure credentials. Production key
         custody, rotation, audit, and readiness-driven generation cutover remain
         future work.
 
@@ -459,7 +459,7 @@ this chapter.
         load rebalancing (\autoref{chap:scheduling}). This per-node mechanism
         supplies design evidence for future cluster-wide load rebalancing.
 
-    \item \textbf{Observation substrate.} The Sitas executor exposes task
+    \item \textbf{Observation tools.} The Sitas executor exposes task
         counts, poll counts, queue depth, and shard snapshots
         (\autoref{chap:sitas-executor}).
         Shard-to-shard message flow can be measured. Cluster-wide collection
@@ -475,8 +475,8 @@ this chapter.
 \end{itemize}
 
 \architecturewidefigure{external-service-capabilities}
-    {Secret-bearing S3 and Kafka connectors receive infrastructure profiles, whereas
-    applications receive only named, role-attenuated service capabilities.}
+    {Secret-bearing S3 and Kafka connectors receive infrastructure profiles, while
+    applications receive only named service capabilities restricted to their role.}
     {fig:external-service-capabilities}
 
 \architecturefigure{operational-profile-pickup}
@@ -501,7 +501,7 @@ configuration-specific sets, so eight is not a cross-platform total.
 
 This establishes the minimal-node bootstrap shape. The current
 \texttt{--deploy-test} serial command loop remains a kernel-side validation and
-administration shim, whereas production management enters through userspace deployment
+administration shim, while production management enters through userspace deployment
 ingress and still needs further hardening.
 
 \subsection{Discovery and membership}
@@ -553,7 +553,7 @@ intended pipeline is:
 \begin{enumerate}
     \item build a self-contained workload from reviewed source and
         dependencies;
-    \item evaluate policy and retain provenance, SBOM, test, and attestation
+    \item evaluate policy and keep provenance, SBOM, test, and attestation
         evidence;
     \item bless and sign the immutable workload identity off-cluster;
     \item make the signed artifact available to the cluster; and
@@ -581,7 +581,7 @@ The current deployment pipeline has three stages:
         artifact and the host-side build and \texttt{cluster-}\allowbreak\texttt{sign} tooling
         sign it with the cluster key. CLS2 metadata binds the logical name,
         class, release, rollback counter, parallel-instance permission, and
-        an optional SHA-256 link to retained SBOM/build-provenance evidence.
+        an optional SHA-256 link to saved SBOM/build-provenance evidence.
         Nodes receive only the public key.
 
     \item \textbf{Validation.} Each node validates every loaded ELF against
@@ -629,7 +629,7 @@ An ARM-only revision therefore cannot count x86 nodes toward its replicas.
 Selection uses signed priority, feature specificity and descriptor order.
 Raft commits the chosen variant index beside each replica node, and catalog-v19
 snapshots and queries preserve that pin. A later CPU report cannot change an
-existing generation's executable. If a new node incarnation loses support for
+existing generation's executable. If a new instance of a node loses support for
 its pin, the controller commits a compatible replacement in a new generation,
 even when the node set stays the same. The agent fetches the pinned key/digest and
 rechecks local compatibility. Kernel admission rechecks actual ELF machine,
@@ -652,9 +652,9 @@ instances per node, minimum distinct nodes, \emph{every eligible node}, an
 affinity group, and an anti-affinity group. A request for concurrent
 replicas is invalid unless the artifact's signed CLS2 metadata contains
 \texttt{PARALLEL\_INSTANCES}. \texttt{CDEPLOY6} signs this policy, the
-leader resolves it to concrete assignments, and catalog-v19 snapshots retain
+leader resolves it to concrete assignments, and catalog-v19 snapshots record
 both the desired set and per-node readiness. Affinity groups share a stable
-ranking seed, whereas anti-affinity groups require unused nodes and fail closed when
+ranking seed, while anti-affinity groups require unused nodes and fail closed when
 the eligible set cannot satisfy the separation. A policy that needs more
 distinct nodes than the current eligible set fails admission.
 
@@ -664,16 +664,16 @@ CPU occupancy through the cluster's existing identity-checked peer path. The
 leader rejects replayed epochs and low-pass filters free memory and CPU with an
 integer EWMA before committing placement input through Raft. After three
 missed reporting intervals it treats a sample as unknown. A new boot
-incarnation resets the filter rather than blending unrelated processes.
+resets the filter rather than blending unrelated processes.
 
 This does not filter observability history. Raw one-second samples in memory,
-and in the optional disk archive, retain
+and in the optional disk archive, capture
 short-lived spikes for diagnosis, while the five-second report, EWMA, bucket
 hysteresis, and freshness lease form a distinct control signal. The
 descriptor's stack budget and fixed runtime pages form a memory promise. The
 leader reconstructs promises held by other catalog deployments before
 admitting a release, and every selected component debits projected dynamic and
-static headroom. If a report expires while a node retains commitments, those
+static headroom. If a report expires while a node has commitments, those
 promises remain visible with no additional headroom instead of turning into an
 apparently empty node. Hard memory admission preserves a one-sixteenth reserve,
 while CPU pressure remains a soft ranking signal.
@@ -687,10 +687,10 @@ advance together rather than following an uncommitted local judgment.
 
 The policy does not yet express heap, processor, or storage requests, labels,
 named failure domains, or more than one instance of an artifact on a node.
-Reassignment advances the whole deployment generation, so retained replicas
-restart rather than participating in a rolling surge/unavailability protocol.
+Reassignment advances the whole deployment generation, so even replicas assigned
+to the same nodes restart. There is no rolling surge/unavailability protocol.
 
-\subsection{Runtime observation: local substrate only}
+\subsection{Runtime observation: local measurements only}
 
 Declared relationships are guesses. Shard-level message counts, byte flow,
 queue depth, and task snapshots are already observable inside a node
@@ -721,7 +721,7 @@ locally applied catalog view. It serves the record only while the same
 bounded-read lease used by DSR is valid, and httpd decodes it and returns HTTP 503
 when no fresh record is available. Raw one-second observations remain in the
 node's memory history and optional diagnostic archive. The cluster view instead exposes the slower signals and
-decisions that drive placement, while retaining a per-node freshness marker
+decisions that drive placement, while keeping a per-node freshness marker
 so a committed resource promise is not confused with a recent capacity
 measurement.
 
@@ -732,7 +732,7 @@ admitted, non-draining member in the committed availability projection. Recent
 current-term replication acknowledgements supply the leader's receive-time
 evidence, while followers use the replicated set rather than local peer timers.
 Missing or stale term/membership projections admit no new VIP flows. Health
-changes commit a new generation and flow epoch while retaining the full voter
+changes commit a new generation and flow epoch while keeping the full voter
 set and previous flow bindings. Existing TCP/TLS traffic is not rehashed or
 replayed to make another backend complete it. Consequently each reply names both the leader
 and the serving node. Leadership movement changes the advertiser without
@@ -861,7 +861,7 @@ the ELF and descriptor owners with their exact lengths and returns an owning
 \texttt{DeployedArtifact}. Syscall 76 takes four arguments and returns both
 the ASID and the principal derived by the kernel from the verified signed
 descriptor. Packed-name input, named aliases and a caller-supplied retirement
-name are removed. Rejection returns two zeroes and consumes submitted inputs, whereas
+name are removed. Rejection returns two zeroes and consumes submitted inputs, but
 local length rejection releases the two Rust owners before submission.
 Retirement requires an explicit nonzero principal, so zero cannot select a lone
 deployment. See \path{docs/reference/scoped-deployment-launch.md}.
@@ -902,12 +902,12 @@ wraps the DNS manifest operations and object store behind:
 Controller interface version 3 requires full-name status queries. The
 status and rollout names use the signed descriptor's 1--48-byte printable
 ASCII grammar. Malformed names return $-3$ without attachments before DNS
-forwarding, whereas a valid absent name returns $-1$. Notification validation retains
+forwarding, but a valid absent name returns $-1$. Notification validation uses
 its separate $-13$ result.
 The
 unsigned \texttt{deploy} command and packed DNS deploy/query operations are
 removed, as is descriptor-less launch syscall 64. The serial test console
-provides \texttt{upload} for short names and \texttt{status} for full names, whereas
+provides \texttt{upload} for short names and \texttt{status} for full names, while
 deployment uses the host's \texttt{cluster-sign deployment-notify} command.
 Signed scoped launch remains the application launch contract. Retired opcodes
 reject rather than translating their old payloads.
@@ -954,7 +954,7 @@ setup. Creation, listen and accept operations bind their exact pending owners to
 the same CQ. Listener observation rotates alongside input, controller, output
 and close work, waiting for the earliest original deadline.
 
-Listener setup retains one five-second deadline from reservation through creation,
+Listener setup uses one five-second deadline from reservation through creation,
 listen and accept admission/binding. Only rejected queue-full submission permits
 50~ms backoff and another attempt of that phase, but accepted requests are never
 replayed. Confirmed rejection or unstarted preparation failure moves any known
@@ -975,7 +975,7 @@ retains the whole owning scope through domain abort.
 \begin{implementationdetail}{Controller relay and DNS ownership}
 The controller server forwards those seven HTTP controls and named status in
 eight owning CQ positions. Original incoming backing plus one copied DNS request
-reserve at most 2,098,176 bytes, whereas returned records, decoder allocations and copies
+reserve at most 2,098,176 bytes, but returned records, decoder allocations and copies
 retained by DNS after earlier completion remain separate. One server-side
 five-second deadline starts before validation and spans notification preflight
 and mutation. It is separate from the caller's unchanged deadline. Only an
@@ -988,7 +988,7 @@ at most eight requests and rotates relay observation before checking lifecycle.
 Timeout cancels the DNS owner, ends the source mapping and only then publishes
 the upstream timeout. A delivered DNS copy may retain its original charge.
 Accepted uncertainty permits no replay. Shutdown disposes pending DNS calls
-before mappings and incoming reply/loan authority, whereas binding/wait rejection retains
+before mappings and incoming reply/loan authority, but binding/wait rejection retains
 the pool through abort. Legacy upload/join/key handlers still block on this
 endpoint, and bounded validation remains synchronous. See
 \repofile|docs/reports/audits/2026-10-22-security-controller-relay.md|.
@@ -996,7 +996,7 @@ endpoint, and bounded validation remains synchronous. See
 
 \subsubsection{Read input and send confirmed output prefixes}
 
-Input headers retain five seconds and complete input thirty seconds from
+Input headers have five seconds and complete input thirty seconds from
 observed accept completion. Progress and unrelated wakes do not restart those
 budgets. Retained prefixes and active controller request reservations share
 1,049,088 bytes, including rounded moved-request pages and retained release
@@ -1007,7 +1007,7 @@ ending a logical reservation does not refund receiver-owned backing.
 Response outputs retain complete backing, socket and a pending moved send page
 on the same CQ, with one original five-second deadline. Owned response capacity
 is capped at 64~KiB per position. A positive TCP prefix receipt permits sending
-only the remainder, whereas timeout, invalid receipt or observation failure ends output
+only the remainder, but timeout, invalid receipt or observation failure ends output
 without resending uncertain bytes. Enqueue is no peer-delivery or rollback proof.
 Each service turn advances input, controller, output and close work before waiting.
 
@@ -1025,7 +1025,7 @@ Only queue-full rejection permits 50~ms admission backoff and another submission
 Accepted close is never replayed. Deadline, binding/wait rejection or uncertain
 observation retains the whole scope through domain abort, and incomplete close Drop
 also aborts before field cleanup. Unavailable concerns an absent, nonreused
-full ID within the captured service incarnation. It proves neither former
+full ID within the captured service instance. It proves neither former
 ownership nor peer delivery or physical release. Foreign live entries and
 unreserved IDs reject, and exhausted ID reservation rejects before backend allocation.
 Existing close operations drain on shutdown under their original deadlines while
@@ -1041,7 +1041,7 @@ serving remains serial. See
 
 For a release made from several independently signed components,
 \texttt{cluster-sign deployment-apply} prevalidates all descriptor files,
-rejects duplicate artifact names and retains the positive generation returned
+rejects duplicate artifact names and records the positive generation returned
 for each admitted descriptor. A complete ready record must match that exact
 generation, so older observations remain pending, while a newer generation reports
 supersession. Malformed acknowledgement or readiness records stop observation
@@ -1064,7 +1064,7 @@ remains idempotent. The atomic alternative is described next.
 \begin{implementationdetail}{Notification and standalone status validation}
 All signer notification commands validate their complete HTTP-202 success body
 before reporting acceptance. Deployment, operations-bundle, shutdown and ingress
-policy use one positive generation, whereas release uses its digest-bound receipt.
+policy use one positive generation, while release uses its digest-bound receipt.
 Malformed success is uncertain because the request may already be committed, so
 the client does not replay it. Every response reader preserves the complete
 body after the first HTTP separator and trims only JSON whitespace.
@@ -1073,7 +1073,7 @@ count and signed validity span before output. This is structural observation,
 without a local UTC admission or peer-authentication decision.
 
 The standalone \texttt{deployment-status} command uses the same complete rollout
-codec. Zero or omitted wait prints a valid current pending or ready record, whereas
+codec. Zero or omitted wait prints a valid current pending or ready record, but
 a positive wait requires validated readiness. Missing, duplicate, nested,
 trailing or inconsistent records reject immediately. The shared status reader
 preserves the complete declared body after the first HTTP separator and trims
@@ -1100,18 +1100,18 @@ release and component revision before changing the deployment map, so desired
 state changes all at once or not at all. A commit receipt captures the release
 generation and each component deployment generation in signed-envelope order.
 An exact retry returns a receipt while every component still has those signed
-descriptor bytes, whereas a superseded component rejects without changing live state.
+descriptor bytes, but a superseded component rejects without changing live state.
 The signed release record survives catalog snapshots.
 
 Atomic admission changes desired state in one command. Fetching, launching and
-readiness still progress independently for each component. The client retains
+readiness still progress independently for each component. The client keeps
 the receipt's exact component generations and the original deadline, and uncertain
 submission is not replayed.
 
 \begin{implementationdetail}{Release receipts, startup retries and readiness}
 After atomic admission, agents fetch, launch, and publish independently.
 \texttt{release-apply} validates a complete \texttt{CRLADM01} receipt bound to the
-exact signed envelope digest and descriptor count, then retains each component's
+exact signed envelope digest and descriptor count, then records each component's
 own deployment generation. Older observations stay pending, matching ready
 observations complete, and supersession fails. Malformed receipts or status
 records leave the operation unconfirmed without replaying its notification.
@@ -1122,7 +1122,7 @@ A startup attempt can repeat only after a
 connection failure before any HTTP write, or a complete HTTP 409 response with
 the single numeric error \texttt{-23}. That checked incompatible-target result
 comes before release/component/operational publication, but its negative result may
-itself be committed to Raft. The client retains the exact signed bytes and uses
+itself be committed to Raft. The client keeps the exact signed bytes and uses
 at most one second of backoff within its original budget. Other errors, uncertain
 submission and failures after receipt acceptance stop the command.
 
@@ -1216,7 +1216,7 @@ application quorum. The operator creates the record with
 Any member may receive the bounded envelope. A follower relays it over the
 reliable-message channel, while the leader verifies the committed cluster key
 and trusted UTC before proposing it. The catalog state machine verifies the
-signature again, fences stale and conflicting per-node sequences, and retains
+signature again, fences stale and conflicting per-node sequences, and stores
 the exact envelope in snapshots. The target agent consumes only locally
 applied state, re-verifies the envelope, and moves its memory capability into
 the kernel. The kernel admits only its designated deployment agent,
@@ -1229,11 +1229,11 @@ The same lifecycle mechanism then propagates the node drain through the deployme
 On receiving a kernel-authenticated \texttt{NodeShutdown} lifecycle request,
 the agent stops reconciliation and launches no new work. It marks every
 ordinary deployment and privileged operational connector as retiring, then
-retains and polls their owners until reclamation completes. Each child receives
+keeps and polls their owners until reclamation completes. Each child receives
 the earlier of its descriptor-signed grace deadline and the enclosing node
 deadline: the node transition may shorten an allowance but cannot extend it.
 Ordinary applications drain before their privileged operational connectors,
-so an application retains Kafka/S3 authority while it finishes or aborts
+so an application keeps Kafka/S3 authority while it finishes or aborts
 external work. The agent acknowledges and exits only after both child sets are
 empty.
 
@@ -1267,7 +1267,7 @@ attempt. Accepted uncertainty aborts with its owner live, without ID restoration
 or remote replay. These budgets do not establish whole-service shutdown latency.
 
 Controller calls are cancelled through their exact
-owners without proving remote rollback. HTTP ingress retains bounded lifecycle checks around its current
+owners without proving remote rollback. HTTP ingress performs bounded lifecycle checks around its current
 accept/receive operation. Its receive timeout uses an explicit cancellation
 exchange with TCP/IP: closing only the local call capability would leave the
 server's deferred reply slot occupied and could discard later input if that
@@ -1282,7 +1282,7 @@ request.
 
 \begin{implementationdetail}{Transport, startup gates and cluster-core drain}
 The transport phase is cooperative too. TCP/IP runs after every socket
-consumer has drained. Then it closes admission, completes retained receive calls,
+consumer has drained. Then it closes admission, completes pending receive calls,
 stops residual protocol sockets, and releases its endpoint and owned NIC
 connection. The frame router then drops one owning scope containing the single
 NIC receive, deferred name lookups, routed service connections, and in-flight
@@ -1301,7 +1301,7 @@ Deployment ingress closes its listening and receiving sockets, cluster
 control drops its endpoint and service connections, and the agent interrupts
 startup or reconciliation waits before draining applications and then their
 operational connectors. DNS stops the Raft/catalog reactor and cancels pending
-transport and catalog work. Reliable messaging rejects retained sends,
+transport and catalog work. Reliable messaging rejects pending sends,
 completes its deferred receive, and releases queued messages before discovery
 stops probing and settles pending cluster-status waiters. Bounded
 lifecycle-aware sleeps ensure a configured retry interval does not become
@@ -1318,7 +1318,7 @@ shutdown under heap exhaustion. Kernel worker context, stack, retirement node
 and table preparation now reject before roster transfer. Fresh pinned admission
 and inline input publication share a short local IRQ mask, so first dispatch cannot
 precede publication. Losing unstarted preparation is cancelled after local
-guards leave, whereas uncertain cleanup retains its complete owner. Later cleanup
+guards leave, but uncertain cleanup retains its complete owner. Later cleanup
 admission, the agent's fail-closed rejection policy and sustained progress still
 require separate qualification.
 \end{implementationdetail}
@@ -1342,7 +1342,7 @@ hardware adapter implements the driver side of this contract. VirtIO entropy
 resets the device before dropping its shared-DMA mappings. NVMe
 adapter closes admission, drains outstanding replies and DMA, observes a final
 NVM Flush completion, masks interrupts, clears \texttt{CC.EN}, and waits for
-\texttt{CSTS.RDY=0}. VirtIO block flushes before device reset, whereas AHCI flushes,
+\texttt{CSTS.RDY=0}. VirtIO block flushes before device reset, while AHCI flushes,
 masks port interrupts, and stops its command and FIS receive engines, while VirtIO
 net and E1000E close ingress and deferred receives, release queued frames,
 drain transmit descriptors, and then reset or halt the receive/transmit
@@ -1398,7 +1398,7 @@ future work.
 
 The EL0 loader verifies the note before mapping a domain. Signing is
 mandatory: unsigned or invalidly signed images are rejected. The
-runtime scoped launch gate rejects failed preparation, whereas mandatory boot-fixture
+runtime scoped launch gate rejects failed preparation, but mandatory boot-fixture
 launch may still panic.
 
 By default the build signs staged services using the
@@ -1414,7 +1414,7 @@ zeroizing buffers and enforce owner-only Unix permissions, except for the
 exact publicly known fixtures. Key generation writes a new mode-0600 file
 without printing private material. Hexadecimal key text and its trailing newline
 share one reserved erasing buffer through file writing. Private-key input
-retains an erasing vector through partial reads and errors, and its full capacity
+keeps an erasing vector through partial reads and errors, and its full capacity
 is cleared on ordinary Drop. Normalized key text returns with its own erasing
 owner through permission checks and decoding. Source files, OS buffers and
 forced termination have separate lifetimes.
@@ -1434,7 +1434,7 @@ within that bound. Deployment signing checks its one-to-eight variants before
 image reads. The host file-hash command streams regular files through a 16 KiB
 erasing buffer, with no artifact-size cap.
 
-ELF signing retains one read/write
+ELF signing keeps one read/write
 file owner and prepared image through a consuming rewrite. It writes the opened
 file if renamed and does not recreate an unlinked path, while replacements are left
 untouched. Success refers to that opened file. Pathname continuity, concurrent
@@ -1446,7 +1446,7 @@ Existing files and final-component symlinks reject before writing, so use a fres
 name for each signed record. Boot fixtures keep those records in fresh private
 run directories, preserving earlier runs. A failed new-file write closes its
 captured descriptor and leaves any output alone, including empty or partial
-files. All three key generators report incomplete generation and retain an
+files. All three key generators report incomplete generation and leave an
 already written private file if public output fails. Inspect files within the
 secured directory and use fresh paths before another generation. Diagnostics
 identify original paths without guaranteeing their current binding. Durable
@@ -1465,13 +1465,13 @@ and the descriptor pins each variant's full ELF SHA-256. The demonstrated
 S3 or the validated local fixture cache, mapped, launched and reassigned.
 Exact-generation readiness and retirement are verified. Legacy DNS proxying of
 this policy-published service remains denied, and authorized remote invocation is
-separate work. Public echo fixtures retain positive cross-node RPC coverage.
+separate work. Public echo fixtures provide positive cross-node RPC coverage.
 Raft orders assignment, while signed admission authorizes deployment.
 
 The local fixture helper closes a complete staging bundle in its fresh private
 run directory before replacing the named output. Link targets and earlier open
 readers keep their bytes, while staging-write failure preserves prior output and
-retains failed staging for inspection. This host publication step supplies no
+keeps failed staging for inspection. This host publication step supplies no
 fsync/durability or namespace-integrity guarantee.
 
 \subsection{Validated properties}
@@ -1518,12 +1518,12 @@ system contains the following substantial coordination and trust work:
 
     \item \textbf{Durable artifact availability.} Signed descriptor deployment
         pulls digest-pinned artifacts through a separately provisioned S3
-        connector, whereas the legacy path uses per-node NVMe staging. Production work
+        connector, while the legacy path uses per-node NVMe staging. Production work
         includes integrity-checked repair, retention, garbage collection,
         connector bootstrap recovery, and replication policy.
 
     \item \textbf{Cluster-wide observation.} Per-executor metrics must be
-        collected and interpreted across nodes without turning transient
+        collected and interpreted across nodes without turning temporary
         telemetry into unstable placement decisions.
 
     \item \textbf{Placement and rollout depth.} The leader currently resolves
@@ -1557,7 +1557,7 @@ system contains the following substantial coordination and trust work:
 \end{itemize}
 
 Most of this belongs in userspace coordination over the existing capability,
-messaging, storage, and consensus primitives. Future work must retain the
+messaging, storage, and consensus primitives. Future work must follow the
 discipline of the current mechanisms: explicit ownership, bounded
 communication, immutable artifact identity, generation fencing, and
 replicated decisions instead of per-machine mutation.
@@ -1576,7 +1576,7 @@ not claims of equivalent guarantees or implementation maturity.
         of the processor-pool model. Work can run on processors in a pool,
         dedicated machines provide file and directory services, and
         network-wide RPC uses capability-based access. Amoeba deliberately
-        did not migrate processes, whereas explicit cross-node migration is an
+        did not migrate processes, while explicit cross-node migration is an
         extension in the CharlotteOS target.
 
     \item \textbf{Plan 9} (Bell Labs) separates terminals, CPU servers, and

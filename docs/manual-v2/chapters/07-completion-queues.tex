@@ -212,9 +212,9 @@ converge on it:
 
 \begin{itemize}
     \item Kernel completions (CQ entries from \texttt{submit} operations).
-    \item Endpoint readiness (a coalesced wake when messages arrive on a bound
+    \item Endpoint readiness (a combined wake when messages arrive on a bound
         endpoint).
-    \item Device interrupts (a coalesced wake from a bound interrupt object).
+    \item Device interrupts (a combined wake from a bound interrupt object).
 \end{itemize}
 
 The shard does not need separate wait operations for timers, IPC messages, and
@@ -315,7 +315,7 @@ reservation before shared holder and waiter-list allocation. Holder preparation
 borrows the reservation, and rejected allocation retains it with the original
 buffer. List allocation receives only captured classification. Ordinary
 rejection disposes buffer and unused list before either installed or uninstalled
-admission, whereas abandonment at all three phases retains every field without cleanup.
+admission, but abandonment at all three phases retains every field without cleanup.
 Success transfers the same buffer and identity into the shared Arc helper.
 Published completion destruction, outer factories and broader guard/IRQ contexts
 remain separate, and no physical receipt, retry owner or registry is added.
@@ -334,7 +334,7 @@ other containing owners and broader guards/IRQ contexts remain separate.
 Completion callback preparation now captures its exact record/account/source
 and weak observer before watch/list/entry admission in one inert containing
 owner. Entry factories borrow that owner. Ordinary allocation/publication errors
-and successful or ready publication explicitly dispose transient fields after
+and successful or ready publication explicitly dispose temporary fields after
 local guards, releasing the exact target last, and ready notification follows
 unused disposal. All four phase fallbacks retain complete fields, including the
 original buffered record and charges across namespace replacement. Published
@@ -354,7 +354,7 @@ watch admission and shared authority storage outside the completion registry.
 Hidden authority admission and final joint publication each revalidate the exact
 namespace and original accounts under serialization. Timer node and producer
 preparation also leave that guard. Ordinary rejection retains the complete owner
-until explicit post-guard disposal, whereas abandonment retains every field.
+until explicit post-guard disposal, but abandonment retains every field.
 Capability timers capture one absolute deadline before preparation and preserve
 it through publication and enqueue. Namespace teardown can cancel a prepared
 node before insertion, retaining its event charge until actual disposal.
@@ -364,7 +364,7 @@ authority batch. Logical close, abort and event rollback retain detached
 payload and authority in the same node until post-registry disposal. A charged
 completion Arc survives both node releases, so final strong/weak backing still
 determines record admission. Shared authority release also retains its charge
-until its node is actually freed. Namespace close drains those complete nodes, whereas
+until its node is actually freed. Namespace close drains those complete nodes, but
 abandonment retains all fields. All three individual withdrawal paths remove
 the exact retained CQ row before returning its slot, including full-ring
 terminal abort. Global namespace/account admission and wider timer/observer/caller contexts
@@ -389,15 +389,15 @@ prepared outside the completion registry, then relinked after exact namespace
 and CQ validation. Terminal removal transfers its owning node to the direct
 receipt or backlog. Explicit namespace close drains all remaining nodes after
 local unlock. Namespace, detached-preparation and terminal-receipt abandonment
-retain their complete fields, accounts and sources, whereas ordinary rejection uses an
+retain their complete fields, accounts and sources, but ordinary rejection uses an
 explicit unstarted finish. Global namespace/account admission and wider caller
 contexts remain open. None of these owners is a physical completion receipt or
 permission to replay accepted work.
 \end{implementationdetail}
 
-\subsection{Retain charges through delivery and teardown}
+\subsection{Keep charges through delivery and teardown}
 
-A completion retains its charge while a kernel waiter or callback holds a
+A completion keeps its charge while a kernel waiter or callback holds a
 strong reference, even after capability closure or domain teardown. A detached
 operation moves its charge into the CQ backlog until its result reaches the
 ring or is discarded during teardown. A fresh generation receives a fresh
@@ -411,11 +411,11 @@ a delivered result can still leave timer or observer state to be disposed of.
 \begin{implementationdetail}{Backlog publication and refunds}
 Backlog-to-ring publication retains delivered detached-record charges in a
 fixed two-class owning batch until the completion registry is unlocked.
-Ordinary/platform charges retain their original accounts, and no disposal storage
+Ordinary/platform charges stay with their original accounts, and no disposal storage
 is allocated. Full FIFO flushing and logical slot updates remain serialized.
 The same admitted detached nodes relink into the shared retirement list and
 free after local unlock, before either accounting class refunds.
-Checked batch refunds finish before CQ parking or producer notification, whereas
+Checked batch refunds finish before CQ parking or producer notification, but
 failed ring writes retain the complete backlog entry. Registry-map metadata
 and broader outer-context qualification remain separate work.
 \end{implementationdetail}
@@ -453,7 +453,7 @@ This adds no admission failure and is separate from public operation IDs.
 Timer event preparation now retains its original source/callback before
 reservation, its uninstalled charge through holder allocation, and installed
 admission through cancellation-state allocation. Rejection explicitly disposes
-the original payload before uninstalled admission, whereas completion transfers the
+the original payload before uninstalled admission, but completion transfers the
 same event into raw-event or node ownership without changing deadline policy.
 
 Shared charge-holder preparation allocates empty Arc storage without handing
@@ -480,7 +480,7 @@ outside admission before allocating empty uninitialized Box storage. The
 allocator receives no payload, so rejection leaves it with the same inert owner
 until explicit cancellation after callback return. Successful storage initializes
 once into completed private ownership without allocation or deadline changes.
-Unused empty backing frees before event/source disposal and outside admission, whereas
+Unused empty backing frees before event/source disposal and outside admission, but
 abandonment at either phase retains every field and original charge. The node
 layout and single allocation stay unchanged. This creates no queue publication,
 physical proof, retry interface or custody registry. Completed raw-event
@@ -580,7 +580,7 @@ their pages are outside this heap-byte budget.
 \begin{implementationdetail}{Loader rollback and platform classification}
 An owning loader guard tears down the partially mapped domain if a CQ cannot
 be prepared, including any queues already installed. Trusted ambient supervisor
-paths designate platform domains before preparation, whereas scoped and syscall
+paths designate platform domains before preparation, while scoped and syscall
 preparation use ordinary admission. General page allocation, observer storage
 and kernel metadata still require further admission and fallible cleanup.
 \end{implementationdetail}
@@ -609,7 +609,7 @@ namespace/default queue before registry access. Captured retirement and physical
 alias validation precede initialization, so no later admission can reject a
 physical-ring publication. Close/replacement detaches the complete node and
 payload without freeing metadata under the registry. Explicit finish frees that
-global node before payload/source/account disposal, whereas unpublished and retired
+global node before payload/source/account disposal, but unpublished and retired
 fallback retains every field. Runtime CQ setup returns typed allocation errors, while
 mandatory bare kernel/demo/fixture setup shares the same preparation through
 a panic wrapper. This adds no separate aggregate count/byte budget for global
@@ -624,7 +624,7 @@ pin or permission to retry accepted work, so frame owners must quiesce consumers
 
 Lifecycle watches observe a source's end without taking ownership of that source.
 Endpoint and external thread watches can be cancelled independently. Worker-backed
-completions have a stronger obligation: retain the producer until it exits.
+completions have a stronger obligation: keep the producer until it exits.
 
 \subsection{Watch an endpoint close}
 
@@ -635,14 +635,14 @@ not complete a lifecycle watch.
 
 \begin{implementationdetail}{Close-watch capacity and notification disposal}
 Each endpoint accepts at most 128 close registrations across callers. The
-submitting completion namespace may retain its configured capacity, clamped to
+submitting completion namespace may hold its configured capacity, clamped to
 1,024 entries, while node admission is 8,192 with an ordinary share of 6,144. Entries
 are individually allocated fallibly, with no retained vector capacity, and
 keep their original generation's charge until actually released. Registration
 failure rolls back the unpublished completion through one owning guard.
 
 Endpoint close detaches notifications without allocation. Callbacks run after
-the IPC and list locks are released, whereas token destruction enters only the
+the IPC and list locks are released, while token destruction enters only the
 independent list lock. A detached entry retains its charge even if its token
 is cancelled before notification. Late callbacks cannot change a cancelled
 terminal result or complete a replacement with the same numeric capability.
@@ -665,20 +665,20 @@ Thread-exit preparation captures its original candidate list, weak observer and
 already-admitted watch charge in one inert owner before list/entry allocation.
 The scheduler preparation hook borrows that owner. Ordinary allocation and
 publication outcomes finish explicitly after local guards, with candidate source
-release last, whereas all four phase fallbacks retain every field. Published token/source
+release last, but all four phase fallbacks retain every field. Published token/source
 and active linked-entry destruction, initial capture/admission and wider
 caller contexts remain separate. A retained list grants no target-thread/root
 lease, physical quiescence proof or recovery authority.
 \end{implementationdetail}
 
-\subsection{Retain a completion worker until exit}
+\subsection{Keep a completion worker until exit}
 
 Worker-backed completions bind their callback and registration to the fresh
 thread before publication and execution. Cancellation remains pending until
 that worker actually exits, because this preserves producer lifetime instead of treating
 work as a removable observation. Terminal completion and namespace teardown
 release the registration. Installing a late observer is fenced against exact
-completion-object replacement, including when a kernel owner retains the old
+completion-object replacement, including when a kernel owner holds the old
 object. Kernel thread construction and general control-block allocation still
 need broader admission and fallible cleanup.
 
@@ -750,7 +750,7 @@ A timed completion wait reports \texttt{WAIT\_ADMISSION\_FAILED} when parking
 is rejected, retaining the operation and its Rust owner for retry or safe Drop.
 The untimed completion-wait ABI instead yields cooperatively and retries until
 terminal completion, preserving borrowed-buffer safety. This overload fallback
-does not guarantee efficient idle waiting or producer progress. CQ waits retain
+does not guarantee efficient idle waiting or producer progress. CQ waits keep
 their existing return shape and can return without parking when admission fails.
 
 \subsection{Close the lost-wake window}
@@ -771,7 +771,7 @@ it holds no lock across a context switch. Watchdog storage still needs admission
 Lazy waiter-source initialization retains original sponsor, weak observer,
 candidate, first published winner and shared waiter child in one inert owner.
 Losing candidate disposal remains after the slot guard and before entry admission.
-Ordinary results finish explicitly, whereas all six handoff-stage fallbacks retain every
+Ordinary results finish explicitly, but all six handoff-stage fallbacks retain every
 field. Published tokens retain their independent entry authority. Inner list
 construction, active source/token/batch destruction and wider caller contexts
 remain separate, and metadata ownership supplies no physical proof or root lease.
@@ -787,7 +787,7 @@ this is terminal retention, not physical proof or recovery custody.
 Shared waiter preparation captures its exact source, original sponsor and weak
 observer before admission in one inert owner. Entry factories borrow it, and
 ordinary preparation/publication outcomes finish explicitly after local guards.
-Transient entry/admission disposal precedes source release, with sponsor last.
+Temporary entry/admission disposal precedes source release, with sponsor last.
 All three phase fallbacks retain complete fields through source closure and
 sponsor retirement. Published token/source/batch destruction, active linked
 entries, initial source acquisition and wider caller contexts remain separate.
@@ -803,7 +803,7 @@ owner while following that wait family's retry policy.
 \begin{implementationdetail}{Blocking mutex and read/write-lock waiters}
 Kernel scheduler-blocking mutex and read/write-lock waiters also share these
 budgets. Each mutex source and each reader/writer source links at most 64 entries.
-Uncontended acquisition allocates nothing, whereas first contention prepares the list
+Uncontended acquisition allocates nothing, but first contention prepares the list
 fallibly. Rejected admission leaves the thread runnable to yield and retry.
 Local interrupt masking spans park and the lost-wake recheck, then ends before
 yield, so an unlock preceding list insertion must not strand a preempted caller.
@@ -846,7 +846,7 @@ When a userspace task drops a completion handle or explicitly cancels an
 in-flight operation:
 
 \begin{enumerate}
-    \item The kernel marks the operation as \texttt{Cancelling} but \textbf{retains
+    \item The kernel marks the operation as \texttt{Cancelling} but \textbf{keeps
         any transferred buffer} since the buffer may still be the target of DMA or
         kernel access.
     \item A terminal \texttt{Cancelled} completion is eventually posted to the CQ,
@@ -856,7 +856,7 @@ in-flight operation:
         Reclamation goes through explicit operation and device teardown.
 \end{enumerate}
 
-Under this contract, a buffer is retained while the kernel or device may still
+Under this contract, a buffer is kept while the kernel or device may still
 reach it. The safe Rust wrapper consumes the owned value on submission and returns
 it on terminal completion.
 
@@ -865,7 +865,7 @@ it on terminal completion.
 \begin{enumerate}
     \item Non-lossy completions are a correctness requirement: a disk-write
         confirmation, a timer expiry, or a sensor reading is a fact and losing it
-        is a bug. The backlog retains terminal results when the ring is full.
+        is a bug. The backlog stores terminal results when the ring is full.
 
     \item The single aggregated wait eliminates a class of race conditions:
         a shard that must wait on ``timer or IPC message or device interrupt'' in
@@ -883,7 +883,7 @@ it on terminal completion.
         it does not prove that no retained backlog exists.
 
     \item Cancellation has explicit states. These determine when the caller
-        can reclaim the buffer. Uncertain cancellation must retain ownership, because
+        can reclaim the buffer. Uncertain cancellation must keep ownership, because
         a timeout alone cannot end the borrow. We can test those transitions.
 \end{enumerate}
 

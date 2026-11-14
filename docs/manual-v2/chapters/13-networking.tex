@@ -218,7 +218,7 @@ operation, and generation zero explicitly reports failure. The leader prepares
 its reply buffer before the first Raft command and retains that allocation
 through activation or rejection. Local registration phases retain owned
 connections and reply authority, and use full-name local publication helpers.
-Service registration requires a live publication or attached connection, whereas
+Service registration requires a live publication or attached connection, while
 catalog-only fixture markers use the explicit event operation.
 Retraction still requires the exact owner and generation, and failed encoding keeps
 the existing publication owner for its one-second protocol retry interval
@@ -236,7 +236,7 @@ the matching publication is removed, because lookup alone grants no retirement r
 \begin{implementationdetail}{Generation observation and retirement requests}
 Node-local generation observation and retirement now require the
 \texttt{CNSGEN01} frame under NS interface 2: exact total length, complete
-1--256-byte name and explicit generation. Observation requires zero, whereas retirement
+1--256-byte name and explicit generation. Observation requires zero, while retirement
 requires a positive generation and the exact registrar principal or a service
 manager. Retired scalar observation and packed-name retirement reject. Cleanup
 owns its accepted pending call, binds reply readiness to the CQ and carries its
@@ -286,7 +286,7 @@ reject. The follower prepares the complete request before publishing pending
 query state and carries the same deadline through that preparation. Source,
 session, query-ID, expected-leader, and generation checks remain required, because
 readiness does not publish authority. Query failure returns a
-safely retryable \texttt{ERR\_NOT\_LEADER}, whereas a timeout after remote execution may
+safely retryable \texttt{ERR\_NOT\_LEADER}, but a timeout after remote execution may
 have begun remains \texttt{ERR\_UNCERTAIN}. Raft time is supplied by a persistent
 detached-timer completion, preventing sustained endpoint traffic from freezing
 the lease clock. Catalog and status dumps are diagnostic local observations,
@@ -373,7 +373,7 @@ seeds appear only in opt-in validation, never production initialization. See
 
 \texttt{OP\_ACCEPT} (15) retains the complete request until the listening
 socket reaches Established or CloseWait, then returns scalar zero without
-attachments. Listen and SynReceived remain pending, whereas terminal states or explicit
+attachments. Listen and SynReceived remain pending, but terminal states or explicit
 close return an error. \texttt{OwnedSocket::accept\_call} can bind the accepted
 call to a CQ. \texttt{OP\_TRY\_ACCEPT} (5) is a separate immediate state
 observation used by the existing nonreactor callers. Deferred receive drains
@@ -398,7 +398,7 @@ complete incoming owner retains the read-only mapping through one enqueue
 attempt, then releases mapping/backing before replying. It retains no send
 waiter. Retired untagged/packed pages reject without a low-half lookup or format
 fallback. Both operations carry 1--4080 payload bytes. A positive TCP prefix
-receipt permits the remainder, whereas timeout or uncertain observation permits no
+receipt permits the remainder, but timeout or uncertain observation permits no
 replay. The NIC's send opcode belongs to a separate protocol. TCP/IP still
 progresses on its 50~ms timed reactor cadence, but deferred
 receipts do not make the whole transport event-driven.
@@ -436,7 +436,7 @@ caller-supplied memory object moved into the call. The reply returns that same
 backing, and retained pages remain charged to the original allocating generation,
 including after a move or that sponsor's root closes. These paths allocate no
 TCP/IP-sponsored reply pages and reject missing or oversized buffers. An owning
-pending receive retains the request, buffer and transient mapping together, and
+pending receive retains the request, buffer and temporary mapping together, and
 local mapping access ends before reply or cancellation. This removes the
 identified receive-retention starvation path without claiming aggregate
 principal/heap admission or complete hostile-network fairness. See
@@ -503,7 +503,7 @@ snapshot exposes the configured capacity and quotas. Reclaim on domain death
 remains an explicit lifecycle integration point, and generation checks prevent
 stale access while that notification path is completed.
 
-Graceful closes are reclaimed when smoltcp reaches a terminal state, whereas a peer
+Graceful closes are reclaimed when smoltcp reaches a terminal state, but a peer
 that leaves a connection in FIN-WAIT/TIME-WAIT is force-aborted after a bounded
 five-second grace period. This keeps reconnect churn from pinning a domain's
 quota indefinitely. Admission retries use bounded backoff and rate-limited
@@ -723,7 +723,7 @@ These services are not launched unconditionally. A trusted provisioning path
 must supply their profiles, including secrets and trust anchors. The
 \texttt{--s3-test} and \texttt{--kafka-test} runner options create disposable
 Docker fixtures, generate short-lived test certificates, launch test profiles,
-and add guest verifiers. They validate integration, whereas production provisioning
+and add guest verifiers. They validate integration, but production provisioning
 does not conceptually depend on those switches.
 
 \subsection{S3 client service}
@@ -786,14 +786,14 @@ host-label syntax, field bounds, route and broker counts, configurable ceilings,
 and duplicate routes or endpoints before opening a broker connection. The hard
 ceiling is 64 produce routes, while deployment policy may select a lower limit.
 Metadata for all distinct declared topics is requested in one broker exchange.
-The digest detects corruption, whereas authenticity and provenance come from the
+The digest detects corruption, while authenticity and provenance come from the
 trusted launcher and the read-only capability.
 
 The kernel prepares a profile-backed launch transactionally. An owning launch
-object retains the not-yet-running domain, delegated connection, and transient
+object retains the not-yet-running domain, delegated connection, and temporary
 kernel profile object until read-only transfer succeeds. Ordinary rejection
 consumes explicit cancellation after helper guards leave. Cleanup stops on its
-first failure, retaining remaining roots, profile, and authority, whereas abandonment
+first failure, retaining remaining roots, profile, and authority, but abandonment
 retains the complete transaction without a second destructor cleanup pass.
 
 The fixed 112-byte \texttt{CHKAFP7} header declares one authentication choice:
@@ -835,7 +835,7 @@ connector profile without rebuilding application or procedure artifacts.
 The transaction owner supports the consume--transform--produce path. An
 application can produce records, move one consumed delivery's next group
 offset into the same Kafka transaction, and then commit or abort. Committing
-consumes the transaction resource, whereas dropping an unfinished transaction attempts
+consumes the transaction resource, but dropping an unfinished transaction attempts
 an abort. Dropping an uncommitted delivery releases it for redelivery rather
 than silently advancing the group offset. These linear owners make the local
 lifecycle explicit. They do not make arbitrary application side effects outside
@@ -868,7 +868,7 @@ count, attempts, timeout, backoff, and polling. The procedure receives borrowed
 input bytes and an attempt number but no Kafka capability. The runner validates
 the complete output batch before beginning a transaction, produces admitted
 records, includes the input offset, and commits. Retry replies and procedure
-timeouts release the delivery for redelivery, whereas terminal or malformed replies
+timeouts release the delivery for redelivery, but terminal or malformed replies
 and retry exhaustion transactionally copy the original record to the DLQ.
 Transport and commit failures abort and redeliver without consuming the
 business-attempt budget. One owning operation aggregates the call, input
@@ -900,7 +900,7 @@ revisions. Startup transfers its dedicated owned entropy connection into a
 one-shot domain context before publishing TLS/SCRAM consumers. Each entropy
 operation checks that owner out, releases its metadata guard, and retains the
 connection through RPC, returned-memory mapping and copy. Ordinary completion
-returns the same owner. Duplicate installation returns the new owner, whereas busy
+returns the same owner. Duplicate installation returns the new owner, but busy
 checkout rejects without waiting on an outstanding RPC. Architectural-only
 randomness requires explicit installation. No borrowed launch connection is
 stored globally.
@@ -945,13 +945,13 @@ One nonblocking handshake admission owns the static verification clock through
 completion. Overlap rejects before changing the clock, and completion clears
 it. mTLS retains typed P-256 SEC1 validation and constructs its Embassy signing
 key from a zeroizing scalar temporary. A missing source rejects before the
-handshake, whereas failure inside the infallible RNG callback stops the domain rather
+handshake, but failure inside the infallible RNG callback stops the domain rather
 than inventing bytes or replaying an accepted entropy request. Host randomness
 exists only in the unit-test source. Exact revisions and contracts are in
 \repofile|docs/reference/tls-client.md|.
 
 The sole registered Embassy AES-GCM driver retains the previously qualified
-erasing cipher context, whereas the pinned stock driver would retain a plain key array.
+erasing cipher context, while the pinned stock driver would retain a plain key array.
 The SHA-256/HMAC-SHA-256 drivers likewise use the shared erasing hash owners
 through opaque Drop/Clone forwarding, including unfinished contexts. Normal and
 test dependency graphs exclude duplicate stock registrations, and link-time symbol

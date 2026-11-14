@@ -15,8 +15,8 @@ A \textbf{protection domain} is an address space and authority boundary. It owns
     \item Failure and teardown state.
 \end{itemize}
 
-A \emph{process} is the concrete implementation of a protection domain, but
-architectural discussion prefers the semantic term.
+A \emph{process} implements a protection domain. This manual uses the broader
+term when discussing isolation and authority rather than a particular process.
 
 \section{Execution context}
 
@@ -134,20 +134,47 @@ domain-local queues and are not a separate capability family.
 An \textbf{operation} is submitted work whose progress may depend on the kernel,
 hardware, or a privileged service.
 
-A \textbf{completion queue (CQ)} is the aggregated, per-shard or per-process
-destination for operation results. It is waitable (with \texttt{checked CQ wait})
-and has non-lossy terminal completion semantics.
+A \textbf{completion queue (CQ)} brings operation results together for a shard
+or process. A thread can wait on it with \texttt{checked CQ wait}, and terminal
+results are not lost.
 
 \section{Notification}
 
 A \textbf{notification} means: ``State may have changed, so inspect the corresponding
-object or queue.'' It may be coalesced, but is itself not a result.
+object or queue.'' Several notifications may be combined into one, but the
+notification is itself not a result.
 
 \section{Rust Waker}
 
 A Rust \texttt{Waker} means: ``Poll this userspace future again.'' It is a
 userspace scheduling hint, is not a kernel completion record, and it should not
 cross the ABI directly.
+
+\section{Resource and cleanup terms}
+
+The implementation notes use a few terms with specific meanings:
+
+\begin{description}
+    \item[Admission] Checking and reserving capacity before accepting work.
+        Passing an authority check does not mean that capacity is available.
+    \item[Backing] The memory allocated for an object's data or bookkeeping,
+        as distinct from the handle used to refer to it.
+    \item[Principal] The identity used for authorization and resource accounting.
+        It is distinct from a process or thread number that can later be reused.
+    \item[Fencing] Blocking particular operations to protect a resource. A
+        generation check can reject a stale request without granting authority
+        over its replacement. A fence alone does not prove cleanup has finished.
+    \item[Quiescence] A state in which the relevant CPU or device activity has
+        stopped. This must be confirmed before its resources are reused or freed.
+        A deadline alone does not provide that confirmation.
+    \item[Retention] Keeping a resource and its owner when they cannot yet be
+        released safely. This does not itself prove completion or permit retry.
+    \item[Inert owner] An owner whose Drop does not automatically release its
+        resources. Explicit cleanup must follow the owner's own contract.
+    \item[Escrow] Source authority and accounting state set aside during a
+        transfer, so the exact original owner can be restored if rollback is
+        allowed. Keeping the memory pages alone is not enough.
+\end{description}
 
 \section{Distinctions that matter}
 
@@ -177,7 +204,7 @@ IPC call & Cross-domain service invocation & A kernel operation submission \\
     \item[ASID] Address Space Identifier. 0 = kernel; $>$0 = user address space.
     \item[CQ] Completion Queue. Shared-memory ring buffer for async operation
         results.
-    \item[EL0] Exception Level 0 on AArch64. CharlotteOS also retains
+    \item[EL0] Exception Level 0 on AArch64. CharlotteOS also uses
         \texttt{EL0} as an architecture-neutral source and test label for
         userspace execution, including ring 3 on x86-64.
     \item[EL1] Exception Level 1 (AArch64). Kernel execution.

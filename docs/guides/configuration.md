@@ -14,7 +14,7 @@ This guide matches the manual's **Configuration** chapter.
 | Domain TLS entropy | Startup consumes `EntropyConfig` with an owned `rng` connection (or explicit architectural-only source) and a positive request budget. The compiled default is `5000` ms, and admission retains that complete configuration through each operation. See [TLS configuration](../reference/tls-client.md). |
 | Dependency advisory policy | `.cargo/audit.toml` and the scanner pin in `.cargo/audit-version`, evaluated by CI/local validation. They do not configure a running node. See [the advisory gate](../reference/dependency-advisories.md). |
 | Kernel resource capacity | One trusted Rust build profile, compiled into the kernel and fixed for the boot. |
-| Diagnostic telemetry archive | `CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS` at kernel build time: default/unset `0` disables disk archiving, whereas `1000..=86400000` enables periodic archiving. The kernel supplies observe's read-only launch manifest. Live sampling/history and placement reporting remain active. |
+| Diagnostic telemetry archive | `CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS` at kernel build time: default/unset `0` disables disk archiving, while `1000..=86400000` enables periodic archiving. The kernel supplies observe's read-only launch manifest. Live sampling/history and placement reporting remain active. |
 | Native telemetry export | Unset `CATTEN_OTLP_ENDPOINT` launches no exporter. An explicit HTTP/IPv4 collector plus interval/timeout selects one complete read-only outbound profile, and its hash is checked when reusing a kernel. |
 | Bootstrap service assignments | `CATTEN_CLUSTER_SERVICES` at build time, and runners accept repeatable `--cluster-service [NAME=]IPv4:PORT`. The first committed signed ingress policy replaces bootstrap assignments. |
 | Launch/grant trust | One prepared kernel boot-trust policy. Resource capacity settings grant no signing authority or platform classification. Production trust remains disabled pending protected provisioning/custody. |
@@ -177,7 +177,7 @@ client controls, because this test issues dated fixture certificates and leaves 
 guest clock source in place.
 
 Raft uses `RaftNodeConfig::timeout_millis`, and native launch supplies `2000` ms
-through DNS's `elect-ms` manifest entry. Both initial and subsequent jitter
+through DNS's `elect-ms` manifest entry. Both initial and later jitter
 windows derive from that timeout, with the existing repeated-election backoff
 also proportional to it. Native adjustment is a rebuild/restart choice in
 `crates/catten/src/service/launch.rs`. Review persistence/link latency, heartbeat

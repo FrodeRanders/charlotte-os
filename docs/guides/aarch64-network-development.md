@@ -140,6 +140,6 @@ flow per selected backend, stops the Raft leader/VIP advertiser, waits for a
 replacement advertisement, and sends HTTP on the already established flows.
 The fixture requires remote forwarding, at least one surviving flow, and a
 fresh HTTP connection to a live backend after the failure. It uses
-`--cluster-ingress-test` internally; that switch is verifier plumbing, whereas
+`--cluster-ingress-test` internally; that switch is verifier plumbing, while
 `--cluster-service` is bootstrap operational configuration; a committed
 `CINGPOL1` policy supersedes it.

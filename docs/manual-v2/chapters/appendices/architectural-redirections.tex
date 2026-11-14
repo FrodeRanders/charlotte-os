@@ -69,7 +69,7 @@ operation capabilities only where independent authority is required.
 \subsection{Separate readiness, notification, and completion}
 
 Readiness tells a waiter that progress may be possible. A notification asks the
-consumer to inspect state, whereas a completion records a change in the
+consumer to inspect state, while a completion records a change in the
 operation's state and supplies result data. Keep one aggregated wait mechanism,
 but define distinct object semantics.
 
@@ -84,12 +84,12 @@ typed mailbox instances for subsystem-specific work.
 
 Remote wake mapping directly to \texttt{send\_ipi(target\_lp)} can generate
 excessive interrupts. The implemented rule is to queue first, mark pending, and send
-a coalesced reschedule IPI only when the target cannot otherwise observe the
+a combined reschedule IPI only when the target cannot otherwise observe the
 transition.
 
 \subsection{Introduce memory objects before rich IPC payloads}
 
-Move/lend semantics require durable object identity rather than transient
+Move/lend semantics require durable object identity rather than temporary
 pointers. CharlotteOS introduced memory-object capabilities, mapping, ownership
 transfer, temporary lending, lifecycle revocation, and DMA integration before
 promoting rich IPC payloads.

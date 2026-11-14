@@ -24,7 +24,7 @@ while no bytes are copied, under MMU-enforced ownership.
 \section{First-class memory objects}
 
 A memory object is a dedicated kernel object representing page-backed storage with
-explicit ownership and capability semantics. The kernel manages:
+explicit ownership and capability rules. The kernel manages:
 
 \begin{itemize}
     \item Physical frames: the backing storage.
@@ -62,17 +62,19 @@ these obligations, but CharlotteOS does not inherit Singularity's static
 channel-contract guarantees.
 \end{architecturalcomparison}
 
-\section{Aggregate admission and sponsorship}
+\section{Resource limits and who pays for them}
 
 The capacities in this section are compile-time defaults, adjustable through the
 central resource policy described in Chapter~\ref{chap:configuration}. Adjusting
 capacity does not change ownership, sponsorship or physical completion rules.
 
-Read admission in three parts: which budgets an allocation must pass, who keeps
-the charge when authority moves, and what permits the charge to be returned.
-Metadata has its own retained storage and follows the same sequence.
+Before allocating memory, the kernel checks and reserves capacity. This is
+called \emph{admission}. The following sections explain which budgets apply,
+who is charged when authority moves, and when that charge can be returned.
+Kernel metadata, the bookkeeping used to track these objects, also occupies
+memory and follows the same rules.
 
-\subsection{Reserve backing and principal capacity}
+\subsection{Reserve memory and charge the responsible identity}
 
 The kernel reserves backing pages and one object-accounting unit before each
 allocation. One generation may sponsor at most 64 MiB and 1,024 backing objects,
@@ -83,7 +85,8 @@ supervisor-designated platform domains. Allocation must also leave one eighth
 of usable physical frames free. Platform domains still obey per-domain and
 node-wide limits.
 
-One verified artifact principal also shares a ceiling of 16,384 pages across
+A verified artifact's accounting identity is called its \emph{principal}.
+It also has a shared ceiling of 16,384 pages across
 memory-object, committed heap, ELF/runtime, private-table backing and maximum
 user-thread stack capacity, plus 1,024 memory-object allocations. Every instance
 and generation consumes that same counter in the existing principal-history
@@ -99,7 +102,7 @@ See \path{docs/reference/principal-backing-admission.md}.
 to use or destroy an object, while its charge stays with the creating
 generation until the physical frames and object record are released. A copy
 reserves new backing storage against the copying caller, even when another
-domain receives it. Borrowing and pinning retain the existing charge. This
+domain receives it. Borrowing and pinning leave the existing charge in place. This
 prevents a sender from shedding its budget merely by filling a privileged
 receiver's queue.
 
@@ -113,7 +116,7 @@ quarantines its charge rather than creating fresh headroom.
 
 Before public state changes, the kernel prepares the object, capability and
 mapping metadata fallibly. Publication rechecks the captured generation and
-links prepared storage. Unused storage is disposed of after local guards, whereas
+links prepared storage. Unused storage is disposed of after local guards, but
 abandoned preparation retains its fields and charges.
 
 \begin{implementationdetail}{Object and capability preparation}
@@ -143,8 +146,9 @@ Direct allocation, copies, moves and loans now prepare both payload and namespac
 nodes fallibly after exact shared authority reservation. Factories leave memory
 serialization, and captured namespace generation is checked before publication.
 Commit only relinks prepared nodes. Unused namespace candidates remain with the
-containing preparation for post-guard disposal. Ordinary loan cancellation drops
-unused borrower storage before its destination reservation refunds.
+containing preparation for disposal after the local guards are released.
+Ordinary loan cancellation drops unused borrower storage before its destination
+reservation refunds.
 
 Retired capability nodes retain their exact authority. Explicit disposal frees
 payload metadata before authority metadata and original admission. Moves carry
@@ -170,13 +174,13 @@ prefix in the same pin until invalidation and required scratch completion.
 Explicit unmap keeps its live record through those proofs, then frees the detached
 node before pin decrement/backing release. Revocation uses that pin too. Namespace
 retirement retains complete admitted mapping nodes and exact peer leases on
-failure/abandonment, whereas physical success permits node disposal, then peer completion.
+failure/abandonment, but physical success permits node disposal, then peer completion.
 No new physical proof, recovery registry or retry authority is added. General
 metadata-byte admission, concurrent unused preparations and broader enclosing
 contexts remain separate qualification work.
 \end{implementationdetail}
 
-\subsection{Account for retained metadata and catalogs}
+\subsection{Account for allocated metadata and catalogs}
 
 Backing pages are only part of an allocation's footprint. Node storage, frame
 catalogs, snapshots and shared accounts have additional budgets. Their charges
@@ -188,7 +192,7 @@ Object, capability payload, namespace and read-borrower nodes share requested-la
 admission: 4 MiB and 32768 nodes total, with 3 MiB and 24576 nodes available to
 ordinary callers. These are compile-time defaults for the memory-capability node pool.
 Direct allocation and copy need three candidate nodes, including their object
-record, whereas moves and write loans need two, and read loans three. The namespace
+record, while moves and write loans need two, and read loans three. The namespace
 candidate is prepared even when a namespace already exists. Capability/namespace/
 borrower nodes capture destination class before escrow. Object records capture
 the exact original backing sponsor (the source on copy), separately from their
@@ -207,7 +211,7 @@ slots. The same captured backing class admits exact pointer-vector capacity
 before allocation and physical frame creation. The retaining catalog owner
 moves with the object and exposes only borrowed slices and bounded push/pop.
 Popping every identity never proves physical release or refunds allocated
-capacity. Confirmed cleanup frees the vector before refund, whereas failure retains it
+capacity. Confirmed cleanup frees the vector before refund, but failure retains it
 with the physical charge and complete object node. A maximum catalog is 128 KiB
 at the default 16384-page object bound, and the 24-byte inline owner is included in
 the 248-byte object-node layout. Numerical defaults remain unchanged, and profile
@@ -260,7 +264,7 @@ progress remain separate. See \repofile|docs/reference/snapshot-buffer-admission
 
 \subsection{Keep snapshots and pins through maintenance}
 
-Mapping, copying and DMA retain the frame identities needed for their own
+Mapping, copying and DMA keep the frame identities needed for their own
 completion boundaries. Rejection or removal from a registry does not permit a
 backing pin to be released before the required maintenance has completed.
 
@@ -278,7 +282,7 @@ before any frame identity or source pin is retained. Final namespace-generation,
 object/size and rights/loan/DMA/mapping checks precede snapshot fill and pin
 publication under one hold. Ordinary rejection disposes unused capacity after
 unlock. Bare preparation/pin abandonment retains snapshot metadata without
-allocator entry, whereas explicit unpin frees it before decrementing the backing fence.
+allocator entry, but explicit unpin frees it before decrementing the backing fence.
 Empty source-escrow retention pins use this same owner without a snapshot.
 Aggregate principal admission, automatic scoped/source-transfer destructors and
 wider IRQ/guard contexts remain separate qualification.
@@ -314,8 +318,8 @@ through consuming handoff. Last-pin release is explicit, and the containing tran
 destructor also explicitly releases cancelled copy backing after destination
 metadata/authority. That outer destructor remains active and separately
 unqualified. Failed physical release retains every original charge and node, and
-no physical retry or new recovery owner is added. Wider caller/IRQ contexts
-retain their separate qualification. See
+no physical retry or new recovery owner is added. Wider caller and IRQ contexts
+still need to be checked separately. See
 \repofile|docs/reference/memory-object-storage.md|.
 \end{implementationdetail}
 
@@ -328,7 +332,7 @@ independent generation-owned accounts and node pools, alongside the shared
 principal ceiling. Capability records,
 IPC operations and several completion/observer families also have separate
 admission. Private translation tables also consume that same principal allowance, including
-initial roots and cached sparse branches. They retain owning-root limits and a node pool, while
+initial roots and cached sparse branches. They have owning-root limits and a node pool, while
 fresh shared runtime kernel tables have a separate node pool. Inherited boot
 tables/stacks, IOMMU tables, general kernel heap and comprehensive metadata
 accounting remain open.
@@ -346,14 +350,14 @@ confirmed pair release refunds it. Data growth pays once, while new private
 table branches still have their own charge.
 One owning transaction retains both stack ranges, the original root lease and
 the reservation through physical cleanup. Refund requires confirmed release of
-both ranges, whereas failed or abandoned cleanup retains the entire maximum charge and
+both ranges, but failed or abandoned cleanup retains the entire maximum charge and
 slot even if other pages were freed. Kernel-only threads reserve sixteen pages
 from trusted admission. Inherited boot/CPU stacks remain outside this runtime pool.
 
 \subsection{Translation-table lifetime.}
 
-Removing a page mapping clears the leaf while retaining empty intermediate
-tables in their owning hierarchy. Subsequent mappings reuse those tables, and
+Removing a page mapping clears the leaf while keeping empty intermediate
+tables in their owning hierarchy. Later mappings reuse those tables, and
 quiescent address-space teardown releases the complete private tree. Hardware
 page walks do not take software locks, so an empty table cannot be recycled
 merely because its last leaf was removed. New table backing is initialized
@@ -369,7 +373,7 @@ below keeps those boundaries separate.
 Clearing a leaf does not prove that hardware has stopped using the old
 translation. Mapping retirement therefore retains its pin, frame identities,
 loan restrictions and original sponsorship through invalidation. Failed or
-abandoned maintenance keeps that state retained.
+abandoned maintenance keeps that state in place.
 
 \begin{implementationdetail}{Retained tables and invalidation acknowledgements}
 Retained tables follow the hierarchy's high-water footprint and consume their
@@ -393,14 +397,14 @@ Memory-object mappings carry a separate retirement pin through invalidation.
 A returned map rejection before acquiring that pin made no mapping publication
 or table change in that call. It returns unused scratch without TLB maintenance.
 Admitted calls still invalidate after rejected/rolled-back prefixes, so the error
-alone cannot permit early pin release. Kernel errors retain the per-call
+alone cannot permit early pin release. Kernel errors include the per-call
 invalidation cause. x86 timeouts include their owned epoch and a sampled first
 missing target, which supplies no release or retry authority. The syscall still
 reports uncertain status 9. See
 \repofile|docs/reference/memory-object-retirement.md|.
 
 The final DMA or copy unpin cannot release backing during that interval, and
-borrower cleanup retains loan restrictions until the fence completes. Failed
+borrower cleanup keeps loan restrictions in force until the fence completes. Failed
 detach or abandoned cleanup retains both backing and its original sponsorship
 charge. Partial installation records only the published prefix, and cleanup checks
 leaf identity and leaves a foreign collision mapping untouched.
@@ -436,14 +440,14 @@ outside scratch serialization. Gaps are implicit. Release detaches one exact
 reservation without allocating a free-list node, then frees it after unlock.
 Partial, combined or duplicate releases are rejected. Bulk mapping retirement
 retains its backing pin and loan restrictions if any scratch completion fails,
-even after successful translation invalidation. Completed ranges may be reused, whereas
+even after successful translation invalidation. Completed ranges may be reused, but
 rejected ranges remain reserved. This strengthens completion without introducing
 a live-generation lease or a comprehensive kernel-metadata budget.
 MMIO retains its existing root/descriptor claim while scratch preparation also
 leaves the device registry, and mapped-state admission rechecks atomically with that
 claim. Whole-root sealing carries the complete scratch namespace and extent nodes
 in its existing metadata/root receipt through final invalidation. Failure or
-abandonment retains them, whereas confirmation permits post-guard node disposal before
+abandonment retains them, but confirmation permits post-guard node disposal before
 root backing/slot completion. No separate recovery ticket or physical/replay proof
 is added. Scalar range matching still supplies no allocation nonce, and general
 metadata-byte/principal admission and wider caller contexts remain open.
@@ -455,7 +459,7 @@ with ordinary preparation limited to 384 KiB/6,144 nodes. Admission precedes eac
 allocator, capturing the exact root's trusted classification once. Partial and
 unused candidates, live reservations and detached metadata retain their original
 requested bytes/counts through actual node deallocation. Later promotion and
-ASID reuse cannot reclassify the refund. Ordinary rejection disposes explicitly, whereas
+ASID reuse cannot reclassify the refund. Ordinary rejection disposes explicitly, but
 abandonment retains node and charge without counter entry. Allocator overhead,
 aggregate principal metadata and sustained concurrent progress remain separate.
 \end{implementationdetail}
@@ -498,7 +502,7 @@ aggregate metadata budgets remain separate qualification work.
 \begin{implementationdetail}{Staged close and cross-subsystem cleanup}
 An owned staged-close request fences new operation
 leases while older leases drain. Pending poll returns
-the request owner without subsystem retirement, whereas once ready, cleanup proceeds
+the request owner without subsystem retirement, but once ready, cleanup proceeds
 through the detached-root boundary. Dropping the request or exhausting its
 lease-drain waiting budget retains the closing root, tag, slot and charges.
 Later completion cannot reopen admission. The fence applies to operation leases,
@@ -580,7 +584,7 @@ are fixed account counters, so recording a failure does not grow a recovery queu
 \begin{implementationdetail}{Translation-table preparation and capacity}
 Translation roots and intermediate tables also have an owning preparation
 through publication. Private lower-half tables preserve the physical progress
-floor on each allocation, whereas shared higher-half kernel tables may consume that
+floor on each allocation, while shared higher-half kernel tables may consume that
 reserve. Mapping failure can leave a partial linked tree, which remains owned
 for retry or quiescent destruction. ARM allocates the root before acquiring a
 hardware tag, releasing the unpublished frame if tag admission fails. This
@@ -634,7 +638,7 @@ reach zero, and physical frames are freed only after the registry lock is releas
 \subsection{Move}
 
 Ownership transfers to the receiver. The source must already be unmapped, and the
-sender's capability is consumed. The receiver becomes the new owner, responsible for subsequent
+sender's capability is consumed. The receiver becomes the new owner, responsible for later
 transfer or destruction.
 
 \begin{itemize}
@@ -644,14 +648,14 @@ transfer or destruction.
         reserve destination authority, escrow the source and commit the
         capability transfer with IPC publication.
     \item \textbf{Semantics:} physical pages stay in place. The sender's old
-        capability cannot map them again, while the receiver owns subsequent access.
+        capability cannot map them again, while the receiver owns later access.
 \end{itemize}
 
 \subsection{BorrowRead}
 
 The receiver gets temporary read-only mapping authority. The sender retains
 ownership. Confirmed reply/cancellation cleanup revokes the loan, including
-any receiver mapping, whereas failed cleanup retains its fence and backing.
+any receiver mapping, but failed cleanup retains its fence and backing.
 
 \begin{itemize}
     \item \textbf{Use when:} the receiver needs to inspect data but must not
@@ -700,7 +704,7 @@ outside IPC as well. Queued connections and unobserved returned connections
 cannot serve as retained minting sources: an earlier operation can still reclaim
 them. Delivery or observation must precede the reply. An unrelated endpoint-owner
 domain may close, making the service unavailable, while the delegated source
-keeps the closed endpoint record alive. Failure refunds unpublished grants, whereas
+keeps the closed endpoint record alive. Failure refunds unpublished grants, but
 abandonment retains the source claim and both roots.
 
 Returned memory retains its source escrow, backing pin and hidden destination
@@ -711,7 +715,7 @@ authority and releases its pin under one registry hold, so close never observes
 restored authority with an unfinished transfer pin. Serialized cleanup uses a
 nonwaiting busy check instead of parking beneath IPC. After input-loan cleanup,
 the output move and any returned connection publish jointly before result
-visibility. Ordinary failure restores the unstarted output move, whereas abandonment
+visibility. Ordinary failure restores the unstarted output move, but abandonment
 can also restore that output, but retains uncertain input-loan backing and the
 reply/root claims. No-loan replies remain atomic under IPC.
 
@@ -797,7 +801,7 @@ The memory cannot be mapped or exposed as a Rust slice again until the
 transfer's \texttt{finish} method has synchronously removed the IOMMU mapping.
 
 A failed DMA unmap retains the Rust owner. Only an explicit
-\texttt{OPERATION\_IN\_FLIGHT} admission rejection permits another submission, whereas
+\texttt{OPERATION\_IN\_FLIGHT} admission rejection permits another submission, but
 other failures retain the original status without repeating DMA unmap from
 \texttt{finish} or \texttt{Drop}. The attempt is recorded before kernel entry.
 For shared coherent memory, confirmed DMA completion is retained across a later

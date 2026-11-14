@@ -21,12 +21,12 @@ The kernel shards its own state per-LP, meaning each LP has:
 An LP is a \textbf{place}: threads are pinned to an LP at creation and, by default,
 stay there. Migration is opt-in and restricted.
 
-Affinity makes a deliberate locality choice possibly, without actually establishing a
+Affinity makes it possible to choose where a thread runs without establishing a
 NUMA allocation policy. Page-table memory can be remote even when the data
 it translates is local. \href{https://arxiv.org/abs/1910.05398}{Mitosis} and
 \href{https://www.usenix.org/conference/atc24/presentation/gao-bin-scalable}{Hydra}
 study the benefits and coherence costs of page-table migration and replication.
-Charlotte retains its existing affinity policy while treating translation
+Charlotte continues to use its existing affinity policy while treating translation
 metadata as a separate accounting and future placement concern. The present
 physical allocator is not NUMA-aware, and x86-64 has no PCID policy: CR3
 reloads flush non-global translations. Affinity alone therefore does not
@@ -97,7 +97,7 @@ In the typical configuration:
 The userspace thread and its executor are pinned to one LP.
 \rusttype{ShardLocal<T>} state is valid only while that LP's owning thread runs.
 
-The architecture retains the distinction (shard $\neq$ LP) so that more complex
+The architecture makes the distinction (shard $\neq$ LP) so that more complex
 configurations remain possible:
 
 \begin{itemize}
@@ -112,7 +112,7 @@ configurations remain possible:
 CPU hotplug or live shard migration is not (yet) implemented and belongs at
 best among the extension scenarios. Current local Ready-thread migration requires
 explicit certification and architecture CPU-ownership qualification. Arm has
-the assembly handoff, whereas x86 permits only never-dispatched contexts until an
+the assembly handoff, while x86 permits only never-dispatched contexts until an
 equivalent handoff exists. Pinned userspace shards remain ineligible.
 
 Ready membership uses fixed links in each complete thread payload rather than
@@ -129,7 +129,7 @@ Publication revalidates that capture before changing queue membership. Each
 waker remembers early notifications and later callbacks match the installed
 wait itself, so an older wait cannot wake a new park on the same thread. Ready
 admission carries the old subscription past guard exit before cancellation.
-Callers retain their existing IRQ policy, condition rechecks and absolute
+Callers keep their existing IRQ policy, condition rechecks and absolute
 deadlines. Lazy list allocation leaves its source initialization mutex, and IPC/CQ
 entries prepare outside their registries and revalidate the exact retained
 source before readiness and allocation-free publication. Losing or rejected
@@ -162,7 +162,7 @@ per-LP cells, each wrapped in a lock. Access is:
 \end{lstlisting}
 
 \texttt{get} returns a read guard and \texttt{get\_mut} a write guard for the
-current LP. The guard retains the lock until scope exit. This is interrupt-safe
+current LP. The guard holds the lock until scope exit. This is interrupt-safe
 (the lock masks interrupts during the critical section where necessary).
 
 Use \rusttype{PerLp<T>} for data that is:

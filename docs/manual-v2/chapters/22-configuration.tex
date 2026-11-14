@@ -82,7 +82,7 @@ The default settings are in
 \repofile|crates/catten/src/resource_policy/defaults.rs|. They select reviewed
 capacity values. Operators may edit this central file or select an external
 profile with \texttt{CATTEN\_RESOURCE\_POLICY}, which must name an existing file
-by absolute path. Unset selects the default, whereas empty, relative, missing and
+by absolute path. Unset selects the default, but empty, relative, missing and
 directory paths reject. The file is trusted Rust source and belongs in the
 reviewed build inputs, not in an application manifest or upload request.
 
@@ -90,7 +90,7 @@ A profile defines \texttt{POLICY: Policy} in the policy module's scope. It can
 start from \texttt{DEFAULT} and override related fields. The checked-in
 \repofile|crates/catten/src/resource_policy/larger.rs| demonstrates co-scaling
 scratch-node, snapshot-buffer and mapping-node byte/count capacities by one
-quarter while retaining their reserve proportions.
+quarter while preserving their reserve proportions.
 
 \begin{lstlisting}[language=bash]
 CATTEN_RESOURCE_POLICY="$PWD/ops/resource-policy.rs" \
@@ -111,16 +111,16 @@ implemented fallback for an invalid build profile.
 
 \subsection{Interpret the metadata pools}
 
-Metadata pool limits bound retained requested storage in their own units.
+Metadata pool limits bound allocated requested storage in their own units.
 They do not add up to physical RAM usage, and changing capacity does not alter
 sponsorship or completion rules. Plan headroom for old and replacement storage
 to overlap during growth.
 
 \begin{implementationdetail}{Pool inventory and observer statistics}
 The 23 admitted metadata pools share family-typed charge mechanics and an
-independent static counter lock per pool. Resource owners retain sponsorship,
+independent static counter lock per pool. Resource owners carry sponsorship,
 completion and disposal policy. Version-10 thread statistics append a read-only
-inventory for validated system observers, whereas ordinary snapshots contain no pool
+inventory for validated system observers, while ordinary snapshots contain no pool
 records. HTTP status JSON exposes each pool's units, ordinary/total limits and
 usage in \texttt{threads.metadata\_pools}. Busy samples have absent usage.
 Samples are independent, byte values describe requested layouts, and overlapping
@@ -135,7 +135,7 @@ DMA mapping/quarantine records and SMMU walker-cache nodes share the existing
 \texttt{iommu\_nodes} byte/count limits with domain/requester/context metadata.
 They retain the original domain-grant class through actual deallocation, so
 promoting the root cannot reclassify later metadata in that domain. No numerical
-limit or statistics grammar changes. The shared ceiling bounds retained storage
+limit or statistics grammar changes. The shared ceiling bounds allocated storage
 but also makes these layouts compete for its capacity. Raise the reviewed
 central limits if workload planning requires more headroom. Table-ledger buffers
 share the byte dimension with zero node count and retain full old/replacement
@@ -167,7 +167,7 @@ The entropy request deadline is a separate startup API setting in
 \texttt{EntropyLimits}. Bundled S3, Kafka and TCP/IP select its central
 \texttt{5000} ms default, but startup Rust code can supply another positive budget.
 No manifest/config-page field or live update is added. Increasing the budget
-retains source checkout, pending metadata, output borrow and possible returned
+keeps source checkout, pending metadata, output borrow and possible returned
 backing longer, so timeout/rejection and pressure need joint qualification.
 One original monotonic deadline survives preparation and observation without
 replay. This bounds reply observation, not dependency naming or kernel cleanup
@@ -216,7 +216,7 @@ Selected kernel buffers share a signed-principal requested-byte ceiling,
 \path{Policy.memory.principal_kernel_buffer_bytes}, defaulting to 16 MiB.
 It covers diagnostic buffers, primitive syscall inputs/plaintext, CPU/copy/DMA
 frame snapshots, IPC working/retirement buffers and root heap/image frame catalogs.
-Diagnostics also retain their shared snapshot pool and 1 MiB local working bound, while
+Diagnostics also have their shared snapshot pool and 1 MiB local working bound, while
 root catalogs consume the existing memory-metadata byte pool. It reserves no backing in advance and is
 not a general kernel-metadata limit. See
 \repofile|docs/reference/telemetry-snapshots.md|.
@@ -272,7 +272,7 @@ replay accepted work.
 
 Raft election timing is selected by
 \texttt{RaftNodeConfig::timeout\_millis}, and native launch supplies 2000 milliseconds
-through the DNS \texttt{elect-ms} manifest entry. Initial and subsequent
+through the DNS \texttt{elect-ms} manifest entry. Initial and later
 deadlines derive a jitter window of one configured timeout, rather than a fixed
 150 milliseconds. Repeated-election backoff derives from the same timeout, and
 deadline/backoff arithmetic saturates instead of wrapping. Changing the native

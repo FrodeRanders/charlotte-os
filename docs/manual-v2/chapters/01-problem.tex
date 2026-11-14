@@ -28,7 +28,7 @@ That translation can introduce:
     \item Thread-pool overhead: many async runtimes spawn a pool of OS
         threads to convert blocking syscalls into futures, undoing the
         resource benefits of asynchronous execution.
-    \item Two concurrency models: the application uses async/await, whereas the
+    \item Two concurrency models: the application uses async/await, while the
         kernel uses threads and blocking. The mismatch forces every boundary
         crossing to bridge the two models.
 \end{itemize}
@@ -39,7 +39,7 @@ A process on a conventional OS commonly begins with access to broad filesystem
 and network namespaces. Security policy then removes authority with mechanisms
 such as \texttt{chroot}, \texttt{seccomp}, and namespaces. This approach requires
 the developer to enumerate what the process must not reach. Programs that omit
-a restriction retain more authority than they need, which increases the effect
+a restriction keep more authority than they need, which increases the effect
 of a compromise.
 
 \subsection{Hardware asynchrony disguised as software synchrony}

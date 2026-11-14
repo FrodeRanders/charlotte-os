@@ -121,7 +121,7 @@ exits:
 
 \begin{enumerate}
     \item \texttt{abort()} marks the exact executing lifetime for retirement,
-        retaining its scheduler handle, thread-table entry and saved context.
+        keeping its scheduler handle, thread-table entry and saved context.
     \item The scheduler selects another thread and saves the outgoing context.
         Arm also releases its assembly CPU-ownership flag.
     \item On the incoming stack, before restoring its register frame, shared
@@ -175,12 +175,12 @@ node's free-frame reserve. Domain heap pages are likewise demand committed.
 For an unsigned kernel-launched service, a later generation may grow its stack
 or heap budget from the preceding generation's high-water mark, but never past
 the platform maximum. The heap policy keeps the historical 4 MiB capacity as a
-floor: demand commitment already saves physical memory, whereas shrinking the
+floor: demand commitment already saves physical memory, but shrinking the
 virtual claim would turn an ordinary workload change into an allocation
 failure. Signed deployment limits remain authoritative over feedback.
 
 These loops are intentionally separated by timescale. Fault handling enforces
-hard local bounds immediately, whereas creation-time feedback changes only a later
+hard local bounds immediately, while creation-time feedback changes only a later
 generation. Meanwhile, cluster placement consumes a separate five-second control stream,
 applies an EWMA and bucket hysteresis, and requires a stable candidate plus a
 relocation cooldown. Raw one-second telemetry remains unfiltered for diagnosis.
@@ -205,7 +205,7 @@ exited thread consequently cannot abort a newer thread that reused the same
 numeric identifier. The scheduler-lifecycle boot test exercises stale wake
 rejection and remote owner-LP retirement.
 
-\paragraph*{Retain the complete thread until stack release.}
+\paragraph*{Keep the complete thread until stack release.}
 
 Deferred retirement owns the complete thread in its prepared node until the
 owner LP is off that stack and explicit stack-pair release succeeds. Only then
@@ -246,7 +246,7 @@ the node admits 8 MiB/4,096 bundles, with ordinary work limited to 6 MiB/3,072.
 The existing principal-history record holds the counter. Published history and
 root candidates also have a separate 1 MiB/4,096-node pool, with ordinary
 preparation limited to 768 KiB/3,072. Trusted preparation captures classification
-before allocation. Published records stay charged for the boot lifetime, whereas losing
+before allocation. Published records stay charged for the boot lifetime, while losing
 candidates stay in the existing root receipt through failed invalidation and
 refund only after actual node disposal. See
 \repofile|docs/reference/principal-history-admission.md|.
@@ -288,7 +288,7 @@ nodes dispose after IPC unlock.
 
 Pending and reply-token nodes likewise prepare outside IPC
 with original call/reply counts and a retained caller-root lease. Their complete
-containing owner explicitly finishes ordinary outcomes, whereas abandonment retains all
+containing owner explicitly finishes ordinary outcomes, but abandonment retains all
 fields, and detached node disposal precedes count refund. Reply/cancellation
 owners retain token nodes through post-IPC disposal, and serialized close reuses
 those nodes as its bounded retirement list, while scalar completion fallback
@@ -329,7 +329,7 @@ or authorize physical retry.
 \begin{implementationdetail}{Deliver callbacks before parking}
 Guard-free park setup drains the producer LP's pending deferred callbacks
 before publishing Blocked, under an IRQ-state-preserving local mask. Restoring
-IRQs can switch the producer away before its subsequent yield, so that yield
+IRQs can switch the producer away before its later yield, so that yield
 cannot be the only delivery path for a dependent worker's wake. Timed waits
 recompute the remaining absolute budget after delivery. Event-only waits,
 sleep and untimed completion waits preserve the same ordering. This dispatch
@@ -352,7 +352,7 @@ Transfer completion closes the exact interest and uses the shared producer-LP
 transport for callbacks and metadata disposal after guard exit. Another LP
 cannot consume that transport beneath the producer's IPC hold. Wait admission
 rejection leaves authority and pins intact, while ordinary loan, DMA, copy and mapping
-pin rejection retains its existing policy. Readiness supplies no hardware
+pin rejection follows its existing policy. Readiness supplies no hardware
 completion or physical retry authority.
 \end{implementationdetail}
 
@@ -398,7 +398,7 @@ overview.
         mailbox table, and each per-LP slot. Failed reader and writer attempts
         likewise restore \texttt{INT\_STATE} while contending. A
         \texttt{waiting\_writers} counter gives writers preference only during
-        the masked atomic acquisition attempt, because retaining that preference while
+        the masked atomic acquisition attempt, because keeping that preference while
         waiting could deadlock a same-LP interrupt reader.
 
     \item \textbf{The external \texttt{spin} crate} is used only by the stack
@@ -470,7 +470,7 @@ Cross-subsystem rules hold today:
 
 Endpoint and hardware rings are bounded. CQ overflow retention is preallocated
 and bounded by accepted submission slots, with separate queue count/backing-byte
-admission. A slow consumer retains those slots and eventually prevents new
+admission. A slow consumer occupies those slots and eventually prevents new
 submissions. General kernel-heap bytes and aggregate principal budgets remain
 incomplete, so these family limits do not form a complete resource ledger.
 
@@ -569,7 +569,7 @@ The \texttt{THREAD\_STATISTICS} syscall is address-space-scoped by default:
 callers see only their own threads and receive the snapshot as a memory-object
 capability. At boot the supervisor starts exactly one \texttt{observe} EL0
 service and delegates a typed system-observer capability through its launch
-vector. Presenting that capability authorizes a machine-wide snapshot, whereas a
+vector. Presenting that capability authorizes a machine-wide snapshot, but a
 fabricated or wrong-type handle fails closed. The service publishes snapshots
 through endpoint IPC and registers itself with the node name service.
 Machine-wide observation is therefore explicit authority rather than an

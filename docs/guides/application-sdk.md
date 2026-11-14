@@ -60,7 +60,7 @@ The [echo-service example](../../crates/charlotte-app/examples/echo_service.rs)
 shows signed publication and resource release before shutdown acknowledgement.
 
 `service::Workers` reserves a bounded vector before accepting native
-`ThreadHandle`s. `join_all` confirms exit, whereas registration/observation failure
+`ThreadHandle`s. `join_all` confirms exit, but registration/observation failure
 restores the exact generation-bound handle. The caller first signals workers
 through its application lifecycle. Dropping a nonempty group aborts rather than
 claiming that dropping a join observation ended a worker. Group insertion
@@ -184,7 +184,7 @@ EL0 probe adds a moved-memory IPC round trip through the real executor, because 
 fakes alone cannot qualify native CQ wake delivery or memory revocation.
 The [14 November qualification checkpoint](../reports/audits/2026-11-14-application-sdk.md)
 records the host, target, SDK and native results, including the initial HVF
-build failure and subsequent build correction. HVF execution remains unqualified.
+build failure and later build correction. HVF execution remains unqualified.
 
 The [broker SDK adoption checkpoint](../reports/audits/2026-11-14-broker-sdk-adoption.md)
 records an existing-workspace consumer using the public manifest/binary builder,

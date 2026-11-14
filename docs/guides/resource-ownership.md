@@ -17,7 +17,7 @@ Memory-object backing also consumes a kernel-enforced
 does not erase the creating generation's charge, because the charge is returned when
 the receiver finally releases the frames. Allocation can therefore fail even
 with heap space available. Bound batches, handle allocation failure and release
-each operation's transient owners promptly.
+each operation's temporary owners promptly.
 
 ![Kernel and userspace ownership boundary](../manual-v2/figures/kernel-userspace-boundary.svg)
 
@@ -52,7 +52,7 @@ Reactor callers consume `OwnedSocket` with `into_closing`, retain the resulting
 Only a checked `Started` (0) or `Unavailable` (1) scalar without attachments
 ends the logical owner. Unavailability concerns a nonreused ID in the same
 service incarnation, but it grants no cleanup or former-ownership proof. Queue-full
-rejection is unstarted admission, whereas accepted timeout or observation failure must
+rejection is unstarted admission, but accepted timeout or observation failure must
 retain the operation through terminal abort, without retry. An incomplete
 `ClosingSocket` destructor aborts before dropping its fields. It cannot run a
 blocking best-effort close. Deployment ingress keeps this owner, original
@@ -67,7 +67,7 @@ policy, without a whole-parent destructor latency guarantee. See
 [synchronous close](../reports/audits/2026-10-22-security-synchronous-close.md).
 
 Immediate and deferred socket sends move the same exact caller-owned frame with
-the full socket ID. `try_send_call` attempts TCP/UDP enqueue once, whereas `send_call`
+the full socket ID. `try_send_call` attempts TCP/UDP enqueue once, while `send_call`
 retains deferred TCP work for CQ observation. The service owns the complete
 incoming transaction and read-only mapping until enqueue/rejection, disposing
 mapping/backing before reply. A positive prefix receipt alone permits sending
@@ -79,7 +79,7 @@ its remainder. An accepted error or lost observation cannot prove zero progress.
 
 The target service first creates its endpoint and transfers a re-delegable
 connection to the name service. Applications can then resolve an attenuated
-connection and perform calls whose transient resources remain owned until a
+connection and perform calls whose temporary resources remain owned until a
 terminal completion.
 
 ```rust
@@ -104,7 +104,7 @@ admission. A service that must also process incoming requests uses
 `PendingCall::bind_cq` and `Endpoint::bind_completion_queue` on the same CQ,
 with `cq_wait_checked` bounded by the earliest remaining operation deadline.
 That wait owns a kernel watchdog without requiring another completion
-capability, whereas `None` parks without a deadline. Reply CQ interest
+capability, while `None` parks without a deadline. Reply CQ interest
 lives in the pending-call record and cancels when that owner closes, but it does
 not adopt returned connection/memory capabilities. Poll the owned pending call
 after waking to observe those resources exactly once. Registration failure
@@ -122,7 +122,7 @@ caller authority over another registrar's binding. See
 Kernel lifecycle request publication also wakes the default CQ after writing
 through the exact leased root and releasing the local table guard. Reactors
 must recheck lifecycle and all ready sources after every wake. If bounded
-intake leaves queued work, continue processing before parking, because a coalesced CQ
+intake leaves queued work, continue processing before parking, because a combined CQ
 wake is not another edge for every remaining message. See the
 [reply CQ audit](../reports/audits/2026-10-12-reply-cq-readiness.md) for scope and
 remaining cleanup/metadata qualification.
@@ -152,7 +152,7 @@ under the scheduler thread table. See
 For timed completion waits, `CompletionError::Status(WAIT_ADMISSION_FAILED)`
 means the operation is still live and its owner is retained. Keep the owner
 for a later wait, or let Drop cancel and wait, but do not release borrowed operation
-buffers on this error. Kernel callers receive `CapError::WaitAdmissionFailed`, whereas `Ok(false)`
+buffers on this error. Kernel callers receive `CapError::WaitAdmissionFailed`, but `Ok(false)`
 means deadline expiry. Kernel and syscall adapters share one absolute-deadline
 wait loop: an unrelated notification rechecks and reparks with the remaining
 budget. Untimed completion waiting preserves terminal-state semantics even when
@@ -235,7 +235,7 @@ A remote ID is not a kernel capability. Releasing it requires a protocol call,
 which can block or fail. Its owner therefore provides `close(self)` for normal
 operation and uses `Drop` for best-effort teardown. Errors from Drop cannot be
 reported, and remote resources can remain charged after failed admission.
-Socket close returns errors only before admission, whereas after acceptance, timeout or
+Socket close returns errors only before admission, but after acceptance, timeout or
 uncertain observation retains the owner through domain abort. Closing a socket
 never proves that earlier business work was rolled back or can be replayed.
 
@@ -292,7 +292,7 @@ for the complete pattern and bounded-wait rule.
 Hardware adapters use the stricter `complete_device_quiesced()` terminal call.
 Returning the `ShutdownRequest` to that call is valid only after the service
 scope has stopped its endpoint, reset or stopped the controller, and dropped
-all transient DMA-transfer and shared-DMA owners. Launch-owned MMIO, interrupt,
+all temporary DMA-transfer and shared-DMA owners. Launch-owned MMIO, interrupt,
 and IOMMU grants remain borrowed through `Context`, and the kernel reclaims them
 after the quiesced thread exit. The kernel refuses to reclaim a hardware-root
 domain that exits with the ordinary `complete()` state.
