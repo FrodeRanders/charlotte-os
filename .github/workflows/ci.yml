@@ -82,6 +82,7 @@ jobs:
 
       - name: Lint workspace
         run: |
+          python3 scripts/tests/test-kernel-c-flags.py
           SITAS_DIR="$(cd "$GITHUB_WORKSPACE/../.." && pwd)/gautelis/sitas"
           mkdir -p "$(dirname "$SITAS_DIR")"
           git clone https://github.com/FrodeRanders/sitas.git "$SITAS_DIR"

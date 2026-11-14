@@ -28,6 +28,12 @@ test in favor of a broader scenario.
 
 ## Host-testable logic
 
+The Clippy job first runs `python3 scripts/tests/test-kernel-c-flags.py` to
+compile the actual flanterm C sources with the configured x86 kernel flags.
+It models a PIE-enabled compiler default and requires static code generation;
+`-mcmodel=kernel` needs explicit `-fno-pic -fno-pie` with Linux GCC. Clang can
+cross-compile this control on an AArch64 development host.
+
 Run every host-side Rust suite and tool self-test with:
 
 ```sh
