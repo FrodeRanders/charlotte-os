@@ -181,8 +181,8 @@ that lineage (\url{https://kubernetes.io/blog/2015/04/borg-predecessor-to-kubern
 The cluster became the deployment target, but above commodity kernels and
 containers rather than inside a distributed OS kernel.
 
-\textbf{Focused mechanisms.} Raft succeeded as a reusable replicated-state-
-machine protocol with many implementations (\url{https://raft.github.io/}).
+\textbf{Focused mechanisms.} Raft succeeded as a reusable 
+replicated-state-machine protocol with many implementations (\url{https://raft.github.io/}).
 SWIM-style gossip survived in memberlist and Consul. Nix made hash-identified
 immutable software stores practical. TUF and Uptane became maintained update
 security frameworks; Uptane is now a versioned standard under Linux Foundation
@@ -326,8 +326,7 @@ Clean-break systems historically faced a severe software-adoption cost. That
 explains why LegoOS retained a Linux ABI and why capability systems such as
 Capsicum add confinement within Unix. Coding agents change this constraint by
 reducing some of the human work required to discover assumptions, translate
-APIs, generate adapters, and build tests. They do not make generated code
-correct by origin.
+APIs, generate adapters, and build tests. 
 
 Recent migration benchmarks show both promise and substantial failure. The
 2025 CODEMENV study evaluates package and environment adaptation
