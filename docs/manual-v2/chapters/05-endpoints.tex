@@ -31,7 +31,7 @@ lending page-backed data, but represents an outstanding call with an owned
 
 This change serves the documented Sitas co-design: one shard can keep other
 tasks running while a call is pending, then park its thread when no task can
-progress. A borrow remains live through the pending owner; suspension of a
+progress. A borrow remains live through the pending owner, so suspension of a
 Rust task does not return its memory. The cost is an explicit call lifecycle,
 including cancellation and returned-capability cleanup, rather than relying
 on one blocked stack to delimit the interaction. See the
@@ -49,11 +49,11 @@ Root registration prepares the IPC namespace node and both budget accounts
 fallibly before taking publication guards. It captures an exact-generation
 root lease, releases lifecycle/table guards, then links that prepared storage
 under IPC alone. Cleanup cannot pass the retained lease during this handoff.
-Missing or retired namespaces reject; ordinary IPC never recreates them.
+Missing or retired namespaces reject, and ordinary IPC never recreates them.
 
 After fenced loan and capability drain, cleanup detaches the empty namespace
 node and disposes it outside IPC. Outstanding delegated endpoint/record charges
-keep their original accounts through ASID reuse. This covers namespace storage;
+keep their original accounts through ASID reuse. This covers namespace storage, but
 guarded per-capability payload factories, account byte/principal
 admission and wider destructor contexts remain audit work. See
 \repofile|docs/reference/ipc-namespace-publication.md|.
@@ -64,7 +64,7 @@ admission and wider destructor contexts remain audit work. See
 Endpoint records and queue backing have generation-scoped sponsorship. The
 current kernel admits at most 64 endpoint records and 8,192 queue slots per
 domain, and 1,024 records and 32,768 slots per node. Ordinary domains share
-768 records and 24,576 slots; the remainder is available to kernel-designated
+768 records and 24,576 slots, while the remainder is available to kernel-designated
 platform domains. These are initial kernel policies, independent of socket
 capacity, rather than deployment-descriptor settings.
 
@@ -79,7 +79,7 @@ root, reserves record and slot counts atomically, then prepares endpoint storage
 queue backing and observer lists fallibly outside IPC. Slots round up to a
 power of two with a minimum of four. Revalidation precedes authority publication
 and allocation-free endpoint relinking. Ordinary unused preparation finishes
-after local guards, root last; abandonment retains every field.
+after local guards, root last, whereas abandonment retains every field.
 \end{implementationdetail}
 
 \paragraph*{Resize with temporary headroom.}
@@ -88,7 +88,7 @@ Growth retains that exact root and the original endpoint sponsor and
 classification, then reserves and allocates a second queue outside IPC. Both
 backings count at the temporary peak. Revalidation checks root, capability,
 endpoint, closing state and available backing before moving messages in FIFO
-order. A competing larger resize can make private preparation unnecessary;
+order. A competing larger resize can make private preparation unnecessary, while
 concurrent close rejects it. Replaced or unused backing frees after IPC unlock,
 before its charge returns. Promotion cannot reclassify the original endpoint.
 Shrinking reduces message admission and retains backing and its charge.
@@ -103,11 +103,11 @@ only after the final retained storage has been freed.
 Owner closure drains the queue and frees its backing after confirmed cleanup.
 Delegated, queued and unobserved returned connections can retain a closed
 endpoint. Final-reference removal detaches its complete node into the existing
-cleanup owner for post-IPC disposal; record admission returns after actual
+cleanup owner for post-IPC disposal. Record admission returns after actual
 payload and node free. Late cleanup after ASID reuse credits the original
 account. Fallback retains the complete node, without cleanup or replay
-authority. Endpoint shared-authority metadata now prepares outside IPC;
-count admission revalidates the captured namespace under IPC, then payload
+authority. Endpoint shared-authority metadata now prepares outside IPC.
+Count admission revalidates the captured namespace under IPC, then payload
 allocation leaves the guard again. Publication relinks prepared storage. Linear
 scans and sustained pressure/IRQ hold time remain unqualified. See
 \repofile|docs/reference/endpoint-budgets.md|.
@@ -126,7 +126,7 @@ The grantor sponsors direct grants and re-delegations. The requesting caller
 sponsors both its pending call and the server's reply token, and pays for a
 connection returned in that solicited reply. Repeated lookups therefore cannot
 consume the serving grantor's connection allowance. A recipient can hold
-connections sponsored by several namespaces; 512 is not its total
+connections sponsored by several namespaces, so 512 is not its total
 capability-table limit. Sponsorship does not change capability authority.
 Completed and observed calls remain charged until closed, while reply-token
 charges return on reply or cancellation.
@@ -136,8 +136,8 @@ charges return on reply or cancellation.
 Connection-bearing calls and replies admit their
 connection before copying memory, consuming the token or revoking a loan.
 Kernel rejection leaves the inputs intact. The consuming Rust
-\texttt{ReplyToken::reply\_connection*} methods close/cancel their token on an
-error and preserve the borrowed grant source; they do not return a retryable
+\texttt{ReplyToken::\allowbreak reply\_connection*} methods close/cancel their token on an
+error and preserve the borrowed grant source, but they do not return a retryable
 token.
 
 \begin{implementationdetail}{Call record preparation and rollback}
@@ -146,17 +146,17 @@ storage, then recheck them before mutation. They retain their exact caller root
 and reserve both record counts atomically
 before preparing record storage, waiter metadata or attachments. Pending and
 reply-token nodes allocate fallibly outside IPC and publish by relinking. Their containing
-owner explicitly finishes unused preparation after IPC unlock, root last;
+owner explicitly finishes unused preparation after IPC unlock, root last, whereas
 abandonment retains every field. Reply, close and confirmed cancellation carry detached record nodes outside IPC
 and free payload/storage before refunding the original record charge. Scalar
 completion retains its detached notification batch with the node until explicit
-finish; fallback retains both. Claim sources use the original token
+finish, and fallback retains both. Claim sources use the original token
 classification through promotion and ASID reuse. See \repofile|docs/reference/ipc-record-budgets.md|.
 
 Call preparation uses the same three-phase authority boundary with its existing
 root retained, and pending waiter-list construction also leaves IPC. Call staging
 only revalidates prepared metadata. Shared quota rejects before payload/list
-allocation. Unused shared preparation disposes after local guards, root last;
+allocation. Unused shared preparation disposes after local guards, root last, whereas
 abandonment retains the complete prefix. See
 \repofile|docs/reference/ipc-capability-storage.md|.
 \end{implementationdetail}
@@ -164,7 +164,7 @@ abandonment retains the complete prefix. See
 \paragraph*{Retain admission through teardown.}
 
 Retirement fences new capability publication before taking the cleanup snapshot.
-Existing records keep their original sponsor through delegation and ASID reuse;
+Existing records keep their original sponsor through delegation and ASID reuse, so
 removing authority does not by itself refund retained storage.
 
 \begin{implementationdetail}{Capability publication and teardown}
@@ -174,8 +174,8 @@ capabilities from escaping that snapshot. Charges retain the original
 generation after delegation or ASID reuse. Per-capability payload nodes now
 prepare fallibly after shared count admission and before authority publication.
 Installation only relinks prepared storage. Existing owners keep unused
-preparation and detached payload/authority pairs through post-IPC disposal;
-connection counts return after actual payload/node free. Speculative receive
+preparation and detached payload/authority pairs through post-IPC disposal.
+Connection counts return after actual payload/node free. Speculative receive
 rollback keeps queue/token/loans intact and disposes only its reply capability.
 Complete fallback retains metadata and charges. See
 \repofile|docs/reference/ipc-capability-storage.md|.
@@ -186,13 +186,13 @@ Capability, endpoint, pending-call and reply-token payload nodes reserve their
 requested heap layouts before allocation from \texttt{ipc\_nodes}. The same node
 retains backing beside its optional logical record reservation through actual
 deallocation. Capability backing borrows the recipient authority namespace's
-captured storage class; grantor/requester logical sponsorship stays independent.
+captured storage class, whereas grantor/requester logical sponsorship stays independent.
 Endpoint/call/reply backing uses its original resource reservation class.
 The expanded pool allows 12/16 MiB and 73728/98304 ordinary/total nodes, sized for
 all four layouts while preserving existing logical ceilings. The current
 24-pool inventory uses statistics version 11, including separate store-image
-admission; header/record widths and runtime ABI remain unchanged. Complete containing
-operations and detached lists retain both charges under unknown guards; nested
+admission, but header/record widths and runtime ABI remain unchanged. Complete containing
+operations and detached lists retain both charges under unknown guards. Nested
 buffers and broader heap/principal admission remain separate. See
 \repofile|docs/reference/ipc-node-admission.md|.
 \end{implementationdetail}
@@ -203,29 +203,29 @@ byte dimension, with zero node slots and the original requester class. A
 136-byte retirement entry gives a maximum 255-entry catalog of 34680 bytes.
 Call rejection and successful receive keep this storage in their complete owner
 until explicit disposal after IPC unlock. FIFO child handoff preserves full
-capacity and charge through every callback; interruption retains remaining
+capacity and charge through every callback, and interruption retains remaining
 owners. Buffer deallocation precedes refund. The inline reservation adds 24 bytes
 per queued-message payload slot.
 
 Parsed-descriptor, capability-ID,
 transfer-staging and reply-token loan vectors share byte-only admission through
 an allocator carrying the original class. Growth admits the full candidate while
-old capacity remains charged; pop/clear retain capacity until deallocation.
+old capacity remains charged, and pop/clear retain capacity until deallocation.
 The capability-vector allocator adds another 8 inline bytes per message slot.
 
 Descriptor snapshots also reserve 4082 requested bytes through the captured IPC
 allocator, before parsing or preparing transfers. Quota rejection returns
-\texttt{ResourceLimit} and preserves the descriptor and source; successful
+\texttt{ResourceLimit} and preserves the descriptor and source, whereas successful
 submission retains its existing descriptor-consumption rule. The byte charge
 ends after actual temporary-buffer disposal, before submission roots complete.
 
 Reply/cancellation work also shares byte admission, cloning the accepted token's
-allocator class. Each entry is 200 bytes; 255 entries request 51000 bytes. Empty
+allocator class. Each entry is 200 bytes, so 255 entries request 51000 bytes. Empty
 work allocates nothing. Capacity survives the final pop and is freed after child
 cleanup, before root completion. Complete parents retain returned-memory escrow,
 detached storage and notifications on abandonment. Quota rejection precedes the
 claim and preserves accepted authority. Cleanup headroom is not reserved at call
-acceptance, so saturation can postpone cleanup. No numerical defaults change;
+acceptance, so saturation can postpone cleanup. No numerical defaults change, and
 general heap/principal admission and integrated progress qualification remain open.
 \end{implementationdetail}
 
@@ -238,7 +238,7 @@ admitted nodes and enqueue with heap held. Global memory-object records now
 also relink prepared storage, with identities claimed before publication.
 Target memory-capability, object and read-loan maps relink prepared admitted
 nodes after authority publication under the same registry hold. Complete mixed
-commit is heap-free in the documented maximum-batch control; preparation and
+commit is heap-free in the documented maximum-batch control, but preparation and
 outer disposal remain separate contexts. See \repofile|docs/reference/ipc-publication-batches.md|.
 Other capability kinds, byte/principal admission, wider contexts and
 comprehensive heap accounting remain incomplete.
@@ -252,7 +252,7 @@ Threads waiting for endpoint readiness or a pending-call reply use removable,
 generation-sponsored registrations. Each source links at most 64 entries. They share
 the completion/CQ waiter pools: 1,024 entries per waiting domain, 8,192 per node
 and an ordinary share of 6,144. Sponsorship follows the waiting thread, not the
-endpoint owner. Admission precedes scheduler parking; message or reply state
+endpoint owner. Admission precedes scheduler parking, but message or reply state
 that is already ready returns without retaining an entry.
 
 \paragraph*{Cancel the registration when waiting ends.}
@@ -262,7 +262,7 @@ message, reply and source-closure notifications under its registry lock and
 invokes them only after releasing that lock. Endpoint closure can combine
 receiver and queued-call batches without allocating a callback vector. Entries
 remain charged until their detached storage is actually freed.
-Detached batches no longer occupy the source's linked count; they still occupy
+Detached batches no longer occupy the source's linked count, but they still occupy
 the shared domain/node pools while a reusable readiness list is rearmed.
 
 \paragraph*{Keep the call and loan through rejected waits.}
@@ -271,7 +271,7 @@ Untimed receive and reply waits retry cooperatively when admission is full. A
 reply wait preserves the pending call and its memory loan until reply or explicit
 cancellation revokes receiver access. The existing Rust owners need no manual
 unregister step. Kernel timed reply waits can return without a reply on deadline
-or admission rejection; neither event by itself ends a loan.
+or admission rejection, and neither event by itself ends a loan.
 
 \begin{implementationdetail}{Waiter-list preparation}
 Readiness lists and pending-call lists are prepared fallibly before source
@@ -416,12 +416,12 @@ A reply token is:
     \item Consumable exactly once: a second reply attempt returns
         an error.
     \item Closed by confirmed cancellation. A wait timeout alone leaves the
-        pending call and reply authority live; the caller must retain the owner
+        pending call and reply authority live, so the caller must retain the owner
         until reply observation or completed cancellation.
     \item Endpoint teardown can complete a call with
         \texttt{IPC\_REPLY\_ENDPOINT\_CLOSED}. The client below maps this
         to its own \texttt{EndpointLost} recovery decision. The kernel
-        must finish required loan cleanup before publishing that terminal result;
+        must finish required loan cleanup before publishing that terminal result, but
         uncertain cleanup can leave the call pending.
     \item The receiving service owns the reply token. It can call a second
         service while retaining that authority and the new pending call.
@@ -437,7 +437,7 @@ A reply token is:
 
 A connection capability can be delegated to another domain with attenuated rights.
 This is the mechanism by which the userspace name service returns service-level
-connections. The following pseudocode illustrates delegation; the compiling
+connections. The following pseudocode illustrates delegation, while the compiling
 client API is shown in \autoref{sec:reconnecting-client}:
 
 
@@ -453,11 +453,11 @@ reply.reply_connection_ref(
 // The client receives SEND | CALL only.
 \end{lstlisting}
 
-The kernel mediates. The name service never sees raw endpoint identities; it
+The kernel mediates. The name service never sees raw endpoint identities, because it
 holds the publisher's mintable connection grant. Ordinary lookup removes
 minting authority, so a client cannot re-delegate that returned connection.
 Each authorized delegation step can only reduce rights. DNS placement lookup
-returns catalog metadata; application authority comes from the local name or
+returns catalog metadata, whereas application authority comes from the local name or
 policy grant path.
 
 \section{Service identity and discovery}
@@ -470,22 +470,22 @@ maps human-readable names to re-delegable connection capabilities:
         with a specific endpoint. The name service stores the endpoint's
         connection.
     \item Generation tracking: replacement registrations advance the name's
-        generation. A connection continues to identify its original endpoint;
+        generation. A connection continues to identify its original endpoint, so
         re-registration alone does not revoke it or redirect it to a replacement.
         Endpoint death closes that instance's communication path.
     \item Authorization: policy-published services use default-deny rules
         checked against the kernel-authenticated caller identity. Ordinary
         applications acquire a connection through the capability-grant controller
         using their signed deployment descriptor. Bearer access-key lookup is
-        retired; public lookup cannot bypass a protected publication.
+        retired, and public lookup cannot bypass a protected publication.
     \item Lookup: an application requests a complete name such as
         \texttt{"driver.nic.v1"} and the rights it needs. The owning Rust API
-        returns a \texttt{Connection} or an error; capability handles stay
+        returns a \texttt{Connection} or an error, so capability handles stay
         inside that owner. No network address or port is needed for local IPC.
 \end{itemize}
 
 The name service runs in userspace. The kernel provides the endpoint and
-connection primitives; userspace provides the naming policy.
+connection primitives, while userspace provides the naming policy.
 
 \subsection{A client with explicit recovery scopes}
 \label{sec:reconnecting-client}
@@ -514,44 +514,49 @@ Keep the recovery scopes nested in this order:
 The complete source is
 \repofile{crates/charlotte-app/examples/reconnecting_client.rs}. It depends on
 \texttt{catten-rt}, \texttt{charlotte-app} and
-\texttt{charlotte-launch}. The listings below include that source directly;
+\texttt{charlotte-launch}. The listings below include that source directly, and
 the conditional attributes only allow its host tests to use Rust's test harness.
 
 \paragraph*{Application lifetime.}
-The launch contract supplies borrowed authority. Terminal exit and cooperative
-shutdown happen after \texttt{run} has returned and its owned resources have
-left scope. Failed cancellation has a separate retaining abort path below.
+The example borrows its authority from the launch contract. Before terminal exit
+or cooperative shutdown, \texttt{run} must return and its owned resources must
+leave scope. If cancellation fails, the example instead follows the retaining
+abort path shown below.
 
 \lstinputlisting[style=rustCode,linerange={APPBEGIN-APPEND},rangeprefix={//},includerangemarker=false]{../../crates/charlotte-app/examples/reconnecting_client.rs}
 
 \paragraph*{Discovery and session lifetime.}
-\texttt{Work} outlives every connection. When the session reports endpoint loss,
+\texttt{Work} outlives every connection, keeping business progress outside the
+session's lifetime. When the session reports endpoint loss,
 \texttt{continue} drops that old connection before discovery acquires another.
-There are at most three acquired sessions. Exhausting this limit is distinct
-from an unstarted operation exhausting its deadline. The deadline belongs to the current business
-operation and survives reconnection; repeated discovery cannot renew its budget.
+To bound recovery, the example allows at most three acquired sessions. Exhausting
+this limit is distinct from an unstarted operation exhausting its deadline.
+Because that deadline belongs to the current business operation and survives
+reconnection, repeated discovery cannot renew its budget.
 Authorization, resource and malformed-request errors return to application policy.
 There is no fallback to public lookup.
 
 \lstinputlisting[style=rustCode,linerange={DISCOVERYBEGIN-DISCOVERYEND},rangeprefix={//},includerangemarker=false]{../../crates/charlotte-app/examples/reconnecting_client.rs}
 
 \paragraph*{Business operation.}
-The inner scope contains only use of this session. Its \texttt{EndpointLost}
-variant is an application-defined classification of the current endpoint-closure
-status or terminal reply code. The runtime does not export an error variant with
-that name, and closure alone does not establish that a replacement is available.
-All other failures step out to the application. Progress and the next deadline
-advance only after a validated reply. Shared \texttt{Admission} retries only
-unstarted queue pressure within that same deadline and checks lifecycle between
-attempts. An accepted timeout never enters that admission retry path.
+The inner scope uses the current session. It classifies the current
+endpoint-closure status or terminal reply code as \texttt{EndpointLost}, an
+application-defined variant rather than a runtime error with that name. Losing
+the endpoint does not establish that a replacement is available, and all other
+failures return to application policy.
+
+Progress advances and a new deadline begins only after a validated reply. Until
+then, shared \texttt{Admission} retries only unstarted queue pressure within the
+same deadline, checking lifecycle between attempts. An accepted timeout never
+enters that admission retry path.
 
 \lstinputlisting[style=rustCode,linerange={SESSIONBEGIN-SESSIONEND},rangeprefix={//},includerangemarker=false]{../../crates/charlotte-app/examples/reconnecting_client.rs}
 
 \begin{samepage}
 \paragraph*{Accepted-call lifetime.}
-A timeout and rejected waiter admission are different outcomes. Both leave an
-accepted pending call owned here. Explicit cancellation closes that owner before
-returning an error; rejected cancellation returns the owner, which stays live
+A timeout differs from rejected waiter admission, but both leave the accepted
+pending call owned by this scope. Explicit cancellation closes that owner before
+returning an error, but rejected cancellation returns the owner, which stays live
 through terminal domain abort. Cancellation can wait for loan cleanup, so the
 five-second observation budget is not a guaranteed teardown deadline.\par
 \end{samepage}
@@ -563,19 +568,19 @@ the operation is read-only. A write, payment, device command or other mutation
 needs its own recovery contract: for example a durable request ID, deduplication
 and a query for the recorded outcome. Successful cancellation does not undo an
 effect already performed by the service. Timeout, cancelled replies and rejected
-wait admission therefore stop this example; they never enter its reconnect path.
+wait admission therefore stop this example, and they never enter its reconnect path.
 Its progress counter survives connection replacement within this process only.
 Durable application progress belongs outside the session and needs its own commit
 and recovery rules.
 
 The single-call wait suits a dedicated client that has no inbound work needed to
 produce the reply. A service reactor must bind the pending call and its other
-interests to one CQ and continue serving them; see
+interests to one CQ and continue serving them. For the waiting contract, see
 \repofile{docs/reference/cq-wait.md}. Shutdown is checked between acquisitions
 and calls, so an accepted RPC may occupy the observation budget before that check.
 Grant acquisition still uses bounded availability backoff because applications
 have no publication-readiness subscription. It returns authorization and other
-rejections immediately. This example demonstrates ownership and recovery policy;
+rejections immediately. This example demonstrates ownership and recovery policy, but
 it does not establish production readiness of the operating system.
 
 \section{Two kernel data paths}
@@ -628,7 +633,7 @@ they are different kernel abstractions with different semantics.
     \item The kernel provides endpoints and connections. The userspace name
         service decides who can register what name,
         who can look up what service, and which rights policy permits. The
-        kernel remains small; policy is replaceable without a kernel rebuild.
+        kernel remains small, and policy is replaceable without a kernel rebuild.
 \end{enumerate}
 
 \endinput

@@ -4,14 +4,14 @@ This guide captures reusable knowledge from CharlotteOS' security work. Read it
 when designing or reviewing a resource operation, a service reactor or a trust
 boundary. The [subsystem contributor contracts](../reference/contributor-contracts.md)
 carry the detailed implementation requirements. The
-[security ledger](../reference/security-remediation.md) tracks unfinished work;
+[security ledger](../reference/security-remediation.md) tracks unfinished work, while
 [dated reports](../reports/README.md) retain particular experiments and incidents.
 
 ## Plan and validate a batch
 
 Use the [current closure plan](../reference/security-closure-plan.md) to select
 a finite scope and exit criteria. Group related small changes that share an
-ownership invariant and validation matrix; retain reviewable commits. Run
+ownership invariant and validation matrix, but retain reviewable commits. Run
 focused checks during development and one full required campaign against the
 final batch sources. Repeat broader testing when a change or unresolved failure
 justifies it. Authority publication, physical release and recovery changes need
@@ -19,10 +19,10 @@ their own explicit review boundaries even within a larger work package.
 
 Report accepted criteria, gates, remaining packages and unresolved failures.
 Passing test counts and source matches do not measure readiness. Compiler and
-source inventories identify review candidates; trace actual callers, captured
+source inventories identify review candidates, so trace actual callers, captured
 sponsorship, allocated capacity and destruction before calling a site a bypass.
 Preserve existing qualified owners and justified exclusions. Changed scope and
-failed campaigns must remain explicit; do not extend deadlines after observing
+failed campaigns must remain explicit, so do not extend deadlines after observing
 a failure simply to obtain a passing repeat.
 
 ## Own the complete operation
@@ -41,7 +41,7 @@ on rejection when its contract supports continuation.
 Use `catten_rt::owned` and protocol-specific owners in userspace. Local infallible
 cleanup can use ordinary RAII. Fallible remote close needs a consuming explicit
 operation and its documented fallback. Kernel owners used beneath unknown locks
-often retain all fields on abandonment; that policy must be explicit. Merely
+often retain all fields on abandonment, and that policy must be explicit. Merely
 forgetting a resource does not provide recovery.
 
 Read [userspace ownership](resource-ownership.md),
@@ -53,18 +53,18 @@ the [transfer owner](../../crates/catten/src/memory/object/transfer.rs).
 Use a shared allocation adapter when several vector families need the same byte
 accounting. `klib::admission::ByteAllocator` reserves the full growth candidate
 before allocation while the old buffer remains charged, then refunds only after
-deallocation. Allocator clones retain captured class without reserving again;
+deallocation. Allocator clones retain captured class without reserving again, while
 the vector owns its allocation. Keep sponsorship selection and safe element
 cleanup with the complete subsystem operation. Shared accounting cannot qualify
 an active parent's destructor under an unknown guard. A migrated buffer family
 can supply a typed `ByteSponsor` that captures its verified principal before
-allocation. Both admission stages precede allocation; allocator clones preserve
+allocation. Both admission stages precede allocation, and allocator clones preserve
 the sponsor and actual deallocation precedes both refunds. Family-only default
 allocators do not acquire principal coverage automatically. Use the existing
 boot-lifetime principal record rather than adding a second identity registry.
 For a fixed buffer whose existing typed owner controls physical completion, pair
 `ByteCharge` with that buffer inside the same inert owner. Release it only after
-buffer deallocation; reject an allocator adapter that returns unadmitted capacity.
+buffer deallocation, and reject an allocator adapter that returns unadmitted capacity.
 Sharing the byte mechanics need not replace that owner or its completion proof.
 For shared fixed accounts, pass a captured `SponsoredAllocator` into the existing
 `ChargedAllocator` so both payload and private-holder layouts are funded at their
@@ -84,7 +84,7 @@ allocation, a transfer may restore escrow, and a notification batch may destroy
 entries. Keep the complete operation in one retaining owner, including pending
 notifications, then explicitly finish children and buffers before root completion.
 Admission for later cleanup must preserve accepted work on rejection. More byte
-headroom reduces denials; it cannot replace an earlier reservation when teardown
+headroom reduces denials, but it cannot replace an earlier reservation when teardown
 progress must be guaranteed under saturation.
 
 Count limits do not make an infallible map insertion safe under heap exhaustion.
@@ -104,13 +104,13 @@ allowance for both complete old and candidate backing until the old allocation
 is actually freed. Prepare replacements outside publication guards, preserve
 exact slot/generation state during the ownership move, and carry empty old
 buffers out for deallocation. A bounded copy still needs its own IRQ-latency
-qualification; absence of allocator calls alone does not prove progress. Deallocate before refunding its
+qualification, because absence of allocator calls alone does not prove progress. Deallocate before refunding its
 charge. Moving an object, retiring its sponsor or reusing an ASID must not make
 live backing free in the accounts. Keep the original trusted/ordinary class.
 
 Notification boundaries use `ObserverRef`/`ObserverWeak`, with dispatch retaining
 a strong owner while borrowing `notify(&self)`. Keep observer admission through
-final weak release; a field-owned charge would end at payload destruction while
+final weak release, because a field-owned charge would end at payload destruction while
 its Arc backing could still exist. Admit actual allocation layout, including
 control/alignment storage, and keep nested captures under their own owners.
 See [observer ownership](../reference/observer-ownership.md).
@@ -120,7 +120,7 @@ their typed owners. Share checked counters, layout admission, allocation custody
 and deallocation-before-refund mechanics. A common administration view should
 identify each pool's units and lifetime, distinguish logical resource counts from
 backing bytes, and expose original ordinary/trusted usage without granting cleanup
-authority. Consolidate recurring policy wrappers as a discrete change; preserve
+authority. Consolidate recurring policy wrappers as a discrete change, and preserve
 the local capture, transfer and release contracts while sharing their mechanics.
 
 Read [capability admission](../reference/capability-admission.md),
@@ -137,7 +137,7 @@ and retain its owner before leaving the registry that established the identity.
 A reply/cancellation claim also has an epoch: rollback and a later claim on the
 same token are separate episodes.
 
-For example, a late transfer cancellation must touch only its captured source;
+For example, a late transfer cancellation must touch only its captured source, because
 looking up the same ASID/capability pair can find a successor. Authorize from the
 authenticated IPC envelope or verified signed descriptor. Names, role strings,
 discovered MACs and third-party lookups cannot supply retirement authority or
@@ -156,20 +156,20 @@ new reactor phases and routing results must not restart it.
 
 At expiry, recheck the actual producer state through the retained owner before
 classifying a timeout. Completion can arrive while the clock is being read.
-Keep that final observation and its failure diagnostic together; a separate
+Keep that final observation and its failure diagnostic together, because a separate
 later sample can describe a different state.
 
 | Observation | Required treatment |
 | --- | --- |
-| Submission rejected before acceptance | Follow the typed unstarted-rejection contract; retain or explicitly cancel the original preparation. |
+| Submission rejected before acceptance | Follow the typed unstarted-rejection contract, and retain or explicitly cancel the original preparation. |
 | Accepted operation reaches its deadline | Retain accepted work and every borrow through checked cancellation or completion. Its outcome can remain uncertain. |
 | Waiter/watchdog admission rejected | Preserve a distinct error and the pending owner. It establishes neither expiry nor terminal completion. |
 | Readiness or CQ notification arrives | Recheck the exact current owner and observe its result before adopting returned resources. |
-| Positive output prefix confirmed | Advance that prefix using the same output owner; retain the unsent remainder. |
+| Positive output prefix confirmed | Advance that prefix using the same output owner, and retain the unsent remainder. |
 
 An accepted mutation may commit after its observer times out or its credential
 expires. A second submission can duplicate it. Retry needs an explicit protocol
-or an owner that proves the operation never started; a busy-looking diagnostic
+or an owner that proves the operation never started, because a busy-looking diagnostic
 after work began is insufficient.
 
 Read [checked CQ waits](../reference/cq-wait.md),
@@ -191,11 +191,11 @@ When lifecycle publication already wakes that CQ, preserve a single delay
 deadline and recheck lifecycle after notifications. Splitting a long delay into
 short shutdown-polling sleeps creates idle work without improving that wake
 contract. A hardware completion watchdog is needed only while the corresponding
-work is outstanding; receive-side hardware can still have work arrive from
+work is outstanding, but receive-side hardware can still have work arrive from
 outside the node while its transmit queue is empty.
 
 Deferred notifications need a delivery boundary on every relevant control path.
-Delivering only in an older thread's yield continuation misses fresh thread entry;
+Delivering only in an older thread's yield continuation misses fresh thread entry, and
 parking before flushing the producer LP can strand its dependent worker. Incoming
 stack delivery must preserve the architecture's IRQ and FP/SIMD handoff contract.
 Readiness still grants no physical-release authority.
@@ -215,14 +215,14 @@ would otherwise keep a guard alive through cleanup.
 Review the complete call chain, including rejection, panic and abandoned
 preparation. Prepare storage before serialization, detach into one owner, leave
 the guards and explicitly finalize in the qualified context. Preserve an outer
-IRQ mask; never enable interrupts just to make a blocking helper work.
+IRQ mask, and never enable interrupts just to make a blocking helper work.
 
 Changing an inner owner's destructor to retain backing does not qualify an active
 containing destructor. That parent can still enter physical release or destroy
 metadata. Test the relevant parent path with the actual enclosing guards held.
 
 Keep large transient owners in their containing operation across rejection when
-possible; scalar errors can leave ownership with the caller. Review compiled
+possible, because scalar errors can leave ownership with the caller. Review compiled
 frame sizes and the deepest cleanup tail on bounded kernel/boot stacks. A
 complete by-value error can preserve ownership while still exhausting that stack.
 
@@ -233,19 +233,19 @@ when that memory cost is acceptable. Admission, ownership and cleanup guarantees
 still need to hold independently of the chosen capacity.
 
 Structural changes are appropriate when their purpose and tradeoffs are clear.
-Give substantial restructuring a deliberate scope and validation boundary;
+Give substantial restructuring a deliberate scope and validation boundary, and
 do not introduce it prematurely as an incidental part of an unrelated fix.
 
 Trace every scalar entry point when sharing a submission adapter. A copied
 attachment can use unlocked preparation while its move or loan sibling still
 allocates and rolls back beneath IPC. Keep root capture, complete transient
-ownership and post-guard disposal consistent across those modes; sharing the
+ownership and post-guard disposal consistent across those modes, because sharing the
 payload encoder alone does not establish that boundary.
 
 Prepare failure-handling storage before pressure can prevent it. A coordinator
 with a fixed production roster can keep its complete plan inline, avoiding
 fresh allocation while publishing shutdown or transferring teardown owners.
-That removes one admission dependency; worker creation and each later cleanup
+That removes one admission dependency, but worker creation and each later cleanup
 operation still require their own rejection and progress policy.
 
 Admit the worker before committing the work it must execute. Making worker
@@ -292,14 +292,14 @@ transfers a slot between producer and consumer.
 
 The RNG failure demonstrated why a live 16-bit index must not be read or published
 as two bytes: transition from `0x00ff` to `0x0100` can expose a torn `0x01ff`.
-Checked aligned halfword access addresses that boundary; payload visibility still
+Checked aligned halfword access addresses that boundary, but payload visibility still
 needs the separate descriptor/completion ordering contract.
 
 For a CQ, the producer acquires `tail` before reuse and releases `head` after
 initializing a record. The sole consumer acquires `head`, copies the record and
 then releases `tail`. A fence after publishing `tail` is too late. Independent
 readers need external serialization even when one library serializes its own
-readers. Kernel bounds remain private; writable user mirrors cannot authorize
+readers. Kernel bounds remain private, because writable user mirrors cannot authorize
 kernel accesses.
 
 Read [entropy](../reference/entropy.md) and the current
@@ -310,7 +310,7 @@ Read [entropy](../reference/entropy.md) and the current
 ## Reject incomplete protocols and persistent state
 
 External protocols can define extensible offer lists. Ignore an unknown offer
-only where that field's specification permits it; still validate complete
+only where that field's specification permits it, but still validate complete
 lengths, storage bounds and the actual selection. A parsed algorithm offer is
 not permission to activate a provider or sign with an unoffered/forbidden scheme.
 
@@ -339,8 +339,8 @@ Read [protocol simplification](../reference/api-simplification.md),
 Signatures approve artifacts and mutations. Production trust also needs protected
 boot, installed-state rollback resistance and key custody. Peer authentication
 needs enrolled identities and role/session/freshness binding. Credential expiry
-depends on authenticated security time; a nonzero SNTP sample cannot supply it.
-Local zeroizing owners cover named storage when their destructors execute;
+depends on authenticated security time, and a nonzero SNTP sample cannot supply it.
+Local zeroizing owners cover named storage when their destructors execute, but
 forced termination and compiler or physical copies need separate treatment.
 An opaque destructor can forward to a payload that retains secret state. Review
 the concrete owner and workspace feature selection, including test dependencies.
@@ -353,16 +353,16 @@ Choose deadlines before the run and check charges after both confirmed and
 uncertain cleanup. Fixed platform headroom alone does not prove fairness.
 
 Keep tests discriminating: exercise the real production boundary and an unsafe
-control where useful. Separate fixture assumptions from production guarantees;
+control where useful. Separate fixture assumptions from production guarantees, because
 one LP's IRQ mask does not isolate a sponsor shared with other LPs. A passing
 repeat does not explain a failed run. Finite models check their stated
-abstractions; QEMU process loss does not qualify device power-loss durability or
+abstractions, whereas QEMU process loss does not qualify device power-loss durability or
 physical hardware recovery.
 
 Record both endpoint implementations when reproducing a protocol failure.
 The same client binary can encounter a different external tool through a changed
 working directory/PATH. Capture the failing phase, exact I/O boundaries and peer
-handshake before cleanup removes them; a numeric error and an isolated passing
+handshake before cleanup removes them, because a numeric error and an isolated passing
 repeat cannot establish a scheduling cause. Preserve original failed captures
 separately from later controlled reproductions.
 
@@ -377,7 +377,7 @@ Do not restart an accepted operation's deadline when reporting phase progress.
 Boot a configuration that never admits regression fixtures. A successful
 integration suite can conceal operational initialization performed by its own
 verifier. Keep first-boot service installation and readiness in the operational
-launcher; tests observe that boundary without being required to create it.
+launcher, while tests observe that boundary without being required to create it.
 
 Keep verifier admission consistent with the selected fixture's registered set.
 An isolated shutdown must not start an unrelated verifier whose later success

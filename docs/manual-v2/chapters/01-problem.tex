@@ -3,7 +3,7 @@
 
 \section{A mismatch at the operating-system boundary}
 
-CharlotteOS is an attempt to address a particular mismatch. Asyncronous runtimes,
+CharlotteOS is an attempt to address a particular mismatch. Asynchronous runtimes,
 least-privilege services, and isolated components are often built above interfaces organized
 around blocking calls, ambient namespaces, and machine-wide policy. This manual
 calls the resulting adapters, duplicated concurrency models, and policy layers
@@ -28,7 +28,7 @@ That translation can introduce:
     \item Thread-pool overhead: many async runtimes spawn a pool of OS
         threads to convert blocking syscalls into futures, undoing the
         resource benefits of asynchronous execution.
-    \item Two concurrency models: the application uses async/await; the
+    \item Two concurrency models: the application uses async/await, whereas the
         kernel uses threads and blocking. The mismatch forces every boundary
         crossing to bridge the two models.
 \end{itemize}
@@ -51,7 +51,7 @@ interface presents these as synchronous calls: \texttt{read()} returns when the
 data is ready, blocking the calling thread in the meantime.
 
 A thread blocked on I/O cannot do other work. High-concurrency servers compensate
-with thread pools; real-time systems may use carefully tuned polling loops.
+with thread pools, while real-time systems may use carefully tuned polling loops.
 
 \subsection{Fault propagation across trust boundaries}
 
@@ -104,7 +104,7 @@ The design starts with a few requirements:
         Capabilities are unforgeable and must be explicitly granted.
 
     \item Isolation by default: every protection domain should run in its
-        own address space. Communication across boundaries are kernel-mediated,
+        own address space. Communication across boundaries is kernel-mediated,
         so a fault in one domain should not propagate to another.
 
     \item Ownership that crosses boundaries: data movement between

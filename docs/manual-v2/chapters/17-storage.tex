@@ -62,7 +62,7 @@ established. It receives an \texttt{MmioRegion} capability covering the controll
 BAR0 register window, an \texttt{Interrupt} capability for I/O
 completion signalling, and a \texttt{DmaDomain} capability bound to the
 controller's PCI requester ID. Queue and data memory are mapped with
-\texttt{dma\_map}; the driver receives contiguous IOVAs rather than physical
+\texttt{dma\_map}, so the driver receives contiguous IOVAs rather than physical
 addresses. The kernel pins the backing frames and removes each translation
 with a synchronous SMMU invalidation before unpinning.
 
@@ -107,7 +107,7 @@ buffer to the caller.
 
 \textbf{OP\_WRITE} receives a Move memory attachment, maps it for DMA, builds the
 PRP chain, and submits an NVM Write. On completion the driver removes the mapping
-and replies; the moved buffer is consumed.
+and replies, and the moved buffer is consumed.
 
 \textbf{OP\_FLUSH} submits an NVM Flush command to ensure all previously
 written data reaches durable media before replying.
@@ -132,7 +132,7 @@ The NVMe driver exposed several non-obvious requirements:
     \item MMIO mapping must cover the doorbell region: the NVMe
         controller registers occupy offsets 0x0000--0x003F within BAR0, but
         doorbell registers start at offset 0x1000. A single-page MMIO grant
-        is insufficient; at least two pages are needed.
+        is insufficient, so at least two pages are needed.
     \item On TCG, \texttt{cq\_wait} is required for VM exits: a
         pure spin-loop prevents QEMU from processing I/O because the guest
         never yields. The driver must block on \texttt{cq\_wait} to let the
@@ -160,7 +160,7 @@ device consumers and drivers:
 The protocol is device-independent: consumers speak
 \texttt{OP\_READ}/\texttt{OP\_WRITE} without knowing the underlying hardware.
 Three userspace implementations are present. NVMe is exercised on AArch64 and
-x86-64; x86-64 additionally runs AHCI and virtio-blk implementations through
+x86-64, while x86-64 additionally runs AHCI and virtio-blk implementations through
 the same protocol. The QEMU matrix validates identify/capacity discovery,
 bounded read and write requests, flush completion, controller timeouts, and
 the persistent object-store/Raft restart path. On x86-64 all three transports
@@ -171,7 +171,7 @@ would still require separate implementations.
 
 The persistent object-store prototype (\texttt{charlotte-protocol-objstore})
 provides dynamically sized blob storage on top of a block device. Ordinary objects
-receive monotonically increasing 64-bit IDs; service-owned objects can use
+receive monotonically increasing 64-bit IDs, while service-owned objects can use
 stable IDs through \texttt{OP\_CREATE\_AT}. Stable IDs let a replacement Raft
 process reopen state derived from its cluster and node identity.
 
@@ -190,16 +190,16 @@ data:      object headers and up to 16 data extents per object
 
 Both superblock reads must finish successfully before their absence or
 validity can select mounting or formatting. Allocation, IPC, device or mapping
-rejection fails startup; unreadable metadata is not evidence of a blank disk.
+rejection fails startup, because unreadable metadata is not evidence of a blank disk.
 Only two successfully read zero-filled superblock slots permit first-boot
 formatting. Retired format tags reject even alongside a current copy. A valid
-current copy can recover a blank or corrupt peer; nonblank metadata with no
+current copy can recover a blank or corrupt peer, whereas nonblank metadata with no
 current copy and incompatible layouts fail without reformatting.
 
 The store publishes explicit Starting, Serving, Draining and Failed states.
-Serving follows mount and endpoint registration; kernel local readiness
+Serving follows mount and endpoint registration, and kernel local readiness
 acquires and revalidates that milestone. Diagnostic stages and ordinary I/O
-errors are separate. The marker records startup completion; later I/O can still fail.
+errors are separate. The marker records startup completion, but later I/O can still fail.
 First-failure diagnostics retain state, operation, LBA/count, phase and
 available status/result without retry. See
 \repofile|docs/reports/audits/2026-10-12-security-object-store-readiness.md|.
@@ -218,7 +218,7 @@ memory objects and are divided into block requests of at most 512 KiB. Objects
 and files can be larger than a single request. The current service API's
 32-bit length limits an individual object to 4 GiB and available disk space.
 Directory records are checksummed and mirrored. Each update goes to the
-generation-selected bank, and mount chooses the newest valid copy per record;
+generation-selected bank, and mount chooses the newest valid copy per record, and
 versioned tombstones prevent deleted records from reappearing. This recovers
 from one torn directory-sector write. Full device-level sudden-power-loss
 guarantees still depend on truthful flush/FUA behavior. FNV-1a detects
@@ -231,7 +231,7 @@ accidental corruption, but is not cryptographic authentication.
     \item \textbf{CREATE\_AT}: create a caller-selected stable object ID, or
         report that it already exists.
     \item \textbf{WRITE}: replace the object's content. The caller moves a
-        suitably sized memory object; the store writes it in bounded chunks.
+        suitably sized memory object, and the store writes it in bounded chunks.
     \item \textbf{SET\_SIZE}: set the exact byte length consumed by the next
         whole-object write.
     \item \textbf{READ}: return the object's data as a moved memory object.
@@ -249,18 +249,18 @@ objects permit other authenticated readers while retaining owner-only mutation.
 Reserved artifact and executable namespaces are publicly readable but mutable
 only by the kernel and the signed \texttt{clusterctl} administration service.
 A persisted operator table admits at most 64 principal/range grants for read or
-write access; grants cannot extend the reserved mutation allowlist. Node/operator
+write access, but grants cannot extend the reserved mutation allowlist. Node/operator
 enrollment and management-channel authentication remain separate requirements.
 
 Authorization and data access consume one validated locator/header snapshot.
-Missing objects return NotFound; metadata I/O or validation failure returns an
+Missing objects return NotFound, whereas metadata I/O or validation failure returns an
 error rather than adopting public ownership defaults. Automatic creation searches
 for an unused positive scalar ID with a directory-sized bound, preserving
 explicitly created objects. Mount rejects duplicate live IDs. Current format
 v4 uses COBJSTR4 superblocks and fixed 384-byte CCOBJHD4 headers with explicit
 nonzero owners, known attributes and zero reserved/unused fields. Host-staged
 artifacts use the kernel principal. Owner-zero metadata and older stores reject
-before mutation; deployed format changes will require explicit migration.
+before mutation, and deployed format changes will require explicit migration.
 See \repofile|docs/reference/security-remediation.md| for current disposition
 and validation limits.
 
@@ -272,7 +272,7 @@ every ELF according to
 storage, UART, observation and grant mediation, plus the boot entropy/network
 driver images needed to prepare grants before starting storage. The exact sets
 are listed in \autoref{chap:cluster-vision} and
-\repofile|crates/catten/src/service/store.rs|;
+\repofile|crates/catten/src/service/store.rs|, and
 \repofile|scripts/make-nvme-image.py| writes the remaining
 services into an initial version-4 object-store image. The QEMU x86-64 runner
 can use the same host-preseeded model.
@@ -280,12 +280,12 @@ can use the same host-preseeded model.
 The x86-64 kernel also carries an immutable signed installation bundle for the
 blank-disk appliance path. Once NVMe and the object store are available, it
 checks the stable object ID for every bundled logical name. A valid stored
-artifact is retained, including a newer deployed version; a missing artifact
+artifact is retained, including a newer deployed version, whereas a missing artifact
 or one that fails identity and signature verification is replaced from the
 bundle. The installer flushes the store before dependent services start, so
 the operation is idempotent across reboot. Services are subsequently resolved
 by logical name, read through the object-store protocol, identity-checked, and
-cached for the boot. Denied, malformed or unreadable responses stop seeding;
+cached for the boot. Denied, malformed or unreadable responses stop seeding, so
 they cannot authorize replacement. The cache reserves fixed publication entries
 before I/O, owns immutable admitted vectors for the kernel lifetime, and has a
 separate 16 MiB/64-entry image budget. It does not consume temporary snapshot
@@ -317,7 +317,7 @@ problems. The local store is part of node bootstrap and supplies service
 artifacts, Raft persistence, and the native filesystem without depending on a
 working network or external credentials. The \texttt{s3} service is an
 application-facing compatibility adapter for centrally managed object stores.
-It runs above TCP/IP and, when configured, verified TLS; it is described in
+It runs above TCP/IP and, when configured, verified TLS, and it is described in
 \autoref{sec:s3-service}.
 
 An S3 service profile narrows authority to one endpoint, bucket, key prefix,
@@ -328,7 +328,7 @@ without handing each application general socket access or raw S3 credentials.
 
 Static provisioning and operational pickup both supply the complete immutable
 \texttt{CHS3PF1} profile through read-only launch memory. The service rejects
-missing or malformed profiles; it no longer reads per-field manifest aliases
+missing or malformed profiles, and it no longer reads per-field manifest aliases
 or synthesizes region and port defaults. The shared profile codec is the single
 validation boundary. Encoded profiles and the service's local profile snapshot
 use erasing owners. The original read-only launch memory follows the kernel's
@@ -342,18 +342,18 @@ key from a signed deployment descriptor, streams the ELF, checks its pinned
 SHA-256 and name-bound CLS2 signature, and transfers both ELF and descriptor to
 the scoped kernel launch gate. Credentials, endpoint, bucket, prefix, and TLS
 identity remain outside both descriptor and application. Bootstrap services
-still come from the local store; the node can boot without central S3. Caching,
+still come from the local store, so the node can boot without central S3. Caching,
 availability policy, credential rotation, and an end-to-end managed-store
 qualification remain operational work.
 
 \section{Raft persistence}
 
 The Raft service selects memory (\texttt{storage=0}, or omitted) or required
-persistence (\texttt{storage=2}); retired mode 1 and malformed policy values
+persistence (\texttt{storage=2}), and retired mode 1 and malformed policy values
 reject. Required mode waits for \texttt{"obj"} through the name service.
 One jointly validated two-object pair holds \texttt{CRFTSTA4}
 term/vote/join-admission state and \texttt{CRFTLOG4} snapshot/log state.
-Only two absent records authorize initialization; existing empty, incomplete,
+Only two absent records authorize initialization, whereas existing empty, incomplete,
 corrupt or unsupported records reject without reset or a memory fallback.
 Older decoders and split-store migration are removed. Each mutation writes
 the complete object and flushes the underlying NVMe device before returning.
@@ -365,7 +365,7 @@ require an explicit version-directed migration. See
 
 The focused local election fixture runs two in-process Raft members with memory
 stores, keeping consensus behavior testable on a multicore machine without
-NVMe. We chose its peer count for the fixture; Raft is not limited to that count.
+NVMe. We chose its peer count for the fixture, but Raft is not limited to that count.
 A separate storage test starts a single voter with required persistence,
 records its elected term, tears down that process, restarts the same identity,
 and requires the new election term to be greater. A repeated term 1 would
@@ -376,13 +376,13 @@ and storage policy) remains in the supervisor-provided manifest. The
 persistent objects hold Raft protocol state, log entries, and snapshots.
 Cross-machine catalog replication is provided separately by the \texttt{dns}
 state machine described in \autoref{chap:consensus} and
-\autoref{chap:cluster-vision}; this generic Raft persistence test
+\autoref{chap:cluster-vision}, whereas this generic Raft persistence test
 remains a single-voter restart test.
 
 \section{Native filesystem}
 
 The filesystem (\texttt{charlotte-protocol-fs}) builds hierarchical naming on
-top of the object store. Directories and files are stored as objects; the root
+top of the object store. Directories and files are stored as objects, and the root
 directory is a fixed object ID (100).
 
 \subsection{Directory encoding}
@@ -400,7 +400,7 @@ directories (bit 0 set) from files (bit 0 clear).
 \subsection{Path resolution}
 
 Paths are walked client-side by chaining \texttt{OP\_LOOKUP} calls. The
-filesystem service does not understand path strings; it resolves only
+filesystem service does not understand path strings, because it resolves only
 single-component lookups within a given directory. This keeps the filesystem
 protocol minimal: six operations (LOOKUP, CREATE, READ, WRITE, DELETE, LIST)
 plus FLUSH.
@@ -427,7 +427,7 @@ scripts/fs-inspect.py <image> cat /raft/state
 
 Metadata output includes numeric and symbolic object/filesystem flags,
 generation, header location, logical and allocated lengths, integrity hash, and
-every extent. Filesystem flag bits remain visible; unsupported object-store flags reject validation. The \texttt{format} command
+every extent. Filesystem flag bits remain visible, but unsupported object-store flags reject validation. The \texttt{format} command
 creates a blank v4 store and destructively replaces the image contents.
 
 \section{Isolation and durability limits}
@@ -435,7 +435,7 @@ creates a blank v4 store and destructively replaces the image contents.
 \begin{enumerate}
     \item Storage policy lives in userspace: a bug in a block
         driver, the object store, or the filesystem corrupts that service's
-        address space. The kernel grants MMIO and interrupts; the storage
+        address space. The kernel grants MMIO and interrupts, while the storage
         implementation stays in userspace.
 
     \item Device-independent protocol: the object store and filesystem use

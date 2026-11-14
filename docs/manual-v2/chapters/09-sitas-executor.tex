@@ -3,7 +3,7 @@
 
 The Sitas executor drives futures on one shard and parks on the shard's completion
 queue when no task is ready. The short loop, future and channel listings below
-explain that architecture; they are not complete runtime APIs. The deployed
+explain that architecture, but they are not complete runtime APIs. The deployed
 integration and mailbox-index example live in
 \repofile|crates/catten-user/src/main.rs| and its companion Sitas checkout.
 
@@ -155,7 +155,7 @@ loop {
 
 The \texttt{ShardSender/ShardReceiver} pair is a bounded, typed, MPSC channel
 within userspace. Sending does not cross the kernel boundary. The receiving task
-registers its waker on the channel; when a message arrives, the waker fires and
+registers its waker on the channel, and when a message arrives, the waker fires and
 the task re-enters the executor's polling loop.
 
 This is \textbf{internal} cross-shard communication (same protection domain,
@@ -186,7 +186,7 @@ catten_syscall::cq_wake(cq_id); // Peer notification.
 \end{lstlisting}
 
 The sibling Sitas backend uses that same runtime ABI 3 contract. Its reactor
-retains one monotonic deadline; wakeups cannot restart it. Runtime sleep also
+retains one monotonic deadline, so wakeups cannot restart it. Runtime sleep also
 rechecks its original deadline, so an unrelated completion cannot shorten sleep.
 Rejected waiter admission logs and aborts the domain, preserving uncertain
 operation ownership rather than becoming a fake wake or an executor retry loop.
@@ -197,7 +197,7 @@ work-generation cursor. This is bounded timer recovery, not a per-waiter readine
 contract. Removing that backstop requires the corresponding notification proof.
 
 This native mapping needs no intermediate thread pool or condition variable.
-The checked CQ source covers endpoint, completion and explicit peer readiness;
+The checked CQ source covers endpoint, completion and explicit peer readiness, and
 the removed unchecked syscalls 12/42 have no compatibility adapter.
 
 \section{Concurrency and execution consequences}
@@ -236,7 +236,7 @@ the removed unchecked syscalls 12/42 have no compatibility adapter.
 The mailbox index build is an end-to-end Sitas demo at EL0. It is the
 \texttt{no\_std} counterpart of the host-side \texttt{sharded\_index\_mailbox}
 example: scanners route generated records to logical assembler work units through
-typed mailboxes; assemblers sort the records; and a coordinator merges and verifies
+typed mailboxes, then assemblers sort the records, and a coordinator merges and verifies
 the runs.
 
 The demo is implemented by \texttt{sitas\_core::mailbox\_index} and runs inside
@@ -257,7 +257,7 @@ a \texttt{(key, offset)} pair.
         an assembler with a key hash, batches the entries, and sends the
         batches as owned messages.
     \item Assemblers: three logical work units. Two are placed
-        on shards 0 and 1; the third is deliberately placed on shard 0 so
+        on shards 0 and 1, while the third is deliberately placed on shard 0 so
         that logical naming and physical placement are visibly separate.
         Each assembler receives its entries, sorts them into a run, and
         hands the completed run to the coordinator as an owned value.
@@ -298,7 +298,7 @@ The demo separates kernel and userspace responsibilities.
 
 The kernel never sees a message, key, or run. It sees threads being spawned and
 blocking on the completion queue. The division is explicit: the kernel provides
-authority isolation, thread placement, and wakeups; userspace owns the workload
+authority isolation, thread placement, and wakeups, while userspace owns the workload
 state and message discipline.
 
 \subsection{The mailbox path}
@@ -312,12 +312,12 @@ enum IndexMessage {
 }
 \end{lstlisting}
 
-Senders are cloned into every scanner; each receiver moves into its
+Senders are cloned into every scanner, while each receiver moves into its
 assembler shard, and assemblers are started before scanners so receivers
 exist before producers begin. The \texttt{no\_std} channel exposes a
-non-blocking \texttt{try\_send}; a producer whose mailbox is full parks
+non-blocking \texttt{try\_send}, so a producer whose mailbox is full parks
 briefly on the runtime's \texttt{ShardParker} and retries, rather than
-spinning. The assembler task awaits \texttt{receiver.recv()}; the await
+spinning. The assembler task awaits \texttt{receiver.recv()}: the await
 parks the shard in its reactor wait, and the sending side's channel waker
 re-queues exactly that task and releases the reactor. This is the same
 channel-waker-to-reactor chain as the sharded KV service

@@ -65,7 +65,7 @@ CPU driver from a userspace monitor that coordinates with other monitors
 
 CharlotteOS uses explicit cross-LP messages and local run queues, but does not
 implement that complete multikernel decomposition. Sitas gives each userspace
-shard sole mutation of its local state; the kernel still has shared registries,
+shard sole mutation of its local state, but the kernel still has shared registries,
 locks and shared address-space machinery. The direct execution discipline is
 Sitas, while Barrelfish supplies a useful architectural analogy.
 
@@ -103,7 +103,7 @@ configurations remain possible:
 \begin{itemize}
     \item Multiple sharded processes: one LP might host shards from
         multiple protection domains, time-sliced by the kernel scheduler.
-    \item CPU hotplug: an LP can be taken offline; its shards can be
+    \item CPU hotplug: an LP can be taken offline, and its shards can be
         migrated (when migration-safe) or torn down.
     \item Oversubscription: a test can run $N$ shards on $M < N$ LPs
         to exercise migration and scheduling paths.
@@ -112,14 +112,14 @@ configurations remain possible:
 CPU hotplug or live shard migration is not (yet) implemented and belongs at
 best among the extension scenarios. Current local Ready-thread migration requires
 explicit certification and architecture CPU-ownership qualification. Arm has
-the assembly handoff; x86 permits only never-dispatched contexts until an
+the assembly handoff, whereas x86 permits only never-dispatched contexts until an
 equivalent handoff exists. Pinned userspace shards remain ineligible.
 
 Ready membership uses fixed links in each complete thread payload rather than
 a growable per-LP ring. Under the existing LP-pair and thread-table guards,
 migration validates the exact source and destination before changing either
 queue, then publishes state and affinity without allocation. Owner-LP abort
-unlinks before detaching the thread; linked owners cannot release their stack.
+unlinks before detaching the thread, because linked owners cannot release their stack.
 This does not complete general thread-table, waiter/timer or kernel-heap
 admission. See \texttt{docs/reference/scheduler-run-queues.md}.
 
@@ -127,10 +127,10 @@ Scheduler waits capture their exact thread generation, state and sponsor before
 preparing waker/source storage outside local LP and thread-table guards.
 Publication revalidates that capture before changing queue membership. Each
 waker remembers early notifications and later callbacks match the installed
-wait itself; an older wait cannot wake a new park on the same thread. Ready
+wait itself, so an older wait cannot wake a new park on the same thread. Ready
 admission carries the old subscription past guard exit before cancellation.
 Callers retain their existing IRQ policy, condition rechecks and absolute
-deadlines. Lazy list allocation leaves its source initialization mutex; IPC/CQ
+deadlines. Lazy list allocation leaves its source initialization mutex, and IPC/CQ
 entries prepare outside their registries and revalidate the exact retained
 source before readiness and allocation-free publication. Losing or rejected
 storage stays owned until post-guard disposal. Source teardown, other observer
@@ -139,7 +139,7 @@ See \texttt{docs/reference/scheduler-waiter-budgets.md}.
 
 Non-scheduler completion callbacks likewise capture their original record and
 watch account before allocation outside registry/inner guards. Publication
-revalidates that target and terminal state; immediate callbacks run after
+revalidates that target and terminal state, and immediate callbacks run after
 unused preparation is disposed. Successful completion-namespace/CQ replacement
 carries its entire detached payload past registry unlock before destruction.
 These local boundaries do not establish root/consumer quiescence or qualify
@@ -228,7 +228,7 @@ poisoned-state recovery policy.
     \item Cross-shard communication is typed and bounded: A
         \rusttype{ShardSender<M>} carries a specific Rust type (neither
         \texttt{Box<dyn Any>} nor a byte buffer). The receiver knows what it will
-        get. The channel has fixed capacity; senders handle backpressure. There
+        get. The channel has fixed capacity, so senders handle backpressure. There
         is no unbounded message queue that can exhaust memory.
 \end{enumerate}
 

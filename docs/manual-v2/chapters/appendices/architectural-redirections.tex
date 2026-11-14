@@ -33,11 +33,11 @@ shifted:
 \begin{itemize}
     \item \textbf{Completion capability work} belongs to the operation
         completion subsystem. Use completion
-        queues for kernel and device operations; use endpoints for cross-domain
+        queues for kernel and device operations, and use endpoints for cross-domain
         service calls.
 
     \item \textbf{Observer/waker code} handles internal scheduling. A Waker is a hint to
-        repoll a future; it is not a completion record.
+        repoll a future, but it is not a completion record.
 
     \item \textbf{IPI queue closures} remain a temporary mechanism for kernel
         work. Use typed mailboxes or
@@ -62,16 +62,16 @@ choosing a target LP.
 
 For userspace service calls, the natural object is a reply token. For
 high-rate kernel operations, per-operation capabilities create unnecessary
-table pressure. The design uses reply tokens for endpoint calls;
-operation IDs plus CQ entries for ordinary kernel operations; first-class
+table pressure. The design uses reply tokens for endpoint calls,
+operation IDs plus CQ entries for ordinary kernel operations, and first-class
 operation capabilities only where independent authority is required.
 
 \subsection{Separate readiness, notification, and completion}
 
-Their contracts differ: readiness means progress may be possible; notification
-means inspect state; completion means an operation changed state and has
-result data. Keep one aggregated wait mechanism, but define distinct object
-semantics.
+Readiness tells a waiter that progress may be possible. A notification asks the
+consumer to inspect state, whereas a completion records a change in the
+operation's state and supplies result data. Keep one aggregated wait mechanism,
+but define distinct object semantics.
 
 \subsection{Replace arbitrary cross-LP closures}
 

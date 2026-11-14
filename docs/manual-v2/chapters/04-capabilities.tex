@@ -29,7 +29,7 @@ Capabilities have four key properties:
 \end{itemize}
 
 \architecturewidefigure{kernel-userspace-boundary}
-    {The capability boundary: the kernel owns enforcement and opaque objects;
+    {The capability boundary: the kernel owns enforcement and opaque objects, while
     userspace owns policy, protocols, and typed resource lifetimes.}
     {fig:kernel-userspace-boundary}
 
@@ -37,7 +37,7 @@ Capabilities have four key properties:
 
 The unified namespace records six authority families. Their payload registries
 distinguish subtypes and enforce the relevant rights or ownership checks. The
-table gives current operations; only the named IPC and memory masks are rights
+table gives current operations, but only the named IPC and memory masks are rights
 bits. A CQ identifier is a domain-local queue selector, rather than a separate
 capability kind, and timers produce completion capabilities.
 
@@ -88,7 +88,7 @@ policy beyond kernel rights. See the bootstrap contract below and the
 \section{Generation-safe lookup}
 
 Capability values are opaque serials consumed monotonically within one namespace.
-Closing an entry does not make its serial available again; exhaustion rejects
+Closing an entry does not make its serial available again, and exhaustion rejects
 creation instead of wrapping. Lookup checks the owning namespace and object
 family. A removed serial therefore cannot name a later object in that namespace.
 
@@ -114,11 +114,11 @@ begins execution. The records depend on the launch policy:
 \end{itemize}
 
 The launch header separately describes the default CQ mapping. Launch-owned
-connections are borrowed through \texttt{Context}; applications must not adopt
+connections are borrowed through \texttt{Context}, so applications must not adopt
 them as new owners. \autoref{sec:reconnecting-client} shows a complete client.
 
 After bootstrap, additional capabilities arrive through IPC: the name service
-delegates service connections; the supervisor delegates device grants; other
+delegates service connections, the supervisor delegates device grants, and other
 services delegate whatever the protocol authorizes.
 
 \section{Authority and audit consequences}
@@ -129,20 +129,20 @@ services delegate whatever the protocol authorizes.
         the name service, or another service under a protocol). There is no
         ambient authority to strip away and the default is none.
 
-    \item Kernel-mediated authority is enumerable: a process' capability table
+    \item Kernel-mediated authority is enumerable: a process's capability table
         records the kernel objects it may use. This makes authority easier to
         audit, but does not by itself account for device side effects, protocol
         state, or implementation defects.
 
-    \item Delegation is mediated: a process cannot grant authority it
-        does not hold; it cannot grant rights beyond what it possesses; and as
-        every delegation crosses the kernel, the kernel enforces both constraints.
+    \item The kernel mediates every delegation and enforces two constraints:
+        a process may grant only authority it holds, and it may not grant
+        more rights than it possesses.
 
     \item Teardown revokes the destroyed domain's capabilities and closes its
         endpoint relationships. Existing tests cover stale connections and
         pending-call reconciliation.
 
-    \item Completion submissions share a bounded per-domain operation budget;
+    \item Completion submissions share a bounded per-domain operation budget, so
         an exhausted budget results in \texttt{WouldBlock}. Completion timers
         also have separate event limits: at most the domain's completion capacity,
         currently clamped to 1,024, and 8,192 events across the node. Ordinary
@@ -159,7 +159,7 @@ the original deadline. The completion record owns cancellation, while the
 event owns its admission charge. Teardown can therefore release the record
 without falsely reclaiming a still-queued event's capacity. Timer callbacks
 verify the exact original completion object under the registry lock before
-publishing a result; a delayed callback cannot complete a replacement merely
+publishing a result, so a delayed callback cannot complete a replacement merely
 because it reused the same ASID and numeric handle.
 
 \endinput

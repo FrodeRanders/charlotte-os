@@ -8,7 +8,7 @@ requests and can replace its connection before continuing the unfinished read.
 The example requires a signed deployment descriptor granting `CALL` on `greet`,
 an allowed principal/service policy and a running publication of that service.
 For another protocol, replace the service name, opcode and reply decoder together.
-The bootstrap connection is the grant controller for this application; it is
+The bootstrap connection is the grant controller for this application, and it is
 borrowed through `Context`, along with the immutable descriptor.
 
 ## Recovery scopes
@@ -18,12 +18,12 @@ borrowed through `Context`, along with the immutable descriptor.
 | Application | Launch authority, completed-read cursor and current operation deadline | Owns the decision to stop, acknowledge shutdown or restart a session. |
 | Discovery/session | One owned `Connection` acquired through signed grants | Endpoint loss returns to discovery. The old connection drops before reacquisition. |
 | Business operation | The unfinished read and its original deadline | Only a validated reply advances the cursor. A new operation then receives a new budget. |
-| Accepted call | `PendingCall`, including any Rust memory loan | Reply observation ends it. Timeout or rejected wait admission cancels explicitly; rejected close retains the owner through terminal abort. |
+| Accepted call | `PendingCall`, including any Rust memory loan | Reply observation ends it. Timeout or rejected wait admission triggers explicit cancellation. If close is rejected, the owner remains live through terminal abort. |
 
 The example allows at most three sessions across the run. Lookup, reconnection
 and the current read share one five-second monotonic deadline via
 `Application::acquire` and `Admission`. Reconnection never restarts that deadline.
-Shutdown is checked between acquisitions and calls. This is a dedicated client;
+Shutdown is checked between acquisitions and calls. This is a dedicated client, whereas
 a reactor that must process inbound work uses [one CQ for all interests](../reference/cq-wait.md).
 
 ## Error and replay policy
@@ -36,11 +36,12 @@ still-live old connection. The client must obtain another capability through
 its original authority.
 
 Only endpoint loss enters the reconnect branch. Unstarted queue pressure retries
-within the original budget; unstarted deadline expiry is distinct from the
+within the original budget, while unstarted deadline expiry is distinct from the
 three-session recovery limit. Authorization, permanent admission,
 invalid capability and protocol errors stop the application. Timeout, a
-cancelled reply and rejected wait admission are also terminal here. The latter
-retains a pending owner until cancellation; it is distinct from a timeout.
+cancelled reply and rejected wait admission are also terminal here. Rejected
+wait admission is a separate result from timeout and keeps the pending owner
+live until cancellation.
 Unexpected returned memory or connections remain owned by `CallResult` during
 validation and are disposed on rejection.
 
@@ -52,16 +53,17 @@ reconciliation outside the connection scope. This example's in-memory cursor
 survives connection replacement within one process only.
 
 An explicit close can outlive the observation budget while loans are revoked.
-If close rejects, the returned owner and enclosing connection stay live through
-`domain_abort`; the example does not drop a borrow and continue. That is the
-runtime's fail-closed policy, with the wider cleanup limits recorded in
+If close rejects, the example keeps the returned owner and enclosing connection
+live through `domain_abort`. It never drops the borrow and continues as if cleanup
+had succeeded. This follows the runtime's fail-closed policy, with the wider
+cleanup limits recorded in
 [resource ownership](resource-ownership.md).
 
 ## Current discovery limitation
 
 Applications have no publication-readiness subscription. Grant acquisition uses
 bounded availability backoff, capped by the caller's remaining deadline. This is
-timer-driven backoff; accepted RPC replies use the owned readiness wait. Timer
+timer-driven backoff, whereas accepted RPC replies use the owned readiness wait. Timer
 admission failure follows the existing fail-closed runtime policy. A supervisor
 can later restart the client, but it must preserve any unresolved business
 operation's recovery policy. The example establishes no general overload,

@@ -26,14 +26,14 @@ target builds, Clippy, and boot tests. Each layer answers a different question:
 \end{description}
 
 The models and their configurations live in \repodir|docs/tla|. The concise
-model inventory is in \repofile|docs/tla/README.md|; the concrete-to-abstract
+model inventory is in \repofile|docs/tla/README.md|, and the concrete-to-abstract
 mapping is in \repofile|docs/tla/CONFORMANCE.md|. Those files are maintained
 with the implementation and are authoritative over the overview in this
 chapter.
 
 \begin{architecturalcomparison}{seL4 and what the verification result covers}
 seL4's verification connects an abstract kernel specification to its
-implementation through machine-checked refinement proofs; the 2014 account
+implementation through machine-checked refinement proofs. The 2014 account
 also describes security properties and binary-level verification under stated
 assumptions \cite{prior:sel4}. CharlotteOS currently explores finite TLA+
 state machines with TLC and maintains a reviewed correspondence to Rust.
@@ -356,8 +356,8 @@ notes follow the table, grouped by resource accounting and request lifecycle.
 
 This decomposition also states what is \emph{not} silently being claimed. For
 example, Ethernet fragmentation and retry timing are not part of the Raft
-election proof; protobuf bytes and peer addresses are not part of joint
-consensus; cryptographic correctness is not part of the service-lifecycle
+election proof, while protobuf bytes and peer addresses are not part of joint
+consensus. Similarly, cryptographic correctness is not part of the service-lifecycle
 trust-bit abstraction. Such omissions are recorded in the conformance map.
 
 \subsection{Resource sponsorship and retirement projections}
@@ -368,9 +368,9 @@ billing and reuse of retired identities.
 
 \begin{implementationdetail}{Principal backing}
 The principal-backing projection shares one ceiling across three root slots and
-unequal object/table/stack footprints. Reserved stack capacity pays before growth;
+unequal object/table/stack footprints. Reserved stack capacity pays before growth, so
 a later commitment does not pay twice. One slot can restart under another
-principal. Moves, retirement and abandonment retain the original charge; explicit
+principal. Moves, retirement and abandonment retain the original charge, and explicit
 physical confirmation alone refunds it. Six negative controls include early
 reservation refund and double-charged growth. Object counts, allocator/node
 metadata, hardware and pressure fairness lie outside the projection. See
@@ -381,10 +381,10 @@ metadata, hardware and pressure fairness lie outside the projection. See
 The thread-metadata projection prepays unequal context/node bundles across two
 roots sharing one principal. Construction, context disposal, actual node free
 and refund remain separate actions. A reused root slot keeps its old charge
-bound to its original principal; abandonment retains admission. Four negative
+bound to its original principal, and abandonment retains admission. Four negative
 controls admit by generation, refund before node deallocation, refund abandonment
 or bill the replacement principal. The safe graph has 4,132 distinct states,
-12,559 generated states and depth 15. Stack-release proof is an input; node
+12,559 generated states and depth 15. Stack-release proof is an input, while node
 reserve, allocator overhead, observer/table storage, IRQ contexts and pressure
 fairness lie outside the projection. See
 \path{docs/tla/CharlotteThreadMetadata.tla}.
@@ -393,7 +393,7 @@ fairness lie outside the projection. See
 \begin{implementationdetail}{Principal history}
 The principal-history projection follows prepared/root-attached nodes and
 boot-lifetime records through shared total/ordinary admission. Duplicate
-candidates retain their original classification; logical exit and abandonment
+candidates retain their original classification, so logical exit and abandonment
 cannot refund storage. Root confirmation and actual deallocation are inputs to
 release. Six negative controls restore early refunds, reclassification, eviction
 or reserve bypass. Its safe graph has 2,539 distinct / 5,410 generated states,
@@ -407,7 +407,7 @@ remain outside it. The seven focused cases pass. The 24 October follow-up also c
 \begin{implementationdetail}{Namespace drain}
 The namespace-drain projection checks one poll with two nonreused token
 identities under an existing admission fence. A competing close can remove the
-selection before cancellation preparation. Rechecking absence permits rescan;
+selection before cancellation preparation. Rechecking absence permits rescan, whereas
 every still-present claim remains Pending. Negative controls restore stale
 Pending or skip live work. Actual root, loan, backing and peer-completion proofs
 are boundary inputs, and later wakes/deadlines lie outside this projection.
@@ -426,7 +426,7 @@ The deployment listener projection checks two setup positions through creation,
 listen and idle accept. Each phase accepts once, all setup phases share their
 original deadline and parking covers every owner. Admitted idle accept has no
 timer. Negative controls replay a phase, restart its budget or park beside a
-ready reply. Binding, producer delivery and atomic turns are assumptions;
+ready reply. Binding, producer delivery and atomic turns are assumptions, while
 shutdown, dynamic cross-phase admission, byte validation, TCP state and
 wall-clock fairness remain outside the projection. See
 \path{docs/tla/CharlotteDeploymentListener.tla}.
@@ -436,7 +436,7 @@ wall-clock fairness remain outside the projection. See
 The deployment input projection checks four admitted slots, aggregate input-byte
 bounds, unchanged request budgets and a ready healthy input's bound on
 intervening turns. Negative controls retain a busy input's cursor or restart
-its deadline. Atomic input turns and producer/CQ delivery are assumptions;
+its deadline. Atomic input turns and producer/CQ delivery are assumptions, while
 controller calls, response transmission, close, new admissions and wall-clock
 fairness are outside this model. See
 \path{docs/tla/CharlotteDeploymentInput.tla} and its conformance map.
@@ -455,7 +455,7 @@ See \path{docs/tla/CharlotteDeploymentControl.tla}.
 \begin{implementationdetail}{Controller-server relay}
 The controller-server projection checks a preflight/mutation relay beside a
 query. Only checked evidence permits mutation, every phase submits once and the
-original budget survives phase changes. Parking covers both owners; DNS backing
+original budget survives phase changes. Parking covers both owners, but DNS backing
 may survive local termination until its receiver releases it. Negative controls
 turn unknown into absence, restart time, park beside a ready reply or replay
 mutation. Admission, signature/record validation, shutdown, legacy handlers and
@@ -477,14 +477,14 @@ See \path{docs/tla/CharlotteDeploymentOutput.tla}.
 The logical-close projection starts with two owned sockets. It checks rejected
 admission backoff, accepted-once submission, original deadlines, acknowledgement
 before position release and complete ownership through abort. Both Started and
-Unavailable are logical receipts; neither models physical release. Negative controls
+Unavailable are logical receipts, so neither models physical release. Negative controls
 replay an accepted close or release its owner before acknowledgement. Bound reply
-sources and atomic turns are assumptions; actual ID allocation/reaping, wire
+sources and atomic turns are assumptions, while actual ID allocation/reaping, wire
 decoding, socket setup, dynamic
 admission, whole-shutdown timing and physical release remain outside the model.
 A one-owner blocking configuration also checks terminal unstarted admission
 retention. Its destructor-fallback negative control re-enables work after that
-state and violates \texttt{NoReentry}; accepted replay has its existing control.
+state and violates \texttt{NoReentry}, and accepted replay has its existing control.
 This is no recoverable custody, deadline-duration, field-destructor or runtime
 abort proof. See \path{docs/tla/CharlotteDeploymentClose.tla}.
 \end{implementationdetail}
@@ -493,7 +493,7 @@ abort proof. See \path{docs/tla/CharlotteDeploymentClose.tla}.
 
 The most valuable result is often a mismatch discovered while constructing the
 model. The correct response depends on which side was wrong: sometimes the
-manual or model overstated functionality; sometimes the code lacked a safety
+manual or model overstated functionality, whereas sometimes the code lacked a safety
 fence.
 
 \subsection{Authorization is controlled capability issuance}
@@ -502,7 +502,7 @@ The local name service implements policy-controlled authorization alongside
 public bootstrap naming. Bearer-key lookup opcodes are retired. The
 signed loader binds an artifact-derived stable principal, exact address-space
 generation, and roles in a kernel-only table. IPC enqueue places that
-authenticated snapshot in the receive envelope; request memory cannot choose
+authenticated snapshot in the receive envelope, so request memory cannot choose
 the caller identity.
 
 The authorization model makes the intended boundary explicit. The catalog
@@ -538,11 +538,11 @@ installed revision and digest, rejecting enrollment and uninstalled successors.
 Kernel preparation requires a \tlbreak{Verified}{BootPolicy} receipt from this
 check. The x86 fixture uses the same path. Before the first platform domain,
 the BSP selects its artifact authority into the existing boot slot. Bootstrap
-and later platform images use that key; missing selection rejects. Composition
+and later platform images use that key, and missing selection rejects. Composition
 takes the preparation once, leaving public authority intact, and publication
 requires the same policy and digest. It supplies the public policy used by
 both service manifests and the operational gate.
-A duplicate publication returns its unused preparation; development trust is
+A duplicate publication returns its unused preparation. Development trust is
 selected explicitly and is never a fallback after verification failure.
 
 The model has two configurations. The first projects those implemented fixture
@@ -550,10 +550,10 @@ and development paths. The second is a conditional contract for the missing
 protected installer: it assumes an authenticated context, atomic rollback-resistant
 state commit and serialization through early authority selection and boot
 publication. Once selection starts platform loading, installation is fenced. Two signed successors
-may verify against one old expectation; only one can commit it. An interrupted
+may verify against one old expectation, but only one can commit it. An interrupted
 commit may leave the whole old or new record durable, so the caller must read
 protected state again before publishing. Recovery must first settle or fence the
-original writer; reading old bytes alone proves no completion. Reboot preserves that committed state
+original writer, because reading old bytes alone proves no completion. Reboot preserves that committed state
 while discarding volatile verification and publication state.
 
 These assumptions describe work still needed for production. The model adds
@@ -568,12 +568,12 @@ erasure, outer contexts and physical lifetime remain outside the projection.
 \tlbreak{CharlotteName}{Publication} follows the node-local registry. A candidate
 owns its source connection before preparing a persistent endpoint-death watch.
 Watch rejection leaves the current publication authoritative. Successful policy
-publication and registry replacement are separate internal steps; the serialized
+publication and registry replacement are separate internal steps, but the serialized
 reactor admits no request between them. Deferred replies use the installed
 publication, and only then is the previous watch disposed before its source.
 Public lookup rejects policy-published entries whether immediate or deferred.
 Public replacement requires an existing public entry from the same nonzero
-registrar. Authorized lookup still needs its policy decision; both publication
+registrar. Authorized lookup still needs its policy decision, and both publication
 classes have policy-store bindings.
 
 A CQ entry supplies a readiness hint. Even when an old hint matches a current
@@ -592,7 +592,7 @@ exhaustion. Host regressions reproduced the earlier behavior and verify that
 \texttt{i64::MAX} can be published once before later attempts reject.
 
 One finite instance checks two names, principals and candidates at live capacity
-one; a smaller three-candidate projection reaches generation exhaustion at two.
+one, while a smaller three-candidate projection reaches generation exhaustion at two.
 Thirteen required counterexamples weaken the publication, retirement and ownership
 guards. Kernel authentication and watch-result provenance, trusted launch-budget
 preparation, wire parsing, allocation/destructor contexts and physical completion
@@ -605,7 +605,7 @@ The base IPC model intentionally collapses vector attachments. The
 moved entries, a live memory loan, an attached connection, the queue and the
 pending-call registry. Current vector calls carry the memory entries, whereas
 scalar calls carry connection attachments and may copy memory. The refinement
-deliberately composes these paths into a stronger rollback obligation; it does
+deliberately composes these paths into a stronger rollback obligation, but it does
 not claim that one current syscall carries every form. No request is visible
 until preparation commits, and every pre-commit failure restores all affected
 registries. Its unsafe rollback keeps one moved entry and a connection in the
@@ -628,7 +628,7 @@ revive a returned resource that its caller has already closed.
 The same model retains captured namespace accounts through reservation,
 source escrow and detached metadata disposal. Rollback restores the existing
 source slot without fresh admission, including at its record ceiling. A
-replacement may reuse the numeric ASID and handle values; late cleanup must
+replacement may reuse the numeric ASID and handle values, but late cleanup must
 still affect only its original account. Physical cleanup proofs, loans and
 actual allocator/IRQ/guard contexts remain separate obligations.
 
@@ -639,7 +639,7 @@ acknowledgement and public completion. Readiness retains the original map
 owner until both the actual command engine and recorded domain cell can be
 claimed. Preparation may lose a race to restoration, and another claimant may
 win before a wake is processed. The owner rechecks the same unit and starts
-mapping work once. Busy waiting requires a qualified scheduled caller;
+mapping work once. Busy waiting requires a qualified scheduled caller, whereas
 masked ready paths can still complete without waiting.
 
 Before entering unmap, the runtime records the attempt as retained. Only a
@@ -647,7 +647,7 @@ typed rejection before backend claim can rearm it. A failure after work starts,
 including a busy-looking final completion error, grants no replay permission.
 Confirmed DMA completion survives failed CPU teardown, so a later finish can
 retry CPU unmap without repeating DMA unmap. Failed shared setup keeps its CPU
-mapping behind a restricted owner; local teardown cannot refund backing that
+mapping behind a restricted owner, so local teardown cannot refund backing that
 an uncertain DMA pin still retains. Hardware acknowledgements, physical release
 and actual allocator/IRQ/guard contexts remain separate obligations.
 
@@ -659,7 +659,7 @@ A controlled kernel regression reproduced that path. Fresh read-only and
 writable mappings now require all DMA pins to be gone. Existing coherent
 mappings are installed before pinning and keep their volatile-access contract.
 The model includes fresh remapping and a required counterexample that removes
-this fence; the audit records the failing ARM run and passing ARM/Intel runs.
+this fence, and the audit records the failing ARM run and passing ARM/Intel runs.
 
 \subsection{Two-phase service publication}
 
@@ -722,7 +722,7 @@ This ordering covers both crash edges:
 Operational auto-join belongs to the durable DNS-owned Raft node. Volatile
 Raft nodes must not auto-join: without stable state, a process restart cannot
 prove which cluster has authority. The safe
-TLA+ specification includes crash and restart; an unsafe restart that forgets
+TLA+ specification includes crash and restart, and an unsafe restart that forgets
 admission must violate \tlbreak{RestartPreserves}{Admission}.
 
 \subsection{Membership changes preserve the tested Graft contract}
@@ -730,20 +730,20 @@ admission must violate \tlbreak{RestartPreserves}{Admission}.
 Charlotte's Raft port derives from Graft, whose Java, C++ and Rust runtimes are
 intended to form mixed clusters. The upstream Jepsen harness exercises hostile
 schedules and membership changes. That evidence makes core and runtime parity
-an explicit review concern; a local model or host test does not replace it.
+an explicit review concern, so a local model or host test does not replace it.
 
 A source comparison found that Charlotte had replaced the Java/Rust automatic
 finalization catch-up gate with immediate proposal after JOINT committed. The
 port now waits for every proposed remote voter and learner to reach the committed
 JOINT fence. The leader owns that prefix locally. Committing FINALIZE still
 requires both voter majorities. A slow proposed member can delay automatic
-completion; explicit/manual finalization is a separate path.
+completion, while explicit/manual finalization is a separate path.
 
 A second regression finalizes the current leader as a retained learner. The
 previous Charlotte code kept it in the leader state. It now becomes a follower
 immediately, keeps its existing-term durable vote, and remains a member. The
 upstream Jepsen demotion scenario selects a non-leader, while leader removal has
-its own scenario; the new regression covers the retained-leader transition.
+its own scenario, and the new regression covers the retained-leader transition.
 
 \tlbreak{Charlotte}{RaftMembership} checks 6,232 distinct states. It includes
 next-only voter elections with both majorities and rejects automatic finalization
@@ -761,7 +761,7 @@ replacement, although the responding voter still held the old bytes.
 
 The core now requires exact current term and a matching admitted source before
 crediting an append or completed-snapshot response. Successful indices cannot
-exceed the local tail. Reordered successes retain the strongest confirmed prefix;
+exceed the local tail. Reordered successes retain the strongest confirmed prefix, and
 append rejection cannot back off below it. Committed joiners can still replicate
 before promotion, while voter quorum rules remain unchanged.
 
@@ -781,19 +781,19 @@ n1 returned value 1. Current-term commitment alone did not prevent that read.
 The query API now admits each request before appending a fresh no-op log entry.
 Its \texttt{PendingRead} owner captures exact node/domain identity, term, index
 and membership epoch. The reactor retains it while processing quorum traffic.
-Readiness observes commitment and application without executing the query;
+Readiness observes commitment and application without executing the query, and
 completion rechecks those conditions and consumes the owner once. Earlier
 acknowledgements cannot confirm its new index. Compaction preserves the proof
 through a newer committed current-term anchor.
 
 DNS keeps the original monotonic deadline and typed reply destination with the
 fence. It admits bounded queue storage before publication. Placement lookup
-returns metadata; a local result carries no connection authority. Ordinary NS
+returns metadata, so a local result carries no connection authority. Ordinary NS
 lookup strips delegation rights, so DNS does not attempt to re-mint that grant
 for a different caller. Invocation starts only after confirmed routing and
 another deadline check, using the existing owned NS lookup/call phases on the
 shared CQ.
-Timeout or drop abandons the query while its no-op may still commit; it cannot
+Timeout or drop abandons the query while its no-op may still commit, but it cannot
 execute or replay the business call. Readiness-binding rejection aborts with
 accepted work live. No extra per-read timer or blocking reactor wait is added.
 
@@ -801,13 +801,13 @@ accepted work live. No extra per-read timer or blocking reactor wait is added.
 replies and external leader replacement unseen by the old node. Four controls
 remove commitment, application, fresh-fence or owner-binding checks. The former
 stale-read host schedule now rejects. A quorum may have confirmed a fence after
-admission and replied before a later election; the read proof concerns that
+admission and replied before a later election, so the read proof concerns that
 confirmation within the request, rather than authority at delivery time.
 
 The shared no-op wire grammar is unchanged. Each read adds a durable log entry
 and quorum commit, with corresponding storage and latency costs. No performance,
 Jepsen or mixed Charlotte/Graft execution claim is made. Bounded status/ingress
-observations retain receive-time freshness separately; this is not general lease
+observations retain receive-time freshness separately, but this is not general lease
 qualification.
 
 \subsection{Elapsed time comes from the kernel counter}
@@ -815,7 +815,7 @@ qualification.
 The reactors previously counted one 25 ms tick after waking even if seconds had
 passed. They now convert a kernel-monotonic counter from one fixed epoch,
 sampling after waits and before inbound or scheduled work. Fractional ticks
-accumulate; invalid or regressing samples abort with pending work live. Timers
+accumulate, whereas invalid or regressing samples abort with pending work live. Timers
 wake the service without manufacturing elapsed time. Clock conversion, resource
 readiness delivery and physical cleanup remain outside the read model.
 
@@ -828,7 +828,7 @@ installation of a combined prefix and suffix. The buffer now captures the leader
 and RPC term, and elections and higher-term observations discard it. A replacement
 must begin at offset zero. \tlbreak{Charlotte}{RaftStream} checks this owner and
 strict ordering in 400 distinct states, with two weakened controls. It assumes
-one immutable byte image per sender/term/boundary; same-episode image replacement,
+one immutable byte image per sender/term/boundary, while same-episode image replacement,
 transport authentication and general allocation failure remain outside this model.
 
 \subsection{Rejected application snapshots leave known ground intact}
@@ -842,7 +842,7 @@ error before exposing the node or clearing durable admission.
 
 \tlbreak{Charlotte}{SnapshotRestore} makes this boundary explicit alongside the
 existing chunk and suffix model. Its finite configuration explores 168 distinct
-states; seven weakened configurations must produce counterexamples. Separate
+states, and seven weakened configurations must produce counterexamples. Separate
 streamed/recovery coverage requires both completed joins and retained admission.
 This corrects an earlier assignment-precedence omission that excluded join
 clearing while broader activation coverage still passed. An accepted
@@ -850,7 +850,7 @@ newer membership snapshot can complete a join, while the original snapshot or
 membership excluding this node retains its admission fence.
 
 Restore succeeds before the durable write. If persistence fails, the Raft caller
-terminates; a later caller must restore the whole durable image again. This
+terminates, so a later caller must restore the whole durable image again. This
 ordering does not provide an atomic transaction across application and disk.
 The model assumes the existing whole-object storage contract and serialized
 Raft execution. It does not prove decoder correctness, fallible allocation,
@@ -871,7 +871,7 @@ active membership, committed placement, readiness for the exact deployment
 generation, and nodes not draining. A router installs only a complete snapshot
 for which all member routes are known. New flows require the router's installed
 policy to hold a bounded local freshness lease. The policy may lag the latest
-global commit during asynchronous propagation; an abstract fair expiry action
+global commit during asynchronous propagation, while an abstract fair expiry action
 prevents an unrenewed lease from persisting forever. Established flows retain
 their selected policy while its snapshot remains present. After history
 eviction, the binding remains pinned but its packets fail closed instead of
@@ -1394,7 +1394,7 @@ mean one of three things:
     \item \textbf{Functionality is unsafe.} The Raft admission restart gap was
         of this kind and required a CharlotteOS change.
     \item \textbf{The model overclaims.} Atomic service replacement was of this
-        kind; the model was corrected to admit temporary unavailability.
+        kind, so the model was corrected to admit temporary unavailability.
     \item \textbf{The behavior is outside scope.} It must be documented rather
         than silently attributed to the checked invariants.
 \end{enumerate}

@@ -2,7 +2,7 @@
 \label{chap:service-architecture}
 
 Protection domains contain service faults and authority. Naming and protocol
-policy remain in userspace; privileged code manages lifecycle and resources.
+policy remain in userspace, while privileged code manages lifecycle and resources.
 
 \section{Protection domains as failure boundaries}
 
@@ -15,14 +15,14 @@ physical cleanup:
         connections to the closed endpoint fail through the IPC lifecycle.
     \item Borrowed mappings are revoked before lender access can return.
         Failed invalidation or cancellation retains the loan fence and backing.
-    \item Its threads are aborted on their owning LPs; reaping and exact-root
+    \item Its threads are aborted on their owning LPs, and reaping and exact-root
         operation drain must complete before stack or address-space reuse.
     \item Device teardown requires its own quiescence/invalidation proof.
         Failed or uncertain cleanup retains grants, pins and original charges
         rather than making them available to a replacement.
 \end{itemize}
 
-The MMU and capability checks are intended to contain the fault to that domain;
+The MMU and capability checks are intended to contain the fault to that domain, but
 kernel, hardware, and DMA defects remain outside this guarantee.
 
 \section{The supervisor: domain lifecycle manager}
@@ -41,7 +41,7 @@ Its operations are:
         capabilities it needs:
         \begin{itemize}
             \item For deployed applications, a grant-controller connection
-                and immutable signed descriptor; trusted platform services may
+                and immutable signed descriptor, whereas trusted platform services may
                 instead receive a name-service connection.
             \item For driver domains: an \texttt{MmioRegion} capability, an
                 \texttt{Interrupt} capability and a protected DMA domain as needed.
@@ -53,12 +53,12 @@ Its operations are:
     \item[Monitor] Register to be notified when the domain exits.
     \item[Teardown] Close admission, stop threads and retain an owning transaction
         through mapping, IPC and device cleanup. Only confirmed completion
-        permits physical release and address-space-slot reuse; abandonment can
+        permits physical release and address-space-slot reuse, whereas abandonment can
         retain the entire root indefinitely.
 \end{description}
 
 Grants are minted kernel-side by the supervisor and never through a syscall. A
-driver does not ask the kernel for MMIO; the supervisor grants it at creation
+driver does not ask the kernel for MMIO, because the supervisor grants it at creation
 time based on the device topology it enumerated during boot.
 
 \section{The name service: discovery without the kernel}
@@ -70,13 +70,13 @@ maps human-readable names to connection capabilities:
     \item[Registration] A service publishes a name such as
         \texttt{"driver.nic.v1"} with a delegated connection to its endpoint.
         An ordinary application uses the grant controller and its signed
-        deployment descriptor; trusted mediation services have a private
+        deployment descriptor, whereas trusted mediation services have a private
         connection to the name service.
     \item[Generation tracking] Each registration bumps a generation counter.
         If the service restarts and re-registers with the same name, the new
         generation replaces the old binding. Existing connections still target
         the original endpoint. Re-registration alone does not revoke or redirect
-        them; endpoint death closes that instance's communication path.
+        them, but endpoint death closes that instance's communication path.
     \item[Lookup] An application requests the complete name and required rights
         from the grant controller, supplying its immutable signed descriptor.
         Policy checks the kernel-authenticated caller identity and returns an
@@ -96,7 +96,7 @@ another name-service process. A separate registry is appropriate only for an
 explicitly isolated namespace, such as a test or a future tenant domain.
 
 The supervisor's endpoint handle remains kernel-private. Possessing a
-bootstrap connection permits the operations granted on that connection; it
+bootstrap connection permits the operations granted on that connection, but it
 does not permit an application to mint arbitrary registry connections or
 inspect another process's capability table.
 
@@ -107,7 +107,7 @@ When a service crashes and the supervisor restarts it:
 \begin{enumerate}
     \item Device quiescence and reset: a driver can restart only after its
         hardware-specific cleanup contract permits new grants. Failed or
-        uncertain cleanup retains its fences and backing; a new service name
+        uncertain cleanup retains its fences and backing, so a new service name
         or generation cannot supply the missing completion proof.
     \item Generation increment: the name service advances the replacement's
         publication generation. Existing connections keep their old target.
@@ -120,14 +120,14 @@ When a service crashes and the supervisor restarts it:
         retains the old domain's operation owners until cancellation, loan
         revocation and hardware completion are confirmed. Uncertain work can
         prevent reclamation and restart. Application effects still need their
-        protocol's own reconciliation; teardown does not undo them.
+        protocol's own reconciliation, because teardown does not undo them.
     \item Fresh bootstrap: the new domain receives a fresh config-page
         with freshly minted capabilities. It does not inherit the previous
         instance's capability table, reply tokens, or DMA ownership.
 \end{enumerate}
 
 A restarted service receives fresh authority. Tests cover stale connections and
-operation reconciliation; the status appendix records the verified scope.
+operation reconciliation, and the status appendix records the verified scope.
 
 \section{The overall system topology}
 
@@ -175,11 +175,11 @@ stack through configuration without modifying the kernel.
         (capabilities, endpoints, memory objects). Userspace enforces policy
         (who can register what name, who can look up what service, how
         many restarts are allowed, what log level to use). The kernel
-        stays small; policy is auditable and replaceable.
+        stays small, and policy is auditable and replaceable.
 
     \item The bootstrap contract is explicit and minimal: every
         domain starts with exactly the capabilities it needs and no more.
-        The config-page contract defines what a domain receives; there is no
+        The config-page contract defines what a domain receives, so there is no
         ambient authority to discover or exploit.
 \end{enumerate}
 

@@ -8,7 +8,7 @@
 
     \item[Block (verb)] To remove a running thread from the scheduler and
         register its \texttt{Waker} on an \texttt{Observable}. The thread
-        yields; when the event fires the waker re-admits it.
+        yields, and when the event fires the waker re-admits it.
 
     \item[Capability] An unforgeable per-domain handle that names a kernel
         object and carries rights. Answers: ``May I perform this operation?''
@@ -34,13 +34,14 @@
 
     \item[EL1] Exception Level 1 (AArch64). Kernel execution.
 
-    \item[Endpoint] A bounded server-side IPC receive object. Has an owning
+    \item[Endpoint] A bounded server-side IPC receive object with an owning
         domain, a queue capacity, and a lifecycle.
 
-    \item[Exit-observer] An \texttt{Observer} registered on a \texttt{Thread};
-        fires when the thread is dropped (exits). The ABI's intended completion
-        mechanism: \texttt{submit\_worker} registers the capability as the
-        worker's exit-observer.
+    \item[Exit-observer] An \texttt{Observer} that fires when the
+        \texttt{Thread} on which it is registered is dropped (exits).
+        This is the ABI's intended completion mechanism:
+        \texttt{submit\_worker} registers the capability as the worker's
+        exit-observer.
 
     \item[HHDM (Higher Half Direct Mapping)] A linear mapping of all physical
         memory into the kernel's virtual address space, provided by the
@@ -70,11 +71,12 @@
     \item[Name service] A userspace service that maps human-readable names to
         connection capabilities. The kernel does not understand service names.
 
-    \item[Notification] ``State may have changed; inspect the corresponding
-        object or queue.'' May be coalesced. Is not itself a result.
+    \item[Notification] ``State may have changed, so inspect the corresponding
+        object or queue.'' A notification may be coalesced and is not itself
+        a result.
 
     \item[Observable / Observer] The event-notification pattern. An
-        \texttt{Observable} registers admitted \texttt{ObserverWeak} handles;
+        \texttt{Observable} registers admitted \texttt{ObserverWeak} handles, and
         dispatch retains a strong \texttt{ObserverRef} while borrowing
         \texttt{Observer::notify(\&self)}.
 
@@ -98,7 +100,7 @@
         call, consumable exactly once, invalidated by cancellation or teardown.
 
     \item[Shard] A userspace ownership and execution domain. One executor runs
-        its tasks; at most one task at a time mutates shard-owned state;
+        its tasks, and at most one task at a time mutates shard-owned state, while
         cross-shard access goes through typed messages.
 
     \item[ShardLocal<T>] A lock-free per-LP container using

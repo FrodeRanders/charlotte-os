@@ -5,7 +5,7 @@ CharlotteOS explores an operating-system boundary at which the cluster is the
 primary administrative and computational unit. An operator assigns a signed
 workload to the cluster, declares its resources, authority, multiplicity, and
 placement constraints, and leaves physical placement to cluster policy. Nodes
-supply processors, memory, devices, and failure domains; replacing one should
+supply processors, memory, devices, and failure domains, so replacing one should
 not require rebuilding a machine-specific application installation.
 
 This chapter draws on three distinct kinds of evidence.
@@ -39,7 +39,7 @@ This is still a research prototype.
 The central proposition is simple:
 
 \begin{quote}
-    The Charlotte cluster is the administrative unit; nodes contribute
+    The Charlotte cluster is the administrative unit, and nodes contribute
     replaceable execution and storage resources.
 \end{quote}
 
@@ -80,7 +80,7 @@ objects, allowing users to address services without selecting a home machine
 \cite{prior:amoeba}. CharlotteOS shares this administrative indirection, but
 its invocation contract preserves request identity, generations, deadlines
 and uncertain outcomes. A remote call that times out may already have changed
-the service; moving its name does not authorize replay.
+the service, so moving its name does not authorize replay.
 
 The reason for exposing that uncertainty is the distributed-systems boundary
 identified by Waldo and colleagues: remote interactions introduce latency,
@@ -91,7 +91,7 @@ placement while requiring protocols to decide deduplication, retry and state
 transfer. Applications gain location independence but retain those obligations.
 The \repofiletext|docs/architecture/cluster-artifacts-and-placement.md|{cluster
 architecture} and the related-work section below distinguish the implemented
-stateless reassignment from future stateful migration; neither is arbitrary
+stateless reassignment from future stateful migration, and neither is arbitrary
 process-image migration.
 \end{architecturalcomparison}
 
@@ -111,7 +111,7 @@ capabilities.
 
 CharlotteOS therefore combines an immutable, name-bound identity at the
 loading boundary with explicit authority at the execution boundary. Signing
-without confinement accepts an over-powerful program; confinement without
+without confinement accepts an over-powerful program, whereas confinement without
 authentication accepts code of unknown origin.
 
 This boundary also changes what installing software means. Build systems
@@ -150,7 +150,7 @@ Migration is consequently a cluster operation. Stateless reassignment starts an 
 the new location and retires the old one under generation fencing. Stateful
 migration additionally requires an explicit transfer of owned mutable state
 and a single, fenced change of ownership. CharlotteOS has demonstrated only
-the stateless cross-node case; the stateful protocol remains a target.
+the stateless cross-node case, but the stateful protocol remains a target.
 
 \begin{architecturalcomparison}{Borg and Kubernetes: native workloads}
 The Borg, Omega and Kubernetes experience supplies the desired-state pattern:
@@ -167,7 +167,7 @@ Consensus, failure detection, readiness, placement and rollout remain necessary
 in either architecture. The cost of the native choice is a smaller software
 ecosystem and application adaptation, while Kubernetes can reuse Linux
 applications and operational tooling. The implemented CharlotteOS controller
-has bounded placement and generation-fenced readiness; capacity-aware
+has bounded placement and generation-fenced readiness, but capacity-aware
 scheduling, stateful movement and production administration remain open.
 See the \repofiletext|docs/architecture/cluster-artifacts-and-placement.md|{placement
 contract} and the implementation boundary later in this chapter. The research
@@ -179,14 +179,14 @@ correctness and recovery.
 
 \subsection{What the container stack constructs}
 
-A Linux container is not a new kernel object equivalent to a virtual machine.
-It combines ordinary Linux processes with several existing facilities.
-Namespaces determine which resources and identifiers are visible; cgroups
-account for and limit resource use; Linux capabilities divide some root
-privileges; seccomp restricts the system call interface; and an LSM such as
-SELinux constrains object access. A prepared filesystem and network
-configuration provide the process's apparent environment. An OCI image and
-runtime turn those facilities into a
+A Linux container combines ordinary Linux processes with several existing
+facilities rather than introducing a new kernel object equivalent to a virtual
+machine. Those facilities serve different purposes. Namespaces control which
+resources and identifiers are visible, whereas cgroups account for and limit
+resource use. Linux capabilities divide some root privileges, seccomp restricts
+the system call interface, and an LSM such as SELinux constrains object access.
+A prepared filesystem and network configuration provide the process's apparent
+environment. An OCI image and runtime bring those facilities together as a
 repeatable execution contract. Kubernetes adds scheduling, desired-state
 reconciliation, service naming, failure recovery, rolling change, and many
 other cluster functions. OpenShift adds an integrated security, policy,
@@ -222,9 +222,9 @@ CharlotteOS retains the intrinsic responsibilities of distributed systems:
 scheduling, consensus, placement, replication, health management, service
 discovery, upgrades, resource accounting, storage, networking, observability,
 failure detection, load balancing, and recovery from partial failure. Network
-partitions require consistency rules; persistent state requires ownership,
-durability, repair, and backup; rolling change requires compatibility and
-rollback; and secrets require secure creation and delegation. Moving these
+partitions require consistency rules, and persistent state requires ownership,
+durability, repair, and backup. Likewise, rolling change requires compatibility and
+rollback, and secrets require secure creation and delegation. Moving these
 responsibilities into the operating system changes where we handle them.
 We still have to do the work.
 
@@ -311,7 +311,7 @@ A target node lifecycle is:
 
 Secure Boot, measured boot, or remote attestation can extend the
 hardware-to-cluster trust chain. Artifact signing establishes executable
-identity; node attestation remains future work.
+identity, but node attestation remains future work.
 
 \subsection{The cluster executive}
 
@@ -366,8 +366,8 @@ replaced, generation fencing prevents the retiring instance from deleting or
 overwriting its successor's registration.
 
 Stateful migration is explicit. The old instance exports only the
-mutable state it owns; the target accepts that state under a transfer
-protocol; ownership changes exactly once; the new endpoint becomes active;
+mutable state it owns. Next, the target accepts that state under a transfer
+protocol, and ownership changes exactly once. After the ownership change, the new endpoint becomes active,
 and stale clients are forced to re-resolve. Every transfer therefore carries a
 consistency and fencing model.
 
@@ -380,8 +380,8 @@ this chapter.
 \begin{itemize}
     \item \textbf{Cross-machine consensus.} The Graft core implements generic
         voter sets, learners, quorum decisions, and joint-consensus membership.
-        Unit tests exercise configurations including five voters; TLA+ models
-        explore three-node safety; and operational QEMU fixtures replicate the
+        Unit tests exercise configurations including five voters, while TLA+ models
+        explore three-node safety, and operational QEMU fixtures replicate the
         \texttt{dns} catalog over Ethernet with up to three guests
         (\autoref{chap:consensus}). The catalog carries membership, names,
         deployments, the set-once cluster signing key, signed placement rules,
@@ -399,7 +399,7 @@ this chapter.
         replacement (\autoref{chap:storage}) for service artifacts and persistent Raft
         state. The current image producer places the same signed bundle on
         each node for bootstrap. Signed application deployments may instead
-        name an opaque key in a centrally managed S3 store; the assigned node
+        name an opaque key in a centrally managed S3 store, and the assigned node
         pulls through its locally provisioned connector. Repair and
         cluster-wide artifact replication are not implemented.
 
@@ -423,7 +423,7 @@ this chapter.
         object-store key. The host sealing tool accepts a nonempty regular
         plaintext file of at most 64 KiB and retains one bounded erasing
         destination through reads and sealing, including partial read failure.
-        Unix input opens reject symlinks and non-regular sources; source-file
+        Unix input opens reject symlinks and non-regular sources, but source-file
         permissions and host custody remain the operator's responsibility.
         Ciphertext verify/open inputs are bounded to 66,044 bytes; bundle
         verify/notify inputs to 1,048,064 bytes. Bundle signing checks its
@@ -475,7 +475,7 @@ this chapter.
 \end{itemize}
 
 \architecturewidefigure{external-service-capabilities}
-    {Secret-bearing S3 and Kafka connectors receive infrastructure profiles;
+    {Secret-bearing S3 and Kafka connectors receive infrastructure profiles, whereas
     applications receive only named, role-attenuated service capabilities.}
     {fig:external-service-capabilities}
 
@@ -497,11 +497,11 @@ initial object-store image and remain cached in kernel memory.
 The x86-64 configuration embeds its larger tested service set as well as staging
 it on disk. AArch64 HVF compatibility and selected test features add recovery or
 fixture images. \repofile|crates/catten/src/service/store.rs| defines these
-configuration-specific sets; eight is not a cross-platform total.
+configuration-specific sets, so eight is not a cross-platform total.
 
 This establishes the minimal-node bootstrap shape. The current
 \texttt{--deploy-test} serial command loop remains a kernel-side validation and
-administration shim; production management enters through userspace deployment
+administration shim, whereas production management enters through userspace deployment
 ingress and still needs further hardening.
 
 \subsection{Discovery and membership}
@@ -510,7 +510,7 @@ The operational DNS-owned Raft group now admits members discovered on the
 cluster Ethernet through replicated \texttt{JOIN}, joint consensus, and
 \texttt{FINALIZE}. The three-guest ingress fixture exercises that path before
 driving placement and VIP failover. A smaller two-guest fixture remains useful
-for focused catalog and deployment checks; its topology is not a membership
+for focused catalog and deployment checks, but its topology is not a membership
 restriction.
 
 A production node joining shared cluster state must complete three distinct
@@ -567,7 +567,7 @@ immutable object can consequently run on any eligible node without
 reconstructing a userspace installation there.
 
 \architecturefigure{release-admission-rollout}
-    {A signed multi-component release is admitted atomically to desired state;
+    {A signed multi-component release is admitted atomically to desired state, after which
     artifact retrieval, launch, publication, and readiness then reconcile per
     component.}
     {fig:release-admission-rollout}
@@ -588,7 +588,7 @@ The current deployment pipeline has three stages:
         the public bootstrap anchor and, in the deployment path, the matching
         replicated key. The loader, object-store resolver, administration
         ingress, and agent enforce signature, logical-name, and digest checks.
-        The present ceremony can distribute only the build-time anchor; it is
+        The present ceremony can distribute only the build-time anchor, but it is
         not a general enrollment or rotation protocol.
 
     \item \textbf{Assignment.} A Raft-committed record directs a concrete
@@ -623,24 +623,24 @@ The kernel reports AArch64 or x86\_64, runtime ABI 3 and the intersection of
 integer features across all configured LPs. The current optional bits cover
 ARM LSE/CRC32 and x86 CMPXCHG16B/POPCNT. Missing profiles are ineligible.
 Placement filters compatible, non-draining voting members before memory,
-replica and affinity ranking; explicit pins undergo the same checks.
+replica and affinity ranking, and explicit pins undergo the same checks.
 An ARM-only revision therefore cannot count x86 nodes toward its replicas.
 
 Selection uses signed priority, feature specificity and descriptor order.
-Raft commits the chosen variant index beside each replica node; catalog-v19
+Raft commits the chosen variant index beside each replica node, and catalog-v19
 snapshots and queries preserve that pin. A later CPU report cannot change an
 existing generation's executable. If a new node incarnation loses support for
 its pin, the controller commits a compatible replacement in a new generation,
 even when the node set stays the same. The agent fetches the pinned key/digest and
 rechecks local compatibility. Kernel admission rechecks actual ELF machine,
 signed requirements, digest and identity before creating the domain. Profile
-reports bind an observation to a node identity; they do not attest to its hardware.
+reports bind an observation to a node identity, but they do not attest to its hardware.
 CPU hotplug and vector context contracts remain separate work.
 
 The signer reads an ELF path instead of accepting a supplied digest.
 Additional \texttt{--variant} options supply object key, ELF path, feature mask,
 priority and ABI. Required instruction extensions must match the reviewed build
-configuration. The descriptor has a 152-byte header; retired descriptor and
+configuration. The descriptor has a 152-byte header, and retired descriptor and
 catalog formats reject without defaults. See
 \repofile|docs/reference/execution-targets.md| for exact encoding, signing
 examples and future-store migration requirements.
@@ -654,7 +654,7 @@ replicas is invalid unless the artifact's signed CLS2 metadata contains
 \texttt{PARALLEL\_INSTANCES}. \texttt{CDEPLOY6} signs this policy, the
 leader resolves it to concrete assignments, and catalog-v19 snapshots retain
 both the desired set and per-node readiness. Affinity groups share a stable
-ranking seed; anti-affinity groups require unused nodes and fail closed when
+ranking seed, whereas anti-affinity groups require unused nodes and fail closed when
 the eligible set cannot satisfy the separation. A policy that needs more
 distinct nodes than the current eligible set fails admission.
 
@@ -668,7 +668,7 @@ incarnation resets the filter rather than blending unrelated processes.
 
 This does not filter observability history. Raw one-second samples in memory,
 and in the optional disk archive, retain
-short-lived spikes for diagnosis; the five-second report, EWMA, bucket
+short-lived spikes for diagnosis, while the five-second report, EWMA, bucket
 hysteresis, and freshness lease form a distinct control signal. The
 descriptor's stack budget and fixed runtime pages form a memory promise. The
 leader reconstructs promises held by other catalog deployments before
@@ -679,7 +679,7 @@ apparently empty node. Hard memory admission preserves a one-sixteenth reserve,
 while CPU pressure remains a soft ranking signal.
 
 Pressure may now change an existing replica set, but only when the same
-candidate survives a 30-second dwell; another pressure move is held for a
+candidate survives a 30-second dwell, and another pressure move is held for a
 60-second cooldown. Membership loss and committed drain bypass dwell because
 the old target is no longer eligible. The result is still committed as a
 generation-fenced reassignment, so replacement readiness and DSR eligibility
@@ -700,7 +700,7 @@ nodes and base placement changes on sustained behavior.
 
 The node-capacity path is the first cluster-wide feedback loop, deliberately
 limited to slow memory and CPU pressure. Detailed executor and communication
-metrics are not yet aggregated across nodes or used for placement; extending
+metrics are not yet aggregated across nodes or used for placement, and extending
 the controller requires similarly explicit filtering, dwell, authority bounds,
 and decision telemetry rather than feeding raw measurements directly into an
 actuator.
@@ -718,7 +718,7 @@ versioned as \texttt{charlotte.cluster.v2}.
 
 DNS constructs the underlying, bounded \texttt{CLOBSV2} record from one
 locally applied catalog view. It serves the record only while the same
-bounded-read lease used by DSR is valid; httpd decodes it and returns HTTP 503
+bounded-read lease used by DSR is valid, and httpd decodes it and returns HTTP 503
 when no fresh record is available. Raw one-second observations remain in the
 node's memory history and optional diagnostic archive. The cluster view instead exposes the slower signals and
 decisions that drive placement, while retaining a per-node freshness marker
@@ -730,7 +730,7 @@ An enrolled reader or administrator certificate is required. The
 leader normally advertises that VIP, but DSR may deliver the connection to any
 admitted, non-draining member in the committed availability projection. Recent
 current-term replication acknowledgements supply the leader's receive-time
-evidence; followers use the replicated set rather than local peer timers.
+evidence, while followers use the replicated set rather than local peer timers.
 Missing or stale term/membership projections admit no new VIP flows. Health
 changes commit a new generation and flow epoch while retaining the full voter
 set and previous flow bindings. Existing TCP/TLS traffic is not rehashed or
@@ -740,7 +740,7 @@ making browser polling part of consensus or requiring the leader to terminate
 every connection.
 
 Discovery supplies identity-to-MAC routes, and Raft commits membership. These
-routes have no cryptographic peer authentication; session and expected-peer
+routes have no cryptographic peer authentication, so session and expected-peer
 checks reject mismatched messages but do not establish a peer's identity.
 Neither supplies management IP addresses. The dashboard therefore does
 not manufacture drill-down links from MAC addresses. A future signed, leased
@@ -750,12 +750,12 @@ behind the same policy as the cluster view.
 
 The current native adapter requires mutual TLS on port 443 for both direct
 node and VIP access. Its signed, encrypted boot resource supplies the server
-identity, client roots and exact leaf/role enrollments; neither credentials nor
+identity, client roots and exact leaf/role enrollments, and neither credentials nor
 private keys belong in the application descriptor or Raft log. A browser
 uses an operations-issued PKCS\#12 client identity with \texttt{clientAuth},
 not the cluster signing key. The complete boundary and browser setup are
 documented in \repofile|docs/architecture/cluster-observability.md|. Public
-development trust is not protected enrollment; live-session retirement,
+development trust is not protected enrollment, so live-session retirement,
 protected custody and broad pressure remain separately unqualified.
 
 \subsection{Focused stateless-handoff validation}
@@ -764,7 +764,7 @@ The focused two-guest fixture starts the signed \texttt{greet} artifact on one
 node, verifies exact-generation readiness and the selected architecture variant,
 reassigns it, and checks cooperative and forced retirement. An identical signed
 submission through the follower preserves its generation. Legacy DNS proxy
-access remains denied for this scoped application; public echo separately proves
+access remains denied for this scoped application, while public echo separately proves
 cross-node RPC. Generation fencing protects the replacement. Load-driven and
 stateful migration require additional protocols described below.
 
@@ -796,8 +796,8 @@ artifact with fresh state.
 \section{Deployment, rollout, and reassignment}
 
 The deployment-test QEMU flow uses two guests to isolate one source-to-target
-handoff. A signed artifact is assigned through replicated state; the remote
-agent obtains and verifies it; the service is invoked across the network; and
+handoff. A signed artifact is assigned through replicated state. The remote
+agent obtains and verifies it, and the service is invoked across the network, and
 the assignment moves without losing the logical name. Both guests complete
 with zero failed or pending self-tests. The operational membership, replica,
 and ingress paths also run in a three-guest fixture, and the underlying Raft
@@ -805,7 +805,7 @@ membership is generic. These fixture sizes describe test coverage only.
 
 \architecturewidefigure{two-node-cluster}
     {A focused two-guest deployment fixture combines Raft-held desired state,
-    local reconcilers, capability-routed services, and central object pickup;
+    local reconcilers, capability-routed services, and central object pickup, and
     the architecture admits larger voter and replica sets.}
     {fig:two-node-cluster}
 
@@ -822,7 +822,7 @@ The distributed name service's Raft catalog (\autoref{chap:consensus}) also hold
 The map is committed through the same log as name registrations. Deployment
 is therefore ordered, replicated, generation-fenced cluster state rather than
 per-node configuration. The descriptor-only deployment operation (DNS 33) admits a
-current signed descriptor; the named query (DNS 16) reads a replica's applied
+current signed descriptor, while the named query (DNS 16) reads a replica's applied
 state. Packed deploy/query operations and the redundant named admission envelope are retired.
 The signed descriptor alone supplies object keys, digests and requested placement.
 Queries use the tagged \texttt{CDEPQR01} record with exact replica variant pins.
@@ -850,26 +850,26 @@ name service rather than through a node-specific application address.
 Each networked node with durable local storage runs an \texttt{agent}. It polls
 the manifest for assignments to its node key. Each assignment pins a variant
 from the signed descriptor. The agent pulls that variant's opaque key through
-the provisioned S3 connector; when no connector is registered, the local test
+the provisioned S3 connector, but when no connector is registered, the local test
 cache must satisfy the same selected digest and signed name. Architecture,
 runtime ABI and required CPU features are checked before launch. The agent
 then invokes the scoped deployment-authority syscall with both owned memory
-objects; no descriptor-less record or launch fallback remains.
+objects, and no descriptor-less record or launch fallback remains.
 
 The sole scoped runtime API is \texttt{launch\_scoped\_artifact}: it consumes
 the ELF and descriptor owners with their exact lengths and returns an owning
 \texttt{DeployedArtifact}. Syscall 76 takes four arguments and returns both
 the ASID and the principal derived by the kernel from the verified signed
 descriptor. Packed-name input, named aliases and a caller-supplied retirement
-name are removed. Rejection returns two zeroes and consumes submitted inputs;
+name are removed. Rejection returns two zeroes and consumes submitted inputs, whereas
 local length rejection releases the two Rust owners before submission.
-Retirement requires an explicit nonzero principal; zero cannot select a lone
+Retirement requires an explicit nonzero principal, so zero cannot select a lone
 deployment. See \path{docs/reference/scoped-deployment-launch.md}.
 
 The kernel snapshots and revalidates the exact ELF and descriptor, maps the
 ELF into a fresh address space, gives the application only the grant controller
 and its immutable descriptor, and starts it. A descriptor-authorized service
-publishes its endpoint through \texttt{grantctl}; the agent supervises the
+publishes its endpoint through \texttt{grantctl}, while the agent supervises the
 assignment. When the manifest assigns the artifact elsewhere, the agent
 retires the service and causes its address space to exit. Endpoint closure is
 observed by \texttt{dns}, whose generation check prevents a stale unregister.
@@ -902,12 +902,12 @@ wraps the DNS manifest operations and object store behind:
 Controller interface version 3 requires full-name status queries. The
 status and rollout names use the signed descriptor's 1--48-byte printable
 ASCII grammar. Malformed names return $-3$ without attachments before DNS
-forwarding; a valid absent name returns $-1$. Notification validation retains
+forwarding, whereas a valid absent name returns $-1$. Notification validation retains
 its separate $-13$ result.
 The
 unsigned \texttt{deploy} command and packed DNS deploy/query operations are
 removed, as is descriptor-less launch syscall 64. The serial test console
-provides \texttt{upload} for short names and \texttt{status} for full names;
+provides \texttt{upload} for short names and \texttt{status} for full names, whereas
 deployment uses the host's \texttt{cluster-sign deployment-notify} command.
 Signed scoped launch remains the application launch contract. Retired opcodes
 reject rather than translating their old payloads.
@@ -916,13 +916,13 @@ The normal service set also starts \texttt{deployd}. Its bounded, mutually
 authenticated TLS endpoint accepts a \texttt{POST} to
 \texttt{/v1/deployments} on guest port 7444 with exactly one signed descriptor
 as the body. The client must be an enrolled administrator before controller
-dispatch; the signature remains the descriptor's authorization and integrity
+dispatch, while the signature remains the descriptor's authorization and integrity
 envelope. Readers can observe status but cannot mutate. Missing management
-credentials disable network admission without a plaintext fallback; see
+credentials disable network admission without a plaintext fallback. See
 Chapter~\ref{chap:configuration}. Lower sequences
 are rejected, different bytes at an existing sequence conflict, and identical
 notifications are idempotent. QEMU's user network forwards host port 8081 by
-default; \texttt{cluster-sign deployment-notify} is the corresponding host
+default, and \texttt{cluster-sign deployment-notify} is the corresponding host
 client.
 
 The client may contact any member. A follower relays the bounded submission to
@@ -941,7 +941,7 @@ and serial shim remain test-only privileged interfaces.
 
 Deployment ingress progresses through listener setup, input, controller calls,
 output and logical close. Each accepted phase keeps its owner and original
-deadline; advancing one client must leave the other clients observable.
+deadline, and advancing one client must leave the other clients observable.
 
 \begin{implementationdetail}{CQ positions and listener setup}
 All seven deployment HTTP controls use owning controller operations bound to
@@ -956,7 +956,7 @@ and close work, waiting for the earliest original deadline.
 
 Listener setup retains one five-second deadline from reservation through creation,
 listen and accept admission/binding. Only rejected queue-full submission permits
-50~ms backoff and another attempt of that phase; accepted requests are never
+50~ms backoff and another attempt of that phase, but accepted requests are never
 replayed. Confirmed rejection or unstarted preparation failure moves any known
 socket into the existing close pool. Uncertain observation, malformed reply,
 binding rejection or expiry aborts with the complete owner live. An admitted idle
@@ -965,7 +965,7 @@ accept has no timer. See
 \end{implementationdetail}
 
 Timeout cancels the exact pending owner and returns HTTP 503 with error $-22$
-(\texttt{clusterctl::ERR\_RPC\_TIMEOUT}). Accepted mutations are never replayed.
+(\texttt{clusterctl::\allowbreak ERR\_RPC\_TIMEOUT}). Accepted mutations are never replayed.
 Observation failure after acceptance reports uncertainty ($-5$), rather than a
 routing rejection. The receiver may already have committed or may still own its moved request
 and original memory charge. Local cancellation proves neither remote rollback
@@ -975,11 +975,11 @@ retains the whole owning scope through domain abort.
 \begin{implementationdetail}{Controller relay and DNS ownership}
 The controller server forwards those seven HTTP controls and named status in
 eight owning CQ positions. Original incoming backing plus one copied DNS request
-reserve at most 2,098,176 bytes; returned records, decoder allocations and copies
+reserve at most 2,098,176 bytes, whereas returned records, decoder allocations and copies
 retained by DNS after earlier completion remain separate. One server-side
 five-second deadline starts before validation and spans notification preflight
 and mutation. It is separate from the caller's unchanged deadline. Only an
-explicit absent record or a checked older revision permits submission; a failed,
+explicit absent record or a checked older revision permits submission, so a failed,
 malformed or foreign query cannot stand in for absence. Identical signed bytes
 return the existing generation, and stale/conflicting revisions reject.
 
@@ -988,7 +988,7 @@ at most eight requests and rotates relay observation before checking lifecycle.
 Timeout cancels the DNS owner, ends the source mapping and only then publishes
 the upstream timeout. A delivered DNS copy may retain its original charge.
 Accepted uncertainty permits no replay. Shutdown disposes pending DNS calls
-before mappings and incoming reply/loan authority; binding/wait rejection retains
+before mappings and incoming reply/loan authority, whereas binding/wait rejection retains
 the pool through abort. Legacy upload/join/key handlers still block on this
 endpoint, and bounded validation remains synchronous. See
 \repofile|docs/reports/audits/2026-10-22-security-controller-relay.md|.
@@ -1001,13 +1001,13 @@ observed accept completion. Progress and unrelated wakes do not restart those
 budgets. Retained prefixes and active controller request reservations share
 1,049,088 bytes, including rounded moved-request pages and retained release
 envelope capacity. Temporary preparation copies, receive/reply pages, allocator
-overhead and TCP buffers are separate. Rejection preserves other owners;
+overhead and TCP buffers are separate. Rejection preserves other owners, but
 ending a logical reservation does not refund receiver-owned backing.
 
 Response outputs retain complete backing, socket and a pending moved send page
 on the same CQ, with one original five-second deadline. Owned response capacity
 is capped at 64~KiB per position. A positive TCP prefix receipt permits sending
-only the remainder; timeout, invalid receipt or observation failure ends output
+only the remainder, whereas timeout, invalid receipt or observation failure ends output
 without resending uncertain bytes. Enqueue is no peer-delivery or rollback proof.
 Each service turn advances input, controller, output and close work before waiting.
 
@@ -1023,11 +1023,11 @@ the same CQ. Its client position releases only after a checked Started (0) or
 Unavailable (1) scalar receipt without attachments, under one original five-second admission/observation budget.
 Only queue-full rejection permits 50~ms admission backoff and another submission.
 Accepted close is never replayed. Deadline, binding/wait rejection or uncertain
-observation retains the whole scope through domain abort; incomplete close Drop
+observation retains the whole scope through domain abort, and incomplete close Drop
 also aborts before field cleanup. Unavailable concerns an absent, nonreused
 full ID within the captured service incarnation. It proves neither former
 ownership nor peer delivery or physical release. Foreign live entries and
-unreserved IDs reject; exhausted ID reservation rejects before backend allocation.
+unreserved IDs reject, and exhausted ID reservation rejects before backend allocation.
 Existing close operations drain on shutdown under their original deadlines while
 other client owners remain live.
 \end{implementationdetail}
@@ -1043,29 +1043,29 @@ For a release made from several independently signed components,
 \texttt{cluster-sign deployment-apply} prevalidates all descriptor files,
 rejects duplicate artifact names and retains the positive generation returned
 for each admitted descriptor. A complete ready record must match that exact
-generation; older observations remain pending, while a newer generation reports
+generation, so older observations remain pending, while a newer generation reports
 supersession. Malformed acknowledgement or readiness records stop observation
 without replaying accepted work. Apply captures one checked monotonic deadline
 before file preparation and carries it through every admission and readiness
-query. Connect, partial writes and response fragments use the remaining budget;
+query. Connect, partial writes and response fragments use the remaining budget, and
 the polling interval is shortened to the time left. Ingress endpoints must use
-numeric \texttt{IPv4:port} or \texttt{[IPv6]:port} with a nonzero port; hostnames
+numeric \texttt{IPv4:port} or \texttt{[IPv6]:port} with a nonzero port, and hostnames
 and URLs reject before network access. Zero apply timeouts and values outside the
 clock range reject. Blocking host file I/O and stdout are not preempted, and
-readiness still uses status polling. Artifacts must already be signed and uploaded; object-store
+readiness still uses status polling. Artifacts must already be signed and uploaded, and object-store
 credentials remain outside the generated application and its descriptors.
 
 \texttt{deployment-apply} orchestrates independent descriptor admissions.
 Each descriptor occupies a separate Raft entry, so a later failure can leave
-an accepted prefix committed. The client does not replay notifications;
+an accepted prefix committed. The client does not replay notifications, so
 reconcile accepted work before an explicit retry. Identical descriptor admission
 remains idempotent. The atomic alternative is described next.
 
 \begin{implementationdetail}{Notification and standalone status validation}
 All signer notification commands validate their complete HTTP-202 success body
 before reporting acceptance. Deployment, operations-bundle, shutdown and ingress
-policy use one positive generation; release uses its digest-bound receipt.
-Malformed success is uncertain because the request may already be committed;
+policy use one positive generation, whereas release uses its digest-bound receipt.
+Malformed success is uncertain because the request may already be committed, so
 the client does not replay it. Every response reader preserves the complete
 body after the first HTTP separator and trims only JSON whitespace.
 Ingress-policy status validates its five current fields, bounded assignment
@@ -1073,14 +1073,14 @@ count and signed validity span before output. This is structural observation,
 without a local UTC admission or peer-authentication decision.
 
 The standalone \texttt{deployment-status} command uses the same complete rollout
-codec. Zero or omitted wait prints a valid current pending or ready record;
+codec. Zero or omitted wait prints a valid current pending or ready record, whereas
 a positive wait requires validated readiness. Missing, duplicate, nested,
 trailing or inconsistent records reject immediately. The shared status reader
 preserves the complete declared body after the first HTTP separator and trims
 only JSON whitespace. Extra separators and Unicode whitespace cannot hide
 invalid data from status or apply. Invalid artifact names reject before waiting
 or connecting. Named status observes the current record, which may change while
-it waits; it supplies no binding to an earlier admission.
+it waits, so it supplies no binding to an earlier admission.
 \end{implementationdetail}
 
 \subsection{Admit an atomic release}
@@ -1088,10 +1088,10 @@ it waits; it supplies no binding to an earlier admission.
 A signed \texttt{CRELEASE} envelope produced with
 \texttt{cluster-sign release-sign} and submitted with
 \texttt{release-apply}. Its outer signature binds a release name, monotonic
-sequence, and the exact ordered bytes of up to 16 distinct nested descriptors;
+sequence, and the exact ordered bytes of up to 16 distinct nested descriptors, and
 the complete envelope is bounded to 3,584 bytes. The cluster verifies both the
 outer signature and every nested deployment signature. Every nested descriptor
-must use \texttt{CDEPLOY6}; retired formats reject even when correctly signed.
+must use \texttt{CDEPLOY6}, and retired formats reject even when correctly signed.
 A follower relays the
 request to the current leader, which resolves all signed placement policies
 against admitted, non-draining voters and proposes the concrete replica sets
@@ -1100,12 +1100,12 @@ release and component revision before changing the deployment map, so desired
 state changes all at once or not at all. A commit receipt captures the release
 generation and each component deployment generation in signed-envelope order.
 An exact retry returns a receipt while every component still has those signed
-descriptor bytes; a superseded component rejects without changing live state.
+descriptor bytes, whereas a superseded component rejects without changing live state.
 The signed release record survives catalog snapshots.
 
 Atomic admission changes desired state in one command. Fetching, launching and
 readiness still progress independently for each component. The client retains
-the receipt's exact component generations and the original deadline; uncertain
+the receipt's exact component generations and the original deadline, and uncertain
 submission is not replayed.
 
 \begin{implementationdetail}{Release receipts, startup retries and readiness}
@@ -1121,7 +1121,7 @@ admission and component observation.
 A startup attempt can repeat only after a
 connection failure before any HTTP write, or a complete HTTP 409 response with
 the single numeric error \texttt{-23}. That checked incompatible-target result
-comes before release/component/operational publication; its negative result may
+comes before release/component/operational publication, but its negative result may
 itself be committed to Raft. The client retains the exact signed bytes and uses
 at most one second of backoff within its original budget. Other errors, uncertain
 submission and failures after receipt acceptance stop the command.
@@ -1130,7 +1130,7 @@ Both QEMU
 deployment-ingress workers first wait for the guest listener and initial DNS
 leader markers in their existing bounded serial loop, then invoke it once with the original fixture
 budget left. QEMU forwarding may accept TCP before the guest listener exists. A
-failed worker ends the run; it cannot conceal a lost response or an accepted but
+failed worker ends the run, so it cannot conceal a lost response or an accepted but
 unready release by restarting admission. An operator must
 reconcile the exact release and component state before choosing a further
 attempt. Standalone \texttt{release-notify} still submits once.
@@ -1152,7 +1152,7 @@ rollout appear ready.
 
 The signed descriptor may carry node key zero to request automatic placement.
 A singleton prefers the current Raft leader and uses a deterministic fallback
-when that node is draining; fixed replica counts and
+when that node is draining, while fixed replica counts and
 \emph{every eligible node} select distinct admitted, non-draining voters. The
 leader continuously reconciles that set after membership changes. A nonzero
 key remains an explicit singleton pin. Replica policy is admitted through a
@@ -1179,7 +1179,7 @@ multi-instance-per-node execution, rollout surge/unavailability, and rollback.
 The development runner's
 \texttt{--deployment-ingress-test --timeout 240} option proves the complete
 host upload to TLS RustFS, signed atomic release admission, S3 pull, scoped
-launch, and generation-safe readiness path. It is an integration fixture;
+launch, and generation-safe readiness path. It is an integration fixture, but
 production still needs a release controller that manages policy approval,
 progress deadlines, rollback, and operator audit identity.
 
@@ -1211,7 +1211,7 @@ budgets, and the power-off reason. There is deliberately no broadcast target:
 an operations controller can drain nodes in an order that preserves Raft and
 application quorum. The operator creates the record with
 \texttt{cluster-sign shutdown-sign} and submits it to
-\texttt{POST /v1/shutdowns}; no private key enters CharlotteOS.
+\texttt{POST /v1/shutdowns}, and no private key enters CharlotteOS.
 
 Any member may receive the bounded envelope. A follower relays it over the
 reliable-message channel, while the leader verifies the committed cluster key
@@ -1252,7 +1252,7 @@ Deployment ingress, HTTP ingress, and the UTC time service also implement the
 cooperative path. Deployment ingress checks lifecycle on each reactor turn and
 on default-CQ wakes. On shutdown it stops listener replenishment, observes
 accepted creation/listen under their original budgets and moves their known
-sockets into the close pool. Idle accepts cancel before moving their sockets;
+sockets into the close pool. Idle accepts cancel before moving their sockets, and
 no further setup is submitted. Logical closes drain under their original
 deadlines, then the other client owners drop together. Cancelled accept grants
 no remote rollback or physical release proof.
@@ -1261,7 +1261,7 @@ remain separate shutdown latency boundaries.
 
 Ordinary socket close and Drop
 share the consuming close owner, one original five-second budget and one
-accepted reply wait. Queue-full admission backoff stops after one second;
+accepted reply wait. Queue-full admission backoff stops after one second, and
 unstarted failure retains the complete driver without a second destructor
 attempt. Accepted uncertainty aborts with its owner live, without ID restoration
 or remote replay. These budgets do not establish whole-service shutdown latency.
@@ -1282,7 +1282,7 @@ request.
 
 \begin{implementationdetail}{Transport, startup gates and cluster-core drain}
 The transport phase is cooperative too. TCP/IP runs after every socket
-consumer has drained; it closes admission, completes retained receive calls,
+consumer has drained. Then it closes admission, completes retained receive calls,
 stops residual protocol sockets, and releases its endpoint and owned NIC
 connection. The frame router then drops one owning scope containing the single
 NIC receive, deferred name lookups, routed service connections, and in-flight
@@ -1312,13 +1312,13 @@ shutdown latency.
 The plan uses inline storage for eleven single-domain service phases and three
 hardware domains. Construction and owner transfer allocate no plan backing.
 Abandoning either coordinator retains every unfinished teardown owner without
-root lookups, thread aborts, logging, or nested field destruction; explicit
+root lookups, thread aborts, logging, or nested field destruction, and explicit
 polling remains the only way to advance reclamation. This does not establish
 shutdown under heap exhaustion. Kernel worker context, stack, retirement node
 and table preparation now reject before roster transfer. Fresh pinned admission
-and inline input publication share a short local IRQ mask; first dispatch cannot
+and inline input publication share a short local IRQ mask, so first dispatch cannot
 precede publication. Losing unstarted preparation is cancelled after local
-guards leave; uncertain cleanup retains its complete owner. Later cleanup
+guards leave, whereas uncertain cleanup retains its complete owner. Later cleanup
 admission, the agent's fail-closed rejection policy and sustained progress still
 require separate qualification.
 \end{implementationdetail}
@@ -1328,7 +1328,7 @@ require separate qualification.
 The NIC, block and entropy domains transfer once to a device-quiescence
 coordinator. Each driver must publish \texttt{DEVICE\_QUIESCED} and exit before
 its address space and launch-owned device grants can be reclaimed. A deadline
-or thread death cannot prove that DMA stopped; failed quiescence retains the
+or thread death cannot prove that DMA stopped, so failed quiescence retains the
 domain and IOMMU state in quarantine.
 
 \begin{implementationdetail}{Driver-specific quiescence}
@@ -1342,8 +1342,8 @@ hardware adapter implements the driver side of this contract. VirtIO entropy
 resets the device before dropping its shared-DMA mappings. NVMe
 adapter closes admission, drains outstanding replies and DMA, observes a final
 NVM Flush completion, masks interrupts, clears \texttt{CC.EN}, and waits for
-\texttt{CSTS.RDY=0}. VirtIO block flushes before device reset; AHCI flushes,
-masks port interrupts, and stops its command and FIS receive engines; VirtIO
+\texttt{CSTS.RDY=0}. VirtIO block flushes before device reset, whereas AHCI flushes,
+masks port interrupts, and stops its command and FIS receive engines, while VirtIO
 net and E1000E close ingress and deferred receives, release queued frames,
 drain transmit descriptors, and then reset or halt the receive/transmit
 engines. A failed flush or drain still stops DMA where possible but withholds
@@ -1368,13 +1368,13 @@ The host image producer detects and rejects collisions in the complete
 bundle. Production should replace the truncated 48-bit name hash with a
 collision-resolving or fully content-addressed namespace.
 
-\subsection{Cryptographic boundary}
-
 \architecturewidefigure{role-separated-deployment-trust}
     {Independent artifact, deployment, operations, and recipient-key roles
     converge only at cluster admission and the privileged connector launch
     gate.}
     {fig:role-separated-deployment-trust}
+
+\subsection{Cryptographic boundary}
 
 Artifact validation uses Ed25519 signatures embedded in the ELF. The private
 cluster key remains off-cluster in the
@@ -1389,34 +1389,39 @@ The signature covers the SHA-256 digest of the complete file with only the
 signature field treated as zero, making the signed representation
 deterministic. The matching public key enters the prototype in two ways: it
 is embedded in the kernel at build time as the bootstrap trust anchor and
-passed to services in the launch manifest; and the key ceremony commits it
+passed to services in the launch manifest, and the key ceremony commits it
 to replicated state through
 \texttt{OP\_KEYCEREMONY} and \texttt{OP\_SET\_KEY}. This demonstrates a
 distribution path for dynamically joining nodes. The replicated value must
-currently equal the build-time anchor; blank-start trust establishment remains
+currently equal the build-time anchor, so blank-start trust establishment remains
 future work.
 
 The EL0 loader verifies the note before mapping a domain. Signing is
 mandatory: unsigned or invalidly signed images are rejected. The
-runtime scoped launch gate rejects failed preparation; mandatory boot-fixture
-launch may still panic. By default the build signs staged services using the
+runtime scoped launch gate rejects failed preparation, whereas mandatory boot-fixture
+launch may still panic.
+
+By default the build signs staged services using the
 version-controlled development keypair at
 \repofile|tools/cluster-sign/dev-key.hex|, whose public half is the embedded
 \texttt{CLUSTER\_PUBLIC\_KEY}. A different key can be supplied through
-\texttt{CLUSTER\_SIGN\_KEY\_FILE}; its value is a restricted key-file path,
+\texttt{CLUSTER\_SIGN\_KEY\_FILE}, and its value is a restricted key-file path,
 never the private bytes. Changing the signing file does not change the
-kernel's bootstrap root. Signing commands read private files through bounded,
+kernel's bootstrap root.
+
+Signing commands read private files through bounded,
 zeroizing buffers and enforce owner-only Unix permissions, except for the
 exact publicly known fixtures. Key generation writes a new mode-0600 file
 without printing private material. Hexadecimal key text and its trailing newline
 share one reserved erasing buffer through file writing. Private-key input
-retains an erasing vector through partial reads and errors; its full capacity
+retains an erasing vector through partial reads and errors, and its full capacity
 is cleared on ordinary Drop. Normalized key text returns with its own erasing
 owner through permission checks and decoding. Source files, OS buffers and
 forced termination have separate lifetimes.
+
 Public-key file arguments share one bounded reader and hex parser across
 operational, ingress-policy and trust-policy commands. The complete file,
-including comments, is limited to 4096 bytes; Unix opens reject final-component
+including comments, is limited to 4096 bytes, and Unix opens reject final-component
 symlinks and non-regular sources. These public file checks supply no key
 provisioning authority. Commands with public hex arguments keep that interface.
 Structured deployment and release files are bounded to 3,584 bytes, shutdown
@@ -1424,18 +1429,20 @@ files to 144 bytes and ingress policies to 1,184 bytes before verification,
 notification or apply. Release signing checks its one-to-sixteen descriptor
 references before reading those files. Unix opens reject final-component
 symlinks and non-regular sources. Artifact sign/verify and deployment image
-inputs use the launch ABI's 4 MiB maximum; adding a note must keep the output
+inputs use the launch ABI's 4 MiB maximum, so adding a note must keep the output
 within that bound. Deployment signing checks its one-to-eight variants before
 image reads. The host file-hash command streams regular files through a 16 KiB
-erasing buffer, with no artifact-size cap. ELF signing retains one read/write
+erasing buffer, with no artifact-size cap.
+
+ELF signing retains one read/write
 file owner and prepared image through a consuming rewrite. It writes the opened
-file if renamed and does not recreate an unlinked path; replacements are left
+file if renamed and does not recreate an unlinked path, while replacements are left
 untouched. Success refers to that opened file. Pathname continuity, concurrent
 content changes, partial writes and durable atomic publication remain separate
 boundaries.
 
 Deployment, release and shutdown signing create new output files exclusively.
-Existing files and final-component symlinks reject before writing; use a fresh
+Existing files and final-component symlinks reject before writing, so use a fresh
 name for each signed record. Boot fixtures keep those records in fresh private
 run directories, preserving earlier runs. A failed new-file write closes its
 captured descriptor and leaves any output alone, including empty or partial
@@ -1449,7 +1456,7 @@ Build output and boot logs explicitly identify the current images as
 development images. The build refuses production trust mode
 (\texttt{CATTEN\_TRUST\_MODE}): protected bootstrap trust and recipient-key provisioning
 are not implemented. Independently generated role keys and protected boot
-remain prerequisites for production; file-based signing alone does not
+remain prerequisites for production, so file-based signing alone does not
 establish those properties.
 
 Store resolution and deployment additionally check the signed logical name,
@@ -1457,13 +1464,13 @@ and the descriptor pins each variant's full ELF SHA-256. The demonstrated
 \texttt{greet} service is a signed architecture-specific binary fetched from
 S3 or the validated local fixture cache, mapped, launched and reassigned.
 Exact-generation readiness and retirement are verified. Legacy DNS proxying of
-this policy-published service remains denied; authorized remote invocation is
+this policy-published service remains denied, and authorized remote invocation is
 separate work. Public echo fixtures retain positive cross-node RPC coverage.
 Raft orders assignment, while signed admission authorizes deployment.
 
 The local fixture helper closes a complete staging bundle in its fresh private
 run directory before replacing the named output. Link targets and earlier open
-readers keep their bytes; staging-write failure preserves prior output and
+readers keep their bytes, while staging-write failure preserves prior output and
 retains failed staging for inspection. This host publication step supplies no
 fsync/durability or namespace-integrity guarantee.
 
@@ -1487,7 +1494,7 @@ The focused deployment fixture validates that:
 
 Separate multi-guest fixtures validate dynamic DNS/Raft admission, replica
 placement, and DSR failover. Capacity-aware admission has unit and protocol
-coverage; multi-node pressure and freshness scenarios still need a dedicated
+coverage, but multi-node pressure and freshness scenarios still need a dedicated
 fixture. Evidence is also required for rolling replacement, stateful cross-node
 migration, artifact-store recovery, production key establishment and rotation,
 and production administrative authorization.
@@ -1511,7 +1518,7 @@ system contains the following substantial coordination and trust work:
 
     \item \textbf{Durable artifact availability.} Signed descriptor deployment
         pulls digest-pinned artifacts through a separately provisioned S3
-        connector; the legacy path uses per-node NVMe staging. Production work
+        connector, whereas the legacy path uses per-node NVMe staging. Production work
         includes integrity-checked repair, retention, garbage collection,
         connector bootstrap recovery, and replication policy.
 
@@ -1559,7 +1566,7 @@ replicated decisions instead of per-machine mutation.
 
 The vision combines ideas from distributed operating systems, capability
 systems, cluster schedulers, immutable software stores, and artifact-trust
-systems. The comparisons below identify intellectual neighbours; they are
+systems. The comparisons below identify intellectual neighbours, but they are
 not claims of equivalent guarantees or implementation maturity.
 
 \subsection{Historical distributed operating systems}
@@ -1569,7 +1576,7 @@ not claims of equivalent guarantees or implementation maturity.
         of the processor-pool model. Work can run on processors in a pool,
         dedicated machines provide file and directory services, and
         network-wide RPC uses capability-based access. Amoeba deliberately
-        did not migrate processes; explicit cross-node migration is an
+        did not migrate processes, whereas explicit cross-node migration is an
         extension in the CharlotteOS target.
 
     \item \textbf{Plan 9} (Bell Labs) separates terminals, CPU servers, and
@@ -1608,7 +1615,7 @@ not claims of equivalent guarantees or implementation maturity.
 
     \item \textbf{Kubernetes and OpenShift} are also the central counterpoint
         of this chapter. CharlotteOS is not attempting to wish away their
-        distributed control responsibilities; it is testing whether a native
+        distributed control responsibilities, but it is testing whether a native
         execution and authority model can substantially shorten the machinery
         underneath them.
 
@@ -1635,7 +1642,7 @@ environment whose authority must be denied by policy. Capability systems,
 microkernels, language sandboxes, WebAssembly runtimes, and unikernels make
 different trade-offs along this boundary. CharlotteOS combines a
 capability-constrained service model with signed native artifacts and a
-cluster-level placement objective; similarity in one dimension does not
+cluster-level placement objective, but similarity in one dimension does not
 imply identical isolation or compatibility guarantees in the others.
 
 \subsection{Trust, signing, and bootstrap}
@@ -1699,8 +1706,8 @@ now spans signed and name-bound loading, capability-separated services,
 replicated naming and deployment state, dynamic membership, deterministic
 replica placement, central artifact pickup, remote invocation,
 generation-safe stateless handoff, and cluster-wide TCP ingress. Focused
-two-guest tests isolate particular transitions; three-guest fixtures exercise
-membership, placement, and failover; generic tests and safety models cover
+two-guest tests isolate particular transitions, while three-guest fixtures exercise
+membership, placement, and failover, and generic tests and safety models cover
 larger or exhaustively explored configurations.
 
 The next decisive evidence concerns richer resource declarations, stable

@@ -11,7 +11,7 @@ Protected boot, bootstrap-root provisioning and privileged recipient-key
 custody are not yet implemented. Unknown or empty mode values also fail.
 Changing a signing file is not a way to make a production image or change its
 bootstrap public key. Scoped application launch can use independently supplied
-artifact/deployment roots; that does not replace platform bootstrap trust.
+artifact/deployment roots, but that does not replace platform bootstrap trust.
 
 ## Private keys stay in files
 
@@ -38,7 +38,7 @@ cluster-sign elf-sign app.elf app /secure/signing/artifact.hex service 1 1 0 -
 ```
 
 Generation uses exclusive creation and never replaces an existing key. Private
-bytes are not printed; only output paths and public identity are reported.
+bytes are not printed, and only output paths and public identity are reported.
 Recipient generation keeps serialized private bytes in a zeroizing Rust owner
 through file writing, including error returns. Hexadecimal file text reserves
 its full length, including the newline, in an erasing owner before copying.
@@ -47,7 +47,7 @@ shared owners also require erasing Drop. See the [bounded memory inventory](../r
 for the remaining copy and termination limits.
 
 Generation returns an error if either output fails. A new file may remain empty
-or partial; if public output fails after the private write, that private file
+or partial, and if public output fails after the private write, that private file
 remains mode 0600. Treat the generation as incomplete. Inspect retained files
 inside the secured directory and choose fresh paths for another generation.
 The tool closes its file descriptor without deleting by pathname, since a name
@@ -60,7 +60,7 @@ at the corresponding verifier. These commands do not provision an OS image.
 The reader opens once, rejects symlinks and non-regular inputs on Unix,
 checks the opened descriptor's metadata, bounds input to 4096 bytes, and wipes
 text/decoded buffers on all exits. Blank lines and whole-line `#` comments
-are supported. Ed25519 private files encode 64 bytes; X25519 private files
+are supported. Ed25519 private files encode 64 bytes, whereas X25519 private files
 encode 32. Unix owner/mode checks do not audit ACLs, backup copies, host memory
 or a hostile signing workstation. Real private-key file handling on non-Unix
 hosts is refused until ACL enforcement exists.
@@ -69,7 +69,7 @@ Public-key file arguments also have a 4096-byte bound, including comments and
 whitespace. Operational, ingress-policy and trust-policy commands share the
 same descriptor checks and hex parser. On Unix they reject final-component
 symlinks, directories and FIFOs. Public files have no private-key permission
-gate. These checks bound the file read; choosing an authorized verification key
+gate. These checks bound the file read, but choosing an authorized verification key
 and securing its parent directories remain part of trust provisioning. Commands
 with public hex arguments keep their documented interface. See the
 [public-key input report](../reports/audits/2026-10-21-security-public-key-input.md).
@@ -86,23 +86,23 @@ does not provide an I/O deadline or a snapshot against concurrent writes.
 See the [profile-input audit](../reports/audits/2026-10-20-security-host-profile-input.md) for tests and remaining host-copy limits.
 
 A failed `operations-open` output write can leave a partial mode-0600 plaintext
-file. The shared retention policy above applies to that output too; keep its
+file. The shared retention policy above applies to that output too, so keep its
 directory secured and treat the failed result as incomplete.
 
 Operational ciphertext files use the same bounded regular-file admission as
-public key files. Envelope verify/open accept at most 66,044 bytes; bundle
+public key files. Envelope verify/open accept at most 66,044 bytes, while bundle
 verify/notify accept at most 1,048,064 bytes. Bundle signing checks 1..=8
 bindings before reading its referenced release (at most 3,584 bytes) or any
 envelope. On Unix these inputs reject final-component symlinks, directories
 and FIFOs. File admission leaves the existing signature, context, expiry and
-HPKE checks in place. Notification decodes before connecting; the receiving
+HPKE checks in place. Notification decodes before connecting, and the receiving
 service still authenticates admission. See the [operational-input audit](../reports/audits/2026-10-21-security-operational-input.md).
 
 Deployment, release, shutdown and ingress-policy file inputs share the same
 regular-file checks before verify, notify or apply. Descriptor/release inputs
 are at most 3,584 bytes, shutdown inputs 144 and ingress policies 1,184. Release
 signing checks at most 16 descriptor paths before reading their files. Unix
-opens reject final-component symlinks and non-regular inputs; the existing
+opens reject final-component symlinks and non-regular inputs, but the existing
 format/signature and receiver checks remain responsible for authorization.
 See the [control-input audit](../reports/audits/2026-10-21-security-control-input.md) for coverage and limits.
 
@@ -112,7 +112,7 @@ limit. Deployment signing checks at most eight variants, including the primary,
 before reading images. `sha256` streams regular files through a 16 KiB erasing
 buffer and accepts files larger than the artifact limit. Unix opens reject
 final-component symlinks and non-regular sources. ELF signing retains the
-opened read/write file through rewriting; a later pathname replacement cannot
+opened read/write file through rewriting, so a later pathname replacement cannot
 redirect that write. Success refers to the opened file even if it is renamed
 or unlinked. Keep parent directories trusted: the tool supplies no pathname
 continuity, concurrent-content lock, rollback or durable atomic publication.
@@ -123,7 +123,7 @@ the same exclusive file creation as other new-file signing commands, preserving
 existing files and symlink/hard-link targets. Keep the output directory trusted.
 Boot fixtures allocate fresh private directories for signed records, so repeated
 runs preserve earlier records. Failed writes retain output under the policy
-above; durable atomic publication remains separate work. See the [control-output audit](../reports/audits/2026-10-21-security-control-output.md).
+above, but durable atomic publication remains separate work. See the [control-output audit](../reports/audits/2026-10-21-security-control-output.md).
 
 The local deployment fixture's assembled bundle has a separate replacement
 contract: it stages the complete public bundle in the run's private directory,
@@ -144,7 +144,7 @@ cluster-sign trust-policy-check /secure/signing/cluster.ctrust orders 1
 
 The final check argument is the minimum accepted policy sequence. It is public.
 Creation is exclusive: it cannot overwrite an existing policy. Input is bounded
-to 4096 bytes per public-key file and exactly 184 bytes for policy checking;
+to 4096 bytes per public-key file and exactly 184 bytes for policy checking, and
 Unix readers reject symlinks, directories and FIFOs. Public files accept hex,
 blank lines and whole-line comments. Pass public files only.
 
@@ -198,25 +198,25 @@ cluster-sign trust-policy-verify /secure/signing/cluster-v2.cbtrust \
 successor with the correct predecessor digest. Signing requires the immediate
 successor. Older records, another policy at the accepted revision, skipped
 revisions and a wrong predecessor reject. The accepted digest is the
-domain-separated signed-fields digest printed by these commands; do not use
+domain-separated signed-fields digest printed by these commands, so do not use
 the candidate-file hash or complete signed-file hash instead.
 
 The commands require an explicit `enroll` or `installed` mode and never switch
-modes after failure. The signed record is bounded to 328 bytes; public-file
+modes after failure. The signed record is bounded to 328 bytes, and public-file
 readers retain the Unix regular-file/no-follow policy. It contains public policy
 and a signature, no private material.
 
 These commands do not install trust or update protected state. CLI arguments and
 host files do not establish a protected anchor or rollback protection. A future
 installer must pin the key/cluster, persist acceptance state and publish authority
-atomically; concurrent reuse of an old expectation is unsafe. Firmware/kernel
+atomically, because concurrent reuse of an old expectation is unsafe. Firmware/kernel
 authentication and recipient-key custody are still missing, so production
 builds remain disabled. See the [wire contract and integration gates](../reference/bootstrap-trust-policy.md).
 
 Boot adapters use the separate `signed_policy::verify_for_boot` API and its
 `VerifiedBootPolicy` receipt. It requires the exact independently supplied
 installed revision/digest and rejects enrollment or an uninstalled successor.
-The CLI's `trust-policy-verify` remains enrollment/installation verification;
+The CLI's `trust-policy-verify` remains enrollment/installation verification, but
 its success does not produce boot authority or commit protected state.
 
 ## Build-script migration
@@ -230,7 +230,7 @@ export CLUSTER_SIGN_KEY_FILE=/secure/signing/artifact.hex
 
 Bundled platform services must match the artifact authority selected before
 platform loading. Normal development boot selects the compiled development
-policy, so leave this variable unset for that demonstration build; it reads
+policy, so leave this variable unset for that demonstration build, because it reads
 `tools/cluster-sign/dev-key.hex` directly. The Secure Boot fixture signs an
 isolated bundle under its policy artifact key. Setting a host signing path does
 not itself select a kernel policy or provide production enrollment. Never extract a real key into

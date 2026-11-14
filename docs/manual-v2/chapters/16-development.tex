@@ -8,16 +8,16 @@ This chapter gives the current build, boot, test, and code-reading workflow.
 \begin{itemize}
     \item \textbf{Rust nightly}, installed via \texttt{rustup}. The exact
         toolchain is pinned in the repository's
-        \repofiletext|rust-toolchain.toml|{\texttt{rust-}\allowbreak\texttt{toolchain.toml}};
+        \repofiletext|rust-toolchain.toml|{\texttt{rust-}\allowbreak\texttt{toolchain.toml}}, so
         do not copy a version
         from this manual.
     \item \textbf{QEMU} for AArch64 (\texttt{qemu-system-aarch64}) or x86-64
         (\texttt{qemu-system-x86\_64}). On macOS, TCG is the default and HVF
         is opt-in. Networking and network-backed services are enabled by
-        default under TCG; the virtio-net smoke-test switch adds verification.
+        default under TCG, while the virtio-net smoke-test switch adds verification.
         HVF is unsuitable for the driver's direct EL0 device-MMIO path and
         therefore requires \texttt{--no-network}. KVM is an optional Linux
-        accelerator; networking also works under TCG.
+        accelerator, but networking also works under TCG.
         \textbf{HVF also does not honor hardware ASIDs}. See the
         \repofiletext|docs/platforms/aarch64.md|{\emph{AArch64 Port Status}}
         write-up. HVF builds rely on the
@@ -42,12 +42,12 @@ CharlotteOS has custom target JSON specs for three architectures in
 \hline
 \textbf{Target spec} & \textbf{Status} \\
 \hline
-AArch64 custom target & Primary development target; reference TCG boot,
+AArch64 custom target & Primary development target. Reference TCG boot,
     services and opt-in integration fixtures have recorded validation.
     Feature combinations and physical platforms need their own qualification \\
 x86-64 custom target & Four-LP ring-3 service, storage, IOMMU,
     discovery, distributed DNS, smoltcp TCP/IP, HTTP, deployment, migration,
-    UTC time, and dynamic-membership paths pass under QEMU TCG; UEFI, VT-d,
+    UTC time, and dynamic-membership paths pass under QEMU TCG, and UEFI, VT-d,
     NVMe, and node-local services also pass under VMware Fusion \\
 RISC-V custom target & Planned, not actively
     maintained \\
@@ -101,7 +101,7 @@ scripts/build-catten-user.sh --embed
 
 Run from the repository root with the pinned toolchain. The Sitas helper needs
 the sibling checkout described in \repofile|docs/guides/userspace-development.md|.
-The boot runners prepare these inputs automatically; a bare kernel Cargo build
+The boot runners prepare these inputs automatically, whereas a bare kernel Cargo build
 needs the corresponding bundle environment variable shown above.
 
 \section{Booting in QEMU}
@@ -113,7 +113,7 @@ The boot entry points are \repofile|scripts/boot-smp1.sh|,
 
 Both architecture runners attach a NIC by default. Charlotte acquires a DHCP
 lease and launches discovery, cluster, TCP/IP, HTTP, and time services without
-a test option. The \texttt{*-test} switches only register additional verifiers;
+a test option. The \texttt{*-test} switches only register additional verifiers, while
 \texttt{--no-network} is the explicit opt-out for an isolated boot.
 
 \begin{verbatim}
@@ -142,7 +142,7 @@ a test option. The \texttt{*-test} switches only register additional verifiers;
 
 \subsection{x86-64}
 
-The x86-64 runner is \repofile|scripts/run-x86_64.sh|;
+The x86-64 runner is \repofile|scripts/run-x86_64.sh|, and
 \repofile|scripts/boot-x86.sh| is its single-instance convenience wrapper.
 Both use mtools to construct the disposable FAT boot image, which avoids
 platform-specific mounted-image discovery on macOS.
@@ -170,7 +170,7 @@ platform-specific mounted-image discovery on macOS.
 Use \texttt{--tcpip-test} instead of \texttt{--deploy-test} for the smaller
 focused two-guest smoltcp exchange. \texttt{--live-upgrade-test} runs the isolated
 persistent service-manager handoff. The complete deployment suite is qualified
-with four LPs; two LPs are not a supported test configuration for that load.
+with four LPs, whereas two LPs are not a supported test configuration for that load.
 
 \section{Booting in VMware}
 
@@ -183,7 +183,7 @@ then converts the FAT boot image and a blank data image to VMware VMDKs:
 
 Open
 \texttt{os-images/vmware/CharlotteOS.vmwarevm/CharlotteOS.vmx} in VMware
-Fusion or Workstation. The SATA boot disk is nonpersistent; the NVMe data disk
+Fusion or Workstation. The SATA boot disk is nonpersistent, whereas the NVMe data disk
 is persistent. On first boot the guest formats that disk and installs the
 missing signed x86-64 service artifacts. Later boots retain valid artifacts,
 including deployed upgrades. The builder refuses to overwrite an existing
@@ -218,7 +218,7 @@ Testing Complete. All Tests Passed!
 \section{Dependency advisories}
 
 CI runs \path{scripts/check-dependency-advisories.py} against the complete root
-lockfile. Its scanner version is pinned in \path{.cargo/audit-version}; project
+lockfile. Its scanner version is pinned in \path{.cargo/audit-version}, and project
 policy in \path{.cargo/audit.toml} supersedes a developer's global defaults.
 Fresh RustSec/registry fetches and all architecture, severity, informational and
 yanked-package checks remain enabled, with no ignores. Scanner, network and
@@ -241,11 +241,11 @@ commands, exact source/database identities and evidence are in
 The repository combines host-side library tests with boot-time kernel and EL0
 self-tests. Host suites cover components such as \texttt{catten-graft},
 \texttt{charlotte-protocol-msg}, and \texttt{charlotte-smoltcp}. Boot tests run
-from \texttt{self\_test::run\_self\_tests()} after initialization; assertion or
+from \texttt{self\_test::run\_self\_tests()} after initialization, so assertion or
 verifier failure fails the boot suite.
 
 \architecturefigure{boot-and-testing}
-    {Ordinary boot enables production networking and services; test switches
+    {Ordinary boot enables production networking and services, while test switches
     add validators, while explicit negative switches remove runtime features.}
     {fig:boot-and-testing}
 
@@ -305,7 +305,7 @@ async model. It:
         thread and returns a capability that fires when the worker exits.
     \item The worker sleeps 50ms (exercising the timer and block-yield-wake
         cycle).
-    \item The worker exits; the exit-observer fires; the capability completes.
+    \item The worker exits, then the exit-observer fires, and the capability completes.
     \item The coordinator (blocked on \texttt{wait(cap)}) wakes and reads
         the result.
 \end{enumerate}
@@ -332,7 +332,7 @@ GitHub Actions (\repofile|.github/workflows/ci.yml|):
         fixture.
 \end{enumerate}
 
-The workflow runs on pushes and pull requests for its configured branches;
+The workflow runs on pushes and pull requests for its configured branches, and
 the boot matrix has no additional main-only condition. This describes the checked-in
 workflow, not the result of a new hosted CI run.
 

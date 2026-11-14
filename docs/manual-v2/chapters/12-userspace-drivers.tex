@@ -26,7 +26,7 @@ protected direct access, not unrestricted access to physical hardware.
 CharlotteOS shares the goal of moving hardware-facing work out of the kernel,
 but delegates MMIO, interrupts and DMA domains to isolated driver services.
 Ordinary applications receive service connections and exchange owned or
-borrowed buffers; they do not normally receive the device queue itself. The
+borrowed buffers, and they do not normally receive the device queue itself. The
 \repofiletext|docs/architecture/sitas-xous.md|{co-design note} places device
 authority at this service boundary.
 
@@ -36,7 +36,7 @@ adds service IPC, scheduling and admission work to paths that Arrakis aims to
 make direct. Batching and memory transfer can reduce some costs, but this
 manual supplies no comparative benchmark. Direct userspace MMIO after a grant
 does not remove kernel participation in DMA mapping or establish safe hardware
-teardown; those remain separate contracts below.
+teardown, because those remain separate contracts below.
 \end{architecturalcomparison}
 
 \section{The DriverGrant}
@@ -123,7 +123,7 @@ consuming \texttt{PreparedDriver}. Storage, entropy and network grants finish
 before any sibling driver can submit DMA and own the shared IOMMU engine.
 ARM embeds signed RNG and NIC images in the hardware bootstrap set so batch
 preparation cannot wait for its own unstarted storage driver to serve the store.
-The owner starts its thread and then completes its lease; fallback retains all
+The owner starts its thread and then completes its lease, whereas fallback retains all
 fields without physical cleanup. This ordering needs no polling or grant replay.
 Independent dynamic creation still rejects busy admission. Per-return creation
 errors preserve stream/backend/reset cause and confirmed or retained cancellation
@@ -148,7 +148,7 @@ The PL011 UART driver demonstrates the full lifecycle:
             \item Reclaims the MMIO region (unmaps it, returns to the kernel).
             \item Unroutes the interrupt.
             \item Reconciles outstanding operations: any pending reply tokens
-                are invalidated; any borrowed memory is returned to lenders.
+                are invalidated, and any borrowed memory is returned to lenders.
             \item Resets the device hardware.
         \end{enumerate}
         A restarted instance with fresh grants resumes under a bumped
@@ -164,12 +164,12 @@ gap: a malicious or buggy driver could program the device to DMA into kernel
 memory or another domain's pages.
 
 The current storage/network driver path requires a supported IOMMU/SMMU.
-It skips or rejects protected-DMA startup when that facility is unavailable;
+It skips or rejects protected-DMA startup when that facility is unavailable, because
 there is no supported trusted-driver physical-address fallback. This is why
 HVF compatibility boot omits storage rather than weakening DMA isolation.
 
 A DMA-domain capability binds the device to its requester-specific translation
-table. The driver maps explicitly owned memory through that domain; the kernel
+table. The driver maps explicitly owned memory through that domain, and the kernel
 checks the capability and retains a backing pin. Isolation still depends on the
 backend, firmware topology and actual hardware honoring those translations.
 
@@ -185,9 +185,9 @@ On x86-64, ACPI DMAR selects Intel VT-d and IVRS selects AMD-Vi. Both backends
 create per-requester DMA domains, validate domain and requester limits, map and
 unmap IOVAs, and require synchronous IOTLB invalidation before pin release.
 Partial attachment failure retains its complete operation if rollback cannot
-be confirmed; an error is not permission to reuse frames. QEMU boots validate NVMe,
+be confirmed, so an error is not permission to reuse frames. QEMU boots validate NVMe,
 AHCI, virtio-blk, and virtio-net through these domains. VT-d supports
-\texttt{INCLUDE\_PCI\_ALL} units and directly attached endpoint scopes;
+\texttt{INCLUDE\_PCI\_ALL} units and directly attached endpoint scopes, but
 multi-hop bridge scopes remain rejected. AMD-Vi fault events are polled until
 post-topology MSI delivery is implemented. Non-coherent SMMUv3, ATS/PRI, and
 multi-IOMMU topologies remain future work.
@@ -195,14 +195,14 @@ multi-IOMMU topologies remain future work.
 DMA map and map-exclusive syscalls may wait for the existing fixed unit slot
 before their first claim on the domain and command engine. The same operation retains its
 exact address-space generation, public capability claim, original memory pin,
-and transient interest. Source storage is prepared outside backend guards;
+and transient interest. Source storage is prepared outside backend guards, and
 restoration signals through producer-LP deferred delivery only when the actual
 engine and all domain cells are present. Admission rechecks and transfers the
 domain, engine, and pin together, then mapping work runs once. Waiting requires
-an already interrupt-enabled scheduled context; masked or nonscheduled busy
+an already interrupt-enabled scheduled context, so masked or nonscheduled busy
 callers reject explicitly, and serialized kernel fixtures keep the rejecting
 path. No adapter enables interrupts beneath an inherited mask. Admission failure
-releases only the unstarted preparation; hardware or physical uncertainty keeps
+releases only the unstarted preparation, whereas hardware or physical uncertainty keeps
 its existing retention policy. Map readiness does not change unmap's separate
 admission/completion distinction or authorize hardware or physical cleanup
 replay. See \texttt{docs/reference/dma-map-readiness.md}.

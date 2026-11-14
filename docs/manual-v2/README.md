@@ -32,6 +32,13 @@ main text; group allocation/publication/cleanup mechanics into separate themed
 notes. Add short subsections or steps where the main explanation changes phase,
 rather than collecting an entire lifecycle in one box.
 
+Write explanations as connected prose. Make contrast, sequence and consequence
+explicit where the contract supports them, instead of chaining independent
+facts with semicolons. Use separate sentences or paragraphs when the topic
+changes. Compact lists and tables can retain semicolons where they clarify
+complex entries. An editorial change must preserve prerequisites, ownership,
+failure behavior and qualification limits, without inventing a causal link.
+
 Use `architecturalcomparison` for short, optional comparisons with prior art.
 Its teal, square-cornered frame and **Architectural comparison** label distinguish
 it from implementation notes, including in monochrome. Place a comparison beside

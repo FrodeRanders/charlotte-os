@@ -71,7 +71,7 @@ the x86-64 trampoline call \texttt{abort} on return.
 \subsection{Hypervisors that strip TTBR0 ASIDs break TLB isolation}
 
 \textbf{Symptom:} under Apple's Hypervisor.framework, EL0 tests failed with
-apparently unrelated data aborts, wrong syscall results, and deadline panics;
+apparently unrelated data aborts, wrong syscall results, and deadline panics, whereas
 TCG remained green. \textbf{Root cause:} HVF did not preserve the ASID bits in
 \texttt{TTBR0\_EL1}. Because context switches relied on those tags instead of a
 full TLB flush, low user virtual addresses could resolve through another domain's
@@ -88,7 +88,7 @@ on each context switch and obtains syscall identity from trusted per-LP state.
         Tests must cross those boundaries.
 
     \item \textbf{Keep failure paths independent.} Panic reporting must work
-        before the heap and scheduler; reclamation must run from a live stack.
+        before the heap and scheduler, while reclamation must run from a live stack.
 
     \item \textbf{Validate platform assumptions at runtime.} CPU capability does
         not imply active paging mode, and a hypervisor may not preserve hardware

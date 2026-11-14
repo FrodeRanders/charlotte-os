@@ -2,7 +2,7 @@
 \label{chap:programming-model}
 
 This chapter summarizes the kernel and userspace rules for the asynchronous,
-shard-per-core model. Short kernel listings explain the model and omit setup;
+shard-per-core model. Short kernel listings explain the model and omit setup, while
 \autoref{sec:reconnecting-client} provides the compiled userspace starting point.
 
 \section{Invariants}
@@ -33,7 +33,7 @@ re-entrancy flag).
 
 A pinned thread stays on its assigned LP. Certified Ready-thread migration is
 a separate kernel policy with architecture-specific ownership restrictions
-(\autoref{chap:shards-and-lps}); pinned userspace shards remain ineligible.
+(\autoref{chap:shards-and-lps}), but pinned userspace shards remain ineligible.
 To submit work to another LP, use
 \texttt{try\_run\_on\_lp} or \texttt{ShardSender::try\_send}.
 
@@ -95,11 +95,11 @@ The userspace word-mailbox syscall path is domain-local and has a separate
 sender/receiver capability-record budget: 512 records per domain, 8,192 per
 node and 6,144 for ordinary domains. The remaining node records form a shared
 reserve for kernel-designated platform domains. An over-limit open returns
-zero; closing handles restores capacity. Receiver lookup returns the existing
+zero, while closing handles restores capacity. Receiver lookup returns the existing
 per-LP capability without another charge or independent ownership. These
 record counts do not account for the separate 256-word-per-LP queue backing.
 That backing has its own captured-generation queue-set and requested-byte
-admission in the same mailbox family account; see
+admission in the same mailbox family account. See
 \repofile|docs/reference/mailbox-capability-budgets.md|.
 Opens are serialized with domain retirement and checked against the exact
 generation, so a delayed open cannot publish into a reused ASID.
@@ -108,7 +108,7 @@ The unified capability namespace accounts for every object kind. Mailbox,
 completion, memory, IPC, device and system-observer publication all enforce
 shared limits:
 4,096 records per namespace, 65,536 per node, and 49,152 ordinary records.
-Staged identities and source slots held for rollback count toward these limits;
+Staged identities and source slots held for rollback count toward these limits, but
 staging does not grant public authority. Owning admission tokens capture the
 exact namespace, so cancellation cannot revoke a replacement's reused handle.
 Domain registration prepares the generation-bearing namespace, and teardown
@@ -117,40 +117,43 @@ retires admission before releasing subsystem payloads.
 Receive reserves reply authority before dequeuing a call or writing its vector
 result page. A shared-limit rejection preserves queued work, result bytes and
 active loans. An owning receive transaction removes speculative reply authority
-if result writing fails; successful writing and dequeue require no further
+if result writing fails, whereas successful writing and dequeue require no further
 admission. One-way messages need no reply slot and can drain a full namespace.
 Call-side IPC uses one owning transaction for metadata, fresh authority, memory
 attachments and loan tracking. Memory and pending/delegated IPC authority
-publish together before enqueue; no fallible IPC admission follows a memory
+publish together before enqueue, so no fallible IPC admission follows a memory
 ownership change. Connection-bearing replies reserve shared authority before
 loan revocation and compose their returned authority with memory publication.
-Individual loan revocation remains fallible; this publication contract does
+Individual loan revocation remains fallible, so this publication contract does
 not provide atomic rollback of unmap or TLB-shootdown work.
 
 The unbounded allocation bridge and policy bypass have been removed. Device
 grants serialize with domain teardown and reserve authority before DMA-domain
-creation. An owner destroys unpublished hardware on failure; unsuccessful
+creation. An owner destroys unpublished hardware on failure, but unsuccessful
 hardware rollback quarantines reachable backing instead of freeing it.
 Observer startup owns an unstarted domain and a cancellable startup claim,
 reclaiming delegated authority if preparation fails. These record limits do
 not provide complete aggregate byte protection.
+
 All memory transfer modes use an owning prepared
-transaction. Copies hold private charged pages; moves and loans hold source
+transaction. Copies hold private charged pages, whereas moves and loans hold source
 escrow and backing-retention pins. Destinations remain hidden until the whole
 mixed-mode batch commits. Loan preparation creates no borrower state, and
 cancellation restores original source slots without fresh quota or receiver
 mapping cleanup. Late cancellation cannot alter reused ASIDs or successor
 handles. Scalar rollback and the vector alias-cleanup assertion have been
 removed. Reply tokens track every vector loan and revoke them on reply or
-cancellation; kernel buffer/DMA access enforces committed loan permissions.
+cancellation, and kernel buffer/DMA access enforces committed loan permissions.
+
 Demand-backed heap frames also have generation-owned admission: the embedded
 address-space account retains charges until physical teardown. The node heap
 pool is one quarter of usable RAM, with one quarter of that pool reserved for
 kernel-designated platform domains. First touch reserves before frame
 allocation, prepares ownership tracking fallibly, and refunds an unpublished
-frame on mapping failure. Repeated touches do not allocate replacement backing;
+frame on mapping failure. Repeated touches do not allocate replacement backing, while
 retirement denies new commitment without refunding live pages.
 The virtual heap claim remains independent of physical commitment.
+
 ELF and runtime-page backing use an independent image account: 64 MiB per
 domain and a quarter-RAM node pool with shared platform headroom. Allocation
 and mapping errors unwind the unstarted preparation, returning frames and CQs.
@@ -158,7 +161,7 @@ Layout validation uses fixed storage for at most 64 program headers, reserves
 the full adaptive heap window, and plans image plus runtime pages before
 namespace creation. These backing limits exclude translation-table frames.
 Stacks, private translation tables and fresh shared kernel tables have separate
-admission pools; those pools are not charged to the image account. General
+admission pools, so those pools are not charged to the image account. General
 allocator bytes, aggregate principal usage and some namespace/account metadata
 remain incomplete. The implementation contract
 and migration scope are recorded in
@@ -241,7 +244,7 @@ integers. Application code should use the linear wrappers in
     \item \texttt{OwnedMemory} closes its capability on drop and is neither
         \texttt{Copy} nor \texttt{Clone}.
     \item \texttt{MappedMemory<ReadOnly>} and
-        \texttt{MappedMemory<Writable>} own both the mapping and capability;
+        \texttt{MappedMemory<Writable>} own both the mapping and capability, but
         only the writable state can produce \texttt{\&mut [u8]}.
     \item \texttt{DmaTransfer} is created only from unmapped
         \texttt{OwnedMemory} and returns CPU ownership after synchronous DMA
@@ -249,19 +252,19 @@ integers. Application code should use the linear wrappers in
     \item \texttt{ReadOperation<'a>} retains its
         \texttt{\&'a mut [u8]} until completion, including the
         cancel-and-wait path in its destructor.
-    \item \texttt{Completion} cancels, waits, and closes on drop; timeout does
+    \item \texttt{Completion} cancels, waits, and closes on drop, but timeout does
         not consume the handle unless a terminal result was observed.
     \item \texttt{Endpoint}, \texttt{Connection}, and \texttt{PendingCall}
         close exactly once. A pending call retains any memory loan until reply
         observation or cancellation. A single-call deadline uses
-        \texttt{PendingCall::}\allowbreak\texttt{wait\_timeout}; a multi-source reactor uses
+        \texttt{PendingCall::}\allowbreak\texttt{wait\_timeout}, whereas a multi-source reactor uses
         \texttt{PendingCall::bind\_cq} with endpoint interests on the same CQ.
         \texttt{cq\_wait\_checked} waits to the earliest remaining operation
         deadline with an owned kernel watchdog and no extra completion
-        capability; idle waits need no timer. Admission rejection is distinct
+        capability, while idle waits need no timer. Admission rejection is distinct
         from timeout. Reply readiness does not observe its
         returned capabilities. Kernel lifecycle publication also wakes the
-        default CQ after exact-root page access and local guard exit; the
+        default CQ after exact-root page access and local guard exit, so the
         reactor rechecks all sources, including lifecycle, after waking.
     \item \texttt{CapabilityVector} owns moved entries and retains read/write
         loans across a vector call. Submission failure returns the builder
@@ -309,16 +312,16 @@ Syscalls derive the caller's address space from trusted thread and trap context.
 Userspace cannot select another domain's address space or capability table.
 The signed loader also installs a stable artifact principal, exact address-space
 generation, and deployment roles in a kernel-only table. IPC enqueue snapshots
-that authentication data; every current receive operation returns it
+that authentication data, so every current receive operation returns it
 alongside the numeric sender ASID, so a delayed message cannot inherit the
 identity of a later occupant of the same slot. Runtime ABI 3 retains the twelve-register
-envelope for scalar, blocking and vector receives (syscalls 71--73); the old
+envelope for scalar, blocking and vector receives (syscalls 71--73), and the old
 nine-register syscalls 22, 27 and 53 are retired. The canonical runtime methods
 are \texttt{Endpoint::receive} and \texttt{try\_receive}. Error returns clear all
-eleven payload/identity registers; queued attachments remain owned until delivery. Checked CQ wait 88 uses an explicit timed flag; 12/42 are retired.
+eleven payload/identity registers, while queued attachments remain owned until delivery. Checked CQ wait 88 uses an explicit timed flag, and 12/42 are retired.
 The safe runtime returns typed readiness/deadline or admission/invalid-request
 errors. Ordinary service reactors abort on rejected waits rather than spin or
-advance protocol time; specialized recovery retains the original pending owners
+advance protocol time, whereas specialized recovery retains the original pending owners
 and deadlines. Timer-backed admission pauses likewise abort if timer
 submission or successful completion is rejected.
 
@@ -332,7 +335,7 @@ administrator and service-manager roles. Issuance, denial, and delegation
 failure enter a bounded administrator-readable audit stream. Public bootstrap
 naming is a separate namespace and cannot resolve or replace policy-published
 services. The former bearer-key opcodes 5/6, stored key fields and permissive
-key-memory decoder have been removed; unsupported requests retain their complete
+key-memory decoder have been removed, and unsupported requests retain their complete
 incoming owners through rejection. Security fixtures use the current CNSGEN01
 metadata frame and explicitly reject earlier shapes. Policy/audit persistence and retroactive
 revocation of already-issued direct connections are not currently promised.
@@ -364,7 +367,7 @@ When writing code that uses Sitas on CharlotteOS:
 
 \begin{itemize}
     \item \textbf{Choose the right container:} \texttt{PerLp<T>} for
-        interrupt-accessed or cross-LP data; \texttt{ShardLocal<T>} for
+        interrupt-accessed or cross-LP data, and \texttt{ShardLocal<T>} for
         single-LP, thread-only data.
     \item \textbf{Choose the right channel:} \texttt{ShardMailboxSet<M>} for typed
         cross-LP communication within the kernel. \texttt{ShardSender/Receiver}
@@ -397,13 +400,13 @@ Application code uses typed owners over the syscall boundary:
         use \texttt{ReadOperation}, which retains the buffer borrow.
     \item[\texttt{Completion::poll} and \texttt{wait\_timeout}]
         Observe the exact operation. A timeout or rejected wait admission retains
-        the owner; neither is a terminal result.
+        the owner, because neither is a terminal result.
     \item[\texttt{catten\_rt::cq::wait}]
         Waits on one CQ with an optional millisecond budget. It returns readiness
-        or deadline, or an explicit wait error; it returns no vector of entries.
+        or deadline, or an explicit wait error, but it returns no vector of entries.
         Drain the mapped ring separately and observe resources through their owners.
     \item[Owned cancellation and release]
-        \texttt{ReadOperation} and \texttt{Completion} retain their cleanup policy;
+        \texttt{ReadOperation} and \texttt{Completion} retain their cleanup policy, so
         cancellation cannot release an uncertain buffer merely because a timer expired.
 \end{description}
 
@@ -412,7 +415,7 @@ server endpoint. Its minting methods return owned connections with selected
 \texttt{IpcRights}. Calling a connection returns a \texttt{PendingCall}, not
 the server's reply token. Receive creates an \texttt{IncomingMessage} containing
 the server-side one-shot \texttt{ReplyToken}. Its consuming reply methods finish
-that authority. Memory moves consume their owners; loans borrow them through the
+that authority. Memory moves consume their owners, whereas loans borrow them through the
 pending call's terminal cleanup. The complete example in
 \autoref{sec:reconnecting-client} uses these APIs.
 
@@ -421,7 +424,7 @@ The raw register ABI lives in the
 \repofiletext|crates/catten/src/syscall/mod.rs|{kernel dispatcher}. The
 \repofiletext|docs/reference/ipc-receive.md|{receive contract} and
 \repofiletext|docs/reference/cq-wait.md|{checked CQ wait contract} describe their
-current records and outcomes; the
+current records and outcomes, while the
 \repofiletext|docs/architecture/async-syscall-abi.md|{ABI evolution note} preserves
 the broader design history.
 
@@ -429,7 +432,7 @@ the broader design history.
 
 \begin{enumerate}
     \item \textbf{Invariants have enforcement points.} \texttt{ShardLocal<T>}
-        rejects wrong-LP and re-entrant access; \texttt{ShardSender<M>} moves
+        rejects wrong-LP and re-entrant access, while \texttt{ShardSender<M>} moves
         values across the typed boundary. Unsafe code and incorrect primitive use
         remain review obligations.
 
@@ -463,7 +466,7 @@ its owners.
 
 \texttt{OwnedPayload} prepares bounded, length-bearing request memory using
 the existing mapping owner. \texttt{Admission} retries only unstarted queue
-pressure within one deadline; \texttt{CallObservation} retains the pending
+pressure within one deadline, whereas \texttt{CallObservation} retains the pending
 owner on deadline or rejected wait admission. The explicit
 \texttt{cancel\_on\_failure} convenience policy uses the existing fail-closed
 cleanup. Observation deadlines do not promise bounded teardown latency.
@@ -471,7 +474,7 @@ cleanup. Observation deadlines do not promise bounded teardown latency.
 \texttt{charlotte-app-sitas} wraps the existing Sitas reactor and supplies owned
 call futures. IPC readiness can be a CQ wake without a cookie entry, so the
 wrapper rechecks a bounded, fallibly prepared set of task interests after
-backend wakes. The backend remains the only ring consumer; results still come
+backend wakes. The backend remains the only ring consumer, so results still come
 from polling the pending owner. Future Drop preserves the runtime's existing
 cancellation policy and can block or abort.
 

@@ -9,7 +9,7 @@ and cleanup code that enforces them.
 
 This chapter describes current configuration mechanisms and how to qualify a
 change. The matching operator guide is
-\repofile|docs/guides/configuration.md|; the complete resource-policy inventory
+\repofile|docs/guides/configuration.md|, and the complete resource-policy inventory
 and dimensions are in \repofile|docs/reference/resource-policy.md|.
 
 \section{Configuration sources and authority}
@@ -25,7 +25,7 @@ The following inputs have different authorities and lifetimes:
     \item[Dependency advisory policy.] CI/local validation reads
         \path{.cargo/audit.toml} and the scanner pin in \path{.cargo/audit-version}.
         These configure validation, not a running node. Database contents refresh
-        at each invocation; a later advisory can reject the same lockfile.
+        at each invocation, so a later advisory can reject the same lockfile.
     \item[Domain TLS entropy.] Startup consumes one \texttt{EntropyConfig}
         containing an owned entropy connection (or explicit architectural-only
         source) and positive request budget. It cannot adopt a borrowed launch
@@ -37,11 +37,11 @@ The following inputs have different authorities and lifetimes:
     \item[Diagnostic telemetry archive.] Kernel build input
         \path{CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS} defaults to zero, disabling
         disk archiving. Values from 1000 through 86400000 enable the diagnostic
-        archive with that partial-chunk flush interval in milliseconds; full
+        archive with that partial-chunk flush interval in milliseconds, though full
         chunks may flush sooner. The kernel supplies a read-only launch
         manifest. Live one-second sampling, bounded memory history and fresh
         placement reporting remain active. Changing the setting requires
-        rebuild/restart; cached kernels must match it. Existing archive objects
+        rebuild/restart, and cached kernels must match it. Existing archive objects
         are preserved for offline inspection. This setting does not disable
         Raft/catalog durability or release committed resource promises.
     \item[Native telemetry export.] Unset \path{CATTEN_OTLP_ENDPOINT} launches
@@ -50,7 +50,7 @@ The following inputs have different authorities and lifetimes:
         The separate userspace service exports latest-sample OTLP protobuf
         gauges with bounded memory and deadlines, independently of local
         archiving, sampling and placement. Initial transport excludes
-        HTTPS, authentication headers and gRPC; unsupported schemes reject.
+        HTTPS, authentication headers and gRPC, so unsupported schemes reject.
         See \repofile|docs/reference/otlp-export.md|.
     \item[Bootstrap assignments.] The kernel build consumes
         \path{CATTEN_CLUSTER_SERVICES}. Boot runners accept repeatable
@@ -82,7 +82,7 @@ The default settings are in
 \repofile|crates/catten/src/resource_policy/defaults.rs|. They select reviewed
 capacity values. Operators may edit this central file or select an external
 profile with \texttt{CATTEN\_RESOURCE\_POLICY}, which must name an existing file
-by absolute path. Unset selects the default; empty, relative, missing and
+by absolute path. Unset selects the default, whereas empty, relative, missing and
 directory paths reject. The file is trusted Rust source and belongs in the
 reviewed build inputs, not in an application manifest or upload request.
 
@@ -99,10 +99,10 @@ CATTEN_RESOURCE_POLICY="$PWD/ops/resource-policy.rs" \
 
 The runners pass this environment input through to the kernel build. Cargo
 tracks the selected path, its contents and environment selection. Changing or
-unsetting the selection rebuilds the kernel; userspace service images do not
+unsetting the selection rebuilds the kernel, but userspace service images do not
 need rebuilding for these policy fields. Boot serial output identifies the
 selected policy name. Record the exact profile source and kernel artifact
-hashes with qualification evidence; the name alone is not an artifact identity.
+hashes with qualification evidence, because the name alone is not an artifact identity.
 
 There is currently no resource-policy boot-module parser, capability, syscall
 or live-resizing interface. The compiled policy does not change after charges
@@ -120,7 +120,7 @@ to overlap during growth.
 The 23 admitted metadata pools share family-typed charge mechanics and an
 independent static counter lock per pool. Resource owners retain sponsorship,
 completion and disposal policy. Version-10 thread statistics append a read-only
-inventory for validated system observers; ordinary snapshots contain no pool
+inventory for validated system observers, whereas ordinary snapshots contain no pool
 records. HTTP status JSON exposes each pool's units, ordinary/total limits and
 usage in \texttt{threads.metadata\_pools}. Busy samples have absent usage.
 Samples are independent, byte values describe requested layouts, and overlapping
@@ -133,14 +133,14 @@ independent IPC node pool has its own requested-byte/count limits. See
 \begin{implementationdetail}{IOMMU nodes and table ledgers}
 DMA mapping/quarantine records and SMMU walker-cache nodes share the existing
 \texttt{iommu\_nodes} byte/count limits with domain/requester/context metadata.
-They retain the original domain-grant class through actual deallocation;
+They retain the original domain-grant class through actual deallocation, so
 promoting the root cannot reclassify later metadata in that domain. No numerical
 limit or statistics grammar changes. The shared ceiling bounds retained storage
 but also makes these layouts compete for its capacity. Raise the reviewed
 central limits if workload planning requires more headroom. Table-ledger buffers
 share the byte dimension with zero node count and retain full old/replacement
 capacity through actual free. Domain-grant or trusted boot class is captured
-before allocation; uncertain physical cleanup retains both page and metadata
+before allocation, and uncertain physical cleanup retains both page and metadata
 budgets. Default maximum ledger capacity is 16 KiB per domain and 32 KiB per unit,
 with 24/48 KiB during the final doubling. General principal/heap admission remains
 separate work. See
@@ -152,20 +152,20 @@ separate work. See
 TLS record and certificate capacities are grouped build constants in
 \repofiletext|crates/catten-services/src/tls_client.rs|{the shared TLS adapter}.
 Each stream owns two
-\texttt{16640}-byte record buffers; the verifier admits a complete Certificate
+\texttt{16640}-byte record buffers, while the verifier admits a complete Certificate
 message up to \texttt{16384} bytes. These values are compile-time adjustable,
 with record-framing requirements, handshake stack usage and heap grants reviewed
 together. Increasing storage does not add intermediate-chain validation.
 Driver context layouts and backend erasure flags remain structural build
 contracts. Changing these inputs requires rebuilding and qualifying both service
-variants; the kernel resource profile does not resize them. See
+variants, because the kernel resource profile does not resize them. See
 \repofile|docs/reference/tls-client.md|.
 
 \subsection{Tune entropy deadlines and buffers together}
 
 The entropy request deadline is a separate startup API setting in
 \texttt{EntropyLimits}. Bundled S3, Kafka and TCP/IP select its central
-\texttt{5000} ms default; startup Rust code can supply another positive budget.
+\texttt{5000} ms default, but startup Rust code can supply another positive budget.
 No manifest/config-page field or live update is added. Increasing the budget
 retains source checkout, pending metadata, output borrow and possible returned
 backing longer, so timeout/rejection and pressure need joint qualification.
@@ -177,7 +177,7 @@ latency. Details and exact inputs are in
 The shared entropy protocol groups \texttt{BUFFER\_PAGES},
 \texttt{BUFFER\_BYTES} and \texttt{MAX\_REQUEST}, currently one 4096-byte page.
 These compile-time dimensions control caller allocations and
-the driver's private DMA buffer together; descriptor lengths must fit
+the driver's private DMA buffer together, and descriptor lengths must fit
 \texttt{u32}. Rebuild every caller and driver, then qualify maximum sizes,
 rejection, retention, cancellation and DMA before changing them. This adds no
 boot-resource parser or live resizing. DNS's separate
@@ -190,15 +190,15 @@ budget in the capacity-report context. See
 RNG publication uses the shared platform-service compile-time policy: 1000 ms
 admission, 5000 ms accepted-call observation and 10 ms queue-full-only admission
 backoff. These are separate phase budgets. Tune all helper consumers and boot
-readiness deadlines together in the shared publication module; RNG adds no
+readiness deadlines together in the shared publication module, and RNG adds no
 per-instance or live override. Its idle request/lifecycle wait is event-only,
 without a timer policy.
 
 The hardware-polling policy is separate. The central RNG device limits allow
-1000000 completion-index reads per descriptor; the typed constructor requires a
+1000000 completion-index reads per descriptor, and the typed constructor requires a
 positive bound. This is an iteration ceiling, not milliseconds or permission to
 retry. Each confirmed short completion may require another bounded step. The
-compile-time queue size is eight; page-rounded ring backing derives from its
+compile-time queue size is eight, while page-rounded ring backing derives from its
 geometry, while bounce storage follows the protocol buffer. Larger queues do
 not increase outstanding descriptors. Rebuild and qualify layout, CPU cost,
 caller deadlines, short completion, timeout/late completion and retained cleanup
@@ -208,7 +208,7 @@ together. No boot-resource or live override is added. Exact inputs are in
 \section{Related limits and tuning consequences}
 
 The policy groups domain/ordinary/total capacities and resource dimensions.
-For fixed pools, every ordinary dimension is positive and below the total;
+For fixed pools, every ordinary dimension is positive and below the total, and
 domain dimensions must fit the ordinary pool. A reserve is the difference
 between total and ordinary admission, not a guaranteed share for one service.
 
@@ -216,7 +216,7 @@ Selected kernel buffers share a signed-principal requested-byte ceiling,
 \path{Policy.memory.principal_kernel_buffer_bytes}, defaulting to 16 MiB.
 It covers diagnostic buffers, primitive syscall inputs/plaintext, CPU/copy/DMA
 frame snapshots, IPC working/retirement buffers and root heap/image frame catalogs.
-Diagnostics also retain their shared snapshot pool and 1 MiB local working bound;
+Diagnostics also retain their shared snapshot pool and 1 MiB local working bound, while
 root catalogs consume the existing memory-metadata byte pool. It reserves no backing in advance and is
 not a general kernel-metadata limit. See
 \repofile|docs/reference/telemetry-snapshots.md|.
@@ -244,7 +244,7 @@ Examples of settings that require joint review include:
         Endpoint backing rounds queue capacity to a power of two.
     \item Lifecycle watches, publication counts and replacement overlap.
         A name-service replacement needs the new watch before disposing the old
-        one; service minima must be tested as part of boot qualification.
+        one, and service minima must be tested as part of boot qualification.
     \item Unified memory authority and shared payload/namespace/read-borrower
         node bytes/counts. Every overlapping preparation needs two temporary
         nodes, or three for a read loan, including the namespace candidate for
@@ -261,7 +261,7 @@ Examples of settings that require joint review include:
 RAM-derived pools use documented ratios of discovered usable pages, with
 checked widened arithmetic. The heap reserve has a RAM divisor, aligned floor
 and aligned ceiling. It clamps before alignment rounding, including extreme
-reported RAM. The current launch ABI still bounds heap virtual capacity; the
+reported RAM. The current launch ABI still bounds heap virtual capacity, and the
 kernel checks policy against that contract and the actual allocator arena.
 
 Capacity changes do not alter sponsorship or cleanup. A move keeps its original
@@ -271,26 +271,26 @@ charge. A larger budget never supplies proof of completion or permission to
 replay accepted work.
 
 Raft election timing is selected by
-\texttt{RaftNodeConfig::timeout\_millis}; native launch supplies 2000 milliseconds
+\texttt{RaftNodeConfig::timeout\_millis}, and native launch supplies 2000 milliseconds
 through the DNS \texttt{elect-ms} manifest entry. Initial and subsequent
 deadlines derive a jitter window of one configured timeout, rather than a fixed
 150 milliseconds. Repeated-election backoff derives from the same timeout, and
 deadline/backoff arithmetic saturates instead of wrapping. Changing the native
 launch value requires rebuilding and restarting the nodes. Review election
 timing together with heartbeat frequency, persistence/transport latency, quorum
-read freshness and management request budgets; a larger timeout does not extend
+read freshness and management request budgets, but a larger timeout does not extend
 an accepted request's original deadline. See
 \repofile|docs/reference/raft-conformance.md|.
 
 The frame router's shared refresh interval is 1000 milliseconds, selected by
 \texttt{SNAPSHOT\_REFRESH\_MS} in
 \repofile|crates/catten-services/src/lib.rs|. Route refresh, ingress projection
-queries and source freshness share that interval; the local VIP admission lease
+queries and source freshness share that interval, while the local VIP admission lease
 is five intervals. Backend eligibility uses replication contact no older than
 the source-freshness interval, with an acknowledged current-term log entry.
 Only a committed availability projection changes the new-flow backend set.
 These settings require a service rebuild/restart. Review election timing,
-replication latency, projection convergence and flow-history retention together;
+replication latency, projection convergence and flow-history retention together, and
 a readiness signal or availability change cannot authorize request replay.
 
 \section{Management TLS configuration}
@@ -300,10 +300,10 @@ The server collects policy in
 CA roots, 64 enrolled leaf/role entries, 4 certificates per chain and 8192 bytes
 per certificate or server key. Each session permits 65536 input bytes,
 65536 output bytes and 16384 application bytes. The send-fragment setting is
-4096 bytes; the original handshake and session budgets are respectively
+4096 bytes, and the original handshake and session budgets are respectively
 5000 and 60000 milliseconds. One engine step performs at most 32 local TLS
 transitions. These are fields of the complete boot profile, not scattered
-constants or live overrides. Construction validates and captures them; existing
+constants or live overrides. Construction validates and captures them, so existing
 sessions cannot resize in place.
 
 Generate a complete editable limits file with
@@ -311,10 +311,10 @@ Generate a complete editable limits file with
 requires every named limit, server key/chain, client roots and explicit reader
 or administrator enrollments. Unknown, duplicate, missing and inconsistent
 settings reject. Seal the private profile with the selected policy's operations
-signing key and recipient public key; set
+signing key and recipient public key, and set
 \path{CATTEN_MANAGEMENT_TLS_RESOURCE} to its absolute file path when
 building the kernel. Only ciphertext is embedded. The resource is verified and
-decrypted at boot using the same prepared kernel trust owner; no service can
+decrypted at boot using the same prepared kernel trust owner, so no service can
 select an independent authority. The current delivery mechanism requires a
 kernel rebuild and restart to replace the resource.
 
@@ -329,30 +329,30 @@ allowance, and each AES-GCM application fragment adds 22 wire bytes. Validation
 checks that maximum application output still fits the selected storage.
 Certificates, root hints and all concurrent session buffers must also fit the
 service heap/stack and original operation budgets. External buffers do not bound
-every Rustls allocation; its current internal handshake-message ceiling is
+every Rustls allocation, and its current internal handshake-message ceiling is
 65535 bytes. Protocol dimensions and cipher safety ceilings are separate from
 workload policy. Exact fields, structural bounds and integration gates are in
 \repofile|docs/reference/management-tls.md|.
 
-Status uses TLS on port 443; deployment ingress uses TLS on port 7444. Both
-require an enrolled client certificate. Readers can observe; mutations require
-an administrator before controller dispatch and still require their signed
-bodies. Verified host tools require explicit CA, certificate and private-key
+Status uses TLS on port 443, while deployment ingress uses TLS on port 7444.
+Both require an enrolled client certificate, but a reader may only observe.
+Mutations require an administrator before controller dispatch as well as their
+signed bodies. Verified host tools require explicit CA, certificate and private-key
 files, with an optional server-name override for certificate matching. There is
 no plaintext listener fallback.
 
 Rotation or revocation replaces the complete resource, advances the installed
-policy revision and restarts both services; existing sessions are not hot
+policy revision and restarts both services, so existing sessions are not hot
 reconfigured. Public development authorities do not establish protected custody
 or rollback resistance. Each client obtains a fresh positive time-service
-reading before its handshake, under the original deadline; this does not
+reading before its handshake, under the original deadline, but this does not
 authenticate the underlying SNTP source. Full execution qualifications and
 remaining gates are recorded in \repofile|docs/reference/management-tls.md|.
 
 Established sessions recheck nonzero UTC, the original monotonic budgets and
 the enrolled client chain before admitting further work. Chain verification is
 cached within one observed UTC second. Expiry, unavailable time or observed
-rollback terminates that connection's authority; restoring time does not revive
+rollback terminates that connection's authority, and restoring time does not revive
 it. Idle connections continue to wait on resource readiness rather than periodic
 expiry polling. This does not authenticate time or prove cancellation of an
 already accepted mutation: retain its pending owner and never replay an uncertain
@@ -362,7 +362,7 @@ The x86 QEMU \texttt{boot\_trust\_test} fixture can compile a different exact
 installed signed-policy snapshot using the absolute file input
 \path{CATTEN_BOOT_TEST_INSTALLED_POLICY}. Its default is the public revision 7
 fixture. The host commits the selected public snapshot before building the
-authenticated kernel; the separate boot module must match it exactly. This
+authenticated kernel, and the separate boot module must match it exactly. This
 input rejects outside that development fixture. It supports restart and
 credential-rotation testing, but provides neither protected state nor platform
 rollback resistance: an older still-authorized kernel can carry its older
@@ -383,7 +383,7 @@ Use the following process before selecting a profile for a new workload:
         is not a capacity estimate for a larger workload.
     \item Run the policy harness and strict kernel builds. The harness compiles
         the actual policy, exercises admission counters and rejects inconsistent
-        profiles. Compile-time validation checks relationships and arithmetic;
+        profiles. Compile-time validation checks relationships and arithmetic, but
         it does not establish boot viability or essential-service progress.
     \item Boot the exact selected profile on the supported backends. Exercise
         success, exhaustion, allocation rejection, cancellation, restart/generation
@@ -404,7 +404,7 @@ cargo fmt --all -- --check
 
 The policy harness checks both the default and larger example, plus an optional
 operator-selected file. Native evidence for those profiles is listed in the resource-policy reference.
-These are focused capacity and ownership controls; sustained concurrent pressure and
+These are focused capacity and ownership controls, but sustained concurrent pressure and
 essential-service fairness remain acceptance work under SEC-07/18.
 
 \section{Extending configuration toward boot resources}

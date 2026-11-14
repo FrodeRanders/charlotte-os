@@ -9,11 +9,11 @@ up to five configured voters, while TLA+ safety models exhaustively explore
 three-node elections and membership transitions within their bounds. QEMU
 fixtures cover single-voter NVMe recovery, focused two-guest catalog and
 deployment paths, and three-guest discovery, membership, and ingress failover.
-These are validation topologies; the Raft membership representation and quorum
+These are validation topologies, but the Raft membership representation and quorum
 logic are generic.
 
 Each operational node runs exactly one durable Raft member inside
-\texttt{dns}; membership, names, deployments, keys, and cluster events share
+\texttt{dns}, and membership, names, deployments, keys, and cluster events share
 that member's ordered log. Multi-guest admission observes it through discovery
 and exercises \texttt{JOIN}, joint consensus, and \texttt{FINALIZE}. The separate
 \texttt{raft.elf} process is network-disabled and retained only by the NVMe
@@ -37,7 +37,7 @@ by the per-node DNS EL0 process, which:
 \begin{itemize}
     \item Registers the DNS endpoint and a \texttt{"raft-<id>"}
         administration/status endpoint backed by the same in-process node.
-    \item Learns transient peer MAC routes through discovery; voter authority
+    \item Learns transient peer MAC routes through discovery, but voter authority
         changes only through committed membership commands.
     \item Carries VoteRequest, AppendEntries, InstallSnapshot, and admission
         messages through the reliable-message service.
@@ -62,7 +62,7 @@ trait RaftTransport {
 \end{lstlisting}
 
 The operational CharlotteOS implementation uses the reliable message layer
-between DNS replicas; the consensus core does not change.
+between DNS replicas. The consensus core does not change.
 
 \section{Intended properties relative to socket-based Raft}
 
@@ -79,7 +79,7 @@ for peer_name in committed_members {
 }
 \end{lstlisting}
 
-The capability carries communication authority; an IP address alone does not.
+The capability carries communication authority, whereas an IP address alone does not.
 
 \subsection{Transport transparency}
 
@@ -121,7 +121,7 @@ Network reachability alone grants neither right.
 
 Each DNS/Raft replica runs in a separate protection domain. A crash in one node
 does not affect the others. The isolated storage fixture demonstrates recovery
-of term/vote state across explicit process teardown and restart; restarting a
+of term/vote state across explicit process teardown and restart, but restarting a
 DNS replica and recovering its catalog inside a live quorum remains future
 integration work. The generic service lifecycle separately demonstrates that
 stale connections fail and clients can re-lookup a replacement generation.
@@ -131,10 +131,10 @@ stale connections fail and clients can re-lookup a replacement generation.
 The operational DNS node requires persistent storage. One jointly opened pair
 of stable objects derived from cluster/node identity holds tagged
 \texttt{CRFTSTA4} term/vote/join-admission state and \texttt{CRFTLOG4}
-snapshot/log state. Only two absent objects authorize initialization;
+snapshot/log state. Only two absent objects authorize initialization, whereas
 incomplete, corrupt and unsupported records reject without reset or a volatile
 fallback. Older layouts are not migrated. Mutations are followed by an NVMe
-flush; snapshot bytes and their retained suffix share one record replacement.
+flush. In addition, snapshot bytes and their retained suffix share one record replacement.
 There are no production stores to migrate now. Future deployed-store format
 changes must ship an explicit, interruption-tested migration preserving
 election, admission and committed state. See
@@ -146,7 +146,7 @@ without redundant object IDs, primary nodes or variant-zero digests. Earlier sna
 digests, descriptors, replica sets and authorization signatures are removed.
 Every registration command carries an explicit deployment generation: zero
 for system services, or the exact desired generation for applications. Missing
-suffixes reject before catalog mutation; all callers use one encoder. Pair-v4
+suffixes reject before catalog mutation, and all callers use one encoder. Pair-v4
 and catalog-v19 tags reject earlier logs and snapshots before replay.
 The current catalog also persists a bounded ingress-availability projection:
 generation, leader term, membership epoch, leader identity and eligible voters.
@@ -155,7 +155,7 @@ entries and publishes it through the same quorum log. A term or membership
 mismatch fences the projection until a replacement commits. Availability
 does not remove a voter, authenticate a peer or prove quiescence.
 Unsupported or malformed application snapshots reject explicitly before Raft
-publishes snapshot progress or membership. Recovery stops on rejection;
+publishes snapshot progress or membership. Recovery stops on rejection, whereas
 network installation returns failure and retains the existing applied state.
 See \path{docs/reference/catalog-snapshots.md}.
 
@@ -178,7 +178,7 @@ expresses the seed as a service name or capability rather than an IP address.
 Probes and responses carry one complete version-1 advertisement: node identity,
 service name, cluster role and Raft/leader IDs. Its header declares the exact
 payload length. Old zero-length headers and missing or truncated cluster
-fields reject before learning or response; Ethernet padding cannot synthesize
+fields reject before learning or response, so Ethernet padding cannot synthesize
 them. All nodes must rebuild together. The current wire contract is documented
 in \path{docs/reference/discovery-protocol.md}.
 
@@ -186,14 +186,14 @@ Nodes broadcast their durable identity on the local Ethernet segment. DNS
 records every discovered identity-to-MAC route in its relmsg transport. Among
 fresh singletons, only the lexicographically larger identity applies to the
 smaller anchor. Before sending the request it durably enters a non-voting
-joining posture; the anchor then commits \texttt{JOIN}, catches the node up,
+joining posture, then the anchor then commits \texttt{JOIN}, catches the node up,
 commits the joint configuration, and finalizes it.
 
 \subsection{Pre-shared cluster capability (small kernel change)}
 
 A cluster administrator provisions a connection to a known cluster member as a
 ``cluster capability'' and delivers it to new nodes via the config page.
-No name lookup required; the node already holds a first-class connection.
+No name lookup required, because the node already holds a first-class connection.
 
 \subsection{Ethernet broadcast discovery (zero-configuration)}
 
@@ -209,7 +209,7 @@ The \texttt{dns} service realizes this end state: its \texttt{CatalogMachine}
 is a \texttt{StateMachine} implementation on the Raft substrate, and a new
 node needs only a single seed to discover all peers through the consistent
 name registry. There remains one process-facing name-service instance per
-machine; those instances apply the same committed registry state. The
+machine, and those instances apply the same committed registry state. The
 \texttt{ns} node-local registry and the \texttt{dns} cluster catalog remain
 distinct services.
 
@@ -229,7 +229,7 @@ trait StateMachine: Send + Sync {
 \end{lstlisting}
 
 Restore errors leave application state unchanged. \texttt{RaftNode::new}
-returns a result; callers must handle rejection before exposing a voter.
+returns a result, so callers must handle rejection before exposing a voter.
 
 Different services are different state machines on the same Raft substrate:
 
@@ -239,14 +239,14 @@ Different services are different state machines on the same Raft substrate:
         ``unregister(name, owner, generation)''. Unregistration is rejected
         unless both owner and generation still match the active entry.
         The owning DNS process watches the local endpoint through a waitable
-        kernel completion. Endpoint death proposes this same fenced tombstone;
+        kernel completion. Endpoint death proposes this same fenced tombstone, and
         a follower forwards an owner-and-generation-fenced, idempotent request
         to its known leader and retries across leadership changes. Peer/MAC and
         session checks provide correlation, but the inter-node transport has no
         cryptographic peer authentication. A stale death notification
         therefore cannot remove a replacement generation.
         Service registration retains an attached or existing node-local
-        connection in an owning operation; full-name lookup and registration
+        connection in an owning operation, and full-name lookup and registration
         use memory-carried calls. Missing local publication rejects before a
         leader proposal. Catalog-only markers use the explicit event operation,
         rather than becoming remotely resolvable services without endpoints.
@@ -254,7 +254,7 @@ Different services are different state machines on the same Raft substrate:
         clients minting rights.
         The state maps names to owning-node identities, routable service
         identities, generations, and policy metadata. Replicated, it makes
-        service discovery available cluster-wide; this is the implemented
+        service discovery available cluster-wide, and this is the implemented
         \texttt{dns} service.
     \item Distributed lock service: commands are ``acquire(lock\_id)''
         and ``release(lock\_id)''. The state is a set of held locks.
@@ -279,14 +279,14 @@ placement, or invocation traffic.
 The DNS process also never waits synchronously for an arbitrary local service
 while running this reactor. Name lookup and local invocation are retained as
 bounded owning operations whose two RPC phases bind reply readiness to the
-shared CQ; later reactor turns observe ready replies without blocking on one
+shared CQ, so later reactor turns observe ready replies without blocking on one
 service. Their original kernel-monotonic deadline bounds routing and execution. Consequently a failed
 service cannot stop Raft heartbeats or relmsg receive draining. A timeout before
-execution is reported as a retryable lookup failure; after invocation has been
+execution is reported as a retryable lookup failure, whereas after invocation has been
 submitted, timeout or reply-binding rejection is reported as an uncertain outcome. Duplicate remote calls are
 suppressed both while pending and in the acknowledged-result window.
 Node-local cleanup now owns its exact-generation retirement RPC and binds reply
-readiness to that CQ as well. Preparation begins one monotonic deadline;
+readiness to that CQ as well. Preparation begins one monotonic deadline. In particular,
 uncertainty never submits it again. Metadata observation uses an owned timed RPC
 to the independent NS process and keeps rejection distinct from confirmed
 absence before a catalog tombstone is submitted. Endpoint watches and raw
@@ -295,16 +295,16 @@ receive/transport contexts retain their separate notification gaps.
 \section{Relationship to the name service}
 
 The node-local \texttt{ns} registry and replicated \texttt{dns} catalog are
-separate services. DNS applies committed catalog state and resolves remote routes;
+separate services. DNS applies committed catalog state and resolves remote routes, whereas
 NS holds machine-local endpoint capabilities:
 
 \begin{itemize}
     \item Cluster registrations are submitted through the Raft leader and applied
-        to each DNS replica; local endpoint publication remains an NS operation.
+        to each DNS replica, while local endpoint publication remains an NS operation.
     \item Service generations are replicated consistently. A restart on node 3
         cannot create a split-brain where node 1 sees generation 5 and node 2
         sees generation 3.
-    \item Replicated policy metadata and tombstones propagate through the log;
+    \item Replicated policy metadata and tombstones propagate through the log, while
         local delegation still depends on machine-local authority.
 \end{itemize}
 
@@ -312,7 +312,7 @@ Kernel capability identifiers and endpoint objects are machine-local and are
 not Raft state. For a local registration, lookup delegates a connection to the
 local endpoint. For a remote registration, the local name-service instance
 must return a local proxy connection whose transport reaches the owning node.
-Raft replicates the metadata needed to choose that route; the capability
+Raft replicates the metadata needed to choose that route, but the capability
 object itself remains local.
 
 \section{Election timers as first-class completions}
@@ -338,11 +338,11 @@ let outcome = catten_services::reactor::wait(
 // Admission rejection: abort, retaining pending resources.
 \end{lstlisting}
 
-The timer is a kernel-managed operation. The shard parks on its CQ; when its
+The timer is a kernel-managed operation. The shard parks on its CQ, and when its
 cookie arrives, the reactor drains the entry and advances the protocol clock.
 The checked timeout remains an independent watchdog because accepting a detached
 timer does not prove that its cookie will arrive promptly. Its original watchdog
-deadline survives unrelated reactor wakes; only a clock event or expiry starts
+deadline survives unrelated reactor wakes, so only a clock event or expiry starts
 the next period. Wait admission
 rejection is distinct from deadline expiry and must not manufacture a clock tick.
 Neither path needs a dedicated sleeping thread or a spinning timeout loop.
@@ -368,11 +368,11 @@ Neither path needs a dedicated sleeping thread or a spinning timeout loop.
     \item Failure isolation can extend to the consensus layer: a Raft
         node is a userspace process. It can crash, restart, and recover without
         affecting the kernel or other Raft nodes. The supervisor handles the
-        lifecycle; the Raft protocol handles the consensus.
+        lifecycle, while the Raft protocol handles the consensus.
 
     \item A distributed name service is implemented: the
         \texttt{dns} service runs the \texttt{CatalogMachine} state machine
-        on the Raft substrate; all other services that need cluster-wide
+        on the Raft substrate, and all other services that need cluster-wide
         consistency can use the same \texttt{StateMachine} pattern and shared
         consensus implementation.
 \end{enumerate}
@@ -381,7 +381,7 @@ Neither path needs a dedicated sleeping thread or a spinning timeout loop.
 Election eligibility is reconstructed from the snapshot and retained configuration
 entries before a restarted node can vote.  Recovering that membership does not
 claim application commitment or application replay.  The joint entry requires both
-old and proposed voter majorities; proposed voters remain replication targets
+old and proposed voter majorities, while proposed voters remain replication targets
 before commitment.  Local peer discovery uses that same replication peer set.
 Finalization retains the joint-majority requirement until its
 fence commits, including when a later no-op would otherwise cover that fence.
@@ -390,7 +390,7 @@ fence commits, including when a later no-op would otherwise cover that fence.
 The 29 October 2026 native qualification passed the 17-test no-network boot
 and both 20-test socket-LAN guests, including catalog replication and remote
 invocation.  A targeted QEMU kill after durable term 1 recovered and advanced
-to term 2 on the reused virtual NVMe disk.  Host caches remained live; this
+to term 2 on the reused virtual NVMe disk.  Host caches remained live, so this
 does not qualify physical power loss, interrupted log/snapshot publication,
 or simultaneous multi-voter restart.
 

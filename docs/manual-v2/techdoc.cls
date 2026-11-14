@@ -44,6 +44,8 @@
 % Paragraph layout
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{0.65\baselineskip plus 0.1\baselineskip minus 0.05\baselineskip}
+% Keep technical identifiers within the text block when normal line breaks fail.
+\setlength{\emergencystretch}{2em}
 \setlist[itemize]{itemsep=0.15\baselineskip,topsep=0.3\baselineskip,parsep=0pt,partopsep=0pt}
 \setlist[enumerate]{itemsep=0.15\baselineskip,topsep=0.3\baselineskip,parsep=0pt,partopsep=0pt}
 \setlist[description]{style=unboxed,leftmargin=0pt,labelsep=0.5em,itemsep=0.1\baselineskip,topsep=0.2\baselineskip,parsep=0pt,partopsep=0pt}
@@ -299,6 +301,9 @@
 {1ex}{\mychaptertitlefont}
 
 \titlespacing{\chapter}{0mm}{*0}{*1}
+
+% Leave room for three-digit page numbers at every contents font size.
+\contentsmargin{2.5em}
 
 \titlecontents{chapter}[0pt] {\addvspace{2mm} \rmfamily
 \Large}{\thecontentslabel\quad}{}{\titlerule*[5pt]{.}\contentspage}

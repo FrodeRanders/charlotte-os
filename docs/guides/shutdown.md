@@ -1,6 +1,6 @@
 # Cooperative shutdown and forced retirement
 
-Shutdown follows a bounded sequence; killing a thread does not run its
+Shutdown follows a bounded sequence, because killing a thread does not run its
 destructors. Deployed applications
 receive requests through their kernel-owned, userspace-read-only launch page.
 They acknowledge the request through the domain status page, release owned
@@ -58,8 +58,8 @@ RAII owners.
 
 Current tooling emits `CDEPLOY6`. Its `shutdown_grace_ms` field is signed with
 the artifact digest, placement, stack pages, thread quota, and grants. Valid
-values are zero through 300,000 milliseconds; zero requests immediate forced
-retirement. Readers accept only `CDEPLOY6`; every descriptor supplies its
+values are zero through 300,000 milliseconds, and zero requests immediate forced
+retirement. Readers accept only `CDEPLOY6`, and every descriptor supplies its
 explicit grace period, with no older-format defaults. Built-in launch policy
 may separately choose the 5,000-millisecond default.
 
@@ -75,17 +75,17 @@ On the first `DeployedArtifact::poll_retire()` call, the kernel:
 
 The agent retains the `DeployedArtifact` owner until reclamation completes. The
 kernel also retains its `DomainTeardown` owner in the deployment registry while
-close is pending. Existing operation leases can finish; subsequent retirement
+close is pending. Existing operation leases can finish, and subsequent retirement
 polls advance cleanup after they drain. The supervisor allows five seconds for
 thread reaping and lease drain after teardown starts. If this bound expires or a
 close precondition fails, the registry caches a terminal failure, retains the
 deployment entry and backing, and reports failure instead of success. The node
 shutdown coordinator likewise refuses poweroff after reclamation error. A
-lease-drain timeout leaves the close fence in force; later lease completion does
+lease-drain timeout leaves the close fence in force, and later lease completion does
 not reopen admission.
 
 Dropping an unfinished `DeployedArtifact` owner sends a best-effort force
-request; it does not claim that asynchronous reaping completed. Ordinary
+request, but it does not claim that asynchronous reaping completed. Ordinary
 reconciliation must retain the owner and keep polling until the kernel reports
 completion, both to provide the cooperative window and observe final
 reclamation.
@@ -101,7 +101,7 @@ include final hardware rendezvous, which can still stall.
 The deployment agent is itself lifecycle-aware. When it observes a
 `NodeShutdown` request, it stops catalog reconciliation before launching any
 new work, and marks every ordinary and operational child as retiring. It first
-polls ordinary applications until their address spaces have been reclaimed;
+polls ordinary applications until their address spaces have been reclaimed, and
 only then does it begin retiring their privileged Kafka/S3 operational
 connectors. Applications therefore retain the external-service capabilities
 needed to finish or abort transactions during their grace window. Child
@@ -127,13 +127,13 @@ Whole-node poweroff requires an operator-signed `CSHUTDN1` envelope.
 The fixed 144-byte record binds a nonzero target node
 key, a per-node monotonic sequence, a UTC validity interval, the whole-node and
 per-phase grace budgets, and the `power-off` reason. Current policy permits at
-most 24 hours of validity, 15 minutes of total grace, and 60 seconds per phase;
+most 24 hours of validity, 15 minutes of total grace, and 60 seconds per phase, and
 the phase grace cannot exceed the node grace. There is no broadcast target, so
 a controller can preserve quorum while sequencing a cluster rollout.
 
 `cluster-sign shutdown-sign` creates the envelope off-cluster and
 `shutdown-notify` posts it to `POST /v1/shutdowns`. Any member may accept the
-bounded request. A follower relays the complete signed proof over relmsg; the
+bounded request. A follower relays the complete signed proof over relmsg, and the
 leader re-verifies it against the committed cluster key and trusted UTC before
 proposing it. The catalog state machine verifies the signature again, fences
 stale or conflicting per-node sequences, stores the exact envelope in its
@@ -150,7 +150,7 @@ or unverified device quiescence still refuses terminal poweroff.
 
 The signed intent is desired state: while it remains the latest replicated
 record, a restarted target drains and powers off again. A later lifecycle
-policy must use a higher sequence; the v1 format intentionally has no unsigned
+policy must use a higher sequence, and the v1 format intentionally has no unsigned
 clear operation.
 
 ## Reverse-dependency node services
@@ -175,7 +175,7 @@ Deployment ingress, HTTP ingress, and the UTC time service now honor this
 request directly. The two ingress services stop opening listeners and poll
 their current accept or receive operation with a bounded lifecycle check.
 Dropping their resource-owning serving scopes closes the listener and service
-connections; an HTTP request already admitted may finish within the phase
+connections, and an HTTP request already admitted may finish within the phase
 grace. The time service drops its public endpoint and unwinds any pending NTP
 call, UDP socket, and persistence connection as one owning scope. None of the
 three begins new work after observing the lifecycle request.
@@ -187,7 +187,7 @@ that server-side slot before `receive_timeout` returns, so lifecycle polling
 cannot discard the first bytes of the next request or strand a deferred reply.
 
 The transport phase is cooperative as well. TCP/IP runs only after all socket
-consumers have drained; it closes admission, completes retained receive calls,
+consumers have drained. Then it closes admission, completes retained receive calls,
 stops any residual protocol sockets, and drops its endpoint and owned NIC
 connection. The frame router then drops one owning scope containing its
 single NIC receive call, deferred name lookups, routed service connections,
@@ -197,14 +197,14 @@ coordinator transfer the NIC driver to device quiescence.
 Startup is part of the same lifecycle. A long-lived service must not use an
 unbounded dependency lookup before it starts polling `Context::lifecycle()`.
 `catten_services::wait_for_local_ready_or_shutdown` performs bounded,
-non-blocking name lookups with owned timer waits; HTTP, time, and TCP/IP can
+non-blocking name lookups with owned timer waits, so HTTP, time, and TCP/IP can
 therefore acknowledge a drain even when the node-ready gate never opens. The
 kernel coordinator records acknowledged, unacknowledged, and forced counts per
 phase before it reclaims each domain.
 
 The deployment plane and cluster core follow the same rule. Deployment ingress
-closes its listener; cluster control drops its endpoint and service
-connections; and the agent interrupts dependency/reconciliation waits, drains
+closes its listener, while cluster control drops its endpoint and service
+connections, and the agent interrupts dependency/reconciliation waits, drains
 applications before their operational connectors, then releases its catalog
 connections. DNS stops its Raft/catalog reactor and cancels pending transport
 and catalog work. Reliable messaging rejects retained sends, completes its
@@ -267,5 +267,5 @@ in-tree hardware adapters. Service-specific `OP_SHUTDOWN` messages remain
 useful for tests and targeted live upgrade, but are not the deployment
 lifecycle authority. Device reset and IOMMU invalidation remain
 adapter-specific proofs rather than a uniform hardware attestation record.
-PSCI poweroff is implemented and boot-validated on AArch64; x86-64 still needs
+PSCI poweroff is implemented and boot-validated on AArch64, whereas x86-64 still needs
 its ACPI poweroff backend.

@@ -15,7 +15,7 @@ The guiding principle is:
 
 The Berkeley socket API (\texttt{socket()}, \texttt{connect()}, \texttt{send()},
 \texttt{recv()}) remains useful for compatibility. CharlotteOS places it in a
-TCP/IP service; native service interfaces use capabilities:
+TCP/IP service, while native service interfaces use capabilities:
 
 \begin{itemize}
     \item Network addresses do not define Charlotte service identity:
@@ -48,7 +48,7 @@ members, a smoltcp TCP/IP service, and a catalog-routed remote invocation path.
 The NIC/TCP path is runtime-validated on macOS QEMU TCG with both supported NIC
 models (\texttt{--relmsg-test}, \texttt{--disco-test},
 \texttt{--dns-test}, and \texttt{--tcpip-test}). The current remote-call
-prototype carries scalar arguments and results; general remote capability
+prototype carries scalar arguments and results, but general remote capability
 delegation remains future work.
 
 \section{The native protocol stack}
@@ -84,11 +84,11 @@ endpoint protocol has two operations:
     \item \texttt{OP\_SEND(frame\_buffer)}: transmit a frame via a moved
         memory object.
     \item \texttt{OP\_RECV}: the caller retains a reply token for a deferred
-        receive; the driver replies with a frame buffer.
+        receive, and the driver replies with a frame buffer.
 \end{itemize}
 
 Ethernet is a generic frame transport. It can carry IP, ARP, LLDP, custom
-protocols, or CharlotteOS native messages; higher layers interpret the frames.
+protocols, or CharlotteOS native messages, and higher layers interpret the frames.
 
 \subsection{Reliable message layer}
 
@@ -109,7 +109,7 @@ for RPC, consensus protocols, and distributed objects.
 
 Fragmentation is implemented: a message larger than one frame's payload (1454
 bytes in wire protocol v3) is split across frames that share the message's
-sequence number. Every data frame carries a 32-bit total message length; each
+sequence number. Every data frame carries a 32-bit total message length, and each
 fragment additionally carries a 32-bit byte offset and a
 \texttt{FLAG\_FRAG}/\texttt{FLAG\_MORE} pair. The receiver validates those
 bounds, buffers fragments by offset, and reassembles a contiguous message.
@@ -130,11 +130,11 @@ only a strictly newer session when resetting receive ordering, so one
 reliable-message service can restart while its peer remains running and old
 delayed frames cannot roll state backward. Receive-message count, queued
 bytes, fragment count, aggregate reassembly bytes, and retained outbound bytes
-are bounded; a full delivery queue withholds sequence advancement and its
+are bounded, so a full delivery queue withholds sequence advancement and its
 acknowledgement, applying retransmission-based backpressure. An incomplete
 fragmented message does not emit one useless cumulative acknowledgement per
 fragment, and retransmission grace scales with retained fragment count up to a
-fixed cap; one-frame RPCs retain the 200~ms retry. The transport permits one
+fixed cap, while one-frame RPCs retain the 200~ms retry. The transport permits one
 in-flight message per peer and retains fragments for retry. Bulk data belongs
 in a streaming or object-store protocol, while reliable messages remain bounded
 and easy to account for.
@@ -148,7 +148,7 @@ The RPC layer provides request/reply semantics over the reliable message layer:
     \item Asynchronous invocation: a pending RPC call backs the
         \texttt{Future}, allowing the shard to continue while it waits.
     \item Object references: the target architecture can represent delegated
-        remote authority; general remote capability delegation remains future
+        remote authority, but general remote capability delegation remains future
         work.
     \item Serialization: typed protocol crates encode and decode Rust values
         on the wire.
@@ -163,7 +163,7 @@ accepted only from the expected peer. The implementation bounds outstanding
 calls at 64, returns \texttt{ERR\_UNCERTAIN} after five seconds (execution may
 already have occurred), and retains 128 completed results to suppress duplicate
 execution within that window. The replicated catalog assigns a monotonically
-advancing service generation; requests and replies carry it, and the target
+advancing service generation, and requests and replies carry it, and the target
 rejects stale generations before execution. Remote object-capability
 delegation remains future work.
 
@@ -178,7 +178,7 @@ lengths bounded to 4 KiB each, and exact frame termination. Retired
 \texttt{0x10/0x11} frames reject. The caller prepares request bytes before
 publishing in-flight state, with its deadline captured beforehand. The target
 prepares the fixed reply buffer before admitting a local operation and retains
-it with that operation; result encoding uses the same allocation. A follower
+it with that operation, so result encoding uses the same allocation. A follower
 carries its original query deadline into invocation instead of restarting the
 budget, and rejects expired routing results before admission.
 \end{implementationdetail}
@@ -187,7 +187,7 @@ budget, and rejects expired routing results before admission.
 DNS v4 client calls move a mandatory \texttt{CDNSCL01} memory frame containing
 an exact byte length, complete 1--256-byte name, opcode and signed argument.
 Retired packed-name/12-byte calls reject. The local operation owns both RPC
-phases and its returned connection; each pending RPC binds reply readiness to
+phases and its returned connection, and each pending RPC binds reply readiness to
 the reactor CQ. One kernel-monotonic deadline begins before decoding and survives
 routing, lookup and invocation. The reactor waits for the earliest remaining
 operation deadline while retaining its separate clock/transport interests.
@@ -208,19 +208,19 @@ local removal must match the generation captured before the proposal. A delayed
 operation therefore cannot remove a replacement instance.
 
 \begin{implementationdetail}{Registration relay framing}
-Follower registration now uses tags \texttt{0x28/0x29}; automatic retraction
+Follower registration now uses tags \texttt{0x28/0x29}, while automatic retraction
 uses \texttt{0x2a}. Complete 32-bit lengths carry nonempty owner identities
 bounded to 4 KiB and service names bounded to 256 bytes. The old
 \texttt{0x14/0x15/0x16} records reject, including missing deployment-generation
 suffixes, shortened prefixes, and trailers. A registration reply must match the
 captured leader, DNS session, and request ID before consuming the pending
-operation; generation zero explicitly reports failure. The leader prepares
+operation, and generation zero explicitly reports failure. The leader prepares
 its reply buffer before the first Raft command and retains that allocation
 through activation or rejection. Local registration phases retain owned
 connections and reply authority, and use full-name local publication helpers.
-Service registration requires a live publication or attached connection;
+Service registration requires a live publication or attached connection, whereas
 catalog-only fixture markers use the explicit event operation.
-Retraction still requires the exact owner and generation; failed encoding keeps
+Retraction still requires the exact owner and generation, and failed encoding keeps
 the existing publication owner for its one-second protocol retry interval
 and exact-generation termination policy. Transport
 metadata, raw close-watch readiness, and other local scalar adapters remain
@@ -231,17 +231,17 @@ separately qualified. See \path{docs/reference/dns-registration-relay.md}.
 
 Retirement requires the exact registered generation and the registrar's or
 manager's authority. Endpoint death is confirmed through a retained watch before
-the matching publication is removed; lookup alone grants no retirement right.
+the matching publication is removed, because lookup alone grants no retirement right.
 
 \begin{implementationdetail}{Generation observation and retirement requests}
 Node-local generation observation and retirement now require the
 \texttt{CNSGEN01} frame under NS interface 2: exact total length, complete
-1--256-byte name and explicit generation. Observation requires zero; retirement
+1--256-byte name and explicit generation. Observation requires zero, whereas retirement
 requires a positive generation and the exact registrar principal or a service
 manager. Retired scalar observation and packed-name retirement reject. Cleanup
 owns its accepted pending call, binds reply readiness to the CQ and carries its
 original five-second monotonic deadline into the reactor's earliest wait.
-Submission/storage rejection follows the existing fail-closed domain policy;
+Submission/storage rejection follows the existing fail-closed domain policy, and
 rejected reply binding retains the accepted owner through abort. Timeout,
 rejection and wakes never permit replay or establish physical cleanup. Raw
 receive/transport adapters, other endpoint-close watches and broader cleanup
@@ -256,11 +256,11 @@ policy mutation. It binds request intake to the same default CQ signaled by
 the kernel watches and waits event-only, rechecking lifecycle requests. A CQ
 entry is only a hint: NS confirms its retained watch's exact endpoint-close
 result before internally unpublishing the current full name and generation.
-Replaced watches cannot clear a new generation; caller registrar/manager
+Replaced watches cannot clear a new generation, and caller registrar/manager
 checks remain. Cancellation precedes source disposal. Unexpected watch results
 or rejected CQ waits retain the registry through terminal abort, without
 claiming physical cleanup. The trusted NS constructor prepares 65 completion
-slots before threads/events for 64 live publications plus one replacement;
+slots before threads/events for 64 live publications plus one replacement, while
 ordinary launch budgets and normal node admission retain their existing policy.
 The native fixture observes both DNS-owned and Echo-owned names disappearing
 after death with read-only lookups. Raft completion and the publication scan
@@ -280,13 +280,13 @@ follower sends a correlated query to the known leader, and the leader answers
 only when Graft's quorum-contact read barrier succeeds. Correlated query frames
 now use tags \texttt{0x24/0x25} and full 32-bit identity lengths, with a 4 KiB
 bound per caller, name, or returned owner. Missing lookup results retain an
-explicit empty owner and zero generation; identities are never shortened.
+explicit empty owner and zero generation, and identities are never shortened.
 Retired \texttt{0x12/0x13} frames, wrong tags, truncation, and trailing bytes
 reject. The follower prepares the complete request before publishing pending
 query state and carries the same deadline through that preparation. Source,
-session, query-ID, expected-leader, and generation checks remain required;
+session, query-ID, expected-leader, and generation checks remain required, because
 readiness does not publish authority. Query failure returns a
-safely retryable \texttt{ERR\_NOT\_LEADER}; a timeout after remote execution may
+safely retryable \texttt{ERR\_NOT\_LEADER}, whereas a timeout after remote execution may
 have begun remains \texttt{ERR\_UNCERTAIN}. Raft time is supplied by a persistent
 detached-timer completion, preventing sustained endpoint traffic from freezing
 the lease clock. Catalog and status dumps are diagnostic local observations,
@@ -298,7 +298,7 @@ row count, full identity lengths, and generations. A result above that bound
 rejects instead of returning a one-page prefix or shortening names. DNS retains
 one owned reply transaction through output allocation, mapping, and consuming
 publication. HTTP validates the whole set before rendering an array of rows,
-preserving replicas that share a name; unavailable or rejected catalogs render
+preserving replicas that share a name, while unavailable or rejected catalogs render
 as \texttt{null}. Both node and cluster views resolve a fresh owned DNS connection
 per request, so a missed startup publication is not permanent absence. The
 separate registered-count field remains status metadata.
@@ -308,12 +308,12 @@ See \path{docs/reference/dns-catalog.md}.
 \begin{implementationdetail}{Local name-service status format}
 Local NS status uses the complete \texttt{CNSSTAT1} observation, bounded to
 17,176 bytes for all 64 supported active publications. Its fixed header carries
-the exact total length, active row count, and number of retained lookup requests;
+the exact total length, active row count, and number of retained lookup requests, and
 each row carries a full 1--256-byte name and positive generation. Tombstones
 are excluded, and multiple pending requests for one missing name count
 separately. Retired \texttt{NSST} pages, inconsistent counts, partial sets, and
 duplicate or unsorted names reject before rendering. NS owns the incoming
-transaction, output mapping, and consuming reply; HTTP reports invalid or
+transaction, output mapping, and consuming reply, while HTTP reports invalid or
 unavailable observations as \texttt{ns:null} and preserves every identity byte.
 This diagnostic listing supplies no application authority or physical cleanup
 proof. See \path{docs/reference/name-service-status.md}.
@@ -365,20 +365,20 @@ if that entropy is unavailable. Ephemeral-port selection uses an independent
 and little-endian counter. It selects the same unbiased 49152--65535 range.
 The port helper now uses the shared erasing HMAC: key pads, hash state,
 intermediates and the digest have erasing owners. Initialization also owns its
-40-byte entropy scratch before filling. Ordinary Drop erases those named fields;
+40-byte entropy scratch before filling. Ordinary Drop erases those named fields, but
 compiler/register copies, forced termination and physical-memory erasure remain
-separate. The change preserves the existing port sequence; public deterministic
+separate. The change preserves the existing port sequence, and public deterministic
 seeds appear only in opt-in validation, never production initialization. See
 \repofile|docs/reference/secret-state-lifetimes.md|.
 
 \texttt{OP\_ACCEPT} (15) retains the complete request until the listening
 socket reaches Established or CloseWait, then returns scalar zero without
-attachments. Listen and SynReceived remain pending; terminal states or explicit
+attachments. Listen and SynReceived remain pending, whereas terminal states or explicit
 close return an error. \texttt{OwnedSocket::accept\_call} can bind the accepted
 call to a CQ. \texttt{OP\_TRY\_ACCEPT} (5) is a separate immediate state
 observation used by the existing nonreactor callers. Deferred receive drains
 buffered bytes before reporting peer EOF. Deployment input uses these deferred
-notifications; HTTP keyhole input remains serial.
+notifications, while HTTP keyhole input remains serial.
 
 Deferred TCP \texttt{OP\_SEND} (16) carries the full socket ID and one exact
 4096-byte moved \texttt{CSOCKTX1} frame: eight magic bytes, a little-endian
@@ -387,19 +387,20 @@ Untagged, incomplete or extended frames reject. The complete request retains
 its read-only mapping through handshake or buffer pressure. A positive scalar
 receipt acknowledges one locally enqueued prefix. Only then may a caller submit
 its remainder. Terminal states and explicit close settle the request with an
-error; timeout or observation failure grants no replay authority.
+error, but timeout or observation failure grants no replay authority.
 \texttt{OwnedSocket::send\_call} returns the pending owner for CQ binding.
 Deployment response sends use it with an original five-second output deadline.
+
 The distinct immediate TCP/UDP operation \texttt{OP\_TRY\_SEND} (6) now uses
 that same exact frame and the full socket ID. \texttt{try\_send\_call} prepares
-the caller-owned frame; NTP and the smoke client use the same grammar. Its
+the caller-owned frame, and NTP and the smoke client use the same grammar. Its
 complete incoming owner retains the read-only mapping through one enqueue
 attempt, then releases mapping/backing before replying. It retains no send
 waiter. Retired untagged/packed pages reject without a low-half lookup or format
 fallback. Both operations carry 1--4080 payload bytes. A positive TCP prefix
-receipt permits the remainder; timeout or uncertain observation permits no
+receipt permits the remainder, whereas timeout or uncertain observation permits no
 replay. The NIC's send opcode belongs to a separate protocol. TCP/IP still
-progresses on its 50~ms timed reactor cadence; deferred
+progresses on its 50~ms timed reactor cadence, but deferred
 receipts do not make the whole transport event-driven.
 
 Reactor logical close uses \texttt{OwnedSocket::into\_closing}, consuming the
@@ -407,31 +408,35 @@ socket into \texttt{ClosingSocket}. It retains that socket and its accepted
 \texttt{OP\_CLOSE} (8) call through CQ observation. Only typed scalar receipts
 Started (0) or Unavailable (1), without attachments, disarm the owner. Deployment ingress keeps its client position
 and one original five-second admission/observation budget until confirmation.
-Queue-full rejection permits 50~ms admission backoff; accepted close is never
+Queue-full rejection permits 50~ms admission backoff, but accepted close is never
 resubmitted. Uncertain failure or deadline retains the complete scope through
 domain abort. Incomplete operation Drop aborts before field cleanup, without
-another close. Unavailable identifies an absent full ID below the service's
-reservation watermark; it attests to no former owner or physical cleanup.
+another close.
+
+Unavailable identifies an absent full ID below the service's
+reservation watermark, but it attests to no former owner or physical cleanup.
 Foreign live entries and unreserved IDs reject. Opaque serial reservations are
 consumed once by publication, including failed attempts. IDs never repeat within
-this connection's service incarnation; exhaustion rejects before backend
-allocation. Ordinary \texttt{OwnedSocket::close}/Drop now consume the same
+this connection's service incarnation, and exhaustion rejects before backend
+allocation.
+
+Ordinary \texttt{OwnedSocket::close}/Drop now consume the same
 private typed lease and close owner. One original five-second budget covers
 admission and one checked pending-call wait. Queue-full rejection permits 50~ms
 admission backoff during the first second. Final unstarted rejection returns its
-actual IPC error and terminally retains the complete driver; Drop cannot start
+actual IPC error and terminally retains the complete driver, and Drop cannot start
 another close. Accepted timeout, rejected wait admission or invalid/service/
 observation outcome aborts with the owner live. No scalar ID is restored.
 The shared Started/Unavailable decoder grants no physical or charge-refund proof.
-This policy remains synchronous in setup/shutdown destructors; whole-scope
+This policy remains synchronous in setup/shutdown destructors, so whole-scope
 latency remains unqualified.
 
 \texttt{OP\_RECV} and \texttt{OP\_STATUS} require one writable 4096-byte
 caller-supplied memory object moved into the call. The reply returns that same
-backing; retained pages remain charged to the original allocating generation,
+backing, and retained pages remain charged to the original allocating generation,
 including after a move or that sponsor's root closes. These paths allocate no
 TCP/IP-sponsored reply pages and reject missing or oversized buffers. An owning
-pending receive retains the request, buffer and transient mapping together;
+pending receive retains the request, buffer and transient mapping together, and
 local mapping access ends before reply or cancellation. This removes the
 identified receive-retention starvation path without claiming aggregate
 principal/heap admission or complete hostile-network fairness. See
@@ -444,32 +449,32 @@ accepted-call error or submits again from Drop. The one-second admission limit
 lies within its original five-second overall budget. Request deadlines and
 queue capacity remain unchanged. The HTTP test profile enables phase traces. Failed packet captures
 and scoped pressure validation are recorded in
-\repofile|docs/reports/audits/2026-10-10-security-http-progress.md|;
+\repofile|docs/reports/audits/2026-10-10-security-http-progress.md|, but
 broader flood fairness remains open.
 
 Deployment ingress shares owned listener preparation and retains its listener
-through queue-full accept rejection. Bounded request storage grows fallibly;
+through queue-full accept rejection. Bounded request storage grows fallibly, and
 completed POST bodies transfer their backing without a second body allocation.
 Static 400/503 responses handle framing/allocation rejection. Its five-second
 header and thirty-second total deadlines remain unchanged. Shared node-identity
-initialization writes only after exact successful object creation; a losing
+initialization writes only after exact successful object creation, and a losing
 creator waits for complete owner publication without weakening shared-read
 ownership. Scoped readiness observes namespace generation metadata without
-receiving invocation authority; legacy lookups remain denied. The bootstrap
+receiving invocation authority, and legacy lookups remain denied. The bootstrap
 catalogue admits a bounded 32 KiB verification stack through its existing
 account. Signed release/readiness validation and retained failed runs are in
 \repofile|docs/reports/audits/2026-10-11-security-deployment-ingress.md|.
 
 NIC and frame-router publication retain the same owned endpoint through
 delegated queue-full rejection with a 1000 ms submission retry budget. Accepted
-calls are observed once. NIC startup publishes its first failure category/detail;
+calls are observed once. NIC startup publishes its first failure category/detail, but
 the earlier AMD exit remains unattributed. Explicit NIC endpoint close returns
 any rejected owner for terminal retention. See
 \repofile|docs/reports/audits/2026-10-12-security-network-publication.md|.
 
 TCP/IP, time, cluster control, reliable messaging and discovery share that
 admission policy. Accepted registration observation has a separate five-second
-deadline; timeout cancels the pending owner without replay and does not prove
+deadline, and timeout cancels the pending owner without replay and does not prove
 that remote publication never happened. Discovery and reliable messaging retain
 typed endpoint owners throughout their reactors. General dependency/controller
 progress remains separate. See
@@ -477,25 +482,28 @@ progress remains separate. See
 
 The service allocates its smoltcp socket table once at launch. Its launch
 manifest supplies bounded \texttt{sockslot}, \texttt{sockquot}, and
-\texttt{bufquot} policy values; the defaults are 64 total slots, 64 sockets per
+\texttt{bufquot} policy values, and the defaults are 64 total slots, 64 sockets per
 authenticated domain, and 2~MiB of TCP/UDP buffers per domain (policy
 ceilings are 1024, 1024, and 32~MiB). The effective socket capacity is clamped
 to the heap granted to the TCP/IP domain, so a normal 4~MiB domain remains at
 64 slots while a larger launch budget can support more. The current virtual
-layout yields roughly 140 TCP-sized slots at its maximum heap window; reaching
+layout yields roughly 140 TCP-sized slots at its maximum heap window, so reaching
 1024 concurrent TCP sockets requires moving that window or using shared
 buffers outside the domain heap. DHCP consumes
 one table slot, so application capacity is derived from the actual table rather
-than from a second hard-coded limit. Every request is received through the
+than from a second hard-coded limit.
+
+Every request is received through the
 authenticated IPC envelope, and each socket is owned by the sender's
 address-space generation and artifact principal. Other domains cannot operate
 the socket, and their socket and buffer allocations cannot exhaust a neighbour's
-quota. These are service-side quotas; the backing pages remain part of the
+quota. These are service-side quotas, and the backing pages remain part of the
 TCP/IP domain's memory accounting until the socket is released. The status
 snapshot exposes the configured capacity and quotas. Reclaim on domain death
-remains an explicit lifecycle integration point; generation checks prevent
+remains an explicit lifecycle integration point, and generation checks prevent
 stale access while that notification path is completed.
-Graceful closes are reclaimed when smoltcp reaches a terminal state; a peer
+
+Graceful closes are reclaimed when smoltcp reaches a terminal state, whereas a peer
 that leaves a connection in FIN-WAIT/TIME-WAIT is force-aborted after a bounded
 five-second grace period. This keeps reconnect churn from pinning a domain's
 quota indefinitely. Admission retries use bounded backoff and rate-limited
@@ -508,7 +516,7 @@ The architecture runners attach a NIC by default. Hardware discovery starts
 the driver and frame router, followed by discovery, cluster services, and the
 DHCP-configured TCP/IP service. The \texttt{--no-network} option explicitly
 selects an isolated boot. Options ending in \texttt{-test} add verification
-workloads and result reporting; they do not enable the runtime services.
+workloads and result reporting, but they do not enable the runtime services.
 
 \section{Cluster-wide TCP ingress and direct server return}
 \label{sec:distributed-l2-ingress}
@@ -538,7 +546,7 @@ node. A local winner follows the ordinary
 \texttt{OP\_FRAME} path into smoltcp. For a remote winner, the router changes
 the Ethernet delivery into a compact one-hop Charlotte envelope and moves the
 same memory object back through \texttt{net::OP\_SEND}. The envelope carries
-the original source MAC and EtherType; the selected backend validates the
+the original source MAC and EtherType, and the selected backend validates the
 outer source against its committed member routes and removes the envelope in
 place. IP, TCP options, sequence numbers, and payload bytes remain unchanged.
 The
@@ -548,7 +556,7 @@ directly to the client.
 Eligibility comes from the DNS-owned Raft member's committed configuration,
 with discovery supplying the associated MAC routes. DNS materializes an
 immutable snapshot that distinguishes admitted members from those eligible for
-new flows. The router refreshes this snapshot asynchronously; consensus never
+new flows. The router refreshes this snapshot asynchronously, so consensus never
 runs on the packet path. During joint consensus, only voters common to the old
 and new sets accept new flows. A joiner therefore waits for finalization, while
 a departing node is removed from the committed projection promptly. The router
@@ -561,13 +569,13 @@ load-balancing epoch: a stable fingerprint of the committed configuration
 index, service name, deployment and registration generations, ready-node set,
 and replicated drain generations. Each router retains four recent sets and a
 bounded 1,024-entry \texttt{FlowKey $\rightarrow$ epoch} table. Existing
-connections retain their epoch across additions; when a backend is removed,
+connections retain their epoch across additions, and when a backend is removed,
 only bindings that selected it are released for reconnection. Because rendezvous
 selection is independent of member ordering, a replacement participant with
 the same epoch makes the same choice without shared connection tracking.
 
 A complete refresh grants a five-second monotonic lease for VIP advertisement
-and unbound-flow admission; the normal one-second poll renews it. A failed or
+and unbound-flow admission, and the normal one-second poll renews it. A failed or
 incomplete refresh may leave the last complete snapshot available to existing
 bindings, but lease expiry suppresses ARP replies and rejects unbound traffic.
 DNS answers a refresh only while the local Raft state has current cluster
@@ -591,7 +599,7 @@ not run the application. A newly selected advertiser emits gratuitous ARP, so
 ingress ownership can move without changing backend membership. No node
 advertises a VIP when its backend set is empty. The current launch-manifest
 transport supports 16 IPv4/TCP service assignments and the packet policy
-supports at most 64 admitted members;
+supports at most 64 admitted members, but
 IPv6 neighbour discovery, a service-only drain operation, automatic failed-member
 removal, and transparent TCP-state migration are future work. The
 precise bounds, failure semantics, and status fields are documented in
@@ -601,7 +609,7 @@ The operations-owned bootstrap policy may bind each VIP and TCP port to a
 deployed application name. DNS evaluates each assignment independently,
 intersecting admitted membership with the application's committed replica set
 and exact-generation readiness registrations. After movement or replacement,
-the stale generation is excluded from the derived eligibility set; that set
+the stale generation is excluded from the derived eligibility set, and that set
 remains empty until the target node publishes the matching generation. Routers
 keep separate leases, histories, and flow bindings for each service and adopt
 new results after a successful refresh. Retained epochs continue to route
@@ -621,7 +629,7 @@ The bootstrap table ceases to be authoritative after the first committed
 ingress policy. The variable-length \texttt{CINGPOL1} envelope binds a complete
 replacement table, monotonic sequence, cluster identity, and UTC validity
 interval under the independent operations signing key. It may enter through any
-member; the leader re-verifies the signature and trusted UTC before proposing
+member, and the leader re-verifies the signature and trusted UTC before proposing
 it to Raft. Exact retries are idempotent, stale or conflicting sequences fail,
 and an empty signed table withdraws all VIPs. Catalog-v17 snapshots retain the
 envelope and replay fence. DNS serves the applied table, frame routers
@@ -632,14 +640,14 @@ address change.
 
 \architecturewidefigure{cluster-management-dsr}
     {Cluster management supplies DSR with an exact-generation eligible-backend
-     set; packet steering remains outside the consensus path.}
+     set, while packet steering remains outside the consensus path.}
     {fig:cluster-management-dsr}
 
 Figure~\ref{fig:cluster-management-dsr} separates the replicated control loop
 from the packet path. Signed policy and committed membership determine desired
 placement, node agents contribute exact-generation readiness, and DNS derives
 the immutable epoch snapshot consumed asynchronously by the frame router. DSR
-then chooses only among authorized ready replicas; the selected replica owns
+then chooses only among authorized ready replicas, and the selected replica owns
 TCP and replies directly. An empty ready set suppresses VIP advertisement.
 The joint TLA+ model in
 \autoref{subsec:formal-cluster-ingress} checks this control-plane-to-packet-path
@@ -650,7 +658,7 @@ Operational Vote, AppendEntries, and InstallSnapshot RPCs use private
 EtherType \texttt{0x88b7}, while admission and DNS application/control traffic
 remain on the reliable-message layer. Joining durably fences and resets the
 standalone consensus history before accepting the selected anchor's log.
-Append retries that overlap a compacted snapshot skip the compacted prefix;
+Append retries that overlap a compacted snapshot skip the compacted prefix, so
 they cannot duplicate it behind the retained suffix. Forwarded data frames use
 EtherType \texttt{0x88b8}. This is an isolation marker rather than
 cryptographic link authentication, so the first version assumes a trusted or
@@ -664,7 +672,7 @@ flow. It then opens fresh five-tuples and requires another HTTP exchange with a
 live backend, covering reconnect after the failed advertiser also took one
 backend connection with it. Failed voters are not removed automatically, so
 some new hashes may continue to select the failed node until an explicit
-committed membership change removes it; the recovery probe therefore tries a
+committed membership change removes it, so the recovery probe therefore tries a
 bounded family of new flows.
 
 \section{UTC time as an internal service}
@@ -679,7 +687,7 @@ Applications do not speak NTP. They resolve \texttt{"time"} through the local
 name service and call its endpoint protocol for a full snapshot, scalar Unix
 seconds, or a fixed-width UTC ISO 8601 value. Synchronization state and
 uncertainty are explicit so callers can reject unsynchronized or weak holdover
-time. This service starts during an ordinary networked boot; no test option is
+time. This service starts during an ordinary networked boot, and no test option is
 required. The detailed wire contract and security limitations are recorded in
 \repofile|docs/reference/time-service.md|.
 
@@ -715,7 +723,7 @@ These services are not launched unconditionally. A trusted provisioning path
 must supply their profiles, including secrets and trust anchors. The
 \texttt{--s3-test} and \texttt{--kafka-test} runner options create disposable
 Docker fixtures, generate short-lived test certificates, launch test profiles,
-and add guest verifiers. They validate integration; production provisioning
+and add guest verifiers. They validate integration, whereas production provisioning
 does not conceptually depend on those switches.
 
 \subsection{S3 client service}
@@ -731,7 +739,7 @@ service address space.
 
 The data plane provides streaming GET and PUT, HEAD, DELETE, ranged GET, and
 create-only PUT. Object bodies cross the application boundary as moved,
-bounded memory chunks; response metadata includes length, ETag, version ID,
+bounded memory chunks, while response metadata includes length, ETag, version ID,
 and request ID. The HTTP/1.1 adapter accepts fixed-length and chunked
 responses. Bucket listing, multipart upload, presigned URLs, automatic region
 discovery, and a general AWS API are outside the current scope. The profile
@@ -739,7 +747,7 @@ format reserves a LIST right, but no LIST operation exists yet.
 
 TLS profiles require an explicit DER trust anchor, a matching server name,
 system entropy, and synchronized UTC from the time service. Certificate
-verification or entropy failure aborts the connection; there is no downgrade
+verification or entropy failure aborts the connection, and there is no downgrade
 to plaintext. The S3 request date also comes from synchronized UTC, so a TLS
 or signed request fails closed while the clock is unsynchronized.
 
@@ -778,24 +786,24 @@ host-label syntax, field bounds, route and broker counts, configurable ceilings,
 and duplicate routes or endpoints before opening a broker connection. The hard
 ceiling is 64 produce routes, while deployment policy may select a lower limit.
 Metadata for all distinct declared topics is requested in one broker exchange.
-The digest detects corruption; authenticity and provenance come from the
+The digest detects corruption, whereas authenticity and provenance come from the
 trusted launcher and the read-only capability.
 
 The kernel prepares a profile-backed launch transactionally. An owning launch
 object retains the not-yet-running domain, delegated connection, and transient
 kernel profile object until read-only transfer succeeds. Ordinary rejection
 consumes explicit cancellation after helper guards leave. Cleanup stops on its
-first failure, retaining remaining roots, profile, and authority; abandonment
+first failure, retaining remaining roots, profile, and authority, whereas abandonment
 retains the complete transaction without a second destructor cleanup pass.
 
 The fixed 112-byte \texttt{CHKAFP7} header declares one authentication choice:
 none, SCRAM-SHA-256, P-256 mTLS, or both. Four explicit
-lengths delimit the username, password, client certificate, and private key;
+lengths delimit the username, password, client certificate, and private key, and
 fields for disabled mechanisms must be empty. Unknown choices, missing required
 material, retired profiles, and trailing data reject before broker connection.
 The encoder returns the complete frame under an erasing owner, installed before
 copying borrowed credentials. The launcher borrows that owner through profile
-memory preparation; no separate credential-section allocation is needed. The
+memory preparation, and no separate credential-section allocation is needed. The
 profile and authentication types omit aggregate Debug formatting. Individual
 fields and output bytes can still be copied or logged. Authentication policy
 and secret ownership remain behind the connector's read-only launch capability.
@@ -827,7 +835,7 @@ connector profile without rebuilding application or procedure artifacts.
 The transaction owner supports the consume--transform--produce path. An
 application can produce records, move one consumed delivery's next group
 offset into the same Kafka transaction, and then commit or abort. Committing
-consumes the transaction resource; dropping an unfinished transaction attempts
+consumes the transaction resource, whereas dropping an unfinished transaction attempts
 an abort. Dropping an uncommitted delivery releases it for redelivery rather
 than silently advancing the group offset. These linear owners make the local
 lifecycle explicit. They do not make arbitrary application side effects outside
@@ -836,7 +844,7 @@ Kafka part of an exactly-once transaction.
 The connector joins its configured group with the bounded
 \texttt{charlotte-fixed-v1} assignor. Each member advertises exactly the
 topic/partition authorized by its immutable profile. The group leader assigns
-each partition once; duplicate connectors remain heartbeating standbys with an
+each partition once, while duplicate connectors remain heartbeating standbys with an
 empty assignment and can take ownership after membership changes. One connector
 admits one local consumer because it owns one membership. Ordinary offset
 commits carry the active generation and member ID. Transactional offset commits
@@ -850,7 +858,7 @@ assignor cannot share the group.
 The connector's bounded status page reports metadata refresh count and age,
 reconnects, retries, terminal failures, fences, group state, consumer lag, and
 cumulative records per route. Monitoring derives throughput by sampling these
-counters; ordinary application capabilities do not expose the operational view.
+counters, but ordinary application capabilities do not expose the operational view.
 
 For procedures that only implement business behavior, the generic
 \texttt{kafka\_step} service owns that lifecycle instead. Its separate,
@@ -860,7 +868,7 @@ count, attempts, timeout, backoff, and polling. The procedure receives borrowed
 input bytes and an attempt number but no Kafka capability. The runner validates
 the complete output batch before beginning a transaction, produces admitted
 records, includes the input offset, and commits. Retry replies and procedure
-timeouts release the delivery for redelivery; terminal or malformed replies
+timeouts release the delivery for redelivery, whereas terminal or malformed replies
 and retry exhaustion transactionally copy the original record to the DLQ.
 Transport and commit failures abort and redeliver without consuming the
 business-attempt budget. One owning operation aggregates the call, input
@@ -882,7 +890,7 @@ and transactions are bounded.
 TLS uses the same explicit trust-anchor, synchronized-time, and entropy path as
 S3. Optional SCRAM-SHA-256 authenticates \texttt{kafka} to every selected broker
 after TLS establishment. Optional mTLS uses one DER X.509 client certificate
-and an ECDSA P-256 private key; both mechanisms may be required together. The
+and an ECDSA P-256 private key, and both mechanisms may be required together. The
 bounded SCRAM exchange validates broker challenges, minimum and maximum
 iteration counts, and the server signature. Passwords, client private keys,
 and derived keys use zeroizing owners and remain outside the application ABI.
@@ -892,21 +900,21 @@ revisions. Startup transfers its dedicated owned entropy connection into a
 one-shot domain context before publishing TLS/SCRAM consumers. Each entropy
 operation checks that owner out, releases its metadata guard, and retains the
 connection through RPC, returned-memory mapping and copy. Ordinary completion
-returns the same owner. Duplicate installation returns the new owner; busy
+returns the same owner. Duplicate installation returns the new owner, whereas busy
 checkout rejects without waiting on an outstanding RPC. Architectural-only
 randomness requires explicit installation. No borrowed launch connection is
 stored globally.
 
 Entropy requests now carry one positive startup-configured observation budget,
 default \texttt{5000} ms, with their source. One consuming read retains its
-pending call and source/output borrows through timeout or wait-admission rejection;
+pending call and source/output borrows through timeout or wait-admission rejection, while
 completion owns returned resources and mapping. Exact byte counts and memory
 without a connection attachment are required. Late results are disposed, and
 explicit cancellation returns its complete owner if rejected. Timeout,
-submission and exact observation rejection remain distinct; none grants replay
+submission and exact observation rejection remain distinct, and none grants replay
 or device-quiescence authority. RNG interface version 2 uses opcode 2 and an
 exact caller-moved buffer, currently one 4096-byte page. The service fills and
-returns that object; no producer-allocated reply fallback remains, and retired
+returns that object, and no producer-allocated reply fallback remains, and retired
 scalar opcode 1 rejects. Returned or unobserved backing keeps its original
 caller charge through sponsor retirement. The shared server transaction ends
 mapping access before reply or loan cancellation. Dependency lookup, kernel
@@ -917,7 +925,7 @@ one 100 ms deadline for lookup and fill. See
 
 The RNG server binds its request endpoint to the default completion queue before
 using shared bounded publication. With no queued request it parks on event-only
-CQ readiness, rechecking lifecycle and endpoint state after every wake; no idle
+CQ readiness, rechecking lifecycle and endpoint state after every wake, so no idle
 10 ms timer remains. Rejected publication/binding/wait aborts with the device
 and endpoint owners live. This does not replace the bounded hardware-status poll
 or establish hardware shutdown or uncertain-descriptor recovery.
@@ -925,11 +933,11 @@ or establish hardware shutdown or uncertain-descriptor recovery.
 The descriptor owner now arms terminal retention before queue mutation and
 requires the exact next used index, descriptor zero and valid length before
 advancing. Short completions continue only confirmed progress. Timeout or a
-backend fault retains the complete MMIO/CPU/DMA fields and captured attempt;
+backend fault retains the complete MMIO/CPU/DMA fields and captured attempt, so
 later calls cannot touch hardware, even after a late completion. Checked
 completion survives later copy failure. Retained fallback runs no nested
 destructors. A fenced shutdown keeps device, endpoint and shutdown request
-without reset, unmap or a device-quiesced acknowledgement. This fences reuse;
+without reset, unmap or a device-quiesced acknowledgement. This fences reuse, but
 real hardware recovery and the ordinary healthy-shutdown path need separate
 qualification. See \repofiletext|docs/reference/entropy.md|{the descriptor contract}.
 
@@ -937,34 +945,34 @@ One nonblocking handshake admission owns the static verification clock through
 completion. Overlap rejects before changing the clock, and completion clears
 it. mTLS retains typed P-256 SEC1 validation and constructs its Embassy signing
 key from a zeroizing scalar temporary. A missing source rejects before the
-handshake; failure inside the infallible RNG callback stops the domain rather
+handshake, whereas failure inside the infallible RNG callback stops the domain rather
 than inventing bytes or replaying an accepted entropy request. Host randomness
 exists only in the unit-test source. Exact revisions and contracts are in
 \repofile|docs/reference/tls-client.md|.
 
 The sole registered Embassy AES-GCM driver retains the previously qualified
-erasing cipher context; the pinned stock driver would retain a plain key array.
+erasing cipher context, whereas the pinned stock driver would retain a plain key array.
 The SHA-256/HMAC-SHA-256 drivers likewise use the shared erasing hash owners
 through opaque Drop/Clone forwarding, including unfinished contexts. Normal and
-test dependency graphs exclude duplicate stock registrations; link-time symbol
+test dependency graphs exclude duplicate stock registrations, and link-time symbol
 collisions reject their reintroduction. Returned digest/tag arrays, other hash
 families and enclosing key-schedule fields retain separate lifetimes.
 The shared TLS dependency enables erasure of AES expanded round keys on
 ordinary cipher Drop, with build-time checks for its AES-128 owner types.
 GCM authentication-key scratch also erases after construction. The current
-AArch64 software POLYVAL backend clears its state on ordinary Drop; its build
+AArch64 software POLYVAL backend clears its state on ordinary Drop, and its build
 guard rejects a backend without a destructor, including optional PMULL. The
 freestanding x86 target now selects that same erasing software state instead of
 the pinned non-dropping dispatcher. Its production guard rejects a missing
-backend flag or erasure feature. This disables PCLMUL authentication acceleration;
+backend flag or erasure feature. This disables PCLMUL authentication acceleration, but
 the TLS cipher and AES selection remain unchanged, and throughput impact is not
 qualified. Hosted x86 outside this target policy, TLS traffic keys, IVs, HKDF
-state and compiler copies need separate work; complete-session or physical-memory
+state and compiler copies need separate work, so complete-session or physical-memory
 erasure is not established.
 
 The SCRAM exchange uses consuming phases. Username escaping writes directly into
 the reserved erasing initial transcript, without a separate scratch string. The
-initial phase owns its password and nonce copies; processing the server challenge
+initial phase owns its password and nonce copies, and processing the server challenge
 releases both on success or rejection. One final phase owns the proof and
 expected server signature through success or rejection. Neither phase can
 be reused after its consuming transition.
@@ -978,7 +986,9 @@ transaction abort, filtering of the aborted record, and
 the generic step runner's success, retry, timeout, and terminal-DLQ paths. It
 also checks metadata refreshes, terminal authorization errors, output-route
 production, coordinator refreshes, and non-negative consumer lag in the
-bounded status page. After
+bounded status page.
+
+After
 initial route discovery, the host hard-stops the output-route leader, keeps it
 down beyond the connector's bounded receive timeout, and restarts it. The
 verifier requires a routing retry and a second successful metadata refresh, so the
@@ -986,18 +996,21 @@ result demonstrates replacement-leader recovery rather than merely
 steady-state multi-broker connectivity. The fixture selects group and
 transactional identifiers coordinated away from the killed broker, isolating
 partition-leader recovery from the separate coordinator-migration case.
+
 Because broker exchanges are currently synchronous, the connector requests a
 45-second group session while heartbeating every two seconds. The membership
 lease therefore exceeds bounded dead-peer detection and route refresh, so
 recovering a partition leader does not by itself expire and fence the
 transaction's group generation.
+
 A companion fault scenario reads the transaction coordinator selected by
 Kafka from the connector's startup diagnostics and hard-stops that broker
 after connector bootstrap. It requires transaction-coordinator rediscovery
 before the same transaction and generic-step sequence may pass.
+
 A fencing scenario launches a second, independently named connector with the
-same transactional identifier. Kafka advances the producer epoch; a private
-probe then requires the stale connector to return \texttt{ERR\_FENCED}, publish
+same transactional identifier. Kafka advances the producer epoch, after which a private
+probe requires the stale connector to return \texttt{ERR\_FENCED}, publish
 a non-zero fencing counter, and enter its diagnostic fault state. Neither the
 second connector capability nor either connector's credentials are delegated
 to the probe.
@@ -1068,7 +1081,7 @@ applied to networking.
         access alone does not mint that capability.
 
     \item Copy avoidance is a design goal: page ownership transfer can avoid
-        intermediate payload copies. CPU mappings are MMU-enforced; DMA
+        intermediate payload copies. CPU mappings are MMU-enforced, while DMA
         isolation uses SMMUv3, VT-d, and AMD-Vi. A performance comparison with
         conventional sockets remains to be established.
 

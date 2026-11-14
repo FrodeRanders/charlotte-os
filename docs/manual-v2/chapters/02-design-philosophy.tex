@@ -47,13 +47,13 @@ Sitas provides:
 
 \begin{itemize}
     \item One executor per shard: cooperative task scheduling within
-        a shard; preemption between shards.
+        a shard and preemption between shards.
     \item Futures as userspace state machines: every operation that may
         wait is a \texttt{Future}, driven by the shard's executor.
-    \item Bounded backpressure: every queue has fixed capacity; senders
+    \item Bounded backpressure: every queue has fixed capacity, so senders
         must handle \texttt{WouldBlock}.
     \item Shard-local ownership: mutable state belongs to exactly one
-        shard; no locks, no atomics for shard-internal data.
+        shard, so access to its internal data needs neither locks nor atomics.
     \item Explicit placement: the caller chooses where a task runs.
     \item Typed command/reply APIs: what a shard receives is a specific
         Rust type.
@@ -76,13 +76,13 @@ contributes the protection-domain service model:
         protocol stacks run in their own protection domains rather than in the
         kernel.
     \item Clients connect to servers and receive connection identifiers:
-        a connection \emph{is} authority; possessing one means you may communicate
+        a connection \emph{is} authority, so possessing one means you may communicate
         with that server.
     \item IPC is a kernel primitive: the kernel mediates and validates
         communication between protection domains.
     \item Scalar messages are distinct from memory-based messages:
         small control-plane operations (opcodes, handles, status codes) travel
-        in fixed-size messages; bulk data travels as memory-object attachments.
+        in fixed-size messages, whereas bulk data travels as memory-object attachments.
     \item Memory IPC distinguishes ownership transfer from borrowing:
         move transfers ownership permanently. Borrow grants temporary access,
         revoked on reply or cancellation.
@@ -279,7 +279,7 @@ kernel wait operation:
 \end{center}
 
 \begin{quote}
-\textbf{The shard parks directly on native completion and message state; no
+\textbf{The shard parks directly on native completion and message state, so no
 helper-thread pool is required merely to convert blocking kernel interfaces
 into futures.}
 \end{quote}

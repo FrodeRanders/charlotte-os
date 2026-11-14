@@ -108,7 +108,7 @@ to one implementation language:
 
     \item The prototype Charlotte target generates minimal \texttt{no\_std}
         activity adapters and a deployment plan. Kafka broker credentials stay
-        in separately named connector profiles; applications receive only
+        in separately named connector profiles, while applications receive only
         granted service endpoints.
 \end{itemize}
 
@@ -116,7 +116,7 @@ The Java and Rust targets use the same process-event wire model and topic
 layout, so their components interoperate through the generated protocol. The
 Charlotte target consumes the same process topology and generates Kafka
 connector intent. Its current adapters establish the platform and deployment
-boundary; the complete process-event runtime is the next semantic layer. The
+boundary, but the complete process-event runtime is the next semantic layer. The
 process model can therefore remain stable while code generation changes the
 language and runtime used to realize it.
 
@@ -128,7 +128,7 @@ application replicas with Kafka consumer groups and topic partitions. In an
 OpenShift environment, image policy, registry access, security context,
 network policy, routes, secrets, monitoring integration, and organizational
 admission policy normally add further deployment concerns. The Charlotte
-target instead emits platform build and deployment-planning inputs; operating
+target instead emits platform build and deployment-planning inputs, while operating
 the release remains outside Durga.
 
 These mechanisms supply real isolation, durability, routing, scaling, recovery,
@@ -261,7 +261,7 @@ ordinary development host.
 
 The source layout enforces the same boundary. Regeneration replaces generated
 files and preserves developer-owned business modules. Specialized services may
-use explicit escape hatches; ordinary rules remain free of raw Charlotte
+use explicit escape hatches, while ordinary rules remain free of raw Charlotte
 handles.
 
 \subsection{A deliberately narrow runtime interface}
@@ -283,7 +283,7 @@ This list is proposed. The experiment should discover the minimum viable
 interface rather than declare it in advance. In particular, external protocols,
 TLS, databases, object storage, and durable logs will require trusted connectors
 or Charlotte-native services. Code generation cannot make those integrations
-disappear; it can make authority to use them explicit and can keep their
+disappear, but it can make authority to use them explicit and can keep their
 mechanics outside the business rule.
 
 \section{From process graph to capability graph}
@@ -411,24 +411,28 @@ per-thread stack (\texttt{stackPagesPerThread}), active-thread quota
 every-eligible-node selection, spread, affinity, and anti-affinity. It creates that
 file once and never overwrites it during regeneration. Operations may approve
 or reject the reviewed values when signing the deployment, but should not have
-to guess them from the ELF or silently rewrite them. Charlotte's
-\texttt{CDEPLOY6} descriptor signs all three values and placement policy; Durga
+to guess them from the ELF or silently rewrite them.
+
+Charlotte's
+\texttt{CDEPLOY6} descriptor signs all three values and placement policy, and Durga
 derives the corresponding signing options and adds the CLS2 parallel-instance
-requirement whenever the policy permits concurrent instances. The kernel gives every thread
+requirement whenever the policy permits concurrent instances.
+
+The kernel gives every thread
 in the protected domain the specified 4 KiB-page stack allocation and counts
 the bootstrap thread against the active-thread quota. It first requests
 cooperative application draining and then forcibly retires the domain at the
-signed deadline. Both execution-resource ranges are one through 64; shutdown
+signed deadline. Both execution-resource ranges are one through 64, whereas shutdown
 grace is zero through 300,000 milliseconds. A quota-exceeding spawn rejects
 before stack construction and returns \texttt{ThreadError::SpawnFailed} through
-the owned runtime, leaving the caller running. Only \texttt{CDEPLOY6} is accepted;
+the owned runtime, leaving the caller running. Only \texttt{CDEPLOY6} is accepted, and
 resource limits, shutdown grace and placement are explicit signed fields.
 There are no older-format defaults.
 
 \autoref{chap:cluster-vision} already implements signed, name-bound ELF artifacts with release,
 rollback, class, flags, and an optional provenance digest, and it pins the
 complete ELF digest in a deployment record. A process bundle would build on
-those mechanisms; it would not replace executable verification with trust in a
+those mechanisms, but it would not replace executable verification with trust in a
 container or archive. Each executable remains independently verifiable, while
 the signed bundle states that a specific set of artifact and schema identities
 collectively realizes one version of a process.
@@ -476,7 +480,7 @@ durability:
 \end{verbatim}
 
 The example illustrates deployment intent generated from the same semantic
-model as the executable wrappers; a future format may use different syntax.
+model as the executable wrappers, though a future format may use different syntax.
 Cluster admission can validate the requested replica counts,
 parallel-safety declaration, artifact identities, stack limits, capabilities,
 and placement constraints before committing desired state to the replicated
@@ -484,7 +488,7 @@ manifest.
 
 The Charlotte manifest accepts signed singleton, fixed-replica, and
 \emph{every eligible node} policy. The \texttt{PlacementPolicy} contract
-described in \autoref{chap:cluster-vision} is stored in \texttt{CDEPLOY6}; a
+described in \autoref{chap:cluster-vision} is stored in \texttt{CDEPLOY6}, and a
 leader-side controller resolves it and commits concrete replica sets. A
 generated component set can be wrapped in \texttt{CRELEASE}, atomically
 admitted, and observed together with \texttt{cluster-sign release-apply}.
@@ -513,10 +517,10 @@ Durga knows useful structure before execution begins:
 \end{itemize}
 
 A Charlotte backend can translate this into an initial placement hypothesis.
-Frequently adjacent activities may receive a common affinity group; replicas of
+Frequently adjacent activities may receive a common affinity group, while replicas of
 one parallel-safe activity may receive anti-affinity or minimum-failure-domain
-rules; an activity using a restricted service may be constrained to the same
-trust domain; a high-volume data edge may favor co-location.
+rules. Similarly, an activity using a restricted service may be constrained to the same
+trust domain, and a high-volume data edge may favor co-location.
 
 The BPMN topology supplies a hypothesis rather than a measurement. A rarely
 selected branch may carry very large objects, an adjacent pair may spend almost
@@ -530,7 +534,7 @@ latency, queue pressure, CPU time, memory pressure, failures, and retry rates pe
 activity and edge. A future placement controller can compare declared structure
 with observed behavior, then move or replicate components when sustained
 evidence justifies the change. Availability and trust constraints remain hard
-constraints; observed affinity must not collapse replicas into one failure
+constraints, so observed affinity must not collapse replicas into one failure
 domain.
 
 This gives the process compiler and cluster different roles:
@@ -643,7 +647,7 @@ advance a running process.
 An externally meaningful event such as \texttt{ClaimSubmitted} may need a
 retained, replayable, independently consumable record. Kafka or another durable
 event-log service may remain the correct substrate. An internal instruction
-such as ``activity A completed; make B runnable'' may need only the delivery,
+such as ``activity A completed, so make B runnable'' may need only the delivery,
 deduplication, and recovery guarantees of the Durga runtime and could use native
 Charlotte messaging.
 
@@ -696,7 +700,7 @@ and delivery requirements. The Charlotte runtime must define how it recovers an
 in-flight process when a node fails, when an acknowledgement is lost, or when a
 business rule completes twice. If native messaging does not yet satisfy those
 requirements, the backend must retain Kafka for that edge. Removing Kafka from
-internal paths is optional; the Charlotte backend can keep it where needed.
+internal paths is optional, so the Charlotte backend can keep it where needed.
 
 \section{Preserving application intent}
 
@@ -750,8 +754,8 @@ generation-aware names. Joining those identities and feeding the result into
 cluster placement is proposed future work.
 
 Telemetry must not become ambient surveillance authority. Generated observation
-channels should be explicit capabilities; payloads should avoid business data
-unless required and authorized; and retention and access belong to policy.
+channels should be explicit capabilities. Payloads should avoid business data
+unless required and authorized, and retention and access belong to policy.
 Preserving intent is valuable only if the observation path preserves the same
 security discipline as execution.
 
@@ -918,7 +922,7 @@ The next \texttt{charlotte} increment should add:
 
 A compact fixture with one transactional activity and one successor is
 sufficient to test this boundary. Its components may use fixed or replicated
-placement over the available test cluster; guest count is incidental. Fusion,
+placement over the available test cluster, and guest count is incidental. Fusion,
 native durable process recovery, and general process-version migration remain
 later experiments.
 
@@ -1003,7 +1007,7 @@ Substantial work remains in both projects:
     \item Generated capability plans and signed descriptor grants establish the
         request and admission shape. Inference rules, organizational review,
         policy evolution, and audit require a production model. The generator
-        requests authority; a separate policy owner grants it.
+        requests authority, whereas a separate policy owner grants it.
 
     \item Process-bundle format, signatures, artifact and schema identity,
         provenance, and reproducible generation remain to be designed.

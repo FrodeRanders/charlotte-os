@@ -21,7 +21,7 @@ valid state, the replacement must understand it, and clients must handle the
 availability gap and uncertain outcomes. An upgrade handoff is therefore not
 automatic recovery of state destroyed by a crash. The protocol below and the
 \repofiletext|docs/guides/reconnecting-clients.md|{reconnecting-client guide}
-define the supported behavior; arbitrary services, device state and external
+define the supported behavior, but arbitrary services, device state and external
 side effects need their own recovery protocol.
 \end{architecturalcomparison}
 
@@ -33,12 +33,12 @@ service:
 \begin{enumerate}
     \item Memory-object ownership transfer: the kernel's
         \texttt{memory::object::move\_to} moves a page-backed memory object
-        from one address space to another. The sender loses access; the
+        from one address space to another. The sender loses access, and the
         receiver gains it. This is the vehicle for service state.
 
     \item Generation tracking: the userspace name service records an
         publication generation. Rebinding a name does not revoke a still-live
-        old endpoint. Once that endpoint closes, its connections reject; a new
+        old endpoint. Once that endpoint closes, its connections reject, and a new
         lookup can return the replacement generation and connection.
 
     \item EndpointClose and Cancelled: when a service domain exits,
@@ -60,14 +60,14 @@ service:
 \architecturefigure{handoff-protocol}
     {The live-upgrade handoff: the supervisor drains and transfers the old
     service's state, spawns the replacement with the handoff state and a fresh
-    generation; clients reacquire a connection and decide whether replay is safe.}
+    generation, after which clients reacquire a connection and decide whether replay is safe.}
     {fig:handoff-protocol}
 
 The reference echo service receives \texttt{OP\_HANDOFF} from the userspace
 service manager. Its single serving loop serializes its counter into an unmapped
 memory object and returns that object through a consuming moved-memory reply
 before exiting. The manager unregisters the old publication before requesting
-replacement launch. A general service needs its own admission/drain protocol;
+replacement launch. A general service needs its own admission/drain protocol, because
 this counter handoff does not establish that arbitrary in-flight work is drained.
 
 The supervisor then spawns the new service instance with an extended bootstrap
@@ -97,7 +97,7 @@ Executable artifacts carry an Ed25519 CLS2 note that binds the complete ELF to
 its logical service name, artifact class, release metadata, rollback counter,
 policy flags, and signing-key identifier. The loader snapshots the bytes and
 verifies the note before mapping. The FNV-1a object checksum remains corruption
-detection; the CLS2 signature supplies executable authority. Rollback policy, key rotation, and measured
+detection, whereas the CLS2 signature supplies executable authority. Rollback policy, key rotation, and measured
 boot remain future policy work.
 
 \section{Shared Kernel Preparation}
@@ -116,7 +116,7 @@ pub(crate) fn try_spawn_upgrade_from(
 \end{lstlisting}
 
 \texttt{UpgradeGrant} borrows source IDs from the captured namespace. The
-syscall supplies its authorized manager and at most one state object; the old
+syscall supplies its authorized manager and at most one state object, while the old
 endpoint's exact root generation supplies replacement classification before
 loading. Naming, source, old-service and replacement roots remain retained.
 
@@ -124,7 +124,7 @@ loading. Naming, source, old-service and replacement roots remain retained.
 and both byte-admitted transfer/target-ID vectors. Reserve both arrays before
 escrow or delegation. Ordinary failure explicitly disposes the prefix after
 guards leave, frees arrays, then cancels the unstarted domain once. The first
-cleanup error stops; abandonment retains all fields and original charges.
+cleanup error stops, and abandonment retains all fields and original charges.
 Commit publishes the move batch before destination IDs enter the bootstrap page
 and the initial thread starts. No implicit physical cleanup or reverse-move
 reconstruction runs on parent abandonment.
@@ -151,7 +151,7 @@ OP_HANDOFF => {
 
 The following sketch describes the launch inputs, rather than an ownership-safe
 application listing. The current reference implementation is
-\repofile|crates/catten-services/src/bin/echo.rs|; handoff memory is adopted once
+\repofile|crates/catten-services/src/bin/echo.rs|, and handoff memory is adopted once
 at that documented launch boundary, while the bootstrap connection is borrowed.
 
 \begin{lstlisting}[style=rustCode]
@@ -168,7 +168,7 @@ fn main(ctx: Context) -> ! {
 \section{What clients see}
 
 A closed old endpoint rejects further calls. Queued, undelivered calls return
-the endpoint-closed result; delivered calls that lose their server before a
+the endpoint-closed result, whereas delivered calls that lose their server before a
 reply return cancellation. A timeout or cancelled reply does not prove that a
 delivered request had no effect. Name rebinding alone supplies no such proof.
 
@@ -176,7 +176,7 @@ The copyable client in \autoref{sec:reconnecting-client} keeps business progress
 outside its session connection, maps endpoint closure to an application-defined
 restart decision, and preserves one operation deadline across reconnection.
 It stops on an uncertain accepted call. Its read-only business operation can be
-repeated safely; a mutating protocol needs durable request identity, duplicate
+repeated safely, whereas a mutating protocol needs durable request identity, duplicate
 suppression and outcome reconciliation before replay. Grant-mediated discovery
 must also authorize the replacement publication.
 
@@ -205,7 +205,7 @@ True zero-downtime would require one of:
 The live upgrade path is the graceful variant of the crash-recovery path
 already exercised by the UART driver test (\autoref{chap:userspace-drivers}). In both cases, the
 supervisor arranges a replacement and a fresh publication. Driver recovery also
-requires confirmed device quiescence/reset before grants can be reused;
+requires confirmed device quiescence/reset before grants can be reused, and
 uncertain cleanup may retain backing and prevent restart. The difference is that live
 upgrade transfers state explicitly through memory objects before the old
 instance exits, rather than starting the new instance from scratch.
@@ -226,7 +226,7 @@ instance exits, rather than starting the new instance from scratch.
     \item Failure recovery has an ownership model: if the new service
         fails to start, a future supervisor could restart the old service or a
         fallback.
-        Before transfer, the manager retains the state capability; after
+        Before transfer, the manager retains the state capability, whereas after
         transfer, it belongs to the replacement. Recovering state after that
         replacement fails requires an explicit policy, beyond capability
         cleanup.

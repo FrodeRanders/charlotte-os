@@ -14,7 +14,7 @@ RPCs in nested recovery scopes, with explicit timeout and cancellation policy.
 
 Memory-object backing also consumes a kernel-enforced
 [sponsorship budget](../reference/memory-object-budgets.md). Moving ownership
-does not erase the creating generation's charge; the charge is returned when
+does not erase the creating generation's charge, because the charge is returned when
 the receiver finally releases the frames. Allocation can therefore fail even
 with heap space available. Bound batches, handle allocation failure and release
 each operation's transient owners promptly.
@@ -44,15 +44,15 @@ each operation's transient owners promptly.
 | DMA memory | `DmaTransfer`, `SharedDmaMemory` | Unmaps once; only explicit pre-work busy rejection permits another submission. Uncertain kernel pins/backing remain retained. |
 
 All owning types are non-`Copy` and `#[must_use]`. Moving a value transfers
-ownership. Dropping invokes the type's cleanup policy; uncertain cleanup can retain
+ownership. Dropping invokes the type's cleanup policy, and uncertain cleanup can retain
 kernel resources.
 
 Reactor callers consume `OwnedSocket` with `into_closing`, retain the resulting
 `ClosingSocket`, submit once and bind its accepted reply to the shared CQ.
 Only a checked `Started` (0) or `Unavailable` (1) scalar without attachments
 ends the logical owner. Unavailability concerns a nonreused ID in the same
-service incarnation; it grants no cleanup or former-ownership proof. Queue-full
-rejection is unstarted admission; accepted timeout or observation failure must
+service incarnation, but it grants no cleanup or former-ownership proof. Queue-full
+rejection is unstarted admission, whereas accepted timeout or observation failure must
 retain the operation through terminal abort, without retry. An incomplete
 `ClosingSocket` destructor aborts before dropping its fields. It cannot run a
 blocking best-effort close. Deployment ingress keeps this owner, original
@@ -62,12 +62,12 @@ driver. It captures one five-second deadline, permits queue-full admission
 backoff only during its first second and waits once with the remaining budget.
 Unstarted rejection returns the actual IPC error and retains the whole driver
 without retry custody or a destructor resubmission. Accepted uncertainty aborts
-with its owner live; it cannot restore an ID. This remains a blocking Drop
+with its owner live, and it cannot restore an ID. This remains a blocking Drop
 policy, without a whole-parent destructor latency guarantee. See
 [synchronous close](../reports/audits/2026-10-22-security-synchronous-close.md).
 
 Immediate and deferred socket sends move the same exact caller-owned frame with
-the full socket ID. `try_send_call` attempts TCP/UDP enqueue once; `send_call`
+the full socket ID. `try_send_call` attempts TCP/UDP enqueue once, whereas `send_call`
 retains deferred TCP work for CQ observation. The service owns the complete
 incoming transaction and read-only mapping until enqueue/rejection, disposing
 mapping/backing before reply. A positive prefix receipt alone permits sending
@@ -104,8 +104,8 @@ admission. A service that must also process incoming requests uses
 `PendingCall::bind_cq` and `Endpoint::bind_completion_queue` on the same CQ,
 with `cq_wait_checked` bounded by the earliest remaining operation deadline.
 That wait owns a kernel watchdog without requiring another completion
-capability; `None` parks without a deadline. Reply CQ interest
-lives in the pending-call record and cancels when that owner closes; it does
+capability, whereas `None` parks without a deadline. Reply CQ interest
+lives in the pending-call record and cancels when that owner closes, but it does
 not adopt returned connection/memory capabilities. Poll the owned pending call
 after waking to observe those resources exactly once. Registration failure
 leaves the owner intact, so ordinary error paths can cancel safely.
@@ -113,7 +113,7 @@ leaves the owner intact, so ordinary error paths can cancel safely.
 A local NS publication retains `ns_publication::Publication`, containing the
 owned source connection and its persistent endpoint-death `Completion`. Admit
 the watch before making the binding visible. `Completion::matches_cq` selects
-a hint without adopting or consuming it; confirm the underlying result through
+a hint without adopting or consuming it, so confirm the underlying result through
 that owner before unpublishing the captured generation. Drop cancels/disposes
 the watch before its source. This does not provide physical cleanup proof or
 caller authority over another registrar's binding. See
@@ -122,7 +122,7 @@ caller authority over another registrar's binding. See
 Kernel lifecycle request publication also wakes the default CQ after writing
 through the exact leased root and releasing the local table guard. Reactors
 must recheck lifecycle and all ready sources after every wake. If bounded
-intake leaves queued work, continue processing before parking; a coalesced CQ
+intake leaves queued work, continue processing before parking, because a coalesced CQ
 wake is not another edge for every remaining message. See the
 [reply CQ audit](../reports/audits/2026-10-12-reply-cq-readiness.md) for scope and
 remaining cleanup/metadata qualification.
@@ -131,7 +131,7 @@ remaining cleanup/metadata qualification.
 close watch cancels its local registration without closing the endpoint or
 waiting for endpoint death. No special destruction order is required between
 that endpoint and its watches. Bound watch batches and handle submission
-failure; registration has independent [admission limits](../reference/close-watch-budgets.md).
+failure, because registration has independent [admission limits](../reference/close-watch-budgets.md).
 This does not make every completion's Drop nonblocking: a buffer-bearing
 operation must still wait until its producer can no longer touch borrowed data.
 External thread-exit watches also cancel their subscription locally without
@@ -143,7 +143,7 @@ join registration signals backpressure. It provides no evidence of thread exit.
 Kernel adapters registering completion callbacks must retain the
 `CompletionObservation` returned by `completion::observe`. Asynchronous callers
 with an existing captured completion use `observe_registered` to reject numeric
-namespace reuse. That owner cancels only the callback; it never releases an
+namespace reuse. That owner cancels only the callback, and it never releases an
 operation buffer or proves producer exit. Scheduler sources instead implement
 mandatory, fallible `Observable::try_register_waiter` and never notify inline
 under the scheduler thread table. See
@@ -151,8 +151,8 @@ under the scheduler thread table. See
 
 For timed completion waits, `CompletionError::Status(WAIT_ADMISSION_FAILED)`
 means the operation is still live and its owner is retained. Keep the owner
-for a later wait, or let Drop cancel and wait; do not release borrowed operation
-buffers on this error. Kernel callers receive `CapError::WaitAdmissionFailed`; `Ok(false)`
+for a later wait, or let Drop cancel and wait, but do not release borrowed operation
+buffers on this error. Kernel callers receive `CapError::WaitAdmissionFailed`, whereas `Ok(false)`
 means deadline expiry. Kernel and syscall adapters share one absolute-deadline
 wait loop: an unrelated notification rechecks and reparks with the remaining
 budget. Untimed completion waiting preserves terminal-state semantics even when
@@ -161,7 +161,7 @@ waiter admission is exhausted. See [scheduler waiter budgets](../reference/sched
 Endpoint receive and pending-call reply waits share these generation-sponsored
 waiter budgets. Untimed IPC waits retry cooperatively under admission pressure,
 retaining pending-call borrows until reply or cancellation revokes server access.
-Keep using `Endpoint`, `PendingCall` and `ReplyToken`; this kernel change adds no
+Keep using `Endpoint`, `PendingCall` and `ReplyToken`, because this kernel change adds no
 manual unregister or cleanup step for applications. A wait timeout is not a
 successful reply or permission to reuse a still-lent buffer.
 
@@ -178,7 +178,7 @@ its roots. Endpoint/domain bulk cleanup has a separate, still-serialized boundar
 
 IPC connection/call/reply records also have [admission limits](../reference/ipc-record-budgets.md).
 Bound concurrent request batches and handle submission failure. Pre-transfer
-record rejection leaves moved memory with its owner; no manual rollback ladder
+record rejection leaves moved memory with its owner, so no manual rollback ladder
 is needed. Consuming `ReplyToken::reply_connection*` methods cancel their token
 on an error, including `RESOURCE_LIMIT`, while preserving the borrowed grant
 source. They do not return a token for retry.
@@ -235,7 +235,7 @@ A remote ID is not a kernel capability. Releasing it requires a protocol call,
 which can block or fail. Its owner therefore provides `close(self)` for normal
 operation and uses `Drop` for best-effort teardown. Errors from Drop cannot be
 reported, and remote resources can remain charged after failed admission.
-Socket close returns errors only before admission; after acceptance, timeout or
+Socket close returns errors only before admission, whereas after acceptance, timeout or
 uncertain observation retains the owner through domain abort. Closing a socket
 never proves that earlier business work was rolled back or can be replayed.
 
@@ -250,7 +250,7 @@ after a failed handshake.
 The adapter's record-buffer owner wipes both buffers after the connection is
 dropped, including on handshake failure. S3 SigV4 also uses zeroizing owners
 for its prefixed secret, derived keys, HMAC pads, and inner digest. This limits
-retained copies; it is not a guarantee that every compiler or cryptographic
+retained copies, but it is not a guarantee that every compiler or cryptographic
 library intermediate is erased.
 
 Use `catten_services::deadline::Deadline` for an operation's total monotonic
@@ -265,7 +265,7 @@ address or drain another domain's queues. Use explicitly delegated IPC for
 cross-domain communication. Domain teardown discards queued words before its
 ASID can be reused.
 
-Mailbox handle opens can fail at the per-domain or node record ceiling; handle
+Mailbox handle opens can fail at the per-domain or node record ceiling, so handle
 that backpressure without losing existing resources. Closing releases record
 capacity. Receiver open reuses the same per-LP capability, so do not adopt
 repeated results as separate owning capabilities. See
@@ -275,7 +275,7 @@ limits and the distinction between handles and queue backing.
 Deployment agents use `launch_scoped_artifact`, which consumes both the
 ELF and signed descriptor memory with their exact lengths and returns
 `DeployedArtifact`. The owner takes its principal from the kernel's verified
-launch receipt; callers cannot supply a separate retirement name or select a
+launch receipt, so callers cannot supply a separate retirement name or select a
 singleton with principal zero. See the [launch contract](../reference/scoped-deployment-launch.md).
 Keep that
 owner in the reconciliation record until `poll_retire` returns `Ok(true)`.
@@ -293,7 +293,7 @@ Hardware adapters use the stricter `complete_device_quiesced()` terminal call.
 Returning the `ShutdownRequest` to that call is valid only after the service
 scope has stopped its endpoint, reset or stopped the controller, and dropped
 all transient DMA-transfer and shared-DMA owners. Launch-owned MMIO, interrupt,
-and IOMMU grants remain borrowed through `Context`; the kernel reclaims them
+and IOMMU grants remain borrowed through `Context`, and the kernel reclaims them
 after the quiesced thread exit. The kernel refuses to reclaim a hardware-root
 domain that exits with the ordinary `complete()` state.
 
@@ -310,9 +310,9 @@ as `IpcError::Status`. `QUEUE_FULL` creates no pending owner: retain the same
 protocol owner and retry within the operation's policy, checking shutdown.
 Do not abandon an activated remote socket and assume a rejected best-effort
 close releases it. Once submission succeeds, keep the resulting `PendingCall`
-through observation/cancellation; an observation error does not authorize
+through observation/cancellation, and an observation error does not authorize
 replaying its request. `OwnedSocket` bounds close-submission backpressure with a
-total deadline; indefinite saturation still requires owner-domain reclamation.
+total deadline, but indefinite saturation still requires owner-domain reclamation.
 
 ## Raw boundary rules
 
@@ -325,11 +325,11 @@ let memory = unsafe { OwnedMemory::from_raw(raw_memory) }?;
 
 Every `from_raw` needs an ownership comment. Do not adopt borrowed grants.
 Legacy receive-ABI adapters may adopt a uniquely transferred reply authority
-with `ReplyToken::from_raw`; prefer `IncomingMessage` for ordinary service
+with `ReplyToken::from_raw`. Prefer `IncomingMessage` for ordinary service
 code, and never adopt its already-owned reply field again.
 Launch-owned connections should use `Context::bootstrap_connection()`, which
 returns `ConnectionRef`. Immutable profile objects should use
-`Context::profile_memory()` and `LaunchMemoryRef::map_read_only()`; do not adopt
+`Context::profile_memory()` and `LaunchMemoryRef::map_read_only()`, and do not adopt
 the capability as `OwnedMemory`. The launcher has already attenuated it to
 kernel-enforced read-only rights, and domain teardown reclaims the grant.
 
@@ -341,7 +341,7 @@ raw handle must never be managed simultaneously by an owned wrapper.
 The kernel-side launch path follows the same aggregation rule through
 `DomainLaunchTransaction`. It retains the loaded target, kernel-side profile
 and exact source/target root operations. Explicit ordinary cancellation closes
-known resources once after guards leave; its first error stops cleanup.
+known resources once after guards leave, and its first error stops cleanup.
 `Drop` retains every remaining field instead of attempting physical cleanup or
 retry. `PreparingUpgrade` additionally retains admitted transfer/ID vectors and
 all active transfers, including in the actual upgrade syscall. Add pre-start
@@ -352,15 +352,15 @@ resources to the complete parent. Capability records carry typed
 ## Kernel capability staging
 
 Kernel payload ownership and namespace authority need coordinated transactions.
-`capability::Reservation` holds a hidden identity/count before publication; its
+`capability::Reservation` holds a hidden identity/count before publication, and its
 Drop releases only that exact namespace's entry. Mailbox opens, completion
 submissions, memory-object destinations, every IPC capability publication and
 device/system-observer grants use bounded shared admission. All six kinds are
-converted; there is no unbounded allocation/retirement bypass.
+converted, and there is no unbounded allocation/retirement bypass.
 `memory::object::PreparedTransfer` owns destination reservation and private
 copy backing or source escrow/backing pins for moves and loans. Its Drop
 restores original source authority without re-admission, cancels the destination
-and releases backing; `commit_transfers` publishes the complete mixed-mode batch
+and releases backing, while `commit_transfers` publishes the complete mixed-mode batch
 or none. Use this owner to retain the whole multi-step transfer. Move/loan
 payload stays source-owned until
 commit, and generation checks fence late cancellation from reused ASIDs.
@@ -377,7 +377,7 @@ pairs. `commit_transfers_with_authority` publishes memory and fresh IPC authorit
 together while their payload registries remain serialized. No fallible IPC
 admission follows memory ownership commit. Connection-bearing replies also
 reserve shared authority before loan revocation and compose returned authority
-with memory publication; partial loan-revocation failure remains a separate
+with memory publication, but partial loan-revocation failure remains a separate
 fallible teardown issue. Scalar-only transactions need no memory-registry lock.
 See [shared capability admission](../reference/capability-admission.md) for
 state transitions, locking, limits and broader accounting requirements.
@@ -388,7 +388,7 @@ hardware creation and own unpublished DMA domains through `PreparedDmaDomain`.
 Failed hardware rollback quarantines backing rather than returning potentially
 DMA-reachable pages. Observer startup uses a cancellable claim and one owning
 unstarted domain, so rejected grants reclaim delegated bootstrap authority.
-Userspace continues to use `catten_rt::owned`; these kernel tokens remain
+Userspace continues to use `catten_rt::owned`, while these kernel tokens remain
 internal.
 
 ## Review checklist
@@ -417,10 +417,10 @@ not provide a readiness wait or justify a polling loop.
 
 Any other DMA error is conservatively terminal for that transfer's unmap.
 The owner records the original status and returns it again without issuing
-another kernel call; Drop also avoids repeating the uncertain DMA attempt.
+another kernel call, and Drop also avoids repeating the uncertain DMA attempt.
 Progress is armed before kernel entry, including interrupted calls. A later
 CPU-unmap rejection after confirmed DMA completion does not repeat DMA unmap.
-Drop retains its existing best-effort CPU/memory capability cleanup policy;
+Drop retains its existing best-effort CPU/memory capability cleanup policy, but
 those requests cannot discharge an uncertain kernel DMA pin or release its
 backing. Existing domain retirement still requires actual hardware quiescence.
 See the [phase evidence](../reports/audits/2026-10-12-dma-unmap-phases.md).

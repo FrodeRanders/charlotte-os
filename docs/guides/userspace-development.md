@@ -9,7 +9,7 @@ Run `cargo fmt --all` from the repository root to format every package,
 including the separately targeted service and application crates and host
 tools. Use `cargo fmt --all -- --check` for a non-mutating CI-style check.
 Because `catten-user` is part of that workspace, its sibling
-`../../gautelis/sitas` path dependency must be checked out; CI provisions the
+`../../gautelis/sitas` path dependency must be checked out, and CI provisions the
 pinned revision before running workspace tooling.
 The source-level entry contract is:
 
@@ -31,7 +31,7 @@ catten_rt::entry!(main);
 ```
 
 The program does not define `_start`, a panic handler, or a global allocator.
-`entry!` supplies those pieces. `_start` is the ELF entry point; `main` is the
+`entry!` supplies those pieces. `_start` is the ELF entry point, whereas `main` is the
 Rust developer contract and is not exported as a C ABI function.
 
 `Context` is the supported interface to launch-time state. It provides launch
@@ -41,12 +41,12 @@ should not depend on config-page virtual addresses or field offsets.
 
 Initial authority is encoded as a bounded vector of typed capability records.
 `Context::capabilities()` enumerates their kind, rights metadata, flags, and
-handle; role-oriented helpers such as `bootstrap_cap()` and `mmio_cap()` search
+handle, and role-oriented helpers such as `bootstrap_cap()` and `mmio_cap()` search
 the same vector. Presence is represented by a record, so handle zero is not
 mistaken for an absent capability.
 
 The former `fn(Args, Input<N>) -> !` entry form has been removed. Startup input
-is no longer hidden in a function signature; a program explicitly calls
+is no longer hidden in a function signature, and a program explicitly calls
 `Context::read_startup_input` when it intends to block for input.
 
 ## Declaring execution resources
@@ -75,7 +75,7 @@ The same developer-owned plan carries `shutdownGraceMillis`, because the
 component author knows how long in-flight work and remote teardown may need.
 The signed value is bounded to zero through 300,000 milliseconds. Structure
 lifecycle-aware code so its owning serving scope returns before calling the
-divergent exit primitive; see [Cooperative shutdown](shutdown.md).
+divergent exit primitive. See [Cooperative shutdown](shutdown.md).
 
 ## Launch ABI 2.2
 
@@ -95,14 +95,14 @@ executable variants must match exactly. The source constants in
 `charlotte-launch` define both contracts.
 
 The manifest is a bounded vector of named, typed records. Keys are stable
-packed names of up to eight bytes; values may be unsigned integers, signed
+packed names of up to eight bytes, while values may be unsigned integers, signed
 integers, or bounded byte strings. Keys may repeat to represent lists. Variable
 data resides in a separately bounded region of the read-only launch page.
 Applications consume it through `Context::manifest()` or
 `Context::manifest_value()` and should not parse the backing page directly.
 
 The launch page is mapped read-only in EL0. Mutable program status and test
-progress use a separate zeroed status page; `config::read`, `config::write`,
+progress use a separate zeroed status page, and `config::read`, `config::write`,
 and `config::output_ptr` address that page for low-level programs. Applications
 should still prefer their service protocol or completion queues for normal
 results rather than treating the status page as general IPC.
@@ -119,13 +119,13 @@ can only consume an unmapped object. `Completion` and `ReadOperation<'a>` keep
 asynchronous resources alive through terminal completion, including the
 cancel-and-wait path. `Endpoint`, `Connection`, `ConnectionRef`, `PendingCall`,
 `IncomingMessage`, `ReplyToken`, and `CapabilityVector` make close, receive,
-reply, move, copy, and borrow behavior explicit;
+reply, move, copy, and borrow behavior explicit, and
 vector loans remain borrowed until their pending call terminates. `MmioRegion`,
 `MappedMmio`, and `Interrupt` provide single-close device ownership while
 leaving register access unsafe. `ThreadHandle` retains the spawn-time thread
 generation so a delayed join cannot observe a recycled TID.
 
-Protocol-specific scalar resources also need owners;
+Protocol-specific scalar resources also need owners, and
 `catten_services::socket::OwnedSocket` supplies explicit fallible close plus a
 best-effort `Drop` fallback for TCP/IP socket IDs.
 
@@ -135,10 +135,10 @@ Coherent `dma_map` is explicitly unsafe because the driver must
 synchronize CPU references and device access itself. Both DMA-map forms return
 `Result<u64, DmaMapError>` with the original per-call status, stage and backend
 cause. A backend rejection can follow partial publication and uncertain
-rollback; diagnostics grant no retry permission. `map_shared_dma` therefore
+rollback, so diagnostics grant no retry permission. `map_shared_dma` therefore
 returns a `FailedSharedDmaMemory` owner on DMA failure, retaining the existing
 CPU mapping without exposing Rust references or pointers. Its consuming `unmap`
-can return the memory capability after CPU unmap; uncertain kernel pins still
+can return the memory capability after CPU unmap, but uncertain kernel pins still
 fence new mappings, lending and physical release. Once a raw capability is
 adopted with `OwnedMemory::from_raw`, it must not be used independently or
 adopted a second time.
@@ -151,14 +151,14 @@ by both thread joins and timed completion waits.
 ## Authenticated service lookup
 
 Ordinary deployed applications acquire named connections through their
-bootstrap grant controller using the signed deployment descriptor; the
+bootstrap grant controller using the signed deployment descriptor, and the
 [reconnecting client](reconnecting-clients.md) shows this path with owned
 resources and bounded recovery scopes. Trusted mediators use the name service's authorized
 protocol rather than public bootstrap lookup or a caller-provided identity.
 The former bearer-key opcodes 5/6 are retired and reject as unsupported.
 All receive syscalls supply the sender's exact address-space generation,
 stable signed-artifact principal, and deployment roles captured at submission.
-The canonical runtime methods are `Endpoint::receive` and `try_receive`; see
+The canonical runtime methods are `Endpoint::receive` and `try_receive`. See
 the [receive ABI contract](../reference/ipc-receive.md).
 Callers encode only the service name and explicit requested rights with
 `charlotte_authorization::wire::encode_lookup`, copy that request into
@@ -166,7 +166,7 @@ Callers encode only the service name and explicit requested rights with
 decision. Default is deny.
 
 Administration artifacts may set an exact principal/service rule through
-`OP_SET_POLICY`; service-manager artifacts may publish through
+`OP_SET_POLICY`, while service-manager artifacts may publish through
 `OP_REGISTER_AUTHORIZED`. Both operations are authorized from the kernel IPC
 envelope. `get_domain_identity()` exposes a workload's own assigned identity
 for administration tooling, but placing another identity in request memory
@@ -194,11 +194,11 @@ The reduced HVF configuration is AArch64-specific. To check its build without
 starting QEMU, replace `--timeout 10` with `--build-only`. On an Intel iMac,
 use the x86-64 runner or the
 [VMware appliance builder](../platforms/vmware-x86_64.md). The x86 runner has
-no HVF option; native Intel Linux can select KVM with `--kvm`.
+no HVF option, and native Intel Linux can select KVM with `--kvm`.
 
 These build scripts use Charlotte's AArch64 target specification and linker
 script and validate the generated ELF layout. Generated AArch64 programs are
-staged under `target/embedded-services/aarch64-unknown-none/`; they are not
+staged under `target/embedded-services/aarch64-unknown-none/`, and they are not
 source files and are not version-controlled. `scripts/run-aarch64.sh` exports
 that architecture-qualified bundle path while compiling the kernel. A direct
 AArch64 kernel build must do the same:
@@ -227,7 +227,7 @@ AArch64 and x86-64 builds.
 
 `catten-user` currently integrates the sibling `sitas` checkout. CI obtains
 `FrodeRanders/sitas` at the pinned revision recorded in the workflow and places
-it at the path expected by `crates/catten-user/Cargo.toml`; developer checkouts
+it at the path expected by `crates/catten-user/Cargo.toml`, and developer checkouts
 may provide the same sibling repository locally.
 
 ## Building an out-of-tree application
@@ -247,7 +247,7 @@ the cluster:
 2. **Sign.** `cluster-sign elf-sign` adds the CLS2 note with the application's
    chosen name, class, version, rollback counter, flags, and provenance. The
    in-tree `artifact-policy.tsv` and `scripts/sign-service-elfs.sh` are
-   conveniences for bundled services; an out-of-tree artifact calls
+   conveniences for bundled services, whereas an out-of-tree artifact calls
    `cluster-sign` directly. Its private-key argument is a restricted key-file
    path rather than hexadecimal key bytes. See
    [Signing and development trust](signing-and-trust.md) for generation and

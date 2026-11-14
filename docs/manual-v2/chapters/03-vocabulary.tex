@@ -69,7 +69,7 @@ A \textbf{capability} is an unforgeable reference to a kernel object, carrying
 rights. It answers the question: ``May I perform this operation?''
 
 Capabilities are scoped to a protection domain's capability table. A process
-cannot fabricate a capability; the kernel issues one through an authorized
+cannot fabricate a capability, because the kernel issues one through an authorized
 creation, bootstrap, or delegation operation.
 
 \section{Endpoint}
@@ -117,7 +117,7 @@ call. It is:
     \item Bound to the caller's pending call.
     \item Consumable exactly once.
     \item Invalidated by cancellation, caller death, or endpoint teardown.
-    \item Owned by the receiving service; the current userspace API does not
+    \item Owned by the receiving service, and the current userspace API does not
         provide general reply-token delegation.
 \end{itemize}
 
@@ -140,7 +140,7 @@ and has non-lossy terminal completion semantics.
 
 \section{Notification}
 
-A \textbf{notification} means: ``State may have changed; inspect the corresponding
+A \textbf{notification} means: ``State may have changed, so inspect the corresponding
 object or queue.'' It may be coalesced, but is itself not a result.
 
 \section{Rust Waker}
