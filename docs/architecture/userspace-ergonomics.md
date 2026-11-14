@@ -5,8 +5,10 @@ source review of CharlotteOS `327a50a7`. Current interfaces and commands are in
 [the application SDK guide](../guides/application-sdk.md). Validation limits and
 remaining extensions are listed below. The
 [broker consumer review](../reports/audits/2026-11-14-broker-sdk-review.md)
-identifies the remaining socket-handoff, Sitas-worker and existing-workspace
-requirements for a concurrent TCP application.
+identified socket-handoff, worker-custody and existing-workspace requirements.
+The [adopted demo](../reports/audits/2026-11-14-broker-sdk-adoption.md) uses a bounded
+borrowed socket scope, retained Sitas handles and the public manifest builder;
+generalizing those mechanisms remains optional future SDK work.
 
 The application library composes existing resource owners, launch grants,
 deadlines and service clients. Ordinary applications see declared dependencies

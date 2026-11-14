@@ -109,6 +109,57 @@ listener failure separately. Successful repeats do not erase those captures.
 Temporary logs and build directories are not durable evidence dependencies;
 relevant identities and diagnostics are recorded inline.
 
+### Repeat-run fixture failure
+
+A subsequent run from the installed demo reused its application-owned NVMe disk.
+The serial capture observed a prior committed shutdown intent before the new
+broker could launch. This run passed its 20 kernel regressions but did not
+qualify broker deployment, traffic or worker shutdown:
+
+```text
+[17.827306] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x303ffff failed_bitmap=0x0 pending_bitmap=0x0
+[19.766176] [agent] accepted cluster shutdown sequence=1794672976 generation=1 node_grace_ms=60000 phase_grace_ms=5000
+[19.786708] [agent] starting full S3 GET for "broker" key "deployments/broker.elf"
+[23.176754] [agent] launch attempt failed for "broker" generation=1; retry in 1000 ms (failure 1)
+[23.217750] [shutdown] POWER-OFF REQUESTED via PSCI Hvc
+error: signed RustFS deployment did not become ready
+```
+
+Its kernel SHA-256 was
+`da1848a73e127426c371e391b7c54b7ecc5ac8a892a5e37a441bd347491974c8`;
+the newly supplied signed broker ELF was
+`678e2df86a955dd0e838d21c56dc75342f4cac915a265e74a1587a42a411756c`.
+The waiting host deployment controller was terminated after guest poweroff;
+the normal fixture exit reported failure. The catalog survives on the guest
+disk; the RustFS fixture itself is recreated by the runner. This observation
+does not establish a cause for the individual launch rejection.
+
+The demo's disposable smoke workflow now requests the existing
+`--fresh-storage` runner mode. Reusing catalog and shutdown state exercises a
+restart, rather than a fresh deployment. This changes application test setup;
+it does not clear production catalog state or weaken signed shutdown handling.
+
+The corrected installed-demo workflow passed with the same signed broker digest
+`678e2df86a955dd0e838d21c56dc75342f4cac915a265e74a1587a42a411756c` and
+kernel digest `d182406b4b10423600ddc1ed09f4162c6c5d8ba2a6273d484072a91fe26aea72`.
+Its SDK source snapshot was OS `981f9cea767cba3045bfd78264392068c81285f3`
+and Sitas `6d63266eb52492c1958c45f3ed71c8c7a451489a`. The host codec smoke
+passed; relevant final observations were:
+
+```text
+[17.785852] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0x303ffff failed_bitmap=0x0 pending_bitmap=0x0
+[48.871424] [broker] partition workers joined; network scope released
+[48.907826] [shutdown] TcpIp: acknowledged=1 unacknowledged=0 forced=0 lifecycle_status=2
+[48.923958] [shutdown] POWER-OFF REQUESTED via PSCI Hvc
+cooperative broker drain and node poweroff verified
+```
+
+The demo workspace explicitly excludes SDK packages, and application formatting
+uses `cargo fmt -- --check`; Cargo's `--all` would also visit local path
+dependencies. The final workspace passed the 61 Rust and six tooling tests,
+Clippy, documentation generation and both target builds. Its lockfile retains
+the tested dependency versions while removing unused SDK workspace members.
+
 ## Manual example
 
 “A client with explicit recovery scopes” includes the actual

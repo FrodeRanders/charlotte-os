@@ -553,7 +553,7 @@ A timeout and rejected waiter admission are different outcomes. Both leave an
 accepted pending call owned here. Explicit cancellation closes that owner before
 returning an error; rejected cancellation returns the owner, which stays live
 through terminal domain abort. Cancellation can wait for loan cleanup, so the
-five-second observation budget is not a guaranteed teardown deadline.
+five-second observation budget is not a guaranteed teardown deadline.\par
 \end{samepage}
 
 \lstinputlisting[style=rustCode,linerange={CALLBEGIN-CALLEND},rangeprefix={//},includerangemarker=false]{../../crates/charlotte-app/examples/reconnecting_client.rs}
