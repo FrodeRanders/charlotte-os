@@ -67,6 +67,10 @@ running documentation tests. Check the test names/counts when adding a suite.
 Freestanding binary targets keep their harness disabled. CI calls the same
 wrapper.
 
+Host fixture logging stubs must return a unit expression: included kernel code
+can use them as branch tail expressions. Keep that compile check independent of
+the host architecture so ARM hosts also catch failures in x86-only call sites.
+
 Before switching to the temporary host directory, the wrapper also runs
 `scripts/tests/test-tls-gcm-backend.py`. This uses the pinned nightly toolchain
 and `rust-src` to compile the production authentication-state guard for

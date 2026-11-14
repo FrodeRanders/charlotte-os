@@ -12,8 +12,12 @@ impl<T> RwLock<T> {
     pub fn new(value: T) -> Self { Self(std::sync::RwLock::new(value)) }
     pub fn read(&self) -> std::sync::RwLockReadGuard<'_, T> { self.0.read().unwrap() }
 }
-#[macro_export] macro_rules! early_logln { ($($tokens:tt)*) => {}; }
-#[macro_export] macro_rules! logln { ($($tokens:tt)*) => {}; }
+#[macro_export] macro_rules! early_logln { ($($tokens:tt)*) => {{}}; }
+#[macro_export] macro_rules! logln { ($($tokens:tt)*) => {{}}; }
+// Included kernel code uses logging as a tail expression in architecture-specific
+// branches. Check both stubs' unit-expression contract on every host architecture.
+const _: () = early_logln!("fixture logging expression");
+const _: () = logln!("fixture logging expression");
 pub mod mp { pub const MP_FLAG_X2APIC: u32 = 1; }
 pub mod framebuffer {
     pub use crate::environment::boot_protocol::limine::Framebuffer;
