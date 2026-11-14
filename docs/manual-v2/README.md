@@ -45,7 +45,7 @@ and link to the relevant CharlotteOS contract or chapter. Local paper copies in
 verification and recovery claims within their documented scope; a comparison is
 not evidence that one system outperforms another.
 
-Chapter 5 includes the [reconnecting client example](../../crates/catten-services/examples/reconnecting_client.rs)
+Chapter 5 includes the [reconnecting client example](../../crates/charlotte-app/examples/reconnecting_client.rs)
 directly through marked `lstinputlisting` ranges. Keep the range markers intact
 when editing the example; its source must compile without additions to the
 listings. Build and host-test commands, prerequisites and recovery limits are in

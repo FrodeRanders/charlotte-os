@@ -29,11 +29,15 @@
 //! startup input request it explicitly with [`Context::read_startup_input`].
 #![no_std]
 
+pub mod call;
 pub mod config;
 pub mod cq;
+pub mod deadline;
 pub mod entropy;
 pub mod log;
 pub mod owned;
+/// ABI constants and register types for protocol adapters; prefer owned operations.
+pub use catten_syscall as abi;
 pub use charlotte_launch::manifest_key;
 pub use owned::NodeShutdownRequestError;
 

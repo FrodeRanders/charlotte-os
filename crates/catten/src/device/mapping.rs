@@ -357,7 +357,7 @@ pub(super) fn test_admission() {
 pub(super) fn test_scheduled_readiness() {
     tests::readiness::scheduled();
 }
-#[cfg(any(test, feature = "kernel_tests"))]
+#[cfg(all(any(test, feature = "kernel_tests"), not(feature = "hvf_compat")))]
 pub(super) fn test_real_readiness(root: crate::memory::AddressSpaceHandle, cap: DeviceCap) {
     tests::readiness::real(root, cap);
 }

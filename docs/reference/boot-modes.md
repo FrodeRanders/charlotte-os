@@ -161,6 +161,26 @@ with VT-d/AMD-Vi. HVF remains a reduced development fixture and rejects
 hardware qualification remains separate. CI builds/lints both kernel modes and
 boots minimal and regression configurations on both architectures.
 
+CI also compiles the AArch64 `acpi,kernel_tests,hvf_compat` combination with
+denied warnings. Hardware-only fixture helpers use the same HVF exclusions as
+their boot callers; synthetic admission/ownership tests remain compiled. This
+is build coverage, not accelerated runtime qualification. Build that image
+without starting a VM with:
+
+```sh
+scripts/run-aarch64.sh debug --tests --hvf --no-network --build-only
+```
+
+An Intel host needs the x86-64 image. The x86 runner uses TCG by default and
+offers `--kvm` on native Linux; it has no QEMU/HVF option. The
+[VMware appliance](../platforms/vmware-x86_64.md) is a separate x86-64 virtual
+hardware configuration with prior Intel Fusion qualification.
+
+When combining AArch64 `--deployment-ingress-test` and
+`--shutdown-ingress-test`, shutdown waits for exact-run deployment readiness and
+`CATTEN_APP_HOLD_SECONDS` before submission. The host probe window therefore
+precedes the signed shutdown/drain check instead of racing application startup.
+
 ## Retired development exercises
 
 | Retired exercise | Retained coverage |

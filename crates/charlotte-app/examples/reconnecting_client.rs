@@ -2,61 +2,51 @@
 #![cfg_attr(not(test), no_std)]
 #![cfg_attr(not(test), no_main)]
 
-use catten_rt::{
-    Context,
-    ShutdownRequest,
-    owned::{
-        CallResult,
-        Connection,
-        IpcError,
-        PendingCall,
-    },
-};
-use catten_services::{
-    deadline::Deadline,
-    deploy,
-    grant_client,
-};
-use catten_syscall::{
+use catten_rt::abi::{
     IPC_REPLY_CANCELLED,
     IPC_REPLY_ENDPOINT_CLOSED,
     ipc_status,
 };
+use charlotte_app::{
+    grant_client,
+    prelude::*,
+};
 use charlotte_launch::deployment::RIGHT_CALL;
 
+// Protocol of the repository's deployed greeting test service.
+const OP_GET: u32 = 1;
+const GREET_VALUE: u64 = 0x0001_0102_464c_457f;
 const READS: usize = 3;
 const MAX_SESSIONS: usize = 3;
 const JOB_BUDGET_MS: u64 = 5_000;
 
 #[derive(Debug)]
 pub enum Failure {
-    LaunchContract,
+    LaunchContract(LaunchError),
     Discovery(grant_client::Error),
     Ipc(IpcError),
-    WaitAdmissionRejected,
+    Admission(AdmissionError),
+    WaitAdmissionRejected(IpcError),
     OutcomeUnknown,
-    ServiceRestarted, // Application policy for a closed endpoint.
+    EndpointLost, // A replacement is not implied.
     Rejected(i64),
     InvalidReply,
-    RecoveryLimit,
+    DeadlineExpired,
+    SessionLimit,
     Shutdown(ShutdownRequest),
 }
 
 #[cfg(not(test))]
-fn main(ctx: Context) -> ! {
-    // run() releases its owned resources before any terminal action here.
-    match run(&ctx) {
-        Ok(()) => unsafe { catten_syscall::thread_exit() },
-        Err(Failure::Shutdown(request)) => request.complete(),
-        Err(error) => {
-            catten_rt::logln!("client stopped: {:?}", error);
-            catten_rt::domain_abort()
-        }
+fn main(ctx: &Context) -> Result<AppExit, Failure> {
+    match run(ctx) {
+        Ok(()) => Ok(AppExit::Completed),
+        Err(Failure::Shutdown(request)) => Ok(AppExit::Shutdown(request)),
+        Err(error) => Err(error),
     }
 }
 
 #[cfg(not(test))]
-catten_rt::entry!(main);
+charlotte_app::entry!(main);
 //APPEND
 
 //DISCOVERYBEGIN
@@ -67,8 +57,7 @@ struct Work {
 
 pub fn run(ctx: &Context) -> Result<(), Failure> {
     // These are borrowed launch grants, not newly adopted capabilities.
-    let controller = ctx.bootstrap_connection().ok_or(Failure::LaunchContract)?;
-    let descriptor = ctx.profile_memory().ok_or(Failure::LaunchContract)?;
+    let app = Application::from_context(ctx).map_err(Failure::LaunchContract)?;
     let mut work = Work {
         completed: 0,
         deadline: Deadline::after(JOB_BUDGET_MS),
@@ -76,23 +65,27 @@ pub fn run(ctx: &Context) -> Result<(), Failure> {
 
     for _ in 0..MAX_SESSIONS {
         check_shutdown(ctx)?;
-        let connection = grant_client::acquire_until(
-            controller,
-            &descriptor,
-            b"greet",
-            RIGHT_CALL,
-            &work.deadline,
-        )
-        .map_err(Failure::Discovery)?;
+        let connection =
+            app.acquire(b"greet", RIGHT_CALL, &work.deadline).map_err(discovery_error)?;
 
         // The session borrows this owner. Its pending call ends first.
         match session(ctx, &connection, &mut work) {
-            Err(Failure::ServiceRestarted) => continue,
+            Err(Failure::EndpointLost) => continue,
             result => return result,
         }
         // continue drops the old connection before the next acquisition.
     }
-    Err(Failure::RecoveryLimit)
+    Err(Failure::SessionLimit)
+}
+
+fn discovery_error(error: grant_client::Error) -> Failure {
+    match error {
+        grant_client::Error::Shutdown(request) => Failure::Shutdown(request),
+        grant_client::Error::Admission(AdmissionError::Shutdown(request)) => {
+            Failure::Shutdown(request)
+        }
+        error => Failure::Discovery(error),
+    }
 }
 
 fn check_shutdown(ctx: &Context) -> Result<(), Failure> {
@@ -106,11 +99,9 @@ fn check_shutdown(ctx: &Context) -> Result<(), Failure> {
 //SESSIONBEGIN
 fn session(ctx: &Context, connection: &Connection, work: &mut Work) -> Result<(), Failure> {
     while work.completed < READS {
-        check_shutdown(ctx)?;
-        if work.deadline.expired() {
-            return Err(Failure::RecoveryLimit);
-        }
-        let pending = connection.call(deploy::OP_GET, 0).map_err(admission_error)?;
+        let pending = Admission::with_lifecycle(&work.deadline, ctx.lifecycle())
+            .call(connection.as_ref(), OP_GET, 0)
+            .map_err(admission_error)?;
         let value = decode(observe(pending, &work.deadline)?)?;
 
         // Business use: a confirmed, read-only greeting observation.
@@ -122,42 +113,51 @@ fn session(ctx: &Context, connection: &Connection, work: &mut Work) -> Result<()
     Ok(())
 }
 
-fn admission_error(error: IpcError) -> Failure {
+fn admission_error(error: AdmissionError) -> Failure {
     match error {
-        IpcError::Status(ipc_status::ENDPOINT_CLOSED) => Failure::ServiceRestarted,
-        other => Failure::Ipc(other),
+        AdmissionError::Rejected(IpcError::Status(status))
+            if status == ipc_status::ENDPOINT_CLOSED =>
+        {
+            Failure::EndpointLost
+        }
+        AdmissionError::Shutdown(request) => Failure::Shutdown(request),
+        AdmissionError::Deadline => Failure::DeadlineExpired,
+        other => Failure::Admission(other),
     }
 }
 
 fn decode(reply: CallResult) -> Result<u64, Failure> {
-    // All unexpected returned owners are still disposed on this error path.
+    // Unexpected returned owners are disposed on this error path.
     if reply.connection.is_some() || reply.memory.is_some() {
         return Err(Failure::InvalidReply);
     }
     match reply.result {
-        IPC_REPLY_ENDPOINT_CLOSED => Err(Failure::ServiceRestarted),
+        IPC_REPLY_ENDPOINT_CLOSED => Err(Failure::EndpointLost),
         IPC_REPLY_CANCELLED => Err(Failure::OutcomeUnknown),
         value if value < 0 => Err(Failure::Rejected(value)),
-        value if value as u64 == deploy::GREET_VALUE => Ok(value as u64),
+        value if value as u64 == GREET_VALUE => Ok(value as u64),
         _ => Err(Failure::InvalidReply),
     }
 }
 //SESSIONEND
 
 //CALLBEGIN
-fn observe(mut pending: PendingCall<'_>, deadline: &Deadline) -> Result<CallResult, Failure> {
-    match pending.wait_timeout(deadline.remaining_ms()) {
-        Ok(Some(reply)) => Ok(reply),
-        Ok(None) => {
+fn observe(pending: PendingCall<'_>, deadline: &Deadline) -> Result<CallResult, Failure> {
+    match pending.observe_until(deadline) {
+        CallObservation::Reply(reply) => Ok(reply),
+        CallObservation::Deadline(pending) => {
             cancel(pending);
             Err(Failure::OutcomeUnknown)
         }
-        Err(IpcError::Status(ipc_status::RESOURCE_LIMIT)) => {
+        CallObservation::WaitRejected {
+            pending,
+            error,
+        } => {
             // Wait admission failed; the accepted call still has an owner.
             cancel(pending);
-            Err(Failure::WaitAdmissionRejected)
+            Err(Failure::WaitAdmissionRejected(error))
         }
-        Err(error) => Err(Failure::Ipc(error)),
+        CallObservation::Failed(error) => Err(Failure::Ipc(error)),
     }
 }
 

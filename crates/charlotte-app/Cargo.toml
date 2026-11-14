@@ -1,0 +1,31 @@
+[package]
+name = "charlotte-app"
+version = "0.1.0"
+edition = "2024"
+description = "Owned application context and typed service clients for CharlotteOS"
+
+[features]
+default = []
+kafka = ["dep:charlotte-protocol-kafka"]
+s3 = ["dep:charlotte-protocol-s3"]
+socket = []
+test-support = []
+
+[dependencies]
+catten-rt = { path = "../catten-rt" }
+charlotte-launch = { path = "../charlotte-launch" }
+charlotte-protocol-grant = { path = "../charlotte-protocol-grant" }
+charlotte-protocol-kafka = { path = "../charlotte-protocol-kafka", optional = true }
+charlotte-protocol-s3 = { path = "../charlotte-protocol-s3", optional = true }
+
+[[example]]
+name = "reconnecting_client"
+path = "examples/reconnecting_client.rs"
+test = true
+bench = false
+
+[[example]]
+name = "echo_service"
+path = "examples/echo_service.rs"
+test = true
+bench = false

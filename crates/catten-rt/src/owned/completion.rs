@@ -35,8 +35,7 @@ impl ThreadHandle {
     /// `entry_vaddr` must identify a valid `extern "C" fn()` entry point in
     /// the current address space and `target_lp` must identify a logical CPU.
     pub unsafe fn spawn(entry_vaddr: usize, target_lp: u32) -> Result<Self, ThreadError> {
-        let (tid, generation) =
-            unsafe { catten_syscall::spawn_thread_with_generation(entry_vaddr, target_lp) };
+        let (tid, generation) = unsafe { kernel::spawn_thread(entry_vaddr, target_lp) };
         if tid == u64::MAX || generation == 0 {
             return Err(ThreadError::SpawnFailed);
         }
@@ -50,14 +49,19 @@ impl ThreadHandle {
     }
 
     pub fn join(self) -> Result<i64, ThreadError> {
-        let cap = catten_syscall::observe_thread_exit_generation(
-            self.identity.tid(),
-            self.identity.generation(),
-        );
+        self.join_preserving().map_err(|(_, error)| error)
+    }
+
+    /// Registration or observation failure returns the generation-bound owner.
+    /// An unsuccessful observation cannot establish that the worker exited.
+    pub fn join_preserving(self) -> Result<i64, (Self, ThreadError)> {
+        let cap = kernel::observe_thread_exit(self.identity.tid(), self.identity.generation());
         if cap == catten_syscall::COMPLETION_SUBMIT_FAILED {
-            return Err(ThreadError::ObserverRegistrationFailed);
+            return Err((self, ThreadError::ObserverRegistrationFailed));
         }
-        Completion::from_kernel(cap).and_then(Completion::wait).map_err(ThreadError::Completion)
+        Completion::from_kernel(cap)
+            .and_then(Completion::wait)
+            .map_err(|error| (self, ThreadError::Completion(error)))
     }
 }
 
@@ -164,5 +168,105 @@ impl Drop for Completion {
             kernel::wait(cap);
             kernel::close(cap);
         }
+    }
+}
+
+/// Bounded custody of generation-bound native worker handles. Reserve before
+/// spawning. Stop workers through their application lifecycle, then join them.
+/// Dropping a nonempty group aborts rather than silently detaching live work.
+pub struct Workers {
+    handles: Vec<ThreadHandle>,
+    limit: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct WorkerCapacity;
+
+impl Workers {
+    pub fn new(limit: usize) -> Result<Self, WorkerCapacity> {
+        if !(1..=64).contains(&limit) {
+            return Err(WorkerCapacity);
+        }
+        let mut handles = Vec::new();
+        handles.try_reserve_exact(limit).map_err(|_| WorkerCapacity)?;
+        Ok(Self {
+            handles,
+            limit,
+        })
+    }
+
+    pub fn remaining_capacity(&self) -> usize {
+        self.limit - self.handles.len()
+    }
+
+    /// On rejection the caller retains its actual worker, not just its TID.
+    pub fn insert(&mut self, handle: ThreadHandle) -> Result<(), ThreadHandle> {
+        if self.remaining_capacity() == 0 {
+            return Err(handle);
+        }
+        self.handles.push(handle);
+        Ok(())
+    }
+
+    /// Join confirms exit. A failed observation restores the exact handle in
+    /// its preallocated slot; neither the group nor the worker is discarded.
+    pub fn join_all(&mut self) -> Result<(), ThreadError> {
+        while let Some(handle) = self.handles.pop() {
+            if let Err((handle, error)) = handle.join_preserving() {
+                self.handles.push(handle);
+                return Err(error);
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Drop for Workers {
+    fn drop(&mut self) {
+        if !self.handles.is_empty() {
+            kernel::abort_unjoined_workers();
+        }
+    }
+}
+
+#[cfg(test)]
+mod worker_tests {
+    extern crate std;
+    use super::*;
+    use crate::owned::kernel::{
+        self,
+        Event,
+    };
+    #[test]
+    fn rejected_join_retains_original_generation_and_group_capacity() {
+        let _guard = kernel::serial();
+        kernel::reset();
+        let mut workers = Workers::new(1).unwrap();
+        let handle = unsafe { ThreadHandle::spawn(0x20000, 0) }.unwrap();
+        workers.insert(handle).unwrap();
+        kernel::update(|s| s.thread_observer = catten_syscall::COMPLETION_SUBMIT_FAILED);
+        assert_eq!(workers.join_all(), Err(ThreadError::ObserverRegistrationFailed));
+        assert_eq!(workers.remaining_capacity(), 0);
+        kernel::update(|s| {
+            s.thread = (7, 4);
+            s.thread_observer = 20;
+        });
+        workers.join_all().unwrap();
+        assert_eq!(workers.remaining_capacity(), 1);
+        let observations = kernel::events()
+            .into_iter()
+            .filter(|e| matches!(e, Event::ObserveThread(_, _)))
+            .collect::<std::vec::Vec<_>>();
+        assert_eq!(observations, [Event::ObserveThread(7, 3), Event::ObserveThread(7, 3)]);
+    }
+    #[test]
+    fn abandoned_group_aborts_instead_of_claiming_worker_exit() {
+        let _guard = kernel::serial();
+        kernel::reset();
+        let mut workers = Workers::new(1).unwrap();
+        workers.insert(unsafe { ThreadHandle::spawn(0x20000, 0) }.unwrap()).unwrap();
+        assert!(std::panic::catch_unwind(|| drop(workers)).is_err());
+        assert!(kernel::events().contains(&Event::AbortUnjoinedWorkers));
+        assert!(!kernel::events().iter().any(|e| matches!(e, Event::ObserveThread(_, _))));
     }
 }

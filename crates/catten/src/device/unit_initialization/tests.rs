@@ -61,6 +61,7 @@ pub(in crate::device) fn publication_boundary() {
     }
 }
 
+#[cfg(not(feature = "hvf_compat"))]
 pub(in crate::device) fn test_real<T: UnitBacking>(
     slot: &Mutex<UnitSlot<T>>,
     prepare: fn() -> Result<DetachedDomain<T>, Rejected<T>>,

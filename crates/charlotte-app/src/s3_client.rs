@@ -12,6 +12,8 @@ use catten_rt::owned::{
     IpcError,
     MemoryError,
     OwnedMemory,
+    OwnedPayload,
+    PayloadError,
 };
 use charlotte_protocol_s3::{
     self as protocol,
@@ -23,6 +25,7 @@ use charlotte_protocol_s3::{
 pub enum Error {
     Ipc(IpcError),
     Memory(MemoryError),
+    Payload(PayloadError),
     InvalidRequest,
     InvalidReply,
     Service(i64),
@@ -162,10 +165,9 @@ fn request_call(
     opcode: u32,
     request: ObjectRequest<'_>,
 ) -> Result<catten_rt::owned::CallResult, Error> {
-    let memory = OwnedMemory::allocate(1).map_err(Error::Memory)?;
-    let mut mapping = memory.map_writable().map_err(|(_, error)| Error::Memory(error))?;
-    let len = request.encode(mapping.as_mut_slice()).ok_or(Error::InvalidRequest)?;
-    let memory = mapping.unmap().map_err(|(_, error)| Error::Memory(error))?;
+    let (memory, len) = OwnedPayload::encode(4096, 4096, |output| request.encode(output))
+        .map_err(Error::Payload)?
+        .into_parts();
     service
         .call_move(opcode, len as u64, memory)
         .map_err(|(_, error)| Error::Ipc(error))?

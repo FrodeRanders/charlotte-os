@@ -26,20 +26,36 @@ mod completion;
 mod device;
 mod ipc;
 mod memory;
+mod payload;
 
 pub use completion::*;
 pub use device::*;
 pub use ipc::*;
 pub use memory::*;
+pub use payload::*;
 
 #[cfg(not(test))]
-mod kernel {
+pub(crate) mod kernel {
     use catten_syscall::{
         self,
         DmaDirection,
         IpcRights,
         OpCode,
     };
+
+    pub fn abort_unjoined_workers() -> ! {
+        crate::logln!("[app] unjoined worker group retained through abort");
+        catten_syscall::domain_abort()
+    }
+    pub unsafe fn spawn_thread(entry: usize, lp: u32) -> (u64, u64) {
+        unsafe { catten_syscall::spawn_thread_with_generation(entry, lp) }
+    }
+    pub fn observe_thread_exit(tid: u64, generation: u64) -> u64 {
+        catten_syscall::observe_thread_exit_generation(tid, generation)
+    }
+    pub fn monotonic_clock() -> (u64, u64) {
+        catten_syscall::monotonic_clock()
+    }
 
     pub fn memory_alloc(pages: usize) -> u64 {
         catten_syscall::memory_alloc(pages)
@@ -310,7 +326,7 @@ mod kernel {
 }
 
 #[cfg(test)]
-mod kernel {
+pub(crate) mod kernel {
     extern crate std;
 
     use std::{
@@ -331,6 +347,8 @@ mod kernel {
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub enum Event {
+        AbortUnjoinedWorkers,
+        ObserveThread(u64, u64),
         MemoryClose(u64),
         MemoryUnmap(u64),
         DmaUnmap(u64, u64),
@@ -351,6 +369,10 @@ mod kernel {
     }
 
     pub struct State {
+        pub thread: (u64, u64),
+        pub thread_observer: u64,
+        pub clock: (u64, u64),
+        pub clocks: VecDeque<(u64, u64)>,
         pub memory_alloc: u64,
         pub memory_size: usize,
         pub memory_map_any: (u64, usize),
@@ -391,6 +413,10 @@ mod kernel {
     impl Default for State {
         fn default() -> Self {
             Self {
+                thread: (7, 3),
+                thread_observer: 20,
+                clock: (0, 1000),
+                clocks: VecDeque::new(),
                 memory_alloc: 10,
                 memory_size: 4096,
                 memory_map_any: (catten_syscall::memory_status::OK, 0x1000),
@@ -465,6 +491,28 @@ mod kernel {
             .expect("test kernel mutex poisoned")
             .as_mut()
             .expect("test kernel is not initialized"))
+    }
+
+    pub fn abort_unjoined_workers() -> ! {
+        with_state(|s| s.events.push(Event::AbortUnjoinedWorkers));
+        panic!("injected unjoined worker abort")
+    }
+    pub unsafe fn spawn_thread(_entry: usize, _lp: u32) -> (u64, u64) {
+        with_state(|s| s.thread)
+    }
+    pub fn observe_thread_exit(tid: u64, generation: u64) -> u64 {
+        with_state(|s| {
+            s.events.push(Event::ObserveThread(tid, generation));
+            s.thread_observer
+        })
+    }
+    pub fn monotonic_clock() -> (u64, u64) {
+        with_state(|state| {
+            if let Some(clock) = state.clocks.pop_front() {
+                state.clock = clock;
+            }
+            state.clock
+        })
     }
 
     pub fn memory_alloc(_pages: usize) -> u64 {

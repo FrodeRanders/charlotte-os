@@ -13,7 +13,7 @@ env:
   CARGO_TERM_COLOR: always
   # A global RUSTFLAGS overrides the kernel target's frame-pointer settings.
   CARGO_BUILD_RUSTFLAGS: "-D warnings"
-  SITAS_REV: d27f7e7b7a6e3657c9b39e53da02cf0cd8f91a78
+  SITAS_REV: 6d63266eb52492c1958c45f3ed71c8c7a451489a
 
 jobs:
   dependency-advisories:
@@ -235,6 +235,17 @@ jobs:
               --no-default-features --features "$features"
             python3 scripts/check-boot-profile.py \
               --kernel "target/${{ matrix.target }}/debug/catten" --mode "$mode"
+            # HVF hardware fixtures are excluded at their callers and helpers.
+            # Keep this reduced profile buildable without requiring a Mac host.
+            if [ "${{ matrix.target }}" = "aarch64-unknown-none-catten" ] && [ "$mode" = test ]; then
+              cargo build --locked --package catten \
+                --target target_specs/aarch64-unknown-none-catten.json \
+                --no-default-features --features acpi,kernel_tests,hvf_compat
+              python3 scripts/check-boot-profile.py \
+                --kernel target/aarch64-unknown-none-catten/debug/catten --mode test
+              python3 scripts/check-kernel-asm-sections.py \
+                target/aarch64-unknown-none-catten/debug/catten
+            fi
           done
 
   test:

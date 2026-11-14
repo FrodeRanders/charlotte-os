@@ -1,6 +1,10 @@
 # CharlotteOS userspace development
 
 CharlotteOS Rust programs use `catten-rt` as their small userspace runtime.
+The [application SDK guide](application-sdk.md) describes the smaller
+`charlotte-app` library, owned operation helpers, returning entry wrapper and
+independent project workflow. The [architecture note](../architecture/userspace-ergonomics.md)
+records its boundaries and remaining extensions.
 Run `cargo fmt --all` from the repository root to format every package,
 including the separately targeted service and application crates and host
 tools. Use `cargo fmt --all -- --check` for a non-mutating CI-style check.
@@ -185,6 +189,12 @@ scripts/build-catten-services.sh --embed
 scripts/build-catten-user.sh --embed
 scripts/run-aarch64.sh debug --hvf --no-network --timeout 10
 ```
+
+The reduced HVF configuration is AArch64-specific. To check its build without
+starting QEMU, replace `--timeout 10` with `--build-only`. On an Intel iMac,
+use the x86-64 runner or the
+[VMware appliance builder](../platforms/vmware-x86_64.md). The x86 runner has
+no HVF option; native Intel Linux can select KVM with `--kvm`.
 
 These build scripts use Charlotte's AArch64 target specification and linker
 script and validate the generated ELF layout. Generated AArch64 programs are

@@ -86,6 +86,7 @@ pub(super) fn boundary(phase: Phase) {
     COUNTS[phase as usize].fetch_add(1, Ordering::Relaxed);
 }
 
+#[cfg(not(feature = "hvf_compat"))]
 pub(in crate::device) fn with_real<T>(
     root: memory::AddressSpaceHandle,
     memory: Option<u64>,

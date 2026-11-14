@@ -17,6 +17,12 @@ report is useful for a significant investigation or qualification checkpoint.
 
 ## Reports
 
+- [Broker SDK adoption and manual client review](2026-11-14-broker-sdk-adoption.md) records the bounded session reactor, actual partition joins, one-source SDK workflow and native deployment/drain qualification.
+
+- [Broker as an application SDK consumer](2026-11-14-broker-sdk-review.md) records baseline host/EL0 checks and concrete gaps in shared socket handoff, Sitas worker custody, lifecycle and existing-workspace tooling.
+
+- [Application SDK and userspace ergonomics](2026-11-14-application-sdk.md) records owned operation helpers, application/client extraction, Sitas call futures and SDK qualification, including the incomplete short security run, initial HVF build failure and subsequent build-only correction.
+
 - [Q4 mapping and scratch principal funding](2026-11-11-q4-mapping-scratch-principals.md) covers original charges for three node layouts, capacity preservation and refunds through mapping and root retirement.
 
 - [Q4 completion principal funding](2026-11-11-q4-completion-principals.md) covers completion registry nodes, kernel CQ storage and original refunds after root close and ASID reuse.

@@ -16,12 +16,6 @@ path = "src/bin/otlp.rs"
 test = false
 bench = false
 
-[[example]]
-name = "reconnecting_client"
-path = "examples/reconnecting_client.rs"
-test = true
-bench = false
-
 [[bin]]
 name = "ns"
 path = "src/bin/ns.rs"
@@ -119,6 +113,8 @@ test = false
 bench = false
 
 [dependencies]
+charlotte-app = { path = "../charlotte-app", features = ["kafka", "s3", "socket"] }
+charlotte-protocol-grant = { path = "../charlotte-protocol-grant" }
 charlotte-management-tls = { path = "../charlotte-management-tls" }
 charlotte-authorization = { path = "../charlotte-authorization" }
 catten-rt = { path = "../catten-rt" }

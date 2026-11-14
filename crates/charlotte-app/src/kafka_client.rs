@@ -12,6 +12,8 @@ use catten_rt::owned::{
     IpcError,
     MemoryError,
     OwnedMemory,
+    OwnedPayload,
+    PayloadError,
 };
 use charlotte_protocol_kafka::{
     self as protocol,
@@ -23,6 +25,7 @@ use charlotte_protocol_kafka::{
 pub enum Error {
     Ipc(IpcError),
     Memory(MemoryError),
+    Payload(PayloadError),
     InvalidRequest,
     InvalidReply,
     Service(i64),
@@ -131,11 +134,9 @@ impl<'connection> Client<'connection> {
 }
 
 fn encode_record(record: RecordRequest<'_>) -> Result<(OwnedMemory, usize), Error> {
-    let memory = OwnedMemory::allocate(1).map_err(Error::Memory)?;
-    let mut mapping = memory.map_writable().map_err(|(_, error)| Error::Memory(error))?;
-    let len = record.encode(mapping.as_mut_slice()).ok_or(Error::InvalidRequest)?;
-    let memory = mapping.unmap().map_err(|(_, error)| Error::Memory(error))?;
-    Ok((memory, len))
+    OwnedPayload::encode(4096, 4096, |output| record.encode(output))
+        .map(OwnedPayload::into_parts)
+        .map_err(Error::Payload)
 }
 
 fn record_call(

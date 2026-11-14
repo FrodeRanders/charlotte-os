@@ -184,12 +184,13 @@ pub(super) fn initialize<T: UnitBacking>(
 
 // Serialized boot hooks. They never enable IRQs, fake hardware completion or
 // permit published backing to use private cancellation.
+#[cfg(all(feature = "kernel_tests", not(feature = "hvf_compat")))]
+pub(super) use tests::test_real;
 #[cfg(feature = "kernel_tests")]
 pub(super) use tests::{
     publication_boundary,
     reject_allocation,
     reject_complete,
-    test_real,
     wait_boundary,
 };
 

@@ -1,11 +1,13 @@
 //! Pre-driver QEMU fixture uses raw IDs only at the kernel ABI/hardware boundary.
 //! Root teardown is the fixture's resource owner; no quarantined state is adopted.
 use super::*;
+#[cfg(not(feature = "hvf_compat"))]
 use crate::{
     cpu::isa::interface::memory::address::PhysicalAddress,
     memory::object,
 };
 
+#[cfg(not(feature = "hvf_compat"))]
 fn backend_failure(cause: dma::Error) -> DeviceError {
     DeviceError::DmaCreationFailed(creation_failure::Failure {
         stage: creation_failure::Stage::Backend,
@@ -14,6 +16,7 @@ fn backend_failure(cause: dma::Error) -> DeviceError {
     })
 }
 
+#[cfg(not(feature = "hvf_compat"))]
 fn reset_admission_failure() -> DeviceError {
     DeviceError::DmaCreationFailed(creation_failure::Failure {
         stage: creation_failure::Stage::ResetAdmission,
@@ -80,10 +83,12 @@ pub(super) fn probe_private_release() {
     }
 }
 
+#[cfg(not(feature = "hvf_compat"))]
 fn destroy_failed_creation(id: u64) -> Result<(), dma::Error> {
     dma::destroy_domain_at(id, creation_rollback_unlocked, creation_rollback_unlocked)
 }
 
+#[cfg(not(feature = "hvf_compat"))]
 fn mapping_unlocked(
     root: crate::memory::AddressSpaceHandle,
     cap: DeviceCap,
@@ -143,6 +148,7 @@ fn mapping_unlocked(
     );
 }
 
+#[cfg(not(feature = "hvf_compat"))]
 fn close_claim(root: crate::memory::AddressSpaceHandle, cap: DeviceCap, irq: bool) {
     assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
     assert_available(|| DEVICES.try_lock().is_some(), "close device registry");
@@ -178,6 +184,7 @@ fn close_claim(root: crate::memory::AddressSpaceHandle, cap: DeviceCap, irq: boo
     ));
 }
 
+#[cfg(not(feature = "hvf_compat"))]
 pub(crate) fn run() {
     let Some((base, requester)) =
         crate::device_management::drivers::busses::pci_express::topology::reset::test_target(
@@ -739,6 +746,7 @@ pub(crate) fn run() {
 
 /// Real domain class capture survives root promotion; metadata rejection occurs
 /// before table/data publication, with no pin or original charge lost.
+#[cfg(not(feature = "hvf_compat"))]
 fn metadata_admission(requester: u32) {
     use crate::klib::admission::{
         IommuNodes,

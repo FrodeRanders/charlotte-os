@@ -74,7 +74,7 @@ impl<C: Calls> Blocking<C> {
                 }
                 Err(error) => {
                     let (now, _) = self.calls.now();
-                    if error != IpcError::Status(catten_syscall::ipc_status::QUEUE_FULL)
+                    if error != IpcError::Status(catten_rt::abi::ipc_status::QUEUE_FULL)
                         || self.admission.expired_at(now)
                         || self.deadline.expired_at(now)
                     {
@@ -109,7 +109,7 @@ impl<'a> Calls for (Runtime, core::marker::PhantomData<&'a ()>) {
     type Owner = ClosingSocket<'a>;
 
     fn now(&self) -> (u64, u64) {
-        catten_syscall::monotonic_clock()
+        catten_rt::abi::monotonic_clock()
     }
 
     fn submit(&mut self, owner: &mut Self::Owner) -> Result<(), IpcError> {
@@ -269,7 +269,7 @@ mod tests {
         assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).is_err());
     }
     fn queue_full() -> IpcError {
-        IpcError::Status(catten_syscall::ipc_status::QUEUE_FULL)
+        IpcError::Status(catten_rt::abi::ipc_status::QUEUE_FULL)
     }
     #[test]
     fn success_submits_once_and_disposes_pending_before_remote_lease() {
@@ -338,7 +338,7 @@ mod tests {
     #[test]
     fn wait_admission_and_observation_failures_remain_distinct_from_timeout() {
         for error in [
-            SocketError::Ipc(IpcError::Status(catten_syscall::ipc_status::RESOURCE_LIMIT)),
+            SocketError::Ipc(IpcError::Status(catten_rt::abi::ipc_status::RESOURCE_LIMIT)),
             SocketError::Ipc(IpcError::Status(99)),
             SocketError::InvalidReply,
             SocketError::Service(-2),

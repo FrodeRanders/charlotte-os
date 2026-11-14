@@ -1031,8 +1031,10 @@ fn main(ctx: Context) -> ! {
     let silent_result =
         grant_client::publish(silent_connection.as_ref(), &descriptor, AVAILABLE, &endpoint);
     check(
-        matches!(silent_result, Err(grant_client::Error::Service(grant::ERR_UNAVAILABLE)))
-            && !outer_budget.expired(),
+        matches!(
+            silent_result,
+            Err(grant_client::Error::Observation(catten_rt::call::ObservationError::Deadline))
+        ) && !outer_budget.expired(),
         15,
     );
     // The platform publication helper must also bound *admission* to a full

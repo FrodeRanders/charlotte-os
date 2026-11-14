@@ -217,6 +217,7 @@ dependencies = [
  "catten-graft",
  "catten-rt",
  "catten-syscall",
+ "charlotte-app",
  "charlotte-authorization",
  "charlotte-kafka",
  "charlotte-kafka-step",
@@ -226,6 +227,7 @@ dependencies = [
  "charlotte-protocol-disco",
  "charlotte-protocol-dns",
  "charlotte-protocol-fs",
+ "charlotte-protocol-grant",
  "charlotte-protocol-kafka",
  "charlotte-protocol-msg",
  "charlotte-protocol-net",
@@ -260,6 +262,7 @@ version = "0.1.0"
 dependencies = [
  "catten-rt",
  "catten-syscall",
+ "charlotte-app-sitas",
  "sitas-charlotte",
  "sitas-core",
 ]
@@ -310,6 +313,26 @@ dependencies = [
  "chacha20",
  "cipher 0.5.2",
  "poly1305",
+]
+
+[[package]]
+name = "charlotte-app"
+version = "0.1.0"
+dependencies = [
+ "catten-rt",
+ "charlotte-launch",
+ "charlotte-protocol-grant",
+ "charlotte-protocol-kafka",
+ "charlotte-protocol-s3",
+]
+
+[[package]]
+name = "charlotte-app-sitas"
+version = "0.1.0"
+dependencies = [
+ "catten-rt",
+ "sitas-core",
+ "spin 0.9.9",
 ]
 
 [[package]]
@@ -381,6 +404,13 @@ version = "0.1.0"
 [[package]]
 name = "charlotte-protocol-fs"
 version = "0.1.0"
+
+[[package]]
+name = "charlotte-protocol-grant"
+version = "0.1.0"
+dependencies = [
+ "charlotte-launch",
+]
 
 [[package]]
 name = "charlotte-protocol-kafka"

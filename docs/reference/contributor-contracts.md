@@ -1299,6 +1299,11 @@ the corrected RPC polling paths, and the remaining notification gaps.
   capabilities.
 - Service/client helpers wrap protocol lifetimes on top of `catten-rt::owned`;
   they do not duplicate syscall cleanup.
+- `charlotte-app` packages application context and optional protocol clients
+  without depending on platform service implementations. `catten-services`
+  reexports the same client implementations. The Sitas adapter composes the
+  existing executor/backend and never independently consumes its CQ ring; see
+  `docs/guides/application-sdk.md` for ownership and wait-failure policies.
 - Drivers may use raw MMIO, DMA, CQ, and device operations only where the typed
   runtime API cannot express the hardware contract. Keep that raw region small
   and expose an owned interface to the rest of the service.

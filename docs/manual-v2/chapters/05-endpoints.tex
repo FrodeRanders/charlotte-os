@@ -420,7 +420,7 @@ A reply token is:
         until reply observation or completed cancellation.
     \item Endpoint teardown can complete a call with
         \texttt{IPC\_REPLY\_ENDPOINT\_CLOSED}. The client below maps this
-        to its own \texttt{ServiceRestarted} recovery decision. The kernel
+        to its own \texttt{EndpointLost} recovery decision. The kernel
         must finish required loan cleanup before publishing that terminal result;
         uncertain cleanup can leave the call pending.
     \item The receiving service owns the reply token. It can call a second
@@ -512,8 +512,8 @@ Keep the recovery scopes nested in this order:
 \end{samepage}
 
 The complete source is
-\repofile{crates/catten-services/examples/reconnecting_client.rs}. It depends on
-\texttt{catten-rt}, \texttt{catten-services}, \texttt{catten-syscall} and
+\repofile{crates/charlotte-app/examples/reconnecting_client.rs}. It depends on
+\texttt{catten-rt}, \texttt{charlotte-app} and
 \texttt{charlotte-launch}. The listings below include that source directly;
 the conditional attributes only allow its host tests to use Rust's test harness.
 
@@ -522,36 +522,41 @@ The launch contract supplies borrowed authority. Terminal exit and cooperative
 shutdown happen after \texttt{run} has returned and its owned resources have
 left scope. Failed cancellation has a separate retaining abort path below.
 
-\lstinputlisting[style=rustCode,linerange={APPBEGIN-APPEND},rangeprefix={//},includerangemarker=false]{../../crates/catten-services/examples/reconnecting_client.rs}
+\lstinputlisting[style=rustCode,linerange={APPBEGIN-APPEND},rangeprefix={//},includerangemarker=false]{../../crates/charlotte-app/examples/reconnecting_client.rs}
 
 \paragraph*{Discovery and session lifetime.}
 \texttt{Work} outlives every connection. When the session reports endpoint loss,
 \texttt{continue} drops that old connection before discovery acquires another.
-There are at most three sessions. The deadline belongs to the current business
+There are at most three acquired sessions. Exhausting this limit is distinct
+from an unstarted operation exhausting its deadline. The deadline belongs to the current business
 operation and survives reconnection; repeated discovery cannot renew its budget.
 Authorization, resource and malformed-request errors return to application policy.
 There is no fallback to public lookup.
 
-\lstinputlisting[style=rustCode,linerange={DISCOVERYBEGIN-DISCOVERYEND},rangeprefix={//},includerangemarker=false]{../../crates/catten-services/examples/reconnecting_client.rs}
+\lstinputlisting[style=rustCode,linerange={DISCOVERYBEGIN-DISCOVERYEND},rangeprefix={//},includerangemarker=false]{../../crates/charlotte-app/examples/reconnecting_client.rs}
 
 \paragraph*{Business operation.}
-The inner scope contains only use of this session. Its \texttt{ServiceRestarted}
+The inner scope contains only use of this session. Its \texttt{EndpointLost}
 variant is an application-defined classification of the current endpoint-closure
 status or terminal reply code. The runtime does not export an error variant with
 that name, and closure alone does not establish that a replacement is available.
 All other failures step out to the application. Progress and the next deadline
-advance only after a validated reply.
+advance only after a validated reply. Shared \texttt{Admission} retries only
+unstarted queue pressure within that same deadline and checks lifecycle between
+attempts. An accepted timeout never enters that admission retry path.
 
-\lstinputlisting[style=rustCode,linerange={SESSIONBEGIN-SESSIONEND},rangeprefix={//},includerangemarker=false]{../../crates/catten-services/examples/reconnecting_client.rs}
+\lstinputlisting[style=rustCode,linerange={SESSIONBEGIN-SESSIONEND},rangeprefix={//},includerangemarker=false]{../../crates/charlotte-app/examples/reconnecting_client.rs}
 
+\begin{samepage}
 \paragraph*{Accepted-call lifetime.}
 A timeout and rejected waiter admission are different outcomes. Both leave an
 accepted pending call owned here. Explicit cancellation closes that owner before
 returning an error; rejected cancellation returns the owner, which stays live
 through terminal domain abort. Cancellation can wait for loan cleanup, so the
 five-second observation budget is not a guaranteed teardown deadline.
+\end{samepage}
 
-\lstinputlisting[style=rustCode,linerange={CALLBEGIN-CALLEND},rangeprefix={//},includerangemarker=false]{../../crates/catten-services/examples/reconnecting_client.rs}
+\lstinputlisting[style=rustCode,linerange={CALLBEGIN-CALLEND},rangeprefix={//},includerangemarker=false]{../../crates/charlotte-app/examples/reconnecting_client.rs}
 
 This example can repeat an unconfirmed greeting read after endpoint loss because
 the operation is read-only. A write, payment, device command or other mutation

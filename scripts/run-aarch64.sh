@@ -1266,7 +1266,11 @@ if [ -n "$TIMEOUT" ]; then
                 fi
             fi
             if [ "$SHUTDOWN_INGRESS_TEST" = "1" ] \
-                && [ "$SHUTDOWN_INGRESS_SUBMITTED" = "0" ]; then
+                && [ "$SHUTDOWN_INGRESS_SUBMITTED" = "0" ] \
+                && { [ "$DEPLOYMENT_INGRESS_TEST" = "0" ] || [ -f "$DEPLOYMENT_RESULT_FILE" ]; } \
+                && { [ "$APP_HOLD_SECONDS" -eq 0 ] \
+                    || { [ "$DEPLOYMENT_READY_TICK" -ge 0 ] \
+                        && [ "$tick" -ge $((DEPLOYMENT_READY_TICK + APP_HOLD_SECONDS * 10)) ]; }; }; then
                 mkdir -p "${ROOT_DIR}/target/shutdown-ingress-test"
                 SHUTDOWN_TEST_DIR="$(mktemp -d "${ROOT_DIR}/target/shutdown-ingress-test/run.XXXXXX")"
                 SHUTDOWN_INTENT="${SHUTDOWN_TEST_DIR}/node.cshutdown"

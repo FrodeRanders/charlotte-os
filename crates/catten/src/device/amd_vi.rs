@@ -464,7 +464,7 @@ pub fn initialize_early() -> Result<(), Error> {
     unit_initialization::initialize(&UNIT, prepare_unit, |unit| unit.commands.is_some())
 }
 
-#[cfg(any(test, feature = "kernel_tests"))]
+#[cfg(all(any(test, feature = "kernel_tests"), not(feature = "hvf_compat")))]
 pub(super) fn test_initialization() {
     unit_initialization::test_real(&UNIT, prepare_unit, 4, 0);
 }
@@ -1058,7 +1058,7 @@ pub(super) fn test_table_admission() {
 }
 
 /// Serialized fixture places the next map across a cached/fresh leaf-table boundary.
-#[cfg(any(test, feature = "kernel_tests"))]
+#[cfg(all(any(test, feature = "kernel_tests"), not(feature = "hvf_compat")))]
 pub(super) fn test_reject_sparse_map(id: u64) {
     with_unit(|unit| {
         let domain = unit.domains.get_mut(&id).and_then(Option::as_mut).unwrap();
@@ -1069,7 +1069,7 @@ pub(super) fn test_reject_sparse_map(id: u64) {
     .unwrap();
 }
 
-#[cfg(any(test, feature = "kernel_tests"))]
+#[cfg(all(any(test, feature = "kernel_tests"), not(feature = "hvf_compat")))]
 pub(super) fn test_registry_snapshot(sid: u32) -> (u64, Option<u64>, usize, usize) {
     with_registered(|unit| {
         Ok((
@@ -1085,7 +1085,7 @@ pub(super) fn test_registry_snapshot(sid: u32) -> (u64, Option<u64>, usize, usiz
 /// Serialized pre-driver probe: retain the complete actual unit in the
 /// existing creation owner, without creation/reset or descriptor mutation.
 /// Its caller retains the real mapped-domain root through the probe.
-#[cfg(any(test, feature = "kernel_tests"))]
+#[cfg(all(any(test, feature = "kernel_tests"), not(feature = "hvf_compat")))]
 pub(super) fn test_with_claimed_unit(action: impl FnOnce()) {
     let mut preparation = super::DmaCreation::new(false);
     super::domain_creation::prepare(
@@ -1100,7 +1100,7 @@ pub(super) fn test_with_claimed_unit(action: impl FnOnce()) {
     .unwrap();
     assert!(!preparation.is_armed());
 }
-#[cfg(any(test, feature = "kernel_tests"))]
+#[cfg(all(any(test, feature = "kernel_tests"), not(feature = "hvf_compat")))]
 pub(super) fn test_registered_unit_waiters() -> usize {
     UNIT.lock().readiness.as_ref().map_or(0, |source| source.registered())
 }

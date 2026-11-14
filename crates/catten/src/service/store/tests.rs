@@ -71,6 +71,7 @@ pub(crate) fn run() {
     );
 }
 
+#[cfg(not(feature = "hvf_compat"))]
 pub(crate) fn live() {
     let first = load_cached_elf(b"ns").expect("native cache read");
     assert!(verified_for_name(b"ns", first));

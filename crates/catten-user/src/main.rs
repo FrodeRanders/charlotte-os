@@ -27,7 +27,7 @@ fn main(ctx: Context) -> ! {
         run_join_probe(&reactor, output.add(2));
         // SAFETY: output is the live writable status page supplied by crt0.
         output.add(3).write_volatile(
-            if run_cq_probe(ctx, &reactor) {
+            if run_cq_probe(ctx, &reactor) && run_owned_call_probe() {
                 64
             } else {
                 0xdead
@@ -146,3 +146,78 @@ fn run_cq_probe(ctx: Context, reactor: &CharlotteReactor) -> bool {
 }
 
 catten_rt::entry!(main);
+
+/// Both tasks share the existing Sitas executor. Client polls first; the server
+/// then replies, and backend dispatch makes the client recheck its owned call.
+/// This runs after the SDK/Sitas ring probe: no other CQ0 consumer is active.
+fn run_owned_call_probe() -> bool {
+    use alloc::sync::Arc;
+    use core::sync::atomic::{
+        AtomicBool,
+        Ordering,
+    };
+
+    use catten_rt::{
+        call::CallObservation,
+        deadline::Deadline,
+        owned::{
+            Endpoint,
+            OwnedPayload,
+        },
+    };
+    use sitas_core::shard_executor::ShardExecutor;
+    let Ok(endpoint) = Endpoint::create(0x46555452, 1, 4) else {
+        return false;
+    };
+    let Ok(connection) = endpoint.connect(catten_syscall::IpcRights::CALL) else {
+        return false;
+    };
+    let Ok(payload) = OwnedPayload::copy_from(b"owned future", 32) else {
+        return false;
+    };
+    let (memory, len) = payload.into_parts();
+    let Ok(pending) = connection.call_move(1, len as u64, memory) else {
+        return false;
+    };
+    let Ok(mut incoming) = endpoint.receive() else {
+        return false;
+    };
+    let Some(reply) = incoming.reply.take() else {
+        return false;
+    };
+    let Some(memory) = incoming.memory.take() else {
+        return false;
+    };
+    let Ok(backend) = charlotte_app_sitas::WakeReactor::new(CharlotteReactor::new(0), 0, 2) else {
+        return false;
+    };
+    let calls = backend.handle();
+    let mut executor = ShardExecutor::new(backend);
+    let passed = Arc::new(AtomicBool::new(false));
+    let output = passed.clone();
+    executor.spawn(async move {
+        let Ok(future) = calls.call(pending, Some(Deadline::after(2_000))) else {
+            return;
+        };
+        if let CallObservation::Reply(result) = future.await {
+            if result.result == 123 && result.connection.is_none() {
+                if let Some(memory) = result.memory {
+                    if let Ok(mapping) = memory.map_read_only() {
+                        output
+                            .store(&mapping.as_slice()[..12] == b"owned future", Ordering::Relaxed);
+                    }
+                }
+            }
+        }
+        drop(connection);
+    });
+    executor.spawn(async move {
+        let _ = reply.reply_move(memory, 123);
+    });
+    executor.run();
+    let result = passed.load(Ordering::Relaxed);
+    if result {
+        catten_rt::logln!("[sitas] owned IPC future verified");
+    }
+    result
+}

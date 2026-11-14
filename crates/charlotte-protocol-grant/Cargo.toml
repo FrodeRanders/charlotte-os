@@ -1,0 +1,8 @@
+[package]
+name = "charlotte-protocol-grant"
+version = "0.1.0"
+edition = "2024"
+description = "Capability grant-controller wire protocol"
+
+[dependencies]
+charlotte-launch = { path = "../charlotte-launch" }

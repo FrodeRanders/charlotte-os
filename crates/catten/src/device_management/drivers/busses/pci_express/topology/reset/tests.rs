@@ -62,11 +62,13 @@ pub(super) fn probe(source: &ResetSource<'_>) {
     REAL_PROBES.fetch_add(1, Ordering::Relaxed);
 }
 
+#[cfg(not(feature = "hvf_compat"))]
 pub(crate) fn begin_real() {
     ACTIVATION_PROBES.store(0, Ordering::Relaxed);
     REAL_PROBES.store(0, Ordering::Relaxed);
     REAL_ACTIVE.store(true, Ordering::Release);
 }
+#[cfg(not(feature = "hvf_compat"))]
 pub(crate) fn finish_real() {
     REAL_ACTIVE.store(false, Ordering::Release);
     let count = REAL_PROBES.load(Ordering::Acquire);

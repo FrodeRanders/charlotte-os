@@ -33,7 +33,7 @@ pub fn initialize_early() -> Result<(), Error> {
     }
 }
 
-#[cfg(any(test, feature = "kernel_tests"))]
+#[cfg(all(any(test, feature = "kernel_tests"), not(feature = "hvf_compat")))]
 pub(crate) fn test_initialization() {
     match detect() {
         Ok(Backend::Vtd) => super::vt_d::test_initialization(),
@@ -198,7 +198,7 @@ pub(super) fn test_table_admission() {
         Backend::AmdVi => super::amd_vi::test_table_admission(),
     }
 }
-#[cfg(any(test, feature = "kernel_tests"))]
+#[cfg(all(any(test, feature = "kernel_tests"), not(feature = "hvf_compat")))]
 pub(super) fn test_reject_sparse_map(id: u64) {
     match detect().unwrap() {
         Backend::Vtd => super::vt_d::test_reject_sparse_map(id),
@@ -235,7 +235,7 @@ pub(super) fn test_private_domain() -> super::private_domain::PrivateDomain {
     }
 }
 
-#[cfg(any(test, feature = "kernel_tests"))]
+#[cfg(all(any(test, feature = "kernel_tests"), not(feature = "hvf_compat")))]
 pub(super) fn test_registry_snapshot(sid: u32) -> (u64, Option<u64>, usize, usize) {
     if crate::environment::acpi::sdt::dmar::discover_vtd().is_some() {
         super::vt_d::test_registry_snapshot(sid)
@@ -244,14 +244,14 @@ pub(super) fn test_registry_snapshot(sid: u32) -> (u64, Option<u64>, usize, usiz
     }
 }
 
-#[cfg(any(test, feature = "kernel_tests"))]
+#[cfg(all(any(test, feature = "kernel_tests"), not(feature = "hvf_compat")))]
 pub(super) fn test_with_claimed_unit(action: impl FnOnce()) {
     match detect().unwrap() {
         Backend::Vtd => super::vt_d::test_with_claimed_unit(action),
         Backend::AmdVi => super::amd_vi::test_with_claimed_unit(action),
     }
 }
-#[cfg(any(test, feature = "kernel_tests"))]
+#[cfg(all(any(test, feature = "kernel_tests"), not(feature = "hvf_compat")))]
 pub(super) fn test_registered_unit_waiters() -> usize {
     match detect().unwrap() {
         Backend::Vtd => super::vt_d::test_registered_unit_waiters(),

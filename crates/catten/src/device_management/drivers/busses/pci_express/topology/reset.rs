@@ -57,7 +57,7 @@ impl ResetSource<'_> {
         ranges
     }
 
-    #[cfg(any(test, feature = "kernel_tests"))]
+    #[cfg(all(any(test, feature = "kernel_tests"), not(feature = "hvf_compat")))]
     pub(crate) fn test_config_base(&self) -> usize {
         self.config_base
     }
@@ -199,7 +199,7 @@ pub(super) fn find_group(group: &PcieSegmentGroup, wanted: u32) -> Option<&PcieE
     })
 }
 
-#[cfg(any(test, feature = "kernel_tests"))]
+#[cfg(all(any(test, feature = "kernel_tests"), not(feature = "hvf_compat")))]
 pub(crate) fn test_target(topology: &PcieTopology) -> Option<(usize, u32)> {
     if topology.segments.len() != 1 {
         return None;

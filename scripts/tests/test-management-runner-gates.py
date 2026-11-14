@@ -100,6 +100,27 @@ sleep() { :; }
             self.assertEqual(result.returncode, 0, result.stderr)
             return result.stdout.splitlines()[-1]
 
+    def test_shutdown_waits_for_deployed_application_probe_window(self):
+        source = (ROOT / "scripts/run-aarch64.sh").read_text()
+        begin = source.index('            if [ "$SHUTDOWN_INGRESS_TEST" = "1" ]')
+        end = source.index('; then', begin) + len('; then')
+        guard = source[begin:end] + '\n echo submit\nfi\n'
+        with tempfile.TemporaryDirectory() as directory:
+            result_file = Path(directory) / 'result'
+            env = dict(os.environ, SHUTDOWN_INGRESS_TEST='1', SHUTDOWN_INGRESS_SUBMITTED='0',
+                       DEPLOYMENT_INGRESS_TEST='1', DEPLOYMENT_RESULT_FILE=str(result_file),
+                       APP_HOLD_SECONDS='7', DEPLOYMENT_READY_TICK='10', tick='80')
+            def submits(**changes):
+                result = subprocess.run(['bash','-c',guard], env=dict(env, **changes),
+                                        text=True, capture_output=True, check=True)
+                return result.stdout.strip() == 'submit'
+            self.assertFalse(submits())
+            result_file.write_text('ready\n')
+            self.assertFalse(submits(tick='79'))
+            self.assertFalse(submits(DEPLOYMENT_READY_TICK='-1'))
+            self.assertTrue(submits())
+            self.assertTrue(submits(DEPLOYMENT_INGRESS_TEST='0', APP_HOLD_SECONDS='0'))
+
     def test_positive_observations_open_both_gates(self):
         for architecture in ("aarch64", "x86_64"):
             self.assertEqual(self.run_gate(architecture), "GATE=1")

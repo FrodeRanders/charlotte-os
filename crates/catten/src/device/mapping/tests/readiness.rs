@@ -256,14 +256,18 @@ pub(in crate::device::mapping) fn scheduled() {
     );
 }
 
+#[cfg(not(feature = "hvf_compat"))]
 static REAL_INPUT: Mutex<Option<(memory::AddressSpaceHandle, u64, u64, bool)>> = Mutex::new(None);
+#[cfg(not(feature = "hvf_compat"))]
 static REAL_RESULT: Mutex<Option<Result<u64, MapError>>> = Mutex::new(None);
+#[cfg(not(feature = "hvf_compat"))]
 extern "C" fn real_worker() {
     let (root, cap, memory_cap, exclusive) = REAL_INPUT.lock().unwrap();
     *REAL_RESULT.lock() =
         Some(super::super::super::dma_map_scheduled(root.id(), cap, memory_cap, 3, exclusive));
 }
 
+#[cfg(not(feature = "hvf_compat"))]
 pub(in crate::device::mapping) fn real(root: memory::AddressSpaceHandle, cap: DeviceCap) {
     assert!(crate::cpu::isa::lp::ops::get_int_state());
     const REAL_CLIENT: memory::AddressSpaceId = 0x5d09;

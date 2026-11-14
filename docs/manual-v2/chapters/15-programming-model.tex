@@ -452,4 +452,30 @@ the broader design history.
         cancellation behavior. Coverage is substantial but not exhaustive.
 \end{enumerate}
 
+\section{Application helpers}
+
+The \texttt{charlotte-app} library packages launch-grant borrowing, named
+acquisition, publication and typed socket, Kafka and S3 clients separately
+from the platform service implementations. Optional client features keep the
+application dependency boundary explicit. Its returning \texttt{entry!}
+wrapper performs the terminal action after the application scope has released
+its owners.
+
+\texttt{OwnedPayload} prepares bounded, length-bearing request memory using
+the existing mapping owner. \texttt{Admission} retries only unstarted queue
+pressure within one deadline; \texttt{CallObservation} retains the pending
+owner on deadline or rejected wait admission. The explicit
+\texttt{cancel\_on\_failure} convenience policy uses the existing fail-closed
+cleanup. Observation deadlines do not promise bounded teardown latency.
+
+\texttt{charlotte-app-sitas} wraps the existing Sitas reactor and supplies owned
+call futures. IPC readiness can be a CQ wake without a cookie entry, so the
+wrapper rechecks a bounded, fallibly prepared set of task interests after
+backend wakes. The backend remains the only ring consumer; results still come
+from polling the pending owner. Future Drop preserves the runtime's existing
+cancellation policy and can block or abort.
+
+The \repofiletext|docs/guides/application-sdk.md|{application SDK guide}
+contains current build commands and supported scope.
+
 \endinput

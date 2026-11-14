@@ -352,7 +352,7 @@ impl<'a> Connection<'a> {
             }
             Err(SocketError::Ipc(IpcError::Status(catten_syscall::ipc_status::QUEUE_FULL))) => {
                 // Only rejected queue admission lacks a readiness source.
-                self.retry = Some(Deadline::after(crate::socket_close::ADMISSION_BACKOFF_MS));
+                self.retry = Some(Deadline::after(crate::socket::ADMISSION_BACKOFF_MS));
                 Ok(Advance::Waiting)
             }
             Err(error) => Err(Error::Socket(error)),

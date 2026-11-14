@@ -25,6 +25,7 @@ python3 "$repo_root/scripts/tests/test-network-random.py"
 python3 "$repo_root/scripts/tests/test-rng-ring-access.py"
 python3 "$repo_root/scripts/tests/test-dependency-advisories.py"
 python3 "$repo_root/scripts/tests/test-tooling-contracts.py"
+python3 "$repo_root/scripts/tests/test-app-sdk.py"
 python3 "$repo_root/scripts/tests/test-object-store-format.py"
 python3 "$repo_root/scripts/tests/test-resource-policy.py"
 python3 "$repo_root/scripts/tests/test-resource-inventory.py"
@@ -402,8 +403,10 @@ for manifest in "${manifests[@]}"; do
     # A package may legitimately disable test harnesses for its freestanding
     # binary targets while retaining host unit tests in its library. Cargo
     # applies `test = false` per target, so let it select the enabled targets.
+    features=()
+    if [ "$manifest" = "crates/charlotte-app/Cargo.toml" ]; then features=(--all-features); fi
     RUSTC="$host_rustc" RUSTDOC="$host_rustdoc" "$host_cargo" test --locked \
-        --manifest-path "$repo_root/$manifest"
+        --manifest-path "$repo_root/$manifest" "${features[@]}"
 done
 
 RUSTC="$host_rustc" RUSTDOC="$host_rustdoc" "$host_cargo" test --locked \

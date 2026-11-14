@@ -1,6 +1,6 @@
 # A client that can replace its service connection
 
-The [copyable Rust example](../../crates/catten-services/examples/reconnecting_client.rs)
+The [copyable Rust example](../../crates/charlotte-app/examples/reconnecting_client.rs)
 uses the current userspace APIs. The manual includes this file directly in
 Chapter 5, “Service identity and discovery.” It performs three read-only greeting
 requests and can replace its connection before continuing the unfinished read.
@@ -22,20 +22,22 @@ borrowed through `Context`, along with the immutable descriptor.
 
 The example allows at most three sessions across the run. Lookup, reconnection
 and the current read share one five-second monotonic deadline via
-`grant_client::acquire_until`. Reconnection never restarts that deadline.
+`Application::acquire` and `Admission`. Reconnection never restarts that deadline.
 Shutdown is checked between acquisitions and calls. This is a dedicated client;
 a reactor that must process inbound work uses [one CQ for all interests](../reference/cq-wait.md).
 
 ## Error and replay policy
 
-`ServiceRestarted` is the example's own policy classification. Current runtime
+`EndpointLost` is the example's own policy classification. Current runtime
 calls report `IpcError::Status(ipc_status::ENDPOINT_CLOSED)` before acceptance,
 or `IPC_REPLY_ENDPOINT_CLOSED` in a terminal reply. Neither proves that a
 replacement exists. A name's new generation does not retarget or revoke a
 still-live old connection. The client must obtain another capability through
 its original authority.
 
-Only endpoint loss enters the reconnect branch. Authorization, admission,
+Only endpoint loss enters the reconnect branch. Unstarted queue pressure retries
+within the original budget; unstarted deadline expiry is distinct from the
+three-session recovery limit. Authorization, permanent admission,
 invalid capability and protocol errors stop the application. Timeout, a
 cancelled reply and rejected wait admission are also terminal here. The latter
 retains a pending owner until cancellation; it is distinct from a timeout.
@@ -71,9 +73,9 @@ From the repository root, build the example as a freestanding ELF for each
 architecture:
 
 ```sh
-cargo build --locked -p catten-services --example reconnecting_client \
+cargo build --locked -p charlotte-app --example reconnecting_client \
   --target crates/catten-services/aarch64-unknown-none.json
-cargo build --locked -p catten-services --example reconnecting_client \
+cargo build --locked -p charlotte-app --example reconnecting_client \
   --target crates/catten-services/x86_64-unknown-none.json
 bash scripts/run-host-tests.sh
 ```
@@ -81,7 +83,7 @@ bash scripts/run-host-tests.sh
 These builds produce unsigned ELFs. Use the normal
 [signing and deployment workflow](signing-and-trust.md) before launching one.
 
-The [example's host tests](../../crates/catten-services/examples/reconnecting_client/tests.rs)
+The [example's host tests](../../crates/charlotte-app/examples/reconnecting_client/tests.rs)
 check endpoint-loss classification, refusal to replay cancellation and exact
 business-reply validation. Cross-target compilation checks the actual SDK
 types and consuming operations. These checks do not execute a deployed

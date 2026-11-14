@@ -17,6 +17,9 @@ logic, and external managed infrastructure at explicit boundaries.
 
 - [Sitas and Xous co-design](sitas-xous.md) — capabilities, endpoints, memory
   objects, completion queues, isolated services, and shard-local execution.
+- [Userspace development ergonomics](userspace-ergonomics.md) — proposed
+  application/client packaging, bounded operations, serving scopes, Sitas
+  adapters, SDK distribution and host testing, grounded in the existing owners.
 - [Networking](networking.md) — native message-oriented distributed services,
   transport layering, discovery, and compatibility networking.
 - [Distributed L2 ingress](distributed-l2-ingress.md) — a cluster-level TCP

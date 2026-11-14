@@ -224,6 +224,7 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(status::STAGE, 2);
 
     let net_status = owned_call_with_backpressure(net_conn.as_ref(), net::OP_STATUS, 0)
+        .unwrap_or_else(|_| catten_rt::domain_abort())
         .wait()
         .unwrap_or_else(|_| unsafe { thread_exit() })
         .result;
