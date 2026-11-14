@@ -368,6 +368,8 @@ struct Endpoint {
     /// Original namespace and classification also sponsor later queue growth.
     budget: budget::AccountRef,
     platform: bool,
+    /// Captured during accepted endpoint preparation, before publication.
+    claim_sponsor: crate::memory::kernel_buffers::Sponsor,
 }
 
 #[derive(Debug)]

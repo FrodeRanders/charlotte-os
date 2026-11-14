@@ -42,10 +42,20 @@ node reserves its complete layout from that principal's shared 8 MiB metadata
 allowance and the family pool before allocation. Sibling instances share this
 allowance; promotion, root close and ASID reuse cannot redirect its refund.
 Principal or family rejection rolls back unused funding without changing the
-transfer fence or source authority. IPC claim and DMA-readiness sources still
-carry classification-only funding; their original-principal propagation remains
-Q4 work. Observer lists and waiter entries also retain their separate pending
-principal-coverage boundaries.
+transfer fence or source authority.
+
+IPC reply/cancellation claims take the accepted caller's principal from the
+retained token loan allocator, including scalar calls whose vector has no
+allocation. A server or delegated holder closing a token cannot sponsor this
+backing instead. Endpoint creation captures its exact owner's principal once,
+with its original endpoint reservation class, before payload allocation. Later
+endpoint-close claims copy that original policy. Claim epoch/root revalidation
+still precedes source publication; a losing preparation refunds outside IPC.
+Neither path looks up a reusable ASID while preparing a claim source.
+
+DMA-readiness sources still carry classification-only funding; their
+original-principal propagation remains Q4 work. Observer lists and waiter
+entries also retain their separate pending principal-coverage boundaries.
 
 Admission and fallible allocation precede observer-list construction and local
 producer publication. If the list rejects, the unused disposal candidate is
@@ -96,12 +106,34 @@ heap, principal-history and family-counter guards without refund or allocation.
 These are serialized metadata controls; they add no physical-cleanup or replay
 authority.
 
-The current [memory-close qualification record](../reports/audits/evidence/2026-11-14-memory-close-principal.json)
+The [memory-close qualification record](../reports/audits/evidence/2026-11-14-memory-close-principal.json)
 contains the changed source hashes, final kernel identities, controls and
 separate setup failures. The full host suite, formatting, both minimal kernel
 compile checks and x86 test-image build pass. The final four-CPU ARM SMMUv3
 security run passes 19/0/0, including all three source factories at the funded
-layout. Native x86 execution and sustained pressure are not qualified here.
+layout. That record does not claim native x86 execution or sustained pressure.
+
+IPC controls use actual accepted scalar-call and endpoint-close claims. Per
+claim kind, 64 funded allocator and 64 partial-list rejections return unused
+funding, and family rejection rolls back earlier principal admission. A real
+wait rejects before heap access at the original principal ceiling. A server
+waiting on its reply token cannot charge itself in place of the caller. The
+source remains funded after wait rejection and claim completion until the
+producer LP drains it; a late interest retains only its independent list.
+Promotion after acceptance preserves the original ordinary charge. A separate
+unused source with the same captured policy retains funding across root close
+and exact ASID reuse. Its guarded finish queues disposal without allocation or
+refund; post-guard drain refunds only the retired principal. These controls
+qualify metadata ownership, not physical replay or saturated cleanup progress.
+
+The [IPC claim qualification record](../reports/audits/evidence/2026-11-14-ipc-claim-principal.json)
+records final source hashes, capacity costs and individual artifact identities.
+The full host suite, formatting and both minimal compile checks pass. Fresh
+four-CPU security campaigns pass ARM SMMUv3 19/19, Intel VT-d 17/17 and AMD-Vi
+17/17, each requiring both publication generations and complete teardown.
+Endpoint nodes measure 336 bytes, including their 16-byte captured principal;
+the existing conservative IPC node mix still fits its unchanged byte ceilings.
+These are local qualifications; Q4 and the wider SEC-07/18 gates remain open.
 
 Pressure is serialized kernel-fixture work, not sustained hostile concurrent
 EL0 load. Native heap exhaustion is not forced; allocator failures are injected.

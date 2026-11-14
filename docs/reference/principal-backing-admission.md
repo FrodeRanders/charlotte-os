@@ -123,7 +123,7 @@ same principal record (`principal_metadata_bytes`). Unified authority, mailbox
 endpoint, four root metadata, five global namespace layouts, device
 namespace/payload nodes, completion registry nodes, CQ heap ring/backlog
 storage, scratch namespace/extent nodes, CPU mapping records and
-[memory-close source-disposal nodes](deferred-source-admission.md) use it. Capture
+[memory-close/IPC claim source-disposal nodes](deferred-source-admission.md) use it. Capture
 comes from the immutable recipient authority namespace or the exact prebound
 root/operation. Candidate, published, detached and retained
 node layouts remain funded through actual deallocation. Resource grants and

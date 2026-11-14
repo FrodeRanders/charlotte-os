@@ -73,7 +73,7 @@ to the common heap plan must be recorded before accepting an exclusion.
 | `namespace_nodes` | All five actual global namespace-node layouts | Allocator excess, nested resources and joint heap fit; captured principal persists through detachment. |
 | `authority_nodes` | Actual node layouts, captured from the recipient authority namespace | Allocator excess, enclosing metadata and joint heap fit; logical grantor remains separate. |
 | `mailbox_nodes` | Actual endpoint-node layouts from the captured root principal | Allocator excess, word-ring storage and joint heap fit. |
-| `deferred_nodes` | Memory-close disposal nodes from the exact transfer-root principal | IPC claim and DMA-readiness source sponsorship, allocator excess and joint heap fit; preserve original funding through producer-LP disposal. |
+| `deferred_nodes` | Memory-close disposal nodes from the exact transfer-root principal; IPC claim disposal from the accepted caller/endpoint owner | DMA-readiness source sponsorship, allocator excess and joint heap fit; preserve original funding through producer-LP disposal. |
 | `observer_backing` | Pending | Actual layout, private holder and final weak reference. |
 | `completion_nodes` | All three actual registry-node layouts and bounded CQ heap ring/backlog bytes from the exact target principal | Completion record Arcs/holders, other payloads and observers, allocator excess and joint heap fit. |
 | `device_nodes` | Actual namespace and MMIO/IRQ/DMA payload-node layouts from captured grant principal | Backend/IOMMU storage, allocator excess and joint heap fit; hardware completion remains separate. |

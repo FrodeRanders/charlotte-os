@@ -1,0 +1,148 @@
+{
+  "date": "2026-11-14",
+  "baseline_commit": "39f65cb74984cedbd3f928dfbc5787b22ffd76b0",
+  "scope": "Q4 IPC reply/cancellation and endpoint-close claim source-disposal principal funding; no publication grammar or runtime ABI change",
+  "changed_rust_source_sha256": {
+    "crates/catten/src/cpu/scheduler/deferred/admission.rs": "b1bf6fb8371ba204538d3241c2e89f33ddde7cea9e031d14c9751b202c056f4b",
+    "crates/catten/src/ipc/buffer_tests.rs": "496ea9f56ea52daf4986aa93cb9cf4351dc7068f1105ba52fbb080907ec501fb",
+    "crates/catten/src/ipc/claim_wait.rs": "da43b70d596534e699757d19abce191727d473007bcff15cdc72a80448861c37",
+    "crates/catten/src/ipc/claim_wait/tests.rs": "17c7a6d4004c03d2d428c08b6d36f536d1d876d0e0fe71fc9826d0a4bb762109",
+    "crates/catten/src/ipc/claim_wait/tests/principal.rs": "ae007d0c859814dbc5e9f32c66d4afc9d8d61d6fc7f757d38b3ae08e5221e04a",
+    "crates/catten/src/ipc/endpoint_storage.rs": "1ebaceb049706a8b62331f1247b70442917fe20385929387d4d853a45f5ee87d",
+    "crates/catten/src/ipc/mod.rs": "a22b702631e716a371b4a82830a6a9c913e8d892ecd4e8b200f665af05bf9a56",
+    "crates/catten/src/memory/usage/principal_history/kernel_buffers.rs": "353a92c4a1540f67da0c8fd90b66025d182d75522eb4e9215b034914d5da4dcb"
+  },
+  "ownership": {
+    "reply_claim": "Original accepted caller, retained by the token loan-vector allocator even for an empty scalar-call vector; class from original token reservation",
+    "endpoint_claim": "Original endpoint owner captured against its leased generation before endpoint node allocation; class from original endpoint reservation",
+    "disposal": "Shared 8 MiB principal metadata allowance and deferred_nodes family admission precede allocation. Existing complete source and producer-LP transport retain both charges until actual node deallocation.",
+    "rejection": "Principal/family/allocator/list rejection returns only unused funding; accepted token, endpoint claim and original operations remain intact. A rejected wait is not completion or replay authority."
+  },
+  "capacity": {
+    "limits_changed": false,
+    "disposal_node_bytes": 56,
+    "endpoint_node_bytes_before": 320,
+    "endpoint_node_bytes_after": 336,
+    "endpoint_principal_field_bytes": 16,
+    "extra_bytes_at_ordinary_endpoint_ceiling": 12288,
+    "extra_bytes_at_total_endpoint_ceiling": 16384,
+    "ipc_conservative_node_mix_ordinary_bytes": 9596928,
+    "ipc_conservative_node_mix_total_bytes": 12795904,
+    "ipc_pool_ordinary_bytes": 12582912,
+    "ipc_pool_total_bytes": 16777216,
+    "limitation": "Node-only layout plan excludes retirement catalogs, queue storage, other nested backing and allocator overhead; it does not prove joint heap fit or progress."
+  },
+  "controls_per_campaign": [
+    "For each claim kind, 64 funded allocator failures and 64 partial observer-list failures reconcile exact original family/principal refunds",
+    "Family rejection after principal reservation returns unused funding without invoking allocation",
+    "Actual accepted claim wait rejects at the original principal ceiling while the heap is held; callback is not invoked",
+    "A server waiting on its reply capability charges the accepted caller, not itself",
+    "Promotion after acceptance preserves ordinary classification and the original principal",
+    "Rejected wait retains a published source; real claim completion queues its charge until producer-LP drain",
+    "Late interest keeps its independent list after disposal-node refund",
+    "A separate unused source with accepted captured policy retains its original charge across root close and exact ASID reuse",
+    "Source finish under IPC, heap, principal-history and family guards performs no allocation/refund; post-guard drain refunds only the retired principal"
+  ],
+  "other_checks": [
+    {
+      "command": "bash scripts/run-host-tests.sh",
+      "result": "pass with authorized network access; existing opt-in advisory scanner controls remain skipped"
+    },
+    {
+      "command": "cargo fmt --all -- --check",
+      "result": "pass"
+    },
+    {
+      "command": "git diff --check",
+      "result": "pass"
+    },
+    {
+      "command": "CATTEN_AARCH64_SERVICE_BUNDLE=$PWD/target/embedded-services/aarch64-unknown-none cargo check --locked -p catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi,kernel_tests",
+      "result": "pass"
+    },
+    {
+      "command": "CATTEN_AARCH64_SERVICE_BUNDLE=$PWD/target/embedded-services/aarch64-unknown-none cargo check --locked -p catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi",
+      "result": "pass; compile only"
+    },
+    {
+      "command": "CATTEN_X86_64_SERVICE_BUNDLE=$PWD/target/embedded-services/x86_64-unknown-none cargo check --locked -p catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi",
+      "result": "pass; compile only"
+    }
+  ],
+  "native_campaigns": [
+    {
+      "target": "AArch64 SMMUv3",
+      "emulation": "QEMU TCG",
+      "cpus": 4,
+      "runner_timeout_seconds": 240,
+      "command": "scripts/run-aarch64.sh debug --tests --smp 4 --security-test --timeout 240 --instance audit-ipc-principal",
+      "result": {
+        "passed": 19,
+        "failed": 0,
+        "pending": 0
+      },
+      "kernel_sha256": "1e32da211f463e2764d8f971ea030234ab632eed418573ff535f88462c97f6c4",
+      "signed_probe_sha256_reported_by_signer": "80f7ebab2f7e7273fae4f040250bd43188b47e884419dc05cff1a46c069d9fee",
+      "diagnostics": [
+        "[+     4.483745] [IPC node admission] 512 allocator rejections; actual pending/reply/capability/endpoint layouts 216/216/136/336 bytes; complete node keeps backing and logical record reservations through real disposal",
+        "[+     7.630488] [IPC claim principal] reply caller and endpoint owner funded; allocator/list rejection, heap-held quota denial, different actor, promotion, accepted wait rejection, queued retention and original refunds across retired generations passed",
+        "[+    87.087884] [security] probe passed; retired policy fenced, publication generation=2",
+        "[+    87.092380] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "target": "x86-64 Intel VT-d",
+      "emulation": "QEMU TCG",
+      "cpus": 4,
+      "runner_timeout_seconds": 240,
+      "command": "scripts/run-x86_64.sh debug --tests --smp 4 --security-test --iommu intel --timeout 240 --instance audit-ipc-intel",
+      "result": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0
+      },
+      "kernel_sha256": "6b74274b7db9e21cbb24c834cb4f5eebe4b5b1b5e997576221386853920614cc",
+      "signed_probe_sha256_reported_by_signer": "00d06cb33d413d7da5271f816ce09f4d5e329ba19e4a491db2481ccb9dc415fb",
+      "diagnostics": [
+        "[+     3.175609] [IPC node admission] 512 allocator rejections; actual pending/reply/capability/endpoint layouts 216/216/136/336 bytes; complete node keeps backing and logical record reservations through real disposal",
+        "[+     5.985338] [IPC claim principal] reply caller and endpoint owner funded; allocator/list rejection, heap-held quota denial, different actor, promotion, accepted wait rejection, queued retention and original refunds across retired generations passed",
+        "[+    93.657086] [security] probe passed; retired policy fenced, publication generation=2",
+        "[+    93.663518] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "target": "x86-64 AMD-Vi",
+      "emulation": "QEMU TCG",
+      "cpus": 4,
+      "runner_timeout_seconds": 240,
+      "command": "scripts/run-x86_64.sh debug --tests --smp 4 --security-test --iommu amd --timeout 240 --instance audit-ipc-amd",
+      "result": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0
+      },
+      "kernel_sha256": "74f4162c8e94e359c1b4be2a0db09e66a13241a927ea0d060c92ad62747e0bda",
+      "signed_probe_sha256_reported_by_signer": "ac32553c40df37b5cc68c54459c85144c59654f8f43b0ea10b1bbef38fe48b11",
+      "diagnostics": [
+        "[+     3.150820] [IPC node admission] 512 allocator rejections; actual pending/reply/capability/endpoint layouts 216/216/136/336 bytes; complete node keeps backing and logical record reservations through real disposal",
+        "[+     5.918249] [IPC claim principal] reply caller and endpoint owner funded; allocator/list rejection, heap-held quota denial, different actor, promotion, accepted wait rejection, queued retention and original refunds across retired generations passed",
+        "[+    93.584651] [security] probe passed; retired policy fenced, publication generation=2",
+        "[+    93.592928] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    }
+  ],
+  "failed_campaigns": [],
+  "qualification_limits": [
+    "Serialized kernel controls use prebound test principals and injected allocation rejection; they are not sustained hostile EL0 load or forced native heap exhaustion",
+    "The three campaigns use final frozen Rust sources and separate freshly signed probe fixtures, with artifact identities recorded individually",
+    "The separately prepared source proves metadata lifetime across root reuse; it does not authorize physical cleanup or establish retirement of an active claim",
+    "Earlier memory-close setup failures remain separately recorded in 2026-11-14-memory-close-principal.json"
+  ],
+  "remaining": [
+    "DMA-readiness source original-principal funding",
+    "Observer-list and remaining metadata-family principal coverage",
+    "Allocator excess, joint heap planning and saturated cleanup progress",
+    "Existing broader cleanup-context and Q4-Q8 acceptance gates"
+  ],
+  "acceptance": "Scoped IPC claim funding qualified. Q4 and SEC-07/18 remain partial; no finding-wide gate is accepted."
+}

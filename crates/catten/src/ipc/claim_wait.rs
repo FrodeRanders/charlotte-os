@@ -14,6 +14,7 @@ use crate::{
     memory::{
         AddressSpaceHandle,
         KERNEL_ASID,
+        kernel_buffers::CapturedStorage,
         operation::AddressSpaceOperation,
     },
 };
@@ -29,10 +30,10 @@ struct SourcePayload {
 pub(super) struct Source(ManuallyDrop<SourcePayload>);
 
 impl Source {
-    fn prepare(platform: bool) -> Result<Self, IpcError> {
+    fn prepare(storage: CapturedStorage) -> Result<Self, IpcError> {
         let disposal =
-            deferred::admission::prepare(platform).map_err(|_| IpcError::ResourceLimit)?;
-        let list = ObserverList::try_new(waiter_budget::SOURCE_LIMIT, platform)
+            deferred::admission::prepare_funded(storage).map_err(|_| IpcError::ResourceLimit)?;
+        let list = ObserverList::try_new(waiter_budget::SOURCE_LIMIT, storage.platform())
             .map_err(|_| IpcError::ResourceLimit)?;
         Ok(Self(ManuallyDrop::new(SourcePayload {
             list,
@@ -98,18 +99,31 @@ enum Claim {
 }
 
 impl Claim {
-    fn source(self, ipc: &mut IpcRegistry) -> Option<(&mut Option<Source>, bool)> {
+    fn source(self, ipc: &mut IpcRegistry) -> Option<(&mut Option<Source>, CapturedStorage)> {
         match self {
             Self::Reply(id, epoch) => ipc
                 .reply_tokens
                 .get_mut(&id)
                 .filter(|token| token.completing && token.claim_epoch == epoch)
-                .map(|token| (&mut token.claim_interest, token.platform)),
+                .map(|token| {
+                    // Even a scalar token's empty loan vector retains the
+                    // accepted caller's allocator. Cleanup by a server or a
+                    // delegated holder must not select another principal.
+                    let storage = CapturedStorage::from_sponsor(
+                        *token.borrows.allocator().sponsor(),
+                        token.platform,
+                    );
+                    (&mut token.claim_interest, storage)
+                }),
             Self::Endpoint(id, epoch) => ipc
                 .endpoints
                 .get_mut(&id)
                 .filter(|endpoint| endpoint.closing && endpoint.claim_epoch == epoch)
-                .map(|endpoint| (&mut endpoint.claim_interest, endpoint.platform)),
+                .map(|endpoint| {
+                    let storage =
+                        CapturedStorage::from_sponsor(endpoint.claim_sponsor, endpoint.platform);
+                    (&mut endpoint.claim_interest, storage)
+                }),
         }
     }
 }
@@ -196,20 +210,20 @@ fn bind(
     cap: CapabilityId,
     captured: Identity,
     claim: Claim,
-    mut prepare: impl FnMut(bool) -> Result<Source, IpcError>,
+    mut prepare: impl FnMut(CapturedStorage) -> Result<Source, IpcError>,
 ) -> Result<Option<Interest>, IpcError> {
     let mut ipc = IPC.write();
     if identity(&ipc, asid, cap)? != captured {
         return Err(IpcError::UnknownCapability);
     }
-    let Some((source, platform)) = claim.source(&mut ipc) else {
+    let Some((source, storage)) = claim.source(&mut ipc) else {
         return Ok(None);
     };
     if let Some(source) = source {
         return Ok(Some(source.interest()));
     }
     drop(ipc);
-    let mut prepared = Some(prepare(platform)?);
+    let mut prepared = Some(prepare(storage)?);
     let result = (|| {
         let mut ipc = IPC.write();
         if identity(&ipc, asid, cap)? != captured {
@@ -257,7 +271,7 @@ impl Wait {
         asid: AddressSpaceId,
         cap: CapabilityId,
         wait: impl FnOnce(&Interest) -> Result<(), IpcError>,
-        prepare: impl FnMut(bool) -> Result<Source, IpcError>,
+        prepare: impl FnMut(CapturedStorage) -> Result<Source, IpcError>,
     ) -> Result<(), IpcError> {
         let (captured, claim) = {
             let ipc = IPC.read();

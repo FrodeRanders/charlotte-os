@@ -201,13 +201,18 @@ A conservative count plan permits every ordinary/total unified capability slot
 (49152/65536) to hold an IPC payload, plus all pending and reply nodes
 (6144/8192 each) and endpoints (768/1024): **62208/82944 nodes**. This leaves
 candidate/layout headroom while preserving a quarter of each pool for trusted
-admission. Native capability/endpoint/pending/reply layouts are 136/320/216/216
-bytes. This upper-bound mix requests 9584640/12779520 bytes (about 9.14/12.19 MiB),
+admission. Native capability/endpoint/pending/reply layouts are 136/336/216/216
+bytes. This upper-bound mix requests 9596928/12795904 bytes (about 9.15/12.20 MiB),
 within the 12/16 MiB budgets before retirement catalogs, other nested
 allocations and allocator overhead. Added backing fields cost 16 bytes per
 capability/endpoint node
 (780/1040 KiB at those capability/endpoint ceilings), without a holder allocation.
-Independent ceilings do not promise simultaneous RAM fit or progress.
+Endpoints also retain a 16-byte captured principal for later
+[claim-source disposal](deferred-source-admission.md), adding 12/16 KiB at the
+existing ordinary/total endpoint ceilings. That field is part of the actual
+node layout above and requires no new allocation. The numerical pool ceilings
+remain unchanged. Independent ceilings do not promise simultaneous RAM fit or
+progress.
 
 Retirement entries measure 136 bytes on supported 64-bit targets. A maximum
 255-entry catalog requests 34680 bytes (about 33.9 KiB). The composite retirement

@@ -30,8 +30,8 @@ fn reserve(bytes: u64, platform: bool) -> Result<Charge, AllocError> {
     )
 }
 pub(crate) fn prepare(platform: bool) -> Result<PreparedDisposal, AllocError> {
-    // IPC claim and DMA readiness callers still capture only classification.
-    // Their original-principal propagation remains a separate Q4 boundary.
+    // DMA readiness callers still capture only classification. Their
+    // original-principal propagation remains a separate Q4 boundary.
     prepare_funded(CapturedStorage::unidentified(platform))
 }
 pub(crate) fn prepare_funded(storage: CapturedStorage) -> Result<PreparedDisposal, AllocError> {

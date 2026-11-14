@@ -58,6 +58,7 @@ struct Resources {
     root: Root,
     budget: Option<budget::AccountRef>,
     platform: bool,
+    claim_sponsor: crate::memory::kernel_buffers::Sponsor,
     metadata_charge: Option<budget::Charge>,
     queue_charge: Option<budget::Charge>,
     storage: Option<Storage>,
@@ -81,6 +82,7 @@ impl PreparingEndpoint {
             root,
             budget: None,
             platform: false,
+            claim_sponsor: crate::memory::kernel_buffers::Sponsor::unidentified(),
             metadata_charge: None,
             queue_charge: None,
             storage: None,
@@ -103,6 +105,12 @@ impl PreparingEndpoint {
                 prepared.0.queue_charge = Some(charge.split([0, slots as u64]));
                 prepared.0.metadata_charge = Some(charge);
             }
+            // The exact-root lease and accepted endpoint reservation already
+            // fix identity and reserve class. Keep that original principal for
+            // later claim-source preparation, including after promotion.
+            prepared.0.claim_sponsor =
+                *capture_buffer_allocator(owner, prepared.0.root.identity, prepared.0.platform)?
+                    .sponsor();
             before(1)?;
             prepared.0.storage = Some(node_budget::prepare_endpoint(prepared.0.platform)?);
             let resources = &mut *prepared.0;
@@ -203,6 +211,7 @@ impl PreparingEndpoint {
             notify_cq: None,
             budget: resources.budget.take().unwrap(),
             platform: resources.platform,
+            claim_sponsor: resources.claim_sponsor,
         }
     }
 

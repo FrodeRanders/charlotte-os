@@ -40,7 +40,10 @@ its operation lease, then revalidates that generation before reserving one
 record and all queue slots atomically. Slot reservations round capacity up to a
 power of two, with a minimum of four slots. The complete preparation owns the
 original account/classification, both charges, endpoint node, queue, close and
-readiness lists, and any shared authority reservation.
+readiness lists, and any shared authority reservation. Before node allocation,
+it captures the original principal against that leased root and retains it
+inline for later [claim-source disposal](deferred-source-admission.md). Promotion,
+a different cleanup actor and ASID reuse cannot replace that sponsor.
 
 Node, backing and observer-list allocation run fallibly outside IPC and local
 lifecycle/table guards. Revalidation precedes authority publication and endpoint

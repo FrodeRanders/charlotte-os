@@ -119,6 +119,16 @@ pub(crate) struct CapturedStorage {
     sponsor: Sponsor,
 }
 impl CapturedStorage {
+    /// Compose an existing owner's immutable principal with its already
+    /// captured resource class. Neither value comes from the cleanup actor or
+    /// a later lookup of a reusable ID; this grants no root/resource authority.
+    pub(crate) const fn from_sponsor(sponsor: Sponsor, platform: bool) -> Self {
+        Self {
+            platform,
+            sponsor,
+        }
+    }
+
     /// Permanent kernel and trusted raw preparation/fixtures only. Signed
     /// application construction must capture its prebound translation account.
     pub(crate) const fn unidentified(platform: bool) -> Self {

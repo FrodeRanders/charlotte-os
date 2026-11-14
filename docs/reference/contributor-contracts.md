@@ -1207,7 +1207,10 @@ the corrected RPC polling paths, and the remaining notification gaps.
   classification through preparation and producer-LP queued storage. Memory-close
   disposal nodes also retain the exact transfer-root principal's requested-layout
   funding; capture before the wait lease and allocate only after family and
-  principal admission. IPC/DMA source principal propagation remains Q4 work.
+  principal admission. IPC claim disposal uses the accepted token loan allocator
+  or the endpoint's creation-time principal, preserving the original reservation
+  class even when another actor waits. Empty scalar loan vectors retain that
+  policy. DMA source principal propagation remains Q4 work.
   Publication under producer guards cannot allocate or refund; only post-guard disposal
   refunds after actual node deallocation. List references keep their own
   independent backing charge. Complete-source fallback stays inert. See

@@ -78,6 +78,9 @@ charge outside node deallocation. Supply a captured `ByteSponsor` to its typed
 a node owner. Keep recipient storage sponsorship separate from logical grantor
 charges and keep actual deallocation before either refund. Default unsponsored
 families do not gain principal coverage merely by sharing that implementation.
+An accepted token's allocator can retain the original sponsor even when its
+vector is empty. Copy that captured policy for later metadata; do not charge a
+server or cleanup worker merely because it observes the claim.
 
 An inert child receipt does not make its parent inert: a vector still frees its
 allocation, a transfer may restore escrow, and a notification batch may destroy

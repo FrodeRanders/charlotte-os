@@ -24,6 +24,8 @@ use crate::{
     },
 };
 
+mod principal;
+
 fn unlocked() {
     assert!(IPC.try_write().is_some());
     assert!(memory::ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());
@@ -128,11 +130,16 @@ impl Fixture {
 }
 
 pub(crate) fn serialized() {
-    deferred::admission::test_source("ipc-claim", Source::prepare, Source::cancel, |source| {
-        let _ipc = IPC.write();
-        let _heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
-        deferred::admission::with_locked(|| source.finish());
-    });
+    deferred::admission::test_source(
+        "ipc-claim",
+        |platform| Source::prepare(CapturedStorage::unidentified(platform)),
+        Source::cancel,
+        |source| {
+            let _ipc = IPC.write();
+            let _heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
+            deferred::admission::with_locked(|| source.finish());
+        },
+    );
     deferred::drain();
     let baseline = crate::klib::observer::list_budget::node_used();
     for failure in 0..3 {
@@ -228,6 +235,7 @@ pub(crate) fn serialized() {
     owner.finish(result).unwrap();
     fixture.close();
     assert_eq!(crate::klib::observer::list_budget::node_used(), baseline);
+    principal::run();
     crate::logln!(
         "[IPC claim readiness] exact-root wait, late closed bind, saturation, admission rejection \
          and completion-before-relink passed"
