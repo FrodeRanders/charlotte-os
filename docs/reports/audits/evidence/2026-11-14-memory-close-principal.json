@@ -1,0 +1,97 @@
+{
+  "date": "2026-11-14",
+  "baseline_commit": "2f2a6b4486b5d89717bf77afadfdbdd25e9c34ea",
+  "scope": "Q4 memory-close source-disposal requested-layout principal funding; existing deferred family admission and producer-LP transport retained",
+  "changed_rust_source_sha256": {
+    "crates/catten/src/cpu/scheduler/deferred/admission.rs": "98209ecfbd7140071aa2a71df6af7b768c648045fbcf557726e147ac50c38e3f",
+    "crates/catten/src/cpu/scheduler/deferred/admission/tests.rs": "fa2cdd853c82ab20034b6f12e78e0ddb838540664158722375ea5b080802b945",
+    "crates/catten/src/memory/object/close.rs": "c862dce12830d1f6da110a6dde48043d88d3b8aece7e9f2b63ef2fc11b6ad3b3",
+    "crates/catten/src/memory/object/close/tests.rs": "20e512047b1195e184862cdf699832e6adcf1fc86d0b1f80d61aac955a29eabb"
+  },
+  "policy": {
+    "requested_node_bytes": 56,
+    "funded_charge_bytes": 32,
+    "prior_node_bytes": 40,
+    "ordinary_bytes": 786432,
+    "total_bytes": 1048576,
+    "ordinary_count": 12288,
+    "total_count": 16384,
+    "limits_changed": false
+  },
+  "controls": [
+    "64 funded node allocator rejections return original family and principal bytes",
+    "Family byte rejection after principal reservation returns unused funding before allocation",
+    "Real transfer close rejects at principal ceiling while heap is held without invoking waiter or changing escrow",
+    "Sibling roots share the principal ceiling; an independent principal prepares and cancels successfully",
+    "Rejected wait retains the published source; transfer completion queues its full charge until producer-LP drain",
+    "A late list interest survives node refund without retaining disposal-node funding",
+    "Captured ordinary funding survives promotion, root close and ASID reuse; post-guard drain refunds only the original principal",
+    "Complete source publication under heap, principal-history and family guards performs no allocation or refund",
+    "All three source factories pass existing real candidate pressure and guarded publication/disposal controls at 56 bytes"
+  ],
+  "final_validation": [
+    {
+      "command": "bash scripts/run-host-tests.sh",
+      "result": "pass with authorized network access; advisory real-scanner controls retain their existing opt-in skips"
+    },
+    {
+      "command": "cargo fmt --all -- --check",
+      "result": "pass"
+    },
+    {
+      "command": "git diff --check",
+      "result": "pass"
+    },
+    {
+      "command": "CATTEN_AARCH64_SERVICE_BUNDLE=$PWD/target/embedded-services/aarch64-unknown-none cargo check --locked -p catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi",
+      "result": "pass; compile only"
+    },
+    {
+      "command": "CATTEN_X86_64_SERVICE_BUNDLE=$PWD/target/embedded-services/x86_64-unknown-none cargo check --locked -p catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi",
+      "result": "pass; compile only"
+    },
+    {
+      "command": "scripts/run-x86_64.sh debug --tests --no-network --build-only --instance audit-close-x86-final",
+      "result": "pass; signed bundle, test boot profile and 249 native assembly entries verified; no guest execution",
+      "kernel_sha256": "4415d534248fc56741baed4cd6dd2d5abf38cb682687df231f2ebe9ec8bd6c1c"
+    },
+    {
+      "command": "scripts/run-aarch64.sh debug --tests --smp 4 --security-test --timeout 240 --instance audit-close-authorized",
+      "result": "pass outside sandbox; TCG SMMUv3 four CPUs, both publication generations retired",
+      "kernel_sha256": "0f15b0eb46937d5de2c0d8ce49bd9aa527d2c8c5eac816c18df69e10f28a6317",
+      "diagnostics": [
+        "[+     6.257002] [memory close principal] 64 allocation rollbacks; pre-heap quota rejection, sibling sharing, independent principal, queued retention, late interest, promotion and exact-generation reuse refunds passed",
+        "[+    85.344444] [security] probe passed; retired policy fenced, publication generation=2",
+        "[+    85.351372] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    }
+  ],
+  "separate_preliminary_pass": {
+    "command": "scripts/run-aarch64.sh debug --tests --smp 4 --security-test --timeout 240 --instance audit-close-principal",
+    "kernel_sha256": "0c7bcfb296a80ca8c7937f235bc820f979d61516c989f44908591971785114fb",
+    "result": "19 passed, 0 failed, 0 pending at 90.848239 guest seconds; before final atomic sponsorship capture and family-rejection control"
+  },
+  "failed_setup_attempts": [
+    {
+      "command": "bash scripts/run-host-tests.sh",
+      "result": "sandboxed TLS GCM fixtures failed six Cargo fetches with Could not resolve host: index.crates.io; the suite stopped at that test group"
+    },
+    {
+      "command": "cargo check --locked -p catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi,kernel_tests",
+      "result": "rejected with 34 compile-time macro errors because CATTEN_X86_64_SERVICE_BUNDLE was omitted; runner-based builds supply the required environment"
+    },
+    {
+      "command": "scripts/run-aarch64.sh debug --tests --smp 4 --security-test --timeout 240 --instance audit-close-final",
+      "kernel_sha256": "d8cae59044bdc3ae47fdd886f0bc59bef1246ab48a6592cc5c44e6e8862005e5",
+      "result": "built but QEMU exited before boot: Failed to bind socket ... qmp.sock: Operation not permitted; no guest qualification"
+    }
+  ],
+  "remaining": [
+    "IPC claim and DMA-readiness original-principal propagation",
+    "Observer-list and other pending metadata principal coverage",
+    "Allocator excess and simultaneous multi-pool heap fit",
+    "Native x86 execution for this change",
+    "Sustained hostile EL0 pressure, broader caller/IRQ cleanup qualification and all existing Q4-Q8 acceptance gates"
+  ],
+  "acceptance": "Scoped memory-close correction only; Q4 and SEC-07/18 remain partial. No finding-wide gate accepted."
+}

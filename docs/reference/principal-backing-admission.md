@@ -122,8 +122,10 @@ Migrated general metadata nodes share an independent **8 MiB** allowance in the
 same principal record (`principal_metadata_bytes`). Unified authority, mailbox
 endpoint, four root metadata, five global namespace layouts, device
 namespace/payload nodes, completion registry nodes, CQ heap ring/backlog
-storage, scratch namespace/extent nodes and CPU mapping records use it. Capture comes from the immutable recipient authority namespace or
-the exact prebound root/operation. Candidate, published, detached and retained
+storage, scratch namespace/extent nodes, CPU mapping records and
+[memory-close source-disposal nodes](deferred-source-admission.md) use it. Capture
+comes from the immutable recipient authority namespace or the exact prebound
+root/operation. Candidate, published, detached and retained
 node layouts remain funded through actual deallocation. Resource grants and
 physical completion rules stay separate. See [record-node qualification](../reports/audits/2026-11-06-q4-record-node-principals.md).
 

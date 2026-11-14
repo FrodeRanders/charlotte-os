@@ -24,6 +24,7 @@ use crate::{
     memory::{
         AddressSpaceHandle,
         budget,
+        kernel_buffers,
     },
 };
 
@@ -38,15 +39,20 @@ fn finish_roots(roots: [AddressSpaceHandle; 2]) {
 }
 
 pub(crate) fn serialized(hold_ipc: fn(&mut dyn FnMut()), ipc_available: fn() -> bool) {
-    deferred::admission::test_source("memory-close", Source::prepare, Source::cancel, |source| {
-        let mut source = Some(source);
-        hold_ipc(&mut || {
-            let _objects = MEMORY_OBJECTS.lock();
-            let _heap = crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
-            deferred::admission::with_locked(|| source.take().unwrap().finish());
-        });
-        assert!(source.is_none());
-    });
+    deferred::admission::test_source(
+        "memory-close",
+        |platform| Source::prepare(CapturedStorage::unidentified(platform)),
+        Source::cancel,
+        |source| {
+            let mut source = Some(source);
+            hold_ipc(&mut || {
+                let _objects = MEMORY_OBJECTS.lock();
+                let _heap = crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
+                deferred::admission::with_locked(|| source.take().unwrap().finish());
+            });
+            assert!(source.is_none());
+        },
+    );
     deferred::drain();
     for published in [false, true] {
         let baseline = crate::klib::observer::list_budget::node_used();
@@ -120,9 +126,116 @@ pub(crate) fn serialized(hold_ipc: fn(&mut dyn FnMut()), ipc_available: fn() -> 
         assert_eq!(crate::klib::observer::list_budget::node_used(), baseline);
     }
     rejection_and_race();
+    principal_funding();
     crate::logln!(
         "[memory close readiness] exact-root wait, rollback/move, closed-source late bind, \
          IPC-deferred notification/list disposal, saturation and preparation race passed"
+    );
+}
+
+fn principal_funding() {
+    use crate::memory::{
+        self,
+        kernel_buffers::{
+            test_metadata_limit as limit,
+            test_metadata_used as used,
+        },
+    };
+    deferred::drain();
+    let nodes_before = deferred::admission::snapshot();
+    let lists_before = crate::klib::observer::list_budget::node_used();
+    let bytes = deferred::PreparedDisposal::allocation_bytes() as u64;
+    let (owner, principal) = snapshot_storage::tests::principal_root(b"close-source-funding");
+    let (sibling, same) = snapshot_storage::tests::principal_root(b"close-source-funding");
+    let (target, other) = snapshot_storage::tests::principal_root(b"close-source-healthy");
+    assert_eq!(same, principal);
+    let storage = kernel_buffers::capture_storage(owner).unwrap();
+    deferred::admission::funded_allocation_failure(storage, principal);
+
+    let cap = allocate(owner.id(), 1).unwrap();
+    let transfer = prepare_move(owner.id(), cap, target.id()).unwrap();
+    let base = used(principal);
+    // Real close admission rejects before the node allocator, leaving escrow
+    // and the original transfer intact. No waiter runs and no claim is replayed.
+    limit(principal, base + bytes - 1);
+    {
+        let _heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
+        assert_eq!(
+            run(owner.id(), cap, |_| panic!("unfunded source waited")),
+            Err(MemoryObjectError::ResourceLimit)
+        );
+    }
+    assert_eq!(used(principal), base);
+    assert_eq!(deferred::admission::snapshot(), nodes_before);
+    assert_eq!(crate::klib::observer::list_budget::node_used(), lists_before);
+
+    limit(principal, base + bytes);
+    let mut late = None;
+    assert_eq!(
+        run(owner.id(), cap, |interest| {
+            assert_eq!(used(principal), base + bytes);
+            // A sibling shares this principal ceiling; a healthy principal does
+            // not. Captured source funding does not depend on the waiting thread.
+            let _heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
+            assert!(matches!(
+                Source::prepare(kernel_buffers::capture_storage(sibling).unwrap()),
+                Err(MemoryObjectError::ResourceLimit)
+            ));
+            late = Some(Interest(interest.0.clone()));
+            Err(MemoryObjectError::ResourceLimit)
+        }),
+        Err(MemoryObjectError::ResourceLimit)
+    );
+    let healthy_base = used(other);
+    let healthy = Source::prepare(kernel_buffers::capture_storage(target).unwrap()).unwrap();
+    assert_eq!(used(other), healthy_base + bytes);
+    healthy.cancel();
+    assert_eq!(used(other), healthy_base);
+    drop(transfer);
+    assert!(late.as_ref().unwrap().completed());
+    assert_eq!(used(principal), base + bytes, "queued disposal refunded before drain");
+    deferred::drain();
+    assert_eq!(used(principal), base, "late interest must not retain the disposal node");
+    drop(late);
+    close_cap(owner.id(), cap).unwrap();
+    // Restore only the isolated fixture's test ceiling before further setup.
+    limit(principal, crate::resource_policy::POLICY.memory.principal_metadata_bytes);
+    memory::close_user_address_space_handle(sibling).unwrap();
+    memory::close_user_address_space_handle(target).unwrap();
+
+    let base = used(principal);
+    memory::budget::mark_platform(owner);
+    let retained = Source::prepare(storage).unwrap();
+    assert_eq!(used(principal), base + bytes);
+    assert_eq!(
+        deferred::admission::snapshot().1,
+        [nodes_before.1[0] + bytes, nodes_before.1[1] + 1]
+    );
+    memory::close_user_address_space_handle(owner).unwrap();
+    assert_eq!(used(principal), bytes);
+    let (successor, successor_principal) =
+        snapshot_storage::tests::principal_root(b"close-source-successor");
+    assert_eq!(successor.id(), owner.id());
+    assert_ne!(successor, owner);
+    let successor_base = used(successor_principal);
+    {
+        let _heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
+        kernel_buffers::test_with_history_locked(|| {
+            deferred::admission::with_locked(|| retained.finish())
+        });
+    }
+    assert_eq!(used(principal), bytes);
+    deferred::drain();
+    assert_eq!(used(principal), 0);
+    assert_eq!(used(successor_principal), successor_base);
+    memory::close_user_address_space_handle(successor).unwrap();
+    assert_eq!(used(successor_principal), 0);
+    assert_eq!(deferred::admission::snapshot(), nodes_before);
+    assert_eq!(crate::klib::observer::list_budget::node_used(), lists_before);
+    crate::logln!(
+        "[memory close principal] 64 allocation rollbacks; pre-heap quota rejection, sibling \
+         sharing, independent principal, queued retention, late interest, promotion and \
+         exact-generation reuse refunds passed"
     );
 }
 

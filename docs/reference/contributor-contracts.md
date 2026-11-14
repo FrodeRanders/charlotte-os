@@ -1204,8 +1204,11 @@ the corrected RPC polling paths, and the remaining notification gaps.
 - IPC claim, memory-close and DMA-readiness sources use
   `deferred::PreparedDisposal` with independent `deferred_nodes` byte/count
   admission before list construction. Retain the existing captured source/owner
-  classification through preparation and producer-LP queued storage. Publication
-  under producer guards cannot allocate or refund; only post-guard disposal
+  classification through preparation and producer-LP queued storage. Memory-close
+  disposal nodes also retain the exact transfer-root principal's requested-layout
+  funding; capture before the wait lease and allocate only after family and
+  principal admission. IPC/DMA source principal propagation remains Q4 work.
+  Publication under producer guards cannot allocate or refund; only post-guard disposal
   refunds after actual node deallocation. List references keep their own
   independent backing charge. Complete-source fallback stays inert. See
   `docs/reference/deferred-source-admission.md`.

@@ -18,6 +18,7 @@ use crate::{
         },
         waiter_budget,
     },
+    memory::kernel_buffers::CapturedStorage,
 };
 
 type List = deferred::WaiterList;
@@ -34,10 +35,10 @@ struct SourcePayload {
 pub(super) struct Source(ManuallyDrop<SourcePayload>);
 
 impl Source {
-    fn prepare(platform: bool) -> Result<Self, MemoryObjectError> {
-        let disposal =
-            deferred::admission::prepare(platform).map_err(|_| MemoryObjectError::ResourceLimit)?;
-        let list = ObserverList::try_new(waiter_budget::SOURCE_LIMIT, platform)
+    fn prepare(storage: CapturedStorage) -> Result<Self, MemoryObjectError> {
+        let disposal = deferred::admission::prepare_funded(storage)
+            .map_err(|_| MemoryObjectError::ResourceLimit)?;
+        let list = ObserverList::try_new(waiter_budget::SOURCE_LIMIT, storage.platform())
             .map_err(|_| MemoryObjectError::ResourceLimit)?;
         Ok(Self(ManuallyDrop::new(SourcePayload {
             list,
@@ -89,7 +90,7 @@ struct ClosePayload {
     root: Option<AddressSpaceOperation>,
     object: MemoryObjectId,
     interest: Option<Interest>,
-    platform: bool,
+    storage: CapturedStorage,
 }
 
 /// Keep the exact root and transient interest together. Fallback retains all
@@ -111,7 +112,7 @@ impl Close {
         asid: AddressSpaceId,
         cap: MemoryObjectCap,
         mut wait: impl FnMut(&Interest) -> Result<(), MemoryObjectError>,
-        mut prepare: impl FnMut(bool) -> Result<Source, MemoryObjectError>,
+        mut prepare: impl FnMut(CapturedStorage) -> Result<Source, MemoryObjectError>,
     ) -> Result<(), MemoryObjectError> {
         loop {
             let registry = MEMORY_OBJECTS.lock();
@@ -135,7 +136,7 @@ impl Close {
             } else {
                 drop(registry);
                 // Prepare outside the payload registry and lifecycle/IPC.
-                let mut prepared = Some(prepare(self.0.platform)?);
+                let mut prepared = Some(prepare(self.0.storage)?);
                 let mut registry = MEMORY_OBJECTS.lock();
                 let active =
                     registry.caps.get(&asid).and_then(|caps| caps.caps.get(&cap)).is_some_and(
@@ -179,7 +180,7 @@ fn run_with_prepare(
     asid: AddressSpaceId,
     cap: MemoryObjectCap,
     wait: impl FnMut(&Interest) -> Result<(), MemoryObjectError>,
-    prepare: impl FnMut(bool) -> Result<Source, MemoryObjectError>,
+    prepare: impl FnMut(CapturedStorage) -> Result<Source, MemoryObjectError>,
 ) -> Result<(), MemoryObjectError> {
     // Lease only a wait: nonwaiting fixture callers may already serialize
     // lifecycle/table access and keep their existing path. The active transfer
@@ -193,20 +194,23 @@ fn run_with_prepare(
     let handle =
         registry.objects[&object].transfer_root.expect("active source transfer root missing");
     drop(registry);
+    // Capture principal and explicit reserve grant together, then qualify the
+    // snapshot against the transfer's exact generation before acquiring the
+    // wait lease. A successor cannot sponsor this source.
+    let (captured, storage) = crate::memory::capture_address_space_resource_sponsor(handle.id());
+    if captured != Some(handle) {
+        return Err(MemoryObjectError::UnknownCapability);
+    }
     let root = if asid == crate::memory::KERNEL_ASID {
         None // The permanent kernel namespace has no reusable slot.
     } else {
         Some(AddressSpaceOperation::acquire(handle).map_err(revocation::operation_error)?)
     };
-    let platform = asid == crate::memory::KERNEL_ASID
-        || root.as_ref().is_some_and(|root| {
-            super::super::budget::platform_identity(asid) == Some(root.handle())
-        });
     let mut operation = Close(ManuallyDrop::new(ClosePayload {
         root,
         object,
         interest: None,
-        platform,
+        storage,
     }));
     let result = operation.run(asid, cap, wait, prepare);
     operation.finish(result)

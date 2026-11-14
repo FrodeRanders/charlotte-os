@@ -10,6 +10,37 @@ use crate::{
     memory::allocators::global_allocator::PRIMARY_ALLOCATOR,
 };
 
+pub(crate) fn funded_allocation_failure(
+    storage: crate::memory::kernel_buffers::CapturedStorage,
+    principal: u64,
+) {
+    let before = snapshot();
+    let original = crate::memory::kernel_buffers::test_metadata_used(principal);
+    let bytes = PreparedDisposal::allocation_bytes() as u64;
+    for _ in 0..64 {
+        assert!(
+            prepare_funded_with(storage, |_| {
+                assert!(PRIMARY_ALLOCATOR.try_lock().is_some());
+                assert_eq!(
+                    crate::memory::kernel_buffers::test_metadata_used(principal),
+                    original + bytes
+                );
+                Err(AllocError)
+            })
+            .is_err()
+        );
+        assert_eq!(snapshot(), before);
+        assert_eq!(crate::memory::kernel_buffers::test_metadata_used(principal), original);
+    }
+    // Family rejection follows successful principal reservation. It must return
+    // that unused funding before invoking the node allocator.
+    let full = reserve(LIMIT[0] - before.0[0], true).unwrap();
+    assert!(prepare_funded_with(storage, |_| panic!("family denial reached allocator")).is_err());
+    assert_eq!(crate::memory::kernel_buffers::test_metadata_used(principal), original);
+    drop(full);
+    assert_eq!(snapshot(), before);
+}
+
 pub(crate) fn test_source<T, E>(
     family: &'static str,
     mut source: impl FnMut(bool) -> Result<T, E>,
