@@ -6,6 +6,25 @@ transferring its state. We describe this as \textbf{restart-with-state}:
 in-flight requests may fail during handoff. Clients reacquire a connection and
 apply their protocol's outcome/replay policy before continuing.
 
+\begin{architecturalcomparison}{CuriOS and state that survives a service}
+CuriOS starts from the observation that restarting an isolated server can
+still lose every client's session state. It separates and protects
+client-related service state, granting a server access when processing that
+client's request so state can survive a server restart \cite{prior:curios}.
+CharlotteOS shares the containment goal, but its demonstrated upgrade uses a
+cooperating old service to serialize state and move it to a fresh generation.
+
+This makes the handoff format and replacement boundary explicit, without
+requiring a general OS-managed store of every service's client state. It also
+leaves more responsibility with each service: the old instance must produce
+valid state, the replacement must understand it, and clients must handle the
+availability gap and uncertain outcomes. An upgrade handoff is therefore not
+automatic recovery of state destroyed by a crash. The protocol below and the
+\repofiletext|docs/guides/reconnecting-clients.md|{reconnecting-client guide}
+define the supported behavior; arbitrary services, device state and external
+side effects need their own recovery protocol.
+\end{architecturalcomparison}
+
 \section{The four primitives}
 
 The prototype builds on four primitives implemented in the kernel and name

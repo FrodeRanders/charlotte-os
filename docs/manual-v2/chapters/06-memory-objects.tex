@@ -41,6 +41,27 @@ explicit ownership and capability semantics. The kernel manages:
 Userspace never exchanges raw pointers across protection domains. Instead, IPC
 messages attach \textbf{memory-object capabilities} with declared transfer modes.
 
+\begin{architecturalcomparison}{Singularity and the enforcement boundary}
+Singularity transfers uniquely owned messages through an exchange heap.
+Its compiler, verifier and runtime enforce the aliasing and channel rules
+that make software-isolated processes possible \cite{prior:singularity}.
+CharlotteOS adopts the useful rule that sending an owned value removes the
+sender's right to use it, but enforces cross-domain memory access through
+kernel capabilities and page mappings. Rust owners express that lifecycle
+to callers; they are not the sole protection against another domain.
+
+This follows the manual's hardware-isolation commitment: a receiver need not
+participate in one managed-language verification environment. It also changes
+the work required for a transfer. A page-backed move must revoke mappings and
+respect TLB and DMA lifetimes; it cannot be implemented merely by handing over
+an exchange-heap pointer. Avoiding a payload copy therefore does not establish
+a lower transfer cost, especially for small messages. Explicit copy and borrow
+modes remain useful alternatives. The transfer sections below and the
+\repofiletext|docs/guides/resource-ownership.md|{ownership guide} describe
+these obligations; CharlotteOS does not inherit Singularity's static
+channel-contract guarantees.
+\end{architecturalcomparison}
+
 \section{Aggregate admission and sponsorship}
 
 The capacities in this section are compile-time defaults, adjustable through the

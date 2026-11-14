@@ -74,6 +74,27 @@ cluster vision scales this relationship outward: a cluster node is analogous
 to a core, cluster-visible storage is analogous to owned persistent state,
 and the cluster becomes the unit within which execution is placed.
 
+\begin{architecturalcomparison}{Amoeba: hide location, expose uncertain outcomes}
+Amoeba organizes computation around processor pools and capability-protected
+objects, allowing users to address services without selecting a home machine
+\cite{prior:amoeba}. CharlotteOS shares this administrative indirection, but
+its invocation contract preserves request identity, generations, deadlines
+and uncertain outcomes. A remote call that times out may already have changed
+the service; moving its name does not authorize replay.
+
+The reason for exposing that uncertainty is the distributed-systems boundary
+identified by Waldo and colleagues: remote interactions introduce latency,
+concurrency and partial failure that a local-call abstraction cannot erase
+\cite{prior:distributed-note}. This is a limit on transparency, not an
+assertion that Amoeba ignored failures. CharlotteOS aims to hide physical
+placement while requiring protocols to decide deduplication, retry and state
+transfer. Applications gain location independence but retain those obligations.
+The \repofiletext|docs/architecture/cluster-artifacts-and-placement.md|{cluster
+architecture} and the related-work section below distinguish the implemented
+stateless reassignment from future stateful migration; neither is arbitrary
+process-image migration.
+\end{architecturalcomparison}
+
 \subsection{Workloads are signed execution objects}
 
 In the target model, cluster software is a signed execution object with a
@@ -130,6 +151,29 @@ the new location and retires the old one under generation fencing. Stateful
 migration additionally requires an explicit transfer of owned mutable state
 and a single, fenced change of ownership. CharlotteOS has demonstrated only
 the stateless cross-node case; the stateful protocol remains a target.
+
+\begin{architecturalcomparison}{Borg and Kubernetes: native workloads}
+The Borg, Omega and Kubernetes experience supplies the desired-state pattern:
+controllers compare observed state with a declaration and act to reconcile
+them \cite{prior:borg}. CharlotteOS adopts that control-plane idea rather
+than treating cluster management as unnecessary. Its different choice is the
+execution object: a signed native artifact with declared resources and
+capability grants, launched directly into a protection domain instead of a
+Linux container environment.
+
+The documented research question is whether a native capability boundary can
+reduce the machinery needed to construct confined, reproducible workloads.
+Consensus, failure detection, readiness, placement and rollout remain necessary
+in either architecture. The cost of the native choice is a smaller software
+ecosystem and application adaptation, while Kubernetes can reuse Linux
+applications and operational tooling. The implemented CharlotteOS controller
+has bounded placement and generation-fenced readiness; capacity-aware
+scheduling, stateful movement and production administration remain open.
+See the \repofiletext|docs/architecture/cluster-artifacts-and-placement.md|{placement
+contract} and the implementation boundary later in this chapter. The research
+comparison turns on measured adaptation and operating costs, alongside
+correctness and recovery.
+\end{architecturalcomparison}
 
 \section{Kubernetes and OpenShift as a counterpoint}
 

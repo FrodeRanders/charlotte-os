@@ -17,6 +17,28 @@ memory or receive arbitrary interrupts is still dangerous. The driver must be
 \textbf{granted} only what it needs, and the grants must be mediated by the
 kernel.
 
+\begin{architecturalcomparison}{Arrakis and who receives the device queue}
+Arrakis separates the OS control plane from the I/O data plane. Applications
+receive protected virtualized device interfaces and can perform ordinary I/O
+without kernel mediation on each operation \cite{prior:arrakis}. This is
+protected direct access, not unrestricted access to physical hardware.
+
+CharlotteOS shares the goal of moving hardware-facing work out of the kernel,
+but delegates MMIO, interrupts and DMA domains to isolated driver services.
+Ordinary applications receive service connections and exchange owned or
+borrowed buffers; they do not normally receive the device queue itself. The
+\repofiletext|docs/architecture/sitas-xous.md|{co-design note} places device
+authority at this service boundary.
+
+That choice concentrates device protocol, reset and buffer-lifetime rules in
+the driver and lets application grants describe service operations. It also
+adds service IPC, scheduling and admission work to paths that Arrakis aims to
+make direct. Batching and memory transfer can reduce some costs, but this
+manual supplies no comparative benchmark. Direct userspace MMIO after a grant
+does not remove kernel participation in DMA mapping or establish safe hardware
+teardown; those remain separate contracts below.
+\end{architecturalcomparison}
+
 \section{The DriverGrant}
 
 When a driver domain is created, the supervisor delivers a \texttt{DriverGrant}

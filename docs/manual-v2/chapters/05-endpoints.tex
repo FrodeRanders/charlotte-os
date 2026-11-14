@@ -20,6 +20,25 @@ Client receives conn:       name_service.lookup("ns") -> ConnectionCap
 Ordinary clients do not mint arbitrary connections. The name service or a policy
 service normally delegates them after an access check.
 
+\begin{architecturalcomparison}{Xous messages and an asynchronous caller}
+Xous supplies the direct precedent for isolated servers and distinct scalar,
+owned-memory and borrowed-memory messages. In its documented IPC interface,
+blocking scalar calls and memory borrows suspend the calling thread until the
+server responds or returns the memory \cite{prior:xous}. CharlotteOS retains
+the distinction between sending a small control message and transferring or
+lending page-backed data, but represents an outstanding call with an owned
+\texttt{PendingCall} and gives the server a one-shot \texttt{ReplyToken}.
+
+This change serves the documented Sitas co-design: one shard can keep other
+tasks running while a call is pending, then park its thread when no task can
+progress. A borrow remains live through the pending owner; suspension of a
+Rust task does not return its memory. The cost is an explicit call lifecycle,
+including cancellation and returned-capability cleanup, rather than relying
+on one blocked stack to delimit the interaction. See the
+\repofiletext|docs/architecture/sitas-xous.md|{co-design note} and
+\autoref{sec:reconnecting-client}.
+\end{architecturalcomparison}
+
 \subsection{Namespace publication}
 
 An IPC namespace belongs to one exact root generation. It must be prepared

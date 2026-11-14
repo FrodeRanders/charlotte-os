@@ -56,6 +56,28 @@ the Sitas discipline:
         internals escapes the shard.
 \end{enumerate}
 
+\begin{architecturalcomparison}{Barrelfish and the scope of per-core ownership}
+The Barrelfish multikernel treats cores as a distributed system: inter-core
+communication is explicit, OS structure is hardware-neutral, and state is
+treated as replicated rather than shared. Its prototype separates each core's
+CPU driver from a userspace monitor that coordinates with other monitors
+\cite{prior:barrelfish}.
+
+CharlotteOS uses explicit cross-LP messages and local run queues, but does not
+implement that complete multikernel decomposition. Sitas gives each userspace
+shard sole mutation of its local state; the kernel still has shared registries,
+locks and shared address-space machinery. The direct execution discipline is
+Sitas, while Barrelfish supplies a useful architectural analogy.
+
+This narrower boundary makes locality and ownership explicit without requiring
+every kernel registry to become a replicated service. The tradeoff is that
+shared-kernel contention and coherence obligations remain: shard-local freedom
+from locks is not a claim that the entire OS is shared-nothing. The
+\repofiletext|docs/architecture/sitas-xous.md|{co-design note} defines the
+layers. Heterogeneous-core support and measured scalability require separate
+implementation and evaluation.
+\end{architecturalcomparison}
+
 \section[The usual mapping: one shard per LP]{The usual mapping: one shard $\leftrightarrow$ one LP}
 
 In the typical configuration:

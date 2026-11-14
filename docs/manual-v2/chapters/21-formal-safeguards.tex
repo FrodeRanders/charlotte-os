@@ -31,6 +31,26 @@ mapping is in \repofile|docs/tla/CONFORMANCE.md|. Those files are maintained
 with the implementation and are authoritative over the overview in this
 chapter.
 
+\begin{architecturalcomparison}{seL4 and what the verification result covers}
+seL4's verification connects an abstract kernel specification to its
+implementation through machine-checked refinement proofs; the 2014 account
+also describes security properties and binary-level verification under stated
+assumptions \cite{prior:sel4}. CharlotteOS currently explores finite TLA+
+state machines with TLC and maintains a reviewed correspondence to Rust.
+That correspondence is not a mechanically checked implementation refinement.
+
+The practical value of the CharlotteOS approach is early examination of
+lifecycle, ownership and distributed-protocol interleavings, including known
+unsafe variants that must produce counterexamples. It supports the method
+developed in this chapter while leaving much of the code and hardware outside
+the model. A successful bounded exploration proves the stated invariant for
+that finite model, not memory safety, isolation or functional correctness of
+the complete kernel. A stronger assurance claim would require mechanically
+checked implementation correspondence and the relevant hardware assumptions.
+The \repofiletext|docs/tla/CONFORMANCE.md|{conformance map} makes the current
+implementation correspondence reviewable.
+\end{architecturalcomparison}
+
 \section{Why model functionality as a state machine?}
 
 Most failures addressed by these models are not computation errors. They are

@@ -90,6 +90,23 @@
     pad at break*=2mm
 }
 
+% Architectural context is a separate reading path from implementation detail.
+% A labelled, square-cornered accent frame remains distinct in monochrome.
+\newtcolorbox{architecturalcomparison}[1]{%
+    enhanced jigsaw,breakable,
+    colback=iptoAccent!3,colframe=iptoAccent!65!black,
+    colbacktitle=iptoAccent!12,coltitle=iptoInk,
+    fonttitle=\sffamily\bfseries,
+    title={Architectural comparison: #1},
+    title after break={Architectural comparison: #1 (continued)},
+    boxrule=0.6pt,arc=0mm,
+    left=3mm,right=3mm,top=2mm,bottom=2mm,
+    before upper={\setlength{\parskip}{0.5\baselineskip}},
+    lines before break=4,
+    before skip=0.65\baselineskip,after skip=0.65\baselineskip,
+    pad at break*=2mm
+}
+
 \arrayrulecolor{iptoMuted!20}
 \renewcommand{\arraystretch}{1.25}
 

@@ -85,6 +85,27 @@ In a critical system, a lost completion for a disk write or a timer
 expiry is a correctness bug with potentially severe consequences. CharlotteOS
 treats each completion as a datum that must be delivered at least once.
 
+\begin{architecturalcomparison}{Readiness, completion rings and retained owners}
+Linux \texttt{epoll} reports that I/O may be possible; the application must
+still perform the operation. Linux \texttt{io\_uring} instead accepts operation
+descriptions and reports results through a shared completion ring
+\cite{prior:epoll,prior:io-uring}. CharlotteOS uses the latter
+submission/completion idea for kernel operations, while keeping endpoint
+calls as a separate protocol. Its CQ can also carry readiness notifications:
+an IRQ entry tells a driver to inspect the device, not that a DMA buffer is
+safe to release.
+
+The distinctive local contract is the composition of accepted-operation
+admission, retained results and typed owners. A full mapped ring is pressure,
+not permission to forget accepted work; a notification is not the owner or
+the physical completion proof. This requires reserved backlog capacity and
+rejection of new work at the admission bound. It also requires consumers to
+enter the reconciliation path rather than spin on an empty mapped ring.
+See \repofiletext|docs/reference/cq-wait.md|{the checked wait contract}.
+As in other completion-ring designs, admission and overflow handling are part
+of the interface contract; the ring layout alone does not supply them.
+\end{architecturalcomparison}
+
 \section{Per-shard CQ partitioning}
 
 Each address space owns a set of completion queues, keyed by \rustfn{CqId}. Queue

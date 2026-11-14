@@ -121,11 +121,20 @@
     \texttt{main} branch; begin with the \repofile|docs/README.md|
     documentation index.
 
-    \paragraph*{Reading the implementation notes.}
+    \paragraph*{Reading the boxes.}
     Boxes labelled \textbf{Optional detail} expand on allocation, publication
     and cleanup mechanics. They can be skipped on a first reading. The surrounding
     text gives the main sequence, ownership rules and caller-visible failure
     behaviour; the boxes retain the detail needed for implementation review.
+
+    Boxes labelled \textbf{Architectural comparison} place a nearby design
+    choice alongside earlier work. They distinguish the shared idea, the
+    CharlotteOS mechanism and its tradeoff or present limit. They describe
+    documented motivation where available; otherwise the comparison explains
+    consequences, not an inferred history of the decision. Numbered citations
+    lead to the comparison sources at the end of the manual. The
+    \nameref{app:research-afterlives} appendix gives the broader lineage.
+    These boxes can also be skipped without losing the main explanation.
 
     \newpage
     \renewcommand\contentsname{Contents}
@@ -252,5 +261,7 @@
     \newpage
 
     \input{chapters/appendices/architectural-redirections.tex}
+
+    \input{chapters/appendices/comparison-sources.tex}
 
 \end{document}

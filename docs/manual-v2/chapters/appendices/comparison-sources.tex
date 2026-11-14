@@ -1,0 +1,94 @@
+% Primary sources for the architecturalcomparison reading path. Repository
+% copies preserve the exact papers used; web references name the interface.
+\renewcommand{\bibname}{Sources for Architectural Comparisons}
+\begin{thebibliography}{13}
+\setlength{\itemsep}{0.25\baselineskip}
+\setlength{\parsep}{0pt}
+
+\bibitem{prior:capsicum}
+Robert N. M. Watson, Jonathan Anderson, Ben Laurie and Kris Kennaway.
+\emph{Capsicum: practical capabilities for UNIX}. USENIX Security, 2010.
+See the introduction and capability-mode/descriptor design.
+\repofiletext|docs/prior/(2010) Capsicum; practical capabilities for UNIX.pdf|{Repository copy.}
+
+\bibitem{prior:xous}
+The Xous Project. \emph{The Xous Operating System}, ``Messages and Message
+Passing.'' The message-kind descriptions specify blocking scalar and memory
+borrow behavior. Consulted 14 November 2026.
+\url{https://betrusted.io/xous-book/ch07-00-messages.html}.
+
+\bibitem{prior:singularity}
+Manuel F\"ahndrich, Mark Aiken, Chris Hawblitzel, Orion Hodson, Galen Hunt,
+James R. Larus and Steven Levi.
+\emph{Language Support for Fast and Reliable Message-based Communication in
+Singularity OS}. EuroSys, 2006. See the communication invariants, exchange
+heap and ownership verification.
+\repofiletext|docs/prior/(2006) Language support for fast and reliable message-based communication in singularity OS.pdf|{Repository copy.}
+
+\bibitem{prior:epoll}
+Linux man-pages project. \emph{epoll(7)}. See the description of readiness
+and edge-triggered operation. Consulted 14 November 2026.
+\url{https://man7.org/linux/man-pages/man7/epoll.7.html}.
+
+\bibitem{prior:io-uring}
+Linux man-pages project. \emph{io\_uring(7)}. See the submission/completion
+model and shared-ring interface. Consulted 14 November 2026.
+\url{https://man7.org/linux/man-pages/man7/io_uring.7.html}.
+
+\bibitem{prior:barrelfish}
+Andrew Baumann, Paul Barham, Pierre-Evariste Dagand, Tim Harris,
+Rebecca Isaacs, Simon Peter, Timothy Roscoe, Adrian Sch\"upbach and
+Akhilesh Singhania.
+\emph{The Multikernel: A new OS architecture for scalable multicore systems}.
+SOSP, 2009. See the three multikernel principles and the Barrelfish
+CPU-driver/monitor decomposition.
+\repofiletext|docs/prior/(2009) The Multikernel; A new OS architecture for scalable multicore systems.pdf|{Repository copy.}
+
+\bibitem{prior:arrakis}
+Simon Peter, Jialin Li, Irene Zhang, Dan R. K. Ports, Doug Woos,
+Arvind Krishnamurthy, Thomas Anderson and Timothy Roscoe.
+\emph{Arrakis: The Operating System is the Control Plane}. OSDI, 2014.
+See the abstract and protected virtualized I/O architecture.
+\repofiletext|docs/prior/(2014) Arrakis; The Operating System is the Control Plane.pdf|{Repository copy.}
+
+\bibitem{prior:eros}
+Jonathan S. Shapiro, Jonathan M. Smith and David J. Farber.
+\emph{EROS: a fast capability system}. SOSP, 1999.
+See the single-level store and implications for persistence in Section 2.1.
+\repofiletext|docs/prior/(1999) EROS; a fast capability system.pdf|{Repository copy.}
+
+\bibitem{prior:curios}
+Francis M. David, Ellick M. Chan, Jeffrey C. Carlyle and Roy H. Campbell.
+\emph{CuriOS: Improving Reliability through Operating System Structure}.
+OSDI, 2008. See the introduction and isolation of client-related service state.
+\repofiletext|docs/prior/(2008) CuriOS; Improving Reliability through Operating System Structure.pdf|{Repository copy.}
+
+\bibitem{prior:amoeba}
+Andrew S. Tanenbaum. \emph{The Amoeba Distributed Operating System}.
+1996 repository edition. See the introduction, processor-pool architecture
+and object capabilities.
+\repofiletext|docs/prior/(1996) The Amoeba Distributed Operating System.pdf|{Repository copy.}
+
+\bibitem{prior:distributed-note}
+Jim Waldo, Geoff Wyant, Ann Wollrath and Sam Kendall.
+\emph{A Note on Distributed Computing}. Sun Microsystems Laboratories,
+SMLI TR-94-29, November 1994. See the distinction between local and
+distributed interactions, especially partial failure.
+\repofiletext|docs/prior/(1994) A Note on Distributed Computing.pdf|{Repository copy.}
+
+\bibitem{prior:borg}
+Brendan Burns, Brian Grant, David Oppenheimer, Eric Brewer and John Wilkes.
+\emph{Borg, Omega, and Kubernetes: Lessons learned from three
+container-management systems over a decade}. ACM Queue, January--February
+2016. See the reconciliation-controller discussion.
+\repofiletext|docs/prior/(2016) Borg, Omega, and Kubernetes; Lessons learned from three container-management systems over a decade.pdf|{Repository copy.}
+
+\bibitem{prior:sel4}
+Gerwin Klein, June Andronick, Kevin Elphinstone, Toby Murray, Thomas Sewell,
+Rafal Kolanski and Gernot Heiser.
+\emph{Comprehensive Formal Verification of an OS Microkernel}.
+ACM Transactions on Computer Systems 32(1), Article 2, February 2014.
+See the proof overview, refinement layers and stated assumptions.
+\repofiletext|docs/prior/(2014) Comprehensive Formal Verification of an OS Microkernel.pdf|{Repository copy.}
+
+\end{thebibliography}

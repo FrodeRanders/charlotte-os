@@ -7,6 +7,25 @@ object store, and filesystem services run in userspace. The kernel still
 participates through capability, memory-mapping, physical-address, interrupt,
 and PCI/MSI-X setup paths.
 
+\begin{architecturalcomparison}{EROS and the boundary of persistence}
+EROS couples object capabilities to a single-level store: persistent system
+objects and periodic checkpoints make persistence transparent to applications
+\cite{prior:eros}. CharlotteOS takes the capability idea without adopting
+transparent persistence of the running object graph. Its block, object-store
+and filesystem services expose explicit operations, durable formats and flush
+boundaries. A live memory capability is not, by itself, a durable reference
+that can be used after reboot.
+
+The architectural consequence is that each service can define what its
+committed state means, instead of requiring a consistent checkpoint of all
+running processes and their capabilities. The corresponding burden falls on
+the service protocol: it must serialize state, order data and metadata writes,
+validate recovery input and reacquire live authority after restart. The
+\repofiletext|docs/architecture/persistent-storage.md|{storage architecture}
+and the durability section below describe that boundary. Crash safety depends
+on the service, storage stack and device flush contract.
+\end{architecturalcomparison}
+
 \section{The storage stack}
 
 \begin{center}

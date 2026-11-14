@@ -67,6 +67,24 @@ the target domain, the capability to delegate, and the reduced rights mask. The
 kernel validates that the sender actually holds the capability with at least the
 rights being transferred.
 
+\begin{architecturalcomparison}{Capsicum and the starting authority}
+Capsicum brings capability confinement to existing Unix applications. Its
+capability mode restricts access to global namespaces, while file descriptors
+carry rights that can be reduced and passed to another process
+\cite{prior:capsicum}. CharlotteOS shares the possession-and-attenuation rule,
+but makes the capability domain the starting execution environment: a new
+application receives explicit bootstrap grants and acquires further service
+connections through policy-controlled delegation.
+
+The difference is where compatibility enters the design. Capsicum preserves
+Unix APIs and offers an incremental compartmentalization path. CharlotteOS
+requires applications and service libraries to express their dependencies
+through its native object and IPC model. Software that assumes Unix namespaces
+and process facilities needs adaptation. Services still enforce protocol
+policy beyond kernel rights. See the bootstrap contract below and the
+\repofiletext|docs/guides/resource-ownership.md|{ownership guide}.
+\end{architecturalcomparison}
+
 \section{Generation-safe lookup}
 
 Capability values are opaque serials consumed monotonically within one namespace.
