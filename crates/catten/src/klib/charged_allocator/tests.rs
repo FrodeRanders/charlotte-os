@@ -540,7 +540,7 @@ unsafe impl Allocator for Backing {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         self.0
             .used
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |used| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |used| {
                 used.checked_add(layout.size())
                     .filter(|bytes| *bytes <= self.0.limit.load(Ordering::Acquire))
             })

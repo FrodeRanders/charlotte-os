@@ -67,6 +67,12 @@ running documentation tests. Check the test names/counts when adding a suite.
 Freestanding binary targets keep their harness disabled. CI calls the same
 wrapper.
 
+The wrapper defaults `CARGO_BUILD_RUSTFLAGS` to CI's `-D warnings` policy so
+local Cargo harnesses use the same warning gate. A partial harness may expect
+unused APIs or reexports at its included-module boundary; keep that expectation
+scoped to the fixture. Generated negative controls must compile warning-free before
+their intended runtime rejection can count as a pass.
+
 Host fixture logging stubs must return a unit expression: included kernel code
 can use them as branch tail expressions. Keep that compile check independent of
 the host architecture so ARM hosts also catch failures in x86-only call sites.

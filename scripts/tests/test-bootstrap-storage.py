@@ -21,7 +21,7 @@ def run():
 
         def compile_and_run(path, *args, capture=False, hw_path=actual_hw, calibration_path=actual_calibration):
             harness.write_text(source.replace("@BOOT_TIMER@", str(path)).replace("@HW_ASID@", str(hw_path)).replace("@CALIBRATION@", str(calibration_path)))
-            subprocess.run([rustc, "--edition=2024", "--test", str(harness), "-o", str(binary)], check=True)
+            subprocess.run([rustc, "--edition=2024", "-D", "warnings", "--test", str(harness), "-o", str(binary)], check=True)
             return subprocess.run([str(binary), *args, "--test-threads=1"], capture_output=capture, text=True)
 
         assert compile_and_run(actual).returncode == 0
@@ -46,7 +46,9 @@ def run():
         current_hw = actual_hw.read_text()
         reserve = "        free.try_reserve_exact(limit as usize)?;"
         assert current_hw.count(reserve) == 1
-        old = current_hw.replace(reserve, "")
+        binding = "let mut free = Vec::new();"
+        assert current_hw.count(binding) == 1
+        old = current_hw.replace(reserve, "").replace(binding, "let free = Vec::new();")
         start = old.index("        assert!(\n            self.free.len()")
         end = old.index("        self.free.push(asid);", start)
         old = old[:start] + old[end:]

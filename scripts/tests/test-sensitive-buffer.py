@@ -31,7 +31,7 @@ extern crate self as catten_syscall;
 pub use syscall_format::*;
 #[path = "@ROOT@/crates/charlotte-lifecycle/src/resources.rs"] pub mod resources;
 #[path = "@ROOT@/crates/catten/src/resource_policy.rs"] mod resource_policy;
-#[macro_export] macro_rules! logln { ($message:literal) => {}; }
+#[macro_export] macro_rules! logln { ($message:literal) => {{}}; }
 mod cpu { pub mod multiprocessor { pub mod spin { pub mod mutex {
     pub struct Mutex<T>(std::sync::Mutex<T>);
     impl<T> Mutex<T> {
@@ -41,6 +41,7 @@ mod cpu { pub mod multiprocessor { pub mod spin { pub mod mutex {
     }
 }}}}
 mod klib {
+    #[expect(unused_imports, reason = "partial harness does not consume every admission reexport")]
     #[path = "@ROOT@/crates/catten/src/klib/admission.rs"] pub mod admission;
     #[path = "@OWNER@"] mod sensitive_buffer;
 }
@@ -55,6 +56,9 @@ mod klib {
 
         control = (ROOT / "crates/catten/src/klib/sensitive_buffer.rs").read_text()
         control = control.replace("self.0.as_mut_slice().zeroize();", "").replace("self.0.spare_capacity_mut().zeroize();", "")
+        # The unwiped control must compile under CI's denied warnings before
+        # its allocator tracer can reject actual plaintext at backend free.
+        control = control.replace("use zeroize::Zeroize;\n", "")
         control = control.replace('#[path = "sensitive_buffer/tests.rs"]',
                                   f'#[path = "{ROOT}/crates/catten/src/klib/sensitive_buffer/tests.rs"]')
         (directory / "unwiped.rs").write_text(control)

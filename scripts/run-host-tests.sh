@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Match CI for generated Cargo harnesses, including expected-failure controls.
+export CARGO_BUILD_RUSTFLAGS="${CARGO_BUILD_RUSTFLAGS:--D warnings}"
+
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 bash "$repo_root/scripts/tests/test-signing-policy.sh"
 python3 "$repo_root/scripts/tests/test-boot-results.py"
