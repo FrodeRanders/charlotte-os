@@ -54,6 +54,7 @@ use crate::{
 };
 
 global_asm!(
+    include_str!("fp_state.asm"),
     ".pushsection .text",
     ".global syscall_entry",
     "syscall_entry:",
@@ -91,6 +92,9 @@ global_asm!(
     "push rdi",                 // regs[1]
     "push rax",                 // regs[0] = syscall number
     "mov rdi, rsp",             // frame_base = &regs[0]
+    "mov r12, rsp",             // retain GPR frame across the aligned FP image
+    "and rsp, -16",
+    "catten_save_fp",
     // Entry state now lives entirely on the trusted kernel stack. Keep
     // preemption and TLB-shootdown IPIs live while Rust dispatches or waits
     // for a contended lock.
@@ -98,6 +102,8 @@ global_asm!(
     "call {syscall_entry_handler}",
     // The GS swap and privilege return must be atomic with respect to IRQs.
     "cli",
+    "catten_restore_fp",
+    "mov rsp, r12",
     // Restore the return registers.
     "pop rax",                  // regs[0]
     "pop rdi",                  // regs[1]
@@ -119,6 +125,8 @@ global_asm!(
     "swapgs",
     "iretq",
     ".popsection",
+    ".purgem catten_save_fp",
+    ".purgem catten_restore_fp",
     syscall_entry_handler = sym crate::cpu::isa::x86_64::interrupts::syscall::syscall_entry_handler,
 );
 
@@ -159,6 +167,9 @@ pub unsafe extern "C" fn syscall_entry_handler(frame_base: *mut u64) {
     }
 
     syscall::syscall_dispatch(&mut frame, syscall_no);
+
+    #[cfg(feature = "kernel_tests")]
+    crate::self_test::clobber_x86_fp_state();
 
     unsafe {
         for (index, reg) in frame.regs.iter().enumerate() {

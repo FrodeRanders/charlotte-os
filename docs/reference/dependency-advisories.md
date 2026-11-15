@@ -75,13 +75,16 @@ work. SEC-14 remains partial and production trust stays disabled.
 
 ## Freestanding x86 compiler compatibility
 
-The freestanding x86 service target selects `rustc-abi = "softfloat"` and
-`+soft-float`, while crypto dependencies and Rust's rebuilt `core` contain
-SSE/AVX `target_feature` functions. The pinned compiler reports this conflict
-through `x86_softfloat_sse`, producing Cargo's future-incompatibility summary.
-This is a target/compiler compatibility issue; an advisory scan does not check
-it. The `core v0.0.0` entry is the toolchain library rebuilt by `-Z build-std`,
-not a separately versioned dependency to upgrade.
+The freestanding x86 service target uses the normal SysV/SSE2 ABI. Its former
+soft-float selection conflicted with dependency and rebuilt `core` SIMD
+definitions, producing `x86_softfloat_sse` future-incompatibility diagnostics.
+Runtime ABI 4 defines its stack/register-preservation contract; see
+[execution targets](execution-targets.md). The separate kernel target retains
+soft-float and can still report that upstream compatibility warning in its
+own rebuilt core/crypto graph. This remains a kernel compiler-upgrade boundary.
+An advisory scan does not check compiler compatibility. `core v0.0.0` names
+the toolchain library rebuilt by `-Z build-std`, not an independently versioned
+dependency to upgrade.
 
 Inspect the retained service-build report with:
 
@@ -95,11 +98,10 @@ is shared across architecture builds, so a cached report is not proof that an
 AArch64 build introduced an x86 diagnostic. Package updates or software crypto
 backend flags alone cannot address the rebuilt `core` intrinsics.
 
-Resolution requires a coherent userspace target/ABI and CPU-state contract, or
-an upstream-supported way to exclude incompatible vector definitions throughout
-the graph and rebuilt standard library. Preserve the kernel's separate target,
-the existing POLYVAL erasure selection and the AVX admission fence while
-qualifying a change. The
+Keep the kernel's separate target, existing POLYVAL erasure selection and AVX
+admission fence when changing compiler flags. The
 [15 November investigation](../reports/investigations/2026-11-15-x86-softfloat-future-incompatibility.md)
-records the exact diagnostics and an isolated compile comparison. It establishes
-the cause, not runtime qualification or closure of the compatibility gap.
+records the original diagnostics and isolated compile comparison. The
+[SysV/SSE2 qualification](../reports/investigations/2026-11-15-x86-sysv-abi.md)
+records the current native/SDK results and the separate unresolved combined-run
+deadline. Historical evidence remains distinct from current qualification.

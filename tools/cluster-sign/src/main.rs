@@ -2881,7 +2881,7 @@ mod tests {
         elf_sign(&[image.clone(), "app".into(), f.private.clone()]).unwrap();
         elf_verify(&[image.clone(), "app".into(), f.public.clone()]).unwrap();
         let mut args = artifact_deployment_args(&f, &image);
-        args.push(format!("--variant=apps/extra.elf,{image},1,1,3"));
+        args.push(format!("--variant=apps/extra.elf,{image},1,1,4"));
         deployment_sign(&args).unwrap();
         let bytes = fs::read(&args[0]).unwrap();
         let descriptor = deployment::decode(&bytes).unwrap();
@@ -2901,7 +2901,7 @@ mod tests {
         let regular = f.path("regular.elf");
         fs::write(&regular, minimal_artifact_elf()).unwrap();
         let mut variant_args = artifact_deployment_args(&f, &regular);
-        variant_args.push(format!("--variant=apps/extra.elf,{large},1,1,3"));
+        variant_args.push(format!("--variant=apps/extra.elf,{large},1,1,4"));
         let errors = [
             elf_sign(&[large.clone(), "app".into(), f.private.clone()]).unwrap_err(),
             elf_verify(&[large.clone(), "app".into(), f.public.clone()]).unwrap_err(),
@@ -2925,7 +2925,7 @@ mod tests {
         let alias = f.path("alias.elf");
         std::os::unix::fs::symlink(&regular, &alias).unwrap();
         let mut args = artifact_deployment_args(&f, &regular);
-        args.push(format!("--variant=apps/extra.elf,{alias},1,1,3"));
+        args.push(format!("--variant=apps/extra.elf,{alias},1,1,4"));
         let results = [
             elf_sign(&[alias.clone(), "app".into(), f.private.clone()]),
             elf_verify(&[alias.clone(), "app".into(), f.public.clone()]),
@@ -2942,7 +2942,7 @@ mod tests {
             assert!(elf_verify(&[source.clone(), "app".into(), f.public.clone()]).is_err());
             assert!(deployment_sign(&artifact_deployment_args(&f, source)).is_err());
             let mut args = artifact_deployment_args(&f, &regular);
-            args.push(format!("--variant=apps/extra.elf,{source},1,1,3"));
+            args.push(format!("--variant=apps/extra.elf,{source},1,1,4"));
             assert!(deployment_sign(&args).is_err());
         }
     }
@@ -2967,7 +2967,7 @@ mod tests {
         let f = SignedControlFixture::new();
         let mut args = artifact_deployment_args(&f, &f.path("absent"));
         for _ in 0..deployment::MAX_VARIANTS {
-            args.push(format!("--variant=extra,{},1,1,3", f.path("absent-extra")));
+            args.push(format!("--variant=extra,{},1,1,4", f.path("absent-extra")));
         }
         let error = deployment_sign(&args).unwrap_err();
         assert!(error.contains("at most 8 variants"), "late variant rejection: {error}");

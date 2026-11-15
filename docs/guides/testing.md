@@ -109,12 +109,18 @@ Preserve initial failures separately from passing repeats. A build-only check
 does not establish guest execution, and emulator results do not qualify hardware.
 Record exact compiler and artifact identities in the dated checkpoint.
 
-The current x86 custom target emits future-incompatibility diagnostics about
-SIMD target-feature declarations in `core` and existing crypto dependencies.
-Current strict builds pass. Keep the kernel's soft-float/no-SIMD ABI and the
-erasing GCM backend controls; enabling SIMD to silence a warning would require
-separate context-save/ABI qualification. This remains a future compiler upgrade
-boundary; see the [toolchain checkpoint](../reports/audits/2026-11-15-rust-toolchain.md).
+X86 services use the normal SysV/SSE2 ABI and runtime ABI 4. The native
+user-isolation probe checks initial stack alignment, fresh-domain register
+clearing and preservation of x87, all sixteen XMM registers and MXCSR across
+syscalls, timer IRQs and blocking. Test-only handlers deliberately overwrite
+registers so preservation cannot pass because a handler happened not to use
+them. `scripts/tests/test-x86-userspace-abi.py` compiles the real service target
+and rejects SIMD on the separate kernel soft-float target. Keep the erasing GCM
+backend controls and OSXSAVE fence. The kernel's rebuilt core/crypto graph can
+still report upstream soft-float/SIMD future incompatibilities; that separate
+compiler-upgrade boundary remains. The
+[toolchain checkpoint](../reports/audits/2026-11-15-rust-toolchain.md) records the
+earlier target configuration.
 
 ## Target-only tests
 

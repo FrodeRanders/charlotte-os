@@ -50,10 +50,12 @@ isr_lapic_timer:
     m_push_caller_saved
     mov r12, rsp
     and rsp, -16
+    catten_save_fp
     cld
     call signal_eoi
     call process_events
     call cond_yield_lp
+    catten_restore_fp
     mov rsp, r12
     m_pop_caller_saved
     pop r12

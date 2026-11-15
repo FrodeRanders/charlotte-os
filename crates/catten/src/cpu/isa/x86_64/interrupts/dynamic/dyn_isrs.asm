@@ -25,6 +25,7 @@ dyn_isr_\vector:
     push r11
     mov r12, rsp
     and rsp, -16
+    catten_save_fp
     cld
     //; Acknowledge the interrupt up front so this vector does not remain
     //; in-service and block the lower-priority LAPIC timer.
@@ -43,6 +44,7 @@ dyn_isr_\vector:
 skip_ih_call_\vector:
     //; Execute context switch if pending
     call cond_yield_lp
+    catten_restore_fp
     mov rsp, r12
     pop r11
     pop r10

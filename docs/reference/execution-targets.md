@@ -8,7 +8,7 @@ ABI, required CPU features and selection priority. Variant targets must be
 distinct. The descriptor's aggregate size remains bounded to 3,584 bytes.
 
 The current execution contract is 64-bit little-endian ELF, either AArch64
-(`e_machine=183`) or x86_64 (`e_machine=62`), and Charlotte runtime ABI 3. ABI
+(`e_machine=183`) or x86_64 (`e_machine=62`), and Charlotte runtime ABI 4. ABI
 matching is exact. A kernel/userspace ABI change must bump the shared
 `RUNTIME_ABI` and rebuild/sign components; an absent or old ABI is never filled
 in by a decoder. Microarchitecture names, vendor names and CPU generations
@@ -17,14 +17,32 @@ are not compatibility tests. ABI 2 makes the twelve-register authenticated
 22/27/53. Rebuild and re-sign both primary and additional variants; ABI 1
 variants fail exact target matching on newer nodes. ABI 3 retires unchecked CQ
 wait syscalls 12/42 and uses the checked wait's explicit timed flag; see the
-[CQ wait contract](cq-wait.md). ABI 2 variants also reject on ABI 3 nodes.
+[CQ wait contract](cq-wait.md). ABI 4 establishes the x86 SysV/SSE2 userspace
+baseline, C-function stack entry alignment and preservation of x87, XMM0--15
+and MXCSR across syscalls, returning exceptions and interrupt/preemption paths.
+Variants requiring ABI 1, 2 or 3 reject on ABI 4 nodes. Rebuild and re-sign all
+variants on both architectures; there is no older-ABI execution path.
+
+The x86 service target uses the normal SysV floating-point ABI with baseline
+SSE/SSE2 and no red zone. Initial function entry has `RSP % 16 == 8`, with a
+reserved zero return slot. The kernel retains its independent soft-float target.
+Every returning x86 syscall/exception/IRQ entry that calls Rust owns an aligned
+FXSAVE image on its kernel stack, enters Rust with default x87/MXCSR controls,
+and restores the interrupted image before returning. Nested entries and suspended handlers retain
+separate images. Ordinary entries reserve 528 bytes plus at most 15 bytes of
+alignment below the saved GPR frame; no allocation or capability is involved.
+Context-switch FXSAVE/FXRSTOR remains responsible for the scheduled thread's
+current image. AVX is unavailable: CR4.OSXSAVE stays clear, and the current
+context contract covers only x87/MMX/SSE. Runtime feature dispatch must honor
+OS-enabled register state as well as CPUID.
 
 | Feature bit | AArch64 | x86_64 |
 | --- | --- | --- |
 | 0 | LSE atomic instructions | CMPXCHG16B |
 | 1 | CRC32 instructions | POPCNT |
 
-Only these integer extensions are advertised. The kernel records each boot
+Only these optional integer extensions are advertised; baseline x86 SSE2 is
+part of runtime ABI 4. The kernel records each boot
 LP's hardware features and intersects them across all schedulable LPs. Until
 all configured LPs report, the profile advertises baseline features only.
 This does not implement CPU hotplug. Any future LP admission must preserve the
@@ -84,8 +102,8 @@ derive machine and digest:
 ```text
 cluster-sign deployment-sign orders.cdep orders releases/orders-arm.elf \
   ./orders-arm.elf 0 42 8 8 15000 deployment-private.hex \
-  --variant=releases/orders-x86.elf,./orders-x86.elf,0,0,3 \
-  --variant=releases/orders-arm-lse.elf,./orders-arm-lse.elf,1,10,3 \
+  --variant=releases/orders-x86.elf,./orders-x86.elf,0,0,4 \
+  --variant=releases/orders-arm-lse.elf,./orders-arm-lse.elf,1,10,4 \
   --replicas=3 --spread-replicas orders=publish
 cluster-sign release-sign orders.crelease orders 42 deployment-private.hex orders.cdep
 cluster-sign release-apply orders.crelease 127.0.0.1:8081 120

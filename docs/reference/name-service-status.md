@@ -5,7 +5,7 @@ The response moves one `CNSSTAT1` buffer and returns its exact meaningful byte
 length. Malformed requests, allocation/mapping failure and rejected preparation
 return `ERR_INVALID` (-2), never a partial catalog. The retired `NSST` page is
 unsupported; there is no compatibility decoder or clamped-prefix fallback.
-NS interface 2, CNSGEN01 generation requests, runtime ABI 3 and persistent
+NS interface 2, CNSGEN01 generation requests, runtime ABI 4 and persistent
 formats are unchanged.
 
 The observation includes every active local publication, in unsigned-byte

@@ -185,7 +185,7 @@ let outcome = catten_rt::cq::wait(timeout_ms, cq_id)
 catten_syscall::cq_wake(cq_id); // Peer notification.
 \end{lstlisting}
 
-The sibling Sitas backend uses that same runtime ABI 3 contract. Its reactor
+The sibling Sitas backend uses that same runtime ABI 4 contract. Its reactor
 uses one monotonic deadline, so wakeups cannot restart it. Runtime sleep also
 rechecks its original deadline, so an unrelated completion cannot shorten sleep.
 Rejected waiter admission logs and aborts the domain, preserving uncertain

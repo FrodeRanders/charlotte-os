@@ -22,6 +22,7 @@
     push r15
     mov r12, rsp
     and rsp, -16
+    catten_save_fp
     cld
 /* IPIs are always level triggered so as not to be missed. Thus when the ISR runs we must signal
    end of interrupt to the local interrupt controller to ensure the ISR isn't called repeatedly
@@ -31,6 +32,7 @@
 .endm
 
 .macro IPI_EPILOGUE
+    catten_restore_fp
     mov rsp, r12
     pop r15
     pop r14

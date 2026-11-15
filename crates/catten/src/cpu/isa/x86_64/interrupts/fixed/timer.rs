@@ -6,7 +6,12 @@ use crate::cpu::isa::{
 unsafe extern "custom" {
     pub unsafe fn isr_lapic_timer();
 }
-core::arch::global_asm!(include_str!("timer.asm"));
+core::arch::global_asm!(
+    include_str!("../fp_state.asm"),
+    include_str!("timer.asm"),
+    ".purgem catten_save_fp",
+    ".purgem catten_restore_fp",
+);
 
 #[unsafe(no_mangle)]
 pub extern "C" fn signal_eoi() {
@@ -16,4 +21,6 @@ pub extern "C" fn signal_eoi() {
 #[unsafe(no_mangle)]
 pub extern "C" fn process_events() {
     let _ = crate::timers::try_process_local_events();
+    #[cfg(feature = "kernel_tests")]
+    crate::self_test::clobber_x86_fp_state();
 }

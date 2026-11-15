@@ -31,6 +31,33 @@ unsafe extern "C" {
     static user_state_probe_end: u8;
 }
 
+/// Native fixture: force kernel entry paths to overwrite every caller-saved
+/// vector register and the x87 state, so preservation cannot pass accidentally.
+#[cfg(target_arch = "x86_64")]
+#[unsafe(naked)]
+pub(crate) extern "C" fn clobber_fp_state() {
+    core::arch::naked_asm!(
+        "pxor xmm0, xmm0",
+        "pxor xmm1, xmm1",
+        "pxor xmm2, xmm2",
+        "pxor xmm3, xmm3",
+        "pxor xmm4, xmm4",
+        "pxor xmm5, xmm5",
+        "pxor xmm6, xmm6",
+        "pxor xmm7, xmm7",
+        "pxor xmm8, xmm8",
+        "pxor xmm9, xmm9",
+        "pxor xmm10, xmm10",
+        "pxor xmm11, xmm11",
+        "pxor xmm12, xmm12",
+        "pxor xmm13, xmm13",
+        "pxor xmm14, xmm14",
+        "pxor xmm15, xmm15",
+        "fninit",
+        "ret",
+    );
+}
+
 // Kernel fixture namespace owner. Failed/abandoned verification retains the
 // published root; only explicit finish retires physically quiescent backing.
 struct Fixture {
@@ -212,12 +239,21 @@ pub(crate) fn verify() {
         check_snapshot(&fresh);
         fresh.finish();
         state.wait_for(0xdead);
+        for offset in (160..416).step_by(8) {
+            assert_eq!(state.word(offset), u64::MAX, "preserved XMM word {offset}");
+        }
+        assert_eq!(state.word(0) & 0xffff, 0x077f, "preserved x87 control");
+        assert_eq!(state.word(24) as u32, 0x3f80, "preserved MXCSR");
         assert_eq!(state.word(832), u64::MAX);
         assert_eq!(state.word(840), u64::MAX);
         assert_eq!(state.word(848), 1f64.to_bits());
         assert_eq!(state.word(856), 0x123000);
         assert_eq!(state.word(864), 0x456000);
         state.finish();
+        crate::logln!(concat!(
+            "[user isolation] x86 x87/XMM0-15/MXCSR preserved across syscalls, timer IRQs ",
+            "and blocking; fresh domains cleared"
+        ));
         for (name, instructions) in [
             ("invalid opcode", &[0x0f, 0x0b][..]),
             ("divide by zero", &[0x31, 0xc9, 0xb8, 1, 0, 0, 0, 0x31, 0xd2, 0xf7, 0xf1][..]),
@@ -324,12 +360,13 @@ fn check_snapshot(snapshot: &Fixture) {
     }
     #[cfg(target_arch = "x86_64")]
     {
+        assert_eq!(snapshot.word(896), 8, "SysV initial stack alignment");
         assert_eq!(snapshot.word(0), 0x037f, "x87 default control and empty tags");
         assert_eq!(snapshot.word(8), 0, "x87 instruction pointer");
         assert_eq!(snapshot.word(16), 0, "x87 data pointer");
         assert_eq!(snapshot.word(24) as u32, 0x1f80, "MXCSR default");
         // The hardware MXCSR_MASK at 28 is intentionally implementation-defined.
-        for offset in (32..512).chain(520..640).step_by(8) {
+        for offset in (32..512).chain(512..632).step_by(8) {
             assert_eq!(snapshot.word(offset), 0, "initial x86 register word {offset}");
         }
     }

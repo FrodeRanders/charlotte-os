@@ -20,7 +20,7 @@ validate magic, bounds, exact lengths and generation semantics before lending a
 name. Extra allocation page padding is outside the frame. Retired scalar
 observation, bare-name observation and packed-name/eight-byte retirement reject;
 there is no compatible parser or missing-field default. Other NS operations
-retain their existing grammar; DNS interface 4 and register runtime ABI 3 stay
+retain their existing grammar; DNS interface 4 and register runtime ABI 4 stay
 unchanged. All signed service variants rebuild together with the kernel endpoint.
 
 ## Authorization and unique ownership

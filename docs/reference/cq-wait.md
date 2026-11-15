@@ -1,10 +1,10 @@
 # Checked completion-queue wait
 
-Runtime ABI 3 has one CQ wait: syscall 88 (`CqWaitChecked`) and SDK
+Runtime ABI 4 has one CQ wait: syscall 88 (`CqWaitChecked`) and SDK
 `cq_wait_checked(timeout: Option<u64>, cq)`. Unchecked 12/42, `cq_wait`,
 `cq_wait_timeout`, `wait_on_cq` and `wait_on_cq_timeout` are removed. Their
 ignored `min_complete` parameter and boolean timeout/admission fallback are gone.
-Rebuild/re-sign all variants; ABI 1/2 requirements reject on ABI 3 nodes.
+Rebuild/re-sign all variants; ABI 1/2/3 requirements reject on ABI 4 nodes.
 
 | Register | AArch64 | x86_64 | Contract |
 | --- | --- | --- | --- |
@@ -92,7 +92,7 @@ must be qualified before removing the backstop.
 CI pins every Sitas checkout to published commit
 `d27f7e7b7a6e3657c9b39e53da02cf0cd8f91a78`, the checked-wait update. The prior
 `94eca685` pin still emitted retired syscalls 12/42 and is incompatible with
-runtime ABI 3, even if compilation and ELF signature validation succeed.
+runtime ABI 4, even if compilation and ELF signature validation succeed.
 `scripts/tests/test-ci-runtime-inputs.py` checks the pinned backend against the
 SDK wait number and rejects that earlier source. Developers' sibling checkout
 is `../../gautelis/sitas`; changing CI's pin does not modify that working tree.

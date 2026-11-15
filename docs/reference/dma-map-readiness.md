@@ -53,7 +53,7 @@ beneath an arbitrary kernel caller's outer guards.
 Kernel `device::dma_map` and direct backend fixture adapters retain rejecting
 admission. Public syscall dispatch explicitly uses `dma_map_scheduled` for
 both ordinary and exclusive mapping; the former exclusive-only wrapper is
-removed. Register layouts, syscall numbers and runtime ABI 3 are unchanged.
+removed. Register layouts, syscall numbers and runtime ABI 4 are unchanged.
 
 Source preparation, waiter rejection or other failure before the actual
 domain/engine claim releases the original unstarted pin outside backend guards.

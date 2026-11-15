@@ -120,8 +120,8 @@ impl embassy_crypto::driver::HmacSha256 for ErasingHmacSha256 {
 }
 embassy_crypto::hmac_sha256_impl!(ErasingHmacSha256);
 
-// Match the already-qualified TLS client's destructor selection. ring cannot
-// run on Charlotte's x86 soft-float ABI, so it is a host-test dependency only.
+// Match the already-qualified TLS client's destructor selection. The kernel
+// retains its soft-float target; ring remains a host-test dependency only.
 #[cfg(all(target_os = "none", target_arch = "x86_64", not(polyval_force_soft)))]
 compile_error!("management TLS requires the erasing software POLYVAL backend");
 

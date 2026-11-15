@@ -156,7 +156,7 @@ storage readiness and does not synthesize a self-test verdict. See
     \item \textbf{Syscall dispatch:} AArch64 SVC and x86-64 SYSCALL entry use
         the shared typed \texttt{SyscallNumber} enum. Caller identity comes
         from trusted thread and trap context, never a userspace parameter.
-        Runtime ABI 3 uses the twelve-register IPC receive envelope:
+        Runtime ABI 4 uses the twelve-register IPC receive envelope:
         scalar, blocking and vector receives return the captured sender generation,
         signed-artifact principal and roles. Nine-register syscalls 22/27/53 are
         retired, and checked CQ wait 88 has an explicit timed flag and retired 12/42

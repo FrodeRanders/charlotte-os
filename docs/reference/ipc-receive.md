@@ -1,6 +1,6 @@
 # Canonical IPC receive envelope
 
-The canonical envelope introduced in runtime ABI 2 remains in current ABI 3.
+The canonical envelope introduced in runtime ABI 2 remains in current ABI 4.
 `IpcRecv` (71), `IpcRecvBlock` (72)
 and `IpcRecvVec` (73) return the same twelve register values. The SDK methods
 are `ipc_recv`, `ipc_recv_block` and unsafe `ipc_recv_vec`; the owning runtime
@@ -58,8 +58,8 @@ requester byte charge survives through actual buffer deallocation. See
 [attachment capacity](ipc-node-admission.md#attachment-retirement-capacity). See the
 [refactoring evidence](../reports/audits/2026-10-25-refactoring-ipc-message.md).
 
-A signed variant declaring runtime ABI 1 or 2 cannot be placed or launched on an
-ABI 3 node. Rebuild and re-sign all variants and bundled services. The CDEPLOY6
+A signed variant declaring runtime ABI 1, 2 or 3 cannot be placed or launched on an
+ABI 4 node. Rebuild and re-sign all variants and bundled services. The CDEPLOY6
 layout and current persistent record tags are unchanged; exact target matching
 rejects old executable requirements rather than guessing or rewriting them.
 

@@ -137,7 +137,7 @@ The [NS endpoint-death follow-up](../reports/audits/2026-10-14-ns-endpoint-death
 implements the third-party local binding producer recorded in S08b2c4b. It
 replaces NS's scalar owning registry connections and temporary observation
 watches with one owning publication and shared-CQ intake. NS interface 2,
-CNSGEN01, runtime ABI 3 and persistence grammars remain unchanged; no caller
+CNSGEN01, runtime ABI 4 and persistence grammars remain unchanged; no caller
 retirement privilege is expanded. Raw request/reply/watch/transport adapters
 and historical failure attribution remain separate work.
 

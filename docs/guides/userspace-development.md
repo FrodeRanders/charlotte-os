@@ -90,7 +90,7 @@ sibling threads running with an invalid launch contract.
 The kernel and runtime import this representation from the shared no-std
 `charlotte-launch` crate. Compile-time size assertions keep the header and
 capability record layouts stable across both sides of the boundary.
-This launch-page version is separate from runtime syscall ABI 3, which signed
+This launch-page version is separate from runtime syscall ABI 4, which signed
 executable variants must match exactly. The source constants in
 `charlotte-launch` define both contracts.
 

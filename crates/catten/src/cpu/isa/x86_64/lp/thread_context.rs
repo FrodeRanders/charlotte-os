@@ -144,7 +144,7 @@ impl From<id_table::Error> for Error {
 }
 
 /// Eagerly owned x87/MMX/SSE state. AVX is unavailable while OSXSAVE is
-/// disabled; the software-float ABI does not grant access to unsaved hardware
+/// disabled; the userspace SSE2 ABI does not grant access to unsaved extended
 /// state. A fresh image contains zero register payload and default controls.
 #[repr(C, align(16))]
 #[derive(Debug)]
@@ -273,7 +273,9 @@ impl ThreadContext {
         let isf = UserEntryFrames::new(
             asid,
             entry_point as usize as u64,
-            VAddr::from(user_stack_top_va),
+            // IRET enters an extern "C" function without CALL's return push.
+            // Reserve its zero return slot so the SysV entry RSP is 8 mod 16.
+            VAddr::from(user_stack_top_va - 8),
             0x202,
         );
         isf.push_to_stack(&mut kernel_stack_top);

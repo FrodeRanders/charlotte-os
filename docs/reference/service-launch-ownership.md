@@ -105,7 +105,7 @@ cleanup policy. Broader waiting, teardown and termination qualification remains
 Q5/Q7; this batch adds no saturated-progress guarantee.
 
 The 24-pool catalog is statistics payload version 11. Header and record widths,
-syscall registers and runtime ABI 3 remain unchanged. Retired payload versions
+syscall registers and runtime ABI 4 remain unchanged. Retired payload versions
 reject. Kernel, SDK, observe, HTTP and signed test/minimal bundles on both
 architectures must agree on this catalog.
 

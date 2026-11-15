@@ -1068,6 +1068,13 @@ the corrected RPC polling paths, and the remaining notification gaps.
   Keep local guards released and IRQs masked; restore incoming FP/SIMD state
   after callbacks to preserve userspace isolation. Physical reaping stays on
   the scheduled worker. See `docs/reference/thread-retirement.md`.
+  X86 syscall, returning exception and IRQ entries also retain their interrupted
+  x87/XMM/MXCSR image on an aligned kernel stack before Rust or callbacks, reset
+  FP controls for kernel work, and restore the image before return. Keep nested
+  entries separate, initial SysV user RSP at 8 modulo 16, and OSXSAVE disabled
+  until a complete extended-state contract exists. Kernel soft-float settings
+  and the userspace SysV/SSE2 target are independent. See
+  `docs/reference/execution-targets.md`.
 
 ## Devices and IOMMU backing
 
@@ -1293,7 +1300,7 @@ the corrected RPC polling paths, and the remaining notification gaps.
   ordinary service reactors use the shared fail-closed policy, while specialized
   admission recovery must retain original pending owners and deadlines. A wait
   rejection is neither a clock tick nor permission to replay accepted work.
-  See `docs/reference/cq-wait.md`. Runtime ABI 3 and all signed variants match
+  See `docs/reference/cq-wait.md`. Runtime ABI 4 and all signed variants match
   this register contract, including the sibling Sitas dependency.
   Keep CI's immutable Sitas pin synchronized with that dependency's ABI update;
   `scripts/tests/test-ci-runtime-inputs.py` rejects the earlier wait backend.

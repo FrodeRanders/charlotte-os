@@ -2,7 +2,7 @@
 
 /// Bump whenever the userspace/kernel register or runtime contract changes.
 /// Eligibility requires exact equality; there is no older-ABI decoder.
-pub const RUNTIME_ABI: u32 = 3;
+pub const RUNTIME_ABI: u32 = 4;
 pub const ENCODED_LEN: usize = 16;
 
 #[repr(u16)]
@@ -111,7 +111,7 @@ mod tests {
     fn current_nodes_reject_retired_runtime_abis() {
         for architecture in [Architecture::Aarch64, Architecture::X86_64] {
             let current = ExecutionTarget::baseline(architecture);
-            for abi in [1, 2] {
+            for abi in 1..RUNTIME_ABI {
                 let mut old = current;
                 old.runtime_abi = abi;
                 assert!(!current.supports(old));

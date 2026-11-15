@@ -4,7 +4,12 @@ use core::sync::atomic::{
     Ordering,
 };
 
-core::arch::global_asm!(include_str!("ipis.asm"));
+core::arch::global_asm!(
+    include_str!("../../fp_state.asm"),
+    include_str!("ipis.asm"),
+    ".purgem catten_save_fp",
+    ".purgem catten_restore_fp",
+);
 
 unsafe extern "custom" {
     pub fn isr_asynchronous_ipi();

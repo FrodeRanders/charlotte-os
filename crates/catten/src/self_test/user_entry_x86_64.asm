@@ -4,6 +4,11 @@
 .global user_register_probe_end
 user_register_probe_start:
     push rax
+    lea rax, [rsp + 8]
+    and eax, 15
+    mov [0x12380], rax
+    pop rax
+    push rax
     push rcx
     push rdx
     push rbx
@@ -18,7 +23,7 @@ user_register_probe_start:
     push r13
     push r14
     push r15
-    sub rsp, 520
+    sub rsp, 512
     fxsave64 [rsp]
     mov edi, 0x12000
     mov rsi, rsp
@@ -38,6 +43,25 @@ user_register_probe_end:
 .global user_state_probe_end
 user_state_probe_start:
     pcmpeqd xmm0, xmm0
+    pcmpeqd xmm1, xmm1
+    pcmpeqd xmm2, xmm2
+    pcmpeqd xmm3, xmm3
+    pcmpeqd xmm4, xmm4
+    pcmpeqd xmm5, xmm5
+    pcmpeqd xmm6, xmm6
+    pcmpeqd xmm7, xmm7
+    pcmpeqd xmm8, xmm8
+    pcmpeqd xmm9, xmm9
+    pcmpeqd xmm10, xmm10
+    pcmpeqd xmm11, xmm11
+    pcmpeqd xmm12, xmm12
+    pcmpeqd xmm13, xmm13
+    pcmpeqd xmm14, xmm14
+    pcmpeqd xmm15, xmm15
+    mov dword ptr [0x12370], 0x3f80
+    ldmxcsr [0x12370]
+    mov word ptr [0x12378], 0x077f
+    fldcw [0x12378]
     fld1
     mov eax, 0x123000
     wrfsbase rax
@@ -52,6 +76,22 @@ user_state_probe_start:
     mov rdi, rax
     mov eax, 4
     syscall
+    // Keep executing through timer preemption as well as the blocking call.
+    // Syscall 79 returns monotonic counter/frequency in rax/rdi.
+    mov eax, 79
+    syscall
+    mov rbx, rax
+    mov rax, rdi
+    xor edx, edx
+    mov ecx, 10
+    div rcx
+    add rbx, rax
+2:
+    mov eax, 79
+    syscall
+    cmp rax, rbx
+    jb 2b
+    fxsave64 [0x12000]
     movdqu [0x12340], xmm0
     fstp qword ptr [0x12350]
     rdfsbase rax

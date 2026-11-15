@@ -47,7 +47,10 @@ pub fn set_gates(idt: &mut Idt) {
 }
 
 core::arch::global_asm! {
+    include_str!("../../fp_state.asm"),
     include_str!("exceptions.asm"),
+    ".purgem catten_save_fp",
+    ".purgem catten_restore_fp",
 }
 unsafe extern "custom" {
     fn isr_divide_by_zero();

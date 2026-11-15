@@ -186,6 +186,8 @@ pub mod statistics;
 pub mod syscall;
 mod thread_admission;
 mod user_isolation;
+#[cfg(target_arch = "x86_64")]
+pub(crate) use user_isolation::clobber_fp_state as clobber_x86_fp_state;
 pub mod waiters;
 
 use crate::logln;

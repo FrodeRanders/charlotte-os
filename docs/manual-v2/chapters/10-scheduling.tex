@@ -138,6 +138,15 @@ Deferred reclamation is required because threads own their stacks. The incoming
 FP/SIMD image is restored after switch-completion callbacks, preserving initial
 userspace isolation. Readiness delivery supplies no physical completion proof.
 
+Runtime ABI 4 gives x86 userspace the normal SysV/SSE2 calling convention,
+with initial \texttt{RSP} congruent to 8 modulo 16 and no red zone. Every
+returning syscall, exception and interrupt entry preserves its own interrupted
+x87, XMM0--15 and MXCSR image on an aligned kernel stack before calling Rust.
+Kernel work uses default FP controls; return restores the interrupted image.
+Nested interrupts and blocked handlers retain separate images. The kernel
+keeps its independent soft-float target. AVX remains unavailable because
+OSXSAVE is disabled; FXSAVE/FXRSTOR covers the currently admitted state.
+
 \section{Load rebalancing}
 
 By default, threads are pinned to their affinity LP. Migration is opt-in:

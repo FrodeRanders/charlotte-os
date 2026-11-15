@@ -23,6 +23,7 @@
 .macro EX_ALIGN_CALL_STACK
 	mov r12, rsp
 	and rsp, -16
+	catten_save_fp
 	cld
 .endm
 
@@ -36,6 +37,7 @@
 .endm
 
 .macro EX_RESTORE_REGISTERS
+	catten_restore_fp
 	mov rsp, r12
 	// restore the caller saved registers
 	pop r11
