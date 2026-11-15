@@ -112,6 +112,13 @@ introduced. Partial namespace failures refund only confirmed siblings; remaining
 node and authority bytes reconcile against the original principal. The shared
 collection's host tests cover deallocation-before-refund and retaining fallback.
 
+Synthetic DMA grants must use a matching synthetic destruction backend through
+the containing `mapping::close_with` owner. An invented domain ID must never be
+sent to the platform IOMMU for cleanup: successful missing-domain handling on a
+QEMU IOMMU does not qualify a machine with no installed IOMMU. The real close
+owner still retains the exact root, authority and original charges until fixture
+completion. Synthetic completion supplies no hardware maintenance evidence.
+
 The campaigns are serialized kernel-fixture pressure, not sustained hostile
 concurrent EL0 fairness. Oversized layout types test byte denial without allocating
 those payloads; native general heap OOM is not forced, and allocation errors are

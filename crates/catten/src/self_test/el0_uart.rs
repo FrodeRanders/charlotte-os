@@ -53,16 +53,21 @@ const fn packed_name(bytes: &[u8]) -> u64 {
 }
 
 #[cfg(target_arch = "aarch64")]
-/// The console PL011 MMIO base, discovered from the SPCR ACPI table (the QEMU
-/// `virt` default `0x0900_0000` is used when ACPI is absent). On `sbsa-ref` and
-/// real ARM servers the console PL011 lives at a different address.
-#[cfg(target_arch = "aarch64")]
-fn pl011_base() -> usize {
+/// This fixture's driver requires a page-aligned PL011, not just a UART base.
+/// A present unsupported SPCR never authorizes the QEMU-virt fallback.
+fn pl011_base() -> Option<usize> {
     #[cfg(feature = "acpi")]
-    if let Some(base) = crate::environment::acpi::sdt::discovery::spcr_uart_base() {
-        return base as usize;
+    {
+        use crate::environment::serial_port::UartKind;
+        match crate::environment::acpi::sdt::discovery::spcr_console_uart() {
+            Ok(Some(port)) if port.kind == UartKind::Pl011 && port.base.is_multiple_of(4096) => {
+                return Some(port.base);
+            }
+            Ok(None) => {}
+            _ => return None,
+        }
     }
-    0x0900_0000
+    Some(0x0900_0000)
 }
 
 #[cfg(target_arch = "aarch64")]
@@ -87,6 +92,7 @@ static mut TEST_STATE: Option<TestState> = None;
 struct TestState {
     name_service: NameServiceHandle,
     driver: Option<ServiceDomain>,
+    uart_base: usize,
     driver_config: PAddr,
     client_config: PAddr,
 }
@@ -112,6 +118,14 @@ const OP_CRASH: u32 = 5;
 pub fn test_el0_uart() {
     #[cfg(target_arch = "aarch64")]
     {
+        let Some(base) = pl011_base() else {
+            logln!(
+                "[uart] fixture unavailable: firmware console is not a supported page-aligned \
+                 PL011"
+            );
+            crate::self_test::results::fail(crate::self_test::results::TestId::Uart);
+            return;
+        };
         ipc::namespace::prepare_fixture(KCLIENT_ASID);
         logln!("Testing EL0 userspace UART driver (delegated MMIO + interrupt)...");
 
@@ -124,7 +138,7 @@ pub fn test_el0_uart() {
             &name_service,
             ConnectionRights::CALL,
             DriverGrant {
-                mmio_phys_base: pl011_base(),
+                mmio_phys_base: base,
                 mmio_pages: 1,
                 intid: pl011_intid(),
                 dma_requester_id: None,
@@ -153,6 +167,7 @@ pub fn test_el0_uart() {
             TEST_STATE = Some(TestState {
                 name_service,
                 driver: Some(driver),
+                uart_base: base,
                 driver_config,
                 client_config,
             });
@@ -366,7 +381,7 @@ extern "C" fn verify_el0_uart() {
         &state.name_service,
         ConnectionRights::CALL,
         DriverGrant {
-            mmio_phys_base: pl011_base(),
+            mmio_phys_base: state.uart_base,
             mmio_pages: 1,
             intid: pl011_intid(),
             dma_requester_id: None,

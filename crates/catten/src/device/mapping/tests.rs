@@ -230,7 +230,9 @@ pub(super) fn run() {
         drop(devices);
         assert_eq!(crate::capability::admission_tests::test_namespace_used(root.id()), charged);
     }
-    close_cap(root.id(), cap).unwrap();
+    // Pair the synthetic grant with its fixture backend. The containing close
+    // owner still retires the real capability/root and original charges.
+    close_with(root.id(), cap, || {}, destroy_fake).unwrap();
     crate::memory::close_user_address_space_handle(root).unwrap();
 
     // An older close lease may finish through a staged root-close fence. Only

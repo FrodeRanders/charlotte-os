@@ -153,7 +153,24 @@ pub(in crate::device) fn run() {
         drop(lifecycle);
         drop(heap);
         admission.finish().unwrap();
-        close_cap(root.id(), cap).unwrap();
+        if kind == 2 {
+            // This metadata-only domain has no hardware backing. Retire it
+            // through the real containing close owner with a matching fixture
+            // backend, even when no IOMMU is installed on the boot platform.
+            mapping::close_with(
+                root.id(),
+                cap,
+                || {},
+                |id| {
+                    assert_eq!(id, u64::MAX);
+                    probe_context();
+                    Ok(())
+                },
+            )
+            .unwrap();
+        } else {
+            close_cap(root.id(), cap).unwrap();
+        }
         assert_eq!(crate::capability::admission_tests::test_namespace_used(root.id()), 0);
     }
     crate::memory::close_user_address_space_handle(root).unwrap();

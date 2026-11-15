@@ -74,7 +74,10 @@ Fusion rejects; single-security-state controllers retain their priority reset.
 With both fixes the four-LP minimal guest initializes serial, a 1024-by-768
 framebuffer terminal, GIC and services, then stops at durable-storage readiness.
 The final diagnostic's visible, scrolling terminal output was also inspected.
-Panic diagnostics currently remain serial-only.
+Panic diagnostics currently remain serial-only. In test builds, the PL011-only
+userspace UART fixture reports failure before granting hardware when SPCR
+advertises Fusion's 16550. Synthetic DMA fixtures pair creation/destruction
+backends rather than relying on a platform IOMMU for invented domain IDs.
 
 The captured MADT describes GICv3 distributor `0x2c010000`, redistributors
 `0x2c100000`, and a GICv2m MSI frame at `0x2c080000`. The current MSI allocator
