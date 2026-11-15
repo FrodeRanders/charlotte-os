@@ -15,14 +15,19 @@ use charlotte_launch::deployment::RIGHT_CALL;
 
 // Protocol of the repository's deployed greeting test service.
 const OP_GET: u32 = 1;
+
 // The service returns its artifact's first eight ELF-header bytes:
 // b"\x7fELF\x02\x01\x01\x00", packed little-endian into this u64.
-// We choose scalar IPC: the payload travels in registers, without a backing
-// memory attachment, so we encode these bytes as a u64. A larger payload in
-// one reply would require memory-backed IPC, for example reply_move, which
-// transfers ownership of an OwnedMemory buffer. Memory-backed IPC also supports
-// copying or borrowing memory, depending on the protocol.
+//
+// We _chose_ to use scalar IPC in this case, where the payload fits in registers,
+// without a backing memory attachment. Hence, we encode the bytes as a u64.
+// 
+// If we instead had chosen a larger payload,  the reply would require memory-
+// backed IPC, for example reply_move, which transfers ownership of an 
+// OwnedMemory buffer. Memory-backed IPC also supports copying or borrowing
+// memory, depending on the protocol.
 const GREET_VALUE: u64 = 0x0001_0102_464c_457f;
+
 const READS: usize = 3;
 const MAX_SESSIONS: usize = 3;
 const JOB_BUDGET_MS: u64 = 5_000;
