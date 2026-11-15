@@ -41,7 +41,7 @@ fn main() {
         _ => panic!("CATTEN_TRUST_MODE must be development or production"),
     }
     println!("cargo:rustc-env=CATTEN_TRUST_MODE=development");
-    println!("cargo:warning=DEVELOPMENT image: public fixture trust; do not deploy real secrets");
+    println!("cargo:warning=DEVELOPMENT image: public fixture trust; do not deploy to production");
     let arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
     if env::var_os("CARGO_FEATURE_BOOT_TRUST_TEST").is_some() {
         assert_eq!(arch, "x86_64", "boot_trust_test supports only the x86 QEMU fixture");

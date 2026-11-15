@@ -23,7 +23,7 @@ BUNDLE="$(cd "$BUNDLE" && pwd)"
 POLICY="$ROOT/crates/catten-services/artifact-policy.tsv"
 
 KEY_FILE="$(catten_signing_key_file "$ROOT")"
-echo ">>> DEVELOPMENT signing: fixture-root images are not suitable for real credentials."
+echo ">>> DEVELOPMENT signing: fixture-root images are not suitable for production."
 
 ELFS=()
 if [ "$#" -eq 0 ]; then
