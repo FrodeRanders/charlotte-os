@@ -5,8 +5,11 @@ use spin::{
     RwLock,
 };
 
+#[cfg(not(target_arch = "x86_64"))]
+use crate::ap_main;
+#[cfg(target_arch = "x86_64")]
+use crate::cpu::isa::init::boot::x86_ap_entry as ap_main;
 use crate::{
-    ap_main,
     early_logln,
     environment::boot_protocol::limine::MP_REQUEST,
     logln,

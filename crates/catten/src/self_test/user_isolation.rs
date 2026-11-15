@@ -58,6 +58,95 @@ pub(crate) extern "C" fn clobber_fp_state() {
     );
 }
 
+/// The raw BSP/AP entries must recover even from the disabled-FP boot fixture
+/// before generated Rust instructions or ordinary function calls can use SSE2.
+#[cfg(target_arch = "x86_64")]
+pub(crate) fn verify_boot_fp() {
+    let (cr0, cr4): (u64, u64);
+    let mut x87_control = 0u16;
+    let mut mxcsr = 0u32;
+    unsafe {
+        core::arch::asm!(
+            "mov {cr0}, cr0",
+            "mov {cr4}, cr4",
+            "fnstcw [{x87}]",
+            "stmxcsr [{mxcsr}]",
+            cr0 = out(reg) cr0,
+            cr4 = out(reg) cr4,
+            x87 = in(reg) &mut x87_control,
+            mxcsr = in(reg) &mut mxcsr,
+            options(nostack, preserves_flags),
+        );
+    }
+    assert_eq!(cr0 & 0x2e, 0x22, "boot CR0 MP/NE with EM/TS clear");
+    assert_eq!(cr4 & (0x600 | (1 << 18)), 0x600, "boot SSE enabled; OSXSAVE disabled");
+    assert_eq!(x87_control, 0x037f);
+    assert_eq!(mxcsr, 0x1f80);
+    let value = core::hint::black_box(1.25f64);
+    let doubled = core::hint::black_box(value + value);
+    assert_eq!(doubled.to_bits(), 2.5f64.to_bits());
+    crate::early_logln!("[x86 boot FP] normalized inherited state and SSE2 arithmetic passed");
+}
+
+#[cfg(target_arch = "x86_64")]
+static TIMER_FP_CLOBBERS: [core::sync::atomic::AtomicU64;
+    crate::cpu::scheduler::system_scheduler::MAX_TRACKED_LPS] =
+    [const { core::sync::atomic::AtomicU64::new(0) };
+        crate::cpu::scheduler::system_scheduler::MAX_TRACKED_LPS];
+
+#[cfg(target_arch = "x86_64")]
+pub(crate) fn note_timer_fp_clobber() {
+    let lp = crate::cpu::isa::lp::ops::get_lp_id() as usize;
+    TIMER_FP_CLOBBERS[lp].fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+}
+
+#[cfg(target_arch = "x86_64")]
+fn verify_kernel_fp() {
+    let flags: u64;
+    unsafe { core::arch::asm!("pushfq", "pop {}", out(reg) flags, options(preserves_flags)) };
+    assert_ne!(flags & (1 << 9), 0, "kernel FP fixture requires the caller's enabled IRQs");
+    let lp = crate::cpu::isa::lp::ops::get_lp_id() as usize;
+    let interval = *crate::cpu::isa::timers::tsc::TSC_FREQUENCY_HZ / 10;
+    assert!(interval > 0);
+    let mut observed = [0u64; 4];
+    unsafe {
+        // Bounded native register fixture: retain XMM15 for 100 ms without
+        // calling Rust. The aligned atomic
+        // counter loads inside that window prove this LP ran the timer's
+        // deliberate clobber hook while the sentinel was live.
+        core::arch::asm!(
+            "pcmpeqd xmm15, xmm15",
+            "lfence",
+            "mov r10, [{counter}]",
+            "rdtsc",
+            "shl rdx, 32",
+            "or rax, rdx",
+            "mov r11, rax",
+            "add r11, {interval}",
+            "2:",
+            "rdtsc",
+            "shl rdx, 32",
+            "or rax, rdx",
+            "cmp rax, r11",
+            "jb 2b",
+            "lfence",
+            "movdqu [{observed}], xmm15",
+            "mov [{observed} + 16], r10",
+            "mov rax, [{counter}]",
+            "mov [{observed} + 24], rax",
+            counter = in(reg) TIMER_FP_CLOBBERS[lp].as_ptr(),
+            interval = in(reg) interval,
+            observed = in(reg) observed.as_mut_ptr(),
+            out("rax") _, out("rdx") _, out("r10") _, out("r11") _, out("xmm15") _,
+            options(nostack),
+        );
+    }
+    assert_eq!(&observed[..2], &[u64::MAX; 2], "kernel SIMD state across IRQ");
+    assert!(observed[3].wrapping_sub(observed[2]) > 0, "no local timer clobber observed");
+    assert_eq!(crate::cpu::isa::lp::ops::get_lp_id() as usize, lp);
+    crate::logln!("[kernel FP] live XMM value survived measured local timer clobbers");
+}
+
 // Kernel fixture namespace owner. Failed/abandoned verification retains the
 // published root; only explicit finish retires physically quiescent backing.
 struct Fixture {
@@ -213,6 +302,8 @@ unsafe fn code(start: *const u8, end: *const u8) -> &'static [u8] {
 }
 
 pub(crate) fn verify() {
+    #[cfg(target_arch = "x86_64")]
+    verify_kernel_fp();
     scheduler::system_scheduler::verify_executor_rejection();
     verify_abort_handoff();
     verify_concurrent_abort();

@@ -25,7 +25,12 @@ variants on both architectures; there is no older-ABI execution path.
 
 The x86 service target uses the normal SysV floating-point ABI with baseline
 SSE/SSE2 and no red zone. Initial function entry has `RSP % 16 == 8`, with a
-reserved zero return slot. The kernel retains its independent soft-float target.
+reserved zero return slot. The kernel also uses the normal SysV/SSE2 ABI, with
+its independent kernel code model, static relocation and no red zone. Raw BSP
+and AP entry stubs admit FXSR/SSE2 and initialize CR0/CR4, x87 and MXCSR before
+calling compiled Rust. OSXSAVE is cleared before the first such call. Unsupported
+baseline hardware halts at this assembly boundary; there is no late or legacy
+FP-initialization path.
 Every returning x86 syscall/exception/IRQ entry that calls Rust owns an aligned
 FXSAVE image on its kernel stack, enters Rust with default x87/MXCSR controls,
 and restores the interrupted image before returning. Nested entries and suspended handlers retain

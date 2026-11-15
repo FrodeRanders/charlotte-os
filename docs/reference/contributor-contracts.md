@@ -1072,8 +1072,10 @@ the corrected RPC polling paths, and the remaining notification gaps.
   x87/XMM/MXCSR image on an aligned kernel stack before Rust or callbacks, reset
   FP controls for kernel work, and restore the image before return. Keep nested
   entries separate, initial SysV user RSP at 8 modulo 16, and OSXSAVE disabled
-  until a complete extended-state contract exists. Kernel soft-float settings
-  and the userspace SysV/SSE2 target are independent. See
+  until a complete extended-state contract exists. Both x86 targets use the
+  normal SysV/SSE2 ABI; raw BSP/AP entries must establish FP controls before
+  compiled Rust, and the kernel build rejects baseline AVX code generation.
+  Keep the kernel code model, static relocation and no-red-zone policy. See
   `docs/reference/execution-targets.md`.
 
 ## Devices and IOMMU backing

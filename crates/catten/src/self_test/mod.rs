@@ -188,6 +188,10 @@ mod thread_admission;
 mod user_isolation;
 #[cfg(target_arch = "x86_64")]
 pub(crate) use user_isolation::clobber_fp_state as clobber_x86_fp_state;
+#[cfg(target_arch = "x86_64")]
+pub(crate) use user_isolation::note_timer_fp_clobber as note_x86_timer_fp_clobber;
+#[cfg(target_arch = "x86_64")]
+pub(crate) use user_isolation::verify_boot_fp as verify_x86_boot_fp;
 pub mod waiters;
 
 use crate::logln;

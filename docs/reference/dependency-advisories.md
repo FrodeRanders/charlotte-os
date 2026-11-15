@@ -79,9 +79,11 @@ The freestanding x86 service target uses the normal SysV/SSE2 ABI. Its former
 soft-float selection conflicted with dependency and rebuilt `core` SIMD
 definitions, producing `x86_softfloat_sse` future-incompatibility diagnostics.
 Runtime ABI 4 defines its stack/register-preservation contract; see
-[execution targets](execution-targets.md). The separate kernel target retains
-soft-float and can still report that upstream compatibility warning in its
-own rebuilt core/crypto graph. This remains a kernel compiler-upgrade boundary.
+[execution targets](execution-targets.md). The kernel target also uses the
+normal SysV/SSE2 ABI, with raw BSP/AP FP setup before compiled Rust. Current
+kernel and service builds no longer emit this incompatibility summary. Kernel
+code-model/relocation settings, the POLYVAL erasure selection and the OSXSAVE
+fence remain independent requirements.
 An advisory scan does not check compiler compatibility. `core v0.0.0` names
 the toolchain library rebuilt by `-Z build-std`, not an independently versioned
 dependency to upgrade.
@@ -98,10 +100,13 @@ is shared across architecture builds, so a cached report is not proof that an
 AArch64 build introduced an x86 diagnostic. Package updates or software crypto
 backend flags alone cannot address the rebuilt `core` intrinsics.
 
-Keep the kernel's separate target, existing POLYVAL erasure selection and AVX
-admission fence when changing compiler flags. The
+Keep the kernel's code model, existing POLYVAL erasure selection and AVX
+admission fence when changing compiler flags. Kernel baseline AVX code
+generation rejects until its extended-state ownership contract exists. The
 [15 November investigation](../reports/investigations/2026-11-15-x86-softfloat-future-incompatibility.md)
 records the original diagnostics and isolated compile comparison. The
 [SysV/SSE2 qualification](../reports/investigations/2026-11-15-x86-sysv-abi.md)
 records the current native/SDK results and the separate unresolved combined-run
-deadline. Historical evidence remains distinct from current qualification.
+deadline. The [kernel qualification](../reports/investigations/2026-11-15-kernel-sse2.md)
+records early BSP/AP FP setup and closure of the kernel compiler conflict.
+Historical evidence remains distinct from current qualification.

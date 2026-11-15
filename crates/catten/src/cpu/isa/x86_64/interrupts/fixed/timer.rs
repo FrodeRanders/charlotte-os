@@ -22,5 +22,8 @@ pub extern "C" fn signal_eoi() {
 pub extern "C" fn process_events() {
     let _ = crate::timers::try_process_local_events();
     #[cfg(feature = "kernel_tests")]
-    crate::self_test::clobber_x86_fp_state();
+    {
+        crate::self_test::clobber_x86_fp_state();
+        crate::self_test::note_x86_timer_fp_clobber();
+    }
 }

@@ -38,6 +38,28 @@ x86's three 16 KiB interrupt-stack arrays require up to 12 MiB at 256 LPs before
 their tables and other per-LP storage. No resource ceiling was raised by this
 check; changing the shared limit needs that capacity review.
 
+### X86 FP state before compiled Rust
+
+Both x86 targets use the normal SysV/SSE2 ABI. The ELF entry is the raw
+`_start`, and the Limine MP callback is `x86_ap_entry`. Each masks interrupts,
+clears DF, aligns the stack for a C call and invokes `x86_boot_fp_init` before
+compiled Rust. The helper admits FXSR/SSE2 through CPUID, clears inherited
+CR0.EM/TS, sets MP/NE and CR4.OSFXSR/OSXMMEXCPT, clears OSXSAVE, initializes
+x87/MXCSR and clears XMM registers. Unsupported baseline hardware halts with
+interrupts masked at that boundary, before allocation or LP factories.
+
+The helper preserves the AP's Limine argument. Later `init_lp_state` owns TLS,
+SYSCALL and supervisor-protection setup; it is not a late FP-initialization
+fallback. Kernel-generated AVX rejects until extended-state ownership exists.
+The assembly permissions check verifies the raw entries' read-only executable
+placement and that the x86 ELF entry points at `_start`.
+
+Regression builds deliberately disable FP inside this raw boundary, then check
+normalized controls and generated floating-point arithmetic on each LP. Minimal
+images omit this fixture. The separate kernel/user interrupt-state probes and
+the unchanged POLYVAL erasure controls remain required; see
+[execution targets](execution-targets.md).
+
 ### Bootstrap timer phases and firmware discovery
 
 The BSP allocates queue tables and all platform timer Arcs after heap/policy

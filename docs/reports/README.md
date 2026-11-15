@@ -20,6 +20,7 @@ execution records. For current knowledge and work, use:
 
 ## Investigations
 
+- [X86 kernel SysV/SSE2 qualification](investigations/2026-11-15-kernel-sse2.md)
 - [X86 SysV/SSE2 runtime ABI 4 qualification](investigations/2026-11-15-x86-sysv-abi.md)
 - [Freestanding x86 soft-float future-incompatibility warning](investigations/2026-11-15-x86-softfloat-future-incompatibility.md)
 - [Upstream review before possible fork detachment](investigations/2026-11-05-upstream-review.md)

@@ -23,11 +23,9 @@ pub static PER_CPU: [crate::klib::sync_cell::SyncUnsafeCell<PerCpuData>;
     crate::cpu::scheduler::system_scheduler::MAX_TRACKED_LPS];
 
 pub fn init_lp_state() {
-    let leaf1 = core::arch::x86_64::__cpuid(1);
-    assert!(
-        leaf1.edx & ((1 << 24) | (1 << 26)) == (1 << 24) | (1 << 26),
-        "x86_64 CPU lacks required FXSR/SSE2 state support"
-    );
+    // The raw BSP/AP entries have already admitted FXSR/SSE2 and established
+    // FP controls before any compiled Rust. This phase owns TLS and protection
+    // setup; it must not be a late fallback for FP initialization.
     let basic_max = core::arch::x86_64::__cpuid(0).eax;
     let extended_max = core::arch::x86_64::__cpuid(0x8000_0000).eax;
     let leaf7 = (basic_max >= 7).then(|| core::arch::x86_64::__cpuid_count(7, 0));
@@ -46,16 +44,7 @@ pub fn init_lp_state() {
     );
     unsafe {
         core::arch::asm! {
-            // Eager FXSAVE/FXRSTOR owns every enabled extended register.
-            // Do not inherit bootloader TS/EM or expose unsaved AVX state.
-            "mov rax, cr0",
-            "and rax, -13",      // clear EM and TS
-            "or rax, 0x22",      // MP and NE
-            "mov cr0, rax",
             "mov rax, cr4",
-            "or rax, 0x600",     // OSFXSR and OSXMMEXCPT
-            "btr rax, 18",       // OSXSAVE off: no unsaved AVX/XSAVE state
-
             "or rax, 1<<16",     // enable FSGSBASE
             // The kernel never executes user mappings. User data is reached
             // through validated physical/HHDM aliases, so SMEP can remain on.

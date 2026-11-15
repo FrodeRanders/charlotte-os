@@ -26,7 +26,9 @@ pub mod framebuffer {
 pub fn ap_main() {}
 mod cpu {
     pub mod scheduler { pub mod system_scheduler { pub const MAX_TRACKED_LPS: usize = 256; } }
-    pub mod isa { pub mod lp {
+    pub mod isa {
+      pub mod init { pub mod boot { pub fn x86_ap_entry() {} } }
+      pub mod lp {
         pub type LpId = u32;
         pub mod ops {
             pub fn store_lp_id(_: u32) {} pub fn mpidr() -> u64 { 0 }

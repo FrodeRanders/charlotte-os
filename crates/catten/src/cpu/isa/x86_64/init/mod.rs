@@ -1,4 +1,5 @@
 mod ap;
+pub(crate) mod boot;
 mod bsp;
 pub mod gdt;
 

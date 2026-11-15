@@ -144,8 +144,11 @@ returning syscall, exception and interrupt entry preserves its own interrupted
 x87, XMM0--15 and MXCSR image on an aligned kernel stack before calling Rust.
 Kernel work uses default FP controls; return restores the interrupted image.
 Nested interrupts and blocked handlers retain separate images. The kernel
-keeps its independent soft-float target. AVX remains unavailable because
-OSXSAVE is disabled; FXSAVE/FXRSTOR covers the currently admitted state.
+also uses SysV/SSE2, with its own kernel code model and static relocation.
+Raw BSP/AP entries initialize FP controls before compiled Rust; regression
+builds deliberately disable FP first to check that boundary on every LP.
+AVX remains unavailable because OSXSAVE is disabled; FXSAVE/FXRSTOR covers
+the currently admitted state, and the kernel build rejects AVX code generation.
 
 \section{Load rebalancing}
 

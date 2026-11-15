@@ -167,7 +167,27 @@ pub unsafe extern "C" fn _start() -> ! {
     );
 }
 
-/// Bootstrap processor entry after the bootloader sets up the environment.
+/// Raw x86 Limine entry. Initialize FP/SIMD before compiled Rust can use it.
+///
+/// # Safety
+/// Limine must enter at CPL0 with valid kernel mappings and a writable stack.
+#[cfg(target_arch = "x86_64")]
+#[unsafe(naked)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn _start() -> ! {
+    core::arch::naked_asm!(
+        "cli",
+        "cld",
+        "and rsp, -16",
+        "call {fp_init}",
+        "call {entry}",
+        "ud2",
+        fp_init = sym crate::cpu::isa::init::boot::x86_boot_fp_init,
+        entry = sym bsp_main,
+    );
+}
+
+/// Bootstrap processor entry after the architecture's raw entry setup.
 /// On AArch64, `_start` first establishes EL1 execution. This entry uses the
 /// C ABI expected by the Limine boot protocol.
 #[unsafe(no_mangle)]
@@ -181,6 +201,8 @@ pub extern "C" fn bsp_main() -> ! {
     #[cfg(target_arch = "x86_64")]
     {
         crate::log::serial_x86::init();
+        #[cfg(feature = "kernel_tests")]
+        crate::self_test::verify_x86_boot_fp();
     }
     early_logln!(
         "Catten Kernel Version {}.{}.{}",
@@ -413,6 +435,8 @@ extern "C" fn finish_boot() {
 /// with valid Limine MP state after BSP-owned global initialization.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ap_main(_cpuinfo: &MpInfo) -> ! {
+    #[cfg(all(target_arch = "x86_64", feature = "kernel_tests"))]
+    crate::self_test::verify_x86_boot_fp();
     #[cfg(target_arch = "aarch64")]
     crate::cpu::isa::lp::ops::enable_fp_simd();
     unsafe {

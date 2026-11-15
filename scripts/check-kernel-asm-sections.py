@@ -12,7 +12,8 @@ def check(path):
     if header[0][:6] != b"\x7fELF\x02\x01":
         raise ValueError("expected a little-endian ELF64 kernel")
     required = {
-        62: {"reload_segment_regs", "syscall_entry", "isr_page_fault", "isr_synchronous_ipi"},
+        62: {"_start", "x86_ap_entry", "x86_boot_fp_init", "reload_segment_regs",
+             "syscall_entry", "isr_page_fault", "isr_synchronous_ipi"},
         183: {"ivt"},
     }.get(header[2])
     if required is None:
@@ -37,6 +38,8 @@ def check(path):
             if name not in required and not name.startswith(("isr_", "dyn_isr_")):
                 continue
             found.add(name)
+            if header[2] == 62 and name == "_start" and header[4] != address:
+                raise ValueError("x86 ELF entry bypasses the raw FP initialization entry")
             if index == 0 or index >= len(sections):
                 raise ValueError(f"{name}: missing native assembly definition")
             flags = sections[index][2]

@@ -1,0 +1,174 @@
+{
+  "baseline_revision": "b340ce0f96b572d83408c1df68e2b8baa80d7a2c",
+  "compiler": "rustc 1.102.0-nightly (5f4effd57 2026-11-13)\nbinary: rustc\ncommit-hash: 5f4effd579500175af844241eb179e756190f1e7\ncommit-date: 2026-11-13\nhost: aarch64-apple-darwin\nrelease: 1.102.0-nightly\nLLVM version: 23.1.5",
+  "native_runs": {
+    "intel_security_dhcp": {
+      "kernel_sha256": "93fb8769e45bfe200f34960ad4696693d96db1b485b3ba6bc554fd649481420b",
+      "runner_capture_sha256": "c6566f203254514c9a6e9b70c3f4cc72ddd8cdb3c823417517a507ccdbc9a042",
+      "serial_capture_sha256": "1a521ceccbff72660335f94730c9ab07ae5440fcf50376098fc060d8c53fa651",
+      "future_incompatibility_summary_present": false,
+      "receipts": [
+        "[x86 boot FP] normalized inherited state and SSE2 arithmetic passed",
+        "[x86 boot FP] normalized inherited state and SSE2 arithmetic passed",
+        "[x86 boot FP] normalized inherited state and SSE2 arithmetic passed",
+        "[x86 boot FP] normalized inherited state and SSE2 arithmetic passed",
+        "[kernel FP] live XMM value survived measured local timer clobbers",
+        "[security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[user isolation] x86 x87/XMM0-15/MXCSR preserved across syscalls, timer IRQs and blocking; fresh domains cleared",
+        "[security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[dhcp] SUCCESS: DHCP assigned 10.0.2.15",
+        "[security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x2103bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "boot_fp_receipts": 4,
+      "runner_passed": true,
+      "host_timeouts": 0,
+      "diagnostic_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      }
+    },
+    "amd_security_dhcp": {
+      "kernel_sha256": "1820ce204df2ce358fccb62cd6e2ed22ff2207fc157087ca23615a78f0f2d070",
+      "runner_capture_sha256": "b9cc02827fbf44c66ed8144107630bbd4d58ff4f73143f779c3a0f964ba28728",
+      "serial_capture_sha256": "9cc0cd4486b95f140fa1f7ddb32f5d17ca63651a1c6463db2853dcc4af3aa5d2",
+      "future_incompatibility_summary_present": false,
+      "receipts": [
+        "[x86 boot FP] normalized inherited state and SSE2 arithmetic passed",
+        "[x86 boot FP] normalized inherited state and SSE2 arithmetic passed",
+        "[x86 boot FP] normalized inherited state and SSE2 arithmetic passed",
+        "[x86 boot FP] normalized inherited state and SSE2 arithmetic passed",
+        "[kernel FP] live XMM value survived measured local timer clobbers",
+        "[security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[user isolation] x86 x87/XMM0-15/MXCSR preserved across syscalls, timer IRQs and blocking; fresh domains cleared",
+        "[security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[dhcp] SUCCESS: DHCP assigned 10.0.2.15",
+        "[security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "[security] TLS GCM known-answer, tamper rejection and decrypt passed",
+        "SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x2103bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "boot_fp_receipts": 4,
+      "runner_passed": true,
+      "host_timeouts": 0,
+      "diagnostic_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      }
+    },
+    "intel_http_tls": {
+      "kernel_sha256": "726a142c0eba2b8db98a4ec0511f651e99715bf66dde7a22e598c29e32bb7a07",
+      "runner_capture_sha256": "20c56155ec86aa901c36850e8c3157270ef5afd549a06451865872989a506cb3",
+      "serial_capture_sha256": "ea36dbab5f0f59c23335b1f81c1c62b6a568c41935138357b3c68d50d3246b66",
+      "future_incompatibility_summary_present": false,
+      "receipts": [
+        "[x86 boot FP] normalized inherited state and SSE2 arithmetic passed",
+        "[x86 boot FP] normalized inherited state and SSE2 arithmetic passed",
+        "[x86 boot FP] normalized inherited state and SSE2 arithmetic passed",
+        "[x86 boot FP] normalized inherited state and SSE2 arithmetic passed",
+        "[kernel FP] live XMM value survived measured local timer clobbers",
+        "[user isolation] x86 x87/XMM0-15/MXCSR preserved across syscalls, timer IRQs and blocking; fresh domains cleared",
+        "[dhcp] SUCCESS: DHCP assigned 10.0.2.15",
+        "SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x123bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "boot_fp_receipts": 4,
+      "runner_passed": true,
+      "host_timeouts": 0,
+      "diagnostic_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      },
+      "host_receipts": [
+        "PASS: initial metrics request with complete metadata admission inventory",
+        "PASS: EOF followed by a successful metrics request",
+        "PASS: abortive peer closes followed by a successful metrics request",
+        "PASS: idle client timed out without preventing subsequent metrics",
+        "PASS: deployment status control",
+        "PASS: concurrent header: 1 stalled peers; healthy reply in 0.496s",
+        "PASS: concurrent body: 1 stalled peers; healthy reply in 0.483s",
+        "PASS: concurrent mixed: 3 stalled peers; healthy reply in 0.501s",
+        "PASS: deployment malformed/oversized framing and healthy controls",
+        "PASS: complete invalid deployment body rejected; ingress recovered",
+        "PASS: deployment EOF recovery",
+        "PASS: deployment abortive reply recovery",
+        "PASS: deployment idle-peer deadline recovery",
+        "PASS: trickled deployment body rejected in 29.84s; ingress recovered",
+        "PASS: port 19080: verified TLS 1.3 reader and administrator observations",
+        "status progress: idle_tls_peers=1 healthy_seconds=1.371",
+        "status progress: idle_tls_peers=3 healthy_seconds=1.155",
+        "status progress: partial_header=1 healthy_seconds=1.226",
+        "status progress: idle_tls_peers=1 healthy_seconds=1.248",
+        "status progress: idle_tls_peers=3 healthy_seconds=1.149",
+        "status progress: partial_header=1 healthy_seconds=0.993",
+        "status progress: idle_tls_peers=1 healthy_seconds=1.228",
+        "status progress: idle_tls_peers=3 healthy_seconds=1.143",
+        "status progress: partial_header=1 healthy_seconds=1.280",
+        "PASS: healthy status requests beside idle TLS peers and incomplete authenticated headers",
+        "PASS: port 19080: missing/unregistered certificate, wrong name/root and plaintext rejected; reader recovered",
+        "PASS: port 19081: verified TLS 1.3 reader and administrator observations",
+        "PASS: port 19081: missing/unregistered certificate, wrong name/root and plaintext rejected; reader recovered",
+        "PASS: reader mutation rejected before incomplete signed body/controller dispatch",
+        "PASS: cluster-sign verified reader observation; wrong server name rejected before HTTP submission"
+      ]
+    },
+    "minimal": {
+      "kernel_sha256": "bf341909bdfa1c4df4c4d5b8ce42ba827c03dd201918eed688438bbfb0d9cd10",
+      "runner_capture_sha256": "ba07cb99e157afc5b9d045c8a06fba114064da4a8ddd06ca9dee7bfa8feea342",
+      "serial_capture_sha256": "80ce510c1507e65ef26d58ccf1dfcd72886bb0fe702357b6aaff2f33f75f4881",
+      "future_incompatibility_summary_present": false,
+      "receipts": [
+        "BOOT COMPLETE: validation passed; local storage ready; services submitted"
+      ],
+      "boot_fp_receipts": 0,
+      "runner_passed": true,
+      "host_timeouts": 0,
+      "diagnostic_result": {
+        "reason": "complete",
+        "snapshot": "not-requested"
+      }
+    }
+  },
+  "source_sha256": {
+    "crates/catten/linker/x86_64.ld": "2c81219ba6cd6e30003233a1acd8e48d35ed9b9750354f821255275628390301",
+    "crates/catten/src/cpu/isa/x86_64/init/mod.rs": "21a56ac4d28694140ba3133ca35648fa3afd96acdb66a812265f4c190e5b57fb",
+    "crates/catten/src/cpu/isa/x86_64/interrupts/fixed/timer.rs": "c47186b694db668e9020ab063bd1b9aecd216f332455b1daa35f143f18a9e5a3",
+    "crates/catten/src/cpu/isa/x86_64/lp/ops.rs": "911bfc02bdba0629e805226a3cff5e68305469e7b4d509cd550eb6ba4602bdea",
+    "crates/catten/src/cpu/multiprocessor/startup.rs": "2207ab6182c7bb21f0adfca048647ef6484bc1f6ff66fb84cbae054998bfe226",
+    "crates/catten/src/main.rs": "b7112cf1598bf70101066bafcc859749ad3b98cfa1604fca3f59b855631196c7",
+    "crates/catten/src/self_test/mod.rs": "7c53ffad18bbb0e98cc2e30d945dc17be726bb509f381bd7a3cbe0c87ecd4c2b",
+    "crates/catten/src/self_test/user_isolation.rs": "a579e1442b4d6130e2fd10927924f98a5890a9e1e881798756011a6a2102e3d1",
+    "crates/charlotte-management-tls/src/crypto.rs": "1da361bbfb314358f283f7f3c61fc865cafa7c0bb8ba8f583bd9da04efc8a4ff",
+    "scripts/check-kernel-asm-sections.py": "8d956e3405cd408e2bfe1f9fca3e21e489e58059778405ccc8754bd61e5b0df3",
+    "scripts/tests/fixtures/boot-allocation-edges.rs": "5df9447ee3b7ac58009fddc51acdaafde3211939000325cf1718641cfda44eed",
+    "scripts/tests/test-x86-userspace-abi.py": "1d98999d8f106e0586dc8e28210a8be82000696f757a21a081fda374f596fdec",
+    "target_specs/x86_64-unknown-none-catten.json": "614db9cbd50f63c14c3a2ecd3a1faf4a5275cbfe0dd39a9a8f40d0b81ed864c4",
+    "crates/catten/src/cpu/isa/x86_64/init/boot.rs": "62386ec101799ca31657aa76d5d18dd92c6951cc85169b0020ed48b7a5414fe8",
+    ".cargo/config.toml": "ee5add326b9194e024f9eae1ca22a7f0e3941889a22049f3f77dd04677e96def",
+    "Cargo.lock": "c516b44bd41c5aa77f4df60e3e6249f2019df65ae19675e83911b2a85f08524a",
+    "rust-toolchain.toml": "a0665391d1aa1a019bb02e2af6b9e19dde456912abdd252b9d8ca5afc8cd82d4",
+    "crates/catten-services/x86_64-unknown-none.json": "21cbfb3592349dcf9e6d36c4c669771c0d9d1420baab3840c490920145e5b656"
+  },
+  "capture_scope": "Selected receipts, compiler/target/source identities and native outcomes. Complete temporary raw captures are not published.",
+  "controls": {
+    "abi_compile_controls": 3,
+    "tls_erasure_controls": 6,
+    "ci_runtime_inputs": 5,
+    "boot_profiles": 10,
+    "x86_kernel_clippy": true,
+    "aarch64_kernel_clippy": true,
+    "raw_entry_and_section_checks": "passed in each native runner",
+    "kernel_c_and_boot_allocation_controls": "passed",
+    "prior_combined_intel_deadline": "Historical failed combined security+HTTP run from b340ce0f remains separate; no resolution claimed.",
+    "runtime_abi": 4,
+    "raw_entry_negative_control": {
+      "diagnostic": "x86 ELF entry bypasses the raw FP initialization entry",
+      "input_kernel_sha256": "bf341909bdfa1c4df4c4d5b8ce42ba827c03dd201918eed688438bbfb0d9cd10"
+    }
+  }
+}

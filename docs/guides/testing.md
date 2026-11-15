@@ -114,11 +114,15 @@ user-isolation probe checks initial stack alignment, fresh-domain register
 clearing and preservation of x87, all sixteen XMM registers and MXCSR across
 syscalls, timer IRQs and blocking. Test-only handlers deliberately overwrite
 registers so preservation cannot pass because a handler happened not to use
-them. `scripts/tests/test-x86-userspace-abi.py` compiles the real service target
-and rejects SIMD on the separate kernel soft-float target. Keep the erasing GCM
-backend controls and OSXSAVE fence. The kernel's rebuilt core/crypto graph can
-still report upstream soft-float/SIMD future incompatibilities; that separate
-compiler-upgrade boundary remains. The
+them. `scripts/tests/test-x86-userspace-abi.py` compiles normal C floating-point
+and SSE2 code on both real x86 targets and checks the kernel's AVX rejection
+guard. Raw BSP/AP entry setup precedes compiled Rust. Regression builds first
+disable FP at that boundary and check normalized controls and real floating-point
+arithmetic on every LP. A separate kernel XMM sentinel spans a measured local
+timer clobber while IRQs remain enabled by its caller. Minimal images omit
+these deliberate clobber/disabled-FP fixtures. Keep the erasing GCM backend
+controls and OSXSAVE fence. Both x86 targets' current builds are free of the
+former soft-float/SIMD future-incompatibility summary. The
 [toolchain checkpoint](../reports/audits/2026-11-15-rust-toolchain.md) records the
 earlier target configuration.
 
