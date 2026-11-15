@@ -75,7 +75,7 @@ pub fn run(ctx: &Context) -> Result<(), Failure> {
         let connection =
             app.acquire(b"greet", RIGHT_CALL, &work.deadline).map_err(discovery_error)?;
 
-        // The session borrows this owner. Its pending call ends first.
+        // The session borrows this connection. Its pending call ends first.
         match session(ctx, &connection, &mut work) {
             Err(Failure::EndpointLost) => continue,
             result => return result,
