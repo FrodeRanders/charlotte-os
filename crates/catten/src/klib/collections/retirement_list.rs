@@ -1,7 +1,7 @@
 //! Preallocated retirement nodes. Linking, detaching and filtering never grow
 //! storage. Abandoned published nodes/lists quarantine their payloads.
 
-#![cfg_attr(test, feature(allocator_api))]
+#![cfg_attr(test, feature(allocator_ext))]
 
 use alloc::boxed::Box;
 use core::{

@@ -23,10 +23,12 @@ Five source files contain the protocol changes:
 - `handshake/certificate_verify.rs`: reject unknown and legacy certificate-only
   schemes when selected for a TLS 1.3 handshake signature.
 
-Two additional source files accommodate workspace linting: `lib.rs` lists the
+Three additional source files accommodate workspace linting: `lib.rs` lists the
 pre-existing upstream style/prototype lint exceptions that Cargo previously
 capped for a Git dependency; `handshake/client_hello.rs` removes a redundant
-single-condition `cfg(all(...))`. Neither changes the crypto implementation.
+single-condition `cfg(all(...))`; `config.rs` supplies the source-copy version
+for its existing deprecation attributes. These changes do not alter the crypto
+implementation.
 
 Unknown selected signatures still reject. This patch adds no crypto algorithm, verifier
 bypass, transcript rewrite, retry, TLS-version fallback or kernel adapter.

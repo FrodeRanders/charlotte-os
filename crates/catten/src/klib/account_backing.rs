@@ -5,7 +5,7 @@ use core::alloc::AllocError;
 use super::{
     admission::{
         BundleCharge,
-        ByteSponsor,
+        ByteSponsorClone,
         Family,
         SponsoredAllocator,
     },
@@ -18,7 +18,7 @@ use super::{
 pub(crate) type Allocator<F, S> =
     ChargedAllocator<BundleCharge<F>, PreAdmitted, SponsoredAllocator<S>>;
 
-pub(crate) fn allocator<F: Family<1>, S: ByteSponsor>(
+pub(crate) fn allocator<F: Family<1>, S: ByteSponsorClone>(
     platform: bool,
     sponsor: S,
 ) -> Result<Allocator<F, S>, AllocError> {

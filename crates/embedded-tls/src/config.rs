@@ -92,11 +92,11 @@ where
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct InsecureNoVerify;
 
-#[deprecated(note = "renamed to InsecureNoVerify")]
+#[deprecated(since = "0.19.0", note = "renamed to InsecureNoVerify")]
 pub type NoVerify = InsecureNoVerify;
 
 // A type alias does not name the unit value, so callers that pass `NoVerify` need this too.
-#[deprecated(note = "renamed to InsecureNoVerify")]
+#[deprecated(since = "0.19.0", note = "renamed to InsecureNoVerify")]
 #[allow(non_upper_case_globals)]
 pub const NoVerify: InsecureNoVerify = InsecureNoVerify;
 
@@ -146,7 +146,7 @@ pub trait TlsClock {
     fn now() -> Option<u64>;
 }
 
-#[deprecated(note = "renamed to InsecureIgnoreDates")]
+#[deprecated(since = "0.19.0", note = "renamed to InsecureIgnoreDates")]
 pub type NoClock = InsecureIgnoreDates;
 
 /// A clock for a device without the time. Certificates pass whatever their dates.

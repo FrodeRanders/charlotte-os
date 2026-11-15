@@ -21,6 +21,7 @@ pub(crate) use byte_allocator::{
     ByteAllocator,
     ByteCharge,
     ByteSponsor,
+    ByteSponsorClone,
     SponsoredAllocator,
 };
 

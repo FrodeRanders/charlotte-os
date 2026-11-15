@@ -91,7 +91,7 @@ mkdir -p "$repo_root/target/host-self-tests"
 # final weak release and deallocation before refund of the private holder.
 "$host_rustc" --edition=2024 --test --crate-name charged_allocator_tests - \
     -o "$repo_root/target/host-self-tests/charged-allocator-tests" <<EOF
-#![feature(allocator_api)]
+#![feature(allocator_ext)]
 #![allow(dead_code)]
 extern crate alloc;
 #[path = "$repo_root/crates/catten/src/klib/charged_allocator.rs"]
@@ -104,7 +104,7 @@ EOF
 CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
 "$host_rustc" --edition=2024 --test --crate-name observer_owner_tests - \
     -o "$repo_root/target/host-self-tests/observer-owner-tests" <<EOF
-#![feature(allocator_api)]
+#![feature(allocator_ext)]
 #![allow(dead_code, unused_attributes)]
 extern crate alloc;
 extern crate self as charlotte_lifecycle;
@@ -143,7 +143,7 @@ EOF
 CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
 "$host_rustc" --edition=2024 --test --crate-name iommu_ledger_tests - \
     -o "$repo_root/target/host-self-tests/iommu-ledger-tests" <<EOF
-#![feature(allocator_api)]
+#![feature(allocator_ext)]
 #![allow(dead_code, unused_attributes)]
 extern crate alloc;
 extern crate self as charlotte_lifecycle;
@@ -182,7 +182,7 @@ EOF
 CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
 "$host_rustc" --edition=2024 --test --crate-name frame_vector_tests - \
     -o "$repo_root/target/host-self-tests/frame-vector-tests" <<EOF
-#![feature(allocator_api)]
+#![feature(allocator_ext)]
 #![allow(dead_code, unused_attributes)]
 extern crate alloc;
 extern crate self as charlotte_lifecycle;
@@ -227,7 +227,7 @@ python3 "$repo_root/scripts/tests/test-frame-tracking.py"
 CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
 "$host_rustc" --edition=2024 --test --crate-name byte_allocator_tests - \
     -o "$repo_root/target/host-self-tests/byte-allocator-tests" <<EOF
-#![feature(allocator_api)]
+#![feature(allocator_ext)]
 #![allow(dead_code, unused_attributes)]
 extern crate alloc;
 extern crate self as charlotte_lifecycle;
@@ -262,7 +262,7 @@ EOF
 CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
 "$host_rustc" --edition=2024 --test --crate-name service_image_cache_tests - \
     -o "$repo_root/target/host-self-tests/service-image-cache-tests" <<EOF
-#![feature(allocator_api)]
+#![feature(allocator_ext)]
 #![allow(dead_code, unused_attributes)]
 extern crate alloc;
 extern crate self as charlotte_lifecycle;
@@ -297,7 +297,7 @@ EOF
 CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaults.rs" \
 "$host_rustc" --edition=2024 --test --crate-name attachment_storage_tests - \
     -o "$repo_root/target/host-self-tests/attachment-storage-tests" <<EOF
-#![feature(allocator_api)]
+#![feature(allocator_ext)]
 #![allow(dead_code, unused_attributes)]
 extern crate alloc;
 extern crate self as charlotte_lifecycle;
@@ -330,7 +330,7 @@ mod memory {
         impl Sponsor { pub fn unidentified()->Self { Self(false) } }
         impl crate::klib::admission::ByteSponsor for Sponsor {
             fn reserve(&self,n:u64)->Result<(),AllocError> {
-                if self.0 { USED.fetch_update(Ordering::AcqRel,Ordering::Acquire,|v|
+                if self.0 { USED.try_update(Ordering::AcqRel,Ordering::Acquire,|v|
                     v.checked_add(n).filter(|n| *n <= LIMIT.load(Ordering::Acquire)))
                     .map_err(|_|AllocError)?; } Ok(())
             }
@@ -369,7 +369,7 @@ CATTEN_RESOURCE_POLICY_FILE="$repo_root/crates/catten/src/resource_policy/defaul
 "$host_rustc" --edition=2024 --test --crate-name snapshot_tests - \
     -o "$repo_root/target/host-self-tests/snapshot-tests" <<EOF
 #![allow(dead_code)]
-#![feature(allocator_api)]
+#![feature(allocator_ext)]
 extern crate alloc;
 #[path = "$repo_root/crates/catten/src/resource_policy.rs"]
 mod resource_policy;

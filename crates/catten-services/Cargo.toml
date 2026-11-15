@@ -128,7 +128,6 @@ catten-graft = { path = "../catten-graft" }
 spin = ">=0.10.0"
 charlotte-protocol-block = { path = "../charlotte-protocol-block" }
 charlotte-protocol-objstore = { path = "../charlotte-protocol-objstore" }
-charlotte-protocol-fs = { path = "../charlotte-protocol-fs" }
 charlotte-protocol-kafka = { path = "../charlotte-protocol-kafka" }
 charlotte-protocol-disco = { path = "../charlotte-protocol-disco" }
 charlotte-protocol-dns = { path = "../charlotte-protocol-dns" }

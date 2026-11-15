@@ -22,7 +22,7 @@ def run():
             '[workspace]\n[dependencies]\nzeroize={version="=1.9.0",default-features=false}\n')
         (directory / "Cargo.lock").write_bytes((ROOT / "Cargo.lock").read_bytes())
         source = r'''
-#![feature(allocator_api)]
+#![feature(allocator_ext)]
 #![allow(dead_code, unused_attributes, unexpected_cfgs)]
 extern crate alloc;
 extern crate self as charlotte_lifecycle;

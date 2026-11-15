@@ -1081,7 +1081,7 @@ pub mod objstore {
                 return None;
             }
             let mut table = Self::default();
-            for index in 0..count {
+            for (index, slot) in table.entries[..count].iter_mut().enumerate() {
                 let offset = SCOPE_HEADER_LEN + index * SCOPE_ENTRY_LEN;
                 let spin = bytes.get(offset..offset + SCOPE_ENTRY_LEN)?;
                 let entry = ScopeEntry {
@@ -1099,7 +1099,7 @@ pub mod objstore {
                 {
                     return None;
                 }
-                table.entries[index] = entry;
+                *slot = entry;
             }
             table.len = count;
             Some(table)

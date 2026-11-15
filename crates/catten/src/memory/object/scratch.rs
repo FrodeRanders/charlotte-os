@@ -1,6 +1,7 @@
 //! Virtual scratch extents use prepared nodes. Reserve/release only relink;
 //! explicit disposal runs after the caller leaves its namespace guard.
-#![cfg_attr(test, feature(allocator_api))]
+
+#![cfg_attr(test, feature(allocator_ext))]
 
 #[cfg(not(test))]
 use crate::klib::collections::retirement_list;

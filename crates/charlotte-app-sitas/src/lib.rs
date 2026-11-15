@@ -5,7 +5,7 @@
 //! every backend wake rechecks the bounded set of registered pending owners.
 //! This crate never consumes a CQ ring independently of the selected backend.
 #![no_std]
-#![feature(allocator_api)]
+#![feature(allocator_ext)]
 extern crate alloc;
 use alloc::{
     sync::Arc,

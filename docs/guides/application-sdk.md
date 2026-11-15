@@ -172,7 +172,7 @@ Run package tests from outside the repository's freestanding Cargo configuration
 
 ```sh
 cd /tmp
-cargo +nightly-2026-07-27 test --manifest-path /path/to/charlotte-os/Cargo.toml \
+cargo +nightly-2026-11-14 test --manifest-path /path/to/charlotte-os/Cargo.toml \
   -p catten-rt -p charlotte-app -p charlotte-app-sitas --all-features --lib
 ```
 

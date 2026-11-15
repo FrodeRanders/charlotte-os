@@ -24,11 +24,15 @@ def main():
         harness = directory / "harness.rs"
         binary = directory / "tests"
 
-        def compile_tracker(path):
+        def compile_tracker(path, expected_error=None):
             harness.write_text(source.replace("= TRACKER]", "= " + json.dumps(str(path)) + "]"))
             result = subprocess.run(["rustc", "+" + channel, "--edition=2024", "--test", str(harness), "-D", "warnings", "-o", str(binary)],
                                     cwd=ROOT, env=env, capture_output=True, text=True)
-            assert result.returncode == 0, result.stdout + result.stderr
+            output = result.stdout + result.stderr
+            if expected_error is None:
+                assert result.returncode == 0, output
+            else:
+                assert result.returncode != 0 and expected_error in output, output
 
         compile_tracker(TRACKER)
         subprocess.run([str(binary), "--test-threads=1"], check=True)
@@ -41,6 +45,20 @@ def main():
         assert "running 1 test" in result.stdout, result.stdout
         assert result.returncode != 0 and "unconfirmed abandonment freed backing" in result.stdout, result.stdout + result.stderr
         print("Frame tracking controls: eager buffer release rejected.")
+        # Initial binding can retarget the private sponsor cell. It must not
+        # inherit the stronger shared-allocation clone-equivalence promise.
+        mutable = directory / "mutable-clone.rs"
+        mutable.write_text(TRACKER.read_text().replace('#[path = "frame_tracking/host_tests.rs"]',
+                           "#[path = " + json.dumps(str(TRACKER.parent / "frame_tracking/host_tests.rs")) + "]") + r'''
+impl FrameTracker {
+    fn require_equivalent_allocator(&self) {
+        fn equivalent<A: core::alloc::AllocatorClone>(_: &A) {}
+        equivalent(self.0.allocator());
+    }
+}
+''')
+        compile_tracker(mutable, "ByteSponsorClone")
+        print("Frame tracking controls: mutable sponsor rejected as a clone-equivalent allocator.")
 
 
 if __name__ == "__main__":

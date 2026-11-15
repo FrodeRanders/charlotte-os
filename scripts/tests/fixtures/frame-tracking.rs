@@ -1,4 +1,4 @@
-#![feature(allocator_api)]
+#![feature(allocator_ext)]
 #![allow(dead_code, unused_imports, unused_attributes)]
 extern crate alloc;
 extern crate self as catten_syscall;

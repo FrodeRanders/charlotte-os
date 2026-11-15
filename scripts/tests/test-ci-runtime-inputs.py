@@ -60,6 +60,16 @@ class CiRuntimeInputs(unittest.TestCase):
             self.assertIn("warnings", flags)
             self.assertIn("-D", flags)
 
+    def test_ci_toolchains_match_the_repository_pin(self):
+        channel = tomllib.loads((ROOT / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
+        count = 0
+        for workflow in (ROOT / ".github/workflows").glob("*.yml"):
+            for pin in re.findall(r"^\s+toolchain:\s+(\S+)\s*$", workflow.read_text(), re.MULTILINE):
+                with self.subTest(workflow=workflow.name, toolchain=pin):
+                    self.assertEqual(pin, channel)
+                count += 1
+        self.assertGreater(count, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

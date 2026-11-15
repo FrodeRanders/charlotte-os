@@ -190,7 +190,6 @@ dependencies = [
 name = "catten-graft"
 version = "0.1.0"
 dependencies = [
- "catten-rt",
  "catten-syscall",
  "prost",
  "spin 0.9.9",
@@ -204,7 +203,6 @@ dependencies = [
  "charlotte-launch",
  "charlotte-lifecycle",
  "lock_api",
- "spin 0.9.9",
  "talc",
 ]
 
@@ -226,7 +224,6 @@ dependencies = [
  "charlotte-protocol-block",
  "charlotte-protocol-disco",
  "charlotte-protocol-dns",
- "charlotte-protocol-fs",
  "charlotte-protocol-grant",
  "charlotte-protocol-kafka",
  "charlotte-protocol-msg",

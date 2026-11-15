@@ -23,6 +23,7 @@ use crate::klib::admission::{
     ByteAllocator,
     ByteCharge,
     ByteSponsor,
+    ByteSponsorClone,
     IpcNodes,
     Reservation,
     SponsoredAllocator,
@@ -155,10 +156,13 @@ fn zero_sized_storage_and_allocator_clones_reserve_nothing() {
 
 #[derive(Clone, Copy, Debug)]
 struct Sponsor;
+// SAFETY: This Copy ZST always refers to the same static counters; it neither
+// changes funding identity nor unwinds or refunds on clone/drop.
+unsafe impl ByteSponsorClone for Sponsor {}
 impl ByteSponsor for Sponsor {
     fn reserve(&self, bytes: u64) -> Result<(), core::alloc::AllocError> {
         SPONSOR_USED
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |used| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |used| {
                 used.checked_add(bytes)
                     .filter(|next| *next <= SPONSOR_LIMIT.load(Ordering::Acquire))
             })
@@ -247,15 +251,36 @@ fn standalone_backing_adapter_funds_bytes_without_changing_family_counts() {
     let allocator = SponsoredAllocator::new(Sponsor);
     let layout = Layout::from_size_align(32, 16).unwrap();
     let block = allocator.allocate(layout).unwrap();
+    fn equivalent<A: core::alloc::AllocatorClone>(allocator: &A) -> A { allocator.clone() }
+    let retained = equivalent(&allocator);
     assert_eq!(SPONSOR_USED.load(Ordering::Acquire), 32);
     assert!(allocator.allocate(Layout::new::<u8>()).is_err());
     assert_eq!(used(), before);
     WATCH.store(block.cast::<u8>().as_ptr() as usize, Ordering::Release);
     FREES.store(0, Ordering::Release);
-    unsafe { allocator.deallocate(block.cast(), layout) };
+    drop(allocator);
+    assert_eq!(SPONSOR_USED.load(Ordering::Acquire), 32);
+    unsafe { retained.deallocate(block.cast(), layout) };
     WATCH.store(0, Ordering::Release);
     assert_eq!(SPONSOR_AT_FREE.load(Ordering::Acquire), 32);
     assert_eq!(FREES.load(Ordering::Acquire), 1);
     assert_eq!(SPONSOR_USED.load(Ordering::Acquire), 0);
     SPONSOR_LIMIT.store(u64::MAX, Ordering::Release);
+}
+
+#[test]
+fn cloned_allocator_frees_original_nonzero_block_after_original_drop() {
+    fn equivalent<A: core::alloc::AllocatorClone>(allocator: &A) -> A { allocator.clone() }
+    assert_eq!(SPONSOR_USED.load(Ordering::Acquire), 0);
+    let before = used();
+    let allocator = ByteAllocator::<IpcNodes, _>::with_sponsor(false, Sponsor);
+    let retained = equivalent(&allocator);
+    let layout = Layout::from_size_align(64, 32).unwrap();
+    let block = allocator.allocate(layout).unwrap();
+    drop(allocator);
+    assert_eq!(SPONSOR_USED.load(Ordering::Acquire), 64);
+    assert_eq!(used().1[0], before.1[0] + 64);
+    unsafe { retained.deallocate(block.cast(), layout) };
+    assert_eq!(SPONSOR_USED.load(Ordering::Acquire), 0);
+    assert_eq!(used(), before);
 }

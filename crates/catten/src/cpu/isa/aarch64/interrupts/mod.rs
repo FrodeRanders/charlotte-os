@@ -174,8 +174,8 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
         // could `eret` back to the wrong EL or with the wrong user stack.
         unsafe {
             let out_base = base as *mut u64;
-            for i in 0..19 {
-                out_base.add(i).write_volatile(frame.regs[i]);
+            for (i, value) in frame.regs.iter().take(19).enumerate() {
+                out_base.add(i).write_volatile(*value);
             }
             asm!("msr elr_el1, {}", in(reg) frame.elr_el1, options(nomem, nostack, preserves_flags));
             asm!("msr spsr_el1, {}", in(reg) frame.spsr_el1, options(nomem, nostack, preserves_flags));

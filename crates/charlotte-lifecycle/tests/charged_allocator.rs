@@ -1,4 +1,4 @@
-#![feature(allocator_api)]
+#![feature(allocator_ext)]
 
 //! Execute the kernel's actual allocator owner without booting an OS. The
 //! generic adapter has no kernel dependencies; kernel fixtures test sponsorship.

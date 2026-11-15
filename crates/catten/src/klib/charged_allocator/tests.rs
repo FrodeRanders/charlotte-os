@@ -534,6 +534,9 @@ struct BackingState {
 }
 #[derive(Clone)]
 struct Backing(Arc<BackingState>);
+// SAFETY: Clones retain the same live backing counters and Global domain.
+// Moving/dropping a clone cannot free blocks or refund their funding.
+unsafe impl AllocatorClone for Backing {}
 // SAFETY: This host adapter forwards unchanged Global pointers/layouts. It
 // observes the actual Arc layouts supplied by the production owning adapter.
 unsafe impl Allocator for Backing {

@@ -93,6 +93,29 @@ is shared with the signed `security_probe`, which emits a separate native
 known-answer/tamper/decrypt receipt. See the
 [backend qualification](../reports/audits/2026-10-25-security-x86-gcm-owner.md).
 
+## Rust toolchain upgrades
+
+The current pin is `nightly-2026-11-14`. Keep `rust-toolchain.toml`, both CI
+workflows and exported application SDKs synchronized; runtime-input and SDK
+controls enforce the shared pin. Use the pinned compiler from temporary host
+directories too. `allocator_ext` gates the fallible/custom allocator APIs used
+here; shared backing also needs the reviewed unsafe `AllocatorClone` contract
+described in [metadata admission](../reference/metadata-admission.md).
+
+Qualify a toolchain change with the strict host wrapper, CI's complete Clippy
+matrix, regenerated signed service bundles, ARM/Intel/AMD security campaigns,
+both minimal boot profiles and exported SDK builds for both architectures.
+Preserve initial failures separately from passing repeats. A build-only check
+does not establish guest execution, and emulator results do not qualify hardware.
+Record exact compiler and artifact identities in the dated checkpoint.
+
+The current x86 custom target emits future-incompatibility diagnostics about
+SIMD target-feature declarations in `core` and existing crypto dependencies.
+Current strict builds pass. Keep the kernel's soft-float/no-SIMD ABI and the
+erasing GCM backend controls; enabling SIMD to silence a warning would require
+separate context-save/ABI qualification. This remains a future compiler upgrade
+boundary; see the [toolchain checkpoint](../reports/audits/2026-11-15-rust-toolchain.md).
+
 ## Target-only tests
 
 The `catten` kernel, `catten-user`, and the binaries in `catten-services` are

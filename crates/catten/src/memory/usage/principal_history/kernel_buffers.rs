@@ -5,6 +5,7 @@ use crate::klib::admission::{
     ByteAllocator,
     ByteCharge,
     ByteSponsor,
+    ByteSponsorClone,
     SnapshotBuffers,
 };
 
@@ -49,6 +50,11 @@ pub(crate) type Sponsor = PrincipalBytes<BufferBudget>;
 pub(crate) type NamespaceSponsor = PrincipalBytes<NamespaceAccountBudget>;
 pub(crate) type ReactorSponsor = PrincipalBytes<ReactorAccountBudget>;
 pub(crate) type MetadataSponsor = PrincipalBytes<MetadataBudget>;
+
+// SAFETY: Copies/clones preserve the immutable boot-lifetime principal and
+// budget kind. They have no destructor or fallible clone; only actual backing
+// deallocation refunds the original history account.
+unsafe impl<F: ByteBudget> ByteSponsorClone for PrincipalBytes<F> {}
 
 impl<F: ByteBudget> PrincipalBytes<F> {
     pub(crate) const fn unidentified() -> Self {

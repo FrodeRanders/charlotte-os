@@ -5,6 +5,7 @@ import importlib.util
 import json
 from pathlib import Path
 import tempfile
+import tomllib
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -28,11 +29,13 @@ class SdkTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             sdk = root / 'sdk'; sdk.mkdir()
-            lock = {'toolchain': 'nightly-2026-07-27', 'files': {}}
+            channel = tomllib.loads((ROOT / 'rust-toolchain.toml').read_text())['toolchain']['channel']
+            lock = {'toolchain': channel, 'files': {}}
             (sdk / 'sdk.json').write_text(json.dumps(lock))
             (sdk / 'Cargo.lock').write_text('version = 4\n')
             project = root / 'orders'
             sdk_cli.new_project(sdk, project, lock)
+            self.assertEqual(tomllib.loads((project / 'rust-toolchain.toml').read_text())['toolchain']['channel'], channel)
             config = json.loads((project / 'charlotte.json').read_text())
             self.assertEqual(config['grants'], [])
             self.assertEqual(config['sdk_fingerprint'], hashlib.sha256((sdk / 'sdk.json').read_bytes()).hexdigest())

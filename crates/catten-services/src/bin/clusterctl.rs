@@ -131,10 +131,7 @@ fn store_artifact(obj_conn: u64, object_id: u64, bytes: &[u8]) -> bool {
         return false;
     }
     let flush = ipc_scalar_call(obj_conn, objstore::OP_FLUSH, 0);
-    if flush == 0 || catten_services::spin_reply(flush).0 != objstore::ERR_OK {
-        return false;
-    }
-    true
+    flush != 0 && catten_services::spin_reply(flush).0 == objstore::ERR_OK
 }
 
 /// The raw payload attached to an `OP_UPLOAD` call, copied out of the moved

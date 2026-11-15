@@ -263,9 +263,8 @@ pub fn snapshot(
         })
         .map(|member| member.node_id)
         .collect::<Vec<_>>();
-    let (deployment_generation, service_generation, placed_nodes) = service_name.map_or_else(
-        || (0, 0, None),
-        |name| {
+    let (deployment_generation, service_generation, placed_nodes) =
+        service_name.map_or((0, 0, None), |name| {
             catalog.ingress_placement(name).map_or((0, 0, Some(Vec::new())), |placement| {
                 (
                     placement.deployment_generation,
@@ -273,8 +272,7 @@ pub fn snapshot(
                     Some(placement.ready_nodes),
                 )
             })
-        },
-    );
+        });
     let eligible_nodes = placed_nodes.map_or_else(
         || ingress_nodes.clone(),
         |placed| {

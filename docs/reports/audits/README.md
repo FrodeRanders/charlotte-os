@@ -17,6 +17,8 @@ report is useful for a significant investigation or qualification checkpoint.
 
 ## Reports
 
+- [Rust nightly upgrade qualification](2026-11-15-rust-toolchain.md) records the allocator-clone safety migration, synchronized CI/SDK pins, compiler adaptations and the remaining x86 future-incompatibility boundary.
+
 - [Broker SDK adoption and manual client review](2026-11-14-broker-sdk-adoption.md) records the bounded session reactor, actual partition joins, one-source SDK workflow and native deployment/drain qualification.
 
 - [Broker as an application SDK consumer](2026-11-14-broker-sdk-review.md) records baseline host/EL0 checks and concrete gaps in shared socket handoff, Sitas worker custody, lifecycle and existing-workspace tooling.

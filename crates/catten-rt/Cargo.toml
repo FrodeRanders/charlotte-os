@@ -14,5 +14,4 @@ charlotte-launch = { path = "../charlotte-launch" }
 charlotte-lifecycle = { path = "../charlotte-lifecycle" }
 catten-syscall = { path = "../catten-syscall" }
 talc = { version = ">=5.0.3", default-features = false, features = ["nightly"] }
-spin = { version = "0.9", features = ["lock_api"] }
 lock_api = "0.4"

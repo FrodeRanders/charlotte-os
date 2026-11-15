@@ -3002,7 +3002,8 @@ mod tests {
                 cluster: "11".repeat(32),
                 directory,
             };
-            let pair = KeyPair::from_seed(ed25519_compact::Seed::new([7; 32])); // Public fixture seed.
+            let pair = KeyPair::from_seed(ed25519_compact::Seed::new([7; 32])); // Public fixture
+                                                                                // seed.
             write_new_hex_key(&fixture.private, pair.sk.as_ref(), true).unwrap();
             write_new_hex_key(&fixture.public_file, pair.pk.as_ref(), false).unwrap();
             fs::write(fixture.path("descriptor"), signed_descriptor(&pair, b"connector", 1))

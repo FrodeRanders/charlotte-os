@@ -5,6 +5,8 @@ use core::{
     alloc::{
         AllocError,
         Allocator,
+        AllocatorClone,
+        AllocatorNightly,
         Layout,
     },
     marker::PhantomData,
@@ -24,6 +26,18 @@ pub(crate) trait ByteSponsor: Clone + core::fmt::Debug {
     fn reserve(&self, bytes: u64) -> Result<(), AllocError>;
     fn release(&self, bytes: u64);
 }
+
+/// Captured funding that remains equivalent across allocator clones.
+///
+/// # Safety
+/// Cloning/copying must preserve the funding domain of outstanding allocations
+/// and must not unwind. Moving, mutating or dropping one clone must not refund
+/// or redirect those allocations while equivalent clones remain alive. Mutable
+/// initial-binding sponsors deliberately do not implement this contract.
+pub(crate) unsafe trait ByteSponsorClone: ByteSponsor {}
+
+// SAFETY: Unit has no state, destructor, funding or fallible clone operation.
+unsafe impl ByteSponsorClone for () {}
 impl ByteSponsor for () {
     fn reserve(&self, _: u64) -> Result<(), AllocError> {
         Ok(())
@@ -65,6 +79,11 @@ impl<S: ByteSponsor> Drop for ByteCharge<S> {
 /// Clones copy policy only; actual allocation/free owns the byte reservation.
 #[derive(Clone, Debug)]
 pub(crate) struct SponsoredAllocator<S: ByteSponsor>(S);
+// SAFETY: S preserves funding equivalence without unwinding on clone. All
+// instances forward unchanged Global pointers/layouts; allocation funding is
+// released only by deallocation, never by allocator move/drop.
+unsafe impl<S: ByteSponsorClone> AllocatorClone for SponsoredAllocator<S> {}
+impl<S: ByteSponsor> AllocatorNightly for SponsoredAllocator<S> {}
 impl<S: ByteSponsor> SponsoredAllocator<S> {
     pub(crate) const fn new(sponsor: S) -> Self {
         Self(sponsor)
@@ -156,6 +175,11 @@ impl<F: Family<2>, S: ByteSponsor> Clone for ByteAllocator<F, S> {
         Self::with_sponsor(self.platform, self.sponsor.clone())
     }
 }
+// SAFETY: Clones preserve the same static family, original class and equivalent
+// sponsor. Cloning does not reserve/refund backing, and moving/dropping an
+// allocator cannot invalidate a block held by another equivalent clone.
+unsafe impl<F: Family<2>, S: ByteSponsorClone> AllocatorClone for ByteAllocator<F, S> {}
+impl<F: Family<2>, S: ByteSponsor> AllocatorNightly for ByteAllocator<F, S> {}
 impl<F: Family<2>> Default for ByteAllocator<F> {
     fn default() -> Self {
         Self::new(false)

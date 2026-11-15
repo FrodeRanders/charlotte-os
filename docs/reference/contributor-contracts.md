@@ -622,6 +622,13 @@ the corrected RPC polling paths, and the remaining notification gaps.
 
 ## CPU backing and page tables
 
+- Shared allocator backing must implement `AllocatorClone` with a documented
+  no-unwind, equivalent-allocation-domain proof. Plain `Clone` and the safe
+  `AllocatorNightly` collection opt-in do not establish it. Sponsored backing
+  also requires `ByteSponsorClone`; mutable initial-binding sponsors must remain
+  excluded. Moving/dropping a clone cannot invalidate live backing or redirect
+  its original principal/classification. See `docs/reference/metadata-admission.md`.
+
 - Validate software address-region tiling before publication. Use checked raw
   exclusive ends and offset containment, preserving ARM TTBR1/HHDM addresses.
   A virtual arena extent is not physical allocation admission or support for a

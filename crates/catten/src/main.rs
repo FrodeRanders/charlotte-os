@@ -3,8 +3,7 @@
 #![feature(extend_one)]
 #![feature(iter_advance_by)]
 #![feature(step_trait)]
-#![feature(allocator_api)]
-#![cfg_attr(target_arch = "x86_64", feature(abi_custom))]
+#![feature(allocator_ext)]
 #![allow(named_asm_labels)]
 
 //! # Catten

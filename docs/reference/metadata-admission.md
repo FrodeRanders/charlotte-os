@@ -42,6 +42,18 @@ and policy. Family slots survive until both allocations are gone; principal byte
 refund per allocation only after actual free. This qualifies allocation mechanics,
 not arbitrary active parent destruction or hardware completion.
 
+Shared Arc backing requires Rust's unsafe `AllocatorClone` contract, not merely
+`Allocator + Clone`. `ChargedAllocator` retains one private charge holder and
+requires clone-equivalent underlying backing. `SponsoredAllocator` and
+`ByteAllocator` implement that contract only for `ByteSponsorClone`: cloning
+cannot unwind, change the original funding domain or refund outstanding bytes.
+Immutable captured principal sponsors satisfy it. The frame tracker's private
+initial-binding sponsor can change identity and deliberately does not; its vector
+uses the separate safe `AllocatorNightly` collection opt-in. A compile rejection
+control prevents that mutable sponsor from being used as shared Arc backing.
+Clone equivalence adds no allocation, refund, cleanup authority or new owner
+family. Actual backing deallocation still precedes the original charge refund.
+
 The existing `snapshot_buffers` pool covers both frame catalogs and bounded
 [primitive syscall inputs/plaintext](snapshot-buffer-admission.md#primitive-syscall-inputs).
 Primitive vectors contribute requested bytes and zero frame-buffer counts.
