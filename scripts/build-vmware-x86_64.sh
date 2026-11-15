@@ -88,6 +88,9 @@ qemu-img convert -f raw -O vmdk \
     -o subformat=monolithicSparse,compat6,adapter_type=lsilogic \
     "$RAW_DATA" "$DATA_VMDK"
 cp "${ROOT_DIR}/vmware/charlotte-os.vmx" "${APPLIANCE_DIR}/CharlotteOS.vmx"
+if [ -d "${RAW_BOOT}.management" ]; then
+    cp -R "${RAW_BOOT}.management" "${APPLIANCE_DIR}/management"
+fi
 
 echo ">>> VMware appliance complete:"
 echo "    ${APPLIANCE_DIR}/CharlotteOS.vmx"

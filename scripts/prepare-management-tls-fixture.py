@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Create disposable public mTLS credentials and a signed/encrypted boot resource.
 
-This uses the repository's public development authorities. It is a QEMU fixture,
-not production enrollment. Private files stay in the requested mode-0700 directory.
+This uses the repository's public development authorities for local images and
+QEMU probes, not production enrollment. Private files stay in the requested
+mode-0700 directory.
 """
 import argparse
 from datetime import datetime, timedelta, timezone

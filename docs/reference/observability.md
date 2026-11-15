@@ -233,12 +233,12 @@ The TCP/IP service provides the complete server-side
 `bind`/`listen`/`accept` path (smoltcp over the frouter's IP/ARP routing),
 and end-to-end NIC operation is validated. `httpd` aggregates the `observe`
 snapshot plus the `net`/`tcpip`/`frouter`/`ns`/`dns`/`disco`/`relmsg` status
-ops into one JSON page, reachable from the host via SLIRP `hostfwd`
-(`scripts/run-aarch64.sh --http-test` or
-`scripts/run-x86_64.sh --http-test`). The `httpd` service itself starts during
-an ordinary networked boot; network admission requires the complete management
-credential resource. `--http-test` supplies disposable development credentials,
-adds host forwarding and validates verified HTTPS. Readers and administrators
+ops into JSON and HTML dashboards, reachable from the host through the default
+SLIRP forwarding at `https://localhost:8080/`. The `httpd` service starts during
+ordinary networked boots; network admission requires the complete management
+credential resource. The development runners generate credentials when absent
+and retain enrolled client files beside the boot image. `--http-test` adds
+verified HTTPS validation. Readers and administrators
 can observe; see [enrollment/configuration](management-tls.md). The name-service section preserves
 printable registry names as JSON strings and represents internal binary keys as
 `hex:<bytes>`; those hexadecimal entries are intentional opaque identifiers,

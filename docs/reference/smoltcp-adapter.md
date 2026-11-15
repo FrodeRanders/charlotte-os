@@ -317,8 +317,9 @@ protect both views, are in
 [cluster observability](../architecture/cluster-observability.md).
 
 The NIC, DHCP-configured TCP/IP service, and `httpd` are launched by default.
-The `--http-test` option below is a validation mode: it adds the QEMU host-port
-forward and checks the response. It is not required for guest applications to
+Ordinary networked runner builds provision development HTTPS credentials and
+QEMU user networking forwards host port 8080 to guest port 443. The
+`--http-test` option adds authenticated response validation. It is not required for guest applications to
 use HTTP or the socket service internally. Use `--no-network` only when an
 isolated boot is intended.
 
@@ -326,12 +327,21 @@ From the host, run the guest on the SLIRP user network with a hostfwd and open
 the dashboard in a browser (or curl the JSON endpoint directly):
 
 ```
-scripts/run-aarch64.sh release --http-test --instance http --smp 2 --timeout 90
-# browser: open http://127.0.0.1:8080/
-curl -s http://127.0.0.1:8080/metrics
+scripts/run-aarch64.sh release --minimal --instance http --smp 2
+# In another terminal; use the client directory printed by the runner:
+clients=os-images/charlotte-aarch64-release-http-minimal.img.management
+curl --cacert "$clients/ca.pem" --cert "$clients/reader.pem" \
+  --key "$clients/reader.key" https://localhost:8080/
+curl --cacert "$clients/ca.pem" --cert "$clients/reader.pem" \
+  --key "$clients/reader.key" https://localhost:8080/metrics
 ```
 
-The guest self-test (`http_net_test`) verifies the httpd reaches its
+For browser access, import the exact enrolled client identity and trust the
+server CA as described in [management TLS](management-tls.md). `/` and
+`/index.html` serve HTML; `/metrics` serves JSON. This does not enable plaintext
+HTTP or anonymous access.
+
+The optional guest self-test (`http_net_test`) verifies the httpd reaches its
 listening stage; the run script then validates the JSON round trip from the
 host. The guest uses `10.0.2.15` (SLIRP's default) with a default route via
 `10.0.2.2` — the `ip`/`gateway` launch-manifest overrides the MAC-derived

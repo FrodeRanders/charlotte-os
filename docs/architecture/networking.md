@@ -697,7 +697,8 @@ socket-based communication where applications need it.
 > as one more frouter consumer — consistent with "TCP/IP is an
 > interoperability service", not the native model. The `httpd` keyhole
 > serves observable state over it. Both are ordinary boot services;
-> `--http-test` adds host forwarding, response validation and opt-in phase traces.
+> Development runners provision HTTPS and host forwarding by default;
+> `--http-test` adds response validation and opt-in phase traces.
 > Receive and status calls move one writable 4096-byte caller-supplied memory
 > object into TCP/IP and return that same backing with the reply. Retention
 > stays charged to its original allocating generation; TCP/IP never allocates

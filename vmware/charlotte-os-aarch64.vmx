@@ -1,0 +1,50 @@
+.encoding = "UTF-8"
+config.version = "8"
+virtualHW.version = "21"
+displayName = "CharlotteOS AArch64 (experimental)"
+guestOS = "arm-other-64"
+
+# Apple silicon Fusion uses ARM UEFI and BOOTAA64.EFI. Development trust only.
+firmware = "efi"
+uefi.secureBoot.enabled = "FALSE"
+numvcpus = "4"
+cpuid.coresPerSocket = "4"
+memsize = "1024"
+
+pciBridge0.present = "TRUE"
+pciBridge4.present = "TRUE"
+pciBridge4.virtualDev = "pcieRootPort"
+pciBridge4.functions = "8"
+
+# Immutable FAT boot media and a separate persistent blank object-store disk.
+sata0.present = "TRUE"
+sata0:0.present = "TRUE"
+sata0:0.fileName = "charlotte-boot.vmdk"
+sata0:0.deviceType = "disk"
+sata0:0.mode = "independent-nonpersistent"
+nvme0.present = "TRUE"
+nvme0:0.present = "TRUE"
+nvme0:0.fileName = "charlotte-data.vmdk"
+nvme0:0.deviceType = "disk"
+
+# Use Limine's firmware framebuffer; no VMware SVGA driver is required for it.
+svga.present = "TRUE"
+mks.enable3d = "FALSE"
+
+# Retain a file sink for firmware/platform investigation. CharlotteOS currently
+# needs PL011; this setting does not establish a compatible ARM kernel UART.
+serial0.present = "TRUE"
+serial0.fileType = "file"
+serial0.fileName = "charlotte-serial.log"
+serial0.startConnected = "TRUE"
+answer.msg.serial.file.open = "Append"
+
+# No qualified Fusion ARM NIC driver yet. In particular, do not copy x86's
+# E1000E selection or its VT-d switch (vvtd.enable) into this ARM template.
+ethernet0.present = "FALSE"
+sound.present = "FALSE"
+floppy0.present = "FALSE"
+usb.present = "FALSE"
+ehci.present = "FALSE"
+tools.syncTime = "FALSE"
+checkpoint.vmState = ""

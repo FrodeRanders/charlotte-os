@@ -80,7 +80,18 @@ catten_boot_management_expects_rejection() {
     esac
 }
 
-# Only explicitly invoked management probes generate disposable credentials.
+# Development images provision HTTPS independently of verifier selection.
+# Explicit startup controls retain their supplied/missing resource unchanged.
+catten_boot_prepare_management() {
+    case "${MANAGEMENT_STARTUP_TEST:-}" in
+        disabled|WrongPolicy|Signature|Authentication|ready|validity|chain-validity) return 0 ;;
+    esac
+    [ "${NETWORK:-1}" = "1" ] || return 0
+    if [ -z "${CATTEN_MANAGEMENT_TLS_RESOURCE:-}" ]; then
+        catten_boot_prepare_management_fixture
+    fi
+}
+
 # A supplied resource keeps its own enrolled client files; it is never replaced.
 catten_boot_prepare_management_fixture() {
     if [ -z "${CATTEN_MANAGEMENT_TLS_RESOURCE:-}" ]; then
@@ -96,6 +107,7 @@ catten_boot_prepare_management_fixture() {
             fixture_args+=(--address "$CLUSTER_VIP")
         fi
         python3 "${CATTEN_BOOT_ROOT_DIR}/scripts/prepare-management-tls-fixture.py" "${fixture_args[@]}"
+        CATTEN_BOOT_MANAGEMENT_CLIENT_DIR="$fixture_dir"
         export CATTEN_MANAGEMENT_TLS_RESOURCE="${fixture_dir}/resource.bin"
         export CATTEN_MANAGEMENT_CA_FILE="${fixture_dir}/ca.pem"
         export CATTEN_MANAGEMENT_CERT_FILE="${fixture_dir}/administrator.pem"
@@ -108,6 +120,34 @@ catten_boot_prepare_management_fixture() {
     : "${CATTEN_MANAGEMENT_CA_FILE:?management probes require an explicit CA file}"
     : "${CATTEN_MANAGEMENT_CERT_FILE:?management probes require an enrolled client certificate}"
     : "${CATTEN_MANAGEMENT_KEY_FILE:?management probes require its client private-key file}"
+}
+
+# Retain generated development client identities beside the image, outside the
+# guest disks. Appliance builders copy this restricted directory into the bundle.
+# Supplied enrollment/key files remain in their caller-selected storage.
+catten_boot_export_management_clients() {
+    local destination="${1}.management" name
+    if [ -z "${CATTEN_BOOT_MANAGEMENT_CLIENT_DIR:-}" ]; then
+        # Cached-kernel reuse may select this sidecar's exact sealed resource.
+        # Keep its matching clients, but remove stale clients for another image.
+        if [ -z "${CATTEN_MANAGEMENT_TLS_RESOURCE:-}" ] \
+            || ! cmp -s "$CATTEN_MANAGEMENT_TLS_RESOURCE" "${destination}/resource.bin"; then
+            rm -rf -- "$destination"
+        fi
+        if [ -n "${CATTEN_MANAGEMENT_TLS_RESOURCE:-}" ]; then
+            echo ">>> HTTPS uses the supplied management TLS resource and its enrolled clients."
+        fi
+        return 0
+    fi
+    rm -rf -- "$destination"
+    mkdir -p "$destination"
+    chmod 0700 "$destination"
+    for name in ca.pem reader.pem reader.key administrator.pem administrator.key resource.bin; do
+        install -m 0600 "${CATTEN_BOOT_MANAGEMENT_CLIENT_DIR}/${name}" "${destination}/${name}"
+    done
+    echo ">>> Development HTTPS clients (certificates expire after two days): ${destination}"
+    echo ">>> Dashboard: https://localhost:${HTTP_HOST_PORT}/ (QEMU user network)"
+    echo ">>> curl --cacert ${destination}/ca.pem --cert ${destination}/reader.pem --key ${destination}/reader.key https://localhost:${HTTP_HOST_PORT}/"
 }
 
 catten_boot_init() {

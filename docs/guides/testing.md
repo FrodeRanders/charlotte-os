@@ -142,10 +142,16 @@ register additional target verifiers; `--no-network` is the explicit runtime
 opt-out. Tests should never be the mechanism that enables a production
 capability.
 
+Ordinary networked development builds also provision management HTTPS and its
+HTML dashboard without `--http-test`. They print the generated client-certificate
+directory and forward QEMU host port 8080 to the guest's TLS port 443. Supplied
+management resources retain their own enrollment; direct Cargo builds need an
+explicit resource. See [management TLS](../reference/management-tls.md).
+
 `--dhcp-test` requires an actual nonzero address with the expected TCP/IP status
 magic. It makes no assertion about optional management listeners and needs no
 management TLS resource. Use `--http-test` or `--management-startup-test ready`
-for provisioned ingress, and `--management-startup-test disabled` for explicit
+to verify provisioned ingress, and `--management-startup-test disabled` for explicit
 credential-free ingress rejection. The [verifier coverage map](../reference/boot-modes.md#network-verifier-boundaries)
 keeps these assertions distinct; a DHCP pass is not management readiness.
 

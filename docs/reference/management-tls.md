@@ -162,12 +162,23 @@ the profile's `root=` inputs authenticate clients, while the host/browser CA
 authenticates the server. Installing a browser identity does not enroll its
 leaf or assign its role. There is no password, bearer-key or JavaScript bypass.
 
-Explicit runner probes generate fresh short-lived fixture credentials in a
-mode-`0700` directory and use the public development authorities. A supplied
-resource is never replaced by the runner; corresponding client file settings
-are required. Reusing a built kernel requires its exact existing resource and
-clients. Fixture directories retain client keys for repeatable probes and must
-be removed when no longer needed; they are not published audit evidence.
+Ordinary networked development runner builds generate fresh two-day credentials
+when no resource is supplied, independently of `--http-test`. Both the HTML
+dashboards and JSON endpoints use the same authenticated listener. QEMU user
+networking forwards host port `8080` (or `CATTEN_HTTP_HOST_PORT`) to guest `443`.
+`--http-test` adds validation, not service activation. Explicit management startup
+controls preserve their selected missing/supplied resource; `--no-network` does
+not generate an identity. Direct Cargo builds still require an explicit resource.
+
+Generated files use the public development authorities and a mode-`0700`
+directory. Reader/administrator certificates and keys, the server CA and sealed
+resource are retained in `<boot-image>.management/`, with files mode `0600`.
+VMware builders copy that directory to `management/` beside the VMX, outside
+the guest disks. A supplied resource is never replaced, and its private client
+files remain in caller-selected storage; explicit probes require the matching
+client settings. Reusing a built kernel requires its exact resource and clients.
+Regenerate/rebuild before these development certificates expire; they are not
+production enrollment or published audit evidence.
 
 ## Ownership and reactor contract
 

@@ -533,8 +533,9 @@ storage readiness and does not synthesize a self-test verdict. See
         all five client phases empty before acknowledgement. The signed ARM
         shutdown fixture checks held idle TLS clients and cooperative retirement, but
         stalled controller/output and receiver-held cleanup remain separate.
-        \texttt{--http-test} provisions disposable development credentials,
-        adds QEMU forwarding and validates verified HTTPS. Protected enrollment,
+        Ordinary networked development builds provision credentials and QEMU
+        forwarding for the HTTPS HTML/JSON dashboards. \texttt{--http-test}
+        adds verified response validation. Protected enrollment,
         native rotation/failover and wider pressure qualification remain open, and
         SEC-10 is partial. See Chapter~\ref{chap:configuration}.
     \item \textbf{IOMMU/SMMU integration:} coherent Arm SMMUv3 discovery via

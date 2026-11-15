@@ -52,7 +52,7 @@
 #   --tcpip-test   Exchange TCP data through the userspace smoltcp service
 #                  (requires two socket-linked guests)
 #   --management-startup-test EXPECTATION  Assert ready/disabled or exact boot resource rejection
-#   --http-test    Serve the HTTP state keyhole through SLIRP host forwarding
+#   --http-test    Validate the default HTTPS dashboard with authenticated host probes
 #   --dhcp-test    Acquire a DHCP lease through the tcpip service (single guest)
 #   --live-upgrade-test  Run the isolated persistent service-upgrade test
 #   --shutdown-test  Run the isolated cooperative/forced domain-shutdown test
@@ -294,11 +294,6 @@ catten_boot_init "$ROOT_DIR"
 catten_boot_require_commands mformat mmd mcopy
 LIMINE_CONFIG="$CATTEN_BOOT_LIMINE_CONFIG"
 
-if [ "$HTTP_TEST" = "1" ] || [ "${DEPLOYMENT_INGRESS_TEST:-0}" = "1" ] \
-    || [ "${SHUTDOWN_INGRESS_TEST:-0}" = "1" ] || [ "${CLUSTER_INGRESS_TEST:-0}" = "1" ]; then
-    catten_boot_prepare_management_fixture
-fi
-
 TARGET_SPEC="target_specs/${ARCH}-unknown-none-catten.json"
 TARGET_DIR="${ARCH}-unknown-none-catten"
 IMAGE_DIR="./os-images"
@@ -352,6 +347,12 @@ if [ "$CLEAN_BUILD" = "1" ]; then
     echo ">>> Cleaning cached ${ARCH} kernel and dependency artifacts..."
     cargo clean --target "$TARGET_SPEC"
 fi
+
+if [ "$HTTP_TEST" = "1" ] || [ "${DEPLOYMENT_INGRESS_TEST:-0}" = "1" ] \
+    || [ "${SHUTDOWN_INGRESS_TEST:-0}" = "1" ] || [ "${CLUSTER_INGRESS_TEST:-0}" = "1" ]; then
+    catten_boot_prepare_management_fixture
+fi
+catten_boot_prepare_management
 
 FEATURES="acpi"
 if [ "$BOOT_MODE" = "test" ]; then
@@ -572,6 +573,7 @@ catten_boot_create_uefi_image \
     "$KERNEL" \
     "$LIMINE_CONFIG" \
     CATOS
+catten_boot_export_management_clients "$IMAGE"
 
 CURRENT_BUNDLE_HASH="$(catten_boot_bundle_sha256 "$SERVICE_BUNDLE")"
 STORED_BUNDLE_HASH="$(test -f "$DATA_BUNDLE_HASH" && tr -d '[:space:]' < "$DATA_BUNDLE_HASH" || true)"
@@ -649,11 +651,7 @@ if [ "$NETWORK" = "1" ]; then
             if [ -n "$APP_HOST_PORT" ]; then
                 APP_FWD=",hostfwd=tcp::${APP_HOST_PORT}-:${APP_GUEST_PORT}"
             fi
-            if [ "$HTTP_TEST" = "1" ] || [ -n "$MANAGEMENT_STARTUP_TEST" ]; then
-                QEMU_OPTS+=(-netdev "user,id=net0,hostfwd=tcp::${HTTP_HOST_PORT}-:443,hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444${APP_FWD}")
-            else
-                QEMU_OPTS+=(-netdev "user,id=net0,hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444${APP_FWD}")
-            fi
+            QEMU_OPTS+=(-netdev "user,id=net0,hostfwd=tcp::${HTTP_HOST_PORT}-:443,hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444${APP_FWD}")
             ;;
         listen:*)
             NET_PORT="${NET_BACKEND#listen:}"

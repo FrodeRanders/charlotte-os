@@ -88,6 +88,15 @@ Charlotte automatically starts DHCP, discovery and cluster services, TCP/IP,
 HTTP, and NTP-backed time synchronization. Test features are reserved for QEMU
 validation runs and are not required in an appliance intended for use.
 
+The builder provisions development management HTTPS even without `--http-test`.
+Generated reader/administrator client identities and the server CA are in
+`management/` beside the VMX. Use `https://<guest-address>/` for the HTML dashboard
+or `/metrics` for JSON with an enrolled client. The development certificate also
+covers `management.test`; when DHCP assigns another address, use that certificate
+name with a DNS/hosts mapping (or curl's `--resolve`). Certificates expire after
+two days. A supplied `CATTEN_MANAGEMENT_TLS_RESOURCE` retains its own enrollment
+and caller-managed client files. See [management TLS](../reference/management-tls.md).
+
 Do not replace the NVMe data controller with SCSI or SATA: the current VMware
 appliance path starts the userspace NVMe driver. Do not disable virtual VT-d:
 CharlotteOS refuses to delegate unrestricted DMA when no usable IOMMU exists.

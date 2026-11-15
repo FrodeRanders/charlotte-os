@@ -21,6 +21,11 @@ The following inputs have different authorities and lifetimes:
         TLS limits. The kernel verifies it against its selected admission policy
         before publishing trust, then supplies read-only launch profiles to both
         management services. Missing credentials disable network admission.
+        Networked development runners generate two-day credentials when absent,
+        independently of test selection, and retain client identities beside the
+        boot image (or in the VMware bundle). Explicit management startup controls
+        preserve their missing/supplied resource. Direct Cargo builds still need
+        an explicit resource.
         Protected installation and authenticated time remain audit gaps.
     \item[Dependency advisory policy.] CI/local validation reads
         \path{.cargo/audit.toml} and the scanner pin in \path{.cargo/audit-version}.
@@ -58,7 +63,8 @@ The following inputs have different authorities and lifetimes:
         one complete read-only profile whose hash is checked on kernel reuse.
         The separate userspace service exports latest-sample OTLP protobuf
         gauges with bounded memory and deadlines, independently of local
-        archiving, sampling and placement. Initial transport excludes
+        archiving, sampling, placement and the management HTTP listener.
+        It reads observe over IPC and uses outbound TCP/IP. Initial transport excludes
         HTTPS, authentication headers and gRPC, so unsupported schemes reject.
         See \repofile|docs/reference/otlp-export.md|.
     \item[Bootstrap assignments.] The kernel build consumes

@@ -6,6 +6,11 @@ in-memory history over owned IPC. Sampling, placement reporting, local
 archiving and remote export are independent; export has no disk spool.
 No configured destination means no exporter domain is launched.
 
+The exporter does not call the HTTP dashboard or scrape its HTML/JSON endpoints.
+It reads `observe` through IPC and makes outbound requests using TCP/IP. It needs
+working networking and synchronized time, independently of the management HTTPS
+listener, its client enrollment, or the `--http-test` verifier.
+
 ```sh
 CATTEN_OTLP_ENDPOINT=http://192.0.2.20:4318/v1/metrics \
   scripts/run-aarch64.sh release --minimal

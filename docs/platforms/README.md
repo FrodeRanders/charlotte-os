@@ -12,6 +12,8 @@ one platform note does not imply equivalent support on another architecture.
   work.
 - [VMware x86-64 appliance](vmware-x86_64.md) — two-disk build, first-boot
   service installation, qualified virtual hardware, and the NIC limitation.
+- [VMware Fusion AArch64 appliance](vmware-aarch64.md) — experimental Apple
+  silicon image builder and the outstanding ARM platform qualification gates.
 
 The cross-platform path to physical ARM servers is maintained separately in
 the [real-hardware roadmap](../architecture/real-hardware-roadmap.md).

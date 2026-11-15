@@ -43,9 +43,8 @@
 #               exchanging TCP data between two guests (both guests must
 #               run it, implies --net-test)
 #   --management-startup-test EXPECTATION  Assert ready/disabled or exact boot resource rejection
-#   --http-test   Run the HTTP keyhole test: a hardcoded HTTP server on the
-#               guest's tcpip stack serving observable state, reached from
-#               the host via SLIRP hostfwd (single guest, user network)
+#   --http-test   Validate the default HTTPS dashboard with authenticated host
+#               probes (single guest, user network); not needed to enable it
 #   --dhcp-test   Verify that the default DHCP client acquires a lease
 #   --s3-test     Start a TLS RustFS Docker fixture and verify S3
 #                 PUT/HEAD/GET/DELETE from a CharlotteOS application
@@ -431,6 +430,7 @@ if [ "$HTTP_TEST" = "1" ] || [ "${DEPLOYMENT_INGRESS_TEST:-0}" = "1" ] \
     || [ "${SHUTDOWN_INGRESS_TEST:-0}" = "1" ] || [ "${CLUSTER_INGRESS_TEST:-0}" = "1" ]; then
     catten_boot_prepare_management_fixture
 fi
+catten_boot_prepare_management
 
 RUSTFS_COMPOSE="${ROOT_DIR}/docker/rustfs-s3-test/compose.yaml"
 RUSTFS_RUNNING="0"
@@ -858,6 +858,7 @@ catten_boot_create_uefi_image \
     "${ROOT_DIR}/limine-binary/${EFI_BOOT_FILE}" \
     "$KERNEL" \
     "$LIMINE_CONFIG"
+catten_boot_export_management_clients "$IMAGE"
 
 # --- Persistent NVMe data image, separate from the FAT boot volume. ---
 # SBSA used to expose the boot FAT as its only NVMe disk. The object store
@@ -1008,14 +1009,11 @@ if [ "$NETWORK" = "1" ]; then
             fi
             if [ -n "$CLUSTER_SERVICE" ]; then
                 QEMU_OPTS+=(-netdev "user,id=charlotte-net,hostfwd=tcp::${HTTP_HOST_PORT}-${CLUSTER_VIP}:${CLUSTER_TCP_PORT},hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444${APP_FWD}")
-            elif [ "$HTTP_TEST" = "1" ] || [ "$SHUTDOWN_INGRESS_TEST" = "1" ] \
-                || [ -n "$MANAGEMENT_STARTUP_TEST" ]; then
+            else
                 # Host-side keyhole: forward the configurable host port to
                 # guest TLS port 443 so parallel/local runs need not contend for a
                 # hard-coded listener.
                 QEMU_OPTS+=(-netdev "user,id=charlotte-net,hostfwd=tcp::${HTTP_HOST_PORT}-:443,hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444${APP_FWD}")
-            else
-                QEMU_OPTS+=(-netdev "user,id=charlotte-net,hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444${APP_FWD}")
             fi
             ;;
         listen:*)

@@ -70,15 +70,16 @@ the reliable-message service.
 Two-node tests use `--relmsg-test`, `--disco-test`, `--dns-test`, and
 `--tcpip-test` with the stream backend (the relmsg smoke client derives its
 peer from MAC last-octets 1 and 2 and exchanges a 70,000-byte v3 message).
-`--http-test` runs a single guest on the
-SLIRP user network with `hostfwd=tcp::8080-:80` so the host can curl the
-httpd keyhole.
+Ordinary SLIRP boots provision development management credentials and forward
+host port 8080 to guest HTTPS port 443 for the HTML/JSON dashboard. `--http-test`
+adds authenticated host probes. Use the enrolled client files printed by the
+runner; see [management TLS](../reference/management-tls.md).
 
 To configure the operational distributed-ingress path (without adding a test
 workload), supply a cluster service to every participating guest:
 
 ```sh
-./scripts/run-aarch64.sh release --http-test --cluster-service 10.0.2.42:443
+./scripts/run-aarch64.sh release --cluster-service 10.0.2.42:443
 ```
 
 On the default single-guest SLIRP network the runner forwards host port 8080
