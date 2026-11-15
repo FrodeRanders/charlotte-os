@@ -1021,7 +1021,7 @@ pub fn launch_kafka_step(ns: &NameServiceHandle, profile: &KafkaStepProfile<'_>)
 /// launched services instead of spawning them.
 pub extern "C" fn launch_steady_state() {
     logln!(
-        "[security] DEVELOPMENT image: public fixture trust; not suitable for real credentials."
+        "[security] DEVELOPMENT image: public fixture trust; not suitable for production."
     );
     let (cluster, prepared) = super::admission::take_boot_preparation()
         .expect("boot preparation unavailable or already consumed");
