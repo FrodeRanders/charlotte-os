@@ -20,6 +20,7 @@ execution records. For current knowledge and work, use:
 
 ## Investigations
 
+- [Freestanding x86 soft-float future-incompatibility warning](investigations/2026-11-15-x86-softfloat-future-incompatibility.md)
 - [Upstream review before possible fork detachment](investigations/2026-11-05-upstream-review.md)
 - [Native OTLP export and CPU pressure accounting](investigations/2026-10-31-native-otlp.md)
 - [Minimal boot idle activity](investigations/2026-10-31-minimal-idle-profile.md)

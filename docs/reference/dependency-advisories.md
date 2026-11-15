@@ -72,3 +72,34 @@ The existing push/PR check still needs deployment and required-check enforcement
 through repository settings. License enforcement, protected release provenance
 and third-party source/compiler/platform qualification remain separate SEC-14
 work. SEC-14 remains partial and production trust stays disabled.
+
+## Freestanding x86 compiler compatibility
+
+The freestanding x86 service target selects `rustc-abi = "softfloat"` and
+`+soft-float`, while crypto dependencies and Rust's rebuilt `core` contain
+SSE/AVX `target_feature` functions. The pinned compiler reports this conflict
+through `x86_softfloat_sse`, producing Cargo's future-incompatibility summary.
+This is a target/compiler compatibility issue; an advisory scan does not check
+it. The `core v0.0.0` entry is the toolchain library rebuilt by `-Z build-std`,
+not a separately versioned dependency to upgrade.
+
+Inspect the retained service-build report with:
+
+```sh
+CARGO_TARGET_DIR=crates/catten-services/target \
+  cargo report future-incompatibilities --id 1
+```
+
+Use the report ID printed by the relevant build if it differs. This directory
+is shared across architecture builds, so a cached report is not proof that an
+AArch64 build introduced an x86 diagnostic. Package updates or software crypto
+backend flags alone cannot address the rebuilt `core` intrinsics.
+
+Resolution requires a coherent userspace target/ABI and CPU-state contract, or
+an upstream-supported way to exclude incompatible vector definitions throughout
+the graph and rebuilt standard library. Preserve the kernel's separate target,
+the existing POLYVAL erasure selection and the AVX admission fence while
+qualifying a change. The
+[15 November investigation](../reports/investigations/2026-11-15-x86-softfloat-future-incompatibility.md)
+records the exact diagnostics and an isolated compile comparison. It establishes
+the cause, not runtime qualification or closure of the compatibility gap.
