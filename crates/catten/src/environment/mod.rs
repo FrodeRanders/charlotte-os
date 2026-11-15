@@ -21,6 +21,8 @@ pub mod arm_smc;
 pub mod boot_protocol;
 #[cfg(all(not(target_arch = "x86_64"), feature = "devicetree"))]
 pub mod devicetree;
+#[cfg(target_arch = "aarch64")]
+pub mod serial_port;
 // Unified Extensible Firmware Interface (UEFI) Runtime Services
 mod uefi_rts;
 

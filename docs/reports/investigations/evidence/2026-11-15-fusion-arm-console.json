@@ -1,0 +1,236 @@
+{
+  "date": "2026-11-15",
+  "baseline": "375073a0a9eaedb8f4e490c996a79f4af834465b",
+  "fusion_version": "26.0.1",
+  "fusion_build": "25689522",
+  "qemu_version": "11.1.2",
+  "compiler": "rustc 1.102.0-nightly 5f4effd579500175af844241eb179e756190f1e7; LLVM 23.1.5; aarch64-apple-darwin",
+  "limine_efi_sha256": "11288bad5042853c8fbad27ddf65f9bc53675959a87e0e67908a173ce1571479",
+  "source_sha256": {
+    "crates/catten/src/environment/serial_port.rs": "6c62d0551e371c9061a6acd2769832176b143f2a26bab6840dbf366381ece85a",
+    "crates/catten/src/environment/acpi/sdt/discovery.rs": "6070b881efd8690cce019002105ce8933f6c5555be7de45c0c556c8024b35013",
+    "crates/catten/src/log/serial.rs": "2096e0b6c29c2c3e9e68dde31112a6cee61b8fb4412008d6ec1e63f6015f50a6",
+    "crates/catten/src/log/mod.rs": "ebb480c13391d1e51f560354b1dd3a31c04a4bd7d0b09186f4efd84cc2eefb14",
+    "crates/catten/src/cpu/isa/aarch64/interrupts/gic/mod.rs": "7585e4eb145d0a7433d2f857527d230ff353273ed9e8952b932c333d42c33503"
+  },
+  "firmware_capture": {
+    "hhdm": "0xffff000000000000",
+    "rsdp": "0xffff0000bc060000",
+    "xsdt": "0xbc050000",
+    "uart_base": "0x3fff03f8",
+    "tables": [
+      {
+        "signature": "FACP",
+        "address": "0xbc000000",
+        "length": 276,
+        "checksum_valid": true,
+        "sha256": "b69ec2fb5de3083c32564dbd4e492f21633d21d2cb091d92d7d792deba251c67",
+        "bytes_hex": "46414350140100000643564d57415245564d57564253412121122020564d57200100000000000000000002bc000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000300000000000000000000000002bc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000564d776172650000"
+      },
+      {
+        "signature": "GTDT",
+        "address": "0xbc040000",
+        "length": 104,
+        "checksum_valid": true,
+        "sha256": "86cc24d4e70351f94315e9323fb4e3774380fd15f2a78281125564469209783e",
+        "bytes_hex": "47544454680000000304564d57415245564d57564253412121122020564d572001000000ffffffffffffffff0000000000000000000000001e000000040000001b000000040000001a00000004000000ffffffffffffffff00000000680000000000000000000000"
+      },
+      {
+        "signature": "MCFG",
+        "address": "0xbc030000",
+        "length": 60,
+        "checksum_valid": true,
+        "sha256": "65587ac529b9fb790b7a7863251bde881f56d877edd4457493f11e18a9edc805",
+        "bytes_hex": "4d4346473c00000001c0564d57415245564d57564253412121122020564d57200100000000000000000000000000004000000000000000ff00000000"
+      },
+      {
+        "signature": "APIC",
+        "address": "0xbbff0000",
+        "length": 428,
+        "checksum_valid": true,
+        "sha256": "80c05efed23c3fdf20fbb69ccd18526001026ee21465e3a6c0f9f6cf23c0c028",
+        "bytes_hex": "41504943ac01000004a4564d57415245564d57564253412121122020564d57200100000000000000000000000b500000000000000000000001000000000000001700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000b500000000000000100000001000000000000001700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000b500000000000000200000001000000000000001700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000b500000000000000300000001000000000000001700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000000000000000000000c180000000000000000012c0000000000000000030000000e1000000000102c00000000000008000d180000000000000000082c000000000000000000000000"
+      },
+      {
+        "signature": "SSDT",
+        "address": "0xbbfe0000",
+        "length": 203,
+        "checksum_valid": true,
+        "sha256": "f79bb6f3aad7c3935143477602633f54c859af53ab557c9dcfb5de8854636cf0",
+        "bytes_hex": "53534454cb00000002a5564d57415245564d57564253412121122020564d57200100000010460a5f53425f5b821c43303030085f4849440d414350493030303700085f5549440b00005b821c43303031085f4849440d414350493030303700085f5549440b01005b821c43303032085f4849440d414350493030303700085f5549440b02005b821c43303033085f4849440d414350493030303700085f5549440b030008564352420c00000000084d3634420e000000c000000000084d3634530e0000004000000000a3a3"
+      },
+      {
+        "signature": "PPTT",
+        "address": "0xbbfd0000",
+        "length": 240,
+        "checksum_valid": true,
+        "sha256": "6dfb76537751d74152e2293adfaae80b97d25e955306bd8e0bead030a016c303",
+        "bytes_hex": "50505454f000000002fb564d57415245564d57564253412121122020564d572001000000001400001100000000000000000000000000000024000000011800005f0000006c000000000002000002000004044000011800007f0000006c000000000001008000000008024000011800007f000000000000000000400000080000100a8000001c00001a0000002400000000000000020000003c00000054000000001c00001a0000002400000001000000020000003c00000054000000001c00001a0000002400000002000000020000003c00000054000000001c00001a0000002400000003000000020000003c000000"
+      },
+      {
+        "signature": "SPCR",
+        "address": "0xbbfc0000",
+        "length": 80,
+        "checksum_valid": true,
+        "sha256": "57d68bf4072580989a540d20b393b3222e06f002907df000e490781e0de94bd3",
+        "interface_type": 18,
+        "address_space": 0,
+        "bit_width": 8,
+        "access_size": 1,
+        "base": "0x3fff03f8",
+        "irq": 36,
+        "bytes_hex": "53504352500000000248564d57415245564d57564253412121122020564d5720010000001200000000080001f803ff3f00000000080024000000070001000300ffffffff000000000000000000000000"
+      }
+    ]
+  },
+  "runs": [
+    {
+      "name": "fusion_original_reproduction",
+      "kernel_sha256": "db9bd32749899099b74eee9585916725920c073fdc83ec5cb77602a4eaa7aa88",
+      "result": "stuck before first completed kernel log line",
+      "cpu0": {
+        "pc": "0xffffffff8050f804",
+        "function": "<catten::log::serial::Pl011 as core::fmt::Write>::write_str + 540",
+        "w8": "0xffffffff",
+        "instruction": "tbz w8, #5, next; read came from ldr w8, [uart_base + 0x18]"
+      },
+      "callers": [
+        "core::fmt::write + 144",
+        "bsp_main + 772"
+      ],
+      "ap_state": "bootloader secondary startup"
+    },
+    {
+      "name": "fusion_uart_fixed",
+      "kernel_sha256": "341fb46aacbb759f88478219893c044a53ce11bcfd3cd882a5f26ae8d829fea1",
+      "result": "serial and framebuffer initialization; GIC startup failure",
+      "serial": [
+        "[+     0.000663] Catten Kernel Version 0.8.1",
+        "[+     0.006872] flanterm: framebuffer terminal initialised successfully (1024x768, scale=1, heap=357144)",
+        "[+     0.030099] LP 2: Starting local interrupt controller initialization.",
+        "[+     0.030782] LP 3: Starting local interrupt controller initialization.",
+        "[+     0.031456] LP 1: Starting local interrupt controller initialization."
+      ],
+      "vmm_diagnostic": "Unsupported MSR(S3_0_C12_C8_4, 0x0): vpc=0xffffffff8007e758",
+      "debugger_pc": "ivt + 512"
+    },
+    {
+      "name": "fusion_intermediate_group1_only",
+      "kernel_sha256": "d2f1aa040f6f58931e24141a32909993dd54d14637ae6e0535f67d1ec61dbda6",
+      "result": "not a boot pass: no storage, durable-readiness panic",
+      "serial": [
+        "[+     0.008266] flanterm: framebuffer terminal initialised successfully (1024x768, scale=1, heap=357144)",
+        "[+     0.053549] [smmu] no supported SMMUv3 discovered; DMA isolation unavailable.",
+        "[+     0.066336] [launch] SKIP storage: no supported MSI mechanism.",
+        "local readiness requires durable storage"
+      ]
+    },
+    {
+      "name": "qemu_headless_same_display_kernel",
+      "kernel_sha256": "d2f1aa040f6f58931e24141a32909993dd54d14637ae6e0535f67d1ec61dbda6",
+      "result": "runner passed mandatory minimal validation",
+      "serial": [
+        "[+     0.018204] flanterm: no Limine framebuffer response",
+        ">>> Minimal boot validation passed; no regression suite requested."
+      ]
+    },
+    {
+      "name": "qemu_ramfb_same_kernel",
+      "kernel_sha256": "d2f1aa040f6f58931e24141a32909993dd54d14637ae6e0535f67d1ec61dbda6",
+      "result": "failed observation: remained before kernel entry; stopped manually",
+      "pc": "0x5fdf74a8",
+      "display": "TianoCore logo; no CharlotteOS serial output; source of pre-entry stall unresolved"
+    },
+    {
+      "name": "qemu_virtio_gpu_same_kernel",
+      "kernel_sha256": "d2f1aa040f6f58931e24141a32909993dd54d14637ae6e0535f67d1ec61dbda6",
+      "result": "guest services boot; no framebuffer supplied; not a display pass",
+      "display": "Display output is not active",
+      "serial": [
+        "[+     0.023550] flanterm: no Limine framebuffer response",
+        "[+     1.005312] [launch] steady-state service set published."
+      ]
+    },
+    {
+      "name": "qemu_four_lp_regression",
+      "kernel_sha256": "e4e7b019330810a4acd6e4b0c07bb576097c68be7edbb1f4ed41a49462ae21ea",
+      "result": "runner passed, 17 passed / 0 failed / 0 pending",
+      "serial": [
+        "[+    15.959665] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x1ffff failed_bitmap=0x0 pending_bitmap=0x0",
+        ">>> All registered deferred self-tests passed."
+      ]
+    },
+    {
+      "name": "fusion_final_guarded_group0",
+      "kernel_sha256": "dfc17550d0162391979dfeb7cd5535e4f70632ae5985aa9c6164ec2edd9817d9",
+      "result": "serial and visible scrolling framebuffer verified; durable-storage panic remains",
+      "serial": [
+        "[+     0.008657] flanterm: framebuffer terminal initialised successfully (1024x768, scale=1, heap=357144)",
+        "[+     0.034461] [smmu] no supported SMMUv3 discovered; DMA isolation unavailable.",
+        "[+     0.047401] [launch] SKIP storage: no supported MSI mechanism.",
+        "local readiness requires durable storage"
+      ],
+      "gui_observation": "1024x768 terminal displayed ordinary boot text, scrolled past early initialization and reached storage rejection; panic output is serial-only",
+      "unsupported_group0_msr_in_log": false
+    },
+    {
+      "name": "qemu_final_guarded_group0_four_lp_regression",
+      "kernel_sha256": "a606979642b30c5f5f6b19e3ec2e034c37b059eec25f39305b90bd09e120df5f",
+      "result": "runner passed, 17 passed / 0 failed / 0 pending",
+      "serial": [
+        "[+    15.831188] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x1ffff failed_bitmap=0x0 pending_bitmap=0x0",
+        ">>> All registered deferred self-tests passed."
+      ]
+    },
+    {
+      "name": "qemu_final_guarded_group0_ramfb_minimal",
+      "kernel_sha256": "dfc17550d0162391979dfeb7cd5535e4f70632ae5985aa9c6164ec2edd9817d9",
+      "configuration": "QEMU 11.1.2; existing runner --minimal --display --smp 4; ramfb; edk2-stable202408-prebuilt.qemu.org; no display-device or renderer change",
+      "result": "visible 800x600 scrolling framebuffer, operational boot and authenticated HTTPS HTML 200",
+      "serial": [
+        "[+     0.022198] flanterm: framebuffer terminal initialised successfully (800x600, scale=1, heap=230056)",
+        "[+     4.085872] BOOT COMPLETE: validation passed; local storage ready; services submitted",
+        "[+     4.110892] [EL0 LOG] lp=0 asid=13 [http] listening port=443; bounded client reactor",
+        "[+     4.126105] [EL0 LOG] lp=0 asid=12 [tcpip] DHCP assigned 10.0.2.15/24"
+      ],
+      "display": {
+        "path": "2026-11-15-qemu-framebuffer-pass.png",
+        "sha256": "6e412f7608e069aa8948ee33984dcbaf1d2f52da34aad078b57b8c9a28c50c2a",
+        "observation": "Kernel text fills screen; earlier initialization scrolled off; BOOT COMPLETE visible"
+      },
+      "https": {
+        "status": 200,
+        "content": "<!doctype html>; title CharlotteOS",
+        "authentication": "reader mTLS; CA verification enabled"
+      },
+      "limit": "Earlier pre-kernel ramfb stall remains unexplained; this passing repeat does not establish a causal fix."
+    },
+    {
+      "name": "qemu_final_guarded_group0_ramfb_four_lp_regression",
+      "kernel_sha256": "f18ad151192ba9929fb9b919bc7676f46bf19047156aa9d7d7a4abba6f02ee21",
+      "configuration": "scripts/run-aarch64.sh debug --tests --display --smp 4 --timeout 180 --instance framebuffer-tests; default ramfb",
+      "result": "runner exit 0; 17 passed / 0 failed / 0 pending; framebuffer initialized",
+      "serial": [
+        "[+     0.023134] flanterm: framebuffer terminal initialised successfully (800x600, scale=1, heap=230056)",
+        "[+    19.520293] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x1ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "runner_verdict": [
+        ">>> All registered deferred self-tests passed."
+      ]
+    }
+  ],
+  "limits": [
+    "Captured XSDT has no IORT; no supported SMMUv3 discovered. This is the observed VM, not proof about every Fusion configuration.",
+    "MADT MSI frame is not handled by the fixed QEMU-virt GICv2m path.",
+    "NIC remains disabled and VMXNET3 unsupported.",
+    "Earlier QEMU ramfb stall and VirtIO GPU missing-GOP result remain unresolved; final-kernel ramfb repeat passed. No runner GPU replacement was adopted.",
+    "Full temporary logs and binaries are not published; selected diagnostics, exact artifact identities and captured ACPI bytes are retained here."
+  ],
+  "validation": {
+    "host_uart_controls": 5,
+    "C_terminal_allocation_rendering_controls": "passed",
+    "strict_final_kernel_clippy": "passed",
+    "workspace_formatting": "passed",
+    "whitespace": "passed"
+  }
+}

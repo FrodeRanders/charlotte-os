@@ -231,15 +231,21 @@ impl GicV3 {
             asm!("msr ICC_SRE_EL1, {}", in(reg) sre, options(nomem, nostack, preserves_flags));
             asm!("isb", options(nomem, nostack, preserves_flags));
             // The UEFI firmware may leave an acknowledged-but-never-EOI'd
-            // interrupt (e.g. an NVMe MSI it consumed while loading the
-            // kernel) active in the Group 0/1 active-priority registers. That
+            // Group 1 interrupt (e.g. an NVMe MSI it consumed while loading the
+            // kernel) active in the Group 1 active-priority registers. That
             // stale running priority would mask later deliveries. Disable
             // Group 1 while repairing this CPU-interface state: changing the
             // active-priority registers while the group is enabled is outside
             // the GIC initialization sequence and QEMU may clear the group
             // enable as a side effect.
             asm!("msr ICC_IGRPEN1_EL1, xzr", options(nomem, nostack, preserves_flags));
-            asm!("msr ICC_AP0R0_EL1, xzr", options(nomem, nostack, preserves_flags));
+            // A single-security-state GIC grants this EL1 kernel Group 0
+            // access. Preserve its firmware-priority reset there, but do not
+            // touch the Group 0 bank in a restricted non-secure interface.
+            // Fusion ARM traps that access rather than silently ignoring it.
+            if mmio_read32(gicd_base(), GICD_CTLR) & (1 << 6) != 0 {
+                asm!("msr ICC_AP0R0_EL1, xzr", options(nomem, nostack, preserves_flags));
+            }
             asm!("msr ICC_AP1R0_EL1, xzr", options(nomem, nostack, preserves_flags));
             // Allow all interrupt priorities through, then enable Group 1 only
             // after the interface state is fully initialized.

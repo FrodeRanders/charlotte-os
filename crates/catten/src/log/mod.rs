@@ -4,8 +4,8 @@
 //! buffer and persistent log storage are not implemented yet.
 //!
 //! Output backends:
-//! - The serial console ([`serial`]) uses a PL011 UART on AArch64 and a 16550-compatible UART on
-//!   x86-64. Both support early boot logging.
+//! - The serial console ([`serial`]) uses firmware-selected PL011/16550 MMIO on AArch64 and a
+//!   port-I/O 16550 UART on x86-64. Both support early boot logging.
 //! - When the `display` feature is enabled a framebuffer terminal ([`flanterm`]) is used for the
 //!   ordinary `log!`/`logln!` macros.
 //!
@@ -133,7 +133,7 @@ pub fn panic_write(args: core::fmt::Arguments<'_>) {
 
     #[cfg(target_arch = "aarch64")]
     {
-        let mut console = serial::Pl011;
+        let mut console = serial::SerialConsole;
         let _ = console.write_fmt(args);
     }
     #[cfg(target_arch = "x86_64")]
@@ -147,8 +147,8 @@ pub fn panic_write(args: core::fmt::Arguments<'_>) {
     }
 }
 
-/// Early serial output through the PL011 on AArch64 or the 16550-compatible
-/// UART on x86-64. This preserves the caller's interrupt state.
+/// Early output through the selected architecture serial console, preserving
+/// the caller's interrupt state.
 #[macro_export]
 macro_rules! early_log {
     ($text:expr $(, $arg:expr)*) => {{

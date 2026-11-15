@@ -23,8 +23,9 @@
   boots on AArch64 (see "Display / framebuffer" below), but a usable framebuffer
   is not always provisioned by QEMU/edk2 on `virt`; the kernel falls back to the
   PL011 serial console when none is available, so serial is the reliable log
-  sink on macOS. GIC and UART MMIO base addresses are QEMU-`virt` hardcoded
-  pending device-tree support. EL0 userspace, cross-domain IPC, service restart,
+  sink on macOS. ACPI discovers GIC bases and the serial register contract;
+  QEMU-`virt` fallbacks remain where firmware descriptions are absent. Device-tree
+  support remains incomplete. EL0 userspace, cross-domain IPC, service restart,
   delegated device access, and a two-node Raft election are exercised by the
   deferred QEMU TCG boot tests. Networking is present in an ordinary TCG boot;
   the opt-in virtio-net verifier also runs under TCG,
@@ -120,8 +121,10 @@ cornerstone of Catten's async-first model:
 - GIC MMIO mapped as Device memory before first use.
 
 ### 5. Boot enablement
-- **PL011 UART serial console** (`log/serial.rs`) as the AArch64 log backend,
-  mapped as Device memory via the HHDM; `early_log`/`log`/`logln` routed to it.
+- **Firmware-selected serial console** (`log/serial.rs`): PL011 word MMIO or
+  16550 byte MMIO from validated SPCR metadata, mapped as Device memory through
+  the HHDM. `early_log`/`log`/`logln` use this sink. Failed transmit polling is
+  bounded and disables the sink rather than preventing framebuffer progress.
 - `scripts/run-aarch64.sh`: macOS-friendly image build + QEMU run.
 - `Justfile`: `create-image` delegates to the shared, mount-free boot-image
   builder and selects the architecture-correct EFI file (`BOOTAA64.EFI`);
@@ -145,9 +148,17 @@ boots:
   panicking, and `log!`/`logln!` fall back to the PL011 serial console so output
   is never lost.
 - **Status.** When Limine hands over a usable framebuffer (e.g. `ramfb` with a
-  real framebuffer) flanterm initialises (observed 800×600×32). GOP mode
-  provisioning on QEMU aarch64 `virt` + edk2 is itself flaky between boots and is
-  outside the kernel's control; the serial fallback covers the gap.
+  real framebuffer) flanterm initialises (observed 800×600×32). A four-LP
+  `release --minimal --display --smp 4` run on QEMU 11.1.2 displayed scrolling
+  boot text and `BOOT COMPLETE`, with authenticated HTTPS HTML also verified.
+  GOP mode
+  provisioning remains unqualified across QEMU/edk2 configurations. The
+  [15 November investigation](../reports/investigations/2026-11-15-fusion-arm-console.md)
+  captured a ramfb run stalled before kernel entry, while the identical kernel
+  booted headless. A VirtIO GPU comparison booted with no Limine framebuffer
+  response and an inactive display; it is not a replacement display fix. These
+  results do not establish the cause of all earlier framebuffer failures; the
+  later successful ramfb repeat is recorded separately in that investigation.
 
 ## Bugs found only by booting
 

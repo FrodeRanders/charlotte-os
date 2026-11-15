@@ -149,6 +149,12 @@ the corrected RPC polling paths, and the remaining notification gaps.
 
 ## Trust, boot and placement
 
+- Early ARM serial discovery must preserve the SPCR interface and GAS access
+  width as well as its base. Never drive an advertised 16550 or unsupported
+  interface as PL011, or use a QEMU address after rejecting a present table.
+  Bound polling before IRQ/CQ readiness exists and disable a failed log sink
+  without enabling IRQs or blocking framebuffer progress. Group 1 GIC startup
+  must not unconditionally access a hosted interface's Group 0 priority bank.
 - Validate the firmware LP count through the shared scheduler limit before any
   per-LP factory or secondary startup. Optional framebuffer consoles retain the
   complete opaque C backend context for the boot lifetime; never adopt its base

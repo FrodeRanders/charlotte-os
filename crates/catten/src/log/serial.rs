@@ -1,20 +1,10 @@
-//! # AArch64 PL011 UART Serial Console
+//! Early AArch64 serial console: firmware-described PL011 or byte-MMIO 16550.
 //!
-//! A minimal driver for the ARM PrimeCell PL011 UART, used as the kernel's
-//! early and headless log sink on AArch64. On the QEMU `virt` machine the first
-//! PL011 lives at physical address `0x0900_0000`; Limine has already configured
-//! and enabled it before handing control to the kernel, so we only need to push
-//! bytes into the transmit FIFO.
-//!
-//! The device is reached through the higher half direct map (HHDM). The kernel
-//! requests Limine base revision 6, whose HHDM does *not* cover MMIO, so
-//! [`init`] maps the PL011 page explicitly before any output; the very first
-//! bytes of `bsp_main` are therefore the console becoming usable as an *early*
-//! console. The UART base is discovered from the SPCR ACPI table where
-//! available (e.g. QEMU `sbsa-ref`, real ARM servers) and falls back to the
-//! QEMU `virt` default otherwise.
-//!
-//! See the ARM PrimeCell UART (PL011) Technical Reference Manual (ARM DDI 0183).
+//! SPCR selects the register family, access width and physical address. Only a
+//! missing SPCR permits the historical QEMU-virt PL011 fallback. Firmware owns
+//! initial UART programming; this adapter maps its window and transmits without
+//! allocation or interrupt-driven waits. Unsupported/failed consoles disable
+//! output so that framebuffer diagnostics and boot can still make progress.
 
 use core::{
     fmt::{
@@ -23,6 +13,7 @@ use core::{
     },
     sync::atomic::{
         AtomicBool,
+        AtomicU8,
         AtomicUsize,
         Ordering,
     },
@@ -30,122 +21,207 @@ use core::{
 
 use spin::Mutex;
 
-use crate::cpu::isa::{
-    interface::memory::address::PhysicalAddress,
-    memory::address::paddr::PAddr,
+use crate::{
+    cpu::isa::interface::memory::address::PhysicalAddress,
+    environment::serial_port::{
+        SerialPort,
+        UartKind,
+    },
+    memory::PAddr,
 };
 
-/// Fallback: QEMU `virt` PL011 UART0 MMIO physical base address.
-const PL011_BASE_FALLBACK: usize = 0x0900_0000;
+const PL011: u8 = 1;
+const MMIO_16550: u8 = 2;
+const PL011_FR: usize = 0x18;
+const PL011_TXFF: u32 = 1 << 5;
+const PL011_RXFE: u32 = 1 << 4;
+const LSR: usize = 5;
+const THRE: u8 = 1 << 5;
+const DATA_READY: u8 = 1;
+// Early/panic logging has no initialized IRQ/CQ notification contract. Bound
+// each transmitter observation; a stuck/missing UART disables this sink rather
+// than holding the logger/IRQ mask indefinitely. Never enable IRQs to wait.
+const TRANSMIT_POLLS: usize = 100_000;
 
-/// The resolved PL011 MMIO base, discovered from the SPCR ACPI table (or the
-/// QEMU `virt` default when ACPI is absent). Read via atomics because `reg_ptr`
-/// runs from `early_logln!` before any `init()` has completed.
-static PL011_BASE: AtomicUsize = AtomicUsize::new(PL011_BASE_FALLBACK);
+static BASE: AtomicUsize = AtomicUsize::new(0);
+static KIND: AtomicU8 = AtomicU8::new(0);
+static READY: AtomicBool = AtomicBool::new(false);
 
-/// Data register: writing a byte transmits it; reading it receives a byte.
-const UARTDR: usize = 0x00;
-/// Flag register.
-const UARTFR: usize = 0x18;
-/// Flag register bit: transmit FIFO full.
-const UARTFR_TXFF: u32 = 1 << 5;
-/// Flag register bit: receive FIFO empty.
-const UARTFR_RXFE: u32 = 1 << 4;
+pub static SERIAL: Mutex<SerialConsole> = Mutex::new(SerialConsole);
 
-/// The global serial console instance guarding ordered access to the UART.
-pub static SERIAL: Mutex<Pl011> = Mutex::new(Pl011);
-
-/// Map the PL011 MMIO page into the kernel address space so it is reachable
-/// through the HHDM, then mark the console ready.
-///
-/// This must be called before any `log`/`logln` output on AArch64. It is safe to
-/// call more than once (subsequent calls are no-ops). Until it has run, output
-/// is silently dropped rather than faulting on the unmapped MMIO page.
 pub fn init() {
-    // Discover the console UART base from the SPCR table before mapping. This
-    // runs before the kernel heap is ready, so discovery walks the XSDT without
-    // allocating. On QEMU `virt` SPCR reports the same `0x0900_0000`; on
-    // `sbsa-ref` and real ARM servers the console PL011 lives elsewhere.
-    #[cfg(feature = "acpi")]
-    if let Some(base) = crate::environment::acpi::sdt::discovery::spcr_uart_base() {
-        PL011_BASE.store(base as usize, Ordering::Release);
+    if READY.load(Ordering::Acquire) {
+        return;
     }
-    use crate::memory::KERNEL_AS;
-    KERNEL_AS
-        .lock()
-        .map_mmio_region(PL011_BASE.load(Ordering::Acquire), 0x1000)
-        .expect("Failed to map PL011 UART MMIO region");
+    let fallback = SerialPort {
+        kind: UartKind::Pl011,
+        base: 0x0900_0000,
+    };
+    #[cfg(feature = "acpi")]
+    let port = match crate::environment::acpi::sdt::discovery::spcr_console_uart() {
+        Ok(Some(port)) => port,
+        Ok(None) => fallback,
+        Err(_) => return,
+    };
+    #[cfg(not(feature = "acpi"))]
+    let port = fallback;
+    if crate::memory::KERNEL_AS.lock().map_mmio_region(port.base, 0x1000).is_err() {
+        return;
+    }
+    BASE.store(port.base, Ordering::Relaxed);
+    KIND.store(
+        match port.kind {
+            UartKind::Pl011 => PL011,
+            UartKind::Mmio16550 => MMIO_16550,
+        },
+        Ordering::Relaxed,
+    );
     READY.store(true, Ordering::Release);
 }
 
-/// Whether [`init`] has mapped the UART MMIO and the console may be used.
-static READY: AtomicBool = AtomicBool::new(false);
+pub struct SerialConsole;
 
-pub struct Pl011;
+impl SerialConsole {
+    fn pointer(offset: usize) -> *mut u8 {
+        // Kernel hardware adapter: the validated firmware window was mapped
+        // before READY publication and remains mapped for the boot lifetime.
+        unsafe { PAddr::from((BASE.load(Ordering::Relaxed) + offset) as u64).into_hhdm_mut::<u8>() }
+    }
 
-impl Pl011 {
-    #[inline]
-    fn reg_ptr(offset: usize) -> *mut u32 {
-        // SAFETY: PL011_BASE is a valid MMIO physical address that Limine maps
-        // into the HHDM, and `offset` is within the device's register window.
-        unsafe {
-            PAddr::from(PL011_BASE.load(Ordering::Acquire) as u64)
-                .into_hhdm_mut::<u32>()
-                .byte_add(offset)
+    fn put_byte(&self, byte: u8) -> bool {
+        if !READY.load(Ordering::Acquire) {
+            return false;
         }
+        for _ in 0..TRANSMIT_POLLS {
+            let ready = match KIND.load(Ordering::Relaxed) {
+                PL011 => {
+                    let flags = unsafe { Self::pointer(PL011_FR).cast::<u32>().read_volatile() };
+                    if flags == u32::MAX {
+                        break;
+                    }
+                    flags & PL011_TXFF == 0
+                }
+                MMIO_16550 => {
+                    let status = unsafe { Self::pointer(LSR).read_volatile() };
+                    if status == u8::MAX {
+                        break;
+                    }
+                    status & THRE != 0
+                }
+                _ => break,
+            };
+            if ready {
+                unsafe {
+                    if KIND.load(Ordering::Relaxed) == PL011 {
+                        Self::pointer(0).cast::<u32>().write_volatile(byte as u32);
+                    } else {
+                        Self::pointer(0).write_volatile(byte);
+                    }
+                }
+                return true;
+            }
+            core::hint::spin_loop();
+        }
+        READY.store(false, Ordering::Release);
+        false
     }
 
-    #[inline]
-    fn is_tx_full() -> bool {
-        unsafe { core::ptr::read_volatile(Self::reg_ptr(UARTFR)) & UARTFR_TXFF != 0 }
-    }
-
-    /// Receive a byte if the RX FIFO holds one. Returns `None` when no input
-    /// is available (used by the kernel admin console).
-    #[inline]
     pub fn try_get_byte(&self) -> Option<u8> {
         if !READY.load(Ordering::Acquire) {
             return None;
         }
-        let flags = unsafe { core::ptr::read_volatile(Self::reg_ptr(UARTFR)) };
-        if flags & UARTFR_RXFE != 0 {
-            return None;
-        }
-        let value = unsafe { core::ptr::read_volatile(Self::reg_ptr(UARTDR)) };
-        // The upper bits hold line/overrun/parity status; only the low byte
-        // is data.
-        Some((value & 0xff) as u8)
-    }
-
-    /// Transmit a single byte, spinning while the FIFO is full.
-    #[inline]
-    pub fn put_byte(&self, byte: u8) {
-        while Self::is_tx_full() {
-            core::hint::spin_loop();
-        }
-        unsafe {
-            core::ptr::write_volatile(Self::reg_ptr(UARTDR), byte as u32);
-        }
-    }
-
-    /// Transmit a string, translating newlines to CRLF so terminals render the
-    /// output correctly. Output is dropped until [`init`] has mapped the UART.
-    pub fn write_bytes(&self, s: &str) {
-        if !READY.load(Ordering::Acquire) {
-            return;
-        }
-        for byte in s.bytes() {
-            if byte == b'\n' {
-                self.put_byte(b'\r');
+        match KIND.load(Ordering::Relaxed) {
+            PL011 => {
+                let flags = unsafe { Self::pointer(PL011_FR).cast::<u32>().read_volatile() };
+                (flags != u32::MAX && flags & PL011_RXFE == 0)
+                    .then(|| unsafe { Self::pointer(0).cast::<u32>().read_volatile() as u8 })
             }
-            self.put_byte(byte);
+            MMIO_16550 => {
+                let status = unsafe { Self::pointer(LSR).read_volatile() };
+                (status != u8::MAX && status & DATA_READY != 0)
+                    .then(|| unsafe { Self::pointer(0).read_volatile() })
+            }
+            _ => None,
         }
     }
 }
 
-impl Write for Pl011 {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
-        self.write_bytes(s);
+impl Write for SerialConsole {
+    fn write_str(&mut self, text: &str) -> fmt::Result {
+        if !READY.load(Ordering::Acquire) {
+            return Ok(());
+        }
+        for byte in text.bytes() {
+            if byte == b'\n' && !self.put_byte(b'\r') {
+                return Err(fmt::Error);
+            }
+            if !self.put_byte(byte) {
+                return Err(fmt::Error);
+            }
+        }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[repr(align(4))]
+    struct Registers([u8; 64]);
+
+    fn select(registers: &mut Registers, kind: u8) {
+        BASE.store(registers.0.as_mut_ptr() as usize, Ordering::Relaxed);
+        KIND.store(kind, Ordering::Relaxed);
+        READY.store(true, Ordering::Release);
+    }
+
+    #[test]
+    fn transmit_uses_the_selected_register_width_and_status_offset() {
+        let mut registers = Registers([0; 64]);
+        registers.0[LSR] = THRE;
+        registers.0[1] = 0xa5;
+        select(&mut registers, MMIO_16550);
+        SerialConsole.write_str("A").unwrap();
+        assert_eq!(&registers.0[..2], &[b'A', 0xa5]);
+
+        registers.0[PL011_FR] = 0;
+        select(&mut registers, PL011);
+        SerialConsole.write_str("B").unwrap();
+        assert_eq!(&registers.0[..4], &[b'B', 0, 0, 0]);
+    }
+
+    #[test]
+    fn receive_requires_family_specific_data_ready() {
+        let mut registers = Registers([0; 64]);
+        registers.0[0] = b'R';
+        select(&mut registers, MMIO_16550);
+        assert_eq!(SerialConsole.try_get_byte(), None);
+        registers.0[LSR] = DATA_READY;
+        assert_eq!(SerialConsole.try_get_byte(), Some(b'R'));
+        select(&mut registers, PL011);
+        registers.0[PL011_FR] = PL011_RXFE as u8;
+        assert_eq!(SerialConsole.try_get_byte(), None);
+        unsafe { registers.0.as_mut_ptr().add(PL011_FR).write_volatile(0) };
+        assert_eq!(SerialConsole.try_get_byte(), Some(b'R'));
+    }
+
+    #[test]
+    fn stuck_or_missing_transmitter_disables_output() {
+        for (kind, status) in
+            [(PL011, PL011_TXFF), (PL011, u32::MAX), (MMIO_16550, 0), (MMIO_16550, 0xff)]
+        {
+            let mut registers = Registers([0; 64]);
+            if kind == PL011 {
+                registers.0[PL011_FR..PL011_FR + 4].copy_from_slice(&status.to_le_bytes());
+            } else {
+                registers.0[LSR] = status as u8;
+            }
+            select(&mut registers, kind);
+            assert!(SerialConsole.write_str("X").is_err());
+            assert!(!READY.load(Ordering::Acquire));
+            assert_eq!(registers.0[0], 0);
+            assert_eq!(SerialConsole.write_str("disabled"), Ok(()));
+        }
     }
 }

@@ -81,7 +81,7 @@ cargo build --package catten \
 
 The \texttt{display} feature requires a C library for the flanterm
 framebuffer terminal. Headless boot uses serial output only (AArch64:
-PL011 UART; x86-64: 16550 COM1).
+firmware-selected PL011 or MMIO 16550; x86-64: port-I/O 16550 COM1).
 
 \subsection{Userspace service programs}
 

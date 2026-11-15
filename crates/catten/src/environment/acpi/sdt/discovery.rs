@@ -111,6 +111,32 @@ pub fn spcr_uart_base() -> Option<u64> {
     (base != 0).then_some(base)
 }
 
+/// The advertised firmware console cannot be safely driven by this kernel.
+#[derive(Clone, Copy, Debug)]
+pub struct UnsupportedSerialPort;
+
+/// Preserve the UART interface and GAS access width, not just its base address.
+/// `Ok(None)` means no SPCR; an invalid/unsupported advertised console is an
+/// error and must not authorize a fallback device access.
+#[cfg(target_arch = "aarch64")]
+pub fn spcr_console_uart()
+-> Result<Option<crate::environment::serial_port::SerialPort>, UnsupportedSerialPort> {
+    let Some(address) = find_table_physical(*b"SPCR") else {
+        return Ok(None);
+    };
+    let header = unsafe { &*PAddr::from(address).into_hhdm_ptr::<SdtHeader>() };
+    let length = header.length;
+    if !(80..=crate::environment::acpi::MAX_ACPI_TABLE_LEN).contains(&length) {
+        return Err(UnsupportedSerialPort);
+    }
+    let bytes = unsafe {
+        core::slice::from_raw_parts(PAddr::from(address).into_hhdm_ptr::<u8>(), length as usize)
+    };
+    crate::environment::serial_port::SerialPort::from_spcr(bytes)
+        .map(Some)
+        .ok_or(UnsupportedSerialPort)
+}
+
 /// The console UART's interrupt (a GIC SPI INTID) from the SPCR table, if
 /// present. Layout: after the GAS, `InterruptType` (1) + `PCATCompatible` (1),
 /// then the 32-bit `Interrupt` field.

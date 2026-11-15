@@ -48,8 +48,9 @@ requires ARM guests and UEFI on Apple silicon and lists SATA and NVMe disks.
   signed services from the kernel's installation bundle. The QEMU runner's
   preseeded disk is not copied into this appliance.
 - The kernel includes the framebuffer console for the firmware-provided
-  display. A serial file sink is configured for investigation, but a compatible
-  kernel serial console has not been established.
+  display. The captured Fusion SPCR selects an 8-bit MMIO 16550 at `0x3fff03f8`
+  (interface `0x12`, GSI 36); the kernel selects that register contract and writes
+  boot diagnostics to `charlotte-serial.log`.
 - Networking is disabled. Broadcom recommends VMXNET3 for ARM guests;
   CharlotteOS has no VMXNET3 driver, and its AArch64 service bundle does not
   include the x86 appliance's E1000E driver.
@@ -64,19 +65,32 @@ can run. See [management TLS](../reference/management-tls.md).
 
 ## Bring-up limits
 
-The current ARM kernel expects a PL011 UART (discovered from SPCR, otherwise
-using the QEMU `virt` address), GICv3, PCIe ECAM and a supported MSI path. These
-must be checked against Fusion's actual ACPI tables and virtual hardware.
-Framebuffer support does not replace the early UART initialization path.
+The [Fusion 26.0.1 investigation](../reports/investigations/2026-11-15-fusion-arm-console.md)
+reproduced the initial silent boot in a separate VM. The kernel had interpreted
+Fusion's 16550 as PL011 and spun on an all-ones status word before framebuffer
+initialization. SPCR-aware serial selection fixes that hang. Group 1 GIC startup
+also no longer unconditionally writes the Group 0 active-priority register that
+Fusion rejects; single-security-state controllers retain their priority reset.
+With both fixes the four-LP minimal guest initializes serial, a 1024-by-768
+framebuffer terminal, GIC and services, then stops at durable-storage readiness.
+The final diagnostic's visible, scrolling terminal output was also inspected.
+Panic diagnostics currently remain serial-only.
+
+The captured MADT describes GICv3 distributor `0x2c010000`, redistributors
+`0x2c100000`, and a GICv2m MSI frame at `0x2c080000`. The current MSI allocator
+only supports the QEMU-virt fixed GICv2m geometry or an ITS; it rejects this
+frame and skips storage. MADT-driven GICv2m discovery remains required.
 
 Protected userspace NVMe requires a discoverable, supported SMMUv3/IORT mapping.
+The captured XSDT has no IORT and the guest reports no supported SMMUv3.
 The x86 VMX's `vvtd.enable` requests Intel VT-d and is deliberately absent here;
 it cannot establish an ARM IOMMU contract. If Fusion does not expose a usable
 SMMU and interrupt path, storage/service startup will remain unavailable.
 The builder neither disables DMA isolation nor selects QEMU's `hvf_compat`
 fixture to bypass hardware checks.
 
-Fusion ARM boot, first-boot installation, persistent restart, self-tests and
-networking remain unqualified. Keep `vmware.log`, any serial output and a
+Full Fusion ARM boot, first-boot installation, persistent restart, self-tests and
+networking remain unqualified. The current terminal result is `local readiness
+requires durable storage`, not a passing boot. Keep `vmware.log`, serial output and a
 framebuffer capture from attempted boots when investigating the next platform
 boundary. QEMU ARM results do not qualify this machine.

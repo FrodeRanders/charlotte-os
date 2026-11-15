@@ -144,6 +144,18 @@ lookups retain their existing bounded, claim-aware paths.
 
 ## Framebuffer terminal
 
+ARM early serial precedes the first framebuffer allocation. SPCR selects PL011
+word MMIO or supported 16550 byte MMIO using its interface/GAS contract. Missing
+SPCR retains the legacy QEMU-virt PL011 fallback; an invalid/unsupported present
+table disables the sink. The boot-lifetime kernel mapping is prepared before
+base/kind publication. No runtime capability or new backing owner is introduced.
+Transmit polls at most 100,000 status reads per byte because this early/panic
+path has no initialized IRQ/CQ notification contract. All-ones status or exhausted
+polling disables the sink, retaining the caller's IRQ policy and allowing
+framebuffer/boot progress. This is bounded hardware polling, not readiness.
+The [Fusion ARM capture](../reports/investigations/2026-11-15-fusion-arm-console.md)
+qualifies the byte-MMIO path and records separate display limits.
+
 The optional `display` profile initializes one terminal from the bootloader
 framebuffer on first ordinary logging after heap initialization, before EL0
 services. The fixed 8-by-16, 256-glyph font and no-canvas configuration feed the

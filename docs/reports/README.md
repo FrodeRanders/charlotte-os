@@ -20,6 +20,7 @@ execution records. For current knowledge and work, use:
 
 ## Investigations
 
+- [Fusion ARM early-console and platform bring-up](investigations/2026-11-15-fusion-arm-console.md)
 - [X86 kernel SysV/SSE2 qualification](investigations/2026-11-15-kernel-sse2.md)
 - [X86 SysV/SSE2 runtime ABI 4 qualification](investigations/2026-11-15-x86-sysv-abi.md)
 - [Freestanding x86 soft-float future-incompatibility warning](investigations/2026-11-15-x86-softfloat-future-incompatibility.md)
