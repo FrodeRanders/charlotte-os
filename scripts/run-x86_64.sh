@@ -29,6 +29,7 @@
 #   --minimal      Boot validation + operational services; omit guest regression fixtures
 #   --tests        Include the registered native regression suite (development default)
 #   debug|release  Optimization/debug-info profile, independent of --minimal/--tests
+#   CATTEN_SERVICE_HEARTBEATS=0|1  Periodic service console logs (minimal: off; tests: on)
 #   --clean        Remove all cached x86_64 target artifacts before building
 #   --gdb          Start QEMU paused with a gdb stub
 #   --gdb-port PORT  GDB stub port (default: 1234)

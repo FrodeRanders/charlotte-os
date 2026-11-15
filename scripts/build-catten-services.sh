@@ -46,12 +46,13 @@ for service in "${SERVICES[@]}"; do build_bins+=(--bin "$service"); done
 
 cargo build --locked --manifest-path "$MANIFEST" --target "$TARGET" \
     --target-dir crates/catten-services/target \
-    --release -Z build-std=core,alloc "${build_bins[@]}"
+    --release -Z build-std=core,alloc "${SERVICE_FEATURE_ARGS[@]}" "${build_bins[@]}"
 
 if [ "$MODE" = "embed" ]; then
     mkdir -p "$(dirname "$BUNDLE")"
     STAGING="$(mktemp -d "$(dirname "$BUNDLE")/.aarch64-services.XXXXXX")"
     trap 'rm -rf -- "$STAGING"' EXIT
+    printf '%s\n' "$SERVICE_HEARTBEATS" > "$STAGING/service-heartbeats"
     for service in "${SERVICES[@]}"; do
         install -m 0755 "$OUTPUT/$service" \
             "$STAGING/$service.elf"

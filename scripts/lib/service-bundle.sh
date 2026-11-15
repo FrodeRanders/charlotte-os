@@ -7,6 +7,17 @@ catten_service_bundle() {
         minimal|test) ;;
         *) echo "error: bundle mode must be minimal or test" >&2; return 1 ;;
     esac
+    local default_heartbeats=1
+    [ "$mode" != "minimal" ] || default_heartbeats=0
+    SERVICE_HEARTBEATS="${CATTEN_SERVICE_HEARTBEATS-$default_heartbeats}"
+    case "$SERVICE_HEARTBEATS" in
+        0|1) ;;
+        *) echo "error: CATTEN_SERVICE_HEARTBEATS must be 0 or 1" >&2; return 1 ;;
+    esac
+    SERVICE_FEATURE_ARGS=(--no-default-features)
+    if [ "$SERVICE_HEARTBEATS" = "1" ]; then
+        SERVICE_FEATURE_ARGS+=(--features service-heartbeats)
+    fi
     SERVICES=(ns observe otlp grantctl nvme objstore net disco frouter dns agent
               relmsg tcpip httpd time s3 kafka rng fs clusterctl deployd)
     case "$arch" in
@@ -29,6 +40,11 @@ catten_service_bundle() {
 
 catten_validate_service_bundle() {
     local mode="$1" arch="$2" service elf name
+    if [ ! -f "$BUNDLE/service-heartbeats" ] \
+        || [ "$(cat "$BUNDLE/service-heartbeats")" != "$SERVICE_HEARTBEATS" ]; then
+        echo "error: $mode bundle heartbeat setting is missing or stale; rebuild the service bundle" >&2
+        return 1
+    fi
     for service in "${SERVICES[@]}"; do
         if [ ! -f "$BUNDLE/$service.elf" ]; then
             echo "error: $mode bundle is missing $service.elf: $BUNDLE" >&2

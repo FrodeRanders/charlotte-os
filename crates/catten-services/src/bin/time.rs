@@ -55,6 +55,7 @@ const REQUEST_TIMEOUT_MS: u64 = 5_000;
 const RETRY_INTERVAL_SECONDS: u64 = 64;
 const SYNC_INTERVAL_SECONDS: u64 = 900;
 const PERSIST_TIMEOUT_SECONDS: u64 = 30;
+#[cfg(feature = "service-heartbeats")]
 const HEARTBEAT_INTERVAL_SECONDS: u64 = 60;
 const MAX_DRIFT_PPB: i64 = 500_000;
 const UNCERTAINTY_FLOOR_PPB: u64 = 50_000;
@@ -930,6 +931,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let mut attempt: Option<Attempt> = None;
     let mut persistence = CalibrationPersistence::new();
     let mut ntp_failures: u32 = 0;
+    #[cfg(feature = "service-heartbeats")]
     let mut next_heartbeat_ticks = ticks_after(initial_mono, HEARTBEAT_INTERVAL_SECONDS);
     let cq = ctx.completion_queue_layout();
 
@@ -951,6 +953,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             persistence.poll(obj_conn.as_ref(), now_mono);
         }
 
+        #[cfg(feature = "service-heartbeats")]
         if now_mono.ticks >= next_heartbeat_ticks {
             catten_rt::logln!(
                 "[time] hb state={} samples={} ntp_active={} persist_stage={} persist_timeouts={}",

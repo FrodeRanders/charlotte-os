@@ -185,9 +185,10 @@ fn resource_socket_capacity(heap_bytes: usize, requested: usize, reserved: usize
     requested.min(heap_slots.max(reserved.max(1)))
 }
 
-/// Monotonic reactor-tick counter for periodic heartbeat logging.
+/// Monotonic reactor-tick counter for status reporting and optional heartbeat logging.
 static HEARTBEAT_TICKS: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
 
+#[cfg(feature = "service-heartbeats")]
 #[derive(Default)]
 struct SocketSummary {
     tcp_listen: usize,
@@ -201,6 +202,7 @@ struct SocketSummary {
     send_ready: usize,
 }
 
+#[cfg(feature = "service-heartbeats")]
 fn summarize_sockets(state: &TcpipState, sockets: &SocketSet<'_>) -> SocketSummary {
     let mut summary = SocketSummary::default();
     for entry in state.sockets.values() {
@@ -537,6 +539,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let mut rx_queue_drops = 0u64;
     let mut rx_total: u32 = 0;
     let mut rx_map_errors: u32 = 0;
+    #[cfg(feature = "service-heartbeats")]
     let mut rx_last_map_status: u32 = 0;
     let mut tx_ok: u32 = 0;
     let mut tx_err: u32 = 0;
@@ -602,6 +605,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         // `tx_err` count client OP_SEND calls.
         let tick = HEARTBEAT_TICKS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
         config::write::<u64>(status::REACTOR_CYCLES, tick.saturating_add(1));
+        #[cfg(feature = "service-heartbeats")]
         if tick & 0x3ff == 0 {
             let summary = summarize_sockets(&state, &sockets);
             catten_rt::logln!(
@@ -1404,9 +1408,15 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     if scratch_vaddr_2_map_status != 0 {
                         memory_close(msg.memory);
                         rx_map_errors = rx_map_errors.wrapping_add(1);
-                        rx_last_map_status = scratch_vaddr_2_map_status as u32;
+                        #[cfg(feature = "service-heartbeats")]
+                        {
+                            rx_last_map_status = scratch_vaddr_2_map_status as u32;
+                        }
                         config::write::<u32>(status::RX_MAP_ERRORS, rx_map_errors);
-                        config::write::<u32>(status::RX_LAST_MAP_STATUS, rx_last_map_status);
+                        config::write::<u32>(
+                            status::RX_LAST_MAP_STATUS,
+                            scratch_vaddr_2_map_status as u32,
+                        );
                         ipc_reply(msg.reply, socket::ERR_WOULD_BLOCK);
                         continue;
                     }

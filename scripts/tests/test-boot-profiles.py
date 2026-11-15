@@ -3,6 +3,7 @@
 
 import importlib.util
 import hashlib
+import os
 from pathlib import Path
 import struct
 import subprocess
@@ -95,13 +96,17 @@ class BootProfiles(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"OTLP profile"):
             profile.validate(elf("minimal"),"minimal",otlp_sha256=disabled)
 
-    def bundle(self, arch, mode, root, validate=False):
+    def bundle(self, arch, mode, root, validate=False, heartbeat=None):
         code = ('source "$1/scripts/lib/service-bundle.sh"; '
                 'catten_service_bundle "$2" "$3" "$4"; '
                 + ('catten_validate_service_bundle "$3" "$2"' if validate
                    else 'printf "%s\\n" "$BUNDLE" "${SERVICES[@]}"'))
+        env = os.environ.copy()
+        env.pop("CATTEN_SERVICE_HEARTBEATS", None)
+        if heartbeat is not None:
+            env["CATTEN_SERVICE_HEARTBEATS"] = heartbeat
         return subprocess.run(["bash", "-c", code, "profile-test", str(ROOT), arch, mode, str(root)],
-                              capture_output=True, text=True)
+                              capture_output=True, text=True, env=env)
 
     def test_minimal_bundle_rejects_missing_services_and_stale_probes(self):
         for arch in ("aarch64", "x86_64"):
@@ -118,6 +123,7 @@ class BootProfiles(unittest.TestCase):
                 self.assertIn("httpd", services)
                 self.assertNotEqual(self.bundle(arch, "minimal", directory, True).returncode, 0)
                 Path(bundle).mkdir(parents=True)
+                Path(bundle, "service-heartbeats").write_text("0\n")
                 for name in services:
                     Path(bundle, name + ".elf").touch()
                 self.assertEqual(self.bundle(arch, "minimal", directory, True).returncode, 0)
@@ -126,6 +132,34 @@ class BootProfiles(unittest.TestCase):
                 test = self.bundle(arch, "test", directory).stdout.splitlines()
                 self.assertNotEqual(bundle, test[0])
                 self.assertIn("security_probe", test[1:])
+
+    def test_cached_bundle_must_match_heartbeat_selection(self):
+        for arch in ("aarch64", "x86_64"):
+            for mode, default in (("minimal", "0"), ("test", "1")):
+                with self.subTest(arch=arch, mode=mode), tempfile.TemporaryDirectory() as directory:
+                    bundle, *services = self.bundle(arch, mode, directory).stdout.splitlines()
+                    Path(bundle).mkdir(parents=True)
+                    for name in services:
+                        Path(bundle, name + ".elf").touch()
+                    marker = Path(bundle, "service-heartbeats")
+                    self.assertNotEqual(self.bundle(arch, mode, directory, True).returncode, 0)
+                    marker.write_text(default + "\n")
+                    self.assertEqual(self.bundle(arch, mode, directory, True).returncode, 0)
+                    other = "1" if default == "0" else "0"
+                    self.assertNotEqual(self.bundle(arch, mode, directory, True, other).returncode, 0)
+                    marker.write_text(other + "\n")
+                    self.assertEqual(self.bundle(arch, mode, directory, True, other).returncode, 0)
+
+    def test_invalid_heartbeat_setting_rejects_before_building(self):
+        for script in ("run-aarch64.sh", "run-x86_64.sh",
+                       "build-catten-services.sh", "build-catten-services-x86_64.sh"):
+            for value in ("", "true", "2"):
+                with self.subTest(script=script, value=value):
+                    result = subprocess.run(
+                        [str(ROOT / "scripts" / script)], capture_output=True, text=True,
+                        env={**os.environ, "CATTEN_SERVICE_HEARTBEATS": value})
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("CATTEN_SERVICE_HEARTBEATS must be 0 or 1", result.stderr)
 
     def test_minimal_rejects_guest_test_options_before_building(self):
         for runner in ("run-aarch64.sh", "run-x86_64.sh"):

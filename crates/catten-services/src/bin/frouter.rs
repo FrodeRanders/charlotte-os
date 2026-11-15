@@ -83,6 +83,7 @@ const SNAPSHOT_HISTORY_CAPACITY: usize = 4;
 const INGRESS_SERVICES_KEY: u64 = charlotte_launch::manifest_key(b"vips");
 
 /// Monotonic reactor-tick counter for periodic heartbeat logging.
+#[cfg(feature = "service-heartbeats")]
 static HEARTBEAT_TICKS: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
 
 /// Readiness is a hint only: the same pending owner still observes the result
@@ -700,27 +701,30 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 );
                 return request;
             }
-            // Periodic heartbeat (~every 256 reactor iterations) so a stall can
-            // be localized: if rx stops advancing here, frames are not reaching
-            // the demultiplexer from the NIC driver.
-            let tick = HEARTBEAT_TICKS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
-            if tick & 0xff == 0 {
-                catten_rt::logln!(
-                    "[frouter] hb rx={} fwd={} dropped={} unknown={} routes={} ingress={}/{}/{} \
-                     epoch={}",
-                    rx_total,
-                    forwarded,
-                    dropped,
-                    unknown,
-                    routes.len(),
-                    ingress_local,
-                    ingress_forwarded,
-                    ingress_dropped,
-                    ingress_services
-                        .first()
-                        .and_then(|state| state.snapshots.current())
-                        .map_or(0, |snapshot| snapshot.epoch)
-                );
+            #[cfg(feature = "service-heartbeats")]
+            {
+                // Periodic heartbeat (~every 256 reactor iterations) so a stall can
+                // be localized: if rx stops advancing here, frames are not reaching
+                // the demultiplexer from the NIC driver.
+                let tick = HEARTBEAT_TICKS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+                if tick & 0xff == 0 {
+                    catten_rt::logln!(
+                        "[frouter] hb rx={} fwd={} dropped={} unknown={} routes={} \
+                         ingress={}/{}/{} epoch={}",
+                        rx_total,
+                        forwarded,
+                        dropped,
+                        unknown,
+                        routes.len(),
+                        ingress_local,
+                        ingress_forwarded,
+                        ingress_dropped,
+                        ingress_services
+                            .first()
+                            .and_then(|state| state.snapshots.current())
+                            .map_or(0, |snapshot| snapshot.epoch)
+                    );
+                }
             }
             // Drain our own endpoint so status queries are served even while
             // no frames are flowing (non-blocking).

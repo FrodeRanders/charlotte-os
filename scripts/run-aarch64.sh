@@ -15,6 +15,7 @@
 #   --build-only   Produce boot/data images without starting QEMU
 #   --tests        Include the registered native regression suite (development default)
 #   debug|release  Optimization/debug-info profile, independent of --minimal/--tests
+#   CATTEN_SERVICE_HEARTBEATS=0|1  Periodic service console logs (minimal: off; tests: on)
 #   --clean        Remove all cached AArch64 target artifacts before building
 #   --display      Build with framebuffer console (flanterm), boot with ramfb
 #   --sbsa-ref     Boot the QEMU sbsa-ref machine with the TF-A + edk2 firmware

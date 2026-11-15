@@ -5,6 +5,11 @@ edition = "2024"
 description = "Reference EL0 service programs: name service, echo service, client"
 autobins = false
 
+[features]
+default = ["service-heartbeats"]
+# Periodic console diagnostics; independent of protocol/liveness heartbeats.
+service-heartbeats = []
+
 [lib]
 name = "catten_services"
 path = "src/lib.rs"

@@ -56,6 +56,7 @@ static MMIO_BASE: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUs
 /// descriptor for an incoming `OP_SEND`). Cleared when `drain_tx` frees one.
 static TX_SATURATED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
 /// Monotonic reactor-tick counter used to emit periodic TX-ring diagnostics.
+#[cfg(feature = "service-heartbeats")]
 static LOOP_TICKS: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
 // Keep transient mappings clear of the loader's per-shard CQ region at
 // 0x0080_0000 and the userspace stack arena at 0x0100_0000.
@@ -612,20 +613,23 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         let rx_unrecycled = device_used_idx.wrapping_sub(rx_used_seen);
         config::write::<u16>(status::RX_UNRECYCLED, rx_unrecycled);
         config::write::<u16>(status::RX_QUEUE_SIZE, rx_qsz);
-        // Heartbeat + ring health every ~1024 iterations (~10 s), emitted
-        // unconditionally so a stuck consumer above can be told apart from a
-        // stalled driver: `rx_unrecycled == rx_qsz` means the device has no
-        // RX buffer left and is dropping/queueing incoming frames (e.g. ACKs).
-        let loop_tick = LOOP_TICKS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
-        if loop_tick & 0x3ff == 0 {
-            let tx_busy = tx_in_use.iter().filter(|u| **u).count();
-            catten_rt::logln!(
-                "[net] hb rx_unrecycled={}/{} tx_busy={}/{}",
-                rx_unrecycled,
-                rx_qsz,
-                tx_busy,
-                tx_qsz
-            );
+        #[cfg(feature = "service-heartbeats")]
+        {
+            // Heartbeat + ring health every ~1024 iterations (~10 s), emitted
+            // when enabled so a stuck consumer above can be told apart from a
+            // stalled driver: `rx_unrecycled == rx_qsz` means the device has no
+            // RX buffer left and is dropping/queueing incoming frames (e.g. ACKs).
+            let loop_tick = LOOP_TICKS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+            if loop_tick & 0x3ff == 0 {
+                let tx_busy = tx_in_use.iter().filter(|u| **u).count();
+                catten_rt::logln!(
+                    "[net] hb rx_unrecycled={}/{} tx_busy={}/{}",
+                    rx_unrecycled,
+                    rx_qsz,
+                    tx_busy,
+                    tx_qsz
+                );
+            }
         }
         deliver_received(&mut received, &mut pending_recv);
 

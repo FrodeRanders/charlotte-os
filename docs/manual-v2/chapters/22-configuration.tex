@@ -34,6 +34,15 @@ The following inputs have different authorities and lifetimes:
     \item[Kernel resource policy.] Trusted Rust build input selects capacity
         ceilings, ordinary shares and platform reserves. It is compiled into
         the kernel and remains fixed throughout that boot.
+    \item[Service console heartbeats.] Service build input
+        \path{CATTEN_SERVICE_HEARTBEATS} accepts 0 or 1, selecting the
+        \texttt{catten-services} Cargo feature \texttt{service-heartbeats}.
+        Runners and service builders default it off for minimal bundles and on
+        for test bundles. It controls periodic \texttt{hb} console diagnostics
+        from the network drivers, frame router, TCP/IP and time services.
+        Status counters and protocol heartbeats remain active. Changing it
+        requires rebuilding the services, kernel and images, then restarting;
+        there is no live toggle. Cached bundles must match the selected setting.
     \item[Diagnostic telemetry archive.] Kernel build input
         \path{CATTEN_TELEMETRY_ARCHIVE_INTERVAL_MS} defaults to zero, disabling
         disk archiving. Values from 1000 through 86400000 enable the diagnostic

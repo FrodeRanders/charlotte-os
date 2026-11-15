@@ -42,7 +42,7 @@ done
 echo ">>> Building x86_64 EL0 services..."
 cargo build --locked --manifest-path "$MANIFEST" --target "$TARGET" \
     --target-dir crates/catten-services/target \
-    --release -Z build-std=core,alloc "${build_bins[@]}"
+    --release -Z build-std=core,alloc "${SERVICE_FEATURE_ARGS[@]}" "${build_bins[@]}"
 
 mkdir -p "$BUNDLE_PARENT"
 STAGING="$(mktemp -d "$BUNDLE_PARENT/.x86_64-services.XXXXXX")"
@@ -53,6 +53,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
+printf '%s\n' "$SERVICE_HEARTBEATS" > "$STAGING/service-heartbeats"
 for service in "${SERVICES[@]}"; do
     install -m 0755 "$OUTPUT/$service" "$STAGING/$service.elf"
 done
