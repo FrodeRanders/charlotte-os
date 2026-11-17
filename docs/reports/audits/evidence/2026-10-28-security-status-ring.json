@@ -4,8 +4,8 @@
   "toolchain": "nightly-2026-07-27",
   "scope": "Status-only preliminary runs and ring-corrected runs remain separate. No overall pass is inferred from individual control receipts.",
   "source_sha256": {
-    "crates/catten-rt/src/owned.rs": "4ed9e61e7ccb004cec59b67f7c2ff6f9507a2514201b3b783411c2380696c010",
-    "crates/catten-rt/src/owned/memory.rs": "8af6988dababe95aef2e8ada0ff44c7e383a5a39dd28e58a7951636f17ec099d",
+    "crates/knytos-rt/src/owned.rs": "4ed9e61e7ccb004cec59b67f7c2ff6f9507a2514201b3b783411c2380696c010",
+    "crates/knytos-rt/src/owned/memory.rs": "8af6988dababe95aef2e8ada0ff44c7e383a5a39dd28e58a7951636f17ec099d",
     "crates/knytos-services/src/status_observation.rs": "29380db5c6cc8350330ed5165053f7d845d6d0ff7083ee5f80d7b8c266aeeaa2",
     "crates/knytos-services/src/status_observation/contract.rs": "8eab21df0aa96a7b50804fb2491f5becfe16908bf68a2afbc50d1f22e7daa3a4",
     "crates/knytos-services/src/bin/httpd.rs": "cf3b2ec01890cecdac3d27fb9f8fdc95741600bb65f9e9cf9a4a75088f54b5cd",
@@ -628,7 +628,7 @@
       "failed": 0
     },
     "strict_clippy": [
-      "catten-rt host all targets",
+      "knytos-rt host all targets",
       "AArch64 services library/httpd/rng/security_probe",
       "freestanding x86 services library/httpd/rng/security_probe"
     ],

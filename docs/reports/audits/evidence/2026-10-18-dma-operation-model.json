@@ -160,7 +160,7 @@
     "crates/catten/src/device/vt_d.rs": "85af23420d49157e47cd594327874c4918c7bb407253c0953e17fb6724c94983",
     "crates/catten/src/device/amd_vi.rs": "6edec4e451ba0caea399a82f451c57502b565c9db8b4f8bbe86be43e35839b02",
     "crates/catten/src/device/mod.rs": "b40d6faea5a7b7f1f2ddafd6b59fc74cbc79bc611dfc56db6a4312b79d3e1a5b",
-    "crates/catten-rt/src/owned/memory.rs": "c578b79e5dbdc45906a31de769732f76d00ee7b035481290d4a7eac4ccbc9f12",
+    "crates/knytos-rt/src/owned/memory.rs": "c578b79e5dbdc45906a31de769732f76d00ee7b035481290d4a7eac4ccbc9f12",
     "crates/catten/src/syscall/mod.rs": "77986a583cb6bee56f85f381fc162735a6c16b59042efc3591ac4e05514f3eb3",
     "crates/catten-syscall/src/lib.rs": "3c84bd333d1c9a4db49d7aa186c3c7c64ac88c6509f5f97ffcb6f20651a8cf6c",
     "crates/catten/src/memory/object.rs": "d8023c7174d490bd10f682ca1fa1dbcf99917e4509544391213ded7129e739d1",

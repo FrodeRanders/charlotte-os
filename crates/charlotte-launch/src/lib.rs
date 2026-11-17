@@ -201,7 +201,7 @@ pub mod lifecycle {
     );
 }
 
-/// Standard per-domain heap accounting published by `catten-rt` in the
+/// Standard per-domain heap accounting published by `knytos-rt` in the
 /// mutable status page. The kernel reads this region when it builds the
 /// domain records of the observability snapshot, so every service's heap
 /// usage is visible without a per-service protocol.

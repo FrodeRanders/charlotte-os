@@ -12,7 +12,7 @@ These documents contain repeatable workflows rather than architectural claims.
   provenance, update validation, and measured/Secure Boot boundaries.
 - [Disposable QEMU Secure Boot tests](qemu-secure-boot.md) — signed EFI/config/
   kernel/policy chain, negative boot evidence and test-only provisioning scope.
-- [Userspace development](userspace-development.md) — `catten-rt`, entry
+- [Userspace development](userspace-development.md) — `knytos-rt`, entry
   points, launch manifests, capabilities, and service packaging.
 - [Application SDK](application-sdk.md) — application/client packaging, owned
   operation helpers, Sitas call futures, SDK project creation and host tests.

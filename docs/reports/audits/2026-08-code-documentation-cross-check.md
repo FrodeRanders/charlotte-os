@@ -309,7 +309,7 @@ should be corrected in a follow-up pass (no code change implied):
 | `charlotte-protocol-objstore` (crate doc) | "v2", "512-entry directory", "one extent" (now v3, device-scaled, ≤16 extents). |
 | `docs/reference/raft-conformance.md` | "host tests obstructed by duplicate core" (host tests pass). |
 | `docs/architecture/sitas-xous.md` | "per-shard CQ boot-validated" (not exercised by sitas test); "TX completion reclamation not claimed" (now implemented). |
-| `catten-rt` / `el0_sitas` comments | Heap VADDR "0x13000" (actual `0x30000`); stale "adder program" verifier branch. |
+| `knytos-rt` / `el0_sitas` comments | Heap VADDR "0x13000" (actual `0x30000`); stale "adder program" verifier branch. |
 
 ---
 

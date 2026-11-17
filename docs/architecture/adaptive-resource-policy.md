@@ -20,7 +20,7 @@ and structures sized by constants.
 |---|---|---|
 | Physical frames | All `MEMMAP_USABLE` RAM, no RAM cap; bitmap sized to the highest usable address | `crates/catten/src/memory/physical/mod.rs` |
 | Kernel heap | 8 MiB initial + pre-mapped growth reserve derived from usable RAM: `clamp(usable/64, 64 MiB, 256 MiB)`, 2 MiB-aligned (Phase 2) | `crates/catten/src/memory/allocators/global_allocator.rs` |
-| Domain heap | Virtual window with a load-time capacity adapted from the principal's previous peak, backed on first touch; live allocation and peak are sensed through the standard status-page record | `crates/catten-rt/src/lib.rs`, `crates/catten/src/memory/mod.rs`, `crates/catten/src/service/loader.rs` |
+| Domain heap | Virtual window with a load-time capacity adapted from the principal's previous peak, backed on first touch; live allocation and peak are sensed through the standard status-page record | `../../crates/knytos-rt`, `crates/catten/src/memory/mod.rs`, `crates/catten/src/service/loader.rs` |
 | User stack | Signed per deployment, 1–64 pages (4 KiB–256 KiB), inherited by every thread; kernel-launched services without a descriptor adapt to the principal's previous high-water (Phase 3); both architectures commit one page and grow on fault up to that budget (Phase 4) | `crates/catten/src/memory/mod.rs`, `crates/charlotte-launch/src/deployment.rs`, `crates/charlotte-lifecycle/src/lib.rs`, `crates/catten/src/cpu/isa/*/lp/thread_context*` |
 | User threads | Signed maximum, 1–64 per domain | `crates/catten/src/cpu/scheduler/system_scheduler/mod.rs` |
 | Memory-object backing | Generation-scoped page/object sponsorship, node pool derived from usable RAM, and platform/physical progress reserves | `crates/catten/src/memory/budget.rs`, `crates/charlotte-lifecycle/src/resources.rs` |
@@ -238,7 +238,7 @@ the current one-page CQ ABI does not support resizing its physical ring.
 
 ## Heap sensing and physical sizing
 
-Heap sensing is implemented. `catten-rt` wraps the domain's talc arena with an
+Heap sensing is implemented. `knytos-rt` wraps the domain's talc arena with an
 accounting layer that publishes `charlotte_launch::heap_status` (magic/version,
 capacity, currently allocated bytes, peak bytes) into the reserved region of
 the domain's own status page. The kernel reads that page when it builds the
@@ -262,7 +262,7 @@ Capacity sizing is implemented alongside it. The loader chooses the capacity
 with `charlotte_lifecycle::adaptive_heap_bytes` — twice the principal's
 previous heap peak plus 256 KiB, clamped to `[HEAP_SIZE, HEAP_VA_LIMIT]` —
 writes it into the launch header, registers it so faults beyond the claim stay
-domain errors, and `catten-rt` claims exactly that size through a lazy arena
+domain errors, and `knytos-rt` claims exactly that size through a lazy arena
 initialization. A cold boot and a lightly loaded restart keep the historical
 4 MiB capacity; evidence may grow a later generation but never shrink it below
 that compatibility floor. Demand commitment, rather than a guessed smaller
@@ -287,7 +287,7 @@ below frames it.
 
 ### Shard-local heap (study)
 
-The heap is the one serialization point inside a domain: `catten-rt` exposes a
+The heap is the one serialization point inside a domain: `knytos-rt` exposes a
 single talc arena behind a spin mutex, so any two shards that allocate contend
 even though their CQs and stacks are shard-local. Three shapes are worth
 comparing:
@@ -320,7 +320,7 @@ reinforce the recommended model rather than impose new placement constraints.
 The userspace allocator decides which memory may be shared within a protection
 domain. All shards share one address space, so the kernel cannot distinguish
 their pointers. The practical mechanism
-is a typed allocator API in `catten-rt` (shard-local versus shared owners with
+is a typed allocator API in `knytos-rt` (shard-local versus shared owners with
 `dealloc` routing), plus the rule that a shard-local allocation must not escape
 its shard. That keeps the fast path uncontended per shard while making
 deliberate sharing cost one indirection.
@@ -385,7 +385,7 @@ Endpoints now expose capacity adaptation. `IPC_ENDPOINT_RESIZE` (80) changes
 the admission bound, clamped to `MAX_ENDPOINT_CAPACITY`; queued messages are
 preserved, and a bound below the current depth only rejects new sends until
 the queue drains. `IPC_ENDPOINT_STATUS` (81) returns capacity, queued depth,
-and the depth high-water, and `catten-rt`'s owned `Endpoint` wraps both. A
+and the depth high-water, and `knytos-rt`'s owned `Endpoint` wraps both. A
 service reactor can raise its bound as the high-water approaches capacity and
 lower it when idle, always inside the hard cap.
 

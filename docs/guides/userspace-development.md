@@ -1,6 +1,6 @@
 # Knytos userspace development
 
-Knytos Rust programs use `catten-rt` as their small userspace runtime.
+Knytos Rust programs use `knytos-rt` as their small userspace runtime.
 The [application SDK guide](application-sdk.md) describes the smaller
 `charlotte-app` library, owned operation helpers, returning entry wrapper and
 independent project workflow. The [architecture note](../architecture/userspace-ergonomics.md)

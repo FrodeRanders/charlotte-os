@@ -315,7 +315,7 @@ pub fn test_el0_sitas() {
             crate::service::store::service_elf(b"sitas-user").expect("[el0_sitas] sitas-user.elf"),
         );
 
-        // --- map config page (catten-rt reads ASID from offset 16) ---
+        // --- map config page (knytos-rt reads ASID from offset 16) ---
         let config_frame = PHYSICAL_FRAME_ALLOCATOR
             .lock()
             .allocate_frame()

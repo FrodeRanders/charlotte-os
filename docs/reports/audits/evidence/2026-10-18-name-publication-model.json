@@ -32,7 +32,7 @@
     "crates/charlotte-protocol-ns/src/lib.rs": "0bd514f7eae177ef607105fe31e6c5da82d0a8c07d844f2cc6594cabf4303f11",
     "crates/catten/src/service/loader.rs": "761ec0c018ce830cf805f48b7e01587eabeb64d45ea32a86237607b164b36610",
     "crates/catten/src/service/supervisor.rs": "feaba0a4322f26c56d7cc170453312a741cbc65a1966ca4a9f42c6ff3238fd82",
-    "crates/catten-rt/src/owned/completion.rs": "c9e3db6761c685c55c71a094269fa67f12af84c2f9a3780525178f81b7782910"
+    "crates/knytos-rt/src/owned/completion.rs": "c9e3db6761c685c55c71a094269fa67f12af84c2f9a3780525178f81b7782910"
   },
   "new_model_negative_traces": {
     "CharlotteNamePublication_retire_unsafe.cfg": {

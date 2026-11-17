@@ -876,7 +876,7 @@ failure, detaches from its still-running runner instead of killing the guest.
 Its `--cleanup-on-failure` option restores teardown behavior for unattended
 automation.
 
-`catten-rt`, `catten-syscall`, and `charlotte-launch` also retain disabled
+`knytos-rt`, `catten-syscall`, and `charlotte-launch` also retain disabled
 standalone harnesses. They contain target runtime/ABI support and currently
 contain no dormant `#[test]` functions. Their host-compatible portions are
 compiled as dependencies of the `knytos-graft` and `charlotte-smoltcp` suites.

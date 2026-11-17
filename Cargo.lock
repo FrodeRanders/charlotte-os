@@ -187,17 +187,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "catten-rt"
-version = "0.1.0"
-dependencies = [
- "catten-syscall",
- "charlotte-launch",
- "charlotte-lifecycle",
- "lock_api",
- "talc",
-]
-
-[[package]]
 name = "catten-syscall"
 version = "0.1.0"
 
@@ -205,9 +194,9 @@ version = "0.1.0"
 name = "catten-user"
 version = "0.1.0"
 dependencies = [
- "catten-rt",
  "catten-syscall",
  "charlotte-app-sitas",
+ "knytos-rt",
  "sitas-charlotte",
  "sitas-core",
 ]
@@ -264,18 +253,18 @@ dependencies = [
 name = "charlotte-app"
 version = "0.1.0"
 dependencies = [
- "catten-rt",
  "charlotte-launch",
  "charlotte-protocol-grant",
  "charlotte-protocol-kafka",
  "charlotte-protocol-s3",
+ "knytos-rt",
 ]
 
 [[package]]
 name = "charlotte-app-sitas"
 version = "0.1.0"
 dependencies = [
- "catten-rt",
+ "knytos-rt",
  "sitas-core",
  "spin 0.9.9",
 ]
@@ -1070,12 +1059,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "knytos-rt"
+version = "0.1.0"
+dependencies = [
+ "catten-syscall",
+ "charlotte-launch",
+ "charlotte-lifecycle",
+ "lock_api",
+ "talc",
+]
+
+[[package]]
 name = "knytos-services"
 version = "0.1.0"
 dependencies = [
  "aes",
  "aes-gcm",
- "catten-rt",
  "catten-syscall",
  "charlotte-app",
  "charlotte-authorization",
@@ -1104,6 +1103,7 @@ dependencies = [
  "getrandom 0.4.3",
  "ghash",
  "knytos-graft",
+ "knytos-rt",
  "p256",
  "polyval",
  "rand_core",

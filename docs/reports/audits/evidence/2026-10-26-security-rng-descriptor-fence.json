@@ -28,10 +28,10 @@
     "crates/knytos-services/src/tls_client/entropy_client.rs": "e11ce22c39792592c1fca91b6e8b4c4eebb9d876c608812482d76e0b2e987e25",
     "crates/knytos-services/src/publication.rs": "7b6ea349532743d4e9d4e7ea4df16c241437000d67c696ce7aacb60ff5231c6d",
     "crates/knytos-services/src/reactor.rs": "4eec8391be19d4614495e4f631c16853c911cba8326d9a7f7bcb0f090c411956",
-    "crates/catten-rt/src/owned/device.rs": "e645f489b3a411eca04f80fea6ec6003222d2f62f78a4f1f29138b9316c41c52",
-    "crates/catten-rt/src/owned/memory.rs": "c578b79e5dbdc45906a31de769732f76d00ee7b035481290d4a7eac4ccbc9f12",
-    "crates/catten-rt/src/owned/ipc.rs": "ca68efa9790d121cc7ccb1cd4f794ae150c30fa1ca14312c3b5c4a948a02d6ed",
-    "crates/catten-rt/src/lib.rs": "fc961903e9a614f4c877104135f6c2d439702039358d862e97864d2994463099",
+    "crates/knytos-rt/src/owned/device.rs": "e645f489b3a411eca04f80fea6ec6003222d2f62f78a4f1f29138b9316c41c52",
+    "crates/knytos-rt/src/owned/memory.rs": "c578b79e5dbdc45906a31de769732f76d00ee7b035481290d4a7eac4ccbc9f12",
+    "crates/knytos-rt/src/owned/ipc.rs": "ca68efa9790d121cc7ccb1cd4f794ae150c30fa1ca14312c3b5c4a948a02d6ed",
+    "crates/knytos-rt/src/lib.rs": "fc961903e9a614f4c877104135f6c2d439702039358d862e97864d2994463099",
     "crates/catten/src/service/shutdown.rs": "063a1845808220a63ddd89ddadf63f98f6f72cdf9afcfde05302a6d2e437969a",
     "crates/catten/src/self_test/el0_security.rs": "5aa0584168320f82e32b8c1824c7467620870f18edeaed150f40c23e904285dd",
     "scripts/tests/test-rng-device-fence.py": "75a108026f836b6bd242625a6f4282bf5ffe3e774593fc223acaeb3c55d51f9e",
@@ -62,7 +62,7 @@
   "host": [
     {
       "mode": "debug",
-      "command": "cargo +nightly-2026-07-27 test --locked -p knytos-services -p catten-rt -p charlotte-transport-tests --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml",
+      "command": "cargo +nightly-2026-07-27 test --locked -p knytos-services -p knytos-rt -p charlotte-transport-tests --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml",
       "cwd": "/private/tmp",
       "exit_code": 0,
       "runtime_tests": 382,
@@ -199,7 +199,7 @@
     },
     {
       "mode": "release",
-      "command": "cargo +nightly-2026-07-27 test --locked -p knytos-services -p catten-rt -p charlotte-transport-tests --release --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml",
+      "command": "cargo +nightly-2026-07-27 test --locked -p knytos-services -p knytos-rt -p charlotte-transport-tests --release --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml",
       "cwd": "/private/tmp",
       "exit_code": 0,
       "runtime_tests": 382,

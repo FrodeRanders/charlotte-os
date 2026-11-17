@@ -148,7 +148,7 @@ there is a CPU mapping, IPC lend, copy pin, or another DMA pin.
 The safe runtime boundary expresses the exclusive case as ownership transfer:
 `OwnedMemory::begin_dma` consumes unmapped memory and returns `DmaTransfer`.
 Safe Rust references therefore cannot survive into exclusive device ownership
-(`crates/catten-rt/src/owned.rs:177-196`). `SharedDmaMemory` retains the memory
+(`../../../crates/knytos-rt`). `SharedDmaMemory` retains the memory
 object, CPU mapping, DMA mapping, and their required drop order for coherent
 device rings (`owned.rs:198-229`, `401-484`).
 

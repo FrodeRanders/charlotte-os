@@ -3,7 +3,7 @@
 //! Generalized from the `el0_sitas` smoke-test loader so every spawned
 //! service domain shares one loading path: `PT_LOAD` segments are mapped at
 //! their linked virtual addresses with page permissions derived from ELF
-//! flags, and fixed `catten-rt` runtime pages are mapped and zeroed. The heap
+//! flags, and fixed `knytos-rt` runtime pages are mapped and zeroed. The heap
 //! is committed on demand through an independent backing account.
 
 pub use charlotte_launch::{
@@ -498,7 +498,7 @@ fn map_image_page_with_mapper(
     Ok(frame)
 }
 
-/// Create an address space, load `image`, and map the standard `catten-rt`
+/// Create an address space, load `image`, and map the standard `knytos-rt`
 /// runtime pages (config, status, CQ rings, input), claiming an unbacked heap
 /// window for demand commitment. The default completion
 /// queue is opened kernel-side on the mapped ring frame, so the domain can

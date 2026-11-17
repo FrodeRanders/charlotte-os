@@ -1542,7 +1542,7 @@
       "excerpt": "///\n/// Both endpoint caps and connection caps qualify, provided they carry\n/// `MINT_CONNECTION`. Connection caps allow re-delegation with rights\n/// attenuation: the minted rights are the intersection of the requested\n/// rights and the source cap's rights.\nfn mintable_endpoint(\n    ipc: &IpcRegistry,\n    asid: AddressSpaceId,\n    cap: CapabilityId,\n    requested: ConnectionRights,\n) -> Result<(EndpointId, ConnectionRights), IpcError> {\n    let (endpoint, source_rights) = match ipc.cap(asid, cap)? {\n        Capability::Endpoint {\n            endpoint,\n            rights,\n        }\n        | Capability::Connection {\n            endpoint,\n            rights,\n        } => (endpoint, rights),\n        _ => return Err(IpcError::WrongType),\n    };\n    if !source_rights.contains(ConnectionRights::MINT_CONNECTION) {\n        return Err(IpcError::PermissionDenied);\n    }\n    if ipc.endpoints.get(&endpoint).is_some_and(|endpoint| endpoint.closing) {\n        return Err(IpcError::Pending);\n    }\n    Ok((endpoint, requested.intersection(source_rights)))"
     },
     {
-      "path": "crates/catten-rt/src/owned/ipc.rs",
+      "path": "crates/knytos-rt/src/owned/ipc.rs",
       "sha256": "ca68efa9790d121cc7ccb1cd4f794ae150c30fa1ca14312c3b5c4a948a02d6ed",
       "first_line": 945,
       "last_line": 963,

@@ -1322,10 +1322,10 @@ the corrected RPC polling paths, and the remaining notification gaps.
   including runner fixtures. Retired nine-register syscalls 22/27/53 reject.
   See `docs/reference/ipc-receive.md`.
 - `catten-syscall` mirrors the register ABI and intentionally exposes integers.
-- `catten-rt::owned` is the safe application layer and owns kernel resources.
+- `knytos-rt::owned` is the safe application layer and owns kernel resources.
 - Protocol crates define wire formats and opcodes; they do not own live
   capabilities.
-- Service/client helpers wrap protocol lifetimes on top of `catten-rt::owned`;
+- Service/client helpers wrap protocol lifetimes on top of `knytos-rt::owned`;
   they do not duplicate syscall cleanup.
 - `charlotte-app` packages application context and optional protocol clients
   without depending on platform service implementations. `knytos-services`

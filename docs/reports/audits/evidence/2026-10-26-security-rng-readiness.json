@@ -23,9 +23,9 @@
     "crates/knytos-services/src/deadline.rs": "4fe91d47a40524b52c062496d9b27f9a1e47d54ce04a8f9945b6b4875e0817f6",
     "crates/knytos-services/src/entropy_service.rs": "f81a517193286b429e176c07e89c7b11648c965ad025101707d35eb60d84cedb",
     "crates/knytos-services/src/tls_client/entropy_client.rs": "e11ce22c39792592c1fca91b6e8b4c4eebb9d876c608812482d76e0b2e987e25",
-    "crates/catten-rt/src/lib.rs": "fc961903e9a614f4c877104135f6c2d439702039358d862e97864d2994463099",
-    "crates/catten-rt/src/cq.rs": "0f013cac8744fac7ddfc80bcdfda62d39ab1c1257789448674e3ce7ca6c11155",
-    "crates/catten-rt/src/owned/ipc.rs": "ca68efa9790d121cc7ccb1cd4f794ae150c30fa1ca14312c3b5c4a948a02d6ed",
+    "crates/knytos-rt/src/lib.rs": "fc961903e9a614f4c877104135f6c2d439702039358d862e97864d2994463099",
+    "crates/knytos-rt/src/cq.rs": "0f013cac8744fac7ddfc80bcdfda62d39ab1c1257789448674e3ce7ca6c11155",
+    "crates/knytos-rt/src/owned/ipc.rs": "ca68efa9790d121cc7ccb1cd4f794ae150c30fa1ca14312c3b5c4a948a02d6ed",
     "crates/catten/src/self_test/el0_security.rs": "5aa0584168320f82e32b8c1824c7467620870f18edeaed150f40c23e904285dd",
     "crates/catten/src/service/bootstrap.rs": "3c4f6169f68bf675b57abdfd4597c8e387e57df6c0e2d6fc0c4168c1d80576de",
     "crates/catten/src/completion/delivery/readiness.rs": "7c90df22ffd8fef70956a87f08e97ba2ec0d7b86b70b0cb5757c0cbcf7b94c4a",
@@ -45,7 +45,7 @@
     "no_new_live_or_boot_knob": true
   },
   "host": {
-    "command": "cargo +nightly-2026-07-27 test --locked -p knytos-services -p catten-rt -p charlotte-transport-tests --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml",
+    "command": "cargo +nightly-2026-07-27 test --locked -p knytos-services -p knytos-rt -p charlotte-transport-tests --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml",
     "cwd": "/private/tmp",
     "mode": "debug",
     "exit_code": 0,

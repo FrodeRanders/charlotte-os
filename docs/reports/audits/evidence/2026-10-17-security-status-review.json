@@ -10,7 +10,7 @@
   },
   "reviewed_source_sha256": {
     ".github/workflows/ci.yml": "5a9b54994ea72626ebab739f0b4a6ece299e5c4991a97ff78c8b5d1c572008e1",
-    "crates/catten-rt/src/owned/ipc.rs": "ca68efa9790d121cc7ccb1cd4f794ae150c30fa1ca14312c3b5c4a948a02d6ed",
+    "crates/knytos-rt/src/owned/ipc.rs": "ca68efa9790d121cc7ccb1cd4f794ae150c30fa1ca14312c3b5c4a948a02d6ed",
     "crates/knytos-services/src/bin/deployd.rs": "9416da775bc9ecb466d1f69a4b5bb73d851a8f0bb2605a4e35a001deceb4f5d6",
     "crates/knytos-services/src/bin/disco.rs": "45968526c110e66a3c54dd0aa3af3906d29630bf29246b7cdd034b14bfe5bc81",
     "crates/knytos-services/src/bin/httpd.rs": "5b32a59bcaa86fe265fd4ab3b5d885b16fd34920d50c4c2296172d37d58f77a1",

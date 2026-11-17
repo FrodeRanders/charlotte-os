@@ -36,8 +36,8 @@
     "crates/knytos-services/src/bin/kafka.rs": "69430620ff0c91761c222c9890213fa254b901d3c83a03c6ef7e5cc4dc798518",
     "crates/knytos-services/src/bin/security_probe.rs": "e91844c6c8a942264f508d20157fba4b8c80a3f8a59567f480ca33c7433b3e57",
     "crates/knytos-services/src/deadline.rs": "4fe91d47a40524b52c062496d9b27f9a1e47d54ce04a8f9945b6b4875e0817f6",
-    "crates/catten-rt/src/owned/ipc.rs": "ca68efa9790d121cc7ccb1cd4f794ae150c30fa1ca14312c3b5c4a948a02d6ed",
-    "crates/catten-rt/src/owned/memory.rs": "c578b79e5dbdc45906a31de769732f76d00ee7b035481290d4a7eac4ccbc9f12",
+    "crates/knytos-rt/src/owned/ipc.rs": "ca68efa9790d121cc7ccb1cd4f794ae150c30fa1ca14312c3b5c4a948a02d6ed",
+    "crates/knytos-rt/src/owned/memory.rs": "c578b79e5dbdc45906a31de769732f76d00ee7b035481290d4a7eac4ccbc9f12",
     "crates/catten/src/self_test/el0_security.rs": "23a5d2bb1c06d92ddefa4325d6460f4286b790066dd2b59a1de1a317129082f3",
     "crates/catten/src/memory/object/transfer.rs": "1983824fb4325839ca38fce87c0daa55bd720a53a0d278cbdb1b794f6367815b",
     "scripts/build-knytos-services.sh": "60761efa488d3815aa7be5059280cda1ef360b8ed2f13669427d7048ba556723",
@@ -68,7 +68,7 @@
   "host": [
     {
       "mode": "debug",
-      "command": "cargo +nightly-2026-07-27 test --locked -p knytos-services -p catten-rt -p charlotte-transport-tests --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml",
+      "command": "cargo +nightly-2026-07-27 test --locked -p knytos-services -p knytos-rt -p charlotte-transport-tests --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml",
       "cwd": "/private/tmp",
       "exit_code": 0,
       "runtime_tests": 374,
@@ -195,7 +195,7 @@
     },
     {
       "mode": "release",
-      "command": "cargo +nightly-2026-07-27 test --locked -p knytos-services -p catten-rt -p charlotte-transport-tests --release --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml",
+      "command": "cargo +nightly-2026-07-27 test --locked -p knytos-services -p knytos-rt -p charlotte-transport-tests --release --manifest-path /Users/froran/Projects/private/charlotte-os/Cargo.toml",
       "cwd": "/private/tmp",
       "exit_code": 0,
       "runtime_tests": 374,

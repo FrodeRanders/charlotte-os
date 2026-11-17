@@ -202,7 +202,7 @@ Kernel side: \texttt{write(cap, result)}. Consumer side:
 \subsection{The launch contract}
 
 A Knytos userspace program is a \texttt{no\_std} ELF binary. It uses
-the \texttt{catten-rt} crate (the CRT, or C runtime) and the \texttt{entry!}
+the \texttt{knytos-rt} crate (the CRT, or C runtime) and the \texttt{entry!}
 macro:
 
 \begin{lstlisting}[style=rustCode]
@@ -228,7 +228,7 @@ signed-grant acquisition, an owned session connection, business progress outside
 that session, bounded reconnection and explicit accepted-call cancellation.
 
 The program does not define \texttt{\_start}, a panic handler, or an allocator.
-These are provided by \texttt{catten-rt}. The \texttt{entry!} macro wires them
+These are provided by \texttt{knytos-rt}. The \texttt{entry!} macro wires them
 together, validates the launch ABI version, sets up the heap, and calls
 \texttt{main(ctx)}. A panic invokes the domain-abort syscall: every thread in
 the address space is retired, so no sibling can continue after shared Rust

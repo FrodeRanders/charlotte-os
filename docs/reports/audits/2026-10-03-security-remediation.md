@@ -3496,7 +3496,7 @@ Validation:
 - The first guest exposed a fixture-only double close of the vector descriptor,
   which the vector-call ABI already consumes. The fixture now respects that
   ownership boundary. Final guests pass without that erroneous second close.
-- Full `scripts/run-host-tests.sh` passes, including **33 catten-rt tests**, four
+- Full `scripts/run-host-tests.sh` passes, including **33 knytos-rt tests**, four
   new close/receive owner probes, the 18 slot-owner tests, six scratch tests and
   the existing protocol/signing suites.
 - Scoped security checks remain `0x7fff`; the existing concurrent cancellation

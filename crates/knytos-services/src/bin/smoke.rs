@@ -1,6 +1,6 @@
 //! Minimal ring-3 smoke service: writes a sentinel to the status page, emits
 //! one kernel log line through the syscall ABI, and exits. This is the
-//! smallest possible Rust ELF that exercises the full `catten-rt` startup
+//! smallest possible Rust ELF that exercises the full `knytos-rt` startup
 //! path (config-page launch header, status page, syscall dispatch) without
 //! any name-service or IPC dependency.
 #![no_std]

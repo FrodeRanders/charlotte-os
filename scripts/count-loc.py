@@ -284,7 +284,7 @@ def main():
                   textwrap.fill("- Userspace test applications: " + ", ".join(sorted(PROBES)) + ".",
                                 width=79, subsequent_indent="  "),
                   "- Runtime service binaries are separate from the shared knytos-services SDK,",
-                  "  catten-rt/syscall, protocol, connector, crypto and Raft libraries.",
+                  "  knytos-rt/syscall, protocol, connector, crypto and Raft libraries.",
                   "  Standalone raft/servicemgr fixture servers remain in the services category",
                   "  with their code counted as test-related; production DNS owns durable Raft.",
                   "- Dedicated tests/self_test/*_tests/fixtures paths, test/check/verify and",

@@ -1,11 +1,11 @@
 //! Self-test: load a real x86_64 Rust ELF (the `smoke` service) into ring 3
-//! and verify it runs the full `catten-rt` startup path.
+//! and verify it runs the full `knytos-rt` startup path.
 //!
 //! Unlike the hand-written assembly stub in [`el0`](crate::self_test::el0),
 //! this test loads a Rust-compiled service image through the shared ELF
 //! [`loader`](crate::service::loader), so it exercises the same path the
 //! service supervisor uses on AArch64: signature verification, `PT_LOAD`
-//! segment mapping, runtime-page setup, and the `catten-rt` entry trampoline.
+//! segment mapping, runtime-page setup, and the `knytos-rt` entry trampoline.
 //!
 //! The image is the `smoke` service (`crates/knytos-services/src/bin/smoke.rs`),
 //! which writes a sentinel to the status page, emits one kernel log line

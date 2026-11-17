@@ -83,7 +83,7 @@ folded from retired threads, live and high-water thread counts, and — when the
 domain publishes it — heap capacity, currently allocated bytes, the peak
 high-water mark, cumulative successful allocations and allocated bytes, and the
 cumulative arena-lock spin count. Heap facts come from the standard
-`charlotte_launch::heap_status` record that `catten-rt` maintains in the
+`charlotte_launch::heap_status` record that `knytos-rt` maintains in the
 domain's own status page; the kernel only reads that page and never inspects
 allocator internals. A caller without the system-observer capability sees only
 its own domain; the system-observer capability widens both sections to the

@@ -1,5 +1,5 @@
 [package]
-name = "catten-rt"
+name = "knytos-rt"
 version = "0.1.0"
 edition = "2024"
 description = "Minimal runtime (crt0) for Knytos userspace programs"

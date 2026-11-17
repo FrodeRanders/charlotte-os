@@ -50,7 +50,7 @@ pub struct DomainUsageSnapshot {
 #[derive(Debug, Clone, Copy, Default)]
 pub(super) struct DomainUsage {
     snapshot: DomainUsageSnapshot,
-    /// Physical frame of the domain's mutable status page, where `catten-rt`
+    /// Physical frame of the domain's mutable status page, where `knytos-rt`
     /// publishes standard heap accounting.
     status_frame: Option<PAddr>,
     /// Heap capacity chosen at load; faults beyond it are domain errors.

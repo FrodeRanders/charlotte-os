@@ -6,7 +6,7 @@ members = ["crates/*", "tools/cluster-sign", "tests/transport"]
 default-members = [
     "crates/catten",
     "crates/knytos-graft",
-    "crates/catten-rt",
+    "crates/knytos-rt",
     "crates/charlotte-app",
     "crates/charlotte-app-sitas",
     "crates/charlotte-protocol-grant",

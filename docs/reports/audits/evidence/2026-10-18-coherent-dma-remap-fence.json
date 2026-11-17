@@ -9,7 +9,7 @@
   "source_sha256": {
     "crates/catten/src/memory/object.rs": "d8023c7174d490bd10f682ca1fa1dbcf99917e4509544391213ded7129e739d1",
     "crates/catten/src/memory/object/retirement_tests.rs": "5b1366e7c16c07c1be534bd74d48dd6a0d74100b2de8c967f75cff81759192d9",
-    "crates/catten-rt/src/owned/memory.rs": "c578b79e5dbdc45906a31de769732f76d00ee7b035481290d4a7eac4ccbc9f12",
+    "crates/knytos-rt/src/owned/memory.rs": "c578b79e5dbdc45906a31de769732f76d00ee7b035481290d4a7eac4ccbc9f12",
     "docs/tla/CharlotteDMA.tla": "5c732aed07fa1f79463d4ca30d2aa7fc7e7c58f46c1e0a64f9445298867cd9fc",
     "docs/tla/CharlotteDmaOperation.tla": "2839f7d90627b32049ac677bd0040474df313f1dc862090e1d9373817787e682",
     "docs/tla/CharlotteDmaOperation_remap_unsafe.cfg": "a97e1f454c658a35aeaac53d1ce06552fe0a95ffae5522fff19e3512a7896362"

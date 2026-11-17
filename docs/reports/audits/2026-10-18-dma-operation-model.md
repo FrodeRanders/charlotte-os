@@ -34,7 +34,7 @@ Reviewed implementation anchors:
   [VT-d](../../../crates/catten/src/device/vt_d.rs) and
   [AMD-Vi](../../../crates/catten/src/device/amd_vi.rs) map/unmap adapters.
   Their backend-specific hardware acknowledgement contracts remain assumptions.
-- [`owned/memory.rs`](../../../crates/catten-rt/src/owned/memory.rs):
+- [`owned/memory.rs`](../../../crates/knytos-rt/src/owned/memory.rs):
   `DmaUnmap`, `DmaTransfer`, `SharedDmaMemory` and `FailedSharedDmaMemory`.
 
 The [action map](../../tla/CONFORMANCE.md#dma-operation-and-readiness-projection)

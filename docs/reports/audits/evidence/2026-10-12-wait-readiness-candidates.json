@@ -5,7 +5,7 @@
   "expression": "spin_loop|yield_lp|yield_now|sleep_ms|\\.poll\\(|spin_reply|poll_reply|while|loop",
   "candidates": [
     {
-      "file": "crates/catten-rt/src/owned/ipc.rs",
+      "file": "crates/knytos-rt/src/owned/ipc.rs",
       "line": 1248,
       "code": "// Returning (or unwinding) would end the Rust borrow while foreign CPU",
       "classification": "non-executable",

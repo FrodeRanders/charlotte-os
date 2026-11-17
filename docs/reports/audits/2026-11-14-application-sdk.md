@@ -40,7 +40,7 @@ test verifies terminal handling without releasing its registered interest.
 These host seams do not qualify native capability revocation or CQ delivery.
 
 `cargo fmt --all -- --check` and Clippy with all features/targets and denied
-warnings passed for `catten-rt`, `charlotte-app` and `charlotte-app-sitas`.
+warnings passed for `knytos-rt`, `charlotte-app` and `charlotte-app-sitas`.
 The bundled AArch64 services built and signed through
 `scripts/build-knytos-services.sh`. The reconnecting-client and echo-service
 examples compiled for AArch64 and x86_64. The echo helper itself was compiled,

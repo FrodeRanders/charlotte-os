@@ -31,7 +31,7 @@ build manual cleanup ladders around early returns.
 - Borrow launch-owned capabilities through `Context` (for example,
   `bootstrap_connection()`); do not adopt them as owned capabilities.
 
-Direct resource-owning calls from `catten_syscall` belong in `catten-rt`, the
+Direct resource-owning calls from `catten_syscall` belong in `knytos-rt`, the
 kernel/runtime boundary, or hardware/protocol adapter code that cannot yet be
 expressed by the owned API. New exceptions require a comment explaining the
 missing abstraction. CQ operations, status/config access, logging, and terminal

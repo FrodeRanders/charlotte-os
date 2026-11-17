@@ -58,7 +58,7 @@ same services and launch boundaries those gaps expose.
   `charlotte-smoltcp`, `relmsg`, `disco`, `ns`, `raft` transport), cluster
   protocol parsing and framing, and the launch/trust tooling. Four parallel
   review passes covered the network stack, ELF/launch paths,
-  cluster/authorization protocols, and the `catten-rt::owned` wrappers; every
+  cluster/authorization protocols, and the `knytos-rt::owned` wrappers; every
   High/Medium claim below was then re-verified directly by the author against
   the exact lines cited.
 - Ran the workspace host suites, the AArch64 security guest, formatting, both
@@ -242,7 +242,7 @@ manual AArch64 `svc3` emitter table has no arm for 77, so the wrapper panics:
   through to `panic!("syscall {:?} has no svc3 emitter", imm)`; `svc #77`
   appears nowhere in the crate.
 - The deployment agent reaches it through
-  [catten-rt owned ipc](../../../crates/catten-rt/src/owned/ipc.rs#L113) and
+  [knytos-rt owned ipc](../../../crates/knytos-rt/src/owned/ipc.rs#L113) and
   [agent.rs:646](../../../crates/knytos-services/src/bin/agent.rs#L646), and
   is built for AArch64.
 

@@ -12,7 +12,7 @@ socket = []
 test-support = []
 
 [dependencies]
-catten-rt = { path = "../catten-rt" }
+knytos-rt = { path = "../knytos-rt" }
 charlotte-launch = { path = "../charlotte-launch" }
 charlotte-protocol-grant = { path = "../charlotte-protocol-grant" }
 charlotte-protocol-kafka = { path = "../charlotte-protocol-kafka", optional = true }

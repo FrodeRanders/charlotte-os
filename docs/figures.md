@@ -19,7 +19,7 @@ HW["Hardware and firmware<br/>CPU · RAM · PCIe · NVMe · NIC · timers"]
 
       subgraph U["Userspace — isolated protection domains"]
           ABI["catten-syscall<br/>raw ABI"]
-          RT["catten-rt::owned<br/>linear resource ownership"]
+          RT["knytos-rt::owned<br/>linear resource ownership"]
           PROTOCOLS["Typed protocol crates"]
           SERVICES["Drivers and system services"]
           SITAS["Sitas shard runtime"]

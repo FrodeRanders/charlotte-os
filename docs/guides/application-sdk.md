@@ -1,7 +1,7 @@
 # Application SDK and owned service operations
 
 Use `charlotte-app` for ordinary application setup and service clients.
-`catten-rt` remains the resource-owning runtime, while protocol crates own wire data.
+`knytos-rt` remains the resource-owning runtime, while protocol crates own wire data.
 Platform service code can use the same clients through `knytos-services`, which
 reexports their single implementation. The application package has no dependency
 on the platform service implementations.
@@ -173,7 +173,7 @@ Run package tests from outside the repository's freestanding Cargo configuration
 ```sh
 cd /tmp
 cargo +nightly-2026-11-14 test --manifest-path /path/to/charlotte-os/Cargo.toml \
-  -p catten-rt -p charlotte-app -p charlotte-app-sitas --all-features --lib
+  -p knytos-rt -p charlotte-app -p charlotte-app-sitas --all-features --lib
 ```
 
 The repository host suite also selects the application's optional-feature tests.

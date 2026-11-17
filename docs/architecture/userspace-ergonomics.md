@@ -21,7 +21,7 @@ DMA and quiescence obligations.
 | Layer | Responsibility |
 | --- | --- |
 | [`catten-syscall`](../../crates/catten-syscall) | Register ABI; integers at the native boundary. |
-| [`catten-rt`](../../crates/catten-rt) | Existing capability/mapping owners, launch context and crt0; shared monotonic deadlines, bounded admission, owner-preserving call observations, length-bearing payload preparation and native worker groups. |
+| [`knytos-rt`](../../crates/knytos-rt) | Existing capability/mapping owners, launch context and crt0; shared monotonic deadlines, bounded admission, owner-preserving call observations, length-bearing payload preparation and native worker groups. |
 | [`charlotte-protocol-grant`](../../crates/charlotte-protocol-grant) and other protocol crates | Wire data and codecs; no live capability ownership. |
 | [`charlotte-app`](../../crates/charlotte-app) | Borrowed application context, returning entry wrapper, synchronous serving scope and scalar test seam. Optional socket, Kafka and S3 clients are extracted implementations, independent of platform service code. |
 | [`charlotte-app-sitas`](../../crates/charlotte-app-sitas) | Bounded task registration and owned call futures on the existing Sitas reactor/executor. |
@@ -32,7 +32,7 @@ DMA and quiescence obligations.
 flowchart TD
     App[Application business code] --> Clients[charlotte-app: launch and typed clients]
     Services[Platform service implementations] --> Clients
-    Clients --> Runtime[catten-rt: owners and launch ABI]
+    Clients --> Runtime[knytos-rt: owners and launch ABI]
     Clients --> Wire[Protocol crates: wire data and codecs]
     Runtime --> Syscalls[catten-syscall: register ABI]
     Async[charlotte-app-sitas: owned call futures] --> Runtime
